@@ -3,7 +3,7 @@ use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::files::package_name::PackageName;
+use crate::package_name::PackageName;
 
 /// The scripts a mode runs, as its `data/mode.toml` lists them under `scripts`, in the order
 /// their hooks answer an event, and which of them is the mode's own: the one entry marked

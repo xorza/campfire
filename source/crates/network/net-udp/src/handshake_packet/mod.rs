@@ -219,6 +219,11 @@ fn put_frame(datagram: &mut BytesMut, offset: u32, data: &[u8]) {
 
 /// An `Initial` of `data` from `offset`, with the client's `token`, padded to `PADDED_INITIAL`
 /// when `padded` holds, as a client's are.
+///
+/// # Panics
+///
+/// When `data` is past `INITIAL_DATA`, which the padding would cut short: a client's hello goes
+/// in as many `Initial`s as it needs.
 pub(crate) fn initial(
     id: [u8; ID_LEN],
     token: Option<&[u8; TOKEN_LEN]>,
@@ -226,7 +231,11 @@ pub(crate) fn initial(
     data: &[u8],
     padded: Padding,
 ) -> Bytes {
-    debug_assert!(data.len() <= INITIAL_DATA, "an Initial's data fits it");
+    assert!(
+        data.len() <= INITIAL_DATA,
+        "an Initial's data of {} bytes fits it",
+        data.len()
+    );
     let mut datagram = header(PacketType::Initial, id, PADDED_INITIAL);
     match token {
         Some(token) => {

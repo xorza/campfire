@@ -19,9 +19,10 @@ use campfire_common::Tick;
 use campfire_items::{Inventory, ItemStack, ItemsDirective, Shopping};
 use campfire_net::PendingOrders;
 use campfire_sim::{MatchRate, SimTick, Unpredicted};
+use campfire_values::ItemId;
 
 use crate::input_map::{ChordRow, InputMap};
-use crate::item_names::ItemTexts;
+use crate::name_texts::NameTexts;
 use crate::own_player::OwnPlayer;
 use crate::ui_style::{self, BACK, TEXT};
 use crate::view::ViewSystems;
@@ -97,7 +98,11 @@ impl InventoryBarPlugin {
     fn show(
         own: OwnPlayer<'_, '_>,
         carriers: Carriers<'_, '_>,
-        (names, tick, rate): (Res<'_, ItemTexts>, Res<'_, SimTick>, Res<'_, MatchRate>),
+        (names, tick, rate): (
+            Res<'_, NameTexts<ItemId>>,
+            Res<'_, SimTick>,
+            Res<'_, MatchRate>,
+        ),
         input: Res<'_, InputMap>,
         (slots, mut texts): (Query<'_, '_, (Entity, &BarSlot)>, Query<'_, '_, &mut Text>),
         mut line: Local<'_, String>,
@@ -150,7 +155,10 @@ impl InventoryBarPlugin {
         let Some(shop) = shopping.nearest_for(avatar.id) else {
             return;
         };
-        orders.push(Order::one(avatar.id, ItemsDirective::Sell { slot, shop }));
+        orders.push(Order::one(
+            avatar.id,
+            ItemsDirective::Sell { stack: slot, shop },
+        ));
     }
 
     /// A slot dropped onto another swaps the two.
@@ -217,8 +225,6 @@ fn write_slot(line: &mut String, slot: ShownSlot<'_>, clock: BarClock) {
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroU32;
-
-    use campfire_values::ItemId;
 
     use super::*;
 

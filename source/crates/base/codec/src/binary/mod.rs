@@ -1,6 +1,7 @@
 use postcard::ser_flavors::Flavor;
 use serde::{Deserialize, Serialize};
 
+use crate::appended::Appended;
 use crate::batch::Batch;
 use crate::compare::Compare;
 use crate::error::{BinaryError, TaggedError};
@@ -23,16 +24,22 @@ impl Binary {
     /// The bytes of `value`.
     pub fn encode<T: Serialize + ?Sized>(value: &T) -> Vec<u8> {
         let mut out = Vec::new();
-        Self::encode_to(value, &mut out);
+        Self::encode_into(value, &mut out);
         out
     }
 
-    /// Appends the bytes of `value` to `out`.
+    /// Appends the bytes of `value` to `out`, in place.
     pub fn encode_into<T: Serialize + ?Sized>(value: &T, out: &mut Vec<u8>) {
-        Self::encode_to(value, out);
+        let mut serializer = postcard::Serializer {
+            output: Appended(out),
+        };
+        value
+            .serialize(&mut serializer)
+            .expect("a value encodes in postcard");
     }
 
-    /// Writes the bytes of `value` into `sink`, in batches.
+    /// Writes the bytes of `value` into `sink`, in batches; `encode_into` appends to a `Vec` in
+    /// place.
     pub fn encode_to<T: Serialize + ?Sized>(value: &T, sink: &mut dyn Sink) {
         Self::encode_each_to([value], sink);
     }

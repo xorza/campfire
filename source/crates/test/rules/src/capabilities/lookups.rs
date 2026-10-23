@@ -5,9 +5,10 @@ use super::{NamedCode, Naming, capability, named_code};
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 71] = [
+const LOOKUPS: [(&str, &str); 75] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
+    ("actions/action_names.rs", "named"),
     ("actions/action_rules.rs", "named"),
     ("actions/action_slots/mod.rs", "named"),
     ("actions/cost_target.rs", "named"),
@@ -51,11 +52,14 @@ const LOOKUPS: [(&str, &str); 71] = [
     // The load, and the host's settings as the server starts.
     ("visibility/mode_visibility.rs", "named"),
     ("visibility/setting/mod.rs", "named"),
-    // A bot's script, each unit type it names resolved once as its bot starts.
+    // A bot's script, each unit type it names resolved once as its bot starts, and each action
+    // a think's order names, by the action book's index of names.
+    ("bots/bot_script/bot_names.rs", "actions_named"),
     ("bots/bot_script/bot_names.rs", "named"),
     // The load, and a filter a script names.
     ("script/scripts/view/filter.rs", "named"),
     ("script/scripts/view/match_names.rs", "named"),
+    ("script/scripts/view/name_tables.rs", "named"),
     ("values/filter_data.rs", "named"),
     // Script calls, each argument by its type, and the mode inputs, whose names enter with the
     // players' inputs.
@@ -72,6 +76,7 @@ const LOOKUPS: [(&str, &str); 71] = [
     ("mode/mode_script.rs", "named"),
     ("mode/roster.rs", "named"),
     ("mode/timer_id.rs", "named"),
+    ("mode/type_income.rs", "named"),
     ("mode/victory.rs", "named"),
     ("script/scripts/id_args.rs", "named"),
     ("script/scripts/script_api/api_builder.rs", "named"),

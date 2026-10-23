@@ -63,6 +63,16 @@ pub struct UnitGrants<'a> {
     pub(crate) grants: &'a [Grant],
 }
 
+/// The run of the unit `unit`, at `entity`, as a source pushes its grants: it opens at its first
+/// grant, so a unit a source visits and grants nothing costs the pass nothing.
+#[derive(Debug)]
+pub struct UnitRun<'a> {
+    grants: &'a mut Grants,
+    entity: Entity,
+    unit: StableId,
+    opened: bool,
+}
+
 /// The runs of `Grants`, in the order pushed.
 #[derive(Debug)]
 pub struct GrantsIter<'a> {
@@ -96,21 +106,14 @@ impl Grant {
 }
 
 impl Grants {
-    /// Starts the run of the unit `unit`, at `entity`: the grants pushed until the next run are
-    /// its.
-    pub fn unit(&mut self, entity: Entity, unit: StableId) {
-        let start = u32::try_from(self.grants.len()).expect("a stage's grants fit u32");
-        self.runs.push(GrantRun {
+    /// The run of the unit `unit`, at `entity`, to push its grants into.
+    pub const fn of(&mut self, entity: Entity, unit: StableId) -> UnitRun<'_> {
+        UnitRun {
+            grants: self,
             entity,
             unit,
-            start,
-        });
-    }
-
-    /// Adds `grant` to the run started last.
-    pub fn push(&mut self, grant: Grant) {
-        debug_assert!(!self.runs.is_empty(), "a grant is pushed in a unit's run");
-        self.grants.push(grant);
+            opened: false,
+        }
     }
 
     pub fn clear(&mut self) {
@@ -140,6 +143,23 @@ impl Grants {
             unit,
             grants: &self.grants[start as usize..end],
         }
+    }
+}
+
+impl UnitRun<'_> {
+    /// Adds `grant` to the unit's run, which it opens first.
+    pub fn push(&mut self, grant: Grant) {
+        let grants = &mut *self.grants;
+        if !self.opened {
+            let start = u32::try_from(grants.grants.len()).expect("a stage's grants fit u32");
+            grants.runs.push(GrantRun {
+                entity: self.entity,
+                unit: self.unit,
+                start,
+            });
+            self.opened = true;
+        }
+        grants.grants.push(grant);
     }
 }
 
@@ -175,5 +195,37 @@ impl Scratch for Grants {
 
     fn is_clear(&self) -> bool {
         self.runs.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_sim::IdAllocator;
+
+    use super::*;
+
+    #[test]
+    fn a_run_opens_at_its_first_grant() {
+        let mut ids = IdAllocator::default();
+        let [quiet, granted] = [(); 2].map(|()| ids.allocate());
+        let grant = |rank| Grant {
+            modifier: ModifierId::new(0),
+            from: GrantFrom::Itself,
+            hold: Hold::Passive,
+            action: None,
+            rank,
+        };
+        // A unit visited and granted nothing has no run; one granted twice has one run of both.
+        let mut grants = Grants::default();
+        grants.of(Entity::from_raw_u32(1).unwrap(), quiet);
+        let mut run = grants.of(Entity::from_raw_u32(2).unwrap(), granted);
+        run.push(grant(Some(Rank::FIRST)));
+        run.push(grant(None));
+        let runs: Vec<_> = grants
+            .iter()
+            .map(|run| (run.unit, run.grants.len()))
+            .collect();
+        assert_eq!(runs, [(granted, 2)]);
+        assert_eq!(grants.iter().len(), 1);
     }
 }

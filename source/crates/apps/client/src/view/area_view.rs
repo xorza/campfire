@@ -18,10 +18,10 @@ use campfire_areas::{Area, AreaReach};
 use campfire_sim::{Position, Unpredicted};
 use campfire_values::UnitType;
 
-use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::float_num::FloatNum;
 use crate::view::glide::{Follows, Glide, Spot};
+use crate::view::map_metric::Lifts;
 use crate::view::{DrawSystems, ground};
 
 /// Draws each area the client receives, of a mode with areas: a see-through disc of its radius
@@ -85,10 +85,10 @@ impl AreaViewPlugin {
         time: Res<'_, Time>,
         areas: NewAreas<'_, '_>,
         reach: AreaReach<'_>,
-        data: Res<'_, ClientData>,
+        lifts: Lifts<'_>,
         mut commands: Commands<'_, '_>,
     ) {
-        let heights = data.lifts();
+        let heights = lifts.get();
         for (area, &position, &unit_type, received) in &areas {
             let radius = reach
                 .radius(unit_type)

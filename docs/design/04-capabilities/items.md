@@ -15,6 +15,7 @@
 - **The buyer filter decides who shops dead.** A shop whose filter selects a dead unit serves it from anywhere: `allies` lets a dead player shop, as League of Legends does, and `allies:!dead` does not, as Warcraft III does.
 - **An item's action is a use.** It sits in its slot at rank 1, filled afresh, and is in the `use` group whatever its kind, so a stun stops it and a silence does not, as in League of Legends and Dota 2.
 - **Unique passives.** Two items with one modifier hold it once.
+- **An item holds by a hold of its own.** A carried item's modifier is held from its carrier under the items' hold, which keeps it through a death and with no stack as a passive does, so a passive of the same modifier neither keeps nor releases it. Refused: the passive's hold and a load rule that no item holds a passive's modifier, which kept two holders apart by refusing their data.
 - **A unit keeps what it carries at death.**
 
 ## Planned

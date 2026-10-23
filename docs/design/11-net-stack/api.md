@@ -94,7 +94,7 @@ How an app registers its protocol and names what the stack publishes.
 ## Entities in messages
 
 - **Only a client maps the entities a message names,** through replicon's map, then the link's
-  own pairs from the hello. A server keeps its entities, and an entity that a
+  own pairs from the server's hello, which goes to the client alone. A server keeps its entities, and an entity that a
   client cannot map goes as `Entity::PLACEHOLDER` each way. Practice: Replicon, which maps on the
   client only. Refused: a mark in the entity's bits, which is generation bit 31 of a real entity;
   a flag beside each entity, which a `MapEntities` impl may visit in a different order on each

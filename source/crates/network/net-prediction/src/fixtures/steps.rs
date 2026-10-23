@@ -20,8 +20,8 @@ pub(crate) fn record_completed_mutate_tick_for_rollback_check(world: &mut World,
         mutate_ticks.confirm(replicon_tick, 1);
     }
     let mut confirmed_ticks = world.resource_mut::<ConfirmedTickMap>();
-    confirmed_ticks.record(replicon_tick, tick);
-    confirmed_ticks.record_last_confirmed_tick(replicon_tick);
+    confirmed_ticks.bridge_record(replicon_tick, tick);
+    confirmed_ticks.bridge_record_last_confirmed_tick(replicon_tick);
 }
 
 /// Records a completed confirmed tick and requests the one-shot rollback, for tests of rollback

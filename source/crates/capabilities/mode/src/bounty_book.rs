@@ -1,12 +1,12 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
-use campfire_common::Seat;
-use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section};
+use campfire_common::PlayerSlot;
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, ById, ByIdBuilder, Section};
 use campfire_math::Num;
 use campfire_players::{PlayersWorld, ResourceBook};
 use campfire_script::{Filter, MatchNames, UnknownName};
-use campfire_sim::EntityIndex;
+use campfire_sim::{Capability, EntityIndex};
 use campfire_units::{Deaths, Owner, UnitTypes, UnitsWorld};
 use campfire_values::{Named, PackageIndex, Relations, ResourceId, Team, UnitTags, UnitType};
 
@@ -27,7 +27,7 @@ pub(crate) struct Bounty {
     killer: Filter,
     victim: Filter,
     start: Num,
-    types: ByType<TypeBounty>,
+    types: ById<UnitType, TypeBounty>,
 }
 
 /// What a type's death pays, in its resource.
@@ -39,12 +39,17 @@ pub(crate) struct TypeBounty {
 
 impl BountyBook {
     /// The bounty of the mode's `[bounty]` and its types', their names resolved; an error for a
-    /// filter's tag or a resource the match does not have, and for a type's bounty in a mode of
-    /// none.
+    /// filter's tag or a resource the match does not have, for a type's bounty in a mode of none,
+    /// and for a bounty in a match without combat, whose deaths it pays.
     pub(crate) fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let mode = cx.mode_section::<ModeBountyData>();
+        if mode.is_some() {
+            cx.require(Capability::Combat, PackageIndex::MODE, || {
+                BookPlace::Section(ModeBountyData::KEY)
+            })?;
+        }
         let resources = cx.book::<ResourceBook>()?;
-        let mut types = ByTypeBuilder::default();
+        let mut types = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<BountyData>() else {
                 continue;
@@ -105,12 +110,12 @@ impl Bounty {
         payments.clear();
         Self::payments(world, &mut payments);
         for &Payment {
-            seat,
+            player_slot,
             resource,
             amount,
         } in &*payments
         {
-            if let Some(mut resources) = world.player_resources_mut(seat) {
+            if let Some(mut resources) = world.player_resources_mut(player_slot) {
                 resources.add(resource, amount);
             }
         }
@@ -128,7 +133,7 @@ impl Bounty {
         let Some(relations) = world.get::<Relations>(match_entity) else {
             return;
         };
-        for death in deaths.iter() {
+        for death in deaths {
             if !bounty.victim.selects_tags(death.fallen.tags) {
                 continue;
             }
@@ -158,11 +163,11 @@ impl Bounty {
             {
                 continue;
             }
-            let seat = owner.seat();
+            let player_slot = owner.player_slot();
             let amount = match pays {
                 Pays::Amount(amount) => Some(i64::from(amount)),
                 Pays::Cost(cost) => {
-                    let player = world.player_entity(seat);
+                    let player = world.player_entity(player_slot);
                     let share = player.and_then(|player| world.get::<BountyShare>(player));
                     let share = share.map_or(Num::ZERO, |share| share.0);
                     share.checked_mul_int(i64::from(cost)).map(Num::ceil)
@@ -170,7 +175,7 @@ impl Bounty {
             };
             if let Some(amount) = amount.filter(|&amount| amount > 0) {
                 payments.push(Payment {
-                    seat,
+                    player_slot,
                     resource,
                     amount,
                 });
@@ -182,7 +187,7 @@ impl Bounty {
 /// A death's bounty: the player it pays, the resource and the amount.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Payment {
-    seat: Seat,
+    player_slot: PlayerSlot,
     resource: ResourceId,
     amount: i64,
 }

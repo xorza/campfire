@@ -105,6 +105,10 @@ impl<T: TrackedUnits> Cache for UnitTracker<T> {
     fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
+
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
 }
 
 impl<T: TrackedUnits> UnitTracker<T> {

@@ -118,7 +118,7 @@ impl ListedEffect for DamageEffectData {
     fn resolve(&self, cx: &mut dyn EffectResolveCx) -> Result<Arc<dyn ListedSpec>, EffectError> {
         Ok(Arc::new(DamageEffectSpec {
             amount: cx.amount(&self.amount)?,
-            kind: cx.names().damage_kind(&self.kind)?,
+            kind: cx.names().named::<DamageKind>(self.kind.as_str())?,
         }))
     }
 }

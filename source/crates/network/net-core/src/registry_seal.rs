@@ -1,36 +1,43 @@
 use crate::registry_hasher::RegistryHash;
 
-/// Whether a protocol registry takes registrations, or is sealed with the hash its peers compare: a
-/// registration changes the protocol and the systems built from it, so none comes after the seal
-/// (11-net-stack/api.md, Registration is order-independent and ends at `finish`).
+/// Whether a registry takes registrations, or is sealed: a registration changes the systems built
+/// from it, so none comes after the seal (11-net-stack/api.md, Registration is order-independent
+/// and ends at `finish`). A protocol registry seals with the hash its peers compare; one of the
+/// app's own, which no peer compares, with `()`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum RegistrySeal {
+pub enum RegistrySeal<H = RegistryHash> {
     #[default]
     Open,
-    Sealed(RegistryHash),
+    Sealed(H),
 }
 
-impl RegistrySeal {
+impl<H> RegistrySeal<H> {
     /// # Panics
     ///
     /// When sealed: `registry` names the registry in the message.
-    pub fn assert_open(self, registry: &str) {
+    pub fn assert_open(&self, registry: &str) {
         assert!(
-            matches!(self, Self::Open),
+            !self.is_sealed(),
             "the {registry} takes a registration after its plugin finished, which sealed it"
         );
     }
 
-    /// Seals the registry with `hash`.
+    /// Seals the registry with `seal`.
     ///
     /// # Panics
     ///
     /// When sealed already: one plugin seals a registry once.
-    pub fn seal(&mut self, registry: &str, hash: RegistryHash) {
+    pub fn seal(&mut self, registry: &str, seal: H) {
         self.assert_open(registry);
-        *self = Self::Sealed(hash);
+        *self = Self::Sealed(seal);
     }
 
+    pub const fn is_sealed(&self) -> bool {
+        matches!(self, Self::Sealed(_))
+    }
+}
+
+impl RegistrySeal {
     /// The hash the registry was sealed with, or `None` while it is open.
     pub const fn hash(self) -> Option<RegistryHash> {
         match self {

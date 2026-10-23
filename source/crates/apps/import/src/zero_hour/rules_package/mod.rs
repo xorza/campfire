@@ -12,24 +12,32 @@ use campfire_mode::{
     TeamData, TeamManifest,
 };
 use campfire_package::{
-    BotData, BotList, Dependency, DependencyPath, Language, ModeManifest, PackageHeader,
-    PackageName, ScriptOrder, ScriptSource, TickRange,
+    BotData, BotList, Dependency, Language, ModeManifest, PackageHeader, PackageName, ScriptOrder,
+    ScriptSource, TickRange,
 };
+use campfire_package_format::DependencyPath;
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
 use campfire_stats::ModifiersData;
 use campfire_values::{PackagePath, Relation, Scalar, Speed, TextId};
 
-use crate::zero_hour::ZeroHour;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
-use crate::zero_hour::map_import::SLOTS;
-use crate::zero_hour::production_import::ProductionImport;
+use crate::zero_hour::import_team::ImportTeam;
+use crate::zero_hour::production_import::{FactionBase, ProductionImport};
 use crate::zero_hour::skirmish_start::{FactionStart, SkirmishStart};
 
-/// How many of each unit type a seat that starts with a base gets (09-zero-hour.md, A base
+/// The operations of a script call, and of each pool's calls of a tick: twice the most one think
+/// of the Zero Hour check's bots runs, rounded up, as a longer match's bases grow
+/// (09-zero-hour.md, The bots' limits are measured).
+const BOT_LIMIT: u64 = 40_000;
+
+/// How many of each unit type a player slot that starts with a base gets (09-zero-hour.md, A base
 /// start).
 const BASE_COUNT: i64 = 2;
+
+/// The name of the rules package, and of its directory in an import.
+pub(crate) const RULES: &str = "zero-hour";
 
 /// Zero Hour's rules package as the importer ships it, `source/packages/zero-hour/`: each file but
 /// its index, by its path, which the import writes beside the imported package.
@@ -63,7 +71,7 @@ pub(crate) const RULES_FILES: [(&str, &[u8]); 4] = [
 fn bots() -> BotList {
     let declared = |name: &str| DeclaredName::new(name).expect("a name the import gives");
     let script = ScriptSource::Rules {
-        package: PackageName::new(ZeroHour::RULES).expect("the rules package's name"),
+        package: PackageName::new(RULES).expect("the rules package's name"),
         path: PackagePath::parse("scripts/bot.rhai").expect("the rules' bot script's path"),
     };
     let bot = |params: &[(&str, i64)]| BotData {
@@ -96,18 +104,17 @@ fn bots() -> BotList {
 }
 
 /// The imported package's manifest: a mode of eight players, each on a team of its own, beside the
-/// `neutral` team every placed object stands on, whose units drive, are made and fight with shells and
-/// missiles: of `stats`, `orders`, `navigation`, `abilities`, `production`, `combat` and `projectiles`, no
-/// unit faster than `max_move_speed`, at the game's 30 logic frames a second, depending on the
-/// rules package beside it (03-game-scripting.md, The manifest writes as it reads).
+/// `neutral` team every placed object stands on, whose units drive, are made and fight with shells
+/// and missiles: of `stats`, `orders`, `navigation`, `abilities`, `production`, `combat` and
+/// `projectiles`, no unit faster than `max_move_speed`, at the game's 30 logic frames a second,
+/// depending on the rules package beside it (03-game-scripting.md, The manifest writes as it
+/// reads).
 pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capability>> {
-    let team = |name: &str, seats| TeamManifest {
-        name: DeclaredName::new(name).expect("a team's name is a declared name"),
-        seats,
-    };
-    let teams = (1..=SLOTS)
-        .map(|player| team(&format!("player_{player}"), 1))
-        .chain([team("neutral", 0)])
+    let teams = ImportTeam::all()
+        .map(|team| TeamManifest {
+            name: team.name(),
+            player_slots: u32::from(team != ImportTeam::Neutral),
+        })
         .collect();
     let package = |name| PackageName::new(name).expect("a package's name");
     let logic_frames = NonZeroU32::new(30).expect("30 is no zero");
@@ -134,13 +141,13 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
             .expect("a range of one rate holds it"),
         teams,
         max_move_speed,
-        // A match start of eight seats that start with bases spawns some 40 units for each, at
-        // about 10 operations a unit (09-zero-hour.md, A base start).
+        // A bot's think of the check's plays runs up to 17,843 operations, and each pool holds a
+        // whole call (09-zero-hour.md, The bots' limits are measured).
         script_limits: ScriptLimits {
-            per_call: NonZeroU64::new(8000).expect("8000 is no zero"),
-            player: 8000,
-            think: 8000,
-            mode: 8000,
+            per_call: NonZeroU64::new(BOT_LIMIT).expect("a limit is no zero"),
+            player: BOT_LIMIT,
+            think: BOT_LIMIT,
+            mode: BOT_LIMIT,
         },
         dependencies: BTreeMap::from([(package("zero-hour"), dependency)]),
     }
@@ -161,7 +168,7 @@ pub(crate) struct ModeImport<'a> {
 /// manifest names the teams, the rules package's mode script, its params of what each faction
 /// starts with and its choice of a faction, `start` (09-zero-hour.md, A skirmish starts with the
 /// faction's start objects; 09-zero-hour.md, Each player picks a faction), each faction's base
-/// and its choice of a start, standard or a base (09-zero-hour.md, A seat picks its start;
+/// and its choice of a start, standard or a base (09-zero-hour.md, A player slot picks its start;
 /// 09-zero-hour.md, A base start), and the
 /// option of the money it starts with, of `start_money`'s values (09-zero-hour.md, The import
 /// writes Zero Hour's money as an option); the armors, the weapons and the modifiers of their
@@ -176,33 +183,31 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     } = mode;
     debug_assert!(
         combat.actions.keys().all(|name| {
-            !production.actions.contains_key(name) && !production.supply.gathers.contains_key(name)
+            !production.actions.contains_key(name)
+                && !production.supply.gathers.contains_key(name)
+                && !production.supply.hacks.contains_key(name)
         }),
-        "a weapon, a train or build and a gather share no name, as one table holds them"
+        "a weapon, a train or build, a gather and a hack share no name, as one table holds them"
     );
     let declared = |name: &str| DeclaredName::new(name).expect("a name the import gives");
     let text = |id: &str| TextId::new(id).expect("a message id the import gives");
-    let teams = (1..=SLOTS)
-        .map(|player| (format!("player_{player}"), format!("team-player-{player}")))
-        .chain([(String::from("neutral"), String::from("team-neutral"))])
-        .map(|(team, name)| (declared(&team), TeamData { name: text(&name) }))
+    let teams = ImportTeam::all()
+        .map(|team| {
+            let name = team.text_id();
+            (team.name(), TeamData { name })
+        })
         .collect();
     let param =
         |name: &str, faction: &FactionStart| declared(&format!("{name}_{}", faction.name.as_str()));
     let list = |names: &[DeclaredName]| {
-        ModeParam::List(
-            names
-                .iter()
-                .map(|name| ListEntry::Text(name.to_string()))
-                .collect(),
-        )
+        ModeParam::List(names.iter().cloned().map(ListEntry::Name).collect())
     };
     let params = start.factions.iter().flat_map(|faction| {
-        let base = production.base(&faction.building, &faction.units);
+        let base = FactionBase::of(production, combat, faction);
         [
             (
                 param("start_building", faction),
-                ModeParam::Text(faction.building.to_string()),
+                ModeParam::Name(faction.building.clone()),
             ),
             (param("start_units", faction), list(&faction.units)),
             (
@@ -248,14 +253,14 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     let money = OptionData::new(money.collect(), Scalar::Int(i64::from(start_money.default)))
         .expect("the multiplayer settings' read checks that their choices make an option");
     let rules = ScriptSource::Rules {
-        package: PackageName::new(ZeroHour::RULES).expect("the rules package's name"),
+        package: PackageName::new(RULES).expect("the rules package's name"),
         path: PackagePath::parse("scripts/mode.rhai").expect("the rules' mode script's path"),
     };
     // Each player regards the neutral team as neutral, as `PlayerList::newGame` sets every
     // player's relation to the neutral player (09-zero-hour.md, Players regard the
     // neutral team as neutral).
-    let relations = (1..=SLOTS).map(|player| RelationData {
-        teams: [declared(&format!("player_{player}")), declared("neutral")],
+    let relations = ImportTeam::players().map(|player| RelationData {
+        teams: [player.name(), ImportTeam::Neutral.name()],
         relation: Relation::Neutral,
         vision: false,
     });
@@ -293,8 +298,14 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .gathers
         .iter()
         .map(|(id, gather)| (id, gather.table()));
+    let hacks = production.supply.hacks.iter().map(|(id, hack)| {
+        (
+            id,
+            TomlValue::of(hack).read().expect("the keys write a table"),
+        )
+    });
     let actions: BTreeMap<&DeclaredName, TomlTable> =
-        weapons.chain(trains).chain(gathers).collect();
+        weapons.chain(trains).chain(gathers).chain(hacks).collect();
     if !actions.is_empty() {
         writer.value::<ActionsData>(TomlValue::of(&actions));
     }
@@ -314,11 +325,9 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
 pub(crate) fn mode_text(texts: &BTreeMap<String, String>) -> String {
     let mut text =
         String::from("mode-name = Zero Hour\nchoice-faction = Faction\nchoice-start = Start\n");
-    for player in 1..=SLOTS {
-        writeln!(text, "team-player-{player} = Player {player}")
-            .expect("text writes into a string");
+    for team in ImportTeam::all() {
+        writeln!(text, "{} = {}", team.text_id(), team.text()).expect("text writes into a string");
     }
-    text.push_str("team-neutral = Neutral\n");
     for (id, value) in texts {
         writeln!(text, "{id} = {}", fluent_value(value)).expect("text writes into a string");
     }

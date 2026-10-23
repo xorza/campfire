@@ -39,6 +39,6 @@ fn the_newest_value_replaces_one_not_written_and_the_newest_failure_is_taken_onc
     }
     writer.give(5);
     go.send(()).unwrap();
-    assert_eq!(writer.stop(), Some(5));
+    assert_eq!(writer.close(), Some(5));
     assert_eq!(*written.lock().unwrap(), [1, 3, 4, 5]);
 }

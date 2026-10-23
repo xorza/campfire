@@ -9,7 +9,7 @@ use bevy_ecs::schedule::{
 };
 use bevy_ecs::system::{Commands, Query, ScheduleSystem};
 use bevy_ecs::world::CommandQueue;
-use campfire_common::{Seat, StateHash, Tick};
+use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::internals::LogCheck;
 use campfire_log::{LogLevel, LogLine};
 use campfire_math::{Num, Rng, RngStream};
@@ -454,11 +454,11 @@ fn ticks_advance_and_key_the_draws() {
         if tick == 3 {
             let mut inputs = world.resource_mut::<TickInputs>();
             inputs.push(TickInput {
-                seat: Seat::new(0),
+                player_slot: PlayerSlot::new(0),
                 payload: b"up",
             });
             inputs.push(TickInput {
-                seat: Seat::new(1),
+                player_slot: PlayerSlot::new(1),
                 payload: b"",
             });
             let pushed: Vec<_> = inputs.iter().collect();
@@ -466,11 +466,11 @@ fn ticks_advance_and_key_the_draws() {
                 pushed,
                 [
                     TickInput {
-                        seat: Seat::new(0),
+                        player_slot: PlayerSlot::new(0),
                         payload: b"up"
                     },
                     TickInput {
-                        seat: Seat::new(1),
+                        player_slot: PlayerSlot::new(1),
                         payload: b""
                     }
                 ]

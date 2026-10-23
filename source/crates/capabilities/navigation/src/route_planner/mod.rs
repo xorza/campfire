@@ -160,7 +160,10 @@ impl RoutePlanner {
 
     /// A planner for routes on `grid`'s cells.
     pub fn new(grid: &Grid) -> Self {
-        let cells = grid.cells();
+        Self::of_cells(grid.cells())
+    }
+
+    fn of_cells(cells: usize) -> Self {
         Self {
             marks: vec![0; cells],
             costs: vec![0; cells],
@@ -559,6 +562,10 @@ impl RoutePlanner {
 impl Cache for RoutePlanner {
     fn installed(_: &World) -> Option<Self> {
         None
+    }
+
+    fn clear(&mut self) {
+        *self = Self::of_cells(self.marks.len());
     }
 }
 

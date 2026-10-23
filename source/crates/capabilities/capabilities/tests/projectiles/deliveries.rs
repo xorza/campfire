@@ -3,13 +3,17 @@ use std::num::NonZeroU8;
 use std::sync::Arc;
 
 use campfire_abilities::*;
-use campfire_actions::{ActionData, ActionTarget, Actions, DeliveryData, EffectTo, Targeting};
-use campfire_areas::{AreaData, AreaInsideData, Areas};
+use campfire_actions::{
+    ActionData, ActionKeys, ActionTarget, Actions, DeliverySection, EffectTo, Targeting,
+};
+use campfire_areas::{AreaData, AreaDeliveryData, AreaInsideData, Areas};
 use campfire_capabilities::internals::*;
 use campfire_combat::DamageEffectData;
 use campfire_common::DeclaredName;
 use campfire_math::{Num, Vec3};
-use campfire_projectiles::{Projectile, ProjectileData, Projectiles, ProjectilesRefusal};
+use campfire_projectiles::{
+    CurveData, Projectile, ProjectileData, ProjectileDeliveryData, Projectiles, ProjectilesRefusal,
+};
 use campfire_script::FailureKind;
 use campfire_script::{
     Audience, CapabilityRefusal, ScriptLimits, StateDecl, StateDefault, StateFieldDecl, StateType,
@@ -41,11 +45,11 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     };
     Projectiles::load_type(&mut game, bolt, &data);
     let shot = ActionData {
-        delivery: Some(DeliveryData::Projectile {
-            unit_type: DeclaredName::new("bolt").unwrap(),
+        delivery: Some(Arc::new(ProjectileDeliveryData {
+            projectile: DeclaredName::new("bolt").unwrap(),
             count: NonZeroU8::MIN,
             spread_deg: Num::ZERO,
-        }),
+        })),
         ..strike()
     };
     // Each hook deals damage only when it reads the bolt still there, and the hit's target is the
@@ -102,17 +106,36 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
 #[test]
 fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
     // Each cast launches its own projectile in tick 0, and its `on_resolve` one more: at the
-    // target, or along the direction to it. A homing type flies only at a unit, a line type only
-    // along a direction; the other form fails the call, and a failed cast launches nothing.
-    let forms = [
-        ("ctx.launch(caster.position, target)", true),
-        (
-            "ctx.launch(caster.position, caster.position.direction_to(target.position))",
-            false,
-        ),
-    ];
-    for homing in [false, true] {
-        for (call, at_unit) in forms {
+    // target, or toward a vector, the direction to it or its point. A line type flies only along
+    // a direction, a homing type only at a unit, and a curve at a unit or to a point; the other
+    // form fails the call, and a failed cast launches nothing.
+    let at_unit = "ctx.launch(caster.position, target)";
+    let along = "ctx.launch(caster.position, caster.position.direction_to(target.position))";
+    let to_point = "ctx.launch(caster.position, target.position)";
+    let curve = CurveData {
+        first: [Num::QUARTER, Num::int(4)],
+        second: [Num::QUARTER * 3, Num::int(4)],
+        follow: Num::ZERO,
+        life_ms: None,
+    };
+    let line = ProjectileData {
+        stop_on_hit: true,
+        ..ProjectileData::flying(Num::int(15))
+    };
+    let homing = ProjectileData {
+        homing: true,
+        ..line.clone()
+    };
+    let curved = ProjectileData {
+        curve: Some(curve),
+        ..ProjectileData::flying(Num::int(15))
+    };
+    for (data, launches) in [
+        (&line, [(at_unit, false), (along, true)]),
+        (&homing, [(at_unit, true), (along, false)]),
+        (&curved, [(at_unit, true), (to_point, true)]),
+    ] {
+        for (call, launches) in launches {
             let mut game = abilities_match_with(
                 ScriptLimits::ROOMY,
                 &[
@@ -124,20 +147,10 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             );
             let bolt =
                 Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeCore::default());
-            let data = ProjectileData {
-                homing,
-                stop_on_hit: true,
-                ..ProjectileData::flying(Num::int(15))
-            };
-            Projectiles::load_type(&mut game, bolt, &data);
-            let shot = ActionData {
-                delivery: Some(DeliveryData::Projectile {
-                    unit_type: DeclaredName::new("bolt").unwrap(),
-                    count: NonZeroU8::MIN,
-                    spread_deg: Num::ZERO,
-                }),
-                ..strike()
-            };
+            Projectiles::load_type(&mut game, bolt, data);
+            let mut shot = strike();
+            let bolt_name = DeclaredName::new("bolt").unwrap();
+            shot.delivery = Some(Arc::new(ProjectileDeliveryData::one(bolt_name)));
             let source = format!("fn on_resolve(ctx, caster, target) {{ {call}; }}");
             let action = Abilities::load(&mut game, "shot", &shot, &source);
             let caster = Abilities::caster(&mut game, action, 1);
@@ -150,11 +163,11 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
                 .into_iter()
                 .map(|failure| failure.kind)
                 .collect();
-            if homing == at_unit {
-                assert_eq!((launched, failed), (2, vec![]), "{homing} {call}");
+            if launches {
+                assert_eq!((launched, failed), (2, vec![]), "{call}");
             } else {
                 let other = FailureKind::Api(ProjectilesRefusal::OtherFlight.refused());
-                assert_eq!((launched, failed), (0, vec![other]), "{homing} {call}");
+                assert_eq!((launched, failed), (0, vec![other]), "{call}");
             }
         }
     }
@@ -203,23 +216,19 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
                     inside: AreaInsideData::default(),
                 };
                 Areas::load_type(&mut game, bolt, PackageIndex::MODE, &data);
-                let unit_type = DeclaredName::new("bolt").unwrap();
-                (
-                    DeliveryData::Area { unit_type },
-                    "ctx.land(target.position)",
-                )
+                let area = DeclaredName::new("bolt").unwrap();
+                let delivery: Arc<dyn DeliverySection> = Arc::new(AreaDeliveryData { area });
+                (delivery, "ctx.land(target.position)")
             } else {
                 let data = ProjectileData {
                     homing: true,
                     ..ProjectileData::flying(Num::int(15))
                 };
                 Projectiles::load_type(&mut game, bolt, &data);
-                let projectile = DeliveryData::Projectile {
-                    unit_type: DeclaredName::new("bolt").unwrap(),
-                    count: NonZeroU8::MIN,
-                    spread_deg: Num::ZERO,
-                };
-                (projectile, "ctx.launch(caster.position, target)")
+                let bolt = DeclaredName::new("bolt").unwrap();
+                let delivery: Arc<dyn DeliverySection> =
+                    Arc::new(ProjectileDeliveryData::one(bolt));
+                (delivery, "ctx.launch(caster.position, target)")
             };
             let shot = ActionData {
                 delivery: Some(delivery),
@@ -269,14 +278,21 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
 /// restore 2 mana to the caster.
 fn fan_of_frost() -> ActionData {
     ActionData {
-        script: None,
-        targeting: Targeting::Direction,
-        range: None,
-        delivery: Some(DeliveryData::Projectile {
-            unit_type: DeclaredName::new("frost_arrow").unwrap(),
+        keys: ActionKeys {
+            script: None,
+            targeting: Targeting::Direction,
+            range: None,
+            params: BTreeMap::from([(
+                DeclaredName::new("damage").unwrap(),
+                Param::Ranked(Ranked::One(Scalar::Int(30))),
+            )]),
+            ..strike().keys
+        },
+        delivery: Some(Arc::new(ProjectileDeliveryData {
+            projectile: DeclaredName::new("frost_arrow").unwrap(),
             count: NonZeroU8::new(5).unwrap(),
             spread_deg: Num::int(30),
-        }),
+        })),
         on_hit: vec![
             effect(
                 Arc::new(DamageEffectData {
@@ -300,10 +316,6 @@ fn fan_of_frost() -> ActionData {
                 EffectTo::Source,
             ),
         ],
-        params: BTreeMap::from([(
-            DeclaredName::new("damage").unwrap(),
-            Param::Ranked(Ranked::One(Scalar::Int(30))),
-        )]),
         ..strike()
     }
 }

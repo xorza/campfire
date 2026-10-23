@@ -8,12 +8,3 @@ pub(crate) enum MessageRef<'a> {
     Single(&'a SingleBody),
     Fragment(FragmentRef<'a>),
 }
-
-impl MessageRef<'_> {
-    pub(crate) fn bytes_len(self) -> usize {
-        match self {
-            Self::Single(data) => data.bytes_len(),
-            Self::Fragment(fragment) => fragment.bytes_len(),
-        }
-    }
-}

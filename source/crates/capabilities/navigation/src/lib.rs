@@ -16,16 +16,17 @@ use bevy_ecs::system::In;
 use bevy_ecs::world::World;
 use campfire_actions::ActionsSystems;
 use campfire_declarations::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
+    ById, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
 };
 use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
-use campfire_script::{ApiVersion, Status};
+use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, LayerNames, MoveStep, OpenCellAsk, OpenCellRun, SpawnCallbacks,
+    BodyUnit, Dead, DeclaredTags, Layer, MoveStep, OpenCellAsk, OpenCellRun, SpawnCallbacks,
     UnitTracker, UnitsSystems, WallBook,
 };
+use campfire_values::{PathId, UnitType};
 
 use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
@@ -71,6 +72,7 @@ mod steering;
 mod terrain;
 mod walk_check;
 mod walker;
+mod walker_book;
 mod walker_kinds;
 mod walker_on_path;
 mod walking;
@@ -108,6 +110,7 @@ pub use crate::static_bodies::StaticBodies;
 pub use crate::static_tracking::{StaticTracking, StaticTrackingRun};
 pub use crate::walk_check::{MarkerPoint, PlacedBody, WalkCheck};
 pub use crate::walker::Walker;
+pub use crate::walker_book::WalkerBook;
 pub use crate::walker_kinds::WalkerKinds;
 pub use crate::walker_on_path::WalkerOnPath;
 pub use crate::walking::Walking;
@@ -172,6 +175,7 @@ impl Module for Navigation {
         d.component::<PathWalker>();
         d.component::<OnPath>();
         d.resource::<PathArrivals>();
+        d.mode_events::<PathArrivals>(EventPhase::Arrivals);
         d.hook::<OnPathEnd>(Status::Runs(ApiVersion::FIRST));
         d.component::<Route>();
         d.component::<RouteCursor>();
@@ -190,10 +194,12 @@ impl Module for Navigation {
         d.one_shot::<RoomMakingRun, _>(RoomMaking::make_room);
         d.one_shot::<OpenCellRun, _>(Self::open_cell_of);
         d.listed::<MoveEffectData>();
-        d.book::<ByType<Walker>>(Walker::book);
-        d.fact::<LayerNames>(Self::layer_names);
+        d.book::<ById<UnitType, Walker>>(Walker::book);
+        d.book::<WalkerBook>(WalkerBook::build);
+        d.names::<Layer>(Self::layer_names);
         d.extend::<DeclaredTags>(Self::layer_tags);
         d.book::<NavigationBook>(NavigationBook::build);
+        d.names::<PathId>(NavigationBook::path_names);
         d.book::<WallBook>(Self::walls);
         d.rule(Self::pathing_rule);
         d.column::<NavigationColumn, RowReads>(NavigationColumn::fill_row);
@@ -244,18 +250,20 @@ impl Module for Navigation {
 }
 
 impl Navigation {
-    /// Gives the match the map's pathing grid on the cells of `grid`, those the walls of its
-    /// navigation book block, for the kinds of `walkers`, a static index for the widest of them,
-    /// and a planner of routes on the grid; the static bodies fill the grid and the index from
-    /// the first tick on.
-    /// Gives `world` its map's pathing grid, when the map has one, for the kinds of `walkers`.
-    pub fn load_map(world: &mut World, walkers: impl Into<WalkerKinds>) {
+    /// Gives `world` its map's pathing grid, when the map has one, for the kinds of walker its
+    /// book holds.
+    pub fn load_map(world: &mut World) {
         let grid = world.get_resource::<NavigationBook>();
         if let Some(grid) = grid.and_then(|book| book.pathing) {
+            let walkers = world.resource::<WalkerBook>().kinds.clone();
             Self::load_pathing(world, grid, walkers);
         }
     }
 
+    /// Gives the match the map's pathing grid on the cells of `grid`, those the walls of its
+    /// navigation book block, for the kinds of `walkers`, a static index for the widest of them,
+    /// and a planner of routes on the grid; the static bodies fill the grid and the index from
+    /// the first tick on.
     pub fn load_pathing(world: &mut World, grid: Grid, walkers: impl Into<WalkerKinds>) {
         let walkers = walkers.into();
         debug_assert!(
@@ -286,7 +294,9 @@ impl Navigation {
     /// The center of the cell nearest `ask.near` among those its type's walker may stand in, as
     /// `open_cell` gives it; `None` for a type that does not walk.
     fn open_cell_of(In(ask): In<OpenCellAsk>, world: &World) -> Option<Vec3> {
-        let walker = *world.resource::<ByType<Walker>>().get(ask.unit_type)?;
+        let walker = *world
+            .resource::<ById<UnitType, Walker>>()
+            .get(ask.unit_type)?;
         Self::open_cell(world, walker, ask.near)
     }
 

@@ -1,7 +1,7 @@
-use crate::history_component::HistoryComponent;
 use crate::interpolation_registry::InterpolationRegistry;
 use crate::member_mode::MemberMode;
 use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::{DiffReplicated, FullReplicated, NotReplicated};
 
 /// How a component of a replication kind takes part in interpolation: from whole values, from

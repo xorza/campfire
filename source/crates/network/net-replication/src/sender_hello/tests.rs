@@ -5,10 +5,11 @@ use campfire_net_messages::LinkMessages;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 
-/// Each end's hello maps the peer's link entity to its own, in the messages layer's map:
-/// replicon's map holds only replicated entities.
+/// The server's hello maps its link entity to the client's own, in the client's messages layer's
+/// map, as replicon's holds only replicated entities; the server, which maps nothing, keeps no
+/// pair.
 #[test]
-fn hello_maps_the_link_entities_both_ways() {
+fn the_servers_hello_maps_its_link_entity_on_the_client() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
     // The hello goes on connection and arrives in the next frames.
     stepper.frame_step(PROPAGATION_FRAMES);
@@ -19,8 +20,10 @@ fn hello_maps_the_link_entities_both_ways() {
             .get::<LinkMessages>()
             .unwrap()
             .entity_mapper
-            .get_local(remote)
+            .remote_to_local()
+            .get(&remote)
+            .copied()
     };
-    assert_eq!(local(stepper.client_of(0), client), Some(client_of));
     assert_eq!(local(stepper.client(0), client_of), Some(client));
+    assert_eq!(local(stepper.client_of(0), client), None);
 }

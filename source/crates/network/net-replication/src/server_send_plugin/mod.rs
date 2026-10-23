@@ -98,8 +98,6 @@ impl ServerSendPlugin {
             trace!(
                 target: "campfire_net_debug::timeline",
                 kind = "server_replication_tick_skipped",
-                schedule = "RunFixedMainLoop",
-                sample_point = "AfterFixedMainLoop",
                 local_tick = new_tick_raw,
                 server_tick = ?replication_tick.get(),
                 pending_send = *pending_send,
@@ -115,8 +113,6 @@ impl ServerSendPlugin {
         trace!(
             target: "campfire_net_debug::timeline",
             kind = "server_replication_tick",
-            schedule = "RunFixedMainLoop",
-            sample_point = "AfterFixedMainLoop",
             local_tick = new_tick_raw,
             server_tick = ?replication_tick.get(),
             previous_server_tick = ?previous_server_tick,

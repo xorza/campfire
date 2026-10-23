@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::data_dir::error::DataDirError;
 use crate::durable_dir::DurableDir;
 use crate::path_error::PathError;
-use crate::platform::user_only::UserOnly;
+use campfire_platform::UserOnly;
 
 pub(crate) mod error;
 

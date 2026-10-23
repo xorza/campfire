@@ -1,5 +1,6 @@
-use campfire_common::{Secret, TlsKey};
+use campfire_common::Secret;
 use campfire_net_core::Random;
+use campfire_net_core::TlsKey;
 use campfire_net_packets::{EmulatedWires, EndpointPieces};
 
 use crate::admission_setup::AdmissionSetup;

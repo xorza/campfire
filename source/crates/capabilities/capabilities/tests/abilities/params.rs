@@ -2,17 +2,17 @@ use std::collections::BTreeMap;
 
 use campfire_abilities::internals::scaling_stats;
 use campfire_abilities::*;
-use campfire_actions::{ActionData, ActionSlots, ActionTarget, SlotKind, TimedSlots};
+use campfire_actions::{ActionData, ActionKeys, ActionSlots, ActionTarget, SlotKind, TimedSlots};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
-use campfire_common::{DeclaredName, Seat, Tick};
+use campfire_common::{DeclaredName, PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptLimits;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimWorld, StableId, StateCopy};
 use campfire_stats::{
-    Level, LiveCarriers, ModifierClocks, ModifierData, Modifiers, StatBook, StatGraph, StatRule,
-    StatValue, Stats, StatsData, UnitStats,
+    CarriedMut, Level, LiveCarriers, ModifierClocks, ModifierData, Modifiers, StatBook, StatGraph,
+    StatRule, StatValue, Stats, StatsData, UnitStats,
 };
 use campfire_units::internals::Spawn;
 use campfire_units::{Owner, UnitTypeCore, Units};
@@ -70,7 +70,10 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
         &[("attack_damage", half * 3)],
     );
     let data = ActionData {
-        params: [(DeclaredName::new("power").unwrap(), power)].into(),
+        keys: ActionKeys {
+            params: [(DeclaredName::new("power").unwrap(), power)].into(),
+            ..strike().keys
+        },
         ..strike()
     };
     let script = r#"
@@ -81,7 +84,7 @@ fn on_resolve(ctx, caster, target) {
 "#;
     let action = Abilities::load(&mut game, "ability", &data, script);
     let parts = (
-        Owner::new(Seat::new(0)),
+        Owner::new(PlayerSlot::new(0)),
         TimedSlots::new(ActionSlots::new([(action, SlotKind::new(0), Rank::new(2))])),
         Level::new(3).unwrap(),
     );
@@ -246,8 +249,10 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     assert_eq!(game.resource::<LiveCarriers>().carried(), []);
     // At no stack it adds nothing, and is no live change that refreshes its unit every pass.
     let dual_path = Stats::modifier(&game, PackageIndex::MODE, "dual_path").unwrap();
-    let mut modifiers = game.get_mut::<Modifiers>(ward_entity).unwrap();
-    modifiers.set_stacks(dual_path, Some(source), 0, Tick::new(0));
+    CarriedMut::with(&mut game, ward_entity, |carried| {
+        carried.set_stacks(dual_path, Some(source), 0, Tick::new(0));
+    })
+    .unwrap();
     game.step();
     Release::check_copy(&mut game, &mut copy);
     assert_eq!(veil.values(&game, ward)[1], Num::ZERO);

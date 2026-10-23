@@ -4,9 +4,9 @@ use crate::prediction_registration;
 use crate::prediction_registry;
 use bevy_ecs::component::Mutable;
 use bevy_ecs::prelude::*;
-use campfire_net_interpolation::HistoryComponent;
 use campfire_net_replication::ComponentRegistration;
 use campfire_net_replication::ComponentRegistrator;
+use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::NotReplicated;
 
 /// Prediction on a component's registration, which takes its mode from the registration's

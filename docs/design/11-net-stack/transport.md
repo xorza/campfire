@@ -5,15 +5,15 @@ send costs.
 
 ## Receive contract
 
-- **Each channel has a maximum message size,** uncompressed, enforced on send with a typed error
-  and on receive from the first fragment: a fragment count above the size, or one that implies
-  more bytes than it, is refused, and decompression stops at it. The fragment count limit follows
-  from it. Practice: GameNetworkingSockets' `RecvMaxMessageSize`, ENet's `maximumPacketSize`,
+- **Each channel has a maximum message size,** enforced on send with a typed error and on receive
+  from the first fragment: a fragment count above the size, or one that implies more bytes than
+  it, is refused. The fragment count limit follows from it, and a link whose fragments cannot
+  carry it fails at its link. Practice: GameNetworkingSockets' `RecvMaxMessageSize`, ENet's `maximumPacketSize`,
   yojimbo's `maxBlockSize`. Refused: a fixed protocol constant, which cannot fit every channel of
   every game; a per-channel maximum alone, which leaves 32,768 concurrent partials per reliable
   channel.
-- **Each link's `Channels` has one receive budget,** validated at startup to admit the largest
-  message plus a packet, and charged for reassembly reservations, retained final fragments and
+- **Each link's `Channels` has one receive budget,** validated at the channel registry's seal to
+  admit each channel's largest message plus a fragment, and charged for reassembly reservations, retained final fragments and
   completed messages that wait behind an ordering gap. Practice: ENet's `maximumWaitingData`,
   GameNetworkingSockets' `RecvBufferSize`, QUIC's connection window. Refused: renet's per-channel
   budget, which multiplies by the channel count.
@@ -34,9 +34,10 @@ send costs.
   and sends its reliable messages again (GameNetworkingSockets' "do not ack", ENet); or a protocol
   violation, which unlinks the peer with `UnlinkReason::ProtocolViolation`. A violation is a claim
   that no honest peer of the same protocol makes: bytes that do not decode, a payload kind or a
-  tick no sender writes, an oversize or inconsistent fragment, an unknown channel or message id, a
-  message against its registered direction, a decompressed size over the limit (renet, yojimbo,
-  QUIC). No packet's outcome ends the pass for the packets behind it or for other links. Refused:
+  tick no sender writes, an oversize, empty or inconsistent fragment, a batch of no message, an
+  unknown channel or message id, a message against its registered direction or of no declared
+  direction (renet, yojimbo, QUIC). A refusal ends no pass, and a violation ends its own link's
+  pass, as the link is unlinked, and no other link's. Refused:
   drop-only, which keeps an attacker connected and loses reliable data already acknowledged.
 - **Decoders take only what the bytes hold.** A capacity is bounded by what the reader has left,
   every narrowing of a peer value goes through `TryFrom`, and a peer's tick count reads as the
@@ -45,6 +46,12 @@ send costs.
   own packet session's largest payload, so the two peers' sizes may differ, as a client's packets
   carry a connection ID that a server's do not. Refused: one fragment size both peers must agree on,
   which no handshake checks.
+
+- **What a channel holds past a packet is a copy, charged with its entry.** A message behind a gap
+  and a final fragment that waits for its size are copied out of their packet, which the receive
+  arena's 256 KiB chunk holds, and each entry costs its slot as well as its bytes, so a message
+  32,767 ids ahead costs one entry, not a slot for each id between, and empty messages fill the
+  budget too. Refused: a slice of the packet, which pins its chunk; a ring at each id's distance.
 
 ## Protocol agreement
 
@@ -67,6 +74,16 @@ send costs.
   the app's rate, so congestion holds back the lowest priorities, which the flush orders by priority
   each time. Refused: the IO dropping what it cannot send, by age and not by priority; an order only
   under a rate limit, as the budget always holds.
+- **A link's queued bytes have a budget,** 1 MiB, twice the default largest message as the
+  receive budget is: its staged messages and what its senders hold until they send them, or until
+  their acknowledgement on a reliable channel. A send past it is refused with
+  `SendError::Backlogged`, as a peer that stops acknowledging would grow them without bound.
+  Practice: GameNetworkingSockets' `SendBufferSize`, whose send returns `LimitExceeded`.
+  Refused: an unlink at the budget, which the packet session's idle timeout already makes.
+- **A sequenced unreliable channel sends its newest message,** and drops each older one no packet
+  carried, as its receiver takes only the newest; a fragmented message that started keeps its
+  fragments. Refused: a send of every queued version, which spends the budget on what the
+  receiver drops.
 - **A reliable message goes again when the packet session finds its packet lost,** and waits while
   the packet is in flight, so it costs no timer of its own and no resend that an ACK would have made
   needless. Refused: a resend delay of a multiple of the RTT, which sends again before a late ACK
@@ -74,8 +91,9 @@ send costs.
 - **A packet's tick goes in 2 bytes once the peer surely reads it whole,** and in 5 before: the
   sender writes the short form while the tick is within 2^14 of the largest tick of a packet the
   peer accepted and of the largest it sent, so the receiver's nearest tick to its own largest is
-  the tick, as RFC 9000 §A.2 writes a packet number. Refused: a 4-byte tick in every packet; a
-  short tick with no reference, which a receiver reads wrong after a gap.
+  the tick, as RFC 9000 §A.2 writes a packet number. One byte of the sender's overstep follows it
+  ([Time](time.md), A packet carries its sender's instant). Refused: a 4-byte tick in every
+  packet; a short tick with no reference, which a receiver reads wrong after a gap.
 - **A queued message keeps its channel's type until the flush,** which maps it to the channel's
   id there, at the type boundary where the registries keep their one map. A sender is a
   component, with no registry when it queues. Refused: senders that take a channel id, which
@@ -93,6 +111,13 @@ send costs.
   and the link's RTT samples come from its ACK, so an idle peer would give neither. Refused: ping
   messages, which cost bytes on a busy link too; the packet session's keep-alive, which carries no
   tick.
+- **Packets go uncompressed.** Refused: LZ4 of each packet and of each fragmented message, which
+  no app turned on, whose setup no protocol hash held, and whose fit search took most of the packet
+  builder; a game whose bytes compress well compresses them in its own messages.
+- **A packet holds at least its first candidate.** A fragment fits a packet by the fragment size,
+  and a whole message is at most a fragment long, so staging has no failure: a packet past the
+  payload is a bug the builder asserts. Refused: a staging error that ended the flush, which left
+  the link connected and sending only its tick.
 - **A send candidate holds a key, and the packet builder reads the bytes from the channel,** so
   no `Bytes` is cloned for each candidate: the first clone of a `Vec`-backed `Bytes` allocates its
   shared header.

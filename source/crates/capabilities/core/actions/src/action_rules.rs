@@ -5,12 +5,12 @@ use campfire_declarations::{
     BookCx, BookError, BookPlace, NamedScripts, NamedTexts, ScriptParams, Section, SourceKind,
     UnitTypeData,
 };
-use campfire_players::ResourceBook;
 use campfire_script::{ScriptRole, UnknownName};
 use campfire_sim::Capability;
-use campfire_units::{ModifierNames, PoolNames};
+use campfire_units::PoolId;
 use campfire_values::{
-    ActionId, EngineTag, ModifierId, NameKind, Named, Names, PackageIndex, Param, UnitType,
+    ActionId, EngineTag, ModifierId, NameKind, Named, Names, PackageIndex, Param, ResourceId,
+    UnitType,
 };
 
 use crate::Actions;
@@ -18,7 +18,7 @@ use crate::action_data::ActionData;
 use crate::action_kind::ActionKind;
 use crate::actions_data::ActionsData;
 use crate::cost_target::CostTarget;
-use crate::delivery_data::DeliveryData;
+use crate::delivery_section::DeliverySection;
 use crate::error::{ActionProblem, SlotError};
 use crate::list_hook::ListHook;
 use crate::listed_effect::effect_data::EffectData;
@@ -26,7 +26,6 @@ use crate::listed_effect::effect_data::LaunchLists;
 use crate::listed_effect::error::EffectRule;
 use crate::listed_effect::listed_spec::EffectTo;
 use crate::listed_effect::{EffectRuleCx, RuleAt};
-use crate::pipeline_field::PipelineField;
 use crate::slot_kind::SlotKind;
 use crate::slot_kinds::SlotKinds;
 use crate::targeting::Targeting;
@@ -55,8 +54,8 @@ impl Actions {
         for (package, source) in cx.packages() {
             let actions = source.content.get::<ActionsData>();
             for action in actions.into_iter().flat_map(|actions| actions.0.values()) {
-                if let Some(script) = &action.script {
-                    let params = ScriptParams::Named(action.params.keys().cloned().collect());
+                if let Some(script) = &action.keys.script {
+                    let params = ScriptParams::Named(action.keys.params.keys().cloned().collect());
                     scripts.name(package, script, ScriptRole::Action, params);
                 }
             }
@@ -73,7 +72,7 @@ impl Actions {
         for (package, source) in cx.packages() {
             let actions = source.content.get::<ActionsData>();
             for (id, action) in actions.into_iter().flat_map(|actions| &actions.0) {
-                if let Some(name) = &action.name {
+                if let Some(name) = &action.keys.name {
                     let at = BookPlace::Entry {
                         table: ActionsData::KEY,
                         name: id.clone(),
@@ -92,13 +91,13 @@ impl Actions {
     /// package's types.
     pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         let no_pools = Names::default();
-        let pools = cx.fact_if::<PoolNames>()?;
-        let pools = pools.map_or(&no_pools, |pools| &*pools.0);
+        let pools = cx.names_if::<PoolId>()?;
+        let pools = pools.map_or(&no_pools, |pools| &**pools);
         let no_resources = Names::default();
-        let resources = cx.book_if::<ResourceBook>()?;
-        let resources = resources.map_or(&no_resources, |resources| &*resources.0);
-        let modifiers = cx.fact_if::<ModifierNames>()?;
-        let modifiers = modifiers.map(|modifiers| &*modifiers.0);
+        let resources = cx.names_if::<ResourceId>()?;
+        let resources = resources.map_or(&no_resources, |resources| &**resources);
+        let modifiers = cx.names_if::<ModifierId>()?;
+        let modifiers = modifiers.map(|modifiers| &**modifiers);
         for (package, source) in cx.packages() {
             let Some(actions) = source.content.get::<ActionsData>() else {
                 continue;
@@ -113,7 +112,7 @@ impl Actions {
                 at.kind(action)?;
                 at.effects(action)?;
                 if let Some(delivery) = &action.delivery {
-                    at.delivery(delivery)?;
+                    at.delivery(&**delivery)?;
                 }
                 let costs = action.cost_names();
                 let mut costs = costs
@@ -131,7 +130,7 @@ impl Actions {
                 }
                 if let Some(name) = action
                     .param_refs()
-                    .find(|name| !action.params.contains_key(*name))
+                    .find(|name| !action.keys.params.contains_key(*name))
                 {
                     return Err(at.unknown(Param::NAMES, name));
                 }
@@ -216,13 +215,16 @@ impl ActionAt<'_, '_> {
     /// Its kind: the pipeline's fields its section takes, and the capabilities its section
     /// needs. A clamp only of an aim at a point, and a hold only of a toggle or a channel.
     fn kind(self, action: &ActionData) -> Result<(), BookError> {
-        if let Some(field) = PipelineField::misused(action) {
+        if let Some(field) = action.misused() {
             return Err(self.problem(ActionProblem::KindField(field)));
         }
-        if action.clamp_to_range && action.targeting != Targeting::Point {
+        if action.keys.clamp_to_range && action.keys.targeting != Targeting::Point {
             return Err(self.problem(ActionProblem::ClampAims));
         }
-        if action.hold.is_some() && action.toggle.is_none() && action.channel.is_none() {
+        if action.keys.hold.is_some()
+            && action.keys.toggle.is_none()
+            && action.keys.channel.is_none()
+        {
             return Err(self.problem(ActionProblem::HoldAlone));
         }
         action
@@ -233,12 +235,8 @@ impl ActionAt<'_, '_> {
     }
 
     /// Its delivery: of the capability of its form, and a unit type of its package.
-    fn delivery(self, delivery: &DeliveryData) -> Result<(), BookError> {
-        let capability = match delivery {
-            DeliveryData::Projectile { .. } => Capability::Projectiles,
-            DeliveryData::Area { .. } => Capability::Areas,
-        };
-        self.require(capability)?;
+    fn delivery(self, delivery: &dyn DeliverySection) -> Result<(), BookError> {
+        self.require(delivery.capability())?;
         let name = delivery.unit_type();
         if !self.units.contains_key(name) {
             return Err(self.unknown(UnitType::NAMES, name));
@@ -256,7 +254,7 @@ impl ActionAt<'_, '_> {
                 return Err(self.problem(ActionProblem::Effect { list, rule }));
             }
             let reaches = match list {
-                ListHook::OnResolve => matches!(action.targeting, Targeting::Unit(_)),
+                ListHook::OnResolve => matches!(action.keys.targeting, Targeting::Unit(_)),
                 ListHook::OnHit => true,
                 ListHook::OnEnd => false,
             };
@@ -277,7 +275,10 @@ impl ActionAt<'_, '_> {
     ) -> Result<(), BookError> {
         // An `on_resolve` aimed at a point reaches no unit, and a spawn there takes the point.
         let aims_point = list == ListHook::OnResolve
-            && matches!(action.targeting, Targeting::Point | Targeting::Direction);
+            && matches!(
+                action.keys.targeting,
+                Targeting::Point | Targeting::Direction
+            );
         let cx = ListRules {
             at: self,
             action,

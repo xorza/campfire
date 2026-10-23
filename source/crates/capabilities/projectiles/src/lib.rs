@@ -13,11 +13,10 @@
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionRange, ActionTarget, ActionsSystems, Aim, Delivery, DeliveryShape, Flights,
-    ProjectileFlight,
+    ActionBook, ActionRange, ActionTarget, ActionsSystems, Aim, Delivery, DeliveryAims,
 };
 use campfire_common::EnumAll;
-use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
+use campfire_declarations::{ById, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
@@ -31,11 +30,14 @@ mod flight_state;
 mod flights;
 mod flying;
 mod heading;
-mod launches;
+mod homers;
 mod launching;
 mod projectile;
 mod projectile_books;
 mod projectile_data;
+mod projectile_delivery_data;
+mod projectile_flight;
+mod projectile_launches;
 mod projectile_spec;
 mod projectiles_api;
 mod projectiles_effect;
@@ -47,15 +49,18 @@ pub use crate::error::{
 pub use crate::flight_state::FlightState;
 pub use crate::flying::Flying;
 pub use crate::heading::Heading;
-pub use crate::launches::{Launch, LaunchPayload, Launches};
 pub use crate::launching::Launching;
 pub use crate::projectile::{Flight, Payload, Projectile};
+pub use crate::projectile_launches::{Launch, LaunchPayload, ProjectileLaunches};
 
+use crate::homers::Homers;
 use crate::projectile::LaunchAim;
 pub use crate::projectile_data::{
     CruiseData, CurveData, ProjectileData, ProjectileDataBuilder, ProjectileHits, SteerData,
     SteerDataBuilder,
 };
+pub use crate::projectile_delivery_data::ProjectileDeliveryData;
+pub use crate::projectile_flight::ProjectileFlight;
 pub use crate::projectile_spec::ProjectileSpec;
 pub use crate::projectiles_api::ProjectilesApi;
 pub use crate::struck_units::{Struck, StruckUnits};
@@ -100,15 +105,20 @@ impl Module for Projectiles {
         d.engine_tags(&[Self::TAG]);
         d.component::<Projectile>();
         d.component::<FlightState>();
+        d.cache::<Homers>();
         d.resource::<StruckUnits>();
-        d.scratch::<Launches>();
+        d.scratch::<ProjectileLaunches>();
         d.callback::<Deliverers>(Capability::Projectiles, Self::deliver);
         d.require::<Projectile, FlightState>();
         d.observer(Flying::lose_teleported);
         d.observer(Flying::lose_died);
-        d.extend::<UnitTypes>(Self::tag_types);
-        d.fact::<Flights>(Self::flights);
-        d.book::<ByType<ProjectileSpec>>(ProjectileSpec::book);
+        d.extend::<UnitTypes>(|cx, types| {
+            types.tag_section::<ProjectileData>(cx, Self::TAG.tag());
+            Ok(())
+        });
+        d.listed::<ProjectileDeliveryData>();
+        d.extend::<DeliveryAims>(Self::aims);
+        d.book::<ById<UnitType, ProjectileSpec>>(ProjectileSpec::book);
         d.rule(Self::rule);
         d.rule(Self::deliveries_rule);
         d.api(ProjectilesApi::register);
@@ -134,7 +144,7 @@ impl Projectiles {
     pub const TAG: EngineTag =
         EngineTag::new(2, "projectile", TagProperties::NONE.with_named_only());
 
-    /// Launches the fan of `launcher`, which aimed at `target` from `from`: a homing projectile
+    /// ProjectileLaunches the fan of `launcher`, which aimed at `target` from `from`: a homing projectile
     /// at a unit for a homing type; a curve or a steered projectile from its caster's center to
     /// its unit's center or to its point for a curve or a steered type; or the fan's projectiles
     /// along lines spread evenly over its
@@ -143,23 +153,16 @@ impl Projectiles {
     fn deliver(world: &mut World, launcher: Launcher, from: Vec3, target: ActionTarget) {
         let Launcher {
             by,
-            delivery:
-                Delivery {
-                    unit_type,
-                    shape: DeliveryShape::Projectile { fan, .. },
-                },
-        } = launcher
-        else {
-            panic!("projectiles deliver a fan of projectiles");
-        };
+            delivery: Delivery { unit_type, fan, .. },
+        } = launcher;
         let book = world.resource::<ActionBook>();
         let action = book.get(by.action).expect("a cast's action is in the book");
         let to_point = matches!(action.aim, Aim::Point { .. });
         let spec = world
-            .resource::<ByType<ProjectileSpec>>()
+            .resource::<ById<UnitType, ProjectileSpec>>()
             .get(unit_type)
             .expect("a delivery's projectile type has a spec");
-        if let (ActionTarget::Unit(unit), true) = (target, spec.homing) {
+        if let (ActionTarget::Unit(unit), true) = (target, spec.homes()) {
             let homing = Flight::homing(unit);
             Self::push(world, by, unit_type, from, None, [homing]);
             return;
@@ -225,7 +228,7 @@ impl Projectiles {
     /// The range of a line projectile of `spec`: its type's, or else `range`, its action's at
     /// its rank; `None` for a global range.
     const fn range(spec: &ProjectileSpec, range: ActionRange) -> Option<Num> {
-        match (spec.range, range) {
+        match (spec.own_range(), range) {
             (Some(meters), _) => Some(meters),
             (None, ActionRange::Meters(meters)) => Some(meters.get()),
             (None, ActionRange::Global) => None,
@@ -239,7 +242,7 @@ impl Projectiles {
             .get(by.action)
             .expect("a delivery's action is in the book");
         let spec = world
-            .resource::<ByType<ProjectileSpec>>()
+            .resource::<ById<UnitType, ProjectileSpec>>()
             .get(unit_type)
             .expect("a delivery's projectile type has a spec");
         Self::range(spec, action.values(by.rank).range)
@@ -262,21 +265,15 @@ impl Projectiles {
         id: Option<StableId>,
         flights: impl IntoIterator<Item = Flight>,
     ) {
-        let mut launches = world.resource_mut::<Launches>();
+        let mut launches = world.resource_mut::<ProjectileLaunches>();
         let cast = launches.cast();
         let before = launches.len();
         launches.extend(flights.into_iter().map(|flight| Launch {
             id,
-            source: by.source,
             from,
             unit_type,
             flight,
-            payload: LaunchPayload::Action {
-                action: by.action,
-                rank: by.rank,
-                start: by.start,
-                cast,
-            },
+            payload: LaunchPayload::Action { by, cast },
         }));
         debug_assert!(
             id.is_none() || launches.len() == before + 1,
@@ -288,18 +285,19 @@ impl Projectiles {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
-    use campfire_actions::ShotDamage;
-    use campfire_declarations::ByType;
+    use campfire_actions::{LaunchId, ShotDamage};
+    use campfire_declarations::ById;
     use campfire_declarations::internals::BookLoad;
+    use campfire_deliveries::Delivering;
     use campfire_math::{Num, Vec3};
     use campfire_sim::{EntityIndex, MatchRate, Position, StableId};
     use campfire_units::{MapBook, UnitTypeBook, Units};
     use campfire_values::{ActionId, DamageKind, Rank, UnitType};
 
     use crate::Projectiles;
-    use crate::launches::{Launch, LaunchPayload, Launches};
     use crate::projectile::{Flight, LaunchAim, Payload, Projectile};
     use crate::projectile_data::ProjectileData;
+    use crate::projectile_launches::{Launch, LaunchPayload, ProjectileLaunches};
     use crate::projectile_spec::ProjectileSpec;
 
     impl Projectiles {
@@ -311,10 +309,10 @@ pub mod internals {
             let tags = world.resource::<UnitTypeBook>().tags();
             let spec = ProjectileSpec::of(data, tags, rate)
                 .expect("a test's projectile hits tags its match has");
-            ByType::<ProjectileSpec>::amend(world, |_, book| book.set(unit_type, spec));
+            ById::<UnitType, ProjectileSpec>::amend(world, |_, book| book.set(unit_type, spec));
         }
 
-        /// Launches a projectile of the line type `unit_type` from `source` at the origin along
+        /// ProjectileLaunches a projectile of the line type `unit_type` from `source` at the origin along
         /// the unit vector `direction`, up to the map's bounds as a cast flies, carrying 10
         /// damage, from the next tick.
         pub fn fire_line(
@@ -324,29 +322,25 @@ pub mod internals {
             direction: Vec3,
         ) {
             let range = world
-                .resource::<ByType<ProjectileSpec>>()
+                .resource::<ById<UnitType, ProjectileSpec>>()
                 .get(unit_type)
                 .unwrap()
-                .range;
+                .own_range();
             let bounds = world.resource::<MapBook>().bounds;
             let reach = Self::reach(bounds, range, Vec3::ZERO, direction);
-            world.resource_mut::<Launches>().push(Launch {
+            world.resource_mut::<ProjectileLaunches>().push(Launch {
                 id: None,
-                source,
                 from: Vec3::ZERO,
                 unit_type,
                 flight: Flight::line(Vec3::ZERO, direction, reach, None),
-                payload: LaunchPayload::Attack(ShotDamage {
-                    action: ActionId::new(0),
-                    rank: Rank::FIRST,
-                    amount: Num::int(10),
-                    kind: DamageKind::new(0),
-                    roll: Num::ZERO,
-                }),
+                payload: LaunchPayload::Attack {
+                    source,
+                    damage: Self::ten(),
+                },
             });
         }
 
-        /// Launches a projectile of the steered type `unit_type` from `source` at `from`, a point
+        /// ProjectileLaunches a projectile of the steered type `unit_type` from `source` at `from`, a point
         /// in space, at the unit `target`'s center, carrying 10 damage, from the next tick; none
         /// for a target that is gone.
         pub fn fire_steered(
@@ -360,7 +354,7 @@ pub mod internals {
                 return;
             };
             let spec = world
-                .resource::<ByType<ProjectileSpec>>()
+                .resource::<ById<UnitType, ProjectileSpec>>()
                 .get(unit_type)
                 .unwrap();
             let map = world.resource::<MapBook>();
@@ -371,20 +365,59 @@ pub mod internals {
             };
             let flight = Flight::aimed(aim, spec, map);
             let launch = map.position(from);
-            world.resource_mut::<Launches>().push(Launch {
+            world.resource_mut::<ProjectileLaunches>().push(Launch {
                 id: None,
-                source,
                 from: launch,
                 unit_type,
                 flight,
-                payload: LaunchPayload::Attack(ShotDamage {
-                    action: ActionId::new(0),
-                    rank: Rank::FIRST,
-                    amount: Num::int(10),
-                    kind: DamageKind::new(0),
-                    roll: Num::ZERO,
-                }),
+                payload: LaunchPayload::Attack {
+                    source,
+                    damage: Self::ten(),
+                },
             });
+        }
+
+        /// Launches a projectile of the line type `unit_type` that `by` delivers, from the origin
+        /// along the unit vector `direction`, up to the map's bounds, from the next tick.
+        pub fn deliver_line(
+            world: &mut World,
+            by: Delivering,
+            unit_type: UnitType,
+            direction: Vec3,
+        ) {
+            let range = world
+                .resource::<ById<UnitType, ProjectileSpec>>()
+                .get(unit_type)
+                .unwrap()
+                .own_range();
+            let bounds = world.resource::<MapBook>().bounds;
+            let reach = Self::reach(bounds, range, Vec3::ZERO, direction);
+            let flight = Flight::line(Vec3::ZERO, direction, reach, None);
+            Self::push(world, by, unit_type, Vec3::ZERO, None, [flight]);
+        }
+
+        /// The launch each projectile of an action carries, by stable id.
+        pub fn carried_launches(world: &World) -> Vec<Option<LaunchId>> {
+            let projectiles = world.resource::<EntityIndex>().iter();
+            projectiles
+                .filter_map(|(_, entity)| world.get::<Projectile>(entity))
+                .map(|projectile| match projectile.payload() {
+                    Payload::Action { launch, .. } => launch,
+                    Payload::Attack(_) => panic!("an action's projectile"),
+                })
+                .collect()
+        }
+
+        /// A test shot's damage: 10 of the first kind, of the first rank of action 0, of no roll.
+        const fn ten() -> ShotDamage {
+            ShotDamage {
+                action: ActionId::new(0),
+                rank: Rank::FIRST,
+                amount: Num::int(10),
+                outer: None,
+                kind: DamageKind::new(0),
+                roll: Num::ZERO,
+            }
         }
 
         /// The roll each projectile carries, by stable id.

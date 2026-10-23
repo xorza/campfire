@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, Takes};
+use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, PipelineField, Takes};
 use campfire_common::DeclaredName;
 use campfire_declarations::Listed;
 use campfire_script::ApiBuilder;
@@ -35,13 +35,15 @@ impl KindSection for TrainData {
 
     /// A train aims at nothing and runs no script: it queues, waits its windup, and spawns.
     fn takes(&self) -> KindTakes {
-        KindTakes {
-            cooldown: Takes::May,
-            cost: Takes::May,
-            windup: Takes::May,
-            passive: Takes::May,
-            ..KindTakes::NONE
-        }
+        KindTakes::NONE.with(
+            Takes::May,
+            &[
+                PipelineField::CooldownMs,
+                PipelineField::Cost,
+                PipelineField::WindupMs,
+                PipelineField::PassiveModifier,
+            ],
+        )
     }
 
     fn numbers(&self) -> Vec<&Ranked<Number>> {

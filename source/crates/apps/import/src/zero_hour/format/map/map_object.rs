@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::f32::consts::PI;
 
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::map::chunk_reader::ChunkReader;
@@ -109,23 +109,17 @@ impl MapObject {
         self.flags & ROAD_OR_BRIDGE != 0
     }
 
-    /// Where it stands on the engine's ground plane: the original's `x` east and `y` north become
-    /// `x` and `−z`, which keeps the axes right-handed with `y` up. `None` past the world's bound.
+    /// Where it stands on the game's ground, its `x` east and `y` north, exactly; `None` for a
+    /// coordinate no `Num` holds.
     pub(crate) fn ground(&self) -> Option<[Num; 2]> {
         let [x, y, _] = self.position.map(|axis| game_float::to_num(axis).ok());
-        let ground = [x?, y?.checked_neg()?];
-        let bound = Vec3::BOUND.to_bits();
-        ground
-            .iter()
-            .all(|value| value.to_bits().unsigned_abs() <= bound.unsigned_abs())
-            .then_some(ground)
+        Some([x?, y?])
     }
 
-    /// How it stands as a unit: its ground point, the original's `z` up as its height, and its
-    /// angle, turned from `x` towards `y`, which keeps its sign, as a turn from `x` towards `−z`
-    /// is counter-clockwise seen from above. `None` past the world's bound, or for an angle the
-    /// game's own normalization never ends on. A waypoint takes its ground point alone, as the
-    /// game reads neither its height nor its angle.
+    /// How it stands as a unit, of the game's frame: its ground point, its `z` up as its height,
+    /// and its angle, turned from `x` towards `y`. `None` for a number no `Num` holds, or for an
+    /// angle the game's own normalization never ends on. A waypoint takes its ground point alone,
+    /// as the game reads neither its height nor its angle.
     pub(crate) fn placement(&self) -> Option<ObjectPlace> {
         Some(ObjectPlace {
             ground: self.ground()?,
@@ -305,8 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn a_position_converts_exactly_on_the_engine_s_axes() {
-        // The original's north is the engine's −z, and its angle keeps its sign.
+    fn a_position_reads_exactly_in_the_game_s_frame() {
         let object = MapObject {
             position: [30.0, 20.0, -4.5],
             angle: PI / 2.0,
@@ -315,11 +308,11 @@ mod tests {
             waypoint: None,
         };
         let placement = object.placement().unwrap();
-        assert_eq!(placement.ground, [Num::int(30), Num::int(-20)]);
+        assert_eq!(placement.ground, [Num::int(30), Num::int(20)]);
         assert_eq!(placement.height, Num::int(-9) / Num::int(2));
         assert_eq!(placement.degrees.to_bits(), 1_509_949_482);
         let far = MapObject {
-            position: [2_000_000.0, 0.0, 0.0],
+            position: [f32::INFINITY, 0.0, 0.0],
             ..object
         };
         assert_eq!(far.placement(), None);

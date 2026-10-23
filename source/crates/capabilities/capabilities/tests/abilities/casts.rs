@@ -4,13 +4,14 @@ use std::sync::Arc;
 use campfire_abilities::internals::{MANA, RAGE};
 use campfire_abilities::*;
 use campfire_actions::{
-    ActionData, ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions, EffectTo,
-    InProgress, OrderPhase, RangeField, SlotAim, SlotKind, StartedOrder, Targeting, TimedSlots,
+    ActionData, ActionKeys, ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions,
+    EffectTo, InProgress, OrderPhase, RangeField, SlotAim, SlotKind, StartedOrder, Targeting,
+    TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_combat::DamageEffectData;
-use campfire_common::{DeclaredName, Seat, Tick};
+use campfire_common::{DeclaredName, PlayerSlot, Tick};
 use campfire_deliveries::DashDelivering;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{MoveEffectData, Navigation, NavigationRefusal};
@@ -124,18 +125,28 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     // Aim winds up 300 ms, 9 ticks, within 10 m; Shove, at once, knocks its target 3 m away from
     // its caster over 100 ms, 3 ticks.
     let aim = ActionData {
-        windup_ms: Some(Ranked::One(int(300))),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-            Num::int(10),
-        )))),
+        keys: ActionKeys {
+            windup_ms: Some(Ranked::One(int(300))),
+            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                Num::int(10),
+            )))),
+            ..strike().keys
+        },
         ..strike()
     };
     let aim = Abilities::load(&mut game, "aim", &aim, STRIKE);
     let shove = ActionData {
-        script: Some(PackagePath::parse("shove.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-            Num::int(5),
-        )))),
+        keys: ActionKeys {
+            script: Some(PackagePath::parse("shove.rhai").unwrap()),
+            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                Num::int(5),
+            )))),
+            ..ActionData::of(
+                Targeting::Unit(FilterData::parse("enemies").unwrap()),
+                CastData::default(),
+            )
+            .keys
+        },
         ..ActionData::of(
             Targeting::Unit(FilterData::parse("enemies").unwrap()),
             CastData::default(),
@@ -244,10 +255,17 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
         kind: DeclaredName::new("true").unwrap(),
     });
     let lunge = ActionData {
-        script: Some(PackagePath::parse("lunge.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-            Num::int(10),
-        )))),
+        keys: ActionKeys {
+            script: Some(PackagePath::parse("lunge.rhai").unwrap()),
+            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                Num::int(10),
+            )))),
+            ..ActionData::of(
+                Targeting::Unit(FilterData::parse("enemies").unwrap()),
+                CastData::default(),
+            )
+            .keys
+        },
         on_resolve: vec![
             effect(Arc::new(knock_back), EffectTo::Reached),
             effect(Arc::new(dash), EffectTo::Source),
@@ -416,7 +434,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     let caster = Abilities::caster(&mut game, strike, 1);
     let mut caster_at = |x: i16, rank: u8, unit_type| {
         let parts = (
-            Owner::new(Seat::new(0)),
+            Owner::new(PlayerSlot::new(0)),
             TimedSlots::new(ActionSlots::new([(
                 strike,
                 SlotKind::new(0),
@@ -503,7 +521,13 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let gold = ResourceId::new(0);
     let mut cost = cost("mana", int(10));
     cost.insert(DeclaredName::new("gold").unwrap(), Ranked::One(int(30)));
-    let data = ActionData { cost, ..strike() };
+    let data = ActionData {
+        keys: ActionKeys {
+            cost,
+            ..strike().keys
+        },
+        ..strike()
+    };
     let strike = Abilities::load(&mut game, "strike", &data, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
     let slots = TimedSlots::new(ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]));
@@ -511,7 +535,7 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
         .parts(slots)
         .place(&mut game);
     let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
-    let player = Seat::new(0);
+    let player = PlayerSlot::new(0);
     game.player_resources_mut(player)
         .unwrap()
         .add(gold, 40)
@@ -543,7 +567,10 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     let mut game = abilities_match();
     // Strike with a windup of 100 ms, 3 ticks.
     let data = ActionData {
-        windup_ms: Some(Ranked::One(int(100))),
+        keys: ActionKeys {
+            windup_ms: Some(Ranked::One(int(100))),
+            ..strike().keys
+        },
         ..strike()
     };
     let strike = Abilities::load(&mut game, "strike", &data, STRIKE);
@@ -615,7 +642,10 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
     let overflow = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.position, 10, "enemies") { ctx.damage(unit, "magic", 50); } num(1 << 20) * num(1 << 20) }"#;
     let undeclared = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.position, 10, "enemies") { ctx.damage(unit, "magic", 50); } ctx.params.radius }"#;
     let data = ActionData {
-        params: BTreeMap::new(),
+        keys: ActionKeys {
+            params: BTreeMap::new(),
+            ..lash_out().keys
+        },
         ..lash_out()
     };
     let thrown = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.position, 10, "enemies") { ctx.damage(unit, "magic", 50); } throw "out" }"#;
@@ -651,7 +681,8 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
                 assert_eq!(Abilities::failed_calls(&game), [failed], "{script}");
                 let mut budgets = game.resource_mut::<ScriptBudgets>();
                 spent.push(
-                    ScriptLimits::ROOMY.player - budgets.get_mut(Pool::Player(Seat::new(0))).left(),
+                    ScriptLimits::ROOMY.player
+                        - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left(),
                 );
             } else {
                 game.step();
@@ -676,7 +707,10 @@ fn a_cast_under_way_ends_when_its_caster_dies() {
     // gone: the enemy takes nothing, then or later.
     let mut game = abilities_match();
     let windup = ActionData {
-        windup_ms: Some(Ranked::One(int(200))),
+        keys: ActionKeys {
+            windup_ms: Some(Ranked::One(int(200))),
+            ..strike().keys
+        },
         ..strike()
     };
     let strike = Abilities::load(&mut game, "strike", &windup, STRIKE);

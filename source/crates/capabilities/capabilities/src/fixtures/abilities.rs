@@ -6,7 +6,7 @@ use campfire_actions::{
     ActionData, ActionSlots, Actions, AttackTarget, ProgressDues, SlotKind, TimedSlots,
 };
 use campfire_combat::OnDeath;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_declarations::MatchFacts;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, StableId};
@@ -152,7 +152,7 @@ impl AbilitiesFixtures for Abilities {
 
     fn caster_of(world: &mut World, name: &str, action: ActionId, rank: u8) -> StableId {
         let parts = (
-            Owner::new(Seat::new(0)),
+            Owner::new(PlayerSlot::new(0)),
             TimedSlots::new(ActionSlots::new([(
                 action,
                 SlotKind::new(0),

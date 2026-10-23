@@ -23,7 +23,7 @@ fn host(text: &str) -> SettingValue {
 fn hosted(settings: &[SettingValue], max_spectators: u32) -> HostVisibility {
     HostVisibility {
         settings: settings.to_vec(),
-        max_spectators,
+        max_spectators: Some(max_spectators),
     }
 }
 

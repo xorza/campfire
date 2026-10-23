@@ -63,9 +63,10 @@ impl SimComponent for Position {
     const NAME: &'static str = "sim.position";
     type Host = OnAny;
 
-    // The capability that knows the map's bounds checks that it lies within them.
+    // Within the world's bound, as every place is; the capability that knows the map's bounds
+    // checks that it lies within them.
     fn check(&self, _: &World, _: Entity) -> bool {
-        true
+        self.0.within_bound()
     }
 }
 
@@ -87,6 +88,11 @@ mod tests {
             assert_eq!(Binary::encode(&place), Binary::encode(&at));
             assert_eq!(Binary::decode::<Position>(&Binary::encode(&at)), Ok(place));
         }
+        // A restore keeps a place within the world's bound: its corner, and none past it.
+        let world = World::new();
+        let check = |at: Vec3| Position::from(at).check(&world, Entity::PLACEHOLDER);
+        assert!(check(Vec3::new(bound, -bound, bound)));
+        assert!(!check(Vec3::new(Num::MIN, Num::ZERO, Num::ZERO)));
         // A triple or an array converts as its vector does.
         let point = Vec3::new(Num::int(2), Num::ZERO, Num::int(-3));
         assert_eq!(Position::from((2, 0, -3)).get(), point);

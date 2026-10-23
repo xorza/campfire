@@ -15,24 +15,23 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, ActionsSystems};
 use campfire_combat::{Weigh, Weighers};
-use campfire_common::{EnumAll, Seat};
-use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
-use campfire_navigation::{
-    ModeNavigationData, Navigation, NavigationBook, OnPath, PathArrivals, WalkerOnPath,
+use campfire_common::{EnumAll, PlayerSlot};
+use campfire_declarations::{ById, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
+use campfire_navigation::{ModeNavigationData, Navigation, NavigationBook, OnPath, WalkerOnPath};
+use campfire_players::{
+    MatchEntity, Player, PlayerSlotHolder, Players, PlayersWorld, StartingPlayerSlot,
 };
-use campfire_players::{MatchEntity, Player, Players, PlayersWorld, SeatHolder, StartingSeat};
-use campfire_production::{CompletedSites, ProductionSystems, TrainedUnits};
-use campfire_progression::LevelUps;
+use campfire_production::ProductionSystems;
 use campfire_script::{
     ApiVersion, CallError, Ctx, Hook, HookSet, MatchNames, ModeEvents, PlannedCapability,
     ScriptRole, ScriptText, Status,
 };
 use campfire_sim::{Breach, Capability, IdAllocator, SimSystems, SimTick};
 use campfire_units::{
-    AudienceAll, AudienceNone, AudienceOwner, AudienceTeam, BodyForm, ScriptBook, SpawnAt, Spawner,
-    UnitsSystems,
+    AudienceAll, AudienceNone, AudienceOwner, AudienceTeam, BodyForm, Owner, ScriptBook, SpawnAt,
+    Spawner, UnitEntity, UnitsSystems,
 };
-use campfire_values::Relations;
+use campfire_values::{Relations, UnitType};
 
 use crate::bounty_book::Bounty;
 use crate::game_map::GameMap;
@@ -40,12 +39,13 @@ use crate::mode_api::ModeApi;
 use crate::mode_call::ModeCall;
 use crate::mode_hooks::{
     ModeHooks, OnGenerate, OnInput, OnMatchStart, OnPlayerJoin, OnPlayerLeave, OnQuestStage,
-    OnSystem, OnTimer, OnUnitDeath,
+    OnSystem, OnTimer,
 };
 use crate::mode_script::ModeScript;
 use crate::out_of_play_marks::OutOfPlayMarks;
 use crate::placed_unit::PlacedPath;
 use crate::save_asked::SaveAsked;
+use crate::type_income::TypeIncome;
 use crate::victory::Victory;
 
 mod bounty_book;
@@ -59,6 +59,9 @@ mod choices;
 mod error;
 mod game_map;
 mod host_picks;
+mod income_clock;
+mod income_data;
+mod input_book;
 mod loadout;
 mod loadout_setup;
 mod map_data;
@@ -78,6 +81,7 @@ mod mode_input;
 mod mode_inputs;
 mod mode_load;
 mod mode_map;
+mod mode_queue;
 mod mode_schema;
 mod mode_script;
 mod mode_setup;
@@ -93,6 +97,8 @@ mod option_value;
 mod out_of_play_marks;
 mod placed_unit;
 mod player_control;
+mod player_slot_pick;
+mod player_slot_picks;
 mod player_state;
 mod player_state_access;
 mod player_states;
@@ -103,15 +109,13 @@ mod result_handle;
 mod roster;
 mod save_asked;
 mod saves_data;
-mod seat_pick;
-mod seat_picks;
 mod spawn_group;
 mod team_data;
 mod team_manifest;
 mod timer_id;
 mod timers;
-mod unanswered_deaths;
-mod unanswered_seat_events;
+mod type_income;
+mod unanswered_player_slot_events;
 mod victory;
 mod victory_data;
 
@@ -123,10 +127,13 @@ pub use crate::choice_data::{ChoiceData, Offers};
 pub use crate::choice_id::ChoiceId;
 pub use crate::choices::Choices;
 pub use crate::error::{
-    BountyError, HostPickError, ModeDataError, ModeError, ModeRefusal, OptionDataError,
-    OptionValueError, PickError, SeatPickError, SeatPickTextError,
+    BountyError, HostPickError, IncomeError, ModeDataError, ModeError, ModeRefusal,
+    OptionDataError, OptionValueError, PickError, PlayerSlotPickError, PlayerSlotPickTextError,
 };
 pub use crate::host_picks::HostPicks;
+pub use crate::income_clock::{CaptureBonus, IncomeClock};
+pub use crate::income_data::{IncomeData, IncomePays};
+pub use crate::input_book::InputBook;
 pub use crate::loadout_setup::LoadoutSetup;
 pub use crate::map_data::{MapData, MapPatch, MapSeed, MarkerData, PlacedUnitData};
 pub use crate::marker::{Marker, MarkerInfo};
@@ -140,6 +147,7 @@ pub use crate::mode_input::{InputValue, ModeInput};
 pub use crate::mode_inputs::ModeInputs;
 pub use crate::mode_load::ModeLoad;
 pub use crate::mode_map::{MapInput, ModeMap};
+pub use crate::mode_queue::{ModeQueue, ModeQueues};
 pub use crate::mode_setup::ModeSetup;
 pub use crate::mode_spec::{MapStart, ModeSpec, SpecLoad};
 pub use crate::mode_state::{ModeAudience, ModeState};
@@ -152,20 +160,19 @@ pub use crate::option_picks::OptionPicks;
 pub use crate::option_value::OptionValue;
 pub use crate::placed_unit::PlacedUnit;
 pub use crate::player_control::PlayerControl;
+pub use crate::player_slot_pick::PlayerSlotPick;
+pub use crate::player_slot_picks::PlayerSlotPicks;
 pub use crate::player_state::{PlayerAudience, PlayerState};
 pub use crate::players_data::PlayersData;
 pub use crate::region_data::RegionData;
 pub use crate::relation_data::RelationData;
 pub use crate::saves_data::{SaveBy, SavesData};
-pub use crate::seat_pick::SeatPick;
-pub use crate::seat_picks::SeatPicks;
 pub use crate::team_data::TeamData;
 pub use crate::team_manifest::TeamManifest;
 pub use crate::timer_id::TimerId;
 pub use crate::timers::{Timer, TimerStart, Timers};
-pub use crate::unanswered_deaths::{DeathCall, UnansweredDeaths};
-pub use crate::unanswered_seat_events::UnansweredSeatEvents;
-pub use crate::victory::VictoryBook;
+pub use crate::unanswered_player_slot_events::UnansweredPlayerSlotEvents;
+pub use crate::victory::{VictoryBook, VictoryHolders};
 pub use crate::victory_data::{Defeat, VictoryData};
 
 /// The scripted part of the mode of a match: the core's rules above the capabilities, which a
@@ -182,17 +189,14 @@ pub enum ModeSystems {
     /// Once the trains spawned: the tick's deaths end players and the match, then pay their
     /// bounties.
     Deaths,
-    /// Then the seats' events, the due timers and the deaths run the mode's hooks, which read how
-    /// the match ended.
+    /// Then the units of an income pay their owners.
+    Income,
+    /// Then the player slots' events and the due timers run the mode's hooks, which read how the
+    /// match ended.
     Hooks,
-    /// Then the levels units reached run theirs.
-    LevelUps,
-    /// Then the units trains made.
-    Trained,
-    /// Then the sites that completed.
-    Sites,
-    /// Then the walkers that reached their paths' ends.
-    PathEnds,
+    /// Then the queues of events the modules declare run theirs, in the order the modules
+    /// declare them.
+    Events,
     /// The players out of play are counted again.
     OutOfPlay,
 }
@@ -205,11 +209,9 @@ impl ModuleSystems for ModeSystems {
             Self::Inputs => (SetPlace::stage(SimSystems::Inputs).after(UnitsSystems::Begin))
                 .before(ActionsSystems::Toggle),
             Self::Deaths => SetPlace::stage(SimSystems::Mode).after(ProductionSystems::Finish),
-            Self::Hooks => SetPlace::stage(SimSystems::Mode).after(Self::Deaths),
-            Self::LevelUps => SetPlace::stage(SimSystems::Mode).after(Self::Hooks),
-            Self::Trained => SetPlace::stage(SimSystems::Mode).after(Self::LevelUps),
-            Self::Sites => SetPlace::stage(SimSystems::Mode).after(Self::Trained),
-            Self::PathEnds => SetPlace::stage(SimSystems::Mode).after(Self::Sites),
+            Self::Income => SetPlace::stage(SimSystems::Mode).after(Self::Deaths),
+            Self::Hooks => SetPlace::stage(SimSystems::Mode).after(Self::Income),
+            Self::Events => SetPlace::stage(SimSystems::Mode).after(Self::Hooks),
             Self::OutOfPlay => SetPlace::at(UnitsSystems::End),
         }
     }
@@ -222,7 +224,6 @@ impl Module for Mode {
         Capability::Combat,
         Capability::Navigation,
         Capability::Production,
-        Capability::Progression,
         Capability::Stats,
     ];
     type Systems = ModeSystems;
@@ -243,8 +244,8 @@ impl Module for Mode {
         d.component::<PlayerState<AudienceAll>>();
         d.resource::<Choices>();
         d.resource::<Timers>();
-        d.resource::<UnansweredDeaths>();
-        d.resource::<UnansweredSeatEvents>();
+        d.resource::<VictoryHolders>();
+        d.resource::<UnansweredPlayerSlotEvents>();
         d.report::<SaveAsked>();
         d.loaded::<MatchMode>();
         d.check::<Player>(Self::players_spawned);
@@ -276,6 +277,16 @@ impl Module for Mode {
                 &at.world().resource::<MatchMode>().schema.players,
             ))
         });
+        d.component::<IncomeClock>();
+        d.part::<UnitEntity, IncomeClock>(|at| {
+            let income = at.of_type::<TypeIncome>()?;
+            let now = at.world().resource::<SimTick>().start();
+            let owner = at
+                .world()
+                .get::<Owner>(at.entity())
+                .map(|owner| owner.player_slot());
+            Some(IncomeClock::spawned(now, owner, income))
+        });
         d.component::<BountyShare>();
         d.part::<Player, BountyShare>(|at| {
             let start = at.world().resource::<BountyBook>().start();
@@ -290,7 +301,6 @@ impl Module for Mode {
         d.hook::<OnMatchStart>(Status::Runs(ApiVersion::FIRST));
         d.hook::<OnInput>(Status::Runs(ApiVersion::FIRST));
         d.hook::<OnTimer>(Status::Runs(ApiVersion::FIRST));
-        d.hook::<OnUnitDeath>(Status::Runs(ApiVersion::FIRST));
         d.hook::<OnPlayerJoin>(Status::Runs(ApiVersion::FIRST));
         d.hook::<OnPlayerLeave>(Status::Runs(ApiVersion::FIRST));
         d.hook::<OnGenerate>(Status::Planned);
@@ -300,43 +310,53 @@ impl Module for Mode {
 
     /// Adds the mode's hooks to a match: in Inputs, the players' mode inputs run
     /// `on_input`; in Mode, the tick's joins and leaves run `on_player_join` and
-    /// `on_player_leave`, due timers run `on_timer`, or fire with no call in a mode without it, the
-    /// tick's deaths run `on_unit_death`; then, of the capabilities the match holds, the levels
-    /// reached run `on_level_up`, the units trained `on_unit_trained`, the sites that completed
-    /// `on_site_complete`, and the walkers at their paths' ends `on_path_end`, each in that order,
-    /// or clear in a mode without the hook. Each hook's system installs only in a mode whose
-    /// script defines its hook, a fact of the load; `Mode::load` gives them the mode they run.
+    /// `on_player_leave`, and due timers run `on_timer`, or fire with no call in a mode without
+    /// it; then each queue of events a module declares runs its hooks, in the order the modules
+    /// declare them, or clears in a mode without them. Each hook's system installs only in a mode
+    /// whose script defines its hook, a fact of the load; `Mode::load` gives them the mode they
+    /// run.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         let book = cx.book::<ScriptBook>();
         let book = book.expect("a match that runs its mode holds its scripts' hooks");
         let hooks = cx.mode_scripts().map_or_else(HookSet::default, |listed| {
             book.defines_any(listed, ScriptRole::Mode)
         });
-        if cx
-            .book::<VictoryBook>()
-            .and_then(|book| book.victory())
-            .is_some()
+        // The load refuses a victory and a bounty in a match without combat, whose deaths they
+        // read.
+        let deaths = cx.has(Capability::Combat);
+        if deaths
+            && cx
+                .book::<VictoryBook>()
+                .and_then(|book| book.victory())
+                .is_some()
         {
             cx.add(ModeSystems::Deaths, Victory::follow);
         }
-        if cx
-            .book::<BountyBook>()
-            .and_then(BountyBook::bounty)
-            .is_some()
+        if deaths
+            && cx
+                .book::<BountyBook>()
+                .and_then(BountyBook::bounty)
+                .is_some()
         {
             cx.add(ModeSystems::Deaths, Bounty::pay.after(Victory::follow));
         }
+        let incomes = cx.book::<ById<UnitType, TypeIncome>>();
+        if incomes.is_some_and(|incomes| !incomes.is_empty()) {
+            cx.add(ModeSystems::Income, IncomeClock::pay);
+        }
         let defines = |hook| hooks.contains(hook);
-        let answers = |queue_hooks: &[Hook]| queue_hooks.iter().any(|&hook| defines(hook));
         let timers = (ModeHooks::run_timers, ModeHooks::fire_timers);
         if defines(Hook::of::<OnInput>()) {
             cx.add(ModeSystems::Inputs, ModeHooks::mode_inputs);
         }
-        let seat_events = ModeHooks::answer::<UnansweredSeatEvents>;
-        if answers(UnansweredSeatEvents::HOOKS) {
+        let player_slot_events = ModeHooks::answer::<UnansweredPlayerSlotEvents>;
+        if UnansweredPlayerSlotEvents::HOOKS
+            .iter()
+            .any(|&hook| defines(hook))
+        {
             cx.add(
                 ModeSystems::Hooks,
-                seat_events.before(timers.0).before(timers.1),
+                player_slot_events.before(timers.0).before(timers.1),
             );
         }
         if defines(Hook::of::<OnTimer>()) {
@@ -344,52 +364,28 @@ impl Module for Mode {
         } else {
             cx.add(ModeSystems::Hooks, timers.1);
         }
-        let deaths = ModeHooks::answer::<UnansweredDeaths>;
-        if answers(UnansweredDeaths::HOOKS) {
-            cx.add(ModeSystems::Hooks, deaths.after(timers.0).after(timers.1));
-        }
         cx.add(ModeSystems::OutOfPlay, OutOfPlayMarks::refresh);
-        if cx.has(Capability::Progression) {
-            Self::events::<LevelUps>(cx, ModeSystems::LevelUps, &hooks);
-        }
-        if cx.has(Capability::Production) {
-            Self::events::<TrainedUnits>(cx, ModeSystems::Trained, &hooks);
-            Self::events::<CompletedSites>(cx, ModeSystems::Sites, &hooks);
-        }
-        if cx.has(Capability::Navigation) {
-            Self::events::<PathArrivals>(cx, ModeSystems::PathEnds, &hooks);
+        let queues: Vec<ModeQueue> = cx
+            .declared::<ModeQueues>()
+            .map_or_else(Vec::new, |queues| queues.iter().collect());
+        let mut before = None;
+        for queue in queues {
+            queue.add(cx, &hooks, before);
+            before = Some(queue);
         }
     }
 }
 
 impl Mode {
-    /// Adds, in `set`, the answer of a capability's events `Q` in a mode whose script defines one
-    /// of their hooks, `hooks` being those it defines, or else their drop.
-    fn events<Q: ModeEvents>(
-        cx: &mut InstallCx<'_, ModeSystems>,
-        set: ModeSystems,
-        hooks: &HookSet,
-    ) {
-        if Q::HOOKS.iter().any(|&hook| hooks.contains(hook)) {
-            cx.add(set, ModeHooks::answer::<Q>);
-        } else {
-            cx.add(set, ModeHooks::drop::<Q>);
-        }
-    }
-
-    /// Loads the mode of `setup` into a match whose capabilities, mode and books are installed
-    /// and whose unit types, abilities and AI are loaded, with what `inputs` takes from the
-    /// books: the map's pathing grid, for the kinds of its walkers, its teams, and the units the
-    /// mode spawns. Each seat's choices start as its host picked them, so the start reads them
-    /// (08-sessions.md, The terms hold each seat's picks).
+    /// Loads the mode of `setup` into a match whose capabilities, mode and books are installed and
+    /// whose unit types, abilities and AI are loaded, with what `inputs` takes from the books: the
+    /// map's pathing grid, for its walkers, its teams, and the units the mode spawns. Each player
+    /// slot's choices start as its host picked them, so the start reads them (08-sessions.md, The
+    /// terms hold each player slot's picks).
     pub fn load(world: &mut World, setup: ModeSetup<'_>, inputs: ModeInputs) {
         let ModeInputs { units, load } = inputs;
-        let ModeLoad {
-            map,
-            walkers,
-            loadout_ranks,
-        } = load;
-        Navigation::load_map(world, walkers);
+        let ModeLoad { map, loadout_ranks } = load;
+        Navigation::load_map(world);
         let ModeMap {
             teams,
             relations,
@@ -409,7 +405,7 @@ impl Mode {
             .resource_mut::<MatchNames>()
             .set_table(Arc::clone(map.tags()));
         let script = ModeScript::new(setup.data, &setup.picks.options, map);
-        let (data, seat_picks) = (setup.data, &setup.picks.seats);
+        let (data, player_slot_picks) = (setup.data, &setup.picks.player_slots);
         let start = MapStart {
             teams,
             placed,
@@ -420,8 +416,8 @@ impl Mode {
             units,
             loadout_ranks,
             scripts: world.resource::<ScriptBook>(),
-            bodies: world.resource::<ByType<BodyForm>>(),
-            slots: world.resource::<ByType<ActionSlots>>(),
+            bodies: world.resource::<ById<UnitType, BodyForm>>(),
+            slots: world.resource::<ById<UnitType, ActionSlots>>(),
             bounty: world.resource::<BountyBook>().bounty().is_some(),
         };
         let book = ModeSpec::new(setup, load);
@@ -431,11 +427,12 @@ impl Mode {
         names.set_table(Arc::clone(&book.timers));
         let players = usize::try_from(book.teams.players()).expect("a player count fits usize");
         let mut choices = Choices::empty(&book.choices, players);
-        for picked in seat_picks.picked(&data.choices) {
+        for picked in player_slot_picks.picked(&data.choices) {
             let choice = book.choices.listed().nth(picked.listed);
-            let choice = choice.expect("a seat pick is of one of the mode's choices of values");
+            let choice =
+                choice.expect("a player slot pick is of one of the mode's choices of values");
             let offer = Offer::new(usize::from(picked.place));
-            choices.choose(&book.choices, picked.seat, choice, &[offer]);
+            choices.choose(&book.choices, picked.player_slot, choice, &[offer]);
         }
         world.insert_resource(choices);
         let ctx = world.non_send::<Ctx>().clone();
@@ -445,34 +442,34 @@ impl Mode {
         world.insert_resource(MatchMode(Arc::clone(&book)));
     }
 
-    /// Whether each seat of the session has its entity, as the mode's start spawns them, so no
-    /// call finds one missing.
+    /// Whether each player slot of the session has its entity, as the mode's start spawns them, so
+    /// no call finds one missing.
     fn players_spawned(world: &World) -> Result<(), Breach> {
         let players = world.resource::<MatchMode>().teams.players();
-        let seated = (0..players)
-            .map(Seat::new)
-            .all(|seat| world.player_entity(seat).is_some());
-        Breach::of_match(seated)
+        let held = (0..players)
+            .map(PlayerSlot::new)
+            .all(|player_slot| world.player_entity(player_slot).is_some());
+        Breach::of_match(held)
     }
 
-    /// Starts the match, before its first tick: the players spawn, each seat held or open as
-    /// `holders` gives it, one for each seat in order; the map's placed units spawn, on their
-    /// paths and walking them as they name; then `on_match_start` runs. A timer it sets counts
-    /// from the start. An error when the call fails: a match its mode cannot start would run
-    /// without its rules.
-    pub fn start(world: &mut World, holders: &[SeatHolder]) -> Result<(), CallError> {
+    /// Starts the match, before its first tick: the players spawn, each player slot held or open as
+    /// `holders` gives it, one for each player slot in order; the map's placed units spawn, on
+    /// their paths and walking them as they name; then `on_match_start` runs, and the victory
+    /// counts the players that hold a unit of its tag. A timer it sets counts from the start. An
+    /// error when the call fails: a match its mode cannot start would run without its rules.
+    pub fn start(world: &mut World, holders: &[PlayerSlotHolder]) -> Result<(), CallError> {
         let book = world.resource::<MatchMode>().clone();
         let teams = &book.teams;
         assert_eq!(
             holders.len(),
-            usize::try_from(teams.players()).expect("seats fit usize"),
-            "a start gives each seat of the session its holder"
+            usize::try_from(teams.players()).expect("player slots fit usize"),
+            "a start gives each player slot of the session its holder"
         );
-        let seats = (0..teams.players()).map(Seat::new).zip(holders);
+        let player_slots = (0..teams.players()).map(PlayerSlot::new).zip(holders);
         Players::spawn_match(
             world,
-            seats.map(|(seat, &holder)| StartingSeat {
-                team: teams.of(seat).expect("every player has a team"),
+            player_slots.map(|(player_slot, &holder)| StartingPlayerSlot {
+                team: teams.of(player_slot).expect("every player has a team"),
                 holder,
             }),
         );
@@ -496,43 +493,51 @@ impl Mode {
                 }) => Spawner::spawn(world, at, WalkerOnPath::new(path, from, at.id)),
             };
         }
-        if !book.schema.hooks.contains(Hook::of::<OnMatchStart>()) {
-            return Ok(());
+        if book.schema.hooks.contains(Hook::of::<OnMatchStart>()) {
+            let now = world.resource::<SimTick>().start();
+            Calls::scope(world, now, |call| {
+                let ctx = call.ctx.clone();
+                call.run::<OnMatchStart>(|| (ctx.clone(),))
+            })?;
+            // A save the start asked for is at the boundary before the first tick, its own time.
+            if world.contains_resource::<SaveAsked>() {
+                world.insert_resource(SaveAsked::new(now));
+            }
         }
-        let now = world.resource::<SimTick>().start();
-        Calls::scope(world, now, |call| {
-            let ctx = call.ctx.clone();
-            call.run::<OnMatchStart>(|| (ctx.clone(),))
-        })?;
-        // A save the start asked for is at the boundary before the first tick, its own time.
-        if world.contains_resource::<SaveAsked>() {
-            world.insert_resource(SaveAsked::new(now));
-        }
+        Victory::start(world);
         Ok(())
     }
 }
 
 #[cfg(feature = "internals")]
 pub mod internals {
+    #[expect(
+        clippy::module_name_repetitions,
+        reason = "a module's world trait for tests and benches is `<Module>WorldInternals` (AGENTS.md)"
+    )]
+    pub use crate::mode_world::internals::ModeWorldInternals;
+
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
     use campfire_actions::Actions;
     use campfire_combat::{Damage, DamageCause, DamagePass, PassEntry};
-    use campfire_common::Seat;
+    use campfire_common::PlayerSlot;
     use campfire_math::{Num, Vec3};
     use campfire_navigation::{PathEnd, PathWalker};
-    use campfire_players::SeatHolder;
+    use campfire_players::PlayerSlotHolder;
     use campfire_script::FailureKind;
     use campfire_script::{
-        CallError, CallStart, Ctx, MatchNames, ScriptFailures, ScriptRole, ScriptValue, StateValue,
+        ActionCast, CallError, CallStart, Ctx, MatchNames, ScriptFailures, ScriptRole, ScriptValue,
+        StateValue,
     };
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
-        EntityIndex, Position, SeatEvent, SeatEventKind, SimTick, SimWorld, StableId, TickInputs,
+        EntityIndex, PlayerSlotEvent, PlayerSlotEventKind, Position, SimTick, SimWorld, StableId,
+        TickInputs,
     };
     use campfire_stats::Stats;
-    use campfire_units::Owner;
-    use campfire_values::{NameId, PackageIndex, Rank, Team, UnitType};
+    use campfire_units::{Owner, UnitsWorld};
+    use campfire_values::{NameId, PackageIndex, PlayerView, Rank, Team, UnitType};
 
     use crate::Mode;
     use crate::match_mode::MatchMode;
@@ -558,51 +563,54 @@ pub mod internals {
             frame.extension::<ModeCall>()?.map().point_of(of)
         }
 
-        /// Starts the match as `start` does, every seat held.
+        /// Starts the match as `start` does, every player slot held.
         pub fn start_held(world: &mut World) -> Result<(), CallError> {
-            Self::start(world, &vec![SeatHolder::Held; Self::seats(world)])
+            Self::start(
+                world,
+                &vec![PlayerSlotHolder::Held; Self::player_slots(world)],
+            )
         }
 
-        /// How many seats the session of the installed mode has.
-        pub fn seats(world: &World) -> usize {
+        /// How many player slots the session of the installed mode has.
+        pub fn player_slots(world: &World) -> usize {
             let players = world.resource::<MatchMode>().teams.players();
-            usize::try_from(players).expect("seats fit usize")
+            usize::try_from(players).expect("player slots fit usize")
         }
 
-        /// Player `seat` picks `hero` in a tick: the hero it then owns.
-        pub fn pick(world: &mut World, seat: u32, hero: &str) -> Entity {
+        /// Player `player_slot` picks `hero` in a tick: the hero it then owns.
+        pub fn pick(world: &mut World, player_slot: u32, hero: &str) -> Entity {
             let input = ModeInput {
                 name: "hero",
                 value: InputValue::String(hero),
             };
-            Self::tick_inputs(world, &[(seat, input)]);
-            let player = Seat::new(seat);
+            Self::tick_inputs(world, &[(player_slot, input)]);
+            let player = PlayerSlot::new(player_slot);
             let mut owned = world.query::<(Entity, &Owner)>();
             let mut heroes = owned
                 .iter(world)
-                .filter(|(_, owner)| owner.seat() == player);
+                .filter(|(_, owner)| owner.player_slot() == player);
             let (hero, _) = heroes.next().expect("the player picked a hero");
             assert!(heroes.next().is_none(), "the player owns one hero");
             hero
         }
 
-        /// Runs a tick with `inputs`, each a player's seat and a mode input.
+        /// Runs a tick with `inputs`, each a player's player slot and a mode input.
         pub fn tick_inputs(world: &mut World, inputs: &[(u32, ModeInput<'_>)]) {
             let (mut body, mut payload) = (Vec::new(), Vec::new());
-            for (seat, input) in inputs {
+            for (player_slot, input) in inputs {
                 payload.clear();
                 input.write_payload(&mut body, &mut payload);
-                world.push_input(Seat::new(*seat), &payload);
+                world.push_input(PlayerSlot::new(*player_slot), &payload);
             }
             world.step();
         }
 
         /// Runs a tick in which the session logged `events`, each a player's join or leave.
-        pub fn tick_seats(world: &mut World, events: &[(u32, SeatEventKind)]) {
-            for &(seat, kind) in events {
-                let seat = Seat::new(seat);
+        pub fn tick_player_slots(world: &mut World, events: &[(u32, PlayerSlotEventKind)]) {
+            for &(player_slot, kind) in events {
+                let player_slot = PlayerSlot::new(player_slot);
                 let mut inputs = world.resource_mut::<TickInputs>();
-                inputs.push_seat_event(SeatEvent { seat, kind });
+                inputs.push_player_slot_event(PlayerSlotEvent { player_slot, kind });
             }
             world.step();
         }
@@ -702,21 +710,34 @@ pub mod internals {
                 ScriptRole::Mode => {
                     let place = world.resource::<MatchMode>().schema.mode;
                     let start = CallStart::listed(place, now);
-                    ctx.frame().begin_alone(world, start).unwrap();
+                    ctx.begin_alone(world, start).unwrap();
                 }
                 ScriptRole::Ai => ctx
-                    .frame()
                     .begin_alone(world, CallStart::think(actor, now))
                     .unwrap(),
-                ScriptRole::Bot => ctx
-                    .frame()
-                    .begin_alone(world, CallStart::bot(Seat::new(0), now))
-                    .unwrap(),
+                ScriptRole::Bot => {
+                    let player_slot = PlayerSlot::new(0);
+                    let team = world
+                        .team_of(player_slot)
+                        .expect("player slot 0 plays the mode");
+                    let player = PlayerView {
+                        player_slot,
+                        team,
+                        out: false,
+                    };
+                    ctx.begin_alone(world, CallStart::bot(player, now)).unwrap();
+                }
                 ScriptRole::Action => {
                     let strike = Actions::named(world, PackageIndex::MODE, "strike").unwrap();
-                    let start =
-                        CallStart::cast(strike, Rank::FIRST, actor, PackageIndex::MODE, now);
-                    ctx.frame().begin_alone(world, start).unwrap();
+                    let cast = ActionCast {
+                        action: strike,
+                        rank: Rank::FIRST,
+                        caster: actor,
+                        allegiance: world.allegiance_of(actor).unwrap(),
+                        package: PackageIndex::MODE,
+                    };
+                    let start = CallStart::cast(cast, now);
+                    ctx.begin_alone(world, start).unwrap();
                 }
                 ScriptRole::Modifier => {
                     let blessing = Stats::modifier(world, PackageIndex::MODE, "blessing").unwrap();
@@ -724,7 +745,7 @@ pub mod internals {
                         acting: Some(actor),
                         ..CallStart::hook(blessing, PackageIndex::MODE, 1, now)
                     };
-                    ctx.frame().begin_alone(world, start).unwrap();
+                    ctx.begin_alone(world, start).unwrap();
                 }
             }
             let handle = ctx.view().unit(id).unwrap();

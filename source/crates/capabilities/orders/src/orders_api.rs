@@ -2,6 +2,7 @@ use campfire_actions::ActionsColumn;
 use campfire_script::{
     ApiBuilder, CapabilityRefusal, Checked, Ctx, MemberDecl, RoleSet, ScriptPosition, Unit,
 };
+use campfire_visibility::DataKind;
 
 use crate::ai_data::AiData;
 use crate::error::OrdersRefusal;
@@ -70,7 +71,7 @@ impl OrdersApi {
         let view = ctx.view();
         let acting = ctx.acting().and_then(|id| view.unit(id));
         let unit = acting.expect("an AI's call acts as the unit that thinks");
-        let (row, aimed) = (unit.row_index()?, target.row_index()?);
+        let (row, aimed) = (unit.admit(DataKind::Unit)?, target.admit(DataKind::Unit)?);
         let refusal = view.read_row(row, |ordered| {
             view.read_row(aimed, |aimed| {
                 let relation = view.relation(ordered.team, aimed.team);

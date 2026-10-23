@@ -11,20 +11,25 @@ pub enum BinaryError {
     /// They end inside the value.
     #[error("they end inside a value")]
     Truncated,
-    /// They are no value of the type, or one its checks refuse.
-    #[error("they are no value of the type")]
-    Malformed(#[source] postcard::Error),
+    #[error(transparent)]
+    Malformed(Malformed),
     /// They decode, but are not the one encoding of the value: postcard's decoder takes an
     /// over-long integer, and a whole value ignores bytes past it.
     #[error("they are not the value's canonical encoding")]
     NotCanonical,
 }
 
+/// Bytes that are no value of the type, or one its checks refuse: the one case of a
+/// `BinaryError` that a reader keeps whole, as it tells the others apart by their own cases.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("they are no value of the type")]
+pub struct Malformed(#[source] pub(crate) postcard::Error);
+
 impl From<postcard::Error> for BinaryError {
     fn from(error: postcard::Error) -> Self {
         match error {
             postcard::Error::DeserializeUnexpectedEnd => Self::Truncated,
-            error => Self::Malformed(error),
+            error => Self::Malformed(Malformed(error)),
         }
     }
 }
@@ -74,12 +79,12 @@ impl DeError for TomlError {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::error::{BinaryError, TomlError};
+    use crate::error::{BinaryError, Malformed, TomlError};
 
     impl BinaryError {
         /// The error of bytes of a value whose type's own check refuses it, as its `Deserialize`
         /// makes one: postcard keeps no message of it.
-        pub const REFUSED: Self = Self::Malformed(postcard::Error::SerdeDeCustom);
+        pub const REFUSED: Self = Self::Malformed(Malformed(postcard::Error::SerdeDeCustom));
     }
 
     impl TomlError {

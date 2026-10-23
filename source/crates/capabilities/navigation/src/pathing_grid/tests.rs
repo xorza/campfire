@@ -165,7 +165,7 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
         ground(Num::HALF),
         ground(Num::ONE),
     ]);
-    let mut grid = PathingGrid::new(cells, walkers, &terrain);
+    let mut grid = PathingGrid::new(cells, walkers.clone(), &terrain);
     // A neighbor's center lies half a meter from a blocked cell's square, and a diagonal one
     // √0.5 ≈ 0.71 m: a walker of no body and one of 0.5 m come closer to neither, and stand
     // there; one of 1 m comes closer to both, and the wall keeps it from a ring round the four.
@@ -201,6 +201,16 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     index.update(&[]);
     grid.update(&index);
     assert_eq!(drawn_all(&grid), expected);
+
+    // Cleared with the tower in, as a load in place clears them, the grid is the one the load
+    // built, and the index one no update filled, whose first fill changes no route.
+    index.update(&[tower]);
+    grid.update(&index);
+    grid.clear();
+    index.clear();
+    let built = PathingGrid::new(cells, walkers, &terrain);
+    assert_eq!(format!("{grid:?}"), format!("{built:?}"));
+    assert!(!index.is_filled() && index.is_empty());
 }
 
 #[test]

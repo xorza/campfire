@@ -3,7 +3,7 @@ use std::str::Utf8Error;
 
 use thiserror::Error;
 
-use crate::platform::user_only::Exposure;
+use campfire_platform::Exposure;
 
 /// Why a file or a directory did not read. One error serves every read, so a caller matches one
 /// type: `NotText` comes from `InputFile::read_text` alone, `NotDir` from `DirEntries::read`

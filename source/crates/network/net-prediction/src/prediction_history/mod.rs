@@ -19,10 +19,10 @@ use campfire_net_core::Iter as EntryIter;
 use campfire_net_core::NetTick;
 use campfire_net_core::TickBuffer;
 use campfire_net_core::Ticked;
-use campfire_net_interpolation::HistoryComponent;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::ConfirmedTickMap;
 use campfire_net_replication::DeferredEntityCommands;
+use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::HistoryDiffReceiver;
 use campfire_net_replication::HistoryState;
 use campfire_net_replication::PreSpawned;
@@ -32,8 +32,7 @@ use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::LocalTimelineShift;
 use core::fmt::{self, Debug, Display};
 use core::iter::FilterMap;
-use core::ops::Deref;
-use tracing::{debug, trace};
+use tracing::trace;
 
 /// Holds the history of locally predicted component states, to allow for rollback.
 ///
@@ -106,8 +105,7 @@ impl<C> PredictionHistory<C> {
         self.buffer.push(tick, state);
     }
 
-    /// Add a value to the history.
-    /// The tick must be strictly more recent than the most recent update in the history
+    /// Add a value to the history, or the component's absence, as [`Self::add_state`] does.
     pub fn add(&mut self, tick: NetTick, value: Option<C>) {
         self.add_state(
             tick,
@@ -170,44 +168,52 @@ impl<C: Debug> Display for PredictionHistory<C> {
 }
 
 impl<T: Component + Clone> PredictionHistory<T> {
-    /// Store every update on the predicted entity in the [`PredictionHistory`].
+    /// Store every update on the predicted entity in the [`PredictionHistory`], of the entities
+    /// whose component changed alone, as change detection tells in a rollback's replay too.
     ///
     /// [`SyncedLocalTimeline`] skips this system until timeline synchronization has completed, so
     /// pre-sync component values are never recorded under invalid local tick labels. This system
-    /// only handles changes; removals are handled by [`PredictionHistory::record_removal`].
+    /// only handles changes; removals are handled by [`PredictionHistory::record_removal`], and
+    /// the cut to the rollback horizon by [`PredictionHistory::prune_predicted`].
     pub(crate) fn update(
-        setup: Res<'_, PredictionSetup>,
-        input_setup: Res<'_, InputTimelineSetup>,
-        mut query: Query<'_, '_, (Entity, Ref<'_, T>, &mut Self)>,
+        mut query: Query<'_, '_, (Entity, &T, &mut Self), Changed<T>>,
         timeline: SyncedLocalTimeline<'_, '_>,
     ) {
         // tick for which we will record the history (either the current client tick or the current
         // rollback tick)
         let tick = timeline.tick();
-        let oldest_rollback_tick = setup.oldest_rollback_tick(tick, &input_setup);
-
-        // Update history if the predicted component changed, then prune it.
         for (entity, component, mut history) in query.iter_mut() {
-            // change detection works even when running the schedule for rollback
-            if component.is_changed() {
-                history.add(tick, Some(component.deref().clone()));
-                // Structured per-entity snapshot — `entity` is included so queries
-                // against the JSONL can segment history growth/reset by entity
-                // (e.g. to tell a locally predicted entity's history apart from a
-                // just-arrived replicated player's history).
-                trace!(
-                    target: "campfire_net_debug::prediction",
-                    kind = "prediction_history_predicted",
-                    schedule = "FixedPostUpdate",
-                    sample_point = "FixedPostUpdate",
-                    entity = ?entity,
-                    component = ?DebugName::type_name::<T>(),
-                    local_tick = tick.0,
-                    history_len = history.len(),
-                    "recorded predicted component history"
-                );
-            }
-            history.clear_until_tick(oldest_rollback_tick);
+            history.add(tick, Some(component.clone()));
+            // Structured per-entity snapshot — `entity` is included so queries
+            // against the JSONL can segment history growth/reset by entity
+            // (e.g. to tell a locally predicted entity's history apart from a
+            // just-arrived replicated player's history).
+            trace!(
+                target: "campfire_net_debug::prediction",
+                kind = "prediction_history_predicted",
+                entity = ?entity,
+                component = ?DebugName::type_name::<T>(),
+                local_tick = tick.0,
+                history_len = history.len(),
+                "recorded predicted component history"
+            );
+        }
+    }
+
+    /// Prunes the predicted history of every entity to the rollback horizon, once a frame in
+    /// `PostUpdate`, after the fixed loop recorded it: a cut at a later tick drains what the cuts
+    /// of each tick before it would have. A cut is no update, so it marks no history changed.
+    pub(crate) fn prune_predicted(
+        setup: Res<'_, PredictionSetup>,
+        input_setup: Res<'_, InputTimelineSetup>,
+        mut query: Query<'_, '_, &mut Self>,
+        timeline: SyncedLocalTimeline<'_, '_>,
+    ) {
+        let oldest_rollback_tick = setup.oldest_rollback_tick(timeline.tick(), &input_setup);
+        for mut history in query.iter_mut() {
+            history
+                .bypass_change_detection()
+                .clear_until_tick(oldest_rollback_tick);
         }
     }
 
@@ -252,8 +258,6 @@ impl<C: Component> PredictionHistory<C> {
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "prediction_history_tick_delta",
-                schedule = "PostUpdate",
-                sample_point = "PostUpdate",
                 component = ?DebugName::type_name::<C>(),
                 tick_span = trigger.delta,
                 history_len = history.len(),
@@ -276,8 +280,6 @@ impl<C: Component> PredictionHistory<C> {
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "prediction_history_removed",
-                schedule = "FixedPostUpdate",
-                sample_point = "FixedPostUpdate",
                 entity = ?trigger.entity,
                 component = ?DebugName::type_name::<C>(),
                 local_tick = tick.0,
@@ -359,8 +361,7 @@ impl<C: HistoryComponent> PredictionHistory<C> {
         else {
             return;
         };
-        let mut history = ConfirmedHistory::<C>::default();
-        history.insert_present_explicit(tick, component.clone());
+        let history = ConfirmedHistory::seed(tick, component.clone());
         trace!(
             ?entity,
             ?tick,
@@ -370,8 +371,8 @@ impl<C: HistoryComponent> PredictionHistory<C> {
         world.commands().entity(entity).insert(history);
     }
 
-    /// During rollback re-simulation, check if we have a confirmed value for this tick.
-    /// If so, snap the component to the confirmed value instead of using the predicted value.
+    /// During a replay, sets the component to its confirmed state at the end of the previous
+    /// tick, where the confirmed history holds one, in place of the predicted value.
     ///
     /// [`PredictionSystems::SnapToConfirmed`](crate::prediction_systems::PredictionSystems::SnapToConfirmed)
     /// gates this system with [`Rollback::is_active`](campfire_net_timeline::Rollback::is_active),
@@ -392,40 +393,28 @@ impl<C: HistoryComponent> PredictionHistory<C> {
             if let Some(confirmed_state) = history.get_state_at(tick - 1) {
                 match confirmed_state {
                     HistoryState::Updated(confirmed_value) => {
-                        // Snap to the confirmed value
                         if let Some(current) = &mut live {
                             if **current != *confirmed_value {
                                 trace!(
                                     target: "campfire_net_debug::prediction",
                                     kind = "PredictionHistory::snap_to_confirmed",
-                                    schedule = "FixedPreUpdate",
-                                    sample_point = "FixedPreUpdate",
                                     entity = ?entity_id,
                                     component = ?DebugName::type_name::<C>(),
                                     local_tick = tick.0,
-                                    confirmed_tick = tick.0,
+                                    confirmed_tick = (tick - 1).0,
                                     value = ?confirmed_value,
                                     "snapped predicted component to confirmed value during rollback"
                                 );
                                 **current = confirmed_value.clone();
                             }
                         } else {
-                            // Component doesn't exist but should - insert it
-                            debug!(
-                                ?entity_id,
-                                ?tick,
-                                "Inserting confirmed component during rollback for {:?}",
-                                DebugName::type_name::<C>()
-                            );
                             trace!(
                                 target: "campfire_net_debug::prediction",
                                 kind = "snap_to_confirmed_insert",
-                                schedule = "FixedPreUpdate",
-                                sample_point = "FixedPreUpdate",
                                 entity = ?entity_id,
                                 component = ?DebugName::type_name::<C>(),
                                 local_tick = tick.0,
-                                confirmed_tick = tick.0,
+                                confirmed_tick = (tick - 1).0,
                                 value = ?confirmed_value,
                                 "inserted confirmed component during rollback"
                             );
@@ -433,23 +422,14 @@ impl<C: HistoryComponent> PredictionHistory<C> {
                         }
                     }
                     HistoryState::Removed => {
-                        // Confirmed removal - remove the component if it exists
                         if live.is_some() {
-                            debug!(
-                                ?entity_id,
-                                ?tick,
-                                "Removing component during rollback (confirmed removal) for {:?}",
-                                DebugName::type_name::<C>()
-                            );
                             trace!(
                                 target: "campfire_net_debug::prediction",
                                 kind = "snap_to_confirmed_remove",
-                                schedule = "FixedPreUpdate",
-                                sample_point = "FixedPreUpdate",
                                 entity = ?entity_id,
                                 component = ?DebugName::type_name::<C>(),
                                 local_tick = tick.0,
-                                confirmed_tick = tick.0,
+                                confirmed_tick = (tick - 1).0,
                                 "removed component for confirmed removal during rollback"
                             );
                             deferred.remove::<C>(entity_id);

@@ -448,7 +448,26 @@ pub(super) static DATA_FLAWS: &[Flaw] = &[
             r#"delivery = { area = "eruption", count = 2 }"#,
         ),
         "hero-cinder",
-        |problem| read_fails(problem, "data/avatar.toml", "an area takes no count"),
+        |problem| read_fails(problem, "data/avatar.toml", "unknown field `count`"),
+    ),
+    // A delivery names one form of those the modules register, not two or none.
+    Flaw::of(
+        CINDER,
+        Edit::Replace(
+            r#"delivery = { area = "eruption" }"#,
+            r#"delivery = { area = "eruption", projectile = "eruption" }"#,
+        ),
+        "hero-cinder",
+        |problem| read_fails(problem, "data/avatar.toml", "a delivery names one of"),
+    ),
+    Flaw::of(
+        CINDER,
+        Edit::Replace(
+            r#"delivery = { area = "eruption" }"#,
+            "delivery = { count = 2 }",
+        ),
+        "hero-cinder",
+        |problem| read_fails(problem, "data/avatar.toml", "a delivery names one of"),
     ),
     Flaw::of(
         CINDER,

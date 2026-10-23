@@ -2,21 +2,23 @@ use std::collections::BTreeSet;
 use std::panic;
 
 use crate::bans::{PROXIES, foreign_names};
+use crate::cfg_condition::CfgCondition;
 use crate::manifest::{CargoManifest, CrateKind, WorkspaceManifest};
-use crate::source_file::SourceFile;
+use crate::named_path::NamedPath;
+use crate::source_file::{self, SourceFile};
 use crate::workspace::{
-    Crate, DevEdges, crate_dependencies, crates, holder, manifests, read, required_closure,
-    sim_closure, source, sources, test_build,
+    Crate, DevEdges, Workspace, holder, read, required_closure, sim_closure, source, test_build,
 };
 
 #[test]
 fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
+    let workspace = Workspace::read();
     // `common` holds plain values, so it needs serde and its derives, its own derives' crate,
     // the two hashes that make its 32-byte values, SHA-256 and BLAKE3, and `zeroize`, which
     // erases a secret as it drops; a proxy reaches only its own group's crates, so its exemption
     // covers no call of another group.
     assert_eq!(
-        crate_dependencies("base/common"),
+        workspace.crate_at("base/common").dependencies(),
         [
             "blake3",
             "campfire-common-derive",
@@ -28,7 +30,7 @@ fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
     );
     for proxy in &PROXIES {
         assert_eq!(
-            crate_dependencies(proxy.dir),
+            workspace.crate_at(proxy.dir).dependencies(),
             proxy.dependencies,
             "{}",
             proxy.dir
@@ -42,33 +44,37 @@ pub(crate) const COMMON_DERIVE: &str = "campfire-common-derive";
 
 #[test]
 fn only_common_names_the_crate_of_its_derives() {
-    let dependents: Vec<String> = crates()
-        .into_iter()
+    let workspace = Workspace::read();
+    let dependents: Vec<&str> = workspace
+        .crates()
+        .iter()
         .filter(|krate| {
             let mut names = (krate.manifest.dependencies())
                 .chain(krate.manifest.dev_dependencies())
                 .map(|(name, _)| name);
             krate.name != COMMON_DERIVE && names.any(|name| name == COMMON_DERIVE)
         })
-        .map(|krate| krate.name)
+        .map(|krate| krate.name.as_str())
         .collect();
     assert_eq!(dependents, ["campfire-common"]);
     let path = COMMON_DERIVE.replace('-', "_");
-    let naming: Vec<String> = sources()
-        .into_iter()
+    let naming: Vec<String> = workspace
+        .sources()
+        .iter()
         // `common` re-exports them, and the rules hold the one place it may.
         .filter(|file| {
             let allowed = ["crates/base/common/", "crates/test/rules/"];
             let allowed = allowed.iter().any(|dir| file.path.starts_with(dir));
             !allowed && file.text.contains(&path)
         })
-        .map(|file| file.path)
+        .map(|file| file.path.clone())
         .collect();
     assert_eq!(naming, Vec::<String>::new());
 }
 
 #[test]
 fn the_design_marks_built_exactly_the_crates_of_the_workspace_with_their_kinds() {
+    let workspace = Workspace::read();
     // The module table (02-engine-core.md, Modules) names each module in its first column, its
     // status in the second and its crate's kind in the third, a dash for a planned one; a built
     // module's crate is `campfire-<module>`, in a directory of `crates/` or `checks/`.
@@ -94,11 +100,12 @@ fn the_design_marks_built_exactly_the_crates_of_the_workspace_with_their_kinds()
         }
     }
     built.sort_unstable();
-    let crates: Vec<(String, String)> = manifests()
-        .into_iter()
-        .map(|(name, manifest)| {
-            let kind = manifest.kind().map_or("none", CrateKind::name);
-            (name, kind.to_owned())
+    let crates: Vec<(String, String)> = workspace
+        .crates()
+        .iter()
+        .map(|krate| {
+            let kind = krate.manifest.kind().map_or("none", CrateKind::name);
+            (krate.name.clone(), kind.to_owned())
         })
         .collect();
     assert_eq!(built, crates);
@@ -114,15 +121,15 @@ fn is_engine(name: &str) -> bool {
 /// kind): a crate that names no kind; a problem or IO crate with an engine crate in its required
 /// closure, or in its tests' build (02-engine-core.md, A problem crate's test runs no app); a glue
 /// crate that requires an IO crate; and a library that requires a test crate.
-fn kind_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
+fn kind_problems(manifests: &[Crate]) -> Vec<String> {
     let kind = |name: &str| {
         manifests
             .iter()
-            .find(|(crate_name, _)| crate_name == name)
-            .and_then(|(_, manifest)| manifest.kind())
+            .find(|krate| krate.name == name)
+            .and_then(|krate| krate.manifest.kind())
     };
     let mut problems = Vec::new();
-    for (name, manifest) in manifests {
+    for Crate { name, manifest, .. } in manifests {
         let Some(own) = manifest.kind() else {
             problems.push(format!("{name} names no kind"));
             continue;
@@ -155,9 +162,9 @@ fn kind_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
 
 #[test]
 fn each_crate_keeps_the_rule_of_its_kind() {
-    let crates = crates();
-    let manifests: Vec<(String, CargoManifest)> = manifests();
-    assert_eq!(kind_problems(&manifests), Vec::<String>::new());
+    let workspace = Workspace::read();
+    let crates = workspace.crates();
+    assert_eq!(kind_problems(crates), Vec::<String>::new());
     // A proxy crate is exactly a proxy of the bans, whose dependencies those pin.
     let mut proxies: Vec<&str> = crates
         .iter()
@@ -191,26 +198,23 @@ fn each_crate_keeps_the_rule_of_its_kind() {
         let text = format!(
             "[package]\nname = \"{name}\"\n\n[package.metadata.campfire]\nkind = \"{kind}\"\n\n[dependencies]\n{dependencies}"
         );
-        (name.to_owned(), CargoManifest::parse(&text))
+        Crate::sample(name, &text)
     });
     let mut sample = Vec::from(sample);
-    sample.push((
-        "g".to_owned(),
-        CargoManifest::parse("[package]\nname = \"g\"\n"),
-    ));
-    sample.push((
-        "h".to_owned(),
-        CargoManifest::parse(concat!(
+    sample.push(Crate::sample("g", "[package]\nname = \"g\"\n"));
+    sample.push(Crate::sample(
+        "h",
+        concat!(
             "[package]\nname = \"h\"\n\n[package.metadata.campfire]\nkind = \"problem\"\n\n",
             "[dev-dependencies]\nd.workspace = true\ni.workspace = true\n",
-        )),
+        ),
     ));
-    sample.push((
-        "i".to_owned(),
-        CargoManifest::parse(concat!(
+    sample.push(Crate::sample(
+        "i",
+        concat!(
             "[package]\nname = \"i\"\n\n[package.metadata.campfire]\nkind = \"test\"\n\n",
             "[dependencies]\nbevy_app.workspace = true\n",
-        )),
+        ),
     ));
     assert_eq!(
         kind_problems(&sample),
@@ -230,14 +234,18 @@ const NO_SIM_DEPENDENCY: [&str; 4] = ["campfire-log", "campfire-store", "log", "
 
 #[test]
 fn the_sim_reads_no_file_and_logs_nothing_and_the_protocol_reads_no_file() {
+    let workspace = Workspace::read();
     // Each crate of the workspace the release's required dependencies reach, the release among
     // them, requires none of the crates that read files or log, so a match runs the same on a
     // server, a client and a verifier, and its tick waits for no disk. An optional dependency is
     // a test build's.
-    let manifests = manifests();
-    let reached = sim_closure(&manifests);
+    let manifests = workspace.crates();
+    let reached = sim_closure(manifests);
     let mut found = Vec::new();
-    for (name, manifest) in manifests.iter().filter(|(name, _)| reached.contains(name)) {
+    for Crate { name, manifest, .. } in manifests
+        .iter()
+        .filter(|krate| reached.contains(&krate.name))
+    {
         for other in manifest.required() {
             if NO_SIM_DEPENDENCY.contains(&other) {
                 found.push(format!("{name} requires {other}"));
@@ -249,15 +257,18 @@ fn the_sim_reads_no_file_and_logs_nothing_and_the_protocol_reads_no_file() {
     assert!(reached.contains("campfire-sim") && reached.contains("campfire-script"));
     assert!(!reached.contains("campfire-store"));
     // The protocol writes a log into a sink, which `net` gives over `store`.
-    assert!(!crate_dependencies("session/protocol").contains(&"campfire-store".to_owned()));
+    let protocol = workspace.crate_at("session/protocol").dependencies();
+    assert!(!protocol.contains(&"campfire-store".to_owned()));
 }
 
 #[test]
 fn each_crate_takes_the_workspaces_lints() {
-    let own: Vec<String> = crates()
-        .into_iter()
+    let workspace = Workspace::read();
+    let own: Vec<String> = workspace
+        .crates()
+        .iter()
         .filter(|krate| !krate.manifest.takes_workspace_lints())
-        .map(|krate| krate.name)
+        .map(|krate| krate.name.clone())
         .collect();
     assert_eq!(own, Vec::<String>::new());
 }
@@ -268,7 +279,9 @@ fn each_crate_takes_the_workspaces_lints() {
 /// (02-engine-core.md, One version of each dependency, and features where they are used).
 #[test]
 fn a_version_is_the_workspaces_and_a_feature_its_users() {
-    let own: Vec<String> = crates()
+    let workspace = Workspace::read();
+    let own: Vec<String> = workspace
+        .crates()
         .iter()
         .flat_map(|krate| {
             let manifest = &krate.manifest;
@@ -316,7 +329,8 @@ fn a_version_is_the_workspaces_and_a_feature_its_users() {
 
 #[test]
 fn each_crates_dir_is_its_package_name_without_the_prefix() {
-    let crates = crates();
+    let workspace = Workspace::read();
+    let crates = workspace.crates();
     let misnamed: Vec<String> = crates
         .iter()
         .filter(|krate| krate.name.strip_prefix("campfire-") != Some(krate.dir_name.as_str()))
@@ -325,7 +339,7 @@ fn each_crates_dir_is_its_package_name_without_the_prefix() {
     assert_eq!(misnamed, Vec::<String>::new());
     // A group holds crates and groups, and a crate's directory holds no other crate, as
     // `sim/sim` and `capabilities/capabilities` stand beside the crates of their groups.
-    assert_eq!(nested_crates(&crates), Vec::<String>::new());
+    assert_eq!(nested_crates(crates), Vec::<String>::new());
     let krate = |path: &str| Crate {
         dir_name: path.rsplit('/').next().unwrap().to_owned(),
         path: path.to_owned(),
@@ -362,14 +376,14 @@ fn internals_entries(manifest: &CargoManifest) -> &[String] {
 /// feature beside it, nor a dev-dependency on a dependency whose `internals` its own turns on
 /// with a strong entry, as a weak one turns on nothing a test build does not hold.
 /// What a dev-dependency may be is `dev_dependencies`' rule.
-fn internals_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
+fn internals_problems(manifests: &[Crate]) -> Vec<String> {
     let with_internals = |other: &str| {
-        manifests.iter().any(|(crate_name, manifest)| {
-            crate_name == other && manifest.feature("internals").is_some()
-        })
+        manifests
+            .iter()
+            .any(|krate| krate.name == other && krate.manifest.feature("internals").is_some())
     };
     let mut problems = Vec::new();
-    for (name, manifest) in manifests {
+    for Crate { name, manifest, .. } in manifests {
         if manifest.feature("bench").is_some() {
             problems.push(format!("{name} has a bench feature"));
         }
@@ -410,12 +424,12 @@ fn internals_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
 /// The crates whose `internals` the build of `name`'s tests turns on: each dependency of any kind
 /// that turns it on, and each crate whose `internals` one of those passes it on to. A weak entry,
 /// `x?/internals`, counts for none, as it holds only where another feature turns `x` on.
-fn internals_on(manifests: &[(String, CargoManifest)], name: &str) -> Vec<String> {
+fn internals_on(manifests: &[Crate], name: &str) -> Vec<String> {
     let manifest = |crate_name: &str| {
         manifests
             .iter()
-            .find(|(other, _)| other == crate_name)
-            .map(|(_, manifest)| manifest)
+            .find(|krate| krate.name == crate_name)
+            .map(|krate| &krate.manifest)
     };
     let own = manifest(name).unwrap();
     let mut on: Vec<String> = (own.dependencies())
@@ -440,23 +454,18 @@ fn internals_on(manifests: &[(String, CargoManifest)], name: &str) -> Vec<String
 
 /// The crates of `manifests` but `name` whose `internals` `text`, code of `name`, reads, and its
 /// tests' build leaves off: such code compiles only where another crate of the build turns it on.
-fn internals_read_off(
-    manifests: &[(String, CargoManifest)],
-    name: &str,
-    text: &str,
-) -> Vec<String> {
+fn internals_read_off(manifests: &[Crate], name: &str, text: &str) -> Vec<String> {
     let on = internals_on(manifests, name);
+    let paths = NamedPath::of(text);
     manifests
         .iter()
-        .map(|(other, _)| other)
+        .map(|krate| &krate.name)
         .filter(|other| *other != name && !on.contains(other))
         .filter(|other| {
-            let path = format!("{}::internals", other.replace('-', "_"));
-            text.match_indices(&path).any(|(at, _)| {
-                !text[..at]
-                    .chars()
-                    .next_back()
-                    .is_some_and(|before| before.is_alphanumeric() || before == '_')
+            let internals = format!("{}::internals", other.replace('-', "_"));
+            paths.iter().any(|path| {
+                (path.text.strip_prefix(&internals))
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
             })
         })
         .cloned()
@@ -466,29 +475,30 @@ fn internals_read_off(
 /// The lines of `text` that gate code on a test build or the `internals` feature, where the
 /// feature alone gates it.
 fn test_or_internals(text: &str) -> Vec<usize> {
-    let gate = concat!("any(test, feature = ", "\"internals\"");
-    text.lines()
-        .enumerate()
-        .filter(|(_, line)| line.contains(gate))
-        .map(|(at, _)| at + 1)
+    CfgCondition::of(text)
+        .iter()
+        .filter(|condition| condition.test_or_internals)
+        .map(|condition| condition.line)
         .collect()
 }
 
 #[test]
 fn a_test_build_turns_internals_on_and_code_has_one_gate_for_it() {
-    let manifests = manifests();
-    assert_eq!(internals_problems(&manifests), Vec::<String>::new());
-    let crates = crates();
-    let read_off: Vec<String> = sources()
+    let workspace = Workspace::read();
+    let manifests = workspace.crates();
+    assert_eq!(internals_problems(manifests), Vec::<String>::new());
+    let read_off: Vec<String> = workspace
+        .sources()
         .iter()
         .filter_map(|file| {
-            let at = holder(&crates, &file.path)?;
-            let off = internals_read_off(&manifests, &crates[at].name, &file.text);
+            let holder = workspace.holder(&file.path)?;
+            let off = internals_read_off(manifests, &holder.name, &file.text);
             (!off.is_empty()).then(|| format!("{}: {}", file.path, off.join(", ")))
         })
         .collect();
     assert_eq!(read_off, Vec::<String>::new());
-    let gated: Vec<String> = sources()
+    let gated: Vec<String> = workspace
+        .sources()
         .iter()
         .flat_map(|file| {
             test_or_internals(&file.text)
@@ -544,10 +554,11 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
             ),
         ),
     ]
-    .map(|(name, manifest)| (name.to_owned(), CargoManifest::parse(manifest)));
+    .map(|(name, manifest)| Crate::sample(name, manifest));
     // `a` turns no crate's on; `b` its own; `c` `b`'s; `d` its own, `a`'s through its own, `b`'s,
     // and `campfire-store`'s, which is not among them, and not `c`'s, which `d` passes on weakly.
-    let reads = "x::internals::X; a::internals::A; b::internals::B; data::internals::D;";
+    let reads = "x::internals::X; a::internals::A; use b::{\n    internals::B,\n}; data::internals::D; \
+                 /// c::internals::C\nfn f() {}";
     let weak = "c::internals::C;";
     let off = |name: &str| internals_read_off(&crates, name, reads);
     assert_eq!(off("a"), ["b"]);
@@ -570,12 +581,8 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
             "e dev-depends on c, whose internals its own turns on",
         ]
     );
-    // The gate is spelled in parts, so this file holds none.
-    let text = concat!(
-        "#[cfg(feature = \"internals\")]\n#[cfg(any(test, feature = ",
-        "\"internals\"))]\n"
-    );
-    assert_eq!(test_or_internals(text), [2]);
+    let text = "#[cfg(feature = \"internals\")]\nmod a;\n#[cfg(any(test, feature = \"internals\"))]\nmod b;\n";
+    assert_eq!(test_or_internals(text), [3]);
 }
 
 /// The required dependencies of `manifest` that `production`, its crate's production code, names
@@ -583,23 +590,8 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
 fn unnamed_dependencies<'a>(manifest: &'a CargoManifest, production: &str) -> Vec<&'a str> {
     manifest
         .required()
-        .filter(|name| !production.contains(&format!("{}::", name.replace('-', "_"))))
+        .filter(|name| !source_file::names_crate(production, name))
         .collect()
-}
-
-/// The code `view` keeps of each of `crates`, in their order: each source's that no crate nested
-/// in its directory holds.
-fn code_by_crate(crates: &[Crate], view: fn(&SourceFile) -> Option<String>) -> Vec<String> {
-    let mut code = vec![String::new(); crates.len()];
-    for file in sources() {
-        let Some(at) = holder(crates, &file.path) else {
-            continue;
-        };
-        if let Some(kept) = view(&file) {
-            code[at].push_str(&kept);
-        }
-    }
-    code
 }
 
 /// The optional dependencies of `manifest` that `library`, its crate's library code, names
@@ -610,19 +602,26 @@ fn tests_only_optional<'a>(manifest: &'a CargoManifest, library: &str) -> Vec<&'
         .dependencies()
         .filter(|(_, dependency)| dependency.optional)
         .map(|(name, _)| name)
-        .filter(|name| !library.contains(&format!("{}::", name.replace('-', "_"))))
+        .filter(|name| !source_file::names_crate(library, name))
         .collect()
 }
 
 #[test]
 fn a_required_dependency_is_named_by_production_code() {
-    let crates = crates();
+    let workspace = Workspace::read();
+    let crates = workspace.crates();
     let mut found = Vec::new();
-    for (krate, production) in crates
-        .iter()
-        .zip(code_by_crate(&crates, SourceFile::production))
-    {
-        for name in unnamed_dependencies(&krate.manifest, &production) {
+    // A test crate's library is all test code, its `bench.rs` files among it, so its library is
+    // what names its dependencies.
+    let production = workspace.code_by_crate(SourceFile::production);
+    let library = workspace.code_by_crate(SourceFile::library);
+    for ((krate, production), library) in crates.iter().zip(&production).zip(&library) {
+        let named = if krate.manifest.kind() == Some(CrateKind::Test) {
+            library
+        } else {
+            production
+        };
+        for name in unnamed_dependencies(&krate.manifest, named) {
             found.push(format!("{} {name}", krate.name));
         }
     }
@@ -681,13 +680,17 @@ fn unifying_internals(crates: &[Crate]) -> BTreeSet<&str> {
 /// one of `sources`, as their paths under `source/` name them, or a target of the crate's that
 /// requires the feature. A crate whose feature only passes the feature on gates none.
 fn gating_internals<'a>(crates: &'a [Crate], sources: &[SourceFile]) -> BTreeSet<&'a str> {
-    let gate = concat!("feature = ", "\"internals\"");
     let mut found: BTreeSet<&str> = crates
         .iter()
         .filter(|krate| krate.manifest.requires_internals())
         .map(|krate| krate.name.as_str())
         .collect();
-    for file in sources.iter().filter(|file| file.text.contains(gate)) {
+    let gates = |file: &&SourceFile| {
+        CfgCondition::of(&file.text)
+            .iter()
+            .any(|condition| condition.tests_internals)
+    };
+    for file in sources.iter().filter(gates) {
         if let Some(at) = holder(crates, &file.path) {
             found.insert(crates[at].name.as_str());
         }
@@ -720,12 +723,13 @@ fn needless_internals<'a>(
 
 #[test]
 fn a_dev_dependency_turns_on_internals_that_gate_code() {
-    let crates = crates();
-    let gating = gating_internals(&crates, &sources());
+    let workspace = Workspace::read();
+    let crates = workspace.crates();
+    let gating = gating_internals(crates, workspace.sources());
     let found: Vec<String> = crates
         .iter()
         .flat_map(|krate| {
-            needless_internals(krate, &crates, &gating)
+            needless_internals(krate, crates, &gating)
                 .into_iter()
                 .map(move |other| format!("{} {other}", krate.name))
         })
@@ -760,7 +764,7 @@ fn a_dev_dependency_turns_on_internals_that_gate_code() {
     ];
     let gated = SourceFile::new(
         "crates/c/src/lib.rs",
-        concat!("#[cfg(feature = ", "\"internals\")]\nmod helpers;\n"),
+        "#[cfg(feature = \"internals\")]\nmod helpers;\n",
     );
     let gating = gating_internals(&sample, &[gated]);
     assert_eq!(gating, BTreeSet::from(["c", "d"]));
@@ -773,10 +777,11 @@ fn a_dev_dependency_turns_on_internals_that_gate_code() {
 
 #[test]
 fn the_default_members_are_the_build_that_ships() {
+    let workspace = Workspace::read();
     // Each member but those that unify `internals`, by its directory under `source/`, sorted, so a
     // cargo command at the root with no `--workspace` builds what ships.
-    let crates = crates();
-    let unifying = unifying_internals(&crates);
+    let crates = workspace.crates();
+    let unifying = unifying_internals(crates);
     let mut expected: Vec<&str> = crates
         .iter()
         .filter(|krate| !unifying.contains(krate.name.as_str()))
@@ -826,12 +831,14 @@ fn the_default_members_are_the_build_that_ships() {
 }
 
 #[test]
-fn each_optional_dependency_is_turned_on_by_a_feature() {
-    let found: Vec<String> = crates()
+fn each_optional_dependency_is_named_by_dep_and_has_no_implicit_feature() {
+    let workspace = Workspace::read();
+    let found: Vec<String> = workspace
+        .crates()
         .iter()
         .flat_map(|krate| {
-            let unturned = krate.manifest.unturned_optionals().into_iter();
-            unturned.map(|name| format!("{} {name}", krate.name))
+            let implicit = krate.manifest.implicit_features().into_iter();
+            implicit.map(|name| format!("{} {name}", krate.name))
         })
         .collect();
     assert_eq!(found, Vec::<String>::new());
@@ -839,11 +846,12 @@ fn each_optional_dependency_is_turned_on_by_a_feature() {
 
 #[test]
 fn an_optional_dependency_is_named_by_library_code() {
-    let crates = crates();
+    let workspace = Workspace::read();
+    let crates = workspace.crates();
     let mut found = Vec::new();
     for (krate, library) in crates
         .iter()
-        .zip(code_by_crate(&crates, SourceFile::library))
+        .zip(workspace.code_by_crate(SourceFile::library))
     {
         for name in tests_only_optional(&krate.manifest, &library) {
             found.push(format!("{} {name}", krate.name));
@@ -884,12 +892,19 @@ fn an_optional_dependency_is_named_by_library_code() {
 
 #[test]
 fn the_name_checks_fail_on_what_breaks_them() {
-    // A proxy's source that names another proxy's call or one of no proxy's, but not its own.
-    let [store, _, _, codec, _, _] = &PROXIES;
-    let text = "use std::fs::File;\nlet map: HashMap<u8, u8>;\nlet n = 1;";
+    // A proxy's source that names another proxy's call or one of no proxy's, a wrapped `use`
+    // too, but not its own, nor a name a comment or a string holds.
+    let [store, platform, _, _, codec, _, _] = &PROXIES;
+    let text = "use std::{\n    fs::File,\n};\nlet map: HashMap<u8, u8>;\nlet n = 1;";
     assert_eq!(foreign_names(codec, text), ["std::fs", "HashMap"]);
+    let mentioned = "/// As `std::fs` reads.\nfn f() { g(\"HashMap\"); }";
+    assert_eq!(foreign_names(codec, mentioned), Vec::<&str>::new());
     assert_eq!(
         foreign_names(store, "use std::fs::File;"),
         Vec::<&str>::new()
     );
+    // A name two proxies list is each one's; one only the platform lists is not the store's.
+    let os = "use std::fs::File;\nlibc::close(fd);";
+    assert_eq!(foreign_names(platform, os), Vec::<&str>::new());
+    assert_eq!(foreign_names(store, os), ["libc::"]);
 }

@@ -8,7 +8,7 @@ use campfire_script::{ApiError, Unit};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId};
 use campfire_units::internals::Spawn;
-use campfire_units::{BodyForm, Dead, Life, UnitTypeCore, Units, UnitsWorld};
+use campfire_units::{BodyForm, BodyShape, Dead, Layer, Life, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{Relation, TagProperties, Team, TeamSet, TypeScope, VisionShare};
 use campfire_vision::*;
 
@@ -303,7 +303,10 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     let core = UnitTypeCore::default();
     let building = Units::load_type(&mut game, TypeScope::Mode, "building", &core);
     Units::give_type(&mut game, building, Life::full(Num::int(100)));
-    let body = BodyForm::box_sized([Num::int(6), Num::int(2)]).unwrap();
+    let body = BodyForm::new(
+        BodyShape::box_sized([Num::int(6), Num::int(2)]).unwrap(),
+        Layer::FIRST,
+    );
     Units::give_type(&mut game, building, body);
     let building = Spawn::of(building, (5, 0, 0))
         .team(Team::new(1))

@@ -84,7 +84,7 @@ pub(super) fn books_of(set: &PackageSet) -> Books {
 /// installs, in order.
 fn installed(books: Books) -> Vec<String> {
     let setup = MatchSetup::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Rules);
-    let world = Match::new(setup.set(Release::capabilities()), books, MatchKind::Rules);
+    let world = Match::new(setup, books, MatchKind::Rules);
     let schedules = world.resource::<Schedules>();
     let systems = schedules.get(SimUpdate).unwrap().systems().unwrap();
     let mut names: Vec<String> = systems
@@ -100,7 +100,10 @@ fn a_feature_installs_its_passes_only_in_a_match_whose_books_have_it() {
     // its feature, and every other system alike: the channels' and the toggles', the slow
     // weapons' hits, the toggles that cost an attack, the turrets' aim, the supply's count, the
     // modifiers' intervals, the regen and the sight.
-    let none = installed(Release::empty_books(Match::TEST_RATE));
+    let none = installed(Release::empty_books(
+        Match::TEST_RATE,
+        Release::capabilities(),
+    ));
     let every = installed(books_of(&every_system()));
     let mut added = every;
     for name in &none {

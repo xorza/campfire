@@ -6,14 +6,15 @@ use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSystems, SetPlace, StateFields,
+    ById, Declarations, InstallCx, KindVisitor, MatchFacts, Module, ModuleSystems, SetPlace,
+    StateFields,
 };
 use campfire_script::{
-    CoreApi, Ctx, Listing, MatchNames, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures,
+    CompileError, CoreApi, Ctx, Listing, MatchNames, ScriptBudgets, ScriptCall, ScriptFailures,
     ScriptHost, ScriptId, ScriptList, ScriptPrints, StatePlace, StateSchema, View, ViewApi,
 };
 use campfire_sim::{Breach, Capability, MatchRate, Position, SimEdgeSystems, SimSystems};
-use campfire_values::{Relations, Team, UnitTags, UnitType};
+use campfire_values::{Relations, Tag, Team, UnitTags, UnitType};
 
 use crate::arrived_short::ArrivedShort;
 use crate::avatar::Avatar;
@@ -159,6 +160,8 @@ impl Module for Units {
         d.require::<ForcedMove, MoveStep>();
         d.fact::<DeclaredTags>(DeclaredTags::build);
         d.fact::<UnitTypes>(UnitTypes::build);
+        d.names::<UnitType>(UnitTypes::type_names);
+        d.names::<Tag>(UnitTypes::tag_names);
         d.extend::<UnitTypes>(UnitTypes::tag_bodies);
         d.book::<UnitTypeBook>(UnitTypes::build_type_book);
         d.book::<UnitStateBook>(UnitTypes::build_state_book);
@@ -174,9 +177,9 @@ impl Module for Units {
         d.api(ViewApi::register_unit);
         d.api(UnitsApi::register);
         d.api(ViewApi::register_queries);
-        d.book::<ByType<MoveStep>>(UnitSteps::steps);
-        d.book::<ByType<TurnStep>>(UnitSteps::turns);
-        d.book::<ByType<BodyForm>>(CollisionData::bodies);
+        d.book::<ById<UnitType, MoveStep>>(UnitSteps::steps);
+        d.book::<ById<UnitType, TurnStep>>(UnitSteps::turns);
+        d.book::<ById<UnitType, BodyForm>>(CollisionData::bodies);
         // A unit faces its spawn's angle, which its body turns by.
         d.part::<BodyUnit, Facing>(|at| Some(Facing::of(Facing::angle_of(at))));
         d.part::<BodyUnit, SpawnPoint>(|at| at.position().map(SpawnPoint::new));
@@ -214,9 +217,12 @@ impl Units {
     }
 
     /// The observer of Bevy's check of change ticks: the script view's next read fills every
-    /// row, as its queries of changed parts may miss a change after the check.
-    fn refill_view(_: On<'_, '_, CheckChangeTicks>, view: NonSend<'_, View>) {
-        view.refill_next();
+    /// row, as its queries of changed parts may miss a change after the check; a match that runs
+    /// no scripts has no view.
+    fn refill_view(_: On<'_, '_, CheckChangeTicks>, view: Option<NonSend<'_, View>>) {
+        if let Some(view) = view {
+            view.refill_next();
+        }
     }
 
     /// Visits each kind of entity of the core's units, which state types name as their host.
@@ -278,18 +284,21 @@ impl Units {
     }
 
     /// Compiles `source` in the match's script host, once for every capability that runs it.
-    pub fn compile(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
+    pub fn compile(world: &mut World, source: &str) -> Result<ScriptId, CompileError> {
         world.non_send_mut::<ScriptHost>().compile(source)
     }
 
-    /// The scripts' runtime, which the core's install puts in first, for the modules' installs:
-    /// the script view and its reader, and in a match that runs scripts, the context of their
-    /// calls, the script host they run in within the role's budgets, and their failures. A client
-    /// runs no scripts.
+    /// The scripts' runtime, which the core's install puts in first, for the modules' installs,
+    /// in a match that runs scripts: the script view and its reader, the context of their calls,
+    /// the script host they run in within the role's budgets, and their failures. A client runs
+    /// no scripts, and its bot reads the world through its own view.
     fn runtime<D: Declarations>(d: &mut D) {
         d.cache::<ViewReader>();
-        d.non_send::<View>(|world, _| {
-            Some(View::new(*world.resource::<MatchRate>(), ViewReader::read))
+        d.non_send::<View>(|world, role| {
+            let rate = *world.resource::<MatchRate>();
+            let visibility = world.resource::<MatchFacts>().visibility;
+            role.scripts()
+                .then(|| View::new(rate, visibility, ViewReader::read))
         });
         d.non_send::<Ctx>(|world, role| {
             role.scripts()
@@ -324,11 +333,11 @@ pub(crate) mod internals {
     use std::collections::BTreeMap;
 
     use bevy_ecs::world::World;
-    use campfire_common::{DeclaredName, NamedEnum};
+    use campfire_common::DeclaredName;
     use campfire_declarations::internals::BookLoad;
-    use campfire_declarations::{ByType, PerType};
+    use campfire_declarations::{ById, PerId};
     use campfire_script::{
-        CallError, Ctx, MatchNames, ScriptError, ScriptHost, ScriptId, ScriptValue,
+        CallError, CompileError, Ctx, MatchNames, ScriptHost, ScriptId, ScriptValue,
     };
     use campfire_sim::StableId;
     use campfire_values::{Block, PackageIndex, Relation, Scalar, Team, TypeScope, UnitType};
@@ -442,8 +451,8 @@ pub(crate) mod internals {
         }
 
         /// Gives `unit_type` `value` in its book, as the books of a mode's type do.
-        pub fn give_type<T: PerType>(world: &mut World, unit_type: UnitType, value: T) {
-            ByType::<T>::amend(world, |_, book| book.set(unit_type, value));
+        pub fn give_type<T: PerId<UnitType>>(world: &mut World, unit_type: UnitType, value: T) {
+            ById::<UnitType, T>::amend(world, |_, book| book.set(unit_type, value));
         }
 
         /// `probe(ctx, of)` in `source`, run on the units as they are now.
@@ -469,7 +478,7 @@ pub(crate) mod internals {
 
         /// Compiles `source`, and adds the hooks the host reads of it to the match's book, as a
         /// test match has no package load to read them.
-        pub fn compile_hooked(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
+        pub fn compile_hooked(world: &mut World, source: &str) -> Result<ScriptId, CompileError> {
             let script = Self::compile(world, source)?;
             ScriptBook::amend(world, |world, scripts| {
                 assert_eq!(script.index(), scripts.len(), "the book holds every script");

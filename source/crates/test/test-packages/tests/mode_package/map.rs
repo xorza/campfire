@@ -873,16 +873,13 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
         "hero-husk",
         |problem| read_fails(problem, "data/avatar.toml", "unknown field `unit_type`"),
     ),
-    // The release runs no action of the kind `enter` yet; an action sits in
-    // slot kinds of one count of ranks.
+    // An action's kind is one the engine has; an action sits in slot kinds of one count of
+    // ranks.
     Flaw::of(
         HUSK,
         Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"enter\"\n"),
         "hero-husk",
-        |problem| {
-            let message = "the release runs no action of the kind `enter`";
-            read_fails(problem, "data/avatar.toml", message)
-        },
+        |problem| read_fails(problem, "data/avatar.toml", "unknown variant `enter`"),
     ),
     Flaw {
         file: MODE_DATA,

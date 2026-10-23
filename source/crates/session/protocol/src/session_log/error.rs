@@ -1,5 +1,7 @@
-use campfire_codec::BinaryError;
-use campfire_common::{Seat, Tick, Version};
+use std::io;
+
+use campfire_codec::Malformed;
+use campfire_common::{PlayerSlot, Tick, Version};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -15,11 +17,11 @@ pub enum InputError {
     /// The packet holds no input.
     #[error("packet holds no input")]
     EmptyPacket,
-    /// The seat is not in the session header.
+    /// The player slot is not in the session header.
     #[error("input from a player not in the session")]
     UnknownPlayer,
-    /// No player controls the seat now: a bot plays it, it is open, or its player left.
-    #[error("input for a seat no player controls")]
+    /// No player controls the player slot now: a bot plays it, it is open, or its player left.
+    #[error("input for a player slot no player controls")]
     NotPlayer,
     /// A payload is longer than the header's max payload length.
     #[error("input payload above the max length")]
@@ -57,9 +59,9 @@ impl From<StampError> for InputError {
 /// fault of the server, or of a log someone altered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum ServerInputError {
-    /// The seat is not in the session header.
-    #[error("server input for a seat not in the session")]
-    UnknownSeat,
+    /// The player slot is not in the session header.
+    #[error("server input for a player slot not in the session")]
+    UnknownPlayerSlot,
     /// The server key did not sign the input at its place.
     #[error("server input not signed by the server key at its place")]
     BadSignature,
@@ -70,22 +72,23 @@ pub enum ServerInputError {
     /// max inputs per tick.
     #[error("bot inputs fill the ticks up to the max input lead")]
     AheadOfTime,
-    /// Bot commands for a seat no bot plays.
-    #[error("bot commands for a seat no bot plays")]
+    /// Bot commands for a player slot no bot plays.
+    #[error("bot commands for a player slot no bot plays")]
     NotBot,
-    /// A join of a seat a player controls.
-    #[error("join of a seat a player controls")]
+    /// A join of a player slot a player controls.
+    #[error("join of a player slot a player controls")]
     Occupied,
-    /// A join of a seat reserved for the player who left it, by another player.
-    #[error("join of a seat reserved for the player who left it")]
+    /// A join of a player slot reserved for the player who left it, by another player.
+    #[error("join of a player slot reserved for the player who left it")]
     Reserved,
-    /// A join by a main key whose player controls another seat: one seat for each main key.
-    #[error("join by a player who controls another seat")]
+    /// A join by a main key whose player controls another player slot: one player slot for each
+    /// main key.
+    #[error("join by a player who controls another player slot")]
     MainKeyHeld,
-    /// A renewal, a leave or a link's change for a seat no player controls.
-    #[error("server input for a seat no player controls")]
+    /// A renewal, a leave or a link's change for a player slot no player controls.
+    #[error("server input for a player slot no player controls")]
     NotPlayer,
-    /// A renewal by another main key than the seat's player's.
+    /// A renewal by another main key than the player slot's player's.
     #[error("renewal by another player")]
     OtherPlayer,
     /// The delegation of a join or a renewal grants another session.
@@ -120,11 +123,33 @@ pub enum CheckpointError {
     /// The log began no checkpoint that the record would complete.
     #[error("no checkpoint begun for the record")]
     NotBegun,
-    /// The record a log file starts at carries no state a log holds at a boundary: another count
-    /// of seats than the header's, a delegation of another session, or an input of no seat or
-    /// due before the boundary.
-    #[error("checkpoint carries no state a log holds")]
-    BadCarry,
+    /// The record a log file starts at carries no state a log holds at a boundary.
+    #[error("checkpoint carries no state a log holds: {0}")]
+    BadCarry(CarryFlaw),
+}
+
+/// What makes a checkpoint's carry no state a log holds at its boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum CarryFlaw {
+    #[error("another count of player slots than the header's")]
+    PlayerSlots,
+    #[error("player slot {0:?}'s delegation is not of this session")]
+    Scope(PlayerSlot),
+    #[error("player slot {0:?}'s main key controls a player slot before it")]
+    MainKeyHeld(PlayerSlot),
+    #[error(
+        "player slot {0:?}'s chain is another player slot's, or counts other inputs than its stamps"
+    )]
+    Chain(PlayerSlot),
+    #[error("player slot {0:?}'s stamps count inputs no packet sends")]
+    Stamps(PlayerSlot),
+    #[error("player slot {0:?}'s spill holds more inputs than a tick takes")]
+    Spill(PlayerSlot),
+    #[error(
+        "input {0} is of no player slot that takes one, before the boundary, out of order, past the max \
+         inputs of its tick or the max payload length"
+    )]
+    Pending(usize),
 }
 
 /// Why the log refused a result. The server signs only what it means to log, so each is a fault
@@ -154,38 +179,39 @@ pub enum SeedError {
 /// failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum HeaderError {
-    /// More seats than a `u32` counts.
-    #[error("more seats than a u32 counts")]
-    TooManySeats,
-    /// The delegation of the player in `seat` is not a delegation.
-    #[error("player {}", .seat.get())]
+    /// More player slots than a `u32` counts.
+    #[error("more player slots than a u32 counts")]
+    TooManyPlayerSlots,
+    /// The delegation of the player in `player_slot` is not a delegation.
+    #[error("player {}", .player_slot.get())]
     Delegation {
-        seat: Seat,
+        player_slot: PlayerSlot,
         #[source]
         error: DelegationError,
     },
-    /// The delegation of the player in `seat` grants another session.
-    #[error("player {}", .seat.get())]
+    /// The delegation of the player in `player_slot` grants another session.
+    #[error("player {}", .player_slot.get())]
     Scope {
-        seat: Seat,
+        player_slot: PlayerSlot,
         #[source]
         error: ScopeError,
     },
-    /// The header starts another count of seats than the terms plan.
-    #[error("seat starts other than the terms' seats")]
-    SeatCount,
-    /// The seat `seat` starts otherwise than the terms plan it: a player, a bot or open.
-    #[error("seat {} starts otherwise than the terms plan", .seat.get())]
-    PlanMismatch { seat: Seat },
-    /// The player in `seat` holds the main key of a player in an earlier seat: one seat for each
-    /// main key.
-    #[error("seat {} starts the main key of an earlier seat's player", .seat.get())]
-    MainKeyRepeated { seat: Seat },
-    /// The file starts the seat `seat` as no known kind of start.
-    #[error("seat {} starts as no known kind", .seat.get())]
-    UnknownStart { seat: Seat },
+    /// The header starts another count of player slots than the terms plan.
+    #[error("player slot starts other than the terms' player slots")]
+    PlayerSlotCount,
+    /// The player slot `player_slot` starts otherwise than the terms plan it: a player, a bot or
+    /// open.
+    #[error("player slot {} starts otherwise than the terms plan", .player_slot.get())]
+    PlanMismatch { player_slot: PlayerSlot },
+    /// The player in `player_slot` holds the main key of a player in an earlier player slot: one
+    /// player slot for each main key.
+    #[error("player slot {} starts the main key of an earlier player slot's player", .player_slot.get())]
+    MainKeyRepeated { player_slot: PlayerSlot },
+    /// The file starts the player slot `player_slot` as no known kind of start.
+    #[error("player slot {} starts as no known kind", .player_slot.get())]
+    UnknownStart { player_slot: PlayerSlot },
     /// The terms let a journal record hold more than a journal frame takes: inputs, payloads, a
-    /// window of stamps or seats past what a record of 16 MiB holds.
+    /// window of stamps or player slots past what a record of 16 MiB holds.
     #[error("the terms let a journal record pass 16 MiB")]
     RecordTooLarge,
 }
@@ -212,7 +238,7 @@ pub enum LogError {
     Truncated,
     /// A value does not decode.
     #[error("session log value does not decode")]
-    Malformed(#[source] BinaryError),
+    Malformed(#[source] Malformed),
     /// The header does not start a log.
     #[error("session log header refused")]
     Header(#[source] HeaderError),
@@ -319,4 +345,13 @@ pub enum PublishError {
     /// The record of index `at`, from 0, is of no kind, or does not read.
     #[error("journal record {at} does not read")]
     Record { at: u64 },
+}
+
+/// Why a published log was not written: its journal does not publish it, or its writer failed.
+#[derive(Debug, Error)]
+pub enum PublishWriteError {
+    #[error(transparent)]
+    Journal(#[from] PublishError),
+    #[error("could not write the published log")]
+    Write(#[source] io::Error),
 }

@@ -56,6 +56,22 @@ fn the_live_connections_of_an_address_refuse_a_handshake_and_each_address_counts
     }
 }
 
+/// An IPv6 /48 holds `PER_SITE` times an address's handshakes: with one each, 16 of its /64s take
+/// one each and a 17th is refused, while a /64 of another /48 takes its own.
+#[test]
+fn an_ipv6_site_holds_sixteen_addresses_worth_of_handshakes() {
+    let setup = AdmissionSetup::new(NonZeroU32::MIN, Duration::from_secs(60));
+    let now = Instant::ZERO;
+    let mut admission = Admission::new(setup, now);
+    let host =
+        |site: u16, net: u16| IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, site, net, 0, 0, 0, 1));
+    for net in 0..u16::try_from(PER_SITE).unwrap() {
+        assert!(admission.admit(host(1, net), now, |_| 0), "{net}");
+    }
+    assert!(!admission.admit(host(1, 99), now, |_| 0));
+    assert!(admission.admit(host(2, 0), now, |_| 0));
+}
+
 #[test]
 fn an_ipv6_address_counts_by_its_64_and_a_mapped_ipv4_one_as_its_ipv4() {
     let v6 = |text: &str| AddressKey::of(text.parse().unwrap());

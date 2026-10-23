@@ -5,16 +5,16 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Changed, Or, QueryState, Without};
 use bevy_ecs::system::{Commands, In, Local, ParamSet, Query, Res, ResMut, SystemState};
 use bevy_ecs::world::{Mut, World};
-use campfire_actions::{ActionSlots, ByAction};
+use campfire_actions::ActionSlots;
 use campfire_common::Tick;
-use campfire_declarations::RoleForm;
+use campfire_declarations::{ById, RoleForm};
 use campfire_players::PlayersWorld;
 use campfire_sim::{
     DueIndex, DueUnit, EntityIndex, Keyed, Ordered, Position, Removals, SimTick, StableId,
     Unpredicted,
 };
-use campfire_units::{ArrivedShort, Body, Dead, Destination, Owner, StatusTags};
-use campfire_values::{Team, UnitTags, UnitType};
+use campfire_units::{Body, Dead, Owner, StatusTags, Walk, WalkReadOnly};
+use campfire_values::{ActionId, Team, UnitTags, UnitType};
 
 use crate::Production;
 use crate::gather_loop::checked_gather::CheckedGather;
@@ -47,8 +47,7 @@ pub(super) type WorkerParts = (
     Option<&'static Owner>,
     &'static ActionSlots,
     &'static Gatherer,
-    Option<&'static Destination>,
-    Option<&'static ArrivedShort>,
+    Option<WalkReadOnly>,
     Option<&'static UnitTags>,
 );
 
@@ -302,10 +301,10 @@ impl GatherLoop {
         let with = |step| Some(GatherOrder { step, ..order });
         match step {
             Step::Hold => {}
-            Step::Walk(to) => Destination::go_to(world, entity, Some(to)),
-            Step::Stand => Destination::go_to(world, entity, None),
+            Step::Walk(to) => Walk::go_to(world, entity, Some(to)),
+            Step::Stand => Walk::go_to(world, entity, None),
             Step::Stop => {
-                Destination::go_to(world, entity, None);
+                Walk::go_to(world, entity, None);
                 set(world, None);
                 let left = LeftLoop {
                     worker: entity,
@@ -334,11 +333,11 @@ impl GatherLoop {
                 Self::leave(world, workers, left);
             }
             Step::Wait => {
-                Destination::go_to(world, entity, None);
+                Walk::go_to(world, entity, None);
                 set(world, with(GatherStep::Waiting { since: now }));
             }
             Step::Take(node) => {
-                Destination::go_to(world, entity, None);
+                Walk::go_to(world, entity, None);
                 let id = *world.get::<StableId>(entity).expect("a worker has an id");
                 if let Some(mut node) = Self::node_mut(world, node) {
                     node.hold(Some(id));
@@ -353,7 +352,7 @@ impl GatherLoop {
                 }),
             ),
             Step::Unload(drop_off) => {
-                Destination::go_to(world, entity, None);
+                Walk::go_to(world, entity, None);
                 set(
                     world,
                     with(GatherStep::Delivering {
@@ -382,7 +381,7 @@ impl GatherLoop {
         let now = world.resource::<SimTick>().start();
         let slots = world.get::<ActionSlots>(entity).expect("a worker's slots");
         let action = slots.slot(order.slot).and_then(|slot| slot.action);
-        let gathers = world.resource::<ByAction<GatherSpec>>();
+        let gathers = world.resource::<ById<ActionId, GatherSpec>>();
         let spec = *action
             .and_then(|action| gathers.get(action))
             .expect("a worker's loop is of its gather");
@@ -445,14 +444,14 @@ impl GatherLoop {
         order: GatherOrder,
         back: Option<NodeAt>,
     ) {
-        Destination::go_to(world, entity, None);
+        Walk::go_to(world, entity, None);
         let gatherer = *world.get::<Gatherer>(entity).expect("a worker");
         if let Some(load) = gatherer.load().filter(|_| !F::PREDICTS) {
             let owner = *world
                 .get::<Owner>(entity)
                 .expect("a load joins its owner's");
             world
-                .player_resources_mut(owner.seat())
+                .player_resources_mut(owner.player_slot())
                 .expect("a player of the session holds its resources")
                 .add(load.resource, i64::from(load.amount))
                 .expect("the step checked the player's resources take the load");

@@ -9,6 +9,6 @@ mod in_process_match;
 
 pub use crate::in_process_match::link_layout::LinkLayout;
 pub use crate::in_process_match::server_record::ServerRecord;
-pub use crate::in_process_match::{AppliedInput, End, InProcessMatch, InProcessSetup};
+pub use crate::in_process_match::{End, InProcessMatch, InProcessSetup, InProcessSetupBuilder};
 
 pub mod bench;

@@ -1,11 +1,15 @@
+use std::cell::RefCell;
+use std::ops::ControlFlow;
+
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
-use campfire_geometry::{GridSearch, Placed, Shape};
+use campfire_geometry::{BodyGrid, GridSearch, Indexed, Placed, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_script::{AnyKeptRows, Checked, KeptRows, MaybeName, RowFill, Unit, View, ViewColumn};
 use campfire_sim::StableId;
 use campfire_units::{Body, Layer, MoveStep, WallBook};
 use campfire_values::{PathId, Team};
+use campfire_visibility::DataKind;
 
 use crate::body_index::IndexedBody;
 use crate::on_path::OnPath;
@@ -25,6 +29,16 @@ pub(crate) type RowReads = (
 pub struct NavigationColumn {
     rows: KeptRows<Vec<NavigationRow>>,
     walls: WallBook,
+    standing: RefCell<StandingBodies>,
+}
+
+/// The bodies of the living units of the view that stand, by row, which a test of room indexes
+/// once after each read, and the buffer it gathers them in.
+#[derive(Debug, Default)]
+struct StandingBodies {
+    grid: BodyGrid<usize, StableId>,
+    built: bool,
+    gathered: Vec<Indexed<usize, StableId>>,
 }
 
 /// A body of `shape` on `layer` that would stand at `position`, and how far clear of each other
@@ -64,6 +78,7 @@ impl ViewColumn for NavigationColumn {
     }
 
     fn begin(&mut self, world: &World) -> bool {
+        self.standing.get_mut().built = false;
         let walls = world.resource::<WallBook>();
         if !walls.same(&self.walls) {
             self.walls = walls.clone();
@@ -74,6 +89,28 @@ impl ViewColumn for NavigationColumn {
     /// None: it reads no team's sight.
     fn hides(&self, _: usize, _: Team) -> bool {
         false
+    }
+}
+
+impl StandingBodies {
+    /// Indexes the bodies of the living units of `view` that stand, as `rows` say, unless it did
+    /// since the read began.
+    fn build(&mut self, view: &View, rows: &[NavigationRow]) {
+        if self.built {
+            return;
+        }
+        self.gathered.clear();
+        view.each_row(|place, row| {
+            if !rows[place].walks && row.alive && row.shape != Shape::POINT {
+                self.gathered.push(Indexed {
+                    id: row.id,
+                    key: place,
+                    body: Placed::new(row.position, row.shape),
+                });
+            }
+        });
+        self.grid.rebuild(self.gathered.drain(..));
+        self.built = true;
     }
 }
 
@@ -112,14 +149,23 @@ impl NavigationColumn {
             return false;
         }
         let room = view.column(|column: &Self| {
+            if column.walls.overlaps(placed, layer) {
+                return false;
+            }
             let rows = column.rows.now();
-            let mut clear = !column.walls.overlaps(placed, layer);
-            view.each_row(|place, row| {
-                let stands = !rows[place].walks && rows[place].layer == layer;
-                if clear && stands && row.alive && row.shape != Shape::POINT {
-                    clear = !placed.overlaps(Placed::new(row.position, row.shape));
-                }
-            });
+            let mut standing = column.standing.borrow_mut();
+            standing.build(view, rows);
+            let mut clear = true;
+            standing
+                .grid
+                .visit_near(position, placed.shape.bound(), |entry| {
+                    if rows[entry.key].layer == layer && placed.overlaps(entry.body) {
+                        clear = false;
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                });
             clear
         });
         room.unwrap_or(true)
@@ -145,7 +191,7 @@ impl NavigationColumn {
     /// with no navigation.
     pub(crate) fn path(unit: &Unit) -> Checked<MaybeName<PathId>> {
         let view = unit.view();
-        let row = unit.row_index()?;
+        let row = unit.admit(DataKind::Prediction)?;
         let path = view.column(|column: &Self| column.rows.now()[row].path);
         Ok(MaybeName::from(
             path.flatten().map(|path| view.names().name(path)),

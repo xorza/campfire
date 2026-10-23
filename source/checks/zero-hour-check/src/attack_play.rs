@@ -1,9 +1,9 @@
 use std::num::NonZeroU32;
 
 use campfire_harness::FixedSession;
-use campfire_mode::{OptionPicks, OptionValue, SeatPick};
+use campfire_mode::{OptionPicks, OptionValue, PlayerSlotPick};
 use campfire_package::ModePackages;
-use campfire_protocol::{InputRules, SeatPlan};
+use campfire_protocol::{InputRules, PlayerSlotPlan};
 
 use crate::failure::CheckFailure;
 use crate::match_play::{MatchPlay, START_MONEY};
@@ -36,14 +36,14 @@ impl AttackPlay {
                 return None;
             }
         };
-        let factions: Vec<SeatPick> = ["0:faction=china", "1:faction=gla"]
-            .map(|pick| pick.parse().expect("a seat's pick reads"))
+        let factions: Vec<PlayerSlotPick> = ["0:faction=china", "1:faction=gla"]
+            .map(|pick| pick.parse().expect("a player slot's pick reads"))
             .into();
-        let session = FixedSession::planned(packages, InputRules::ROOMY, [SeatPlan::Bot; 2])
+        let session = FixedSession::planned(packages, InputRules::ROOMY, [PlayerSlotPlan::Bot; 2])
             .rate(rate)
             .picked(picks.places())
-            .seat_picked(&factions);
-        let mut play = MatchPlay::new(session.start());
+            .player_slot_picked(&factions);
+        let mut play = MatchPlay::new(session.start(), session.packages());
         let fought = Self::fight(&mut play, session.packages());
         let ended = play.end();
         match fought.and_then(|fought| ended.map(|()| fought)) {
@@ -55,12 +55,12 @@ impl AttackPlay {
         }
     }
 
-    /// The attacker in seat 0 and the builder in seat 1 of `play`, of `packages`, each from its
-    /// start, until their match ends or its limit passes.
+    /// The attacker in player slot 0 and the builder in player slot 1 of `play`, of `packages`,
+    /// each from its start, until their match ends or its limit passes.
     fn fight(play: &mut MatchPlay, packages: &ModePackages) -> Result<BotMatchEnd, CheckFailure> {
-        for (seat, bot) in [(0, "attacker"), (1, "builder")] {
-            let home = play.start(seat + 1)?;
-            play.drive_mode_bot(packages, seat, bot, home)?;
+        for (player_slot, bot) in [(0, "attacker"), (1, "builder")] {
+            let home = play.start(player_slot + 1)?;
+            play.drive_mode_bot(packages, player_slot, bot, home)?;
         }
         Ok(play.fight(ATTACK_LIMIT))
     }

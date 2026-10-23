@@ -4,7 +4,7 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 
 ## Recipients and kinds
 
-- **Four recipients.** For an entity and a client: the **owner**, the client of the seat that owns it; an **ally**, another client of its team; an **enemy**, a client of another team; a **spectator**, a client with no seat. The owner is in every audience but the server's, so its prediction always holds what it reads.
+- **Four recipients.** For an entity and a client: the **owner**, the client of the player slot that owns it; an **ally**, another client of its team; an **enemy**, a client of another team; a **spectator**, a client with no player slot. The owner is in every audience but the server's, so its prediction always holds what it reads.
 - **Each state type names its kind.** A state type implements `Replication` with a `KIND` and a `Sending` and no default, so a type with no kind does not compile; the kinds are a closed list of at most 32, as replicon's filters number:
 
 | Kind | Holds |
@@ -53,13 +53,13 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 ## Where state lives
 
 - **A resource never replicates.** The network stack replicates entities' components, so state a client receives lives on an entity.
-- **The match and each player are entities.** The match's start spawns one entity for the match and one for each seat, as Unreal keeps a `GameState` and a `PlayerState` for each player, each with a named stable id past the allocator's; a player's resources, supply and modifiers are its components, each of its kind, so each player learns its own resources and no other's by default.
+- **The match and each player are entities.** The match's start spawns one entity for the match and one for each player slot, as Unreal keeps a `GameState` and a `PlayerState` for each player, each with a named stable id past the allocator's; a player's resources, supply and modifiers are its components, each of its kind, so each player learns its own resources and no other's by default.
 - **State reaches a client only by replication.** No state type goes by a message, so no code must remember to send one; messages carry the protocol alone.
 
 ## One list
 
 - **Each capability names its state types once.** A module's declarations list every type it adds, and the install, the network's registration and the data filters all read that list; each type declares how it is sent, once, on insert, on change, predicted, or never.
-- **One replicon filter for each kind.** Units keep their vision rooms; the player and match entities stand in every team's room, so every seated link and spectator receives them.
+- **One replicon filter for each kind.** Units keep their vision rooms; the player and match entities stand in every team's room, so every placed link and spectator receives them.
 - **An entity spawns with its replication.** On the server, each kind's marker requires `Replicate`, empty `Rooms` and, of a kind its owner predicts, a `PredictionTarget` of no link, so an entity spawns whole; its show after the sim tick it came in fills its rooms and its owner's link in place, as an observer of the marker lists it, so no link receives it before the tick it replicates in, and a link's `LinkOf` requires its `ReplicationSender`. Refused: the parts inserted at the show, a second move of each entity between archetypes; and the rooms filled as the marker comes, which showed the match's entities in the frame that opened the match, before its first tick, and left the client's match unstarted.
 - **An owner changes by an insert alone.** `Owner` is immutable, so a change of owner is a new insert each filter follows by its observers, and no code writes an owner in place, where a filter would keep the old one.
 - **A unit's owner is a player of its team.** The owner's client then holds its unit wherever its team sees it, with no path around the team's vision; a change of owner to another team moves the unit with it, as a capture does in Zero Hour and Dominate in Dota.

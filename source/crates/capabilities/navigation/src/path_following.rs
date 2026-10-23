@@ -3,7 +3,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::ActionProgress;
 use campfire_declarations::RoleForm;
 use campfire_sim::{Position, StableId};
-use campfire_units::{ArrivedShort, Body, Dead, Destination};
+use campfire_units::{Body, Dead, Walk};
 
 use crate::navigation_book::NavigationBook;
 use crate::on_path::OnPath;
@@ -32,8 +32,7 @@ impl PathFollowing {
                 &OnPath,
                 &mut PathWalker,
                 Option<&ActionProgress>,
-                &mut Destination,
-                Option<&ArrivedShort>,
+                Walk,
                 Option<&Body>,
             ),
             Without<Dead>,
@@ -50,9 +49,7 @@ impl PathFollowing {
         );
         reached.clear();
         let paths = &navigation.paths;
-        for ((&id, &position), path, mut walker, progress, mut destination, arrived, body) in
-            &mut walkers
-        {
+        for ((&id, &position), path, mut walker, progress, mut walk, body) in &mut walkers {
             let busy = |progress: &ActionProgress| {
                 progress.attack_target().is_some() || progress.is_approaching()
             };
@@ -73,7 +70,7 @@ impl PathFollowing {
                 }
                 waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
             }
-            Destination::walk_to(&mut destination, arrived, waypoint);
+            walk.to(waypoint);
         }
         if let Some(mut arrivals) = arrivals.filter(|_| !reached.is_empty()) {
             reached.sort_unstable_by_key(|arrival| arrival.id);

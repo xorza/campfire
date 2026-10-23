@@ -2,17 +2,18 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 use std::sync::Arc;
 
+use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::system::{Query, RunSystemOnce};
 use bevy_ecs::world::World;
 use campfire_abilities::CastData;
 use campfire_actions::{
-    ActionData, ActionSlots, ActionTarget, Actions, EffectData, EffectTo, SlotKind, SlotTimes,
-    Targeting, UseGroup,
+    ActionData, ActionKeys, ActionSlots, ActionTarget, Actions, EffectData, EffectTo, SlotKind,
+    SlotTimes, Targeting, UseGroup,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Directive, Match, Order};
 use campfire_combat::{HealEffectData, OnDeath};
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_declarations::MatchFacts;
 use campfire_declarations::internals::BookLoad;
 use campfire_items::*;
@@ -24,12 +25,13 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use campfire_stats::{Hold, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
 use campfire_units::internals::Spawn;
-use campfire_units::{Dead, Life, Owner, UnitTypeCore, Units};
+use campfire_units::{Dead, Life, Owner, SeenBy, UnitTypeCore, Units};
 use campfire_values::{
     ActionId, Block, ItemId, ModifierId, NameId, Number, PackageIndex, Ranked, ResourceId, Scalar,
-    Share, Stat, Team, UnitType,
+    Share, Stat, Team, TeamSet, UnitType,
 };
-use campfire_visibility::OutView;
+use campfire_visibility::{OutView, SettingValue};
+use campfire_vision::Vision;
 use serde::Deserialize;
 use serde::de::{IntoDeserializer, value};
 
@@ -91,7 +93,10 @@ impl Carrier {
             ..ActionData::of(Targeting::None, CastData::default())
         };
         let flash = ActionData {
-            cooldown_ms: Some(Ranked::One(Number::Value(Scalar::Int(1000)))),
+            keys: ActionKeys {
+                cooldown_ms: Some(Ranked::One(Number::Value(Scalar::Int(1000)))),
+                ..ActionData::of(Targeting::None, CastData::default()).keys
+            },
             ..ActionData::of(Targeting::None, CastData::default())
         };
         let mut load = |name: &str, data: &ActionData| {
@@ -110,7 +115,7 @@ impl Carrier {
         let three = NonZeroU8::new(3).unwrap();
         Units::give_type(game, carrier, Inventory::new(three));
         Units::give_type(game, carrier, UseGroup::new(kind));
-        let owner = Owner::new(Seat::new(0));
+        let owner = Owner::new(PlayerSlot::new(0));
         let shop = spawn_shop(game, shop_type);
         let id = Spawn::of(carrier, Vec3::ZERO).parts(owner).place(game);
         game.part_mut::<Life>(id).take(Num::int(200));
@@ -131,7 +136,7 @@ impl Carrier {
             .map(|&action| Order::one(unit, action))
             .collect();
         let payload = Order::payload(&orders);
-        game.step_with(&[(Seat::new(0), &payload)]);
+        game.step_with(&[(PlayerSlot::new(0), &payload)]);
     }
 
     /// The carrier's life.
@@ -158,7 +163,7 @@ impl Carrier {
             .filter(|instance| {
                 instance.id == self.might
                     && instance.source == Some(self.id)
-                    && instance.lifetime.held_by(Hold::Passive)
+                    && instance.lifetime.held_by(Hold::Item)
             })
             .count()
     }
@@ -198,7 +203,7 @@ fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) -> 
     );
     let sells = [POTION, FLASH, CHARM].map(ItemId::nth).to_vec();
     Players::spawn(game, 1, 1);
-    game.player_resources_mut(Seat::new(0))
+    game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(resource, 1000)
         .unwrap();
@@ -332,7 +337,8 @@ fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modif
     };
     assert_eq!(held(2), (Some(carrier.flash), ready));
     assert_eq!(held(0), (None, Tick::ZERO));
-    // A charm holds Might from the carrier, as a passive; a second charm holds it no more often;
+    // A charm holds Might from the carrier, under the items' hold; a second charm holds it no
+    // more often;
     // selling one keeps it, selling both lets it go.
     assert_eq!(carrier.mights(&game), 0);
     carrier.order(&mut game, &[buy(CHARM, shop)]);
@@ -342,10 +348,28 @@ fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modif
         (carrier.items(&game), carrier.mights(&game)),
         (vec![Some((2, 1)), Some((2, 1)), Some((1, 1))], 1)
     );
-    carrier.order(&mut game, &[ItemsDirective::Sell { slot: 0, shop }]);
+    carrier.order(&mut game, &[ItemsDirective::Sell { stack: 0, shop }]);
     assert_eq!(carrier.mights(&game), 1);
-    carrier.order(&mut game, &[ItemsDirective::Sell { slot: 1, shop }]);
+    carrier.order(&mut game, &[ItemsDirective::Sell { stack: 1, shop }]);
     assert_eq!(carrier.mights(&game), 0);
+    // A sale from an empty slot and a swap of a slot with itself, or past the slots, write no
+    // inventory.
+    let written = |game: &Match| {
+        let entity = game.unit_entity(carrier.id);
+        game.entity(entity)
+            .get_ref::<Inventory>()
+            .unwrap()
+            .last_changed()
+    };
+    let before = written(&game);
+    for directive in [
+        ItemsDirective::Sell { stack: 0, shop },
+        ItemsDirective::Swap { from: 2, to: 2 },
+        ItemsDirective::Swap { from: 0, to: 3 },
+    ] {
+        carrier.order(&mut game, &[directive]);
+        assert_eq!(written(&game), before, "{directive:?}");
+    }
 }
 
 /// The items of `id`'s inventory, slot by slot, each by its book's index and its count.
@@ -393,7 +417,7 @@ impl ShopRead {
 
 /// Player 0's gold.
 fn player_gold(game: &World) -> i64 {
-    let resources = game.player_resources(Seat::new(0));
+    let resources = game.player_resources(PlayerSlot::new(0));
     resources.unwrap().amount(ResourceId::new(0))
 }
 
@@ -448,7 +472,7 @@ fn item_shop() -> ShopMatch {
     let sells = [0, 1, 2].map(ItemId::nth).to_vec();
     book.load_into(&mut game);
     Players::spawn(&mut game, 2, 1);
-    game.player_resources_mut(Seat::new(0))
+    game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(gold, 2000)
         .unwrap();
@@ -469,6 +493,38 @@ fn item_shop() -> ShopMatch {
 }
 
 #[test]
+fn a_trade_at_a_shop_its_team_does_not_see_is_dropped() {
+    // With a vision grid, team 0's hero at its shop buys and sells nothing there while only team 1
+    // sees the shop: a buy of a potion, 50 from 2000, and the sale of what it holds are dropped.
+    // Once team 0 sees the shop, the buy takes the potion and the sale gives 70% of 50, 35, back.
+    let ShopMatch {
+        mut game,
+        shop,
+        shopper,
+        ..
+    } = item_shop();
+    let owner = Owner::new(PlayerSlot::new(0));
+    let hero = Spawn::of(shopper, (0, 0, 0)).parts(owner).place(&mut game);
+    Vision::fog_grid(&mut game, 2);
+    let step = |game: &mut Match, actions: &[ItemsDirective]| {
+        game.step_with(&[(PlayerSlot::new(0), &trades(hero, actions))]);
+    };
+    let held = |game: &Match| (player_gold(game), carried(game, hero));
+    game.insert_parts(shop, SeenBy::new(TeamSet::of(Team::new(1))));
+    step(&mut game, &[buy(2, shop)]);
+    assert_eq!(held(&game), (2000, vec![None, None, None]));
+    game.insert_parts(shop, SeenBy::new(TeamSet::of(Team::new(0))));
+    step(&mut game, &[buy(2, shop)]);
+    assert_eq!(held(&game), (1950, vec![Some((2, 1)), None, None]));
+    game.insert_parts(shop, SeenBy::new(TeamSet::of(Team::new(1))));
+    step(&mut game, &[ItemsDirective::Sell { stack: 0, shop }]);
+    assert_eq!(held(&game), (1950, vec![Some((2, 1)), None, None]));
+    game.insert_parts(shop, SeenBy::new(TeamSet::of(Team::new(0))));
+    step(&mut game, &[ItemsDirective::Sell { stack: 0, shop }]);
+    assert_eq!(held(&game), (1985, vec![None, None, None]));
+}
+
+#[test]
 fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     // A match with no `orders`: the trades are items' own orders.
     let ShopMatch {
@@ -477,10 +533,10 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         shopper,
         living,
     } = item_shop();
-    let owner = Owner::new(Seat::new(0));
+    let owner = Owner::new(PlayerSlot::new(0));
     let hero = Spawn::of(shopper, (0, 0, 0)).parts(owner).place(&mut game);
     let step = |game: &mut Match, actions: &[ItemsDirective]| {
-        game.step_with(&[(Seat::new(0), &trades(hero, actions))]);
+        game.step_with(&[(PlayerSlot::new(0), &trades(hero, actions))]);
     };
     let held = |game: &Match| (player_gold(game), carried(game, hero));
     // The reader: the shop sells its three in its order; the edge costs its 1000 with no blade
@@ -525,7 +581,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     step(
         &mut game,
         &[
-            ItemsDirective::Sell { slot: 1, shop },
+            ItemsDirective::Sell { stack: 1, shop },
             ItemsDirective::Swap { from: 0, to: 2 },
         ],
     );
@@ -533,8 +589,8 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     step(
         &mut game,
         &[
-            ItemsDirective::Sell { slot: 2, shop },
-            ItemsDirective::Sell { slot: 1, shop },
+            ItemsDirective::Sell { stack: 2, shop },
+            ItemsDirective::Sell { stack: 1, shop },
         ],
     );
     assert_eq!(held(&game), (1605, vec![Some((2, 1)), None, None]));
@@ -547,12 +603,12 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         &mut game,
         &[
             buy(2, shop),
-            ItemsDirective::Sell { slot: 0, shop },
+            ItemsDirective::Sell { stack: 0, shop },
             ItemsDirective::Swap { from: 0, to: 1 },
         ],
     );
     assert_eq!(held(&game), (1605, vec![None, Some((2, 1)), None]));
-    game.step_with(&[(Seat::new(1), &trades(hero, &[buy(2, shop)]))]);
+    game.step_with(&[(PlayerSlot::new(1), &trades(hero, &[buy(2, shop)]))]);
     assert_eq!(player_gold(&game), 1605);
     game.insert_parts(hero, Dead);
     step(
@@ -574,14 +630,14 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     );
     // An edge from the two blades costs 400 of 1005; one more edge past the gold left is dropped.
     let resource = ResourceId::new(0);
-    let resources = game.player_resources_mut(Seat::new(0));
+    let resources = game.player_resources_mut(PlayerSlot::new(0));
     resources.unwrap().add(resource, -1000).unwrap();
     step(&mut game, &[buy(1, shop)]);
     assert_eq!(
         held(&game),
         (5, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
     );
-    game.player_resources_mut(Seat::new(0))
+    game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(resource, 395)
         .unwrap();
@@ -594,11 +650,11 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         .parts(owner)
         .place(&mut game);
     assert!(!ShopRead::of(&mut game, shop, other, ItemId::nth(0)).served);
-    game.player_resources_mut(Seat::new(0))
+    game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(resource, 300)
         .unwrap();
-    game.step_with(&[(Seat::new(0), &trades(other, &[buy(0, shop)]))]);
+    game.step_with(&[(PlayerSlot::new(0), &trades(other, &[buy(0, shop)]))]);
     assert_eq!(
         (player_gold(&game), carried(&game, other)),
         (300, vec![None, None, None])
@@ -606,12 +662,18 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
 
     // Player 0 out of play, its hero dead: a potion of 50 is bought while it sees what its team
     // sees, and none once it sees what a spectator sees, as each capability's orders refuse it.
-    let out = game.player_entity(Seat::new(0)).unwrap();
+    let out = game.player_entity(PlayerSlot::new(0)).unwrap();
     game.entity_mut(out).insert(OutOfPlay);
-    game.resource_mut::<MatchFacts>().out = OutView::Spectators;
+    game.resource_mut::<MatchFacts>()
+        .visibility
+        .set(SettingValue::Out(OutView::Spectators))
+        .unwrap();
     step(&mut game, &[buy(2, shop)]);
     assert_eq!(player_gold(&game), 300);
-    game.resource_mut::<MatchFacts>().out = OutView::Team;
+    game.resource_mut::<MatchFacts>()
+        .visibility
+        .set(SettingValue::Out(OutView::Team))
+        .unwrap();
     step(&mut game, &[buy(2, shop)]);
     assert_eq!(player_gold(&game), 250);
 

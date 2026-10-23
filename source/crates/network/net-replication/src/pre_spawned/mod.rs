@@ -164,10 +164,7 @@ pub(crate) fn compute_default_hash(
         .iter_components()
         .filter_map(|component_id| {
             let type_id = components.get_info(component_id)?.type_id()?;
-            component_registry
-                .type_map
-                .net_id(&ComponentTypeId::from(type_id))
-                .copied()
+            component_registry.net_id(&ComponentTypeId::from(type_id))
         })
         .collect::<SmallVec<[NetId; 16]>>();
     // An archetype lists its components in an order of its own.

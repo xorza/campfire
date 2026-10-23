@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_capabilities::{Directive, NamedRefs, Order, ThinkOrder};
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_players::OrderUnits;
 use campfire_production::PlaceSearch;
@@ -11,9 +11,9 @@ use campfire_values::{ItemId, UnitType};
 use campfire_vision::TeamSight;
 
 use crate::bot_script::bot_names::BotNames;
-use crate::bot_script::error::{BotScriptError, OrderUnsent};
-use crate::bot_view::{BotView, ThinkFacts};
-use crate::loaded::{ActionName, Loaded, LoadedGround};
+use crate::bot_script::error::{BotScriptError, OrderUnsent, ThinkError};
+use crate::bot_view::BotView;
+use crate::loaded::{ActionName, Loaded, LoadedPlace};
 use crate::order_script::{OrderScript, ScriptedInput, ScriptedUnits};
 
 pub(crate) mod bot_names;
@@ -48,12 +48,20 @@ pub struct BotOrder {
 /// Where a bot's step sends what its script has due: each payload, a mode input's or an order's,
 /// as its player's client writes it, and each order that goes unsent.
 pub trait BotSink {
-    /// Takes `payload`, an input of the bot of `seat`.
-    fn send(&mut self, seat: Seat, payload: &[u8]);
+    /// Takes `payload`, an input of the bot of `player_slot`.
+    fn send(&mut self, player_slot: PlayerSlot, payload: &[u8]);
 
-    /// Hears that the order of `directive`, as its script names it, of the bot of `seat` goes
-    /// unsent to all of its units or to some, as `cause` says.
-    fn unsent(&mut self, seat: Seat, directive: &Directive<NamedRefs>, cause: OrderUnsent);
+    /// Hears that the order of `directive`, as its script names it, of the bot of `player_slot`
+    /// goes unsent to all of its units or to some, as `cause` says.
+    fn unsent(
+        &mut self,
+        player_slot: PlayerSlot,
+        directive: &Directive<NamedRefs>,
+        cause: OrderUnsent,
+    );
+
+    /// Hears that a think of the bot of `player_slot` gave no orders, as `error` says.
+    fn failed(&mut self, player_slot: PlayerSlot, error: ThinkError);
 }
 
 /// The buffers of a bot's step, kept so that no input allocates: the payload, the body of the
@@ -64,7 +72,10 @@ pub struct BotBuffers {
     body: Vec<u8>,
     orders: Vec<Order>,
     scratch: OrderScratch,
-    pub(crate) facts: ThinkFacts,
+    /// The units the thinking bot's player slot owns, which its facts read.
+    pub(crate) owned: Vec<StableId>,
+    /// The orders a think gave.
+    pub(crate) given: Vec<ThinkOrder>,
 }
 
 /// The buffers of the orders a due one gives: its units, and each with the place of its slot.
@@ -114,6 +125,9 @@ impl BotScript {
                 named: order.directive.clone(),
             })
         });
+        for input in script.inputs() {
+            names.input(input)?;
+        }
         Ok(Self {
             orders: orders.collect::<Result<_, BotScriptError>>()?,
             inputs: script.inputs().to_vec(),
@@ -136,14 +150,14 @@ impl BotScript {
         &self.inputs[first..self.next_input]
     }
 
-    /// Sends `sink` what the script has due by `tick` for the bot of `seat`: its mode inputs,
-    /// then its orders, each for the slot's units as `view` holds them now; an order that goes
-    /// unsent `sink` hears of. The one step of a bot, which the server's driver and every check
-    /// take.
+    /// Sends `sink` what the script has due by `tick` for the bot of `player_slot`: its mode
+    /// inputs, then its orders, each for the slot's units as `view` holds them now; an order that
+    /// goes unsent `sink` hears of. The one step of a bot, which the server's driver and every
+    /// check take.
     pub fn step<S: TeamSight>(
         &mut self,
         tick: Tick,
-        seat: Seat,
+        player_slot: PlayerSlot,
         view: &BotView<'_, '_, S>,
         buffers: &mut BotBuffers,
         sink: &mut impl BotSink,
@@ -152,10 +166,10 @@ impl BotScript {
         for input in self.due_inputs(tick) {
             payload.clear();
             input.write_payload(body, payload);
-            sink.send(seat, payload);
+            sink.send(player_slot, payload);
         }
         for scripted in self.due_orders(tick) {
-            scripted.send(seat, view, buffers, sink);
+            scripted.send(player_slot, view, buffers, sink);
         }
     }
 
@@ -207,11 +221,11 @@ impl BotOrder {
         })
     }
 
-    /// Sends `sink` the payload of each order it gives for the player of `seat`, for its units
-    /// as `view` holds them now, and why it goes unsent to all of them or to some.
+    /// Sends `sink` the payload of each order it gives for the player of `player_slot`, for its
+    /// units as `view` holds them now, and why it goes unsent to all of them or to some.
     pub fn send<S: TeamSight>(
         &self,
-        seat: Seat,
+        player_slot: PlayerSlot,
         view: &BotView<'_, '_, S>,
         buffers: &mut BotBuffers,
         sink: &mut impl BotSink,
@@ -224,24 +238,24 @@ impl BotOrder {
             ..
         } = buffers;
         orders.clear();
-        let unsent = self.orders(seat, view, scratch, orders);
+        let unsent = self.orders(player_slot, view, scratch, orders);
         for order in orders.iter() {
             payload.clear();
             order.write_payload(body, payload);
-            sink.send(seat, payload);
+            sink.send(player_slot, payload);
         }
         if let Some(cause) = unsent {
-            sink.unsent(seat, &self.named, cause);
+            sink.unsent(player_slot, &self.named, cause);
         }
     }
 
-    /// Puts in `out` the orders it gives for the player of `seat`, for its units as `view` holds
-    /// them now: one, or for an action of a slot one for each place among their slots its units
-    /// hold the action at, each to the units that hold it there, in increasing stable id; and
+    /// Puts in `out` the orders it gives for the player of `player_slot`, for its units as `view`
+    /// holds them now: one, or for an action of a slot one for each place among their slots its
+    /// units hold the action at, each to the units that hold it there, in increasing stable id; and
     /// why it goes unsent to all of its units or to some, the first cause of several.
     pub fn orders<S: TeamSight>(
         &self,
-        seat: Seat,
+        player_slot: PlayerSlot,
         view: &BotView<'_, '_, S>,
         scratch: &mut OrderScratch,
         out: &mut Vec<Order>,
@@ -249,12 +263,12 @@ impl BotOrder {
         let OrderScratch { units, slotted } = scratch;
         units.clear();
         match &self.units {
-            BotUnits::Avatar => match view.avatar(seat) {
+            BotUnits::Avatar => match view.avatar(player_slot) {
                 Some(avatar) => units.push(avatar.id),
                 None => return Some(OrderUnsent::NoAvatar),
             },
-            &BotUnits::Typed(unit_type) => view.typed(seat, unit_type, units),
-            BotUnits::Listed(ids) => view.listed(seat, ids, units),
+            &BotUnits::Typed(unit_type) => view.typed(player_slot, unit_type, units),
+            BotUnits::Listed(ids) => view.listed(player_slot, ids, units),
         }
         if units.is_empty() {
             return Some(OrderUnsent::NoUnit);
@@ -323,19 +337,16 @@ impl<S: TeamSight> RefMap<Loaded, Ids> for DueRefs<'_, '_, '_, S> {
             .expect("an order of a slot finds its units' place of it first"))
     }
 
-    /// The point; a search, a build's, finds none.
-    fn ground(&mut self, ground: LoadedGround) -> Result<GroundPoint, OrderUnsent> {
-        match ground {
-            LoadedGround::At(at) => Ok(at),
-            LoadedGround::Near { .. } => unreachable!("only a build's place searches"),
-        }
+    fn ground(&mut self, ground: GroundPoint) -> Result<GroundPoint, OrderUnsent> {
+        Ok(ground)
     }
 
     /// The point, or the nearest of its search where the build of the order's slot passes, for
     /// its first unit, the builder, as the order goes out.
-    fn place(&mut self, place: LoadedGround, angle: Num) -> Result<GroundPoint, OrderUnsent> {
-        let LoadedGround::Near { near, gap, steps } = place else {
-            return self.ground(place);
+    fn place(&mut self, place: LoadedPlace, angle: Num) -> Result<GroundPoint, OrderUnsent> {
+        let (near, gap, steps) = match place {
+            LoadedPlace::At(at) => return Ok(at),
+            LoadedPlace::Near { near, gap, steps } => (near, gap, steps),
         };
         let search = PlaceSearch {
             builder: self.from,
@@ -356,6 +367,14 @@ impl<S: TeamSight> RefMap<Loaded, Ids> for DueRefs<'_, '_, '_, S> {
 
     fn item(&mut self, item: ItemId) -> Result<ItemId, OrderUnsent> {
         Ok(item)
+    }
+
+    /// The first slot of the order's first unit that carries a stack of `item`, as the order goes
+    /// out.
+    fn carried(&mut self, item: ItemId) -> Result<u8, OrderUnsent> {
+        self.view
+            .carried(self.from, item)
+            .ok_or(OrderUnsent::NoStack)
     }
 }
 

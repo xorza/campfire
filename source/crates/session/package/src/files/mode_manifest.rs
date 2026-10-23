@@ -11,9 +11,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::files::dependency::Dependency;
 use crate::files::package_header::PackageHeader;
-use crate::files::package_name::PackageName;
 use crate::files::tick_range::TickRange;
 use crate::language::Language;
+use crate::package_name::PackageName;
 
 /// A mode's manifest: its header's fields, then the rules its matches run by, in one table. Its
 /// capabilities read as the list the file names, `C` a `Vec`, which `checked` makes a set the
@@ -24,7 +24,7 @@ pub struct ModeManifest<C = CapabilitySet> {
     /// The capabilities its matches use; the release installs only these.
     pub capabilities: C,
     pub tick_hz: TickRange,
-    /// The playing teams, in order; their seats in that order make the player seats.
+    /// The playing teams, in order; their player slots in that order make the player slots.
     pub teams: Vec<TeamManifest>,
     /// The most any unit walks.
     pub max_move_speed: Speed,
@@ -50,9 +50,12 @@ impl ModeManifest<Vec<Capability>> {
 }
 
 impl ModeManifest {
-    /// How many player seats its teams have together.
-    pub fn seats(&self) -> u64 {
-        self.teams.iter().map(|team| u64::from(team.seats)).sum()
+    /// How many player slots its teams have together.
+    pub fn player_slots(&self) -> u64 {
+        self.teams
+            .iter()
+            .map(|team| u64::from(team.player_slots))
+            .sum()
     }
 }
 

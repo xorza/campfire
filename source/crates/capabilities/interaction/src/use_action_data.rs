@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, RangeTakes, Takes};
+use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, PipelineField, Takes};
 use campfire_declarations::Listed;
 use campfire_script::ApiBuilder;
 use campfire_sim::Capability;
@@ -25,21 +25,28 @@ impl KindSection for UseActionData {
     }
 
     fn needs(&self) -> &'static [Capability] {
-        &[Capability::Interaction, Capability::Abilities]
+        &[
+            Capability::Interaction,
+            Capability::Abilities,
+            Capability::Orders,
+        ]
     }
 
     fn takes(&self) -> KindTakes {
-        KindTakes {
-            script: Takes::May,
-            range: RangeTakes::Meters,
-            cost: Takes::May,
-            windup: Takes::May,
-            channel: Takes::May,
-            hold: Takes::May,
-            params: Takes::May,
-            on_resolve: Takes::May,
-            ..KindTakes::NONE
-        }
+        KindTakes::NONE
+            .with(Takes::Must, &[PipelineField::Range])
+            .with(
+                Takes::May,
+                &[
+                    PipelineField::Script,
+                    PipelineField::Cost,
+                    PipelineField::WindupMs,
+                    PipelineField::Channel,
+                    PipelineField::Hold,
+                    PipelineField::Params,
+                    PipelineField::OnResolve,
+                ],
+            )
     }
 
     fn numbers(&self) -> Vec<&Ranked<Number>> {
@@ -57,4 +64,21 @@ impl Listed for UseActionData {
     }
 
     fn api(_: &mut ApiBuilder<'_>) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_use_needs_the_orders_that_fill_its_slot_and_the_abilities_that_run_it() {
+        assert_eq!(
+            UseActionData {}.needs(),
+            [
+                Capability::Interaction,
+                Capability::Abilities,
+                Capability::Orders
+            ]
+        );
+    }
 }

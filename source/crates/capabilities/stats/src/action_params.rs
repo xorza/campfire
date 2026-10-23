@@ -30,7 +30,7 @@ impl ActionParams {
                 .get::<ActionsData>()
                 .and_then(|actions| actions.0.get(name))
                 .expect("a loaded action is of its package's data");
-            let run = tables.actions.push(&data.params, |stat| {
+            let run = tables.actions.push(&data.keys.params, |stat| {
                 stats.and_then(|stats| stats.named(stat)).ok_or(())
             });
             let run = run.expect("the action load checked each stat a param names");

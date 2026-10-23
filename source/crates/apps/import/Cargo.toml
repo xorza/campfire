@@ -15,13 +15,14 @@ internals = [
     "campfire-combat/internals",
     "campfire-declarations/internals",
     "campfire-geometry/internals",
-    "campfire-log/internals",
+    "campfire-logging/internals",
     "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-navigation/internals",
     "campfire-orders/internals",
     "campfire-package/internals",
     "campfire-package-disk/internals",
+    "campfire-package-format/internals",
     "campfire-production/internals",
     "campfire-projectiles/internals",
     "campfire-script/internals",
@@ -39,7 +40,7 @@ campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-declarations.workspace = true
-campfire-log = { workspace = true, features = ["start"] }
+campfire-logging.workspace = true
 campfire-math.workspace = true
 campfire-geometry.workspace = true
 campfire-mode.workspace = true
@@ -47,6 +48,7 @@ campfire-navigation.workspace = true
 campfire-orders.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
+campfire-package-format.workspace = true
 campfire-production.workspace = true
 campfire-projectiles.workspace = true
 campfire-script.workspace = true

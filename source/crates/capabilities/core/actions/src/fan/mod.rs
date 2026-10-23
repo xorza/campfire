@@ -13,6 +13,22 @@ pub struct Fan {
 }
 
 impl Fan {
+    /// One alone, at the aim.
+    pub const ONE: Self = Self {
+        count: NonZeroU8::MIN,
+        spread_deg: Num::ZERO,
+    };
+
+    /// A fan of `count` over `spread_deg` degrees, from 0 to 360, which its delivery's read
+    /// checks.
+    pub fn new(count: NonZeroU8, spread_deg: Num) -> Self {
+        debug_assert!(
+            (Num::ZERO..=Num::int(360)).contains(&spread_deg),
+            "a spread from 0 to 360 degrees"
+        );
+        Self { count, spread_deg }
+    }
+
     /// The turn from the aim of projectile `at` of the fan, in radians, rounded once: `spread · (2
     /// · at − (count − 1)) / (2 · (count − 1))` degrees, so the fan spreads evenly about the aim;
     /// `360 · at / count` degrees over a full turn; none for a fan of one.

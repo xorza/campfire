@@ -1,9 +1,9 @@
 use bevy_math::{UVec2, Vec2};
 use campfire_client_files::{GroundQuad, Overlay, TerrainQuads};
 
+use crate::zero_hour::format::ini::game_data_ini::TerrainDraw;
 use crate::zero_hour::format::map::map_file::MapHeights;
 use crate::zero_hour::format::map::terrain::{BlendShape, BlendTile, TerrainCell, TerrainFields};
-use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::terrain_atlas::TerrainAtlas;
 
 /// What each cell of Zero Hour's terrain draws, as `WorldHeightMap` gives it to the heightmap's
@@ -19,7 +19,7 @@ pub(crate) struct TerrainCells<'a> {
     columns: usize,
     rows: usize,
     atlas: &'a TerrainAtlas,
-    game: GameData,
+    game: TerrainDraw,
 }
 
 /// A cell's layers: its tile; its blend over the tile, alpha 0 at every corner for a cell with
@@ -71,7 +71,7 @@ impl<'a> TerrainCells<'a> {
         terrain: &'a TerrainFields,
         heights: &'a MapHeights,
         atlas: &'a TerrainAtlas,
-        game: GameData,
+        game: TerrainDraw,
     ) -> Self {
         debug_assert_eq!(heights.samples.len(), terrain.cells.len());
         TerrainCells {

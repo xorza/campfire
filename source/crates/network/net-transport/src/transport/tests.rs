@@ -3,8 +3,9 @@ use crate::fixtures::protocol::{Channel1, channel_id};
 use crate::fixtures::transport_stack::TransportStack;
 use bevy_ecs::world::World;
 use bytes::Bytes;
-use campfire_net_channels::fragment_len_for_max_payload;
+use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::internals::ChannelCounts;
+use campfire_net_channels::internals::fragment_len;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 
@@ -63,7 +64,7 @@ fn the_fragment_len_follows_the_packet_sessions_largest_payload() {
     let entity = world.spawn((link, Transport::default())).id();
     assert_eq!(
         world.get::<Transport>(entity).unwrap().fragment_len(),
-        fragment_len_for_max_payload(256).unwrap()
+        fragment_len(256).unwrap()
     );
 
     world
@@ -74,6 +75,6 @@ fn the_fragment_len_follows_the_packet_sessions_largest_payload() {
     world.entity_mut(entity).insert(Linked);
     assert_eq!(
         world.get::<Transport>(entity).unwrap().fragment_len(),
-        fragment_len_for_max_payload(200).unwrap()
+        fragment_len(200).unwrap()
     );
 }

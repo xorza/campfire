@@ -100,7 +100,12 @@ fn a_server_seals_the_registry_and_installs_nothing() {
         .predict();
     app.finish();
 
-    assert!(app.world().resource::<PredictionRegistry>().finalized);
+    assert!(
+        app.world()
+            .resource::<PredictionRegistry>()
+            .seal
+            .is_sealed()
+    );
     let entity = app.world_mut().spawn((BuilderComponent(1), Predicted)).id();
     app.world_mut().flush();
     assert!(
@@ -111,9 +116,7 @@ fn a_server_seals_the_registry_and_installs_nothing() {
 }
 
 #[test]
-#[should_panic(
-    expected = "a component registers for prediction before the app finishes its plugins"
-)]
+#[should_panic(expected = "the prediction registry takes a registration after its plugin finished")]
 fn a_late_registration_on_a_server_panics() {
     let mut app = server_app();
     app.finish();

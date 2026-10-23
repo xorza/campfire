@@ -3,7 +3,7 @@ use bevy_ecs::prelude::*;
 use bevy_state::prelude::*;
 
 use bevy_replicon::client::confirm_history::ConfirmHistory;
-use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
+use bevy_replicon::client::server_mutate_ticks::MutateTickReceived;
 use bevy_replicon::prelude::*;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
@@ -29,12 +29,14 @@ pub(crate) struct ClientRepliconPlugin;
 
 impl Plugin for ClientRepliconPlugin {
     fn build(&self, app: &mut App) {
+        app.init_resource::<ConfirmedTickMap>();
         app.add_observer(ConfirmedTickMap::record_authoritative_tick);
-
-        // State management
+        app.add_observer(Self::on_replication_connect);
+        // Replicon's reset and the confirmed ticks' clear run in one transition, so the two never
+        // disagree on which ticks a link confirmed.
         app.add_systems(
-            PreUpdate,
-            Self::sync_client_state.before(ClientSystems::ReceivePackets),
+            OnExit(ClientState::Connected),
+            Self::forget_confirmed_ticks.in_set(ClientSystems::Reset),
         );
 
         // Packet bridge: replicon <-> the stack's transport
@@ -46,7 +48,8 @@ impl Plugin for ClientRepliconPlugin {
             PreUpdate,
             Self::sync_last_confirmed_tick
                 .after(ClientSystems::Receive)
-                .in_set(ReplicationSystems::Receive),
+                .in_set(ReplicationSystems::Receive)
+                .run_if(in_state(ClientState::Connected)),
         );
         app.add_systems(
             PostUpdate,
@@ -77,50 +80,36 @@ impl Plugin for ClientRepliconPlugin {
 }
 
 impl ClientRepliconPlugin {
+    /// Maps each mutate tick Replicon confirms this frame to the tick it confirms, once.
     fn sync_last_confirmed_tick(
-        server_mutate_ticks: Res<'_, ServerMutateTicks>,
+        mut confirmed: MessageReader<'_, '_, MutateTickReceived>,
         mut confirmed_ticks: ResMut<'_, ConfirmedTickMap>,
-        connected_receivers: Query<
-            '_,
-            '_,
-            (),
-            (With<Connected>, With<Client>, With<ReplicationReceiver>),
-        >,
     ) {
-        // Receiver cleanup clears the confirmed tick map before Replicon's state transition resets
-        // its mutate ticks. Do not compare those two resources during that short transition window.
-        if connected_receivers.is_empty() {
-            return;
-        }
-
-        let Some(replicon_tick) = server_mutate_ticks.last_confirmed_tick() else {
-            return;
-        };
-        if confirmed_ticks
-            .record_last_confirmed_tick(replicon_tick)
-            .is_none()
-        {
-            error!(
-                ?replicon_tick,
-                "missing confirmed tick for completed mutate tick"
-            );
+        for &MutateTickReceived { tick } in confirmed.read() {
+            if confirmed_ticks.record_last_confirmed_tick(tick).is_none() {
+                error!(?tick, "missing confirmed tick for completed mutate tick");
+            }
         }
     }
 
-    /// Sync replicon's `ClientState` with the stack's lifecycle.
-    ///
-    /// Sets `Connected` only for clients that receive replication.
-    fn sync_client_state(
-        connected: Query<'_, '_, (), (With<Connected>, With<Client>, With<ReplicationReceiver>)>,
-        state: Res<'_, State<ClientState>>,
+    /// Makes replicon's `ClientState` connected as a client that receives replication connects:
+    /// the state follows the link's own events, so a link that fails and comes back between two
+    /// frames still runs replicon's reset, as `NextState::set` runs the transition to the same
+    /// state too.
+    fn on_replication_connect(
+        trigger: On<'_, '_, Add<(Connected, ReplicationReceiver)>>,
+        receivers: Query<'_, '_, (), (With<Connected>, With<Client>, With<ReplicationReceiver>)>,
         mut next_state: ResMut<'_, NextState<ClientState>>,
     ) {
-        if !connected.is_empty() && *state.get() != ClientState::Connected {
+        if receivers.contains(trigger.entity) {
             next_state.set(ClientState::Connected);
         }
-        if connected.is_empty() && *state.get() != ClientState::Disconnected {
-            next_state.set(ClientState::Disconnected);
-        }
+    }
+
+    /// Forgets the confirmed ticks as replicon resets: none of the next link's ticks are the last
+    /// one's.
+    fn forget_confirmed_ticks(mut confirmed_ticks: ResMut<'_, ConfirmedTickMap>) {
+        confirmed_ticks.clear();
     }
 
     /// Receive packets from transports and populate `ClientMessages` (replication data from
@@ -128,13 +117,22 @@ impl ClientRepliconPlugin {
     ///
     /// Reads from server_channels (Updates, Mutations) on each transport; a client with no
     /// `ReplicationReceiver` applies none, so its messages are dropped, as replication alone reads
-    /// its channels (11-net-stack/transport.md, A channel has one reader).
+    /// its channels (11-net-stack/transport.md, A channel has one reader). A receiver's messages
+    /// wait in its channels while replicon's state is not connected, or changes this frame: a link
+    /// that came back gives its first messages to replicon once its reset ran, not before.
     fn receive_client_packets(
         channel_map: Res<'_, RepliconChannelMap>,
+        state: Res<'_, State<ClientState>>,
+        next_state: Res<'_, NextState<ClientState>>,
         mut client_messages: ResMut<'_, ClientMessages>,
         mut transports: Query<'_, '_, (&mut Transport, Has<ReplicationReceiver>), With<Client>>,
     ) {
+        let admitted =
+            *state.get() == ClientState::Connected && matches!(*next_state, NextState::Unchanged);
         for (mut transport, receives) in transports.iter_mut() {
+            if receives && !admitted {
+                continue;
+            }
             for (idx, channel) in channel_map.server_channels.iter().enumerate() {
                 if let Some(receiver) = transport.channel_receiver_mut(*channel) {
                     while let Some(message) = receiver.read_message() {
@@ -149,12 +147,18 @@ impl ClientRepliconPlugin {
 
     /// Send `ClientMessages` (acks) via transport to server.
     ///
-    /// Drains `ClientMessages` and sends on client_channels (MutationAcks).
+    /// Drains `ClientMessages` and sends on client_channels (MutationAcks). Replicon's client
+    /// holds one server's ticks and entities, so a client app has one link that receives
+    /// replication at most.
     fn send_client_packets(
         channel_map: Res<'_, RepliconChannelMap>,
         mut client_messages: ResMut<'_, ClientMessages>,
         mut transports: Query<'_, '_, &mut Transport, (With<Client>, With<ReplicationReceiver>)>,
     ) {
+        debug_assert!(
+            transports.iter().len() <= 1,
+            "a client app has one link that receives replication at most"
+        );
         for (channel_idx, message) in client_messages.drain_sent() {
             let channel_id = channel_map.client_channels[channel_idx];
             for mut transport in &mut transports {
@@ -172,11 +176,13 @@ impl ClientRepliconPlugin {
     /// `Remove` observers run before the components disappear, so receiver-local [`Persistent`] can
     /// still be read here.
     ///
-    /// Each received entity is despawned, except a [`Persistent`] one, which becomes a local
+    /// Replicon's state becomes disconnected, so its reset runs in the frame's transition. Each
+    /// received entity is despawned, except a [`Persistent`] one, which becomes a local
     /// entity: its replication markers go, as replicon forgets which server entity it was. A
     /// reconnect then replicates the server's entity anew, as a second entity.
     fn on_replication_disconnect(
         trigger: On<'_, '_, Remove<(Connected, ReplicationReceiver)>>,
+        mut next_state: ResMut<'_, NextState<ClientState>>,
         mut commands: Commands<'_, '_>,
         receivers: Query<
             '_,
@@ -185,7 +191,6 @@ impl ClientRepliconPlugin {
             (With<Connected>, With<Client>, With<ReplicationReceiver>),
         >,
         replicated: Query<'_, '_, (Entity, Has<Persistent>), With<Remote>>,
-        mut confirmed_ticks: ResMut<'_, ConfirmedTickMap>,
     ) {
         // The tuple observer runs when either component is removed. Only clean up a connection that
         // had both components immediately before this removal, and do not clean up twice if its
@@ -194,7 +199,7 @@ impl ClientRepliconPlugin {
             return;
         };
 
-        confirmed_ticks.clear();
+        next_state.set(ClientState::Disconnected);
 
         // The despawns come first: each detaches its `Remote` children, a persistent one among
         // them, which then becomes local with its parent gone.

@@ -3,6 +3,7 @@ use crate::visual_correction::CONVERGED;
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use core::fmt::Debug;
+use core::time::Duration;
 
 /// Decay schedule for [`VisualCorrection`](crate::visual_correction::VisualCorrection) errors.
 ///
@@ -23,14 +24,14 @@ pub struct CorrectionPolicy {
     ///
     /// The default is the unbounded exponential, tuned in the two parameters
     /// below. A bounded curve ([`CorrectionEase::Smoothstep`] and friends) is
-    /// normalised over `duration_secs` instead, and reaches zero at its end.
+    /// normalised over `duration` instead, and reaches zero at its end.
     ease: CorrectionEase,
-    /// How long the curve takes, in seconds.
+    /// How long the curve takes.
     ///
     /// A bounded curve is normalised over it and reaches zero at its end. An exponential
     /// carries its own period for its shape and is cut off here, which its constructors set to
     /// where it converges.
-    duration_secs: f32,
+    duration: Duration,
 }
 
 impl Default for CorrectionPolicy {
@@ -39,46 +40,39 @@ impl Default for CorrectionPolicy {
     fn default() -> Self {
         Self::exponential(
             CorrectionEase::DEFAULT_DECAY_RATIO,
-            CorrectionEase::DEFAULT_DECAY_PERIOD_SECS,
+            CorrectionEase::DEFAULT_DECAY_PERIOD,
         )
     }
 }
 
 impl CorrectionPolicy {
-    /// Custom exponential schedule: after each `decay_period_secs`, `decay_ratio` of
+    /// Custom exponential schedule: after each `decay_period`, `decay_ratio` of
     /// the error remains. Insert on an entity to override the global schedule for
     /// that entity only.
     ///
     /// It runs until it keeps under a thousandth of its error, the visual correction's
     /// convergence: the window that ends it.
-    pub fn new(decay_ratio: f32, decay_period_secs: core::time::Duration) -> Self {
-        Self::exponential(decay_ratio, decay_period_secs.as_secs_f32())
+    pub fn new(decay_ratio: f32, decay_period: Duration) -> Self {
+        Self::exponential(decay_ratio, decay_period)
     }
 
-    fn exponential(decay_ratio: f32, decay_period_secs: f32) -> Self {
+    fn exponential(decay_ratio: f32, decay_period: Duration) -> Self {
         Self {
             ease: CorrectionEase::Exponential {
                 decay_ratio,
-                decay_period_secs,
+                decay_period,
             },
-            duration_secs: CorrectionEase::exponential_window_secs(
-                decay_ratio,
-                decay_period_secs,
-                CONVERGED,
-            ),
+            duration: CorrectionEase::exponential_window(decay_ratio, decay_period, CONVERGED),
         }
     }
 
-    /// Any curve, run over `duration_secs`.
+    /// Any curve, run over `duration`.
     ///
     /// This is how a bounded curve is selected: an exponential ignores the
     /// duration and is only bounded by it, while a bounded one is normalised over
     /// it and reaches zero there.
-    pub const fn with_ease(ease: CorrectionEase, duration_secs: f32) -> Self {
-        Self {
-            ease,
-            duration_secs,
-        }
+    pub const fn with_ease(ease: CorrectionEase, duration: Duration) -> Self {
+        Self { ease, duration }
     }
 
     /// The curve this policy decays on.
@@ -94,8 +88,7 @@ impl CorrectionPolicy {
     /// window the frame falls — so it is read from `elapsed`, which the caller
     /// takes from the correction's own recorded start.
     #[inline]
-    pub fn lerp_ratio(&self, elapsed_secs: f32, delta: core::time::Duration) -> f32 {
-        self.ease
-            .keep(elapsed_secs, delta.as_secs_f32(), self.duration_secs)
+    pub fn lerp_ratio(&self, elapsed: Duration, delta: Duration) -> f32 {
+        self.ease.keep(elapsed, delta, self.duration)
     }
 }

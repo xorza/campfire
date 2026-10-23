@@ -1,14 +1,14 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 
 use crate::capability::Capability;
 use crate::command::Command;
-use crate::seat_event::SeatEvent;
+use crate::player_slot_event::PlayerSlotEvent;
 
-/// The inputs applied in the running tick: the players' inputs, and the changes of who controls
-/// a seat. The runner fills it from the session log before each tick, and the schedule empties
+/// The inputs applied in the running tick: the players' inputs, and the changes of who controls a
+/// player slot. The runner fills it from the session log before each tick, and the schedule empties
 /// it when the tick ends, so no tick sees another's inputs. It is not state: the log holds the
 /// inputs. Each input's commands are read once, as it comes.
 #[derive(Resource, Debug, Default)]
@@ -17,35 +17,35 @@ pub struct TickInputs {
     payloads: Vec<u8>,
     /// The commands of the inputs, in order: none of an input whose payload has a flaw.
     commands: Vec<Stored>,
-    /// The seat events, in the order the log took them.
-    seat_events: Vec<SeatEvent>,
+    /// The player slot events, in the order the log took them.
+    player_slot_events: Vec<PlayerSlotEvent>,
 }
 
 /// A command of a player's input, as the capability it goes to reads it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerCommand<'a> {
-    pub seat: Seat,
+    pub player_slot: PlayerSlot,
     pub body: &'a [u8],
 }
 
 /// A command held: its player, its capability and its body among the payloads.
 #[derive(Debug)]
 struct Stored {
-    seat: Seat,
+    player_slot: PlayerSlot,
     capability: Capability,
     body: Range<usize>,
 }
 
-/// One input: the player's seat, and the payload, a list of commands.
+/// One input: the player's player slot, and the payload, a list of commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TickInput<'a> {
-    pub seat: Seat,
+    pub player_slot: PlayerSlot,
     pub payload: &'a [u8],
 }
 
 #[derive(Debug)]
 struct Entry {
-    seat: Seat,
+    player_slot: PlayerSlot,
     payload: Range<usize>,
 }
 
@@ -54,7 +54,7 @@ impl TickInputs {
         let start = self.payloads.len();
         self.payloads.extend_from_slice(input.payload);
         self.inputs.push(Entry {
-            seat: input.seat,
+            player_slot: input.player_slot,
             payload: start..self.payloads.len(),
         });
         let held = self.commands.len();
@@ -62,7 +62,7 @@ impl TickInputs {
         let commands = &mut self.commands;
         let whole = Command::read(payload, |command, body| {
             commands.push(Stored {
-                seat: input.seat,
+                player_slot: input.player_slot,
                 capability: command.capability,
                 body: start + body.start..start + body.end,
             });
@@ -80,24 +80,24 @@ impl TickInputs {
             .iter()
             .filter(move |held| held.capability == capability);
         ours.map(|held| PlayerCommand {
-            seat: held.seat,
+            player_slot: held.player_slot,
             body: &self.payloads[held.body.clone()],
         })
     }
 
-    pub fn push_seat_event(&mut self, event: SeatEvent) {
-        self.seat_events.push(event);
+    pub fn push_player_slot_event(&mut self, event: PlayerSlotEvent) {
+        self.player_slot_events.push(event);
     }
 
-    /// The seat events in the order they were pushed.
-    pub fn seat_events(&self) -> &[SeatEvent] {
-        &self.seat_events
+    /// The player slot events in the order they were pushed.
+    pub fn player_slot_events(&self) -> &[PlayerSlotEvent] {
+        &self.player_slot_events
     }
 
     /// The inputs in the order they were pushed.
     pub fn iter(&self) -> impl ExactSizeIterator<Item = TickInput<'_>> {
         self.inputs.iter().map(|entry| TickInput {
-            seat: entry.seat,
+            player_slot: entry.player_slot,
             payload: &self.payloads[entry.payload.clone()],
         })
     }
@@ -106,20 +106,20 @@ impl TickInputs {
         self.inputs.clear();
         self.payloads.clear();
         self.commands.clear();
-        self.seat_events.clear();
+        self.player_slot_events.clear();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::seat_event::SeatEventKind;
+    use crate::player_slot_event::PlayerSlotEventKind;
 
-    /// The seat and the body of each command to `capability` that `inputs` holds.
+    /// The player slot and the body of each command to `capability` that `inputs` holds.
     fn read(inputs: &TickInputs, capability: Capability) -> Vec<(u32, &[u8])> {
         let commands = inputs.commands(capability);
         commands
-            .map(|command| (command.seat.get(), command.body))
+            .map(|command| (command.player_slot.get(), command.body))
             .collect()
     }
 
@@ -140,9 +140,12 @@ mod tests {
         let cut = &whole[..whole.len() - 1];
         let third = Command::encode(&[order(b"d")]);
         let mut inputs = TickInputs::default();
-        for (seat, payload) in [(1, first.as_slice()), (2, cut), (3, &third)] {
-            let seat = Seat::new(seat);
-            inputs.push(TickInput { seat, payload });
+        for (player_slot, payload) in [(1, first.as_slice()), (2, cut), (3, &third)] {
+            let player_slot = PlayerSlot::new(player_slot);
+            inputs.push(TickInput {
+                player_slot,
+                payload,
+            });
         }
         assert_eq!(
             read(&inputs, Capability::Orders),
@@ -150,14 +153,14 @@ mod tests {
         );
         assert_eq!(read(&inputs, Capability::Mode), [(1, &b"m"[..])]);
         assert_eq!(inputs.iter().len(), 3);
-        let joined = SeatEvent {
-            seat: Seat::new(2),
-            kind: SeatEventKind::Joined,
+        let joined = PlayerSlotEvent {
+            player_slot: PlayerSlot::new(2),
+            kind: PlayerSlotEventKind::Joined,
         };
-        inputs.push_seat_event(joined);
-        assert_eq!(inputs.seat_events(), [joined]);
+        inputs.push_player_slot_event(joined);
+        assert_eq!(inputs.player_slot_events(), [joined]);
         inputs.clear();
         assert_eq!(read(&inputs, Capability::Orders), []);
-        assert_eq!(inputs.seat_events(), []);
+        assert_eq!(inputs.player_slot_events(), []);
     }
 }

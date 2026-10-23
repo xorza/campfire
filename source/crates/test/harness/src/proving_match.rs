@@ -3,7 +3,7 @@ use campfire_capabilities::Order;
 use campfire_math::{Num, Vec3};
 use campfire_orders::OrdersDirective;
 use campfire_production::TrainQueue;
-use campfire_protocol::{InputRules, SeatPlan};
+use campfire_protocol::{InputRules, PlayerSlotPlan};
 use campfire_sim::StableId;
 use campfire_test_packages::TestMode;
 use campfire_units::GroundPoint;
@@ -31,8 +31,8 @@ pub enum ProvingMatch {
     Cast { slot: u8, at: CastAim },
     /// The hero attacks the boulder.
     AttackBoulder,
-    /// The hero attacks the hero of player `seat`.
-    AttackHero { seat: u32 },
+    /// The hero attacks the hero of player `player_slot`.
+    AttackHero { player_slot: u32 },
     /// The player's barracks of that place, by stable id, trains a guard.
     Train { barracks: usize },
     /// The player's barracks of that place posts a ward at a point.
@@ -61,8 +61,8 @@ const SCRIPT: [Scripted<ProvingMatch>; 24] = [
     Scripted::new(2, 1, ProvingMatch::Train { barracks: 0 }),
     Scripted::new(3, 0, ProvingMatch::Move { x: -1, z: -1 }),
     Scripted::new(3, 1, ProvingMatch::Move { x: 2, z: 2 }),
-    Scripted::new(5, 0, ProvingMatch::AttackHero { seat: 1 }),
-    Scripted::new(29, 0, ProvingMatch::AttackHero { seat: 1 }),
+    Scripted::new(5, 0, ProvingMatch::AttackHero { player_slot: 1 }),
+    Scripted::new(29, 0, ProvingMatch::AttackHero { player_slot: 1 }),
     cast(30, 0, 0, CastAim::HeroPoint { slot: 1 }),
     cast(40, 1, 0, CastAim::Hero { slot: 0 }),
     cast(60, 0, 1, CastAim::HeroPoint { slot: 1 }),
@@ -88,11 +88,11 @@ const SCRIPT: [Scripted<ProvingMatch>; 24] = [
     ),
 ];
 
-/// A cast by the player `seat`'s hero of its ability slot `action` at `aim`.
-const fn cast(stamp: u64, seat: u32, action: u8, aim: CastAim) -> Scripted<ProvingMatch> {
+/// A cast by the player `player_slot`'s hero of its ability slot `action` at `aim`.
+const fn cast(stamp: u64, player_slot: u32, action: u8, aim: CastAim) -> Scripted<ProvingMatch> {
     Scripted::new(
         stamp,
-        seat,
+        player_slot,
         ProvingMatch::Cast {
             slot: action,
             at: aim,
@@ -111,17 +111,17 @@ impl ProvingMatch {
 
     pub fn load() -> ScriptedMode<Self> {
         let packages = TestMode::Proving.packages();
-        let plan = [SeatPlan::Player, SeatPlan::Open];
+        let plan = [PlayerSlotPlan::Player, PlayerSlotPlan::Open];
         let session = FixedSession::planned(packages, InputRules::ROOMY, plan);
         ScriptedMode::new(session, SCRIPT.to_vec())
     }
 }
 
 impl Plan for ProvingMatch {
-    fn start(_: &mut FixedMatch, _: &[SeatPlan]) {}
+    fn start(_: &mut FixedMatch, _: &[PlayerSlotPlan]) {}
 
-    fn order(self, units: MatchUnits<'_>, seat: u32) -> Order {
-        let hero = units.hero(seat);
+    fn order(self, units: MatchUnits<'_>, player_slot: u32) -> Order {
+        let hero = units.hero(player_slot);
         let (unit, action) = match self {
             Self::Move { x, z } => (
                 hero,
@@ -138,21 +138,21 @@ impl Plan for ProvingMatch {
                     target: boulder(units),
                 },
             ),
-            Self::AttackHero { seat } => (
+            Self::AttackHero { player_slot } => (
                 hero,
                 OrdersDirective::Attack {
-                    target: units.hero(seat),
+                    target: units.hero(player_slot),
                 },
             ),
             Self::Train { barracks: at } => (
-                barracks(units, seat)[at],
+                barracks(units, player_slot)[at],
                 OrdersDirective::Slot {
                     slot: 0,
                     target: ActionTarget::None,
                 },
             ),
             Self::Ward { barracks: at, x, z } => (
-                barracks(units, seat)[at],
+                barracks(units, player_slot)[at],
                 OrdersDirective::Slot {
                     slot: 1,
                     target: ActionTarget::Point(Vec3::from((Num::int(x), 0, Num::int(z)))),
@@ -170,11 +170,13 @@ impl Plan for ProvingMatch {
     }
 }
 
-/// Player `seat`'s barracks, by stable id.
-fn barracks(units: MatchUnits<'_>, seat: u32) -> Vec<StableId> {
+/// Player `player_slot`'s barracks, by stable id.
+fn barracks(units: MatchUnits<'_>, player_slot: u32) -> Vec<StableId> {
     units
         .all()
-        .filter(|(_, unit)| MatchUnits::owned_by(unit, seat) && unit.contains::<TrainQueue>())
+        .filter(|(_, unit)| {
+            MatchUnits::owned_by(unit, player_slot) && unit.contains::<TrainQueue>()
+        })
         .map(|(id, _)| id)
         .collect()
 }

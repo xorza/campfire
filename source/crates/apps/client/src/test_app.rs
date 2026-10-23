@@ -18,14 +18,20 @@ use bevy::winit::WinitPlugin;
 use bevy::world_serialization::WorldAsset;
 use campfire_actions::{ActionBook, SlotKindBook};
 use campfire_app_threads::OneThreadPlugins;
-use campfire_net::JoinState;
+use campfire_client_files::{HudFile, PickingFile, TeamColors};
+use campfire_geometry::Metric;
+use campfire_host::JoinState;
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use campfire_test_packages::TestMode;
 use campfire_units::MapBook;
 
 use crate::input_map::InputMap;
 use crate::selection::Selection;
-use crate::view::client_data::ClientData;
+use crate::view::client_data::ClientLoad;
+use crate::view::map_metric::MapMetric;
+use crate::view::match_colors::MatchColors;
+use crate::view::match_hud::MatchHud;
+use crate::view::match_picking::MatchPicking;
 use crate::view::unit_looks::UnitLooks;
 
 /// An app with no window of what a client's match holds before any plugin of the client's end, as
@@ -83,7 +89,11 @@ pub(crate) fn add_match(app: &mut App) {
     app.init_resource::<UnitLooks>();
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
     Unpredicted::register(app.world_mut());
-    app.init_resource::<ClientData>();
+    app.init_resource::<ClientLoad>();
+    app.insert_resource(MapMetric(Metric::Planar));
+    app.insert_resource(MatchColors::new(TeamColors::default()));
+    app.insert_resource(MatchHud(HudFile::default()));
+    app.insert_resource(MatchPicking(PickingFile::default()));
 }
 
 /// An app with no window that loads assets on the test's thread, models among them.

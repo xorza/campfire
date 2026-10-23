@@ -7,7 +7,8 @@ use campfire_net_connection::{
     Client, ClientOf, Connect, Connected, Disconnected, DisconnectedReason, Start,
 };
 use campfire_net_core::PeerId;
-use campfire_net_emulator::{DuplexModel, EmulatedNetwork, WireClock};
+use campfire_net_core::TimeSource;
+use campfire_net_emulator::{DuplexModel, EmulatedNetwork};
 use campfire_net_endpoint::Endpoint;
 use campfire_net_link::{Link, LinkOf, Linked, RemoteAddress, Server};
 use campfire_net_packets::{EndpointPieces, EndpointSetup};
@@ -37,7 +38,7 @@ impl Harness {
             LinkPlugin,
             EndpointPlugin::<EmulatedWires>::default(),
             ConnectionPlugins,
-            ServerConnectionPlugins,
+            ServerConnectionPlugin,
         ));
         let server = app
             .world_mut()
@@ -49,7 +50,7 @@ impl Harness {
         app.world_mut().trigger(Start { entity: server });
         Self {
             app,
-            network: EmulatedNetwork::new(WireClock::Driven),
+            network: EmulatedNetwork::new(TimeSource::Driven),
             server,
             now: Duration::ZERO,
         }

@@ -5,9 +5,10 @@ use bevy_ecs::system::ResMut;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_common::ChannelBinding;
 use campfire_net_core::Instant;
+use campfire_net_core::TimeSource;
 use campfire_net_emulator::internals::per_mille;
 use campfire_net_emulator::{
-    DuplexModel, EmulatedIo, EmulatedNetwork, LinkConditioning, LinkModel, WireClock,
+    DuplexModel, EmulatedIo, EmulatedNetwork, LinkConditioning, LinkModel,
 };
 use campfire_net_link::{LinkPlugin, Unlinked};
 use campfire_net_packets::EmulatedWires;
@@ -98,7 +99,7 @@ impl Harness {
         server_parts: EndpointPieces<EmulatedWires>,
         client_parts: impl FnOnce(EmulatedIo) -> EndpointPieces<EmulatedWires>,
     ) -> Self {
-        let network = EmulatedNetwork::new(WireClock::Driven);
+        let network = EmulatedNetwork::new(TimeSource::Driven);
         let pair = network.pair(models);
         let app = || {
             let mut app = App::new();
@@ -200,7 +201,7 @@ fn a_client_links_and_payloads_cross_both_ways() {
     );
     assert_eq!(
         server_world.get::<RemoteAddress>(link).unwrap().0,
-        EmulatedNetwork::new(WireClock::Driven)
+        EmulatedNetwork::new(TimeSource::Driven)
             .pair(DuplexModel::default())
             .server
             .remote_address(),
@@ -397,7 +398,7 @@ fn a_client_connects_again_on_its_endpoint() {
 /// no frame driving the packet sessions' timers.
 #[test]
 fn a_real_clock_runs_the_pass_on_a_thread() {
-    let network = EmulatedNetwork::new(WireClock::Os);
+    let network = EmulatedNetwork::new(TimeSource::Os);
     let pair = network.pair(DuplexModel::default());
     let app = || {
         let mut app = App::new();
@@ -484,6 +485,7 @@ impl Bound {
     const fn established(peer: SocketAddr) -> Established {
         Established {
             peer,
+            local: None,
             protection: Protection::Plain,
             prefix: None,
             route: None,

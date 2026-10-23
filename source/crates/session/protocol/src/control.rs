@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
 
-/// Who controls a seat: a player, by their current delegation `D`, with their chain as logged so
-/// far; a bot; no one; or no one but the player who left it. One shape for every holder of it:
-/// the log keeps a delegation by its index among its entries, a checkpoint's carry the
+/// Who controls a player slot: a player, by their current delegation `D`, with their chain as
+/// logged so far; a bot; no one; or no one but the player who left it. One shape for every holder
+/// of it: the log keeps a delegation by its index among its entries, a checkpoint's carry the
 /// delegation itself, its wire the delegation's JSON, and a reader of the log borrows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Control<D> {
@@ -15,8 +15,8 @@ pub enum Control<D> {
     Reserved,
 }
 
-/// Who controls a seat now, as a reader of the log sees it, the player's delegation borrowed from
-/// the log.
+/// Who controls a player slot now, as a reader of the log sees it, the player's delegation borrowed
+/// from the log.
 pub type Controller<'a> = Control<&'a Delegation>;
 
 impl<D> Control<D> {

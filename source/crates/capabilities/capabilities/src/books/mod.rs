@@ -1,26 +1,31 @@
 //! What a match is built from: each package's content, as the load reads it, and the books a
 //! match reads, built from it with no world.
 
-use campfire_declarations::{Book, BuiltBooks};
+use campfire_declarations::{Book, BuiltBooks, CapabilitySet};
 use campfire_mode::{MarkerSpec, ModeInputs};
 
 pub(crate) mod book_cells;
 pub(crate) mod book_input;
-pub(crate) mod leftover_books;
 pub(crate) mod load_names;
 pub(crate) mod package_content;
 pub(crate) mod units_seed;
 
 /// The books of a match, built once from its packages at its tick rate, each until the build
-/// puts it where its owner declares it, before its owner installs; and what the mode's load
-/// takes.
+/// puts it where its owner declares it, before its owner installs; what the mode's load takes;
+/// and the capabilities whose modules built them, which the match runs.
 #[derive(Debug)]
 pub struct Books {
     pub(crate) built: BuiltBooks,
     pub(crate) inputs: ModeInputs,
+    pub(crate) set: CapabilitySet,
 }
 
 impl Books {
+    /// The capabilities whose modules built the books, which a match of them runs.
+    pub const fn set(&self) -> CapabilitySet {
+        self.set
+    }
+
     /// The book of type `B`, when a module of the match declares it.
     pub fn get<B: Book>(&self) -> Option<&B> {
         self.built.get::<B>()

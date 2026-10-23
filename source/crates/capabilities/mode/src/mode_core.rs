@@ -1,26 +1,30 @@
+use crate::mode_queue::ModeQueues;
 use std::num::NonZeroU8;
 
 use campfire_actions::{LoadoutRanks, SlotClaims, SlotError, SlotKind, SlotKinds};
 use campfire_common::DeclaredName;
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, Declarations, InstallCx, Module, NoSystems, SourceKind,
+    BookCx, BookError, BookPlace, ById, Declarations, InstallCx, Module, NoSystems, SourceKind,
 };
-use campfire_navigation::{ModeNavigationData, NavigationBook, WalkCheck, Walker, WalkerKinds};
+use campfire_navigation::{ModeNavigationData, NavigationBook, WalkCheck, Walker, WalkerBook};
 use campfire_script::{Audience, UnknownName};
 use campfire_sim::Capability;
-use campfire_units::{BodyForm, MapBook, TeamNames, WallBook};
-use campfire_values::{Named, PackageIndex, UnitType};
+use campfire_units::{BodyForm, MapBook, WallBook};
+use campfire_values::{Named, PackageIndex, Team, UnitType};
 
 use crate::bounty_book::BountyBook;
 use crate::bounty_data::{BountyData, ModeBountyData};
 use crate::choice_data::Offers;
 use crate::error::ModeDataError;
+use crate::income_data::IncomeData;
+use crate::input_book::InputBook;
 use crate::match_end::MatchEnd;
 use crate::mode_data::ModeData;
 use crate::mode_map::ModeMap;
 use crate::mode_units::ModeUnits;
 use crate::player_control::PlayerControl;
-use crate::seat_picks::SeatPicks;
+use crate::player_slot_picks::PlayerSlotPicks;
+use crate::type_income::TypeIncome;
 use crate::victory::VictoryBook;
 use crate::victory_data::VictoryData;
 
@@ -33,11 +37,12 @@ pub struct ModeCore;
 impl Module for ModeCore {
     const CAPABILITY: Option<Capability> = Some(Capability::Mode);
     const NEEDS: &'static [Capability] = &[];
-    const USES: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[Capability::Navigation];
     type Systems = NoSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.fact::<TeamNames>(ModeMap::team_fact);
+        d.names::<Team>(ModeMap::team_table);
+        d.own::<ModeQueues>();
         d.fact::<LoadoutRanks>(Self::loadout_ranks);
         d.fact::<ModeMap>(ModeMap::build);
         d.fact::<ModeUnits>(ModeUnits::build);
@@ -45,7 +50,10 @@ impl Module for ModeCore {
         d.section::<ModeBountyData>();
         d.section::<BountyData>();
         d.book::<BountyBook>(BountyBook::build);
+        d.section::<IncomeData>();
+        d.book::<ById<UnitType, TypeIncome>>(TypeIncome::book);
         d.book::<VictoryBook>(VictoryBook::build);
+        d.book::<InputBook>(InputBook::build);
         d.rule(Self::data_rule);
         d.rule(Self::choices_rule);
         d.rule(Self::walk_rule);
@@ -118,8 +126,8 @@ impl ModeCore {
                     let mut names: Vec<&DeclaredName> = choice.values.iter().collect();
                     names.sort_unstable();
                     names.dedup();
-                    // Each value's place is a seat pick's byte, short of its none.
-                    let fits = choice.values.len() < usize::from(SeatPicks::NONE);
+                    // Each value's place is a player slot pick's byte, short of its none.
+                    let fits = choice.values.len() < usize::from(PlayerSlotPicks::NONE);
                     !choice.values.is_empty()
                         && fits
                         && names.len() == choice.values.len()
@@ -165,13 +173,10 @@ impl ModeCore {
     /// placed units of the types that do not walk, as `WalkCheck::run` says.
     fn walk_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         let map = cx.fact::<ModeMap>()?;
-        let walkers = cx.book_if::<ByType<Walker>>()?;
-        let kinds: WalkerKinds = walkers
-            .into_iter()
-            .flat_map(ByType::values)
-            .copied()
-            .collect();
-        let bodies = cx.book::<ByType<BodyForm>>()?;
+        let walkers = cx.book_if::<ById<UnitType, Walker>>()?;
+        let no_kinds = WalkerBook::default();
+        let kinds = &cx.book_if::<WalkerBook>()?.unwrap_or(&no_kinds).kinds;
+        let bodies = cx.book::<ById<UnitType, BodyForm>>()?;
         let body_of = |unit_type| {
             assert!(
                 cx.type_of(unit_type).stands(),
@@ -193,7 +198,7 @@ impl ModeCore {
             ground: cx.book::<MapBook>()?,
             navigation,
             walls,
-            walkers: &kinds,
+            walkers: kinds,
             placed: &map.placed_bodies(body_of),
             spawns: &map.spawn_points(spawn_tags),
         };

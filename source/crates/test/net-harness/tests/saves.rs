@@ -1,21 +1,25 @@
 //! A player's saves and loads on a local server: a save makes a checkpoint at the boundary after
-//! the next tick, unless the mode alone saves; a quick load goes back to the latest save, its
-//! server starts again on its data from it, at the speed the match plays at, every client plays
-//! on from it, and the published log's segments verify. A save due as the server stopped begins
-//! as its restore reaches the boundary.
+//! the next tick, unless the mode alone saves; a quick load goes back to the latest save in place,
+//! at the speed the match plays at, each client's link up throughout, every client plays on from
+//! it, and the published log's segments verify. A save due as the server stopped begins as its
+//! restore reaches the boundary.
 
 use std::iter;
 use std::num::NonZeroU32;
+use std::thread;
 use std::time::Duration;
 
+use bevy_ecs::entity::Entity;
 use bevy_time::{Time, Virtual};
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
+use campfire_host::{
+    InputsDiscarded, JoinState, JournalWatch, PaceSpeed, SaveCommand, SaveRefusal, SaveRefused,
+    ServerDir, SessionDir,
+};
 use campfire_mode::{SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
-use campfire_net::{
-    InputsDiscarded, JoinState, PaceSpeed, PendingSaves, SaveCommand, SaveRefusal, SaveRefused,
-    ServerDir, SessionDir, SimServerWorld,
-};
+use campfire_net::{PendingSaves, SimServerWorld};
+use campfire_net_connection::Connected;
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_timeline::TimelineRate;
@@ -45,10 +49,10 @@ fn playing(test_dir: &TestDir, save_by: SaveBy) -> InProcessMatch {
 /// The scenario's match, its mode's `[saves]` `saves`, its server keeping its data in `scratch`, as
 /// it starts.
 fn started(test_dir: &TestDir, saves: SavesData) -> InProcessMatch {
-    let setup = InProcessSetup {
-        saves,
-        ..InProcessSetup::duo(LinkModel::perfect(), SEED_CHAIN)
-    };
+    let setup = InProcessSetup::duo(LinkModel::perfect(), SEED_CHAIN)
+        .into_builder()
+        .saves(saves)
+        .build();
     let mut local = InProcessMatch::new(setup);
     local.keep_data(test_dir.path("data"));
     local.start_match();
@@ -65,8 +69,13 @@ fn log(local: &InProcessMatch) -> &SessionLog {
     local.server().world().resource::<Session>().log()
 }
 
-/// How many loads the journal of `local`'s session, kept in `scratch`, records.
+/// How many loads the journal of `local`'s session, kept in `scratch`, records, once its writer
+/// thread, which writes in its own time, synced every record the log took.
 fn loads(test_dir: &TestDir, local: &InProcessMatch) -> usize {
+    let watch = local.server().world().resource::<JournalWatch>().0.clone();
+    while !watch.is_settled() {
+        thread::sleep(Duration::from_millis(1));
+    }
     let id = log(local).session_id().to_string();
     let journal = test_dir
         .path("data")
@@ -79,6 +88,14 @@ fn loads(test_dir: &TestDir, local: &InProcessMatch) -> usize {
     iter::from_fn(|| frames.next())
         .filter(|record| record[0] == 7)
         .count()
+}
+
+/// Whether the server's link to each client is still the one of `links`, and connected.
+fn linked(local: &InProcessMatch, links: [Entity; 2]) -> bool {
+    (0..2).all(|client| {
+        let link = links[client];
+        local.link(client) == link && local.server().world().get::<Connected>(link).is_some()
+    })
 }
 
 fn playing_on(local: &InProcessMatch) -> bool {
@@ -123,14 +140,16 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     }
     assert!(log(&local).next_tick() > save.tick);
 
-    // The quick load, at speed 2, pressed twice in one frame: the server loads once, and starts
-    // again on its data, at that speed, the match at the save's tick and in its state, the log
-    // holding nothing after it.
+    // The quick load, at speed 2, pressed twice in one frame: the server loads once, in place,
+    // at that speed, the match at the save's tick and in its state, the log holding nothing after
+    // it, and each client's link up throughout.
     local.pace().set_speed(PaceSpeed::Double);
+    let links = [0, 1].map(|client| local.link(client));
     command(&mut local, SaveCommand::LoadLatest);
     command(&mut local, SaveCommand::LoadLatest);
     for _ in 0..10 {
         local.step();
+        assert!(linked(&local, links));
         if log(&local).next_tick() == save.tick {
             break;
         }
@@ -153,9 +172,10 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     assert_eq!(log(&local).checkpoints().collect::<Vec<_>>(), [&save]);
     assert_eq!(loads(&test_dir, &local), 1);
 
-    // Every client comes back and plays on from the save.
+    // Every client joins again on its link and plays on from the save.
     for _ in 0..300 {
         local.step();
+        assert!(linked(&local, links));
         if playing_on(&local) && local.next_tick(End::Server) > save.tick.get() + 30 {
             break;
         }
@@ -164,11 +184,14 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     assert!(local.next_tick(End::Server) > save.tick.get() + 30);
     // Each player's order after the save never applies.
     let mut discarded = local.log().take::<InputsDiscarded>();
-    discarded.sort_by_key(|event| event.seat);
-    let seats = [0, 1].map(Seat::new);
+    discarded.sort_by_key(|event| event.player_slot);
+    let player_slots = [0, 1].map(PlayerSlot::new);
     assert_eq!(
         discarded,
-        seats.map(|seat| InputsDiscarded { seat, count: 1 })
+        player_slots.map(|player_slot| InputsDiscarded {
+            player_slot,
+            count: 1
+        })
     );
 
     // The published log holds the segment before the save and the one after it, and verifies.

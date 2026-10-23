@@ -1,26 +1,26 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section, SectionTable,
+    BookCx, BookError, BookPlace, ById, ByIdBuilder, Section, SectionTable,
 };
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable, UnknownName};
-use campfire_values::Named;
+use campfire_values::{Named, UnitType};
 use serde::de::Error;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::body_form::BodyForm;
+use crate::body_shape::BodyShape;
 use crate::layer::Layer;
-use crate::layer_names::LayerNames;
 
-/// A unit type's `collision` section: its body, a circle of its `radius` or a box of its `box`
-/// size, `[width, depth]`, in meters, its `height`, 0 when it names none, and the layer it moves
-/// on, the mode's first when it names none. A type without one has no body: it collides with
-/// nothing, ranges count from its center, and it moves on the first layer.
+/// A unit type's `collision` section: its body's shape, a circle of its `radius` or a box of its
+/// `box` size, `[width, depth]`, in meters, its `height`, 0 when it names none, and the layer it
+/// moves on, the mode's first when it names none, which `bodies` resolves. A type without one has
+/// no body: it collides with nothing, ranges count from its center, and it moves on the first
+/// layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CollisionData {
-    /// Its body, on the first layer until `ModeNavigationData::form` puts it on its own.
-    pub form: BodyForm,
+    pub shape: BodyShape,
     pub layer: Option<DeclaredName>,
 }
 
@@ -39,10 +39,10 @@ impl<'de> Deserialize<'de> for CollisionData {
             layer: Option<DeclaredName>,
         }
         let fields = Fields::deserialize(deserializer)?;
-        let form = match (fields.radius, fields.size) {
-            (Some(radius), None) => BodyForm::circle(radius)
+        let shape = match (fields.radius, fields.size) {
+            (Some(radius), None) => BodyShape::circle(radius)
                 .ok_or_else(|| D::Error::custom("a collision radius is positive, up to 2,048 m"))?,
-            (None, Some(size)) => BodyForm::box_sized(size).ok_or_else(|| {
+            (None, Some(size)) => BodyShape::box_sized(size).ok_or_else(|| {
                 D::Error::custom(
                     "a collision box's sides are at least 2⁻¹⁰ m, its diagonal at most 4,094 m",
                 )
@@ -53,11 +53,11 @@ impl<'de> Deserialize<'de> for CollisionData {
                 ));
             }
         };
-        let form = form
+        let shape = shape
             .raised(fields.height)
             .ok_or_else(|| D::Error::custom("a collision height is at least 0, up to 2,048 m"))?;
         Ok(Self {
-            form,
+            shape,
             layer: fields.layer,
         })
     }
@@ -68,14 +68,14 @@ impl<'de> Deserialize<'de> for CollisionData {
 impl Serialize for CollisionData {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(None)?;
-        match (self.form.circle_radius(), self.form.box_size()) {
+        match (self.shape.circle_radius(), self.shape.box_size()) {
             (Some(radius), _) => map.serialize_entry("radius", &radius)?,
             (None, size) => {
                 map.serialize_entry("box", &size.expect("a form is a circle or a box"))?;
             }
         }
-        if self.form.height() != Num::ZERO {
-            map.serialize_entry("height", &self.form.height())?;
+        if self.shape.height() != Num::ZERO {
+            map.serialize_entry("height", &self.shape.height())?;
         }
         if let Some(layer) = &self.layer {
             map.serialize_entry("layer", layer)?;
@@ -91,23 +91,23 @@ impl DataSection for CollisionData {
 impl CollisionData {
     /// The body of each unit type that stands with a `collision` section, on the layer it names,
     /// by the mode's layers, or on the first; an error for a layer the mode does not declare.
-    pub fn bodies(cx: &BookCx<'_>) -> Result<ByType<BodyForm>, BookError> {
-        let layers = cx.fact_if::<LayerNames>()?;
-        let mut bodies = ByTypeBuilder::default();
+    pub fn bodies(cx: &BookCx<'_>) -> Result<ById<UnitType, BodyForm>, BookError> {
+        let layers = cx.names_if::<Layer>()?;
+        let mut bodies = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(collision) = unit.data.section::<Self>() else {
                 continue;
             };
             let layer = match &collision.layer {
                 Some(name) => {
-                    let named = layers.and_then(|layers| layers.0.named(name.as_str()));
+                    let named = layers.and_then(|layers| layers.named(name.as_str()));
                     let unknown = || UnknownName::new(Layer::NAMES, name);
                     let at = || BookPlace::UnitType(unit.place());
                     named.ok_or_else(|| BookError::unknown(unit.package, at(), unknown()))?
                 }
                 None => Layer::FIRST,
             };
-            bodies.set(unit.unit_type, collision.form.on(layer));
+            bodies.set(unit.unit_type, BodyForm::new(collision.shape, layer));
         }
         Ok(bodies.build())
     }
@@ -127,8 +127,8 @@ mod tests {
 
     #[test]
     fn a_collision_section_reads_its_height_from_0_to_the_bound() {
-        let read = |text: &str| Toml::parse::<CollisionData>(text).map(|data| data.form);
-        let circle = BodyForm::circle(Num::ONE).unwrap();
+        let read = |text: &str| Toml::parse::<CollisionData>(text).map(|data| data.shape);
+        let circle = BodyShape::circle(Num::ONE).unwrap();
         assert_eq!(read("radius = \"1\"").ok(), Some(circle));
         assert_eq!(
             read("radius = \"1\"\nheight = \"2.5\"").ok(),

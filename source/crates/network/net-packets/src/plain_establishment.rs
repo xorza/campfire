@@ -20,6 +20,7 @@ impl PlainEstablishment {
     const fn established(peer: SocketAddr) -> Established {
         Established {
             peer,
+            local: None,
             protection: Protection::Plain,
             prefix: None,
             route: None,

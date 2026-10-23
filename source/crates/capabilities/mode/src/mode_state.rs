@@ -17,7 +17,8 @@ use crate::mode_schema::ModeSchema;
 /// The fields of the mode's script state whose `audience` is `S`'s, on the match's entity: a value
 /// for each such field its data declares, in the order of their names. Each class is a component of
 /// its own kind (10-replication-audiences.md, One kind for each type); a mode field goes to no
-/// owner or team, which the match lacks (D7).
+/// owner or team, which the match lacks (10-replication-audiences.md, Each kind has a default
+/// audience, and a mode may set it).
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ModeState<S: ModeAudience> {
@@ -64,7 +65,7 @@ impl<S: ModeAudience> ModeState<S> {
     /// The fields of its class that `schema` declares, each at its first value, in the order of
     /// their names.
     pub(crate) fn initial(schema: &ModeSchema) -> Self {
-        Self::new(schema.state.initial_of(S::AUDIENCE).cloned().collect())
+        Self::new(schema.state.initial_in(S::AUDIENCE).cloned().collect())
     }
 }
 

@@ -12,7 +12,9 @@ kind = "check"
 campfire-bots.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
-campfire-log = { workspace = true, features = ["start"] }
+campfire-host.workspace = true
+campfire-log.workspace = true
+campfire-logging.workspace = true
 campfire-net.workspace = true
 campfire-net-payload.workspace = true
 campfire-protocol.workspace = true
@@ -32,6 +34,7 @@ thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
+campfire-net-core.workspace = true
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-threads = { workspace = true, features = ["internals"] }
 

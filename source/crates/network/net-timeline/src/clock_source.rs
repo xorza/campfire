@@ -1,4 +1,5 @@
 use bevy_reflect::Reflect;
+use campfire_net_core::TimeSource;
 
 /// Where a `Clock` reads the time (11-net-stack/time.md, An external driver drives Bevy's time, and
 /// the `Frame` source follows it) (11-net-stack/time.md, The default source follows how the app's
@@ -17,4 +18,17 @@ pub enum ClockSource {
     /// `TimeUpdateStrategy`: a harness drives the app's time the one way Bevy defines, and the
     /// network clock follows it.
     Frame,
+}
+
+impl ClockSource {
+    /// Where a clock of it reads: `Auto` reads the OS until a frame shows the app's time is
+    /// driven, and `Frame` the driven time.
+    pub(crate) const fn resolve(self, driven: bool) -> TimeSource {
+        match self {
+            Self::Os => TimeSource::Os,
+            Self::Frame => TimeSource::Driven,
+            Self::Auto if driven => TimeSource::Driven,
+            Self::Auto => TimeSource::Os,
+        }
+    }
 }

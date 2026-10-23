@@ -33,7 +33,7 @@ use campfire_values::{PackageIndex, Team};
 use serde::Deserialize;
 use tracing::error;
 
-use crate::view::client_data::ClientData;
+use crate::view::client_data::ClientLoad;
 use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::file_material::{FileBlend, FileMaterial, FileMaterialPlugin};
 use crate::view::float_num::FloatNum;
@@ -88,11 +88,11 @@ impl UnitModelsPlugin {
     /// Loads every unit type's models, once the match's types are known.
     fn load_looks(
         origins: Res<'_, TypeOriginBook>,
-        data: Res<'_, ClientData>,
+        load: Res<'_, ClientLoad>,
         assets: Res<'_, AssetServer>,
         mut commands: Commands<'_, '_>,
     ) {
-        commands.insert_resource(UnitLooks::of(&origins, &data, &assets));
+        commands.insert_resource(UnitLooks::of(&origins, &load, &assets));
     }
 
     /// Places each of the map's client objects (09-zero-hour.md, The multiplayer rule for client
@@ -100,17 +100,17 @@ impl UnitModelsPlugin {
     /// its angle as a placed unit is, and its look's models over it, each at its scale; a look the
     /// mode's package lacks is logged, and its object not drawn.
     fn place_objects(
-        data: Res<'_, ClientData>,
+        (load, heights): (Res<'_, ClientLoad>, Option<Res<'_, GroundHeights>>),
         assets: Res<'_, AssetServer>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Some(looks) = data.packages.first().map(|package| &package.units) else {
+        let Some(looks) = load.packages.first().map(|package| &package.units) else {
             return;
         };
-        let heights = data.heights.as_ref();
+        let heights = heights.as_deref();
         // Each look's models resolve once, for every object of it.
         let mut resolved: BTreeMap<&DeclaredName, Vec<LookModel>> = BTreeMap::new();
-        for object in &data.objects.objects {
+        for object in &load.objects.objects {
             let models = match resolved.entry(&object.look) {
                 Entry::Occupied(models) => models.into_mut(),
                 Entry::Vacant(new) => {

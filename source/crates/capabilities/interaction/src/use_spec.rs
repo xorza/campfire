@@ -1,6 +1,6 @@
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_script::Filter;
-use campfire_values::{ActionId, Relation, TagSet};
+use campfire_values::{ActionId, Relation, TagSet, UnitType};
 
 /// An object type's use as a match reads it, package data and not state: the action of the `use`
 /// kind a user's use slot runs at it, and the units that may use it.
@@ -26,6 +26,6 @@ impl UseSpec {
     }
 }
 
-impl PerType for UseSpec {
+impl PerId<UnitType> for UseSpec {
     const SCRIPTS_ONLY: bool = false;
 }

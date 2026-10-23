@@ -12,7 +12,7 @@ use bevy_state::app::AppExtStates;
 use bevy_state::condition::in_state;
 use bevy_time::{Real, Time, Virtual};
 use campfire_common::ErrorReport;
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_declarations::CapabilitySet;
 use campfire_log::LogEvent;
 use campfire_math::TickRate;
@@ -31,76 +31,60 @@ use campfire_units::Deaths;
 use tracing::trace_span;
 
 use crate::close_code::CloseCode;
-use crate::events::input_logged::InputLogged;
-use crate::events::input_message_refused::InputMessageRefused;
-use crate::events::input_message_unfit::InputMessageUnfit;
-use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
-use crate::events::log_filled::LogFilled;
-use crate::events::match_ended::MatchEnded;
-use crate::events::save_refused::SaveRefused;
-use crate::events::script_printed::ScriptPrinted;
-use crate::events::server_frame::ServerFrame;
-use crate::events::ticks_caught_up::TicksCaughtUp;
-use crate::events::time_dropped::TimeDropped;
-use crate::events::unit_died::UnitDied;
-use crate::faults::WorkerFaults;
-use crate::faults::fault::Fault;
-use crate::hosting::Hosting;
-use crate::match_clock::MatchClock;
+use campfire_host::Fault;
+use campfire_host::Hosting;
+use campfire_host::InputLogged;
+use campfire_host::InputMessageRefused;
+use campfire_host::InputMessageUnfit;
+use campfire_host::LogFilled;
+use campfire_host::MatchClock;
+use campfire_host::MatchEnded;
+use campfire_host::SaveRefused;
+use campfire_host::ScriptPrinted;
+use campfire_host::ServerFrame;
+use campfire_host::TicksCaughtUp;
+use campfire_host::TimeDropped;
+use campfire_host::UnitDied;
+use campfire_host::WorkerFaults;
+use campfire_host::{InputNeverApplied, Unapplied};
 
 use crate::net_protocol::NetProtocolPlugin;
-use crate::net_protocol::input_message::InputMessage;
-use crate::net_protocol::save_command::SaveCommand;
 use crate::sim_server::ack_sender::AckSender;
-use crate::sim_server::bot_driver::BotDriver;
-use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::data_filter::DataFilters;
 use crate::sim_server::door::Door;
-use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::kind_shows::{KindShows, ShowSystems};
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::offering::{Dismissing, Offered, Offering};
 use crate::sim_server::pending_restore::PendingRestore;
-use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::receipts::Receipts;
-use crate::sim_server::server_phase::ServerPhase;
-use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
+use crate::sim_server::server_match::ServerMatch;
+use crate::sim_server::sim_server_world::SimServerWorld;
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;
 use crate::sim_server::viewer::Viewer;
+use campfire_host::BotDriver;
+use campfire_host::Checkpoints;
+use campfire_host::InputMessage;
+use campfire_host::JournalWatch;
+use campfire_host::PlayerLink;
+use campfire_host::SaveCommand;
+use campfire_host::SaveTaken;
+use campfire_host::ServerPhase;
 
 pub(crate) mod ack_sender;
-pub(crate) mod bot_driver;
-pub(crate) mod checkpoint_thread;
-pub(crate) mod checkpoints;
 pub(crate) mod data_filter;
 pub(crate) mod door;
-pub(crate) mod error;
-pub(crate) mod journal_watch;
 pub(crate) mod kind_shows;
 pub(crate) mod lobby;
-pub(crate) mod match_visibility;
 pub(crate) mod offering;
 pub(crate) mod pending_restore;
-pub(crate) mod player_link;
 pub(crate) mod receipts;
-pub(crate) mod seat_bot_arg;
-pub(crate) mod seat_links;
-pub(crate) mod server_bots;
-pub(crate) mod server_dir;
-pub(crate) mod server_layout;
+pub(crate) mod server_app_setup;
 pub(crate) mod server_match;
-pub(crate) mod server_phase;
-pub(crate) mod server_setup;
-pub(crate) mod session_dir;
-pub(crate) mod session_journal;
 pub(crate) mod sim_server_plugins;
 pub(crate) mod sim_server_world;
-pub(crate) mod snapshot_dir;
 pub(crate) mod spectators;
 pub(crate) mod team_rooms;
-#[cfg(feature = "internals")]
-pub(crate) mod tick_hashes;
 pub(crate) mod viewer;
 
 /// Runs a session on a network stack server: while a `Lobby` is open, lets players join, or
@@ -158,7 +142,7 @@ impl Plugin for SimServerPlugin {
         app.add_systems(
             Update,
             (
-                Lobby::free_seats,
+                Lobby::free_player_slots,
                 Offering::offer_links::<Lobby>,
                 Lobby::take_joins,
                 Lobby::start_when_full,
@@ -238,9 +222,13 @@ impl Plugin for SimServerPlugin {
                 .in_set(SimTickSystems),
         );
         #[cfg(feature = "internals")]
+        #[expect(
+            clippy::absolute_paths,
+            reason = "a gated statement names its item in full, with no gated import"
+        )]
         app.add_systems(
             FixedUpdate,
-            tick_hashes::TickHashes::record
+            campfire_host::internals::TickHashes::record
                 .after(run_sim_tick)
                 .before(Self::at_boundary)
                 .in_set(SimTickSystems),
@@ -263,11 +251,11 @@ impl Plugin for SimServerPlugin {
 
 /// The steps of the server's frame in `Update`, in their order, after the network stack's: what
 /// comes in from outside the session, a restore waiting or a spectator's choice; the door, which
-/// seats players, before the match in the lobby and after it at the door; the session's upkeep, its
-/// checkpoints and journal; the receipts of what the journal made durable; and the players' save
-/// commands, last, as a load ends the run. An app's own system of `Update` goes after them.
+/// places players, before the match in the lobby and after it at the door; the session's upkeep,
+/// its checkpoints and journal; the receipts of what the journal made durable; and the players'
+/// save commands, last, as a load ends the run. An app's own system of `Update` goes after them.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ServerFrameSystems {
+pub(crate) enum ServerFrameSystems {
     Intake,
     Door,
     SessionUpkeep,
@@ -310,9 +298,10 @@ impl SimServerPlugin {
         }
     }
 
-    /// Takes the save commands of the seated players, as `Checkpoints::take` does, and loads the
-    /// save a load names; each refused one is logged. A load ends the run the commands after it
-    /// were given in, so the frame takes none of them.
+    /// Takes the save commands of the placed players, as `Checkpoints::take` does, and runs the
+    /// match on from the save a load went back to, as `ServerMatch::follow_load` does; each
+    /// refused one is logged. A load ends the run the commands after it were given in, so the
+    /// frame takes none of them.
     fn take_save_commands(
         world: &mut World,
         (mut links, mut taken): (Local<'_, SaveLinks>, Local<'_, Vec<SaveCommand>>),
@@ -324,11 +313,9 @@ impl SimServerPlugin {
         }
         for command in taken.drain(..) {
             match Checkpoints::take(world, command) {
-                Ok(None) => {}
-                Ok(Some(segment)) => {
-                    world
-                        .load_session_save(segment)
-                        .expect("no checkpoint is on the thread");
+                Ok(SaveTaken::Planned | SaveTaken::Failed) => {}
+                Ok(SaveTaken::Loaded) => {
+                    ServerMatch::follow_load(world);
                     break;
                 }
                 Err(refusal) => SaveRefused { refusal }.log(),
@@ -340,7 +327,7 @@ impl SimServerPlugin {
 /// Logs each packet received in this frame, before the next tick runs, and tells its player where
 /// each of its inputs takes effect. A refused packet ends its link: a client that follows the
 /// rules sends none, and its chain no longer matches the log's. The links go in the order of
-/// their seats, as the log's order of one frame's inputs must not follow the query's.
+/// their player slots, as the log's order of one frame's inputs must not follow the query's.
 fn record_inputs(
     mut commands: Commands<'_, '_>,
     mut links: Query<'_, '_, (Entity, &PlayerLink, &mut MessageReceiver<InputMessage>)>,
@@ -348,11 +335,15 @@ fn record_inputs(
     mut session: ResMut<'_, Session>,
     mut frame: ResMut<'_, FrameStart>,
     mut applied: Local<'_, Vec<Applied>>,
-    mut order: Local<'_, Vec<(Seat, Entity)>>,
+    mut order: Local<'_, Vec<(PlayerSlot, Entity)>>,
 ) {
     frame.0 = session.log().next_tick();
     ServerFrame { tick: frame.0 }.log();
-    order.extend(links.iter().map(|(entity, link, ..)| (link.seat(), entity)));
+    order.extend(
+        links
+            .iter()
+            .map(|(entity, link, ..)| (link.player_slot(), entity)),
+    );
     order.sort_unstable();
     for (_, entity) in order.drain(..) {
         let (entity, &(mut link), mut receiver) =
@@ -362,20 +353,20 @@ fn record_inputs(
                 continue;
             }
             let next_tick = session.log().next_tick();
-            let seat = link.seat();
+            let player_slot = link.player_slot();
             let Some(inputs) = message.inputs() else {
-                InputMessageUnfit { seat }.log();
+                InputMessageUnfit { player_slot }.log();
                 link = refuse_link(&mut commands, entity, link);
                 continue;
             };
             let packet = PlayerPacket {
-                seat,
+                player_slot,
                 inputs: inputs.clone(),
                 signature: message.signature(),
             };
             if let Err(error) = session.record(packet, &mut applied) {
                 InputMessageRefused {
-                    seat: link.seat(),
+                    player_slot: link.player_slot(),
                     next_tick,
                     error: ErrorReport::of(&error).to_string(),
                 }
@@ -387,23 +378,24 @@ fn record_inputs(
                 link = refuse_link(&mut commands, entity, link);
                 continue;
             }
-            let Some(Controller::Player { chain, .. }) = session.log().controller(link.seat())
+            let Some(Controller::Player { chain, .. }) =
+                session.log().controller(link.player_slot())
             else {
-                unreachable!("a packet the log took is of a seat a player controls");
+                unreachable!("a packet the log took is of a player slot a player controls");
             };
             let first_seq = chain.next_seq() - u64::try_from(applied.len()).expect("a count fits");
             acks.send(entity, first_seq, &applied);
             for (((stamp, _), &outcome), seq) in inputs.zip(applied.iter()).zip(first_seq..) {
                 match Unapplied::try_from(outcome) {
                     Err(tick) => InputLogged {
-                        seat: link.seat(),
+                        player_slot: link.player_slot(),
                         seq,
                         stamp,
                         tick,
                     }
                     .log(),
                     Ok(outcome) => InputNeverApplied {
-                        seat: link.seat(),
+                        player_slot: link.player_slot(),
                         stamp,
                         next_tick,
                         outcome,
@@ -416,7 +408,7 @@ fn record_inputs(
 }
 
 /// Refuses `link`, the player link of `entity`, whose packet broke the rules: it carries no more
-/// of its seat's inputs, and its connection closes. The link as refused.
+/// of its player slot's inputs, and its connection closes. The link as refused.
 fn refuse_link(commands: &mut Commands<'_, '_>, entity: Entity, link: PlayerLink) -> PlayerLink {
     let refused = link.into_refused();
     commands.entity(entity).insert(refused);
@@ -491,7 +483,11 @@ fn replayed(
     world: &mut World,
 ) {
     #[cfg(feature = "internals")]
-    tick_hashes::TickHashes::record(world);
+    #[expect(
+        clippy::absolute_paths,
+        reason = "a gated statement names its item in full, with no gated import"
+    )]
+    campfire_host::internals::TickHashes::record(world);
 }
 
 /// Logs each unit that died in the tick just run, from combat's record of the tick's deaths,
@@ -505,7 +501,7 @@ fn report_deaths(tick: Res<'_, SimTick>, deaths: Option<Res<'_, Deaths>>) {
     if deaths.tick() != ran {
         return;
     }
-    for death in deaths.iter() {
+    for death in &deaths {
         UnitDied::of(ran, &death).log();
     }
 }

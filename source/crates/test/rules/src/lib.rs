@@ -4,9 +4,13 @@
 //! its declaration, as the rules read a gate there.
 
 #[cfg(test)]
+mod allowlist;
+#[cfg(test)]
 mod bans;
 #[cfg(test)]
 mod capabilities;
+#[cfg(test)]
+mod cfg_condition;
 #[cfg(test)]
 mod citations;
 #[cfg(test)]
@@ -22,6 +26,8 @@ mod manifest;
 #[cfg(test)]
 mod manifests;
 #[cfg(test)]
+mod named_path;
+#[cfg(test)]
 mod platform;
 #[cfg(test)]
 mod re_exports;
@@ -36,7 +42,11 @@ mod test_homes;
 #[cfg(test)]
 mod test_modules;
 #[cfg(test)]
+mod test_support;
+#[cfg(test)]
 mod type_names;
+#[cfg(test)]
+mod unsafe_code;
 #[cfg(test)]
 mod workspace;
 #[cfg(test)]

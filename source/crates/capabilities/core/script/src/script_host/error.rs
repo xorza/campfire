@@ -1,13 +1,15 @@
 use rhai::{Dynamic, EvalAltResult, ParseError, Position, Variant};
 use thiserror::Error;
 
-/// Why a script did not compile or a call failed. Scripts come from packages, so each is an
-/// expected failure; a failed call changes nothing.
+/// Why a script does not compile. Scripts come from packages, so it is an expected failure.
+#[derive(Debug, Error)]
+#[error("script does not compile")]
+pub struct CompileError(#[source] pub ParseError);
+
+/// Why a call failed. Scripts come from packages, so each is an expected failure; a failed call
+/// changes nothing.
 #[derive(Debug, Error)]
 pub enum ScriptError {
-    /// The source does not compile.
-    #[error("script does not compile")]
-    Compile(#[source] ParseError),
     /// The call ran past the operation limit of one call.
     #[error("script call over its operation limit")]
     CallLimit,
@@ -31,6 +33,10 @@ impl ScriptError {
     pub(crate) fn from_eval(error: Box<EvalAltResult>) -> Self {
         match error.unwrap_inner() {
             EvalAltResult::ErrorTooManyOperations(_) => Self::CallLimit,
+            // The progress callback ends a call past its limit by its native work with `true`.
+            EvalAltResult::ErrorTerminated(token, _) if token.as_bool() == Ok(true) => {
+                Self::CallLimit
+            }
             EvalAltResult::ErrorTerminated(..) => Self::TickBudget,
             EvalAltResult::ErrorRuntime(..) => Self::Raised(Raised::take(*error)),
             _ => Self::Runtime(error),
@@ -41,7 +47,7 @@ impl ScriptError {
 /// A value a call raised. An API raises its own error type with `error`, which its caller takes
 /// back with `get`.
 #[derive(Debug)]
-pub struct Raised(Dynamic);
+pub struct Raised(pub(crate) Dynamic);
 
 impl Raised {
     /// The error a registered function returns to raise `value`.
@@ -84,7 +90,7 @@ pub enum NumError {
 pub(crate) mod internals {
     use rhai::ParseErrorType;
 
-    use crate::script_host::error::ScriptError;
+    use crate::script_host::error::CompileError;
 
     /// A name a script uses that nothing defines before it, which fails its compile.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,13 +99,10 @@ pub(crate) mod internals {
         Module(&'a str),
     }
 
-    impl ScriptError {
+    impl CompileError {
         /// The name the script uses and nothing defines, when that fails its compile.
         pub fn undefined(&self) -> Option<Undefined<'_>> {
-            let Self::Compile(error) = self else {
-                return None;
-            };
-            match &*error.0 {
+            match &*self.0.0 {
                 ParseErrorType::VariableUndefined(name) => Some(Undefined::Variable(name)),
                 ParseErrorType::ModuleUndefined(name) => Some(Undefined::Module(name)),
                 _ => None,

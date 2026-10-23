@@ -1,4 +1,3 @@
-use campfire_actions::ProjectileFlight;
 use campfire_declarations::{Section, SectionTable};
 use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
@@ -9,6 +8,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::error::ProjectileDataError;
+use crate::projectile_flight::ProjectileFlight;
 
 /// A unit type's `projectile` section, which makes its units projectiles: they fly `speed`
 /// meters a second, `width` meters wide, for `range` meters or their action's range, homing on

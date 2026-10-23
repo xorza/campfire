@@ -23,7 +23,7 @@ use bevy_ecs::component::Mutable;
 use bevy_ecs::entity_disabling::DefaultQueryFilters;
 use bevy_ecs::prelude::*;
 use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
-use campfire_net_interpolation::HistoryComponent;
+use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::ReplicationSystems;
 use campfire_net_timeline::Rollback;
 
@@ -43,7 +43,8 @@ pub(crate) const PRE_SPAWNED_PRIORITY: usize = 120;
 pub(crate) const PREDICTED_SEND_PRIORITY: usize = 100;
 pub(crate) const PREDICTED_PRIORITY: usize = 90;
 
-/// The systems that roll back a component no network replicates.
+/// The systems that roll back a component no network replicates, which a predicted component
+/// runs too.
 pub(crate) fn add_non_networked_rollback_systems<C: Component<Mutability = Mutable> + Clone>(
     app: &mut App,
 ) {
@@ -57,7 +58,12 @@ pub(crate) fn add_non_networked_rollback_systems<C: Component<Mutability = Mutab
     app.add_observer(PredictionHistory::<C>::shift_with_local_timeline);
     app.add_systems(
         FixedPostUpdate,
+        // we need to run this during fixed update to know accurately the history for each tick
         PredictionHistory::<C>::update.in_set(PredictionSystems::UpdateHistory),
+    );
+    app.add_systems(
+        PostUpdate,
+        PredictionHistory::<C>::prune_predicted.in_set(PredictionSystems::All),
     );
     app.add_systems(
         PreUpdate,
@@ -65,16 +71,11 @@ pub(crate) fn add_non_networked_rollback_systems<C: Component<Mutability = Mutab
     );
 }
 
+/// The systems that predict a replicated component: its local rollback's, and the confirmed
+/// history's that it checks the prediction against.
 pub(crate) fn add_prediction_systems<C: HistoryComponent>(app: &mut App) {
-    app.add_observer(PredictionHistory::<C>::record_removal);
-    app.add_observer(PredictionHistory::<C>::shift_with_local_timeline);
-    app.add_observer(PredictionHistory::<C>::add_on_prediction);
+    add_non_networked_rollback_systems::<C>(app);
     app.add_observer(PredictionHistory::<C>::backfill_confirmed);
-    app.add_systems(
-        FixedPostUpdate,
-        // we need to run this during fixed update to know accurately the history for each tick
-        PredictionHistory::<C>::update.in_set(PredictionSystems::UpdateHistory),
-    );
     // Prune once per frame in PostUpdate (not before the rollback check): Check must
     // see the full confirmed history for this frame's rollback decision, including
     // snapshots received in PreUpdate. PostUpdate runs after the fixed loop,
@@ -91,7 +92,6 @@ pub(crate) fn add_prediction_systems<C: HistoryComponent>(app: &mut App) {
         (
             RollbackScan::survey_check_targets::<C>.in_set(RollbackCheckSystems::Survey),
             RollbackScan::scan_mismatches::<C>.in_set(RollbackCheckSystems::Scan),
-            RollbackPlugin::prepare_rollback::<C>.in_set(RollbackSystems::Prepare),
         ),
     );
     app.add_systems(
@@ -114,7 +114,8 @@ impl Plugin for PredictionPlugin {
     }
 
     fn build(&self, app: &mut App) {
-        // Custom entity disabling
+        // A rollback hides what it disables, and a predicted despawn what it despawned, from every
+        // query, as Bevy's own disabled entities are.
         let rollback_disable_id = app
             .world_mut()
             .register_component::<DisabledDuringRollback>();
@@ -126,12 +127,7 @@ impl Plugin for PredictionPlugin {
             .resource_mut::<DefaultQueryFilters>()
             .register_disabling_component(prediction_despawned_id);
 
-        // PreUpdate systems:
-        // 1. Receive confirmed entities, add Confirmed and Predicted components
-        // 2. (in prediction_systems) add ComponentHistory
-        // 3. (in prediction_systems) Check if we should do rollback, clear histories and snap
-        //    prediction's history to server-state
-        // 4. Potentially do rollback
+        // The rollback check reads the confirmed values this frame received.
         app.configure_sets(
             PreUpdate,
             (
@@ -145,8 +141,7 @@ impl Plugin for PredictionPlugin {
             PredictionSystems::All.run_if(PredictionSetup::should_run),
         );
 
-        // FixedPreUpdate systems
-        // - During rollback, snap components to confirmed values if we have them
+        // A replayed tick starts from the confirmed values where they are known.
         app.configure_sets(
             FixedPreUpdate,
             PredictionSystems::SnapToConfirmed
@@ -158,11 +153,6 @@ impl Plugin for PredictionPlugin {
             PredictionSystems::All.run_if(PredictionSetup::should_run),
         );
 
-        // FixedPostUpdate systems
-        // 1. Update client tick (don't run in rollback)
-        // 2. Run main physics/game fixed-update loop
-        // 3. Increment rollback tick (only run in fallback)
-        // 4. Update predicted history
         app.configure_sets(
             FixedPostUpdate,
             (
@@ -191,8 +181,6 @@ impl Plugin for PredictionPlugin {
             PostUpdate,
             PredictionSystems::All.run_if(PredictionSetup::should_run),
         );
-
-        // Timeline switch between predicted and interpolated (client-local).
     }
 }
 
@@ -253,7 +241,7 @@ mod tests {
     use crate::prediction_plugins::PredictionPlugins;
     use crate::prediction_registry_plugin::PredictionRegistryPlugin;
     use bevy_ecs::system::RunSystemOnce;
-    use campfire_net_interpolation::InterpolationRegistryPlugin;
+    use campfire_net_frame_interpolation::FrameRegistryPlugin;
 
     #[derive(Debug, Resource, Default)]
     struct SnapRuns(u32);
@@ -269,7 +257,7 @@ mod tests {
         app.init_resource::<NetworkingState>();
         app.init_resource::<ComponentRegistry>();
         app.add_plugins((
-            InterpolationRegistryPlugin,
+            FrameRegistryPlugin,
             PredictionRegistryPlugin,
             PredictionPlugins,
         ));

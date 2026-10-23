@@ -44,7 +44,7 @@ fn on_match_start(ctx) {
 
 /// The first player's kills.
 fn kills(game: &Match) -> StateValue {
-    let entity = game.player_entity(Seat::new(0)).unwrap();
+    let entity = game.player_entity(PlayerSlot::new(0)).unwrap();
     game.get::<PlayerState<AudienceOwner>>(entity)
         .unwrap()
         .values()[0]

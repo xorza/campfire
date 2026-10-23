@@ -3,16 +3,18 @@
 
 use std::time::Duration;
 
+use bevy_app::AppExit;
 use bevy_ecs::query::With;
 use campfire_bots::OrderScript;
-use campfire_common::{AfterLeave, Seat};
+use campfire_common::{AfterLeave, PlayerSlot};
+use campfire_host::internals::TickHashes;
+use campfire_host::{
+    InputsDiscarded, JoinError, JoinRefused, JoinState, Loss, SessionEnd, SessionTimes,
+};
 use campfire_math::Num;
 use campfire_mode::PlayersData;
-use campfire_net::internals::{SimServerWorldInternals, TickHashes};
-use campfire_net::{
-    CloseCode, InputsDiscarded, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss,
-    SessionTimes,
-};
+use campfire_net::internals::SimServerWorldInternals;
+use campfire_net::{CloseCode, LinkLossCause, LinkLost, SimServerWorld, StopRequest};
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_link::Unlinked;
@@ -57,39 +59,41 @@ fn units(local: &mut InProcessMatch, client: usize) -> Vec<u64> {
     ids
 }
 
-/// The slot the server seated `client`'s link in.
-fn slot_of(local: &InProcessMatch, client: usize) -> Seat {
+/// The slot the server placed `client`'s link in.
+fn slot_of(local: &InProcessMatch, client: usize) -> PlayerSlot {
     local
         .server()
         .world()
-        .link_seat(local.link(client))
+        .link_player_slot(local.link(client))
         .unwrap()
 }
 
-/// Who controls `seat` on the server.
-fn controller(local: &InProcessMatch, seat: Seat) -> Option<Controller<'_>> {
+/// Who controls `player_slot` on the server.
+fn controller(local: &InProcessMatch, player_slot: PlayerSlot) -> Option<Controller<'_>> {
     let session = local.server().world().resource::<Session>();
-    session.log().controller(seat)
+    session.log().controller(player_slot)
 }
 
-/// Where the server's hero of `seat` walks to.
-fn destination(local: &mut InProcessMatch, seat: Seat) -> Destination {
+/// Where the server's hero of `player_slot` walks to.
+fn destination(local: &mut InProcessMatch, player_slot: PlayerSlot) -> Destination {
     let world = local.server_mut().world_mut();
     let mut heroes = world.query_filtered::<(&Owner, &Destination), With<StableId>>();
     let (_, destination) = heroes
         .iter(world)
-        .find(|(owner, _)| owner.seat() == seat)
+        .find(|(owner, _)| owner.player_slot() == player_slot)
         .unwrap();
     *destination
 }
 
-/// Whether the server's hero of `seat` walks somewhere within 20 steps.
-fn moves(local: &mut InProcessMatch, seat: Seat) -> bool {
+/// Whether the server's hero of `player_slot` walks somewhere other than it walked to as the call
+/// began, within 20 steps.
+fn moves(local: &mut InProcessMatch, player_slot: PlayerSlot) -> bool {
+    let before = destination(local, player_slot);
     for _ in 0..20 {
-        if destination(local, seat) != Destination::default() {
+        local.step();
+        if destination(local, player_slot) != before {
             return true;
         }
-        local.step();
     }
     false
 }
@@ -101,16 +105,16 @@ fn a_client_whose_link_is_cut_comes_back_within_the_grace_period() {
     for _ in 0..20 {
         local.step();
     }
-    let seat = slot_of(&local, 0);
+    let player_slot = slot_of(&local, 0);
     assert!(!units(&mut local, 0).is_empty());
 
     // An order the client sends as its link is cut never reaches the server. The server logs the
-    // seat disconnected; the client tries again, and the network stack despawned what the link
-    // carried.
+    // player slot disconnected; the client tries again, and the network stack despawned what the
+    // link carried.
     local.order(0, move_to(3, -2));
     local.client_frame(0);
     local.cut_link(0);
-    let disconnected = ServerInput::Disconnected { seat };
+    let disconnected = ServerInput::Disconnected { player_slot };
     local.step_until(10, |local| local.server_inputs() == [disconnected.clone()]);
     assert!(
         local
@@ -127,11 +131,14 @@ fn a_client_whose_link_is_cut_comes_back_within_the_grace_period() {
     local.step_until(REJOIN_STEPS, |local| is_playing(local, 0));
     assert_eq!(
         local.server_inputs(),
-        [disconnected, ServerInput::Connected { seat }]
+        [disconnected, ServerInput::Connected { player_slot }]
     );
     assert_eq!(
         local.log().take::<InputsDiscarded>(),
-        [InputsDiscarded { seat, count: 1 }]
+        [InputsDiscarded {
+            player_slot,
+            count: 1
+        }]
     );
     // Its world holds each unit once, which the new link carried.
     for _ in 0..10 {
@@ -144,7 +151,7 @@ fn a_client_whose_link_is_cut_comes_back_within_the_grace_period() {
     assert_eq!(ids, once);
     // An order after the rejoin moves the hero on the server.
     local.order(0, move_to(-2, 5));
-    assert!(moves(&mut local, seat));
+    assert!(moves(&mut local, player_slot));
 }
 
 #[test]
@@ -170,13 +177,23 @@ fn a_second_login_takes_the_slot_and_ends_the_first_link() {
         }]
     );
     assert!(local.server_inputs().is_empty());
-    assert!(local.server().world().link_seat(local.link(0)).is_none());
+    assert!(
+        local
+            .server()
+            .world()
+            .link_player_slot(local.link(0))
+            .is_none()
+    );
 }
 
 #[test]
 fn of_two_logins_in_one_frame_the_later_takes_the_slot() {
     let mut local = InProcessMatch::new(InProcessSetup::SOLO);
-    assert_eq!(local.setup().server_frames, 1, "a step is one server frame");
+    assert_eq!(
+        local.setup().server_frames(),
+        1,
+        "a step is one server frame"
+    );
     local.start_match();
     for _ in 0..10 {
         local.step();
@@ -184,17 +201,17 @@ fn of_two_logins_in_one_frame_the_later_takes_the_slot() {
     let slot = slot_of(&local, 0);
     // Two more clients of the same player log in through equal links, so the server checks both
     // answers in one frame: the later one in its order takes the slot and dismisses the earlier,
-    // which it seated in the same frame, as `SeatLinks` records the link it seated last.
+    // which it placed in the same frame, as `PlayerSlotLinks` records the link it placed last.
     let logins = [local.add_client(0), local.add_client(0)];
-    let seated = |local: &InProcessMatch, client: usize| {
-        local.server().world().link_seat(local.link(client))
+    let placed = |local: &InProcessMatch, client: usize| {
+        local.server().world().link_player_slot(local.link(client))
     };
     local.step_until(REJOIN_STEPS, |local| {
-        logins.iter().any(|&client| seated(local, client).is_some())
+        logins.iter().any(|&client| placed(local, client).is_some())
     });
     let held: Vec<usize> = logins
         .into_iter()
-        .filter(|&client| seated(&local, client) == Some(slot))
+        .filter(|&client| placed(&local, client) == Some(slot))
         .collect();
     let [winner] = held[..] else {
         panic!("one login holds the slot: {held:?}");
@@ -217,8 +234,8 @@ fn of_two_logins_in_one_frame_the_later_takes_the_slot() {
         cause: LinkLossCause::ClientClosed(CloseCode::Superseded),
     };
     assert_eq!(local.log().take::<LinkLost>(), [superseded, superseded]);
-    assert_eq!(seated(&local, winner), Some(slot));
-    assert_eq!(seated(&local, loser), None);
+    assert_eq!(placed(&local, winner), Some(slot));
+    assert_eq!(placed(&local, loser), None);
     assert!(local.server_inputs().is_empty());
 }
 
@@ -266,9 +283,13 @@ fn an_expiring_delegation_is_renewed_as_the_client_comes_back() {
         local.step();
     }
     let slot = slot_of(&local, 0);
-    // A day on, the delegation expires: the client, its link cut and back, delegates a new
-    // session key, and the server logs the renewal before the slot comes back.
+    // A day on, the delegation expires; the expiry bounds the connect alone, so the connected
+    // player's order still moves the hero (08-sessions.md, A delegation's expiry bounds the
+    // connect). The client, its link cut and back, delegates a new session key, and the server
+    // logs the renewal before the slot comes back.
     local.set_clock(TestKey::NOW + 86_400 + 10);
+    local.order(0, move_to(3, -4));
+    assert!(moves(&mut local, slot));
     local.cut_link(0);
     local.step();
     local.mend_link(0);
@@ -278,9 +299,9 @@ fn an_expiring_delegation_is_renewed_as_the_client_comes_back() {
         matches!(
             inputs.as_slice(),
             [
-                ServerInput::Disconnected { seat: a },
-                ServerInput::Renew { seat: b, .. },
-                ServerInput::Connected { seat: c },
+                ServerInput::Disconnected { player_slot: a },
+                ServerInput::Renew { player_slot: b, .. },
+                ServerInput::Connected { player_slot: c },
             ] if [*a, *b, *c] == [slot; 3]
         ),
         "{inputs:?}"
@@ -292,13 +313,15 @@ fn an_expiring_delegation_is_renewed_as_the_client_comes_back() {
 
 /// A two-player match under `rules`, its grace period a second, whose client 1 is gone past it;
 /// with its slot.
-fn left_past_grace(rules: PlayersData) -> (InProcessMatch, Seat) {
-    let mut setup = InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN);
-    setup.rules = rules;
-    setup.times = SessionTimes {
-        grace: Duration::from_secs(1),
-        restore_window: Duration::from_secs(1),
-    };
+fn left_past_grace(rules: PlayersData) -> (InProcessMatch, PlayerSlot) {
+    let setup = InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN)
+        .into_builder()
+        .rules(rules)
+        .times(SessionTimes {
+            grace: Duration::from_secs(1),
+            restore_window: Duration::from_secs(1),
+        })
+        .build();
     let mut local = InProcessMatch::new(setup);
     local.start_match();
     let slot = slot_of(&local, 1);
@@ -313,6 +336,42 @@ fn left_past_grace(rules: PlayersData) -> (InProcessMatch, Seat) {
     (local, slot)
 }
 
+/// Both players of a duo gone past the second of grace leave, and the session ends as every
+/// player left.
+#[test]
+fn a_session_whose_players_all_left_ends_and_names_it() {
+    let test_dir = TestDir::new();
+    let setup = InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN)
+        .into_builder()
+        .times(SessionTimes {
+            grace: Duration::from_secs(1),
+            restore_window: Duration::from_secs(1),
+        })
+        .build();
+    let mut local = InProcessMatch::new(setup);
+    local.keep_data(test_dir.path("data"));
+    local.start_match();
+    local.cut_link(0);
+    local.cut_link(1);
+    let leaves = |local: &InProcessMatch| {
+        let inputs = local.server_inputs();
+        inputs
+            .iter()
+            .filter(|input| matches!(input, ServerInput::Leave { .. }))
+            .count()
+    };
+    local.step_until(40, |local| leaves(local) == 2);
+    let world = local.server_mut().world_mut();
+    assert_eq!(
+        world.session_end(StopRequest::NotAsked),
+        Some(SessionEnd::PlayersLeft)
+    );
+    assert_eq!(
+        world.exit_due(StopRequest::NotAsked),
+        Some(AppExit::Success)
+    );
+}
+
 #[test]
 fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner_comes_in() {
     let rules = |leaver, late_join, bot_takeover| PlayersData {
@@ -322,16 +381,16 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
         ..PlayersData::DEFAULT
     };
     // Reserved: a new player finds no slot, and the leaver takes theirs back, on a new chain.
-    let (mut local, seat) = left_past_grace(rules(AfterLeave::Reserve, false, false));
+    let (mut local, player_slot) = left_past_grace(rules(AfterLeave::Reserve, false, false));
     assert_eq!(
         local.server_inputs()[1..],
         [ServerInput::Leave {
-            seat,
+            player_slot,
             reason: LeaveReason::Grace,
             becomes: AfterLeave::Reserve,
         }]
     );
-    assert_eq!(controller(&local, seat), Some(Controller::Reserved));
+    assert_eq!(controller(&local, player_slot), Some(Controller::Reserved));
     let late = local.add_client(2);
     for _ in 0..60 {
         local.step();
@@ -343,7 +402,7 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
         .iter()
         .map(|refused| refused.error)
         .collect();
-    assert_eq!(refused, [JoinError::NoSeat]);
+    assert_eq!(refused, [JoinError::NoPlayerSlot]);
     assert!(!is_playing(&local, late));
     let state = local.client(late).world().resource::<JoinState>();
     assert_eq!(state.loss(), Some(Loss::JoinRefused));
@@ -359,7 +418,7 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
     local.step_until(REJOIN_STEPS, |local| is_playing(local, back));
     assert!(matches!(
         local.server_inputs().last(),
-        Some(ServerInput::Join { seat: joined, .. }) if *joined == seat
+        Some(ServerInput::Join { player_slot: joined, .. }) if *joined == player_slot
     ));
 
     // Played by a bot, which a new player takes over.
@@ -415,9 +474,9 @@ fn every_client_rejoins_a_restored_server() {
     let world = local.server().world();
     assert_eq!(world.resource::<TickHashes>().get()[..before.len()], before);
     let inputs = local.server_inputs();
-    for seat in slots {
-        assert!(inputs.contains(&ServerInput::Disconnected { seat }));
-        assert!(inputs.contains(&ServerInput::Connected { seat }));
+    for player_slot in slots {
+        assert!(inputs.contains(&ServerInput::Disconnected { player_slot }));
+        assert!(inputs.contains(&ServerInput::Connected { player_slot }));
     }
     assert!(local.next_tick(End::Server) > u64::try_from(before.len()).unwrap());
     let walking = |local: &mut InProcessMatch| {

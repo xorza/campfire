@@ -1,0 +1,45 @@
+[package]
+name = "campfire-logging"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.campfire]
+kind = "problem"
+
+[features]
+internals = [
+    "campfire-log/internals",
+    "campfire-store/internals",
+    "campfire-threads/internals",
+]
+
+[dependencies]
+campfire-common.workspace = true
+campfire-log.workspace = true
+campfire-store.workspace = true
+campfire-threads.workspace = true
+
+clap = { workspace = true, features = [
+    "derive",
+    "error-context",
+    "help",
+    "std",
+    "suggestions",
+    "usage",
+] }
+tracing = { workspace = true, features = ["attributes", "std"] }
+tracing-subscriber = { workspace = true, features = [
+    "ansi",
+    "env-filter",
+    "fmt",
+    "json",
+    "std",
+    "tracing-log",
+] }
+
+[dev-dependencies]
+campfire-logging = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

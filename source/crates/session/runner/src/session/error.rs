@@ -1,11 +1,13 @@
 use campfire_common::StateHash;
-use campfire_protocol::{CheckpointError, Outcome, SeatChange, SeedError, ServerInputError};
+use campfire_protocol::{
+    CheckpointError, LogLoadError, Outcome, PlayerSlotChange, SeedError, ServerInputError,
+};
 use campfire_script::CallError;
 use campfire_sim::SnapshotError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::seat_rules::error::SeatRuleError;
+use crate::player_slot_rules::error::PlayerSlotRuleError;
 use crate::session_rules::error::TermsError;
 
 /// Why a session log does not start a match. A published log is untrusted, and so are packages,
@@ -17,12 +19,12 @@ pub enum StartError {
     Seed(SeedError),
     #[error(transparent)]
     Terms(TermsError),
-    /// A change of a seat's controller the mode's `[players]` does not allow.
-    #[error("seat {} in tick {}", .change.seat.get(), .change.tick)]
-    SeatRule {
-        change: SeatChange,
+    /// A change of a player slot's controller the mode's `[players]` does not allow.
+    #[error("player slot {} in tick {}", .change.player_slot.get(), .change.tick)]
+    PlayerSlotRule {
+        change: PlayerSlotChange,
         #[source]
-        error: SeatRuleError,
+        error: PlayerSlotRuleError,
     },
     /// The mode script's `on_match_start` failed.
     #[error("the mode's start failed")]
@@ -64,7 +66,18 @@ pub enum ResumeError {
     /// The log does not load the save, as a test loads one.
     #[cfg(feature = "internals")]
     #[error("the save does not load")]
-    Load(#[source] campfire_protocol::LogLoadError),
+    Load(#[source] LogLoadError),
+}
+
+/// Why a session does not load a save in place. The snapshot is read from the disk, and the log
+/// may have no room for the load, so each is an expected failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum SaveLoadError {
+    #[error(transparent)]
+    Log(LogLoadError),
+    /// The snapshot is not the one the save's checkpoint names.
+    #[error("the snapshot is not the one its save names")]
+    Fingerprint,
 }
 
 /// Why a session begins no checkpoint at a boundary.
@@ -83,7 +96,7 @@ pub enum ServerInputRefusal {
     #[error(transparent)]
     Log(ServerInputError),
     #[error(transparent)]
-    Rule(SeatRuleError),
+    Rule(PlayerSlotRuleError),
 }
 
 /// Why a log's result does not hold for the state its replay ends in.

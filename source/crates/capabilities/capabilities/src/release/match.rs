@@ -76,8 +76,8 @@ pub(crate) mod internals {
     use campfire_actions::{SlotKindBook, SlotKindData, SlotKinds};
     use campfire_combat::Combat;
     use campfire_common::{DeclaredName, SegmentSeed};
-    use campfire_declarations::Role;
     use campfire_declarations::internals::BookLoad;
+    use campfire_declarations::{CapabilitySet, Role};
     use campfire_log::internals::LogCheck;
     use campfire_mode::{HostPicks, ModeSetup};
     use campfire_players::Players;
@@ -120,9 +120,7 @@ pub(crate) mod internals {
             let loaded = set.load(limits);
             let books = loaded.books(set);
             let pools = ScriptPools { limits, players };
-            let capabilities = Release::capability_set(&set.capabilities).unwrap();
-            let setup =
-                MatchSetup::new(SegmentSeed::ZERO, set.rate, Role::Server(pools)).set(capabilities);
+            let setup = MatchSetup::new(SegmentSeed::ZERO, set.rate, Role::Server(pools));
             let scripts: Vec<PackageScript<'_>> = (loaded.paths.iter())
                 .zip(&set.scripts)
                 .map(|(path, source)| PackageScript { path, source })
@@ -164,10 +162,9 @@ pub(crate) mod internals {
 
         /// The match of `setup`, as `MatchBuilder::build` gives it before a client's parts and
         /// the start.
-        fn test_of(setup: MatchSetup) -> Self {
+        fn test_of(setup: MatchSetup, set: CapabilitySet) -> Self {
             let log = LogCheck::start();
-            let set = setup.set;
-            let books = Release::empty_books(setup.rate());
+            let books = Release::empty_books(setup.rate(), set);
             let mut world = World::new();
             Release::build(&mut world, setup.open(), books, MatchKind::Rules);
             // A mode declares the kinds its units' slots are of: here one, whose one rank comes
@@ -189,7 +186,7 @@ pub(crate) mod internals {
     }
 
     /// How a test's match of a package set starts: its players, its scripts' limits, and what
-    /// the session's host picked of the mode's options and its seats' choices.
+    /// the session's host picked of the mode's options and its player slots' choices.
     #[derive(Debug)]
     pub struct PackageStart {
         pub players: u32,
@@ -266,8 +263,8 @@ pub(crate) mod internals {
             let set =
                 Release::capability_set(&self.with_needs()).expect("a test declares a valid set");
             let client = matches!(self.role, Role::Client);
-            let setup = MatchSetup::new(SegmentSeed::ZERO, self.rate, self.role).set(set);
-            let mut game = Match::test_of(setup);
+            let setup = MatchSetup::new(SegmentSeed::ZERO, self.rate, self.role);
+            let mut game = Match::test_of(setup, set);
             if client {
                 let holds = ClientHolds::of(&mut game, set);
                 let world = &mut *game;

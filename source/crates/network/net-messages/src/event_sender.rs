@@ -35,6 +35,10 @@ impl<M: Event> EventSender<M> {
 }
 
 impl<M: Event> QueuedSender<M> for EventSender<M> {
+    fn queue(&self) -> &SendQueue<M> {
+        &self.queue
+    }
+
     fn queue_mut(&mut self) -> &mut SendQueue<M> {
         &mut self.queue
     }

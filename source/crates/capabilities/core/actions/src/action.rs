@@ -4,8 +4,9 @@ use campfire_script::{Filter, Hook, HookSet, ScriptId};
 use campfire_values::{ModifierId, PackageIndex, Rank, Relation, TagSet};
 
 use crate::action_kind::ActionKind;
+use crate::channel_pay::ChannelPay;
 use crate::delivery::Delivery;
-use crate::rank_fields::TogglePer;
+use crate::rank_toggle::TogglePer;
 use crate::rank_values::RankValues;
 
 /// An action as a match runs it.
@@ -29,6 +30,8 @@ pub struct Action {
     pub hooks: HookSet,
     /// How it delivers, other than at once.
     pub delivery: Option<Delivery>,
+    /// What each tick of its channel pays its unit's owner.
+    pub pays: Option<ChannelPay>,
 }
 
 /// An action's passive modifier, and whether its unit holds it only while the action is off

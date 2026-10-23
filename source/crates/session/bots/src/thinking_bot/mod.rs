@@ -1,15 +1,17 @@
 use std::num::{NonZeroU32, NonZeroU64};
+use std::sync::Arc;
 
 use bevy_ecs::world::World;
 use campfire_capabilities::{BotCall, OnBotThink};
-use campfire_common::{DeclaredName, Seat, Tick, Ticks};
-use campfire_mode::ModeParam;
+use campfire_common::{DeclaredName, PlayerSlot, Tick, Ticks};
+use campfire_mode::{ModeParam, ModeWorld};
 use campfire_package::ModeBot;
-use campfire_script::{Budget, CallError, CallStart, ScriptId, ScriptsWorld};
+use campfire_script::{Budget, CallError, CallStart, Ctx, ScriptId, ScriptsWorld};
 use campfire_sim::MatchRate;
+use campfire_values::PlayerView;
 
 use crate::bot_script::bot_names::BotNames;
-use crate::bot_script::error::BotScriptError;
+use crate::bot_script::error::ThinkError;
 use crate::bot_script::{BotBuffers, BotOrder, BotSink};
 use crate::bot_view::HeldBotView;
 
@@ -19,7 +21,8 @@ use crate::bot_view::HeldBotView;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThinkingBot {
     script: ScriptId,
-    params: Vec<(DeclaredName, ModeParam)>,
+    /// Shared with the bot's call at each think, which converts a param as a script reads it.
+    params: Arc<[(DeclaredName, ModeParam)]>,
     think_ms: NonZeroU32,
 }
 
@@ -33,27 +36,18 @@ pub struct PacedBot {
     waits: bool,
 }
 
-/// What one think of a bot reads and where its orders go: its seat, the tick it thinks before,
-/// the budget it draws from, the match's names its orders resolve in, the view its orders read,
-/// the buffers of their payloads, and the sink that takes them.
+/// What one think of a bot reads and where its orders go: its player slot, the tick it thinks
+/// before, the budget it draws from, the match's names its orders resolve in, the view its orders
+/// read, the buffers of their payloads, and the sink that takes them.
 #[derive(Debug)]
 pub struct Think<'a, S: BotSink> {
-    pub seat: Seat,
+    pub player_slot: PlayerSlot,
     pub now: Tick,
     pub budget: &'a mut Budget,
     pub names: &'a BotNames<'a>,
     pub view: &'a mut HeldBotView,
     pub buffers: &'a mut BotBuffers,
     pub sink: &'a mut S,
-}
-
-/// Why a think gave no orders: its call failed, or an order it gave names what the match lacks.
-#[derive(Debug, thiserror::Error)]
-pub enum ThinkError {
-    #[error(transparent)]
-    Call(#[from] CallError),
-    #[error(transparent)]
-    Names(#[from] BotScriptError),
 }
 
 impl ThinkingBot {
@@ -87,7 +81,7 @@ impl ThinkingBot {
         think: Think<'_, S>,
     ) -> Result<(), ThinkError> {
         let Think {
-            seat,
+            player_slot,
             now,
             budget,
             names,
@@ -95,37 +89,42 @@ impl ThinkingBot {
             buffers,
             sink,
         } = think;
-        view.get(world).facts(seat, now, &mut buffers.facts);
-        let facts = buffers.facts.of_call();
-        let given = world.script_batch(|batch| {
+        let team = world.team_of(player_slot);
+        let player = PlayerView {
+            player_slot,
+            team: team.expect("a bot plays a player slot of the match's mode"),
+            out: false,
+        };
+        {
+            let ctx = world.non_send::<Ctx>().clone();
+            let mut frame = ctx.frame();
+            let call = frame
+                .extension_mut::<BotCall>()
+                .expect("a match that runs scripts holds a bot's call");
+            call.ready(&self.params);
+            view.get(world)
+                .facts(player_slot, now, &mut buffers.owned, call.facts_mut());
+        }
+        let given = &mut buffers.given;
+        given.clear();
+        world.script_batch(|batch| {
             let ctx = batch.ctx().clone();
-            {
-                let mut frame = ctx.frame();
-                let params = self.params.iter();
-                let params =
-                    params.map(|(name, param)| (name.as_str().to_owned(), param.to_value()));
-                frame
-                    .extension_mut::<BotCall>()
-                    .expect("a match that runs scripts holds a bot's call")
-                    .ready(params, facts);
-            }
-            batch.run(CallStart::bot(seat, now), |batch| {
+            batch.run(CallStart::bot(player, now), |batch| {
                 batch.call_from::<OnBotThink>(budget, self.script, (ctx.clone(),))
             })?;
-            let mut given = Vec::new();
             ctx.frame()
                 .extension_mut::<BotCall>()
                 .expect("the frame holds a bot's call")
-                .take_orders(&mut given);
-            Ok::<_, CallError>(given)
+                .take_orders(given);
+            Ok::<_, CallError>(())
         })?;
         let orders = given
-            .into_iter()
+            .drain(..)
             .map(|order| BotOrder::of_think(order, now, names))
             .collect::<Result<Vec<_>, _>>()?;
         let view = view.get(world);
         for order in &orders {
-            order.send(seat, &view, buffers, sink);
+            order.send(player_slot, &view, buffers, sink);
         }
         Ok(())
     }
@@ -149,7 +148,7 @@ impl PacedBot {
         world: &mut World,
         think: Think<'_, S>,
     ) -> Result<(), ThinkError> {
-        if !self.waits && !Self::in_phase(think.seat, think.now, self.period) {
+        if !self.waits && !Self::in_phase(think.player_slot, think.now, self.period) {
             return Ok(());
         }
         let thought = self.bot.think(world, think);
@@ -160,11 +159,15 @@ impl PacedBot {
         thought
     }
 
-    /// Whether the bot of `seat` that thinks every `period` thinks before `tick`: each seat a
-    /// tick later in the period than the seat before, so bots of one period think in ticks of
-    /// their own (03-game-scripting.md, A bot decides from what it sees, each think).
-    const fn in_phase(seat: Seat, tick: Tick, period: Ticks) -> bool {
-        (tick.get() + seat.get() as u64).is_multiple_of(period.get())
+    /// Whether the bot of `player_slot` that thinks every `period` thinks before `tick`: player
+    /// slot `s` first in tick `s`, each player slot a tick later in the period than the player slot
+    /// before, so bots of one period think in ticks of their own, and only player slots a whole
+    /// period apart share one (03-game-scripting.md, A bot decides from what it sees, each think).
+    const fn in_phase(player_slot: PlayerSlot, tick: Tick, period: Ticks) -> bool {
+        match tick.get().checked_sub(player_slot.get() as u64) {
+            Some(since) => since.is_multiple_of(period.get()),
+            None => false,
+        }
     }
 }
 

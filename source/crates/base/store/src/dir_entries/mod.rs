@@ -47,23 +47,30 @@ impl DirEntries {
             .map_err(PathError::at(link))
     }
 
-    /// The entries of the directory at `path`; `Missing` when there is none, `NotDir` when the
-    /// path names another kind of entry.
+    /// The entries of the directory at `path`; `Missing` when there is none, `Link` when its last
+    /// name is a link, which is not followed, as a read follows none, `NotDir` when the path names
+    /// another kind of entry. A directory swapped for a link after the check is listed through it,
+    /// as std opens no directory without following.
     pub fn read(path: &Path) -> Result<Vec<DirEntry>, PathError<ReadError>> {
         Self::read_case(path).map_err(PathError::at(path))
     }
 
     fn read_case(path: &Path) -> Result<Vec<DirEntry>, ReadError> {
-        let entries = match fs::read_dir(path) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Err(ReadError::Missing);
+        let missing = |error: io::Error| {
+            if error.kind() == io::ErrorKind::NotFound {
+                ReadError::Missing
+            } else {
+                ReadError::Read(error)
             }
-            Err(_) if fs::metadata(path).is_ok_and(|metadata| !metadata.is_dir()) => {
-                return Err(ReadError::NotDir);
-            }
-            Err(error) => return Err(ReadError::Read(error)),
         };
+        let named = fs::symlink_metadata(path).map_err(missing)?;
+        if named.is_symlink() {
+            return Err(ReadError::Link);
+        }
+        if !named.is_dir() {
+            return Err(ReadError::NotDir);
+        }
+        let entries = fs::read_dir(path).map_err(missing)?;
         let mut read = Vec::new();
         for entry in entries {
             let entry = entry.map_err(ReadError::Read)?;

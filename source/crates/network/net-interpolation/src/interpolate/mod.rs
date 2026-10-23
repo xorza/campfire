@@ -1,11 +1,9 @@
-use crate::history_component::HistoryComponent;
 use crate::interpolation_fn::{ComponentInterpolation, InterpolationFn};
 use crate::interpolation_holders::InterpolationHolders;
 use crate::interpolation_phase_systems::InterpolationPhaseSystems;
 use crate::interpolation_rule_id::InterpolationRuleId;
-use crate::interpolation_sample_cx::InterpolationSampleCx;
 use crate::interpolation_timeline::InterpolationTimeline;
-use crate::update_history_cx::UpdateHistoryCx;
+use crate::sample_ticks;
 use bevy_app::{App, Update};
 use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
@@ -15,6 +13,7 @@ use campfire_net_core::NetTick;
 use campfire_net_core::Ticked;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::DeferredEntityCommands;
+use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::HistoryState;
 use campfire_net_replication::Interpolated;
 use campfire_net_timeline::NetworkTimeline;
@@ -42,7 +41,7 @@ pub(crate) fn install_component_interpolation<C: HistoryComponent>(
         let interpolation_tick = timeline.now().tick();
         let interpolation_overstep = timeline.overstep().to_f32();
         let tick_rate = tick_rate.map(|rate| rate.0);
-        let held = holders.delayed.apply(rule_id);
+        let held = holders.apply(rule_id);
         let interpolation = interpolation.component();
         for (location, live, history) in &mut query {
             if !held.contains(location.archetype_id) {
@@ -60,8 +59,6 @@ pub(crate) fn install_component_interpolation<C: HistoryComponent>(
             trace!(
                 target: "campfire_net_debug::interpolation",
                 kind = "interpolation_apply",
-                schedule = "Update",
-                sample_point = "Update",
                 component = ?DebugName::type_name::<C>(),
                 interpolation_tick = interpolation_tick.0,
                 interpolation_overstep,
@@ -85,38 +82,6 @@ pub(crate) fn set_if_neq<C: Clone + PartialEq>(
     }
     *component = value.into_owned();
     true
-}
-
-pub(crate) fn update_history_inner<C: Component + Clone>(
-    history: &mut ConfirmedHistory<C>,
-    entity: Entity,
-    ctx: &UpdateHistoryCx,
-) {
-    // Replicon's marker fns already ran before this system. If this component received an
-    // explicit update or removal at the completed server tick T, `write_history` /
-    // `remove_history` already recorded that exact tick and `push_unchanged(T)` returns None.
-    //
-    // Therefore, when the newest confirmed state is still an Updated value older than T,
-    // mutate-message completeness tells us no update/removal for this component occurred
-    // through T, so we can carry the newest value forward as unchanged.
-    if let Some(server_complete_tick) = ctx.server_complete_tick
-        && let Some(previous_newest_tick) = history.push_unchanged(server_complete_tick)
-    {
-        trace!(
-            target: "campfire_net_debug::interpolation",
-            kind = "confirmed_history_unchanged_advance",
-            schedule = "Update",
-            sample_point = "Update",
-            entity = ?entity,
-            component = ?DebugName::type_name::<C>(),
-            previous_newest_tick = previous_newest_tick.0,
-            server_complete_tick = server_complete_tick.0,
-            history_len = history.len(),
-            "advanced unchanged interpolation history"
-        );
-    }
-
-    drain_old_history(history, ctx.current_interpolate_tick, |_| false);
 }
 
 /// Drops the oldest keyframes while 3+ remain and the second-oldest, the new floor, is passed: a
@@ -148,9 +113,11 @@ pub(crate) fn queue_history_presence<C: Component + Clone>(
 ) {
     // Apply the history state for the current interpolation time to the live component set:
     // insert once the add/update tick becomes visible, remove once a removal tick is reached,
-    // and otherwise leave the current component value alone.
+    // and otherwise leave the current component value alone. A history that starts after the
+    // interpolation tick, as one of an entity just switched to interpolation does, holds no state
+    // there, and its live value stays until the history reaches it.
     match state {
-        None | Some(HistoryState::Removed) if present => {
+        Some(HistoryState::Removed) if present => {
             deferred_apply.remove::<C>(entity);
         }
         Some(HistoryState::Updated(value)) if !present => {
@@ -185,7 +152,7 @@ pub(crate) fn sample_history_with_interpolation<'a, C: Component + Clone>(
     // Clamp rather than extrapolate beyond the newest confirmed value. This
     // makes late packets converge to the freshest server state instead of
     // overshooting when motion changes direction.
-    let cx = InterpolationSampleCx::from_ticks(
+    let cx = sample_ticks::sample_of_ticks(
         bracket.start.tick,
         end_tick,
         interpolation_tick,

@@ -1,3 +1,5 @@
+use campfire_values::FilterData;
+
 use super::*;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
@@ -86,18 +88,19 @@ End
 fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height() {
     let mut ini = ObjectIni::default();
     ini.read(BODIES.as_bytes()).unwrap();
-    let mut locomotors = LocomotorIni::default();
-    locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
-    let of = |name: &str| ImportedType::of(ini.object(name.as_bytes()).unwrap(), &locomotors);
+    let mut rules = ZeroHourRules::default();
+    rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+    let of = |name: &str| ImportedType::of(ini.object(name.as_bytes()).unwrap(), &rules);
     let int = Num::int;
     let half = |x: i64| Num::from_bits(x << (Num::FRAC_BITS - 1));
-    let body = |form: Option<BodyForm>, height| {
-        let form = form.unwrap().raised(height).unwrap();
-        Some(CollisionData { form, layer: None })
+    let body = |shape: Option<BodyShape>, height| {
+        let shape = shape.unwrap().raised(height).unwrap();
+        Some(CollisionData { shape, layer: None })
     };
-    let circle = BodyForm::circle;
-    let boxed = BodyForm::box_sized;
+    let circle = BodyShape::circle;
+    let boxed = BodyShape::box_sized;
     let drives = |speed, turn_rate, radius, height| ImportedType {
+        life: None,
         pools: None,
         tags: None,
         stats: StatsData::from([
@@ -111,10 +114,12 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         combat: None,
         turret: None,
         bounty: None,
+        income: None,
         projectile: None,
         acquire: None,
     };
     let stands = |body| ImportedType {
+        life: None,
         pools: None,
         tags: None,
         stats: StatsData::default(),
@@ -122,12 +127,13 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         combat: None,
         turret: None,
         bounty: None,
+        income: None,
         projectile: None,
         acquire: None,
     };
     // A structure stands of the tag of its kind.
     let structure = |body| ImportedType {
-        tags: Some(TypeTagsData(vec![declared(STRUCTURE)])),
+        tags: Some(TypeTagsData(vec![declared("structure")])),
         ..stands(body)
     };
     // The tank drives on its treads, 30.5 m and 90° a second; a box of half extents 15 and
@@ -269,6 +275,26 @@ ObjectReskin Veteran Soldier
     MaxHealth = 9999
   End
 End
+Object Derrick
+  Body = StructureBody ModuleTag_01
+    MaxHealth = 1000
+  End
+  Behavior = AutoDepositUpdate ModuleTag_02
+    DepositTiming = 1000
+    DepositAmount = 200
+    InitialCaptureBonus = 1000
+  End
+End
+Object Display
+  Body = StructureBody ModuleTag_01
+    MaxHealth = 1000
+  End
+  Behavior = AutoDepositUpdate ModuleTag_02
+    DepositTiming = 1000
+    DepositAmount = 200
+    ActualMoney = No
+  End
+End
 ";
 
 #[test]
@@ -278,14 +304,18 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
     let of = |name: &str| {
         ImportedType::of(
             ini.object(name.as_bytes()).unwrap(),
-            &LocomotorIni::default(),
+            &ZeroHourRules::default(),
         )
         .unwrap()
     };
     let lives = |life: i64, armor: Option<&str>, tags: Vec<&str>| ImportedType {
-        pools: Some(TypePoolsData(vec![declared(LIFE)])),
+        life: Some(Num::int(life)),
+        pools: Some(TypePoolsData(vec![declared("life")])),
         tags: (!tags.is_empty()).then(|| TypeTagsData(tags.into_iter().map(declared).collect())),
-        stats: StatsData::from([(ImportedType::life_stat(), StatValue::flat(Num::int(life)))]),
+        stats: StatsData::from([(
+            Stat::named("life").unwrap(),
+            StatValue::flat(Num::int(life)),
+        )]),
         collision: None,
         combat: Some(CombatPatch {
             armor: armor.map(|armor| DeclaredName::new(armor).unwrap()),
@@ -293,6 +323,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         }),
         turret: None,
         bounty: None,
+        income: None,
         projectile: None,
         acquire: None,
     };
@@ -301,28 +332,44 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
     // as its table reads none.
     assert_eq!(
         of("Soldier"),
-        lives(180, Some("humanarmor"), vec![INFANTRY])
+        lives(180, Some("humanarmor"), vec!["infantry"])
     );
     assert_eq!(of("Veteran"), of("Soldier"));
     // A structure that counts for victory and defends a base lives by its structure body, of no
     // armor, and of no geometry stands as the game's sphere of radius 1, 1 m tall, of the tags
     // of the three; an object of the kind that is no structure, of an armor of `None`, counts
     // for none, and of a fence's width is a wall.
-    let form = BodyForm::circle(Num::ONE)
+    let shape = BodyShape::circle(Num::ONE)
         .unwrap()
         .raised(Num::ONE)
         .unwrap();
     // Its build cost of 2,000 is its bounty's cost, in money.
     let center = ImportedType {
-        collision: Some(CollisionData { form, layer: None }),
+        collision: Some(CollisionData { shape, layer: None }),
         bounty: Some(BountyData {
-            resource: declared(MONEY),
+            resource: declared("money"),
             pays: Pays::Cost(2000),
         }),
-        ..lives(5000, None, vec![VICTORY, STRUCTURE, BASE_DEFENSE])
+        ..lives(
+            5000,
+            None,
+            vec!["counts_for_victory", "structure", "base_defense"],
+        )
     };
     assert_eq!(of("Center"), center);
-    assert_eq!(of("Wall"), lives(10, None, vec![WALL]));
+    assert_eq!(of("Wall"), lives(10, None, vec!["wall"]));
+    // The derrick's deposit pays 200 money each 1,000 ms, 30 frames, and 1,000 at a capture; a
+    // deposit of no actual money pays nothing.
+    assert_eq!(
+        of("Derrick").income,
+        Some(IncomeData {
+            resource: declared("money"),
+            pays: IncomePays::Amount(200),
+            period_ms: 1000,
+            capture: 1000,
+        })
+    );
+    assert_eq!(of("Display").income, None);
     // An immortal body, and a body of no most life, give no life, no combat, and no bounty,
     // whatever their cost.
     for name in ["Ghost", "Hollow"] {
@@ -353,4 +400,9 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
     assert_eq!(of("Gunner").acquire, scan(266, Some(vec![hostiles])));
     assert_eq!(of("Idle").acquire, scan(2000, None));
     assert_eq!(of("Fixed").acquire, None);
+}
+
+/// `name`, a name the rules package declares.
+fn declared(name: &str) -> DeclaredName {
+    DeclaredName::new(name).unwrap()
 }

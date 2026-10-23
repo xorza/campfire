@@ -1,19 +1,15 @@
 use bevy::app::{App, Plugin, Startup};
-use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Commands, Res};
 use campfire_items::ItemBook;
 use campfire_values::{ItemId, NameId};
 
 use crate::client_packages::ClientPackages;
+use crate::name_texts::NameTexts;
 
 /// The name players see of each item type of the mode, in the mode's own language, which the
 /// shop panel and the inventory bar show.
 #[derive(Debug)]
 pub(crate) struct ItemNamesPlugin;
-
-/// Each item type's name, by its id.
-#[derive(Resource, Debug)]
-pub(crate) struct ItemTexts(Vec<String>);
 
 impl Plugin for ItemNamesPlugin {
     fn build(&self, app: &mut App) {
@@ -42,13 +38,6 @@ impl ItemNamesPlugin {
                 .text(&header.name, &item.name, &header.language)
                 .expect("the load checked each item's name");
         }
-        commands.insert_resource(ItemTexts(names));
-    }
-}
-
-impl ItemTexts {
-    /// The name of `item`.
-    pub(crate) fn of(&self, item: ItemId) -> &str {
-        &self.0[item.index()]
+        commands.insert_resource(names.into_iter().collect::<NameTexts<ItemId>>());
     }
 }

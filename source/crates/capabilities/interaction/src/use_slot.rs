@@ -1,5 +1,6 @@
 use campfire_actions::{ActionSlots, SlotKind};
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
+use campfire_values::UnitType;
 
 /// A user type's use slot, package data and not state: the slot kind of the one empty slot its
 /// units spawn with, which a use fills with its object's action.
@@ -22,6 +23,6 @@ impl UseSlot {
     }
 }
 
-impl PerType for UseSlot {
+impl PerId<UnitType> for UseSlot {
     const SCRIPTS_ONLY: bool = false;
 }

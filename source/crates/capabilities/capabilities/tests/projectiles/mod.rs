@@ -1,12 +1,14 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
+use campfire_actions::LaunchId;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::{Binary, BinaryError};
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, OnDeath, ROLL_STREAM, RecentAttack, RecentAttackers};
 use campfire_common::{SegmentSeed, Tick};
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_declarations::internals::BookLoad;
+use campfire_deliveries::Delivering;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Rng, Vec3};
 use campfire_navigation::NavigationEffect;
@@ -16,8 +18,10 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::Stats;
 use campfire_units::internals::Spawn;
-use campfire_units::{BodyForm, DashTo, Dead, Deaths, Life, MapBook, SeenBy, UnitTypeCore, Units};
-use campfire_values::{FilterData, Team, TypeScope, UnitType};
+use campfire_units::{
+    BodyForm, BodyShape, DashTo, Dead, Deaths, Layer, Life, MapBook, SeenBy, UnitTypeCore, Units,
+};
+use campfire_values::{ActionId, FilterData, Rank, Team, TypeScope, UnitType};
 use campfire_vision::{Sight, Vision};
 
 /// A projectile type of 15 m/s, half a meter a tick, that hits enemies; homing, or along a line
@@ -113,8 +117,15 @@ impl Volley {
         });
         let shooter = shooter(bolt).load(game);
         let [target, round, block] = [(); 3].map(|()| target().load(game));
-        Units::give_type(game, round, BodyForm::circle(Num::ONE).unwrap());
-        let block_body = BodyForm::box_sized([Num::int(2), Num::ONE]).unwrap();
+        Units::give_type(
+            game,
+            round,
+            BodyForm::new(BodyShape::circle(Num::ONE).unwrap(), Layer::FIRST),
+        );
+        let block_body = BodyForm::new(
+            BodyShape::box_sized([Num::int(2), Num::ONE]).unwrap(),
+            Layer::FIRST,
+        );
         Units::give_type(game, block, block_body);
         Self {
             shooter,
@@ -506,7 +517,7 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
     let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
     Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
     let sight = Sight::new(Num::ONE).unwrap();
-    ByType::<Sight>::amend(&mut game, |_, book| book.set(scout, sight));
+    ById::<UnitType, Sight>::amend(&mut game, |_, book| book.set(scout, sight));
     let source = Spawn::of(volley.target, (0, 0, -9)).place(&mut game);
     let enemy = Spawn::of(volley.target, (5, 0, 0))
         .team(Team::new(1))
@@ -531,6 +542,30 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
 }
 
 #[test]
+fn a_projectile_carries_the_launch_its_delivery_belongs_to() {
+    // Two scouts of action 0 launch along x, one for the action's own delivery and one for its
+    // listed launch 0: each projectile carries what it was launched for, so the second's hits
+    // and its end run the launch's lists and not the action's.
+    let mut game = volley_match();
+    let volley = Volley::place(&mut game);
+    let source = Spawn::of(volley.target, (0, 0, -9)).place(&mut game);
+    let by = |launch| Delivering {
+        source,
+        action: ActionId::new(0),
+        rank: Rank::FIRST,
+        start: None,
+        launch,
+    };
+    Projectiles::deliver_line(&mut game, by(None), volley.scout, ALONG_X);
+    Projectiles::deliver_line(&mut game, by(Some(LaunchId::nth(0))), volley.scout, ALONG_X);
+    game.step();
+    assert_eq!(
+        Projectiles::carried_launches(&game),
+        [None, Some(LaunchId::nth(0))]
+    );
+}
+
+#[test]
 fn a_line_that_reaches_the_bounds_ends_on_their_edge_and_its_sight_stays_within_them() {
     // The scout flies 6 m from the origin along (0.6, 0, 0.8), each axis rounded once, toward
     // the edge at x = 3, with sight over a grid of the bounds, which `see` takes every unit to
@@ -551,7 +586,7 @@ fn a_line_that_reaches_the_bounds_ends_on_their_edge_and_its_sight_stays_within_
     MapBook::amend(&mut game, |_, map| map.bounds = bounds);
     Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
     let sight = Sight::new(Num::ONE).unwrap();
-    ByType::<Sight>::amend(&mut game, |_, book| book.set(scout, sight));
+    ById::<UnitType, Sight>::amend(&mut game, |_, book| book.set(scout, sight));
     let source = Spawn::of(volley.target, (0, 0, -4)).place(&mut game);
     let slant = Vec3::new(
         Num::from_bits(10_066_330),

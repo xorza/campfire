@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_actions::ActionTarget;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersDirective;
@@ -8,7 +8,7 @@ use campfire_production::Production;
 use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_units::internals::Spawn;
-use campfire_units::{BodyForm, BuildTarget, GroundPoint, Owner, SeenBy};
+use campfire_units::{BodyForm, BodyShape, BuildTarget, GroundPoint, Layer, Owner, SeenBy};
 use campfire_values::{Team, TeamSet, UnitType};
 
 use crate::fixtures::navigation::NavigationFixtures;
@@ -17,15 +17,21 @@ use crate::order::{Directive, Order};
 /// The test fixtures of `Production` that need a crate above its own.
 pub trait ProductionFixtures {
     /// A unit of `unit_type` owned by `owner`, at the origin.
-    fn owned(world: &mut World, unit_type: UnitType, owner: Seat) -> StableId;
+    fn owned(world: &mut World, unit_type: UnitType, owner: PlayerSlot) -> StableId;
 
-    /// Runs a tick in which player `seat` orders `directive` to `id`.
-    fn tick_ordering(world: &mut World, seat: u32, id: StableId, directive: impl Into<Directive>);
+    /// Runs a tick in which player `player_slot` orders `directive` to `id`.
+    fn tick_ordering(
+        world: &mut World,
+        player_slot: u32,
+        id: StableId,
+        directive: impl Into<Directive>,
+    );
 
-    /// Runs a tick in which player `seat` gives `orders`, each an directive to a unit, in order.
+    /// Runs a tick in which player `player_slot` gives `orders`, each an directive to a unit, in
+    /// order.
     fn give_orders<A: Into<Directive> + Copy>(
         world: &mut World,
-        seat: u32,
+        player_slot: u32,
         orders: &[(StableId, A)],
     );
 
@@ -45,7 +51,7 @@ pub trait ProductionFixtures {
 }
 
 impl ProductionFixtures for Production {
-    fn owned(world: &mut World, unit_type: UnitType, owner: Seat) -> StableId {
+    fn owned(world: &mut World, unit_type: UnitType, owner: PlayerSlot) -> StableId {
         Spawn::of(unit_type, Vec3::ZERO)
             .team(Team::new(1))
             .parts(Owner::new(owner))
@@ -66,7 +72,7 @@ impl ProductionFixtures for Production {
             .map(|&(unit, directive)| Order::one(unit, directive))
             .collect();
         let payload = Order::payload(&orders);
-        world.step_with(&[(Seat::new(slot), &payload)]);
+        world.step_with(&[(PlayerSlot::new(slot), &payload)]);
     }
 
     fn build_at(world: &mut World, builder: StableId, x: i64, z: i64) {
@@ -100,7 +106,7 @@ impl ProductionFixtures for Production {
         team: Team,
         seen: Option<TeamSet>,
     ) -> StableId {
-        let form = BodyForm::circle(Num::HALF).unwrap();
+        let form = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST);
         let id = Navigation::walker_at(world, position)
             .team(team)
             .body(form)

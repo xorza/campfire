@@ -33,7 +33,7 @@ Every change moves the engine toward one shape. The rules and the tests that hol
 - **What a module adds is declared once,** and one walk of the declarations serves the install, the script API's binding, the network's lists and the declaration audit, so a new piece left out fails a test.
 - **A kind is a marker, and an entity spawns whole:** each part it carries is declared on its kind and comes with its spawn, so a new entity moves between archetypes once; a derived part comes by required components or a hook, and one derived each tick is written in place.
 - **A name is resolved once,** at the load, by a builder that is the check of what it resolves.
-- **One word, one meaning:** module, owner, seat, slot, kind, part, place, callback (`Hook` is the scripts' alone), extension, `*File`, `*Data`, `*Spec`, `*Book`, `*Decl`, `*Patch`, `*Setup`, each as [Names](docs/design/02-engine-core.md#names) gives it.
+- **One word, one meaning:** module, owner, player slot, action slot, kind, part, place, callback (`Hook` is the scripts' alone), extension, `*File`, `*Data`, `*Spec`, `*Book`, `*Decl`, `*Patch`, `*Setup`, each as [Names](docs/design/02-engine-core.md#names) gives it.
 - **A pass visits what changed:** no query state, structural change or allocation per item on a hot path, and a fact fixed at install or load is a fact of the schedule, not a check each tick.
 - **Each crate depends only on lower layers,** and a capability asks another for its work through a contract below both, never by writing its state.
 - **One rendering pipeline for every game.** An importer converts its game to Bevy's standard material and the generic formats, and writes down what it loses; a need the pipeline cannot say becomes a general feature, never a path, a flag or a shader for one game.
@@ -72,12 +72,13 @@ Every check, test and bench runs through `cargo drive`, from `source/` ([The dri
 | Command | Runs |
 | --- | --- |
 | `cargo drive check` | `cargo fmt`, then the lint of every target with every feature, to the first failure: after each change |
-| `cargo drive test [nextest arguments]` | each workspace package's `package.index` written again, then the tests, each time; with arguments, those nextest selects |
+| `cargo drive test [nextest arguments]` | each workspace package's `package.index` and the script API's reference written again, then the tests, each time; with arguments, those nextest selects |
 | `cargo drive bench [criterion arguments]` | the benches, only when the task asks for them |
 | `cargo drive run lan`, `cargo drive run zero-hour [out]` | the LAN check and the Zero Hour check, on request |
 | `cargo drive run vocabulary [out]` | the repository's layout and the names its Rust files declare, in `target/vocabulary.txt` unless `out` names another file, on request |
 | `cargo drive run index` | each workspace package's `package.index`, after a change to a package |
-| `cargo drive gate` | `fmt`, the lints, the build that ships, the Windows lint on Linux, the tests, the LAN check and each bench case once, to the first failure; CI runs `gate --ci`, which checks the format and runs every step |
+| `cargo drive run reference` | the script API's reference, after a change to the API |
+| `cargo drive gate` | `fmt`, the lints, the build that ships, the Windows lint on Linux, the tests, the LAN check and the build of every bench, to the first failure; CI runs `gate --ci`, which checks the format and runs every step |
 | `cargo drive package` | the release build of the shipped binaries, stripped, each with its debug info beside it in `target/package` |
 
 A step runs again only when one of its inputs changed since it passed, and the tests only for the crates a change reaches. `CAMPFIRE_BLESS=1` before `cargo drive test` writes the tests' pinned files again, `CAMPFIRE_BLESS=1 cargo drive test <test>` those of one test; before `cargo drive run zero-hour`, the check's golden file.

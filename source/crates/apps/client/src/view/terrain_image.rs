@@ -5,11 +5,11 @@ use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
 use bevy::math::UVec2;
 use bevy::render::render_resource::{Extent3d, TextureDataOrder, TextureDimension, TextureFormat};
 use campfire_client_files::{BorderWrap, TerrainTexture, TextureCopy, TextureLevels};
-use campfire_package::PackageReader;
+use campfire_package_format::PackageReader;
 use campfire_values::PackagePath;
 use tracing::error;
 
-use crate::view::client_data::ClientData;
+use crate::view::client_data::ClientLoad;
 
 /// A terrain's texture, composed as a terrain file says (02-engine-core.md, The terrain's texture
 /// is composed at load): at each level, each copy of a package texture's rectangle in order, then
@@ -43,14 +43,19 @@ impl TerrainImage {
                 .entry(&copy.texture)
                 .or_insert_with(|| Self::source(files, &copy.texture, texture.levels));
         }
-        let texels_of = |level: u32| (texture.size >> level).element_product() as usize;
+        // In `usize`, as a side of `TerrainTexture::MOST_SIDE` squared passes a `u32`'s texels
+        // four bytes each.
+        let texels_of = |level: u32| {
+            let [width, height] = (texture.size >> level).to_array().map(usize_of);
+            width * height
+        };
         let mut texels = BLACK.repeat((0..texture.levels).map(texels_of).sum());
         let mut rest = texels.as_mut_slice();
         for level in 0..texture.levels {
             let (this, next) = rest.split_at_mut(texels_of(level) * 4);
             let mut target = LevelTexels {
                 texels: this,
-                width: (texture.size.x >> level) as usize,
+                width: usize_of(texture.size.x >> level),
                 level,
             };
             for copy in &texture.copies {
@@ -91,8 +96,8 @@ impl TerrainImage {
     /// The first `levels` levels of the texture at `path`; none, logged, for one that does not
     /// read.
     fn source(files: &PackageReader, path: &PackagePath, levels: u32) -> Option<TextureLevels> {
-        let bytes = ClientData::logged(path, files.read_file(path))?;
-        ClientData::logged(path, TextureLevels::of_ktx2(&bytes, levels))
+        let bytes = ClientLoad::logged(path, files.read_file(path))?;
+        ClientLoad::logged(path, TextureLevels::of_ktx2(&bytes, levels))
     }
 
     /// Copies `copy`'s rectangle of `source` at the target's level into `target`; none, logged,
@@ -174,6 +179,11 @@ fn texels_at(at: UVec2) -> Texels {
         x: index(at.x),
         y: index(at.y),
     }
+}
+
+/// A texture's side as a length.
+fn usize_of(side: u32) -> usize {
+    usize::try_from(side).expect("a side fits usize")
 }
 
 #[cfg(test)]

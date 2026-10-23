@@ -1,5 +1,6 @@
 use super::*;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
+use campfire_net_frame_interpolation::InterpolationSampleCx;
 use campfire_net_replication::ConfirmedTickMap;
 use campfire_net_replication::HistoryDiffReceiver;
 use campfire_net_replication::internals::{replicon_app, shared_replicon_app};
@@ -7,9 +8,9 @@ use core::time::Duration;
 
 use crate::app_interpolation_ext::AppInterpolationExt;
 use crate::confirmed_history_fns::ConfirmedHistoryFns;
-use crate::delayed_interpolation_plugin::DelayedInterpolationPlugin;
 use crate::interpolation_fns::InterpolationFns;
 use crate::interpolation_marker_plugin::InterpolationMarkerPlugin;
+use crate::interpolation_plugin::InterpolationPlugin;
 use crate::interpolation_registration_ext::InterpolationRegistrationExt;
 use crate::interpolation_registry;
 use crate::interpolation_registry::InterpolationRegistry;
@@ -53,7 +54,7 @@ struct SmoothRule;
 struct HistoryOnlyRule;
 
 #[derive(Debug, Component)]
-struct NoHistoryRule;
+struct SuppressingRule;
 
 #[derive(Debug, Component)]
 struct DisabledRule;
@@ -258,8 +259,8 @@ impl InterpolationTestAppBuilder {
 fn confirm_server_tick(app: &mut App, replicon_tick: u32, server_tick: NetTick) {
     let replicon_tick = RepliconTick::new(replicon_tick);
     let mut confirmed_ticks = app.world_mut().resource_mut::<ConfirmedTickMap>();
-    confirmed_ticks.record(replicon_tick, server_tick);
-    confirmed_ticks.record_last_confirmed_tick(replicon_tick);
+    confirmed_ticks.bridge_record(replicon_tick, server_tick);
+    confirmed_ticks.bridge_record_last_confirmed_tick(replicon_tick);
 }
 
 fn set_interpolation_tick(app: &mut App, tick: NetTick) {
@@ -276,8 +277,8 @@ fn insert_confirmed_history(app: &mut App, entity: Entity, history: ConfirmedHis
 
 /// Adds the stages each rule installs its systems in, before the rules are built.
 fn add_interpolation_test_systems(app: &mut App) {
-    if !app.is_plugin_added::<DelayedInterpolationPlugin>() {
-        app.add_plugins(DelayedInterpolationPlugin);
+    if !app.is_plugin_added::<InterpolationPlugin>() {
+        app.add_plugins(InterpolationPlugin);
     }
 }
 
@@ -469,11 +470,7 @@ fn a_selected_history_only_rule_stops_the_default_apply() {
     add_interpolation_test_systems(&mut app);
     confirm_server_tick(&mut app, 1, NetTick(30));
     QueryState::<&Archetype, With<HistoryOnlyRule>>::new(app.world_mut());
-    insert_rule::<TestComp, With<HistoryOnlyRule>>(
-        &mut app,
-        InterpolationFns::history_only().interpolate(marker_lerp),
-        100,
-    );
+    insert_rule::<TestComp, With<HistoryOnlyRule>>(&mut app, InterpolationFns::history_only(), 100);
     interpolation_registry::finish(&mut app);
 
     let entity = app.world_mut().spawn((TestComp(7.0), HistoryOnlyRule)).id();
@@ -489,20 +486,16 @@ fn a_selected_history_only_rule_stops_the_default_apply() {
     assert_eq!(history.get_nth_tick(history.len() - 1), Some(NetTick(30)));
 }
 
-/// A winning no-history rule blocks default history and apply work.
+/// A winning disabled rule blocks default history and apply work.
 #[test]
-fn selected_no_history_rule_suppresses_default_history_and_apply() {
+fn a_selected_disabled_rule_suppresses_default_history_and_apply() {
     let mut app = setup_app(NetTick(15), 40);
     add_interpolation_test_systems(&mut app);
     confirm_server_tick(&mut app, 1, NetTick(30));
-    QueryState::<&Archetype, With<NoHistoryRule>>::new(app.world_mut());
-    insert_rule::<TestComp, With<NoHistoryRule>>(
-        &mut app,
-        InterpolationFns::no_history(marker_lerp),
-        100,
-    );
+    QueryState::<&Archetype, With<SuppressingRule>>::new(app.world_mut());
+    insert_rule::<TestComp, With<SuppressingRule>>(&mut app, InterpolationFns::disabled(), 100);
 
-    let entity = app.world_mut().spawn((TestComp(7.0), NoHistoryRule)).id();
+    let entity = app.world_mut().spawn((TestComp(7.0), SuppressingRule)).id();
     insert_confirmed_history(&mut app, entity, two_point_history());
 
     interpolation_registry::finish(&mut app);
@@ -518,18 +511,14 @@ fn selected_no_history_rule_suppresses_default_history_and_apply() {
 
 /// History-only presence does not make a lower history rule win.
 #[test]
-fn no_history_rule_can_win_when_only_confirmed_history_is_present() {
+fn a_disabled_rule_can_win_when_only_confirmed_history_is_present() {
     let mut app = setup_app(NetTick(15), 40);
     add_interpolation_test_systems(&mut app);
     confirm_server_tick(&mut app, 1, NetTick(30));
-    QueryState::<&Archetype, With<NoHistoryRule>>::new(app.world_mut());
-    insert_rule::<TestComp, With<NoHistoryRule>>(
-        &mut app,
-        InterpolationFns::no_history(marker_lerp),
-        100,
-    );
+    QueryState::<&Archetype, With<SuppressingRule>>::new(app.world_mut());
+    insert_rule::<TestComp, With<SuppressingRule>>(&mut app, InterpolationFns::disabled(), 100);
 
-    let entity = app.world_mut().spawn(NoHistoryRule).id();
+    let entity = app.world_mut().spawn(SuppressingRule).id();
     insert_confirmed_history(&mut app, entity, two_point_history());
 
     interpolation_registry::finish(&mut app);
@@ -1033,9 +1022,9 @@ fn a_diff_history_waits_while_the_diff_of_its_completed_tick_is_pending() {
     let mut history = ConfirmedHistory::<TestComp>::default();
     history.insert_present(NetTick(0), TestComp(0.0));
     let mut receiver = HistoryDiffReceiver::<TestComp>::default();
-    receiver.record_cursor(NetTick(0), Some(idx(0)));
+    receiver.bridge_record_cursor(NetTick(0), Some(idx(0)));
     receiver
-        .queue_diffs(NetTick(5), idx(4), vec![4.0, 5.0])
+        .bridge_queue_diffs(NetTick(5), idx(4), vec![4.0, 5.0])
         .unwrap();
 
     let entity = app.world_mut().spawn((Interpolated, history)).id();
@@ -1069,17 +1058,17 @@ fn a_diff_history_waits_while_the_diff_of_its_completed_tick_is_pending() {
 
 /// The history seeds once from the live value, at the tick its confirmation resolves to: a
 /// confirmation older than every retained confirmed tick (5, below 10 and 11) resolves to the
-/// oldest retained tick 10, and one within the range that nothing maps (12) leaves the history
-/// empty until the next update.
+/// oldest retained tick 10, and one within the range that nothing maps (12) seeds no history
+/// and keeps its live value until its tick is confirmed.
 #[test]
 fn history_seeds_at_the_resolved_confirmation_tick() {
     let mut app = setup_app(NetTick(15), 40);
     add_interpolation_test_systems(&mut app);
     {
         let mut confirmed_ticks = app.world_mut().resource_mut::<ConfirmedTickMap>();
-        confirmed_ticks.record(RepliconTick::new(10), NetTick(10));
-        confirmed_ticks.record(RepliconTick::new(11), NetTick(11));
-        confirmed_ticks.record(RepliconTick::new(13), NetTick(13));
+        confirmed_ticks.bridge_record(RepliconTick::new(10), NetTick(10));
+        confirmed_ticks.bridge_record(RepliconTick::new(11), NetTick(11));
+        confirmed_ticks.bridge_record(RepliconTick::new(13), NetTick(13));
     }
     let evicted = app
         .world_mut()
@@ -1113,12 +1102,31 @@ fn history_seeds_at_the_resolved_confirmation_tick() {
         Some((NetTick(10), TestComp(3.0)))
     );
     assert_eq!(app.world().get::<TestComp>(evicted), Some(&TestComp(3.0)));
+    // A confirmation that resolves to no tick seeds nothing: the live value stays, and the
+    // seed comes once its tick, 12, is confirmed.
+    assert!(
+        app.world()
+            .get::<ConfirmedHistory<TestComp>>(unresolved)
+            .is_none()
+    );
+    assert_eq!(
+        app.world().get::<TestComp>(unresolved),
+        Some(&TestComp(3.0))
+    );
+    app.world_mut()
+        .resource_mut::<ConfirmedTickMap>()
+        .bridge_record(RepliconTick::new(12), NetTick(12));
+    app.update();
     let history = app
         .world()
         .get::<ConfirmedHistory<TestComp>>(unresolved)
         .unwrap();
-    assert_eq!(history.len(), 0);
-    assert_eq!(app.world().get::<TestComp>(unresolved), None);
+    assert_eq!(
+        history
+            .start_present()
+            .map(|entry| (entry.tick, entry.value.clone())),
+        Some((NetTick(12), TestComp(3.0)))
+    );
 }
 
 /// With no diff receiver nothing is pending, so presence follows the history at the
@@ -1166,15 +1174,15 @@ fn diff_history_drains_below_a_later_pending_diff() {
     };
     let history = keyframes();
     let mut receiver = HistoryDiffReceiver::<TestComp>::default();
-    receiver.record_cursor(NetTick(0), Some(idx(0)));
+    receiver.bridge_record_cursor(NetTick(0), Some(idx(0)));
     receiver
-        .queue_diffs(NetTick(40), idx(4), vec![4.0, 5.0])
+        .bridge_queue_diffs(NetTick(40), idx(4), vec![4.0, 5.0])
         .unwrap();
     let held_history = keyframes();
     let mut held_receiver = HistoryDiffReceiver::<TestComp>::default();
-    held_receiver.record_cursor(NetTick(0), Some(idx(0)));
+    held_receiver.bridge_record_cursor(NetTick(0), Some(idx(0)));
     held_receiver
-        .queue_diffs(NetTick(15), idx(4), vec![4.0, 5.0])
+        .bridge_queue_diffs(NetTick(15), idx(4), vec![4.0, 5.0])
         .unwrap();
 
     let entity = app
@@ -1228,9 +1236,9 @@ fn a_confirmed_diff_history_waits_for_an_older_pending_diff() {
     let mut history = ConfirmedHistory::<TestComp>::default();
     history.insert_present(NetTick(0), TestComp(0.0));
     let mut receiver = HistoryDiffReceiver::<TestComp>::default();
-    receiver.record_cursor(NetTick(0), Some(idx(0)));
+    receiver.bridge_record_cursor(NetTick(0), Some(idx(0)));
     receiver
-        .queue_diffs(NetTick(5), idx(4), vec![4.0, 5.0])
+        .bridge_queue_diffs(NetTick(5), idx(4), vec![4.0, 5.0])
         .unwrap();
 
     let entity = app.world_mut().spawn((Interpolated, history)).id();
@@ -1273,9 +1281,11 @@ fn a_confirmed_diff_history_waits_for_an_older_pending_diff() {
         let mut entity_mut = app.world_mut().entity_mut(entity);
         let mut history = entity_mut.get_mut::<ConfirmedHistory<TestComp>>().unwrap();
         receiver
-            .queue_diffs(NetTick(3), idx(1), vec![1.0, 2.0, 3.0])
+            .bridge_queue_diffs(NetTick(3), idx(1), vec![1.0, 2.0, 3.0])
             .unwrap();
-        while let Some(Ticked { tick, value }) = receiver.take_ready_update(&history).unwrap() {
+        while let Some(Ticked { tick, value }) =
+            receiver.bridge_take_ready_update(&history).unwrap()
+        {
             history.insert_present(tick, value);
         }
     }
@@ -1379,7 +1389,9 @@ fn a_confirmed_history_inserts_its_component_at_its_start_tick() {
 }
 
 #[test]
-fn a_confirmed_history_removes_its_component_until_its_start_tick() {
+fn a_live_component_stays_until_its_confirmed_history_reaches_it() {
+    // An entity switched from prediction keeps the history prediction cut at its rollback window,
+    // which can start after the interpolation tick.
     let mut app = setup_app(NetTick(9), 40);
     add_interpolation_test_systems(&mut app);
 
@@ -1391,8 +1403,12 @@ fn a_confirmed_history_removes_its_component_until_its_start_tick() {
 
     interpolation_registry::finish(&mut app);
     app.update();
+    assert_eq!(app.world().get::<TestComp>(entity), Some(&TestComp(99.0)));
 
-    assert!(!app.world().entity(entity).contains::<TestComp>());
+    // Halfway from 10 to 20: 0 + (10 - 0) * 5 / 10 = 5.
+    set_interpolation_tick(&mut app, NetTick(15));
+    app.update();
+    assert_eq!(app.world().get::<TestComp>(entity), Some(&TestComp(5.0)));
 }
 
 #[test]

@@ -95,7 +95,7 @@ impl ListedEffect for RestoreEffectData {
 
     fn resolve(&self, cx: &mut dyn EffectResolveCx) -> Result<Arc<dyn ListedSpec>, EffectError> {
         Ok(Arc::new(RestoreEffectSpec {
-            pool: cx.names().pool(&self.pool)?,
+            pool: cx.names().named::<PoolId>(self.pool.as_str())?,
             amount: cx.amount(&self.amount)?,
         }))
     }

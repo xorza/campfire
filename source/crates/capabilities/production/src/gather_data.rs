@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, RangeTakes, Takes};
+use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, PipelineField, Takes};
 use campfire_common::DeclaredName;
 use campfire_declarations::Listed;
 use campfire_script::ApiBuilder;
@@ -40,12 +40,12 @@ impl KindSection for GatherData {
     /// A gather aims at a node within its range in meters, a trip takes its windup, and it pays
     /// nothing.
     fn takes(&self) -> KindTakes {
-        KindTakes {
-            range: RangeTakes::Meters,
-            windup: Takes::Must,
-            passive: Takes::May,
-            ..KindTakes::NONE
-        }
+        KindTakes::NONE
+            .with(
+                Takes::Must,
+                &[PipelineField::Range, PipelineField::WindupMs],
+            )
+            .with(Takes::May, &[PipelineField::PassiveModifier])
     }
 
     fn numbers(&self) -> Vec<&Ranked<Number>> {

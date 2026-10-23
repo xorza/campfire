@@ -11,16 +11,15 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, If, Query, Res, ResMut, SystemParam};
 use campfire_capabilities::Release;
-use campfire_declarations::{EntityKind, KindAudience, KindVisitor};
+use campfire_declarations::{EntityKind, KindAudience, KindVisitor, MatchFacts};
 use campfire_net_connection::NetworkTarget;
 use campfire_net_replication::{PredictionTarget, Replicate, Rooms};
 use campfire_sim::StableId;
 use campfire_units::{Owner, SeenBy};
 use tracing::debug;
 
-use crate::sim_server::match_visibility::MatchVisibility;
-use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::team_rooms::TeamRooms;
+use campfire_host::PlayerLink;
 
 /// The entities of the kind `K` a show takes, with their owner and the teams that see them.
 type NewOfKind<'w, 's, K> =
@@ -91,7 +90,7 @@ pub(crate) struct ShowSystems;
 
 impl KindShows<'_> {
     /// Adds into `app` each kind's show, in `ShowSystems`, and for a kind its owner predicts, the
-    /// prediction of each seated link's entities.
+    /// prediction of each placed link's entities.
     pub(crate) fn register(app: &mut App) {
         Release::kinds(&mut KindShows { app });
     }
@@ -104,20 +103,20 @@ impl KindShows<'_> {
 
     /// Shows each new entity of `K`, as `listed` lists it, to the links of `K`'s audience, after
     /// the sim tick it came in, and to its owner's link as the client that predicts it, when `K`
-    /// says its owner predicts, again as its owner changes: the link of an owner with no seat
-    /// predicts nothing, nor does any for an entity that loses its owner, and the client that
-    /// predicted it takes it as the server sends it, unpredicted. Each part it writes came with
-    /// the entity's marker, so a show moves no entity between archetypes. An entity whose kind
-    /// vision limits stands in the rooms of the teams that see it, from the tick it replicates in,
-    /// and again as they change, so a client never receives one its team did not see: a
+    /// says its owner predicts, again as its owner changes: the link of an owner with no
+    /// player_slot predicts nothing, nor does any for an entity that loses its owner, and the
+    /// client that predicted it takes it as the server sends it, unpredicted. Each part it writes
+    /// came with the entity's marker, so a show moves no entity between archetypes. An entity whose
+    /// kind vision limits stands in the rooms of the teams that see it, from the tick it replicates
+    /// in, and again as they change, so a client never receives one its team did not see: a
     /// projectile shows where it flies, not where its source stands. Without vision no entity has
-    /// `SeenBy`, and every seated client receives every entity. A spectator stands in the rooms
-    /// its `Viewer` gives, and any other link with no seat in no room, so it receives none. What
+    /// `SeenBy`, and every placed client receives every entity. A spectator stands in the rooms its
+    /// `Viewer` gives, and any other link with no player slot in no room, so it receives none. What
     /// its owner alone receives, a filter of its state's kind keeps from every other link
     /// ([`DataFilters`](crate::sim_server::data_filter::DataFilters)).
     fn show<K: EntityKind>(
         rooms: Res<'_, TeamRooms>,
-        If(visibility): If<Res<'_, MatchVisibility>>,
+        If(facts): If<Res<'_, MatchFacts>>,
         links: Query<'_, '_, (Entity, &PlayerLink)>,
         (mut unshown, new): (ResMut<'_, Unshown<K>>, NewOfKind<'_, '_, K>),
         changed: SeersChanged<'_, '_, K>,
@@ -130,10 +129,10 @@ impl KindShows<'_> {
             };
             let seen = match K::AUDIENCE {
                 KindAudience::Seers => seen,
-                KindAudience::EverySeat => None,
+                KindAudience::EveryPlayerSlot => None,
             };
             let mut replicated = commands.entity(entity);
-            replicated.insert(rooms.seeing(seen, &visibility.0));
+            replicated.insert(rooms.seeing(seen, &facts.visibility));
             let link = owner
                 .filter(|_| K::OWNER_PREDICTS)
                 .and_then(|owner| KindShows::link_of(&links, *owner));
@@ -146,7 +145,7 @@ impl KindShows<'_> {
                 debug!(entity = id.get(), "the teams that see an entity changed");
                 commands
                     .entity(entity)
-                    .insert(rooms.seeing(Some(seen), &visibility.0));
+                    .insert(rooms.seeing(Some(seen), &facts.visibility));
             }
         }
         if K::OWNER_PREDICTS {
@@ -167,26 +166,26 @@ impl KindShows<'_> {
         }
     }
 
-    /// The link seated in the seat of `owner`, if one is.
+    /// The link placed in the player slot of `owner`, if one is.
     fn link_of(links: &Query<'_, '_, (Entity, &PlayerLink)>, owner: Owner) -> Option<Entity> {
         links
             .iter()
-            .find(|(_, link)| link.seat() == owner.seat())
+            .find(|(_, link)| link.player_slot() == owner.player_slot())
             .map(|(link, _)| link)
     }
 
-    /// Makes the link seated as `added` says the client that predicts each replicated entity of
-    /// `K` its seat owns, as a player takes their seat again.
-    fn predict_seated<K: EntityKind>(
+    /// Makes the link placed as `added` says the client that predicts each replicated entity of
+    /// `K` its player slot owns, as a player takes their player slot again.
+    fn predict_held<K: EntityKind>(
         added: On<'_, '_, Add<PlayerLink>>,
         links: Query<'_, '_, &PlayerLink>,
         owned: OwnedOfKind<'_, '_, K>,
         mut commands: Commands<'_, '_>,
     ) {
         let link = added.entity;
-        let seat = links.get(link).expect("an added link").seat();
+        let player_slot = links.get(link).expect("an added link").player_slot();
         for (entity, owner) in &owned {
-            if owner.seat() == seat {
+            if owner.player_slot() == player_slot {
                 commands
                     .entity(entity)
                     .insert(PredictionTarget::to_links([link]));
@@ -212,7 +211,7 @@ impl KindVisitor for KindShows<'_> {
         self.app
             .add_systems(FixedUpdate, KindShows::show::<K>.in_set(ShowSystems));
         if K::OWNER_PREDICTS {
-            self.app.add_observer(KindShows::predict_seated::<K>);
+            self.app.add_observer(KindShows::predict_held::<K>);
         }
     }
 

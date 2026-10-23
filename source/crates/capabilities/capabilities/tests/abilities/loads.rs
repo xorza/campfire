@@ -6,11 +6,11 @@ use campfire_abilities::internals::MANA;
 use campfire_abilities::*;
 use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionField, ActionProblem, ActionTarget, Actions,
-    CostTarget, RangeField, SlotKindBook, SlotKindData, SlotKinds, SlotRanks, Targeting,
+    RangeField, SlotKindBook, SlotKindData, SlotKinds, SlotRanks, Targeting,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Directive, Match, Order};
-use campfire_common::{DeclaredName, Seat, Tick};
+use campfire_common::{DeclaredName, PlayerSlot, Tick};
 use campfire_declarations::internals::BookLoad;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
@@ -21,17 +21,14 @@ use campfire_sim::Capability;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_stats::{Level, ModifierClocks, ModifierData, Modifiers, Stats};
 use campfire_units::internals::Spawn;
-use campfire_units::{
-    Dead, Destination, GroundPoint, MoveStep, NeededLevel, PoolId, UnitTypeCore, Units,
-};
+use campfire_units::{Dead, Destination, GroundPoint, MoveStep, NeededLevel, UnitTypeCore, Units};
 use campfire_values::{
     ActionId, FilterData, PackageIndex, Param, ParamRef, Rank, Ranked, Scalar, Team, TimeTooLarge,
     TrackId, TypeScope,
 };
 
 use crate::abilities::{
-    LASH_OUT, POOLS, STRIKE, abilities_match, abilities_match_with, cost, int, lash_out, param,
-    strike,
+    LASH_OUT, STRIKE, abilities_match, abilities_match_with, cost, int, lash_out, param, strike,
 };
 
 #[test]
@@ -44,22 +41,22 @@ fn an_ability_loads_only_when_its_data_holds() {
         Actions::load(game, PackageIndex::MODE, name, data, Some(script), 5)
     };
     let mut uneven = lash_out();
-    uneven.cost = BTreeMap::from([(
+    uneven.keys.cost = BTreeMap::from([(
         DeclaredName::new("mana").unwrap(),
         Ranked::from([int(35), int(40)]),
     )]);
     let mut aimed = lash_out();
-    aimed.targeting = Targeting::Direction;
+    aimed.keys.targeting = Targeting::Direction;
     let mut forever = lash_out();
-    forever.cooldown_ms = Some(Ranked::One(int(i64::MAX)));
+    forever.keys.cooldown_ms = Some(Ranked::One(int(i64::MAX)));
     let mut scaled = lash_out();
-    scaled.cooldown_ms = Some(Ranked::One(param("damage")));
+    scaled.keys.cooldown_ms = Some(Ranked::One(param("damage")));
     let mut negative = lash_out();
-    negative.cost = cost("mana", int(-1));
+    negative.keys.cost = cost("mana", int(-1));
     let mut poolless = lash_out();
-    poolless.cost = cost("focus", int(1));
+    poolless.keys.cost = cost("focus", int(1));
     let mut unknown = lash_out();
-    unknown.range = Some(Ranked::One(RangeField::Param(ParamRef {
+    unknown.keys.range = Some(Ranked::One(RangeField::Param(ParamRef {
         param: DeclaredName::new("reach").unwrap(),
     })));
     // The data's rules, which its load holds: two costs for five ranks, and the field that does
@@ -82,15 +79,6 @@ fn an_ability_loads_only_when_its_data_holds() {
     .into_iter()
     .enumerate()
     {
-        let pool = |name: &DeclaredName| {
-            let at = POOLS.iter().position(|pool| *pool == name.as_str())?;
-            PoolId::new(u8::try_from(at).unwrap()).map(CostTarget::Pool)
-        };
-        assert_eq!(
-            data.fields_at(Rank::FIRST, pool).err(),
-            Some(field),
-            "{field:?}"
-        );
         let loaded = load(&mut game, &format!("field_{at}"), &data, LASH_OUT);
         assert_eq!(loaded, refused(ActionProblem::Field(field)), "{field:?}");
     }
@@ -123,8 +111,8 @@ fn a_capability_field_reads_its_param_at_each_rank() {
     // A cooldown of `{ param = "cd" }`, 1000 ms at rank 1 up to 3000 at rank 3: 30, 60 and 90
     // ticks at 30 a second, and a cost of `{ param = "price" }` mana, 7 at every rank.
     let mut data = strike();
-    data.cooldown_ms = Some(Ranked::One(param("cd")));
-    data.cost = BTreeMap::from([(
+    data.keys.cooldown_ms = Some(Ranked::One(param("cd")));
+    data.keys.cost = BTreeMap::from([(
         DeclaredName::new("mana").unwrap(),
         Ranked::from([int(5), param("price"), int(9)]),
     )]);
@@ -133,11 +121,11 @@ fn a_capability_field_reads_its_param_at_each_rank() {
             values.iter().map(|&value| Scalar::Int(value)).collect(),
         ))
     };
-    data.params.insert(
+    data.keys.params.insert(
         DeclaredName::new("cd").unwrap(),
         per_rank(&[1000, 2000, 3000]),
     );
-    data.params.insert(
+    data.keys.params.insert(
         DeclaredName::new("price").unwrap(),
         Param::Ranked(Ranked::One(Scalar::Int(7))),
     );
@@ -182,7 +170,7 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
         Abilities::give_combatant(&mut game, unit_type);
     }
     let mut heroes_only = strike();
-    heroes_only.targeting = Targeting::Unit(FilterData::parse("enemies:avatar").unwrap());
+    heroes_only.keys.targeting = Targeting::Unit(FilterData::parse("enemies:avatar").unwrap());
     let strike = Abilities::load(&mut game, "strike", &heroes_only, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
     let enemy_creep = Spawn::of(creep, (3, 0, 0))
@@ -218,7 +206,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     };
     Stats::load_modifier(&mut game, PackageIndex::MODE, "guard", &guard, None);
     let mut data = lash_out();
-    data.passive_modifier = Some(DeclaredName::new("guard").unwrap());
+    data.keys.passive_modifier = Some(DeclaredName::new("guard").unwrap());
     let lash_out = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
     let levels = [1, 1, 3, 3, 5].map(|level| NeededLevel::new(level).unwrap());
     let ranks = SlotRanks::new(NonZeroU8::new(5).unwrap(), Some(levels.to_vec())).unwrap();
@@ -242,7 +230,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
             .map(|&action| Order::one(caster, action))
             .collect();
         let payload = Order::payload(&orders);
-        game.step_with(&[(Seat::new(slot), &payload)]);
+        game.step_with(&[(PlayerSlot::new(slot), &payload)]);
     };
     // Its rank, its points, and the shield its passive holds.
     let progress = |game: &Match| {

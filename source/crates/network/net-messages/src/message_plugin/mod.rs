@@ -32,6 +32,7 @@ use bytes::Bytes;
 use campfire_net_bytes::Reader;
 use campfire_net_bytes::ToBytes;
 use campfire_net_channels::ChannelMessage;
+use campfire_net_channels::ChannelReader;
 use campfire_net_channels::ChannelReceiver;
 use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::MessageId;
@@ -46,7 +47,6 @@ use campfire_net_core::NetTick;
 use campfire_net_core::PeerId;
 use campfire_net_link::Unlink;
 use campfire_net_payload::UnlinkReason;
-use campfire_net_transport::ChannelReader;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
 use campfire_net_transport::TransportSystems;
@@ -85,7 +85,6 @@ impl Plugin for MessagePlugin {
                     }
                 });
             }),
-            ParamBuilder,
             ParamBuilder,
             ParamBuilder,
             // RepliconMapParam: replicon's shared map, and the server's entity check
@@ -136,7 +135,7 @@ impl Plugin for MessagePlugin {
         );
         app.add_systems(PreUpdate, receive.in_set(MessageSystems::Receive));
         app.add_systems(PostUpdate, send.in_set(MessageSystems::Send));
-        app.add_systems(Last, clear);
+        app.add_systems(Last, clear.in_set(MessageSystems::Clear));
 
         app.world_mut().insert_resource(registry);
     }
@@ -231,8 +230,6 @@ impl MessagePlugin {
         trace!(
             target: "campfire_net_debug::message",
             kind = "message_receive_bytes",
-            schedule = "PreUpdate",
-            sample_point = "PreUpdate",
             entity = ?entity,
             message_name = registry.name(net_id),
             message_net_id = net_id.get(),
@@ -284,7 +281,6 @@ impl MessagePlugin {
             With<Connected>,
         >,
         registry: Res<'_, MessageRegistry>,
-        channels: Res<'_, ChannelRegistry>,
         mut commands: Commands<'_, '_>,
         replicon: RepliconMapParam<'_, '_>,
     ) {
@@ -295,7 +291,7 @@ impl MessagePlugin {
                 let view = if is_client {
                     replicon.receive_view(map.remote_to_local())
                 } else {
-                    replicon.checked_view(map.local_to_remote())
+                    replicon.checked_view(entity)
                 };
                 let link = ReceiveLink {
                     entity,
@@ -310,9 +306,8 @@ impl MessagePlugin {
                 };
                 // A channel its own layer reads holds no message of the registry's
                 // (11-net-stack/transport.md, A channel has one reader).
-                let read = |receiver: &&mut ChannelReceiver| {
-                    channels.reader(receiver.channel_type_id()) == Some(ChannelReader::Messages)
-                };
+                let read =
+                    |receiver: &&mut ChannelReceiver| receiver.reader() == ChannelReader::Messages;
                 for channel_receiver in transport.channel_receivers_mut().filter(read) {
                     let channel_type_id = channel_receiver.channel_type_id();
                     let channel_name = channel_receiver.name();
@@ -349,8 +344,8 @@ impl MessagePlugin {
         );
     }
 
-    /// Clear all the message receivers to prevent messages from accumulating
-    pub fn clear(
+    /// Clears each link's message receivers, so no message outlives the frame it came in.
+    pub(crate) fn clear(
         mut links: Query<
             '_,
             '_,

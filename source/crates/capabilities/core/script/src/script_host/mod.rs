@@ -11,7 +11,8 @@ use rhai::packages::{
 use rhai::{AST, CallFnOptions, Dynamic, Engine, FuncArgs, Scope};
 
 use crate::script_host::budget::Budget;
-use crate::script_host::error::ScriptError;
+use crate::script_host::call_charge::CallCharge;
+use crate::script_host::error::{CompileError, ScriptError};
 use crate::script_host::num_api::NumApi;
 use crate::script_host::property_forwards::PropertyForwards;
 use crate::script_host::script_prints::{PrintKind, ScriptPrints};
@@ -19,6 +20,7 @@ use crate::script_host::script_prints::{PrintKind, ScriptPrints};
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod budget;
+pub(crate) mod call_charge;
 pub(crate) mod error;
 mod num_api;
 mod property_forwards;
@@ -85,10 +87,24 @@ pub struct ScriptHost {
 /// The running call's budget as the host and Rhai's progress callback share it.
 #[derive(Debug)]
 struct CallProgress {
+    /// The most operations of one call.
+    per_call: u64,
     /// What the budget has left as the call starts.
     allowed: Cell<u64>,
     /// Operations of the call, as the progress callback last saw them.
     counted: Cell<u64>,
+    /// The operations the call's native work counts, which the view shares once the ctx tags
+    /// the host.
+    charge: RefCell<CallCharge>,
+}
+
+impl CallProgress {
+    /// The call's operations: Rhai's and its native work's.
+    fn spent(&self) -> u64 {
+        self.counted
+            .get()
+            .saturating_add(self.charge.borrow().get())
+    }
 }
 
 impl ScriptHost {
@@ -145,13 +161,21 @@ impl ScriptHost {
             engine.on_print(|_| {}).on_debug(|_, _, _| {});
         }
         let progress = Rc::new(CallProgress {
+            per_call: per_call.get(),
             allowed: Cell::new(0),
             counted: Cell::new(0),
+            charge: RefCell::default(),
         });
         let call = Rc::clone(&progress);
+        // Past the call's limit by its native work, `true`, which reads as `CallLimit`; past the
+        // budget, `()`.
         engine.on_progress(move |count| {
             call.counted.set(count);
-            (count > call.allowed.get()).then_some(Dynamic::UNIT)
+            let spent = call.spent();
+            if spent > call.per_call {
+                return Some(Dynamic::TRUE);
+            }
+            (spent > call.allowed.get()).then_some(Dynamic::UNIT)
         });
         let mut host = Self {
             engine,
@@ -163,6 +187,11 @@ impl ScriptHost {
         };
         NumApi::register(&mut host.engine);
         host
+    }
+
+    /// Counts `charge`, the native work of its calls, toward each call's limit and budget.
+    pub(crate) fn share_charge(&self, charge: CallCharge) {
+        *self.progress.charge.borrow_mut() = charge;
     }
 
     /// For the script API's binding and the `ctx` it tags the engine with.
@@ -179,7 +208,7 @@ impl ScriptHost {
         self.properties.add(&mut self.engine, Box::new(forward));
     }
 
-    pub fn compile(&mut self, source: &str) -> Result<ScriptId, ScriptError> {
+    pub fn compile(&mut self, source: &str) -> Result<ScriptId, CompileError> {
         let ast = self.parse(source)?;
         self.properties.learn(&mut self.engine, &ast);
         let id = ScriptId::nth(self.scripts.len());
@@ -194,8 +223,8 @@ impl ScriptHost {
 
     /// The AST of `source`, compiled with the host's limits but not kept, for the package load
     /// checks to walk.
-    pub fn parse(&self, source: &str) -> Result<AST, ScriptError> {
-        self.engine.compile(source).map_err(ScriptError::Compile)
+    pub fn parse(&self, source: &str) -> Result<AST, CompileError> {
+        self.engine.compile(source).map_err(CompileError)
     }
 
     /// The functions `script` defines, each by its name and its count of parameters.
@@ -225,6 +254,7 @@ impl ScriptHost {
         }
         self.progress.allowed.set(budget.left());
         self.progress.counted.set(0);
+        self.progress.charge.borrow().clear();
         let result = self.engine.call_fn_with_options::<Dynamic>(
             CallFnOptions::new().eval_ast(false),
             &mut self.scope,
@@ -233,7 +263,8 @@ impl ScriptHost {
             args,
         );
         debug_assert!(self.scope.is_empty(), "a call rewinds its scope");
-        budget.spend(self.progress.counted.get());
+        // A call spends at most its limit, which its last native step may pass.
+        budget.spend(self.progress.spent().min(self.progress.per_call));
         result.map_err(ScriptError::from_eval)
     }
 }

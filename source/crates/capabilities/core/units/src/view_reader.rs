@@ -9,7 +9,7 @@ use bevy_ecs::query::{QueryState, ROQueryItem};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut, SystemState};
 use bevy_ecs::world::World;
-use campfire_declarations::Cache;
+use campfire_declarations::{Cache, MatchFacts};
 use campfire_script::{ReadOf, RowFill, RowReads, UnitRow, View, ViewColumn, ViewRows};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use campfire_values::{Team, UnitTags, UnitType};
@@ -31,7 +31,7 @@ use crate::units_world::UnitsWorld;
 /// touches: those whose parts changed, as each source's change ticks show, and those that lost a
 /// part a source reads, or went, as its observers record; it copies the rows between them in
 /// runs, and a read that touches none changes nothing (02-engine-core.md, The view refills what
-/// changed). The view calls it through `read`, which `Units::open` gives it.
+/// changed). The view calls it through `read`, which the core's runtime gives it.
 #[derive(Resource, Debug, Default)]
 pub struct ViewReader {
     /// The core's parts of each unit, once a read built its queries.
@@ -49,6 +49,9 @@ pub struct ViewReader {
     marks: RowMarks,
     /// Each source's part of the running read.
     reads: SourceReads,
+    /// Whether the next read fills every row, as the rows the view holds are of the units a load
+    /// in place despawned.
+    refill: bool,
 }
 
 /// The parts of a unit the core reads into its row: those every unit spawns with, then the
@@ -157,7 +160,7 @@ impl ViewReader {
             metric: map.metric(),
             bounds: map.bounds,
         };
-        let refill = rows.begin(read) || full;
+        let refill = rows.begin(read) || full || mem::take(&mut self.refill);
         let core = self
             .core
             .as_mut()
@@ -341,10 +344,17 @@ impl ViewReader {
     }
 }
 
-/// Every role reads its view's rows, from none kept.
+/// A match that runs scripts reads its view's rows, from none kept.
 impl Cache for ViewReader {
-    fn installed(_: &World) -> Option<Self> {
-        Some(Self::default())
+    fn installed(world: &World) -> Option<Self> {
+        let facts = world.resource::<MatchFacts>();
+        facts.role.scripts().then(Self::default)
+    }
+
+    fn clear(&mut self) {
+        self.removed.clear();
+        self.marks.clear();
+        self.refill = true;
     }
 }
 
@@ -396,7 +406,7 @@ impl CoreSource {
             alive,
             targetable,
             unit_type,
-            owner: owner.map(|owner| owner.seat()),
+            owner: owner.map(|owner| owner.player_slot()),
             tags: tags.copied().unwrap_or_default(),
         })
     }

@@ -1,17 +1,17 @@
+use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::system::SystemState;
 
 use crate::halves;
 use campfire_codec::Toml;
-use campfire_combat::DamagePass;
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersDirective;
 use campfire_production::internals::TestBuild;
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position};
-use campfire_units::{BuildTarget, GroundPoint, Layer, Life, MapBook, SeenBy, Wall};
+use campfire_units::{BuildTarget, GroundPoint, Life, MapBook, SeenBy, UnitsWorld, Wall};
 use campfire_values::{RelationSet, Share, TeamSet};
 use campfire_vision::{ByVision, Sight, Vision};
 use serde::Deserialize;
@@ -63,7 +63,10 @@ struct Rules<'a> {
 impl<'a> Rules<'a> {
     fn of(style: Style<'a>) -> Self {
         Rules {
-            form: BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+            form: BodyForm::new(
+                BodyShape::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+                Layer::FIRST,
+            ),
             start: BuildStart::Arrival,
             style,
             near: Vec::new(),
@@ -119,7 +122,7 @@ impl Yard {
         Navigation::load_walls(game, &rules.walls);
         Navigation::load_pathing(game, grid, [walker]);
         let gold = shop.gold;
-        let player = Seat::new(0);
+        let player = PlayerSlot::new(0);
         Players::spawn(game, 1, 1);
         game.player_resources_mut(player)
             .unwrap()
@@ -147,7 +150,11 @@ impl Yard {
         let build = Production::add_build(game, build);
         // Builders, of a half meter, walk a meter a tick.
         let builder = Units::load_type(game, TypeScope::Mode, "builder", &UnitTypeCore::default());
-        Units::give_type(game, builder, BodyForm::circle(Num::HALF).unwrap());
+        Units::give_type(
+            game,
+            builder,
+            BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST),
+        );
         Units::give_type(game, builder, MoveStep::new(Num::ONE).unwrap());
         Units::give_type(game, builder, Builder::default());
         Self { build, builder }
@@ -165,7 +172,7 @@ impl Yard {
         let position = position.into();
         let build = self.build;
         let slots = TimedSlots::new(ActionSlots::new([(build, SlotKind::new(0), Rank::new(1))]));
-        let parts = (Owner::new(Seat::new(owner)), slots);
+        let parts = (Owner::new(PlayerSlot::new(owner)), slots);
         Spawn::of(self.builder, position)
             .team(team)
             .parts(parts)
@@ -287,7 +294,7 @@ fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
             id: StableId::MATCH,
             team: Team::new(0),
             position: halves(7, 1),
-            owner: Some(Seat::new(0)),
+            owner: Some(PlayerSlot::new(0)),
         };
         let place = |spawned: &Spawned| Spawned {
             id: StableId::MATCH,
@@ -420,7 +427,7 @@ fn a_completed_site_keeps_its_spawns_brings_each_back_and_takes_them_as_it_dies(
     let grunts = Shop::spawned(&mut game, shop.grunt);
     assert_eq!(grunts.len(), 2);
     assert!(grunts.iter().all(|grunt| grunt.position == halves(7, 1)));
-    DamagePass::kill(&mut game, grunts[0].id);
+    game.drain_life(grunts[0].id);
     game.step();
     // The restored match loads the same books, its players left for the snapshot to bring.
     let mut restored = scene().game;
@@ -442,7 +449,7 @@ fn a_completed_site_keeps_its_spawns_brings_each_back_and_takes_them_as_it_dies(
         assert_eq!(living(game, shop), 2);
     }
     let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
-    DamagePass::kill(&mut game, depot);
+    game.drain_life(depot);
     game.step();
     assert_eq!(living(&mut game, shop), 0);
     for _ in 0..10 {
@@ -498,7 +505,7 @@ fn an_order_build_pays_and_places_its_site_as_it_applies_and_its_builder_walks_t
 
     // A mode of no life pool, as one of no combat, holds no book of lives: its site spawns of no
     // life, and grows as any other.
-    game.remove_resource::<ByType<Life>>();
+    game.remove_resource::<ById<UnitType, Life>>();
     let lifeless = yard.builder(&mut game, halves(0, 20), Team::new(0), 0);
     Production::build_at(&mut game, lifeless, 0, 15);
     let depots = shop.depots(&mut game);
@@ -641,7 +648,16 @@ fn a_builder_that_leaves_stops_its_site_and_one_that_comes_back_goes_on() {
     };
     Production::tick_ordering(&mut game, 0, builder, away);
     assert_eq!(Production::order_of(&game, builder), None);
+    // A tick of no builder writes neither the site's progress nor its life.
+    let site = game.unit_entity(depot);
+    let written = |game: &Match| {
+        let unit = game.entity(site);
+        let progress = unit.get_ref::<SiteProgress>().unwrap().last_changed();
+        (progress, unit.get_ref::<Life>().unwrap().last_changed())
+    };
+    let before = written(&game);
     game.step();
+    assert_eq!(written(&game), before);
     assert_eq!(game.part::<Position>(builder).get(), halves(-10, 0));
     Production::tick_ordering(&mut game, 0, builder, at_site(depot));
     let mut seen = Vec::new();
@@ -755,7 +771,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
             "static body",
             Rules::of(Style::Alone),
             Some(|game: &mut Match| {
-                let body = BodyForm::circle(Num::ONE).unwrap();
+                let body = BodyForm::new(BodyShape::circle(Num::ONE).unwrap(), Layer::FIRST);
                 Navigation::walker_at(game, halves(2, 0))
                     .team(Team::new(2))
                     .body(body)
@@ -846,7 +862,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
             shop,
             yard,
         } = Building::new(rules);
-        let form = BodyForm::circle(Num::HALF).unwrap();
+        let form = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST);
         let enemy = Navigation::walker_at(&mut game, halves(0, 6))
             .team(Team::new(1))
             .body(form)
@@ -909,7 +925,7 @@ fn a_place_search_takes_the_nearest_point_of_its_grid_where_its_build_passes() {
         checks.get(game).unwrap().may_start(builder, 0, now)
     };
     assert!(may_start(&mut game));
-    let mut held = game.player_resources_mut(Seat::new(0)).unwrap();
+    let mut held = game.player_resources_mut(PlayerSlot::new(0)).unwrap();
     held.add(shop.gold, -86).unwrap();
     assert!(!may_start(&mut game));
     for (seen, found) in [
@@ -924,7 +940,7 @@ fn a_place_search_takes_the_nearest_point_of_its_grid_where_its_build_passes() {
     // A static body, a circle of 1 m at (1, 0), leaves the unturned box at (0, −2), where it
     // touches its lowest point.
     let Building { mut game, yard, .. } = Building::new(Rules::of(Style::Alone));
-    let body = BodyForm::circle(Num::ONE).unwrap();
+    let body = BodyForm::new(BodyShape::circle(Num::ONE).unwrap(), Layer::FIRST);
     Navigation::walker_at(&mut game, halves(2, 0))
         .team(Team::new(2))
         .body(body)
@@ -940,7 +956,7 @@ fn a_round_building_places_by_its_circle_and_its_builder_walks_to_its_edge() {
     // nearer refuses it; a static body of 1 m centered at (3, 0) touches it and one at (2.5, 0)
     // refuses it; at x = 18 it reaches the bound at 20, and at x = 19 it passes it.
     let round = || Rules {
-        form: BodyForm::circle(Num::int(2)).unwrap(),
+        form: BodyForm::new(BodyShape::circle(Num::int(2)).unwrap(), Layer::FIRST),
         ..Rules::of(Style::Alone)
     };
     let wall = |from: Num| Rules {
@@ -977,7 +993,10 @@ fn a_round_building_places_by_its_circle_and_its_builder_walks_to_its_edge() {
         if let Some(body) = body {
             Navigation::walker_at(&mut game, halves(body, 0))
                 .team(Team::new(2))
-                .body(BodyForm::circle(Num::ONE).unwrap())
+                .body(BodyForm::new(
+                    BodyShape::circle(Num::ONE).unwrap(),
+                    Layer::FIRST,
+                ))
                 .place(&mut game);
         }
         let from = Vec3::new(Num::int(x - 3), Num::ZERO, Num::ZERO);
@@ -1120,7 +1139,7 @@ fn two_builders_that_arrive_at_one_place_in_one_tick_place_one_site() {
         [None, None]
     );
     let spawned = Shop::spawned(&mut game, shop.depot);
-    assert_eq!(spawned[0].owner, Some(Seat::new(0)));
+    assert_eq!(spawned[0].owner, Some(PlayerSlot::new(0)));
 }
 
 #[test]
@@ -1134,7 +1153,7 @@ fn a_predicting_clients_build_reads_only_what_it_holds() {
         let yard = Yard::place(game, shop, Rules::of(Style::Alone));
         let enemy = Production::yard_walker(game, halves(1, 1), Team::new(1), None);
         game.insert_parts(enemy, Unpredicted);
-        let form = BodyForm::circle(Num::HALF).unwrap();
+        let form = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST);
         let post = Navigation::walker_at(game, halves(10, 0))
             .team(Team::new(2))
             .body(form)
@@ -1154,7 +1173,7 @@ fn a_predicting_clients_build_reads_only_what_it_holds() {
             site,
             SiteProgress::default(),
             StatusTags::from([Production::CONSTRUCTING]),
-            Owner::new(Seat::new(0)),
+            Owner::new(PlayerSlot::new(0)),
         );
         let depot = Spawn::of(shop.depot, halves(0, 12))
             .parts(parts)

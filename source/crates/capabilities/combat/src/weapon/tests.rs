@@ -19,6 +19,7 @@ fn own(periods: [u64; 2], amounts: [i64; 2]) -> Weapon {
         rate: Rate::Period(Box::new(periods.map(Ticks::new))),
         rate_bonus: None,
         damage: WeaponDamage::Amount(Box::new(amounts.map(Num::int))),
+        damage_bonus: None,
         kind: DamageKind::new(0),
         clip: None,
         splash: None,
@@ -26,6 +27,7 @@ fn own(periods: [u64; 2], amounts: [i64; 2]) -> Weapon {
         pitch: None,
         speed: None,
         streak: None,
+        pre_attack: None,
     }
 }
 
@@ -130,6 +132,45 @@ fn a_rate_bonus_divides_its_own_period_and_reload_by_one_more_than_it_rounded_do
     assert_eq!(ticks(Num::int(2), 3), [4, 7]);
     // A unit that holds no value of the stat fires at the weapon's own period.
     assert_eq!(weapon.period(&[], Rank::FIRST, Ticks::ZERO, 30).get(), 8);
+}
+
+#[test]
+fn a_damage_bonus_scales_its_amount_and_its_outer_ring_rounded_once() {
+    // 10 and an outer ring of 4, by the stat 0: at 0.5, 15 and 6; at 0, 10 and 4; at −0.25,
+    // 7.5 and 3; at −1 or below, a factor of 0: 0 and 0; at one bit, 2⁻²⁴, 10 × (1 + 2⁻²⁴) is
+    // 10 + 10 × 2⁻²⁴, ten bits more. With no bonus, or a stat the unit lacks, the weapon deals
+    // its own amounts.
+    let splash = Splash::new(Num::ONE, RelationSet::Enemies, true)
+        .and_then(|splash| splash.with_outer(Num::int(3), Box::new([Num::int(4), Num::int(4)])))
+        .unwrap();
+    let weapon = Weapon {
+        damage_bonus: Some(StatId::new(0)),
+        splash: Some(splash),
+        ..own([1, 1], [10, 10])
+    };
+    let dealt = |weapon: &Weapon, stats: &[Num]| {
+        let outer = weapon.outer_amount(stats, Rank::FIRST).unwrap();
+        [weapon.damage(stats, Rank::FIRST), outer]
+    };
+    assert_eq!(dealt(&weapon, &[Num::HALF]), [Num::int(15), Num::int(6)]);
+    assert_eq!(dealt(&weapon, &[Num::ZERO]), [Num::int(10), Num::int(4)]);
+    assert_eq!(
+        dealt(&weapon, &[decimal("-0.25")]),
+        [decimal("7.5"), Num::int(3)]
+    );
+    assert_eq!(dealt(&weapon, &[-Num::ONE]), [Num::ZERO, Num::ZERO]);
+    assert_eq!(dealt(&weapon, &[Num::int(-3)]), [Num::ZERO, Num::ZERO]);
+    let bit = Num::from_bits(1);
+    assert_eq!(
+        dealt(&weapon, &[bit])[0],
+        Num::from_bits(Num::int(10).to_bits() + 10)
+    );
+    assert_eq!(dealt(&weapon, &[]), [Num::int(10), Num::int(4)]);
+    let plain = Weapon {
+        damage_bonus: None,
+        ..weapon
+    };
+    assert_eq!(dealt(&plain, &[Num::HALF]), [Num::int(10), Num::int(4)]);
 }
 
 #[test]

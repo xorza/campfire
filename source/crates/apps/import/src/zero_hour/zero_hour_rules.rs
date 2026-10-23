@@ -1,4 +1,4 @@
-use crate::zero_hour::ZeroHour;
+use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::ini::armor_ini::ArmorIni;
@@ -12,6 +12,8 @@ use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::player_template_ini::PlayerTemplateIni;
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
 use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
+use crate::zero_hour::install::Install;
+use crate::zero_hour::rules_names::RulesNames;
 
 /// The install's game data as the game parses it, read once before any stage converts: each kind
 /// of its INI files and its string table, which the import's stages read and none writes.
@@ -29,37 +31,51 @@ pub(crate) struct ZeroHourRules {
     pub(crate) weapons: WeaponIni,
     pub(crate) armors: ArmorIni,
     pub(crate) strings: StringTable,
+    pub(crate) names: RulesNames,
 }
 
 impl ZeroHourRules {
-    /// The rules of `game`'s install; an error for a file that does not read as the game reads
-    /// it.
-    pub(crate) fn read(game: &ZeroHour) -> Result<Self, ZeroHourError> {
+    /// The rules of `install`; an error for a file that does not read as the game reads it.
+    pub(crate) fn read(install: &Install) -> Result<Self, ZeroHourError> {
         Ok(Self {
-            terrain: game.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?,
-            game_data: game.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?,
-            mouse: game.read_inis("Mouse", MouseIni::default(), MouseIni::read)?,
-            objects: game.read_inis("Object", ObjectIni::default(), ObjectIni::read)?,
-            locomotors: game.read_inis("Locomotor", LocomotorIni::default(), LocomotorIni::read)?,
-            templates: game.read_inis(
+            terrain: install.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?,
+            game_data: install.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?,
+            mouse: install.read_inis("Mouse", MouseIni::default(), MouseIni::read)?,
+            objects: install.read_inis("Object", ObjectIni::default(), ObjectIni::read)?,
+            locomotors: install.read_inis(
+                "Locomotor",
+                LocomotorIni::default(),
+                LocomotorIni::read,
+            )?,
+            templates: install.read_inis(
                 "PlayerTemplate",
                 PlayerTemplateIni::default(),
                 PlayerTemplateIni::read,
             )?,
-            sets: game.read_inis("CommandSet", CommandSetIni::default(), CommandSetIni::read)?,
-            buttons: game.read_inis(
+            sets: install.read_inis("CommandSet", CommandSetIni::default(), CommandSetIni::read)?,
+            buttons: install.read_inis(
                 "CommandButton",
                 CommandButtonIni::default(),
                 CommandButtonIni::read,
             )?,
-            multiplayer: game.read_inis(
+            multiplayer: install.read_inis(
                 "Multiplayer",
                 MultiplayerIni::default(),
                 MultiplayerIni::read,
             )?,
-            weapons: game.read_inis("Weapon", WeaponIni::default(), WeaponIni::read)?,
-            armors: game.read_inis("Armor", ArmorIni::default(), ArmorIni::read)?,
-            strings: game.string_table()?,
+            weapons: install.read_inis("Weapon", WeaponIni::default(), WeaponIni::read)?,
+            armors: install.read_inis("Armor", ArmorIni::default(), ArmorIni::read)?,
+            strings: Self::string_table(install)?,
+            names: RulesNames::default(),
         })
+    }
+
+    /// The install's string table, `Data\<language>\generals.csf`, as the game reads its
+    /// language's.
+    fn string_table(install: &Install) -> Result<StringTable, ZeroHourError> {
+        let language = install.language()?.ok_or(ZeroHourError::NoLanguage)?;
+        let path = ArchivePath::of(&format!("data\\{language}\\generals.csf"));
+        let bytes = install.read(&path)?;
+        StringTable::read(&bytes).map_err(|error| ZeroHourError::StringTable { path, error })
     }
 }

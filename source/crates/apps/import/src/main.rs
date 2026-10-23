@@ -1,7 +1,7 @@
 //! Imports a game's install into a package: `campfire-import <GAME> <INSTALL> <OUT>`. It reads
 //! the install as the game reads it, refuses a version it does not know, and writes into the new
 //! directory `OUT` the game's rules package and the install's package, `game/`, the mode a player
-//! plays, then logs their fingerprints. It logs as `campfire_log::Logging`
+//! plays, then logs their fingerprints. It logs as `campfire_logging::Logging`
 //! says, `info` by default.
 
 use std::env;
@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
 use campfire_import::{ImportLoss, Imported, SkipReason, ZeroHour};
-use campfire_log::Logging;
+use campfire_logging::Logging;
 use tracing::{error, info, warn};
 
 use crate::command_line::{CommandLine, Game};
@@ -41,7 +41,7 @@ fn warn_of(loss: &ImportLoss) {
         }
         ImportLoss::Texture(texture) => warn!(
             texture,
-            "a model names a texture no archive holds, and draws untextured"
+            "a model names a texture no archive holds, and draws the game's MissingTexture"
         ),
         ImportLoss::UntexturedCells { map, cells } => {
             warn!(%map, cells, "a map's terrain draws cells of a tile with no texture");
@@ -50,17 +50,17 @@ fn warn_of(loss: &ImportLoss) {
             warn!(%map, waypoint, "a map's waypoint past its bounds is dropped");
         }
         ImportLoss::Button(dropped) => warn!(
-            button = dropped.button,
+            button = dropped.name,
             cause = ?dropped.cause,
             "a command button is not imported"
         ),
         ImportLoss::Supply(dropped) => warn!(
-            object = dropped.object,
+            object = dropped.name,
             cause = ?dropped.cause,
             "an object's supply is not imported"
         ),
         ImportLoss::Weapon(dropped) => warn!(
-            weapon = dropped.weapon,
+            weapon = dropped.name,
             cause = ?dropped.cause,
             "a weapon is not imported"
         ),

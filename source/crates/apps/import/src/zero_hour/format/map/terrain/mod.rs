@@ -90,6 +90,10 @@ impl Terrain {
     /// a side of cells of a 64-texel tile and a border of 8, ⌊2,048 / 72⌋ = 28.
     pub(crate) const MOST_CLASS_WIDTH: u32 = 28;
 
+    /// The most tiles a terrain holds: as many as a cell's tile, its top 14 bits, names, so an
+    /// atlas of its tiles is bounded.
+    pub(crate) const MOST_TILES: u32 = 1 << 14;
+
     /// The terrain of `terrain`, its cells rows of `columns`, the heights' width; an error
     /// unless its cells fill whole rows, every index each cell, blend and cliff names is in its
     /// list, each class's tiles are within its count, and each class is no wider than the atlas
@@ -97,6 +101,9 @@ impl Terrain {
     pub(crate) fn new(terrain: TerrainFields, columns: usize) -> Result<Self, TerrainError> {
         if columns == 0 || !terrain.cells.len().is_multiple_of(columns) {
             return Err(TerrainError::Shape);
+        }
+        if terrain.tiles > Self::MOST_TILES {
+            return Err(TerrainError::Tiles(terrain.tiles));
         }
         let tile = |tile: u16| {
             if u32::from(tile >> 2) < terrain.tiles {

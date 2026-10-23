@@ -1,4 +1,5 @@
 use super::*;
+use crate::message_receive_cx::ReceivedMessageHeader;
 use campfire_net_channels::Channel;
 use campfire_net_channels::ChannelTypeId;
 use campfire_net_core::NetTick;
@@ -16,9 +17,11 @@ fn received_messages_keep_their_order_and_metadata() {
     for (message, tick) in [("first", 10), ("second", 10), ("third", 11)] {
         receiver.push_received(ReceivedMessage {
             data: TestMessage(message),
-            remote_tick: NetTick(tick),
-            channel_type_id: ChannelTypeId::of::<TestChannel>(),
-            message_id: None,
+            header: ReceivedMessageHeader {
+                remote_tick: NetTick(tick),
+                channel_type_id: ChannelTypeId::of::<TestChannel>(),
+                message_id: None,
+            },
         });
     }
 
@@ -26,7 +29,7 @@ fn received_messages_keep_their_order_and_metadata() {
     assert_eq!(
         received
             .iter()
-            .map(|m| (m.data.0, m.remote_tick))
+            .map(|m| (m.data.0, m.header.remote_tick))
             .collect::<Vec<_>>(),
         vec![
             ("first", NetTick(10)),

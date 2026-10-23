@@ -23,22 +23,22 @@ use bevy::time::{Fixed, Time};
 use bevy::transform::components::Transform;
 use bevy::window::Window;
 use campfire_actions::ActionProgress;
+use campfire_host::JoinState;
 use campfire_mode::{MatchEnd, MatchResult};
-use campfire_net::JoinState;
-use campfire_net_replication::Predicted;
 use campfire_projectiles::Projectile;
 use campfire_sim::{EntityIndex, Position, Unpredicted};
 use campfire_units::{Avatar, Body, BodyUnit, Dead, Facing, MapBook, MoveStep};
 use campfire_values::{Team, UnitType};
 
 use crate::engine_text::{EngineMessage, EngineText};
-use crate::view::client_data::ClientData;
+use crate::view::client_data::ClientLoad;
 use crate::view::drawing::{Drawing, DrawingOf, Drawn};
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
 use crate::view::glide::{Follows, FrameClock, Glide, Spot};
 use crate::view::ground_heights::GroundHeights;
 use crate::view::look::{Condition, Look, Pose, ShapeKind, UnitShape};
+use crate::view::map_metric::Lifts;
 use crate::view::match_colors::{MatchColors, Paint};
 use crate::view::scene_lights::{SceneLights, Sun};
 use crate::view::unit_looks::UnitLooks;
@@ -53,7 +53,10 @@ pub(crate) mod footing;
 pub(crate) mod glide;
 pub(crate) mod ground_heights;
 pub(crate) mod look;
+pub(crate) mod map_metric;
 pub(crate) mod match_colors;
+pub(crate) mod match_hud;
+pub(crate) mod match_picking;
 pub(crate) mod package_source;
 pub(crate) mod pixel_scale;
 pub(crate) mod player_camera;
@@ -122,8 +125,8 @@ enum Standing {
 struct Figure;
 
 /// The units not drawn yet, projectiles and areas apart: where each stands, its team, whether it
-/// walks, whether it is a player's avatar, whether it is the client's own, whether it is dead,
-/// whether the client only receives it, its body, its type and the way it faces.
+/// walks, whether it is a player's avatar, whether it is dead, whether the client only receives
+/// it, else it is the client's own, which it predicts, its body, its type and the way it faces.
 type NewUnits<'w, 's> = Query<
     'w,
     's,
@@ -133,7 +136,6 @@ type NewUnits<'w, 's> = Query<
         &'static Team,
         Has<MoveStep>,
         Has<Avatar>,
-        Has<Predicted>,
         Has<Dead>,
         Has<Unpredicted>,
         Option<&'static Body>,
@@ -225,13 +227,13 @@ impl ViewPlugin {
     /// Sets the background, the map's lights or one plain sun, the view's own ground over the
     /// map's bounds unless the map has a terrain, and the palette.
     fn set_scene(
-        (data, map): (Res<'_, ClientData>, Res<'_, MapBook>),
+        (load, colors, map): (Res<'_, ClientLoad>, Res<'_, MatchColors>, Res<'_, MapBook>),
         mut commands: Commands<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
         mut materials: ResMut<'_, Assets<StandardMaterial>>,
     ) {
         commands.insert_resource(ClearColor(Color::srgb(0.08, 0.09, 0.11)));
-        match &data.lights {
+        match &load.lights {
             Some(lights) => {
                 let SceneLights { ambient, suns } = SceneLights::of(lights);
                 commands.insert_resource(ambient);
@@ -246,7 +248,7 @@ impl ViewPlugin {
                 ));
             }
         }
-        if data.terrain.is_none() {
+        if load.terrain.is_none() {
             let [min, max] = [map.bounds.min(), map.bounds.max()].map(|at| at.map(FloatNum::float));
             let center = Vec3::new(
                 f32::midpoint(min[0], max[0]),
@@ -266,10 +268,7 @@ impl ViewPlugin {
         let palette = Palette {
             projectile: meshes.add(Sphere::new(SHOT_RADIUS).mesh()),
             own: materials.add(Color::srgb(1.0, 0.85, 0.2)),
-            teams: MatchColors::new(data.team_colors.clone())
-                .teams()
-                .map(|color| materials.add(color))
-                .collect(),
+            teams: colors.teams().map(|color| materials.add(color)).collect(),
             dead: materials.add(Color::srgb(0.22, 0.22, 0.24)),
             shot: materials.add(Color::srgb(1.0, 0.95, 0.6)),
         };
@@ -288,14 +287,14 @@ impl ViewPlugin {
         time: Res<'_, Time>,
         units: NewUnits<'_, '_>,
         looks: Res<'_, UnitLooks>,
-        data: Res<'_, ClientData>,
+        (lifts, colors): (Lifts<'_>, Res<'_, MatchColors>),
         mut meshes: ResMut<'_, Assets<Mesh>>,
         mut capsules: Local<'_, BTreeMap<[u32; 2], Handle<Mesh>>>,
         mut cuboids: Local<'_, BTreeMap<[u32; 3], Handle<Mesh>>>,
         mut commands: Commands<'_, '_>,
     ) {
-        let heights = data.lifts();
-        for (unit, &position, team, walks, avatar, own, dead, received, body, &unit_type, facing) in
+        let heights = lifts.get();
+        for (unit, &position, team, walks, avatar, dead, received, body, &unit_type, facing) in
             &units
         {
             let at = ground(position, heights);
@@ -354,10 +353,10 @@ impl ViewPlugin {
                     })
                 }
             };
-            let alive = if own {
-                &palette.own
+            let alive = if received {
+                &palette.teams[colors.place(*team)]
             } else {
-                &palette.teams[data.team_colors.place(*team)]
+                &palette.own
             };
             let figure = commands.spawn((Figure, Drawn, Mesh3d(mesh.clone()))).id();
             let look = Look {
@@ -397,10 +396,10 @@ impl ViewPlugin {
         time: Res<'_, Time>,
         shots: NewShots<'_, '_>,
         looks: Res<'_, UnitLooks>,
-        data: Res<'_, ClientData>,
+        lifts: Lifts<'_>,
         mut commands: Commands<'_, '_>,
     ) {
-        let heights = data.lifts();
+        let heights = lifts.get();
         for (shot, &position, &unit_type, received) in &shots {
             let at = ground(position, heights);
             let root = commands
@@ -442,10 +441,10 @@ impl ViewPlugin {
     /// step of no length keeps its turn.
     fn head_shots(
         shots: MovedShots<'_, '_>,
-        data: Res<'_, ClientData>,
+        lifts: Lifts<'_>,
         mut roots: Query<'_, '_, (&mut Heading, &mut Transform)>,
     ) {
-        let heights = data.lifts();
+        let heights = lifts.get();
         for (&position, drawing) in &shots {
             let Ok((mut heading, mut transform)) = roots.get_mut(drawing.root()) else {
                 continue;
@@ -469,9 +468,12 @@ impl ViewPlugin {
         mut figures: Query<'_, '_, &mut Transform, With<Figure>>,
         mut leaning: Local<'_, Vec<Entity>>,
     ) {
+        // The leaning units, in order, each once.
         for (unit, progress) in &started {
-            if progress.attacking().is_some() && !leaning.contains(&unit) {
-                leaning.push(unit);
+            if progress.attacking().is_some()
+                && let Err(at) = leaning.binary_search(&unit)
+            {
+                leaning.insert(at, unit);
             }
         }
         leaning.retain(|&unit| {
@@ -542,10 +544,10 @@ impl ViewPlugin {
     /// the ones that hold now.
     fn step(
         units: Query<'_, '_, (&Position, Option<&Facing>, &Drawing)>,
-        data: Res<'_, ClientData>,
+        lifts: Lifts<'_>,
         mut roots: Query<'_, '_, &mut Glide>,
     ) {
-        let heights = data.lifts();
+        let heights = lifts.get();
         for (&position, facing, drawing) in &units {
             if let Ok(mut glide) = roots.get_mut(drawing.root()) {
                 glide.tick(Spot {
@@ -560,10 +562,10 @@ impl ViewPlugin {
     fn follow(
         time: Res<'_, Time>,
         units: MovedUnits<'_, '_>,
-        data: Res<'_, ClientData>,
+        lifts: Lifts<'_>,
         mut roots: Query<'_, '_, (&Transform, &mut Glide)>,
     ) {
-        let heights = data.lifts();
+        let heights = lifts.get();
         for (&position, facing, drawing) in &units {
             if let Ok((transform, mut glide)) = roots.get_mut(drawing.root()) {
                 let drawn = Spot {
@@ -681,7 +683,7 @@ fn yaw(facing: Option<&Facing>) -> f32 {
 }
 
 /// A sim place in the renderer's floats: its height above the ground, which `heights` gives
-/// beneath it, or above 0 on a map with none or a spatial map's, as `ClientData::lifts` gives.
+/// beneath it, or above 0 on a map with none or a spatial map's, as `Lifts` gives.
 fn ground(position: Position, heights: Option<&GroundHeights>) -> Vec3 {
     let point = position.get();
     let (x, z) = (point.x.float(), point.z.float());

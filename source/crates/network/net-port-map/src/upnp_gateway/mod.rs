@@ -12,7 +12,7 @@ use xmltree::Element;
 use crate::control_schema::ControlSchema;
 use crate::error::{PortMapError, SoapError};
 use crate::facing_socket::FacingSocket;
-use crate::gateway::{MapAsk, MappedBy, Mapping};
+use crate::mapping::{MapAsk, MappedBy, Mapping};
 use crate::router_description::RouterDescription;
 use crate::router_url::RouterUrl;
 use crate::soap_call::SoapCall;

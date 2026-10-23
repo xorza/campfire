@@ -58,8 +58,8 @@ impl CoreApi {
         let player = ApiHolder::of::<PlayerHandle>();
         api.ty::<PlayerHandle>()
             .bind(
-                MemberDecl::field(player, "seat", "its seat's place, from 0"),
-                |player: &mut PlayerHandle| i64::from(player.seat().get()),
+                MemberDecl::field(player, "player_slot", "its player slot's place, from 0"),
+                |player: &mut PlayerHandle| i64::from(player.player_slot().get()),
             )
             .method(
                 MemberDecl::operator(player, "==", "whether the two are one player"),

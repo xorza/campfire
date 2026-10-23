@@ -1,8 +1,9 @@
-use campfire_script::{ApiBuilder, ApiError, Checked, Ctx, ScriptHandle, ScriptValue};
+use campfire_script::{ApiBuilder, ApiError, Checked, Ctx, ScriptHandle, ScriptValue, StateSchema};
 use campfire_sim::StableId;
 use campfire_values::UnitType;
 
 use crate::state_write::StateWrite;
+use crate::unit_state::{AudienceCall, KindOf};
 use crate::units_call::UnitsCall;
 use crate::units_column::UnitsColumn;
 
@@ -45,15 +46,18 @@ impl UnitStateAccess {
 
     /// The field `name`, as the call last wrote it, or else as the view holds it, or at its
     /// type's default for a unit the call creates; one the unit's type does not declare fails
-    /// the call.
+    /// the call, and so does one of an audience the view's viewer is not of.
     fn get(&self, ctx: &Ctx, name: &str) -> Checked<ScriptValue> {
         let view = ctx.view();
         let field = UnitsColumn::field(view, self.unit_type, name)?;
         if let Some(value) = UnitsCall::of(&ctx.frame()).written(self.id, field) {
-            return Ok(value.to_value(view));
+            let read = |schema: &StateSchema| schema.read(field, value, view);
+            return Ok(UnitsColumn::schema(view, self.unit_type, read));
         }
         if let Some(row) = self.row {
-            return Ok(UnitsColumn::read(view, row, field));
+            let place = UnitsColumn::schema(view, self.unit_type, |schema| schema.place(field));
+            view.admit_row(row, KindOf.on(place.audience))?;
+            return Ok(UnitsColumn::read(view, row, self.unit_type, field));
         }
         Ok(UnitsColumn::initial(view, self.unit_type, field))
     }

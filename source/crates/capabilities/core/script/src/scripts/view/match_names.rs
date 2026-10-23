@@ -1,14 +1,13 @@
-use std::fmt;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_values::{
-    DamageKind, NameId, NameKey, NameTable, Names, ResourceId, Scalar, Team, UnitType,
+    Allegiance, DamageKind, MatchScope, NameId, NameKey, NameTable, Named, Names, ResourceId,
+    Scalar, Team, UnitType,
 };
 
-use crate::scripts::script_names::ScriptNames;
-use crate::scripts::typed_list::{TypedItem, TypedList};
+use crate::scripts::view::name_tables::{AnyNames, NameTables};
 use crate::scripts::view::tag_names::TagNames;
 use crate::scripts::view::teams::Teams;
 
@@ -16,10 +15,9 @@ use crate::scripts::view::teams::Teams;
 /// found by the id's type; the tags; the teams and their players; and each unit type's params.
 /// What a check of the match reads as a plain resource, and what the script view derives the
 /// names its scripts read from, as each batch reads it. Package data, not state.
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Debug, Default, Clone)]
 pub struct MatchNames {
-    /// The names of each kind of id, a `Table<I>` by the id's type `I`.
-    tables: TypedList<dyn AnyTable>,
+    tables: NameTables,
     tags: TagNames,
     /// The match's teams; none before a mode sets them.
     teams: Option<Arc<Teams>>,
@@ -29,75 +27,30 @@ pub struct MatchNames {
     revision: u64,
 }
 
-/// The names of the ids of type `I`.
-#[derive(Debug)]
-struct Table<I: NameId>(Arc<Names<I>>);
-
-/// A table of the names of one kind of id, as `MatchNames` holds it among the others.
-pub(crate) trait AnyTable: TypedItem + fmt::Debug + Send + Sync {
-    /// The table as scripts read it, each name a script string.
-    fn script_names(&self) -> Box<dyn AnyNames>;
-
-    fn clone_table(&self) -> Box<dyn AnyTable>;
-}
-
-/// A table of the names of one kind of id as scripts read it, among the others.
-pub(crate) trait AnyNames: TypedItem + fmt::Debug {}
-
-impl<I: NameId + 'static> AnyTable for Table<I>
-where
-    Names<I>: Send + Sync,
-{
-    fn script_names(&self) -> Box<dyn AnyNames> {
-        Box::new(ScriptNames::new(Arc::clone(&self.0)))
-    }
-
-    fn clone_table(&self) -> Box<dyn AnyTable> {
-        Box::new(Self(Arc::clone(&self.0)))
-    }
-}
-
-impl<I: NameId + 'static> AnyNames for ScriptNames<I> {}
-
-impl Clone for MatchNames {
-    fn clone(&self) -> Self {
-        let mut tables = TypedList::default();
-        for table in &self.tables {
-            tables.add(table.clone_table());
-        }
-        Self {
-            tables,
-            tags: self.tags.clone(),
-            teams: self.teams.clone(),
-            params: Arc::clone(&self.params),
-            revision: self.revision,
-        }
-    }
-}
-
 impl MatchNames {
     /// Puts in the names of the ids of type `I`, in place of those it held.
-    pub fn set_table<I: NameId + 'static>(&mut self, names: Arc<Names<I>>)
+    pub fn set_table<I: NameId + Named + 'static>(&mut self, names: Arc<Names<I>>)
     where
         Names<I>: Send + Sync,
+        I::Scope: MatchScope,
     {
         self.revision += 1;
-        match self.tables.get_mut::<Table<I>>() {
-            Some(held) => *held = Table(names),
-            None => {
-                self.tables.add(Box::new(Table(names)));
-            }
-        }
+        self.tables.set(names);
     }
 
     /// The names of the ids of type `I`; none before their module puts them in.
     pub fn table<I: NameId + 'static>(&self) -> Option<&Names<I>> {
-        Some(&self.tables.get::<Table<I>>()?.0)
+        self.tables.table::<I>().map(|names| &**names)
+    }
+
+    /// The tables of the names of each kind of id.
+    pub const fn tables(&self) -> &NameTables {
+        &self.tables
     }
 
     /// Each table as scripts read it, in the order the books put them in.
     pub(crate) fn script_tables(&self) -> impl Iterator<Item = Box<dyn AnyNames>> + '_ {
-        self.tables.iter().map(AnyTable::script_names)
+        self.tables.script_tables()
     }
 
     /// The id of type `I` named `key`.
@@ -118,6 +71,7 @@ impl MatchNames {
     /// Sets the match's tags, as the load declared them.
     pub fn set_tags(&mut self, tags: TagNames) {
         self.revision += 1;
+        self.tables.set(Arc::clone(tags.names()));
         self.tags = tags;
     }
 
@@ -163,16 +117,26 @@ impl MatchNames {
             .is_none_or(|teams| team.index() < teams.count())
     }
 
-    /// Whether `seat` is a player of the session; any slot is before a mode sets the teams.
-    pub fn has_player(&self, seat: Seat) -> bool {
-        self.teams().is_none_or(|teams| teams.of(seat).is_some())
+    /// Whether `player_slot` is a player of the session; any slot is before a mode sets the teams.
+    pub fn has_player(&self, player_slot: PlayerSlot) -> bool {
+        self.teams()
+            .is_none_or(|teams| teams.of(player_slot).is_some())
     }
 
-    /// Whether `seat` is a player of `team`; any slot is of any team before a mode sets the
+    /// Whether `player_slot` is a player of `team`; any slot is of any team before a mode sets the
     /// teams.
-    pub fn plays_for(&self, seat: Seat, team: Team) -> bool {
+    pub fn plays_for(&self, player_slot: PlayerSlot, team: Team) -> bool {
         self.teams()
-            .is_none_or(|teams| teams.of(seat) == Some(team))
+            .is_none_or(|teams| teams.of(player_slot) == Some(team))
+    }
+
+    /// Whether `allegiance` is one of the match's: a team of the mode's, and an owner who plays
+    /// for it.
+    pub fn has_allegiance(&self, allegiance: Allegiance) -> bool {
+        self.has_team(allegiance.team)
+            && allegiance
+                .owner
+                .is_none_or(|player_slot| self.plays_for(player_slot, allegiance.team))
     }
 
     /// Whether a player's `resources` amounts make one of each resource the mode declares; any do
@@ -208,6 +172,7 @@ mod tests {
     use super::*;
     use crate::scripts::script_text::ScriptText;
     use crate::scripts::view::View;
+    use campfire_visibility::Visibility;
 
     #[test]
     fn the_view_derives_its_names_from_the_match_names_as_it_reads_once_they_changed() {
@@ -215,7 +180,11 @@ mod tests {
         let mut names = MatchNames::default();
         names.set_table(Arc::new(Names::<ResourceId>::from(["gold"])));
         world.insert_resource(names);
-        let view = View::new(MatchRate::new(NonZeroU32::new(30).unwrap()), |_| {});
+        let view = View::new(
+            MatchRate::new(NonZeroU32::new(30).unwrap()),
+            Visibility::DEFAULT,
+            |_| {},
+        );
         // Before its first read the view holds no name; the read derives them, scripts' strings
         // among them.
         assert_eq!(view.names().count::<ResourceId>(), 0);

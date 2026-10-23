@@ -82,6 +82,15 @@ fn a_terrain_reads_back_what_it_writes_and_each_flaw_is_refused() {
         refused(|q, _, _| q.ground[1].uv[0].x = f32::INFINITY),
         TerrainFileError::Coordinate
     );
+    // A side past 8192 texels, the most a texture has, and the side of 8192 at once.
+    assert_eq!(
+        refused(|_, t, _| t.size.x = TerrainTexture::MOST_SIDE + 1),
+        TerrainFileError::TextureSize
+    );
+    assert_eq!(
+        refused(|_, t, _| t.size.y = u32::MAX),
+        TerrainFileError::TextureSize
+    );
     // No level; five levels of a side of 8, which halves to 1 at the fourth and 0 at the fifth.
     assert_eq!(refused(|_, t, _| t.levels = 0), TerrainFileError::Texture);
     assert_eq!(refused(|_, t, _| t.levels = 5), TerrainFileError::Texture);

@@ -6,11 +6,11 @@ use campfire_sim::Capability;
 use campfire_values::{NameKind, PackagePath};
 use thiserror::Error;
 
-use crate::error::ContentError;
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
-use crate::files::package_name::PackageName;
+use crate::package_name::PackageName;
+use campfire_package_format::ContentError;
 
 /// A problem that fails a package's load, as the load's checks find them (06-script-api.md, Checks
 /// at package load).

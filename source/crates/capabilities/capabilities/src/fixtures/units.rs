@@ -7,7 +7,7 @@ use campfire_common::Tick;
 use campfire_script::{Filter, MatchNames, TagNames};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimSystems, SimTick, StableId};
-use campfire_stats::{CarriedMut, ModifierBook, ModifierData, Modifiers, Stats};
+use campfire_stats::{Applier, CarriedMut, ModifierBook, ModifierData, Modifiers, Stats};
 use campfire_units::internals::TEST_PACKAGE;
 use campfire_units::{PoolId, StatId, StatusTags, TagBook, Units};
 use campfire_values::{
@@ -84,7 +84,7 @@ impl UnitsFixtures for Units {
                 .get::<Modifiers>(entity)
                 .is_some_and(|modifiers| modifiers.get(modifier, None).is_some());
             if wanted && !held {
-                Stats::give_modifier(world, id, modifier, None, false);
+                Stats::give_modifier(world, id, modifier, Applier::MODE);
             } else if !wanted && held {
                 CarriedMut::with(world, entity, |carried| carried.remove(modifier, None)).unwrap();
             }

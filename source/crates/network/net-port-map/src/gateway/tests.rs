@@ -66,7 +66,7 @@ fn a_pcp_mapping_is_renewed_with_its_nonce_at_its_address_and_deleted() {
     // The first asks for no address, the renewal for the one granted, and the deletion for none,
     // a lifetime of 0; all three name the mapping by its one nonce.
     assert_eq!(
-        gateway.requests(),
+        gateway.distinct_requests(),
         [
             request(NO_EXTERNAL, LIFETIME).encode().to_vec(),
             request(EXTERNAL, LIFETIME).encode().to_vec(),
@@ -111,7 +111,7 @@ fn a_gateway_that_answers_pcp_with_version_0_is_asked_by_nat_pmp_from_then_on() 
     assert_eq!(client.address(wait).unwrap(), *EXTERNAL.ip());
     assert_eq!(map(&mut client, Some(&mapping)).unwrap(), mapping);
     client.delete(4433, Duration::from_millis(100)).unwrap();
-    let requests = gateway.requests();
+    let requests = gateway.distinct_requests();
     let kinds: Vec<[u8; 2]> = requests
         .iter()
         .map(|request| [request[0], request[1]])
@@ -167,7 +167,7 @@ fn a_reply_to_another_request_is_passed_over_and_a_refusal_is_the_answer() {
         ),
         "{error:?}"
     );
-    assert_eq!(gateway.requests().len(), 1);
+    assert_eq!(gateway.distinct_requests().len(), 1);
 
     let gateway = FakeGateway::start(|request| {
         vec![match request[0] {

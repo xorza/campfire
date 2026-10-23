@@ -63,7 +63,7 @@ use bevy_time::{Fixed, Time};
 use bevy_utils::prelude::DebugName;
 use campfire_net_connection::NetworkingState;
 use campfire_net_core::NetTick;
-use campfire_net_interpolation::FrameInterpolationSystems;
+use campfire_net_frame_interpolation::FrameInterpolationSystems;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::ConfirmedTickMap;
 use campfire_net_replication::DeferredEntityCommands;
@@ -82,7 +82,7 @@ use tracing::{debug, debug_span, trace};
 
 /// Installs prediction rollback detection, restoration, and replay.
 #[derive(Debug)]
-pub struct RollbackPlugin;
+pub(crate) struct RollbackPlugin;
 
 impl Plugin for RollbackPlugin {
     fn build(&self, app: &mut App) {
@@ -217,9 +217,9 @@ impl RollbackPlugin {
         let rollback_tick = rollback.0;
         let kind = DebugName::type_name::<C>();
         // Interpolated visuals are presentation-owned: rollback must still rewind these components
-        // for replay consistency, but it must not capture them for live-value correction, which has
-        // no rule coverage for interpolation-driven archetypes.
-        let corrected = registry.corrects::<C>();
+        // for replay consistency, but it must not capture them for a correction. The stack's own
+        // correction saves the visual it shows in a system of its own.
+        let corrected = registry.corrects_custom::<C>();
         for (entity_id, mut live, confirmed_history, mut predicted_history, interpolated) in
             &mut query
         {
@@ -280,8 +280,6 @@ impl RollbackPlugin {
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "prepare_rollback_component",
-                schedule = "PreUpdate",
-                sample_point = "PreUpdate",
                 entity = ?entity_id,
                 component = ?kind,
                 local_tick = current_tick.0,
@@ -290,11 +288,11 @@ impl RollbackPlugin {
                 "prepared component rollback"
             );
 
-            // Keep track of the value on screen so the correction can smooth the jump
-            // from it, whatever the rollback is about to do to the component: it may
-            // leave the value alone, remove it, or replace it. The component may also
-            // be removed now and re-added later in the replay, and the saved value is
-            // what a visual correction is measured against when it comes back.
+            // Keep track of the value before the rollback so the app's correction can smooth
+            // the jump from it, whatever the rollback is about to do to the component: it may
+            // leave the value alone, remove it, or replace it. The component may also be
+            // removed now and re-added later in the replay, and the saved value is what the
+            // correction is measured against when it comes back.
             if corrected
                 && !interpolated
                 && let Some(predicted_component) = live.as_deref().cloned()
@@ -304,8 +302,6 @@ impl RollbackPlugin {
                 trace!(
                     target: "campfire_net_debug::prediction",
                     kind = "previous_visual_stored",
-                    schedule = "PreUpdate",
-                    sample_point = "PreUpdate",
                     entity = ?entity_id,
                     component = ?kind,
                     local_tick = current_tick.0,
@@ -365,8 +361,6 @@ impl RollbackPlugin {
         trace!(
             target: "campfire_net_debug::prediction",
             kind = "rollback_start",
-            schedule = "PreUpdate",
-            sample_point = "PreUpdate",
             local_tick = current_tick.0,
             rollback_tick = rollback_start_tick.0,
             rollback_ticks,
@@ -402,8 +396,6 @@ impl RollbackPlugin {
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "rollback_tick",
-                schedule = "FixedMain",
-                sample_point = "FixedUpdate",
                 local_tick = rollback_tick.0,
                 rollback_tick = rollback_tick.0,
                 rollback_iteration = i,
@@ -444,8 +436,6 @@ impl RollbackPlugin {
         trace!(
             target: "campfire_net_debug::prediction",
             kind = "rollback_finish",
-            schedule = "PreUpdate",
-            sample_point = "PreUpdate",
             local_tick = current_tick.0,
             rollback_tick = rollback_start_tick.0,
             rollback_ticks,
@@ -468,8 +458,6 @@ impl RollbackPlugin {
         trace!(
             target: "campfire_net_debug::prediction",
             kind = "rollback_end",
-            schedule = "PreUpdate",
-            sample_point = "PreUpdate",
             rollback_tick = rollback.0.0,
             "ending rollback"
         );
@@ -551,8 +539,6 @@ impl RollbackPlugin {
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "forced_rollback",
-                schedule = "PreUpdate",
-                sample_point = "PreUpdate",
                 local_tick = tick.0,
                 rollback_tick = forced_tick.0,
                 "forced rollback requested"
@@ -561,8 +547,6 @@ impl RollbackPlugin {
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "policy_rollbacks_skipped_forced",
-                schedule = "PreUpdate",
-                sample_point = "PreUpdate",
                 local_tick = tick.0,
                 "policy-driven rollback checks skipped because a forced rollback is already requested"
             );
@@ -738,8 +722,6 @@ impl RollbackPlugin {
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "confirmed_tick_mismatch",
-                schedule = "PreUpdate",
-                sample_point = "PreUpdate",
                 entity = ?entity,
                 local_tick = tick.0,
                 latest_completed_tick = confirmed_ticks.last_confirmed_tick().map(|tick| tick.0),
@@ -832,12 +814,15 @@ impl RollbackPlugin {
     }
 
     /// A locally predicted entity that spawned before the oldest tick a rollback may restore can no
-    /// longer be despawned by one, and leaves the list.
+    /// longer be despawned by one, and leaves the list; one whose protection ends before that tick
+    /// leaves its list too, rolled back again as the next rollback would leave it, as every
+    /// rollback from then on is past its protection.
     fn prune_local_despawn(
         setup: Res<'_, PredictionSetup>,
         input_setup: Res<'_, InputTimelineSetup>,
         timeline: Res<'_, LocalTimeline>,
         mut check_state: ResMut<'_, RollbackCheckState>,
+        mut commands: Commands<'_, '_>,
     ) {
         let oldest = setup.oldest_rollback_tick(timeline.tick(), &input_setup);
         let stale = check_state
@@ -845,6 +830,15 @@ impl RollbackPlugin {
             .partition_point(|(spawn_tick, _)| *spawn_tick < oldest);
         if stale > 0 {
             check_state.local_despawn.drain(..stale);
+        }
+        let ended = check_state
+            .local_skip_despawn
+            .partition_point(|(protection_tick, _)| *protection_tick < oldest);
+        for (_, entity) in check_state.local_skip_despawn.drain(..ended) {
+            // One that despawned since it spawned is no more to roll back.
+            if let Ok(mut entity) = commands.get_entity(entity) {
+                entity.try_remove::<DisableRollback>();
+            }
         }
     }
 }

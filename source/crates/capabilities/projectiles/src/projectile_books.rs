@@ -1,5 +1,7 @@
-use campfire_actions::{ActionsData, DeliveryData, Flights, ListHook, Targeting};
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section};
+use std::mem;
+
+use campfire_actions::{ActionsData, DeliveryAims, ListHook, Targeting};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, Section};
 use campfire_math::Num;
 use campfire_script::ScriptRole;
 use campfire_stats::MoveSpeedCap;
@@ -8,7 +10,9 @@ use campfire_units::{ScriptBook, UnitTypes};
 use crate::Projectiles;
 use crate::error::{ProjectileDeliveryError, ProjectileError};
 use crate::projectile_data::{ProjectileData, ProjectileHits};
+use crate::projectile_delivery_data::ProjectileDeliveryData;
 use crate::projectile_spec::ProjectileSpec;
+use campfire_values::UnitType;
 
 impl Projectiles {
     /// The rule of every projectile type: a homing one is faster than the mode's move speed cap,
@@ -41,20 +45,6 @@ impl Projectiles {
         Ok(())
     }
 
-    /// Tags each projectile type `projectile`.
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "a book's builder and an extension take the build's signature"
-    )]
-    pub(crate) fn tag_types(cx: &BookCx<'_>, types: &mut UnitTypes) -> Result<(), BookError> {
-        for unit in cx.types() {
-            if unit.data.section::<ProjectileData>().is_some() {
-                types.give_tag(unit.unit_type, Self::TAG.tag());
-            }
-        }
-        Ok(())
-    }
-
     /// The rule of every action's projectile delivery: a unit type of the projectile section,
     /// aimed; a homing one alone and at a unit, a curve alone and at a unit or a point; one that
     /// hits a unit when the action has an `on_hit` list or hook, as a curve always meets what it
@@ -66,9 +56,11 @@ impl Projectiles {
                 continue;
             };
             for (id, action) in &actions.0 {
-                let Some(DeliveryData::Projectile {
-                    unit_type, count, ..
-                }) = &action.delivery
+                let Some(ProjectileDeliveryData {
+                    projectile: unit_type,
+                    count,
+                    ..
+                }) = action.delivery()
                 else {
                     continue;
                 };
@@ -86,16 +78,17 @@ impl Projectiles {
                 let Some(projectile) = unit.section::<ProjectileData>() else {
                     return fail(ProjectileDeliveryError::NotProjectile(unit_type.clone()));
                 };
-                let at_unit = matches!(action.targeting, Targeting::Unit(_));
-                let along = action.targeting == Targeting::Direction;
+                let at_unit = matches!(action.keys.targeting, Targeting::Unit(_));
+                let along = action.keys.targeting == Targeting::Direction;
                 // A script the package does not hold is the scripts' problem, and defines no hook.
                 let script = action
+                    .keys
                     .script
                     .as_ref()
                     .and_then(|path| cx.script(package, path).ok());
                 let hooks = scripts.map(|scripts| scripts.defines(script, ScriptRole::Action));
                 let hooks_hit = hooks.is_some_and(|hooks| hooks.contains(ListHook::OnHit.hook()));
-                let problem = if action.targeting == Targeting::None {
+                let problem = if action.keys.targeting == Targeting::None {
                     ProjectileDeliveryError::NoAim
                 } else if projectile.homing && (!at_unit || count.get() > 1) {
                     ProjectileDeliveryError::Homing
@@ -118,28 +111,29 @@ impl Projectiles {
         Ok(())
     }
 
-    /// How each projectile type flies.
+    /// How an action that delivers each projectile type aims, as the type flies.
     #[expect(
         clippy::unnecessary_wraps,
         reason = "a book's builder and an extension take the build's signature"
     )]
-    pub(crate) fn flights(cx: &BookCx<'_>) -> Result<Flights, BookError> {
-        let mut flights = ByTypeBuilder::default();
+    pub(crate) fn aims(cx: &BookCx<'_>, aims: &mut DeliveryAims) -> Result<(), BookError> {
+        let mut by_type = mem::take(&mut aims.0).reopen();
         for unit in cx.types() {
             if let Some(projectile) = unit.data.section::<ProjectileData>() {
-                flights.set(unit.unit_type, projectile.flight());
+                by_type.set(unit.unit_type, projectile.flight().aim());
             }
         }
-        Ok(Flights(flights.build()))
+        aims.0 = by_type.build();
+        Ok(())
     }
 }
 
 impl ProjectileSpec {
     /// The spec of each projectile type, its filters resolved against the match's tags; an error
     /// for a tag the match does not have.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let tags = cx.fact::<UnitTypes>()?.tags();
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.types() {
             let Some(projectile) = unit.data.section::<ProjectileData>() else {
                 continue;

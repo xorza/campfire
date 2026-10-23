@@ -3,15 +3,14 @@ use bevy_ecs::query::{Added, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_script::{Answered, CallStart, Hook, ScriptId, ScriptsWorld};
 use campfire_sim::{DueIndex, DueUnit, SimTick, StableId};
 use campfire_stats::UnitPools;
 use campfire_units::{Dead, Destination, Due};
 use campfire_values::UnitType;
 
-use crate::ai::{Ai, OnThink};
-use crate::next_think::NextThink;
+use crate::ai::{Ai, NextThink, OnThink};
 use crate::resetting::Resetting;
 
 /// A unit due to think this tick: since which tick, and with which script and period.
@@ -46,7 +45,7 @@ impl Thinking {
     /// over the period; then a period after each think. First, each reset whose unit arrived, its
     /// destination dropped, ends with its pools full.
     pub(crate) fn collect_thinkers(
-        (tick, book): (Res<'_, SimTick>, Res<'_, ByType<Ai>>),
+        (tick, book): (Res<'_, SimTick>, Res<'_, ById<UnitType, Ai>>),
         mut resetting: Query<
             '_,
             '_,
@@ -112,8 +111,13 @@ impl Thinking {
                 period,
             } in due
             {
-                // A unit with no position or team is no unit scripts see.
+                // A unit with no position or team is no unit scripts see: it stays due, as one
+                // whose pool is spent, and thinks once the view holds it.
                 let Some(unit) = ctx.view().unit(id) else {
+                    batch
+                        .world()
+                        .entity_mut(entity)
+                        .insert(NextThink::new(since));
                     continue;
                 };
                 let args = (ctx.clone(), unit);

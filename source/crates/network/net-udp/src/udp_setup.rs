@@ -7,8 +7,8 @@ use campfire_net_packets::{EndpointSetup, PacketSessionSetup};
 /// a handshake too; and the model applied to what the endpoint receives.
 #[derive(Debug, Clone)]
 pub struct UdpSetup {
-    /// The ALPN of the app's protocol.
-    pub alpn: Vec<u8>,
+    /// The ALPN of the app's protocol, of 1 to 255 bytes, as TLS carries it.
+    pub(crate) alpn: Vec<u8>,
     pub packet_session: PacketSessionSetup,
     pub conditioner: Option<LinkConditioning>,
 }
@@ -16,9 +16,17 @@ pub struct UdpSetup {
 impl UdpSetup {
     /// The setup of the app protocol `alpn`, with the packet session's defaults: a keep-alive each
     /// second and a loss after 5 s.
+    ///
+    /// # Panics
+    ///
+    /// When `alpn` is empty or past 255 bytes, which TLS's protocol list holds no name of
+    /// (RFC 7301 §3.1).
     pub fn new(alpn: impl Into<Vec<u8>>) -> Self {
         let alpn = alpn.into();
-        assert!(!alpn.is_empty(), "a UDP link names its app's ALPN");
+        assert!(
+            (1..=255).contains(&alpn.len()),
+            "a UDP link names its app's ALPN, of 1 to 255 bytes"
+        );
         Self {
             alpn,
             packet_session: PacketSessionSetup::default(),

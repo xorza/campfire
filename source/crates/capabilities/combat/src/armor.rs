@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_math::{Num, Rounding};
 use campfire_script::UnknownName;
-use campfire_values::{Article, DamageKind, NameId, NameKind, NameScope, Named, Names};
+use campfire_values::{Article, DamageKind, NameId, NameKind, NameScope, Named, Names, UnitType};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -56,7 +56,7 @@ impl ArmorShare {
     }
 }
 
-impl PerType for Armor {
+impl PerId<UnitType> for Armor {
     const SCRIPTS_ONLY: bool = false;
 }
 

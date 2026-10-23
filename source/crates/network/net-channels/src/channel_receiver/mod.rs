@@ -9,19 +9,16 @@ use std::collections::VecDeque;
 
 use crate::bench_counter::BenchCounter;
 use crate::channel_mode::ChannelMode;
+use crate::channel_reader::ChannelReader;
 use crate::channel_setup::ChannelSetup;
 use crate::channel_type_id::ChannelTypeId;
-use crate::message_body::MessageBody;
+use crate::error::ReceiveError;
+use crate::fragment_body::FragmentBody;
+use crate::fragment_receiver::{FragmentCx, FragmentOutcome, FragmentReceiver, PartialExpiry};
+use crate::gap_store::GapStore;
 use crate::message_id::MessageId;
-use crate::receive_message::ReceiveMessage;
-
-use crate::channel_receive_error::ChannelReceiveError;
-use crate::fragment_receiver::{
-    FragmentCx, FragmentOutcome, FragmentReceiver, PartialExpiry, Reservation,
-};
-use crate::receive_budget::ReceiveBudget;
-
-type Result<T> = core::result::Result<T, ChannelReceiveError>;
+use crate::receive_budget::{ReceiveBudget, Reservation};
+use crate::single_body::SingleBody;
 
 const DISCARD_AFTER: Duration = Duration::from_millis(3000);
 
@@ -35,11 +32,11 @@ pub struct ChannelReceiver {
     /// The channel's type name, for the traces of what it receives.
     name: &'static str,
     setup: ChannelSetup,
+    /// The layer that reads its messages.
+    reader: ChannelReader,
     fragments: FragmentReceiver,
     current_time: Instant,
     state: ReceiveState,
-    /// The bytes of the ordered messages waiting behind a gap, as charged to the receive budget.
-    ready_held: usize,
     /// Bytes of this channel's messages parsed from received packets.
     pub(crate) received_bytes: BenchCounter,
 }
@@ -59,19 +56,20 @@ enum ReceiveState {
         newest_completed: Option<MessageId>,
     },
     ReliableUnordered {
-        /// Oldest message ID not yet covered by the contiguous received prefix.
+        /// The oldest id not received: every id before it was.
         pending: MessageId,
         /// Completed messages in completion order, as required by unordered delivery.
         ready: VecDeque<ChannelMessage>,
-        /// Whether each id from `pending` on, at its distance from it, was received, which
-        /// suppresses a copy.
-        received: VecDeque<bool>,
+        /// The ids past `pending` received, which suppress a copy.
+        received: GapStore<MessageId>,
     },
     ReliableOrdered {
-        /// Next message ID eligible for delivery.
+        /// The next id to deliver: every id before it is in `ready` or was read.
         pending: MessageId,
-        /// The completed messages from `pending` on, at their id's distance from it.
-        ready: VecDeque<Option<ChannelMessage>>,
+        /// The messages before `pending` that were not read, in order.
+        ready: VecDeque<ChannelMessage>,
+        /// The completed messages past `pending`, each a copy that holds no packet's bytes.
+        waiting: GapStore<ChannelMessage>,
     },
 }
 
@@ -99,6 +97,7 @@ impl ChannelReceiver {
         channel_type_id: ChannelTypeId,
         name: &'static str,
         setup: &ChannelSetup,
+        reader: ChannelReader,
     ) -> Self {
         let state = match setup.mode {
             ChannelMode::UnorderedUnreliable => ReceiveState::UnreliableUnordered {
@@ -114,21 +113,22 @@ impl ChannelReceiver {
             ChannelMode::UnorderedReliable => ReceiveState::ReliableUnordered {
                 pending: MessageId::default(),
                 ready: VecDeque::new(),
-                received: VecDeque::new(),
+                received: GapStore::default(),
             },
             ChannelMode::OrderedReliable => ReceiveState::ReliableOrdered {
                 pending: MessageId::default(),
                 ready: VecDeque::new(),
+                waiting: GapStore::default(),
             },
         };
         Self {
             channel_type_id,
             name,
             setup: *setup,
+            reader,
             fragments: FragmentReceiver::new(),
             current_time: Instant::ZERO,
             state,
-            ready_held: 0,
             received_bytes: BenchCounter::default(),
         }
     }
@@ -136,7 +136,12 @@ impl ChannelReceiver {
     /// Drops every partial and completed message, as a new receiver with the same setup
     /// starts.
     pub(crate) fn reset(&mut self) {
-        *self = Self::new(self.channel_type_id, self.name, &self.setup);
+        *self = Self::new(self.channel_type_id, self.name, &self.setup, self.reader);
+    }
+
+    /// The layer that reads its messages (11-net-stack/transport.md, A channel has one reader).
+    pub const fn reader(&self) -> ChannelReader {
+        self.reader
     }
 
     /// The type-level channel key associated with this channel.
@@ -162,88 +167,95 @@ impl ChannelReceiver {
         self.setup.mode.single_has_id()
     }
 
-    /// The largest message this channel receives, in uncompressed bytes.
-    pub(crate) const fn max_message_len(&self) -> usize {
-        self.setup.max_message_len
+    /// The bytes this channel holds against the receive budget: its partial messages, and what
+    /// it holds past a gap. What it delivers, the message plugin reads in the same frame.
+    pub(crate) fn held(&self) -> usize {
+        self.fragments.held() + self.state.held()
     }
 
-    /// The bytes this channel holds against the receive budget.
-    pub(crate) const fn held(&self) -> usize {
-        self.fragments.held() + self.ready_held
-    }
-
-    /// Stores a received message, charging what it leaves undelivered to `budget`; a message the
-    /// budget has no room for is not stored, and its packet must not be acked.
-    pub(crate) fn buffer_receive(
+    /// Stores a received whole message, of an id when [`Self::single_has_id`], charging what it
+    /// leaves undelivered to `budget`; a message the budget has no room for is not stored, and its
+    /// packet must not be acked.
+    pub(crate) fn receive_single(
         &mut self,
-        message: ReceiveMessage,
+        single: SingleBody,
+        tick: NetTick,
         budget: &mut ReceiveBudget,
-    ) -> Result<BufferOutcome> {
-        let message_id = message.data.message_id();
-        match self.state.admit(message_id)? {
+    ) -> BufferOutcome {
+        let message_id = single.id;
+        match self.state.admit(message_id) {
+            MessageAdmission::Refuse => return BufferOutcome::Stored,
+            MessageAdmission::Admit => {}
+            MessageAdmission::AdmitNewest(newest) => self.fragments.discard_older_than(newest),
+        }
+        let message = ChannelMessage {
+            tick,
+            bytes: single.bytes,
+            message_id,
+        };
+        let outcome = self
+            .state
+            .push_completed(message, Reservation::Limited, budget);
+        // A partial of its id would never complete: its fragments are copies from now on.
+        if outcome == BufferOutcome::Stored
+            && let Some(id) = message_id
+        {
+            self.fragments.remove(id);
+        }
+        outcome
+    }
+
+    /// Stores a received fragment, as [`Self::receive_single`] stores a whole message; a
+    /// fragment no honest peer sends breaks the protocol.
+    pub(crate) fn receive_fragment(
+        &mut self,
+        fragment: FragmentBody,
+        tick: NetTick,
+        budget: &mut ReceiveBudget,
+    ) -> Result<BufferOutcome, ReceiveError> {
+        let message_id = Some(fragment.message_id);
+        match self.state.admit(message_id) {
             MessageAdmission::Refuse => return Ok(BufferOutcome::Stored),
             MessageAdmission::Admit => {}
             MessageAdmission::AdmitNewest(newest) => self.fragments.discard_older_than(newest),
         }
-        let head = self.state.is_head(message_id);
-
-        let (tick, bytes) = match message.data {
-            MessageBody::Single(single) => (message.remote_sent_tick, single.bytes),
-            MessageBody::Fragment(fragment) => {
-                let cx = FragmentCx {
-                    expiry: if self.state.expires_fragments() {
-                        PartialExpiry::Since(self.current_time)
-                    } else {
-                        PartialExpiry::Never
-                    },
-                    compression: message.compression,
-                    max_message_len: self.setup.max_message_len,
-                    reservation: if head {
-                        Reservation::Head
-                    } else {
-                        Reservation::Limited
-                    },
-                };
-                match self.fragments.receive_fragment(
-                    fragment,
-                    message.remote_sent_tick,
-                    &cx,
-                    budget,
-                )? {
-                    FragmentOutcome::Pending => return Ok(BufferOutcome::Stored),
-                    FragmentOutcome::OverBudget => return Ok(BufferOutcome::OverBudget),
-                    // Its reassembly buffer was already charged: the message is kept whatever
-                    // room is left.
-                    FragmentOutcome::Complete { tick, bytes } => {
-                        if self.state.waits_behind_a_gap() {
-                            budget.charge(bytes.len());
-                            self.ready_held += bytes.len();
-                        }
-                        self.state.push_completed(message_id, tick, bytes);
-                        return Ok(BufferOutcome::Stored);
-                    }
-                }
-            }
+        let cx = FragmentCx {
+            expiry: if self.state.expires_fragments() {
+                PartialExpiry::Since(self.current_time)
+            } else {
+                PartialExpiry::Never
+            },
+            max_message_len: self.setup.max_message_len,
+            reservation: if self.state.is_head(message_id) {
+                Reservation::Head
+            } else {
+                Reservation::Limited
+            },
         };
-        if self.state.waits_behind_a_gap() {
-            if head {
-                budget.charge(bytes.len());
-            } else if !budget.try_charge(bytes.len()) {
-                return Ok(BufferOutcome::OverBudget);
+        match self
+            .fragments
+            .receive_fragment(fragment, tick, &cx, budget)?
+        {
+            FragmentOutcome::Pending => Ok(BufferOutcome::Stored),
+            FragmentOutcome::OverBudget => Ok(BufferOutcome::OverBudget),
+            // Its reassembly buffer was already charged: the message is kept whatever room is
+            // left.
+            FragmentOutcome::Complete { tick, bytes } => {
+                let message = ChannelMessage {
+                    tick,
+                    bytes,
+                    message_id,
+                };
+                Ok(self
+                    .state
+                    .push_completed(message, Reservation::Head, budget))
             }
-            self.ready_held += bytes.len();
         }
-        self.state.push_completed(message_id, tick, bytes);
-        Ok(BufferOutcome::Stored)
     }
 
     /// Removes and returns the next message accepted by the channel's delivery policy.
     pub fn read_message(&mut self) -> Option<ChannelMessage> {
-        let message = self.state.read_message()?;
-        if self.state.waits_behind_a_gap() {
-            self.ready_held -= message.bytes.len();
-        }
-        Some(message)
+        self.state.read_message()
     }
 }
 
@@ -255,10 +267,13 @@ impl ReceiveState {
         matches!(self, Self::UnreliableUnordered { .. })
     }
 
-    /// Whether completed messages wait for the ones before them, and so hold budget. Every other
-    /// mode exposes a completed message at once, and the message plugin drains it the same frame.
-    const fn waits_behind_a_gap(&self) -> bool {
-        matches!(self, Self::ReliableOrdered { .. })
+    /// The bytes the state holds past a gap.
+    fn held(&self) -> usize {
+        match self {
+            Self::ReliableUnordered { received, .. } => received.held(),
+            Self::ReliableOrdered { waiting, .. } => waiting.held(),
+            Self::UnreliableUnordered { .. } | Self::Sequenced { .. } => 0,
+        }
     }
 
     /// Whether `message_id` is the message an ordered channel delivers next.
@@ -266,7 +281,8 @@ impl ReceiveState {
         matches!(self, Self::ReliableOrdered { pending, .. } if Some(*pending) == message_id)
     }
 
-    fn admit(&mut self, message_id: Option<MessageId>) -> Result<MessageAdmission> {
+    /// Whether a message of `message_id` enters, which a channel of ids always has.
+    fn admit(&mut self, message_id: Option<MessageId>) -> MessageAdmission {
         let admitted = |admit: bool| {
             if admit {
                 MessageAdmission::Admit
@@ -275,51 +291,51 @@ impl ReceiveState {
             }
         };
         match self {
-            Self::UnreliableUnordered { .. } => Ok(MessageAdmission::Admit),
+            Self::UnreliableUnordered { .. } => MessageAdmission::Admit,
             Self::ReliableUnordered {
                 pending, received, ..
             } => {
-                let message_id = message_id.ok_or(ChannelReceiveError::MissingMessageId)?;
-                Ok(admitted(distance(*pending, message_id).is_some_and(
-                    |distance| !received.get(distance).copied().unwrap_or(false),
-                )))
+                let message_id = message_id.expect("a reliable message has an id");
+                admitted(message_id - *pending >= 0 && !received.contains(*pending, message_id))
             }
-            Self::ReliableOrdered { pending, ready } => {
-                let message_id = message_id.ok_or(ChannelReceiveError::MissingMessageId)?;
-                Ok(admitted(distance(*pending, message_id).is_some_and(
-                    |distance| ready.get(distance).is_none_or(Option::is_none),
-                )))
+            Self::ReliableOrdered {
+                pending, waiting, ..
+            } => {
+                let message_id = message_id.expect("a reliable message has an id");
+                admitted(message_id - *pending >= 0 && !waiting.contains(*pending, message_id))
             }
             Self::Sequenced {
                 ready,
                 newest_seen,
                 newest_completed,
             } => {
-                let message_id = message_id.ok_or(ChannelReceiveError::MissingMessageId)?;
+                let message_id = message_id.expect("a sequenced message has an id");
                 if *newest_completed == Some(message_id) {
-                    return Ok(MessageAdmission::Refuse);
+                    return MessageAdmission::Refuse;
                 }
                 match *newest_seen {
-                    Some(newest) if message_id - newest < 0 => Ok(MessageAdmission::Refuse),
-                    Some(newest) if message_id == newest => Ok(MessageAdmission::Admit),
+                    Some(newest) if message_id - newest < 0 => MessageAdmission::Refuse,
+                    Some(newest) if message_id == newest => MessageAdmission::Admit,
                     _ => {
                         *newest_seen = Some(message_id);
                         // A newer message supersedes an older completed one even if the
                         // application has not drained it yet.
                         *ready = None;
-                        Ok(MessageAdmission::AdmitNewest(message_id))
+                        MessageAdmission::AdmitNewest(message_id)
                     }
                 }
             }
         }
     }
 
-    fn push_completed(&mut self, message_id: Option<MessageId>, tick: NetTick, bytes: Bytes) {
-        let message = ChannelMessage {
-            tick,
-            bytes,
-            message_id,
-        };
+    /// Stores a completed `message` that its admission let in; a message past a gap is charged
+    /// as `reservation` asks, and not stored when the budget refuses it.
+    fn push_completed(
+        &mut self,
+        message: ChannelMessage,
+        reservation: Reservation,
+        budget: &mut ReceiveBudget,
+    ) -> BufferOutcome {
         match self {
             Self::UnreliableUnordered { ready } => ready.push_back(ChannelMessage {
                 message_id: None,
@@ -330,11 +346,11 @@ impl ReceiveState {
                 newest_seen,
                 newest_completed,
             } => {
-                let message_id = message_id.expect("sequenced messages have ids");
+                let message_id = message.message_id.expect("sequenced messages have ids");
                 if *newest_completed == Some(message_id)
                     || newest_seen.is_some_and(|newest| message_id - newest < 0)
                 {
-                    return;
+                    return BufferOutcome::Stored;
                 }
                 *newest_completed = Some(message_id);
                 *ready = Some(message);
@@ -344,59 +360,54 @@ impl ReceiveState {
                 ready,
                 received,
             } => {
-                let message_id = message_id.expect("reliable messages have ids");
-                *slot(received, *pending, message_id) = true;
+                let message_id = message.message_id.expect("reliable messages have ids");
+                if message_id == *pending {
+                    *pending += 1;
+                    while received.pop(*pending).is_some() {
+                        *pending += 1;
+                    }
+                } else if !received.insert(*pending, message_id, reservation, budget) {
+                    return BufferOutcome::OverBudget;
+                }
                 ready.push_back(message);
             }
-            Self::ReliableOrdered { pending, ready } => {
-                let message_id = message_id.expect("reliable messages have ids");
-                *slot(ready, *pending, message_id) = Some(message);
+            Self::ReliableOrdered {
+                pending,
+                ready,
+                waiting,
+            } => {
+                let message_id = message.message_id.expect("reliable messages have ids");
+                if message_id != *pending {
+                    let held = ChannelMessage {
+                        bytes: Bytes::copy_from_slice(&message.bytes),
+                        ..message
+                    };
+                    return if waiting.insert(*pending, held, reservation, budget) {
+                        BufferOutcome::Stored
+                    } else {
+                        BufferOutcome::OverBudget
+                    };
+                }
+                ready.push_back(message);
+                *pending += 1;
+                while let Some(next) = waiting.pop(*pending) {
+                    ready.push_back(next);
+                    *pending += 1;
+                }
             }
         }
+        BufferOutcome::Stored
     }
 
     fn read_message(&mut self) -> Option<ChannelMessage> {
         match self {
             Self::UnreliableUnordered { ready } => ready.pop_front(),
             Self::Sequenced { ready, .. } => ready.take(),
-            Self::ReliableUnordered {
-                pending,
-                ready,
-                received,
-            } => {
-                let message = ready.pop_front()?;
-                if message.message_id == Some(*pending) {
-                    while received.front() == Some(&true) {
-                        received.pop_front();
-                        *pending += 1;
-                    }
-                }
-                Some(message)
-            }
-            Self::ReliableOrdered { pending, ready } => {
-                let message = ready.front_mut()?.take()?;
-                ready.pop_front();
-                *pending += 1;
-                Some(message)
+            Self::ReliableUnordered { ready, .. } | Self::ReliableOrdered { ready, .. } => {
+                ready.pop_front()
             }
         }
     }
-}
-
-/// The distance of `message_id` from `pending`, if it is not older: a reliable receiver takes an
-/// id up to 32,767 past its oldest undelivered one as new.
-fn distance(pending: MessageId, message_id: MessageId) -> Option<usize> {
-    usize::try_from(message_id - pending).ok()
-}
-
-/// The entry of `message_id`, which is not older than `pending`, in a ring that starts at
-/// `pending`, with the ring grown to hold it.
-fn slot<T: Default>(ring: &mut VecDeque<T>, pending: MessageId, message_id: MessageId) -> &mut T {
-    let distance = distance(pending, message_id).expect("an admitted id is not older");
-    if ring.len() <= distance {
-        ring.resize_with(distance + 1, T::default);
-    }
-    &mut ring[distance]
 }
 
 #[cfg(feature = "internals")]

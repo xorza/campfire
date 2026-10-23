@@ -1,7 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 
 use crate::input_rules::InputRules;
 use crate::session_log::applied::Applied;
@@ -9,7 +9,7 @@ use crate::session_log::log_entries::{Entry, LogEntries, Served};
 use crate::spill::Spill;
 
 /// When each logged input applies, by the session's input rules: the inputs still to apply,
-/// earliest first, those the tick last sealed applies, and where each seat's inputs spill to
+/// earliest first, those the tick last sealed applies, and where each player slot's inputs spill to
 /// past a tick's max inputs. A replay drives it from the log's entries again, as they were
 /// logged.
 #[derive(Debug)]
@@ -19,29 +19,30 @@ pub(super) struct InputSchedule {
     pending: BinaryHeap<Reverse<InputOrder>>,
     /// Indices of the inputs applied in the tick last sealed.
     due: Vec<u32>,
-    /// Each seat's spill, by seat. A spill counts its controller's inputs alone: a change of
-    /// controller starts it afresh, so in a bot's seat it counts the bot's.
+    /// Each player slot's spill, by player slot. A spill counts its controller's inputs alone: a
+    /// change of controller starts it afresh, so in a bot's player slot it counts the bot's.
     spills: Vec<Spill>,
 }
 
-/// Orders the inputs of one tick by seat, then by when they were logged, which for one player is
-/// their chain's order, whatever order the players' inputs arrived in, so the host cannot choose
-/// who acts first.
+/// Orders the inputs of one tick by player slot, then by when they were logged, which for one
+/// player is their chain's order, whatever order the players' inputs arrived in, so the host cannot
+/// choose who acts first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct InputOrder {
     pub(super) tick: Tick,
-    pub(super) seat: Seat,
+    pub(super) player_slot: PlayerSlot,
     pub(super) index: u32,
 }
 
 impl InputSchedule {
-    /// The schedule of a session of `seats` seats and of `rules`, which holds no input.
-    pub(super) fn new(seats: usize, rules: InputRules) -> Self {
+    /// The schedule of a session of `player_slots` player slots and of `rules`, which holds no
+    /// input.
+    pub(super) fn new(player_slots: usize, rules: InputRules) -> Self {
         Self {
             rules,
             pending: BinaryHeap::new(),
             due: Vec::new(),
-            spills: vec![Spill::default(); seats],
+            spills: vec![Spill::default(); player_slots],
         }
     }
 
@@ -62,8 +63,8 @@ impl InputSchedule {
         Applied::At(stamp.max(next))
     }
 
-    /// Queues the input `index` of `entries`, logged before `next`, for the tick it applies in,
-    /// and says when that is: what `applied` says, or later, past the ticks its seat's inputs
+    /// Queues the input `index` of `entries`, logged before `next`, for the tick it applies in, and
+    /// says when that is: what `applied` says, or later, past the ticks its player slot's inputs
     /// before it fill.
     pub(super) fn schedule(&mut self, entries: &LogEntries, index: u32, next: Tick) -> Applied {
         let input = entries.input(index);
@@ -71,27 +72,32 @@ impl InputSchedule {
         let Applied::At(earliest) = outcome else {
             return outcome;
         };
-        let seat = input.seat;
-        let tick = self.spills[seat.index()].take(earliest, self.rules.max_per_tick);
-        self.pending.push(Reverse(InputOrder { tick, seat, index }));
+        let player_slot = input.player_slot;
+        let tick = self.spills[player_slot.index()].take(earliest, self.rules.max_per_tick);
+        self.pending.push(Reverse(InputOrder {
+            tick,
+            player_slot,
+            index,
+        }));
         Applied::At(tick)
     }
 
-    /// The tick a next input of `seat` that may apply from `next` on would apply in.
-    pub(super) fn place(&self, seat: Seat, next: Tick) -> Tick {
-        self.spills[seat.index()].place(next, self.rules.max_per_tick)
+    /// The tick a next input of `player_slot` that may apply from `next` on would apply in.
+    pub(super) fn place(&self, player_slot: PlayerSlot, next: Tick) -> Tick {
+        self.spills[player_slot.index()].place(next, self.rules.max_per_tick)
     }
 
-    /// The spill of `seat`.
-    pub(super) fn spill(&self, seat: Seat) -> Spill {
-        self.spills[seat.index()]
+    /// The spill of `player_slot`.
+    pub(super) fn spill(&self, player_slot: PlayerSlot) -> Spill {
+        self.spills[player_slot.index()]
     }
 
-    /// Drops the inputs of `seat` still to apply, and starts its spill afresh: its controller
-    /// changes.
-    pub(super) fn forget(&mut self, seat: Seat) {
-        self.pending.retain(|Reverse(due)| due.seat != seat);
-        self.spills[seat.index()] = Spill::default();
+    /// Drops the inputs of `player_slot` still to apply, and starts its spill afresh: its
+    /// controller changes.
+    pub(super) fn forget(&mut self, player_slot: PlayerSlot) {
+        self.pending
+            .retain(|Reverse(due)| due.player_slot != player_slot);
+        self.spills[player_slot.index()] = Spill::default();
     }
 
     /// Takes the inputs that apply in `tick`, which the schedule then gives as `due`.
@@ -105,13 +111,13 @@ impl InputSchedule {
         }
     }
 
-    /// The inputs the tick last sealed applies, by seat, then in the order logged.
+    /// The inputs the tick last sealed applies, by player slot, then in the order logged.
     pub(super) fn due(&self) -> &[u32] {
         &self.due
     }
 
-    /// The schedule of `rules` at a boundary a checkpoint's carry records: each seat's spill, by
-    /// seat, and the inputs still to apply there.
+    /// The schedule of `rules` at a boundary a checkpoint's carry records: each player slot's
+    /// spill, by player slot, and the inputs still to apply there.
     pub(super) fn restored(
         rules: InputRules,
         spills: Vec<Spill>,
@@ -130,7 +136,7 @@ impl InputSchedule {
         self.pending.iter().map(|Reverse(due)| due.index).min()
     }
 
-    /// The inputs still to apply, earliest first, then by seat and in the order logged.
+    /// The inputs still to apply, earliest first, then by player slot and in the order logged.
     pub(super) fn pending(&self) -> Vec<&InputOrder> {
         let mut due: Vec<&InputOrder> = self.pending.iter().map(|Reverse(due)| due).collect();
         due.sort_unstable();
@@ -150,7 +156,9 @@ impl InputSchedule {
                 Served::Bot { input } => {
                     self.schedule(entries, input, next);
                 }
-                Served::Join { seat, .. } | Served::Leave { seat, .. } => self.forget(seat),
+                Served::Join { player_slot, .. } | Served::Leave { player_slot, .. } => {
+                    self.forget(player_slot);
+                }
                 Served::Renew { .. } | Served::Connected { .. } | Served::Disconnected { .. } => {}
             },
         }

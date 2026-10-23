@@ -9,19 +9,19 @@ use campfire_values::TeamSet;
 use campfire_visibility::{SpectatorFog, Visibility};
 use tracing::info;
 
-use crate::error::JoinError;
-use crate::match_clock::MatchClock;
 use crate::net_protocol::MatchChannel;
-use crate::net_protocol::watch_start::WatchStart;
-use crate::net_protocol::watch_teams::WatchTeams;
 use crate::sim_server::viewer::{Viewer, Watching};
+use campfire_host::JoinError;
+use campfire_host::MatchClock;
+use campfire_host::WatchStart;
+use campfire_host::WatchTeams;
 
 pub(crate) mod spectators_world;
 
-/// The links that watch the session with no seat (10-replication-audiences.md, The host admits
-/// spectators, and their fog is a setting): each joins by a signed answer, as a player does, takes
-/// a place while the session admits one more, and watches as its view says. The log holds nothing
-/// of them.
+/// The links that watch the session with no player slot (10-replication-audiences.md, The host
+/// admits spectators, and their fog is a setting): each joins by a signed answer, as a player does,
+/// takes a place while the session admits one more, and watches as its view says. The log holds
+/// nothing of them.
 #[derive(Debug)]
 pub(crate) struct Spectators;
 
@@ -34,25 +34,29 @@ impl Spectators {
         first: Tick,
         link: Entity,
     ) {
-        let start_tick = clock.net_tick(first);
         sender.send::<MatchChannel>(WatchStart {
-            start_tick: start_tick.0,
-            first,
+            clock: clock.since(first),
         });
         info!(link = link.to_bits(), "a spectator watches");
     }
 
     /// The view of a spectator that joins a session of `visibility` with `watching` spectators
-    /// in it: every unit, or every team's view together, which it may change; an error when every
-    /// place the session admits is taken.
-    pub(crate) fn place(visibility: &Visibility, watching: usize) -> Result<Viewer, JoinError> {
+    /// in it, and chose `teams`: every unit, or the views of the teams it chose together, which it
+    /// may change, every team's for no team; an error when every place the session admits is
+    /// taken.
+    pub(crate) fn place(
+        visibility: &Visibility,
+        watching: usize,
+        teams: TeamSet,
+    ) -> Result<Viewer, JoinError> {
         let watching = u32::try_from(watching).unwrap_or(u32::MAX);
         if watching >= visibility.max_spectators() {
             return Err(JoinError::NoSpectatorPlace);
         }
         Ok(Viewer::Spectator(match visibility.spectators() {
             SpectatorFog::All => Watching::Everything,
-            SpectatorFog::Teams => Watching::Teams(TeamSet::ALL),
+            SpectatorFog::Teams if teams == TeamSet::NONE => Watching::Teams(TeamSet::ALL),
+            SpectatorFog::Teams => Watching::Teams(teams),
         }))
     }
 
@@ -98,6 +102,7 @@ impl Spectators {
 
 #[cfg(test)]
 mod tests {
+    use campfire_values::Team;
     use campfire_visibility::{HostVisibility, ModeVisibility};
 
     use super::*;
@@ -105,7 +110,7 @@ mod tests {
     fn visibility(fog: &str, max_spectators: u32) -> Visibility {
         let host = HostVisibility {
             settings: vec![format!("spectators={fog}").parse().unwrap()],
-            max_spectators,
+            max_spectators: Some(max_spectators),
         };
         ModeVisibility::default().session(&host).unwrap()
     }
@@ -113,20 +118,31 @@ mod tests {
     #[test]
     fn a_spectator_takes_a_place_while_the_session_admits_one_and_watches_as_its_fog_says() {
         // Two places: the first two spectators watch, the third finds none; none in a session
-        // that admits none.
+        // that admits none. Where every unit shows, the teams a spectator chose change nothing.
         let all = visibility("all", 2);
+        let west = TeamSet::from([Team::new(0)]);
         let everything = Ok(Viewer::Spectator(Watching::Everything));
-        assert_eq!(Spectators::place(&all, 0), everything);
-        assert_eq!(Spectators::place(&all, 1), everything);
-        assert_eq!(Spectators::place(&all, 2), Err(JoinError::NoSpectatorPlace));
+        assert_eq!(Spectators::place(&all, 0, TeamSet::ALL), everything);
+        assert_eq!(Spectators::place(&all, 1, west), everything);
         assert_eq!(
-            Spectators::place(&Visibility::DEFAULT, 0),
+            Spectators::place(&all, 2, TeamSet::ALL),
             Err(JoinError::NoSpectatorPlace)
         );
-        // The teams' views: every team's together, until it chooses.
         assert_eq!(
-            Spectators::place(&visibility("teams", 1), 0),
-            Ok(Viewer::Spectator(Watching::Teams(TeamSet::ALL)))
+            Spectators::place(&Visibility::DEFAULT, 0, TeamSet::ALL),
+            Err(JoinError::NoSpectatorPlace)
+        );
+        // The teams' views: those it chose together, every team's for none.
+        let teams = visibility("teams", 1);
+        let watching = |teams| Ok(Viewer::Spectator(Watching::Teams(teams)));
+        assert_eq!(Spectators::place(&teams, 0, west), watching(west));
+        assert_eq!(
+            Spectators::place(&teams, 0, TeamSet::ALL),
+            watching(TeamSet::ALL)
+        );
+        assert_eq!(
+            Spectators::place(&teams, 0, TeamSet::NONE),
+            watching(TeamSet::ALL)
         );
     }
 }

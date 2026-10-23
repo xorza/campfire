@@ -64,7 +64,7 @@ fn directions_enter_the_hash() {
         let mut registry = ChannelRegistry::default();
         registry.register_channel::<Chat>(ChannelSetup::default());
         for &direction in directions {
-            registry.add_direction::<Chat>(direction);
+            registry.add_direction::<Chat>(direction, ChannelGate::Open);
         }
         registry.seal();
         registry.hash().unwrap()
@@ -99,4 +99,22 @@ fn a_sealed_registry_refuses_a_channel() {
     let mut registry = ChannelRegistry::default();
     registry.seal();
     registry.register_channel::<Chat>(ChannelSetup::default());
+}
+
+/// A channel whose largest message the receive budget does not hold fails the seal.
+#[test]
+#[should_panic(expected = "pass the receive budget")]
+fn a_channel_past_the_receive_budget_fails_the_seal() {
+    hash_with(ChannelSetup {
+        max_message_len: usize::MAX,
+        ..ChannelSetup::default()
+    });
+}
+
+impl ChannelRegistry {
+    /// The layer that reads the channel `type_id`, if it is registered.
+    fn reader(&self, type_id: ChannelTypeId) -> Option<ChannelReader> {
+        let net_id = self.net_id(type_id)?;
+        Some(self.channels[usize::from(net_id.get())].reader)
+    }
 }

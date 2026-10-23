@@ -1,23 +1,21 @@
+use crate::allowlist::Allowlist;
 use crate::source_file::SourceFile;
-use crate::source_files::SourceFiles;
-use crate::workspace::source;
+use crate::workspace::Workspace;
 
-/// The lines that write an error's message alone and pass: Rhai's `EvalAltResult` and Bevy's
-/// `BevyError`, a diff's, give no source, so the message is all of it; clap writes its value
-/// parser's error into its own message, which `Logging::command_line` logs as the usage error; and
-/// a script failure's text keeps each error of its chain's message apart, its source the rest of
-/// the chain, which its report writes.
-const ALONE: [&str; 4] = [
-    "_ => ScriptError::Runtime(error.to_string()),",
+/// The lines that write an error's message alone and pass: Bevy's `BevyError`, a diff's, gives no
+/// source, so the message is all of it; clap writes its value parser's error into its own message,
+/// which `Logging::command_line` logs as the usage error; and a script failure's text writes each
+/// error of its chain's message apart, in turn, which its text then writes as a report.
+const ALONE: [&str; 3] = [
     "Self::ApplyDiff(error) => write!(f, \"a diff did not apply to its base: {error}\"),",
     "error!(error = %error, \"the command line is refused\");",
-    "message: error.to_string(),",
+    "write!(self.text, \"{error}\").expect(\"text writes into a string\");",
 ];
 
 /// The lines of `code` that write an error with its message alone, the workspace binding each
 /// error it writes as `error`: as a log's `%` field, by `to_string`, or in a format string; and
 /// the `#[error]` messages that write a field their error gives as its source.
-fn unreported(code: &str) -> Vec<String> {
+fn unreported(code: &str, alone: &Allowlist<&str>) -> Vec<String> {
     let lines: Vec<&str> = code.lines().collect();
     let mut found = Vec::new();
     for (at, line) in lines.iter().enumerate() {
@@ -25,7 +23,7 @@ fn unreported(code: &str) -> Vec<String> {
         let alone = if trimmed.starts_with("#[error(") {
             writes_its_source(&lines[at..])
         } else {
-            !ALONE.contains(&trimmed) && writes_alone(line)
+            writes_alone(line) && !alone.allows(|listed| *listed == trimmed)
         };
         if alone {
             found.push(trimmed.to_owned());
@@ -119,21 +117,21 @@ fn production(file: &SourceFile) -> Option<String> {
     reason = "the samples are lines of source the scan reads, not format strings"
 )]
 fn every_error_the_workspace_writes_goes_through_its_report() {
-    let workspace = source();
+    let workspace = Workspace::read();
+    let alone = Allowlist::new(&ALONE);
     let mut found = Vec::new();
     let mut files = 0;
-    for group in ["crates", "checks"] {
-        for file in SourceFiles::under(&workspace.join(group)) {
-            let Some(code) = production(&file) else {
-                continue;
-            };
-            files += 1;
-            for line in unreported(&code) {
-                found.push(format!("{group}/{}: {line}", file.path));
-            }
+    for file in workspace.sources() {
+        let Some(code) = production(file) else {
+            continue;
+        };
+        files += 1;
+        for line in unreported(&code, &alone) {
+            found.push(format!("{}: {line}", file.path));
         }
     }
     assert_eq!(found, Vec::<String>::new());
+    assert_eq!(alone.unused(), Vec::<&&str>::new());
     // The walk reads the workspace, so a moved tree fails here, not silently.
     assert!(files > 100, "{files}");
 
@@ -181,6 +179,10 @@ fn every_error_the_workspace_writes_goes_through_its_report() {
         ),
     ];
     for (code, count) in samples {
-        assert_eq!(unreported(code).len(), count, "{code}");
+        assert_eq!(
+            unreported(code, &Allowlist::new(&ALONE)).len(),
+            count,
+            "{code}"
+        );
     }
 }

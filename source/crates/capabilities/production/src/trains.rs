@@ -1,13 +1,13 @@
-use bevy_ecs::change_detection::{DetectChangesMut, Mut};
+use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionCheck, ActionKind, ActionProgress, ActionSlots, ByAction, Caster, Payer, ProgressIndexes,
-    Purse, SlotCommit, SlotTimes, StartChecked,
+    ActionCheck, ActionKind, ActionProgress, ActionSlots, Caster, Payer, ProgressIndexes, Purse,
+    SlotCommit, SlotTimes, StartChecked,
 };
-use campfire_declarations::{ByType, RoleForm};
+use campfire_declarations::{ById, RoleForm};
 use campfire_math::{Num, RngStream, Vec3};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_sim::{
@@ -15,10 +15,10 @@ use campfire_sim::{
 };
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
 use campfire_units::{
-    Body, Dead, Destination, Facing, GroundPoint, MapBook, OpenCellAsk, OpenCellRun, Owner,
-    SpawnAt, Spawner,
+    Body, Dead, Facing, GroundPoint, MapBook, OpenCellAsk, OpenCellRun, Owner, SpawnAt, Spawner,
+    Walk,
 };
-use campfire_values::{Motion, Relation, Team, UnitTags, UnitType};
+use campfire_values::{ActionId, Motion, Relation, Team, UnitTags, UnitType};
 
 use crate::frame_point::FramePoint;
 use crate::gather_loop::GatherLoop;
@@ -73,8 +73,9 @@ type Training = (
 pub struct Trains;
 
 impl Trains {
-    /// Starts each ordered train, in Act, by its unit's stable id: one whose unit's tags do not
-    /// block production that passes the core's checks, finds a place in its unit's queue, meets
+    /// Starts each ordered train of the units the index of the orders holds, in Act, by its
+    /// unit's stable id: one whose unit's tags do not block production that passes the core's
+    /// checks, finds a place in its unit's queue, meets
     /// its `requires` and, with supply, finds room under its player's cap, pays its whole cost, in
     /// pools and player resources, goes on cooldown, and joins the queue, where it holds its
     /// supply (04-capabilities/production.md, Tags block production). The order ends either way,
@@ -102,13 +103,12 @@ impl Trains {
         holdings.follow(&units.p0());
         let trains = {
             let training = units.p1();
-            let ordered = training
-                .iter()
-                .filter_map(|(entity, &id, _, (slots, progress), ..)| {
-                    progress
-                        .ordered(slots, book, ActionKind::Train)
-                        .map(|_| Keyed { id, entity })
-                });
+            let ordered = indexes.orders().filter_map(|DueUnit { id, entity }| {
+                let (_, _, _, (slots, progress), ..) = training.get(entity).ok()?;
+                progress
+                    .ordered(slots, book, ActionKind::Train)
+                    .map(|_| Keyed { id, entity })
+            });
             order.sort(ordered)
         };
         if trains.is_empty() {
@@ -133,7 +133,7 @@ impl Trains {
                 .expect("an ordered train");
             progress.end(&mut indexes.of(id, entity));
             let purse = Purse::of(pools.read(), resources.of(held_by));
-            let owner = held_by.map(|owner| owner.seat());
+            let owner = held_by.map(|owner| owner.player_slot());
             let no_target = |_| Relation::Friendly;
             let started = times.start(
                 ActionCheck {
@@ -231,7 +231,7 @@ impl Trains {
                 .get::<TrainQueue>(entity)
                 .and_then(|queue| queue.done(now))
             {
-                let trains = world.resource::<ByAction<TrainSpec>>();
+                let trains = world.resource::<ById<ActionId, TrainSpec>>();
                 let spec = trains.get(head.action).expect("a train queues only trains");
                 let unit_type = match &*spec.variants {
                     [] => spec.unit_type,
@@ -264,7 +264,7 @@ impl Trains {
         let unit_type = *world
             .get::<UnitType>(entity)
             .expect("a producer has a type");
-        let producers = world.resource::<ByType<ProducerSpec>>().clone();
+        let producers = world.resource::<ById<UnitType, ProducerSpec>>().clone();
         let free = producers.get(unit_type).map(|spec| &*spec.free);
         for &freed in free.into_iter().flatten() {
             Self::leave(world, entity, freed);
@@ -286,7 +286,7 @@ impl Trains {
     pub(crate) fn exit_spawn(world: &mut World, entity: Entity, unit_type: UnitType) -> ExitSpawn {
         let producer = world.entity(entity);
         let team = *producer.get::<Team>().expect("a producer has a team");
-        let owner = producer.get::<Owner>().map(|owner| owner.seat());
+        let owner = producer.get::<Owner>().map(|owner| owner.player_slot());
         let points = TrainPoints::of(world, entity);
         let position = points.spawn_point(world, entity, unit_type);
         let id = world.resource_mut::<IdAllocator>().allocate();
@@ -310,7 +310,7 @@ impl Trains {
     /// as the next tick's orders are; any other to the producer's rally point.
     pub(crate) fn send_on(world: &mut World, entity: Entity, unit: Entity, exit: ExitSpawn) {
         let gathers = world.get::<UnitType>(entity).is_some_and(|&producer_type| {
-            let producers = world.resource::<ByType<ProducerSpec>>();
+            let producers = world.resource::<ById<UnitType, ProducerSpec>>();
             producers
                 .get(producer_type)
                 .is_some_and(|spec| spec.gathers)
@@ -324,11 +324,9 @@ impl Trains {
         }
         if let Some(order) = order {
             Gatherer::set_in(world, unit, Some(order));
-        } else if let Some(to) = exit.rally
-            && let Some(mut destination) = world.get_mut::<Destination>(unit)
-        {
+        } else if let Some(to) = exit.rally {
             let to = Vec3::new(to.x, exit.at.position.y, to.z);
-            destination.set_if_neq(Destination::to(Some(to)));
+            Walk::go_to(world, unit, Some(to));
         }
     }
 
@@ -345,7 +343,7 @@ impl Trains {
             .resource(*target.get::<UnitType>()?)?;
         let position = *target.get::<Position>()?;
         let slots = world.get::<ActionSlots>(trained)?;
-        let gathers = world.resource::<ByAction<GatherSpec>>();
+        let gathers = world.resource::<ById<ActionId, GatherSpec>>();
         let slot = slots.indexed().find_map(|(slot, action_slot)| {
             let spec = gathers.get(action_slot.action?)?;
             (spec.resource == resource).then_some(slot)
@@ -392,7 +390,9 @@ impl TrainPoints {
             .get::<Facing>()
             .map_or(Num::ZERO, |facing| facing.degrees());
         let unit_type = *producer.get::<UnitType>().expect("a producer has a type");
-        let data = world.resource::<ByType<ProducerSpec>>().get(unit_type);
+        let data = world
+            .resource::<ById<UnitType, ProducerSpec>>()
+            .get(unit_type);
         let bounds = &world.resource::<MapBook>().bounds;
         let point_of = |point: Option<FramePoint>| {
             let at = point?.placed(position, angle);

@@ -1,4 +1,4 @@
-use campfire_sim::MatchRate;
+use campfire_sim::{DueIndex, MatchRate};
 
 use super::*;
 
@@ -37,6 +37,13 @@ fn a_turret_turns_toward_its_target_and_its_attack_starts_within_its_tolerance()
     game.despawn(entity);
     game.step();
     assert_eq!(angle(&game), Num::int(87));
+    // The turret is held while it turns back, 87 ÷ 3 = 29 ticks, and leaves the index at rest.
+    let turning = |game: &Match| game.resource::<DueIndex<TurretAngle>>().due_at(gunner);
+    assert_eq!(turning(&game), Some(Tick::ZERO));
+    for _ in 0..29 {
+        game.step();
+    }
+    assert_eq!((angle(&game), turning(&game)), (Num::ZERO, None));
 
     // A weapon of another slot kind than the turret's starts at once, its turret turning still.
     let mut game = fight_match();

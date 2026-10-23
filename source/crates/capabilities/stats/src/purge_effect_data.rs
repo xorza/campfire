@@ -78,7 +78,7 @@ impl ListedEffect for PurgeEffectData {
 
     fn resolve(&self, cx: &mut dyn EffectResolveCx) -> Result<Arc<dyn ListedSpec>, EffectError> {
         Ok(Arc::new(PurgeEffectSpec {
-            tag: cx.names().tag(&self.tag)?,
+            tag: cx.names().named::<Tag>(self.tag.as_str())?,
         }))
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::manifest::{CargoManifest, CrateKind};
-use crate::workspace::{DevEdges, manifests, test_build};
+use crate::manifest::CrateKind;
+use crate::workspace::{Crate, DevEdges, Workspace, test_build};
 
 /// The tools made for tests alone that any crate's tests may take (02-engine-core.md, A
 /// dev-dependency adds only test support to its crate's build).
@@ -35,13 +35,13 @@ const PAST_THE_WORKSPACE: [[&str; 3]; 1] = [
 /// `TEST_TOOLS`, a crate of `TEST_SUPPORT`, or a crate the build holds already, never a facade; a
 /// crate of kind `test` ships nothing, so its dev-dependencies keep only the rule that none builds
 /// on it, as its tests' build would hold a second copy of it.
-fn dev_dependency_problems(manifests: &[(String, CargoManifest)]) -> Vec<String> {
+fn dev_dependency_problems(manifests: &[Crate]) -> Vec<String> {
     let kinds: BTreeMap<&str, Option<CrateKind>> = manifests
         .iter()
-        .map(|(name, manifest)| (name.as_str(), manifest.kind()))
+        .map(|krate| (krate.name.as_str(), krate.manifest.kind()))
         .collect();
     let mut problems = Vec::new();
-    for (name, manifest) in manifests {
+    for Crate { name, manifest, .. } in manifests {
         let mut second_copies = Vec::new();
         for (other, _) in manifest.dev_dependencies() {
             let builds_on = kinds.contains_key(other)
@@ -87,16 +87,12 @@ fn dev_dependency_problems(manifests: &[(String, CargoManifest)]) -> Vec<String>
 /// Whether the tests of `taker`, a crate of `manifests`, may take `other` as test support
 /// beside what their build holds: a tool of `TEST_TOOLS`, or a test crate or a crate of
 /// `TEST_SUPPORT` that does not build on `taker`.
-pub(crate) fn is_test_support(
-    manifests: &[(String, CargoManifest)],
-    taker: &str,
-    other: &str,
-) -> bool {
+pub(crate) fn is_test_support(manifests: &[Crate], taker: &str, other: &str) -> bool {
     let test_crate = manifests
         .iter()
-        .any(|(name, manifest)| name == other && manifest.kind() == Some(CrateKind::Test));
+        .any(|krate| krate.name == other && krate.manifest.kind() == Some(CrateKind::Test));
     let builds_on = || {
-        let workspace = manifests.iter().any(|(name, _)| name == other);
+        let workspace = manifests.iter().any(|krate| krate.name == other);
         workspace && test_build(manifests, other, DevEdges::Left).contains(taker)
     };
     let support = test_crate || TEST_SUPPORT.contains(&other);
@@ -105,11 +101,12 @@ pub(crate) fn is_test_support(
 
 /// The entries of `PAST_THE_WORKSPACE` that no longer name a dev-dependency past its crate's
 /// test build.
-fn stale_past_entries(manifests: &[(String, CargoManifest)]) -> Vec<String> {
+fn stale_past_entries(manifests: &[Crate]) -> Vec<String> {
     PAST_THE_WORKSPACE
         .iter()
         .filter(|[taker, past, _]| {
-            let Some((_, manifest)) = manifests.iter().find(|(name, _)| name == taker) else {
+            let Some(Crate { manifest, .. }) = manifests.iter().find(|krate| krate.name == *taker)
+            else {
                 return true;
             };
             let takes = manifest.dev_dependencies().any(|(other, _)| other == *past);
@@ -121,9 +118,10 @@ fn stale_past_entries(manifests: &[(String, CargoManifest)]) -> Vec<String> {
 
 #[test]
 fn a_dev_dependency_adds_only_test_support() {
-    let manifests = manifests();
-    assert_eq!(dev_dependency_problems(&manifests), Vec::<String>::new());
-    assert_eq!(stale_past_entries(&manifests), Vec::<String>::new());
+    let workspace = Workspace::read();
+    let manifests = workspace.crates();
+    assert_eq!(dev_dependency_problems(manifests), Vec::<String>::new());
+    assert_eq!(stale_past_entries(manifests), Vec::<String>::new());
     // `a` dev-depends on itself, on `b`, which its build holds through `c` with `c`'s `internals`,
     // on `e`, which `b`'s `internals` turns on through `c`'s weak entry, written before the entry
     // that turns `b` on, on `t`, a test crate, on `campfire-store`, `proptest` and `bevy`, and on
@@ -166,7 +164,7 @@ fn a_dev_dependency_adds_only_test_support() {
             ),
         ),
     ]
-    .map(|(name, manifest)| (name.to_owned(), CargoManifest::parse(manifest)));
+    .map(|(name, manifest)| Crate::sample(name, manifest));
     assert_eq!(
         dev_dependency_problems(&crates),
         [

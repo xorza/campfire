@@ -1,12 +1,9 @@
-use crate::interpolation_sample_cx::InterpolationSampleCx;
 use bevy_ecs::component::Component;
+use campfire_net_frame_interpolation::InterpolationSampleCx;
 use core::any::Any;
 use core::fmt;
 use core::marker::PhantomData;
 use std::sync::Arc;
-
-/// An interpolation from `start` at `t` 0.0 to `other` at 1.0.
-pub type LerpFn<C> = fn(start: &C, other: &C, t: f32) -> C;
 
 /// The interpolation of a component rule, as the rule stores it.
 pub(crate) type ComponentInterpolation<C> =

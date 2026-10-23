@@ -1,9 +1,14 @@
+use std::num::{NonZeroU8, NonZeroU32};
+use std::sync::Arc;
+
 use campfire_actions::{ActionBook, ActionTarget};
 use campfire_capabilities::Books;
 use campfire_common::DeclaredName;
+use campfire_items::{Inventory, ItemStack};
+use campfire_mode::InputType;
 use campfire_orders::OrdersDirective;
 use campfire_script::UnknownName;
-use campfire_sim::IdAllocator;
+use campfire_sim::{IdAllocator, SimWorld};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{BuildTarget, MapPointError, UnitTypeBook};
 use campfire_values::{ActionId, FilterData};
@@ -14,19 +19,19 @@ use super::*;
 use crate::bot_view::HeldBotView;
 
 /// The books of the lane mode, its map with a marker of a region, `camp`, beside its spawns.
-fn lane_books() -> Books {
+fn lane_books() -> Arc<Books> {
     let camp = "[[markers]]\nname = \"camp\"\ntags = [\"camp\"]\n\
                 region = { min = [-4, -4], max = [-2, -2] }\n";
-    PackageTree::of(TestMode::Lane)
+    let packages = PackageTree::of(TestMode::Lane)
         .edit("modes/lane/map/lane/map.toml", Edit::Append(camp))
-        .packages()
-        .name_books()
+        .packages();
+    Arc::clone(packages.load_books())
 }
 
 #[test]
 fn a_bot_takes_its_inputs_and_its_orders_apart_each_once() {
     let script = OrderScript::parse(
-        "[[input]]\ntick = 0\nname = \"hero\"\nvalue = \"hero-x\"\n\
+        "[[input]]\ntick = 0\nname = \"pick\"\nvalue = \"oak\"\n\
          [[order]]\ntick = 2\ndirective.orders.move.to = [1, 0]\n\
          [[order]]\ntick = 5\ndirective.orders.move.to = [0, 1]\n",
     )
@@ -46,6 +51,24 @@ fn a_bot_takes_its_inputs_and_its_orders_apart_each_once() {
     assert_eq!(ticks(late.due_orders(Tick::new(6))), [5]);
     assert_eq!(ticks(bot.due_orders(Tick::new(6))), [2, 5]);
     assert!(bot.due_orders(Tick::new(9)).is_empty());
+    // An input the lane mode declares no input of, or of a list where it takes a string, is
+    // refused as the bot starts.
+    let refused = |input: &str| {
+        let script = OrderScript::parse(&format!("[[input]]\ntick = 0\n{input}\n")).unwrap();
+        BotScript::new(&script, &BotNames::new(&books)).unwrap_err()
+    };
+    let name = |text| DeclaredName::new(text).unwrap();
+    assert_eq!(
+        refused("name = \"mana\"\nvalue = \"x\""),
+        BotScriptError::NoInput(name("mana"))
+    );
+    assert_eq!(
+        refused("name = \"pick\"\nvalue = [\"oak\"]"),
+        BotScriptError::InputType {
+            name: name("pick"),
+            declared: InputType::String,
+        }
+    );
 }
 
 #[test]
@@ -88,9 +111,7 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
     for (order, to) in [(&east, ground(0, 2)), (&point, ground(3, -4))] {
         assert_eq!(
             order.directive,
-            Directive::Orders(OrdersDirective::Move {
-                to: LoadedGround::At(to)
-            })
+            Directive::Orders(OrdersDirective::Move { to })
         );
         assert_eq!(order.slot, None);
     }
@@ -143,25 +164,23 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
     );
     assert_eq!(
         walk("directive.orders.move.to = [21, 0]").directive,
-        Directive::Orders(OrdersDirective::Move {
-            to: LoadedGround::At(ground(21, 0))
-        })
+        Directive::Orders(OrdersDirective::Move { to: ground(21, 0) })
     );
     assert_eq!(
         refused("directive.orders.move.to = [1, 0, 1]"),
         BotScriptError::Point(MapPointError::Shape)
     );
-    // A search for a place is a build's alone, of a gap above 0, within 128 steps.
+    // A search for a place is a build's alone, so a move to one is no script, of a gap above 0,
+    // within 128 steps.
+    let moved =
+        "[[order]]\ntick = 0\ndirective.orders.move.to = { near = [0, 0], gap = 1, steps = 2 }\n";
+    assert!(OrderScript::parse(moved).is_err());
     let build = |near: &str| {
         format!(
             "directive.orders.build = {{ slot = \"first\", target.point = {{ at = {near}, angle = 0 }} }}"
         )
     };
     for (text, error) in [
-        (
-            "directive.orders.move.to = { near = [0, 0], gap = 1, steps = 2 }".to_owned(),
-            BotScriptError::NearOutsideBuild,
-        ),
         (
             build("{ near = [0, 0], gap = 0, steps = 2 }"),
             BotScriptError::NearGap(Num::ZERO),
@@ -177,7 +196,7 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
     let Directive::Orders(OrdersDirective::Build { target, .. }) = near.directive else {
         panic!("a build");
     };
-    let searched = LoadedGround::Near {
+    let searched = LoadedPlace::Near {
         near: ground(0, 0),
         gap: Num::ONE,
         steps: 128,
@@ -225,12 +244,16 @@ pub(crate) struct Heard {
 }
 
 impl BotSink for Heard {
-    fn send(&mut self, _: Seat, payload: &[u8]) {
+    fn send(&mut self, _: PlayerSlot, payload: &[u8]) {
         self.sent.push(payload.to_vec());
     }
 
-    fn unsent(&mut self, _: Seat, _: &Directive<NamedRefs>, cause: OrderUnsent) {
+    fn unsent(&mut self, _: PlayerSlot, _: &Directive<NamedRefs>, cause: OrderUnsent) {
         self.unsent.push(cause);
+    }
+
+    fn failed(&mut self, player_slot: PlayerSlot, error: ThinkError) {
+        panic!("the think of player slot {player_slot:?} failed: {error}");
     }
 }
 
@@ -256,11 +279,11 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
          [[order]]\ntick = 1\ndirective.orders.build = {{ slot = \"first\", target.point = \
          {{ at = {{ near = [0, 0], gap = 1, steps = 2 }}, angle = 0 }} }}\n"
     );
-    let books = session.packages().name_books();
-    let names = BotNames::new(&books);
+    let books = session.packages().load_books();
+    let names = BotNames::new(books);
     let mut bot = BotScript::new(&OrderScript::parse(&text).unwrap(), &names).unwrap();
     let mut view = HeldBotView::new(fixed.game_mut());
-    let slot = Seat::new(0);
+    let slot = PlayerSlot::new(0);
     let mut step = |fixed: &FixedMatch, tick| {
         let mut heard = Heard::default();
         let view = view.get(fixed.game());
@@ -297,4 +320,33 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
             OrderUnsent::NoPlace
         ]
     );
+}
+
+#[test]
+fn a_bot_finds_the_slot_of_the_first_stack_of_an_item_its_unit_carries() {
+    // The walker carries a stack of item 1 in its slot 1 and one of item 0 in slot 2: a sale of
+    // item 0 takes slot 2, of item 1 slot 1, and of item 2, which it does not carry, none; nor
+    // does the runner, which carries no inventory.
+    let session = FixedSession::new(TestMode::Lane.packages(), 2);
+    let mut fixed = session.start();
+    let units = MatchUnits::of(fixed.game());
+    let [walker, runner] = [0, 1].map(|slot| units.hero(slot));
+    let stack = |item| ItemStack {
+        item: ItemId::nth(item),
+        count: NonZeroU32::MIN,
+        uses: None,
+    };
+    let mut inventory = Inventory::new(NonZeroU8::new(3).unwrap());
+    inventory.restore(1, stack(1));
+    inventory.restore(2, stack(0));
+    let entity = fixed.game().entity_of(walker).unwrap();
+    fixed.game_mut().entity_mut(entity).insert(inventory);
+    let mut view = HeldBotView::new(fixed.game_mut());
+    let view = view.get(fixed.game());
+    let carried = |unit, item| view.carried(unit, ItemId::nth(item));
+    assert_eq!(
+        [carried(walker, 0), carried(walker, 1), carried(walker, 2)],
+        [Some(2), Some(1), None]
+    );
+    assert_eq!(carried(runner, 0), None);
 }

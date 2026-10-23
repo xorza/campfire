@@ -379,7 +379,7 @@ impl Draws {
             match self.value::<T>(LAYOUT_TRIES) {
                 Some(value) => {
                     out.push(1);
-                    Binary::encode_to(&value, out);
+                    Binary::encode_into(&value, out);
                 }
                 None => out.push(0),
             }

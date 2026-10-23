@@ -9,12 +9,12 @@ use campfire_package::ModePackages;
 use campfire_runner::{CheckedTerms, Session, SessionRules, TermsError};
 use tracing::error;
 
-use crate::events::session_restored::SessionRestored;
-use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_match::{MatchBegin, MatchSource, ServerMatch};
-use crate::sim_server::server_phase::ServerPhase;
-use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::session_dir::RestoredSession;
+use campfire_host::RestoredSession;
+use campfire_host::ServerBots;
+use campfire_host::ServerPhase;
+use campfire_host::ServerSetup;
+use campfire_host::SessionRestored;
 
 /// A session to restore in an app's first frame, as a match starts in a fixed tick: the one a stop
 /// ended, as its server starts again, or the one a load went back to. `SimServerPlugin` restores it

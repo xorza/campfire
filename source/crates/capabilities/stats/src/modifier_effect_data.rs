@@ -117,7 +117,9 @@ impl ListedEffect for ModifierEffectData {
 
     fn resolve(&self, cx: &mut dyn EffectResolveCx) -> Result<Arc<dyn ListedSpec>, EffectError> {
         Ok(Arc::new(ModifierEffectSpec {
-            id: cx.names().modifier(&self.id)?,
+            id: cx
+                .names()
+                .named::<ModifierId>((cx.names().package(), self.id.as_str()))?,
             duration_ms: cx.amount_if(self.duration_ms.as_ref())?,
         }))
     }

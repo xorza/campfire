@@ -1,9 +1,6 @@
-use bevy_ecs::system::{Query, Res};
 use campfire_actions::ActionSlots;
-use campfire_players::TickCommands;
-use campfire_sim::EntityIndex;
+use campfire_players::{OrderedUnits, TickCommands};
 use campfire_stats::Level;
-use campfire_units::Owner;
 
 use crate::learning::Learning;
 use crate::points::Points;
@@ -21,27 +18,20 @@ impl LearnOrders {
     /// check is dropped: a client can send anything.
     pub(super) fn learn_ranks(
         mut orders: TickCommands<'_, '_, ProgressionDirective>,
-        index: Res<'_, EntityIndex>,
         learning: Learning<'_>,
-        mut units: Query<'_, '_, (&Owner, &mut ActionSlots, &mut Points, &Level)>,
+        mut units: OrderedUnits<'_, '_, (&mut ActionSlots, &mut Points, &Level)>,
     ) {
         orders.for_each(|order| {
             let ProgressionDirective::Learn { slot } = order.directive;
-            for &unit in order.units {
-                let Some(Ok((owner, mut slots, mut points, &level))) =
-                    index.get(unit).map(|entity| units.get_mut(entity))
-                else {
-                    continue;
-                };
+            units.for_each_mut(&order, |_, _, (mut slots, mut points, &level)| {
                 let learnable = slots
                     .slot(slot)
                     .is_some_and(|held| learning.learnable(held, *points, level));
-                if !order.controls(*owner) || !learnable {
-                    continue;
+                if learnable {
+                    points.spend();
+                    slots.learn(slot);
                 }
-                points.spend();
-                slots.learn(slot);
-            }
+            });
         });
     }
 }

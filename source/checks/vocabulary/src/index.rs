@@ -2,37 +2,24 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-/// A list of the index, by what its entries name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use campfire_common::NamedEnum;
+
+/// A list of the index, by what its entries name, under its title.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, NamedEnum)]
 pub(crate) enum IndexSection {
     /// Structs, enums, unions, traits and type aliases, an associated type among them.
+    #[name = "Types"]
     Types,
     /// Functions and methods but tests, and `macro_rules!` macros.
+    #[name = "Functions"]
     Functions,
+    #[name = "Fields"]
     Fields,
+    #[name = "Variants"]
     Variants,
     /// Constants and statics, an associated constant among them.
+    #[name = "Values"]
     Values,
-}
-
-impl IndexSection {
-    const ALL: [Self; 5] = [
-        Self::Types,
-        Self::Functions,
-        Self::Fields,
-        Self::Variants,
-        Self::Values,
-    ];
-
-    const fn title(self) -> &'static str {
-        match self {
-            Self::Types => "Types",
-            Self::Functions => "Functions",
-            Self::Fields => "Fields",
-            Self::Variants => "Variants",
-            Self::Values => "Values",
-        }
-    }
 }
 
 /// A name a Rust file declares.
@@ -95,7 +82,7 @@ impl Index {
     pub(crate) fn write(&self, text: &mut String) {
         for section in IndexSection::ALL {
             let entries = &self.sections[section as usize];
-            writeln!(text, "\n== {} ({}) ==\n", section.title(), entries.len())
+            writeln!(text, "\n== {} ({}) ==\n", section.name(), entries.len())
                 .expect("a String takes every write");
             let mut sorted: Vec<&NameListing> = entries.iter().collect();
             sorted.sort_by(|a, b| a.order(b));

@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
-use bevy_ecs::schedule::Schedules;
+use bevy_ecs::schedule::{Schedule, Schedules};
 use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::{EntityRef, EntityWorldMut, World};
 use bevy_time::{Real, Time, TimePlugin, TimeUpdateStrategy};
@@ -13,9 +13,8 @@ use campfire_net_connection::{
     Client, Connect, Connected, Connecting, Disconnect, Disconnected, Start,
 };
 use campfire_net_core::NetTick;
-use campfire_net_emulator::{
-    DuplexModel, EmulatedLinkId, EmulatedNetwork, EmulatedPair, WireClock,
-};
+use campfire_net_core::TimeSource;
+use campfire_net_emulator::{DuplexModel, EmulatedLinkId, EmulatedNetwork, EmulatedPair};
 use campfire_net_endpoint::Endpoint;
 use campfire_net_link::{Link, LinkOf, RemoteAddress, Server, Unlinked};
 use campfire_net_packets::{EmulatedWires, EndpointPieces, EndpointSetup, PacketSessionSetup};
@@ -23,7 +22,7 @@ use campfire_net_timeline::LocalTimeline;
 use campfire_net_udp::{
     AdmissionSetup, ServerIdentity, ServerTrust, UdpClient, UdpServer, UdpSetup,
 };
-use campfire_schedule::{OneThreadSchedule, StrictSchedule};
+use campfire_schedule::{ScheduleExt, SchedulesExt};
 use core::mem;
 use core::net::SocketAddr;
 use core::num::NonZeroU32;
@@ -134,7 +133,7 @@ impl<S: Stack> Stepper<S> {
             origin: Instant::now(),
             now: Duration::ZERO,
             server_schedule: AppSchedule::new(setup.server_frame_interval, Duration::ZERO),
-            network: EmulatedNetwork::new(WireClock::Driven),
+            network: EmulatedNetwork::new(TimeSource::Driven),
             link: setup.link,
             seed: setup.seed,
             packet_session: setup.packet_session,
@@ -253,10 +252,9 @@ impl<S: Stack> Stepper<S> {
     }
 
     fn udp_setup(&self) -> UdpSetup {
-        UdpSetup {
-            packet_session: self.packet_session,
-            ..UdpSetup::new(self.alpn)
-        }
+        let mut setup = UdpSetup::new(self.alpn);
+        setup.packet_session = self.packet_session;
+        setup
     }
 
     /// Remote client `client`'s app with the stack's plugins and protocol, finished.
@@ -285,11 +283,11 @@ impl<S: Stack> Stepper<S> {
     /// run: again here, as a test adds systems after the app finished, and a system of a new label
     /// makes a schedule `OneThreadPlugins` never saw.
     fn run_strictly(app: &mut App) {
-        app.edit_schedule(Update, StrictSchedule::apply);
-        app.edit_schedule(FixedUpdate, StrictSchedule::apply);
+        app.edit_schedule(Update, Schedule::make_strict);
+        app.edit_schedule(FixedUpdate, Schedule::make_strict);
         let mut schedules = app.world_mut().resource_mut::<Schedules>();
-        StrictSchedule::apply_hierarchy_all(&mut schedules);
-        OneThreadSchedule::apply_all(&mut schedules);
+        schedules.make_hierarchy_strict();
+        schedules.run_on_one_thread();
     }
 
     /// A new emulated link for remote client `client_id`, its models seeded by the index.

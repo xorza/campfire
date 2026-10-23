@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use campfire_client_files::TerrainFileError;
+use campfire_client_files::{TeamColorsError, TerrainFileError};
 use campfire_common::MapName;
 use campfire_package::LoadError;
 use campfire_package_disk::WriteError;
@@ -11,11 +11,11 @@ use derive_more::Display;
 use thiserror::Error;
 
 use crate::texture::error::TextureError;
+use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::format::big::error::ArchiveError;
 use crate::zero_hour::format::csf::error::CsfError;
 use crate::zero_hour::format::ini::error::{IniError, MoneyError};
 use crate::zero_hour::format::map::error::MapReadError;
-use crate::zero_hour::format::map::error::TerrainError;
 use crate::zero_hour::format::w3d::error::W3dError;
 
 /// Why a Zero Hour install does not import: a file of it does not read, it is not one the importer
@@ -52,18 +52,18 @@ pub enum ZeroHourError {
     },
     /// No archive of the install holds a file the import reads.
     #[error("no archive holds {0}")]
-    NotInArchives(String),
+    NotInArchives(ArchivePath),
     /// A map of the install is no map the game reads, by its path.
-    #[error("{map} is no map the game reads")]
+    #[error("{path} is no map the game reads")]
     Map {
-        map: String,
+        path: ArchivePath,
         #[source]
         error: MapError,
     },
     /// A texture of the install is none the importer converts, by its path.
     #[error("{path} is no texture the importer converts")]
     Texture {
-        path: String,
+        path: ArchivePath,
         #[source]
         error: TextureError,
     },
@@ -80,14 +80,14 @@ pub enum ZeroHourError {
     /// An INI file is none the game reads, by its path.
     #[error("{path} is no INI file the game reads")]
     Ini {
-        path: String,
+        path: ArchivePath,
         #[source]
         error: IniError,
     },
     /// A W3D file of the install is none the importer reads, by its path.
     #[error("{path} is no W3D file the importer reads")]
     W3d {
-        path: String,
+        path: ArchivePath,
         #[source]
         error: W3dError,
     },
@@ -102,7 +102,7 @@ pub enum ZeroHourError {
     #[error("several language directories hold art: {0:?}")]
     Languages(Vec<String>),
     #[error(transparent)]
-    NameClash(#[from] NameClash),
+    Name(#[from] NameError),
     /// A player template a player plays, by its name, names no starting building.
     #[error("player template {0} names no starting building")]
     NoStart(String),
@@ -132,7 +132,7 @@ pub enum ZeroHourError {
     /// The string table is none the game reads, by its path.
     #[error("{path} is no string table the game reads")]
     StringTable {
-        path: String,
+        path: ArchivePath,
         #[source]
         error: CsfError,
     },
@@ -148,16 +148,40 @@ pub enum ZeroHourError {
     },
     /// Two maps' directories give one map name.
     #[error("{first} and {second} give one map name")]
-    MapNameClash { first: String, second: String },
+    MapNameClash {
+        first: ArchivePath,
+        second: ArchivePath,
+    },
+    /// Two textures that the models or the terrain draw with go to one file of the package, as
+    /// an `x.dds` and an `x.tga` would.
+    #[error("{first} and {second} go to one texture file")]
+    TextureClash {
+        first: ArchivePath,
+        second: ArchivePath,
+    },
     #[error(transparent)]
     NoPackagePath(#[from] NoPackagePath),
+    /// The game's `Multiplayer.ini` gives no team colors the engine takes.
+    #[error("the game's team colors are none the engine takes")]
+    TeamColors(#[from] TeamColorsError),
+}
+
+/// Why a time of the game is none the import writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub(crate) enum TimeError {
+    /// It is below 0.
+    #[error("the time is below 0")]
+    Negative,
+    /// It is below 0, not finite, or of more frames than the game's `Int` holds.
+    #[error("the time is of no count of frames the game's Int holds")]
+    PastInt,
 }
 
 /// Why an object gives no unit type.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum TypeError {
     #[error(transparent)]
-    NameClash(#[from] NameClash),
+    Name(#[from] NameError),
     /// It names a locomotor no file defines, which the game refuses.
     #[error("it names the locomotor {0}, which no file defines")]
     NoLocomotor(String),
@@ -205,9 +229,6 @@ pub enum MapError {
     /// A waypoint's name, which a marker's param keeps, is not ASCII.
     #[error("a waypoint's name is not ASCII")]
     NotAscii,
-    /// The terrain names past what it holds.
-    #[error("its terrain names past what it holds")]
-    Terrain(#[source] TerrainError),
     /// The terrain converts to no terrain file: a cliff's coordinates are not finite.
     #[error("its terrain converts to no terrain file")]
     TerrainFile(#[source] TerrainFileError),
@@ -228,7 +249,7 @@ pub enum MapError {
     #[error("a light it draws its objects in goes no way")]
     LightDirection,
     #[error(transparent)]
-    NameClash(#[from] NameClash),
+    Name(#[from] NameError),
     /// An object it places gives no unit type.
     #[error("object {object}")]
     UnitType {
@@ -236,6 +257,17 @@ pub enum MapError {
         #[source]
         error: TypeError,
     },
+}
+
+/// Why a name of the original gives none in the package.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum NameError {
+    #[error(transparent)]
+    Clash(#[from] NameClash),
+    /// As the package names it, it passes the bytes a declared name holds,
+    /// `DeclaredName::MAX_LEN`.
+    #[error("{0} passes the bytes a name holds")]
+    TooLong(String),
 }
 
 /// Two objects of the original whose names give one name in the package, a look's or a unit

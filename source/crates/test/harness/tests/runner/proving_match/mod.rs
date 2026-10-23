@@ -12,7 +12,7 @@ use campfire_common::SegmentSeed;
 use campfire_declarations::{CapabilitySet, MatchFacts, Role};
 use campfire_harness::{ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
 use campfire_math::{Num, Vec3};
-use campfire_mode::ModeWorld;
+use campfire_mode::internals::ModeWorldInternals;
 use campfire_production::TrainQueue;
 use campfire_progression::Experience;
 use campfire_projectiles::Projectile;
@@ -81,9 +81,9 @@ impl Removals {
 /// The lancer's weapon's range, its `attack` action's in its package.
 const LANCER_RANGE: Num = Num::int(4);
 
-/// The hero of player `seat` in `world`, by its stable id.
-fn hero(world: &World, seat: u32) -> (StableId, EntityRef<'_>) {
-    let id = MatchUnits::of(world).hero(seat);
+/// The hero of player `player_slot` in `world`, by its stable id.
+fn hero(world: &World, player_slot: u32) -> (StableId, EntityRef<'_>) {
+    let id = MatchUnits::of(world).hero(player_slot);
     (id, world.entity_ref_of(id).unwrap())
 }
 
@@ -141,7 +141,7 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
             let position = unit.get::<Position>().unwrap().get();
             if unit
                 .get::<Owner>()
-                .is_some_and(|owner| owner.seat().get() == 1)
+                .is_some_and(|owner| owner.player_slot().get() == 1)
             {
                 seen.wisp.push((tick, position));
             } else {
@@ -163,7 +163,7 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
             && !unit.contains::<Projectile>()
             && !unit.contains::<Area>()
         {
-            seen.trained[usize::try_from(owner.seat().get()).unwrap()] += 1;
+            seen.trained[usize::try_from(owner.player_slot().get()).unwrap()] += 1;
         }
     }
 }
@@ -226,7 +226,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     let (mut written, mut removed) = (start.written - start.held, false);
     let mut watch = ArchetypeWatch::of(fixed.game_mut());
     for tick in 0..ProvingMatch::TICKS {
-        proving.play_tick(&mut fixed, tick);
+        proving.play_tick(&mut fixed);
         // The removed-component messages hold this tick's removals alone, as an `App`'s update
         // keeps them: every one written before the tick is gone.
         let removals = Removals::of(fixed.game());
@@ -360,7 +360,7 @@ fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() 
     StageClock::install(fixed.game_mut());
     let mut record = MatchRecord::of(fixed.game_mut(), proving.packages(), ProvingMatch::PLAYERS);
     let mut units = Vec::new();
-    for tick in 0..ProvingMatch::TICKS {
+    for _ in 0..ProvingMatch::TICKS {
         let world = fixed.game_mut();
         units.clear();
         units.extend(
@@ -372,7 +372,7 @@ fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() 
         for &entity in units.iter().rev() {
             world.entity_mut(entity).remove::<Inert>().insert(Inert);
         }
-        proving.play_tick(&mut fixed, tick);
+        proving.play_tick(&mut fixed);
         record.tick(fixed.game_mut());
     }
     record.compare("proving");
@@ -386,9 +386,10 @@ fn every_order_each_mode_relies_on_in_each_role_is_stated() {
     // server's with its mode, the rules alone, and a predicting client's, each of its own books.
     for mode in TestMode::ALL {
         let packages = mode.packages();
-        let seats = u32::try_from(packages.manifest().seats()).unwrap();
+        let player_slots = u32::try_from(packages.manifest().player_slots()).unwrap();
         drop(MatchBuild::test_target_without_sync_points(
-            &packages, seats,
+            &packages,
+            player_slots,
         ));
         let manifest = packages.manifest();
         let rate = MatchRate::new(manifest.tick_hz.default());
@@ -396,7 +397,7 @@ fn every_order_each_mode_relies_on_in_each_role_is_stated() {
             (Role::Rules, MatchKind::Rules),
             (Role::Client, MatchKind::Predicting),
         ] {
-            let setup = MatchSetup::new(SegmentSeed::ZERO, rate, role).set(manifest.capabilities);
+            let setup = MatchSetup::new(SegmentSeed::ZERO, rate, role);
             let books = packages.books(rate);
             Release::build(&mut World::new(), setup.without_sync_points(), books, kind);
         }

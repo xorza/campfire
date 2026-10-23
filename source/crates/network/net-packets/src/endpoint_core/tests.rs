@@ -1,8 +1,9 @@
 use super::*;
+use crate::establish::{ClientEstablish, Establish, ServerEstablish};
 use bytes::BytesMut;
 use campfire_math::SplitMix64;
 use campfire_net_payload::{OutgoingPayload, PayloadKind, PayloadToken};
-use core::net::{IpAddr, Ipv4Addr};
+use core::net::Ipv4Addr;
 use core::time::Duration;
 
 use crate::establish::PathCheck;
@@ -50,6 +51,7 @@ impl ServerEstablish for RoutedEstablishment {
     fn unknown(&mut self, _: Instant, datagram: &Datagram, out: &mut Establishing) {
         out.established.push(Established {
             peer: datagram.from,
+            local: None,
             protection: Protection::Plain,
             prefix: None,
             route: Some(ID),
@@ -91,6 +93,7 @@ impl Establish for PendingEstablishment {
         };
         out.established.push(Established {
             peer: first.from,
+            local: None,
             protection: Protection::Plain,
             prefix: None,
             route: Some(ID),
@@ -161,6 +164,7 @@ fn a_hand_over_sizes_its_payload_by_the_carried_mtu() {
         core.pass(
             &mut vec![Datagram {
                 from: address(1),
+                local: None,
                 payload,
             }],
             &mut Vec::new(),
@@ -197,6 +201,7 @@ fn a_packet_session_reads_the_datagrams_that_came_before_it() {
     core.pass(
         &mut vec![Datagram {
             from: address(1),
+            local: None,
             payload,
         }],
         &mut Vec::new(),
@@ -238,7 +243,14 @@ fn a_server_routed_by_address_takes_a_new_address_as_a_new_peer_and_challenges_n
     for (tick, from) in [(0, address(1)), (10, address(2))] {
         let payload = client_payload(&mut client, at(tick));
         core.set_time(EndpointTime::Driven(at(tick)));
-        core.pass(&mut vec![Datagram { from, payload }], &mut out);
+        core.pass(
+            &mut vec![Datagram {
+                from,
+                local: None,
+                payload,
+            }],
+            &mut out,
+        );
         while let Some(news) = core.next_news() {
             if let News::Linked { key, address, .. } = news {
                 linked.push((key, address));
@@ -279,6 +291,7 @@ fn a_peer_that_moves_is_checked_at_its_new_address_and_then_followed() {
     core.pass(
         &mut vec![Datagram {
             from: address(1),
+            local: None,
             payload: first,
         }],
         &mut out,
@@ -298,6 +311,7 @@ fn a_peer_that_moves_is_checked_at_its_new_address_and_then_followed() {
     core.pass(
         &mut vec![Datagram {
             from: address(2),
+            local: None,
             payload: moved,
         }],
         &mut out,
@@ -318,6 +332,7 @@ fn a_peer_that_moves_is_checked_at_its_new_address_and_then_followed() {
     core.pass(
         &mut vec![Datagram {
             from: address(2),
+            local: None,
             payload: answer,
         }],
         &mut out,
@@ -365,6 +380,7 @@ impl ClientEstablish for ResetEstablishment {
     fn connect(&mut self, _: Instant, server: SocketAddr, out: &mut Establishing) {
         out.established.push(Established {
             peer: server,
+            local: None,
             protection: Protection::Plain,
             prefix: None,
             route: None,
@@ -399,6 +415,7 @@ fn a_reset_of_its_token_ends_a_clients_packet_session() {
         datagram.extend_from_slice(&TOKEN);
         Datagram {
             from: server,
+            local: None,
             payload: datagram,
         }
     };
@@ -505,6 +522,7 @@ fn a_moved_peer_is_checked_under_loss_reorder_and_duplicates() {
         core.pass(
             &mut vec![Datagram {
                 from: address(1),
+                local: None,
                 payload: first,
             }],
             &mut out,
@@ -535,6 +553,7 @@ fn a_moved_peer_is_checked_under_loss_reorder_and_duplicates() {
                 if to == SERVER {
                     to_server.push(Datagram {
                         from: address(2),
+                        local: None,
                         payload: datagram,
                     });
                 } else {
@@ -638,4 +657,77 @@ fn a_pass_polls_a_packet_session_once_its_timer_is_due() {
     assert_eq!(out.len(), 1, "the keep-alive");
     assert_eq!(core.next_deadline(), Some(at(2_000)));
     assert_eq!(core.timers.len(), 1);
+}
+
+/// A server whose IO failed tells its own carrier first, then each carried packet session's; one
+/// it opened and the host did not carry yet gives its reason to the carry. A packet session that
+/// ends before its carry, as one that times out does, gives its reason the same way.
+#[test]
+fn a_server_learns_its_io_failed_and_an_uncarried_end_reaches_its_carry() {
+    let open_two = || {
+        let mut establish = PlainEstablishment::default();
+        establish.set_accepting(true);
+        let mut core = EndpointCore::<u32>::new(
+            PacketSessionSetup::default(),
+            EndpointSide::Server {
+                establish: Box::new(establish),
+            },
+            None,
+        );
+        core.set_time(EndpointTime::Driven(at(0)));
+        core.start(9, &mut Vec::new());
+        let mut client = PacketSession::new(
+            Protection::Plain,
+            None,
+            PacketSessionSetup::default(),
+            at(0),
+        );
+        let mut keys = Vec::new();
+        for from in [address(1), address(2)] {
+            let payload = client_payload(&mut client, at(0));
+            core.pass(
+                &mut vec![Datagram {
+                    from,
+                    local: None,
+                    payload,
+                }],
+                &mut Vec::new(),
+            );
+            while let Some(news) = core.next_news() {
+                if let News::Linked { key, .. } = news {
+                    keys.push(key);
+                }
+            }
+        }
+        (core, [keys[0], keys[1]])
+    };
+
+    let (mut core, [carried, uncarried]) = open_two();
+    assert_eq!(core.carry(carried, 1, 1200), None);
+    core.fail();
+    let ended = |carrier| News::Ended {
+        carrier,
+        reason: UnlinkReason::SocketFailed,
+    };
+    assert_eq!(core.next_news(), Some(ended(9)));
+    assert_eq!(core.next_news(), Some(ended(1)));
+    assert_eq!(core.next_news(), None);
+    assert_eq!(
+        core.carry(uncarried, 2, 1200),
+        Some(UnlinkReason::SocketFailed)
+    );
+    // The reason goes with its carry: a second finds none.
+    assert_eq!(core.carry(uncarried, 2, 1200), None);
+
+    // Past the idle timeout, 5 s, both time out: the carried one's carrier learns it, and the
+    // uncarried one's reason waits for its carry.
+    let (mut core, [carried, uncarried]) = open_two();
+    assert_eq!(core.carry(carried, 1, 1200), None);
+    core.set_time(EndpointTime::Driven(at(5_001)));
+    core.pass(&mut Vec::new(), &mut Vec::new());
+    let News::Ended { carrier: 1, reason } = core.next_news().unwrap() else {
+        panic!("the carried packet session's carrier learns it ended");
+    };
+    assert_eq!(core.next_news(), None);
+    assert_eq!(core.carry(uncarried, 2, 1200), Some(reason));
 }

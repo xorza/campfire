@@ -2,7 +2,7 @@ use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut};
-use campfire_players::SeatHolder;
+use campfire_players::PlayerSlotHolder;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_units::internals::UnitsWorldInternals;
@@ -75,13 +75,13 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
             [None, None, None, offer(1), None],
         ]
     );
-    // A host's pick of a seat's choice of values is the seat's choice as the match starts, before
-    // any input: player 1's faction China, offer 1.
+    // A host's pick of a player slot's choice of values is the player slot's choice as the match
+    // starts, before any input: player 1's faction China, offer 1.
     let set = mode_packages(SCRIPT);
     let data = set.mode_data();
     let china = "1:faction=china".parse().unwrap();
     let picks = HostPicks {
-        seats: SeatPicks::named(&data.choices, 3, &[china]).unwrap(),
+        player_slots: PlayerSlotPicks::named(&data.choices, 3, &[china]).unwrap(),
         ..HostPicks::defaults(&data, 3)
     };
     let mut picked = installed_picked(&set, ScriptLimits::ROOMY, picks);
@@ -104,7 +104,10 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
         ]
     );
     let hero = Mode::entity_by_id(&game, 5);
-    assert_eq!(game.get::<Owner>(hero).unwrap().seat(), Seat::new(0));
+    assert_eq!(
+        game.get::<Owner>(hero).unwrap().player_slot(),
+        PlayerSlot::new(0)
+    );
     let slots = game.get::<ActionSlots>(hero).unwrap();
     let slots: Vec<_> = slots
         .iter()
@@ -124,7 +127,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     let mut owned = game.query::<(&StableId, &Owner, &Modifiers)>();
     let (&hero_y, _, modifiers) = owned
         .iter(&game)
-        .find(|(_, owner, _)| owner.seat() == Seat::new(2))
+        .find(|(_, owner, _)| owner.player_slot() == PlayerSlot::new(2))
         .unwrap();
     let held: Vec<_> = modifiers
         .iter()
@@ -156,7 +159,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     // gems, the second; a resource the mode does not declare fails, as a sum past what an
     // integer holds does, and a marker tag no marker holds.
     let amount = |slot, name| {
-        let resources = game.player_resources(Seat::new(slot));
+        let resources = game.player_resources(PlayerSlot::new(slot));
         resources.unwrap().amount(resource(name).unwrap())
     };
     assert_eq!(
@@ -174,7 +177,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     let mut picked = installed_picked(&set, ScriptLimits::ROOMY, picks);
     Mode::start_held(&mut picked).unwrap();
     Mode::tick_inputs(&mut picked, &[(1, input("gold", "gold"))]);
-    let resources = picked.player_resources(Seat::new(1)).unwrap();
+    let resources = picked.player_resources(PlayerSlot::new(1)).unwrap();
     assert_eq!(resources.amount(resource("gold").unwrap()), 8 + 3);
     assert_eq!(
         Mode::failures(&game),
@@ -403,21 +406,24 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     let hero_type = *game.get::<UnitType>(hero).unwrap();
     let position = Vec3::ZERO;
     let [_, grunt_1, second] = [(0, grunt), (1, grunt), (0, hero_type)].map(|(slot, unit_type)| {
-        let owner = Owner::new(Seat::new(slot));
+        let owner = Owner::new(PlayerSlot::new(slot));
         Spawn::of(unit_type, position).parts(owner).place(&mut game)
     });
     let mut players = HeldPlayerUnits::new(&mut game);
     let avatar = |players: &mut HeldPlayerUnits, slot| {
         players
             .get(&game)
-            .avatar(Seat::new(slot))
+            .avatar(PlayerSlot::new(slot))
             .map(|avatar| avatar.entity)
     };
     assert_eq!(avatar(&mut players, 0), Some(hero));
     assert_eq!(avatar(&mut players, 1), None);
     assert_eq!(avatar(&mut players, 2), None);
     // The world's own read, for code that holds it shared, finds each the same.
-    let shared = (0..3).map(|slot| game.avatar_of(Seat::new(slot)).map(|avatar| avatar.entity));
+    let shared = (0..3).map(|slot| {
+        game.avatar_of(PlayerSlot::new(slot))
+            .map(|avatar| avatar.entity)
+    });
     assert_eq!(shared.collect::<Vec<_>>(), [Some(hero), None, None]);
 
     // Out of play, as each tick ends: player 0 while both its heroes are dead, and no more as one
@@ -427,7 +433,7 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     let out = |game: &Match| {
         (0..3)
             .map(|slot| {
-                let player = game.player_entity(Seat::new(slot)).unwrap();
+                let player = game.player_entity(PlayerSlot::new(slot)).unwrap();
                 game.entity(player).contains::<OutOfPlay>()
             })
             .collect::<Vec<bool>>()
@@ -452,18 +458,18 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
 }
 
 #[test]
-fn a_script_reads_each_players_seat_units_play_and_resources_and_kills_and_spends() {
+fn a_script_reads_each_players_player_slot_units_play_and_resources_and_kills_and_spends() {
     // Slot 1 is open as the match starts, and every other held: `on_match_start` reads it so.
     // Player 0 owns two grunts and player 1 one: player 0's `units` gives its two, by stable
     // id, and `kill` takes each one's life whole, so both die in the tick of the call, which
     // runs before the tick's deaths, with no killer; player 1's lives.
     let script = r#"
 fn on_match_start(ctx) {
-    let seats = "";
+    let player_slots = "";
     for player in ctx.players {
-        seats += if player.seated { "h" } else { "o" };
+        player_slots += if player.held { "h" } else { "o" };
     }
-    ctx.state.kind = seats;
+    ctx.state.kind = player_slots;
 }
 
 fn take_input(ctx, player, name, value) {
@@ -495,16 +501,19 @@ fn take_input(ctx, player, name, value) {
 "#;
     let script = format!("{script}{PICKING}");
     let mut game = installed(&mode_packages(&script), ScriptLimits::ROOMY);
-    let players = Mode::seats(&game);
-    let mut holders = vec![SeatHolder::Held; players];
-    holders[1] = SeatHolder::Open;
+    let players = Mode::player_slots(&game);
+    let mut holders = vec![PlayerSlotHolder::Held; players];
+    holders[1] = PlayerSlotHolder::Open;
     Mode::start(&mut game, &holders).unwrap();
-    let seats: String = (0..players)
+    let player_slots: String = (0..players)
         .map(|at| if at == 1 { 'o' } else { 'h' })
         .collect();
-    assert_eq!(Mode::field(&game, "kind"), StateValue::Text(seats.into()));
+    assert_eq!(
+        Mode::field(&game, "kind"),
+        StateValue::Text(player_slots.into())
+    );
     let grunt = |game: &mut Match, slot| {
-        let owner = Owner::new(Seat::new(slot));
+        let owner = Owner::new(PlayerSlot::new(slot));
         Spawn::named(game, "grunt", Vec3::ZERO)
             .parts(owner)
             .place(game)
@@ -539,7 +548,7 @@ fn take_input(ctx, player, name, value) {
         Mode::failures(&game),
         refused.map(|refusal| FailureKind::Api(refusal.refused()))
     );
-    let gold = game.player_resources(Seat::new(0));
+    let gold = game.player_resources(PlayerSlot::new(0));
     assert_eq!(gold.unwrap().amount(resource("gold").unwrap()), 6);
     // Player 2 held out reads in play within the call, and out of play from the tick's end.
     Mode::tick_inputs(&mut game, &[(0, input("probe", "out"))]);

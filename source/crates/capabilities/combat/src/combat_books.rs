@@ -3,16 +3,15 @@ use std::error::Error;
 use std::sync::Arc;
 
 use campfire_actions::{
-    ActionBook, ActionKind, ActionsData, ByAction, ByActionBuilder, DamageKindBook, LoadedAction,
-    PerAction, SlotKind, SlotKindBook, Targeting,
+    ActionBook, ActionKind, ActionsData, LoadedAction, SlotKind, SlotKindBook, Targeting,
 };
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, NamesListError, Section,
+    BookCx, BookError, BookPlace, ById, ByIdBuilder, NamesListError, PerId, Section,
 };
 use campfire_script::UnknownName;
 use campfire_stats::{LifePool, ModifierBook, StatBook, TypePoolsData, UnitStartError};
-use campfire_units::{PoolNames, UnitTypes};
-use campfire_values::{Named, Names, NamesError, PackageIndex};
+use campfire_units::{PoolId, UnitTypes};
+use campfire_values::{ActionId, DamageKind, Named, Names, NamesError, PackageIndex, UnitType};
 
 use crate::Combat;
 use crate::armor::Armor;
@@ -35,7 +34,7 @@ impl Combat {
             let attacks = actions.flat_map(|actions| &actions.0);
             let mut attacks = attacks.filter(|(_, action)| action.kind() == ActionKind::Attack);
             let broken =
-                attacks.find(|(_, action)| !matches!(action.targeting, Targeting::Unit(_)));
+                attacks.find(|(_, action)| !matches!(action.keys.targeting, Targeting::Unit(_)));
             if let Some((id, _)) = broken {
                 let problem = CombatDataError::AttackAims;
                 let at = BookPlace::Entry {
@@ -66,7 +65,7 @@ impl Combat {
 
     /// The names of the mode's damage kinds; an error for a name twice, or past the most kinds a
     /// match holds.
-    pub(crate) fn damage_kinds(cx: &BookCx<'_>) -> Result<DamageKindBook, BookError> {
+    pub(crate) fn damage_kinds(cx: &BookCx<'_>) -> Result<Arc<Names<DamageKind>>, BookError> {
         let mut names = Names::default();
         let data = cx.mode_section::<ModeCombatData>().into_iter();
         for name in data.flat_map(|data| &data.damage_kinds) {
@@ -78,7 +77,7 @@ impl Combat {
                 Self::mode_error(error)
             })?;
         }
-        Ok(DamageKindBook(Arc::new(names)))
+        Ok(Arc::new(names))
     }
 
     /// The mode's life pool, as its `[combat]` names it; an error for a pool the mode does not
@@ -87,7 +86,7 @@ impl Combat {
         let Some(data) = cx.mode_section::<ModeCombatData>() else {
             return Ok(LifePool(None));
         };
-        let pools = &cx.fact::<PoolNames>()?.0;
+        let pools = cx.names::<PoolId>()?;
         let life = data.life_pool(pools).map_err(Self::unknown)?;
         Ok(LifePool(life))
     }
@@ -129,13 +128,13 @@ impl Weapon {
     /// The weapon of each attack, its names resolved and its own values at each of its ranks, in
     /// ticks at the match's rate; an error for a name the match does not have, a value that does
     /// not hold at a rank, or a field its delivery does not serve.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByAction<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<ActionId, Self>, BookError> {
         let actions = cx.book::<ActionBook>()?;
         let stats = cx.book_if::<StatBook>()?;
-        let kinds = cx.book_if::<DamageKindBook>()?.map(|kinds| &*kinds.0);
+        let kinds = cx.names_if::<DamageKind>()?.map(|kinds| &**kinds);
         let tags = cx.fact::<UnitTypes>()?.tags();
         let modifiers = cx.book_if::<ModifierBook>()?;
-        let mut book = ByActionBuilder::default();
+        let mut book = ByIdBuilder::default();
         for loaded in LoadedAction::all(cx)? {
             let Some(data) = loaded.section::<AttackData>() else {
                 continue;
@@ -157,25 +156,25 @@ impl Weapon {
     }
 }
 
-impl PerAction for Weapon {
+impl PerId<ActionId> for Weapon {
     const SCRIPTS_ONLY: bool = false;
 }
 
 impl Armor {
     /// The armor of each unit type that stands with one, of the mode's armors by name; an error
     /// for an armor or a damage kind the mode does not declare.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let none = ModeCombatData::default();
         let data = cx.mode_section::<ModeCombatData>().unwrap_or(&none);
-        let kinds = cx.book_if::<DamageKindBook>()?;
+        let kinds = cx.names_if::<DamageKind>()?;
         let no_kinds = Names::default();
-        let kinds = kinds.map_or(&no_kinds, |kinds| &*kinds.0);
+        let kinds = kinds.map_or(&no_kinds, |kinds| &**kinds);
         let armors = data.armors.iter().map(|(name, shares)| {
             let armor = Self::of(shares, kinds).map_err(Combat::unknown)?;
             Ok((name, armor))
         });
         let armors = armors.collect::<Result<BTreeMap<_, _>, BookError>>()?;
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(name) = unit
                 .data
@@ -198,14 +197,14 @@ impl OnDeath {
     /// What each unit type that stands with a `combat` section does at its death, an avatar
     /// staying; an error for a type with `combat` and not the life pool, or the life pool and not
     /// `combat`: a unit that can die is one that combat kills.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let life = cx.fact_if::<LifePool>()?.and_then(|life| life.0);
-        let pools = cx.fact_if::<PoolNames>()?;
-        let mut book = ByTypeBuilder::default();
+        let pools = cx.names_if::<PoolId>()?;
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let lives = (unit.data.section::<TypePoolsData>()).is_some_and(|held| {
                 held.0.iter().any(|name| {
-                    let pool = pools.and_then(|pools| pools.0.named(name.as_str()));
+                    let pool = pools.and_then(|pools| pools.named(name.as_str()));
                     pool.is_some() && pool == life
                 })
             });
@@ -227,9 +226,9 @@ impl OnDeath {
 impl Turret {
     /// The turret of each unit type that stands with one, its attacks those of its slot kind; an
     /// error for a kind the mode does not declare.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let kinds = &cx.book::<SlotKindBook>()?.0;
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(turret) = unit.data.section::<TurretData>() else {
                 continue;

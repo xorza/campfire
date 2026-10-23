@@ -5,6 +5,9 @@ use thiserror::Error;
 pub enum PolygonError {
     #[error("a polygon needs at least three points")]
     TooFewPoints,
+    /// More points than `Polygon::MAX_POINTS`.
+    #[error("a polygon holds at most 4096 points")]
+    TooManyPoints,
     /// Point `point` lies past the world's bound, where no position stands.
     #[error("point {point} of the polygon lies past the world's bound")]
     PastBound { point: usize },

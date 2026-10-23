@@ -1,4 +1,4 @@
-use campfire_common::{DeclaredName, EnumAll, Seat};
+use campfire_common::{DeclaredName, EnumAll, PlayerSlot};
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 use campfire_values::Scalar;
@@ -59,33 +59,35 @@ pub enum PickError {
     Twice(DeclaredName),
 }
 
-/// Why a host's picks are none of the mode's: of an option, or of a seat's choice.
+/// Why a host's picks are none of the mode's: of an option, or of a player slot's choice.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum HostPickError {
     #[error(transparent)]
     Option(#[from] PickError),
     #[error(transparent)]
-    Seat(#[from] SeatPickError),
+    PlayerSlot(#[from] PlayerSlotPickError),
 }
 
-/// Why seat picks are none of the mode's: the terms carry another count of them, or a place past
-/// a choice's values, or a host names a seat, a choice or a value the mode lacks, picks one seat's
-/// choice twice, or gives two seats one value of a unique choice.
+/// Why player slot picks are none of the mode's: the terms carry another count of them, or a place
+/// past a choice's values, or a host names a player slot, a choice or a value the mode lacks, picks
+/// one player slot's choice twice, or gives two player slots one value of a unique choice.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum SeatPickError {
-    /// Picks of another count than the seats times the mode's choices of values.
-    #[error("{given} seat picks, where the seats and the mode's choices of values take {expected}")]
+pub enum PlayerSlotPickError {
+    /// Picks of another count than the player slots times the mode's choices of values.
+    #[error(
+        "{given} player slot picks, where the player slots and the mode's choices of values take {expected}"
+    )]
     Count { given: usize, expected: usize },
     /// A pick past its choice's values.
-    #[error("the pick {place} of the choice {choice} of seat {}, which has no value there", seat.get())]
+    #[error("the pick {place} of the choice {choice} of player slot {}, which has no value there", player_slot.get())]
     Place {
-        seat: Seat,
+        player_slot: PlayerSlot,
         choice: DeclaredName,
         place: u8,
     },
-    /// A pick of a seat past the session's.
-    #[error("seat {} is none of the session's", _0.get())]
-    Seat(Seat),
+    /// A pick of a player slot past the session's.
+    #[error("player slot {} is none of the session's", _0.get())]
+    PlayerSlot(PlayerSlot),
     /// A pick of a choice the mode does not declare, or one of avatars or loadout entries.
     #[error("the mode has no choice of values {0}")]
     Unknown(DeclaredName),
@@ -95,22 +97,25 @@ pub enum SeatPickError {
         choice: DeclaredName,
         value: DeclaredName,
     },
-    /// Two picks of one seat's choice.
-    #[error("the choice {choice} of seat {} is picked twice", seat.get())]
-    Twice { seat: Seat, choice: DeclaredName },
-    /// Two seats' picks of one value of a unique choice.
-    #[error("two seats pick the value {place} of the unique choice {choice}")]
+    /// Two picks of one player slot's choice.
+    #[error("the choice {choice} of player slot {} is picked twice", player_slot.get())]
+    Twice {
+        player_slot: PlayerSlot,
+        choice: DeclaredName,
+    },
+    /// Two player slots' picks of one value of a unique choice.
+    #[error("two player slots pick the value {place} of the unique choice {choice}")]
     Taken { choice: DeclaredName, place: u8 },
 }
 
-/// Why a host's `--pick` is no seat pick: it is not `seat:choice=value`, or its seat, its choice
-/// or its value does not read.
+/// Why a host's `--pick` is no player slot pick: it is not `player_slot:choice=value`, or its
+/// player slot, its choice or its value does not read.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum SeatPickTextError {
-    #[error("a seat's choice is picked as seat:choice=value")]
+pub enum PlayerSlotPickTextError {
+    #[error("a player slot's choice is picked as player_slot:choice=value")]
     Form,
-    #[error("{0:?} is no seat")]
-    Seat(String),
+    #[error("{0:?} is no player slot")]
+    PlayerSlot(String),
     #[error("{0:?} is no choice's name")]
     Choice(String),
     #[error("{0:?} is no value's name")]
@@ -175,6 +180,14 @@ pub enum BountyError {
     NoModeBounty,
 }
 
+/// Why a unit type's income is refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum IncomeError {
+    /// A period of more ticks than a count holds.
+    #[error("an income's period fits a count of ticks")]
+    Period,
+}
+
 /// Why the mode capability refused a script call: a script gave it a value it does not take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
 pub enum ModeRefusal {
@@ -182,12 +195,8 @@ pub enum ModeRefusal {
     ChoiceCount,
     /// A value of a unique choice another player chose.
     ChoiceTaken,
-    /// An ability to learn that is at its last rank already.
-    MaxRank,
     /// A resource amount to add or take below 0.
     NegativeAmount,
-    /// A slot the unit has no ability in.
-    NoAbilitySlot,
     /// A body with no room where it would spawn: past the bounds, or over a wall, a body that
     /// stands or one the call spawns.
     NoRoom,
@@ -210,10 +219,6 @@ pub enum ModeRefusal {
     NoBounty,
     /// A search for room of a gap not above 0, or of steps below 0 or past `GridSearch::MAX_STEPS`.
     RoomSearch,
-    /// A unit to respawn that is alive.
-    RespawnAlive,
-    /// A unit to respawn whose type despawns when it dies.
-    RespawnDespawns,
     /// A call of a rules script to what only the mode's own script does: end the match, or record
     /// a choice.
     RulesScript,
@@ -238,9 +243,7 @@ impl CapabilityRefusal for ModeRefusal {
         match self {
             Self::ChoiceCount => "count of values is not the choice's",
             Self::ChoiceTaken => "value is another player's choice",
-            Self::MaxRank => "ability is at its last rank",
             Self::NegativeAmount => "resource amount is below 0",
-            Self::NoAbilitySlot => "unit has no ability in that slot",
             Self::NoRoom => {
                 "the body has no room there: past the bounds, or over a wall, a body that stands \
                  or one the call spawns"
@@ -256,8 +259,6 @@ impl CapabilityRefusal for ModeRefusal {
             Self::RoomSearch => {
                 "a search for room takes a gap above 0 and a range of 0 to 128 gaps"
             }
-            Self::RespawnAlive => "unit to respawn is alive",
-            Self::RespawnDespawns => "unit to respawn despawns when it dies",
             Self::RulesScript => "only the mode's own script ends the match or records a choice",
             Self::SelfRelation => "a team's relation to itself is friendly",
             Self::SlotKindRanks => "action's ranks are not its slot kind's",

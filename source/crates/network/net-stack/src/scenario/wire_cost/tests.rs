@@ -59,11 +59,11 @@ fn each_case_puts_exact_counts_on_the_wire() {
     let cases = [
         (
             unreliable("two-way at 60 Hz", TICK, Senders::Both),
-            [cost([60, 13353], [0, 0], 0), cost([60, 13980], [0, 0], 0)],
+            [cost([60, 13413], [0, 0], 0), cost([60, 14040], [0, 0], 0)],
         ),
         (
             unreliable("a client that sends nothing", TICK, Senders::Server),
-            [cost([60, 1140], [0, 0], 0), cost([60, 13980], [0, 0], 0)],
+            [cost([60, 1200], [0, 0], 0), cost([60, 14040], [0, 0], 0)],
         ),
         (
             unreliable(
@@ -71,15 +71,15 @@ fn each_case_puts_exact_counts_on_the_wire() {
                 Duration::from_nanos(6_944_444),
                 Senders::Both,
             ),
-            [cost([98, 13809], [0, 0], 0), cost([60, 13980], [0, 0], 0)],
+            [cost([98, 13907], [0, 0], 0), cost([60, 14040], [0, 0], 0)],
         ),
         (
             lossy,
-            [cost([60, 14012], [0, 0], 4), cost([60, 14307], [0, 0], 1)],
+            [cost([60, 13863], [0, 0], 4), cost([60, 14367], [0, 0], 1)],
         ),
         (
             sealed,
-            [cost([60, 14793], [0, 0], 0), cost([60, 14947], [0, 0], 0)],
+            [cost([60, 14853], [0, 0], 0), cost([60, 15007], [0, 0], 0)],
         ),
     ];
     // The cases share no state, so they run in parallel.

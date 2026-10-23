@@ -10,7 +10,7 @@ use crate::scripts::script_pools::ScriptPools;
 #[derive(Resource, Debug, Clone)]
 pub struct ScriptBudgets {
     limits: ScriptLimits,
-    /// By seat.
+    /// By player slot.
     players: Vec<Budget>,
     think: Budget,
     mode: Budget,

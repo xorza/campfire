@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
+use crate::error::TeamColorsError;
 
 /// A mode's `client/team_colors.toml`: the color of each team, in sRGB of 8 bits a channel, by
 /// the team's index, a team past the list taking the list's colors again from its first; a mode
@@ -22,9 +23,15 @@ impl TeamColors {
         client_path::parse("client/team_colors.toml")
     }
 
-    /// The colors `colors`; none for no color, or for more than `MOST`.
-    pub fn new(colors: Vec<[u8; 3]>) -> Option<Self> {
-        (!colors.is_empty() && colors.len() <= Self::MOST).then_some(Self { colors })
+    /// The colors `colors`; an error for no color, or for more than `MOST`.
+    pub fn new(colors: Vec<[u8; 3]>) -> Result<Self, TeamColorsError> {
+        if colors.is_empty() {
+            return Err(TeamColorsError::None);
+        }
+        if colors.len() > Self::MOST {
+            return Err(TeamColorsError::TooMany(colors.len()));
+        }
+        Ok(Self { colors })
     }
 
     pub fn colors(&self) -> &[[u8; 3]] {
@@ -55,8 +62,7 @@ impl<'de> Deserialize<'de> for TeamColors {
             colors: Vec<[u8; 3]>,
         }
         let Fields { colors } = Fields::deserialize(deserializer)?;
-        Self::new(colors)
-            .ok_or_else(|| D::Error::custom("a team colors file gives 1 to 256 colors"))
+        Self::new(colors).map_err(D::Error::custom)
     }
 }
 
@@ -85,10 +91,14 @@ mod tests {
             let refused = Toml::parse::<TeamColors>(text).unwrap_err();
             refused.message().to_owned()
         };
-        let count = "a team colors file gives 1 to 256 colors";
-        assert_eq!(refusal("colors = []"), count);
+        assert_eq!(refusal("colors = []"), "it gives no color");
         let many = format!("colors = [{}]", vec!["[1, 2, 3]"; 257].join(", "));
-        assert_eq!(refusal(&many), count);
+        assert_eq!(refusal(&many), "it gives 257 colors, more than 256");
+        assert_eq!(TeamColors::new(Vec::new()), Err(TeamColorsError::None));
+        assert_eq!(
+            TeamColors::new(vec![[1, 2, 3]; 257]),
+            Err(TeamColorsError::TooMany(257))
+        );
         assert_eq!(
             refusal("colors = [[256, 0, 0]]"),
             "invalid value: integer `256`, expected u8"

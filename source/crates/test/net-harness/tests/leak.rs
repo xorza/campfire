@@ -17,9 +17,9 @@ use bevy_ecs::world::World;
 use bevy_replicon::prelude::Remote;
 use campfire_bots::OrderScript;
 use campfire_capabilities::Release;
-use campfire_common::Seat;
-use campfire_net::internals::TickHashes;
-use campfire_net::{JoinState, WatchRequest};
+use campfire_common::PlayerSlot;
+use campfire_host::JoinState;
+use campfire_host::internals::TickHashes;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_prediction::RollbackMode;
 use campfire_net_replication::Replicate;
@@ -55,7 +55,11 @@ enum Role {
     /// The player of `slot`, of `team`; `out` while it is out of play in a session whose players
     /// out of play see the other teams as spectators do (10-replication-audiences.md, A player out
     /// of play sees what its team sees, or what a spectator sees).
-    Player { seat: Seat, team: Team, out: bool },
+    Player {
+        player_slot: PlayerSlot,
+        team: Team,
+        out: bool,
+    },
     /// A spectator of every unit, or of the views of `teams` together.
     Spectator { teams: Option<TeamSet> },
 }
@@ -89,7 +93,7 @@ impl Role {
     fn receives(
         self,
         kind: DataKind,
-        owner: Option<Seat>,
+        owner: Option<PlayerSlot>,
         team: Option<Team>,
         visibility: &Visibility,
     ) -> bool {
@@ -97,7 +101,7 @@ impl Role {
             return false;
         }
         let recipient = match self {
-            Self::Player { seat, .. } if Some(seat) == owner => return true,
+            Self::Player { player_slot, .. } if Some(player_slot) == owner => return true,
             Self::Player { team: own, out, .. } if team.is_some_and(|team| team != own) => {
                 if out {
                     Recipients::SPECTATORS
@@ -161,7 +165,7 @@ impl StateTypes for Lists {
 #[derive(Debug)]
 struct Shown {
     entity: Entity,
-    owner: Option<Seat>,
+    owner: Option<PlayerSlot>,
     team: Option<Team>,
     seen: Option<SeenBy>,
 }
@@ -239,11 +243,13 @@ impl LeakCheck {
         host: &'static [&'static str],
         spectators: &[Option<TeamSet>],
     ) -> Self {
-        let mut setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
-        setup.players = PLAYERS;
-        setup.visibility = host;
-        setup.max_spectators = u32::try_from(spectators.len()).unwrap();
-        setup.bots = &PICKS[PLAYERS..];
+        let setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN)
+            .into_builder()
+            .players(PLAYERS)
+            .visibility(host)
+            .max_spectators(u32::try_from(spectators.len()).unwrap())
+            .bots(&PICKS[PLAYERS..])
+            .build();
         let mut local = InProcessMatch::of_mode(setup, packages);
         let hashes = local
             .server_mut()
@@ -257,12 +263,12 @@ impl LeakCheck {
         local.await_avatars(JOIN_FRAMES);
         let host = HostVisibility {
             settings: host.iter().map(|text| text.parse().unwrap()).collect(),
-            max_spectators: local.setup().max_spectators,
+            max_spectators: Some(local.setup().max_spectators()),
         };
         let visibility = local.packages().data().visibility.session(&host).unwrap();
         let mut roles: Vec<Role> = (0..PLAYERS)
             .map(|client| Role::Player {
-                seat: Seat::new(u32::try_from(client).unwrap()),
+                player_slot: PlayerSlot::new(u32::try_from(client).unwrap()),
                 team: local.team(client),
                 out: false,
             })
@@ -282,7 +288,7 @@ impl LeakCheck {
             assert!(watching(&local), "the spectator watches");
             if let Some(teams) = teams {
                 let world = local.client_mut(spectator).world_mut();
-                world.insert_resource(WatchRequest(teams));
+                world.resource_mut::<JoinState>().choose_teams(teams);
             }
             roles.push(Role::Spectator { teams });
         }
@@ -326,7 +332,7 @@ impl LeakCheck {
     /// Plays `ticks` ticks, each client's frame then the server's, and checks every client after
     /// its frame, before the server's: a client then holds what the server's last frame sent.
     fn play(&mut self, ticks: u64) {
-        let frames = self.local.setup().server_frames;
+        let frames = self.local.setup().server_frames();
         for _ in 0..ticks {
             for client in 0..self.roles.len() {
                 self.local.client_frame(client);
@@ -356,8 +362,8 @@ impl LeakCheck {
             .iter(server)
             .map(|(entity, &id, owner, player, team, seen)| {
                 let owner = owner
-                    .map(|owner| owner.seat())
-                    .or_else(|| player.map(|player| player.seat()));
+                    .map(|owner| owner.player_slot())
+                    .or_else(|| player.map(|player| player.player_slot()));
                 let shown = Shown {
                     entity,
                     owner,
@@ -414,8 +420,7 @@ impl LeakCheck {
                     let on_client = at_client.contains_id(self.client_ids[client][at]);
                     let receives =
                         role.receives(listed.kind, shown.owner, shown.team, &self.visibility);
-                    let owns =
-                        matches!(role, Role::Player { seat, .. } if Some(seat) == shown.owner);
+                    let owns = matches!(role, Role::Player { player_slot, .. } if Some(player_slot) == shown.owner);
                     if on_server && !owns {
                         let noted = if receives {
                             &mut self.held_by_other
@@ -456,7 +461,7 @@ impl LeakCheck {
                 .resource::<EntityIndex>()
                 .get(self.local.avatar(client));
             let dead = hero.is_some_and(|hero| world.entity(hero).contains::<Dead>());
-            let slot = Seat::new(u32::try_from(client).unwrap());
+            let slot = PlayerSlot::new(u32::try_from(client).unwrap());
             let player = world.player_entity(slot).unwrap();
             let held = world.entity(player).contains::<HeldOut>();
             if let Role::Player { out, .. } = &mut self.roles[client] {
@@ -495,13 +500,13 @@ impl LeakCheck {
         hero.is_some_and(|hero| world.entity(hero).contains::<Dead>())
     }
 
-    /// Whether `client` holds `PlayerResources` on the entity of player `seat`.
-    fn holds_resources_of(&self, client: usize, seat: u32) -> bool {
+    /// Whether `client` holds `PlayerResources` on the entity of player `player_slot`.
+    fn holds_resources_of(&self, client: usize, player_slot: u32) -> bool {
         let world = self.local.client(client).world();
         let player = world.iter_entities().find(|entity| {
             entity
                 .get::<Player>()
-                .is_some_and(|player| player.seat() == Seat::new(seat))
+                .is_some_and(|player| player.player_slot() == PlayerSlot::new(player_slot))
         });
         player.is_some_and(|player| player.contains::<PlayerResources>())
     }

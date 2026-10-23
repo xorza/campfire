@@ -11,11 +11,11 @@ use campfire_capabilities::{Match, Release};
 use campfire_combat::{
     Damage, DamageCause, DamagePass, Heal, HealCause, PassEntry, RecentAttackers, Respawn,
 };
-use campfire_common::{DeclaredName, Seat, Ticks};
+use campfire_common::{DeclaredName, PlayerSlot, Ticks};
 use campfire_geometry::{Grid, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{
-    InputValue, MatchResult, ModeError, ModeInput, Offer, UnansweredSeatEvents, *,
+    InputValue, MatchResult, ModeError, ModeInput, Offer, UnansweredPlayerSlotEvents, *,
 };
 use campfire_navigation::{NavigationBook, OnPath, PathEnd, Route};
 use campfire_players::{MatchEntity, OutOfPlay, Player, PlayerResources, PlayersWorld};
@@ -26,8 +26,8 @@ use campfire_script::{
     ScriptFailures, ScriptLimits, ScriptRole, StateValue,
 };
 use campfire_sim::{
-    Capability, EntityIndex, IdAllocator, MatchRate, SeatEvent, SeatEventKind, SimComponent,
-    SimResource, SimTick, StableId,
+    Capability, EntityIndex, IdAllocator, MatchRate, PlayerSlotEvent, PlayerSlotEventKind,
+    SimComponent, SimResource, SimTick, StableId,
 };
 use campfire_stats::{
     Application, Hold, Level, ModifierClocks, Modifiers, NewInstance, PlayerModifiers, Pools,
@@ -39,8 +39,8 @@ use campfire_units::{
     MapPoint, MetricData, MoveStep, Owner, PoolId, Units, UnitsWorld,
 };
 use campfire_values::{
-    ActionId, DamageKind, EngineEnum, ModifierId, Names, PackageIndex, PathId, Rank, Relation,
-    Relations, ResourceId, Team, TrackId, TypeScope, UnitTags, UnitType,
+    ActionId, DamageKind, ModifierId, Names, PackageIndex, PathId, Rank, Relation, Relations,
+    ResourceId, ScriptEnum, Team, TrackId, TypeScope, UnitTags, UnitType,
 };
 use campfire_vision::VisionBook;
 
@@ -108,7 +108,7 @@ fn on_input(ctx, player, name, value) {
         ctx.state.path = grunts[1].path;
         ctx.state.team = grunts[1].team;
         ctx.state.neutral = grunts[0].team;
-        ctx.state.owner = ctx.avatars()[0].owner.seat;
+        ctx.state.owner = ctx.avatars()[0].owner.player_slot;
         ctx.state.tower_path = ctx.units_tagged("tower")[0].path;
         ctx.state.kind = grunts[1].unit_type;
     }
@@ -539,12 +539,12 @@ fn spawn_of(game: &mut Match, name: &str, team: Team) -> StableId {
     Spawn::named(game, name, Vec3::ZERO).team(team).place(game)
 }
 
-/// The test mode's teams: two seats of a, one of b, and the neutral team's none.
+/// The test mode's teams: two player slots of a, one of b, and the neutral team's none.
 fn teams() -> Vec<TeamManifest> {
     [("a", 2), ("b", 1), ("neutral", 0)]
-        .map(|(name, seats)| TeamManifest {
+        .map(|(name, player_slots)| TeamManifest {
             name: DeclaredName::new(name).unwrap(),
-            seats,
+            player_slots,
         })
         .into()
 }
@@ -606,14 +606,14 @@ fn installed_picked(set: &PackageSet, limits: ScriptLimits, picks: HostPicks) ->
     Match::of_package(set, start)
 }
 
-/// The match of `set` `installed_picked` gives, of the defaults of its options and no seat's
+/// The match of `set` `installed_picked` gives, of the defaults of its options and no player slot's
 /// pick.
 fn installed(set: &PackageSet, limits: ScriptLimits) -> Match {
     let picks = HostPicks::defaults(&set.mode_data(), 3);
     installed_picked(set, limits, picks)
 }
 
-/// The match of `set` `installed` gives, after its start, every seat held; an error when the
+/// The match of `set` `installed` gives, after its start, every player slot held; an error when the
 /// mode's start fails.
 fn started(set: &PackageSet, limits: ScriptLimits) -> Result<Match, CallError> {
     let mut game = installed(set, limits);

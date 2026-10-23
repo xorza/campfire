@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_math::Vec3;
 use campfire_orders::Orders;
 use campfire_sim::StableId;
@@ -29,7 +29,7 @@ impl OrdersFixtures for Orders {
     ) -> StableId {
         Spawn::of(hero, position)
             .team(team)
-            .parts(Owner::new(Seat::new(slot)))
+            .parts(Owner::new(PlayerSlot::new(slot)))
             .place(world)
     }
 }

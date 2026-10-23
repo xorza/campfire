@@ -33,7 +33,7 @@ pub use crate::client_objects::{ClientObject, ClientObjects};
 pub use crate::client_units::{
     ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale, ModelTop,
 };
-pub use crate::error::{ClientFileError, TerrainFileError, TextureLevelsError};
+pub use crate::error::{ClientFileError, TeamColorsError, TerrainFileError, TextureLevelsError};
 pub use crate::hud_file::{HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};
 pub use crate::ktx2_image::Ktx2Image;

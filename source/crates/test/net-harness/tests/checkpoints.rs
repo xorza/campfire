@@ -10,11 +10,13 @@ use std::sync::Arc;
 
 use bevy_app::AppExit;
 use campfire_common::{ExitStatus, StateHash, Tick};
-use campfire_net::internals::{SimServerWorldInternals, TickHashes};
-use campfire_net::{
+use campfire_host::internals::TickHashes;
+use campfire_host::{
     AbortError, CheckpointFailed, LogFilled, MatchBeginError, Publisher, SeedsRanOut, ServerDir,
-    SessionDir, SimServerWorld, StopRequest,
+    SessionDir,
 };
+use campfire_net::internals::SimServerWorldInternals;
+use campfire_net::{SimServerWorld, StopRequest};
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_protocol::internals::TestKey;

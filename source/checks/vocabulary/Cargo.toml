@@ -10,7 +10,7 @@ kind = "check"
 
 [dependencies]
 campfire-common.workspace = true
-campfire-log = { workspace = true, features = ["start"] }
+campfire-logging.workspace = true
 campfire-store.workspace = true
 
 clap = { workspace = true, features = [

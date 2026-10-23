@@ -16,7 +16,7 @@ pub(crate) fn two_lanes() -> MapName {
 
 /// The MOBA's 3v3 in `dir` on its map.
 pub(crate) fn load(dir: &TreeDir) -> Result<ModePackages, LoadError> {
-    dir.mode_packages(Some(&two_lanes()))
+    ModePackages::at(dir, Some(&two_lanes()))
 }
 
 pub(crate) fn moba() -> PathBuf {

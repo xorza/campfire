@@ -4,6 +4,7 @@ use crate::pending_switch::PendingSwitch;
 use crate::switch_direction::SwitchDirection;
 use crate::timeline_switch_setup::TimelineSwitchSetup;
 use bevy_ecs::prelude::*;
+use core::time::Duration;
 
 /// Request to move an entity between the prediction and interpolation timelines.
 ///
@@ -12,7 +13,7 @@ use bevy_ecs::prelude::*;
 /// [`Interpolated`](campfire_net_replication::Interpolated), so callers never touch those directly:
 ///
 /// You can customize the blend length and ease curve per request, which overrides the
-/// [`TimelineSwitchSetup`] default: `<= 0` (or non-finite) snaps instantly,
+/// [`TimelineSwitchSetup`] default: a blend of no length snaps instantly,
 /// otherwise the jump is smoothed over the window and further requests for the
 /// entity are ignored until the switch finishes.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Default)]
@@ -21,9 +22,8 @@ pub struct TimelineSwitch {
     /// entity is not on. A bare [`TimelineSwitch::default()`] flips; an entity
     /// on neither timeline has nothing to flip from and the request is dropped.
     direction: Option<SwitchDirection>,
-    /// Blend length in seconds, overriding
-    /// [`TimelineSwitchSetup::default_transition_secs`].
-    transition_secs: Option<f32>,
+    /// Blend length, overriding [`TimelineSwitchSetup::default_transition`].
+    transition: Option<Duration>,
     /// Ease curve, overriding [`TimelineSwitchSetup::default_ease`].
     ease: Option<CorrectionEase>,
 }
@@ -46,10 +46,10 @@ impl TimelineSwitch {
     }
 
     /// Override the [`TimelineSwitchSetup`] default blend length for this
-    /// request. `<= 0` (or non-finite) snaps instantly instead of blending.
+    /// request. [`Duration::ZERO`] snaps instantly instead of blending.
     #[must_use]
-    pub const fn with_transition_secs(mut self, transition_secs: f32) -> Self {
-        self.transition_secs = Some(transition_secs);
+    pub const fn with_transition(mut self, transition: Duration) -> Self {
+        self.transition = Some(transition);
         self
     }
 
@@ -82,9 +82,7 @@ impl TimelineSwitch {
         };
         Ok(PendingSwitch {
             direction,
-            total_secs: self
-                .transition_secs
-                .unwrap_or(setup.default_transition_secs),
+            total: self.transition.unwrap_or(setup.default_transition),
             ease: self.ease.unwrap_or(setup.default_ease),
         })
     }
@@ -152,11 +150,11 @@ mod tests {
             [Err(SwitchRejection::OnNeither); 3]
         );
         let pending = TimelineSwitch::to_predicted()
-            .with_transition_secs(1.5)
+            .with_transition(Duration::from_millis(1500))
             .resolve(OnTimeline::Interpolated, &setup)
             .unwrap();
-        assert_eq!(pending.total_secs, 1.5);
-        assert_ne!(setup.default_transition_secs, 1.5);
+        assert_eq!(pending.total, Duration::from_millis(1500));
+        assert_ne!(setup.default_transition, Duration::from_millis(1500));
         assert_eq!(OnTimeline::of(true, true), OnTimeline::Predicted);
     }
 }

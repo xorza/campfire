@@ -80,7 +80,7 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
 
     /// Closes the writer, as a drop does, once the worker wrote the value it held; the newest
     /// failure no `take_failure` took, if one.
-    pub fn stop(self) -> Option<E> {
+    pub fn close(self) -> Option<E> {
         let shared = Arc::clone(&self.shared);
         drop(self);
         shared.latest.lock().failure.take()

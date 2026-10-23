@@ -1,5 +1,5 @@
 use campfire_codec::JsonValue;
-use campfire_common::{Seat, StateHash, Tick};
+use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::LogLevel;
 use campfire_net::LinkLossCause;
 use derive_more::Display;
@@ -34,9 +34,9 @@ pub(crate) enum CheckFailure {
     /// The server never said it listens.
     #[display("the server never listened")]
     NeverListened,
-    /// A bot never learned its seat: it did not join, or its match did not start.
-    #[display("bot {bot} never learned its seat")]
-    NoSeat { bot: usize },
+    /// A bot never learned its player slot: it did not join, or its match did not start.
+    #[display("bot {bot} never learned its player slot")]
+    NoPlayerSlot { bot: usize },
     /// A bot sent another number of orders than its script holds.
     #[display("bot {bot} sent {sent} orders of its script's {scripted}")]
     OrderCount {
@@ -44,17 +44,21 @@ pub(crate) enum CheckFailure {
         sent: usize,
         scripted: usize,
     },
-    /// The server logged another number of inputs of a seat and stamp than its bot sent.
-    #[display("seat {} sent {sent} inputs stamped {}, and the server logged {logged}", seat.get(), stamp.get())]
+    /// The server logged another number of inputs of a player slot and stamp than its bot sent.
+    #[display("player slot {} sent {sent} inputs stamped {}, and the server logged {logged}", player_slot.get(), stamp.get())]
     Unlogged {
-        seat: Seat,
+        player_slot: PlayerSlot,
         stamp: Tick,
         sent: usize,
         logged: usize,
     },
     /// The server applied an input in another tick than its stamp.
-    #[display("the input of seat {} stamped {} took effect in tick {}", seat.get(), stamp.get(), tick.get())]
-    Moved { seat: Seat, stamp: Tick, tick: Tick },
+    #[display("the input of player slot {} stamped {} took effect in tick {}", player_slot.get(), stamp.get(), tick.get())]
+    Moved {
+        player_slot: PlayerSlot,
+        stamp: Tick,
+        tick: Tick,
+    },
     /// The impostor bot did not exit with failure: it linked, or it still ran at the deadline.
     #[display("the impostor bot {outcome}, where it must exit with failure")]
     ImpostorNotRefused { outcome: ProcessOutcome },

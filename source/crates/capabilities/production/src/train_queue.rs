@@ -9,7 +9,7 @@ use bevy_ecs::system::{Query, ResMut, SystemParam};
 use bevy_ecs::world::{DeferredWorld, World};
 use campfire_actions::{ActionBook, ActionKind};
 use campfire_common::{Tick, Ticks};
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_players::{PlayersWorld, ResourceAmount};
 use campfire_sim::{DueIndex, SimComponent, SimTick, StableId, TimedKept, TimedProcess, TimedRuns};
 use campfire_states::{Replication, SentPredicted};
@@ -211,7 +211,7 @@ impl SimComponent for TrainQueue {
                 action.kind == ActionKind::Train && action.has_rank(queued.rank)
             })
         });
-        let producers = world.resource::<ByType<ProducerSpec>>();
+        let producers = world.resource::<ById<UnitType, ProducerSpec>>();
         let capacity = world
             .get::<UnitType>(entity)
             .and_then(|&unit_type| producers.get(unit_type))

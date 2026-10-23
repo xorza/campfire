@@ -1,5 +1,5 @@
 use bevy_ecs::world::{EntityRef, World};
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_items::Shop;
 use campfire_math::Vec3;
 use campfire_progression::Experience;
@@ -37,11 +37,11 @@ impl<'a> MatchUnits<'a> {
         heroes.next().expect("each player has a hero")
     }
 
-    /// The units player `seat` owns that gain experience, by stable id.
-    pub fn heroes(self, seat: u32) -> impl Iterator<Item = StableId> {
+    /// The units player `player_slot` owns that gain experience, by stable id.
+    pub fn heroes(self, player_slot: u32) -> impl Iterator<Item = StableId> {
         self.all()
             .filter(move |(_, unit)| {
-                MatchUnits::owned_by(unit, seat) && unit.contains::<Experience>()
+                MatchUnits::owned_by(unit, player_slot) && unit.contains::<Experience>()
             })
             .map(|(id, _)| id)
     }
@@ -71,7 +71,7 @@ impl<'a> MatchUnits<'a> {
     /// The first shop unit of `unit`'s team, by stable id.
     pub fn shop_of(self, unit: StableId) -> StableId {
         let team = self.unit(unit).get::<Team>().expect("a unit of a team");
-        let shops = self.world.resource::<ByType<Shop>>();
+        let shops = self.world.resource::<ById<UnitType, Shop>>();
         self.all()
             .find(|(_, other)| {
                 other.get::<Team>() == Some(team)
@@ -83,10 +83,10 @@ impl<'a> MatchUnits<'a> {
             .expect("a team with a shop")
     }
 
-    /// Whether player `seat` owns `unit`.
-    pub fn owned_by(unit: &EntityRef<'_>, seat: u32) -> bool {
+    /// Whether player `player_slot` owns `unit`.
+    pub fn owned_by(unit: &EntityRef<'_>, player_slot: u32) -> bool {
         unit.get::<Owner>()
-            .is_some_and(|owner| owner.seat().get() == seat)
+            .is_some_and(|owner| owner.player_slot().get() == player_slot)
     }
 
     /// The unit that spawned at `at`, of a team: a camp's, or a structure.

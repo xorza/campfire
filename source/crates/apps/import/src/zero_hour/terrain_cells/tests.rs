@@ -82,18 +82,18 @@ impl Fixture {
     }
 
     /// What the cell `at` draws, with `game`'s settings.
-    fn draw(&self, at: [usize; 2], game: GameData) -> CellDraw {
+    fn draw(&self, at: [usize; 2], game: TerrainDraw) -> CellDraw {
         let atlas = self.atlas();
         TerrainCells::new(&self.fields, &self.heights, &atlas, game).cell(at)
     }
 }
 
-const ADJUSTED: GameData = GameData {
+const ADJUSTED: TerrainDraw = TerrainDraw {
     adjust_cliff_textures: true,
     three_way_blends: true,
 };
 
-const PLAIN: GameData = GameData {
+const PLAIN: TerrainDraw = TerrainDraw {
     adjust_cliff_textures: false,
     three_way_blends: false,
 };

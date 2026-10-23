@@ -1,4 +1,3 @@
-use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::resource::Resource;
@@ -118,7 +117,7 @@ impl StaticTracking {
             match destination.get() {
                 None if opened && route.read().is_arrived_short() => {
                     let goal = route.goal().expect("a route that arrived short has a goal");
-                    destination.set_if_neq(Destination::to(Some(goal)));
+                    Destination::route_to(&mut destination, Some(goal));
                     route.ask(ask(goal), &mut progress, dues);
                 }
                 Some(goal) if route.goal() == Some(goal) && route.asked().is_none() => {

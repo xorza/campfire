@@ -1,16 +1,15 @@
 use std::path::{Path, PathBuf};
 
-use campfire_common::MapName;
-use campfire_package::{
-    ContentError, DependencyPath, EncodedIndex, FileIndex, LoadError, ModePackages, PackageFiles,
-    PackageRef, PackageSource, PackageWalk,
+use campfire_package_format::{
+    ContentError, DependencyPath, EncodedIndex, FileIndex, PackageFiles, PackagePlace,
+    PackageSource, PackageWalk,
 };
 use campfire_store::{DirEntries, EntryKind, InputFile, PathError, ReadError};
 use campfire_values::PackagePath;
 
 use crate::error::IndexError;
 use crate::package_dir::listings::Listings;
-use crate::package_place::{PackagePlace, ReadBound};
+use crate::read_bound::ReadBound;
 
 mod listings;
 
@@ -34,12 +33,6 @@ impl PackageDir {
     /// The package's files, as the core reads and checks them: see `PackageFiles::read`.
     pub fn files(&self) -> Result<PackageFiles, ContentError> {
         PackagePlace::files(self)
-    }
-
-    /// The mode in this directory on its map `map`, or its only map when `map` names none, with
-    /// its dependencies at the paths its manifest gives from it, each read once.
-    pub fn mode_packages(&self, map: Option<&MapName>) -> Result<ModePackages, LoadError> {
-        PackagePlace::mode_packages(self, map)
     }
 
     /// The index of the files under the package's root but its index, as its builder writes it:
@@ -68,7 +61,7 @@ impl PackageDir {
     /// The bytes of the file at `path`, as many as `bound` takes; a file not there is missing.
     fn read_bytes(&self, path: &PackagePath, bound: ReadBound) -> Result<Vec<u8>, ContentError> {
         let file = self.file_path(path);
-        let mut ranges = InputFile::ranges(&file).map_err(|error| match error.error {
+        let ranges = InputFile::ranges(&file).map_err(|error| match error.error {
             ReadError::Missing => ContentError::Missing { path: path.clone() },
             _ => ContentError::Read(Box::new(error)),
         })?;
@@ -161,8 +154,8 @@ impl PackagePlace for PackageDir {
         Self { root }
     }
 
-    fn package_ref(&self) -> PackageRef {
-        PackageRef::Dir(self.root.clone())
+    fn dir(&self) -> &Path {
+        &self.root
     }
 }
 

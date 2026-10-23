@@ -24,9 +24,9 @@ pub enum Ends {
 /// What holds an instance beside an application: its ability's passive, which its rank keeps; an
 /// aura or an area, which hold it while their rules select its carrier; an action's `hold`,
 /// which its toggle that is on or its channel that runs keeps; its carrier's player, which holds
-/// it while it holds the modifier and its `affects` selects the carrier; or its carrier's shot
-/// streak, which its stage keeps. Every hold from one source of one modifier is one hold: which
-/// of them holds it changes nothing.
+/// it while it holds the modifier and its `affects` selects the carrier; its carrier's shot
+/// streak, which its stage keeps; or an item its carrier carries. Every hold from one source of
+/// one modifier is one hold: which of them holds it changes nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hold {
     Passive,
@@ -34,6 +34,15 @@ pub enum Hold {
     Running,
     Player,
     Streak,
+    Item,
+}
+
+impl Hold {
+    /// Whether it holds as a passive does, through a death and with no stack: a unit's or an
+    /// action's passive, or an item's.
+    pub const fn is_passive(self) -> bool {
+        matches!(self, Self::Passive | Self::Item)
+    }
 }
 
 /// The holds that keep an instance, a bit each.
@@ -82,6 +91,11 @@ impl Lifetime {
         self.holds.contains(hold)
     }
 
+    /// Whether a passive's hold keeps it, which keeps it through a death and with no stack.
+    pub const fn held_as_passive(self) -> bool {
+        self.held_by(Hold::Passive) || self.held_by(Hold::Item)
+    }
+
     /// Its end: none while a hold keeps it or its application never ends.
     pub const fn until(self) -> Option<Tick> {
         match (self.holds.is_empty(), self.applied) {
@@ -114,7 +128,8 @@ impl HoldSet {
         | Self::bit(Hold::Held)
         | Self::bit(Hold::Running)
         | Self::bit(Hold::Player)
-        | Self::bit(Hold::Streak);
+        | Self::bit(Hold::Streak)
+        | Self::bit(Hold::Item);
 
     pub(crate) const fn of(hold: Hold) -> Self {
         Self(Self::bit(hold))
@@ -182,6 +197,11 @@ mod tests {
         let mut both = Lifetime::held(Hold::Passive).held_too(Lifetime::held(Hold::Held));
         assert!(both.release(Hold::Held) && both.held_by(Hold::Passive));
         assert!(!both.release(Hold::Passive));
+        // An item's hold and a passive are two holds too, and either holds as a passive does.
+        let mut both = Lifetime::held(Hold::Passive).held_too(Lifetime::held(Hold::Item));
+        assert!(both.release(Hold::Passive) && both.held_as_passive());
+        assert!(!both.release(Hold::Item) && !both.held_as_passive());
+        assert!(!Lifetime::held(Hold::Held).held_as_passive());
     }
 
     #[test]
@@ -191,8 +211,9 @@ mod tests {
             .union(HoldSet::of(Hold::Held))
             .union(HoldSet::of(Hold::Running))
             .union(HoldSet::of(Hold::Player))
-            .union(HoldSet::of(Hold::Streak));
-        assert_eq!(decode(0b1_1111), Some(all));
-        assert_eq!(decode(0b10_0000), None);
+            .union(HoldSet::of(Hold::Streak))
+            .union(HoldSet::of(Hold::Item));
+        assert_eq!(decode(0b11_1111), Some(all));
+        assert_eq!(decode(0b100_0000), None);
     }
 }

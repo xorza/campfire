@@ -22,8 +22,6 @@ mod delivering;
 mod delivery_hooks;
 mod delivery_queue;
 mod delivery_spawner;
-mod died;
-mod teleported;
 
 pub use crate::dash_delivering::DashDelivering;
 pub use crate::delivered::{AttackShot, Delivered, DeliveredPayload};
@@ -31,8 +29,6 @@ pub use crate::deliverers::Deliverers;
 pub use crate::delivering::{Delivering, Launcher};
 pub use crate::delivery_queue::{DashEnd, DeliveryQueue};
 pub use crate::delivery_spawner::{DeliverySpawner, NewDelivery};
-pub use crate::died::Died;
-pub use crate::teleported::Teleported;
 
 /// The deliveries' module: the hooks that what they reached runs.
 #[derive(Debug)]

@@ -1,15 +1,14 @@
 use campfire_script::UnknownName;
 use campfire_sim::MatchRate;
-use campfire_values::{ModifierId, PackageIndex};
+use campfire_values::{ModifierId, PackageIndex, ResourceId, TrackId};
 
 use crate::action::{Aim, Passive};
 use crate::action_data::ActionData;
 use crate::action_names::ActionNames;
-use crate::delivery::{Delivery, DeliveryShape};
-use crate::delivery_data::DeliveryData;
-use crate::error::{ActionError, ActionProblem};
-use crate::fan::Fan;
-use crate::rank_values::{LoadedRanks, RankValues};
+use crate::channel_pay::ChannelPay;
+use crate::delivery::Delivery;
+use crate::error::{ActionError, ActionField, ActionProblem};
+use crate::rank_values::LoadedRanks;
 use crate::targeting::Targeting;
 
 /// What an action's data gives the pipeline, resolved against the match: its passive and its
@@ -22,6 +21,7 @@ pub struct ActionParts {
     pub aim: Aim,
     pub ranks: LoadedRanks,
     pub delivery: Option<Delivery>,
+    pub pays: Option<ChannelPay>,
 }
 
 impl ActionParts {
@@ -33,49 +33,65 @@ impl ActionParts {
         package: PackageIndex,
         ranks: u8,
         rate: MatchRate,
-        names: &impl ActionNames,
+        names: &ActionNames<'_>,
     ) -> Result<Self, ActionError> {
-        let passive = data.passive_modifier.as_ref().map(|name| {
+        let passive = data.keys.passive_modifier.as_ref().map(|name| {
             Ok::<_, UnknownName>(Passive {
-                modifier: names.modifier(package, name)?,
-                while_ready: data.passive_while_ready,
+                modifier: names.named::<ModifierId>((package, name.as_str()))?,
+                while_ready: data.keys.passive_while_ready,
             })
         });
         let passive = passive.transpose()?;
-        let aim = match &data.targeting {
+        let aim = match &data.keys.targeting {
             Targeting::None => Aim::None,
             Targeting::Point => Aim::Point {
-                clamp: data.clamp_to_range,
+                clamp: data.keys.clamp_to_range,
             },
             Targeting::Direction => Aim::Direction,
             Targeting::Unit(filter) => Aim::Unit(names.filter(filter)?),
         };
-        let ranks = RankValues::all(data, ranks, rate, |name| names.cost_target(name))?;
+        let ranks = data.load_ranks(ranks, rate, |name| names.cost_target(name))?;
         let delivery = data.delivery.as_ref().map(|delivery| {
             let name = delivery.unit_type();
             let unit_type = names.unit_type(package, name)?;
-            let shape = match *delivery {
-                DeliveryData::Projectile {
-                    count, spread_deg, ..
-                } => DeliveryShape::Projectile {
-                    fan: Fan { count, spread_deg },
-                    flight: names
-                        .flight(package, name)
-                        .ok_or_else(|| ActionProblem::Section(name.clone()))?,
-                },
-                DeliveryData::Area { .. } => DeliveryShape::Area,
-            };
-            Ok::<_, ActionError>(Delivery { unit_type, shape })
+            let aim = names
+                .aim(unit_type)
+                .ok_or_else(|| ActionProblem::Section(name.clone()))?;
+            Ok::<_, ActionError>(Delivery {
+                unit_type,
+                capability: delivery.capability(),
+                fan: delivery.fan(),
+                aim,
+            })
         });
         let delivery = delivery.transpose()?;
-        let hold = data.hold.as_ref().map(|name| names.modifier(package, name));
+        let hold = data
+            .keys
+            .hold
+            .as_ref()
+            .map(|name| names.named::<ModifierId>((package, name.as_str())));
         let hold = hold.transpose()?;
+        let pays = data
+            .keys
+            .channel
+            .as_ref()
+            .and_then(|channel| channel.pays.as_ref());
+        let pays = pays.map(|pays| {
+            let resource = names.named::<ResourceId>(pays.resource.as_str())?;
+            let track = pays
+                .track
+                .as_ref()
+                .map(|track| names.named::<TrackId>(track.as_str()));
+            let pay = ChannelPay::new(resource, track.transpose()?, &pays.amount);
+            Ok::<_, ActionError>(pay.ok_or(ActionProblem::Field(ActionField::Channel))?)
+        });
         Ok(Self {
             passive,
             hold,
             aim,
             ranks,
             delivery,
+            pays: pays.transpose()?,
         })
     }
 }

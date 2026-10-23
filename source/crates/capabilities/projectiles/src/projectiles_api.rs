@@ -1,4 +1,3 @@
-use campfire_actions::{DeliveryData, DeliveryShape};
 use campfire_deliveries::Launcher;
 use campfire_math::Vec3;
 use campfire_script::{
@@ -7,7 +6,16 @@ use campfire_script::{
 
 use crate::error::ProjectilesRefusal;
 use crate::projectile_data::ProjectileData;
+use crate::projectile_delivery_data::ProjectileDeliveryData;
 use crate::projectiles_effect::{ProjectilesEffect, Toward};
+use campfire_sim::{Capability, StableId};
+
+/// What a script's `ctx.launch` aims at: a vector, or a unit.
+#[derive(Debug, Clone, Copy)]
+enum LaunchTo {
+    Vector(Vec3),
+    Unit(StableId),
+}
 
 /// The script API of `projectiles`: `ctx.launch`, and the data of a projectile type.
 #[derive(Debug)]
@@ -17,39 +25,41 @@ impl ProjectilesApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let projectile = MemberDecl::call(
             "launch",
-            &[&["from", "direction"], &["from", "unit"]],
-            "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, homing on `unit` for a homing type, or on a curve to `unit`'s center for a curve type; the new projectile, which spawns later in the tick",
+            &[&["from", "to"], &["from", "unit"]],
+            "launches one more of the action's projectiles from `from`, its own cast: along the direction `to` for a line type, homing on `unit` for a homing type, or on a curve or steered to `unit`'s center or to the point `to` for a curve or a steered type; the new projectile, which spawns later in the tick",
         )
         .roles(RoleSet::ACTION);
         api.call(
             projectile,
-            |ctx: &mut Ctx, from: ScriptPosition, direction: Vec3| {
-                Self::launch(ctx, from.get(), Toward::Direction(direction))
+            |ctx: &mut Ctx, from: ScriptPosition, to: Vec3| {
+                Self::launch(ctx, from.get(), LaunchTo::Vector(to))
             },
         )
         .call(
             projectile,
             |ctx: &mut Ctx, from: ScriptPosition, unit: Unit| {
-                Self::launch(ctx, from.get(), Toward::Unit(unit.id))
+                Self::launch(ctx, from.get(), LaunchTo::Unit(unit.id))
             },
         )
-        .own_fields::<DeliveryData>(&["projectile", "count", "spread_deg"])
+        .own_fields::<ProjectileDeliveryData>(&["count", "spread_deg"])
         .data::<ProjectileData>(&[("gravity", Status::Planned)]);
     }
 
     /// Queues a projectile of the running action, which delivers projectiles, from its acting
     /// unit: the new projectile, with the id the call takes for it; an error for a form its type
-    /// does not fly in.
-    fn launch(ctx: &Ctx, from: Vec3, toward: Toward) -> Checked<Unit> {
-        let launcher = Launcher::of(ctx, |shape| {
-            matches!(shape, DeliveryShape::Projectile { .. })
-        })?;
-        let DeliveryShape::Projectile { flight, .. } = launcher.delivery.shape else {
-            panic!("a launcher of projectiles");
+    /// does not fly in. A vector is a line's direction, and the point a curve or a steered
+    /// flight flies to.
+    fn launch(ctx: &Ctx, from: Vec3, to: LaunchTo) -> Checked<Unit> {
+        let launcher = Launcher::of(ctx, Capability::Projectiles)?;
+        let aim = launcher.delivery.aim;
+        let toward = match to {
+            LaunchTo::Unit(unit) if aim.is_at_unit() => Toward::Unit(unit),
+            LaunchTo::Vector(point) if aim.flies_to_point() => Toward::Point(point),
+            LaunchTo::Vector(direction) if !aim.is_at_unit() => Toward::Direction(direction),
+            LaunchTo::Unit(_) | LaunchTo::Vector(_) => {
+                return Err(ProjectilesRefusal::OtherFlight.fail().into());
+            }
         };
-        if flight.is_at_unit() != matches!(toward, Toward::Unit(_)) {
-            return Err(ProjectilesRefusal::OtherFlight.fail().into());
-        }
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;
         let id = frame.take_id();

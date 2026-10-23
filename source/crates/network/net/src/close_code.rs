@@ -2,6 +2,8 @@ use campfire_common::EnumAll;
 use campfire_net_payload::AppCode;
 use serde::{Deserialize, Serialize};
 
+use campfire_host::Dismissed;
+
 /// Why Campfire ends a link, which the stack carries as an `AppCode` and the peer reads back
 /// (08-sessions.md, A link's end is a type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumAll)]
@@ -9,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub enum CloseCode {
     /// The player left the match.
     Left = AppCode::FIRST,
-    /// A newer login of the player took the seat.
+    /// A newer login of the player took the player slot.
     Superseded,
     /// The server refused the player's input message.
     InputRefused,
@@ -31,6 +33,16 @@ impl CloseCode {
     /// The code a peer closed with, when it names one of Campfire's.
     pub fn of(code: AppCode) -> Option<Self> {
         Self::ALL.into_iter().find(|close| close.app() == code)
+    }
+}
+
+/// The code a dismissed link closes with.
+impl From<Dismissed> for CloseCode {
+    fn from(dismissed: Dismissed) -> Self {
+        match dismissed {
+            Dismissed::Superseded => Self::Superseded,
+            Dismissed::JoinRefused => Self::JoinRefused,
+        }
     }
 }
 

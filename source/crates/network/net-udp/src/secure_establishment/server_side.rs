@@ -37,6 +37,15 @@ const MAX_RESET_LEN: usize = 64;
 /// frame, past which the session's loss recovery sends again what it dropped.
 const EARLY_DATAGRAMS: usize = 8;
 
+/// The most handshakes a server holds pending at once, each a TLS connection for its patience:
+/// one past it is refused before it starts, as quinn's `max_incoming` bounds them
+/// (11-net-stack/udp.md, A server bounds its pending handshakes).
+pub(crate) const MAX_PENDING: usize = 1024;
+
+/// The most stateless resets a server sends in one second, each an HMAC and a send for a datagram
+/// any address may make up, as RFC 9000 §10.3 lets an endpoint bound them.
+pub(crate) const RESETS_PER_SECOND: u32 = 1024;
+
 /// A pending handshake's client: its address, and the handshake ID it chose.
 type PendingKey = (SocketAddr, [u8; ID_LEN]);
 
@@ -66,16 +75,19 @@ pub(crate) struct ServerSide {
     /// limits.
     counts: BTreeMap<AddressKey, u32>,
     accepting: bool,
+    /// The second the stateless resets count in, from its start, and how many went in it.
+    resets: (Instant, u32),
     /// The OS's on a socket and a seed's on the emulated network, so a run of a seed repeats;
     /// TLS draws its own from the OS in both.
     random: Random,
 }
 
-/// A client's validated first packet: where it came from, its handshake ID, and the handshake data
-/// it carries from its offset.
+/// A client's first validated `Initial` of a handshake, of any offset: where it came from, its
+/// handshake ID, and the handshake data it carries from its offset.
 #[derive(Debug)]
 struct FirstPacket {
     from: SocketAddr,
+    local: Option<IpAddr>,
     id: [u8; ID_LEN],
     offset: u32,
     data: Bytes,
@@ -84,18 +96,38 @@ struct FirstPacket {
 struct Pending {
     id: [u8; ID_LEN],
     from: SocketAddr,
+    /// The local address the client's datagrams came to, which the server's answers leave from.
+    local: Option<IpAddr>,
     tls: Connection,
     connection_id: ConnectionId,
     initial: CryptoStream,
     handshake: CryptoStream,
     handshake_keys: Option<Keys>,
     one_rtt: Option<Keys>,
-    /// The server's flight, which goes again until the client's end arrives.
-    flight: Vec<Bytes>,
+    phase: ServerPhase,
     /// The client's sealed datagrams that came before the handshake's end, for its packet session.
     early: Vec<Datagram>,
     started: Instant,
     resend: ResendTimer,
+}
+
+/// Where a pending handshake stands: reading the client's hello, which may span `Initial`s, then
+/// its flight written, which goes again until the client's end arrives.
+#[derive(Debug)]
+enum ServerPhase {
+    Hello,
+    Flight(Vec<Bytes>),
+}
+
+/// What an `Initial`'s data did to a pending handshake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HelloStep {
+    /// The hello is not whole yet, or the data held nothing new.
+    Waiting,
+    /// The hello was whole and the flight went.
+    Answered,
+    /// TLS refused the hello, or it named no client's parameters: its alert went.
+    Failed,
 }
 
 impl core::fmt::Debug for Pending {
@@ -104,6 +136,7 @@ impl core::fmt::Debug for Pending {
             .field("id", &self.id)
             .field("from", &self.from)
             .field("connection_id", &self.connection_id)
+            .field("phase", &self.phase)
             .finish_non_exhaustive()
     }
 }
@@ -131,8 +164,24 @@ impl ServerSide {
             holders: BTreeMap::new(),
             counts: BTreeMap::new(),
             accepting: false,
+            resets: (Instant::ZERO, 0),
             random,
         }
+    }
+
+    /// Whether a stateless reset may go at `now`, within `RESETS_PER_SECOND` of its second, which
+    /// it then counts.
+    fn take_reset(&mut self, now: Instant) -> bool {
+        let (second, sent) = &mut self.resets;
+        if now.saturating_duration_since(*second) >= Duration::from_secs(1) {
+            *second = now;
+            *sent = 0;
+        }
+        if *sent >= RESETS_PER_SECOND {
+            return false;
+        }
+        *sent += 1;
+        true
     }
 
     /// Whether `ip` may start a handshake at `now`, within its live packet sessions and its bucket.
@@ -191,6 +240,7 @@ impl ServerSide {
     fn start(&mut self, now: Instant, first: FirstPacket, out: &mut Establishing) {
         let FirstPacket {
             from,
+            local,
             id,
             offset,
             data,
@@ -221,30 +271,21 @@ impl ServerSide {
         let mut pending = Pending {
             id,
             from,
+            local,
             tls,
             connection_id,
             initial: CryptoStream::default(),
             handshake: CryptoStream::default(),
             handshake_keys: None,
             one_rtt: None,
-            flight: Vec::new(),
+            phase: ServerPhase::Hello,
             early: Vec::new(),
             started: now,
             resend: ResendTimer::start(now),
         };
-        let mut plain = Vec::new();
-        pending.initial.push(offset, &data, &mut plain);
-        if pending.tls.read_hs(&plain).is_err()
-            || !pending
-                .tls
-                .quic_transport_parameters()
-                .is_some_and(transport_params::is_client)
-        {
-            pending.fail(out);
+        if pending.take_initial(offset, &data, out) == HelloStep::Failed {
             return;
         }
-        pending.write_flight();
-        pending.resend(out);
         self.hold(connection_id, from.ip());
         self.timers
             .insert((pending.deadline(self.patience), (from, id)));
@@ -262,14 +303,22 @@ impl ServerSide {
         }
     }
 
-    fn send(out: &mut Establishing, to: SocketAddr, datagram: Bytes) {
-        out.outbound.push(Outbound { to, datagram });
+    fn send(out: &mut Establishing, to: SocketAddr, from_ip: Option<IpAddr>, datagram: Bytes) {
+        out.outbound.push(Outbound {
+            to,
+            from_ip,
+            datagram,
+        });
     }
 }
 
 impl Establish for ServerSide {
     fn receive(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing) -> ReadCost {
-        let Datagram { from, payload } = datagram;
+        let Datagram {
+            from,
+            local,
+            payload,
+        } = datagram;
         let len = payload.len();
         let Some(packet) = HandshakePacket::read(payload) else {
             return ReadCost::Light;
@@ -286,12 +335,22 @@ impl Establish for ServerSide {
                 if len < PADDED_INITIAL {
                     return ReadCost::Light;
                 }
-                if let Some(pending) = self.pending.get(&(from, id)) {
-                    pending.resend(out);
+                // A later `Initial` of a pending handshake goes on with its hello, or, once its
+                // flight went, asks for it again, as quinn routes a pending connection's later
+                // `Initial`s to its `Incoming`.
+                if let Some(pending) = self.pending.get_mut(&(from, id)) {
+                    match pending.phase {
+                        ServerPhase::Hello => {
+                            if pending.take_initial(offset, &data, out) == HelloStep::Failed {
+                                self.drop_pending((from, id));
+                            }
+                        }
+                        ServerPhase::Flight(_) => pending.resend(out),
+                    }
                     return ReadCost::Light;
                 }
                 if !self.accepting {
-                    Self::send(out, from, handshake_packet::refuse(id));
+                    Self::send(out, from, local, handshake_packet::refuse(id));
                     return ReadCost::Light;
                 }
                 let checked =
@@ -309,17 +368,18 @@ impl Establish for ServerSide {
                         0,
                         now + RETRY_LIFETIME,
                     );
-                    Self::send(out, from, handshake_packet::retry(id, &token));
+                    Self::send(out, from, local, handshake_packet::retry(id, &token));
                     return ReadCost::Light;
                 }
-                if !self.admit(from.ip(), now) {
-                    Self::send(out, from, handshake_packet::refuse(id));
+                if self.pending.len() >= MAX_PENDING || !self.admit(from.ip(), now) {
+                    Self::send(out, from, local, handshake_packet::refuse(id));
                     return ReadCost::Light;
                 }
                 self.start(
                     now,
                     FirstPacket {
                         from,
+                        local,
                         id,
                         offset,
                         data,
@@ -364,6 +424,7 @@ impl Establish for ServerSide {
                     let pending = self.take_pending(key).unwrap();
                     out.established.push(Established {
                         peer: pending.from,
+                        local: pending.local,
                         protection: Protection::Sealed(Box::new(RustlsSeal::new(keys))),
                         prefix: None,
                         route: Some(pending.connection_id),
@@ -424,8 +485,12 @@ impl ServerEstablish for ServerSide {
     /// shorter than the datagram, which a datagram of `MIN_RESET_LEN` bytes or less gets none of,
     /// as RFC 9000 §5.2 resets only a packet no connection can claim (11-net-stack/udp.md, A
     /// pending handshake holds its early datagrams).
-    fn unknown(&mut self, _now: Instant, received: &Datagram, out: &mut Establishing) {
-        let Datagram { from, payload } = received;
+    fn unknown(&mut self, now: Instant, received: &Datagram, out: &mut Establishing) {
+        let Datagram {
+            from,
+            local,
+            payload,
+        } = received;
         let datagram: &[u8] = payload;
         let Some(id) = datagram
             .first_chunk()
@@ -443,7 +508,7 @@ impl ServerEstablish for ServerSide {
             }
             return;
         }
-        if datagram.len() <= MIN_RESET_LEN {
+        if datagram.len() <= MIN_RESET_LEN || !self.take_reset(now) {
             return;
         }
         let len = (datagram.len() - 1).min(MAX_RESET_LEN);
@@ -452,7 +517,7 @@ impl ServerEstablish for ServerSide {
         self.random.fill(&mut reset[..len - token.len()]);
         reset[0] &= 0x7f;
         reset[len - token.len()..].copy_from_slice(&token);
-        Self::send(out, *from, Bytes::from(reset));
+        Self::send(out, *from, *local, Bytes::from(reset));
     }
 
     /// A server routes its clients' datagrams by the connection ID it gave each, so a client
@@ -474,9 +539,36 @@ impl Pending {
         (self.started + patience).min(self.resend.at())
     }
 
-    /// Takes what TLS writes after the `ClientHello`: the `ServerHello` in the first epoch, the
-    /// rest of the server's flight in the handshake epoch, and the 1-RTT keys.
-    fn write_flight(&mut self) {
+    /// Takes an `Initial`'s `data` from `offset` into the hello, and once TLS read the whole
+    /// hello, which names the client's parameters, writes the flight and sends it.
+    fn take_initial(&mut self, offset: u32, data: &[u8], out: &mut Establishing) -> HelloStep {
+        let mut plain = Vec::new();
+        self.initial.push(offset, data, &mut plain);
+        if plain.is_empty() {
+            return HelloStep::Waiting;
+        }
+        if self.tls.read_hs(&plain).is_err() {
+            self.fail(out);
+            return HelloStep::Failed;
+        }
+        match self.tls.quic_transport_parameters() {
+            None => HelloStep::Waiting,
+            Some(params) if transport_params::is_client(params) => {
+                self.phase = ServerPhase::Flight(self.write_flight());
+                self.resend(out);
+                HelloStep::Answered
+            }
+            Some(_) => {
+                self.fail(out);
+                HelloStep::Failed
+            }
+        }
+    }
+
+    /// What TLS writes after the `ClientHello`: the `ServerHello` in the first epoch, the rest of
+    /// the server's flight in the handshake epoch, and the 1-RTT keys.
+    fn write_flight(&mut self) -> Vec<Bytes> {
+        let mut flight = Vec::new();
         let mut initial_send = CryptoSend::default();
         let mut handshake_send = CryptoSend::default();
         let mut number = 0_u16;
@@ -487,7 +579,7 @@ impl Pending {
                 None => {
                     for chunk in written.chunks(handshake_packet::INITIAL_DATA) {
                         let offset = initial_send.take(chunk.len());
-                        self.flight.push(handshake_packet::initial(
+                        flight.push(handshake_packet::initial(
                             self.id,
                             None,
                             offset,
@@ -499,7 +591,7 @@ impl Pending {
                 Some(keys) => {
                     for chunk in written.chunks(handshake_packet::HANDSHAKE_DATA) {
                         let offset = handshake_send.take(chunk.len());
-                        self.flight.push(handshake_packet::handshake(
+                        flight.push(handshake_packet::handshake(
                             self.id,
                             number,
                             offset,
@@ -513,15 +605,20 @@ impl Pending {
             match change {
                 Some(KeyChange::Handshake { keys }) => self.handshake_keys = Some(keys),
                 Some(KeyChange::OneRtt { keys, .. }) => self.one_rtt = Some(keys),
-                None => return,
+                None => return flight,
             }
         }
     }
 
+    /// Sends its flight again; none while it reads the hello.
     fn resend(&self, out: &mut Establishing) {
-        for datagram in &self.flight {
+        let ServerPhase::Flight(flight) = &self.phase else {
+            return;
+        };
+        for datagram in flight {
             out.outbound.push(Outbound {
                 to: self.from,
+                from_ip: self.local,
                 datagram: datagram.clone(),
             });
         }
@@ -532,6 +629,7 @@ impl Pending {
         let alert = self.tls.alert().map_or(80, u8::from);
         out.outbound.push(Outbound {
             to: self.from,
+            from_ip: self.local,
             datagram: handshake_packet::alert(self.id, alert),
         });
     }

@@ -1,10 +1,11 @@
-use campfire_actions::{ActionRange, ActionsColumn, SlotKind};
+use campfire_actions::{ActionRange, ActionsColumn, Cut, SlotKind, SlotSelect};
 use campfire_math::{Num, Vec3};
 use campfire_script::{
     ApiBuilder, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberDecl, RoleSet, ScriptCut,
     ScriptValue, Status, Unit,
 };
-use campfire_values::{ActionId, Block, TagProperty};
+use campfire_values::{ActionId, Block, Rank, TagProperty};
+use campfire_visibility::DataKind;
 
 use crate::abilities_effect::AbilitiesEffect;
 use crate::error::AbilitiesRefusal;
@@ -64,6 +65,14 @@ impl AbilitiesApi {
                 "gives `unit`'s ability `id`, of the script's package, a charge, up to its most",
             ),
             |ctx: &mut Ctx, unit: Unit, id: ActionId| Self::add_charge(ctx, &unit, id),
+        )
+        .call(
+            MemberDecl::mode_call(
+                "learn",
+                &[&["avatar", "slot"]],
+                "the ability in `slot` a rank more, up to its last",
+            ),
+            |ctx: &mut Ctx, unit: Unit, slot: i64| Self::learn(ctx, &unit, slot),
         );
         api.tag_property(
             TagProperty::Blocks(Block::Cast),
@@ -106,10 +115,10 @@ impl AbilitiesApi {
     fn reduce_cooldown(ctx: &Ctx, unit: &Unit, action: ActionId, ms: ScriptCut) -> Checked<()> {
         Self::check_held(ctx, unit, action)?;
         let cut = ms.get();
-        ctx.queue(AbilitiesEffect::ReduceCooldown {
+        ctx.queue(AbilitiesEffect::CutCooldown {
             unit: unit.id,
-            action,
-            cut,
+            slots: SlotSelect::Action(action),
+            cut: Cut::By(cut),
         })
     }
 
@@ -126,9 +135,33 @@ impl AbilitiesApi {
         })
     }
 
+    /// Queues a rank more of the ability in `slot` of `unit`: one that has a rank above its
+    /// rank, counting the ranks this call queued already.
+    fn learn(ctx: &Ctx, unit: &Unit, slot: i64) -> Checked<()> {
+        let slot = u8::try_from(slot)
+            .ok()
+            .ok_or_else(|| AbilitiesRefusal::NoAbilitySlot.fail())?;
+        let slot_row = ActionsColumn::slot(ctx.view(), unit.admit(DataKind::Unit)?, slot)
+            .ok_or_else(|| AbilitiesRefusal::NoAbilitySlot.fail())?;
+        let effect = AbilitiesEffect::Learn {
+            unit: unit.id,
+            slot,
+        };
+        let mut frame = ctx.write()?;
+        let queued = frame
+            .queued::<AbilitiesEffect>()
+            .filter(|&queued| *queued == effect)
+            .count();
+        if usize::from(Rank::count(slot_row.rank)) + queued >= usize::from(slot_row.ranks) {
+            return Err(AbilitiesRefusal::MaxRank.fail().into());
+        }
+        frame.queue(effect);
+        Ok(())
+    }
+
     /// Refuses `action` unless `unit` holds it.
     fn check_held(ctx: &Ctx, unit: &Unit, action: ActionId) -> Checked<()> {
-        if !ActionsColumn::holds(ctx.view(), unit.row_index()?, action) {
+        if !ActionsColumn::holds(ctx.view(), unit.admit(DataKind::Unit)?, action) {
             return Err(AbilitiesRefusal::NotHeld.fail().into());
         }
         Ok(())
@@ -139,10 +172,10 @@ impl AbilitiesApi {
         if !(Num::ZERO..=Num::ONE).contains(&fraction) {
             return Err(AbilitiesRefusal::NotAFraction.fail().into());
         }
-        ctx.queue(AbilitiesEffect::ReduceCooldowns {
+        ctx.queue(AbilitiesEffect::CutCooldown {
             unit: unit.id,
-            kind,
-            fraction,
+            slots: SlotSelect::Kind(kind),
+            cut: Cut::Share(fraction),
         })
     }
 }

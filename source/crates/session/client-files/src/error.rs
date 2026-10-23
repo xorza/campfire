@@ -28,6 +28,9 @@ pub enum TerrainFileError {
     /// A texture coordinate is not finite.
     #[error("a texture coordinate is not finite")]
     Coordinate,
+    /// A side of its texture is past `TerrainTexture::MOST_SIDE`.
+    #[error("a side of its texture is past the longest a terrain texture has")]
+    TextureSize,
     /// Its texture has no texel, or no level, or more levels than its sides halve to.
     #[error("its texture has no texel or no level, or more levels than its sides hold")]
     Texture,
@@ -65,4 +68,16 @@ pub enum TextureLevelsError {
     /// A level, by its number, is not its size's bytes.
     #[error("level {0} is not its size's bytes")]
     LevelBytes(u32),
+}
+
+/// Why a list of colors is no team colors: a mode's team colors file, or what an import writes as
+/// one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum TeamColorsError {
+    /// It gives no color.
+    #[error("it gives no color")]
+    None,
+    /// It gives more colors, its count, than `TeamColors::MOST`.
+    #[error("it gives {0} colors, more than 256")]
+    TooMany(usize),
 }

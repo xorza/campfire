@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::delegation::Delegation;
 use crate::input_rules::InputRules;
-use crate::seat_plan::SeatPlan;
+use crate::player_slot_plan::PlayerSlotPlan;
 use crate::seed_commitment::SeedCommitment;
 use crate::session_id::SessionId;
 
@@ -44,8 +44,8 @@ pub struct SessionTerms {
     pub map: MapName,
     /// The fingerprints of the mode's dependencies, in the order of their names in its manifest.
     pub dependencies: Vec<PackageFingerprint>,
-    /// How the server opens each seat the session plays, by seat.
-    pub seats: Vec<SeatPlan>,
+    /// How the server opens each player slot the session plays, by player slot.
+    pub player_slots: Vec<PlayerSlotPlan>,
     /// Who receives each kind of the session's state, as the mode and its host set it: the bytes
     /// `capabilities`' `Visibility` encodes, which the protocol carries and does not read.
     pub visibility: Vec<u8>,
@@ -54,24 +54,24 @@ pub struct SessionTerms {
     /// (08-sessions.md, The host picks, and the terms record the pick).
     pub options: Vec<u8>,
     /// The place of the value the host picked of each of the mode's choices of values for each
-    /// seat, among the choice's values, 255 for none, seat by seat, each seat's choices in the
-    /// order of their names: bytes the protocol carries and does not read (08-sessions.md,
-    /// The terms hold each seat's picks).
-    pub seat_picks: Vec<u8>,
+    /// player slot, among the choice's values, 255 for none, player slot by player slot, each
+    /// player slot's choices in the order of their names: bytes the protocol carries and does not
+    /// read (08-sessions.md, The terms hold each player slot's picks).
+    pub player_slot_picks: Vec<u8>,
 }
 
 impl SessionTerms {
-    /// Whether its plan seats a player.
-    pub fn seats_a_player(&self) -> bool {
-        self.seats.contains(&SeatPlan::Player)
+    /// Whether its plan places a player.
+    pub fn places_a_player(&self) -> bool {
+        self.player_slots.contains(&PlayerSlotPlan::Player)
     }
 
-    /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max delay ‖ u64 max lead ‖ u32 max
-    /// payload length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release
-    /// ‖ mode fingerprint ‖ u64 map name length ‖ map name ‖ u64 dependency count ‖ dependency
-    /// fingerprints ‖ u64 seat count ‖ u8 per seat, its plan's code ‖ u64 visibility length ‖
-    /// visibility ‖ u64 option count ‖ u8 per option, its pick's place ‖ u64 seat pick count ‖ u8
-    /// per seat pick, its place)`, integers little-endian.
+    /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max delay ‖ u64 max lead ‖ u32 max payload
+    /// length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release ‖ mode
+    /// fingerprint ‖ u64 map name length ‖ map name ‖ u64 dependency count ‖ dependency
+    /// fingerprints ‖ u64 player slot count ‖ u8 per player slot, its plan's code ‖ u64 visibility
+    /// length ‖ visibility ‖ u64 option count ‖ u8 per option, its pick's place ‖ u64 player slot
+    /// pick count ‖ u8 per player slot pick, its place)`, integers little-endian.
     pub fn session_id(&self) -> SessionId {
         let release = self.release.as_str();
         let mut hasher = DomainHasher::new(SESSION_ID_DOMAIN);
@@ -92,8 +92,8 @@ impl SessionTerms {
         for dependency in &self.dependencies {
             hasher.update(dependency.as_bytes());
         }
-        hasher.update(&len(self.seats.len()).to_le_bytes());
-        for plan in &self.seats {
+        hasher.update(&len(self.player_slots.len()).to_le_bytes());
+        for plan in &self.player_slots {
             hasher.update(&[plan.code()]);
         }
         hasher
@@ -101,21 +101,21 @@ impl SessionTerms {
             .update(&self.visibility)
             .update(&len(self.options.len()).to_le_bytes())
             .update(&self.options)
-            .update(&len(self.seat_picks.len()).to_le_bytes())
-            .update(&self.seat_picks);
+            .update(&len(self.player_slot_picks.len()).to_le_bytes())
+            .update(&self.player_slot_picks);
         hasher.finish()
     }
 
-    /// The most bytes a journal record of a session of these terms can hold; `None` past a
-    /// `u64`. Each record is bounded by them: a packet by its inputs and their payloads; a server
-    /// input by a bot's payload or a delegation, whose JSON `Delegation::MAX_JSON` bounds; a
-    /// checkpoint by its carry, each seat's delegation and its inputs still to apply, which the
-    /// stamps' window bounds, as a seat logs at most `max_per_tick` of a stamp and none stamped
-    /// past `max_lead` nor before `max_delay`; the header by the terms and a delegation a seat.
+    /// The most bytes a journal record of a session of these terms can hold; `None` past a `u64`.
+    /// Each record is bounded by them: a packet by its inputs and their payloads; a server input by
+    /// a bot's payload or a delegation, whose JSON `Delegation::MAX_JSON` bounds; a checkpoint by
+    /// its carry, each player slot's delegation and its inputs still to apply, which the stamps'
+    /// window bounds, as a player slot logs at most `max_per_tick` of a stamp and none stamped past
+    /// `max_lead` nor before `max_delay`; the header by the terms and a delegation a player slot.
     pub(crate) fn largest_record(&self) -> Option<u64> {
         let payload = u64::from(self.inputs.max_payload_len);
         let inputs = u64::from(self.inputs.max_per_tick);
-        let seats = len(self.seats.len());
+        let player_slots = len(self.player_slots.len());
         let delegation = len(Delegation::MAX_JSON) + VARINT_32;
         let input = VARINT_64 + VARINT_32 + payload;
         let packet = inputs.checked_mul(input)?.checked_add(SIGNATURE + SLACK)?;
@@ -126,20 +126,22 @@ impl SessionTerms {
             .get()
             .checked_add(self.inputs.max_lead.get())?
             .checked_add(1)?;
-        // Each carried input holds its tick and its seat beside what its packet held.
+        // Each carried input holds its tick and its player slot beside what its packet held.
         let carried = input + VARINT_64 + VARINT_32;
         let pending = inputs.checked_mul(window)?.checked_mul(carried)?;
-        let seat = delegation.checked_add(pending)?.checked_add(SLACK)?;
-        let checkpoint = seats
-            .checked_mul(seat)?
+        let player_slot = delegation.checked_add(pending)?.checked_add(SLACK)?;
+        let checkpoint = player_slots
+            .checked_mul(player_slot)?
             .checked_add(2 * HASH + SIGNATURE + SLACK)?;
         let terms = len(self.dependencies.len())
             .checked_mul(HASH)?
             .checked_add(len(self.release.as_str().len()) + len(self.map.as_str().len()) + SLACK)?
             .checked_add(len(self.visibility.len()))?
             .checked_add(len(self.options.len()))?
-            .checked_add(len(self.seat_picks.len()))?;
-        let header = seats.checked_mul(delegation + SLACK)?.checked_add(terms)?;
+            .checked_add(len(self.player_slot_picks.len()))?;
+        let header = player_slots
+            .checked_mul(delegation + SLACK)?
+            .checked_add(terms)?;
         Some(packet.max(server).max(checkpoint).max(header))
     }
 }

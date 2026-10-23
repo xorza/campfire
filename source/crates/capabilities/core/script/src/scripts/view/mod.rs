@@ -1,18 +1,22 @@
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::fmt;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use bevy_ecs::world::World;
-use campfire_common::Tick;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_geometry::{Bounds, Metric, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{MatchRate, StableId};
 use campfire_values::{Relation, Tag, Team};
+use campfire_visibility::{DataKind, Recipients, Visibility};
 
+use crate::script_host::call_charge::CallCharge;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
+use crate::scripts::view::call_sight::CallSight;
 use crate::scripts::view::filter::Filter;
 use crate::scripts::view::filter_texts::FilterTexts;
 use crate::scripts::view::listing::Listing;
@@ -25,6 +29,7 @@ use crate::scripts::view::view_column::{ViewColumn, ViewColumns};
 use crate::scripts::view::view_names::ViewNames;
 use crate::scripts::view::view_rows::ViewRows;
 
+pub(crate) mod call_sight;
 pub(crate) mod filter;
 pub(crate) mod filter_texts;
 pub(crate) mod filters;
@@ -32,6 +37,7 @@ pub(crate) mod kept_rows;
 pub(crate) mod listing;
 pub(crate) mod living_unit;
 pub(crate) mod match_names;
+pub(crate) mod name_tables;
 pub(crate) mod row_fill;
 pub(crate) mod row_reads;
 pub(crate) mod tag_names;
@@ -45,9 +51,11 @@ pub(crate) mod view_rows;
 
 /// What scripts see, as the host and every handle share it: the match's names, its units, those
 /// with a team, as the running phase of the tick began, and the targets' bodies the queries that
-/// reach by distance search. The units are read again before each phase that runs scripts, and
-/// every call of the phase sees them as they were read. Each part has a cell of its own, so a
-/// name lookup does not borrow the rows.
+/// reach by distance search; and who reads it in the running call, by the session's visibility.
+/// The units are read again before each phase that runs scripts, and every call of the phase sees
+/// them as they were read. Each part has a cell of its own, so a name lookup does not borrow the
+/// rows. Every handle to a unit comes from the view, which makes one only of a unit its viewer
+/// sees, and a handle lives only within the call that made it, so it reads as that call's viewer.
 #[derive(Clone)]
 pub struct View(Rc<ViewFields>);
 
@@ -64,12 +72,27 @@ struct ViewFields {
     filters: RefCell<FilterTexts>,
     /// What reads a world's units into the rows, which the module that holds the units gives.
     read: fn(&mut World),
+    /// Who reads the view in the running call; the match between calls.
+    sight: Cell<CallSight>,
+    /// The session's visibility, which says what a player's viewer receives of each unit.
+    visibility: Visibility,
+    /// The steps the running call's lists visited, which the host counts.
+    charge: CallCharge,
+    /// The texts of each enum's members, by its declaration's members, made at its first read.
+    members: RefCell<Vec<MemberTexts>>,
+}
+
+/// An enum's members, and their texts as scripts read them.
+#[derive(Debug)]
+struct MemberTexts {
+    members: Arc<[Arc<str>]>,
+    texts: Box<[ScriptText]>,
 }
 
 impl View {
-    /// The view of a match at `rate`, whose units `read` reads into its rows, with no names
-    /// until the load and the mode give them.
-    pub fn new(rate: MatchRate, read: fn(&mut World)) -> Self {
+    /// The view of a match at `rate` of a session of `visibility`, whose units `read` reads into
+    /// its rows, with no names until the load and the mode give them.
+    pub fn new(rate: MatchRate, visibility: Visibility, read: fn(&mut World)) -> Self {
         Self(Rc::new(ViewFields {
             tick_rate: rate,
             names: RefCell::default(),
@@ -78,7 +101,97 @@ impl View {
             targets: RefCell::default(),
             filters: RefCell::default(),
             read,
+            sight: Cell::new(CallSight::Match),
+            visibility,
+            charge: CallCharge::default(),
+            members: RefCell::default(),
         }))
+    }
+
+    /// The text of member `at` of the enum of `members`, made once for the match.
+    pub(crate) fn member_text(&self, members: &Arc<[Arc<str>]>, at: u8) -> ScriptText {
+        let mut known = self.0.members.borrow_mut();
+        let found = known
+            .iter()
+            .position(|known| Arc::ptr_eq(&known.members, members));
+        let place = found.unwrap_or_else(|| {
+            let texts = members.iter().map(|member| ScriptText::from(&**member));
+            known.push(MemberTexts {
+                members: Arc::clone(members),
+                texts: texts.collect(),
+            });
+            known.len() - 1
+        });
+        known[place].texts[usize::from(at)].clone()
+    }
+
+    /// The steps of the running call's lists, a step for each row a list visits.
+    pub(crate) fn charge(&self) -> &CallCharge {
+        &self.0.charge
+    }
+
+    /// Who reads the view in the running call.
+    pub(crate) fn sight(&self) -> CallSight {
+        self.0.sight.get()
+    }
+
+    /// Makes `sight` read the view, for the call that begins.
+    pub(crate) fn set_sight(&self, sight: CallSight) {
+        self.0.sight.set(sight);
+    }
+
+    /// Whether the viewer sees the unit of row `at`: the match sees every unit, and a player those
+    /// its team sees.
+    fn sees(&self, rows: &ViewRows, at: usize) -> bool {
+        match self.sight() {
+            CallSight::Match => true,
+            CallSight::Player(view) => rows.columns().sees(at, view.team),
+        }
+    }
+
+    /// Fails a read of the state of `kind` of the unit of row `at` that the viewer does not
+    /// receive, as the server's data filters send it to the client of a player's player slot.
+    pub fn admit_row(&self, at: usize, kind: DataKind) -> Checked<()> {
+        let row = self.rows().units()[at];
+        self.admit(row.owner, Some(row.team), kind)
+    }
+
+    /// Fails a read of player `player_slot`'s state of `kind` that the viewer does not receive, as
+    /// of a unit the player owns.
+    pub fn admit_player(&self, player_slot: PlayerSlot, kind: DataKind) -> Checked<()> {
+        let team = self.names().teams().and_then(|teams| teams.of(player_slot));
+        self.admit(Some(player_slot), team, kind)
+    }
+
+    /// Fails a read of the state of `kind` of what `owner` owns, of `team`, that the viewer does
+    /// not receive: the match receives all of it; a player its own every kind a client receives,
+    /// and another's what the kind's audience gives it, as its ally or its enemy
+    /// (10-replication-audiences.md, Each kind has a default audience, and a mode may set it).
+    fn admit(&self, owner: Option<PlayerSlot>, team: Option<Team>, kind: DataKind) -> Checked<()> {
+        let CallSight::Player(view) = self.sight() else {
+            return Ok(());
+        };
+        let received = match view.recipient(owner, team) {
+            Recipients::NONE => kind.is_sent(),
+            recipient => self.0.visibility.audience(kind).contains(recipient),
+        };
+        if !received {
+            return Err(ApiError::Unreceived(kind).fail().into());
+        }
+        Ok(())
+    }
+
+    /// Fails a call that asks what `team` sees unless the viewer may: the match may ask of any
+    /// team, and a player only of a team that sees as one with its own.
+    pub fn admit_sight(&self, team: Team) -> Checked<()> {
+        let admitted = match self.sight() {
+            CallSight::Match => true,
+            CallSight::Player(view) => self.rows().relations().see_as_one(view.team, team),
+        };
+        if !admitted {
+            return Err(ApiError::NotForRole.fail().into());
+        }
+        Ok(())
     }
 
     /// The names scripts read, as the last read derived them from the match's `MatchNames`.
@@ -183,13 +296,15 @@ impl View {
         self.rows().index(id)
     }
 
-    /// Every unit, living or dead, that `keep` keeps, by stable id.
+    /// Every unit, living or dead, that `keep` keeps and the viewer sees, by stable id: a step
+    /// of the call for each row.
     pub fn units_where(&self, mut keep: impl FnMut(&UnitRow) -> bool) -> ScriptList {
         let rows = self.rows();
+        self.0.charge.add(rows.units().len() as u64);
         rows.units()
             .iter()
             .enumerate()
-            .filter(|(_, row)| keep(row))
+            .filter(|&(at, row)| keep(row) && self.sees(&rows, at))
             .map(|(at, row)| ScriptValue::of(Unit::new(row.id, at, self.clone())))
             .collect()
     }
@@ -215,13 +330,15 @@ impl View {
         }
     }
 
-    /// The handle of unit `id`, when the view read it.
+    /// The handle of unit `id`, when the view read it and its viewer sees it.
     pub fn unit(&self, id: StableId) -> Option<Unit> {
         let at = self.row_index(id)?;
-        Some(Unit::new(id, at, self.clone()))
+        self.sees(&self.rows(), at)
+            .then(|| Unit::new(id, at, self.clone()))
     }
 
-    /// The handle of unit `id` as a script value: `()` for none, or a unit the view did not read.
+    /// The handle of unit `id` as a script value: `()` for none, or a unit the view did not read
+    /// or its viewer does not see.
     pub fn unit_value(&self, id: Option<StableId>) -> ScriptValue {
         id.and_then(|id| self.unit(id))
             .map_or(ScriptValue::UNIT, ScriptValue::of)
@@ -240,8 +357,8 @@ impl View {
     }
 
     /// The living targets whose bodies come within `radius` of `position` in the map's metric, as
-    /// an area of that radius reaches, that `filter` selects relative to `of`, and `seen` lets by
-    /// the view's columns and their rows, by stable id.
+    /// an area of that radius reaches, that `filter` selects relative to `of`, `seen` lets by the
+    /// view's columns and their rows, and the viewer sees, by stable id.
     pub fn find(
         &self,
         of: &Unit,
@@ -261,16 +378,17 @@ impl View {
             filter,
         };
         let mut targets = self.0.targets.borrow_mut();
-        let found = targets.find(&rows, query, seen);
+        let lets = |columns: &ViewColumns, at| seen(columns, at) && self.sees(&rows, at);
+        let found = targets.find(&rows, query, (lets, &self.0.charge));
         let unit =
             |&index: &usize| ScriptValue::of(Unit::new(units[index].id, index, self.clone()));
         Ok(found.iter().map(unit).collect())
     }
 
     /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
-    /// metric, as a weapon's range does, that `filter` selects relative to it and `seen` lets by
-    /// the view's columns and its row, by exact distance between centers, the lower stable id on
-    /// a tie; `()` when there is none.
+    /// metric, as a weapon's range does, that `filter` selects relative to it, `seen` lets by the
+    /// view's columns and its row, and the viewer sees, by exact distance between centers, the
+    /// lower stable id on a tie; `()` when there is none.
     pub fn nearest(
         &self,
         of: &Unit,
@@ -290,10 +408,11 @@ impl View {
         };
         let metric = rows.metric();
         let mut nearest = None;
+        let lets = |columns: &ViewColumns, at| seen(columns, at) && self.sees(&rows, at);
         self.0
             .targets
             .borrow_mut()
-            .visit(&rows, query, seen, |entry| {
+            .visit(&rows, query, (lets, &self.0.charge), |entry| {
                 let distance = metric
                     .offset(of.position, entry.body.position)
                     .length_squared_bits();

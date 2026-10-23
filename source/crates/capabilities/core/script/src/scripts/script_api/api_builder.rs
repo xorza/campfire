@@ -123,7 +123,7 @@ impl<'a> ApiBuilder<'a> {
             ty: F::output(),
             names: F::NAMES,
         };
-        self.record_runs(decl, output, &[]);
+        self.record_runs(&decl, output, &[]);
         self
     }
 
@@ -152,7 +152,7 @@ impl<'a> ApiBuilder<'a> {
             ty: F::output(),
             names: F::NAMES,
         };
-        self.record_runs(decl, output, F::TYPES);
+        self.record_runs(&decl, output, F::TYPES);
         self
     }
 
@@ -188,14 +188,14 @@ impl<'a> ApiBuilder<'a> {
             ty: F::output(),
             names: F::NAMES,
         };
-        self.record_runs(decl, output, F::TYPES);
+        self.record_runs(&decl, output, F::TYPES);
         self
     }
 
     /// Records `spec`, which runs, of a form that gives `output`.
-    fn record_runs(&mut self, decl: MemberDecl, output: FormOutput, types: &[&'static str]) {
+    fn record_runs(&mut self, decl: &MemberDecl, output: FormOutput, types: &[&'static str]) {
         self.api.record(ApiMember {
-            decl,
+            decl: *decl,
             writable: false,
             status: Status::Runs(decl.since),
             output: Some(output),

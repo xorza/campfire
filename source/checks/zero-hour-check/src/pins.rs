@@ -2,7 +2,7 @@
 //! it measures, which `golden.toml` pins.
 
 use campfire_common::PackageFingerprint;
-use campfire_import::{ButtonDropCause, SupplyDropCause, WeaponDrop};
+use campfire_import::{ButtonDropCause, SupplyDropCause, WeaponDropCause};
 use campfire_mode::MatchResult;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
@@ -106,14 +106,16 @@ pub(crate) struct BotBase {
 }
 
 /// How a play's match of two bots stood as it ended or its limit passed: the tick it ended and its
-/// result, if it did, and the buildings each seat held, each whole and alive (09-zero-hour.md,
-/// A bots' match that ends).
+/// result, if it did, the buildings each player slot held, each whole and alive, and the most
+/// operations one think of its bots ran, which the mode's call limit bounds (09-zero-hour.md, A
+/// bots' match that ends; 09-zero-hour.md, The bots' limits are measured).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BotMatchEnd {
     pub(crate) ended: Option<u64>,
     pub(crate) result: Option<MatchResult>,
     pub(crate) standing: [usize; 2],
+    pub(crate) think_ops: u64,
 }
 
 /// The fight's steps: the ticks from the first train to the last crusader trained, and from the
@@ -207,8 +209,8 @@ pub(crate) struct SkirmishTicks {
     pub(crate) fight: u64,
 }
 
-/// How many weapons the import converts from every starting weapon set, how many it drops for
-/// each cause, in the order of `WeaponDrop::ALL`, how many armors and damage kinds it writes, and
+/// How many weapons the import converts from every starting weapon set, how many it drops for each
+/// cause, in the order of `WeaponDropCause::ALL`, how many armors and damage kinds it writes, and
 /// how many unit types' objects it gives no life, or a life that starts below its most
 /// (09-zero-hour.md, Life is the original's; 09-zero-hour.md, A weapon converts when it hits one
 /// target at once; 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
@@ -221,19 +223,20 @@ pub(crate) struct SkirmishTicks {
 #[serde(deny_unknown_fields)]
 pub(crate) struct FoughtCounts {
     pub(crate) weapons: usize,
-    pub(crate) dropped: [usize; WeaponDrop::ALL.len()],
+    pub(crate) dropped: [usize; WeaponDropCause::ALL.len()],
     pub(crate) armors: usize,
     pub(crate) kinds: usize,
     pub(crate) unliving: usize,
     pub(crate) wounded: usize,
 }
 
-/// How many docks become nodes, supply centers drop-offs and gatherers gathers, and how many
-/// supply modules the import drops for each cause, in the order of `SupplyDropCause::ALL`
-/// (09-zero-hour.md, A box is money).
+/// How many docks become nodes, supply centers drop-offs, gatherers gathers and hackers hacks,
+/// and how many supply modules, or parts of one, the import drops for each cause, in the order of
+/// `SupplyDropCause::ALL` (09-zero-hour.md, A box is money; 09-zero-hour.md, A hack is a channel
+/// with no end).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    "{nodes} nodes, {drop_offs} drop-offs, {gathers} gathers, dropped {:?}",
+    "{nodes} nodes, {drop_offs} drop-offs, {gathers} gathers, {hacks} hacks, dropped {:?}",
     dropped
 )]
 #[serde(deny_unknown_fields)]
@@ -241,12 +244,13 @@ pub(crate) struct SuppliedCounts {
     pub(crate) nodes: usize,
     pub(crate) drop_offs: usize,
     pub(crate) gathers: usize,
+    pub(crate) hacks: usize,
     pub(crate) dropped: [usize; SupplyDropCause::ALL.len()],
 }
 
 /// How many trains and builds the import converts from every command set, and how many buttons it
-/// drops for each cause, in the order of `ButtonDropCause::ALL` (09-zero-hour.md, Every command set's
-/// trains and builds are imported).
+/// drops for each cause, in the order of `ButtonDropCause::ALL` (09-zero-hour.md, Every command
+/// set's trains and builds are imported).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display("{trains} trains, {builds} builds, dropped {:?}", dropped)]
 #[serde(deny_unknown_fields)]

@@ -9,14 +9,14 @@ kind = "glue"
 
 [features]
 internals = [
-    "campfire-package/internals",
+    "campfire-package-format/internals",
     "campfire-store/internals",
     "campfire-values/internals",
 ]
 
 [dependencies]
 campfire-common.workspace = true
-campfire-package.workspace = true
+campfire-package-format.workspace = true
 campfire-store.workspace = true
 campfire-values.workspace = true
 

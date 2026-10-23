@@ -1,8 +1,10 @@
 use bevy::math::{UVec2, Vec2};
 use campfire_client_files::{GroundQuad, TerrainQuads, TerrainSurface, TerrainTexture};
 use campfire_codec::{Binary, Toml};
+use campfire_geometry::Metric;
 use campfire_math::Num;
 use campfire_store::internals::TestDir;
+use campfire_test_packages::TestMode;
 
 use super::*;
 use crate::view::package_source::samples::package;
@@ -16,7 +18,7 @@ models = [{ model = "client/models/tank.glb", hide = ["tank.flash"] }]
     let files = package(&test_dir, "mode", &[("client/units.toml", units)]);
     let none = package(&test_dir, "bare", &[("data/units.toml", b"")]);
     let broken = package(&test_dir, "broken", &[("client/units.toml", b"units = 1")]);
-    let mut data = ClientData::default();
+    let mut data = ClientLoad::default();
     data.read_package(PackageIndex::MODE, &files);
     data.read_package(PackageIndex::new(1), &none);
     data.read_package(PackageIndex::new(2), &broken);
@@ -63,13 +65,13 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
             ),
         ],
     );
-    let mut data = ClientData {
+    let mut data = ClientLoad {
         packages: vec![PackageClient {
             units: looks.clone(),
         }],
-        ..ClientData::default()
+        ..ClientLoad::default()
     };
-    data.read_map(&mode, &map, None);
+    data.read_map(&mode, &map);
     // The map's lights, and its one oak at (3, −2.5), 1 m up, turned 90°. A night map: the lamp
     // draws its night models, and keeps no variant.
     assert_eq!(data.lights.as_ref().unwrap().lights.len(), 1);
@@ -81,7 +83,7 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
     assert_eq!(oak.look.as_str(), "oak");
     assert_eq!(oak.position, [Num::int(3), Num::int(-5) / Num::int(2)]);
     assert_eq!((oak.height, oak.angle), (Num::ONE, Num::int(90)));
-    // A map of no objects file has none, as one whose file does not read; no heights or
+    // A map of no objects file has none, as one whose file does not read; no lights or
     // camera file gives none either. No conditions file: the lamp draws its own models.
     let broken = package(
         &test_dir,
@@ -92,17 +94,17 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
         )],
     );
     for files in [package(&test_dir, "bare", &[]), broken] {
-        let mut data = ClientData {
+        let mut data = ClientLoad {
             packages: vec![PackageClient {
                 units: looks.clone(),
             }],
-            ..ClientData::default()
+            ..ClientLoad::default()
         };
-        data.read_map(&files, &map, None);
+        data.read_map(&files, &map);
         let lamp = &data.of(PackageIndex::MODE).units.units["lamp"];
         assert_eq!(lamp.models[0].model.as_str(), "client/models/lamp.glb");
         assert!(data.objects.objects.is_empty());
-        assert!(data.lights.is_none() && data.camera.is_none() && data.heights.is_none());
+        assert!(data.lights.is_none() && data.camera.is_none());
     }
 }
 
@@ -151,27 +153,45 @@ fn a_map_keeps_its_terrain_over_its_heights_and_splits_their_cells_as_it_draws_t
             name,
             &[("client/maps/desert/terrain.bin", terrain)],
         );
-        let mut data = ClientData::default();
-        data.read_map(&files, &map, Some(grid.clone()));
-        data
+        let mut data = ClientLoad::default();
+        let heights = data.read_ground(&files, &map, Some(grid.clone()));
+        (data.terrain, heights.unwrap())
     };
     // A terrain of the grid's two cells, the first flipped, is kept, and the heights split as it
     // draws them: at (5, 5), the middle of cell 0, on its diagonal from corner 1 to 3, halfway
     // from sample [1, 0]'s 10 m to [0, 1]'s 10 m, so 10 m; split the other way, halfway from
     // [0, 0]'s 0 to [1, 1]'s 0, so 0.
-    let fits = read("fits", &terrain(3, &[true, false]));
-    assert!(fits.terrain.is_some());
-    assert_eq!(fits.heights.as_ref().unwrap().at(5.0, 5.0), 10.0);
-    let other = read("other", &terrain(3, &[false, false]));
-    assert_eq!(other.heights.as_ref().unwrap().at(5.0, 5.0), 0.0);
+    let (fits, heights) = read("fits", &terrain(3, &[true, false]));
+    assert!(fits.is_some());
+    assert_eq!(heights.at(5.0, 5.0), 10.0);
+    let (_, other) = read("other", &terrain(3, &[false, false]));
+    assert_eq!(other.at(5.0, 5.0), 0.0);
     // A terrain of another shape, two columns, or two rows of cells, is dropped, logged, and the
     // heights split each cell from its first sample.
     for (name, columns, flips) in [
         ("wide", 2, &[true, true, true][..]),
         ("long", 3, &[true; 4][..]),
     ] {
-        let data = read(name, &terrain(columns, flips));
-        assert!(data.terrain.is_none(), "{name}");
-        assert_eq!(data.heights.as_ref().unwrap().at(5.0, 5.0), 0.0, "{name}");
+        let (terrain, heights) = read(name, &terrain(columns, flips));
+        assert!(terrain.is_none(), "{name}");
+        assert_eq!(heights.at(5.0, 5.0), 0.0, "{name}");
     }
+}
+
+#[test]
+fn the_start_s_files_go_once_it_ran_and_the_frames_facts_stay() {
+    // The lane mode, a planar map of no heightmap: once the start ran, its files are gone, and
+    // the metric, the HUD, the picking and the colors stay as resources, and no heights.
+    let packages = Arc::new(TestMode::Lane.packages());
+    assert!(packages.heights().is_none());
+    let mut app = App::new();
+    app.add_plugins(ClientFilesPlugin { packages });
+    assert!(app.world().contains_resource::<ClientLoad>());
+    app.update();
+    let world = app.world();
+    assert!(!world.contains_resource::<ClientLoad>());
+    assert_eq!(*world.resource::<MapMetric>(), MapMetric(Metric::Planar));
+    assert!(!world.contains_resource::<GroundHeights>());
+    assert!(world.contains_resource::<MatchHud>() && world.contains_resource::<MatchPicking>());
+    assert!(world.contains_resource::<MatchColors>());
 }

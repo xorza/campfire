@@ -29,7 +29,7 @@ macro_rules! wrapping_id {
             where
                 Self: Sized,
             {
-                Ok(Self($crate::ReadInteger::read_u16(buffer)?))
+                Ok(Self(buffer.read_u16()?))
             }
         }
 

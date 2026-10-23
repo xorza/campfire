@@ -14,10 +14,6 @@ const GENRE_WORDS: [&str; 15] = [
     "minerals", "gold", "mana", "barrack", "barracks",
 ];
 
-/// The files where a genre word has another meaning, each with the words it may hold there: the
-/// grid's rows are tested four at a time in SIMD lanes.
-const OTHER_MEANINGS: [(&str, &[&str]); 1] = [("geometry/grid/mod.rs", &["lane", "lanes"])];
-
 /// The identifiers of `code`, as Rust's lexer reads them, so no comment, string or character
 /// holds one.
 fn identifiers(code: &str) -> Vec<String> {
@@ -71,14 +67,8 @@ fn genre_words(code: &str) -> Vec<String> {
 fn no_capability_names_a_genres_words() {
     let mut named = Vec::new();
     for NamedCode { path, code } in capability_sources() {
-        let other = OTHER_MEANINGS
-            .iter()
-            .find(|&&(file, _)| file == path)
-            .map_or(&[][..], |&(_, words)| words);
         for word in genre_words(&code) {
-            if !other.contains(&word.as_str()) {
-                named.push(format!("{path}: {word}"));
-            }
+            named.push(format!("{path}: {word}"));
         }
     }
     named.sort();

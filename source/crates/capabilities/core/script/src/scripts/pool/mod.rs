@@ -1,4 +1,4 @@
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 
 use crate::scripts::call_start::{CallStart, Purity};
 use crate::scripts::script_role::ScriptRole;
@@ -10,7 +10,7 @@ use crate::scripts::script_role::ScriptRole;
 pub enum Pool {
     /// The calls a player causes: their units' actions, with those actions' deliveries and
     /// modifiers, and their mode inputs.
-    Player(Seat),
+    Player(PlayerSlot),
     /// AI `on_think` calls, and an action's or a modifier's hooks whose source no player
     /// controls, or is gone.
     Think,

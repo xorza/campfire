@@ -1,9 +1,9 @@
 use campfire_codec::BinaryError;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use secp256k1::XOnlyPublicKey;
 
 use super::*;
-use crate::checkpoint::log_carry::{CarriedInput, CarriedSeat};
+use crate::checkpoint::log_carry::{CarriedInput, CarriedPlayerSlot};
 use crate::control::Control;
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::delegation::{Delegation, DelegationTerms};
@@ -38,23 +38,23 @@ fn delegation() -> Delegation {
     Delegation::sign(&TestKey::signer(TestKey::of(11)), &terms, TestKey::NOW)
 }
 
-/// A record whose carry holds a seat of each controller, and an input still due.
+/// A record whose carry holds a player slot of each controller, and an input still due.
 fn record() -> Checkpoint {
-    let seat = |control| CarriedSeat {
+    let player_slot = |control| CarriedPlayerSlot {
         control,
         leaver: None,
         stamps: StampCount::default(),
         spill: Spill::default(),
     };
-    let mut chain = InputChain::new(Seat::new(0), InputHash::new([2; 32]));
+    let mut chain = InputChain::new(PlayerSlot::new(0), InputHash::new([2; 32]));
     chain.extend(Tick::new(4), b"a");
     let player = Control::Player {
         delegation: Box::new(delegation()),
         chain,
     };
-    let reserved = CarriedSeat {
+    let reserved = CarriedPlayerSlot {
         leaver: Some(MainKey::new([12; 32])),
-        ..seat(Control::Reserved)
+        ..player_slot(Control::Reserved)
     };
     Checkpoint {
         segment: 1,
@@ -62,15 +62,15 @@ fn record() -> Checkpoint {
         state_hash: StateHash::new([3; 32]),
         snapshot: SnapshotFingerprint::new([4; 32]),
         carry: LogCarry {
-            seats: vec![
-                seat(player),
-                seat(Control::Bot),
-                seat(Control::Open),
+            player_slots: vec![
+                player_slot(player),
+                player_slot(Control::Bot),
+                player_slot(Control::Open),
                 reserved,
             ],
             pending: vec![CarriedInput {
                 tick: Tick::new(6),
-                seat: Seat::new(0),
+                player_slot: PlayerSlot::new(0),
                 stamp: Tick::new(6),
                 payload: b"b".to_vec(),
             }],
@@ -131,7 +131,7 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
     broken[json_at] = b'[';
     assert!(matches!(
         Checkpoint::take(&broken),
-        Err(CheckpointDecodeError::Delegation { seat, .. }) if seat == Seat::new(0)
+        Err(CheckpointDecodeError::Delegation { player_slot, .. }) if player_slot == PlayerSlot::new(0)
     ));
     assert!(matches!(
         Checkpoint::take(&bytes[..10]),

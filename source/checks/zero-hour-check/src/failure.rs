@@ -1,4 +1,5 @@
 use campfire_bots::{BotScriptError, OrderScriptError, ThinkError};
+use campfire_common::DeclaredName;
 use campfire_math::{Num, Vec3};
 use campfire_mode::PickError;
 use campfire_orders::OrdersDirective;
@@ -34,7 +35,8 @@ pub(crate) enum CheckFailure {
     /// The import's trains, builds and dropped buttons by cause differ from the pinned.
     #[display("it converted {_0}")]
     Produced(Box<Differs<ProducedCounts>>),
-    /// The import's nodes, drop-offs, gathers and dropped supply by cause differ from the pinned.
+    /// The import's nodes, drop-offs, gathers, hacks and dropped supply by cause differ from the
+    /// pinned.
     #[display("it supplied {_0}")]
     Supplied(Box<Differs<SuppliedCounts>>),
     /// The imported mode has no unit type a play reads.
@@ -149,18 +151,21 @@ pub(crate) enum CheckFailure {
     NoBase(&'static str),
     /// The imported mode has no unit type of this name, which its base names.
     #[display("the imported mode has no unit type {_0}, which a base names")]
-    BaseType(String),
-    /// A seat of the base play holds none of a base building whole.
-    #[display("player {} holds no {unit}", seat + 1)]
-    BaseBuilding { seat: u32, unit: String },
-    /// A seat of the base play holds fewer of a base unit than its base's count.
-    #[display("player {} holds {held} of {unit}", seat + 1)]
+    BaseType(DeclaredName),
+    /// A player slot of the base play holds none of a base building whole.
+    #[display("player {} holds no {unit}", player_slot + 1)]
+    BaseBuilding {
+        player_slot: u32,
+        unit: DeclaredName,
+    },
+    /// A player slot of the base play holds fewer of a base unit than its base's count.
+    #[display("player {} holds {held} of {unit}", player_slot + 1)]
     BaseUnit {
-        seat: u32,
-        unit: String,
+        player_slot: u32,
+        unit: DeclaredName,
         held: usize,
     },
-    /// Bodies of the base play's seats overlap a wall, or a body, this many times.
+    /// Bodies of the base play's player slots overlap a wall, or a body, this many times.
     #[display("the bases' bodies overlap {_0} times")]
     BaseOverlaps(usize),
     /// The imported mode names no bot of the name.

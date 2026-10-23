@@ -8,13 +8,8 @@ license.workspace = true
 kind = "glue"
 
 [features]
-# The channels' LZ4 compression, in `net-channels`
-compression_lz4 = ["campfire-net-channels/compression_lz4"]
 internals = [
-    "dep:campfire-measure",
     "dep:bevy_utils",
-    "dep:bytes",
-    "dep:criterion",
     "dep:campfire-net-stepper",
     "campfire-net-channels/internals",
     "campfire-net-timeline/internals",
@@ -34,9 +29,6 @@ campfire-net-connection.workspace = true
 campfire-net-stepper = { workspace = true, optional = true }
 campfire-net-payload.workspace = true
 
-bytes = { workspace = true, features = ["std"], optional = true }
-campfire-measure = { workspace = true, optional = true }
-criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 bevy_app.workspace = true
@@ -46,14 +38,9 @@ bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
 bevy_utils = { workspace = true, features = ["debug"], optional = true }
 
 [dev-dependencies]
+bytes = { workspace = true, features = ["std"] }
 campfire-app-threads.workspace = true
 campfire-net-transport = { workspace = true, features = ["internals"] }
-
-
-[[bench]]
-name = "net-transport"
-harness = false
-required-features = ["internals"]
 
 [lints]
 workspace = true

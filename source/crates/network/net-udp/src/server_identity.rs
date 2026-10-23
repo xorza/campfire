@@ -9,7 +9,7 @@ use crate::raw_key_signer::RawKeySigner;
 use crate::reset_key::ResetKey;
 use crate::server_secret::ServerSecret;
 use crate::tls_provider;
-use campfire_common::TlsKey;
+use campfire_net_core::TlsKey;
 
 /// What a server presents to TLS, and the secret its reset key derives from (11-net-stack/udp.md, A
 /// server's identity and a client's trust match).

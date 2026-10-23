@@ -8,9 +8,6 @@
 )]
 
 mod app_channel_ext;
-#[cfg(feature = "internals")]
-pub mod bench;
-mod channel_reader;
 mod channel_registration;
 mod channel_registry;
 #[cfg(feature = "internals")]
@@ -21,7 +18,6 @@ mod transport_plugin;
 mod transport_systems;
 
 pub use crate::app_channel_ext::AppChannelExt;
-pub use crate::channel_reader::ChannelReader;
 pub use crate::channel_registration::ChannelRegistration;
 pub use crate::channel_registry::ChannelRegistry;
 pub use crate::packet_received::PacketReceived;
@@ -33,7 +29,6 @@ pub use crate::transport_systems::TransportSystems;
 /// fixtures and measurements.
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::fixtures::compression_case::{CompressionCase, CompressionRun};
     pub use crate::fixtures::protocol::{
         Channel1, ChannelOrderedReliable, ChannelSequencedReliable, ChannelSequencedUnreliable,
         ChannelUnorderedReliable, TransportProtocolPlugin, channel_id,

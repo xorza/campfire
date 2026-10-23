@@ -5,68 +5,45 @@ use std::slice;
 use std::sync::Arc;
 
 use campfire_codec::{StructFields, TomlError, TomlTable, TomlValue};
-use campfire_common::DeclaredName;
+use campfire_common::{DeclaredName, Ticks};
 use campfire_declarations::SectionReaders;
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_script::DataTable;
+use campfire_sim::MatchRate;
 use campfire_units::PoolCost;
 use campfire_values::{
-    Distance, FilterData, Number, PackagePath, Param, Rank, Ranked, Scalar, TextId,
+    Distance, FilterData, Number, PackagePath, Param, Rank, Ranked, Scalar, TextId, TimeTooLarge,
 };
 use serde::de::Error;
 use serde::{Deserialize, Serialize};
 
-use crate::action_data::error::ActionField;
 use crate::action_kind::ActionKind;
 use crate::action_range::ActionRange;
 use crate::cost_target::CostTarget;
-use crate::delivery_data::DeliveryData;
+use crate::delivery_section::{DeliverySection, DeliverySections};
+use crate::error::{ActionField, ActionProblem};
 use crate::kind_section::{KindSection, KindSections};
+use crate::kind_takes::Takes;
 use crate::list_hook::ListHook;
 use crate::listed_effect::effect_data::EffectData;
 use crate::listed_effect::error::EffectRule;
+use crate::pipeline_field::PipelineField;
 use crate::range_field::RangeField;
-use crate::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
+use crate::rank_toggle::{RankToggle, TogglePer};
+use crate::rank_values::{ChannelRule, ChargeRule, CostRun, LoadedRanks, RankValues};
 use crate::targeting::Targeting;
 
-pub(crate) mod error;
-
 /// An action as its package's `[actions.<id>]` declares it, in milliseconds: the pipeline's
-/// fields, each capability field one value or one per rank, and its kind's section, which reads
-/// the rest of its table (04-capabilities/actions.md, Each kind owns its section).
+/// keys, each capability field one value or one per rank, its delivery, its kind's section, which
+/// reads the rest of its table (04-capabilities/actions.md, Each kind owns its section), and its
+/// effect lists.
 #[derive(Debug, Clone)]
 pub struct ActionData {
-    /// The message of the name players see, which an avatar's or a loadout's action needs.
-    pub name: Option<TextId>,
-    /// The script, if the action needs one.
-    pub script: Option<PackagePath>,
-    pub targeting: Targeting,
-    pub range: Option<Ranked<RangeField>>,
-    /// The meters nearer than which it takes no target (04-capabilities/actions.md, An action may
-    /// keep a minimum range).
-    pub min_range: Option<Ranked<Number>>,
-    pub cooldown_ms: Option<Ranked<Number>>,
-    /// In each pool of the caster it names, and each resource of the caster's player.
-    pub cost: BTreeMap<DeclaredName, Ranked<Number>>,
-    pub windup_ms: Option<Ranked<Number>>,
-    /// A target beyond range is moved in, instead of the caster walking.
-    pub clamp_to_range: bool,
-    pub toggle: Option<Toggle>,
-    pub channel: Option<ChannelData>,
-    /// The modifier held while the toggle is on or the channel runs.
-    pub hold: Option<DeclaredName>,
-    pub charges: Option<ChargesData>,
-    /// A charged cast.
-    pub charging: Option<ChargeUpData>,
-    /// The modifier held while the action has a rank.
-    pub passive_modifier: Option<DeclaredName>,
-    /// The passive modifier is held only while the action is off cooldown.
-    pub passive_while_ready: bool,
-    /// How it reaches what it affects, other than at once.
-    pub delivery: Option<DeliveryData>,
-    /// Values for the script, as `ctx.params` reads them.
-    pub params: BTreeMap<DeclaredName, Param>,
+    pub keys: ActionKeys,
+    /// How it reaches what it affects, other than at once, as the module that registers the
+    /// delivery's form reads it.
+    pub delivery: Option<Arc<dyn DeliverySection>>,
     /// Its kind, and the fields of its kind's own, as the module that registers its kind reads
     /// them.
     pub section: Arc<dyn KindSection>,
@@ -82,47 +59,15 @@ pub struct ActionData {
 impl PartialEq for ActionData {
     fn eq(&self, other: &Self) -> bool {
         let Self {
-            name,
-            script,
-            targeting,
-            range,
-            min_range,
-            cooldown_ms,
-            cost,
-            windup_ms,
-            clamp_to_range,
-            toggle,
-            channel,
-            hold,
-            charges,
-            charging,
-            passive_modifier,
-            passive_while_ready,
+            keys,
             delivery,
-            params,
             section,
             on_resolve,
             on_hit,
             on_end,
         } = self;
-        *name == other.name
-            && *script == other.script
-            && *targeting == other.targeting
-            && *range == other.range
-            && *min_range == other.min_range
-            && *cooldown_ms == other.cooldown_ms
-            && *cost == other.cost
-            && *windup_ms == other.windup_ms
-            && *clamp_to_range == other.clamp_to_range
-            && *toggle == other.toggle
-            && *channel == other.channel
-            && *hold == other.hold
-            && *charges == other.charges
-            && *charging == other.charging
-            && *passive_modifier == other.passive_modifier
-            && *passive_while_ready == other.passive_while_ready
+        *keys == other.keys
             && *delivery == other.delivery
-            && *params == other.params
             && **section == *other.section
             && *on_resolve == other.on_resolve
             && *on_hit == other.on_hit
@@ -132,48 +77,55 @@ impl PartialEq for ActionData {
 
 impl Eq for ActionData {}
 
-/// The keys of an action's table that the pipeline reads, every kind's: its kind's name, which
-/// picks the reader of its section, and the fields of `ActionData` but its section and its lists,
-/// which read with the release's readers. A tool writes an action through them, beside its
-/// kind's section (03-game-scripting.md, A section has a partial form).
+/// The keys of an action's table that the pipeline reads, every kind's, but its kind's name,
+/// which its section gives, its delivery and its lists, which read with the release's readers. A
+/// tool writes an action through them, beside its kind's section (03-game-scripting.md, A section
+/// has a partial form).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionKeys {
+    /// The message of the name players see, which an avatar's or a loadout's action needs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<TextId>,
-    #[serde(default)]
-    pub kind: ActionKind,
+    /// The script, if the action needs one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub script: Option<PackagePath>,
     pub targeting: Targeting,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<Ranked<RangeField>>,
+    /// The meters nearer than which it takes no target (04-capabilities/actions.md, An action may
+    /// keep a minimum range).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_range: Option<Ranked<Number>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cooldown_ms: Option<Ranked<Number>>,
+    /// In each pool of the caster it names, and each resource of the caster's player.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub cost: BTreeMap<DeclaredName, Ranked<Number>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub windup_ms: Option<Ranked<Number>>,
+    /// A target beyond range is moved in, instead of the caster walking.
     #[serde(default, skip_serializing_if = "is_off")]
     pub clamp_to_range: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub toggle: Option<Toggle>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel: Option<ChannelData>,
+    /// The modifier held while the toggle is on or the channel runs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hold: Option<DeclaredName>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub charges: Option<ChargesData>,
+    /// A charged cast.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub charging: Option<ChargeUpData>,
+    /// The modifier held while the action has a rank.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub passive_modifier: Option<DeclaredName>,
+    /// The passive modifier is held only while the action is off cooldown.
     #[serde(default, skip_serializing_if = "is_off")]
     pub passive_while_ready: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub delivery: Option<DeliveryData>,
+    /// Values for the script, as `ctx.params` reads them.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<DeclaredName, Param>,
 }
@@ -187,11 +139,10 @@ const fn is_off(flag: &bool) -> bool {
 }
 
 impl ActionKeys {
-    /// The keys of an action of `kind` that targets as `targeting`, and gives no other key.
-    pub const fn new(kind: ActionKind, targeting: Targeting) -> Self {
+    /// The keys of an action that targets as `targeting`, and gives no other key.
+    pub const fn new(targeting: Targeting) -> Self {
         Self {
             name: None,
-            kind,
             script: None,
             targeting,
             range: None,
@@ -207,20 +158,29 @@ impl ActionKeys {
             charging: None,
             passive_modifier: None,
             passive_while_ready: false,
-            delivery: None,
             params: BTreeMap::new(),
         }
+    }
+
+    /// The table of the action of these keys, `section`, the fields of its kind's own, and its
+    /// `delivery`, as `ActionData::read` takes them apart.
+    pub fn table_delivering<K: KindSection + Serialize, D: DeliverySection + Serialize>(
+        &self,
+        section: &K,
+        delivery: &D,
+    ) -> TomlTable {
+        let mut table = self.table(section);
+        table.insert(ActionData::DELIVERY.to_owned(), TomlValue::of(delivery));
+        table
     }
 
     /// The table of the action of these keys and `section`, the fields of its kind's own, side
     /// by side, as `ActionData::read` takes them apart.
     pub fn table<K: KindSection + Serialize>(&self, section: &K) -> TomlTable {
-        debug_assert_eq!(
-            self.kind,
-            section.kind(),
-            "an action's section is of its kind"
-        );
         let mut table: TomlTable = TomlValue::of(self).read().expect("the keys write a table");
+        if section.kind() != ActionKind::default() {
+            table.insert(ActionData::KIND.to_owned(), TomlValue::of(&section.kind()));
+        }
         let fields: TomlTable = TomlValue::of(section)
             .read()
             .expect("a kind's section writes a table");
@@ -243,15 +203,37 @@ pub enum Toggle {
     CostPerSecond(BTreeMap<DeclaredName, Ranked<Number>>),
 }
 
-/// A channel, which starts after `on_resolve` and calls `on_channel_tick` every `tick_ms`; with
-/// `damage_interrupts`, damage of more than 0 to its unit cuts it.
+/// A channel, which starts after `on_resolve` and calls `on_channel_tick` every `tick_ms`, for
+/// `duration_ms`, or with none until an order, a stop, its unit's death or a tag ends it; with
+/// `damage_interrupts`, damage of more than 0 to its unit cuts it. Its cast's windup spreads by
+/// `windup_spread` each way, a fraction below 1 drawn as the cast starts; an order that cuts it
+/// waits `wind_down_ms`, and the last given then runs; each tick pays its unit's owner `pays`
+/// (04-capabilities/actions.md, A channel with no end).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChannelData {
-    pub duration_ms: Ranked<Number>,
+    #[serde(default)]
+    pub duration_ms: Option<Ranked<Number>>,
     pub tick_ms: Ranked<Number>,
     #[serde(default)]
     pub damage_interrupts: bool,
+    #[serde(default)]
+    pub windup_spread: Option<Ranked<Number>>,
+    #[serde(default)]
+    pub wind_down_ms: Option<Ranked<Number>>,
+    #[serde(default)]
+    pub pays: Option<ChannelPaysData>,
+}
+
+/// What each tick of a channel pays its unit's owner: `amount` of `resource`, by the unit's level
+/// on `track`, from level 1, the last for each level past them; with no track, one amount.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChannelPaysData {
+    pub resource: DeclaredName,
+    #[serde(default)]
+    pub track: Option<DeclaredName>,
+    pub amount: Vec<u32>,
 }
 
 /// An action's `charges`: the uses it stores, at most `max`, each coming back `recharge_ms`
@@ -277,10 +259,10 @@ impl ActionData {
 
     /// The length of every per-rank array it holds: its capability fields' and its params'.
     pub fn rank_counts(&self) -> impl Iterator<Item = usize> + '_ {
-        let range = self.range.as_ref().and_then(Ranked::ranks);
+        let range = self.keys.range.as_ref().and_then(Ranked::ranks);
         let numbers = self.ranked_numbers().chain(self.costs());
         let numbers = numbers.chain(self.section.numbers()).map(Ranked::ranks);
-        let params = self.params.values().map(Param::ranks);
+        let params = self.keys.params.values().map(Param::ranks);
         [range].into_iter().chain(numbers).chain(params).flatten()
     }
 
@@ -288,14 +270,28 @@ impl ActionData {
     /// param: its minimum range, cooldown, windup, channel, charges and charge.
     fn ranked_numbers(&self) -> impl Iterator<Item = &Ranked<Number>> {
         [
-            self.min_range.as_ref(),
-            self.cooldown_ms.as_ref(),
-            self.windup_ms.as_ref(),
-            self.channel.as_ref().map(|channel| &channel.duration_ms),
-            self.channel.as_ref().map(|channel| &channel.tick_ms),
-            self.charges.as_ref().map(|charges| &charges.max),
-            self.charges.as_ref().map(|charges| &charges.recharge_ms),
-            self.charging.as_ref().map(|charge| &charge.max_ms),
+            self.keys.min_range.as_ref(),
+            self.keys.cooldown_ms.as_ref(),
+            self.keys.windup_ms.as_ref(),
+            self.keys
+                .channel
+                .as_ref()
+                .and_then(|channel| channel.duration_ms.as_ref()),
+            self.keys.channel.as_ref().map(|channel| &channel.tick_ms),
+            self.keys
+                .channel
+                .as_ref()
+                .and_then(|channel| channel.windup_spread.as_ref()),
+            self.keys
+                .channel
+                .as_ref()
+                .and_then(|channel| channel.wind_down_ms.as_ref()),
+            self.keys.charges.as_ref().map(|charges| &charges.max),
+            self.keys
+                .charges
+                .as_ref()
+                .map(|charges| &charges.recharge_ms),
+            self.keys.charging.as_ref().map(|charge| &charge.max_ms),
         ]
         .into_iter()
         .flatten()
@@ -303,20 +299,22 @@ impl ActionData {
 
     /// Every pool or player resource it costs something in, its toggle's among them.
     pub fn cost_names(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
-        self.cost
+        self.keys
+            .cost
             .keys()
             .chain(self.toggle_cost().into_iter().flat_map(BTreeMap::keys))
     }
 
     /// Each amount of its cost and its toggle's, in its pools.
     fn costs(&self) -> impl Iterator<Item = &Ranked<Number>> + '_ {
-        self.cost
+        self.keys
+            .cost
             .values()
             .chain(self.toggle_cost().into_iter().flat_map(BTreeMap::values))
     }
 
     fn toggle_cost(&self) -> Option<&BTreeMap<DeclaredName, Ranked<Number>>> {
-        self.toggle.as_ref().map(|toggle| match toggle {
+        self.keys.toggle.as_ref().map(|toggle| match toggle {
             Toggle::CostPerAttack(cost) | Toggle::CostPerSecond(cost) => cost,
         })
     }
@@ -327,7 +325,7 @@ impl ActionData {
     pub(crate) fn number_rule(&self, number: &Number) -> Result<(), EffectRule> {
         let (value, param) = match number {
             Number::Value(value) => (Some(value.to_num()), None),
-            Number::Param(reference) => (None, self.params.get(&reference.param)),
+            Number::Param(reference) => (None, self.keys.params.get(&reference.param)),
         };
         let values = value
             .into_iter()
@@ -345,7 +343,7 @@ impl ActionData {
     pub(crate) fn whole_ms(&self, duration: &Number) -> bool {
         let values = match duration {
             Number::Value(value) => slice::from_ref(value),
-            Number::Param(reference) => match self.params.get(&reference.param) {
+            Number::Param(reference) => match self.keys.params.get(&reference.param) {
                 Some(Param::Ranked(ranked)) => ranked.values(),
                 Some(Param::Scaling(_)) => return false,
                 None => &[],
@@ -360,19 +358,61 @@ impl ActionData {
         self.rank_counts().all(|count| count == ranks)
     }
 
+    /// Its fields at each of its `ranks` ranks, times in ticks at `rate`, what its cost's names
+    /// take from by `target`; an error for a per-rank array of another length, a
+    /// field that does not hold at a rank, a use's, a build's or a gather's range that is global
+    /// at a rank, a minimum range not within a range of meters at a rank, or a time that does not
+    /// count in ticks.
+    pub(crate) fn load_ranks(
+        &self,
+        ranks: u8,
+        rate: MatchRate,
+        target: impl Fn(&DeclaredName) -> Option<CostTarget>,
+    ) -> Result<LoadedRanks, ActionProblem> {
+        if !self.check_ranks(usize::from(ranks)) {
+            return Err(ActionProblem::RankCount(ranks));
+        }
+        let metered = self.section.takes().metered();
+        let mut loaded = LoadedRanks {
+            values: Vec::with_capacity(usize::from(ranks)),
+            resource_costs: Vec::new(),
+        };
+        for rank in (1..=ranks).filter_map(Rank::new) {
+            let values = self.rank_values(rank, rate, &target, &mut loaded.resource_costs)?;
+            if metered && values.range == ActionRange::Global {
+                return Err(ActionProblem::Global);
+            }
+            let within = |min: Distance| match values.range {
+                ActionRange::Meters(range) => min < range,
+                ActionRange::Global => false,
+            };
+            if values.min_range.is_some_and(|min| !within(min)) {
+                return Err(ActionProblem::MinRange);
+            }
+            loaded.values.push(values);
+        }
+        Ok(loaded)
+    }
+
     /// Its capability fields at `rank`, a `{ param }` read from its params at that rank, what
-    /// each name of its cost takes from by `target`: global reach and 0 for a field it lacks;
-    /// the field that does not hold otherwise. A field must be a whole number of milliseconds,
-    /// of a pool or of a player resource that `target` finds, or a range of meters that is not
+    /// each name of its cost takes from by `target`, times in ticks at `rate`: global reach and 0
+    /// for a field it lacks; its costs in player resources pushed onto `resource_costs`, whose
+    /// run it holds. A field must be a whole number of milliseconds that counts in ticks, of a
+    /// pool or of a player resource that `target` finds, or a range of meters that is not
     /// negative; and it may not read a scaling param, whose value is the caster's, not the
     /// action's.
-    pub fn fields_at(
+    pub(crate) fn rank_values(
         &self,
         rank: Rank,
+        rate: MatchRate,
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
-    ) -> Result<RankFields, ActionField> {
+        resource_costs: &mut Vec<ResourceAmount>,
+    ) -> Result<RankValues, ActionProblem> {
         let whole = |field, ranked: Option<&Ranked<Number>>| self.whole(rank, field, ranked);
-        let range = match &self.range {
+        let ticks = |field, ranked: Option<&Ranked<Number>>| {
+            Ok::<_, ActionProblem>(rate.ticks(whole(field, ranked)?).ok_or(TimeTooLarge)?)
+        };
+        let range = match &self.keys.range {
             None => ActionRange::Global,
             Some(ranked) => match ranked.get(rank).ok_or(ActionField::Range)? {
                 RangeField::Range(range) => *range,
@@ -384,9 +424,9 @@ impl ActionData {
                 }
             },
         };
-        let mut cost = Vec::with_capacity(self.cost.len());
-        let mut resource_cost = Vec::with_capacity(self.cost.len());
-        for (name, amount) in &self.cost {
+        let mut cost = Vec::with_capacity(self.keys.cost.len());
+        let start = resource_costs.len();
+        for (name, amount) in &self.keys.cost {
             let amount = whole(ActionField::Cost, Some(amount))?;
             let amount = i64::try_from(amount).ok().ok_or(ActionField::Cost)?;
             match target(name).ok_or(ActionField::Cost)? {
@@ -394,25 +434,25 @@ impl ActionData {
                     cost.push((pool, Num::from_int(amount).ok_or(ActionField::Cost)?));
                 }
                 CostTarget::Resource(resource) => {
-                    resource_cost.push(ResourceAmount { resource, amount });
+                    resource_costs.push(ResourceAmount { resource, amount });
                 }
             }
         }
-        let min_range = self.min_range.as_ref().map(|ranked| {
+        let min_range = self.keys.min_range.as_ref().map(|ranked| {
             let meters = self.value_at(rank, ranked).and_then(Scalar::to_num);
             meters.and_then(Distance::new).ok_or(ActionField::MinRange)
         });
-        Ok(RankFields {
+        Ok(RankValues {
             range,
             min_range: min_range.transpose()?,
-            cooldown_ms: whole(ActionField::Cooldown, self.cooldown_ms.as_ref())?,
+            cooldown: ticks(ActionField::Cooldown, self.keys.cooldown_ms.as_ref())?,
             cost: PoolCost::new(cost),
-            resource_cost,
-            windup_ms: whole(ActionField::Windup, self.windup_ms.as_ref())?,
-            charges: self.charges_at(rank)?,
+            windup: ticks(ActionField::Windup, self.keys.windup_ms.as_ref())?,
+            charges: self.charges_at(rank, rate)?,
             toggle: self.toggle_at(rank, &target)?,
-            channel: self.channel_at(rank)?,
-            charge_ms: self.charge_at(rank)?,
+            channel: self.channel_at(rank, rate)?,
+            charge: self.charge_at(rank, rate)?,
+            resource_cost: CostRun::new(start, resource_costs.len()),
         })
     }
 
@@ -438,7 +478,7 @@ impl ActionData {
     /// Its param `name` at `rank`, a ranked one; none for one it does not declare, or a scaling
     /// one.
     fn param_at(&self, rank: Rank, name: &str) -> Option<Scalar> {
-        match self.params.get(name) {
+        match self.keys.params.get(name) {
             Some(Param::Ranked(ranked)) => ranked.get(rank).copied(),
             Some(Param::Scaling(_)) | None => None,
         }
@@ -456,16 +496,18 @@ impl ActionData {
     }
 
     /// Its charges at `rank`: a count of 1 to 255, and a recharge.
-    fn charges_at(&self, rank: Rank) -> Result<Option<RankCharges>, ActionField> {
+    fn charges_at(&self, rank: Rank, rate: MatchRate) -> Result<Option<ChargeRule>, ActionProblem> {
         let field = ActionField::Charges;
-        self.charges
+        self.keys
+            .charges
             .as_ref()
             .map(|charges| {
                 let max = self.whole(rank, field, Some(&charges.max))?;
                 let max = u8::try_from(max).ok().and_then(NonZeroU8::new);
-                Ok(RankCharges {
+                let recharge = self.whole(rank, field, Some(&charges.recharge_ms))?;
+                Ok(ChargeRule {
                     max: max.ok_or(field)?,
-                    recharge_ms: self.whole(rank, field, Some(&charges.recharge_ms))?,
+                    recharge: rate.ticks(recharge).ok_or(TimeTooLarge)?,
                 })
             })
             .transpose()
@@ -478,7 +520,8 @@ impl ActionData {
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
     ) -> Result<Option<RankToggle>, ActionField> {
         let field = ActionField::Toggle;
-        self.toggle
+        self.keys
+            .toggle
             .as_ref()
             .map(|toggle| {
                 let (per, costs) = match toggle {
@@ -503,33 +546,49 @@ impl ActionData {
     }
 
     /// Its charge's most at `rank`: whole milliseconds, not 0.
-    fn charge_at(&self, rank: Rank) -> Result<Option<u64>, ActionField> {
+    fn charge_at(&self, rank: Rank, rate: MatchRate) -> Result<Option<Ticks>, ActionProblem> {
         let field = ActionField::Charge;
-        self.charging
+        self.keys
+            .charging
             .as_ref()
             .map(|charge| {
                 let most = self.whole(rank, field, Some(&charge.max_ms))?;
-                (most > 0).then_some(most).ok_or(field)
+                let most = (most > 0).then_some(most).ok_or(field)?;
+                Ok(rate.ticks(most).ok_or(TimeTooLarge)?)
             })
             .transpose()
     }
 
-    /// Its channel at `rank`: a length and a time between ticks, neither 0, and whether damage
-    /// cuts it.
-    fn channel_at(&self, rank: Rank) -> Result<Option<RankChannel>, ActionField> {
+    /// Its channel at `rank`: a length, when it has one, a time between ticks and a wind-down,
+    /// when it has one, none of them 0, a windup spread of 0 to below 1, and whether damage cuts
+    /// it.
+    fn channel_at(
+        &self,
+        rank: Rank,
+        rate: MatchRate,
+    ) -> Result<Option<ChannelRule>, ActionProblem> {
         let field = ActionField::Channel;
-        self.channel
+        self.keys
+            .channel
             .as_ref()
             .map(|channel| {
-                let duration_ms = self.whole(rank, field, Some(&channel.duration_ms))?;
-                let tick_ms = self.whole(rank, field, Some(&channel.tick_ms))?;
-                if duration_ms == 0 || tick_ms == 0 {
-                    return Err(field);
-                }
-                Ok(RankChannel {
-                    duration_ms,
-                    tick_ms,
+                let ticks = |ranked: &Ranked<Number>| {
+                    let ms = self.whole(rank, field, Some(ranked))?;
+                    let ms = (ms > 0).then_some(ms).ok_or(field)?;
+                    Ok::<_, ActionProblem>(rate.ticks(ms).ok_or(TimeTooLarge)?)
+                };
+                let spread = channel.windup_spread.as_ref().map(|ranked| {
+                    let spread = self.value_at(rank, ranked).and_then(Scalar::to_num);
+                    spread
+                        .filter(|spread| (Num::ZERO..Num::ONE).contains(spread))
+                        .ok_or(field)
+                });
+                Ok(ChannelRule {
+                    duration: channel.duration_ms.as_ref().map(ticks).transpose()?,
+                    tick: ticks(&channel.tick_ms)?,
                     damage_interrupts: channel.damage_interrupts,
+                    windup_spread: spread.transpose()?,
+                    wind_down: channel.wind_down_ms.as_ref().map(ticks).transpose()?,
                 })
             })
             .transpose()
@@ -542,15 +601,12 @@ impl ActionData {
             .chain(self.section.numbers())
             .flat_map(Ranked::values)
             .filter_map(Number::param)
-            .chain(
-                self.range
-                    .iter()
-                    .flat_map(Ranked::values)
-                    .filter_map(|range| match range {
-                        RangeField::Range(_) => None,
-                        RangeField::Param(reference) => Some(&reference.param),
-                    }),
-            )
+            .chain(self.keys.range.iter().flat_map(Ranked::values).filter_map(
+                |range| match range {
+                    RangeField::Range(_) => None,
+                    RangeField::Param(reference) => Some(&reference.param),
+                },
+            ))
             .chain(
                 self.effects()
                     .flat_map(|effect| effect.does.numbers())
@@ -562,7 +618,7 @@ impl ActionData {
     /// effect lists apply.
     pub fn modifiers(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
         let effects = self.effects().filter_map(|effect| effect.does.modifier());
-        [self.hold.as_ref(), self.passive_modifier.as_ref()]
+        [self.keys.hold.as_ref(), self.keys.passive_modifier.as_ref()]
             .into_iter()
             .flatten()
             .chain(effects)
@@ -570,6 +626,12 @@ impl ActionData {
 
     /// The keys of its effect lists.
     pub const LISTS: [&'static str; 3] = ["on_resolve", "on_hit", "on_end"];
+
+    /// The key of its delivery, whose form its module reads.
+    pub const DELIVERY: &'static str = "delivery";
+
+    /// The key of its kind's name, which picks the reader of its section.
+    pub const KIND: &'static str = "kind";
 
     /// Its effect lists, each with the hook it runs before: `on_resolve`, `on_hit`, `on_end`.
     pub const fn effect_lists(&self) -> [(ListHook, &[EffectData]); 3] {
@@ -602,7 +664,7 @@ impl ActionData {
     /// them; its kind's section reads the rest.
     pub fn pipeline_keys() -> impl Iterator<Item = &'static str> {
         let keys = StructFields::of::<ActionKeys>().iter().copied();
-        keys.chain(Self::LISTS)
+        keys.chain(Self::LISTS).chain([Self::DELIVERY, Self::KIND])
     }
 
     /// The action `table` gives: its lists each read with the release's `readers`, the keys of
@@ -615,28 +677,15 @@ impl ActionData {
                 .map_or(Ok(Vec::new()), |list| EffectData::read_list(list, readers))
         };
         let [on_resolve, on_hit, on_end] = Self::LISTS.map(&mut list);
+        let delivery = table.take_value(Self::DELIVERY);
+        let delivery = delivery.map(|delivery| Self::read_delivery(delivery, readers));
+        let kind = table
+            .take_value(Self::KIND)
+            .map(TomlValue::read)
+            .transpose()?;
+        let kind: ActionKind = kind.unwrap_or_default();
         let keys = table.take_keys(StructFields::of::<ActionKeys>().iter().copied());
-        let ActionKeys {
-            name,
-            kind,
-            script,
-            targeting,
-            range,
-            min_range,
-            cooldown_ms,
-            cost,
-            windup_ms,
-            clamp_to_range,
-            toggle,
-            channel,
-            hold,
-            charges,
-            charging,
-            passive_modifier,
-            passive_while_ready,
-            delivery,
-            params,
-        } = keys.read()?;
+        let keys: ActionKeys = keys.read()?;
         let Some(read) = readers.listed::<KindSections>(kind.name()) else {
             return Err(TomlError::custom(format_args!(
                 "the release runs no action of the kind `{}`",
@@ -650,29 +699,83 @@ impl ActionData {
             "a kind's section is registered by its kind's name"
         );
         Ok(Self {
-            name,
-            script,
-            targeting,
-            range,
-            min_range,
-            cooldown_ms,
-            cost,
-            windup_ms,
-            clamp_to_range,
-            toggle,
-            channel,
-            hold,
-            charges,
-            charging,
-            passive_modifier,
-            passive_while_ready,
-            delivery,
-            params,
+            keys,
+            delivery: delivery.transpose()?,
             section,
             on_resolve: on_resolve?,
             on_hit: on_hit?,
             on_end: on_end?,
         })
+    }
+
+    /// The delivery `value` gives, as the module whose form's key it names reads it: an error for
+    /// a delivery that names no form a module registers, or two.
+    fn read_delivery(
+        value: TomlValue,
+        readers: &SectionReaders,
+    ) -> Result<Arc<dyn DeliverySection>, TomlError> {
+        let table: TomlTable = value.clone().read()?;
+        let mut named = readers
+            .listed_keys::<DeliverySections>()
+            .filter(|key| table.holds(key));
+        let (Some(key), None) = (named.next(), named.next()) else {
+            let forms: Vec<&str> = readers.listed_keys::<DeliverySections>().collect();
+            return Err(TomlError::custom(format_args!(
+                "a delivery names one of {}",
+                forms.join(", ")
+            )));
+        };
+        let read = readers
+            .listed::<DeliverySections>(key)
+            .expect("a listed key has its read");
+        read(value, readers)
+    }
+
+    /// Its delivery, when its form is a `D`.
+    pub fn delivery<D: DeliverySection>(&self) -> Option<&D> {
+        let delivery = self.delivery.as_deref()?;
+        (delivery as &dyn Any).downcast_ref::<D>()
+    }
+
+    /// Whether it gives `field`: a value, a list or a table that is not empty, or a flag that is
+    /// on.
+    fn gives(&self, field: PipelineField) -> bool {
+        let keys = &self.keys;
+        match field {
+            PipelineField::Script => keys.script.is_some(),
+            PipelineField::Range => keys.range.is_some(),
+            PipelineField::MinRange => keys.min_range.is_some(),
+            PipelineField::CooldownMs => keys.cooldown_ms.is_some(),
+            PipelineField::Cost => !keys.cost.is_empty(),
+            PipelineField::WindupMs => keys.windup_ms.is_some(),
+            PipelineField::ClampToRange => keys.clamp_to_range,
+            PipelineField::Toggle => keys.toggle.is_some(),
+            PipelineField::Channel => keys.channel.is_some(),
+            PipelineField::Hold => keys.hold.is_some(),
+            PipelineField::Charges => keys.charges.is_some(),
+            PipelineField::Charging => keys.charging.is_some(),
+            PipelineField::PassiveModifier => keys.passive_modifier.is_some(),
+            PipelineField::PassiveWhileReady => keys.passive_while_ready,
+            PipelineField::Delivery => self.delivery.is_some(),
+            PipelineField::Params => !keys.params.is_empty(),
+            PipelineField::OnResolve => !self.on_resolve.is_empty(),
+            PipelineField::OnHit => !self.on_hit.is_empty(),
+            PipelineField::OnEnd => !self.on_end.is_empty(),
+        }
+    }
+
+    /// The first field of the pipeline it gives that its kind never takes, or does not give that
+    /// its kind always takes.
+    pub fn misused(&self) -> Option<PipelineField> {
+        let takes = self.section.takes();
+        PipelineField::ALL
+            .iter()
+            .copied()
+            .find(|&field| match takes.of(field) {
+                Takes::Never => self.gives(field),
+                Takes::May => false,
+                Takes::Must => !self.gives(field),
+            })
     }
 
     /// Its kind, as its section gives it.
@@ -687,7 +790,7 @@ impl ActionData {
 
     /// The filter its data names: its targeting's.
     pub fn filters(&self) -> impl Iterator<Item = &FilterData> + '_ {
-        match &self.targeting {
+        match &self.keys.targeting {
             Targeting::Unit(filter) => Some(filter),
             Targeting::None | Targeting::Point | Targeting::Direction => None,
         }
@@ -697,10 +800,9 @@ impl ActionData {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use std::collections::BTreeMap;
     use std::sync::Arc;
 
-    use crate::action_data::ActionData;
+    use crate::action_data::{ActionData, ActionKeys};
     use crate::kind_section::KindSection;
     use crate::targeting::Targeting;
 
@@ -709,24 +811,8 @@ pub(crate) mod internals {
         /// its kind and its targeting alone reads.
         pub fn of(targeting: Targeting, section: impl KindSection) -> Self {
             Self {
-                name: None,
-                script: None,
-                targeting,
-                range: None,
-                min_range: None,
-                cooldown_ms: None,
-                cost: BTreeMap::new(),
-                windup_ms: None,
-                clamp_to_range: false,
-                toggle: None,
-                channel: None,
-                hold: None,
-                charges: None,
-                charging: None,
-                passive_modifier: None,
-                passive_while_ready: false,
+                keys: ActionKeys::new(targeting),
                 delivery: None,
-                params: BTreeMap::new(),
                 section: Arc::new(section),
                 on_resolve: Vec::new(),
                 on_hit: Vec::new(),
@@ -742,6 +828,13 @@ mod tests {
 
     use super::*;
     use crate::kind_section::tests::TestKind;
+    use std::num::NonZeroU32;
+
+    use campfire_units::PoolId;
+    use campfire_values::ResourceId;
+
+    use crate::kind_takes::KindTakes;
+    use campfire_common::NamedEnum;
 
     fn read(text: &str) -> Result<ActionData, TomlError> {
         ActionData::read(Toml::parse(text)?, &TestKind::readers())
@@ -755,7 +848,7 @@ mod tests {
         );
         let read_most = read("targeting = \"point\"\ncooldown_ms = 5\nmost = [1, 2]").unwrap();
         assert_eq!(
-            read_most.cooldown_ms,
+            read_most.keys.cooldown_ms,
             Some(Ranked::One(Number::Value(Scalar::Int(5))))
         );
         let most = Ranked::PerRank(vec![
@@ -766,13 +859,65 @@ mod tests {
         // The kind reads what the pipeline does not, so it refuses a key neither takes.
         let unknown = read("targeting = \"none\"\nfastest = 1").unwrap_err();
         assert!(unknown.to_string().contains("fastest"), "{unknown}");
-        // `enter` has no section in the crate's readers.
-        let unrun = read("targeting = \"none\"\nkind = \"enter\"").unwrap_err();
+        // `train` has no section in the crate's readers.
+        let unrun = read("targeting = \"none\"\nkind = \"train\"").unwrap_err();
         assert!(
-            unrun.to_string().contains("no action of the kind `enter`"),
+            unrun.to_string().contains("no action of the kind `train`"),
             "{unrun}"
         );
         // The kind's numbers count its ranks.
         assert!(read_most.check_ranks(2) && !read_most.check_ranks(1));
+    }
+
+    #[test]
+    fn the_pipeline_fields_are_the_keys_of_every_kind_but_the_name_and_the_targeting() {
+        // The keys' fields but the name and the targeting, every action's, and the delivery and
+        // the lists, which read apart: one field each, in the keys' order.
+        let mut keys: Vec<&str> = StructFields::of::<ActionKeys>()
+            .iter()
+            .copied()
+            .filter(|&key| key != "name" && key != "targeting")
+            .collect();
+        keys.push(ActionData::DELIVERY);
+        keys.extend(ActionData::LISTS);
+        let mut fields = PipelineField::NAMES.to_vec();
+        keys.sort_unstable();
+        fields.sort_unstable();
+        assert_eq!(fields, keys);
+        // A kind takes a minimum range with any range, and a hold while ready with its passive.
+        let takes = KindTakes::NONE.with(Takes::Must, &[PipelineField::Range]);
+        assert_eq!(takes.of(PipelineField::MinRange), Takes::May);
+        assert_eq!(takes.of(PipelineField::PassiveWhileReady), Takes::Never);
+        assert!(takes.metered() && !KindTakes::ANY.metered());
+        let passive = KindTakes::NONE.with(Takes::May, &[PipelineField::PassiveModifier]);
+        assert_eq!(passive.of(PipelineField::PassiveWhileReady), Takes::May);
+        assert_eq!(passive.of(PipelineField::MinRange), Takes::Never);
+    }
+
+    #[test]
+    fn each_rank_holds_the_run_of_its_own_resource_costs() {
+        // Costs in name order: gems 3 at both ranks, gold 50 then 75, and mana, a pool's, apart.
+        let text = "targeting = \"none\"\ncost = { gold = [50, 75], gems = 3, mana = 10 }";
+        let data = ActionData::read(Toml::parse(text).unwrap(), &TestKind::readers()).unwrap();
+        let [gems, gold] = [0, 1].map(ResourceId::new);
+        let target = |name: &DeclaredName| match name.as_str() {
+            "gems" => Some(CostTarget::Resource(gems)),
+            "gold" => Some(CostTarget::Resource(gold)),
+            "mana" => PoolId::new(0).map(CostTarget::Pool),
+            _ => None,
+        };
+        let rate = MatchRate::new(NonZeroU32::new(30).unwrap());
+        let loaded = data.load_ranks(2, rate, target).unwrap();
+        let cost = |resource, amount| ResourceAmount { resource, amount };
+        let runs: Vec<&[ResourceAmount]> = (loaded.values.iter())
+            .map(|values| &loaded.resource_costs[values.resource_cost.range()])
+            .collect();
+        assert_eq!(
+            runs,
+            [
+                &[cost(gems, 3), cost(gold, 50)][..],
+                &[cost(gems, 3), cost(gold, 75)][..],
+            ]
+        );
     }
 }

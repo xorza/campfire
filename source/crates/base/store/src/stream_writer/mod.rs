@@ -4,9 +4,9 @@ use std::path::Path;
 use std::sync::{Arc, Condvar};
 
 use crate::path_error::PathError;
-use crate::platform::user_only::UserOnly;
 use crate::stream_writer::error::StreamError;
 use crate::stream_writer::stream_sender::StreamSender;
+use campfire_platform::UserOnly;
 use campfire_threads::{Failure, ThreadName, Worker, WorkerLock};
 
 pub(crate) mod error;

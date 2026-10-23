@@ -5,12 +5,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
 use campfire_common::Tick;
+use campfire_host::internals::TickHashes;
+use campfire_host::{JoinError, JoinRefused, JoinState, MatchClock};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{Progress, Route};
-use campfire_net::internals::TickHashes;
-use campfire_net::{
-    CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock,
-};
+use campfire_net::{CloseCode, LinkLossCause, LinkLost};
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{InProcessMatch, InProcessSetup};
 use campfire_net_replication::ConfirmedTickMap;
@@ -165,7 +164,7 @@ fn held(local: &mut InProcessMatch, client: usize) -> Vec<StableId> {
 }
 
 #[test]
-fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_sits() {
+fn a_link_holds_only_what_its_held_team_sees_and_learns_the_relations_as_it_sits() {
     // A solo match: the west hero at (0, −2) sees 6 m, so the east tower at (8, −3) is hidden.
     let mut local = InProcessMatch::new(InProcessSetup::SOLO);
     local.start_match();
@@ -192,8 +191,8 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     assert!(held(&mut local, 0).contains(&hero));
     assert!(!held(&mut local, 0).contains(&tower));
 
-    // A second login of the player takes the seat in a new app: it holds the hero and not the
-    // hidden tower, and the relations a script set before it sat.
+    // A second login of the player takes the player slot in a new app: it holds the hero and not
+    // the hidden tower, and the relations a script set before it sat.
     let second = local.add_client(0);
     let playing = |local: &InProcessMatch| {
         let state = local.client(second).world().resource::<JoinState>();
@@ -241,7 +240,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
         .iter()
         .map(|refused| refused.error)
         .collect();
-    assert_eq!(refused, [JoinError::NoSeat]);
+    assert_eq!(refused, [JoinError::NoPlayerSlot]);
     assert_eq!(
         local.log().take::<LinkLost>(),
         [LinkLost {

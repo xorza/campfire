@@ -9,31 +9,24 @@ use crate::send_queue::Priority;
 use bevy_ecs::query::{Has, QueryFilter, With};
 use bevy_ecs::{
     entity::EntitySet,
-    relationship::RelationshipTarget,
     system::{Local, Query, Res, SystemParam},
 };
 use bytes::Bytes;
-use campfire_common::ErrorReport;
 use campfire_net_bytes::Writer;
 use campfire_net_channels::Channel;
 use campfire_net_channels::ChannelTypeId;
-use campfire_net_channels::TransportError;
+use campfire_net_channels::SendError;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
-use campfire_net_connection::NetworkTarget;
-use campfire_net_connection::NetworkTargetResolver;
-use campfire_net_connection::NetworkingState;
 use campfire_net_core::LinkDirection;
 use campfire_net_core::NetId;
-use campfire_net_link::Server;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
 
 /// SystemParam that sends one message or event to several links at once, serializing it once
 /// when it maps no entities.
 ///
-/// It addresses a set of links, or the clients of a [`Server`] that a [`NetworkTarget`] names. A
-/// registered event arrives as a [`RemoteEvent`](crate::remote_event::RemoteEvent), as an
+/// It addresses a set of links. A registered event arrives as a [`RemoteEvent`](crate::remote_event::RemoteEvent), as an
 /// [`EventSender`](crate::event_sender::EventSender)'s does.
 ///
 /// Each link sends from its own side, as its
@@ -54,8 +47,6 @@ pub struct MultiMessageSender<'w, 's, F: QueryFilter + 'static = ()> {
     replicon: RepliconMapParam<'w, 's>,
     registry: Res<'w, MessageRegistry>,
     channels: Res<'w, ChannelRegistry>,
-    networking: Res<'w, NetworkingState>,
-    resolver: Local<'s, NetworkTargetResolver>,
     writer: Local<'s, Writer>,
 }
 
@@ -64,7 +55,6 @@ impl<F: QueryFilter> core::fmt::Debug for MultiMessageSender<'_, '_, F> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("MultiMessageSender")
             .field("registry", &self.registry)
-            .field("networking", &self.networking)
             .finish_non_exhaustive()
     }
 }
@@ -134,40 +124,10 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
         }
         Ok(())
     }
-
-    /// Sends `message` to the connected clients of `server` that `target` names.
-    pub fn send_to_target<M: Message, C: Channel>(
-        &mut self,
-        message: &M,
-        server: &Server,
-        target: &NetworkTarget,
-    ) -> Result<(), MessageError> {
-        self.send_to_target_with_priority::<M, C>(message, server, target, 1.0)
-    }
-
-    /// Sends `message` to the connected clients of `server` that `target` names, at a bandwidth
-    /// `priority`.
-    pub fn send_to_target_with_priority<M: Message, C: Channel>(
-        &mut self,
-        message: &M,
-        server: &Server,
-        target: &NetworkTarget,
-        priority: Priority,
-    ) -> Result<(), MessageError> {
-        let mut resolver = core::mem::take(&mut *self.resolver);
-        let links = resolver.resolve(
-            target,
-            server.collection().as_slice(),
-            &self.networking.peer_map,
-        );
-        let sent = self.send_with_priority::<M, C>(message, links, priority);
-        *self.resolver = resolver;
-        sent
-    }
 }
 
-/// A message too large for its channel is the caller's to handle; any other transport error is a
-/// message sent on a channel its transport does not send on.
+/// A message too large for its channel, or past its link's send budget, is the caller's to handle;
+/// a channel its transport does not send on is a logic error.
 fn send(
     transport: &mut Transport,
     channel: NetId,
@@ -176,12 +136,11 @@ fn send(
 ) -> Result<(), MessageError> {
     match transport.send(channel, bytes, priority) {
         Ok(()) => Ok(()),
-        Err(error @ TransportError::MessageTooLarge { .. }) => Err(error.into()),
-        Err(error) => {
-            panic!(
-                "a message is sent only on a channel its transport sends on: {}",
-                ErrorReport::of(&error)
-            )
+        Err(error @ (SendError::MessageTooLarge { .. } | SendError::Backlogged { .. })) => {
+            Err(error.into())
+        }
+        Err(SendError::ChannelNotFound(channel)) => {
+            panic!("a message is sent only on a channel its transport sends on, not {channel:?}")
         }
     }
 }

@@ -28,10 +28,11 @@ impl Default for SyncHysteresis {
 }
 
 impl SyncHysteresis {
-    /// The adjustment for an error of `offset` ticks. An error past the band adjusts the speed
-    /// only once it repeats on one side of the objective: a sign flip starts a new run, since
-    /// errors on both sides are noise, not drift. A run behind the objective steps to it instead
-    /// when `deficit` says so.
+    /// The adjustment for an error of `offset` ticks. An error behind the objective past the band
+    /// steps to it at once when `deficit` says so, as each input it sends meanwhile goes late
+    /// (11-net-stack/time.md, A client behind steps, a client ahead slews). Any other error past the
+    /// band adjusts the speed only once it repeats on one side of the objective: a sign flip starts
+    /// a new run, since errors on both sides are noise, not drift.
     pub(crate) fn speed_adjustment(
         &mut self,
         setup: &SyncSetup,
@@ -50,6 +51,10 @@ impl SyncHysteresis {
             self.consecutive_errors = 0;
             return SyncAdjustment::Nominal;
         }
+        if offset.is_negative() && deficit == Deficit::Step {
+            self.consecutive_errors = 0;
+            return SyncAdjustment::Resync;
+        }
         self.consecutive_errors = if flipped {
             1
         } else {
@@ -57,10 +62,6 @@ impl SyncHysteresis {
         };
         if self.consecutive_errors < setup.consecutive_errors_threshold {
             return SyncAdjustment::Nominal;
-        }
-        if offset.is_negative() && deficit == Deficit::Step {
-            self.consecutive_errors = 0;
-            return SyncAdjustment::Resync;
         }
         let base_factor = setup.speedup_factor - 1.0;
         // At most 1, so its 24 bits fit an `f32` exactly, and the band's bounds keep the divisor
@@ -90,35 +91,38 @@ impl SyncHysteresis {
 mod tests {
     use super::*;
 
-    /// With a threshold of 3, two errors ahead then two behind never adjust: the flip restarts
-    /// the run at 1. A third error behind completes it: a timeline that slews a deficit speeds
-    /// up, 1 + 0.05 × 2 × 2 / 10 = 1.02, and one that steps it steps, then starts a new run.
-    /// A run ahead slows the same in both, to 1 / 1.02.
+    /// With a threshold of 3, two errors ahead then two behind never slew: the flip restarts the
+    /// run at 1, and a third error behind completes it, 1 + 0.05 × 2 × 2 / 10 = 1.02. A timeline
+    /// that steps a deficit steps at the first error behind, every time. A run ahead slows the
+    /// same in both, to 1 / 1.02.
     #[test]
-    fn a_sign_flip_restarts_the_run_and_a_deficit_steps_or_slews() {
+    fn a_sign_flip_restarts_the_run_and_a_deficit_steps_at_once_or_slews() {
         let setup = SyncSetup {
             consecutive_errors_threshold: 3,
             ..SyncSetup::default()
         };
+        let mut slews = SyncHysteresis::default();
+        for offset in [2, 2, -2, -2].map(TickSpan::from) {
+            assert!(matches!(
+                slews.speed_adjustment(&setup, offset, Deficit::Slew),
+                SyncAdjustment::Nominal
+            ));
+        }
+        let third = slews.speed_adjustment(&setup, TickSpan::from(-2), Deficit::Slew);
+        assert!(matches!(third, SyncAdjustment::SpeedAdjust(1.02)));
+        let mut steps = SyncHysteresis::default();
+        let adjusted = [2, 2, -2, -2]
+            .map(|offset| steps.speed_adjustment(&setup, TickSpan::from(offset), Deficit::Step));
+        assert!(matches!(
+            adjusted,
+            [
+                SyncAdjustment::Nominal,
+                SyncAdjustment::Nominal,
+                SyncAdjustment::Resync,
+                SyncAdjustment::Resync
+            ]
+        ));
         for deficit in [Deficit::Slew, Deficit::Step] {
-            let mut hysteresis = SyncHysteresis::default();
-            for offset in [2, 2, -2, -2].map(TickSpan::from) {
-                assert!(matches!(
-                    hysteresis.speed_adjustment(&setup, offset, deficit),
-                    SyncAdjustment::Nominal
-                ));
-            }
-            let third = hysteresis.speed_adjustment(&setup, TickSpan::from(-2), deficit);
-            match deficit {
-                Deficit::Slew => assert!(matches!(third, SyncAdjustment::SpeedAdjust(1.02))),
-                Deficit::Step => {
-                    assert!(matches!(third, SyncAdjustment::Resync));
-                    assert!(matches!(
-                        hysteresis.speed_adjustment(&setup, TickSpan::from(-2), deficit),
-                        SyncAdjustment::Nominal
-                    ));
-                }
-            }
             let mut hysteresis = SyncHysteresis::default();
             let ahead = [2, 2, 2]
                 .map(|offset| hysteresis.speed_adjustment(&setup, TickSpan::from(offset), deficit));

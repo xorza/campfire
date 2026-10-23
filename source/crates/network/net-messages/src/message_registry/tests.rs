@@ -33,8 +33,6 @@ use crate::app_event_ext::AppEventExt;
 use crate::remote_entity_map::RemoteEntityMap;
 use bevy_ecs::entity::EntityMapper;
 use bevy_ecs::event::Event;
-use campfire_net_bytes::ReadInteger;
-use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::WriteInteger;
 use serde::Deserialize;
 
@@ -52,7 +50,7 @@ pub(crate) fn serialize_message2(data: &Message2, writer: &mut Writer) {
 pub(crate) fn deserialize_message2(
     reader: &mut Reader,
 ) -> core::result::Result<Message2, MessageError> {
-    let data = f32::from_bits(reader.read_u32().map_err(SerializationError::from)?);
+    let data = f32::from_bits(reader.read_u32()?);
     Ok(Message2(data))
 }
 
@@ -156,10 +154,8 @@ fn a_message_maps_its_entities_on_the_client() {
     };
     registry.serialize(&Message3(client), &mut writer, &client_send);
     let mut reader = Reader::from(writer.take_written());
-    let mut known = SendEntityMap::default();
-    known.insert(server, client);
     let server_receive = ReceiveMapView::Checked {
-        known: &known,
+        link: server,
         replicated: &Unreplicated,
     };
     let read = registry
@@ -191,8 +187,9 @@ fn sealed_hash(build: impl FnOnce(&mut App)) -> RegistryHash {
 /// the calls that set them: one direction and then the other equals both at once.
 #[test]
 fn directions_and_entity_mapping_enter_the_hash() {
-    let plain = sealed_hash(|app| {
-        app.register_message::<Message3>();
+    let to_server = sealed_hash(|app| {
+        app.register_message::<Message3>()
+            .add_direction(LinkDirection::ClientToServer);
     });
     let to_client = sealed_hash(|app| {
         app.register_message::<Message3>()
@@ -208,9 +205,11 @@ fn directions_and_entity_mapping_enter_the_hash() {
             .add_direction(LinkDirection::ClientToServer);
     });
     let mapped = sealed_hash(|app| {
-        app.register_message::<Message3>().add_map_entities();
+        app.register_message::<Message3>()
+            .add_direction(LinkDirections::BOTH)
+            .add_map_entities();
     });
-    let hashes = [plain, to_client, both, mapped];
+    let hashes = [to_server, to_client, both, mapped];
     for (i, hash) in hashes.iter().enumerate() {
         for other in &hashes[i + 1..] {
             assert_ne!(hash, other);
@@ -235,11 +234,22 @@ fn a_registration_after_the_message_plugin_finished_panics() {
 fn a_direction_after_the_message_plugin_finished_panics() {
     let mut app = App::new();
     app.add_plugins(MessagePlugin);
-    app.register_message::<Message1>();
+    app.register_message::<Message1>()
+        .add_direction(LinkDirection::ServerToClient);
     app.finish();
     app.world_mut()
         .resource_mut::<MessageRegistry>()
         .add_direction::<Message1>(LinkDirections::BOTH);
+}
+
+/// A message that declares no direction travels nowhere, so the seal refuses it.
+#[test]
+#[should_panic(expected = "declares no direction it travels in")]
+fn a_message_of_no_direction_fails_the_seal() {
+    let mut app = App::new();
+    app.add_plugins(MessagePlugin);
+    app.register_message::<Message1>();
+    app.finish();
 }
 
 /// A message whose clones a counter counts.

@@ -59,7 +59,23 @@ socket: its handshake, its trust, and how a server guards itself. The packet ses
   handshakes that come back over its refill time, kept in one number as the generic cell rate
   algorithm keeps it. A refusal comes after the Retry and before the handshake, so it costs no
   signature. A packet session counts at the address it was admitted from, also after it moved. A
-  loopback address holds no limit.
+  loopback address holds no limit. An IPv6 /48, a site's delegation of 65,536 /64s, holds a bucket
+  of 16 times an address's, so one site takes no more of a server than 16 hosts do, as IKEv2
+  implementations limit by /48 or /64. Refused: the /64 alone, which a residential /48 multiplies
+  65,536 times.
+- **A hello spans `Initial`s.** A client sends its `ClientHello` in as many padded `Initial`s
+  as it needs, each with its token, and sends them again together. The server's pending
+  handshake starts at the first validated `Initial` of any offset, takes each later one of the
+  handshake into its stream, and writes its flight once TLS read the whole hello, so a duplicate
+  before then gets no answer. Each handshake is one enum of its phases on each side. Refused: a
+  hello in one `Initial`, which a hybrid post-quantum share of 1,216 bytes is past. Source: quinn
+  routes a pending connection's later `Initial`s to its `Incoming` (`quinn-proto` 0.11,
+  `Endpoint::handle`).
+- **A server bounds its pending handshakes.** It holds at most 1,024 pending at once, each a TLS
+  connection for its patience, and refuses one past them before it starts, as quinn's
+  `max_incoming` does; and it sends at most 1,024 stateless resets each second, each an HMAC for a
+  datagram any address may make up, as RFC 9000 §10.3 lets an endpoint limit them. Refused: the
+  bounds of each address alone, which addresses an attacker spreads over all pass.
 
 ## Packet sessions
 

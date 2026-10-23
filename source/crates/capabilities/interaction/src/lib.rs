@@ -4,7 +4,7 @@
 
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, SlotClaims};
-use campfire_declarations::{ByType, Declarations, InstallCx, Module, NoSystems};
+use campfire_declarations::{ById, Declarations, InstallCx, Module, NoSystems};
 use campfire_sim::{Breach, Capability};
 use campfire_values::UnitType;
 
@@ -32,8 +32,8 @@ pub use crate::uses_data::UsesData;
 pub use crate::using::{UnitUse, Using};
 
 /// The `interaction` capability: units that use objects, each object's use an action of the
-/// `use` kind, which a user's use slot runs through the abilities' pipeline: a `use` action needs
-/// `abilities` beside it, which the load checks.
+/// `use` kind, which an order fills a user's use slot with and the abilities' pipeline runs: a
+/// `use` action needs `orders` and `abilities` beside it, which the load checks.
 #[derive(Debug)]
 pub struct Interaction;
 
@@ -41,7 +41,7 @@ impl Interaction {
     /// A unit of a type with a use slot holds one slot of its kind, as it spawns with, which a use
     /// fills: a restored user without one would fill a slot of another kind, or one past its last.
     fn users_hold_their_slot(world: &World) -> Result<(), Breach> {
-        let Some(use_slots) = world.get_resource::<ByType<UseSlot>>() else {
+        let Some(use_slots) = world.get_resource::<ById<UnitType, UseSlot>>() else {
             return Ok(());
         };
         Breach::first(world, |entity| {
@@ -72,9 +72,9 @@ impl Module for Interaction {
         d.listed::<UseActionData>();
         d.section::<UseData>();
         d.section::<UsesData>();
-        d.book::<ByType<UseSpec>>(UseSpec::book);
-        d.book::<ByType<UseSlot>>(UseSlot::book);
-        d.extend::<ByType<ActionSlots>>(Self::use_slots);
+        d.book::<ById<UnitType, UseSpec>>(UseSpec::book);
+        d.book::<ById<UnitType, UseSlot>>(UseSlot::book);
+        d.extend::<ById<UnitType, ActionSlots>>(Self::use_slots);
         d.extend::<SlotClaims>(Self::claim_slots);
         d.rule(Self::rule);
         d.check::<ActionSlots>(Self::users_hold_their_slot);

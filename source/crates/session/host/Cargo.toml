@@ -1,0 +1,67 @@
+[package]
+name = "campfire-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.campfire]
+kind = "glue"
+
+[features]
+internals = [
+    "campfire-bots/internals",
+    "campfire-capabilities/internals",
+    "campfire-codec/internals",
+    "campfire-declarations/internals",
+    "campfire-log/internals",
+    "campfire-math/internals",
+    "campfire-mode/internals",
+    "campfire-package/internals",
+    "campfire-protocol/internals",
+    "campfire-runner/internals",
+    "campfire-script/internals",
+    "campfire-sim/internals",
+    "campfire-store/internals",
+    "campfire-threads/internals",
+    "campfire-units/internals",
+    "campfire-values/internals",
+]
+
+[dependencies]
+campfire-bots.workspace = true
+campfire-capabilities.workspace = true
+campfire-codec.workspace = true
+campfire-common.workspace = true
+campfire-declarations.workspace = true
+campfire-log.workspace = true
+campfire-math.workspace = true
+campfire-mode.workspace = true
+campfire-net-core.workspace = true
+campfire-package.workspace = true
+campfire-protocol.workspace = true
+campfire-runner.workspace = true
+campfire-script.workspace = true
+campfire-sim.workspace = true
+campfire-store.workspace = true
+campfire-threads.workspace = true
+campfire-units.workspace = true
+campfire-values.workspace = true
+
+bevy_app.workspace = true
+bevy_ecs = { workspace = true, features = ["std"] }
+bevy_state.workspace = true
+secp256k1 = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
+
+[dev-dependencies]
+campfire-host = { workspace = true, features = ["internals"] }
+campfire-orders = { workspace = true, features = ["internals"] }
+campfire-progression = { workspace = true, features = ["internals"] }
+# Its tests read the workspace's test packages from disk.
+campfire-test-packages.workspace = true
+campfire-visibility.workspace = true
+
+[lints]
+workspace = true

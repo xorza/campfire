@@ -1,13 +1,10 @@
-use std::path::Path;
-
 use campfire_capabilities::{Directive, NamedRefs};
 use campfire_codec::Toml;
 use campfire_common::{DeclaredName, Tick};
 use campfire_mode::{InputValue, ModeInput};
-use campfire_store::InputFile;
 use serde::Deserialize;
 
-use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
+use crate::order_script::error::OrderScriptError;
 
 pub(crate) mod error;
 
@@ -32,7 +29,7 @@ pub struct OrderScript {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptedInput {
     pub tick: Tick,
-    pub name: String,
+    pub name: DeclaredName,
     pub value: ScriptedValue,
 }
 
@@ -73,7 +70,7 @@ impl ScriptedInput {
             }
         };
         let input = ModeInput {
-            name: &self.name,
+            name: self.name.as_str(),
             value,
         };
         input.write_payload(body, out);
@@ -85,17 +82,6 @@ impl OrderScript {
     /// kilobytes for a match's script, so a mebibyte holds thousands of orders and refuses a file
     /// of another kind before it is read whole.
     pub const MAX_FILE_LEN: usize = 1 << 20;
-
-    /// The script in the file at `path`; an error for a file that does not read, and for text
-    /// `parse` refuses.
-    pub fn read(path: &Path) -> Result<Self, OrderScriptReadError> {
-        let text =
-            InputFile::read_text(path, Self::MAX_FILE_LEN).map_err(OrderScriptReadError::Read)?;
-        Self::parse(&text).map_err(|error| OrderScriptReadError::Script {
-            path: path.to_owned(),
-            error,
-        })
-    }
 
     /// The script `text` holds; an error when it is not TOML of this shape, when a coordinate is
     /// past what a sim number holds, when the ticks of its orders or of its inputs do not grow, or
@@ -114,7 +100,7 @@ impl OrderScript {
         #[serde(deny_unknown_fields)]
         struct InputEntry {
             tick: u64,
-            name: String,
+            name: DeclaredName,
             value: ScriptedValue,
         }
         #[derive(Debug, Deserialize)]

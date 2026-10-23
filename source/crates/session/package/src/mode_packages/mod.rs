@@ -1,12 +1,14 @@
 use std::collections::BTreeMap;
 use std::iter;
 use std::num::NonZeroU32;
+use std::sync::{Arc, OnceLock};
 
 use campfire_capabilities::{BookInput, Books, PackageContent, PackageScript, Release};
 use campfire_codec::TomlTable;
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
 use campfire_declarations::{ScriptAt, SourceKind, SourcePackage};
 use campfire_mode::{MapData, ModeData, ModeParam};
+use campfire_package_format::{ContentError, FileIndex, PackageFiles, PackageFinder, PackagePlace};
 use campfire_script::{ModeScripts, ScriptApi, ScriptHost, ScriptId, ScriptUses};
 use campfire_sim::{Capability, MatchRate};
 use campfire_units::{HeightGrid, ScriptBook};
@@ -15,24 +17,21 @@ use campfire_values::{EngineTag, PackageIndex, PackagePath};
 use crate::data_override::DataOverride;
 use crate::dependent::{Dependent, DependentKind, OpenedDependent};
 use crate::error::load_problem::LoadProblem;
-use crate::error::{ContentError, LoadError};
-use crate::file_index::FileIndex;
+use crate::error::{LoadError, StoreError};
 use crate::files::bot_list::BotList;
 use crate::files::map_file::MapFile;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
-use crate::files::package_name::PackageName;
 use crate::files::script_list::{ScriptOrder, ScriptSource};
 use crate::files::units_file::UnitsFile;
 use crate::mode_packages::load_check::LoadCheck;
+use crate::mode_packages::mode_read::ModeRead;
 use crate::package::Package;
-use crate::package_files::PackageFiles;
+use crate::package_name::PackageName;
 use crate::package_view::{PackageView, ViewKind};
 
 mod load_check;
-
-const MODE_DATA: &str = "data/mode.toml";
-const UNITS_DATA: &str = "data/units.toml";
+pub(crate) mod mode_read;
 
 /// A mode and the packages it depends on, read and checked: what a match of the mode loads.
 #[derive(Debug)]
@@ -43,6 +42,13 @@ pub struct ModePackages {
     pub(crate) list: ScriptOrder,
     /// The bots it names, by name.
     pub(crate) bots: BotList,
+    /// Each script of `list`, in its order, found once as the load checked it.
+    listed: Vec<ListedScript>,
+    /// The script of each of `bots`, by the bot's name.
+    bot_scripts: BTreeMap<DeclaredName, ScriptId>,
+    /// The books its load built, at the fastest rate, kept for what reads their names alone, as
+    /// a book's rate changes no name.
+    load_books: OnceLock<Arc<Books>>,
     pub(crate) data: ModeData,
     /// The name of the map it loaded, which its session plays.
     map_name: MapName,
@@ -58,6 +64,14 @@ pub struct ModePackages {
     /// What each script uses of the data, in the same order.
     uses: ScriptUses,
     overrides: Vec<DataOverride>,
+}
+
+/// A script of the mode's list: the package that holds it, and its place among the scripts a
+/// match compiles.
+#[derive(Debug, Clone, Copy)]
+struct ListedScript {
+    package: PackageIndex,
+    id: ScriptId,
 }
 
 /// A bot a mode names, as a match runs it: its script, by its place among the scripts a match
@@ -121,7 +135,7 @@ impl ModePackages {
                 kind: match &dependent.kind {
                     DependentKind::Avatar(avatar) => ViewKind::Avatar(avatar),
                     DependentKind::Loadout => ViewKind::Loadout,
-                    DependentKind::Rules(_) => ViewKind::Rules,
+                    DependentKind::Rules => ViewKind::Rules,
                 },
             });
         iter::once(mode).chain(dependents)
@@ -140,10 +154,12 @@ impl ModePackages {
             .expect("the load built the books at the fastest rate")
     }
 
-    /// The books of a match of its packages at the fastest rate, as the load built them, for what
-    /// reads their names alone, as a bot's script does.
-    pub fn name_books(&self) -> Books {
-        self.books(MatchRate::new(self.manifest.tick_hz.fastest()))
+    /// The books its load built, at the fastest rate, for what reads their names alone, as a
+    /// bot's script does: a book's rate changes its times, never its names.
+    pub fn load_books(&self) -> &Arc<Books> {
+        self.load_books
+            .get()
+            .expect("the load keeps the books it built")
     }
 
     /// Every script of its packages, in the order a match compiles them, which numbers each at
@@ -163,7 +179,7 @@ impl ModePackages {
     pub fn bot(&self, name: &DeclaredName) -> Option<ModeBot<'_>> {
         let bot = self.bots.get(name)?;
         Some(ModeBot {
-            script: self.script_id(&bot.script),
+            script: self.bot_scripts[name],
             think_ms: bot.think_ms,
             params: &bot.params,
         })
@@ -172,13 +188,14 @@ impl ModePackages {
     /// The scripts the mode's list names, in its order, each by its place among the scripts a
     /// match compiles.
     pub fn mode_scripts(&self) -> ModeScripts {
-        let ids = self.list.iter().map(|source| self.script_id(source));
+        let ids = self.listed.iter().map(|listed| listed.id);
         ModeScripts::new(ids, self.list.mode())
     }
 
-    /// The script `source` of the mode's list or of a bot, by its place among the scripts a match
-    /// compiles: past every script of the packages before the one that holds it.
-    fn script_id(&self, source: &ScriptSource) -> ScriptId {
+    /// The script `source` of the mode's list or of a bot, found once its load checked it: the
+    /// package that holds it, and its place among the scripts a match compiles, past every
+    /// script of the packages before.
+    fn find_script(&self, source: &ScriptSource) -> ListedScript {
         let mut before = 0;
         for view in self.packages() {
             if view.holds(source) {
@@ -186,7 +203,10 @@ impl ModePackages {
                     .package
                     .script_index(source.path())
                     .expect("the load checked each script of the mode's list and its bots");
-                return ScriptId::nth(before + at);
+                return ListedScript {
+                    package: view.index,
+                    id: ScriptId::nth(before + at),
+                };
             }
             before += view.package.scripts.len();
         }
@@ -222,13 +242,10 @@ impl ModePackages {
             mode_scripts: self
                 .list
                 .iter()
-                .map(|source| {
-                    let view = self.packages().find(|view| view.holds(source));
-                    let view = view.expect("the load checked the package of each listed script");
-                    ScriptAt {
-                        package: view.index,
-                        path: source.path(),
-                    }
+                .zip(&self.listed)
+                .map(|(source, listed)| ScriptAt {
+                    package: listed.package,
+                    path: source.path(),
                 })
                 .collect(),
             tick_rate: rate,
@@ -299,6 +316,26 @@ impl ModePackages {
         &self.dependencies
     }
 
+    /// The mode at `place` on its map `map`, or its only map when `map` names none, with each
+    /// package its manifest names at its path from there, each read once.
+    pub fn at(place: &impl PackagePlace, map: Option<&MapName>) -> Result<Self, LoadError> {
+        ModeRead::at(place)?.on(map)
+    }
+
+    /// The mode of the fingerprint `mode` that `finder` holds on its map `map`, with each
+    /// dependency its manifest names by the fingerprint of the same place in `dependencies`, as a
+    /// verifier holds them.
+    pub fn found(
+        finder: &impl PackageFinder,
+        mode: PackageFingerprint,
+        map: &MapName,
+        dependencies: &[PackageFingerprint],
+    ) -> Result<Self, StoreError> {
+        ModeRead::found(finder, mode, dependencies)?
+            .on(Some(map))
+            .map_err(StoreError::Load)
+    }
+
     /// The mode of `files`, whose manifest is `manifest`, on its map `map`, or its only map when
     /// `map` names none, with each package its manifest names in `dependencies`, in the order of
     /// their names: checked as a match loads them, each file the load reads parsed once. A mode
@@ -316,12 +353,12 @@ impl ModePackages {
         if PackageIndex::dependency(dependencies.len()).is_none() {
             return Err(fail(LoadProblem::TooManyPackages));
         }
-        let mode_data = PackageFiles::engine_path(MODE_DATA);
+        let mode_data = ModeFile::path();
         let own: TomlTable = files
             .read_data(&mode_data)
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
-        let units_data = PackageFiles::engine_path(UNITS_DATA);
+        let units_data = UnitsFile::path();
         let units: UnitsFile = files
             .read_data(&units_data)
             .map_err(LoadProblem::Content)
@@ -338,8 +375,7 @@ impl ModePackages {
                 }
             },
         };
-        let map_data = PackagePath::parse(&format!("map/{map_name}/map.toml"))
-            .expect("a map's name is a package path's name");
+        let map_data = MapFile::path(&map_name);
         let MapFile(map) = files
             .reader()
             .read_data(&map_data)
@@ -351,13 +387,13 @@ impl ModePackages {
             Err(error) => return Err(fail(LoadProblem::Content(error))),
         };
         let mode = Package::read(files, &manifest.header, &parser, &api)?;
-        let opened: Vec<OpenedDependent<'_>> = dependencies
+        let mut opened: Vec<OpenedDependent<'_>> = dependencies
             .iter()
             .map(|(name, files)| Dependent::open(name, files))
             .collect::<Result<_, _>>()?;
         Self::check_needs(&manifest, &opened).map_err(fail)?;
         let mut overrides = Vec::new();
-        let laid = Self::lay_data(own, &manifest.header.name, &opened, &mut overrides);
+        let laid = Self::lay_data(own, &manifest.header.name, &mut opened, &mut overrides);
         let ModeFile {
             scripts: list,
             bots,
@@ -392,7 +428,7 @@ impl ModePackages {
         {
             let rules = dependencies.iter().any(|dependent| {
                 dependent.package.header.name == *name
-                    && matches!(dependent.kind, DependentKind::Rules(_))
+                    && matches!(dependent.kind, DependentKind::Rules)
             });
             if !rules {
                 return Err(fail(LoadProblem::ScriptPackage(name.clone())));
@@ -401,11 +437,15 @@ impl ModePackages {
         let dependents = dependencies.iter().map(|dependent| &dependent.package);
         let scripts = Self::read_hooks(iter::once(&mode).chain(dependents.clone()), &api);
         let uses = Self::read_uses(iter::once(&mode).chain(dependents));
-        let packages = Self {
+        // The scripts of the list and of the bots are found once the load checked each.
+        let mut packages = Self {
             mode,
             manifest,
             list,
             bots,
+            listed: Vec::new(),
+            bot_scripts: BTreeMap::new(),
+            load_books: OnceLock::new(),
             data,
             map_name,
             map,
@@ -416,7 +456,20 @@ impl ModePackages {
             uses,
             overrides,
         };
-        LoadCheck::run(&packages, &api)?;
+        let books = LoadCheck::run(&packages, &api)?;
+        packages
+            .load_books
+            .set(Arc::new(books))
+            .expect("the load builds its books once");
+        packages.listed = packages
+            .list
+            .iter()
+            .map(|source| packages.find_script(source))
+            .collect();
+        packages.bot_scripts = (&packages.bots)
+            .into_iter()
+            .map(|(name, bot)| (name.clone(), packages.find_script(&bot.script).id))
+            .collect();
         Ok(packages)
     }
 
@@ -458,12 +511,12 @@ impl ModePackages {
     fn lay_data(
         own: TomlTable,
         mode: &PackageName,
-        dependencies: &[OpenedDependent<'_>],
+        dependencies: &mut [OpenedDependent<'_>],
         overrides: &mut Vec<DataOverride>,
     ) -> TomlTable {
-        let rules = dependencies.iter().filter_map(|dependent| {
-            let data = dependent.rules_data()?;
-            Some((dependent.name(), data.clone()))
+        let rules = dependencies.iter_mut().filter_map(|dependent| {
+            let data = dependent.take_rules_data()?;
+            Some((dependent.name(), data))
         });
         let layers = rules.chain(iter::once((mode, own)));
         let mut laid: Option<TomlTable> = None;
@@ -491,14 +544,8 @@ impl ModePackages {
 /// holds a `map.toml`, in order; one whose name no map can have is refused.
 fn maps_of(index: &FileIndex) -> Result<Vec<MapName>, LoadProblem> {
     index
-        .rows()
-        .filter_map(|(path, _)| {
-            let name = path
-                .as_str()
-                .strip_prefix("map/")?
-                .strip_suffix("/map.toml")?;
-            (!name.contains('/')).then_some(name)
-        })
+        .paths()
+        .filter_map(MapFile::map_of)
         .map(|name| MapName::parse(name).ok_or_else(|| LoadProblem::MapDirName(name.to_owned())))
         .collect()
 }

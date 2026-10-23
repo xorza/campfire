@@ -1,10 +1,10 @@
+use campfire_units::PoolId;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, NamesListError, Section, SectionTable};
 use campfire_players::ResourcesData;
-use campfire_units::PoolNames;
 use campfire_values::{Names, NamesError, PackageIndex};
 use serde::Deserialize;
 
@@ -36,7 +36,7 @@ impl ModePoolsData {
     }
 
     /// The names of the mode's `[pools]`; an error past the most pools a match holds.
-    pub(crate) fn names(cx: &BookCx<'_>) -> Result<PoolNames, BookError> {
+    pub(crate) fn names(cx: &BookCx<'_>) -> Result<Arc<Names<PoolId>>, BookError> {
         let mut names = Names::default();
         let pools = cx.mode_section::<Self>().into_iter();
         for name in pools.flat_map(|pools| pools.0.keys()) {
@@ -48,6 +48,6 @@ impl ModePoolsData {
                 BookError::rule(PackageIndex::MODE, BookPlace::Section(Self::KEY), error)
             })?;
         }
-        Ok(PoolNames(Arc::new(names)))
+        Ok(Arc::new(names))
     }
 }

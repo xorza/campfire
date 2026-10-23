@@ -4,7 +4,7 @@
 use bevy_ecs::prelude::*;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
 use bevy_utils::prelude::DebugName;
-use campfire_net_interpolation::HistoryComponent;
+use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::Predicted;
 use tracing::{debug, trace};
 

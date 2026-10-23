@@ -3,10 +3,9 @@ use std::num::NonZeroUsize;
 
 use campfire_actions::{ActionKind, ActionsData, SlotClaim, SlotClaims};
 use campfire_common::DeclaredName;
-use campfire_declarations::{BookCx, BookError, BookPlace, NamedTexts, Section, TypePlace};
+use campfire_declarations::{BookCx, BookError, BookPlace, NamedTexts, Section};
 use campfire_players::ResourceBook;
 use campfire_sim::Capability;
-use campfire_stats::PassiveData;
 use campfire_values::PackageIndex;
 
 use crate::Items;
@@ -53,9 +52,9 @@ impl Items {
         Ok(())
     }
 
-    /// The rules of the item types: only the mode holds them; none holds a modifier that is a
-    /// passive of the mode's unit types or actions, or names an action of the `use` kind, which
-    /// only its object runs; none is built from itself; and each shop sells only items that cost
+    /// The rules of the item types: only the mode holds them; none names an action of the `use`
+    /// kind, which only its object runs; none is built from itself; and each shop sells only items
+    /// that cost
     /// in the one resource it takes. A name the mode does not have, as a resource, is the books'
     /// problem.
     pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
@@ -76,26 +75,6 @@ impl Items {
             Err(BookError::rule(PackageIndex::MODE, at, problem))
         };
         let actions = mode.content.get::<ActionsData>().map(|actions| &actions.0);
-        let unit_passives = mode.units.iter().filter_map(|(name, unit)| {
-            let holder = BookPlace::UnitType(TypePlace::Declared(name.clone()));
-            Some((holder, &unit.section::<PassiveData>()?.0))
-        });
-        let action_passives = actions.into_iter().flatten().filter_map(|(name, action)| {
-            let holder = BookPlace::Entry {
-                table: ActionsData::KEY,
-                name: name.clone(),
-            };
-            Some((holder, action.passive_modifier.as_ref()?))
-        });
-        for (holder, modifier) in unit_passives.chain(action_passives) {
-            let held = items
-                .iter()
-                .find(|(_, item)| item.modifiers.contains(modifier));
-            if let Some((item, _)) = held {
-                let modifier = modifier.clone();
-                return fail(item, ItemsDataError::SharedPassive { modifier, holder });
-            }
-        }
         for (name, item) in items {
             let action = item.action.as_ref();
             let used = action.filter(|action| {

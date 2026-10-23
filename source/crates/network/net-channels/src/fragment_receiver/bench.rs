@@ -9,19 +9,14 @@ use criterion::{BatchSize, BenchmarkId, Criterion};
 use std::hint::black_box;
 
 use crate::channel_setup::DEFAULT_MAX_MESSAGE_LEN;
-use crate::compression_scratch::CompressionScratch;
-use crate::compression_setup::CompressionSetup;
-use crate::fragment_receiver::{
-    FragmentCx, FragmentOutcome, FragmentReceiver, PartialExpiry, Reservation,
-};
+use crate::fragment_receiver::{FragmentCx, FragmentOutcome, FragmentReceiver, PartialExpiry};
 use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;
 use crate::packet::FRAGMENT_LEN;
-use crate::receive_budget::ReceiveBudget;
+use crate::receive_budget::{ReceiveBudget, Reservation};
 
 const CX: FragmentCx = FragmentCx {
     expiry: PartialExpiry::Never,
-    compression: CompressionSetup::DISABLED,
     max_message_len: DEFAULT_MAX_MESSAGE_LEN,
     reservation: Reservation::Limited,
 };
@@ -36,13 +31,7 @@ pub(crate) fn atomic(criterion: &mut Criterion) {
             .map(|i| (i % 251) as u8)
             .collect::<Vec<u8>>()
             .into();
-        let split = FragmentedMessage::split(
-            MessageId(0),
-            message.clone(),
-            FRAGMENT_LEN,
-            CompressionSetup::DISABLED,
-            &mut CompressionScratch::default(),
-        );
+        let split = FragmentedMessage::split(MessageId(0), message.clone(), FRAGMENT_LEN);
         let built = split.fragment_body();
         assert_eq!(built.len(), fragments);
         group.bench_function(

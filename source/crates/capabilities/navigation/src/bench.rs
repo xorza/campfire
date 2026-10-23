@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::entity::Entity;
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_geometry::{BodyBox, Bounds, Grid, Shape};
 use campfire_math::{Num, Vec3};
@@ -221,7 +221,7 @@ impl GroupScene<'_> {
         let party = Party {
             key: PartyKey::Order {
                 tick: Tick::new(0),
-                seat: Seat::new(0),
+                player_slot: PlayerSlot::new(0),
                 number: 0,
             },
             goal,

@@ -3,7 +3,7 @@ use std::f32::consts::SQRT_2;
 use bevy::ecs::world::World;
 use bevy::math::Dir3;
 use campfire_math::Num;
-use campfire_units::BodyForm;
+use campfire_units::{BodyForm, BodyShape, Layer};
 
 use super::*;
 
@@ -17,12 +17,15 @@ fn a_unit_is_drawn_at_its_bodys_radius_and_height_else_its_models_or_kinds_and_l
         footing: Footing::Circle(0.75),
     };
     assert_eq!(UnitShape::of(ShapeKind::Avatar, Some(&body), None), avatar);
-    assert_eq!(UnitShape::of(ShapeKind::Creep, None, None), CREEP);
+    assert_eq!(UnitShape::of(ShapeKind::Walker, None, None), WALKER);
     assert_eq!(UnitShape::of(ShapeKind::Structure, None, None), STRUCTURE);
     // A box of 4 × 2 m turned a quarter: its first half edge points along −z, which Bevy's
     // turn of π/2 about y takes x to, as the unit's facing of 90° turns its model; it stands
     // as tall as a structure 1 m wide, its shorter half edge, and reaches √5 m.
-    let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
+    let form = BodyForm::new(
+        BodyShape::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+        Layer::FIRST,
+    );
     let turned = form.at(Num::int(90));
     let boxed = UnitShape::of(ShapeKind::Structure, Some(&turned), None);
     let expected = Footing::Box {

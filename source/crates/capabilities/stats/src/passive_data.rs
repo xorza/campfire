@@ -35,7 +35,7 @@ impl PassiveData {
                     table: ActionsData::KEY,
                     name: id.clone(),
                 };
-                Some((at, action.passive_modifier.as_ref()?))
+                Some((at, action.keys.passive_modifier.as_ref()?))
             });
             let mut held: BTreeMap<&DeclaredName, BookPlace> = BTreeMap::new();
             for (holder, modifier) in types.chain(actions) {

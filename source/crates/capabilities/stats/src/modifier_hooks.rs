@@ -142,7 +142,7 @@ impl ModifierHooks {
         let (action, rank, package) = (instance.action, instance.rank, entry.package);
         let payer = heard.source.and_then(|source| {
             let entity = world.entity_of(source)?;
-            Some(world.get::<Owner>(entity)?.seat())
+            Some(world.get::<Owner>(entity)?.player_slot())
         });
         let now = world.resource::<SimTick>().start();
         let start = CallStart {

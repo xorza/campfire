@@ -2,14 +2,14 @@ use std::iter;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_log::internals::LogCheck;
-use campfire_mode::{HostPicks, OptionPicks, SeatPick, SeatPicks};
+use campfire_mode::{HostPicks, OptionPicks, PlayerSlotPick, PlayerSlotPicks};
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
-    Delegation, DelegationTerms, InputChain, InputRules, SeatPlan, SeatStart, SeedChain,
-    SeedContribution, ServerSeed, ServerSeeds, SessionHeader, SessionLog, SessionTerms, Signer,
+    Delegation, DelegationTerms, InputChain, InputRules, PlayerSlotPlan, PlayerSlotStart,
+    SeedChain, SeedContribution, ServerSeed, ServerSeeds, SessionHeader, SessionLog, SessionTerms,
 };
 use campfire_runner::{HostChoices, Session, SessionRules, SessionSource, UncheckedSource};
 use secp256k1::XOnlyPublicKey;
@@ -19,8 +19,8 @@ use crate::fixed_session::fixed_match::FixedMatch;
 pub(crate) mod fixed_match;
 
 /// A session of a mode's packages for tests and checks, whose server and players hold fixed keys:
-/// every run signs alike, so every run of the same inputs gives the same log and state. The
-/// player of seat `n` holds the same keys whether the session starts them in it or they join it
+/// every run signs alike, so every run of the same inputs gives the same log and state. The player
+/// of player slot `n` holds the same keys whether the session starts them in it or they join it
 /// later.
 #[derive(Debug)]
 pub struct FixedSession {
@@ -49,29 +49,29 @@ impl FixedSession {
     /// within `rules`.
     pub fn with_rules(packages: ModePackages, players: u32, rules: InputRules) -> Self {
         let players = usize::try_from(players).expect("players fit usize");
-        let plan = iter::repeat_n(SeatPlan::Player, players);
+        let plan = iter::repeat_n(PlayerSlotPlan::Player, players);
         Self::planned(packages, rules, plan)
     }
 
     /// A session of `packages` at its manifest's default rate, its inputs within `rules`, its
-    /// seats as `plan` opens them.
+    /// player slots as `plan` opens them.
     pub fn planned(
         packages: ModePackages,
         rules: InputRules,
-        plan: impl IntoIterator<Item = SeatPlan>,
+        plan: impl IntoIterator<Item = PlayerSlotPlan>,
     ) -> Self {
         let tick_hz = packages.manifest().tick_hz.default();
         let session_rules = SessionRules::of(&packages);
         let visibility = session_rules.visibility().settings();
-        let seats: Vec<SeatPlan> = plan.into_iter().collect();
-        let picks = HostPicks::defaults(packages.data(), seats.len());
+        let player_slots: Vec<PlayerSlotPlan> = plan.into_iter().collect();
+        let picks = HostPicks::defaults(packages.data(), player_slots.len());
         let terms = session_rules
             .terms(HostChoices {
                 server_key: server_key(),
                 seed_commitment: SEED_CHAIN.commitment(),
                 tick_hz,
                 inputs: rules,
-                seats,
+                player_slots,
                 visibility,
                 picks: &picks,
             })
@@ -112,14 +112,15 @@ impl FixedSession {
         self
     }
 
-    /// The session, of `picks` of its seats' choices of values, as its host picks them
-    /// (08-sessions.md, The terms hold each seat's picks).
+    /// The session, of `picks` of its player slots' choices of values, as its host picks them
+    /// (08-sessions.md, The terms hold each player slot's picks).
     #[must_use]
-    pub fn seat_picked(mut self, picks: &[SeatPick]) -> Self {
+    pub fn player_slot_picked(mut self, picks: &[PlayerSlotPick]) -> Self {
         let choices = &self.packages.data().choices;
-        let seats = self.terms.seats.len();
-        let picks = SeatPicks::named(choices, seats, picks).expect("picks of the seats' choices");
-        self.terms.seat_picks = picks.places().to_vec();
+        let player_slots = self.terms.player_slots.len();
+        let picks = PlayerSlotPicks::named(choices, player_slots, picks)
+            .expect("picks of the player slots' choices");
+        self.terms.player_slot_picks = picks.places().to_vec();
         self
     }
 
@@ -127,9 +128,9 @@ impl FixedSession {
         &self.packages
     }
 
-    /// The seats the session plays, whoever controls them.
-    pub fn seats(&self) -> u32 {
-        u32::try_from(self.terms.seats.len()).expect("the terms count seats in u32")
+    /// The player slots the session plays, whoever controls them.
+    pub fn player_slots(&self) -> u32 {
+        u32::try_from(self.terms.player_slots.len()).expect("the terms count player slots in u32")
     }
 
     /// The session's terms.
@@ -137,18 +138,23 @@ impl FixedSession {
         &self.terms
     }
 
-    /// The header of a session of `terms` with a start for each seat `terms` plans, each
+    /// The header of a session of `terms` with a start for each player slot `terms` plans, each
     /// player's delegation signed for `terms`.
     pub fn header(&self, terms: SessionTerms) -> SessionHeader {
-        let seats = (0..)
-            .zip(&terms.seats)
-            .map(|(seat, plan)| match plan {
-                SeatPlan::Player => SeatStart::player(Self::delegation(&terms, seat)),
-                SeatPlan::Bot => SeatStart::Bot,
-                SeatPlan::Open => SeatStart::Open,
+        let player_slots = (0..)
+            .zip(&terms.player_slots)
+            .map(|(player_slot, plan)| match plan {
+                PlayerSlotPlan::Player => {
+                    PlayerSlotStart::player(Self::delegation(&terms, player_slot))
+                }
+                PlayerSlotPlan::Bot => PlayerSlotStart::Bot,
+                PlayerSlotPlan::Open => PlayerSlotStart::Open,
             })
             .collect();
-        SessionHeader { terms, seats }
+        SessionHeader {
+            terms,
+            player_slots,
+        }
     }
 
     /// The log of the session, as it starts, its seed not yet revealed.
@@ -169,10 +175,10 @@ impl FixedSession {
     /// A match at tick 0, its players joined, none of their inputs sent yet.
     pub fn start(&self) -> FixedMatch {
         let log = LogCheck::start();
-        let chains = (0..self.seats())
-            .map(|seat| Self::chain(&self.terms, seat))
+        let chains = (0..self.player_slots())
+            .map(|player_slot| Self::chain(&self.terms, player_slot))
             .collect();
-        let signers = TestKey::players()[..usize::try_from(self.seats()).unwrap()]
+        let signers = TestKey::players()[..usize::try_from(self.player_slots()).unwrap()]
             .iter()
             .map(|keys| TestKey::signer(keys.session))
             .collect();
@@ -180,32 +186,28 @@ impl FixedSession {
             log: self.log(),
             seeds: self.seeds(),
             packages: &self.packages,
-            signer: Some(Arc::new(Self::server_signer())),
+            signer: Some(Arc::new(TestKey::server_signer())),
         })
         .unwrap();
         let game = Session::start_match(source).unwrap();
         FixedMatch::new(game, chains, signers, self.terms.clone(), log)
     }
 
-    /// The signer of the tests' server key, whose auxiliary randomness is fixed.
-    pub fn server_signer() -> Signer {
-        TestKey::signer(TestKey::server())
+    /// Player `player_slot`'s chain, as they start it in a session of `terms`, from its first
+    /// input.
+    pub(crate) fn chain(terms: &SessionTerms, player_slot: u32) -> InputChain {
+        let root = Self::delegation(terms, player_slot).chain_root();
+        InputChain::new(PlayerSlot::new(player_slot), root)
     }
 
-    /// Player `seat`'s chain, as they start it in a session of `terms`, from its first input.
-    pub(crate) fn chain(terms: &SessionTerms, seat: u32) -> InputChain {
-        let root = Self::delegation(terms, seat).chain_root();
-        InputChain::new(Seat::new(seat), root)
-    }
-
-    /// Player `seat`'s delegation in a session of `terms`.
-    pub(crate) fn delegation(terms: &SessionTerms, seat: u32) -> Delegation {
-        let keys = TestKey::player(seat);
+    /// Player `player_slot`'s delegation in a session of `terms`.
+    pub(crate) fn delegation(terms: &SessionTerms, player_slot: u32) -> Delegation {
+        let keys = TestKey::player(player_slot);
         let delegated = DelegationTerms {
             session_key: keys.session.x_only_public_key().0,
             server_key: server_key(),
             session_id: terms.session_id(),
-            seed_contribution: SeedContribution::new([u8::try_from(seat).unwrap(); 32]),
+            seed_contribution: SeedContribution::new([u8::try_from(player_slot).unwrap(); 32]),
             expiration: TestKey::NOW + LIFETIME,
         };
         Delegation::sign(&TestKey::signer(keys.main), &delegated, TestKey::NOW)

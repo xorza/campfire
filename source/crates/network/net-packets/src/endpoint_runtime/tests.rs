@@ -45,6 +45,7 @@ impl DatagramIo for Burst {
         reads.push(read);
         out.extend((before..before + read).map(|nth| Datagram {
             from: SocketAddr::from((Ipv4Addr::LOCALHOST, 1000 + u16::try_from(nth).unwrap())),
+            local: None,
             payload: BytesMut::from(&[self.first, 0, 0, 0][..]),
         }));
         Ok(())
@@ -126,11 +127,11 @@ impl ServerEstablish for Starts {
     }
 }
 
-/// One pass over a burst of 600 datagrams reads them in batches of 160, each opened under its
-/// own hold of the lock, until a read finds fewer: 160, 160, 160 and 120. Each from an address
-/// of its own opens a packet session, which sends its first `Ping`; a second after, all 600 are
-/// due, and a pass polls them in holds of a batch each, 160, 160, 160 and 120, each sending a
-/// `Ping` again. Over a burst of 300
+/// One pass over a burst of 600 datagrams routes 120 of each hold's batch of 160, as a hold keeps
+/// 40 for the packet sessions due, and each read fills the room the hold left: 160, then 120, 120
+/// and 120, and the last 80. Each from an address of its own opens a packet session, which sends
+/// its first `Ping`; a second after, all 600 are due, and a pass with no datagram polls them in
+/// holds of a batch each, 160, 160, 160 and 120, each sending a `Ping` again. Over a burst of 300
 /// handshakes, each hold starts one and keeps the rest of its batch, and each read fills only
 /// the room the batch has: 160, then one for each hold until the IO is empty, 140 of them, then
 /// nothing while the holds take the 159 kept.
@@ -145,8 +146,11 @@ fn a_pass_reads_a_burst_in_bounded_batches() {
     let mut clock = HoldClock::default();
     let mut scratch = PassScratch::default();
     runtime.pass_holding(&mut scratch, &mut clock);
-    assert_eq!(*runtime.io().reads.lock().unwrap(), [160, 160, 160, 120]);
-    assert_eq!(clock.iter().count(), 4);
+    assert_eq!(
+        *runtime.io().reads.lock().unwrap(),
+        [160, 120, 120, 120, 80]
+    );
+    assert_eq!(clock.iter().count(), 5);
     assert_eq!(runtime.io().sent.load(Ordering::Relaxed), 600);
     let keep_alive = EndpointSetup::default().packet_session.keep_alive;
     runtime
@@ -220,6 +224,7 @@ impl DatagramIo for Loopback {
         self.inboxes.lock().unwrap()[1 - self.end].extend(outbound.drain(..).map(|outbound| {
             Datagram {
                 from,
+                local: None,
                 payload: BytesMut::from(&*outbound.datagram),
             }
         }));

@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use crate::gltf::glb_builder::GlbBuilder;
+use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::{ModelError, ZeroHourError};
 use crate::zero_hour::format::w3d::hierarchy::Hierarchy;
 use crate::zero_hour::format::w3d::hlod::{Hlod, SubObject};
@@ -16,13 +17,14 @@ mod model_textures;
 mod w3d_material;
 
 /// A model the objects name, converted: its glTF, the nodes its default look reads, the textures
-/// its meshes name that no archive holds, which it draws as the game's `MissingTexture`, and its
-/// HLOD's aggregates, which it does not draw.
+/// its meshes name that no archive holds, which it draws as the game's `MissingTexture`, the files
+/// of those it draws with, and its HLOD's aggregates, which it does not draw.
 #[derive(Debug)]
 pub(crate) struct ModelImport {
     pub(crate) glb: GlbBuilder,
     pub(crate) nodes: ModelNodes,
     pub(crate) missing_textures: BTreeSet<String>,
+    pub(crate) textures: BTreeSet<ArchivePath>,
     pub(crate) aggregates: Vec<String>,
 }
 
@@ -138,6 +140,7 @@ impl ModelImport {
             glb: builder.glb,
             nodes,
             missing_textures: builder.missing_textures,
+            textures: builder.textures,
             aggregates,
         })
     }

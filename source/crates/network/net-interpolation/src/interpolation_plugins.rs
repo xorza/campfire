@@ -1,4 +1,3 @@
-use crate::delayed_interpolation_plugin::DelayedInterpolationPlugin;
 use crate::interpolation_plugin::InterpolationPlugin;
 use crate::interpolation_timeline_plugin::InterpolationTimelinePlugin;
 use bevy_app::{PluginGroup, PluginGroupBuilder};
@@ -14,6 +13,5 @@ impl PluginGroup for InterpolationPlugins {
         PluginGroupBuilder::start::<Self>()
             .add(InterpolationTimelinePlugin)
             .add(InterpolationPlugin)
-            .add(DelayedInterpolationPlugin)
     }
 }

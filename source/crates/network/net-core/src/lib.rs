@@ -17,6 +17,8 @@ mod tick_buffer;
 mod tick_range_error;
 mod tick_time;
 mod ticked;
+mod time_source;
+mod tls_key;
 mod type_mapper;
 
 pub use crate::instant::Instant;
@@ -34,4 +36,6 @@ pub use crate::tick_time::PositiveTickSpan;
 pub use crate::tick_time::TickInstant;
 pub use crate::tick_time::TickSpan;
 pub use crate::ticked::Ticked;
+pub use crate::time_source::TimeSource;
+pub use crate::tls_key::{TlsKey, TlsKeyMeaning};
 pub use crate::type_mapper::{RegisteredType, TypeMapper};

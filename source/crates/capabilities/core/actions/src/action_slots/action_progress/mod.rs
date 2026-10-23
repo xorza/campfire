@@ -15,6 +15,7 @@ use crate::action_call::{ResolvedCast, StartedOrder};
 use crate::action_kind::ActionKind;
 use crate::action_slots::ActionSlots;
 use crate::action_slots::action_progress::attack_target::{AttackTarget, TargetSource};
+use crate::action_slots::action_progress::pre_attack::PreAttack;
 use crate::action_slots::action_progress::progress_dues::ProgressDues;
 use crate::action_target::ActionTarget;
 use crate::channel_call::{ChannelCall, ChannelStep};
@@ -24,17 +25,19 @@ use crate::rank_values::RankValues;
 use crate::slot_aim::SlotAim;
 
 pub(crate) mod attack_target;
+pub(crate) mod pre_attack;
 pub(crate) mod progress_dues;
 
 /// What a unit's actions have under way, beside its slots, whose table it keys on: the action it
 /// was ordered or has under way, one at a time; the unit its attacks aim at, which it attacks
-/// again each time a weapon is ready, until another order; and a channel an order, a stop or an
-/// interrupt cut, whose `on_interrupt` has yet to run. An attack's or a channel's step changes
+/// again each time a weapon is ready, until another order; the pre-attack of a weapon at that
+/// unit; and a channel an order, a stop or an interrupt cut, whose `on_interrupt` has yet to run. An attack's or a channel's step changes
 /// it alone, so what reads the slots' table visits no unit for it.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionProgress {
     underway: Option<InProgress>,
     attack_target: Option<AttackTarget>,
+    pre_attack: Option<PreAttack>,
     interrupted: Option<ChannelCall>,
 }
 
@@ -70,6 +73,7 @@ impl ActionProgress {
             return;
         }
         self.cut();
+        self.pre_attack = None;
         self.underway = Some(InProgress::Order {
             aim: SlotAim { slot, target },
             phase: OrderPhase::Ordered,
@@ -116,23 +120,24 @@ impl ActionProgress {
     }
 
     /// Starts the ordered cast that passed its checks as `checked`, from `position` at `now`: a
-    /// charged action charges until its most; any other winds up, to resolve as its windup ends.
+    /// charged action charges until its most; any other winds up for `windup`, to resolve as it
+    /// ends.
     pub fn begin(
         &mut self,
         checked: &CheckedAction<'_>,
         position: Vec3,
         now: Tick,
+        windup: Ticks,
         dues: &mut ProgressDues<'_>,
     ) {
-        let values = checked.values;
-        if let Some(most) = values.charge {
+        if let Some(most) = checked.values.charge {
             self.charge(checked.target, position, now, now.after(most));
         } else {
             let start = ActionStart {
                 origin: position,
                 charge: None,
             };
-            self.schedule(now.after(values.windup), checked.target, start, dues);
+            self.schedule(now.after(windup), checked.target, start, dues);
         }
     }
 
@@ -218,7 +223,7 @@ impl ActionProgress {
         match &mut self.underway {
             Some(InProgress::Attack { .. } | InProgress::Charge { .. }) => self.underway = None,
             Some(InProgress::Order { phase, .. }) => *phase = OrderPhase::Ordered,
-            Some(InProgress::Channel { .. }) | None => {}
+            Some(InProgress::Channel { .. } | InProgress::WindDown { .. }) | None => {}
         }
         dues.push(self);
     }
@@ -240,6 +245,35 @@ impl ActionProgress {
     pub fn cut_channel(&mut self, dues: &mut ProgressDues<'_>) {
         self.cut();
         dues.push(self);
+    }
+
+    /// Winds down the channel under way, as an order cuts it in `now`, when its rule winds down:
+    /// the channel is cut, for its `on_interrupt`, and its unit takes no order until its
+    /// wind-down passed, its unit due in `dues`. Whether the order waits: the channel wound down
+    /// now, or winds down already.
+    pub fn wind_down(&mut self, now: Tick, dues: &mut ProgressDues<'_>) -> bool {
+        match self.underway {
+            Some(InProgress::WindDown { .. }) => true,
+            Some(InProgress::Channel {
+                aim,
+                wind_down: Some(wind_down),
+                ..
+            }) => {
+                self.cut();
+                self.underway = Some(InProgress::WindDown {
+                    slot: aim.slot,
+                    until: now.after(wind_down),
+                });
+                dues.push(self);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether a channel winds down: its unit takes no order until it ends.
+    pub const fn winds_down(&self) -> bool {
+        matches!(self.underway, Some(InProgress::WindDown { .. }))
     }
 
     /// Cuts a channel under way, as `cut_channel` does, but makes no unit due.
@@ -291,7 +325,8 @@ impl ActionProgress {
         self.underway = Some(InProgress::Channel {
             aim: call.aim,
             next: from.after(rule.tick),
-            ends: from.after(rule.duration),
+            ends: rule.duration.map(|duration| from.after(duration)),
+            wind_down: rule.wind_down,
             start: call.start,
             action: slot.action.expect("a channel's slot holds its action"),
             rank: slot.rank.expect("a channel's slot is learned"),
@@ -307,9 +342,9 @@ impl ActionProgress {
     }
 
     /// Runs the channel at `now`, `tick` the time between its ticks: one due ticks, and the next
-    /// comes `tick` later; one at its end ends whole. What it gives back are the hooks to run: a
-    /// cut channel's, since the last step, and a tick's. A channel its unit is kept from is cut
-    /// first, by `cut_channel`.
+    /// comes `tick` later; one at its end ends whole, and so does a wind-down at its own. What it
+    /// gives back are the hooks to run: a cut channel's, since the last step, and a tick's. A
+    /// channel its unit is kept from is cut first, by `cut_channel`.
     pub fn step_channel(
         &mut self,
         now: Tick,
@@ -324,6 +359,11 @@ impl ActionProgress {
     /// Runs the channel, as `step_channel` does, but makes no unit due.
     fn step(&mut self, now: Tick, tick: Ticks) -> ChannelStep {
         let interrupted = self.interrupted.take();
+        if let Some(InProgress::WindDown { until, .. }) = self.underway
+            && until <= now
+        {
+            self.underway = None;
+        }
         let Some(underway @ InProgress::Channel { next, ends, .. }) = self.underway else {
             return ChannelStep {
                 interrupted,
@@ -331,7 +371,7 @@ impl ActionProgress {
             };
         };
         let ticked = (next <= now).then(|| underway.channel_call()).flatten();
-        if ends <= now {
+        if ends.is_some_and(|ends| ends <= now) {
             self.underway = None;
         } else if let (Some(_), Some(InProgress::Channel { next, .. })) =
             (ticked, self.underway.as_mut())
@@ -344,9 +384,22 @@ impl ActionProgress {
         }
     }
 
-    /// Whether a channel runs, or one cut waits for its `on_interrupt`.
+    /// Whether an order is under way: one that waits to start, walks in range, winds up or
+    /// charges.
+    pub const fn has_order(&self) -> bool {
+        matches!(
+            self.underway,
+            Some(InProgress::Order { .. } | InProgress::Charge { .. })
+        )
+    }
+
+    /// Whether a channel runs or winds down, or one cut waits for its `on_interrupt`.
     pub const fn is_channel_due(&self) -> bool {
-        self.interrupted.is_some() || matches!(self.underway, Some(InProgress::Channel { .. }))
+        self.interrupted.is_some()
+            || matches!(
+                self.underway,
+                Some(InProgress::Channel { .. } | InProgress::WindDown { .. })
+            )
     }
 
     /// The unit its attacks aim at.
@@ -377,11 +430,42 @@ impl ActionProgress {
     /// the current one cancels an attack in its windup and spends nothing.
     pub fn set_attack_target(&mut self, target: Option<AttackTarget>, dues: &mut ProgressDues<'_>) {
         let unit = target.map(|target| target.unit);
-        if unit != self.attack_target() && self.attacking().is_some() {
-            self.underway = None;
+        if unit != self.attack_target() {
+            self.pre_attack = None;
+            if self.attacking().is_some() {
+                self.underway = None;
+            }
         }
         self.attack_target = target;
         dues.push(self);
+    }
+
+    /// The pre-attack under way or spent, of a weapon at its attack target.
+    pub const fn pre_attack(&self) -> Option<PreAttack> {
+        self.pre_attack
+    }
+
+    /// Starts the pre-attack of the weapon of `slot` at `target`, done at `done_at`, in place of
+    /// any other.
+    pub const fn begin_pre_attack(&mut self, slot: u8, target: StableId, done_at: Tick) {
+        self.pre_attack = Some(PreAttack {
+            slot,
+            target,
+            done_at,
+            spent: false,
+        });
+    }
+
+    /// Marks its pre-attack spent by a start of its weapon.
+    pub const fn spend_pre_attack(&mut self) {
+        if let Some(pre_attack) = &mut self.pre_attack {
+            pre_attack.spent = true;
+        }
+    }
+
+    /// Ends its pre-attack, as a loss of reach does.
+    pub const fn end_pre_attack(&mut self) {
+        self.pre_attack = None;
     }
 
     /// Moves what is under way or cut along, as `count` slots join its unit's at `at`.
@@ -393,6 +477,9 @@ impl ActionProgress {
         };
         if let Some(underway) = &mut self.underway {
             moved(underway.slot_mut());
+        }
+        if let Some(pre_attack) = &mut self.pre_attack {
+            moved(&mut pre_attack.slot);
         }
         if let Some(cut) = &mut self.interrupted {
             moved(&mut cut.call.aim.slot);
@@ -411,13 +498,23 @@ impl ActionProgress {
         if let Some(underway) = &mut self.underway {
             follow(underway.slot_mut());
         }
+        if let Some(pre_attack) = &mut self.pre_attack {
+            follow(&mut pre_attack.slot);
+        }
         if let Some(cut) = &mut self.interrupted {
             follow(&mut cut.call.aim.slot);
         }
     }
 
-    /// Stops what is under way from `slot`, a channel cut, as its slot is filled afresh.
+    /// Stops what is under way from `slot`, a channel cut, and its pre-attack, as its slot is
+    /// filled afresh.
     pub(crate) fn slot_emptied(&mut self, slot: u8, dues: &mut ProgressDues<'_>) {
+        if self
+            .pre_attack
+            .is_some_and(|pre_attack| pre_attack.slot == slot)
+        {
+            self.pre_attack = None;
+        }
         if self
             .underway
             .is_some_and(|underway| underway.slot() == slot)
@@ -434,11 +531,13 @@ impl SimComponent for ActionProgress {
     // What is under way of a slot its unit does not have, an attack of no weapon or an order of
     // one, has no rules for a cast to follow; a channel's action and rank are its slot's. A
     // place past the world's bound would overflow the distance to another. A death ends what is
-    // under way and the attack target, and no pass of a dead unit's would end them.
+    // under way, the attack target and its pre-attack, and no pass of a dead unit's would end
+    // them.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let book = world.resource::<ActionBook>();
         let dead = world.entity(entity).contains::<Dead>();
-        let ended = self.underway.is_none() && self.attack_target.is_none();
+        let ended =
+            self.underway.is_none() && self.attack_target.is_none() && self.pre_attack.is_none();
         (!dead || ended)
             && world
                 .get::<ActionSlots>(entity)
@@ -459,6 +558,8 @@ impl ActionProgress {
                 InProgress::Channel {
                     action: id,
                     rank: at,
+                    ends,
+                    wind_down,
                     ..
                 } => {
                     let held =
@@ -466,8 +567,14 @@ impl ActionProgress {
                     let rule = book
                         .get(id)
                         .and_then(|action| action.values_at(at)?.channel);
-                    return held && rule.is_some();
+                    // A channel ends exactly when its rule has a length, and winds down as it.
+                    return held
+                        && rule.is_some_and(|rule| {
+                            rule.duration.is_some() == ends.is_some() && rule.wind_down == wind_down
+                        });
                 }
+                // A wind-down is of a slot the unit has, whatever its slot holds now.
+                InProgress::WindDown { .. } => return slot.is_some(),
                 InProgress::Charge { since, full, .. } => {
                     let charges = action.is_some_and(|(rank, action)| {
                         action.has_rank(rank) && action.values(rank).charge.is_some()
@@ -526,7 +633,16 @@ impl ActionProgress {
                 .and_then(|action| action.values_at(cut.rank));
             charged(values, cut.call.start)
         });
-        underway && interrupted && places && started && cut_start
+        // A pre-attack is of a weapon's slot, at the attack target.
+        let pre_attack = self.pre_attack.is_none_or(|pre_attack| {
+            let target = self.attack_target.map(|target| target.unit);
+            let slot = slots
+                .slot(pre_attack.slot)
+                .and_then(|slot| book.get(slot.action?));
+            target == Some(pre_attack.target)
+                && slot.is_some_and(|action| action.kind == ActionKind::Attack)
+        });
+        underway && interrupted && places && started && cut_start && pre_attack
     }
 }
 

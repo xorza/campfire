@@ -65,47 +65,62 @@ fn objects() -> ObjectIni {
     ini
 }
 
-/// The import of `file` of the fixture install's objects, with the looks of its client
-/// objects but the prop of no model's, drawn in `lights` lights.
-fn import(
-    file: &ZeroHourMap,
-    names: &mut ImportNames,
-    lights: usize,
-) -> Result<MapImport, MapError> {
-    let mut rules = ZeroHourRules {
-        objects: objects(),
-        ..ZeroHourRules::default()
-    };
-    rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
-    let objects = ["oak", "rock", "rockred", "bush"].map(|look| {
-        (
-            DeclaredName::new(look).unwrap(),
-            ClientUnit::new(Vec::new()),
-        )
-    });
-    let looks = ClientUnits {
-        objects: objects.into(),
-        ..ClientUnits::default()
-    };
-    let sources = MapSources {
-        rules: &rules,
-        names,
-        looks: &looks,
-        lights,
-        game: GameData {
-            adjust_cliff_textures: true,
-            three_way_blends: true,
-        },
-        textures: &vec![None; file.terrain.classes.len()],
-    };
-    MapImport::new(file, sources)
+/// The fixture install's objects and locomotors, and the looks of its client objects but the
+/// prop of no model's, which a map's import reads.
+#[derive(Debug)]
+struct MapFixture {
+    rules: ZeroHourRules,
+    looks: ClientUnits,
+}
+
+impl MapFixture {
+    fn new() -> Self {
+        let mut rules = ZeroHourRules {
+            objects: objects(),
+            ..ZeroHourRules::default()
+        };
+        rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+        let objects = ["oak", "rock", "rockred", "bush"].map(|look| {
+            (
+                DeclaredName::new(look).unwrap(),
+                ClientUnit::new(Vec::new()),
+            )
+        });
+        let looks = ClientUnits {
+            objects: objects.into(),
+            ..ClientUnits::default()
+        };
+        Self { rules, looks }
+    }
+
+    /// The import of `file`, its objects named in `names`, drawn in `lights` lights.
+    fn import<'r>(
+        &'r self,
+        file: &ZeroHourMap,
+        names: &mut ImportNames<'r>,
+        lights: usize,
+    ) -> Result<MapImport, MapError> {
+        let sources = MapSources {
+            rules: &self.rules,
+            names,
+            looks: &self.looks,
+            lights,
+            game: TerrainDraw {
+                adjust_cliff_textures: true,
+                three_way_blends: true,
+            },
+            textures: &vec![None; file.terrain.fields().classes.len()],
+        };
+        MapImport::new(file, sources)
+    }
 }
 
 #[test]
 fn a_map_s_lights_are_its_time_of_day_s_on_the_engine_s_axes() {
+    let fixture = MapFixture::new();
     let mut file = ZeroHourMap::read(&map(8)).unwrap();
     let mut names = ImportNames::default();
-    let imported = import(&file, &mut names, 3).unwrap();
+    let imported = fixture.import(&file, &mut names, 3).unwrap();
     // The afternoon's lights: light `l` of time 2 has ambient [2, l, 0], diffuse [2, l, 1]
     // and position [2, l, 2], which is the engine's [2, 2, −l]. The objects' lights are 3 to
     // 5, after the terrain's 0 to 2, which the import drops; their ambient is light 3's.
@@ -121,20 +136,21 @@ fn a_map_s_lights_are_its_time_of_day_s_on_the_engine_s_axes() {
         }
     );
     // Drawn in two lights, each keeps its first two.
-    let two = import(&file, &mut names, 2).unwrap();
+    let two = fixture.import(&file, &mut names, 2).unwrap();
     assert_eq!(MapLights::decode(&two.lights).unwrap().lights.len(), 2);
     // An object light it draws that goes no way is refused; one it does not draw is not.
     file.lights[1].position = [0.0; 3];
-    let refused = import(&file, &mut names, 3).map(drop);
+    let refused = fixture.import(&file, &mut names, 3).map(drop);
     assert_eq!(refused, Err(MapError::LightDirection));
-    assert!(import(&file, &mut names, 1).is_ok());
+    assert!(fixture.import(&file, &mut names, 1).is_ok());
 }
 
 #[test]
 fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
+    let fixture = MapFixture::new();
     let mut file = ZeroHourMap::read(&map(8)).unwrap();
     let mut names = ImportNames::default();
-    let imported = import(&file, &mut names, 3).unwrap();
+    let imported = fixture.import(&file, &mut names, 3).unwrap();
 
     // 4 × 3 samples, a border of 1: x from −10 to 20, and z from −(3 − 1 − 1) · 10 = −10 to
     // 10, the file's last row first.
@@ -152,7 +168,7 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
     // The file's row 2 is the engine's row 0, so its cell of column x and row y is the
     // engine's (2 − y) · 4 + x: its last, a cliff of tile 3, the engine's 3; its first, a
     // cliff of tile 0, the engine's 8; its cell 2, of cliff UVs, the engine's 10.
-    let cells = MapImport::flipped(&file.terrain.cells, file.heights.width);
+    let cells = MapImport::flipped(&file.terrain.fields().cells, file.heights.width);
     assert_eq!(cells.len(), 12);
     assert!(cells[3].cliff && cells[3].tile == 3);
     assert!(cells[8].cliff && cells[8].tile == 0);
@@ -181,7 +197,7 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
     assert_eq!(terrain.surface(), SURFACE);
     assert_eq!(imported.untextured, 6);
     assert_eq!(
-        file.terrain.blends,
+        file.terrain.fields().blends,
         [BlendTile {
             tile: 4,
             shape: BlendShape::LeftDiagonal { long: true },
@@ -264,9 +280,9 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
     assert_eq!(map.ground_data(), Some(ground));
     let mut wide = file.clone();
     wide.heights.boundary = Some([9, 1]);
-    assert!(import(&wide, &mut names, 3).is_ok());
+    assert!(fixture.import(&wide, &mut names, 3).is_ok());
     wide.heights.boundary = Some([100, 100]);
-    let refused = import(&wide, &mut names, 3).map(drop);
+    let refused = fixture.import(&wide, &mut names, 3).map(drop);
     assert_eq!(refused, Err(MapError::Ground(GroundError::CoarseCount)));
     // The tree, the prop 1 above the ground, its reskin and the fluff are client objects, in
     // the map's order, of their templates' looks; the prop of no look, the template no object
@@ -298,7 +314,9 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
         (true, true, r#"["night", "snow"]"#),
     ] {
         dark.conditions = LookConditions { night, snow };
-        let written = import(&dark, &mut ImportNames::default(), 3).unwrap();
+        let written = fixture
+            .import(&dark, &mut ImportNames::default(), 3)
+            .unwrap();
         assert_eq!(
             written.conditions,
             format!("conditions = {conditions}\n").into_bytes()
@@ -348,7 +366,7 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
     let waypoint = 2;
     for (x, kept) in [(35.0, true), (35.5, false)] {
         file.objects[waypoint].position[0] = x;
-        let moved = import(&file, &mut names, 3).unwrap();
+        let moved = fixture.import(&file, &mut names, 3).unwrap();
         let map = read_map(&moved.map);
         assert_eq!(map.bounds(), bounds);
         assert_eq!(map.markers.len(), usize::from(kept));
@@ -371,8 +389,13 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
             (point.id, point.name) = (id, name.as_bytes().to_vec());
             placed.objects.push(object);
         }
-        let markers =
-            read_map(&import(&placed, &mut ImportNames::default(), 3).unwrap().map).markers;
+        let markers = read_map(
+            &fixture
+                .import(&placed, &mut ImportNames::default(), 3)
+                .unwrap()
+                .map,
+        )
+        .markers;
         markers
             .iter()
             .map(|marker| marker.tags.len())
@@ -405,8 +428,13 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
 
 #[test]
 fn a_map_whose_waypoints_or_objects_the_engine_cannot_hold_is_refused() {
+    let fixture = MapFixture::new();
     let mut file = ZeroHourMap::read(&map(8)).unwrap();
-    let import = |file: &ZeroHourMap| import(file, &mut ImportNames::default(), 3).map(drop);
+    let import = |file: &ZeroHourMap| {
+        fixture
+            .import(file, &mut ImportNames::default(), 3)
+            .map(drop)
+    };
     let waypoint = 2;
     let mut twice = file.clone();
     twice.objects.push(file.objects[waypoint].clone());

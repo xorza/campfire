@@ -1,7 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 
-use campfire_package::{ContentError, LoadError, PackageName};
+use campfire_package_format::ContentError;
 use campfire_store::{DurableDirCreateError, DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
@@ -43,21 +43,4 @@ pub enum WriteError {
     /// The files written make no package, as two paths that differ only in case.
     #[error("the files written make no package")]
     Package(#[source] ContentError),
-}
-
-/// Why a store does not give the packages that session terms name.
-#[derive(Debug, Error)]
-pub enum StoreError {
-    /// The store holds no mode of the fingerprint the terms name.
-    #[error("no mode of the session's fingerprint is held")]
-    UnknownMode,
-    /// The terms name another count of dependencies than the mode's manifest.
-    #[error("the session names another count of dependencies than the mode")]
-    DependencyCount,
-    /// The store holds no package of the fingerprint the terms give the dependency of this name.
-    #[error("no package of the fingerprint the session gives {0:?} is held")]
-    MissingDependency(PackageName),
-    /// The packages do not load.
-    #[error(transparent)]
-    Load(LoadError),
 }

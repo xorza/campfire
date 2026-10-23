@@ -1,12 +1,13 @@
 use std::num::NonZeroI64;
 
 use campfire_actions::SlotKind;
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_math::{Num, Rounding};
 use campfire_sim::MatchRate;
 use campfire_units::TurnStep;
 
 use crate::turret::turret_data::TurretData;
+use campfire_values::UnitType;
 
 pub(crate) mod aiming;
 pub(crate) mod turret_angle;
@@ -45,7 +46,7 @@ impl Turret {
     }
 }
 
-impl PerType for Turret {
+impl PerId<UnitType> for Turret {
     const SCRIPTS_ONLY: bool = false;
 }
 

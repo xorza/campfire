@@ -142,10 +142,9 @@ impl ActionsColumn {
             return;
         };
         let attack_range = slots.weapon_in(book, None).map(|slot| {
-            let ActionRange::Meters(range) = slots.range_in(book, slot) else {
-                panic!("the load gives every attack a range in meters");
-            };
-            range.get()
+            slots
+                .meters_in(book, slot)
+                .expect("the load gives every attack a range in meters")
         });
         rows.slots.extend(slots.iter().map(|slot| {
             let action = slot

@@ -5,6 +5,7 @@ use std::fmt::Write as _;
 
 use campfire_values::PackagePath;
 
+use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::NoPackagePath;
 
 /// `text`, a path the import made of the game's names; an error for one no package path spells,
@@ -17,6 +18,15 @@ pub(crate) fn package_path(text: String) -> Result<PackagePath, NoPackagePath> {
 /// holds.
 pub(crate) fn model(name: &str) -> Result<PackagePath, NoPackagePath> {
     package_path(format!("client/models/{name}.glb"))
+}
+
+/// Where the texture at `path` goes: `client/textures/` and its path with `/` between names, its
+/// extension `.ktx2`; an error for a name no package path holds.
+pub(crate) fn texture(path: &ArchivePath) -> Result<PackagePath, NoPackagePath> {
+    package_path(format!(
+        "client/textures/{}.ktx2",
+        path.without_extension().replace('\\', "/")
+    ))
 }
 
 /// The URI of the file at `to` from the file at `from`, as a glTF names its texture: a `..` for

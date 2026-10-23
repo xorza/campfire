@@ -1,6 +1,6 @@
 use campfire_net_core::Instant;
 use campfire_net_payload::UnlinkReason;
-use core::net::SocketAddr;
+use core::net::{IpAddr, SocketAddr};
 
 use crate::connection_id::ConnectionId;
 use crate::datagram_io::{Datagram, Outbound};
@@ -80,6 +80,8 @@ pub struct Establishing {
 #[derive(Debug)]
 pub struct Established {
     pub peer: SocketAddr,
+    /// The local address the peer's datagrams came to, which the packet session's leave from.
+    pub local: Option<IpAddr>,
     pub protection: Protection,
     /// The connection ID each datagram this end sends starts with, which the peer's IO routes it
     /// by.

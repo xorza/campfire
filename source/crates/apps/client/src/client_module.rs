@@ -9,25 +9,28 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
 use campfire_app_threads::OneThreadPlugins;
-use campfire_bots::BotScript;
 use campfire_common::EnumAll;
 use campfire_declarations::CapabilitySet;
-use campfire_net::{Pace, PacedRunnerPlugin};
+use campfire_host::Pace;
+use campfire_net::PacedRunnerPlugin;
 use campfire_package::ModePackages;
 use campfire_sim::Capability;
 
 use crate::action_names::ActionNamesPlugin;
-use crate::bot::BotPlugin;
 use crate::build_preview::BuildPreviewPlugin;
 use crate::command_panel::CommandPanelPlugin;
+use crate::gather_click::GatherClickPlugin;
 use crate::hud::HudPlugin;
 use crate::inventory_bar::InventoryBarPlugin;
 use crate::item_names::ItemNamesPlugin;
+use crate::learn_keys::LearnKeysPlugin;
 use crate::local_keys::LocalKeysPlugin;
 use crate::orders::OrdersPlugin;
 use crate::pointer::unit_picking::UnitPickingPlugin;
+use crate::rally_click::RallyClickPlugin;
 use crate::selecting::SelectingPlugin;
 use crate::shop_panel::ShopPanelPlugin;
+use crate::use_click::UseClickPlugin;
 use crate::view::ViewPlugin;
 use crate::view::area_view::AreaViewPlugin;
 use crate::view::client_data::ClientFilesPlugin;
@@ -56,6 +59,10 @@ pub(crate) enum ClientModule {
     Hud,
     Selecting,
     Orders,
+    GatherClick,
+    UseClick,
+    RallyClick,
+    LearnKeys,
     ItemNames,
     ShopPanel,
     InventoryBar,
@@ -64,11 +71,12 @@ pub(crate) enum ClientModule {
     BuildPreview,
 }
 
-/// The client's own end: a bot's, which plays its script with no window, or a window's, which
-/// draws the match, of a match on a local server whose pace its keys change, or of a remote one.
+/// The client's own end: a bot's, whose script the sim client plays, with no window, or a
+/// window's, which draws the match, of a match on a local server whose pace its keys change, or
+/// of a remote one.
 #[derive(Debug)]
 pub(crate) enum ClientEnd {
-    Bot(BotScript),
+    Bot,
     Window { local: Option<Arc<Pace>> },
 }
 
@@ -88,7 +96,11 @@ impl ClientModule {
         match self {
             Self::AreaView => &[Capability::Areas],
             Self::ItemNames | Self::ShopPanel | Self::InventoryBar => &[Capability::Items],
-            Self::ActionNames | Self::CommandPanel => &[Capability::Production],
+            Self::ActionNames | Self::CommandPanel | Self::GatherClick | Self::RallyClick => {
+                &[Capability::Production]
+            }
+            Self::UseClick => &[Capability::Interaction],
+            Self::LearnKeys => &[Capability::Progression],
             Self::BuildPreview => &[Capability::Production, Capability::Navigation],
             Self::Window
             | Self::LocalKeys
@@ -120,6 +132,10 @@ impl ClientModule {
             | Self::Hud
             | Self::Selecting
             | Self::Orders
+            | Self::GatherClick
+            | Self::UseClick
+            | Self::RallyClick
+            | Self::LearnKeys
             | Self::ItemNames
             | Self::ShopPanel
             | Self::InventoryBar
@@ -148,13 +164,12 @@ impl ClientEnd {
     /// sources as its asset plugin is added, so the window's source goes first.
     pub(crate) fn add(self, app: &mut App, packages: &Arc<ModePackages>) {
         let local = match self {
-            Self::Bot(script) => {
+            Self::Bot => {
                 app.add_plugins((
                     OneThreadPlugins,
                     TimePlugin,
                     StatesPlugin,
                     PacedRunnerPlugin,
-                    BotPlugin { script },
                 ));
                 return;
             }
@@ -232,6 +247,18 @@ impl ClientModule {
             }
             Self::Orders => {
                 app.add_plugins(OrdersPlugin);
+            }
+            Self::GatherClick => {
+                app.add_plugins(GatherClickPlugin);
+            }
+            Self::UseClick => {
+                app.add_plugins(UseClickPlugin);
+            }
+            Self::RallyClick => {
+                app.add_plugins(RallyClickPlugin);
+            }
+            Self::LearnKeys => {
+                app.add_plugins(LearnKeysPlugin);
             }
             Self::ItemNames => {
                 app.add_plugins(ItemNamesPlugin);
@@ -314,9 +341,10 @@ mod tests {
             ClientModule::Orders,
         ];
         assert_eq!(of(remote, &[]), core);
-        // A local one adds its keys; production alone adds the panel and its names, and the
-        // preview only with navigation; items the shop, the inventory and their names; areas their
-        // discs.
+        // A local one adds its keys; production alone adds the gather and rally clicks, the
+        // panel and its names, and the preview only with navigation; items the shop, the
+        // inventory and their names; areas their discs; interaction the use click; progression
+        // the learn keys.
         let with = |extra: &[ClientModule], local_keys: bool| {
             let mut modules = core.to_vec();
             if local_keys {
@@ -327,7 +355,12 @@ mod tests {
             modules
         };
         assert_eq!(of(local, &[]), with(&[], true));
-        let panel = [ClientModule::ActionNames, ClientModule::CommandPanel];
+        let panel = [
+            ClientModule::GatherClick,
+            ClientModule::RallyClick,
+            ClientModule::ActionNames,
+            ClientModule::CommandPanel,
+        ];
         assert_eq!(of(remote, &[Capability::Production]), with(&panel, false));
         let built = [Capability::Production, Capability::Navigation];
         let preview = [&panel[..], &[ClientModule::BuildPreview]].concat();
@@ -340,5 +373,15 @@ mod tests {
         assert_eq!(of(remote, &[Capability::Items]), with(&shop, false));
         let areas = [ClientModule::AreaView];
         assert_eq!(of(remote, &[Capability::Areas]), with(&areas, false));
+        let interaction = [ClientModule::UseClick];
+        assert_eq!(
+            of(remote, &[Capability::Interaction]),
+            with(&interaction, false)
+        );
+        let progression = [ClientModule::LearnKeys];
+        assert_eq!(
+            of(remote, &[Capability::Progression]),
+            with(&progression, false)
+        );
     }
 }

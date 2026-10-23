@@ -6,7 +6,7 @@ use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersDirective;
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position};
-use campfire_units::{GroundPoint, Layer, MapBook};
+use campfire_units::{GroundPoint, MapBook};
 use campfire_values::{Block, RelationSet};
 
 use super::*;
@@ -92,10 +92,17 @@ impl Mine {
         let all = Filter::of_release_relations(RelationSet::All);
         let gather = Production::add_gather(game, spec, all, Num::ONE, Ticks::new(3));
         // Minerals are boxes of 2 by 1 m; workers, of a half meter, walk a meter a tick.
-        let mineral_body = BodyForm::box_sized([Num::int(2), Num::ONE]).unwrap();
+        let mineral_body = BodyForm::new(
+            BodyShape::box_sized([Num::int(2), Num::ONE]).unwrap(),
+            Layer::FIRST,
+        );
         Units::give_type(game, mineral, mineral_body);
         let worker = Units::load_type(game, TypeScope::Mode, "worker", &UnitTypeCore::default());
-        Units::give_type(game, worker, BodyForm::circle(Num::HALF).unwrap());
+        Units::give_type(
+            game,
+            worker,
+            BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST),
+        );
         Units::give_type(game, worker, MoveStep::new(Num::ONE).unwrap());
         Units::give_type(game, worker, Gatherer::default());
         Self {
@@ -122,7 +129,7 @@ impl Mine {
         let position = position.into();
         let gather = self.gather;
         let slots = TimedSlots::new(ActionSlots::new([(gather, SlotKind::new(0), rank)]));
-        let parts = (Owner::new(Seat::new(owner)), slots);
+        let parts = (Owner::new(PlayerSlot::new(owner)), slots);
         Spawn::of(self.worker, position).parts(parts).place(game)
     }
 
@@ -317,7 +324,7 @@ fn a_node_frees_to_its_waiting_worker_as_its_holder_dies_or_takes_another_order(
                 },
             };
             let payload = Order::payload(&[Order::one(first, away)]);
-            game.step_with(&[(Seat::new(0), &payload)]);
+            game.step_with(&[(PlayerSlot::new(0), &payload)]);
         }
         let gathers = GatherStep::Gathering {
             since: Tick::new(1),
@@ -387,7 +394,7 @@ fn a_load_past_what_an_amount_holds_stays_with_its_worker() {
     let node = mine.mineral(&mut game, halves(0, 12), 100);
     let worker = mine.worker(&mut game, halves(1, 8), 0);
     let near_most = i64::MAX - 2;
-    let resources = game.player_resources_mut(Seat::new(0));
+    let resources = game.player_resources_mut(PlayerSlot::new(0));
     resources.unwrap().add(shop.gold, near_most).unwrap();
     Production::gather_at(&mut game, &[worker], node);
     for _ in 1..=4 {
@@ -506,7 +513,7 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     Shop::give(&mut game, worker_type, Gatherer::default());
     let train = Production::add_train(&mut game, worker_type, Ticks::ZERO, None);
     let barracks = Production::allocate_id(&mut game);
-    let player = Some(Seat::new(0));
+    let player = Some(PlayerSlot::new(0));
     shop.producer(
         &mut game,
         barracks,
@@ -788,7 +795,7 @@ fn a_producer_that_starts_its_gatherers_sends_each_to_the_nearest_free_node_with
         Shop::regive(&mut game, shop.barracks, spec);
         let train = Production::add_train(&mut game, worker_type, Ticks::ZERO, None);
         let barracks = Production::allocate_id(&mut game);
-        let player = Some(Seat::new(0));
+        let player = Some(PlayerSlot::new(0));
         let queue = TrainQueue::default();
         shop.producer(&mut game, barracks, -10, Team::new(0), player, train, queue);
         game.insert_parts(barracks, Rally::new(Some(RallyTarget::Point(rally))));

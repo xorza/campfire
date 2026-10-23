@@ -1,3 +1,4 @@
+use campfire_mode::{ModeQueue, ModeQueues};
 use std::any::type_name;
 use std::fmt::{self, Debug};
 
@@ -14,8 +15,8 @@ use campfire_declarations::{
     ModuleSystems, OneShot, Report, Role, RuleFn, Scratch, Section, SpawnParts,
 };
 use campfire_script::{
-    ApiBuilder, CallExtension, CallParams, Ctx, HookDecl, PlannedCapability, RowReads, Status,
-    ViewColumn,
+    ApiBuilder, CallExtension, CallParams, Ctx, EventPhase, HookDecl, ModeEvents,
+    PlannedCapability, RowReads, Status, ViewColumn,
 };
 use campfire_sim::{
     Breach, Capability, DueIndex, HostRule, OwnResources, Removals, SimComponent, SimEdgeSystems,
@@ -26,6 +27,8 @@ use campfire_units::{EntityKinds, ViewReader};
 use campfire_values::EngineTag;
 
 use crate::release::stage_span_systems::StageSpanSystems;
+use campfire_declarations::NamesFn;
+use campfire_values::{MatchScope, NameId, Named, Names};
 
 /// The consumer that puts a module's declarations into a match: its state types and restore
 /// checks into the state registry, its system sets into the schedule, its books from the built
@@ -138,6 +141,13 @@ impl Declarations for Installer<'_> {
 
     fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
 
+    fn names<I: NameId + Named + 'static>(&mut self, _: NamesFn<I>)
+    where
+        Names<I>: Send + Sync,
+        I::Scope: MatchScope,
+    {
+    }
+
     fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
 
     fn rule(&mut self, _: RuleFn) {}
@@ -187,6 +197,12 @@ impl Declarations for Installer<'_> {
         if let Some(report) = R::installed(self.role) {
             self.world.insert_resource(report);
         }
+    }
+
+    fn mode_events<Q: ModeEvents>(&mut self, phase: EventPhase) {
+        self.world
+            .get_resource_or_init::<ModeQueues>()
+            .push(ModeQueue::of::<Q>(phase));
     }
 
     fn calls<C: Callbacks>(&mut self) {
@@ -266,6 +282,10 @@ impl Declarations for Installer<'_> {
         if self.role.computes_state() {
             self.world.register_required_components::<H, C>();
         }
+    }
+
+    fn part_with<H: Component, C: Component + Default>(&mut self) {
+        self.world.register_required_components::<H, C>();
     }
 
     fn on_insert<C: Component>(&mut self, hook: ComponentHook) {

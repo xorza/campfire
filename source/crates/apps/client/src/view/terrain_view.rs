@@ -9,7 +9,8 @@ use bevy::mesh::{Mesh, Mesh3d};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 
 use crate::client_packages::ClientPackages;
-use crate::view::client_data::ClientData;
+use crate::view::client_data::ClientLoad;
+use crate::view::ground_heights::GroundHeights;
 use crate::view::terrain_image::TerrainImage;
 use crate::view::terrain_meshes::TerrainMeshes;
 
@@ -35,8 +36,10 @@ impl TerrainViewPlugin {
     fn draw(world: &mut World) {
         let packages = Arc::clone(&world.resource::<ClientPackages>().packages);
         let files = &packages.mode().package.files;
-        world.resource_scope(|world, data: Mut<'_, ClientData>| {
-            let (Some(file), Some(heights)) = (&data.terrain, &data.heights) else {
+        world.resource_scope(|world, load: Mut<'_, ClientLoad>| {
+            let (Some(file), Some(heights)) =
+                (&load.terrain, world.get_resource::<GroundHeights>())
+            else {
                 return;
             };
             let grid = heights.grid();

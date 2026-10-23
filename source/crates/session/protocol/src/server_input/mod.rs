@@ -1,5 +1,5 @@
 use campfire_codec::{Binary, Decoded};
-use campfire_common::{AfterLeave, Seat, Tick};
+use campfire_common::{AfterLeave, PlayerSlot, Tick};
 use serde::{Deserialize, Serialize};
 
 use crate::bytes::Bytes;
@@ -10,28 +10,37 @@ use crate::signed::{SignatureDomain, Signed};
 
 pub(crate) mod error;
 
-/// An input the server makes and signs with its key, logged before the tick it applies in: a
-/// bot's commands, and each change of who controls a seat or of a player's link. A bot's payload
+/// An input the server makes and signs with its key, logged before the tick it applies in: a bot's
+/// commands, and each change of who controls a player slot or of a player's link. A bot's payload
 /// is borrowed, from where the server wrote it or the bytes it was read from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerInput<'a> {
-    /// Commands of the seat's bot, in the same format as a player's payload.
-    Bot { seat: Seat, payload: &'a [u8] },
-    /// The player of `delegation` takes the seat, their chain starting from its id.
-    Join { seat: Seat, delegation: Delegation },
-    /// The seat's player signs with `delegation`'s session key from now on, their chain going
-    /// on: the same main key.
-    Renew { seat: Seat, delegation: Delegation },
-    /// The seat's player left, for `reason`, and the seat became `becomes`.
+    /// Commands of the player slot's bot, in the same format as a player's payload.
+    Bot {
+        player_slot: PlayerSlot,
+        payload: &'a [u8],
+    },
+    /// The player of `delegation` takes the player slot, their chain starting from its id.
+    Join {
+        player_slot: PlayerSlot,
+        delegation: Delegation,
+    },
+    /// The player slot's player signs with `delegation`'s session key from now on, their chain
+    /// going on: the same main key.
+    Renew {
+        player_slot: PlayerSlot,
+        delegation: Delegation,
+    },
+    /// The player slot's player left, for `reason`, and the player slot became `becomes`.
     Leave {
-        seat: Seat,
+        player_slot: PlayerSlot,
         reason: LeaveReason,
         becomes: AfterLeave,
     },
-    /// The seat's player's link came back.
-    Connected { seat: Seat },
-    /// The seat's player's link failed.
-    Disconnected { seat: Seat },
+    /// The player slot's player's link came back.
+    Connected { player_slot: PlayerSlot },
+    /// The player slot's player's link failed.
+    Disconnected { player_slot: PlayerSlot },
 }
 
 /// Why a player left.
@@ -47,28 +56,28 @@ pub enum LeaveReason {
 #[derive(Debug, Serialize, Deserialize)]
 enum Wire<'a> {
     Bot {
-        seat: u32,
+        player_slot: u32,
         #[serde(borrow)]
         payload: Bytes<'a>,
     },
     Join {
-        seat: u32,
+        player_slot: u32,
         delegation: &'a str,
     },
     Renew {
-        seat: u32,
+        player_slot: u32,
         delegation: &'a str,
     },
     Leave {
-        seat: u32,
+        player_slot: u32,
         reason: LeaveReason,
         becomes: AfterLeave,
     },
     Connected {
-        seat: u32,
+        player_slot: u32,
     },
     Disconnected {
-        seat: u32,
+        player_slot: u32,
     },
 }
 
@@ -117,15 +126,15 @@ fn write_place(message: &mut Vec<u8>, session_id: SessionId, place: InputPlace) 
 }
 
 impl<'a> ServerInput<'a> {
-    /// The seat it is about.
-    pub const fn seat(&self) -> Seat {
+    /// The player slot it is about.
+    pub const fn player_slot(&self) -> PlayerSlot {
         match self {
-            ServerInput::Bot { seat, .. }
-            | ServerInput::Join { seat, .. }
-            | ServerInput::Renew { seat, .. }
-            | ServerInput::Leave { seat, .. }
-            | ServerInput::Connected { seat }
-            | ServerInput::Disconnected { seat } => *seat,
+            ServerInput::Bot { player_slot, .. }
+            | ServerInput::Join { player_slot, .. }
+            | ServerInput::Renew { player_slot, .. }
+            | ServerInput::Leave { player_slot, .. }
+            | ServerInput::Connected { player_slot }
+            | ServerInput::Disconnected { player_slot } => *player_slot,
         }
     }
 
@@ -143,40 +152,40 @@ impl<'a> ServerInput<'a> {
             |json: &str| Delegation::parse(json).map_err(ServerInputDecodeError::Delegation);
         let input = match wire {
             Wire::Bot {
-                seat,
+                player_slot,
                 payload: Bytes(payload),
             } => ServerInput::Bot {
-                seat: Seat::new(seat),
+                player_slot: PlayerSlot::new(player_slot),
                 payload,
             },
             Wire::Join {
-                seat,
+                player_slot,
                 delegation: json,
             } => ServerInput::Join {
-                seat: Seat::new(seat),
+                player_slot: PlayerSlot::new(player_slot),
                 delegation: delegation(json)?,
             },
             Wire::Renew {
-                seat,
+                player_slot,
                 delegation: json,
             } => ServerInput::Renew {
-                seat: Seat::new(seat),
+                player_slot: PlayerSlot::new(player_slot),
                 delegation: delegation(json)?,
             },
             Wire::Leave {
-                seat,
+                player_slot,
                 reason,
                 becomes,
             } => ServerInput::Leave {
-                seat: Seat::new(seat),
+                player_slot: PlayerSlot::new(player_slot),
                 reason,
                 becomes,
             },
-            Wire::Connected { seat } => ServerInput::Connected {
-                seat: Seat::new(seat),
+            Wire::Connected { player_slot } => ServerInput::Connected {
+                player_slot: PlayerSlot::new(player_slot),
             },
-            Wire::Disconnected { seat } => ServerInput::Disconnected {
-                seat: Seat::new(seat),
+            Wire::Disconnected { player_slot } => ServerInput::Disconnected {
+                player_slot: PlayerSlot::new(player_slot),
             },
         };
         Ok(Decoded { value: input, rest })
@@ -184,29 +193,42 @@ impl<'a> ServerInput<'a> {
 
     fn wire(&self) -> Wire<'_> {
         match self {
-            ServerInput::Bot { seat, payload } => Wire::Bot {
-                seat: seat.get(),
+            ServerInput::Bot {
+                player_slot,
+                payload,
+            } => Wire::Bot {
+                player_slot: player_slot.get(),
                 payload: Bytes(payload),
             },
-            ServerInput::Join { seat, delegation } => Wire::Join {
-                seat: seat.get(),
+            ServerInput::Join {
+                player_slot,
+                delegation,
+            } => Wire::Join {
+                player_slot: player_slot.get(),
                 delegation: delegation.json(),
             },
-            ServerInput::Renew { seat, delegation } => Wire::Renew {
-                seat: seat.get(),
+            ServerInput::Renew {
+                player_slot,
+                delegation,
+            } => Wire::Renew {
+                player_slot: player_slot.get(),
                 delegation: delegation.json(),
             },
             ServerInput::Leave {
-                seat,
+                player_slot,
                 reason,
                 becomes,
             } => Wire::Leave {
-                seat: seat.get(),
+                player_slot: player_slot.get(),
                 reason: *reason,
                 becomes: *becomes,
             },
-            ServerInput::Connected { seat } => Wire::Connected { seat: seat.get() },
-            ServerInput::Disconnected { seat } => Wire::Disconnected { seat: seat.get() },
+            ServerInput::Connected { player_slot } => Wire::Connected {
+                player_slot: player_slot.get(),
+            },
+            ServerInput::Disconnected { player_slot } => Wire::Disconnected {
+                player_slot: player_slot.get(),
+            },
         }
     }
 }

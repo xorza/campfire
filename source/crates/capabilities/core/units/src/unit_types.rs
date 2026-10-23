@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, Fact, SourceKind};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, Fact, Section, SourceKind};
 use campfire_script::{StateSchema, TagNames};
 use campfire_values::{
     EngineTag, NameId, NameTable, Names, NamesError, PackageIndex, Scalar, Tag, TagProperties,
@@ -14,7 +14,6 @@ use crate::body_form::BodyForm;
 use crate::declared_tags::DeclaredTags;
 use crate::error::TypesError;
 use crate::layer::Layer;
-use crate::layer_names::LayerNames;
 use crate::tag_book::TagBook;
 use crate::tag_data::{ModeTagsData, TagData};
 use crate::type_origin_book::{TypeOrigin, TypeOriginBook};
@@ -134,6 +133,16 @@ impl UnitTypes {
         *tags = tags.with(tag);
     }
 
+    /// Tags with `tag` each unit type of the build `cx` whose data holds the section `S`, as a
+    /// module tags the units of its kind.
+    pub fn tag_section<S: Section>(&mut self, cx: &BookCx<'_>, tag: Tag) {
+        for unit in cx.types() {
+            if unit.data.section::<S>().is_some() {
+                self.give_tag(unit.unit_type, tag);
+            }
+        }
+    }
+
     /// Tags each unit type of `bodies`, each by the body it has, if any, with the name of the
     /// layer it moves on, when `layers` names that layer: the first with no body.
     pub fn tag_layers(
@@ -161,6 +170,16 @@ impl UnitTypes {
     /// The tags' names, the engine's then the match's, as a filter reads them.
     pub const fn tags(&self) -> &TagNames {
         &self.tags
+    }
+
+    /// The names of the match's unit types, which the load resolves them by.
+    pub(crate) fn type_names(cx: &BookCx<'_>) -> Result<Arc<Names<UnitType>>, BookError> {
+        Ok(Arc::clone(cx.fact::<Self>()?.types()))
+    }
+
+    /// The names of the match's tags, which the load resolves them by.
+    pub(crate) fn tag_names(cx: &BookCx<'_>) -> Result<Arc<Names<Tag>>, BookError> {
+        Ok(Arc::clone(cx.fact::<Self>()?.tags().names()))
     }
 
     /// The match's unit types and tags: the release's engine tags, then every tag the packages
@@ -211,13 +230,13 @@ impl UnitTypes {
     /// Tags each unit type that stands with the name of the layer its body moves on, as the
     /// mode's layers name them: the first with no body.
     pub fn tag_bodies(cx: &BookCx<'_>, types: &mut Self) -> Result<(), BookError> {
-        let Some(layers) = cx.fact_if::<LayerNames>()? else {
+        let Some(layers) = cx.names_if::<Layer>()? else {
             return Ok(());
         };
-        let bodies = cx.book::<ByType<BodyForm>>()?;
+        let bodies = cx.book::<ById<UnitType, BodyForm>>()?;
         let standing = cx.standing().map(|unit| unit.unit_type);
         let bodies = standing.map(|unit_type| (unit_type, bodies.get(unit_type).copied()));
-        types.tag_layers(&layers.0, bodies);
+        types.tag_layers(layers, bodies);
         Ok(())
     }
 

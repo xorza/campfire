@@ -3,9 +3,10 @@ use campfire_codec::StructFields;
 use campfire_math::Num;
 use campfire_script::{
     ApiBuilder, ApiHolder, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberDecl, RoleSet,
-    ScriptValue, ScriptWindow, Status, Unit,
+    ScriptTicks, ScriptValue, ScriptWindow, Status, Unit,
 };
 use campfire_values::{Block, TagProperty};
+use campfire_visibility::DataKind;
 
 use crate::attack_data::AttackData;
 use crate::combat_column::CombatColumn;
@@ -17,8 +18,8 @@ use crate::heal_handle::HealHandle;
 use crate::mode_combat_data::{LeechData, ModeCombatData};
 use crate::turret::turret_data::TurretData;
 
-/// The script API of `combat` beside its effects' calls: `ctx.attack_hit`, `ctx.kill`, and the
-/// `Damage` and `Heal` handles.
+/// The script API of `combat` beside its effects' calls: `ctx.attack_hit`, `ctx.kill`,
+/// `ctx.respawn`, and the `Damage` and `Heal` handles.
 #[derive(Debug)]
 pub struct CombatApi;
 
@@ -35,6 +36,11 @@ impl CombatApi {
              nothing for a unit that does not live",
         )
         .roles(RoleSet::MODE);
+        let respawn = MemberDecl::mode_call(
+            "respawn",
+            &[&["unit", "ms"]],
+            "brings back `unit`, dead and of a type that stays, `ms` from the call",
+        );
         let attack_hit = call(
             "attack_hit",
             &[&["target"]],
@@ -48,6 +54,9 @@ impl CombatApi {
         })
         .call(kill, |ctx: &mut Ctx, unit: Unit| {
             ctx.queue(CombatEffect::Kill { unit: unit.id })
+        })
+        .call(respawn, |ctx: &mut Ctx, unit: Unit, ms: ScriptTicks| {
+            Self::respawn(ctx, &unit, ms)
         })
         .tag_property(
             TagProperty::Blocks(Block::Attack),
@@ -91,7 +100,7 @@ impl CombatApi {
             ),
             |unit: &mut Unit| -> Checked<ScriptValue> {
                 let view = unit.view();
-                Ok(ActionsColumn::target(view, unit.row_index()?)
+                Ok(ActionsColumn::target(view, unit.admit(DataKind::Unit)?)
                     .and_then(|target| view.unit(target))
                     .map_or(ScriptValue::UNIT, ScriptValue::of))
             },
@@ -103,10 +112,25 @@ impl CombatApi {
                 "its attack's range",
             ),
             |unit: &mut Unit| -> Checked<Num> {
-                ActionsColumn::attack_range(unit.view(), unit.row_index()?)
+                ActionsColumn::attack_range(unit.view(), unit.admit(DataKind::Unit)?)
                     .ok_or_else(|| CombatRefusal::NoAttack.fail().into())
             },
         );
+    }
+
+    /// Brings back `unit`, which is dead and stays when dead, `ms` after this call, in ticks
+    /// rounded up, at least one.
+    fn respawn(ctx: &Ctx, unit: &Unit, ms: ScriptTicks) -> Checked<()> {
+        if unit.read(|row| row.alive)? {
+            return Err(CombatRefusal::RespawnAlive.fail().into());
+        }
+        if !CombatColumn::stays(unit)? {
+            return Err(CombatRefusal::RespawnDespawns.fail().into());
+        }
+        ctx.queue(CombatEffect::Respawn {
+            unit: unit.id,
+            ticks: ms.get(),
+        })
     }
 
     /// Queues an extra attack of the acting unit, which has an attack, on `target`.

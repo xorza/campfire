@@ -2,6 +2,7 @@ use campfire_codec::{Binary, BinaryError};
 
 use super::*;
 use crate::body_form::BodyForm;
+use crate::body_shape::BodyShape;
 use crate::facing::Facing;
 use crate::ground::{CellSplit, Ground};
 use crate::height_grid::HeightGrid;
@@ -19,7 +20,7 @@ fn a_body_is_a_circle_up_to_2048_m_or_a_box_on_a_layer() {
     );
     for radius in [Num::ZERO, Num::int(-1), Num::int(2048) + Num::EPSILON] {
         assert_eq!(Body::new(radius), None, "{radius:?}");
-        assert_eq!(BodyForm::circle(radius), None, "{radius:?}");
+        assert_eq!(BodyShape::circle(radius), None, "{radius:?}");
     }
     assert_eq!(Body::shape_of(None), Shape::POINT);
     let circle = Body::new(Num::int(2)).unwrap();
@@ -35,9 +36,11 @@ fn a_body_is_a_circle_up_to_2048_m_or_a_box_on_a_layer() {
     let decoded = Binary::decode::<Body>(&Binary::encode(&air));
     assert_eq!(decoded.ok(), Some(air));
     // A restore keeps a box only on a planar map, and a circle on either.
-    let boxed = BodyForm::box_sized([Num::int(4), Num::int(2)])
-        .unwrap()
-        .at(Num::ZERO);
+    let boxed = BodyForm::new(
+        BodyShape::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+        Layer::FIRST,
+    )
+    .at(Num::ZERO);
     let on = |metric| {
         let mut world = World::new();
         world.insert_resource(MapBook {
@@ -50,11 +53,12 @@ fn a_body_is_a_circle_up_to_2048_m_or_a_box_on_a_layer() {
     assert_eq!(on(Metric::Spatial), [true, false]);
     // A form spawns its body: a circle as it is, a box of 4 × 2 m turned by the spawn's
     // angle, which keeps the form's layer; the box has half edges and no radius.
-    let form = BodyForm::circle(Num::int(2)).unwrap();
+    let form = BodyForm::new(BodyShape::circle(Num::int(2)).unwrap(), Layer::FIRST);
     assert_eq!(form.at(Num::int(90)), circle);
-    let boxed = BodyForm::box_sized([Num::int(4), Num::int(2)])
-        .unwrap()
-        .on(Layer::new(1));
+    let boxed = BodyForm::new(
+        BodyShape::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+        Layer::new(1),
+    );
     let turned = boxed.at(Num::int(90));
     let (one, two) = (Num::ONE, Num::int(2));
     assert_eq!(
@@ -72,6 +76,7 @@ fn a_body_is_a_circle_up_to_2048_m_or_a_box_on_a_layer() {
         let gap = (way - Facing::of(angle).degrees()).to_bits().unsigned_abs();
         assert!(gap <= 1 << (Num::FRAC_BITS - 16), "{angle}: {way}");
     }
+    let (boxed, form) = (boxed.shape(), form.shape());
     assert!(boxed.is_box() && !form.is_box());
     assert_eq!(
         (boxed.circle_radius(), form.circle_radius()),
@@ -79,8 +84,8 @@ fn a_body_is_a_circle_up_to_2048_m_or_a_box_on_a_layer() {
     );
     let decoded = Binary::decode::<Body>(&Binary::encode(&turned));
     assert_eq!(decoded.ok(), Some(turned));
-    // A box of a size `BodyBox` refuses is no form.
-    assert_eq!(BodyForm::box_sized([Num::int(4094), Num::int(1)]), None);
+    // A box of a size `BodyBox` refuses is no shape.
+    assert_eq!(BodyShape::box_sized([Num::int(4094), Num::int(1)]), None);
 }
 
 #[test]
@@ -146,9 +151,12 @@ fn a_body_is_a_volume_on_its_ground_and_its_center_lies_halfway_up_it() {
         Binary::decode::<Body>(&raw(-Num::EPSILON)).err(),
         Some(BinaryError::REFUSED)
     );
-    let form = BodyForm::circle(Num::ONE)
-        .unwrap()
-        .raised(Num::int(2))
-        .unwrap();
+    let form = BodyForm::new(
+        BodyShape::circle(Num::ONE)
+            .unwrap()
+            .raised(Num::int(2))
+            .unwrap(),
+        Layer::FIRST,
+    );
     assert_eq!(form.at(Num::ZERO), tall);
 }

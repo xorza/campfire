@@ -15,16 +15,17 @@ use campfire_actions::{
 use campfire_areas::Area;
 use campfire_capabilities::{Match, Order, PackageContent};
 use campfire_combat::Combat;
-use campfire_common::{DeclaredName, Seat};
+use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_deliveries::DashDelivering;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersDirective;
-use campfire_package::{ModePackages, PackageFiles};
+use campfire_package::ModePackages;
+use campfire_package_format::PackageFiles;
 use campfire_projectiles::Projectile;
 use campfire_runner::internals::Arena;
 use campfire_sim::{MatchRate, Position, SimWorld, StableId};
-use campfire_stats::{PoolMeters, Pools, Stats};
+use campfire_stats::{Applier, PoolMeters, Pools, Stats};
 use campfire_test_packages::package_files;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{Body, ForcedMove, Life, MoveStep, Owner, SeenBy};
@@ -257,7 +258,7 @@ fn caster(
         SlotKind::new(0),
         Rank::new(rank),
     )]));
-    let player = Owner::new(Seat::new(0));
+    let player = Owner::new(PlayerSlot::new(0));
     spawn_with(arena, game, 0, Team::new(0), kit, (player, slots, parts))
 }
 
@@ -290,7 +291,7 @@ fn every_moba_ability_reads_into_the_schema() {
     for name in HEROES {
         let data = abilities(name);
         for (action, data) in data.actions() {
-            if let Some(script) = &data.script {
+            if let Some(script) = &data.keys.script {
                 assert!(hero(name).read_text(script).is_ok(), "{name}.{action}");
             }
             read += 1;
@@ -302,20 +303,20 @@ fn every_moba_ability_reads_into_the_schema() {
     // Husk's Lash Out reads exactly as its file writes it.
     let husk = abilities("husk");
     let lash_out = &husk.actions()["lash_out"];
-    assert_eq!(lash_out.targeting, Targeting::None);
-    assert_eq!(lash_out.range, None);
+    assert_eq!(lash_out.keys.targeting, Targeting::None);
+    assert_eq!(lash_out.keys.range, None);
     let int = |value| Number::Value(Scalar::Int(value));
     let cooldowns = [10_000, 9000, 8000, 7000, 6000].map(int).to_vec();
-    assert_eq!(lash_out.cooldown_ms, Some(Ranked::PerRank(cooldowns)));
+    assert_eq!(lash_out.keys.cooldown_ms, Some(Ranked::PerRank(cooldowns)));
     let mana = DeclaredName::new("mana").unwrap();
     assert_eq!(
-        lash_out.cost,
+        lash_out.keys.cost,
         BTreeMap::from([(mana, Ranked::One(int(35)))])
     );
     // "3.5" is 7 halves; "0.5" one half.
     let half = Num::HALF;
     assert_eq!(
-        lash_out.params["radius"],
+        lash_out.keys.params["radius"],
         Param::Ranked(Ranked::One(Scalar::Decimal(half * 7)))
     );
     let Param::Scaling(Scaling {
@@ -323,7 +324,7 @@ fn every_moba_ability_reads_into_the_schema() {
         bonus,
         ratios,
         ..
-    }) = &lash_out.params["damage"]
+    }) = &lash_out.keys.params["damage"]
     else {
         panic!("damage scales");
     };
@@ -345,14 +346,14 @@ fn every_moba_ability_reads_into_the_schema() {
     assert!(ratios.is_empty());
     // Rime's Snow Owl reaches farther at each rank.
     let rime = abilities("rime");
-    let Some(Ranked::PerRank(ranges)) = &rime.actions()["snow_owl"].range else {
+    let Some(Ranked::PerRank(ranges)) = &rime.actions()["snow_owl"].keys.range else {
         panic!("a range per rank");
     };
     assert_eq!(ranges[1], RangeField::Range(ActionRange::meters(half * 65)));
     let wraps = &husk.actions()["grasping_wraps"];
-    assert_eq!(wraps.targeting, Targeting::Direction);
+    assert_eq!(wraps.keys.targeting, Targeting::Direction);
     let eleven = RangeField::Range(ActionRange::meters(Num::int(11)));
-    assert_eq!(wraps.range, Some(Ranked::One(eleven)));
+    assert_eq!(wraps.keys.range, Some(Ranked::One(eleven)));
 }
 
 #[test]
@@ -373,11 +374,16 @@ fn lash_out_from_its_package_hits_exactly() {
 fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself() {
     let arena = arena();
     let mut game = arena.start(RATE, 1);
-    let player = Owner::new(Seat::new(0));
+    let player = Owner::new(PlayerSlot::new(0));
     let blade = spawn_with(&arena, &mut game, 0, Team::new(0), Kit::Blade, player);
     let dummy = spawn(&arena, &mut game, 1, Team::new(1), ());
     let twin_cut = arena.modifier(&game, "hero-kensho", "twin_cut");
-    Stats::give_modifier(&mut game, blade, twin_cut, Some((blade, None, 1)), true);
+    Stats::give_modifier(
+        &mut game,
+        blade,
+        twin_cut,
+        Applier::from_unit(blade).passive(),
+    );
     // 20 an attack, every 12 ticks from tick 0, so 7 within 4 s, 120 ticks, are consecutive: 6
     // by tick 60, 500 − 120; the 7th, in tick 72, hits twice, − 40; its extra hit counts for
     // nothing, so the next 6 take 120 by tick 144, and the 14th, in tick 156, hits twice, − 40.
@@ -423,7 +429,7 @@ fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
     let mut game = arena.start(RATE, 1);
     let chill = arena.action(&game, "hero-rime", "chill_arrows");
     let hold = arena.modifier(&game, "hero-rime", "chill_arrows");
-    let player = Owner::new(Seat::new(0));
+    let player = Owner::new(PlayerSlot::new(0));
     // Rime with 20 mana, a weapon of 10 every 12 ticks; an enemy beside her.
     let rime = spawn_with(&arena, &mut game, 0, Team::new(0), Kit::Archer, player);
     let enemy = spawn(&arena, &mut game, 1, Team::new(1), ());
@@ -468,7 +474,7 @@ fn rimes_chill_arrows_pays_for_no_attack_that_does_not_strike() {
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     let chill = arena.action(&game, "hero-rime", "chill_arrows");
-    let player = Owner::new(Seat::new(0));
+    let player = Owner::new(PlayerSlot::new(0));
     // Rime with 20 mana and a weapon of a 3-tick windup that costs 12; an enemy beside her.
     let rime = spawn_with(
         &arena,
@@ -597,7 +603,7 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let mut game = arena.start(RATE, 1);
     let action = arena.action(&game, "hero-veil", "dusk_mark");
     let dusk_mark = arena.modifier(&game, "hero-veil", "dusk_mark");
-    let player = Owner::new(Seat::new(0));
+    let player = Owner::new(PlayerSlot::new(0));
     let veil = spawn_with(
         &arena,
         &mut game,
@@ -614,8 +620,8 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let other = spawn_with(&arena, &mut game, 0, Team::new(0), Kit::Striker, player);
     let marked = spawn(&arena, &mut game, 1, Team::new(1), ());
     let marks = |game: &Match| !carried(game, marked).is_empty();
-    let from = Some((veil, Some(action), 2));
-    Stats::give_modifier(&mut game, marked, dusk_mark, from, false);
+    let from = Applier::from_unit(veil).by(action, Rank::new(2).unwrap());
+    Stats::give_modifier(&mut game, marked, dusk_mark, from);
     // Another unit's attack of 30 in tick 0 leaves the mark.
     arena.tick(&mut game, 0, &[attack(other, marked)]);
     assert_eq!((health(&arena, &game, marked), marks(&game)), (470, true));
@@ -637,7 +643,9 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     let mut game = arena.start(RATE, 1);
     // Fan of Frost runs no script: its data's `on_hit` deals its damage and applies its slow.
     assert_eq!(
-        abilities(arena.packages(), "rime").actions()["fan_of_frost"].script,
+        abilities(arena.packages(), "rime").actions()["fan_of_frost"]
+            .keys
+            .script,
         None
     );
     let fan = arena.action(&game, "hero-rime", "fan_of_frost");
@@ -814,8 +822,8 @@ fn erupt_at(rate: MatchRate, erupts: u64) {
         Kit::Bare,
         (),
     );
-    let from = Some((caster, Some(eruption), 1));
-    Stats::give_modifier(&mut game, burning, kindle, from, false);
+    let from = Applier::from_unit(caster).by(eruption, Rank::FIRST);
+    Stats::give_modifier(&mut game, burning, kindle, from);
 
     arena.tick(
         &mut game,
@@ -915,7 +923,9 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     assert_eq!(
-        abilities(arena.packages(), "veil").actions()["smoke_ring"].script,
+        abilities(arena.packages(), "veil").actions()["smoke_ring"]
+            .keys
+            .script,
         None
     );
     let ring = arena.action(&game, "hero-veil", "smoke_ring");

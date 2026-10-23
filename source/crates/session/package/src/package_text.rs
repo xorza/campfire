@@ -4,7 +4,7 @@ use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
 use crate::language::Language;
 use crate::locale_file::LocaleFile;
-use crate::package_files::{LOCALE, PackageFiles};
+use campfire_package_format::PackageFiles;
 
 /// A package's human text: its own language, and its `locale/<language>.ftl` files by language.
 #[derive(Debug)]
@@ -22,11 +22,8 @@ impl PackageText {
             language: language.clone(),
             files: BTreeMap::new(),
         };
-        for path in files.files_under(LOCALE) {
-            let named = path.as_str()[LOCALE.len() + 1..]
-                .strip_suffix(".ftl")
-                .and_then(Language::parse);
-            let Some(language) = named else {
+        for path in files.files_under(Language::DIR) {
+            let Some(language) = Language::of_text_path(path) else {
                 return Err(LoadProblem::Locale {
                     path: path.clone(),
                     problem: LocaleProblem::FileName,

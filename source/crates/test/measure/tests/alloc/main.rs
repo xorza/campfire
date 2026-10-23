@@ -131,37 +131,37 @@ fn a_panic_or_a_misplaced_window_leaves_the_thread_clean() {
 
 #[test]
 fn an_audit_reports_its_worst_frame_and_fails_on_the_first_past_its_budget() {
-    // Frames allocate 0, 1, 2, 0, 1, 2, …; a fixed warmup of 3 keeps that order, so 64 frames
-    // hold 22 zeros, 21 ones and 21 twos.
+    // Frames allocate 0, 1, 2, 0, 1, 2, …; a warmup of 3 keeps that order, so 64 frames hold 22
+    // zeros, 21 ones and 21 twos.
     let mut frame = 0_usize;
-    let report = AllocAudit::new().warmup(3).frames(64).budget(2).run(|| {
-        for _ in 0..frame % 3 {
-            one_alloc();
-        }
-        frame += 1;
-    });
+    let report = AllocAudit::new(3)
+        .frames(64)
+        .budget(&["the first", "the second"])
+        .run(|| {
+            for _ in 0..frame % 3 {
+                one_alloc();
+            }
+            frame += 1;
+        });
     assert_eq!((report.worst, report.mode), (2, 0));
 
-    // The probe stops at two frames in a row that keep the budget, or at 8 frames. Frames that
-    // allocate `frame % 3` keep a budget of 1 at frames 0 and 1, so measured frame 0 is frame 2,
-    // which allocates 2. Frames that allocate on even frames never keep a budget of 0 twice in a
-    // row, so measured frame 0 is frame 8, which allocates 1.
-    let by_thirds: fn(usize) -> usize = |frame| frame % 3;
-    let on_evens: fn(usize) -> usize = |frame| usize::from(frame % 2 == 0);
-    for (allocs, budget, failed, frames) in [
-        (by_thirds, 1, "on frame 0: 2 allocations, budget 1", 3),
-        (on_evens, 0, "on frame 0: 1 allocations, budget 0", 9),
+    // A budget of one: after a warmup of 3, measured frames 0 and 1 allocate 0 and 1, and frame 2,
+    // the run's frame 5, allocates 2, so the audit stops there, 6 frames run. A warmup of 4 moves
+    // the first frame of 2 to measured frame 1, 6 frames run all the same.
+    for (warmup, failed) in [
+        (3, "on frame 2: 2 allocations, budget 1"),
+        (4, "on frame 1: 2 allocations, budget 1"),
     ] {
         let mut frame = 0_usize;
         let message = panic_of(|| {
-            AllocAudit::new().budget(budget).run(|| {
-                for _ in 0..allocs(frame) {
+            AllocAudit::new(warmup).budget(&["the one"]).run(|| {
+                for _ in 0..frame % 3 {
                     one_alloc();
                 }
                 frame += 1;
             });
         });
         assert!(message.ends_with(failed), "{message}");
-        assert_eq!(frame, frames);
+        assert_eq!(frame, 6);
     }
 }

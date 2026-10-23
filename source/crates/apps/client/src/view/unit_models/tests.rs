@@ -189,8 +189,8 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
         height: Num::int(height),
         angle: Num::int(angle),
     };
-    let data = ClientData {
-        heights: Some(GroundHeights::of(grid, None)),
+    app.insert_resource(GroundHeights::of(grid, None));
+    let data = ClientLoad {
         objects: ClientObjects {
             objects: vec![
                 object("oak", 3, -2, 1, 90),
@@ -198,7 +198,7 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
                 object("ghost", 1, 1, 0, 0),
             ],
         },
-        ..ClientData::of_looks([looks])
+        ..ClientLoad::of_looks([looks])
     };
     app.insert_resource(data);
     app.add_systems(Startup, UnitModelsPlugin::place_objects);

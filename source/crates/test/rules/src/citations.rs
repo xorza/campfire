@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use campfire_store::{InputFile, PathError, ReadError};
+use campfire_store::{DirEntries, EntryKind, InputFile, PathError, ReadError};
 
 use crate::source_file::SourceFile;
-use crate::workspace::{source, sources};
+use crate::workspace::{Workspace, source};
 
 /// The most bytes a test reads of a design document: far past any the design holds.
 const DOC_LEN: usize = 1 << 20;
@@ -48,6 +48,10 @@ struct Citation {
 fn citations(text: &str) -> Vec<Citation> {
     let mut found = Vec::new();
     for (at, _) in text.match_indices('(') {
+        // A Markdown link's target is a path, not a citation.
+        if text[..at].ends_with(']') {
+            continue;
+        }
         let rest = &text[at + 1..];
         let Some(end) = rest.find(')') else {
             continue;
@@ -143,6 +147,9 @@ fn broken(files: &[SourceFile], documents: &BTreeMap<String, Option<Titles>>) ->
                 _ => found.push(format!("{file}: no {document}")),
             }
         }
+        if numbered_decisions(&text) {
+            found.push(format!("{file}: a decision cited by its number"));
+        }
         let lower = text.to_lowercase();
         for (at, _) in lower.match_indices("design ") {
             let digits = &lower.as_bytes()[at + 7..];
@@ -151,6 +158,53 @@ fn broken(files: &[SourceFile], documents: &BTreeMap<String, Option<Titles>>) ->
             }
         }
     }
+    found
+}
+
+/// Whether `text` cites a decision by its number, `(D7)`, as a plan names its decisions, alone
+/// or among the parts of a parenthesis.
+fn numbered_decisions(text: &str) -> bool {
+    text.match_indices('(').any(|(at, _)| {
+        let rest = &text[at + 1..];
+        let inner = rest.find(')').map_or("", |end| &rest[..end]);
+        inner.split("; ").any(|part| {
+            part.strip_prefix('D').is_some_and(|number| {
+                !number.is_empty() && number.chars().all(|c| c.is_ascii_digit())
+            })
+        })
+    })
+}
+
+/// The design's documents, each by its path under `docs/design/`, with its text, its wrapped lines
+/// joined, so a citation a bullet wraps reads whole.
+fn design_documents() -> Vec<SourceFile> {
+    let mut found = Vec::new();
+    let mut dirs = vec![String::new()];
+    while let Some(dir) = dirs.pop() {
+        let at = source().join("../docs/design").join(&dir);
+        for entry in DirEntries::read(&at).unwrap() {
+            let name = entry.name.to_str().expect("a document's name is UTF-8");
+            let path = if dir.is_empty() {
+                name.to_owned()
+            } else {
+                format!("{dir}/{name}")
+            };
+            match entry.kind {
+                EntryKind::Dir => dirs.push(path),
+                EntryKind::File if Path::new(name).extension().is_some_and(|ext| ext == "md") => {
+                    let text = InputFile::read_text(&at.join(name), DOC_LEN).unwrap();
+                    let text = text
+                        .lines()
+                        .map(str::trim_start)
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    found.push(SourceFile::new(format!("docs/design/{path}"), text));
+                }
+                _ => {}
+            }
+        }
+    }
+    found.sort_unstable_by(|a, b| a.path.cmp(&b.path));
     found
 }
 
@@ -175,10 +229,13 @@ fn document(document: &str) -> Option<Titles> {
 
 #[test]
 fn a_citation_names_a_decision_its_document_holds() {
+    let workspace = Workspace::read();
     // This file's own samples break the rule on purpose.
-    let mut files: Vec<SourceFile> = sources()
-        .into_iter()
+    let mut files: Vec<SourceFile> = workspace
+        .sources()
+        .iter()
         .filter(|file| file.path != "crates/test/rules/src/citations.rs")
+        .cloned()
         .collect();
     for file in OTHER_FILES {
         files.push(SourceFile::new(
@@ -186,6 +243,10 @@ fn a_citation_names_a_decision_its_document_holds() {
             InputFile::read_text(&source().join(file), DOC_LEN).unwrap(),
         ));
     }
+    // The design's documents cite each other too; the walk reads them, so a moved tree fails.
+    let design = design_documents();
+    assert!(design.len() > 20, "{} documents", design.len());
+    files.extend(design);
     let mut documents = BTreeMap::new();
     for file in &files {
         for Citation {
@@ -203,8 +264,8 @@ fn a_citation_names_a_decision_its_document_holds() {
     // title its bullet wraps, a nested bullet's, a missing title, a missing document, a link that
     // is no citation, and the old form; and a lead that never closes.
     let sample = "/// As (a.md) says, and (a.md, One title; a.md, Two\n/// title), not (a.md, Three) \
-                  nor (b.md, One title); [a link](a.md#one-title); design 02, D1. (a.md, A long \
-                  wrapped title) (a.md, Nested)\nfn f() {}\n";
+                  nor (b.md, One title); [a link](a.md#one-title); [a path](c.md); design 02, D1. \
+                  (a.md, A long wrapped title) (a.md, Nested) (D7)\nfn f() {}\n";
     let documents = BTreeMap::from([
         (
             "a.md".to_owned(),
@@ -221,6 +282,7 @@ fn a_citation_names_a_decision_its_document_holds() {
             "a.md: a bold lead that never closes: \"Never closed. Text.\"",
             "s.rs: a.md holds no \"Three\"",
             "s.rs: no b.md",
+            "s.rs: a decision cited by its number",
             "s.rs: a design cited by its number",
         ]
     );

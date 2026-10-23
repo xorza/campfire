@@ -9,16 +9,17 @@ use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::RuleFns;
 use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
 use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
-use bevy_replicon::shared::replication::registry::ctx::{RemoveCtx, WriteCtx};
+use bevy_replicon::shared::replication::registry::ctx::WriteCtx;
 use bevy_utils::prelude::DebugName;
 use bytes::Bytes;
 use campfire_net_core::NetTick;
-use campfire_net_interpolation::HistoryComponent;
 use campfire_net_replication::ConfirmedHistory;
+use campfire_net_replication::HistoryComponent;
+use campfire_net_replication::HistoryDiffReceiver;
 use campfire_net_replication::HistoryState;
-use campfire_net_replication::{ReceivedValue, receive_history_diff, replicated_message_tick};
+use campfire_net_replication::ReceivedValue;
 use campfire_net_timeline::LocalTimeline;
-use tracing::{debug, trace};
+use tracing::trace;
 
 /// What a first authoritative value of a component does on an entity without it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,20 +59,18 @@ fn write_whole<C: HistoryComponent>(
     message: &mut Bytes,
     initial: InitialValue,
 ) -> Result<()> {
-    let component: C = rule_fns.deserialize(ctx, message)?;
-    let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
-        debug!(
-            message_tick = ?ctx.message_tick,
-            "dropping a predicted value that no confirmed tick maps"
-        );
-        return Ok(());
-    };
-    let materialized = materialize(entity, initial, &component);
-    if !materialized {
-        seed_unpredicted_insert::<C>(entity, tick);
-    }
-    record(entity, tick, HistoryState::Updated(component));
-    Ok(())
+    ConfirmedHistory::receive_whole(
+        ctx,
+        rule_fns,
+        entity,
+        message,
+        |entity, ReceivedValue { tick, value, .. }| {
+            trace_record::<C>(entity, tick, value);
+            if !materialize(entity, initial, value) {
+                seed_unpredicted_insert::<C>(entity, tick);
+            }
+        },
+    )
 }
 
 pub(crate) fn write_history_diff<C: HistoryComponent + RepliconDiffable>(
@@ -103,7 +102,7 @@ fn write_diff<C: HistoryComponent + RepliconDiffable>(
     initial: InitialValue,
 ) -> Result<()> {
     let mut settled = false;
-    receive_history_diff::<C>(
+    HistoryDiffReceiver::<C>::receive(
         ctx,
         entity,
         message,
@@ -113,15 +112,7 @@ fn write_diff<C: HistoryComponent + RepliconDiffable>(
              value,
              snapshot,
          }| {
-            trace!(
-                target: "campfire_net_debug::prediction",
-                kind = "confirmed_history_update",
-                entity = ?entity.id(),
-                component = ?DebugName::type_name::<C>(),
-                confirmed_tick = tick.0,
-                value = ?value,
-                "recorded confirmed value in confirmed history"
-            );
+            trace_record::<C>(entity, tick, value);
             if settled {
                 return;
             }
@@ -129,21 +120,6 @@ fn write_diff<C: HistoryComponent + RepliconDiffable>(
                 || seed_unpredicted_insert::<C>(entity, tick);
         },
     )
-}
-
-/// Removes component `C` and records the removal in history.
-pub(crate) fn remove_history<C: HistoryComponent>(
-    ctx: &mut RemoveCtx,
-    entity: &mut DeferredEntity<'_>,
-) {
-    let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
-        debug!(
-            message_tick = ?ctx.message_tick,
-            "dropping a predicted removal that no confirmed tick maps"
-        );
-        return;
-    };
-    record::<C>(entity, tick, HistoryState::Removed);
 }
 
 /// Puts `value` live on an entity that has neither it nor a history of it, when `initial` asks,
@@ -200,26 +176,15 @@ fn seed_unpredicted_insert<C: HistoryComponent>(
     true
 }
 
-/// Records `state` at `tick` in the entity's confirmed history, which goes on if it is not there.
-fn record<C: HistoryComponent>(
-    entity: &mut DeferredEntity<'_>,
-    tick: NetTick,
-    state: HistoryState<C>,
-) {
+/// Traces a confirmed value as the history records it.
+fn trace_record<C: HistoryComponent>(entity: &DeferredEntity<'_>, tick: NetTick, value: &C) {
     trace!(
         target: "campfire_net_debug::prediction",
         kind = "confirmed_history_update",
         entity = ?entity.id(),
         component = ?DebugName::type_name::<C>(),
         confirmed_tick = tick.0,
-        value = ?state.value(),
+        value = ?value,
         "recorded confirmed value in confirmed history"
     );
-    if let Some(mut history) = entity.get_mut::<ConfirmedHistory<C>>() {
-        history.insert(tick, state);
-    } else {
-        let mut history = ConfirmedHistory::<C>::default();
-        history.insert(tick, state);
-        entity.insert(history);
-    }
 }

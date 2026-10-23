@@ -9,9 +9,9 @@ fn root(byte: u8) -> InputHash {
     InputHash::new([byte; 32])
 }
 
-/// The head of player `seat`'s chain from `root` after `inputs`, each `(stamp, payload)`.
-fn head(seat: u32, root: InputHash, inputs: &[(u64, &[u8])]) -> InputHash {
-    let mut chain = InputChain::new(Seat::new(seat), root);
+/// The head of player `player_slot`'s chain from `root` after `inputs`, each `(stamp, payload)`.
+fn head(player_slot: u32, root: InputHash, inputs: &[(u64, &[u8])]) -> InputHash {
+    let mut chain = InputChain::new(PlayerSlot::new(player_slot), root);
     for &(stamp, payload) in inputs {
         chain.extend(Tick::new(stamp), payload);
     }
@@ -20,10 +20,9 @@ fn head(seat: u32, root: InputHash, inputs: &[(u64, &[u8])]) -> InputHash {
 
 #[test]
 fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
-    // Player 1's a: `domain ‖ root ‖ u32 seat 1 ‖ u64 seq 0 ‖ u64 stamp 0 ‖ "a"`.
-    let mut hasher = Hasher::new();
+    // Player 1's a: `domain ‖ root ‖ u32 player slot 1 ‖ u64 seq 0 ‖ u64 stamp 0 ‖ "a"`.
+    let mut hasher = Hasher::new_derive_key("campfire/input-hash/v1");
     hasher
-        .update(b"campfire/input-hash/v1")
         .update(root(1).as_bytes())
         .update(&1_u32.to_le_bytes())
         .update(&0_u64.to_le_bytes())
@@ -31,11 +30,10 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
         .update(b"a");
     let after_a = head(1, root(1), &[(0, b"a")]);
     assert_eq!(after_a.as_bytes(), hasher.finalize().as_bytes());
-    // Each field counts: another seat, root, stamp or payload, and a second input with seq 1
+    // Each field counts: another player slot, root, stamp or payload, and a second input with seq 1
     // links to the first.
-    let mut hasher = Hasher::new();
+    let mut hasher = Hasher::new_derive_key("campfire/input-hash/v1");
     hasher
-        .update(b"campfire/input-hash/v1")
         .update(after_a.as_bytes())
         .update(&1_u32.to_le_bytes())
         .update(&1_u64.to_le_bytes())
@@ -62,25 +60,28 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
             tick: Tick::new(tick),
             index,
         };
-        InputChain::joined(Seat::new(1), &DelegationId::new([delegation; 32]), place)
+        InputChain::joined(
+            PlayerSlot::new(1),
+            &DelegationId::new([delegation; 32]),
+            place,
+        )
     };
-    let mut hasher = Hasher::new();
+    let mut hasher = Hasher::new_derive_key("campfire/join-root/v1");
     hasher
-        .update(b"campfire/join-root/v1")
         .update(&[7; 32])
         .update(&5_u64.to_le_bytes())
         .update(&2_u32.to_le_bytes());
     let from = InputHash::new(*hasher.finalize().as_bytes());
-    assert_eq!(joined(7, 5, 2), InputChain::new(Seat::new(1), from));
+    assert_eq!(joined(7, 5, 2), InputChain::new(PlayerSlot::new(1), from));
     for other in [joined(8, 5, 2), joined(7, 6, 2), joined(7, 5, 3)] {
         assert_ne!(other.head(), from);
     }
 
-    // The session key signs `domain ‖ session id ‖ u32 seat ‖ u64 seq ‖ head`, the seq being
+    // The session key signs `domain ‖ session id ‖ u32 player slot ‖ u64 seq ‖ head`, the seq being
     // the last input's: the signature holds over that message as secp256k1 checks it.
     let secp = Secp256k1::verification_only();
     let (session_key, session) = (TestKey::of(21), SessionId::new([41; 32]));
-    let mut chain = InputChain::new(Seat::new(1), root(1));
+    let mut chain = InputChain::new(PlayerSlot::new(1), root(1));
     chain.extend(Tick::new(0), b"a");
     let signature = TestKey::signer(session_key).sign(&chain.signed_head(session));
     let message = [

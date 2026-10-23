@@ -15,6 +15,19 @@ use gltf_json::{
 pub(crate) struct GlbBuilder {
     pub(crate) document: Root,
     buffer: Vec<u8>,
+    /// Each texture pushed, by its image's URI and its wrap, so materials of one texture share
+    /// its image, its sampler and itself.
+    textures: Vec<PushedTexture>,
+}
+
+/// A texture the document holds, by what made it, with the image and the sampler it takes.
+#[derive(Debug)]
+struct PushedTexture {
+    uri: String,
+    wrap: [WrappingMode; 2],
+    image: Index<Image>,
+    sampler: Index<Sampler>,
+    texture: Index<Texture>,
 }
 
 /// What an accessor's elements are, and the target of their view.
@@ -79,6 +92,7 @@ impl GlbBuilder {
         Self {
             document,
             buffer: Vec::new(),
+            textures: Vec::new(),
         }
     }
 
@@ -136,34 +150,63 @@ impl GlbBuilder {
         self.accessor(bytes, indices.len(), Elements::INDICES)
     }
 
-    /// A texture of the image at `uri`, wrapped as `wrap_s` and `wrap_t`.
+    /// A texture of the image at `uri`, wrapped as `wrap_s` and `wrap_t`: the one the document
+    /// holds when another material made it, with the image of that URI and the sampler of that
+    /// wrap it holds, each pushed once.
     pub(crate) fn texture(
         &mut self,
         uri: String,
         wrap_s: WrappingMode,
         wrap_t: WrappingMode,
     ) -> Index<Texture> {
-        let document = &mut self.document;
-        let source = document.push(Image {
-            buffer_view: None,
-            mime_type: None,
-            name: None,
-            uri: Some(uri),
-            extensions: None,
-            extras: Extras::default(),
-        });
-        let sampler = document.push(Sampler {
-            wrap_s: Checked::Valid(wrap_s),
-            wrap_t: Checked::Valid(wrap_t),
-            ..Sampler::default()
-        });
-        document.push(Texture {
+        let wrap = [wrap_s, wrap_t];
+        if let Some(pushed) = self
+            .textures
+            .iter()
+            .find(|pushed| pushed.uri == uri && pushed.wrap == wrap)
+        {
+            return pushed.texture;
+        }
+        let image = self.textures.iter().find(|pushed| pushed.uri == uri);
+        let image = image.map_or_else(
+            || {
+                self.document.push(Image {
+                    buffer_view: None,
+                    mime_type: None,
+                    name: None,
+                    uri: Some(uri.clone()),
+                    extensions: None,
+                    extras: Extras::default(),
+                })
+            },
+            |pushed| pushed.image,
+        );
+        let sampler = self.textures.iter().find(|pushed| pushed.wrap == wrap);
+        let sampler = sampler.map_or_else(
+            || {
+                self.document.push(Sampler {
+                    wrap_s: Checked::Valid(wrap_s),
+                    wrap_t: Checked::Valid(wrap_t),
+                    ..Sampler::default()
+                })
+            },
+            |pushed| pushed.sampler,
+        );
+        let texture = self.document.push(Texture {
             name: None,
             sampler: Some(sampler),
-            source,
+            source: image,
             extensions: None,
             extras: Extras::default(),
-        })
+        });
+        self.textures.push(PushedTexture {
+            uri,
+            wrap,
+            image,
+            sampler,
+            texture,
+        });
+        texture
     }
 
     /// `material`'s index, with each extension it uses in `extensionsUsed`, in name order.
@@ -375,6 +418,38 @@ mod tests {
             r#"{"asset":{"generator":"campfire-import","version":"2.0"},"scene":0,"scenes":[{}]}"#;
         assert_eq!(empty.len(), 12 + 8 + json.len().next_multiple_of(4));
         assert_eq!(str::from_utf8(&empty[20..20 + json.len()]).unwrap(), json);
+    }
+
+    /// Materials of one texture share it: one of the same image and wrap is the same texture; one
+    /// of another wrap is a texture of the same image with a sampler of its own; one of another
+    /// image with that wrap shares its sampler. Three textures, two images, two samplers.
+    #[test]
+    fn each_image_sampler_and_texture_is_pushed_once() {
+        use WrappingMode::{ClampToEdge, Repeat};
+        let mut glb = GlbBuilder::new();
+        let mut texture = |uri: &str, wrap_s, wrap_t| glb.texture(uri.to_owned(), wrap_s, wrap_t);
+        let first = texture("a", Repeat, Repeat);
+        let again = texture("a", Repeat, Repeat);
+        let clamped = texture("a", ClampToEdge, Repeat);
+        let other = texture("b", ClampToEdge, Repeat);
+        assert_eq!(
+            [first, again, clamped, other].map(|texture| texture.value()),
+            [0, 0, 1, 2]
+        );
+        let document = &glb.document;
+        assert_eq!(
+            [
+                document.images.len(),
+                document.samplers.len(),
+                document.textures.len()
+            ],
+            [2, 2, 3]
+        );
+        let parts = |at: usize| {
+            let texture = &document.textures[at];
+            [texture.source.value(), texture.sampler.unwrap().value()]
+        };
+        assert_eq!([parts(0), parts(1), parts(2)], [[0, 0], [0, 1], [1, 1]]);
     }
 
     /// A document that breaks glTF's schema, a primitive's accessor past the last, is found.

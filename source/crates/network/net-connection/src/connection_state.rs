@@ -25,7 +25,7 @@ impl Connected {
         world
             .commands()
             .entity(context.entity)
-            .remove::<(Connecting, Disconnecting, Disconnected)>();
+            .try_remove::<(Connecting, Disconnecting, Disconnected)>();
         if let Some(mut networking) = world.get_resource_mut::<NetworkingState>() {
             networking.peer_map.insert(peer_id, context.entity);
         }
@@ -47,7 +47,7 @@ impl Connecting {
         world
             .commands()
             .entity(context.entity)
-            .remove::<(Connected, Disconnecting, Disconnected)>();
+            .try_remove::<(Connected, Disconnecting, Disconnected)>();
     }
 }
 
@@ -64,7 +64,7 @@ impl Disconnected {
         world
             .commands()
             .entity(context.entity)
-            .remove::<(Connecting, Disconnecting, Connected)>();
+            .try_remove::<(Connecting, Disconnecting, Connected)>();
     }
 }
 
@@ -81,7 +81,7 @@ impl Disconnecting {
         world
             .commands()
             .entity(context.entity)
-            .remove::<(Connected, Connecting, Disconnected)>();
+            .try_remove::<(Connected, Connecting, Disconnected)>();
     }
 }
 

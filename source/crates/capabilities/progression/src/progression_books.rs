@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use campfire_actions::{SlotKinds, TrackNames};
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section};
+use campfire_actions::SlotKinds;
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, Section};
 use campfire_script::UnknownName;
-use campfire_values::{Named, PackageIndex, TrackId};
+use campfire_values::{Named, Names, PackageIndex, TrackId, UnitType};
 
 use crate::Progression;
 use crate::error::TrackError;
@@ -38,8 +38,8 @@ impl Progression {
     }
 
     /// The names of the mode's tracks.
-    pub(crate) fn track_names(cx: &BookCx<'_>) -> Result<TrackNames, BookError> {
-        Ok(TrackNames(Arc::clone(cx.book::<TrackBook>()?.names())))
+    pub(crate) fn track_names(cx: &BookCx<'_>) -> Result<Arc<Names<TrackId>>, BookError> {
+        Ok(Arc::clone(cx.book::<TrackBook>()?.names()))
     }
 }
 
@@ -60,9 +60,9 @@ impl TrackBook {
 impl TrackSet {
     /// The tracks of each unit type that stands and gains experience; an error for a track the
     /// mode does not declare.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let names = cx.book::<TrackBook>()?.names();
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(tracks) = unit.data.section::<TypeTracksData>() else {
                 continue;

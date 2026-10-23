@@ -8,7 +8,6 @@ use campfire_states::{Replication, SentPredicted};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-use crate::arrived_short::ArrivedShort;
 use crate::unit_entity::UnitEntity;
 
 /// Where a unit walks to; none once it arrives. The goal of a walk, which a capability sets and
@@ -20,8 +19,7 @@ use crate::unit_entity::UnitEntity;
 pub struct Destination(Option<Vec3>);
 
 impl Destination {
-    /// A destination of `target`, none for no target.
-    pub const fn to(target: Option<Vec3>) -> Self {
+    pub(crate) const fn of(target: Option<Vec3>) -> Self {
         Self(target)
     }
 
@@ -29,39 +27,12 @@ impl Destination {
         self.0
     }
 
-    /// Sets where a unit walks, leaving a destination that does not change untouched: a write
-    /// marks it changed, and an avatar's destination replicates. A unit that `arrived` short of
-    /// `target` stays where it stands, with no destination, until the static bodies change.
-    pub fn walk_to(
-        destination: &mut Mut<'_, Self>,
-        arrived: Option<&ArrivedShort>,
-        target: Option<Vec3>,
-    ) {
-        let short =
-            target.is_some_and(|target| arrived.is_some_and(|arrived| arrived.of_goal(target)));
-        if !short {
-            destination.set_if_neq(Self::to(target));
-        }
-    }
-
-    /// Sets where the unit of `entity` walks, when it walks, to `target`, leaving a destination
-    /// that does not change untouched, as a capability's own loop walks its unit.
-    pub fn go_to(world: &mut World, entity: Entity, target: Option<Vec3>) {
-        if let Some(mut destination) = world.get_mut::<Self>(entity) {
-            destination.set_if_neq(Self::to(target));
-        }
-    }
-
-    /// Whether a unit with `destination` gives up a walk to `target`: it cannot walk, or it
-    /// stands, as it `arrived` short of `target`.
-    pub fn gives_up(
-        destination: Option<&Self>,
-        arrived: Option<&ArrivedShort>,
-        target: Vec3,
-    ) -> bool {
-        destination.is_none_or(|destination| {
-            destination.get().is_none() && arrived.is_some_and(|arrived| arrived.of_goal(target))
-        })
+    /// Sets where a unit walks, as navigation and an order, which hold the unit's route, do: the
+    /// route keeps the goal it arrived short of, so an order that sends the unit there again
+    /// plans nothing, and a walk that the static bodies open goes on. A capability walks a unit
+    /// by `Walk`, which keeps the rule of a short arrival.
+    pub fn route_to(destination: &mut Mut<'_, Self>, target: Option<Vec3>) {
+        destination.set_if_neq(Self(target));
     }
 }
 
@@ -79,4 +50,18 @@ impl SimComponent for Destination {
 impl Replication for Destination {
     const KIND: DataKind = DataKind::Unit;
     type Sending = SentPredicted;
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_math::Vec3;
+
+    use crate::destination::Destination;
+
+    impl Destination {
+        /// A destination of `target`, none for no target, as a test sets a unit's walk.
+        pub const fn to(target: Option<Vec3>) -> Self {
+            Self(target)
+        }
+    }
 }

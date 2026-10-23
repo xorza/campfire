@@ -9,7 +9,7 @@ use crate::zero_hour::format::map::error::{Chunk, MapReadError, Packing};
 use crate::zero_hour::format::map::map_dict::{self, DictValue};
 use crate::zero_hour::format::map::map_object::MapObject;
 use crate::zero_hour::format::map::terrain::{
-    BlendShape, BlendTile, CliffUv, TerrainCell, TerrainFields, TextureClass,
+    BlendShape, BlendTile, CliffUv, Terrain, TerrainCell, TerrainFields, TextureClass,
 };
 use crate::zero_hour::format::ref_pack;
 
@@ -19,8 +19,9 @@ use crate::zero_hour::format::ref_pack;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ZeroHourMap {
     pub(crate) heights: MapHeights,
-    /// Its cells in the file's order, one for each sample of the heights.
-    pub(crate) terrain: TerrainFields,
+    /// Its cells in the file's order, one for each sample of the heights, checked to name only
+    /// what it holds.
+    pub(crate) terrain: Terrain,
     pub(crate) objects: Vec<MapObject>,
     /// The three lights its objects are drawn in at its time of day (`GlobalLighting`), on the
     /// game's axes, a light the file does not give as the game starts it, dark and straight down.
@@ -133,6 +134,7 @@ impl ZeroHourMap {
             terrain.ok_or(MapReadError::Missing(Chunk::BlendTileData))?,
             &heights,
         )?;
+        let terrain = Terrain::new(terrain, heights.width).map_err(MapReadError::Terrain)?;
         let objects = Self::objects(
             objects.ok_or(MapReadError::Missing(Chunk::ObjectsList))?,
             &names,

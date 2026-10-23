@@ -3,9 +3,11 @@ use tracing_subscriber::fmt;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::fmt::format::{Format, Json, JsonFields};
 use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::{Layer, Registry};
 
-/// The file's layer: an event a line, as JSON, with its spans.
-pub(crate) fn json<S, W>(writer: W) -> fmt::Layer<S, JsonFields, Format<Json>, W>
+/// The layer of a binary's JSON lines and of a test's capture of them: an event a line, as JSON,
+/// with its spans.
+pub fn json_lines<S, W>(writer: W) -> fmt::Layer<S, JsonFields, Format<Json>, W>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
     W: for<'w> MakeWriter<'w> + 'static,
@@ -15,6 +17,18 @@ where
         .with_current_span(true)
         .with_span_list(true)
         .with_writer(writer)
+}
+
+/// The layer that keeps the events a `LogCheck` reads, for a binary's log: in a build that holds
+/// the check, as a check that plays a test fixture's match, the capture; none in the build that
+/// ships. So the feature that makes the check makes its capture, and the process's one subscriber
+/// is the binary's log.
+pub fn check_layer() -> Option<Box<dyn Layer<Registry> + Send + Sync>> {
+    #[cfg(feature = "internals")]
+    let layer = Some(internals::capture_layer());
+    #[cfg(not(feature = "internals"))]
+    let layer = None;
+    layer
 }
 
 #[cfg(feature = "internals")]
@@ -32,7 +46,7 @@ pub(crate) mod internals {
     use tracing_subscriber::util::SubscriberInitExt;
     use tracing_subscriber::{Layer, Registry};
 
-    use crate::json_layer::json;
+    use crate::json_layer::json_lines;
     use crate::log_event::LogEvent;
     use crate::log_line::LogLine;
     use campfire_common::ErrorReport;
@@ -75,9 +89,9 @@ pub(crate) mod internals {
     }
 
     impl LogCheck {
-        /// The process's check: the one its fixtures share, or a new one, which keeps none of the
-        /// events before it; the first makes the process's subscriber, unless a binary's log
-        /// holds the capture already.
+        /// The process's check: the one its fixtures share, or a new one, which finds no event
+        /// before it that no check took; the first makes the process's subscriber, unless a
+        /// binary's log holds the capture already.
         pub fn start() -> Self {
             let mut shared = SHARED.lock().unwrap_or_else(PoisonError::into_inner);
             if let Some(held) = shared.upgrade() {
@@ -90,7 +104,14 @@ pub(crate) mod internals {
                     .expect("a process's subscriber is a check's alone");
             }
             let lines = Arc::clone(LINES.get().expect("the capture keeps its lines"));
-            lines.lock().unwrap().clear();
+            {
+                let held = lines.lock().unwrap();
+                assert!(
+                    held.is_empty(),
+                    "the test logged events at Warn or Error with no check alive:\n{}",
+                    String::from_utf8_lossy(&held)
+                );
+            }
             let kept = Arc::new(Kept { lines });
             *shared = Arc::downgrade(&kept);
             Self(kept)
@@ -105,7 +126,7 @@ pub(crate) mod internals {
                 let lines = Arc::clone(&lines);
                 move || Captured(Arc::clone(&lines))
             };
-            let layer = json(writer).without_time().with_filter(warnings());
+            let layer = json_lines(writer).without_time().with_filter(warnings());
             let value = subscriber::with_default(tracing_subscriber::registry().with(layer), body);
             Scoped {
                 value,
@@ -146,14 +167,14 @@ pub(crate) mod internals {
     /// The layer of the process's capture, which keeps its events at Warn and Error, with no
     /// time, so a failure names the same lines in every run: the process's subscriber of a test,
     /// or a layer of a binary's log. One in a process.
-    pub(crate) fn capture_layer() -> Box<dyn Layer<Registry> + Send + Sync> {
+    pub fn capture_layer() -> Box<dyn Layer<Registry> + Send + Sync> {
         let lines = Arc::new(Mutex::new(Vec::new()));
         assert!(
             LINES.set(Arc::clone(&lines)).is_ok(),
             "a process holds one capture"
         );
         let writer = move || Captured(Arc::clone(&lines));
-        Box::new(json(writer).without_time().with_filter(warnings()))
+        Box::new(json_lines(writer).without_time().with_filter(warnings()))
     }
 
     /// The events at Warn and Error, and no span: a check reads an event's own fields alone, and
@@ -175,13 +196,13 @@ pub(crate) mod internals {
 
     /// The JSON lines, as `Logging` writes them to its file, of every event `f` logs on this
     /// thread.
-    pub(crate) fn capture(f: impl FnOnce()) -> Vec<String> {
+    pub fn capture(f: impl FnOnce()) -> Vec<String> {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let writer = {
             let buffer = Arc::clone(&buffer);
             move || Captured(Arc::clone(&buffer))
         };
-        subscriber::with_default(tracing_subscriber::registry().with(json(writer)), f);
+        subscriber::with_default(tracing_subscriber::registry().with(json_lines(writer)), f);
         let bytes = buffer.lock().unwrap().clone();
         String::from_utf8(bytes)
             .unwrap()
@@ -285,6 +306,19 @@ mod tests {
                 r#""target":"campfire_log::json_layer::tests"}"#,
                 "\n",
                 r#"{"level":"ERROR","fields":{"message":"lost"},"#,
+                r#""target":"campfire_log::json_layer::tests"}"#,
+                "\n",
+            )
+        );
+
+        // A warning with no check alive fails the next check's start, which keeps it.
+        warn!("unseen");
+        let failure = panic::catch_unwind(LogCheck::start).unwrap_err();
+        assert_eq!(
+            failure.downcast_ref::<String>().unwrap(),
+            concat!(
+                "the test logged events at Warn or Error with no check alive:\n",
+                r#"{"level":"WARN","fields":{"message":"unseen"},"#,
                 r#""target":"campfire_log::json_layer::tests"}"#,
                 "\n",
             )

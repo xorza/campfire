@@ -1,4 +1,4 @@
-use campfire_common::TlsKey;
+use campfire_net_core::TlsKey;
 
 /// The `SubjectPublicKeyInfo` of an Ed25519 key before its 32 bytes ([RFC 8410] §4): the
 /// algorithm `id-Ed25519` and the bit string's header.

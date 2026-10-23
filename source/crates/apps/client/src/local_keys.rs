@@ -5,7 +5,8 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Res, ResMut};
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
-use campfire_net::{Pace, PaceSpeed, PendingSaves, SaveCommand};
+use campfire_host::{Pace, PaceSpeed, SaveCommand};
+use campfire_net::PendingSaves;
 
 use crate::input_map::{Act, InputMap};
 

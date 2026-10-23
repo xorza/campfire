@@ -10,9 +10,10 @@ use bevy_replicon::prelude::AppMarkerExt;
 use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::NetTick;
-use campfire_net_interpolation::HistoryComponent;
-use campfire_net_interpolation::InterpolationRegistry;
-use campfire_net_interpolation::{FrameSamples, FrameSource};
+use campfire_net_frame_interpolation::FrameRegistry;
+use campfire_net_frame_interpolation::{FrameSamples, FrameSource};
+use campfire_net_replication::ConfirmedHistory;
+use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::Predicted;
 use campfire_net_replication::{PreSpawned, PredictedSend};
 use tracing::trace;
@@ -29,7 +30,7 @@ pub(crate) fn register_rollback_fns<C: Component<Mutability = Mutable> + Clone>(
     // A rollback replays the prediction history, which frame interpolation then reads, so a
     // replay leaves no frame history to repair.
     app.world_mut()
-        .get_resource_or_init::<InterpolationRegistry>()
+        .get_resource_or_init::<FrameRegistry>()
         .set_frame_source::<C>(FrameSource::new::<C>(
             prediction_history_id,
             prediction_frame_samples::<C>,
@@ -61,18 +62,18 @@ pub(crate) fn register_prediction_fns<C: HistoryComponent>(app: &mut App) {
 pub(crate) fn install_prediction<C: HistoryComponent>(app: &mut App) {
     app.set_marker_fns::<Predicted, C>(
         history_receive::write_history::<C>,
-        history_receive::remove_history::<C>,
+        ConfirmedHistory::<C>::receive_removal,
     );
     app.set_marker_fns::<PredictedSend, C>(
         history_receive::write_initial_live_and_history::<C>,
-        history_receive::remove_history::<C>,
+        ConfirmedHistory::<C>::receive_removal,
     );
     // A pre-spawned entity can receive replicated component data before the
     // server match has inserted `Predicted`. Keep that authoritative data in
     // history so it cannot overwrite the live locally-predicted component.
     app.set_marker_fns::<PreSpawned, C>(
         history_receive::write_history::<C>,
-        history_receive::remove_history::<C>,
+        ConfirmedHistory::<C>::receive_removal,
     );
     trace!(
         "Adding prediction for component {:?}",
@@ -85,15 +86,15 @@ pub(crate) fn install_prediction<C: HistoryComponent>(app: &mut App) {
 pub(crate) fn install_prediction_diff<C: HistoryComponent + RepliconDiffable>(app: &mut App) {
     app.set_marker_fns::<Predicted, C>(
         history_receive::write_history_diff::<C>,
-        history_receive::remove_history::<C>,
+        ConfirmedHistory::<C>::receive_removal,
     );
     app.set_marker_fns::<PredictedSend, C>(
         history_receive::write_initial_live_and_history_diff::<C>,
-        history_receive::remove_history::<C>,
+        ConfirmedHistory::<C>::receive_removal,
     );
     app.set_marker_fns::<PreSpawned, C>(
         history_receive::write_history_diff::<C>,
-        history_receive::remove_history::<C>,
+        ConfirmedHistory::<C>::receive_removal,
     );
     trace!(
         "Adding diff prediction for component {:?}",

@@ -79,15 +79,15 @@ pub trait TimelineSync {
 
     /// Apply the common speed controller for an error measured in fractional ticks.
     ///
-    /// A [`SyncAdjustment::Resync`] result is left to the synchronization policy.
+    /// A [`SyncAdjustment::Resync`] result is left to the synchronization policy, and runs at the
+    /// nominal speed from the objective it moves to.
     fn speed_adjustment(&mut self, setup: &Self::Setup, offset: TickSpan) -> SyncAdjustment {
         let adjustment =
             self.sync_hysteresis()
                 .speed_adjustment(Self::sync_setup(setup), offset, Self::DEFICIT);
         match adjustment {
             SyncAdjustment::SpeedAdjust(ratio) => self.set_relative_speed(ratio),
-            SyncAdjustment::Nominal => self.set_relative_speed(1.0),
-            SyncAdjustment::Resync => {}
+            SyncAdjustment::Nominal | SyncAdjustment::Resync => self.set_relative_speed(1.0),
         }
         adjustment
     }

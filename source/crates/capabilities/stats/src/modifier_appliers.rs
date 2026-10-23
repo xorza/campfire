@@ -52,7 +52,7 @@ impl ModifierAppliers {
                 for modifier in action.modifiers() {
                     appliers.apply(package, modifier.as_str(), way.clone());
                 }
-                if let Some(script) = &action.script {
+                if let Some(script) = &action.keys.script {
                     appliers.script(cx, package, script, &way)?;
                 }
             }

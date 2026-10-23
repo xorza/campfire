@@ -15,9 +15,9 @@ use campfire_net_packets::DatagramIo;
 use campfire_net_payload::UnlinkReason;
 use campfire_net_stack::ClientPlugins;
 
-use crate::events::listening::Listening;
 use crate::net_protocol::NetProtocolPlugin;
-use crate::net_protocol::offer::SessionOffer;
+use campfire_host::Listening;
+use campfire_host::SessionOffer;
 
 /// A client of a session's protocol and nothing past it, on its own app: a test of a server's
 /// process links it to see the server's links and closes, as no match runs on it.

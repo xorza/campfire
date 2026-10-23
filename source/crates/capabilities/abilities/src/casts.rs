@@ -1,29 +1,33 @@
+//! The casts units are ordered: their start in Act, and in Hit their resolve, on a client
+//! predicted.
+
 use std::mem;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryData;
-use bevy_ecs::query::{Has, Without};
+use bevy_ecs::query::{Has, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionCall, ActionCheck, ActionKind, ActionProgress, ActionSlots, CastSpends,
-    Caster, EffectListBook, InProgress, ListCall, ListHook, ListsOf, OnResolve, OrderPhase,
-    ProgressDues, ProgressIndexes, Purse, RangeFit, ResolveKind, ResolvedCast, SlotCommit,
-    SlotTimes, StartChecked, StartFrom, Targets, UseGroup,
+    Caster, CheckedAction, EffectListBook, InProgress, ListCall, ListHook, ListsOf, OnResolve,
+    OrderPhase, ProgressDues, ProgressIndexes, Purse, RangeFit, ResolveKind, ResolvedCast,
+    SlotCommit, SlotTimes, StartChecked, StartFrom, Targets, UseGroup,
 };
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
-use campfire_math::Vec3;
+use campfire_math::{Num, RngStream, Rounding, Vec3};
 use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorld};
 use campfire_script::{
-    Answered, CallError, CallStart, Ctx, ScriptBatch, ScriptId, ScriptValue, ScriptsWorld, Unit,
+    ActionCast, Answered, CallError, CallStart, Ctx, ScriptBatch, ScriptId, ScriptValue,
+    ScriptsWorld, Unit,
 };
-use campfire_sim::{DueUnit, Keyed, MatchRate, Ordered, Position, SimTick, StableId, TickClock};
+use campfire_sim::{
+    DueUnit, Keyed, MatchRate, Ordered, Position, SimRng, SimTick, StableId, TickClock,
+};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
-use campfire_units::{
-    ArrivedShort, Body, Dead, Destination, Due, ForcedMove, Life, Owner, PoolPayer,
-};
-use campfire_values::{ActionId, DashDelivery, Motion, Rank, Team, UnitTags};
+use campfire_units::{Body, Dead, Due, ForcedMove, Life, Owner, PoolPayer, Walk, WalkItem};
+use campfire_values::{ActionId, Allegiance, DashDelivery, Motion, Rank, Team, UnitTags};
 
 use crate::Abilities;
 
@@ -34,7 +38,7 @@ use crate::Abilities;
 struct Prepared {
     start: CallStart,
     caster: Unit,
-    owner: Option<Seat>,
+    owner: Option<PlayerSlot>,
     action: ActionId,
     rank: Rank,
     target: ScriptValue,
@@ -42,8 +46,6 @@ struct Prepared {
     resolved: ResolvedCast,
 }
 
-/// The casts units are ordered: their start in Act, and in Hit their resolve, on a client
-/// predicted.
 /// A caster whose cast is due, keyed by its stable id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CastDue(Keyed);
@@ -63,11 +65,15 @@ pub(crate) struct DueCaster {
     life: Option<&'static Life>,
 }
 
+/// The stream a cast's spread windup draws from, once for each unit that starts a cast in a tick.
+const WINDUP_STREAM: RngStream = RngStream::new("abilities.windup");
+
 #[derive(Debug)]
 pub struct Casts;
 
 impl Casts {
-    /// Starts each cast or use a unit was ordered, in Act: one that passes its checks, its target
+    /// Starts each cast or use a unit was ordered, of the units the index of the orders holds, in
+    /// Act: one that passes its checks, its target
     /// within range, starts, or for a charged action starts to charge; one whose target is beyond
     /// range, of a unit that walks, walks in range first, its walk in place of any other, and stops
     /// there to start; any other is dropped, and stops the walk it took. A unit its tags or a
@@ -75,49 +81,60 @@ impl Casts {
     /// it started or walked in range for goes back to it, and a charge ends, spending nothing. A
     /// charge its order released, or that is full, resolves.
     pub(super) fn start_casts(
-        tick: Res<'_, SimTick>,
+        (tick, rng): (Res<'_, SimTick>, Res<'_, SimRng>),
         book: Res<'_, ActionBook>,
         (resources, life): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PoolBook>),
         targets: Targets<'_, '_>,
-        mut units: Query<
-            '_,
-            '_,
-            (
-                (Entity, &StableId, &Position),
-                &Team,
-                (&ActionSlots, &mut ActionProgress),
-                &mut SlotTimes,
-                UnitPoolsReadOnly,
-                Option<&Owner>,
-                Option<&Body>,
-                Option<&UnitTags>,
-                Has<ForcedMove>,
-                Option<&mut Destination>,
-                Option<&ArrivedShort>,
-                Option<&UseGroup>,
-            ),
-            Without<Dead>,
-        >,
-        mut indexes: ProgressIndexes<'_>,
+        (mut units, present): (
+            Query<
+                '_,
+                '_,
+                (
+                    (Entity, &StableId, &Position),
+                    &Team,
+                    (&ActionSlots, &mut ActionProgress),
+                    &mut SlotTimes,
+                    UnitPoolsReadOnly,
+                    Option<&Owner>,
+                    Option<&Body>,
+                    Option<&UnitTags>,
+                    Has<ForcedMove>,
+                    Option<Walk>,
+                    Option<&UseGroup>,
+                ),
+                Without<Dead>,
+            >,
+            Query<'_, '_, (), With<ActionProgress>>,
+        ),
+        (mut indexes, mut held): (ProgressIndexes<'_>, Local<'_, Vec<DueUnit>>),
     ) {
         let now = tick.start();
         let life = life.life();
-        for (
-            (entity, &id, &position),
-            &team,
-            (slots, mut progress),
-            mut times,
-            pools,
-            owner,
-            body,
-            tags,
-            forced,
-            mut destination,
-            arrived,
-            used,
-        ) in &mut units
-        {
-            let Some(underway) = progress.in_progress() else {
+        held.clear();
+        held.extend(indexes.orders());
+        for &DueUnit { id, entity } in &*held {
+            // A dead unit keeps its order, for when it lives again.
+            let Ok(unit) = units.get_mut(entity) else {
+                if !present.contains(entity) {
+                    indexes.forget_order(id);
+                }
+                continue;
+            };
+            let (
+                (_, _, &position),
+                &team,
+                (slots, mut progress),
+                mut times,
+                pools,
+                owner,
+                body,
+                tags,
+                forced,
+                mut walk,
+                used,
+            ) = unit;
+            let Some(underway) = progress.in_progress().filter(|_| progress.has_order()) else {
+                indexes.forget_order(id);
                 continue;
             };
             let dues = &mut indexes.of(id, entity);
@@ -142,13 +159,7 @@ impl Casts {
             let approached = phase == OrderPhase::Approaching;
             // An item sold in the tick of its order leaves its slot with no action to start.
             let Some(action) = slot.action else {
-                Self::drop_cast(
-                    &mut progress,
-                    destination.as_mut(),
-                    arrived,
-                    approached,
-                    dues,
-                );
+                Self::drop_cast(&mut progress, walk.as_mut(), approached, dues);
                 continue;
             };
             let action = book.get(action).expect("a slot's action is in the book");
@@ -157,7 +168,7 @@ impl Casts {
             }
             if blocked {
                 if approached {
-                    Self::walk(destination.as_mut(), arrived, None);
+                    Self::walk(walk.as_mut(), None);
                 }
                 progress.interrupt(dues);
                 continue;
@@ -190,23 +201,17 @@ impl Casts {
                 purse,
                 aim,
                 relation,
-                living: |id| targets.living(id),
+                living: |id| targets.target(id),
             };
             let Some(StartChecked { checked, reach }) = times.start(check, Some(from)) else {
-                Self::drop_cast(
-                    &mut progress,
-                    destination.as_mut(),
-                    arrived,
-                    approached,
-                    dues,
-                );
+                Self::drop_cast(&mut progress, walk.as_mut(), approached, dues);
                 continue;
             };
             if reach != RangeFit::Within {
                 let to = checked.walk_to(position.get(), body, reach, &targets);
-                match (destination.is_some(), to) {
+                match (walk.is_some(), to) {
                     (true, Some(to)) => {
-                        Self::walk(destination.as_mut(), arrived, Some(to));
+                        Self::walk(walk.as_mut(), Some(to));
                         progress.approach();
                     }
                     _ => progress.end(dues),
@@ -214,34 +219,52 @@ impl Casts {
                 continue;
             }
             if approached {
-                Self::walk(destination.as_mut(), arrived, None);
+                Self::walk(walk.as_mut(), None);
             }
-            progress.begin(&checked, position.get(), now, dues);
+            let windup = Self::windup(&checked, &rng, id);
+            progress.begin(&checked, position.get(), now, windup, dues);
         }
+    }
+
+    /// The windup of the cast `checked` of the unit `id`: its action's, spread each way by its
+    /// channel's `windup_spread`, a factor drawn even in that spread from the unit's stream of
+    /// windups in the running tick, to whole ticks down, as Zero Hour draws and truncates a
+    /// hacker's unpack (04-capabilities/actions.md, A channel with no end). A predicting client,
+    /// which holds no seed, draws another, and takes the server's start as it comes.
+    fn windup(checked: &CheckedAction<'_>, rng: &SimRng, id: StableId) -> Ticks {
+        let windup = checked.values.windup;
+        let spread = checked.values.channel.and_then(|rule| rule.windup_spread);
+        let Some(spread) = spread.filter(|&spread| spread > Num::ZERO) else {
+            return windup;
+        };
+        let draw = rng.open(WINDUP_STREAM, id).fraction();
+        let factor = (spread + spread)
+            .checked_mul(draw, Rounding::Floor)
+            .and_then(|share| (Num::ONE - spread).checked_add(share))
+            .expect("a factor below 2");
+        let ticks = Num::int(i64::try_from(windup.get()).expect("a windup fits i64"))
+            .checked_mul(factor, Rounding::Floor)
+            .expect("a windup below twice its ticks");
+        Ticks::new(u64::try_from(ticks.floor()).expect("a spread windup is not negative"))
     }
 
     /// Drops the cast ordered in `progress`, and stops the walk it took when it `approached`.
     fn drop_cast(
         progress: &mut ActionProgress,
-        destination: Option<&mut Mut<'_, Destination>>,
-        arrived: Option<&ArrivedShort>,
+        walk: Option<&mut WalkItem<'_, '_>>,
         approached: bool,
         dues: &mut ProgressDues<'_>,
     ) {
         if approached {
-            Self::walk(destination, arrived, None);
+            Self::walk(walk, None);
         }
         progress.end(dues);
     }
 
-    /// Walks the unit of `destination`, one that walks, to `to`, or stops it.
-    fn walk(
-        destination: Option<&mut Mut<'_, Destination>>,
-        arrived: Option<&ArrivedShort>,
-        to: Option<Vec3>,
-    ) {
-        if let Some(destination) = destination {
-            Destination::walk_to(destination, arrived, to);
+    /// Walks the unit of `walk`, one that walks, to `to`, or stops it.
+    fn walk(walk: Option<&mut WalkItem<'_, '_>>, to: Option<Vec3>) {
+        if let Some(walk) = walk {
+            walk.to(to);
         }
     }
 
@@ -353,7 +376,7 @@ impl Casts {
                 continue;
             }
             let purse = Purse::of(pools.of(life), resources.of(owner));
-            let living = |id| targets.living(id);
+            let living = |id| targets.target(id);
             let relation = |other| targets.relation(team, other);
             let check = ActionCheck {
                 book: &book,
@@ -457,7 +480,7 @@ impl Casts {
         };
         let book = world.resource::<ActionBook>();
         if let Some(delivery) = book.get(by.action).and_then(|action| action.delivery) {
-            let deliver = world.resource::<Deliverers>().of(delivery.shape);
+            let deliver = world.resource::<Deliverers>().of(delivery.capability);
             deliver(world, Launcher { by, delivery }, from.get(), aim.target);
         }
     }
@@ -523,7 +546,15 @@ impl Casts {
         let checked = times.start(check, None)?.checked;
         let target = Abilities::target(view, casting.target);
         let package = checked.action.package;
-        let owner = owner.map(|owner| owner.seat());
+        let owner = owner.map(|owner| owner.player_slot());
+        let allegiance = Allegiance { team, owner };
+        let cast = ActionCast {
+            action: checked.id,
+            rank: checked.rank,
+            caster: caster.id,
+            allegiance,
+            package,
+        };
         let call = CallStart {
             start: Some(start),
             dash_delivers: checked.action.delivery.is_none().then_some(DashDelivery {
@@ -533,7 +564,7 @@ impl Casts {
                 start: Some(start),
             }),
             payer: owner,
-            ..CallStart::cast(checked.id, checked.rank, caster.id, package, now)
+            ..CallStart::cast(cast, now)
         };
         Some(Prepared {
             start: call,

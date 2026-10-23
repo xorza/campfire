@@ -1,26 +1,27 @@
 use bevy_ecs::query::{Has, QueryState};
 use bevy_ecs::world::World;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_script::{CallError, CallExtension, CallStart, Commit};
 
+use crate::held_at_start::{HeldAtStart, PlayerSlotHolder};
 use crate::out_of_play::OutOfPlay;
 use crate::player::Player;
 use crate::player_resources::PlayerResources;
 use crate::players_world::PlayersWorld;
-use crate::seated::{SeatHolder, Seated};
 
-/// The players' part of a call: their resources as the call sees them, by seat, none in a match
-/// with no mode, and whether the call changed them, which commit once its effects applied; whether
-/// each seat was held as the match started; and whether each player is out of play. It reads them
-/// as each call begins, through one query of the players, each in the place it held at the last
-/// call, so a call allocates none.
+/// The players' part of a call: their resources as the call sees them, by player slot, none in a
+/// match with no mode, and whether the call changed them, which commit before its effects apply, so
+/// an effect that pays from them pays from what the call left; whether each player slot was held as
+/// the match started; and whether each player is out of play. It reads the resources as each call
+/// begins, and the holders and the outs, which no call changes, as each batch begins, through one
+/// query of the players, each in the place it held at the last read, so a call allocates none.
 #[derive(Debug, Default)]
 pub struct PlayersCall {
-    /// The players, their resources, whether each seat was held and whether each is out of play,
-    /// made at the first call.
+    /// The players, their resources, whether each player slot was held and whether each is out of
+    /// play, made at the first call.
     players: Option<QueryState<PlayerParts>>,
     resources: Vec<PlayerResources>,
-    holders: Vec<SeatHolder>,
+    holders: Vec<PlayerSlotHolder>,
     outs: Vec<bool>,
     written: bool,
 }
@@ -29,74 +30,96 @@ pub struct PlayersCall {
 type PlayerParts = (
     &'static Player,
     &'static PlayerResources,
-    Has<Seated>,
+    Has<HeldAtStart>,
     Has<OutOfPlay>,
 );
 
 impl PlayersCall {
-    /// The resources of player `seat`, as the call changed them; `None` for a player the session
-    /// lacks, or in a match with no mode.
-    pub fn resources(&self, seat: Seat) -> Option<&PlayerResources> {
-        self.resources.get(seat.index())
-    }
-
-    /// The resources of player `seat`, for the call to change; `None` for a player the session
-    /// lacks, or in a match with no mode.
-    pub fn resources_mut(&mut self, seat: Seat) -> Option<&mut PlayerResources> {
-        self.written = true;
-        self.resources.get_mut(seat.index())
-    }
-
-    /// Whether a player or a bot held `seat` as the match started; `None` for a player the
+    /// The resources of player `player_slot`, as the call changed them; `None` for a player the
     /// session lacks, or in a match with no mode.
-    pub fn holder(&self, seat: Seat) -> Option<SeatHolder> {
-        self.holders.get(seat.index()).copied()
+    pub fn resources(&self, player_slot: PlayerSlot) -> Option<&PlayerResources> {
+        self.resources.get(player_slot.index())
     }
 
-    /// Whether player `seat` is out of play, as the last tick's end derived it; `None` for a
+    /// The resources of player `player_slot`, for the call to change; `None` for a player the
+    /// session lacks, or in a match with no mode.
+    pub fn resources_mut(&mut self, player_slot: PlayerSlot) -> Option<&mut PlayerResources> {
+        self.written = true;
+        self.resources.get_mut(player_slot.index())
+    }
+
+    /// Whether a player or a bot held `player_slot` as the match started; `None` for a player the
+    /// session lacks, or in a match with no mode.
+    pub fn holder(&self, player_slot: PlayerSlot) -> Option<PlayerSlotHolder> {
+        self.holders.get(player_slot.index()).copied()
+    }
+
+    /// Whether player `player_slot` is out of play, as the last tick's end derived it; `None` for a
     /// player the session lacks, or in a match with no mode.
-    pub fn is_out(&self, seat: Seat) -> Option<bool> {
-        self.outs.get(seat.index()).copied()
+    pub fn is_out(&self, player_slot: PlayerSlot) -> Option<bool> {
+        self.outs.get(player_slot.index()).copied()
     }
 }
 
-impl CallExtension for PlayersCall {
-    const COMMITS: Commit = Commit::AfterEffects;
-
-    /// None: an earlier call's effects of the batch change what the players hold.
-    fn begin_batch(&mut self, _: &World) {}
-
-    fn begin(&mut self, world: &World, _: &CallStart) -> Result<(), CallError> {
-        self.written = false;
+impl PlayersCall {
+    /// The players' query, made at the first read, its archetypes as `world` holds them.
+    fn players(&mut self, world: &World) -> &QueryState<PlayerParts> {
         let players = self.players.get_or_insert_with(|| {
             QueryState::try_new(world).expect("the install registers every declared component")
         });
         players.update_archetypes(world);
-        let (mut count, mut seats) = (0, 0);
-        for (player, held, seated, out) in players.iter_manual(world) {
-            let at = player.seat().index();
-            if at >= self.resources.len() {
-                self.resources
-                    .resize_with(at + 1, || PlayerResources::new(0));
+        players
+    }
+}
+
+impl CallExtension for PlayersCall {
+    const COMMITS: Commit = Commit::BeforeEffects;
+
+    /// Reads the holders and the outs, which no call of the batch changes.
+    fn begin_batch(&mut self, world: &World) {
+        let (mut holders, mut outs) = (
+            std::mem::take(&mut self.holders),
+            std::mem::take(&mut self.outs),
+        );
+        holders.clear();
+        outs.clear();
+        for (player, _, held, out) in self.players(world).iter_manual(world) {
+            let at = player.player_slot().index();
+            if at >= holders.len() {
+                holders.resize(at + 1, PlayerSlotHolder::Open);
+                outs.resize(at + 1, false);
             }
-            if at >= self.holders.len() {
-                self.holders.resize(at + 1, SeatHolder::Open);
-                self.outs.resize(at + 1, false);
-            }
-            self.resources[at].clone_from(held);
-            self.holders[at] = if seated {
-                SeatHolder::Held
+            holders[at] = if held {
+                PlayerSlotHolder::Held
             } else {
-                SeatHolder::Open
+                PlayerSlotHolder::Open
             };
-            self.outs[at] = out;
-            count += 1;
-            seats = seats.max(at + 1);
+            outs[at] = out;
         }
-        debug_assert_eq!(count, seats, "the players hold the seats from the first on");
-        self.resources.truncate(count);
-        self.holders.truncate(count);
-        self.outs.truncate(count);
+        self.holders = holders;
+        self.outs = outs;
+    }
+
+    /// Reads the resources, which an earlier call's effects of the batch change.
+    fn begin(&mut self, world: &World, _: &CallStart) -> Result<(), CallError> {
+        self.written = false;
+        let mut resources = std::mem::take(&mut self.resources);
+        let (mut count, mut player_slots) = (0, 0);
+        for (player, held, ..) in self.players(world).iter_manual(world) {
+            let at = player.player_slot().index();
+            if at >= resources.len() {
+                resources.resize_with(at + 1, || PlayerResources::new(0));
+            }
+            resources[at].clone_from(held);
+            count += 1;
+            player_slots = player_slots.max(at + 1);
+        }
+        debug_assert_eq!(
+            count, player_slots,
+            "the players hold the player slots from the first on"
+        );
+        resources.truncate(count);
+        self.resources = resources;
         Ok(())
     }
 
@@ -104,9 +127,9 @@ impl CallExtension for PlayersCall {
         if !self.written {
             return;
         }
-        for (seat, resources) in (0..).map(Seat::new).zip(&self.resources) {
+        for (player_slot, resources) in (0..).map(PlayerSlot::new).zip(&self.resources) {
             let mut held = world
-                .player_resources_mut(seat)
+                .player_resources_mut(player_slot)
                 .expect("a player the call read");
             if *held != *resources {
                 held.clone_from(resources);

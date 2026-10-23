@@ -11,21 +11,21 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{
-    ActionBook, ActionSlots, ActionsSystems, ByAction, DamageKindBook, TogglePer,
-};
+use campfire_actions::{ActionBook, ActionSlots, ActionsSystems, TogglePer};
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
+    ById, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
 };
 use campfire_math::RngStream;
-use campfire_script::{ApiVersion, Status};
+use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimSystems};
 use campfire_stats::{LifePool, ModifierAppliers, StatsSystems, TypePools};
 use campfire_units::{BodyUnit, Dead, Deaths, Due, Life, SpawnPoint, UnitGrid, UnitsSystems};
+use campfire_values::{ActionId, DamageKind, UnitType};
 
 use crate::combat_column::RowReads;
 use crate::combat_event::{OnAttack, OnAttackHit, OnDamageTaken, OnKill, OnTakedown};
+use crate::damage_kind_book::DamageKindBook;
 use crate::held_hits::HeldHits;
 use crate::next_damage::NextDamage;
 use crate::streak_shots::StreakShots;
@@ -46,6 +46,7 @@ mod combat_event;
 mod damage;
 mod damage_effect_data;
 mod damage_handle;
+mod damage_kind_book;
 mod damage_pass;
 mod dying;
 mod error;
@@ -62,9 +63,9 @@ mod recent_attack;
 mod recent_attackers;
 mod respawn;
 mod shot_streak;
-mod streak_book;
 mod streak_shots;
 mod turret;
+mod unanswered_deaths;
 mod volley;
 mod weapon;
 mod weapon_names;
@@ -73,8 +74,8 @@ mod wielded;
 
 pub use crate::armor::{Armor, ArmorShare};
 pub use crate::attack_data::{
-    AttackData, ClipData, OuterData, PitchData, ScatterData, SplashData, StageData, StreakData,
-    WeaponValue,
+    AttackData, ClipData, OuterData, PitchData, PreAttackData, PreAttackEach, ScatterData,
+    SplashData, StageData, StreakData, WeaponValue,
 };
 pub use crate::attacks::Attacks;
 pub use crate::clip_shots::ClipShots;
@@ -99,12 +100,12 @@ pub use crate::recent_attack::RecentAttack;
 pub use crate::recent_attackers::RecentAttackers;
 pub use crate::respawn::Respawn;
 pub use crate::shot_streak::ShotStreak;
-pub use crate::streak_book::StreakBook;
 pub use crate::turret::Turret;
 pub use crate::turret::turret_angle::TurretAngle;
 pub use crate::turret::turret_data::{TurretData, TurretPatch};
+pub use crate::unanswered_deaths::{DeathCall, OnUnitDeath, UnansweredDeaths};
 pub use crate::weapon::{
-    ClipRule, OuterRing, Pitch, Rate, Scatter, Splash, Streak, Weapon, WeaponDamage,
+    ClipRule, OuterRing, Pitch, PreAttackRule, Rate, Scatter, Splash, Streak, Weapon, WeaponDamage,
 };
 pub use crate::weighers::{Weigh, Weighers};
 
@@ -182,7 +183,8 @@ impl Module for Combat {
         d.section::<TurretData>();
         d.section::<ModeCombatData>();
         d.component::<TurretAngle>();
-        d.book::<ByType<Turret>>(Turret::book);
+        d.timed::<TurretAngle>();
+        d.book::<ById<UnitType, Turret>>(Turret::book);
         d.part::<BodyUnit, TurretAngle>(|at| at.of_type::<Turret>().map(|_| TurretAngle::REST));
         d.component::<Kept>();
         d.component::<Life>();
@@ -206,14 +208,16 @@ impl Module for Combat {
         d.resource::<HeldHits>();
         d.observer(HeldHits::drop_died);
         d.report::<Deaths>();
+        d.resource::<UnansweredDeaths>();
+        d.mode_events::<UnansweredDeaths>(EventPhase::Losses);
         d.calls::<Weighers>();
-        d.book::<DamageKindBook>(Self::damage_kinds);
+        d.names::<DamageKind>(Self::damage_kinds);
+        d.book::<DamageKindBook>(DamageKindBook::build);
         d.fact::<LifePool>(Self::life_pool);
         d.book::<CombatBook>(CombatBook::build);
         d.listed::<AttackData>();
-        d.book::<ByAction<Weapon>>(Weapon::book);
-        d.book::<StreakBook>(StreakBook::book);
-        d.extend::<ModifierAppliers>(StreakBook::applied_ways);
+        d.book::<ById<ActionId, Weapon>>(Weapon::book);
+        d.extend::<ModifierAppliers>(ShotStreak::applied_ways);
         d.rule(Self::rule);
         d.rule(Self::attacks_rule);
         d.listed::<DamageEffectData>();
@@ -223,15 +227,16 @@ impl Module for Combat {
         d.column::<CombatColumn, RowReads>(CombatColumn::fill_row);
         d.api(CombatApi::register);
         d.hook::<OnAttack>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnUnitDeath>(Status::Runs(ApiVersion::FIRST));
         d.hook::<OnAttackHit>(Status::Runs(ApiVersion::FIRST));
         d.hook::<OnDamageTaken>(Status::Runs(ApiVersion::FIRST));
         d.hook::<OnKill>(Status::Runs(ApiVersion::FIRST));
         d.hook::<OnTakedown>(Status::Runs(ApiVersion::FIRST));
         d.hook::<CalcDamage>(Status::Runs(ApiVersion::FIRST));
         d.hook::<CalcHeal>(Status::Runs(ApiVersion::FIRST));
-        d.book::<ByType<Life>>(TypePools::lives);
-        d.book::<ByType<OnDeath>>(OnDeath::book);
-        d.book::<ByType<Armor>>(Armor::book);
+        d.book::<ById<UnitType, Life>>(TypePools::lives);
+        d.book::<ById<UnitType, OnDeath>>(OnDeath::book);
+        d.book::<ById<UnitType, Armor>>(Armor::book);
         d.part::<BodyUnit, Life>(|at| at.of_type::<Life>().copied());
         // A unit that can die keeps who struck it, for its death's assisters.
         d.part::<BodyUnit, RecentAttackers>(|at| {
@@ -253,14 +258,14 @@ impl Module for Combat {
     /// have them (02-engine-core.md, Books before the install).
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         let turrets = cx
-            .book::<ByType<Turret>>()
+            .book::<ById<UnitType, Turret>>()
             .is_some_and(|turrets| !turrets.is_empty());
         let slow = cx
-            .book::<ByAction<Weapon>>()
+            .book::<ById<ActionId, Weapon>>()
             .is_some_and(|weapons| weapons.values().any(|weapon| weapon.speed.is_some()));
         let streaks = cx
-            .book::<StreakBook>()
-            .is_some_and(|modifiers| !modifiers.is_empty());
+            .book::<ById<ActionId, Weapon>>()
+            .is_some_and(|weapons| weapons.values().any(|weapon| weapon.streak.is_some()));
         let actions = cx.book::<ActionBook>();
         let toggles = actions.is_some_and(|book| {
             book.iter()
@@ -333,10 +338,10 @@ pub mod internals {
     use campfire_actions::internals::TestAction;
     use campfire_actions::{
         ActionBook, ActionData, ActionKind, ActionProgress, ActionRange, ActionSlots, Actions, Aim,
-        AttackTarget, ByAction, InProgress, LoadedAction, ProgressDues, SlotKind, SlotTimes,
+        AttackTarget, InProgress, LoadedAction, ProgressDues, SlotKind, SlotTimes,
     };
     use campfire_common::{DeclaredName, Tick, Ticks};
-    use campfire_declarations::ServerForm;
+    use campfire_declarations::{ById, ServerForm};
     use campfire_math::{Num, Rounding};
     use campfire_players::ResourceAmount;
     use campfire_script::{Filter, MatchNames};
@@ -358,9 +363,10 @@ pub mod internals {
     use crate::held_hits::HeldHits;
     use crate::on_death::OnDeath;
     use crate::pass_queue::PassEntry;
-    use crate::streak_book::StreakBook;
     use crate::volley::Volley;
-    use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Splash, Streak, Weapon, WeaponDamage};
+    use crate::weapon::{
+        ClipRule, Pitch, PreAttackRule, Rate, Scatter, Splash, Streak, Weapon, WeaponDamage,
+    };
     use crate::weapon_names::WeaponNames;
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
@@ -378,6 +384,7 @@ pub mod internals {
         pub rate: Rate,
         pub rate_bonus: Option<StatId>,
         pub damage: WeaponDamage,
+        pub damage_bonus: Option<StatId>,
         pub clip: Option<ClipRule>,
         pub cost: PoolCost,
         pub resource_cost: Option<ResourceAmount>,
@@ -386,6 +393,7 @@ pub mod internals {
         pub pitch: Option<Pitch>,
         pub speed: Option<Speed>,
         pub streak: Option<Streak>,
+        pub pre_attack: Option<PreAttackRule>,
     }
 
     impl TestWeapon {
@@ -401,6 +409,7 @@ pub mod internals {
                 rate: Rate::Stat(StatId::new(0)),
                 rate_bonus: None,
                 damage: WeaponDamage::Stat(StatId::new(1)),
+                damage_bonus: None,
                 clip: None,
                 cost: PoolCost::default(),
                 resource_cost: None,
@@ -409,6 +418,7 @@ pub mod internals {
                 pitch: None,
                 speed: None,
                 streak: None,
+                pre_attack: None,
             }
         }
     }
@@ -433,13 +443,14 @@ pub mod internals {
                 None => action,
             };
             let id = Actions::add(world, "weapon", action);
-            ByAction::<Weapon>::amend(world, |_, book| {
+            ById::<ActionId, Weapon>::amend(world, |_, book| {
                 book.set(
                     id,
                     Weapon {
                         rate: weapon.rate,
                         rate_bonus: weapon.rate_bonus,
                         damage: weapon.damage,
+                        damage_bonus: weapon.damage_bonus,
                         kind: DamageKind::new(0),
                         clip: weapon.clip.map(|clip| Box::from([clip])),
                         splash: weapon.splash,
@@ -450,10 +461,10 @@ pub mod internals {
                         pitch: weapon.pitch,
                         speed: weapon.speed,
                         streak: weapon.streak,
+                        pre_attack: weapon.pre_attack,
                     },
                 );
             });
-            StreakBook::load(world);
             id
         }
 
@@ -484,8 +495,7 @@ pub mod internals {
                 modifiers: world.get_resource::<ModifierBook>(),
             };
             let weapon = names.weapon(attack).expect("a test's weapon resolves");
-            ByAction::<Weapon>::amend(world, |_, book| book.set(action, weapon));
-            StreakBook::load(world);
+            ById::<ActionId, Weapon>::amend(world, |_, book| book.set(action, weapon));
         }
 
         /// Strikes with each attack whose windup ended, as the server's strike set does once the

@@ -1,10 +1,9 @@
 use campfire_actions::{ActionSlots, ActionsColumn, SlotKind, SlotKindData};
-use campfire_combat::CombatColumn;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_geometry::GridSearch;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd, RoomAsk, RoomSearch};
-use campfire_players::{PlayerResources, PlayersCall, SeatHolder};
+use campfire_players::{PlayerResources, PlayerSlotHolder, PlayersCall};
 use campfire_script::{
     ApiBuilder, ApiError, ApiHolder, ApiVersion, ArgCtx, CapabilityRefusal, Checked, Ctx,
     DataTable, Frame, IdName, IdNames, ListPlace, Listing, MaybeName, MemberDecl,
@@ -13,9 +12,8 @@ use campfire_script::{
 };
 use campfire_sim::{Capability, StableId};
 use campfire_units::{Body, SpawnAt, Units};
-use campfire_values::{
-    ActionId, NameId, Named, PathId, Rank, Relation, ResourceId, Tag, Team, UnitType,
-};
+use campfire_values::{ActionId, NameId, Named, PathId, Relation, ResourceId, Tag, Team, UnitType};
+use campfire_visibility::DataKind;
 
 use crate::bounty_data::{BountyData, ModeBountyData};
 use crate::choice_data::ChoiceData;
@@ -44,7 +42,7 @@ use crate::victory_data::VictoryData;
 
 /// The script API of the mode, which every match has: the teams, the map, the avatars and the
 /// mode's state, which every role reads, and what only the mode's calls do: the players'
-/// choices and resources, spawns, timers, respawns, learning and the match's end.
+/// choices and resources, spawns, grants, timers and the match's end.
 #[derive(Debug)]
 pub(crate) struct ModeApi;
 
@@ -137,7 +135,7 @@ impl ModeApi {
             .roles(RoleSet::SIM.and(RoleSet::BOT)),
             |ctx: &mut Ctx| -> Checked<ScriptList> {
                 let players = ctx.mode_spec_or_fail()?.teams.players();
-                let player = |slot| ScriptValue::of(PlayerHandle::new(Seat::new(slot)));
+                let player = |slot| ScriptValue::of(PlayerHandle::new(PlayerSlot::new(slot)));
                 Ok((0..players).map(player).collect())
             },
         )
@@ -246,13 +244,13 @@ impl ModeApi {
         .own_script();
         api.call(
             choose,
-            |ctx: &mut Ctx, player: Seat, choice: ChoiceId, values: ScriptList| {
+            |ctx: &mut Ctx, player: PlayerSlot, choice: ChoiceId, values: ScriptList| {
                 Self::choose(ctx, player, choice, &values)
             },
         )
         .call(
             choose,
-            |ctx: &mut Ctx, player: Seat, choice: ChoiceId, value: ScriptText| {
+            |ctx: &mut Ctx, player: PlayerSlot, choice: ChoiceId, value: ScriptText| {
                 Self::choose(ctx, player, choice, &[ScriptValue::of(value)])
             },
         )
@@ -263,7 +261,7 @@ impl ModeApi {
                 "the values `player` chose of `choice`, in order; empty before the player chose",
             )
             .roles(RoleSet::MODE.and(RoleSet::BOT)),
-            |ctx: &mut Ctx, player: Seat, choice: ChoiceId| Self::chosen(ctx, player, choice),
+            |ctx: &mut Ctx, player: PlayerSlot, choice: ChoiceId| Self::chosen(ctx, player, choice),
         )
         .call(
             MemberDecl::mode_call(
@@ -272,7 +270,7 @@ impl ModeApi {
                 "whether `player` may choose `value` of `choice`: no other player chose it in a \
                  unique choice",
             ),
-            |ctx: &mut Ctx, player: Seat, choice: ChoiceId, value: ScriptText| {
+            |ctx: &mut Ctx, player: PlayerSlot, choice: ChoiceId, value: ScriptText| {
                 Self::available(ctx, player, choice, &value)
             },
         )
@@ -327,7 +325,7 @@ impl ModeApi {
              unit_type: UnitType,
              team: Team,
              position: ScriptPosition,
-             player: Seat| {
+             player: PlayerSlot| {
                 Self::spawn_unit(ctx, unit_type, team, position.get(), Some(player))
             },
         )
@@ -361,7 +359,7 @@ impl ModeApi {
     }
 
     /// What only the mode's calls do, but adding resources and setting relations, which every
-    /// role does: spawns, timers, respawns, learning and the match's end.
+    /// role does: timers and the match's end.
     fn register_changes(api: &mut ApiBuilder<'_>) {
         let after = MemberDecl::mode_call(
             "after",
@@ -404,30 +402,12 @@ impl ModeApi {
             },
         )
         .call(
-            MemberDecl::mode_call(
-                "respawn",
-                &[&["unit", "ms"]],
-                "brings back `unit`, dead and of a type that stays, `ms` from the call",
-            )
-            .capability(Capability::Combat),
-            |ctx: &mut Ctx, unit: Unit, ms: ScriptTicks| Self::respawn(ctx, &unit, ms),
-        )
-        .call(
-            MemberDecl::mode_call(
-                "learn",
-                &[&["avatar", "slot"]],
-                "the ability in `slot` a rank more, up to its last",
-            )
-            .capability(Capability::Abilities),
-            |ctx: &mut Ctx, unit: Unit, slot: i64| Self::learn(ctx, &unit, slot),
-        )
-        .call(
             MemberDecl::call(
                 "add_resource",
                 &[&["player", "name", "amount"]],
                 "adds `amount`, at least 0, of the player resource `name`, one the mode declares, to `player`",
             ),
-            |ctx: &mut Ctx, player: Seat, resource: ResourceId, amount: i64| {
+            |ctx: &mut Ctx, player: PlayerSlot, resource: ResourceId, amount: i64| {
                 Self::add_resource(ctx, player, resource, amount)
             },
         )
@@ -437,7 +417,7 @@ impl ModeApi {
                 &[&["player", "name", "amount"]],
                 "takes `amount`, at least 0, of the player resource `name` from `player`, which must hold it",
             ),
-            |ctx: &mut Ctx, player: Seat, resource: ResourceId, amount: i64| {
+            |ctx: &mut Ctx, player: PlayerSlot, resource: ResourceId, amount: i64| {
                 Self::take_resource(ctx, player, resource, amount)
             },
         )
@@ -447,7 +427,7 @@ impl ModeApi {
                 &[&["player", "out"]],
                 "holds `player` out of play while `out`, as when every avatar it holds is dead",
             ),
-            |ctx: &mut Ctx, player: Seat, out: bool| Self::set_out(ctx, player, out),
+            |ctx: &mut Ctx, player: PlayerSlot, out: bool| Self::set_out(ctx, player, out),
         )
         .call(
             MemberDecl::mode_call(
@@ -456,7 +436,7 @@ impl ModeApi {
                 "sets `player`'s share, 0 or more, of the cost of each unit its units kill that a \
                  death pays, as a power raises it, of a mode of a `[bounty]`",
             ),
-            |ctx: &mut Ctx, player: Seat, share: Num| {
+            |ctx: &mut Ctx, player: PlayerSlot, share: Num| {
                 Self::set_bounty_share(ctx, player, share)
             },
         )
@@ -558,7 +538,10 @@ impl ModeApi {
 
     fn state(ctx: &Ctx, name: &str) -> Checked<ScriptValue> {
         let field = Self::state_field(ctx, name)?;
-        Ok(ModeCall::of(&ctx.frame()).state[field.index()].to_value(ctx.view()))
+        let book = ctx.mode_spec_or_fail()?;
+        let frame = ctx.frame();
+        let value = &ModeCall::of(&frame).state[field.index()];
+        Ok(book.schema.state.read(field, value, ctx.view()))
     }
 
     fn set_state(ctx: &Ctx, name: &str, value: &ScriptValue) -> Checked<()> {
@@ -583,8 +566,13 @@ impl ModeApi {
         Ok(())
     }
 
-    /// Records `values` as what player `seat` chose of `choice`.
-    fn choose(ctx: &Ctx, seat: Seat, choice: ChoiceId, values: &[ScriptValue]) -> Checked<()> {
+    /// Records `values` as what player `player_slot` chose of `choice`.
+    fn choose(
+        ctx: &Ctx,
+        player_slot: PlayerSlot,
+        choice: ChoiceId,
+        values: &[ScriptValue],
+    ) -> Checked<()> {
         let book = ctx.mode_spec_or_fail()?;
         let choice = book.choices.get(choice);
         if values.len() != choice.count() {
@@ -607,22 +595,26 @@ impl ModeApi {
         if !call.holds_mode() {
             return Err(ModeRefusal::RulesScript.fail().into());
         }
-        let taken = |&offer| call.choices.is_taken(&book.choices, seat, choice, offer);
+        let taken = |&offer| {
+            call.choices
+                .is_taken(&book.choices, player_slot, choice, offer)
+        };
         if choice.unique && offers.iter().any(taken) {
             return Err(ModeRefusal::ChoiceTaken.fail().into());
         }
-        call.choices.choose(&book.choices, seat, choice, &offers);
+        call.choices
+            .choose(&book.choices, player_slot, choice, &offers);
         Ok(())
     }
 
-    /// The values player `seat` chose of `choice`, in order, empty before the player chose.
-    fn chosen(ctx: &Ctx, seat: Seat, choice: ChoiceId) -> Checked<ScriptList> {
+    /// The values player `player_slot` chose of `choice`, in order, empty before the player chose.
+    fn chosen(ctx: &Ctx, player_slot: PlayerSlot, choice: ChoiceId) -> Checked<ScriptList> {
         let book = ctx.mode_spec_or_fail()?;
         let choice = book.choices.get(choice);
         let frame = ctx.frame();
         let Some(values) = ModeCall::of(&frame)
             .choices
-            .chosen(&book.choices, seat, choice)
+            .chosen(&book.choices, player_slot, choice)
         else {
             return Ok(ScriptList::default());
         };
@@ -642,18 +634,24 @@ impl ModeApi {
             .collect())
     }
 
-    /// Whether player `seat` may choose `value` of `choice`: it offers the value, and no other
-    /// player chose it in a unique choice.
-    fn available(ctx: &Ctx, seat: Seat, choice: ChoiceId, value: &str) -> Checked<bool> {
+    /// Whether player `player_slot` may choose `value` of `choice`: it offers the value, and no
+    /// other player chose it in a unique choice.
+    fn available(
+        ctx: &Ctx,
+        player_slot: PlayerSlot,
+        choice: ChoiceId,
+        value: &str,
+    ) -> Checked<bool> {
         let book = ctx.mode_spec_or_fail()?;
         let choice = book.choices.get(choice);
         let offer = book
             .roster
             .offer_named(choice, value)
             .ok_or_else(|| ModeRefusal::UnknownChoiceValue.fail())?;
-        let taken = ModeCall::of(&ctx.frame())
-            .choices
-            .is_taken(&book.choices, seat, choice, offer);
+        let taken =
+            ModeCall::of(&ctx.frame())
+                .choices
+                .is_taken(&book.choices, player_slot, choice, offer);
         Ok(!(choice.unique && taken))
     }
 
@@ -672,7 +670,7 @@ impl ModeApi {
         unit_type: UnitType,
         team: Team,
         position: Vec3,
-        owner: Option<Seat>,
+        owner: Option<PlayerSlot>,
     ) -> Checked<Unit> {
         let book = ctx.mode_spec_or_fail()?;
         if !ctx.view().bounds().contains(position) {
@@ -860,42 +858,6 @@ impl ModeApi {
         }))
     }
 
-    /// Brings back `unit`, which is dead and stays when dead, `ms` after this call, in ticks
-    /// rounded up, at least one.
-    fn respawn(ctx: &Ctx, unit: &Unit, ms: ScriptTicks) -> Checked<()> {
-        if unit.read(|row| row.alive)? {
-            return Err(ModeRefusal::RespawnAlive.fail().into());
-        }
-        if !CombatColumn::stays(unit)? {
-            return Err(ModeRefusal::RespawnDespawns.fail().into());
-        }
-        ctx.queue(ModeEffect::Respawn {
-            id: unit.id,
-            ticks: ms.get(),
-        })
-    }
-
-    /// Queues a rank more of the ability in `slot` of `unit`: one that has a rank above its
-    /// rank, counting the ranks this call queued already.
-    fn learn(ctx: &Ctx, unit: &Unit, slot: i64) -> Checked<()> {
-        let slot = u8::try_from(slot)
-            .ok()
-            .ok_or_else(|| ModeRefusal::NoAbilitySlot.fail())?;
-        let slot_row = ActionsColumn::slot(ctx.view(), unit.row_index()?, slot)
-            .ok_or_else(|| ModeRefusal::NoAbilitySlot.fail())?;
-        let effect = ModeEffect::Learn { id: unit.id, slot };
-        let mut frame = ctx.write()?;
-        let queued = frame
-            .queued::<ModeEffect>()
-            .filter(|&queued| *queued == effect)
-            .count();
-        if usize::from(Rank::count(slot_row.rank)) + queued >= usize::from(slot_row.ranks) {
-            return Err(ModeRefusal::MaxRank.fail().into());
-        }
-        frame.queue(effect);
-        Ok(())
-    }
-
     /// Queues a change of how teams `a` and `b`, two of the mode's, regard each other.
     fn set_relation(ctx: &Ctx, a: Team, b: Team, relation: Relation) -> Checked<()> {
         if a == b {
@@ -904,41 +866,40 @@ impl ModeApi {
         ctx.queue(ModeEffect::SetRelation { a, b, relation })
     }
 
-    /// Whether a player or a bot held `seat` as the match started.
-    fn is_held(ctx: &Ctx, seat: Seat) -> bool {
+    /// Whether a player or a bot held `player_slot` as the match started.
+    fn is_held(ctx: &Ctx, player_slot: PlayerSlot) -> bool {
         let frame = ctx.frame();
         let players = frame
             .extension::<PlayersCall>()
             .expect("every call holds the players'");
-        players.holder(seat) == Some(SeatHolder::Held)
+        players.holder(player_slot) == Some(PlayerSlotHolder::Held)
     }
 
-    /// The living units of player `seat`, by stable id.
-    fn units_of(ctx: &Ctx, seat: Seat) -> Checked<ScriptList> {
-        ctx.admit_seat(Some(seat))?;
-        Ok(ctx
-            .view()
-            .units_where(|row| row.alive && row.owner == Some(seat)))
+    /// The living units of player `player_slot` that the view's viewer sees, by stable id.
+    fn units_of(ctx: &Ctx, player_slot: PlayerSlot) -> ScriptList {
+        ctx.view()
+            .units_where(|row| row.alive && row.owner == Some(player_slot))
     }
 
-    /// Queues player `seat` held out of play, or no more.
-    fn set_out(ctx: &Ctx, seat: Seat, out: bool) -> Checked<()> {
-        ctx.queue(ModeEffect::SetOut { seat, out })
+    /// Queues player `player_slot` held out of play, or no more.
+    fn set_out(ctx: &Ctx, player_slot: PlayerSlot, out: bool) -> Checked<()> {
+        ctx.queue(ModeEffect::SetOut { player_slot, out })
     }
 
-    /// Sets player `seat`'s bounty share; one below 0, or a mode of no `[bounty]`, fails the call.
-    fn set_bounty_share(ctx: &Ctx, seat: Seat, share: Num) -> Checked<()> {
+    /// Sets player `player_slot`'s bounty share; one below 0, or a mode of no `[bounty]`, fails the
+    /// call.
+    fn set_bounty_share(ctx: &Ctx, player_slot: PlayerSlot, share: Num) -> Checked<()> {
         if share < Num::ZERO {
             return Err(ModeRefusal::NegativeShare.fail().into());
         }
         if !ctx.mode_spec_or_fail()?.bounty {
             return Err(ModeRefusal::NoBounty.fail().into());
         }
-        ctx.queue(ModeEffect::SetBountyShare { seat, share })
+        ctx.queue(ModeEffect::SetBountyShare { player_slot, share })
     }
 
-    /// The `Player` handle's reads of what the mode keeps: its team, its units, its seat, its
-    /// play and its resources.
+    /// The `Player` handle's reads of what the mode keeps: its team, its units, its player slot,
+    /// its play and its resources.
     fn register_player(api: &mut ApiBuilder<'_>) {
         let owner = ApiHolder::of::<PlayerHandle>();
         let field = |name, description| MemberDecl::field(owner, name, description);
@@ -946,7 +907,7 @@ impl ModeApi {
             field("team", "its team's name"),
             |ctx: &Ctx, player: &mut PlayerHandle| -> Checked<IdName<Team>> {
                 let book = ctx.mode_spec_or_fail()?;
-                let team = book.teams.of(player.seat());
+                let team = book.teams.of(player.player_slot());
                 let team = team.expect("a player of the session has a team");
                 Ok(ctx.view().names().name(team))
             },
@@ -956,18 +917,18 @@ impl ModeApi {
                 "state",
                 "its script state, by name, as the mode's `[player_state]` declares it, which a call may write and read back",
             ),
-            |player: &mut PlayerHandle| PlayerStateAccess(player.seat()),
+            |player: &mut PlayerHandle| PlayerStateAccess(player.player_slot()),
         )
         .bind(
             field("units", "the living units it owns, by stable id"),
-            |ctx: &Ctx, player: &mut PlayerHandle| Self::units_of(ctx, player.seat()),
+            |ctx: &Ctx, player: &mut PlayerHandle| Self::units_of(ctx, player.player_slot()),
         )
         .bind(
             field(
-                "seated",
+                "held",
                 "whether a player or a bot held its slot as the match started",
             ),
-            |ctx: &Ctx, player: &mut PlayerHandle| Self::is_held(ctx, player.seat()),
+            |ctx: &Ctx, player: &mut PlayerHandle| Self::is_held(ctx, player.player_slot()),
         )
         .bind(
             field(
@@ -977,7 +938,7 @@ impl ModeApi {
             |ctx: &Ctx, player: &mut PlayerHandle| {
                 let frame = ctx.frame();
                 let players = frame.extension::<PlayersCall>();
-                let out = players.and_then(|players| players.is_out(player.seat()));
+                let out = players.and_then(|players| players.is_out(player.player_slot()));
                 out.expect("a call holds each player of the session")
             },
         )
@@ -988,8 +949,8 @@ impl ModeApi {
                 &[&["name"]],
                 "the amount of the player resource `name` it holds, with the call's changes",
             ),
-            |ctx: &Ctx, player: Seat, resource: ResourceId| {
-                ctx.admit_seat(Some(player))?;
+            |ctx: &Ctx, player: PlayerSlot, resource: ResourceId| {
+                ctx.view().admit_player(player, DataKind::Resources)?;
                 let frame = ctx.frame();
                 let players = frame
                     .extension::<PlayersCall>()
@@ -1002,26 +963,36 @@ impl ModeApi {
         );
     }
 
-    /// Adds `amount` of `resource` to player `seat`'s; a negative amount, or a sum past an
+    /// Adds `amount` of `resource` to player `player_slot`'s; a negative amount, or a sum past an
     /// integer, fails the call.
-    fn add_resource(ctx: &Ctx, seat: Seat, resource: ResourceId, amount: i64) -> Checked<()> {
+    fn add_resource(
+        ctx: &Ctx,
+        player_slot: PlayerSlot,
+        resource: ResourceId,
+        amount: i64,
+    ) -> Checked<()> {
         if amount < 0 {
             return Err(ModeRefusal::NegativeAmount.fail().into());
         }
         let mut frame = ctx.write()?;
-        Self::resources_mut(&mut frame, seat)
+        Self::resources_mut(&mut frame, player_slot)
             .add(resource, amount)
             .ok_or_else(|| ModeRefusal::ResourceOverflow.fail().into())
     }
 
-    /// Takes `amount` of `resource` from player `seat`'s; a negative amount, or more than the
-    /// player holds, fails the call.
-    fn take_resource(ctx: &Ctx, seat: Seat, resource: ResourceId, amount: i64) -> Checked<()> {
+    /// Takes `amount` of `resource` from player `player_slot`'s; a negative amount, or more than
+    /// the player holds, fails the call.
+    fn take_resource(
+        ctx: &Ctx,
+        player_slot: PlayerSlot,
+        resource: ResourceId,
+        amount: i64,
+    ) -> Checked<()> {
         if amount < 0 {
             return Err(ModeRefusal::NegativeAmount.fail().into());
         }
         let mut frame = ctx.write()?;
-        let resources = Self::resources_mut(&mut frame, seat);
+        let resources = Self::resources_mut(&mut frame, player_slot);
         if resources.amount(resource) < amount {
             return Err(ModeRefusal::ResourceShort.fail().into());
         }
@@ -1031,12 +1002,12 @@ impl ModeApi {
         Ok(())
     }
 
-    /// Player `seat`'s resources, for the call to change.
-    fn resources_mut(frame: &mut Frame, seat: Seat) -> &mut PlayerResources {
+    /// Player `player_slot`'s resources, for the call to change.
+    fn resources_mut(frame: &mut Frame, player_slot: PlayerSlot) -> &mut PlayerResources {
         frame
             .extension_mut::<PlayersCall>()
             .expect("every call holds the players'")
-            .resources_mut(seat)
+            .resources_mut(player_slot)
             .expect("a mode that names a resource keeps each player's resources")
     }
 
@@ -1046,23 +1017,10 @@ impl ModeApi {
         if data.is_unit() {
             return Ok(None);
         }
-        [
-            StateType::Int,
-            StateType::Num,
-            StateType::Bool,
-            StateType::String,
-            StateType::Unit,
-            StateType::UnitList,
-            StateType::Vec,
-            StateType::IntList,
-            StateType::NumList,
-            StateType::BoolList,
-            StateType::StringList,
-        ]
-        .into_iter()
-        .find_map(|kind| StateValue::of_kind(kind, data))
-        .map(Some)
-        .ok_or_else(|| ModeRefusal::TimerData.refused())
+        StateType::timer_order()
+            .find_map(|kind| StateValue::of_kind(kind, data))
+            .map(Some)
+            .ok_or_else(|| ModeRefusal::TimerData.refused())
     }
 }
 

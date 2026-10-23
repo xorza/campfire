@@ -29,7 +29,7 @@ fn on_input(ctx, player, name, value) {
     // Each class on each player's entity: `kills` its owner's, `title` all's, `note` no
     // client's, each at its type's first value, an enum's at its first member.
     let classes = |game: &Match, slot| {
-        let entity = game.player_entity(Seat::new(slot)).unwrap();
+        let entity = game.player_entity(PlayerSlot::new(slot)).unwrap();
         let values = |values: &[StateValue]| values.to_vec();
         (
             values(
@@ -55,10 +55,12 @@ fn on_input(ctx, player, name, value) {
         )
     };
     let text = |text: &str| StateValue::Text(text.into());
-    let at = |kills, title| {
+    // A title is its member's place: `rookie` 0, `veteran` 1.
+    let at = |kills, title: &str| {
+        let member = ["rookie", "veteran"].iter().position(|&of| of == title);
         (
             vec![StateValue::Int(kills)],
-            vec![text(title)],
+            vec![StateValue::Member(u8::try_from(member.unwrap()).unwrap())],
             vec![text("")],
             Vec::new(),
         )

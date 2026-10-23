@@ -2,7 +2,7 @@ use crate::interpolation_setup::InterpolationSetup;
 use crate::interpolation_timeline::InterpolationTimeline;
 use bevy_app::{App, Plugin, PostUpdate, PreUpdate};
 use bevy_ecs::prelude::*;
-use bevy_time::{Time, Virtual};
+use bevy_time::{Real, Time, Virtual};
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
 use campfire_net_connection::Disconnected;
@@ -101,8 +101,6 @@ impl InterpolationTimelinePlugin {
                 trace!(
                     target: "campfire_net_debug::sync",
                     kind = "interpolation_sync",
-                    schedule = "PostUpdate",
-                    sample_point = "PostUpdate",
                     source = ?client,
                     ?before,
                     after = ?timeline.now(),
@@ -118,26 +116,24 @@ impl InterpolationTimelinePlugin {
         }
     }
 
-    /// Update the timeline in PreUpdate based on the [`Time<Virtual>`]; real time passes during a
-    /// rollback too.
+    /// Advances the timeline in `PreUpdate` by the frame's real time at the timeline's own speed,
+    /// clamped and paused as [`Time<Virtual>`] is, but not at its speed, which the local
+    /// timeline's synchronization sets; real time passes during a rollback too.
     pub(crate) fn advance_timeline(
-        time: Res<'_, Time<Virtual>>,
+        real: Res<'_, Time<Real>>,
+        virtual_time: Res<'_, Time<Virtual>>,
         tick_rate: Res<'_, TimelineRate>,
         mut timeline: ResMut<'_, InterpolationTimeline>,
     ) {
-        // A paused `Time<Virtual>` has a zero delta; avoid dividing by its zero relative speed
-        // while reconstructing the unscaled frame delta.
-        if time.relative_speed() == 0.0 {
+        if virtual_time.effective_speed() == 0.0 {
             return;
         }
-        let delta = time.delta();
-        // Make sure to account for the fact that Time<Virtual> is already updated from the local
-        // timeline synchronization controller.
-        let new_delta = delta
-            .div_f32(time.relative_speed())
+        let delta = real
+            .delta()
+            .min(virtual_time.max_delta())
             .mul_f32(timeline.relative_speed());
-        trace!("Interpolation timeline advance by {new_delta:?}");
-        timeline.apply_duration(new_delta, tick_rate.0);
+        trace!("Interpolation timeline advance by {delta:?}");
+        timeline.apply_duration(delta, tick_rate.0);
     }
 }
 

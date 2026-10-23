@@ -38,12 +38,7 @@ impl RemoteEntityMap {
         &self.local_to_remote
     }
 
-    /// The local entity `remote_entity` maps to.
-    pub fn get_local(&self, remote_entity: Entity) -> Option<Entity> {
-        self.remote_to_local.get(&remote_entity).copied()
-    }
-
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.local_to_remote.0.clear();
         self.remote_to_local.0.clear();
     }

@@ -3,8 +3,9 @@ use std::marker::PhantomData;
 
 use crate::value32::Value32;
 
-/// The domain tag that starts a BLAKE3 hash's input, `campfire/<name>/v<n>`, so no hash of one
-/// meaning equals one of another: `<name>` of lowercase letters, digits and `-`, `<n>` of digits.
+/// The domain tag of a BLAKE3 hash, `campfire/<name>/v<n>`, its context in BLAKE3's key
+/// derivation mode, so no hash of one meaning equals one of another: `<name>` of lowercase
+/// letters, digits and `-`, `<n>` of digits.
 /// A tag is a constant of the code, `const DOMAIN: HashDomain<SessionId> = HashDomain::new(…)`,
 /// so `new` refuses another spelling as it compiles; its type is the hash's, so a site's hash is
 /// of the domain's type.
@@ -13,8 +14,10 @@ pub struct HashDomain<T> {
     output: PhantomData<fn() -> T>,
 }
 
-/// BLAKE3 of an input led by its domain's tag (05-protocol-spec.md, Encoding and cryptography),
-/// given its parts and finished into the domain's type.
+/// BLAKE3 of an input in key derivation mode, its domain's tag the context (05-protocol-spec.md,
+/// Encoding and cryptography): the context is hashed apart from the input, so no input extends a
+/// tag into another, as `campfire/a/v1` and `0` would `campfire/a/v10`. It is given its parts and
+/// finished into the domain's type.
 pub struct DomainHasher<T> {
     hasher: blake3::Hasher,
     output: PhantomData<fn() -> T>,
@@ -98,10 +101,8 @@ impl<T> fmt::Debug for HashDomain<T> {
 
 impl<T: HashOutput> DomainHasher<T> {
     pub fn new(domain: HashDomain<T>) -> Self {
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(domain.as_str().as_bytes());
         Self {
-            hasher,
+            hasher: blake3::Hasher::new_derive_key(domain.as_str()),
             output: PhantomData,
         }
     }
@@ -145,14 +146,19 @@ mod tests {
     use crate::state_hash::StateHash;
 
     #[test]
-    fn a_domain_hash_is_blake3_of_its_tag_then_its_input() {
+    fn a_domain_hash_is_blake3_derive_key_of_its_tag_and_its_input() {
         let domain: HashDomain<StateHash> = HashDomain::new("campfire/test-hash/v1");
         let mut hasher = DomainHasher::new(domain);
         hasher.update(b"a").update(b"bc");
         assert_eq!(
             hasher.finish(),
-            StateHash::new(*blake3::hash(b"campfire/test-hash/v1abc").as_bytes())
+            StateHash::new(blake3::derive_key("campfire/test-hash/v1", b"abc"))
         );
+        // A version's digits and an input's do not run together.
+        let ten: StateHash = DomainHasher::new(HashDomain::new("campfire/test-hash/v10")).finish();
+        let mut one = DomainHasher::<StateHash>::new(HashDomain::new("campfire/test-hash/v1"));
+        one.update(b"0");
+        assert_ne!(one.finish(), ten);
         let other: StateHash = DomainHasher::new(HashDomain::new("campfire/test-hash/v2")).finish();
         assert_ne!(other, DomainHasher::new(domain).finish());
         // A tag is `campfire/`, a name, and `/v` with a version.

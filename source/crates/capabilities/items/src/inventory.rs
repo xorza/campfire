@@ -4,11 +4,11 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, ProgressDues, SlotsMutItem, UseGroup};
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentOnChange};
 use campfire_units::UnitEntity;
-use campfire_values::{ItemId, ResourceId};
+use campfire_values::{ItemId, ResourceId, UnitType};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -169,13 +169,6 @@ impl Inventory {
         self.slots.get_mut(usize::from(slot))?.take()
     }
 
-    /// Puts `carried` back in `slot`, which a take emptied.
-    pub fn restore(&mut self, slot: u8, carried: ItemStack) {
-        let slot = &mut self.slots[usize::from(slot)];
-        debug_assert!(slot.is_none(), "a slot a take emptied");
-        *slot = Some(carried);
-    }
-
     /// Notes in `items` each slot's item type, none for an empty slot, for `follow` to compare.
     pub(crate) fn note(&self, items: &mut Vec<Option<ItemId>>) {
         items.clear();
@@ -253,17 +246,18 @@ impl Inventory {
         }
     }
 
-    /// Swaps slots `from` and `to`, empty or not, and their action slots in `carrier`'s, each
-    /// keeping its times; nothing when either is no slot.
+    /// Swaps slots `from` and `to`, each a slot, empty or not, and their action slots in
+    /// `carrier`'s, each keeping its times.
     pub(crate) fn swap_with(
         &mut self,
         from: u8,
         to: u8,
         carrier: Option<CarrierSlots<'_, '_, '_>>,
     ) {
-        if usize::from(from.max(to)) >= self.slots.len() {
-            return;
-        }
+        debug_assert!(
+            usize::from(from.max(to)) < self.slots.len(),
+            "a swap of two slots"
+        );
         self.slots.swap(usize::from(from), usize::from(to));
         if let Some(CarrierSlots {
             mut unit, group, ..
@@ -313,6 +307,21 @@ impl Replication for Inventory {
     type Sending = SentOnChange;
 }
 
-impl PerType for Inventory {
+impl PerId<UnitType> for Inventory {
     const SCRIPTS_ONLY: bool = false;
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::inventory::{Inventory, ItemStack};
+
+    impl Inventory {
+        /// Puts `carried` in `slot`, an empty one, as a restore writes a stack: for a test that
+        /// checks a written inventory.
+        pub fn restore(&mut self, slot: u8, carried: ItemStack) {
+            let slot = &mut self.slots[usize::from(slot)];
+            debug_assert!(slot.is_none(), "an empty slot");
+            *slot = Some(carried);
+        }
+    }
 }

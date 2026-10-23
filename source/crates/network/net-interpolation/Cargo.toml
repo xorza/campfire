@@ -11,8 +11,10 @@ kind = "glue"
 # The interpolation layer's stack and test components, for the tests and benches of every layer
 # above
 internals = [
+    "dep:serde",
     "campfire-net-replication/internals",
     "campfire-net-sync/internals",
+    "campfire-net-frame-interpolation/internals",
     "dep:campfire-net-stepper",
     "campfire-net-timeline/internals",
     "campfire-net-messages/internals",
@@ -28,10 +30,11 @@ campfire-net-connection.workspace = true
 campfire-net-stepper = { workspace = true, optional = true }
 campfire-net-messages.workspace = true
 campfire-net-sync.workspace = true
+campfire-net-frame-interpolation.workspace = true
 campfire-net-replication.workspace = true
 
 bytes = { workspace = true, features = ["std"] }
-serde = { workspace = true, features = ["derive", "rc", "std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"], optional = true }
 tracing = { workspace = true, features = ["attributes", "std"] }
 variadics_please = { workspace = true, features = ["alloc"] }
 
@@ -43,7 +46,6 @@ bevy_platform = { workspace = true, features = ["std"] }
 bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
 bevy_replicon = { workspace = true, features = ["client", "server"] }
 bevy_time.workspace = true
-bevy_transform = { workspace = true, features = ["bevy-support"] }
 bevy_utils = { workspace = true, features = ["debug"] }
 
 [dev-dependencies]

@@ -1,10 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+use crate::names::MatchScope;
+
 /// A package's place among a mode's packages: 0 the mode, then each package it depends on, in
 /// the order of their names in its manifest. The load checks that a mode's packages fit it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PackageIndex(u16);
+
+/// A name scoped by its package is that package's own, as a modifier's is.
+impl MatchScope for PackageIndex {
+    const MATCH: Option<Self> = None;
+}
 
 impl PackageIndex {
     pub const MODE: Self = Self(0);

@@ -1,28 +1,44 @@
 use super::*;
 use crate::channel::Channel;
-
-use crate::compression_scratch::CompressionScratch;
-use crate::compression_setup::CompressionSetup;
+use crate::fragment_receiver::PARTIAL_COST;
 use crate::fragmented_message::FragmentedMessage;
 use crate::packet::FRAGMENT_LEN;
-
-use crate::single_body::SingleBody;
 
 #[derive(Debug)]
 struct TestChannel;
 impl Channel for TestChannel {}
 
-fn message(id: Option<u16>, tick: u32, bytes: &'static [u8]) -> ReceiveMessage {
-    ReceiveMessage {
-        data: SingleBody::new(id.map(MessageId), Bytes::from_static(bytes)).into(),
-        remote_sent_tick: NetTick(tick),
-        compression: CompressionSetup::DISABLED,
+/// A message or a fragment as a packet carries it, with the packet's tick.
+#[derive(Debug)]
+enum Part {
+    Single(SingleBody, NetTick),
+    Fragment(FragmentBody, NetTick),
+}
+
+impl ChannelReceiver {
+    /// Stores `part`, as a packet's read does.
+    fn receive_part(
+        &mut self,
+        part: Part,
+        budget: &mut ReceiveBudget,
+    ) -> Result<BufferOutcome, ReceiveError> {
+        match part {
+            Part::Single(single, tick) => Ok(self.receive_single(single, tick, budget)),
+            Part::Fragment(fragment, tick) => self.receive_fragment(fragment, tick, budget),
+        }
     }
 }
 
+fn message(id: Option<u16>, tick: u32, bytes: &'static [u8]) -> Part {
+    Part::Single(
+        SingleBody::new(id.map(MessageId), Bytes::from_static(bytes)),
+        NetTick(tick),
+    )
+}
+
 /// Receives with room to spare.
-fn receive(channel: &mut ChannelReceiver, message: ReceiveMessage) -> Result<BufferOutcome> {
-    channel.buffer_receive(message, &mut ReceiveBudget::new(usize::MAX))
+fn receive(channel: &mut ChannelReceiver, part: Part) -> Result<BufferOutcome, ReceiveError> {
+    channel.receive_part(part, &mut ReceiveBudget::new(usize::MAX))
 }
 
 fn channel(mode: ChannelMode) -> ChannelReceiver {
@@ -33,6 +49,7 @@ fn channel(mode: ChannelMode) -> ChannelReceiver {
             mode,
             ..ChannelSetup::default()
         },
+        ChannelReader::Messages,
     )
 }
 
@@ -88,11 +105,41 @@ fn an_ordered_reliable_channel_buffers_across_the_wrap_of_the_message_id() {
         channel.read_message().unwrap().message_id,
         Some(MessageId(0))
     );
-    // The ring drops each delivered message: it starts again at the next id, empty.
-    let ReceiveState::ReliableOrdered { pending, ready } = &channel.state else {
+    // The store gives back each delivered message: it waits for the next id, empty.
+    let ReceiveState::ReliableOrdered {
+        pending,
+        ready,
+        waiting,
+    } = &channel.state
+    else {
         unreachable!("the channel was built in `ReliableOrdered` mode")
     };
-    assert_eq!((*pending, ready.len()), (MessageId(1), 0));
+    assert_eq!(
+        (*pending, ready.len(), waiting.held()),
+        (MessageId(1), 0, 0)
+    );
+}
+
+/// A message 32,767 ids past the one an ordered channel waits for holds its own entry and a copy
+/// of its bytes, not a slot for each id between, nor the packet its bytes came in; taken out, it
+/// leaves the channel holding nothing.
+#[test]
+fn a_message_far_past_the_gap_holds_its_entry_and_a_copy_of_its_bytes() {
+    let mut channel = channel(ChannelMode::OrderedReliable);
+    let packet = Bytes::from(vec![7; 64]);
+    let far = Part::Single(
+        SingleBody::new(Some(MessageId(32_767)), packet.slice(10..14)),
+        NetTick(0),
+    );
+    receive(&mut channel, far).unwrap();
+    assert_eq!(channel.held(), size_of::<ChannelMessage>() + 4);
+    let ReceiveState::ReliableOrdered { waiting, .. } = &mut channel.state else {
+        unreachable!("the channel was built in `ReliableOrdered` mode")
+    };
+    let held = waiting.pop(MessageId(32_767)).unwrap();
+    assert!(!packet.as_ptr_range().contains(&held.bytes.as_ptr()));
+    assert_eq!(held.bytes, packet.slice(10..14));
+    assert_eq!(channel.held(), 0);
 }
 
 #[test]
@@ -138,7 +185,7 @@ fn an_unordered_reliable_channel_advances_past_messages_that_arrive_out_of_order
         channel.read_message().unwrap().message_id,
         Some(MessageId(1))
     );
-    // Message 1 is past the gap at 0, where the ring still marks it received.
+    // Message 1 is past the gap at 0, where the store still marks it received.
     receive(
         &mut channel,
         message(Some(1), 1, b"duplicate before the gap fills"),
@@ -180,7 +227,7 @@ fn an_unordered_reliable_channel_advances_and_drops_copies_across_the_wrap_of_th
     let ReceiveState::ReliableUnordered { received, .. } = &channel.state else {
         unreachable!("the channel was built in `ReliableUnordered` mode")
     };
-    assert!(received.is_empty(), "the ring drops the received prefix");
+    assert_eq!(received.held(), 0, "the store drops the received prefix");
 
     receive(&mut channel, message(Some(u16::MAX), 2, b"duplicate max")).unwrap();
     receive(&mut channel, message(Some(0), 3, b"duplicate zero")).unwrap();
@@ -233,24 +280,13 @@ fn sequenced_reliable_accepts_the_newest_message_across_message_id_rollover() {
 }
 
 /// The two fragments of message `id`, of 2 * FRAGMENT_SIZE - 1 bytes.
-fn fragments(id: u16) -> [ReceiveMessage; 2] {
+fn fragments(id: u16) -> [Part; 2] {
     let bytes = Bytes::from(vec![id as u8; 2 * FRAGMENT_LEN - 1]);
     let [first, second] = <[_; 2]>::try_from(
-        FragmentedMessage::split(
-            MessageId(id),
-            bytes,
-            FRAGMENT_LEN,
-            CompressionSetup::DISABLED,
-            &mut CompressionScratch::default(),
-        )
-        .fragment_body(),
+        FragmentedMessage::split(MessageId(id), bytes, FRAGMENT_LEN).fragment_body(),
     )
     .unwrap();
-    [first, second].map(|fragment| ReceiveMessage {
-        data: fragment.into(),
-        remote_sent_tick: NetTick(u32::from(id)),
-        compression: CompressionSetup::DISABLED,
-    })
+    [first, second].map(|fragment| Part::Fragment(fragment, NetTick(u32::from(id))))
 }
 
 /// In both sequenced modes, message 2 supersedes the half-received message 1, whose partial is
@@ -311,34 +347,61 @@ fn only_the_partials_of_an_unreliable_unordered_channel_expire() {
     }
 }
 
-/// With 10 bytes of room on an ordered channel, message 1 waits behind the gap of message 0 and
-/// takes 6; message 2's 5 bytes do not fit and are refused unstored; the head, message 0, is
-/// kept past the room; reading 0 and 1 releases every held byte.
+/// A whole message of the id of a partial one delivers once, behind a gap or at its head, on both
+/// reliable modes that keep every message, and the partial goes: its other fragment is a copy.
+#[test]
+fn a_whole_and_a_fragmented_message_of_one_id_deliver_once() {
+    for mode in [ChannelMode::UnorderedReliable, ChannelMode::OrderedReliable] {
+        for id in [0, 1] {
+            let mut channel = channel(mode);
+            let [first, second] = fragments(id);
+            receive(&mut channel, first).unwrap();
+            receive(&mut channel, message(Some(id), 0, b"whole")).unwrap();
+            receive(&mut channel, second).unwrap();
+            if id == 1 {
+                receive(&mut channel, message(Some(0), 0, b"head")).unwrap();
+            }
+            let delivered = core::iter::from_fn(|| channel.read_message())
+                .filter(|message| message.message_id == Some(MessageId(id)))
+                .map(|message| message.bytes)
+                .collect::<Vec<_>>();
+            assert_eq!(delivered, [Bytes::from_static(b"whole")], "{mode:?} {id}");
+            assert_eq!(channel.partial_fragments(), 0, "{mode:?} {id}");
+        }
+    }
+}
+
+/// An entry behind a gap costs its bytes and the slots its store grows by. With room for two
+/// slots and 10 bytes on an ordered channel, message 1 waits behind the gap of message 0 and
+/// takes a slot and its 6 bytes; message 2's slot and 5 bytes do not fit the slot and 4 bytes
+/// left and are refused unstored; the head, message 0, is delivered past the room, with message 1
+/// behind it, and the channel holds nothing.
 #[test]
 fn ordered_messages_behind_a_gap_hold_budget() {
+    let slot = size_of::<ChannelMessage>();
     let mut channel = channel(ChannelMode::OrderedReliable);
-    let mut budget = ReceiveBudget::new(10);
+    let mut budget = ReceiveBudget::new(2 * slot + 10);
     let behind = |id, bytes| message(Some(id), 0, bytes);
     assert_eq!(
         channel
-            .buffer_receive(behind(1, b"sixsix"), &mut budget)
+            .receive_part(behind(1, b"sixsix"), &mut budget)
             .unwrap(),
         BufferOutcome::Stored
     );
     assert_eq!(
         channel
-            .buffer_receive(behind(2, b"fives"), &mut budget)
+            .receive_part(behind(2, b"fives"), &mut budget)
             .unwrap(),
         BufferOutcome::OverBudget
     );
-    assert_eq!(channel.held(), 6);
+    assert_eq!(channel.held(), slot + 6);
     assert_eq!(
         channel
-            .buffer_receive(behind(0, b"the head is twenty b"), &mut budget)
+            .receive_part(behind(0, b"the head"), &mut budget)
             .unwrap(),
         BufferOutcome::Stored
     );
-    assert_eq!(channel.held(), 26);
+    assert_eq!(channel.held(), 0);
     assert_eq!(
         channel.read_message().unwrap().message_id,
         Some(MessageId(0))
@@ -348,19 +411,22 @@ fn ordered_messages_behind_a_gap_hold_budget() {
         Some(MessageId(1))
     );
     assert_eq!(channel.read_message(), None, "message 2 was never stored");
-    assert_eq!(channel.held(), 0);
 }
 
-/// A reassembly buffer of 2 * FRAGMENT_SIZE bytes does not fit FRAGMENT_SIZE bytes of room on an
-/// unordered channel: the fragment is refused and leaves no partial. The ordered head is
-/// reserved past the room, and its completed message releases the reservation.
+/// A partial of two fragments of `FRAGMENT_LEN` costs its map entry, its reassembly buffer of
+/// 2 · FRAGMENT_LEN bytes and its word of receipts: FRAGMENT_LEN bytes of room do not hold it on
+/// an unordered channel, which refuses the fragment and keeps no partial. The ordered head is
+/// reserved past the room, and its completed message is delivered and holds nothing. Message 2,
+/// behind the gap of message 1, holds its partial, then its entry and its 2 · FRAGMENT_LEN - 1
+/// bytes.
 #[test]
 fn reassembly_reserves_budget_and_the_head_is_reserved_anyway() {
+    let partial = PARTIAL_COST + 2 * FRAGMENT_LEN + size_of::<u64>();
     let mut unordered = channel(ChannelMode::UnorderedReliable);
     let [first, _] = fragments(0);
     let mut budget = ReceiveBudget::new(FRAGMENT_LEN);
     assert_eq!(
-        unordered.buffer_receive(first, &mut budget).unwrap(),
+        unordered.receive_part(first, &mut budget).unwrap(),
         BufferOutcome::OverBudget
     );
     assert_eq!((unordered.partial_fragments(), unordered.held()), (0, 0));
@@ -369,16 +435,24 @@ fn reassembly_reserves_budget_and_the_head_is_reserved_anyway() {
     let [first, second] = fragments(0);
     let mut budget = ReceiveBudget::new(FRAGMENT_LEN);
     assert_eq!(
-        ordered.buffer_receive(first, &mut budget).unwrap(),
+        ordered.receive_part(first, &mut budget).unwrap(),
         BufferOutcome::Stored
     );
-    assert_eq!(ordered.held(), 2 * FRAGMENT_LEN);
+    assert_eq!(ordered.held(), partial);
     assert_eq!(
-        ordered.buffer_receive(second, &mut budget).unwrap(),
+        ordered.receive_part(second, &mut budget).unwrap(),
         BufferOutcome::Stored
     );
-    // The completed message waits for the read, holding its own length only.
-    assert_eq!(ordered.held(), 2 * FRAGMENT_LEN - 1);
-    assert!(ordered.read_message().is_some());
     assert_eq!(ordered.held(), 0);
+    assert!(ordered.read_message().is_some());
+
+    let [first, second] = fragments(2);
+    let mut budget = ReceiveBudget::new(usize::MAX);
+    ordered.receive_part(first, &mut budget).unwrap();
+    assert_eq!(ordered.held(), partial);
+    ordered.receive_part(second, &mut budget).unwrap();
+    assert_eq!(
+        ordered.held(),
+        size_of::<ChannelMessage>() + 2 * FRAGMENT_LEN - 1
+    );
 }

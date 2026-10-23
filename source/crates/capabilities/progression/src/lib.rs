@@ -7,13 +7,14 @@
 )]
 
 use bevy_ecs::schedule::SystemSet;
-use campfire_actions::{ActionsSystems, TrackNames};
+use campfire_actions::ActionsSystems;
 use campfire_common::EnumAll;
-use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
-use campfire_script::{ApiVersion, Status};
+use campfire_declarations::{ById, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
+use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
 use campfire_stats::StatsSystems;
-use campfire_units::{BodyUnit, UnitGrid};
+use campfire_units::{BodyUnit, TrackLevels, UnitGrid};
+use campfire_values::{TrackId, UnitType};
 
 use crate::experience_book::ExperienceShare;
 use crate::progression_column::RowReads;
@@ -94,19 +95,22 @@ impl Module for Progression {
         d.section::<TypeTracksData>();
         d.section::<ModeTracksData>();
         d.component::<Experience>();
+        d.derived::<TrackLevels>();
+        d.server_part::<Experience, TrackLevels>();
         d.component::<Points>();
         d.resource::<LevelUps>();
+        d.mode_events::<LevelUps>(EventPhase::Gains);
         d.listed::<XpEffectData>();
         d.book::<TrackBook>(TrackBook::build);
         d.section::<ModeExperienceData>();
         d.section::<ExperienceData>();
         d.book::<ExperienceBook>(ExperienceBook::build);
         d.rule(Self::levels_rule);
-        d.fact::<TrackNames>(Self::track_names);
+        d.names::<TrackId>(Self::track_names);
         d.column::<ProgressionColumn, RowReads>(ProgressionColumn::fill_row);
         d.api(ProgressionApi::register);
         d.hook::<OnLevelUp>(Status::Runs(ApiVersion::FIRST));
-        d.book::<ByType<TrackSet>>(TrackSet::book);
+        d.book::<ById<UnitType, TrackSet>>(TrackSet::book);
         d.part::<BodyUnit, Experience>(|at| {
             let tracks = *at.of_type::<TrackSet>()?;
             (!tracks.is_empty()).then(|| Experience::new(tracks))
@@ -121,10 +125,12 @@ impl Module for Progression {
         });
     }
 
-    /// Adds progression to a match: in Inputs, the tick's learn orders learn their ranks. Its
-    /// effects queue through its callback.
+    /// Adds progression to a match: in Inputs, the tick's learn orders learn their ranks, and on a
+    /// server each unit shows its levels as its experience changed. Its effects queue through its
+    /// callback.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.add(ProgressionSystems::Commands, LearnOrders::learn_ranks);
+        cx.server(ProgressionSystems::Commands, Experience::show_levels);
         if cx
             .book::<ExperienceBook>()
             .and_then(ExperienceBook::share)

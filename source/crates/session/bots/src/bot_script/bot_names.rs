@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use campfire_actions::ActionBook;
 use campfire_capabilities::{
     Books, GroundLocation, Location, MarkerLocation, NamedRefs, NearLocation,
@@ -6,7 +8,7 @@ use campfire_common::DeclaredName;
 use campfire_geometry::{Bounds, GridSearch};
 use campfire_items::ItemBook;
 use campfire_math::{Num, Vec3};
-use campfire_mode::MarkerSpec;
+use campfire_mode::{InputBook, InputType, MarkerSpec};
 use campfire_script::{Filter, UnknownName};
 use campfire_units::{GroundPoint, MapBook, RefMap, UnitTypeBook};
 use campfire_values::{
@@ -14,7 +16,8 @@ use campfire_values::{
 };
 
 use crate::bot_script::error::BotScriptError;
-use crate::loaded::{ActionName, Loaded, LoadedGround};
+use crate::loaded::{ActionName, Loaded, LoadedPlace};
+use crate::order_script::{ScriptedInput, ScriptedValue};
 
 /// The kind of a map marker's name, which a bot's script names a location by.
 const MARKERS: NameKind = NameKind::new("marker", Article::A, NameScope::Match);
@@ -28,6 +31,7 @@ pub struct BotNames<'b> {
     items: Option<&'b ItemBook>,
     map: &'b MapBook,
     markers: &'b [MarkerSpec],
+    inputs: &'b InputBook,
 }
 
 /// Gives each name of a script the reference a bot's order holds, and keeps the action name of
@@ -47,6 +51,30 @@ impl<'b> BotNames<'b> {
             items: books.get(),
             map: books.get().expect("a match has a map"),
             markers: books.markers(),
+            inputs: books.get().expect("a match has the mode's inputs"),
+        }
+    }
+
+    /// The mode input `input` sends, checked as the mode declares it: its name one of the mode's
+    /// inputs, and its value of the input's type.
+    pub(crate) fn input(&self, input: &ScriptedInput) -> Result<(), BotScriptError> {
+        let name = &input.name;
+        let declared = self
+            .inputs
+            .input_type(name)
+            .ok_or_else(|| BotScriptError::NoInput(name.clone()))?;
+        let of_type = matches!(
+            (&input.value, declared),
+            (ScriptedValue::Text(_), InputType::String)
+                | (ScriptedValue::List(_), InputType::StringList)
+        );
+        if of_type {
+            Ok(())
+        } else {
+            Err(BotScriptError::InputType {
+                name: name.clone(),
+                declared,
+            })
         }
     }
 
@@ -76,34 +104,25 @@ impl RefMap<NamedRefs, Loaded> for LoadRefs<'_, '_> {
     /// The actions of the name in every package that names one so, as a unit's slots may hold an
     /// action of any of the match's packages.
     fn slot(&mut self, slot: DeclaredName) -> Result<ActionName, BotScriptError> {
-        let names = self.names.actions.names();
-        let actions: Vec<ActionId> = names
-            .iter()
-            .filter(|&(_, name)| name == slot.as_str())
-            .map(|(action, _)| action)
-            .collect();
-        if actions.is_empty() {
-            return Err(UnknownName::new(ActionId::NAMES, &slot).into());
-        }
-        let name = ActionName(actions.into());
+        let actions = self.names.actions.actions_named(slot.as_str());
+        let actions = actions.ok_or_else(|| UnknownName::new(ActionId::NAMES, &slot))?;
+        let name = ActionName(Arc::clone(actions));
         debug_assert!(self.slot.is_none(), "an action names one slot");
         self.slot = Some(name.clone());
         Ok(name)
     }
 
-    /// A location's point; a search for a place, which only a build makes, fails.
-    fn ground(&mut self, ground: GroundLocation) -> Result<LoadedGround, BotScriptError> {
-        match ground {
-            GroundLocation::At(at) => Ok(LoadedGround::At(GroundPoint::under(self.point(at)?))),
-            GroundLocation::Near(_) => Err(BotScriptError::NearOutsideBuild),
-        }
+    /// A location's point on the ground plane.
+    fn ground(&mut self, ground: Location) -> Result<GroundPoint, BotScriptError> {
+        Ok(GroundPoint::under(self.point(ground)?))
     }
 
     /// A location's point, or a search round one of a positive gap within the steps a search
     /// reaches.
-    fn place(&mut self, place: GroundLocation, _: Num) -> Result<LoadedGround, BotScriptError> {
-        let GroundLocation::Near(NearLocation { near, gap, steps }) = place else {
-            return self.ground(place);
+    fn place(&mut self, place: GroundLocation, _: Num) -> Result<LoadedPlace, BotScriptError> {
+        let NearLocation { near, gap, steps } = match place {
+            GroundLocation::At(at) => return Ok(LoadedPlace::At(self.ground(at)?)),
+            GroundLocation::Near(near) => near,
         };
         if gap <= Num::ZERO {
             return Err(BotScriptError::NearGap(gap));
@@ -111,8 +130,8 @@ impl RefMap<NamedRefs, Loaded> for LoadRefs<'_, '_> {
         if steps > GridSearch::MAX_STEPS {
             return Err(BotScriptError::NearSteps(steps));
         }
-        Ok(LoadedGround::Near {
-            near: GroundPoint::under(self.point(near)?),
+        Ok(LoadedPlace::Near {
+            near: self.ground(near)?,
             gap,
             steps,
         })
@@ -138,5 +157,10 @@ impl RefMap<NamedRefs, Loaded> for LoadRefs<'_, '_> {
             .items
             .and_then(|items| items.names().named(item.as_str()));
         Ok(found.ok_or_else(|| UnknownName::new(ItemId::NAMES, &item))?)
+    }
+
+    /// A stack by its item type's name.
+    fn carried(&mut self, carried: DeclaredName) -> Result<ItemId, BotScriptError> {
+        self.item(carried)
     }
 }

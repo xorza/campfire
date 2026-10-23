@@ -3,10 +3,11 @@ use std::num::NonZeroU32;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_sim::{SimComponent, StableId};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
+use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -65,6 +66,6 @@ impl Replication for Node {
     type Sending = SentPredicted;
 }
 
-impl PerType for Node {
+impl PerId<UnitType> for Node {
     const SCRIPTS_ONLY: bool = false;
 }

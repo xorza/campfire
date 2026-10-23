@@ -1,9 +1,9 @@
 use std::error::Error;
 use std::ffi::OsString;
 
-use campfire_common::{DeclaredName, Seat};
+use campfire_common::{DeclaredName, PlayerSlot};
+use campfire_host::{BotArg, PlayerSlotBotArgError};
 use campfire_mode::OptionValueError;
-use campfire_net::{BotArg, SeatBotArgError};
 use clap::error::ErrorKind;
 
 use super::*;
@@ -44,14 +44,20 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
     );
     // The bots of the mode first, then the order scripts.
     let attacker = BotArg::Mode(DeclaredName::new("attacker").unwrap());
-    let orders = BotArg::Orders(PathBuf::from("bot.toml"));
-    let bots: Vec<(Seat, BotArg)> = args
+    let orders = BotArg::Orders(OrderFile::from(PathBuf::from("bot.toml")));
+    let bots: Vec<(PlayerSlot, BotArg)> = args
         .bots
         .into_iter()
-        .map(|bot| (bot.seat, bot.bot))
+        .map(|bot| (bot.player_slot, bot.bot))
         .collect();
-    assert_eq!(bots, [(Seat::new(0), attacker), (Seat::new(1), orders)]);
-    assert_eq!(args.takeover, Some(PathBuf::from("takeover.toml")));
+    assert_eq!(
+        bots,
+        [(PlayerSlot::new(0), attacker), (PlayerSlot::new(1), orders)]
+    );
+    assert_eq!(
+        args.takeover,
+        Some(OrderFile::from(PathBuf::from("takeover.toml")))
+    );
     assert_eq!(args.mode, PathBuf::from("mode"));
     assert_eq!(args.map, MapName::parse("lane"));
     assert_eq!(args.options, ["start_money=50000".parse().unwrap()]);
@@ -116,10 +122,10 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
         let source = error.source().and_then(|error| error.downcast_ref());
         source.cloned()
     };
-    let not_pair = SeatBotArgError::NotPair("1".to_owned());
+    let not_pair = PlayerSlotBotArgError::NotPair("1".to_owned());
     assert_eq!(bot("--server-orders", "1"), Some(not_pair.clone()));
     assert_eq!(bot("--server-bot", "1"), Some(not_pair));
-    let name = SeatBotArgError::Name("Attacker".to_owned());
+    let name = PlayerSlotBotArgError::Name("Attacker".to_owned());
     assert_eq!(bot("--server-bot", "1=Attacker"), Some(name));
     let option = invalid(&["--data", "d", "--option", "money", "mode", "0.0.0.0:4433"]);
     assert_eq!(
@@ -156,12 +162,15 @@ fn the_command_line_reads_the_hosts_visibility_or_its_flaw() {
                 "inventory=allies,spectators".parse().unwrap(),
                 "spectators=teams".parse().unwrap(),
             ],
-            max_spectators: 3,
+            max_spectators: Some(3),
         }
     );
-    // None unless the host says, and no spectator.
+    // None unless the host says, and no spectator; a most of 0 it says is one it asks.
     let plain = read(&["--data", "d", "mode", "0.0.0.0:4433"]).unwrap();
     assert_eq!(plain.host, HostVisibility::default());
+    let none = read(&["--data", "d", "--spectators", "0", "mode", "0.0.0.0:4433"]).unwrap();
+    assert_eq!(none.host.max_spectators, Some(0));
+    assert_ne!(none.host, HostVisibility::default());
     for args in [
         &[
             "--data",

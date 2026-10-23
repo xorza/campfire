@@ -3,6 +3,7 @@ use bevy_ecs::world::World;
 use campfire_script::{AnyKeptRows, Checked, KeptRows, RowFill, Unit, ViewColumn};
 use campfire_units::SeenBy;
 use campfire_values::{Relations, Team, TeamSet};
+use campfire_visibility::DataKind;
 
 /// The parts of a unit vision reads into its row: the teams that saw it, and its team.
 pub(crate) type RowReads = (Option<&'static SeenBy>, Option<&'static Team>);
@@ -38,11 +39,14 @@ impl VisionColumn {
         self.rows.now_mut().push(seen_by);
     }
 
-    /// `unit.can_see(other)`: whether `unit`'s team sees `other`.
+    /// `unit.can_see(other)`: whether `unit`'s team sees `other`; a viewer that may not ask what
+    /// `unit`'s team sees fails the call, as a bot may ask only of its own vision group.
     pub(crate) fn can_see(unit: &Unit, other: &Unit) -> Checked<bool> {
         let team = unit.read(|row| row.team)?;
-        let rows = unit.view().rows();
-        Ok(rows.columns().sees(other.row_index()?, team))
+        let view = unit.view();
+        view.admit_sight(team)?;
+        let at = other.admit(DataKind::Unit)?;
+        Ok(view.rows().columns().sees(at, team))
     }
 
     /// Fills a row of the script view with the teams that see the unit.

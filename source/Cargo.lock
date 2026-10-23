@@ -2006,6 +2006,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "serde",
 ]
 
@@ -2087,10 +2088,10 @@ dependencies = [
  "campfire-progression",
  "campfire-script",
  "campfire-sim",
- "campfire-store",
  "campfire-test-packages",
  "campfire-units",
  "campfire-values",
+ "campfire-visibility",
  "campfire-vision",
  "serde",
  "thiserror 2.0.21",
@@ -2155,21 +2156,22 @@ dependencies = [
  "campfire-common",
  "campfire-declarations",
  "campfire-geometry",
+ "campfire-host",
  "campfire-interaction",
  "campfire-items",
- "campfire-log",
+ "campfire-logging",
  "campfire-math",
  "campfire-measure",
  "campfire-mode",
  "campfire-net",
  "campfire-net-connection",
+ "campfire-net-core",
  "campfire-net-endpoint",
- "campfire-net-replication",
  "campfire-net-socket",
- "campfire-net-sync",
  "campfire-orders",
  "campfire-package",
  "campfire-package-disk",
+ "campfire-package-format",
  "campfire-players",
  "campfire-production",
  "campfire-progression",
@@ -2360,6 +2362,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-host"
+version = "0.1.0"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_state",
+ "campfire-bots",
+ "campfire-capabilities",
+ "campfire-codec",
+ "campfire-common",
+ "campfire-declarations",
+ "campfire-host",
+ "campfire-log",
+ "campfire-math",
+ "campfire-mode",
+ "campfire-net-core",
+ "campfire-orders",
+ "campfire-package",
+ "campfire-progression",
+ "campfire-protocol",
+ "campfire-runner",
+ "campfire-script",
+ "campfire-sim",
+ "campfire-store",
+ "campfire-test-packages",
+ "campfire-threads",
+ "campfire-units",
+ "campfire-values",
+ "campfire-visibility",
+ "secp256k1",
+ "serde",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "campfire-import"
 version = "0.1.0"
 dependencies = [
@@ -2372,13 +2410,14 @@ dependencies = [
  "campfire-declarations",
  "campfire-geometry",
  "campfire-import",
- "campfire-log",
+ "campfire-logging",
  "campfire-math",
  "campfire-mode",
  "campfire-navigation",
  "campfire-orders",
  "campfire-package",
  "campfire-package-disk",
+ "campfire-package-format",
  "campfire-production",
  "campfire-projectiles",
  "campfire-script",
@@ -2433,6 +2472,7 @@ dependencies = [
  "campfire-units",
  "campfire-values",
  "campfire-visibility",
+ "campfire-vision",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -2444,8 +2484,11 @@ dependencies = [
  "campfire-bots",
  "campfire-codec",
  "campfire-common",
+ "campfire-host",
  "campfire-log",
+ "campfire-logging",
  "campfire-net",
+ "campfire-net-core",
  "campfire-net-payload",
  "campfire-protocol",
  "campfire-store",
@@ -2464,10 +2507,22 @@ dependencies = [
  "campfire-codec",
  "campfire-common",
  "campfire-log",
+ "campfire-threads",
+ "serde",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "campfire-logging"
+version = "0.1.0"
+dependencies = [
+ "campfire-common",
+ "campfire-log",
+ "campfire-logging",
  "campfire-store",
  "campfire-threads",
  "clap",
- "serde",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2513,7 +2568,6 @@ dependencies = [
  "campfire-navigation",
  "campfire-players",
  "campfire-production",
- "campfire-progression",
  "campfire-script",
  "campfire-sim",
  "campfire-states",
@@ -2565,6 +2619,7 @@ dependencies = [
  "campfire-common",
  "campfire-declarations",
  "campfire-harness",
+ "campfire-host",
  "campfire-log",
  "campfire-math",
  "campfire-mode",
@@ -2588,6 +2643,7 @@ dependencies = [
  "campfire-net-udp",
  "campfire-orders",
  "campfire-package",
+ "campfire-platform",
  "campfire-players",
  "campfire-progression",
  "campfire-protocol",
@@ -2602,8 +2658,6 @@ dependencies = [
  "campfire-units",
  "campfire-values",
  "campfire-visibility",
- "campfire-vision",
- "secp256k1",
  "serde",
  "thiserror 2.0.21",
  "tracing",
@@ -2618,9 +2672,7 @@ dependencies = [
  "campfire-measure",
  "campfire-net-bytes",
  "criterion",
- "smallvec",
  "thiserror 2.0.21",
- "variadics_please",
 ]
 
 [[package]]
@@ -2635,7 +2687,6 @@ dependencies = [
  "campfire-net-core",
  "campfire-net-payload",
  "criterion",
- "lz4_flex",
  "thiserror 2.0.21",
  "tracing",
 ]
@@ -2712,6 +2763,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-net-frame-interpolation"
+version = "0.1.0"
+dependencies = [
+ "bevy_app",
+ "bevy_curve",
+ "bevy_ecs",
+ "bevy_platform",
+ "bevy_reflect",
+ "bevy_time",
+ "bevy_transform",
+ "bevy_utils",
+ "campfire-net-core",
+ "campfire-net-frame-interpolation",
+ "campfire-net-replication",
+ "campfire-net-timeline",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "campfire-net-harness"
 version = "0.1.0"
 dependencies = [
@@ -2727,6 +2798,7 @@ dependencies = [
  "campfire-combat",
  "campfire-common",
  "campfire-harness",
+ "campfire-host",
  "campfire-log",
  "campfire-math",
  "campfire-measure",
@@ -2776,13 +2848,13 @@ dependencies = [
  "bevy_reflect",
  "bevy_replicon",
  "bevy_time",
- "bevy_transform",
  "bevy_utils",
  "bytes",
  "campfire-math",
  "campfire-net-connection",
  "campfire-net-core",
  "campfire-net-despawns",
+ "campfire-net-frame-interpolation",
  "campfire-net-interpolation",
  "campfire-net-messages",
  "campfire-net-replication",
@@ -2870,7 +2942,7 @@ version = "0.1.0"
 dependencies = [
  "campfire-common",
  "campfire-net-core",
- "campfire-store",
+ "campfire-platform",
  "campfire-threads",
  "httparse",
  "netdev",
@@ -2899,6 +2971,7 @@ dependencies = [
  "campfire-net-core",
  "campfire-net-despawns",
  "campfire-net-emulator",
+ "campfire-net-frame-interpolation",
  "campfire-net-interpolation",
  "campfire-net-prediction",
  "campfire-net-replication",
@@ -2978,6 +3051,7 @@ dependencies = [
  "campfire-net-core",
  "campfire-net-emulator",
  "campfire-net-endpoint",
+ "campfire-net-frame-interpolation",
  "campfire-net-interpolation",
  "campfire-net-link",
  "campfire-net-messages",
@@ -3069,7 +3143,6 @@ dependencies = [
  "campfire-app-threads",
  "campfire-common",
  "campfire-math",
- "campfire-measure",
  "campfire-net-channels",
  "campfire-net-connection",
  "campfire-net-core",
@@ -3078,7 +3151,6 @@ dependencies = [
  "campfire-net-stepper",
  "campfire-net-timeline",
  "campfire-net-transport",
- "criterion",
  "tracing",
 ]
 
@@ -3139,6 +3211,7 @@ dependencies = [
  "campfire-declarations",
  "campfire-mode",
  "campfire-package",
+ "campfire-package-format",
  "campfire-script",
  "campfire-sim",
  "campfire-units",
@@ -3156,12 +3229,38 @@ name = "campfire-package-disk"
 version = "0.1.0"
 dependencies = [
  "campfire-common",
- "campfire-package",
  "campfire-package-disk",
+ "campfire-package-format",
  "campfire-store",
  "campfire-values",
  "serde",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "campfire-package-format"
+version = "0.1.0"
+dependencies = [
+ "campfire-codec",
+ "campfire-common",
+ "campfire-package-format",
+ "campfire-values",
+ "derive_more",
+ "serde",
+ "sha2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "campfire-platform"
+version = "0.1.0"
+dependencies = [
+ "campfire-common",
+ "campfire-platform",
+ "libc",
+ "signal-hook",
+ "socket2",
+ "windows",
 ]
 
 [[package]]
@@ -3304,6 +3403,7 @@ dependencies = [
  "campfire-navigation",
  "campfire-orders",
  "campfire-package",
+ "campfire-package-format",
  "campfire-players",
  "campfire-projectiles",
  "campfire-protocol",
@@ -3343,6 +3443,7 @@ dependencies = [
  "campfire-script",
  "campfire-sim",
  "campfire-values",
+ "campfire-visibility",
  "criterion",
  "derive_more",
  "rhai",
@@ -3354,22 +3455,21 @@ dependencies = [
 name = "campfire-server"
 version = "0.1.0"
 dependencies = [
- "bevy_app",
- "bevy_ecs",
  "campfire-bots",
  "campfire-common",
- "campfire-declarations",
+ "campfire-host",
  "campfire-log",
+ "campfire-logging",
  "campfire-mode",
  "campfire-net",
- "campfire-net-connection",
+ "campfire-net-core",
  "campfire-net-endpoint",
- "campfire-net-link",
  "campfire-net-payload",
  "campfire-net-port-map",
  "campfire-net-socket",
  "campfire-package",
  "campfire-package-disk",
+ "campfire-platform",
  "campfire-protocol",
  "campfire-runner",
  "campfire-store",
@@ -3437,15 +3537,11 @@ dependencies = [
 name = "campfire-store"
 version = "0.1.0"
 dependencies = [
- "campfire-common",
+ "campfire-platform",
  "campfire-store",
  "campfire-threads",
- "libc",
- "signal-hook",
- "socket2",
  "tempfile",
  "thiserror 2.0.21",
- "windows",
  "zeroize",
 ]
 
@@ -3469,6 +3565,7 @@ dependencies = [
  "campfire-orders",
  "campfire-package",
  "campfire-package-disk",
+ "campfire-package-format",
  "campfire-production",
  "campfire-progression",
  "campfire-projectiles",
@@ -3485,6 +3582,7 @@ dependencies = [
 name = "campfire-threads"
 version = "0.1.0"
 dependencies = [
+ "campfire-common",
  "campfire-threads",
 ]
 
@@ -3534,6 +3632,7 @@ dependencies = [
  "campfire-common",
  "campfire-harness",
  "campfire-log",
+ "campfire-logging",
  "campfire-math",
  "campfire-orders",
  "campfire-package",
@@ -3593,7 +3692,7 @@ name = "campfire-vocabulary"
 version = "0.1.0"
 dependencies = [
  "campfire-common",
- "campfire-log",
+ "campfire-logging",
  "campfire-store",
  "clap",
  "proc-macro2",
@@ -3618,13 +3717,14 @@ dependencies = [
  "campfire-geometry",
  "campfire-harness",
  "campfire-import",
- "campfire-log",
+ "campfire-logging",
  "campfire-math",
  "campfire-mode",
  "campfire-navigation",
  "campfire-orders",
  "campfire-package",
  "campfire-package-disk",
+ "campfire-package-format",
  "campfire-players",
  "campfire-production",
  "campfire-projectiles",
@@ -3983,15 +4083,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "crc32fast"
-version = "1.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01a7799fd6b852db0e61728dde9a204c423b44d689dbd432522543614b490e78"
-dependencies = [
- "cfg-if",
 ]
 
 [[package]]
@@ -4396,15 +4487,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
-name = "fdeflate"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
-dependencies = [
- "simd-adler32",
-]
-
-[[package]]
 name = "find-msvc-tools"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4415,17 +4497,6 @@ name = "fixedbitset"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
-
-[[package]]
-name = "flate2"
-version = "1.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e634e2e0ebac1ee034020da1ca582e17ffe4e0f5e985823721e168928136dcb"
-dependencies = [
- "crc32fast",
- "miniz_oxide 0.9.1",
- "zlib-rs",
-]
 
 [[package]]
 name = "fluent-bundle"
@@ -5055,7 +5126,6 @@ dependencies = [
  "byteorder-lite",
  "moxcms",
  "num-traits",
- "png",
 ]
 
 [[package]]
@@ -5440,12 +5510,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lz4_flex"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226"
-
-[[package]]
 name = "mac-addr"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5482,7 +5546,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
 dependencies = [
  "adler2",
- "simd-adler32",
 ]
 
 [[package]]
@@ -5492,7 +5555,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
 dependencies = [
  "adler2",
- "simd-adler32",
 ]
 
 [[package]]
@@ -6281,19 +6343,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "png"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60769b8b31b2a9f263dae2776c37b1b28ae246943cf719eb6946a1db05128a61"
-dependencies = [
- "bitflags 2.13.2",
- "crc32fast",
- "fdeflate",
- "flate2",
- "miniz_oxide 0.8.9",
-]
-
-[[package]]
 name = "polling"
 version = "3.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6980,12 +7029,6 @@ dependencies = [
  "errno",
  "libc",
 ]
-
-[[package]]
-name = "simd-adler32"
-version = "0.3.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 
 [[package]]
 name = "simd_cesu8"
@@ -8729,12 +8772,6 @@ dependencies = [
  "quote",
  "syn 3.0.9",
 ]
-
-[[package]]
-name = "zlib-rs"
-version = "0.6.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b268e58e7c693d7c271f93ffc4ba3b380412554231c85bf61ca7af91042a4112"
 
 [[package]]
 name = "zmij"

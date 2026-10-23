@@ -6,7 +6,7 @@ use campfire_capabilities::Match;
 use campfire_capabilities::Order;
 use campfire_combat::Combat;
 use campfire_combat::internals::Armed;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_declarations::Role;
 use campfire_math::{Num, Vec3};
 use campfire_orders::{AttackMove, Orders, OrdersDirective};
@@ -238,14 +238,14 @@ fn a_unit_with_a_destination_and_a_clients_match_scan_for_none() {
     assert_eq!(client.target(scanner), None);
 }
 
-/// An attack-move walks as a move, and the scan looks on its way. The scanner, seat 0's, walks a
-/// meter a tick from the origin to (0, 0, 12) and scans in ticks 0, 3 and 6, for `hostiles`. In
-/// tick 3 it stands at z = 3, 2 m from a neutral at (2, 0, 3), which its scan does not select, and
-/// walks on; in tick 6, at z = 6, 2 m from a hostile at (2, 0, 6), it stops and takes it, and its
-/// strike lands in tick 7. Moved off to (9, 0, 6) before tick 8, the hostile leaves its reach, and
-/// tick 8 drops it; in tick 9 the scanner walks on, at z = 12 after tick 14, and tick 15 ends its
-/// attack-move; another order drops one under way (04-capabilities/control.md, An army
-/// attack-moves).
+/// An attack-move walks as a move, and the scan looks on its way. The scanner, player slot 0's,
+/// walks a meter a tick from the origin to (0, 0, 12) and scans in ticks 0, 3 and 6, for
+/// `hostiles`. In tick 3 it stands at z = 3, 2 m from a neutral at (2, 0, 3), which its scan does
+/// not select, and walks on; in tick 6, at z = 6, 2 m from a hostile at (2, 0, 6), it stops and
+/// takes it, and its strike lands in tick 7. Moved off to (9, 0, 6) before tick 8, the hostile
+/// leaves its reach, and tick 8 drops it; in tick 9 the scanner walks on, at z = 12 after tick 14,
+/// and tick 15 ends its attack-move; another order drops one under way (04-capabilities/control.md,
+/// An army attack-moves).
 #[test]
 fn an_attack_move_takes_what_its_scan_finds_on_the_way_and_walks_on() {
     let mut scene = Scene::new(&["hostiles"], Some(meter()));
@@ -257,7 +257,7 @@ fn an_attack_move_takes_what_its_scan_finds_on_the_way_and_walks_on() {
     );
     let scanner = Spawn::of(scene.scanner, (0, 0, 0))
         .team(Team::new(0))
-        .parts(Owner::new(Seat::new(0)))
+        .parts(Owner::new(PlayerSlot::new(0)))
         .place(&mut scene.game);
     scene.dummy((2, 0, 3), 2);
     let hostile = scene.dummy((2, 0, 6), 1);
@@ -267,7 +267,7 @@ fn an_attack_move_takes_what_its_scan_finds_on_the_way_and_walks_on() {
         z: Num::int(12),
     };
     let order = Order::payload(&[Order::one(scanner, OrdersDirective::AttackMove { to })]);
-    scene.game.step_with(&[(Seat::new(0), &order)]);
+    scene.game.step_with(&[(PlayerSlot::new(0), &order)]);
     // After each tick: where it stands, where it walks to, its target, and its goal.
     let state = |scene: &Scene| {
         (
@@ -302,9 +302,9 @@ fn an_attack_move_takes_what_its_scan_finds_on_the_way_and_walks_on() {
         z: Num::ZERO,
     };
     let back = Order::payload(&[Order::one(scanner, OrdersDirective::AttackMove { to })]);
-    scene.game.step_with(&[(Seat::new(0), &back)]);
+    scene.game.step_with(&[(PlayerSlot::new(0), &back)]);
     assert_eq!(state(&scene).3, Some(Vec3::ZERO));
     let stop = Order::payload(&[Order::one(scanner, OrdersDirective::Stop)]);
-    scene.game.step_with(&[(Seat::new(0), &stop)]);
+    scene.game.step_with(&[(PlayerSlot::new(0), &stop)]);
     assert_eq!(state(&scene), (z(11), None, None, None));
 }

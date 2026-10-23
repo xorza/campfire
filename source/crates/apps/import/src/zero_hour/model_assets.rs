@@ -32,7 +32,7 @@ impl<'a> ModelAssets<'a> {
                 Some(path) => {
                     let bytes = self.install.read(&path)?;
                     let file = W3dFile::read(&bytes).map_err(|error| ZeroHourError::W3d {
-                        path: path.to_string(),
+                        path: path.clone(),
                         error,
                     })?;
                     Some(file)

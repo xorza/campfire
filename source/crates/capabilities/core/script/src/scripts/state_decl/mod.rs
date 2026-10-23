@@ -9,6 +9,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::state_type::StateType;
 use crate::scripts::state_value::StateValue;
+use crate::scripts::view::View;
 
 pub(crate) mod state_field_decl;
 pub(crate) mod state_schema;
@@ -78,15 +79,17 @@ impl StateDecl {
             .enumerate()
             .all(|(at, member)| !members[..at].contains(member));
         let initial = match default {
-            None => Arc::clone(members.first()?),
+            None if members.is_empty() => return None,
+            None => 0,
             Some(StateDefault::Text(text)) => {
-                Arc::clone(members.iter().find(|member| ***member == *text)?)
+                members.iter().position(|member| **member == *text)?
             }
             Some(StateDefault::Int(_) | StateDefault::Bool(_)) => return None,
         };
-        unique.then_some(Self {
+        let fits = u8::try_from(members.len()).is_ok();
+        (unique && fits).then_some(Self {
             kind: StateType::Enum,
-            initial: StateValue::Text(initial),
+            initial: StateValue::Member(u8::try_from(initial).expect("the members fit u8")),
             members,
         })
     }
@@ -112,18 +115,32 @@ impl StateDecl {
         let member = self
             .members
             .iter()
-            .find(|member| ***member == *text.as_str());
+            .position(|member| **member == *text.as_str());
         member
-            .map(|member| StateValue::Text(Arc::clone(member)))
+            .map(|at| StateValue::Member(u8::try_from(at).expect("the members fit u8")))
             .ok_or_else(|| ApiError::NotAMember.fail().into())
     }
 
     /// Whether `value` is a value of the field: of its type, and for an enum, a member.
     pub fn holds(&self, value: &StateValue) -> bool {
-        match (self.kind, value) {
-            (StateType::Enum, StateValue::Text(text)) => self.members.contains(text),
-            (kind, value) => value.kind() == kind,
+        match value {
+            StateValue::Member(at) => usize::from(*at) < self.members.len(),
+            value => value.kind() == self.kind,
         }
+    }
+
+    /// `value`, a value of the field, as a script sees it: an enum's member as its text, which
+    /// `view` keeps for each enum, and any other as `StateValue::to_value` gives it.
+    pub fn read(&self, value: &StateValue, view: &View) -> ScriptValue {
+        match value {
+            StateValue::Member(at) => ScriptValue::of(view.member_text(&self.members, *at)),
+            value => value.to_value(view),
+        }
+    }
+
+    /// The text of member `at` of the field, an enum.
+    pub fn member(&self, at: u8) -> &str {
+        &self.members[usize::from(at)]
     }
 
     /// `new`, or for an enum `enumeration` of `members`, as a read takes it: members of another
@@ -168,6 +185,7 @@ impl StateDecl {
             StateValue::Num(value) => Some(StateDefault::Text(value.to_string())),
             StateValue::Bool(value) => Some(StateDefault::Bool(*value)),
             StateValue::Text(text) => Some(StateDefault::Text(text.to_string())),
+            StateValue::Member(at) => Some(StateDefault::Text(self.member(*at).to_owned())),
             StateValue::Unit(_)
             | StateValue::UnitList(_)
             | StateValue::Vec(_)

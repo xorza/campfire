@@ -37,7 +37,9 @@ fn a_hello_maps_on_the_link_it_arrived_on() {
             .get::<LinkMessages>(link)
             .unwrap()
             .entity_mapper
-            .get_local(remote)
+            .remote_to_local()
+            .get(&remote)
+            .copied()
     };
     assert_eq!(local(new), Some(new));
     assert_eq!(local(dying), None);

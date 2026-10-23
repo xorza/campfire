@@ -1,4 +1,4 @@
-use campfire_codec::BinaryError;
+use campfire_codec::Malformed;
 use thiserror::Error;
 
 use crate::stable_id::StableId;
@@ -21,7 +21,7 @@ pub enum SnapshotError {
     TypesDiffer,
     /// A value does not decode.
     #[error("snapshot value does not decode")]
-    Malformed(#[source] BinaryError),
+    Malformed(#[source] Malformed),
     /// The bytes are not the canonical encoding of the state they restore: stable ids within a
     /// type do not strictly increase, or a value is encoded in a form the snapshot never writes.
     #[error("snapshot is not the canonical encoding of its state")]

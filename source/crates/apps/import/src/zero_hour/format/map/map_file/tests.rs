@@ -123,15 +123,33 @@ fn a_map_reads_its_heights_terrain_and_kept_objects_packed_or_not() {
         cliff,
     };
     let terrain = &read.terrain;
-    assert_eq!(terrain.cells[0], cell(0, None, None, None, true));
-    assert_eq!(terrain.cells[2], cell(2, None, None, Some(0), false));
-    assert_eq!(terrain.cells[5], cell(5, Some(0), None, None, false));
-    assert_eq!(terrain.cells[6], cell(6, None, Some(0), None, false));
-    assert_eq!(terrain.cells[11], cell(3, None, None, None, true));
-    assert_eq!(terrain.cells.iter().filter(|cell| cell.cliff).count(), 2);
-    assert_eq!(terrain.tiles, 2);
+    assert_eq!(terrain.fields().cells[0], cell(0, None, None, None, true));
+    assert_eq!(
+        terrain.fields().cells[2],
+        cell(2, None, None, Some(0), false)
+    );
+    assert_eq!(
+        terrain.fields().cells[5],
+        cell(5, Some(0), None, None, false)
+    );
+    assert_eq!(
+        terrain.fields().cells[6],
+        cell(6, None, Some(0), None, false)
+    );
+    assert_eq!(terrain.fields().cells[11], cell(3, None, None, None, true));
     assert_eq!(
         terrain
+            .fields()
+            .cells
+            .iter()
+            .filter(|cell| cell.cliff)
+            .count(),
+        2
+    );
+    assert_eq!(terrain.fields().tiles, 2);
+    assert_eq!(
+        terrain
+            .fields()
             .classes
             .iter()
             .map(|class| class.name.as_str())
@@ -139,7 +157,7 @@ fn a_map_reads_its_heights_terrain_and_kept_objects_packed_or_not() {
         ["Sand", "Grass"]
     );
     assert_eq!(
-        terrain.blends,
+        terrain.fields().blends,
         [BlendTile {
             tile: 4,
             shape: BlendShape::LeftDiagonal { long: true },
@@ -149,7 +167,7 @@ fn a_map_reads_its_heights_terrain_and_kept_objects_packed_or_not() {
         }]
     );
     assert_eq!(
-        terrain.cliffs,
+        terrain.fields().cliffs,
         [CliffUv {
             tile: 2,
             corners: [[0.0, 1.0], [0.0, 0.0], [1.5, 0.0], [1.5, 1.0]],
@@ -251,7 +269,9 @@ fn a_map_of_an_older_terrain_takes_its_cliffs_as_the_game_does() {
     // 16 and 5, and the one at column 2, row 1, of 6, 7, 10 and 40; not the two of 15.
     let cliffs = |version| -> Vec<usize> {
         let terrain = ZeroHourMap::read(&map(version)).unwrap().terrain;
-        (0..12).filter(|&at| terrain.cells[at].cliff).collect()
+        (0..12)
+            .filter(|&at| terrain.fields().cells[at].cliff)
+            .collect()
     };
     assert_eq!(cliffs(7), Vec::<usize>::new());
     assert_eq!(cliffs(6), [0, 6]);

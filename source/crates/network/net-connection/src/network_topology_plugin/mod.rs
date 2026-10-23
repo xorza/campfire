@@ -1,6 +1,5 @@
 use crate::client::Client;
 use crate::connection_state::Connected;
-use crate::connection_systems::ConnectionSystems;
 use campfire_common::ErrorReport;
 
 use crate::connection_state::Disconnected;
@@ -12,7 +11,7 @@ use crate::server_state::Started;
 use crate::server_state::Stopped;
 use bevy_app::{App, Plugin, PostUpdate};
 use bevy_ecs::prelude::*;
-use campfire_net_link::Server;
+use campfire_net_link::{LinkSystems, Server};
 use smallvec::SmallVec;
 
 type TopologyComponents = (Client, Server, Connected, Disconnected, Started, Stopped);
@@ -28,12 +27,11 @@ impl Plugin for NetworkTopologyPlugin {
 
         app.add_observer(Self::mark_dirty_on_insert);
         app.add_observer(Self::mark_dirty_on_remove);
-        app.add_observer(Self::mark_dirty_on_discard);
 
         // Reconcile lifecycle changes once per frame.
         app.configure_sets(
             PostUpdate,
-            NetworkTopologySystems::Update.before(ConnectionSystems::Send),
+            NetworkTopologySystems::Update.before(LinkSystems::Send),
         );
         app.add_systems(
             PostUpdate,
@@ -100,13 +98,6 @@ impl NetworkTopologyPlugin {
 
     fn mark_dirty_on_remove(
         _trigger: On<'_, '_, Remove<TopologyComponents>>,
-        mut networking: ResMut<'_, NetworkingState>,
-    ) {
-        networking.bypass_change_detection().dirty = true;
-    }
-
-    fn mark_dirty_on_discard(
-        _trigger: On<'_, '_, Discard<TopologyComponents>>,
         mut networking: ResMut<'_, NetworkingState>,
     ) {
         networking.bypass_change_detection().dirty = true;

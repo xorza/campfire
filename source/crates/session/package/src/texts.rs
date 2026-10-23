@@ -9,10 +9,10 @@ use fluent_bundle::{FluentError, FluentResource};
 use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
-use crate::files::package_name::PackageName;
 use crate::language::Language;
 use crate::locale_package::LocalePackage;
 use crate::mode_packages::ModePackages;
+use crate::package_name::PackageName;
 
 type Bundle = FluentBundle<Arc<FluentResource>>;
 

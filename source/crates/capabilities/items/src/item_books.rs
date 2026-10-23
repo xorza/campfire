@@ -2,13 +2,13 @@ use std::mem;
 
 use campfire_actions::{ActionBook, ActionSlots, SlotKind, SlotKindBook, UseGroup};
 use campfire_common::DeclaredName;
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, Section};
 use campfire_players::{ResourceAmount, ResourceBook};
 use campfire_script::{Filter, UnknownName};
 use campfire_stats::ModifierBook;
 use campfire_units::UnitTypes;
 use campfire_values::{
-    ActionId, ItemId, ModifierId, NameId, Named, Names, PackageIndex, ResourceId,
+    ActionId, ItemId, ModifierId, NameId, Named, Names, PackageIndex, ResourceId, UnitType,
 };
 
 use crate::Items;
@@ -24,10 +24,10 @@ impl Items {
     /// Adds the empty slots of each inventory to its unit type's slots, of its slot kind.
     pub(crate) fn inventory_slots(
         cx: &BookCx<'_>,
-        slots: &mut ByType<ActionSlots>,
+        slots: &mut ById<UnitType, ActionSlots>,
     ) -> Result<(), BookError> {
-        let inventories = cx.book::<ByType<Inventory>>()?;
-        let groups = cx.book::<ByType<UseGroup>>()?;
+        let inventories = cx.book::<ById<UnitType, Inventory>>()?;
+        let groups = cx.book::<ById<UnitType, UseGroup>>()?;
         let mut built = mem::take(slots).reopen();
         for unit in cx.standing() {
             let (Some(inventory), Some(&group)) =
@@ -127,12 +127,12 @@ impl ItemBook {
 impl Shop {
     /// The shop of each unit type that stands and sells, of the mode's item types and resources;
     /// an error for a name the mode does not have.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let items = cx.book::<ItemBook>()?.names();
         let no_resources = Names::default();
         let resources = Items::resources(cx, &no_resources)?;
         let tags = cx.fact::<UnitTypes>()?.tags();
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<ShopData>() else {
                 continue;
@@ -165,8 +165,8 @@ impl Shop {
 
 impl Inventory {
     /// The inventory of each unit type that stands with one.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByTypeBuilder::default();
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             if let Some(data) = unit.data.section::<InventoryData>() {
                 book.set(unit.unit_type, Self::new(data.slots));
@@ -177,9 +177,9 @@ impl Inventory {
 
     /// The slot kind each unit type's inventory fills; an error for a kind the mode does not
     /// declare.
-    pub fn groups(cx: &BookCx<'_>) -> Result<ByType<UseGroup>, BookError> {
+    pub fn groups(cx: &BookCx<'_>) -> Result<ById<UnitType, UseGroup>, BookError> {
         let kinds = &cx.book::<SlotKindBook>()?.0;
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<InventoryData>() else {
                 continue;

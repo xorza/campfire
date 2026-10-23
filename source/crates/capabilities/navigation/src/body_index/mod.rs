@@ -357,27 +357,6 @@ impl BodyIndex {
     /// Whether a body of `walker`'s layer comes closer to `segment` than the walker's radius,
     /// exactly: whether the walker along it would overlap one.
     pub fn blocks(&self, segment: Segment, walker: Walker) -> bool {
-        self.blocks_by(segment, walker, |_| true)
-    }
-
-    /// Whether a body the last update put in blocks `walker` along `segment`, as `blocks` says.
-    pub(crate) fn added_blocks(&self, segment: Segment, walker: Walker) -> bool {
-        let added = &self.added;
-        self.blocks_by(segment, walker, |body| {
-            added
-                .binary_search_by_key(&body.id, |added| added.id)
-                .is_ok()
-        })
-    }
-
-    /// Whether a body of `walker`'s layer that `counts` comes closer to `segment` than the
-    /// walker's radius.
-    fn blocks_by(
-        &self,
-        segment: Segment,
-        walker: Walker,
-        counts: impl Fn(&IndexedBody) -> bool,
-    ) -> bool {
         let radius = walker.radius;
         let (from, to) = (segment.start(), segment.end());
         let span = |a: Num, b: Num| [(a.min(b) - radius).to_bits(), (a.max(b) + radius).to_bits()];
@@ -387,13 +366,21 @@ impl BodyIndex {
             high: [high_x, high_z],
         };
         let met = self.meeting(walker.layer, square, |body| {
-            if counts(body) && body.comes_closer(segment, radius) {
+            if body.comes_closer(segment, radius) {
                 ControlFlow::Break(())
             } else {
                 ControlFlow::Continue(())
             }
         });
         met.is_break()
+    }
+
+    /// Whether a body the last update put in blocks `walker` along `segment`, as `blocks` says:
+    /// a test of those bodies alone, which are few.
+    pub(crate) fn added_blocks(&self, segment: Segment, walker: Walker) -> bool {
+        self.added
+            .iter()
+            .any(|body| body.layer == walker.layer && body.comes_closer(segment, walker.radius))
     }
 
     /// Calls `visit` once with each body of `layer` in the buckets `square` covers at the body's
@@ -472,6 +459,11 @@ impl Buckets {
 impl Cache for BodyIndex {
     fn installed(_: &World) -> Option<Self> {
         Some(Self::new(MAX_BOUND))
+    }
+
+    /// As the install or the map's load put it in, its buckets kept.
+    fn clear(&mut self) {
+        *self = self.sibling();
     }
 }
 

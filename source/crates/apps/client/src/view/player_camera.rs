@@ -17,7 +17,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window};
 use crate::input_map::{Act, InputMap};
 use crate::view::ViewSystems;
 use crate::view::camera_rig::{CameraRig, CameraTurn, ScreenPoint, Zoom};
-use crate::view::client_data::ClientData;
+use crate::view::client_data::ClientLoad;
 use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
 use crate::view::scene_lights::EXPOSURE;
@@ -58,9 +58,13 @@ impl Plugin for PlayerCameraPlugin {
 }
 
 impl PlayerCameraPlugin {
-    fn spawn(data: Res<'_, ClientData>, input: Res<'_, InputMap>, mut commands: Commands<'_, '_>) {
-        let file = data.camera.unwrap_or(CameraRig::DEFAULT);
-        let grid = data.heights.as_ref().map(GroundHeights::grid);
+    fn spawn(
+        (load, heights): (Res<'_, ClientLoad>, Option<Res<'_, GroundHeights>>),
+        input: Res<'_, InputMap>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let file = load.camera.unwrap_or(CameraRig::DEFAULT);
+        let grid = heights.as_deref().map(GroundHeights::grid);
         let bounds = grid.map(|grid| {
             let [x, z] = grid.origin().map(FloatNum::float);
             let [far_x, far_z] = grid.far_corner().map(FloatNum::float);
@@ -90,7 +94,7 @@ impl PlayerCameraPlugin {
         mut wheel: MessageReader<'_, '_, MouseWheel>,
         window: Single<'_, '_, &Window, With<PrimaryWindow>>,
         time: Res<'_, Time>,
-        data: Res<'_, ClientData>,
+        heights: Option<Res<'_, GroundHeights>>,
         mut rig: ResMut<'_, CameraRig>,
     ) {
         let seconds = time.delta_secs();
@@ -141,9 +145,8 @@ impl PlayerCameraPlugin {
                     rig.press_orbit(cursor, now);
                 } else {
                     let pivot = rig.pivot();
-                    let ground = data
-                        .heights
-                        .as_ref()
+                    let ground = heights
+                        .as_deref()
                         .map_or(0.0, |heights| heights.at(pivot.x, pivot.y));
                     let screen = Vec2::new(window.width(), window.height());
                     rig.press_pan(ScreenPoint { cursor, screen }, ground, now);
@@ -187,14 +190,13 @@ impl PlayerCameraPlugin {
     /// window's shape.
     fn place(
         rig: Res<'_, CameraRig>,
-        data: Res<'_, ClientData>,
+        heights: Option<Res<'_, GroundHeights>>,
         window: Single<'_, '_, &Window, With<PrimaryWindow>>,
         camera: Single<'_, '_, (&mut Transform, &mut Projection), With<Camera3d>>,
     ) {
         let pivot = rig.pivot();
-        let ground = data
-            .heights
-            .as_ref()
+        let ground = heights
+            .as_deref()
             .map_or(0.0, |heights| heights.at(pivot.x, pivot.y));
         let (mut transform, mut projection) = camera.into_inner();
         let placed = rig.transform(ground);

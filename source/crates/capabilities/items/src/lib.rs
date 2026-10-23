@@ -14,13 +14,14 @@ use campfire_actions::{
 };
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    ByType, Declarations, InstallCx, Module, ModuleSystems, NamedTexts, SetPlace,
+    ById, Declarations, InstallCx, Module, ModuleSystems, NamedTexts, SetPlace,
 };
 use campfire_sim::{Capability, SimSystems, StableId};
 use campfire_units::BodyUnit;
 
 use crate::inventory::CarrierSlots;
 use crate::shop_index::ShopIndex;
+use campfire_values::UnitType;
 
 mod error;
 mod inventory;
@@ -87,27 +88,27 @@ impl ModuleSystems for ItemsSystems {
 impl Module for Items {
     const CAPABILITY: Option<Capability> = Some(Capability::Items);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
-    const USES: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[Capability::Vision];
     type Systems = ItemsSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ItemsData>();
         d.section::<InventoryData>();
         d.section::<ShopData>();
-        d.callback::<CastSpends>((), Self::spend_use);
+        d.callback::<CastSpends>(Capability::Items, Self::spend_use);
         d.component::<Inventory>();
         d.component::<UseGroup>();
         d.require::<Inventory, UseGroup>();
         d.require::<UseGroup, Inventory>();
         d.book::<ItemBook>(ItemBook::build);
-        d.book::<ByType<Shop>>(Shop::book);
+        d.book::<ById<UnitType, Shop>>(Shop::book);
         d.cache::<ShopIndex>();
         d.observer(ShopIndex::typed);
         d.observer(ShopIndex::untyped);
         d.api(ItemsApi::register);
-        d.book::<ByType<Inventory>>(Inventory::book);
-        d.book::<ByType<UseGroup>>(Inventory::groups);
-        d.extend::<ByType<ActionSlots>>(Self::inventory_slots);
+        d.book::<ById<UnitType, Inventory>>(Inventory::book);
+        d.book::<ById<UnitType, UseGroup>>(Inventory::groups);
+        d.extend::<ById<UnitType, ActionSlots>>(Self::inventory_slots);
         d.extend::<SlotClaims>(Self::claim_slots);
         d.extend::<NamedTexts>(Self::named_texts);
         d.rule(Self::rule);

@@ -1,4 +1,5 @@
 use super::{NamedCode, capability_sources};
+use crate::allowlist::Allowlist;
 
 /// Each role a module's type may hold, by the trait it implements or, for a script API, by the
 /// `*Api` type that registers members: the suffix of the type's name, and of its file's.
@@ -16,7 +17,12 @@ const ROLE_EXCEPTIONS: [&str; 1] = ["CoreApi"];
 /// The types of `code`, the file `file` of the module `module`, that hold a role and are not
 /// named `<Module><Role>` in `<module>_<role>.rs`, as `(file, type)`; a `mod.rs` is named by its
 /// directory, and a crate's `lib.rs` by its module.
-fn misnamed_roles(module: &str, file: &str, code: &str) -> Vec<(String, String)> {
+fn misnamed_roles(
+    module: &str,
+    file: &str,
+    code: &str,
+    exceptions: &Allowlist<&str>,
+) -> Vec<(String, String)> {
     let pascal: String = module
         .split('_')
         .map(|word| word[..1].to_ascii_uppercase() + &word[1..])
@@ -40,7 +46,7 @@ fn misnamed_roles(module: &str, file: &str, code: &str) -> Vec<(String, String)>
             }
             let named =
                 name == format!("{pascal}{suffix}") && file == format!("{module}_{file_suffix}");
-            if !named && !ROLE_EXCEPTIONS.contains(&name) {
+            if !named && !exceptions.allows(|exception| *exception == name) {
                 misnamed.push((file.to_owned(), name.to_owned()));
             }
         }
@@ -50,6 +56,7 @@ fn misnamed_roles(module: &str, file: &str, code: &str) -> Vec<(String, String)>
 
 #[test]
 fn each_role_of_a_module_takes_the_modules_name() {
+    let exceptions = Allowlist::new(&ROLE_EXCEPTIONS);
     let mut misnamed = Vec::new();
     let mut held = [0; ROLES.len()];
     for NamedCode { path, code } in capability_sources() {
@@ -62,12 +69,13 @@ fn each_role_of_a_module_takes_the_modules_name() {
             "lib" => module,
             stem => stem,
         };
-        misnamed.extend(misnamed_roles(module, file, &code));
+        misnamed.extend(misnamed_roles(module, file, &code, &exceptions));
         for (held, (opening, ..)) in held.iter_mut().zip(ROLES) {
             *held += code.matches(opening).count();
         }
     }
     assert_eq!(misnamed, Vec::<(String, String)>::new());
+    assert_eq!(exceptions.unused(), Vec::<&&str>::new());
     // The walk reads each role, so a role it no longer finds fails here, not silently.
     assert!(held.iter().all(|&count| count > 0), "{held:?}");
 
@@ -145,7 +153,12 @@ fn each_role_of_a_module_takes_the_modules_name() {
             .into_iter()
             .map(|(file, name): (&str, &str)| (file.to_owned(), name.to_owned()))
             .collect();
-        assert_eq!(misnamed_roles(module, file, &code), expected, "{code}");
+        let exceptions = Allowlist::new(&ROLE_EXCEPTIONS);
+        assert_eq!(
+            misnamed_roles(module, file, &code, &exceptions),
+            expected,
+            "{code}"
+        );
     }
 }
 
@@ -153,9 +166,9 @@ fn each_role_of_a_module_takes_the_modules_name() {
 /// it, and the suffix of its name. A `*Book` is exactly a book, a `*Data` a table of package data.
 const SUFFIX_ROLES: [(&str, &str); 2] = [("Book", "Book"), ("DataSection", "Data")];
 
-/// The types that hold a suffix role but are named for what they are: the two generic books, of a
-/// value for each action and for each unit type.
-const SUFFIX_EXCEPTIONS: [&str; 2] = ["ByAction", "ByType"];
+/// The types that hold a suffix role but are named for what they are: the generic book of a value
+/// for each id.
+const SUFFIX_EXCEPTIONS: [&str; 1] = ["ById"];
 
 /// The types `code` implements `role` for, by name: each `impl … <role> for <type>`.
 fn implementers<'c>(code: &'c str, role: &str) -> Vec<&'c str> {
@@ -200,17 +213,19 @@ fn a_book_and_a_data_table_take_their_suffix() {
         }
         books.extend(suffixed(&code, "Book").into_iter().map(str::to_owned));
     }
+    let suffix_exceptions = Allowlist::new(&SUFFIX_EXCEPTIONS);
     let mut misnamed = Vec::new();
     for (holders, (_, suffix)) in holders.iter().zip(SUFFIX_ROLES) {
         assert!(
             !holders.is_empty(),
             "the walk finds the holders of each role"
         );
-        let wrong = holders
-            .iter()
-            .filter(|name| !name.ends_with(suffix) && !SUFFIX_EXCEPTIONS.contains(&name.as_str()));
+        let wrong = holders.iter().filter(|name| {
+            !name.ends_with(suffix) && !suffix_exceptions.allows(|exception| exception == name)
+        });
         misnamed.extend(wrong.cloned());
     }
+    assert_eq!(suffix_exceptions.unused(), Vec::<&&str>::new());
     assert_eq!(
         misnamed,
         Vec::<String>::new(),
@@ -224,9 +239,8 @@ fn a_book_and_a_data_table_take_their_suffix() {
     assert_eq!(no_books, Vec::<&String>::new(), "a `*Book` that is no book");
 
     // A generic impl and a plain one are found, and a mention in a comment is not.
-    let code =
-        "impl<T: PerType> Book for ByType<T> {}\nimpl Book for ActionBook {}\n// a Book for all";
-    assert_eq!(implementers(code, "Book"), ["ByType", "ActionBook"]);
+    let code = "impl<T: PerId<UnitType>> Book for ById<UnitType, T> {}\nimpl Book for ActionBook {}\n// a Book for all";
+    assert_eq!(implementers(code, "Book"), ["ById", "ActionBook"]);
     let code = "pub(crate) struct ModeBooks;\nstruct StatBook(u8);";
     assert_eq!(suffixed(code, "Book"), ["StatBook"]);
 }

@@ -44,7 +44,7 @@ impl LocalTimeline {
     pub fn now(&self, fixed_time: &Time<Fixed>) -> TickInstant {
         TickInstant::from_tick_and_overstep(
             self.tick,
-            Overstep::from_f32(fixed_time.overstep_fraction()),
+            Overstep::of(fixed_time.overstep(), fixed_time.timestep()),
         )
     }
 
@@ -60,8 +60,6 @@ impl LocalTimeline {
         trace!(
             target: "campfire_net_debug::timeline",
             kind = "local_tick",
-            sample_point = "FixedFirst",
-            schedule = "FixedFirst",
             local_tick = timeline.tick.0,
             "local timeline tick advanced"
         );

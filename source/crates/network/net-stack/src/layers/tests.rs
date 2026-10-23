@@ -13,7 +13,7 @@ use campfire_net_messages::LinkMessages;
 use campfire_net_messages::internals::StringMessage;
 use campfire_net_messages::{MessageReceiver, MessageSender};
 use campfire_net_payload::UnlinkReason;
-use campfire_net_replication::ReplicationSender;
+use campfire_net_replication::{ReplicationReceiver, ReplicationSender};
 use campfire_net_stepper::AppId;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_stepper::{StepOrder, Stepper};
@@ -60,7 +60,8 @@ fn a_client_server_has_every_layers_components() {
             .client(0)
             .contains::<MessageReceiver<StringMessage>>()
     );
-    assert!(stepper.client(0).contains::<ReplicationSender>());
+    assert!(stepper.client(0).contains::<ReplicationReceiver>());
+    assert!(!stepper.client(0).contains::<ReplicationSender>());
     assert!(stepper.client(0).contains::<Endpoint<EmulatedWires>>());
     assert!(stepper.client(0).contains::<Connected>());
     assert!(stepper.client(0).contains::<LocalAddress>());

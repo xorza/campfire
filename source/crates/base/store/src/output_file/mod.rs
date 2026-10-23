@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Stdio;
 
 use crate::path_error::PathError;
-use crate::platform::user_only::UserOnly;
+use campfire_platform::UserOnly;
 
 /// A new file, written once, its user's only, as every file `store` makes: one a child process
 /// writes to, as a check keeps a process's standard error, given as the `Stdio` the child takes,

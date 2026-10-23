@@ -20,8 +20,6 @@ pub trait AppMessageExt {
     fn register_message<M: Message + Serialize + DeserializeOwned>(
         &mut self,
     ) -> MessageRegistration<'_, M>;
-
-    fn is_message_registered<M: Message>(&self) -> bool;
 }
 
 impl AppMessageExt for App {
@@ -29,12 +27,6 @@ impl AppMessageExt for App {
         &mut self,
     ) -> MessageRegistration<'_, M> {
         register_message_with::<M>(self, SerializeFns::<M>::default())
-    }
-
-    fn is_message_registered<M: Message>(&self) -> bool {
-        self.world()
-            .get_resource::<MessageRegistry>()
-            .is_some_and(MessageRegistry::is_registered::<M>)
     }
 }
 

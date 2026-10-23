@@ -1,4 +1,9 @@
-use crate::workspace::sources;
+use proc_macro2::Ident;
+use syn::ItemMod;
+use syn::spanned::Spanned;
+use syn::visit::{self, Visit};
+
+use crate::workspace::Workspace;
 
 /// The most lines an inline test module holds before it moves to a `tests.rs` of its own.
 const MOST_LINES: usize = 150;
@@ -15,51 +20,53 @@ struct FatModule {
 
 /// Each inline test module of `text`, a `mod tests { … }` that `#[cfg(test)]` gates, at any
 /// depth, that holds more than `MOST_LINES` lines or more than `MOST_PERCENT` of the file's: its
-/// lines from its first attribute to its closing brace, which rustfmt indents as its declaration.
+/// lines from its first attribute, a doc among them, to its closing brace.
 fn fat_test_modules(text: &str) -> Vec<FatModule> {
-    let lines: Vec<&str> = text.lines().collect();
-    let mut fat = Vec::new();
-    for (declared, line) in lines.iter().enumerate() {
-        let code = line.trim_start();
-        let indent = &line[..line.len() - code.len()];
-        if !code
-            .strip_prefix("pub(crate) ")
-            .unwrap_or(code)
-            .starts_with("mod tests {")
-        {
-            continue;
-        }
-        let attributes = lines[..declared]
-            .iter()
-            .rev()
-            .take_while(|line| {
-                let attribute = line.strip_prefix(indent).unwrap_or_default();
-                attribute.starts_with("#[") || attribute.starts_with("///")
-            })
-            .count();
-        let first = declared - attributes;
-        let gate = format!("{indent}#[cfg(test)]");
-        if !lines[first..declared].contains(&gate.as_str()) {
-            continue;
-        }
-        let end = format!("{indent}}}");
-        let Some(close) = lines[declared..].iter().position(|&line| line == end) else {
-            continue;
-        };
-        let module = FatModule {
-            lines: close + attributes + 1,
-            file: lines.len(),
-        };
-        if module.lines > MOST_LINES || module.lines * 100 > module.file * MOST_PERCENT {
-            fat.push(module);
+    struct Modules {
+        file: usize,
+        fat: Vec<FatModule>,
+    }
+    impl<'ast> Visit<'ast> for Modules {
+        fn visit_item_mod(&mut self, item: &'ast ItemMod) {
+            let gated = item.attrs.iter().any(|attribute| {
+                attribute.path().is_ident("cfg")
+                    && attribute
+                        .parse_args::<Ident>()
+                        .is_ok_and(|gate| gate == "test")
+            });
+            if let (true, true, Some((brace, _))) = (item.ident == "tests", gated, &item.content) {
+                let first = item
+                    .attrs
+                    .iter()
+                    .map(|attribute| attribute.span().start().line)
+                    .chain([item.mod_token.span.start().line])
+                    .min()
+                    .expect("a module has its keyword");
+                let lines = brace.span.close().end().line - first + 1;
+                if lines > MOST_LINES || lines * 100 > self.file * MOST_PERCENT {
+                    self.fat.push(FatModule {
+                        lines,
+                        file: self.file,
+                    });
+                }
+            }
+            visit::visit_item_mod(self, item);
         }
     }
-    fat
+    let parsed = syn::parse_file(text).expect("a workspace source parses");
+    let mut modules = Modules {
+        file: text.lines().count(),
+        fat: Vec::new(),
+    };
+    modules.visit_file(&parsed);
+    modules.fat
 }
 
 #[test]
 fn an_inline_test_module_holds_at_most_150_lines_and_40_percent_of_its_file() {
-    let fat: Vec<String> = sources()
+    let workspace = Workspace::read();
+    let fat: Vec<String> = workspace
+        .sources()
         .iter()
         .flat_map(|file| {
             let modules = fat_test_modules(&file.text).into_iter();

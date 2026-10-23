@@ -2,15 +2,14 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use campfire_common::MapName;
-use campfire_package::{
-    ContentError, DependencyPath, EncodedIndex, FileIndex, LoadError, ModePackages, PackageFiles,
-    PackageRef, PackageSource, PackageWalk,
+use campfire_package_format::{
+    ContentError, DependencyPath, EncodedIndex, FileIndex, PackageFiles, PackagePlace,
+    PackageSource, PackageWalk,
 };
 use campfire_values::PackagePath;
 
 use crate::error::IndexError;
-use crate::package_place::{PackagePlace, ReadBound};
+use crate::read_bound::ReadBound;
 
 /// A package at `root` of a tree of files in memory, keyed by their paths from the tree's root,
 /// as a test builds one: the source a load reads in place of a directory on disk. Its keys are
@@ -51,12 +50,6 @@ impl TreeDir {
     /// The package's files, as the core reads and checks them: see `PackageFiles::read`.
     pub fn files(&self) -> Result<PackageFiles, ContentError> {
         PackagePlace::files(self)
-    }
-
-    /// The mode at this root on its map `map`, or its only map when `map` names none, with its
-    /// dependencies at the paths its manifest gives from it.
-    pub fn mode_packages(&self, map: Option<&MapName>) -> Result<ModePackages, LoadError> {
-        PackagePlace::mode_packages(self, map)
     }
 
     /// The index of the tree's files under the root but its index, in the order of their paths.
@@ -131,8 +124,8 @@ impl PackagePlace for TreeDir {
         Self::new(Arc::clone(&self.tree), root)
     }
 
-    fn package_ref(&self) -> PackageRef {
-        PackageRef::Dir(self.root.clone())
+    fn dir(&self) -> &Path {
+        &self.root
     }
 }
 

@@ -22,7 +22,7 @@ pub(crate) struct Look {
 }
 
 /// On every unit's drawing root, the shape of the unit, which the HUD stands over and a dead unit
-/// lies down by, whether its figure or its models draw it: a player's avatar, a creep that walks, or
+/// lies down by, whether its figure or its models draw it: a player's avatar, another unit that walks, or
 /// a structure that does not, each of its kind's proportions, and a model drawing as tall as its
 /// models. A capsule of `radius`, `height` tall, or, for a box body, a cuboid as tall standing on
 /// its `footing`. The pointer picks the unit by the root, which blocks the units it stands in front
@@ -35,12 +35,12 @@ pub(crate) struct UnitShape {
     pub(crate) footing: Footing,
 }
 
-/// What a unit is drawn as when no model draws it: a player's avatar, a creep that walks, or a
-/// structure that does not, each with its own shape.
+/// What a unit is drawn as when no model draws it: a player's avatar, another unit that walks,
+/// or a structure that does not, each with its own shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ShapeKind {
     Avatar,
-    Creep,
+    Walker,
     Structure,
 }
 
@@ -63,7 +63,7 @@ const AVATAR: UnitShape = UnitShape {
     height: 2.0,
     footing: Footing::Circle(0.5),
 };
-const CREEP: UnitShape = UnitShape {
+const WALKER: UnitShape = UnitShape {
     radius: 0.35,
     height: 1.2,
     footing: Footing::Circle(0.35),
@@ -79,7 +79,7 @@ impl ShapeKind {
     pub(crate) const fn of(avatar: bool, walks: bool) -> Self {
         match (avatar, walks) {
             (true, _) => Self::Avatar,
-            (false, true) => Self::Creep,
+            (false, true) => Self::Walker,
             (false, false) => Self::Structure,
         }
     }
@@ -88,7 +88,7 @@ impl ShapeKind {
     const fn shape(self) -> UnitShape {
         match self {
             Self::Avatar => AVATAR,
-            Self::Creep => CREEP,
+            Self::Walker => WALKER,
             Self::Structure => STRUCTURE,
         }
     }

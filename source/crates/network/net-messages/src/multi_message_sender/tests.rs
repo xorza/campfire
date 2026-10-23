@@ -6,11 +6,9 @@ use crate::remote_event::RemoteEvent;
 use bevy_ecs::entity::EntityIndexSet;
 use bevy_ecs::entity::{Entity, UniqueEntityArray};
 use bevy_ecs::observer::On;
-use bevy_ecs::prelude::Single;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
 use campfire_net_connection::Disconnecting;
-use campfire_net_connection::RemoteId;
 use campfire_net_core::PeerId;
 use campfire_net_payload::AppCode;
 use campfire_net_stepper::Stepper;
@@ -86,55 +84,8 @@ fn an_event_reaches_each_listed_link() {
     }
 }
 
-/// `NetworkTarget::All` reaches both clients; `Single` then reaches only its own, as the
-/// sender's reused target set keeps nothing of the broadcast before it.
-#[test]
-fn a_target_selects_its_clients() {
-    let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_plain_clients(2));
-    for client in 0..2 {
-        ReceivedMessages::<StringMessage>::collect_in(stepper.client_app_mut(client));
-    }
-    let message = StringMessage("World".to_string());
-    let sent = message.clone();
-    let client_0 = stepper.client_of(0).get::<RemoteId>().unwrap().0;
-    let system = stepper.server_app_mut().register_system(
-        move |mut sender: MultiMessageSender<'_, '_>,
-              server: Single<'_, '_, &Server>,
-              mut sent_all: Local<'_, bool>| {
-            let target = if *sent_all {
-                NetworkTarget::single(client_0)
-            } else {
-                NetworkTarget::All
-            };
-            sender
-                .send_to_target::<_, Channel1>(&sent, server.into_inner(), &target)
-                .unwrap();
-            *sent_all = true;
-        },
-    );
-    stepper.server_world_mut().run_system(system).unwrap();
-    stepper.frame_step(2);
-    for client in 0..2 {
-        let expected = [(stepper.client_entity(client), message.clone())];
-        assert_eq!(received(&stepper, client), &expected, "client {client}");
-    }
-
-    for client in 0..2 {
-        stepper
-            .client_world_mut(client)
-            .resource_mut::<ReceivedMessages<StringMessage>>()
-            .0
-            .clear();
-    }
-    stepper.server_world_mut().run_system(system).unwrap();
-    stepper.frame_step(2);
-    let expected = [(stepper.client_entity(0), message)];
-    assert_eq!(received(&stepper, 0), &expected);
-    assert_eq!(received(&stepper, 1), &[]);
-}
-
-/// `NetworkTarget::All` skips a link that is not connected: here client 1's link is
-/// disconnecting, and only client 0 receives.
+/// A send skips a link that is not connected: here client 1's link is disconnecting, and only
+/// client 0 receives.
 #[test]
 fn all_reaches_only_connected_links() {
     let mut stepper = Stepper::new(MessagesStack, StepperSetup::with_plain_clients(2));
@@ -146,13 +97,14 @@ fn all_reaches_only_connected_links() {
     });
     let message = StringMessage("World".to_string());
     let sent = message.clone();
-    let system = stepper.server_app_mut().register_system(
-        move |mut sender: MultiMessageSender<'_, '_>, server: Single<'_, '_, &Server>| {
-            sender
-                .send_to_target::<_, Channel1>(&sent, server.into_inner(), &NetworkTarget::All)
-                .unwrap();
-        },
-    );
+    let links = [stepper.client_of_entity(0), stepper.client_of_entity(1)];
+    let system =
+        stepper
+            .server_app_mut()
+            .register_system(move |mut sender: MultiMessageSender<'_, '_>| {
+                let links = EntityIndexSet::from_iter(links);
+                sender.send::<_, Channel1>(&sent, &links).unwrap();
+            });
     stepper.server_world_mut().run_system(system).unwrap();
     stepper.frame_step(2);
     assert_eq!(

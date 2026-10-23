@@ -1,7 +1,8 @@
 use std::num::NonZeroU8;
+use std::sync::Arc;
 
 use campfire_actions::{
-    ActionData, ActionRange, ActionsData, DeliveryData, RangeField, SlotKinds, Targeting,
+    ActionData, ActionKeys, ActionRange, ActionsData, RangeField, SlotKinds, Targeting,
     TypeSlotsData,
 };
 use campfire_client_files::{ClientModel, ClientUnit, LookVariant, ModelScale, ModelTop, Press};
@@ -9,29 +10,35 @@ use campfire_combat::{
     ArmorShare, AttackData, ClipData, CombatData, ModeCombatData, OnDeath, PitchData, ScatterData,
     SplashData, TurretData, WeaponValue,
 };
-use campfire_common::{ContentHash, DeclaredName};
+use campfire_common::DeclaredName;
 use campfire_mode::{ChoiceData, ListEntry, ModeParam, Offers, OptionData, RelationData};
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AcquireData;
+use campfire_package::ModePackages;
+use campfire_package_format::ContentHash;
 use campfire_production::{
     BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiredUnit, RequiresData,
     TrainData,
 };
-use campfire_projectiles::ProjectileData;
+use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_sim::Capability;
 use campfire_stats::{StatsData, TypePoolsData};
 use campfire_store::internals::TestDir;
 use campfire_units::TypeTagsData;
-use campfire_values::{Number, Ranked, Relation, RelationSet, Scalar, Share, Stat, TextId};
+use campfire_values::{
+    FilterData, Number, Ranked, Relation, RelationSet, Scalar, Share, Stat, TextId,
+};
 
 use super::*;
 use crate::texture::samples::ktx2;
-use crate::zero_hour::error::{NameClash, VersionDifference};
+use crate::zero_hour::error::{NameClash, NameError, VersionDifference};
 use crate::zero_hour::format::big::big_archive::samples::big;
+use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::csf::string_table::samples::strings;
 use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
 use crate::zero_hour::format::ini::command_button_ini::samples::COMMAND_BUTTONS;
 use crate::zero_hour::format::ini::command_set_ini::samples::COMMAND_SETS;
+use crate::zero_hour::format::ini::game_data_ini::TerrainDraw;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
 use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
@@ -39,9 +46,10 @@ use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::format::map::map_file::samples::map;
 use crate::zero_hour::install::samples::{fixture, packed_map};
 use crate::zero_hour::model_import::{Converted, ModelImport};
+use crate::zero_hour::model_writer::{SkipReason, SkippedModel};
 use crate::zero_hour::object_flight::samples::shell_projectile;
 use crate::zero_hour::production_import::ButtonDropCause;
-use crate::zero_hour::weapon_drop::WeaponDrop;
+use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 
 /// The fixture install's version, as its archives hold their bytes now.
 fn version_of(test_dir: &TestDir) -> &'static [GameVersion] {
@@ -99,9 +107,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // places, America's start objects, the barracks, the ranger and the pathfinder their command
     // sets make, and the shell the tank's cannon fires. Its units drive, by stats, orders and
     // navigation, no faster than the tank's 30.5 m a second.
-    let mode = PackageDir::new(test_dir.path("one/game"))
-        .mode_packages(Some(&named))
-        .unwrap();
+    let mode = ModePackages::at(&PackageDir::new(test_dir.path("one/game")), Some(&named)).unwrap();
     let types: Vec<String> = mode
         .content()
         .units
@@ -136,12 +142,13 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let navigation = data.section::<ModeNavigationData>().unwrap();
     assert_eq!(navigation.spawn_tags, all_declared(&["start"]));
     // Its base, as the dozer builds the barracks and the center and the barracks train, and two
-    // of each unit (09-zero-hour.md, A base start).
-    let texts = |names: &[&str]| {
+    // of each unit (09-zero-hour.md, A base start); its army the ranger alone, as the sample's
+    // pathfinder holds no weapon.
+    let names = |names: &[&str]| {
         ModeParam::List(
             names
                 .iter()
-                .map(|&name| ListEntry::Text(name.to_owned()))
+                .map(|&name| ListEntry::Name(declared(name)))
                 .collect(),
         )
     };
@@ -150,19 +157,19 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         BTreeMap::from([
             (
                 declared("army_units_america"),
-                texts(&["americainfantryranger", "americainfantrypathfinder"])
+                names(&["americainfantryranger"])
             ),
             (
                 declared("base_buildings_america"),
-                texts(&["americabarracks"])
+                names(&["americabarracks"])
             ),
             (declared("base_count"), ModeParam::Value(Scalar::Int(2))),
             // The sample's dozer builds and does not gather, and no building takes a load.
-            (declared("drop_offs_america"), texts(&[])),
-            (declared("gatherers_america"), texts(&[])),
+            (declared("drop_offs_america"), names(&[])),
+            (declared("gatherers_america"), names(&[])),
             (
                 declared("base_units_america"),
-                texts(&[
+                names(&[
                     "americavehicledozer",
                     "americainfantryranger",
                     "americainfantrypathfinder"
@@ -170,7 +177,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             ),
             (
                 declared("start_building_america"),
-                ModeParam::Text("americacommandcenter".to_owned())
+                ModeParam::Name(declared("americacommandcenter"))
             ),
             (
                 declared("start_offset_america"),
@@ -178,7 +185,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             ),
             (
                 declared("start_units_america"),
-                ModeParam::List(vec![ListEntry::Text("americavehicledozer".to_owned())])
+                ModeParam::List(vec![ListEntry::Name(declared("americavehicledozer"))])
             ),
         ])
     );
@@ -228,9 +235,12 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let made = |id: &str, cost: i64, windup_ms: i64, action: ActionData| {
         let name = format!("action-{}", id.replace('_', "-"));
         let action = ActionData {
-            name: Some(TextId::new(&name).unwrap()),
-            cost: BTreeMap::from([(declared("money"), one(cost))]),
-            windup_ms: Some(one(windup_ms)),
+            keys: ActionKeys {
+                name: Some(TextId::new(&name).unwrap()),
+                cost: BTreeMap::from([(declared("money"), one(cost))]),
+                windup_ms: Some(one(windup_ms)),
+                ..action.keys
+            },
             ..action
         };
         (declared(id), action)
@@ -257,10 +267,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         cancel_refund: None,
         placement: None,
     };
-    let barracks = ActionData {
-        range: meters(10),
-        ..ActionData::of(Targeting::Point, barracks)
-    };
+    let mut barracks = ActionData::of(Targeting::Point, barracks);
+    barracks.keys.range = meters(10);
     let ranger = train(
         "americainfantryranger",
         Some(RequiresData {
@@ -289,6 +297,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         rate: WeaponValue::Own(one(100)),
         rate_bonus: None,
         damage: damage(5),
+        damage_bonus: None,
         damage_kind: declared("small_arms"),
         clip: Some(ClipData {
             shots: one(3),
@@ -299,17 +308,17 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         pitch_deg: None,
         speed: None,
         streak: None,
+        pre_attack: None,
     };
-    let rifle = ActionData {
-        range: meters(100),
-        ..ActionData::of(enemies.clone(), rifle)
-    };
+    let mut rifle = ActionData::of(enemies.clone(), rifle);
+    rifle.keys.range = meters(100);
     // The crusader's cannon fires its shell, of 60 armor-piercing damage within 5 m of where it
     // ends, to all but its own unit, which scatters 10 m at infantry, within 15° of level.
     let cannon = AttackData {
         rate: WeaponValue::Own(one(2000)),
         rate_bonus: None,
         damage: damage(60),
+        damage_bonus: None,
         damage_kind: declared("armor_piercing"),
         clip: None,
         splash: SplashData::new(Num::int(5), RelationSet::All, true),
@@ -320,16 +329,11 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         pitch_deg: PitchData::new(Num::int(-15), Num::int(15)),
         speed: None,
         streak: None,
+        pre_attack: None,
     };
-    let cannon = ActionData {
-        range: meters(150),
-        delivery: Some(DeliveryData::Projectile {
-            unit_type: declared("tankshell"),
-            count: NonZeroU8::MIN,
-            spread_deg: Num::ZERO,
-        }),
-        ..ActionData::of(enemies, cannon)
-    };
+    let mut cannon = ActionData::of(enemies, cannon);
+    cannon.keys.range = meters(150);
+    cannon.delivery = Some(Arc::new(ProjectileDeliveryData::one(declared("tankshell"))));
     let actions = &mode.content().section::<ActionsData>().unwrap().0;
     assert_eq!(
         *actions,
@@ -505,19 +509,19 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // pistol of a random delay, and the crusader's railgun no file defines; the flamer of the
     // ranger's upgraded set is never read. The wall's highlander
     // body gives no life; the dozer starts at 200 of its 250, which the engine starts full.
-    let dropped: Vec<(&str, WeaponDrop)> = imported
+    let dropped: Vec<(&str, WeaponDropCause)> = imported
         .losses
         .iter()
         .filter_map(|loss| match loss {
-            ImportLoss::Weapon(dropped) => Some((dropped.weapon.as_str(), dropped.cause)),
+            ImportLoss::Weapon(dropped) => Some((dropped.name.as_str(), dropped.cause)),
             _ => None,
         })
         .collect();
     assert_eq!(
         dropped,
         [
-            ("Pistol", WeaponDrop::RandomDelay),
-            ("Railgun", WeaponDrop::NoWeapon),
+            ("Pistol", WeaponDropCause::RandomDelay),
+            ("Railgun", WeaponDropCause::NoWeapon),
         ]
     );
     let named_by = |kind: fn(&ImportLoss) -> Option<&str>| {
@@ -575,7 +579,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         .losses
         .iter()
         .filter_map(|loss| match loss {
-            ImportLoss::Button(dropped) => Some((dropped.button.as_str(), dropped.cause)),
+            ImportLoss::Button(dropped) => Some((dropped.name.as_str(), dropped.cause)),
             _ => None,
         })
         .collect();
@@ -607,7 +611,11 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     ];
     // Eight players, each a team of one slot, and the neutral team of none.
     assert_eq!(manifest.teams.len(), 9);
-    assert!(manifest.teams[..8].iter().all(|team| team.seats == 1));
+    assert!(
+        manifest.teams[..8]
+            .iter()
+            .all(|team| team.player_slots == 1)
+    );
     assert!(
         drives
             .iter()
@@ -630,7 +638,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // The class whose type's texture the install holds names it, the sign's TGA of 2 × 1
     // texels; the other names none.
     let file = ZeroHourMap::read(&map(8)).unwrap();
-    let mut textures = vec![None; file.terrain.classes.len()];
+    let mut textures = vec![None; file.terrain.fields().classes.len()];
     textures[0] = Some(ClassTexture {
         path: PackagePath::parse("client/textures/art/terrain/tsand.ktx2").unwrap(),
         size: UVec2::new(2, 1),
@@ -653,7 +661,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         names: &mut names,
         looks: &looks,
         lights: 3,
-        game: GameData {
+        game: TerrainDraw {
             adjust_cliff_textures: true,
             three_way_blends: false,
         },
@@ -693,13 +701,14 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let mut names = names.into_projectiles();
     let combat = CombatImport::of(&rules, &mut names).unwrap();
     let types = names.close();
-    let units = types.units_file(TypeAdditions {
+    let additions = TypeAdditions {
         weapon: &combat.weapons,
         command: &production.commands,
         production: &production.sections,
         nodes: &production.supply.nodes,
         drop_offs: &production.supply.drop_offs,
-    });
+    };
+    let units = types.units_file(additions, &rules.names);
     assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);
     let camera = Toml::parse::<CameraFile>(&test_dir.read_text("one/game/client/camera.toml"));
     assert_eq!(camera.unwrap().field_of_view, 50.0);
@@ -720,19 +729,17 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let colors = test_dir.read_text("one/game/client/team_colors.toml");
     let colors = Toml::parse::<TeamColors>(&colors).unwrap();
     assert_eq!(colors.colors(), [[255, 200, 0], [255, 0, 0]]);
-    // Each texture once, at its path in the archives, as its conversion gives it.
+    // Each texture a model or the terrain draws with once, at its path in the archives, as its
+    // conversion gives it: the model's rock and the terrain's sand, whose TGA is the sign's; the
+    // sign's own TGA, which nothing draws, is not converted.
     let [rock, sign] = ktx2();
     assert_eq!(
         test_dir.names("one/game/client/textures/art/textures"),
-        ["rock.ktx2", "sign.ktx2"]
+        ["rock.ktx2"]
     );
     assert_eq!(
         test_dir.read("one/game/client/textures/art/textures/rock.ktx2"),
         rock
-    );
-    assert_eq!(
-        test_dir.read("one/game/client/textures/art/textures/sign.ktx2"),
-        sign
     );
     assert_eq!(
         test_dir.read("one/game/client/textures/art/terrain/tsand.ktx2"),
@@ -773,11 +780,13 @@ fn an_install_of_two_maps_of_one_name_or_of_an_unknown_version_does_not_import()
     assert!(matches!(
         clash.write(&test_dir.path("three")),
         Err(ZeroHourError::MapNameClash { first, second })
-            if first == "maps\\fixture map\\fixture map.map"
-                && second == "maps\\fixture_map\\fixture_map.map"
+            if first.as_str() == "maps\\fixture map\\fixture map.map"
+                && second.as_str() == "maps\\fixture_map\\fixture_map.map"
     ));
 
-    // An archive of other bytes is no version the importer knows.
+    // An archive of other bytes is no version the importer knows; the install is closed first,
+    // as Windows replaces no file a program holds open.
+    drop(clash);
     test_dir.write("zh/c.BIG", b"BIGF");
     assert!(matches!(
         ZeroHour::open_among(&test_dir.path("zh"), known),
@@ -955,7 +964,11 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         expected
     );
 
-    // Two objects whose names give one unit type, each with a model, are refused.
+    // Two objects whose names give one unit type, each with a model, are refused. The install is
+    // closed first, as Windows replaces no file a program holds open.
+    drop(assets);
+    drop(install);
+    drop(zero_hour);
     let clash = "Object Rock!\nDraw = W3DPropDraw M\nModelName = Rock01\nEnd\nEnd\nObject Rock?\nDraw = W3DPropDraw M\nModelName = Rock01\nEnd\nEnd\n";
     test_dir.write(
         "zh/c.BIG",
@@ -968,7 +981,30 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     let clash = ZeroHour::open_among(&test_dir.path("zh"), known).unwrap();
     assert!(matches!(
         clash.write(&test_dir.path("two")),
-        Err(ZeroHourError::NameClash(NameClash { first, second }))
+        Err(ZeroHourError::Name(NameError::Clash(NameClash { first, second })))
             if first == "Rock!" && second == "Rock?"
+    ));
+}
+
+#[test]
+fn each_drawn_texture_goes_once_and_two_that_share_a_file_clash() {
+    // A texture drawn twice goes once; a DDS and a TGA of one name in one directory both go to
+    // `x.ktx2`, which the import refuses, naming both.
+    let path = ArchivePath::of;
+    let files =
+        texture_files([path("art\\a.dds"), path("art\\b.tga"), path("art\\a.dds")]).unwrap();
+    let at = |text: &str| PackagePath::parse(text).unwrap();
+    assert_eq!(
+        files.into_iter().collect::<Vec<_>>(),
+        [
+            (at("client/textures/art/a.ktx2"), path("art\\a.dds")),
+            (at("client/textures/art/b.ktx2"), path("art\\b.tga")),
+        ]
+    );
+    let clash = texture_files([path("art\\x.dds"), path("art\\x.tga")]).unwrap_err();
+    assert!(matches!(
+        clash,
+        ZeroHourError::TextureClash { first, second }
+            if first == path("art\\x.dds") && second == path("art\\x.tga")
     ));
 }

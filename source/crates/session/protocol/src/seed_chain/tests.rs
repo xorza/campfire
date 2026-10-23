@@ -7,8 +7,8 @@ const CHAIN: SeedChain = SeedChain::new([5; 32], NonZeroU32::new(2).unwrap());
 #[test]
 fn each_seed_hashes_to_the_one_before_and_the_first_to_the_commitment() {
     let digest = |bytes: &[u8]| {
-        let mut hasher = Hasher::new();
-        hasher.update(b"campfire/seed-chain/v1").update(bytes);
+        let mut hasher = Hasher::new_derive_key("campfire/seed-chain/v1");
+        hasher.update(bytes);
         *hasher.finalize().as_bytes()
     };
     // s_1 is the root, s_0 its hash, and the commitment the hash of s_0.

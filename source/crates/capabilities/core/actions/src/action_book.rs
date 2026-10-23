@@ -20,6 +20,15 @@ pub struct ActionBook {
     actions: Arc<[Action]>,
     /// Each action's name in its package.
     names: Arc<Names<ActionId>>,
+    /// The actions of each name, in every package that names one so, by name, then by id.
+    by_name: Arc<[NamedActions]>,
+}
+
+/// The actions of one name, among every package's, by id.
+#[derive(Debug)]
+struct NamedActions {
+    name: Box<str>,
+    actions: Arc<[ActionId]>,
 }
 
 /// An `ActionBook` as the load fills it, action by action.
@@ -57,9 +66,10 @@ impl ActionBookBuilder {
             aim,
             ranks,
             delivery,
+            pays,
         } = parts;
         assert_eq!(
-            data.script.is_some(),
+            data.keys.script.is_some(),
             script.is_some(),
             "an action has a script exactly when its data names one"
         );
@@ -76,15 +86,27 @@ impl ActionBookBuilder {
             script,
             hooks,
             delivery,
+            pays,
         });
         id
     }
 
     /// The book of the actions loaded.
     pub(crate) fn build(self) -> ActionBook {
+        let mut named: Vec<(&str, ActionId)> =
+            self.names.iter().map(|(id, name)| (name, id)).collect();
+        named.sort_unstable();
+        let by_name = named
+            .chunk_by(|a, b| a.0 == b.0)
+            .map(|run| NamedActions {
+                name: run[0].0.into(),
+                actions: run.iter().map(|&(_, id)| id).collect(),
+            })
+            .collect();
         ActionBook {
             actions: Arc::from(self.actions),
             names: Arc::new(self.names),
+            by_name,
         }
     }
 }
@@ -105,6 +127,16 @@ impl ActionBook {
     /// Each action's name in its package.
     pub const fn names(&self) -> &Arc<Names<ActionId>> {
         &self.names
+    }
+
+    /// The actions named `name` in every package that names one so, by id; none for a name no
+    /// package gives an action.
+    pub fn actions_named(&self, name: &str) -> Option<&Arc<[ActionId]>> {
+        let at = self
+            .by_name
+            .binary_search_by(|named| (*named.name).cmp(name))
+            .ok()?;
+        Some(&self.by_name[at].actions)
     }
 
     pub fn get(&self, id: ActionId) -> Option<&Action> {

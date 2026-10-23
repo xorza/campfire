@@ -14,7 +14,8 @@ use bevy::asset::io::{
 use bevy::tasks::ConditionalSendFuture;
 use bevy::tasks::futures_lite::AsyncRead;
 use campfire_common::ErrorReport;
-use campfire_package::{ContentError, ModePackages, PackageReader};
+use campfire_package::ModePackages;
+use campfire_package_format::{ContentError, PackageReader};
 use campfire_values::{PackageIndex, PackagePath};
 use tracing::error;
 
@@ -179,8 +180,8 @@ impl fmt::Debug for HeldReader {
 
 #[cfg(test)]
 pub(crate) mod samples {
-    use campfire_package::PackageReader;
     use campfire_package_disk::{PackageDir, PackageWriter};
+    use campfire_package_format::PackageReader;
     use campfire_store::internals::TestDir;
     use campfire_values::PackagePath;
 

@@ -1,8 +1,11 @@
 //! The look the panels and the inventory bar share: their colors, their font, the write of a line
 //! of text, and the one widget of a panel and its rows.
 
+use std::marker::PhantomData;
+
 use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
+use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::system::{Commands, Query};
@@ -32,14 +35,19 @@ pub(crate) fn set_text(texts: &mut Query<'_, '_, &mut Text>, entity: Entity, lin
     }
 }
 
-/// A panel of the window, hidden as it spawns: its root, its line of the player's amounts, and
-/// the holder of its rows.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Panel {
-    pub(crate) root: Entity,
-    pub(crate) funds: Entity,
-    pub(crate) rows: Entity,
-}
+/// On the root of a panel of the window, hidden as it spawns, which the systems of `P`, its
+/// plugin, find it by, as they find its line of the player's amounts by `PanelFunds<P>` and the
+/// holder of its rows by `PanelRows<P>`.
+#[derive(Component, Debug)]
+pub(crate) struct Panel<P: 'static>(PhantomData<fn() -> P>);
+
+/// On the line of the player's amounts of the panel of `P`.
+#[derive(Component, Debug)]
+pub(crate) struct PanelFunds<P: 'static>(PhantomData<fn() -> P>);
+
+/// On the holder of the rows of the panel of `P`.
+#[derive(Component, Debug)]
+pub(crate) struct PanelRows<P: 'static>(PhantomData<fn() -> P>);
 
 /// The corner of the window a panel stands in, 12 px in from its edges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,9 +67,9 @@ pub(crate) struct PanelRow {
 /// How far a panel stands in from the window's edges, in pixels.
 const PANEL_INSET: f32 = 12.0;
 
-impl Panel {
-    /// A panel `width` pixels wide in the window's `corner`.
-    pub(crate) fn spawn(commands: &mut Commands<'_, '_>, corner: Corner, width: f32) -> Self {
+impl<P: Send + Sync + 'static> Panel<P> {
+    /// Spawns the panel of `P`, `width` pixels wide in the window's `corner`.
+    pub(crate) fn spawn(commands: &mut Commands<'_, '_>, corner: Corner, width: f32) {
         let inset = Val::Px(PANEL_INSET);
         let (top, bottom) = match corner {
             Corner::TopRight => (inset, Val::Auto),
@@ -79,18 +87,26 @@ impl Panel {
             ..Node::default()
         };
         let root = commands
-            .spawn((root, BackgroundColor(BACK), Visibility::Hidden))
+            .spawn((
+                root,
+                BackgroundColor(BACK),
+                Visibility::Hidden,
+                Self(PhantomData),
+            ))
             .id();
-        let funds = commands
-            .spawn((Text::default(), font(), TextColor(TEXT), ChildOf(root)))
-            .id();
+        commands.spawn((
+            Text::default(),
+            font(),
+            TextColor(TEXT),
+            ChildOf(root),
+            PanelFunds::<P>(PhantomData),
+        ));
         let rows = Node {
             flex_direction: FlexDirection::Column,
             row_gap: Val::Px(2.0),
             ..Node::default()
         };
-        let rows = commands.spawn((rows, ChildOf(root))).id();
-        Self { root, funds, rows }
+        commands.spawn((rows, ChildOf(root), PanelRows::<P>(PhantomData)));
     }
 }
 

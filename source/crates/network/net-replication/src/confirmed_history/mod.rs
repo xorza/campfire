@@ -1,11 +1,19 @@
+use crate::confirmed_tick_map::ConfirmedTickMap;
+use crate::history_component::HistoryComponent;
 use crate::history_state::HistoryState;
 use bevy_ecs::component::Component;
+use bevy_ecs::error::Result;
 use bevy_reflect::Reflect;
+use bevy_replicon::prelude::{RepliconTick, RuleFns};
+use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
+use bevy_replicon::shared::replication::registry::ctx::{RemoveCtx, WriteCtx};
+use bytes::Bytes;
 use campfire_net_core::Iter as EntryIter;
 use campfire_net_core::NetTick;
 use campfire_net_core::TickBuffer;
 use campfire_net_core::Ticked;
 use core::iter::FusedIterator;
+use tracing::debug;
 
 /// Stores authoritative component states received from the remote.
 ///
@@ -134,10 +142,11 @@ impl<C> ConfirmedHistory<C> {
         }
     }
 
-    /// Insert an explicit present authoritative value without unchanged-state
-    /// compression.
-    pub fn insert_present_explicit(&mut self, tick: NetTick, value: C) {
-        self.insert_explicit(tick, HistoryState::Updated(value));
+    /// A history of `value` alone, at `tick`: a live value that the history takes over.
+    pub fn seed(tick: NetTick, value: C) -> Self {
+        let mut history = Self::default();
+        history.insert_explicit(tick, HistoryState::Updated(value));
+        history
     }
 
     pub fn clear(&mut self) {
@@ -232,6 +241,109 @@ impl<C> ConfirmedHistory<C> {
 }
 
 /// The iterator contains the present values from oldest to most recent.
+/// One value a confirmed history takes from a replicated message.
+#[derive(Debug)]
+pub struct ReceivedValue<'a, C> {
+    pub tick: NetTick,
+    pub value: &'a C,
+    /// Whether the message carried the value whole, as a snapshot, rather than a queued diff
+    /// the message made ready.
+    pub snapshot: bool,
+}
+
+/// The receive path that prediction and interpolation share: the values of a component that
+/// Replicon's messages write into its confirmed history, each a write function Replicon calls.
+impl<C: HistoryComponent> ConfirmedHistory<C> {
+    /// Writes a whole value of `C` into its confirmed history. `before_write` sees the value before
+    /// the history records it, so a caller can act on it.
+    ///
+    /// A message that the entity's confirmed ticks do not map is dropped. An entity without a confirmed
+    /// history gets one.
+    pub fn receive_whole(
+        ctx: &mut WriteCtx<'_>,
+        rule_fns: &RuleFns<C>,
+        entity: &mut DeferredEntity<'_>,
+        message: &mut Bytes,
+        before_write: impl FnOnce(&mut DeferredEntity<'_>, ReceivedValue<'_, C>),
+    ) -> Result<()> {
+        let value: C = rule_fns.deserialize(ctx, message)?;
+        let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
+            debug!(
+                message_tick = ?ctx.message_tick,
+                component = core::any::type_name::<C>(),
+                "dropping a value that no confirmed tick maps"
+            );
+            return Ok(());
+        };
+        before_write(
+            entity,
+            ReceivedValue {
+                tick,
+                value: &value,
+                snapshot: true,
+            },
+        );
+        Self::record(entity, tick, HistoryState::Updated(value));
+        Ok(())
+    }
+
+    /// Writes a removal of `C` into its confirmed history; the live component goes when the
+    /// prediction or the interpolation that reads the history reaches its tick.
+    ///
+    /// A message that the entity's confirmed ticks do not map is dropped. An entity without a confirmed
+    /// history gets one.
+    pub fn receive_removal(ctx: &mut RemoveCtx, entity: &mut DeferredEntity<'_>) {
+        let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
+            debug!(
+                message_tick = ?ctx.message_tick,
+                component = core::any::type_name::<C>(),
+                "dropping a removal that no confirmed tick maps"
+            );
+            return;
+        };
+        Self::record(entity, tick, HistoryState::Removed);
+    }
+
+    /// Records `state` at `tick` in the entity's confirmed history, which goes on if it is not there.
+    fn record(entity: &mut DeferredEntity<'_>, tick: NetTick, state: HistoryState<C>) {
+        if let Some(mut history) = entity.get_mut::<Self>() {
+            history.insert(tick, state);
+        } else {
+            let mut history = Self::default();
+            history.insert(tick, state);
+            entity.insert(history);
+        }
+    }
+
+    /// Records `value` at `tick` in the entity's confirmed history, or in the one it gets.
+    pub(crate) fn write(
+        entity: &mut DeferredEntity<'_>,
+        new_history: &mut Option<Self>,
+        tick: NetTick,
+        value: C,
+    ) {
+        if let Some(mut history) = entity.get_mut::<Self>() {
+            history.insert_present(tick, value);
+        } else {
+            new_history
+                .get_or_insert_with(Self::default)
+                .insert_present(tick, value);
+        }
+    }
+}
+
+/// The authoritative tick of the replicated message of `message_tick`; one that no confirmed tick
+/// maps is counted as a fault of the peer's data.
+pub(crate) fn replicated_message_tick(
+    entity: &DeferredEntity<'_>,
+    message_tick: RepliconTick,
+) -> Option<NetTick> {
+    entity
+        .world()
+        .resource::<ConfirmedTickMap>()
+        .message_tick(message_tick)
+}
+
 impl<'a, C> IntoIterator for &'a ConfirmedHistory<C> {
     type Item = Ticked<&'a C>;
     type IntoIter = Iter<'a, C>;

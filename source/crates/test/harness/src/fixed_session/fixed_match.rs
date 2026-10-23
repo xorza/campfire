@@ -1,27 +1,35 @@
 use campfire_capabilities::Match;
 use campfire_common::ErrorReport;
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_log::internals::LogCheck;
 use campfire_protocol::{
-    Applied, Checkpoint, Controller, InputChain, PlayerPacket, ServerInput, SessionResult,
-    SessionTerms, Signer,
+    Applied, Checkpoint, Controller, Delegation, InputChain, PlayerPacket, ServerInput,
+    SessionResult, SessionTerms, Signer,
 };
 
 use crate::fixed_session::FixedSession;
 use campfire_runner::{ServerInputRefusal, SessionWorld};
 
-/// A match of a `FixedSession`, and the input chain of each seat's player, so a test sends inputs
-/// as a player's client would, and server inputs as its server would.
+/// A match of a `FixedSession`, and the input chain of each player slot's player, so a test sends
+/// inputs as a player's client would, and server inputs as its server would.
 #[derive(Debug)]
 pub struct FixedMatch {
     game: Match,
     chains: Vec<InputChain>,
-    /// Each seat's session key, which signs its chain.
+    /// Each player slot's session key, which signs its chain.
     signers: Vec<Signer>,
     terms: SessionTerms,
     applied: Vec<Applied>,
     /// Last, so it drops after the match and sees what the match logs as it drops.
     log: LogCheck,
+}
+
+/// A match and the check of what it logs, the check last, so it drops after the match and sees
+/// what the match logs as it drops.
+#[derive(Debug)]
+pub struct CheckedMatch {
+    pub game: Match,
+    pub log: LogCheck,
 }
 
 impl FixedMatch {
@@ -47,10 +55,10 @@ impl FixedMatch {
         self.game.run_tick_alone();
     }
 
-    /// Sends player `seat`'s input of `payload` stamped for `stamp`, in a packet of its own; how
-    /// it applies.
-    pub fn send(&mut self, seat: u32, stamp: Tick, payload: &[u8]) -> Applied {
-        let at = usize::try_from(seat).unwrap();
+    /// Sends player `player_slot`'s input of `payload` stamped for `stamp`, in a packet of its own;
+    /// how it applies.
+    pub fn send(&mut self, player_slot: u32, stamp: Tick, payload: &[u8]) -> Applied {
+        let at = usize::try_from(player_slot).unwrap();
         let chain = &mut self.chains[at];
         let input = chain.extend(stamp, payload);
         let signature = self.signers[at].sign(&chain.signed_head(self.terms.session_id()));
@@ -58,7 +66,7 @@ impl FixedMatch {
             .session_mut()
             .record(
                 PlayerPacket {
-                    seat: input.seat,
+                    player_slot: input.player_slot,
                     inputs: [(input.stamp, input.payload)],
                     signature: &signature,
                 },
@@ -66,7 +74,7 @@ impl FixedMatch {
             )
             .unwrap_or_else(|error| {
                 panic!(
-                    "player {seat}'s input at {stamp}: {}",
+                    "player {player_slot}'s input at {stamp}: {}",
                     ErrorReport::of(&error)
                 )
             });
@@ -81,21 +89,27 @@ impl FixedMatch {
         self.game.session_mut().serve(input)
     }
 
-    /// Logs player `seat`'s join of their seat, with the delegation the session would start them
-    /// with; once it is logged, the player sends on the new chain the join starts, from the root
-    /// of its place, which their server tells them.
-    pub fn join(&mut self, seat: u32) -> Result<(), ServerInputRefusal> {
-        let delegation = FixedSession::delegation(&self.terms, seat);
-        let seat_at = Seat::new(seat);
+    /// The delegation the session starts player `player` with, of `TestKey::player(player)`.
+    pub fn delegation(&self, player: u32) -> Delegation {
+        FixedSession::delegation(&self.terms, player)
+    }
+
+    /// Logs player `player_slot`'s join of their player slot, with the delegation the session would
+    /// start them with; once it is logged, the player sends on the new chain the join starts, from
+    /// the root of its place, which their server tells them.
+    pub fn join(&mut self, player_slot: u32) -> Result<(), ServerInputRefusal> {
+        let delegation = self.delegation(player_slot);
+        let player_slot_at = PlayerSlot::new(player_slot);
         self.serve(ServerInput::Join {
-            seat: seat_at,
+            player_slot: player_slot_at,
             delegation,
         })?;
-        let Some(Controller::Player { chain, .. }) = self.game.session().log().controller(seat_at)
+        let Some(Controller::Player { chain, .. }) =
+            self.game.session().log().controller(player_slot_at)
         else {
-            panic!("the join seats the player");
+            panic!("the join places the player");
         };
-        self.chains[seat_at.index()] = chain;
+        self.chains[player_slot_at.index()] = chain;
         Ok(())
     }
 
@@ -129,9 +143,18 @@ impl FixedMatch {
         result
     }
 
-    /// The match, its keys and chains dropped, as a load leaves them behind.
-    pub fn into_game(self) -> Match {
-        self.game
+    /// The match, its keys and chains dropped, as a load leaves them behind, with the check of
+    /// what it logs, so a warning it logs after still fails the test.
+    pub fn into_checked(self) -> CheckedMatch {
+        CheckedMatch {
+            game: self.game,
+            log: self.log,
+        }
+    }
+
+    /// The tick it runs next: how many ticks its session ran.
+    pub fn next_tick(&self) -> Tick {
+        self.game.session().log().next_tick()
     }
 
     pub const fn game(&self) -> &Match {

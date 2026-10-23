@@ -11,6 +11,17 @@ pub(crate) struct ReceiveBudget {
     left: usize,
 }
 
+/// How a store of held bytes is charged to the receive budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Reservation {
+    /// Refused when the budget has no room for it.
+    Limited,
+    /// Charged even past the limit: for the message an ordered channel delivers next, without
+    /// which nothing waiting behind it can be delivered to free room, and for a message whose
+    /// reassembly was charged already.
+    Head,
+}
+
 /// The default receive budget, 1 MiB: twice the default `max_message_len`, which admits the
 /// largest reassembly buffer a peer can describe.
 pub(crate) const DEFAULT_RECEIVE_BUDGET: usize = 1024 * 1024;
@@ -34,22 +45,42 @@ impl ReceiveBudget {
     pub(crate) const fn charge(&mut self, bytes: usize) {
         self.left = self.left.saturating_sub(bytes);
     }
+
+    /// Takes `bytes` as `reservation` asks, and returns whether it did.
+    pub(crate) const fn reserve(&mut self, reservation: Reservation, bytes: usize) -> bool {
+        match reservation {
+            Reservation::Limited => self.try_charge(bytes),
+            Reservation::Head => {
+                self.charge(bytes);
+                true
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// 10 bytes of room take 6 then 4 and refuse 1 more; a forced charge empties the room.
+    /// 10 bytes of room take 6 then 4 and refuse 1 more, as a limited reservation does; a forced
+    /// charge, or a head reservation, empties the room.
     #[test]
     fn charges_up_to_the_room_left() {
         let mut budget = ReceiveBudget::new(10);
         assert!(budget.try_charge(6));
-        assert!(budget.try_charge(4));
+        assert!(budget.reserve(Reservation::Limited, 4));
         assert!(!budget.try_charge(1));
-        let mut budget = ReceiveBudget::new(3);
-        budget.charge(5);
-        assert!(!budget.try_charge(1));
-        assert!(budget.try_charge(0));
+        assert!(!budget.reserve(Reservation::Limited, 1));
+        for force in [
+            ReceiveBudget::charge,
+            |budget: &mut ReceiveBudget, bytes| {
+                assert!(budget.reserve(Reservation::Head, bytes));
+            },
+        ] {
+            let mut budget = ReceiveBudget::new(3);
+            force(&mut budget, 5);
+            assert!(!budget.try_charge(1));
+            assert!(budget.try_charge(0));
+        }
     }
 }

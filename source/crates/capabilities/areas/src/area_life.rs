@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{Reached, Targets};
 use campfire_common::{StableNumber, Ticks};
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_deliveries::{
     Delivered, DeliveredPayload, DeliveryQueue, DeliverySpawner, NewDelivery,
 };
@@ -31,7 +31,7 @@ impl AreaLife {
     /// hooks. Each hit is at the area's center, of no distance or direction.
     pub(super) fn trigger(
         targets: Targets<'_, '_>,
-        (specs, tick): (Res<'_, ByType<AreaSpec>>, Res<'_, SimTick>),
+        (specs, tick): (Res<'_, ById<UnitType, AreaSpec>>, Res<'_, SimTick>),
         mut deliveries: ResMut<'_, DeliveryQueue>,
         mut commands: Commands<'_, '_>,
         areas: Query<
@@ -129,7 +129,7 @@ impl AreaLife {
     pub(super) fn land(
         mut spawner: DeliverySpawner<'_, '_>,
         mut launches: ResMut<'_, AreaLaunches>,
-        (specs, tick): (Res<'_, ByType<AreaSpec>>, Res<'_, SimTick>),
+        (specs, tick): (Res<'_, ById<UnitType, AreaSpec>>, Res<'_, SimTick>),
     ) {
         let now = tick.start();
         launches.0.sort_by_key(|launch| launch.by.source);

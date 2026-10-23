@@ -10,7 +10,7 @@ use bevy::ecs::query::{Added, Allow, Has, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::{resource_added, resource_exists};
-use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, SystemParam};
+use bevy::ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy::math::Vec3;
 use bevy::mesh::{Mesh, Mesh3d};
 use bevy::pbr::MeshMaterial3d;
@@ -24,17 +24,19 @@ use campfire_common::ErrorReport;
 use campfire_script::{Filter, MatchNames, TagNames, UnknownName};
 use campfire_sim::{StableId, Unpredicted};
 use campfire_units::{Dead, Owner, TagBook};
-use campfire_values::{Relation, Relations, TagSet, Team, UnitType};
+use campfire_values::{Relation, TagSet, Team, UnitType};
 use tracing::error;
 
 use crate::own_player::OwnPlayer;
 use crate::pointer::Pointed;
 use crate::pointer::unit_picking::pick_parts::{PickPartOf, PickParts};
-use crate::pointer::unit_picking::pick_scene::{Part, PartAssets, PickScene, Target, UnitHit};
-use crate::view::client_data::ClientData;
+use crate::pointer::unit_picking::pick_scene::{
+    Part, PartAssets, PartSetup, PickScene, Target, UnitHit,
+};
 use crate::view::drawing::{DrawingOf, Drawn};
 use crate::view::file_material::FileMaterial;
 use crate::view::look::UnitShape;
+use crate::view::match_picking::MatchPicking;
 use crate::view::pixel_scale::PixelScale;
 
 /// The units' picking backend: each frame, the units the ray of each pointer through the match's
@@ -105,14 +107,6 @@ type Living<'w, 's> = Query<
     (Without<Dead>, Allow<Unpredicted>),
 >;
 
-/// How the player regards each team: the side its units show as friends on, and the teams'
-/// relations on the match's entity.
-#[derive(SystemParam, Debug)]
-struct Regard<'w, 's> {
-    own: OwnPlayer<'w, 's>,
-    relations: Query<'w, 's, &'static Relations, Allow<Unpredicted>>,
-}
-
 /// The match's camera: its entity, its viewport and order, where it stands, and its projection.
 type MatchCamera<'w, 's> = Query<
     'w,
@@ -147,11 +141,11 @@ impl UnitPickingPlugin {
     /// Resolves the mode's picking file against the match's tags as they come; a file that names
     /// a tag the match lacks is refused, logged, and picks as a mode of no file.
     fn resolve(
-        data: Res<'_, ClientData>,
+        file: Res<'_, MatchPicking>,
         names: Res<'_, MatchNames>,
         mut picking: ResMut<'_, UnitPicking>,
     ) {
-        *picking = UnitPicking::resolve(&data.picking, names.tags()).unwrap_or_else(|problem| {
+        *picking = UnitPicking::resolve(&file.0, names.tags()).unwrap_or_else(|problem| {
             error!(path = %PickingFile::path(), error = %ErrorReport::of(&problem), "a client data file names what the match lacks");
             UnitPicking::default()
         });
@@ -195,7 +189,7 @@ impl UnitPickingPlugin {
         rays: Res<'_, RayMap>,
         cameras: MatchCamera<'_, '_>,
         (roots, units, parts): (ShapedRoots<'_, '_>, Living<'_, '_>, PartMeshes<'_, '_>),
-        (picking, book, regard): (Res<'_, UnitPicking>, Res<'_, TagBook>, Regard<'_, '_>),
+        (picking, book, own): (Res<'_, UnitPicking>, Res<'_, TagBook>, OwnPlayer<'_, '_>),
         (meshes, materials): (Res<'_, Assets<Mesh>>, Res<'_, Assets<FileMaterial>>),
         mut under: ResMut<'_, UnderMouse>,
         mut sent: MessageWriter<'_, PointerHits>,
@@ -212,9 +206,6 @@ impl UnitPickingPlugin {
             return;
         }
         let scale = PixelScale::of(place.compute_transform(), projection, size.y);
-        let relations = regard.relations.single().ok();
-        let side = regard.own.side();
-        let relation = |team| Some(relations?.between(side?, team));
         scene.clear();
         for (root, &DrawingOf(unit), at, &shape, drawn_by) in &roots {
             let Ok((&id, &team, owner, &unit_type)) = units.get(unit) else {
@@ -224,7 +215,7 @@ impl UnitPickingPlugin {
             let target = Target {
                 root,
                 unit: Pointed::new(id, team, owner),
-                tier: picking.tier(relation(team), book.own(unit_type)),
+                tier: picking.tier(own.relation_to(team), book.own(unit_type)),
                 base,
                 shape,
                 least: picking.least_at(&scale, base + Vec3::Y * (shape.height / 2.0)),
@@ -234,12 +225,14 @@ impl UnitPickingPlugin {
                 .flat_map(PickParts::iter)
                 .filter_map(|part| {
                     let (mesh, aabb, place, shown, material) = parts.get(part).ok()?;
-                    shown.get().then(|| Part {
-                        to_local: place.affine().inverse(),
-                        center: aabb.center.into(),
-                        half: aabb.half_extents.into(),
-                        mesh: mesh.id(),
-                        material: material.map(|material| material.id()),
+                    shown.get().then(|| {
+                        Part::from(PartSetup {
+                            place: place.affine(),
+                            center: aabb.center.into(),
+                            half: aabb.half_extents.into(),
+                            mesh: mesh.id(),
+                            material: material.map(|material| material.id()),
+                        })
                     })
                 });
             scene.push(target, shown);

@@ -37,6 +37,8 @@ default-members = [
     "crates/base/common",
     "crates/base/common-derive",
     "crates/base/log",
+    "crates/base/logging",
+    "crates/base/platform",
     "crates/base/store",
     "crates/base/threads",
     "crates/capabilities/abilities",
@@ -70,6 +72,7 @@ default-members = [
     "crates/network/net-despawns",
     "crates/network/net-emulator",
     "crates/network/net-endpoint",
+    "crates/network/net-frame-interpolation",
     "crates/network/net-interpolation",
     "crates/network/net-link",
     "crates/network/net-messages",
@@ -86,8 +89,10 @@ default-members = [
     "crates/network/net-udp",
     "crates/session/bots",
     "crates/session/client-files",
+    "crates/session/host",
     "crates/session/package",
     "crates/session/package-disk",
+    "crates/session/package-format",
     "crates/session/protocol",
     "crates/session/runner",
     "crates/sim/geometry",
@@ -124,8 +129,15 @@ reads = [
 joins = "test"
 steps = [{ tests = "package(=campfire-package-disk) & test(=package_dir::tests::every_workspace_package_holds_the_index_of_its_files)", env = { CAMPFIRE_BLESS = "1" } }]
 
+# The one test that compares the script API's reference with what the registry writes writes it
+# again, so a change to the API comes with its reference (06-script-api.md, One source).
+[workspace.metadata.drive.commands.reference]
+joins = "test"
+steps = [{ tests = "package(=campfire-capabilities) & binary(=tests) & test(=scripts::script_api::the_reference_is_what_the_registry_writes)", env = { CAMPFIRE_BLESS = "1" } }]
+
 # The LAN check, with the processes it starts built beside it as they ship, in one build of the
-# four, after the tests, whose build writes the server and the verifier there with every feature.
+# four in the dev profile, on the units the tests built where their features agree
+# (02-engine-core.md, The LAN check builds in the dev profile).
 [workspace.metadata.drive.commands.lan]
 joins = "gate"
 steps = [
@@ -138,9 +150,9 @@ steps = [
 steps = [{ cargo = "run --profile release-dev -p campfire-zero-hour-check", args = true }]
 
 # The repository's layout and the names its Rust files declare, in one text file for review: its
-# argument is the file it writes.
+# argument is the file it writes. It builds in `release-dev`, as the Zero Hour check does.
 [workspace.metadata.drive.commands.vocabulary]
-steps = [{ cargo = "run -p campfire-vocabulary", args = true }]
+steps = [{ cargo = "run --profile release-dev -p campfire-vocabulary", args = true }]
 
 [workspace.package]
 version = "0.1.0"
@@ -182,6 +194,7 @@ campfire-common-derive = { path = "crates/base/common-derive" }
 campfire-client = { path = "crates/apps/client" }
 campfire-import = { path = "crates/apps/import" }
 campfire-log = { path = "crates/base/log" }
+campfire-logging = { path = "crates/base/logging" }
 campfire-math = { path = "crates/sim/math" }
 campfire-net = { path = "crates/network/net" }
 campfire-net-bytes = { path = "crates/network/net-bytes" }
@@ -191,6 +204,7 @@ campfire-net-core = { path = "crates/network/net-core" }
 campfire-net-despawns = { path = "crates/network/net-despawns" }
 campfire-net-emulator = { path = "crates/network/net-emulator" }
 campfire-net-endpoint = { path = "crates/network/net-endpoint" }
+campfire-net-frame-interpolation = { path = "crates/network/net-frame-interpolation" }
 campfire-net-interpolation = { path = "crates/network/net-interpolation" }
 campfire-net-link = { path = "crates/network/net-link" }
 campfire-net-messages = { path = "crates/network/net-messages" }
@@ -207,13 +221,16 @@ campfire-net-timeline = { path = "crates/network/net-timeline" }
 campfire-net-transport = { path = "crates/network/net-transport" }
 campfire-net-udp = { path = "crates/network/net-udp" }
 campfire-client-files = { path = "crates/session/client-files" }
+campfire-host = { path = "crates/session/host" }
 campfire-package = { path = "crates/session/package" }
 campfire-package-disk = { path = "crates/session/package-disk" }
+campfire-package-format = { path = "crates/session/package-format" }
 campfire-protocol = { path = "crates/session/protocol" }
 campfire-runner = { path = "crates/session/runner" }
 campfire-schedule = { path = "crates/sim/schedule" }
 campfire-script = { path = "crates/capabilities/core/script" }
 campfire-sim = { path = "crates/sim/sim" }
+campfire-platform = { path = "crates/base/platform" }
 campfire-store = { path = "crates/base/store" }
 campfire-threads = { path = "crates/base/threads" }
 campfire-test-packages = { path = "crates/test/test-packages" }
@@ -248,7 +265,6 @@ getrandom = { version = "=0.4.3", default-features = false }
 gltf-json = { version = "=1.4.1", default-features = false }
 httparse = { version = "=1.10.1", default-features = false }
 libc = { version = "=0.2.191", default-features = false }
-lz4_flex = { version = "=0.14.0", default-features = false }
 miniz_oxide = { version = "=0.9.1", default-features = false }
 naga = { version = "=30.0.1", default-features = false }
 netdev = { version = "=0.46.3", default-features = false }
@@ -284,6 +300,8 @@ windows = { version = "=0.62.2", default-features = false }
 xmltree = { version = "=0.12.0", default-features = false }
 zeroize = { version = "=1.9.1", default-features = false }
 
+# Opt-level 1, not 0, keeps the debug build's scripted matches and sweeps inside their time
+# bounds (02-engine-core.md, The workspace's own code builds at opt-level 1).
 [profile.dev]
 opt-level = 1
 debug = "line-tables-only"
@@ -298,6 +316,8 @@ codegen-units = 1
 panic = "abort"
 debug = "full"
 split-debuginfo = "off"
+# A plain integer that wraps in a shipped sim panics, as it does in a test, and does not desync
+# (02-engine-core.md, A release checks overflow).
 overflow-checks = true
 
 [profile.bench]

@@ -25,10 +25,18 @@ use crate::lists_of::ListsOf;
 /// The effect lists of each action, their names resolved as the action loaded: one buffer, by
 /// action id the run of each of its lists, `on_resolve`, `on_hit` and `on_end`, and by launch id
 /// the run of each list a launch holds, `on_hit` and `on_end`. An action past the end has none.
-/// Package data, not state.
+/// Package data, not state, which a clone shares.
 #[derive(Resource, Debug, Clone, Default)]
 #[component(immutable)]
 pub struct EffectListBook {
+    effects: Arc<[EffectSpec]>,
+    runs: Arc<[[Range<u32>; 3]]>,
+    launches: Arc<[[Range<u32>; 2]]>,
+}
+
+/// An `EffectListBook` as the load fills it, action by action.
+#[derive(Debug, Default)]
+pub(crate) struct EffectListBuilder {
     effects: Vec<EffectSpec>,
     runs: Vec<[Range<u32>; 3]>,
     launches: Vec<[Range<u32>; 2]>,
@@ -48,16 +56,24 @@ pub struct ListCall {
     pub reached: ActionTarget,
 }
 
-impl EffectListBook {
+impl EffectListBuilder {
+    pub(crate) fn build(self) -> EffectListBook {
+        EffectListBook {
+            effects: self.effects.into(),
+            runs: self.runs.into(),
+            launches: self.launches.into(),
+        }
+    }
+
     /// Adds the lists of `action`, which loaded last, from `data`, their names resolved by
     /// `names`: `on_resolve`, `on_hit` and `on_end`, and the lists each launch of them holds,
     /// however deep; an error for a name the match does not have, or a number or a duration that
     /// breaks its rule, which fails the whole load.
-    pub fn push(
+    pub(crate) fn push(
         &mut self,
         action: ActionId,
         data: &ActionData,
-        names: &dyn EffectNames,
+        names: EffectNames<'_>,
     ) -> Result<(), ActionError> {
         if self.runs.len() <= action.index() {
             self.runs.resize(action.index() + 1, [0..0, 0..0, 0..0]);
@@ -76,7 +92,7 @@ impl EffectListBook {
         &mut self,
         data: &ActionData,
         lists: &LaunchLists,
-        names: &dyn EffectNames,
+        names: EffectNames<'_>,
     ) -> Result<LaunchId, EffectError> {
         let lists = [
             self.append(data, ListHook::OnHit, &lists.on_hit, names)?,
@@ -94,7 +110,7 @@ impl EffectListBook {
         data: &ActionData,
         hook: ListHook,
         list: &[EffectData],
-        names: &dyn EffectNames,
+        names: EffectNames<'_>,
     ) -> Result<Range<u32>, EffectError> {
         let resolved: Vec<EffectSpec> = list
             .iter()
@@ -136,7 +152,9 @@ impl EffectListBook {
         }
         Ok(())
     }
+}
 
+impl EffectListBook {
     /// The list `of` names: an action's `on_resolve`, `on_hit` or `on_end`, or a launch's
     /// `on_hit` or `on_end`.
     pub fn of(&self, of: ListsOf) -> &[EffectSpec] {
@@ -153,7 +171,7 @@ impl EffectListBook {
     }
 
     /// Whether the match loaded `launch`.
-    pub const fn has_launch(&self, launch: LaunchId) -> bool {
+    pub fn has_launch(&self, launch: LaunchId) -> bool {
         (launch.0 as usize) < self.launches.len()
     }
 
@@ -180,14 +198,14 @@ impl EffectListBook {
 /// into `book`.
 #[derive(Debug)]
 struct ListResolve<'r> {
-    book: &'r mut EffectListBook,
+    book: &'r mut EffectListBuilder,
     data: &'r ActionData,
     hook: ListHook,
-    names: &'r dyn EffectNames,
+    names: EffectNames<'r>,
 }
 
 impl EffectResolveCx for ListResolve<'_> {
-    fn names(&self) -> &dyn EffectNames {
+    fn names(&self) -> EffectNames<'_> {
         self.names
     }
 
@@ -213,7 +231,32 @@ impl Book for EffectListBook {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use campfire_values::ActionId;
+
+    use crate::action_data::ActionData;
+    use crate::effect_list_book::{EffectListBook, EffectListBuilder};
+    use crate::effect_names::EffectNames;
+    use crate::error::ActionError;
     use crate::launch_id::LaunchId;
+
+    impl EffectListBook {
+        /// The book with the lists of `action` added, as a load adds them, for a test that
+        /// loads an action into a match built before it.
+        pub(crate) fn pushed(
+            &self,
+            action: ActionId,
+            data: &ActionData,
+            names: EffectNames<'_>,
+        ) -> Result<Self, ActionError> {
+            let mut builder = EffectListBuilder {
+                effects: self.effects.to_vec(),
+                runs: self.runs.to_vec(),
+                launches: self.launches.to_vec(),
+            };
+            builder.push(action, data, names)?;
+            Ok(builder.build())
+        }
+    }
 
     impl LaunchId {
         /// The launch at `at` among the match's launches.

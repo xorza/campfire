@@ -9,7 +9,7 @@ use crate::durable_file::error::{DurableCreateError, DurableError};
 use crate::input_file::InputFile;
 use crate::input_file::error::ReadError;
 use crate::path_error::PathError;
-use crate::platform::user_only::UserOnly;
+use campfire_platform::UserOnly;
 
 /// A secret's file, which only its user may open, as a key's: made from its path where the path
 /// enters, it reads and writes the file and gives no path back, so no other read of a secret
@@ -86,8 +86,8 @@ impl fmt::Display for SecretFile {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::platform::user_only::UserOnly;
     use crate::secret_file::SecretFile;
+    use campfire_platform::UserOnly;
 
     impl SecretFile {
         /// Lets other users read the file: a test's secret file that is not its user's only.

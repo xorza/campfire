@@ -2,13 +2,11 @@ use bevy::asset::{Assets, Handle, uuid_handle};
 use bevy::color::{Color, ColorToComponents, LinearRgba};
 use bevy::ecs::component::Component;
 use bevy::ecs::resource::Resource;
-use bevy::ecs::system::{Commands, Res, ResMut};
+use bevy::ecs::system::{Res, ResMut};
 use bevy::mesh::MeshTag;
 use bevy::render::storage::ShaderBuffer;
 use campfire_client_files::TeamColors;
 use campfire_values::Team;
-
-use crate::view::client_data::ClientData;
 
 /// The colors the models are painted by, in one buffer every file material reads: the match's
 /// team colors, then each tint, in linear light. A mesh's tag names its team's place and its
@@ -42,17 +40,16 @@ impl MatchColors {
         Self { teams }
     }
 
-    /// Puts the colors of the mode's team colors file in the buffer, and keeps them.
-    pub(crate) fn upload(
-        data: Res<'_, ClientData>,
-        mut buffers: ResMut<'_, Assets<ShaderBuffer>>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        let colors = Self::new(data.team_colors.clone());
+    /// Puts the colors in the buffer.
+    pub(crate) fn upload(colors: Res<'_, Self>, mut buffers: ResMut<'_, Assets<ShaderBuffer>>) {
         buffers
             .insert(Self::BUFFER.id(), ShaderBuffer::from(colors.linear()))
             .expect("the buffer's handle is its own");
-        commands.insert_resource(colors);
+    }
+
+    /// The place of `team` among the team colors.
+    pub(crate) fn place(&self, team: Team) -> usize {
+        self.teams.place(team)
     }
 
     /// The colors, in linear light, in the buffer's order.

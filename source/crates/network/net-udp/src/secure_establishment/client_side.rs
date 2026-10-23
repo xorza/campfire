@@ -1,4 +1,5 @@
-//! A client's handshake: its `Initial`, a Retry's token, the server's flight, and its own end.
+//! A client's handshake: its hello in `Initial`s, a Retry's token, the server's flight, and its
+//! own end.
 
 use core::net::SocketAddr;
 use core::time::Duration;
@@ -47,13 +48,10 @@ struct Attempt {
     id: [u8; ID_LEN],
     server: SocketAddr,
     tls: Connection,
-    /// The `ClientHello`, which each `Initial` carries again.
+    /// The `ClientHello`, in as many `Initial`s as it needs, which go again together.
     hello: Vec<u8>,
     token: Option<[u8; TOKEN_LEN]>,
-    /// Whether a Retry came, which the client takes once.
-    retried: bool,
-    /// Whether the server answered with its flight, after which the server sends it again.
-    heard: bool,
+    phase: ClientPhase,
     initial: CryptoStream,
     handshake: CryptoStream,
     handshake_keys: Option<Keys>,
@@ -68,10 +66,18 @@ impl core::fmt::Debug for Attempt {
         f.debug_struct("Attempt")
             .field("id", &self.id)
             .field("server", &self.server)
-            .field("retried", &self.retried)
-            .field("heard", &self.heard)
+            .field("phase", &self.phase)
             .finish_non_exhaustive()
     }
+}
+
+/// Where a client's handshake stands: its hello sent, then once a Retry came, which it takes
+/// once, and once the server answered with its flight, which the server then sends again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClientPhase {
+    Hello,
+    Retried,
+    Answered,
 }
 
 #[derive(Debug)]
@@ -103,7 +109,7 @@ impl ClientSide {
     /// Reads a datagram of the server's: a Retry, a refusal, an alert or a step of its
     /// handshake, which may end it.
     fn read(&mut self, now: Instant, datagram: Datagram, out: &mut Establishing) {
-        let Datagram { from, payload } = datagram;
+        let Datagram { from, payload, .. } = datagram;
         let Some(packet) = HandshakePacket::read(payload) else {
             return;
         };
@@ -117,6 +123,7 @@ impl ClientSide {
         {
             for datagram in &finished.datagrams {
                 out.outbound.push(Outbound {
+                    from_ip: None,
                     to: finished.server,
                     datagram: datagram.clone(),
                 });
@@ -131,9 +138,9 @@ impl ClientSide {
         }
         let outcome = match packet {
             HandshakePacket::Retry { id, token }
-                if id == attempt.id && !attempt.retried && !attempt.heard =>
+                if id == attempt.id && attempt.phase == ClientPhase::Hello =>
             {
-                attempt.retried = true;
+                attempt.phase = ClientPhase::Retried;
                 attempt.token = Some(token);
                 attempt.resend.restart(now);
                 attempt.send_initial(out);
@@ -148,7 +155,7 @@ impl ClientSide {
             HandshakePacket::Initial {
                 id, offset, data, ..
             } if id == attempt.id => {
-                attempt.heard = true;
+                attempt.phase = ClientPhase::Answered;
                 let mut plain = Vec::new();
                 attempt.initial.push(offset, &data, &mut plain);
                 attempt.read(&plain, out)
@@ -166,7 +173,7 @@ impl ClientSide {
                 else {
                     return;
                 };
-                attempt.heard = true;
+                attempt.phase = ClientPhase::Answered;
                 let mut plain = Vec::new();
                 attempt.handshake.push(offset, &data, &mut plain);
                 attempt.read(&plain, out)
@@ -186,6 +193,7 @@ impl ClientSide {
                     .expect("a done handshake was an attempt");
                 self.tokens = done.params.tokens.to_vec();
                 out.established.push(Established {
+                    local: None,
                     peer: attempt.server,
                     protection: Protection::Sealed(Box::new(RustlsSeal::new(done.keys))),
                     prefix: Some(done.params.id),
@@ -229,7 +237,7 @@ impl Establish for ClientSide {
             out.failed = Some(UnlinkReason::TimedOut);
             return;
         }
-        if !attempt.heard && now >= attempt.resend.at() {
+        if attempt.phase != ClientPhase::Answered && now >= attempt.resend.at() {
             attempt.resend.back_off(now);
             attempt.send_initial(out);
         }
@@ -238,7 +246,7 @@ impl Establish for ClientSide {
     fn next_deadline(&self) -> Option<Instant> {
         let attempt = self.attempt.as_ref().map(|attempt| {
             let give_up = attempt.started + self.patience;
-            if attempt.heard {
+            if attempt.phase == ClientPhase::Answered {
                 give_up
             } else {
                 give_up.min(attempt.resend.at())
@@ -275,8 +283,7 @@ impl ClientEstablish for ClientSide {
             tls,
             hello,
             token: self.tokens.pop(),
-            retried: false,
-            heard: false,
+            phase: ClientPhase::Hello,
             initial: CryptoStream::default(),
             handshake: CryptoStream::default(),
             handshake_keys: None,
@@ -307,17 +314,22 @@ struct Done {
 }
 
 impl Attempt {
+    /// Sends the hello, in as many padded `Initial`s as it needs, each with the token.
     fn send_initial(&self, out: &mut Establishing) {
-        out.outbound.push(Outbound {
-            to: self.server,
-            datagram: handshake_packet::initial(
-                self.id,
-                self.token.as_ref(),
-                0,
-                &self.hello,
-                Padding::Padded,
-            ),
-        });
+        let mut send = CryptoSend::default();
+        for chunk in self.hello.chunks(handshake_packet::INITIAL_DATA) {
+            out.outbound.push(Outbound {
+                from_ip: None,
+                to: self.server,
+                datagram: handshake_packet::initial(
+                    self.id,
+                    self.token.as_ref(),
+                    send.take(chunk.len()),
+                    chunk,
+                    Padding::Padded,
+                ),
+            });
+        }
     }
 
     /// Feeds the server's handshake data to TLS and takes what TLS writes: the handshake keys,
@@ -353,6 +365,7 @@ impl Attempt {
                 }
                 for datagram in datagrams {
                     out.outbound.push(Outbound {
+                        from_ip: None,
                         to: self.server,
                         datagram,
                     });
@@ -372,6 +385,7 @@ impl Attempt {
     fn fail(&self, out: &mut Establishing) -> Outcome {
         let alert = self.tls.alert().map_or(80, u8::from);
         out.outbound.push(Outbound {
+            from_ip: None,
             to: self.server,
             datagram: handshake_packet::alert(self.id, alert),
         });
@@ -388,6 +402,7 @@ impl Attempt {
         };
         for datagram in &finished {
             out.outbound.push(Outbound {
+                from_ip: None,
                 to: self.server,
                 datagram: datagram.clone(),
             });

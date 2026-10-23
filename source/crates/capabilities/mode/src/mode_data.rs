@@ -198,14 +198,16 @@ pub enum InputType {
     StringList,
 }
 
-/// A mode param: a value, a list, or a text, as `ctx.params` reads it in the mode's, the AI's
-/// and the bots' scripts, and as a marker's params and a bot's own hold it.
+/// A mode param: a value, a name, a list, or a text, as `ctx.params` reads it in the mode's, the
+/// AI's and the bots' scripts, and as a marker's params and a bot's own hold it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ModeParam {
     Value(Scalar),
+    /// A name the mode declares, such as a unit type's, which no decimal spells.
+    Name(DeclaredName),
     List(Vec<ListEntry>),
-    /// A string that is not a decimal, such as a unit type.
+    /// A string that is neither a decimal nor a declared name, such as a waypoint's.
     Text(String),
 }
 
@@ -220,20 +222,23 @@ impl ModeParam {
                     .iter()
                     .map(|entry| match entry {
                         ListEntry::Value(value) => ScriptValue::from(*value),
+                        ListEntry::Name(name) => text(name.as_str()),
                         ListEntry::Text(entry) => text(entry),
                     })
                     .collect(),
             ),
+            Self::Name(name) => text(name.as_str()),
             Self::Text(value) => text(value),
         }
     }
 }
 
-/// An entry of a list param: a value, or a string that is not a decimal, such as a unit type.
+/// An entry of a list param: a value, a declared name, or a string that is neither.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ListEntry {
     Value(Scalar),
+    Name(DeclaredName),
     Text(String),
 }
 
@@ -286,5 +291,42 @@ pub(crate) mod internals {
                 ..self
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::Toml;
+    use campfire_math::Num;
+
+    use super::*;
+
+    #[test]
+    fn a_param_reads_as_a_value_then_a_name_then_a_text() {
+        #[derive(Debug, Deserialize)]
+        struct Params {
+            params: BTreeMap<DeclaredName, ModeParam>,
+        }
+        let Params { params } = Toml::parse(
+            r#"params = { a = 2, b = "0.5", c = "tank", d = "Fixture_Center", e = ["tank", "12", "X y"] }"#,
+        )
+        .unwrap();
+        let name = |text| DeclaredName::new(text).unwrap();
+        // A decimal's string is a value, a decimal even for a whole number; a declared name's,
+        // which starts with a letter, a name; any other string a text.
+        assert_eq!(
+            params.into_values().collect::<Vec<_>>(),
+            [
+                ModeParam::Value(Scalar::Int(2)),
+                ModeParam::Value(Scalar::Decimal(Num::ONE / Num::int(2))),
+                ModeParam::Name(name("tank")),
+                ModeParam::Text("Fixture_Center".to_owned()),
+                ModeParam::List(vec![
+                    ListEntry::Name(name("tank")),
+                    ListEntry::Value(Scalar::Decimal(Num::int(12))),
+                    ListEntry::Text("X y".to_owned()),
+                ]),
+            ]
+        );
     }
 }

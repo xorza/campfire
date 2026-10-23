@@ -159,7 +159,7 @@ pub mod internals {
     use campfire_script::{Hook, ScriptFailures};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId};
-    use campfire_stats::{ModifierClocks, Modifiers, Pools, StatRule, Stats};
+    use campfire_stats::{Applier, ModifierClocks, Modifiers, Pools, StatRule, Stats};
     use campfire_units::PoolId;
     use campfire_values::{PackageIndex, Stat};
 
@@ -244,8 +244,7 @@ pub mod internals {
         /// Gives `id` the modifier `name` of package 0, from `source`.
         pub fn give_from(world: &mut World, id: StableId, source: StableId, name: &str) {
             let modifier = Stats::modifier(world, PackageIndex::MODE, name).unwrap();
-            let from = Some((source, None, 1));
-            Stats::give_modifier(world, id, modifier, from, false);
+            Stats::give_modifier(world, id, modifier, Applier::from_unit(source));
         }
 
         /// Each failed call of the tick: the unit it ran for and its hook.

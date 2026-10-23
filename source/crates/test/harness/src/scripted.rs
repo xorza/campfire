@@ -3,9 +3,9 @@ use std::num::NonZeroU32;
 use campfire_actions::ActionTarget;
 use campfire_capabilities::Order;
 use campfire_common::ErrorReport;
-use campfire_common::{AfterLeave, Seat, Tick};
+use campfire_common::{AfterLeave, PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
-use campfire_protocol::{LeaveReason, SeatPlan, ServerInput};
+use campfire_protocol::{LeaveReason, PlayerSlotPlan, ServerInput};
 
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::match_units::MatchUnits;
@@ -14,8 +14,9 @@ use campfire_runner::SessionWorld;
 /// The tick rate of the scripted matches.
 pub(crate) const TICK_HZ: NonZeroU32 = NonZeroU32::new(20).unwrap();
 
-/// One cue of a scripted player `seat` in tick `stamp`: an order, as a plan its match resolves to
-/// the units that stand when it is sent, or the player's join or leave, which its server logs.
+/// One cue of a scripted player `player_slot` in tick `stamp`: an order, as a plan its match
+/// resolves to the units that stand when it is sent, or the player's join or leave, which its
+/// server logs.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Scripted<P> {
     stamp: u64,
@@ -46,7 +47,7 @@ pub enum CastAim {
     Hero {
         slot: u32,
     },
-    /// The point player `seat`'s hero stands at as the input is sent.
+    /// The point player `player_slot`'s hero stands at as the input is sent.
     HeroPoint {
         slot: u32,
     },
@@ -54,11 +55,12 @@ pub enum CastAim {
 
 /// What a scripted input orders, by the role of the units it names.
 pub trait Plan: Copy {
-    /// The order this plan of player `seat` stands for, with its units' stable ids in `units`.
-    fn order(self, units: MatchUnits<'_>, seat: u32) -> Order;
+    /// The order this plan of player `player_slot` stands for, with its units' stable ids in
+    /// `units`.
+    fn order(self, units: MatchUnits<'_>, player_slot: u32) -> Order;
 
     /// What the players of `slots` send at tick 0 of `fixed`, before their first order.
-    fn start(fixed: &mut FixedMatch, slots: &[SeatPlan]);
+    fn start(fixed: &mut FixedMatch, slots: &[PlayerSlotPlan]);
 }
 
 impl<P: Plan> Scripted<P> {
@@ -88,9 +90,10 @@ impl<P: Plan> Scripted<P> {
         }
     }
 
-    /// Runs tick `tick` of `fixed`: first logs the joins and the leaves of `script` in it, then
+    /// Runs the next tick of `fixed`: first logs the joins and the leaves of `script` in it, then
     /// sends its orders stamped for it, each in a packet of its own, then runs it.
-    pub(crate) fn play_tick(script: &[Self], fixed: &mut FixedMatch, tick: u64) {
+    pub(crate) fn play_tick(script: &[Self], fixed: &mut FixedMatch) {
+        let tick = fixed.next_tick().get();
         let now = script.iter().filter(|scripted| scripted.stamp == tick);
         let refused = |error| panic!("tick {tick}: {}", ErrorReport::of(&error));
         for scripted in now.clone() {
@@ -98,7 +101,7 @@ impl<P: Plan> Scripted<P> {
                 Cue::Join => fixed.join(scripted.slot).unwrap_or_else(refused),
                 Cue::Leave => {
                     let leave = ServerInput::Leave {
-                        seat: Seat::new(scripted.slot),
+                        player_slot: PlayerSlot::new(scripted.slot),
                         reason: LeaveReason::Asked,
                         becomes: AfterLeave::Reserve,
                     };

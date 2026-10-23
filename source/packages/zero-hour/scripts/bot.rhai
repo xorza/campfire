@@ -13,7 +13,7 @@
 fn on_bot_think(ctx) {
     let me = ctx.player;
     let chosen = ctx.chosen(me, "faction");
-    let home = start_point(ctx, me.seat);
+    let home = start_point(ctx, me.player_slot);
     if chosen.is_empty() || home == () {
         return;
     }
@@ -172,15 +172,15 @@ fn fight(ctx, me, faction, home, coming) {
     }
 }
 
-// The start of the enemy player seated nearest `from`; `()` with none.
+// The start of the enemy player placed nearest `from`; `()` with none.
 fn nearest_enemy_start(ctx, me, from) {
     let enemies = ctx.enemies(me.team);
     let nearest = ();
     for player in ctx.players {
-        if !player.seated || !enemies.contains(player.team) {
+        if !player.held || !enemies.contains(player.team) {
             continue;
         }
-        let start = start_point(ctx, player.seat);
+        let start = start_point(ctx, player.player_slot);
         if start != () && (nearest == () || from.distance_to(start) < from.distance_to(nearest)) {
             nearest = start;
         }
@@ -188,10 +188,10 @@ fn nearest_enemy_start(ctx, me, from) {
     nearest
 }
 
-// The point of the start waypoint of seat `seat`, `Player_<n>_Start` of slot `n`; `()` on a map
+// The point of the start waypoint of player slot `player_slot`, `Player_<n>_Start` of slot `n`; `()` on a map
 // with none.
-fn start_point(ctx, seat) {
-    let name = `Player_${seat + 1}_Start`;
+fn start_point(ctx, player_slot) {
+    let name = `Player_${player_slot + 1}_Start`;
     for marker in ctx.map.markers("start") {
         if marker.params.name == name {
             return marker.position;

@@ -1,5 +1,4 @@
 use bevy_app::{App, Plugin, PostUpdate, PreUpdate};
-use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use campfire_net_link::LinkSystems;
 use campfire_net_packets::DatagramIo;
@@ -29,14 +28,19 @@ impl<Io: DatagramIo> Plugin for EndpointPlugin<Io> {
             Endpoint::<Io>::receive.in_set(LinkSystems::Receive),
         );
         app.add_systems(PostUpdate, Endpoint::<Io>::send.in_set(LinkSystems::Send));
-        if !app.world().contains_resource::<PacketSessionLinkObserver>() {
-            app.insert_resource(PacketSessionLinkObserver);
-            app.add_observer(PacketSessionLink::unlink);
+        if !app.is_plugin_added::<PacketSessionLinkPlugin>() {
+            app.add_plugins(PacketSessionLinkPlugin);
         }
     }
 }
 
-/// Marks an app whose `PacketSessionLink` observer one endpoint plugin already added, as every IO's
-/// links share it.
-#[derive(Resource, Debug)]
-struct PacketSessionLinkObserver;
+/// The `PacketSessionLink` observer, which every IO's links share, so the first endpoint plugin
+/// adds it once.
+#[derive(Debug)]
+struct PacketSessionLinkPlugin;
+
+impl Plugin for PacketSessionLinkPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_observer(PacketSessionLink::unlink);
+    }
+}

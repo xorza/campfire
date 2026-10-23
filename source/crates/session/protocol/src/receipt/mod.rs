@@ -1,5 +1,5 @@
 use campfire_codec::{Binary, TaggedError};
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use serde::{Deserialize, Serialize};
 
 use crate::delegation::delegation_id::DelegationId;
@@ -11,14 +11,13 @@ use crate::signed::{SignatureDomain, Signed};
 /// Starts every receipt file and states its version, so other bytes are refused at once.
 const FILE_TAG: &[u8] = b"campfire/receipt-file/v1";
 
-/// The server's word that it logged a player's inputs up to seq `seq`, whose chain head is
-/// `head`, durably: their journal records were synced, so no crash loses them. It names the
-/// session, the seat, the delegation whose key signed the chain head then, and the tick it was
-/// made in.
+/// The server's word that it logged a player's inputs up to seq `seq`, whose chain head is `head`,
+/// durably: their journal records were synced, so no crash loses them. It names the session, the
+/// player slot, the delegation whose key signed the chain head then, and the tick it was made in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Receipt {
     pub session_id: SessionId,
-    pub seat: Seat,
+    pub player_slot: PlayerSlot,
     pub delegation: DelegationId,
     pub tick: Tick,
     pub seq: u64,
@@ -32,14 +31,14 @@ pub struct SignedReceipt {
     pub signature: Signature,
 }
 
-/// `domain ‖ session id ‖ u32 seat ‖ delegation id ‖ u64 tick ‖ u64 seq ‖ head`, little-endian,
-/// as the server key signs a receipt.
+/// `domain ‖ session id ‖ u32 player slot ‖ delegation id ‖ u64 tick ‖ u64 seq ‖ head`,
+/// little-endian, as the server key signs a receipt.
 impl Signed for Receipt {
     const DOMAIN: SignatureDomain = SignatureDomain::new("campfire/receipt/v1");
 
     fn write_body(&self, message: &mut Vec<u8>) {
         message.extend_from_slice(self.session_id.as_bytes());
-        message.extend_from_slice(&self.seat.get().to_le_bytes());
+        message.extend_from_slice(&self.player_slot.get().to_le_bytes());
         message.extend_from_slice(self.delegation.as_bytes());
         message.extend_from_slice(&self.tick.get().to_le_bytes());
         message.extend_from_slice(&self.seq.to_le_bytes());

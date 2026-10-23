@@ -21,7 +21,7 @@ use crate::certificate_chain::CertificateChain;
 use crate::certificate_error::CertificateError;
 use crate::handshake_packet::HandshakePacket;
 use crate::secure_establishment::client_side::ClientSide;
-use crate::secure_establishment::server_side::ServerSide;
+use crate::secure_establishment::server_side::{self, ServerSide};
 use crate::server_identity::ServerIdentity;
 use crate::server_secret::ServerSecret;
 use crate::server_trust::ServerTrust;
@@ -160,26 +160,28 @@ impl Exchange {
             if from_client.is_empty() && from_server.is_empty() {
                 return established;
             }
-            for Outbound { to, datagram } in from_client {
+            for Outbound { to, datagram, .. } in from_client {
                 assert_eq!(to, self.server_address);
                 if self.log(0, &datagram) {
                     self.server.receive(
                         now,
                         Datagram {
                             from: self.client_address,
+                            local: None,
                             payload: BytesMut::from(&*datagram),
                         },
                         &mut self.server_out,
                     );
                 }
             }
-            for Outbound { to, datagram } in from_server {
+            for Outbound { to, datagram, .. } in from_server {
                 assert_eq!(to, self.client_address);
                 if self.log(1, &datagram) {
                     self.client.receive(
                         now,
                         Datagram {
                             from: self.server_address,
+                            local: None,
                             payload: BytesMut::from(&*datagram),
                         },
                         &mut self.client_out,
@@ -257,6 +259,7 @@ fn a_token_of_the_last_handshake_skips_the_retry_once() {
         at(20),
         Datagram {
             from: exchange.client_address,
+            local: None,
             payload: replayed,
         },
         &mut exchange.server_out,
@@ -383,6 +386,7 @@ fn an_unknown_connection_id_gets_a_reset_of_its_token() {
         at(0),
         &Datagram {
             from: exchange.client_address,
+            local: None,
             payload: BytesMut::from(&*unknown),
         },
         &mut exchange.server_out,
@@ -398,11 +402,34 @@ fn an_unknown_connection_id_gets_a_reset_of_its_token() {
         at(0),
         &Datagram {
             from: exchange.client_address,
+            local: None,
             payload: BytesMut::from(&unknown[..21]),
         },
         &mut exchange.server_out,
     );
     assert!(exchange.server_out.outbound.is_empty());
+
+    // The resets of one second stop at `RESETS_PER_SECOND`, the first of them already sent at
+    // 0 ms; the next second sends again.
+    let resets = |exchange: &mut Exchange, ms, count| {
+        exchange.server_out.outbound.clear();
+        for _ in 0..count {
+            exchange.server.unknown(
+                at(ms),
+                &Datagram {
+                    from: exchange.client_address,
+                    local: None,
+                    payload: BytesMut::from(&*unknown),
+                },
+                &mut exchange.server_out,
+            );
+        }
+        exchange.server_out.outbound.len()
+    };
+    let limit = usize::try_from(server_side::RESETS_PER_SECOND).unwrap();
+    assert_eq!(resets(&mut exchange, 500, limit), limit - 1);
+    assert_eq!(resets(&mut exchange, 999, 1), 0);
+    assert_eq!(resets(&mut exchange, 1_000, 1), 1);
 }
 
 /// A sealed datagram of a pending handshake's connection ID, as a link's jitter brings the
@@ -422,15 +449,25 @@ fn a_pending_handshake_holds_its_early_datagrams() {
         let mut early = id.to_bytes().to_vec();
         early.resize(40, fill);
         let payload = BytesMut::from(&*early);
-        exchange
-            .server
-            .unknown(at(1), &Datagram { from, payload }, &mut exchange.server_out);
+        exchange.server.unknown(
+            at(1),
+            &Datagram {
+                from,
+                local: None,
+                payload,
+            },
+            &mut exchange.server_out,
+        );
     }
     assert!(exchange.server_out.outbound.is_empty(), "no reset");
     let end = BytesMut::from(&*exchange.datagrams[0][2]);
     exchange.server.receive(
         at(2),
-        Datagram { from, payload: end },
+        Datagram {
+            from,
+            local: None,
+            payload: end,
+        },
         &mut exchange.server_out,
     );
     let [server] = &*exchange.server_out.established else {
@@ -547,6 +584,7 @@ fn an_initial_under_1200_bytes_gets_no_answer() {
             at(0),
             Datagram {
                 from: exchange.client_address,
+                local: None,
                 payload: BytesMut::from(datagram),
             },
             &mut exchange.server_out,
@@ -588,6 +626,7 @@ fn a_mutated_handshake_datagram_is_refused_or_read() {
                     at(1),
                     Datagram {
                         from: address(3, port),
+                        local: None,
                         payload: BytesMut::from(&*mutated),
                     },
                     &mut exchange.server_out,
@@ -611,6 +650,7 @@ fn a_mutated_handshake_datagram_is_refused_or_read() {
                     at(1),
                     Datagram {
                         from: exchange.server_address,
+                        local: None,
                         payload: BytesMut::from(&*mutated),
                     },
                     &mut exchange.client_out,
@@ -658,4 +698,67 @@ fn the_seal_refuses_every_changed_datagram() {
             assert!(open(&mutated).is_err(), "{mutated:02x?} opened");
         }
     }
+}
+
+/// A hello past three `Initial`s, as a client's long list of protocols makes it, goes as that
+/// many `Initial`s: the server starts at the first that comes, of any offset, answers no
+/// duplicate before the hello is whole, and answers once TLS read it all, so a handshake whose
+/// `Initial`s arrive in reverse order seals its packet session.
+#[test]
+fn a_hello_past_three_initials_connects_in_any_order() {
+    let trust = pinned();
+    let mut config = (*trust.tls_config(ALPN)).clone();
+    config
+        .alpn_protocols
+        .extend((0..20_u8).map(|name| vec![b'a' + name; 200]));
+    let client = ClientSide::new(Arc::new(config), trust.name(), PATIENCE, Random::seeded(1));
+    let mut exchange = Exchange::with_client(client, &identity(), roomy());
+    // A first handshake, for a token of the server's that skips the Retry.
+    exchange.connect(at(0));
+    let [client, server] = exchange.run(at(0));
+    assert_eq!([client.len(), server.len()], [1, 1]);
+
+    exchange.connect(at(10));
+    let mut initials: Vec<Bytes> = core::mem::take(&mut exchange.client_out.outbound)
+        .into_iter()
+        .map(|outbound| outbound.datagram)
+        .collect();
+    assert!(initials.len() > 3, "{} Initials", initials.len());
+    assert!(
+        initials
+            .iter()
+            .all(|datagram| kind(datagram) == Kind::Initial)
+    );
+    initials.reverse();
+    let deliver = |exchange: &mut Exchange, datagram: &Bytes| {
+        exchange.server.receive(
+            at(10),
+            Datagram {
+                from: exchange.client_address,
+                local: None,
+                payload: BytesMut::from(&**datagram),
+            },
+            &mut exchange.server_out,
+        );
+    };
+    // The last piece first, and again: the hello is not whole, so the server sends nothing.
+    deliver(&mut exchange, &initials[0]);
+    deliver(&mut exchange, &initials[0]);
+    for datagram in &initials[1..initials.len() - 1] {
+        deliver(&mut exchange, datagram);
+    }
+    assert!(exchange.server_out.outbound.is_empty());
+    // The first piece makes it whole: the flight goes once.
+    deliver(&mut exchange, initials.last().unwrap());
+    let flight: Vec<Kind> = exchange
+        .server_out
+        .outbound
+        .iter()
+        .map(|outbound| kind(&outbound.datagram))
+        .collect();
+    assert_eq!(flight.first(), Some(&Kind::Initial));
+    assert!(flight[1..].iter().all(|&kind| kind == Kind::Handshake));
+    let [client, server] = exchange.run(at(10));
+    assert_eq!([client.len(), server.len()], [1, 1]);
+    assert_eq!(client[0].binding, server[0].binding);
 }

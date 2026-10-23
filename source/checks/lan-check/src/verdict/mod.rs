@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use campfire_common::{Seat, Tick};
-use campfire_log::LogLevel;
-use campfire_net::{
-    InputsDiscarded, LinkLossCause, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten,
-    TicksCaughtUp,
+use campfire_common::{PlayerSlot, Tick};
+use campfire_host::{
+    InputsDiscarded, Listening, MatchStarted, OrdersSent, SessionWritten, TicksCaughtUp,
 };
+use campfire_log::LogLevel;
+use campfire_net::{LinkLossCause, LinkLost};
 use campfire_net_payload::UnlinkReason;
+use campfire_protocol::AppliedInput;
 use campfire_verifier::Verified;
 
 use crate::error::CheckError;
@@ -21,15 +22,6 @@ use crate::session_kind::SessionKind;
 #[derive(Debug, Default)]
 pub(crate) struct Verdict {
     failures: Vec<CheckFailure>,
-}
-
-/// An input a session's log took: its seat, its stamp, and the tick it took effect in, as the
-/// published log holds it, a server bot's among them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LoggedInput {
-    pub(crate) seat: Seat,
-    pub(crate) stamp: Tick,
-    pub(crate) tick: Tick,
 }
 
 /// What a bot process logged of its match, the bot's index, the number of orders its script
@@ -125,25 +117,25 @@ impl Verdict {
         }
     }
 
-    /// Checks that each bot process learned its seat and, when it ran to its end, sent every
+    /// Checks that each bot process learned its player slot and, when it ran to its end, sent every
     /// order of its script, and that the session's log, `logged`, holds exactly the inputs the
     /// bots sent and kept, each taking effect in its stamp tick, or after the ticks of a frame
     /// that `caught_up` with a stall and that it waited for.
     pub(crate) fn orders(
         &mut self,
-        logged: &[LoggedInput],
+        logged: &[AppliedInput],
         caught_up: &[TicksCaughtUp],
         bots: &[BotEvents],
     ) {
-        let mut sent = BTreeMap::<(Seat, Tick), usize>::new();
+        let mut sent = BTreeMap::<(PlayerSlot, Tick), usize>::new();
         for events in bots {
             let bot = events.bot;
-            let Some(MatchStarted { seat, .. }) = events.started else {
-                self.failures.push(CheckFailure::NoSeat { bot });
+            let Some(MatchStarted { player_slot, .. }) = events.started else {
+                self.failures.push(CheckFailure::NoPlayerSlot { bot });
                 continue;
             };
             for &OrdersSent { stamp, orders, .. } in &events.kept {
-                *sent.entry((seat, stamp)).or_default() += orders;
+                *sent.entry((player_slot, stamp)).or_default() += orders;
             }
             let count: usize = events.sent.iter().map(|sent| sent.orders).sum();
             if events.whole && count != events.scripted {
@@ -154,22 +146,30 @@ impl Verdict {
                 });
             }
         }
-        let mut by_stamp = BTreeMap::<(Seat, Tick), usize>::new();
-        for &LoggedInput { seat, stamp, tick } in logged {
-            *by_stamp.entry((seat, stamp)).or_default() += 1;
+        let mut by_stamp = BTreeMap::<(PlayerSlot, Tick), usize>::new();
+        for &AppliedInput {
+            player_slot,
+            stamp,
+            tick,
+        } in logged
+        {
+            *by_stamp.entry((player_slot, stamp)).or_default() += 1;
             let waited = caught_up.iter().any(|ticks| ticks.delayed(stamp, tick));
             if tick != stamp && !waited {
-                self.failures
-                    .push(CheckFailure::Moved { seat, stamp, tick });
+                self.failures.push(CheckFailure::Moved {
+                    player_slot,
+                    stamp,
+                    tick,
+                });
             }
         }
         let keys: BTreeSet<_> = sent.keys().chain(by_stamp.keys()).collect();
-        for &(seat, stamp) in keys {
-            let sent = sent.get(&(seat, stamp)).copied().unwrap_or(0);
-            let logged = by_stamp.get(&(seat, stamp)).copied().unwrap_or(0);
+        for &(player_slot, stamp) in keys {
+            let sent = sent.get(&(player_slot, stamp)).copied().unwrap_or(0);
+            let logged = by_stamp.get(&(player_slot, stamp)).copied().unwrap_or(0);
             if sent != logged {
                 self.failures.push(CheckFailure::Unlogged {
-                    seat,
+                    player_slot,
                     stamp,
                     sent,
                     logged,

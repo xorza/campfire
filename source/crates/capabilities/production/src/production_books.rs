@@ -1,7 +1,7 @@
 use bevy_ecs::system::{Res, SystemParam};
-use campfire_actions::{ActionBook, ByAction};
-use campfire_common::Seat;
-use campfire_declarations::ByType;
+use campfire_actions::ActionBook;
+use campfire_common::PlayerSlot;
+use campfire_declarations::ById;
 use campfire_stats::PlayerModifiers;
 use campfire_values::{ActionId, UnitType};
 
@@ -19,9 +19,9 @@ use crate::train_spec::TrainSpec;
 #[derive(SystemParam, Debug)]
 pub(crate) struct ProductionBooks<'w> {
     pub actions: Res<'w, ActionBook>,
-    pub(crate) producers: Res<'w, ByType<ProducerSpec>>,
+    pub(crate) producers: Res<'w, ById<UnitType, ProducerSpec>>,
     pub(crate) requirements: Res<'w, RequirementBook>,
-    pub(crate) trains: Res<'w, ByAction<TrainSpec>>,
+    pub(crate) trains: Res<'w, ById<ActionId, TrainSpec>>,
     pub(crate) costs: Res<'w, SupplyCostBook>,
     pub(crate) rules: Res<'w, SupplyBook>,
 }
@@ -33,7 +33,7 @@ pub(crate) struct ProductionBooks<'w> {
 pub(crate) struct TrainAsk<'a> {
     pub(crate) unit_type: UnitType,
     pub(crate) queue: &'a TrainQueue,
-    pub(crate) owner: Option<Seat>,
+    pub(crate) owner: Option<PlayerSlot>,
     pub(crate) modifiers: Option<&'a PlayerModifiers>,
     pub(crate) action: ActionId,
 }
@@ -47,7 +47,7 @@ pub(crate) enum TrainAdmission {
     Free,
     /// It passes, and holds `supply` of `owner`'s.
     Holds {
-        owner: Seat,
+        owner: PlayerSlot,
         supply: u32,
     },
 }

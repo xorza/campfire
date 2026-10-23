@@ -3,41 +3,41 @@ use std::sync::Arc;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use bevy_time::{Time, Virtual};
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
+use campfire_log::LogEvent;
 use campfire_net_timeline::{Clock, LocalTimeline, TimelineRate};
 use campfire_package::ModePackages;
 use campfire_protocol::{ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_runner::{CheckedTerms, Session, SessionSource};
 use campfire_sim::MatchRate;
-use campfire_visibility::Visibility;
 
-use crate::match_clock::MatchClock;
-use crate::pace::PaceSpeed;
-use crate::sim_server::bot_driver::BotDriver;
-use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::door::Door;
-use crate::sim_server::error::MatchBeginError;
-use crate::sim_server::journal_watch::{JournalFrom, JournalWatch};
-use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::offering::Offering;
 use crate::sim_server::receipts::Receipts;
-use crate::sim_server::seat_links::SeatLinks;
-use crate::sim_server::server_bots::ServerBots;
-use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::session_dir::{ReplayWith, Replayed, RestoredSession, SessionFiles};
-use crate::sim_server::snapshot_dir::SnapshotDir;
 use crate::sim_server::{FrameStart, SimServerPlugin, replayed};
+use campfire_host::BotDriver;
+use campfire_host::Checkpoints;
+use campfire_host::MatchBeginError;
+use campfire_host::MatchClock;
+use campfire_host::PaceSpeed;
+use campfire_host::PlayerSlotLinks;
+use campfire_host::SaveLoaded;
+use campfire_host::ServerBots;
+use campfire_host::ServerSetup;
+use campfire_host::SnapshotDir;
+use campfire_host::{JournalFrom, JournalWatch};
+use campfire_host::{ReplayWith, Replayed, RestoredSession, SessionFiles};
 
 /// What a server's match runs with from the next fixed tick, new or restored, its session built:
-/// the offering its door offers, the journal the server watches and the snapshots' directory
-/// when it keeps them, its seats, and the server's bots. `begin` builds it on one path for both
+/// the offering its door offers, the journal the server watches and the snapshots' directory when
+/// it keeps them, its player slots, and the server's bots. `begin` builds it on one path for both
 /// sources, and inserts it once.
 #[derive(Debug)]
 pub(crate) struct ServerMatch {
     offering: Offering,
     journal: Option<JournalWatch>,
     snapshots: Option<SnapshotDir>,
-    seat_links: SeatLinks,
+    player_slot_links: PlayerSlotLinks,
     bots: ServerBots,
 }
 
@@ -52,13 +52,13 @@ pub(crate) enum MatchSource<'a> {
 
 /// A new session's match: the log of its header, the seeds of its segments, its journal and
 /// snapshots' directory if the server keeps them, and the links of its players, each with its
-/// seat.
+/// player slot.
 #[derive(Debug)]
 pub(crate) struct NewMatch<'a> {
     pub(crate) log: SessionLog,
     pub(crate) seeds: ServerSeeds,
     pub(crate) files: Option<SessionFiles>,
-    pub(crate) clients: &'a [(Seat, Entity)],
+    pub(crate) clients: &'a [(PlayerSlot, Entity)],
 }
 
 /// What `ServerMatch::begin` takes: the source, the packages of its mode, the server's setup,
@@ -89,16 +89,16 @@ impl ServerMatch {
     /// logged. Every unit replicates to the clients whose team sees it, and the owner's client
     /// predicts it, but a projectile or an area. With its files, the log goes into the journal
     /// as the server logs it, `JournalWatch` watches it, and the server takes the checkpoints
-    /// due. The door takes the joins, and the server's bots play their seats.
+    /// due. The door takes the joins, and the server's bots play their player slots.
     ///
-    /// A new match starts at tick 0, and each of its players' links learns its seat and the
-    /// start tick. A restored match builds from the snapshot of the latest checkpoint whose
-    /// record the log holds, or from tick 0 with none, and replays its log to the tick the server
-    /// stopped before, keeping each tick's state hash while the world holds `TickHashes`; a
-    /// checkpoint begun with no record is taken again as the replay reaches its boundary, and one
-    /// due at the last boundary, as a save the mode asked for, begins there. It logs
-    /// `Disconnected` for each seat a player controls, whose grace period runs from then, so the
-    /// ticks the stop lost take no time in the sim, and the players come back through the door.
+    /// A new match starts at tick 0, and each of its players' links learns its player slot and the
+    /// start tick. A restored match builds from the snapshot of the latest checkpoint whose record
+    /// the log holds, or from tick 0 with none, and replays its log to the tick the server stopped
+    /// before, keeping each tick's state hash while the world holds `TickHashes`; a checkpoint
+    /// begun with no record is taken again as the replay reaches its boundary, and one due at the
+    /// last boundary, as a save the mode asked for, begins there. It logs `Disconnected` for each
+    /// player slot a player controls, whose grace period runs from then, so the ticks the stop lost
+    /// take no time in the sim, and the players come back through the door.
     pub(crate) fn begin(world: &mut World, begin: MatchBegin<'_>) -> Result<(), MatchBeginError> {
         let MatchBegin {
             source,
@@ -108,7 +108,7 @@ impl ServerMatch {
             checked,
         } = begin;
         let terms = source.terms().clone();
-        Self::take_terms(world, &terms, checked.visibility);
+        Self::take_terms(world, &terms);
         let offering = Offering::new(terms, server);
         let signer = Arc::clone(&server.signer);
         match source {
@@ -124,7 +124,7 @@ impl ServerMatch {
                     log.header().players().count(),
                     "one client per player"
                 );
-                let seats = log.seat_count();
+                let player_slots = log.player_slot_count();
                 let source = SessionSource {
                     log,
                     seeds,
@@ -145,27 +145,35 @@ impl ServerMatch {
                     offering,
                     journal,
                     snapshots,
-                    seat_links: SeatLinks::empty(seats),
+                    player_slot_links: PlayerSlotLinks::empty(player_slots),
                     bots,
                 };
                 run.insert(world);
-                Door::seat_new(world, clients);
+                Door::player_slot_new(world, clients);
             }
             MatchSource::Restored(restored) => {
-                let seats = restored.log.seat_count();
+                let player_slots = restored.log.player_slot_count();
                 let with = ReplayWith {
                     packages,
                     signer,
                     checked,
                 };
                 let Replayed { journal, snapshots } = restored.replay(world, with, replayed)?;
-                let players: Vec<Seat> = world.resource::<Session>().log().player_seats().collect();
+                let players: Vec<PlayerSlot> = world
+                    .resource::<Session>()
+                    .log()
+                    .played_player_slots()
+                    .collect();
                 let now = world.resource::<Clock>().now().elapsed();
                 let run = Self {
                     offering,
                     journal: Some(journal),
                     snapshots: Some(snapshots),
-                    seat_links: SeatLinks::gone(seats, players.iter().copied(), now),
+                    player_slot_links: PlayerSlotLinks::gone(
+                        player_slots,
+                        players.iter().copied(),
+                        now,
+                    ),
                     bots,
                 };
                 run.insert(world);
@@ -174,8 +182,11 @@ impl ServerMatch {
                 SimServerPlugin::at_boundary(world);
                 let mut session = world.resource_mut::<Session>();
                 if session.log().result().is_none() {
-                    for &seat in &players {
-                        Door::serve_unless_full(&mut session, ServerInput::Disconnected { seat });
+                    for &player_slot in &players {
+                        Door::serve_unless_full(
+                            &mut session,
+                            ServerInput::Disconnected { player_slot },
+                        );
                     }
                 }
             }
@@ -185,10 +196,10 @@ impl ServerMatch {
 
     /// Takes the session's `terms` before its match begins: bounds the server's frames, so a
     /// frame advances its clock by the ticks of the max input delay less one at most, a tick at
-    /// least, each as long as the clock's tick now, which a local match's pace may have set; and
-    /// keeps their `visibility`, the one copy of it, which each data filter takes its audience
-    /// from as the match's entities spawn.
-    fn take_terms(world: &mut World, terms: &SessionTerms, visibility: Visibility) {
+    /// least, each as long as the clock's tick now, which a local match's pace may have set. The
+    /// match's `MatchFacts` keep their visibility, the one copy of it, which each data filter
+    /// takes its audience from as the match's entities spawn.
+    fn take_terms(world: &mut World, terms: &SessionTerms) {
         let session = MatchRate::new(terms.tick_hz).rate();
         let rate = world.resource::<TimelineRate>().0;
         assert!(
@@ -203,19 +214,48 @@ impl ServerMatch {
         world
             .resource_mut::<Time<Virtual>>()
             .set_max_delta(tick * burst);
-        world.insert_resource(MatchVisibility(visibility));
+    }
+
+    /// Runs the match on from the save its session went back to in place (08-sessions.md, A load
+    /// goes back in place): the match's clock and the frame start from the save's tick, the bots
+    /// play again from it, no player holds a receipt of the inputs the load dropped, and every
+    /// joined link takes the next offer, as `Door::offer_again` says. Each player slot a player
+    /// controls is gone from then, as after a restore, and logs `Disconnected`, until its player
+    /// joins again.
+    pub(crate) fn follow_load(world: &mut World) {
+        let log = world.resource::<Session>().log();
+        let (id, player_slots, next) = (log.session_id(), log.player_slot_count(), log.next_tick());
+        let players: Vec<PlayerSlot> = log.played_player_slots().collect();
+        world.insert_resource(Receipts::new(player_slots));
+        let start = world.resource::<LocalTimeline>().tick() + 1;
+        world.insert_resource(MatchClock::new(start, next));
+        world.insert_resource(FrameStart(next));
+        BotDriver::load(world, next);
+        let now = world.resource::<Clock>().now().elapsed();
+        let links = PlayerSlotLinks::gone(player_slots, players.iter().copied(), now);
+        world.insert_resource(links);
+        Door::offer_again(world, next);
+        let mut session = world.resource_mut::<Session>();
+        for &player_slot in &players {
+            Door::serve_unless_full(&mut session, ServerInput::Disconnected { player_slot });
+        }
+        SaveLoaded {
+            session: id,
+            tick: next,
+        }
+        .log();
     }
 
     /// Runs the match of the world's session from the next fixed tick: the door offers the
-    /// offering, the server watches the journal, the checkpoints go into the snapshots'
-    /// directory when the server keeps them, the players sit in the seats, and the server's bots
-    /// play their seats.
+    /// offering, the server watches the journal, the checkpoints go into the snapshots' directory
+    /// when the server keeps them, the players sit in the player slots, and the server's bots play
+    /// their player slots.
     fn insert(self, world: &mut World) {
         let Self {
             offering,
             journal,
             snapshots,
-            seat_links,
+            player_slot_links,
             bots,
         } = self;
         world.insert_resource(Door::new(offering));
@@ -226,9 +266,9 @@ impl ServerMatch {
             Checkpoints::start(world, snapshots);
         }
         let log = world.resource::<Session>().log();
-        let (seats, next) = (log.seat_count(), log.next_tick());
-        world.insert_resource(seat_links);
-        world.insert_resource(Receipts::new(seats));
+        let (player_slots, next) = (log.player_slot_count(), log.next_tick());
+        world.insert_resource(player_slot_links);
+        world.insert_resource(Receipts::new(player_slots));
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start, next));
         world.insert_resource(FrameStart(next));

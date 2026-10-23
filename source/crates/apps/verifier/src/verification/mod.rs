@@ -120,7 +120,6 @@ pub fn verify_log(
 /// release first, as its packages need not read in this one.
 fn mode_packages(store: &PackageStore, terms: &SessionTerms) -> Result<ModePackages, VerifyError> {
     SessionRules::check_release(terms).map_err(VerifyError::Release)?;
-    store
-        .mode_packages(terms.mode, &terms.map, &terms.dependencies)
+    ModePackages::found(store, terms.mode, &terms.map, &terms.dependencies)
         .map_err(VerifyError::Packages)
 }

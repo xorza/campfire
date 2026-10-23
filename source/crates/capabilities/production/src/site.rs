@@ -6,7 +6,7 @@ use campfire_math::{Num, Rounding};
 use campfire_players::{PlayersWorld, ResourceAmount};
 use campfire_sim::{SimComponent, StableId};
 use campfire_states::{Replication, SentPredicted};
-use campfire_units::UnitEntity;
+use campfire_units::{Unfinished, UnitEntity};
 use campfire_values::{ActionId, NameId, Rank};
 use campfire_visibility::DataKind;
 use serde::de::Error;
@@ -16,9 +16,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// the life it gains over that time, the player resources its build paid, which a cancel gives back
 /// a share of, and, of a `builder` site, the builder that holds it. Its progress, which changes in
 /// each tick its builders build it, is its `SiteProgress`, so a change of the progress leaves the
-/// site unchanged.
+/// site unchanged. Its unit is `Unfinished` while it holds it.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
-#[require(SiteProgress)]
+#[require(SiteProgress, Unfinished)]
 pub struct Site {
     action: ActionId,
     rank: Rank,

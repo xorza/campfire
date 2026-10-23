@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::source_file::SourceFile;
-use crate::workspace::{crates, sources};
+use crate::workspace::Workspace;
 
 /// The cycles of `imports`, a crate's top modules each with the top modules it imports: each
 /// group of two or more modules that reach each other through their imports, sorted.
@@ -149,11 +149,12 @@ fn sibling_imports(
 
 #[test]
 fn no_crates_modules_import_each_other_in_a_cycle() {
-    let sources = sources();
+    let workspace = Workspace::read();
+    let sources = workspace.sources();
     let mut found = Vec::new();
-    for krate in &crates() {
+    for krate in workspace.crates() {
         let src = format!("{}/src", krate.path);
-        for (parent, imports) in sibling_imports(&src, &sources) {
+        for (parent, imports) in sibling_imports(&src, sources) {
             let at: String = parent
                 .iter()
                 .flat_map(|module| ["::", module.as_str()])

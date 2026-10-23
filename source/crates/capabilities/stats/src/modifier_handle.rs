@@ -45,17 +45,32 @@ pub struct HandleOf {
     pub stacks: u32,
 }
 
+/// What a new handle is made of: the instance it is to, its state's `schema`, and the view the
+/// call reads.
+#[derive(Debug, Clone)]
+pub struct HandleSetup {
+    pub of: HandleOf,
+    pub schema: Arc<StateSchema>,
+    pub view: View,
+}
+
 impl ModifierHandle {
-    /// A handle to the instance `of`, with `state` as the call starts to see it, and its state's
-    /// `schema`: `spare`, a handle no script holds any more, filled again when given, so its
-    /// buffers serve once more.
-    pub fn new(
+    /// A handle of `setup`, with `state` as the call starts to see it: `spare`, a handle no
+    /// script holds any more, filled again when given, so its buffers serve once more.
+    pub fn new<'a>(
         spare: Option<Self>,
-        of: HandleOf,
-        state: &[StateValue],
-        schema: Arc<StateSchema>,
-        view: View,
+        setup: HandleSetup,
+        state: impl IntoIterator<Item = &'a StateValue>,
     ) -> Self {
+        Self::filled(spare, setup, &mut state.into_iter())
+    }
+
+    fn filled(
+        spare: Option<Self>,
+        setup: HandleSetup,
+        state: &mut dyn Iterator<Item = &StateValue>,
+    ) -> Self {
+        let HandleSetup { of, schema, view } = setup;
         let HandleOf {
             carrier,
             id,
@@ -70,7 +85,7 @@ impl ModifierHandle {
             data.source = source;
             data.stacks = stacks;
             data.state.clear();
-            data.state.extend_from_slice(state);
+            data.state.extend(state.cloned());
             data.written = false;
             data.removed = false;
             data.schema = schema;
@@ -82,7 +97,7 @@ impl ModifierHandle {
             id,
             source,
             stacks,
-            state: state.to_vec(),
+            state: state.cloned().collect(),
             written: false,
             removed: false,
             schema,
@@ -147,7 +162,9 @@ impl ModifierHandle {
             .index(|_, state: &mut ModifierState, name: &str| {
                 let data = state.0.data();
                 let field = data.field(name)?;
-                Ok(data.state[field.index()].to_value(&data.view))
+                Ok(data
+                    .schema
+                    .read(field, &data.state[field.index()], &data.view))
             })
             .index_set(
                 |_, state: &mut ModifierState, name: &str, value: ScriptValue| -> Checked<()> {

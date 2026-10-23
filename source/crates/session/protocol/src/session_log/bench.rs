@@ -1,7 +1,7 @@
 use std::hint::black_box;
 use std::num::NonZeroU32;
 
-use campfire_common::{MapName, PackageFingerprint, Seat, Tick, Version};
+use campfire_common::{MapName, PackageFingerprint, PlayerSlot, Tick, Version};
 use campfire_measure::{Kind, Scale};
 use criterion::{BatchSize, Criterion};
 
@@ -10,8 +10,8 @@ use crate::delegation::{Delegation, DelegationTerms};
 use crate::harness::test_key::TestKey;
 use crate::input_chain::InputChain;
 use crate::input_rules::InputRules;
-use crate::seat_plan::SeatPlan;
-use crate::seat_start::SeatStart;
+use crate::player_slot_plan::PlayerSlotPlan;
+use crate::player_slot_start::PlayerSlotStart;
 use crate::seed_chain::SeedChain;
 use crate::session_log::SessionLog;
 use crate::session_log::player_packet::PlayerPacket;
@@ -19,10 +19,9 @@ use crate::session_log::session_header::SessionHeader;
 use crate::session_terms::SessionTerms;
 use crate::signature::Signature;
 
-/// One tick's packets as the server records them, each player's one input of 8 bytes signed
-/// over its chain head: the signature checks of a frame, one seat after another, with 8 players
-/// and with 32. Each run records into a log fresh from its header, which the timing leaves
-/// out.
+/// One tick's packets as the server records them, each player's one input of 8 bytes signed over
+/// its chain head: the signature checks of a frame, one player slot after another, with 8 players
+/// and with 32. Each run records into a log fresh from its header, which the timing leaves out.
 pub(crate) fn record_tick(c: &mut Criterion) {
     let mut group = Kind::Integration.group(c, "session_log", Scale::Sample);
     for players in [8, 32] {
@@ -62,49 +61,64 @@ impl TickPackets {
             mode: PackageFingerprint::new([3; 32]),
             map: MapName::parse("lane").expect("a map's name"),
             dependencies: Vec::new(),
-            seats: vec![SeatPlan::Player; usize::try_from(players).expect("seats fit usize")],
+            player_slots: vec![
+                PlayerSlotPlan::Player;
+                usize::try_from(players).expect("player slots fit usize")
+            ],
             visibility: Vec::new(),
             options: Vec::new(),
-            seat_picks: Vec::new(),
+            player_slot_picks: Vec::new(),
         };
         let session_id = terms.session_id();
         // Each player's main key and session key take a byte of their own, past the server's.
-        let key =
-            |seat: u32, of: u32| TestKey::of(u8::try_from(60 + 2 * seat + of).expect("a key"));
+        let key = |player_slot: u32, of: u32| {
+            TestKey::of(u8::try_from(60 + 2 * player_slot + of).expect("a key"))
+        };
         let delegations: Vec<Delegation> = (0..players)
-            .map(|seat| {
+            .map(|player_slot| {
                 let granted = DelegationTerms {
-                    session_key: key(seat, 1).x_only_public_key().0,
+                    session_key: key(player_slot, 1).x_only_public_key().0,
                     server_key: terms.server_key,
                     session_id,
                     seed_contribution: SeedContribution::new([4; 32]),
                     expiration: TestKey::NOW + 86_400,
                 };
-                Delegation::sign(&TestKey::signer(key(seat, 0)), &granted, TestKey::NOW)
+                Delegation::sign(
+                    &TestKey::signer(key(player_slot, 0)),
+                    &granted,
+                    TestKey::NOW,
+                )
             })
             .collect();
         let signatures = (0..players)
             .zip(&delegations)
-            .map(|(seat, delegation)| {
-                let mut chain = InputChain::new(Seat::new(seat), delegation.chain_root());
+            .map(|(player_slot, delegation)| {
+                let mut chain =
+                    InputChain::new(PlayerSlot::new(player_slot), delegation.chain_root());
                 chain.extend(Tick::ZERO, PAYLOAD);
-                let signer = TestKey::signer(key(seat, 1));
+                let signer = TestKey::signer(key(player_slot, 1));
                 signer.sign(&chain.signed_head(session_id))
             })
             .collect();
-        let seats = delegations.into_iter().map(SeatStart::player).collect();
+        let player_slots = delegations
+            .into_iter()
+            .map(PlayerSlotStart::player)
+            .collect();
         Self {
-            header: SessionHeader { terms, seats },
+            header: SessionHeader {
+                terms,
+                player_slots,
+            },
             signatures,
         }
     }
 
-    /// Records each player's packet into `log`, by seat.
+    /// Records each player's packet into `log`, by player slot.
     fn record(&self, log: &mut SessionLog) {
         let mut applied = Vec::new();
-        for (seat, signature) in (0..).zip(&self.signatures) {
+        for (player_slot, signature) in (0..).zip(&self.signatures) {
             let packet = PlayerPacket {
-                seat: Seat::new(seat),
+                player_slot: PlayerSlot::new(player_slot),
                 inputs: [(Tick::ZERO, PAYLOAD)],
                 signature,
             };

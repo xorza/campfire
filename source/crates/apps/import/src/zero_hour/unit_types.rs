@@ -9,15 +9,16 @@ use campfire_orders::AcquireData;
 use campfire_package::UnitsFile;
 use campfire_production::{DropOffData, NodeData, ProductionData};
 
-use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::rules_names::RulesNames;
+use crate::zero_hour::type_name::TypeName;
 
 /// The closed set of the import's unit types, by their names: each the fields its object gives.
 /// The stages after it read it and add no type; what they give a type, its actions and its
 /// production, they return.
 #[derive(Debug)]
 pub(crate) struct ImportedTypes {
-    types: BTreeMap<ImportName, ImportedType>,
+    types: BTreeMap<TypeName, ImportedType>,
 }
 
 /// What the stages give each unit type, by its name: the actions of its slot kinds `weapon`, in its
@@ -28,16 +29,12 @@ pub(crate) struct ImportedTypes {
 /// box is money).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TypeAdditions<'a> {
-    pub(crate) weapon: &'a BTreeMap<ImportName, Vec<DeclaredName>>,
-    pub(crate) command: &'a BTreeMap<ImportName, Vec<DeclaredName>>,
-    pub(crate) production: &'a BTreeMap<ImportName, ProductionData>,
-    pub(crate) nodes: &'a BTreeMap<ImportName, NodeData>,
-    pub(crate) drop_offs: &'a BTreeMap<ImportName, DropOffData>,
+    pub(crate) weapon: &'a BTreeMap<TypeName, Vec<DeclaredName>>,
+    pub(crate) command: &'a BTreeMap<TypeName, Vec<DeclaredName>>,
+    pub(crate) production: &'a BTreeMap<TypeName, ProductionData>,
+    pub(crate) nodes: &'a BTreeMap<TypeName, NodeData>,
+    pub(crate) drop_offs: &'a BTreeMap<TypeName, DropOffData>,
 }
-
-/// The slot kinds of a type's weapons and of its trains and builds, which the rules data declares.
-const WEAPON: &str = "weapon";
-const COMMAND: &str = "command";
 
 /// The package's `data/units.toml`, and the largest speed of its types, when one drives.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,30 +44,36 @@ pub(crate) struct WrittenUnits {
 }
 
 impl ImportedTypes {
-    pub(crate) const fn new(types: BTreeMap<ImportName, ImportedType>) -> Self {
+    pub(crate) const fn new(types: BTreeMap<TypeName, ImportedType>) -> Self {
         Self { types }
     }
 
     /// The package's `data/units.toml`: each unit type in the order of their names, of the
-    /// fields its object gives, the slots, the production and the supply `additions` give it.
-    pub(crate) fn units_file(&self, additions: TypeAdditions<'_>) -> WrittenUnits {
-        let kind = |name| DeclaredName::new(name).expect("a slot kind is a declared name");
+    /// fields its object gives, the slots of the kinds `names` gives, the production and the
+    /// supply `additions` give it.
+    pub(crate) fn units_file(
+        &self,
+        additions: TypeAdditions<'_>,
+        names: &RulesNames,
+    ) -> WrittenUnits {
         let units: BTreeMap<DeclaredName, TomlTable> = self
             .types
             .iter()
             .map(|(name, imported)| {
                 let mut writer = SectionWriter::default();
                 imported.write(&mut writer);
-                let slots: BTreeMap<DeclaredName, Vec<DeclaredName>> =
-                    [(WEAPON, additions.weapon), (COMMAND, additions.command)]
-                        .into_iter()
-                        .filter_map(|(slot, actions)| {
-                            let actions = actions.get(name).filter(|actions| !actions.is_empty());
-                            Some((kind(slot), actions?.clone()))
-                        })
-                        .collect();
+                let slots: BTreeMap<DeclaredName, Vec<DeclaredName>> = [
+                    (&names.weapon_slot, additions.weapon),
+                    (&names.command_slot, additions.command),
+                ]
+                .into_iter()
+                .filter_map(|(slot, actions)| {
+                    let actions = actions.get(name).filter(|actions| !actions.is_empty());
+                    Some((slot.clone(), actions?.clone()))
+                })
+                .collect();
                 // A scan takes a weapon to attack what it finds.
-                let armed = slots.contains_key(&kind(WEAPON));
+                let armed = slots.contains_key(&names.weapon_slot);
                 if !slots.is_empty() {
                     writer.section(&TypeSlotsData(slots));
                 }
@@ -86,7 +89,7 @@ impl ImportedTypes {
                 if let Some(drop_off) = additions.drop_offs.get(name) {
                     writer.section(drop_off);
                 }
-                (name.declared(), writer.into_table())
+                (name.declared().clone(), writer.into_table())
             })
             .collect();
         let max_speed = self
@@ -105,18 +108,20 @@ impl ImportedTypes {
 pub(crate) mod reach_in {
     use std::collections::BTreeMap;
 
+    use crate::zero_hour::rules_names::RulesNames;
     use crate::zero_hour::unit_types::{ImportedTypes, TypeAdditions, WrittenUnits};
 
     impl ImportedTypes {
         /// Its `data/units.toml` of no stage's additions.
         pub(crate) fn bare_file(&self) -> WrittenUnits {
-            self.units_file(TypeAdditions {
+            let additions = TypeAdditions {
                 weapon: &BTreeMap::new(),
                 command: &BTreeMap::new(),
                 production: &BTreeMap::new(),
                 nodes: &BTreeMap::new(),
                 drop_offs: &BTreeMap::new(),
-            })
+            };
+            self.units_file(additions, &RulesNames::default())
         }
     }
 }

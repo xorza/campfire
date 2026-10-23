@@ -8,7 +8,7 @@ use campfire_deliveries::DashDelivering;
 use campfire_navigation::{Party, PartyKey, RouteAsk};
 use campfire_orders::NextThink;
 use campfire_production::{Gatherer, NodeAt, QueueDues};
-use campfire_progression::{LevelUp, LevelUps};
+use campfire_progression::{LevelUp, LevelUps, TrackBook};
 use campfire_sim::{HostRule, Position, SimWorld, SnapshotError, StateDelta, StateRegistry};
 use campfire_stats::{Ends, Lifetime, StackEnd};
 use campfire_units::{
@@ -44,7 +44,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     // Team a holds players 0 and 1, team b player 2. The grunt is of team a: player 0 or 1 owns
     // it, and neither player 2, of team b, nor 3, whom the session lacks.
     assert_eq!(game.get::<Team>(grunt), Some(&Team::new(0)));
-    let owner = |slot| Owner::new(Seat::new(slot));
+    let owner = |slot| Owner::new(PlayerSlot::new(slot));
     assert!(owner(0).check(&game, grunt) && owner(1).check(&game, grunt));
     assert!(!owner(2).check(&game, grunt) && !owner(3).check(&game, grunt));
     let own_type = *game.get::<UnitType>(grunt).unwrap();
@@ -171,6 +171,13 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(ahead.check(&game, grunt));
     ahead.tracks_mut()[0].level = Level::new(2).unwrap();
     assert!(!ahead.check(&game, grunt));
+    // Track 1 holds as many levels as its book gives it, and no more.
+    let levels = game.resource::<TrackBook>().levels(TrackId::new(1));
+    let mut top = on_tracks(1);
+    top.tracks_mut()[0].level = Level::new(u32::try_from(levels).unwrap()).unwrap();
+    assert!(top.check(&game, grunt));
+    top.tracks_mut()[0].level = Level::new(u32::try_from(levels + 1).unwrap()).unwrap();
+    assert!(!top.check(&game, grunt));
     let id = *game.get::<StableId>(grunt).unwrap();
     let level_up = |track| LevelUp {
         id,
@@ -197,8 +204,8 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
     // The match's entity and each player's stand at their named ids, of a player the session
     // has; a unit stands at an allocated id.
     let match_entity = game.match_entity().unwrap();
-    let first = game.player_entity(Seat::new(0)).unwrap();
-    let player = |slot| Player::new(Seat::new(slot));
+    let first = game.player_entity(PlayerSlot::new(0)).unwrap();
+    let player = |slot| Player::new(PlayerSlot::new(slot));
     assert!(MatchEntity.check(&game, match_entity) && !MatchEntity.check(&game, first));
     assert!(player(0).check(&game, first) && !player(1).check(&game, first));
     assert!(!player(0).check(&game, grunt));
@@ -297,22 +304,22 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
             world.entity_mut(entity).remove::<ModeState<AudienceAll>>();
             invalid(ModeState::<AudienceAll>::NAME, Some(StableId::MATCH))
         },
-        // A seat the session has with no player's entity is a breach of the whole match.
+        // A player slot the session has with no player's entity is a breach of the whole match.
         |world| {
-            let entity = world.player_entity(Seat::new(2)).unwrap();
+            let entity = world.player_entity(PlayerSlot::new(2)).unwrap();
             world.despawn(entity);
             invalid(Player::NAME, None)
         },
         |world| {
-            let entity = world.player_entity(Seat::new(0)).unwrap();
+            let entity = world.player_entity(PlayerSlot::new(0)).unwrap();
             world.entity_mut(entity).remove::<PlayerResources>();
-            let id = StableId::of_player(Seat::new(0));
+            let id = StableId::of_player(PlayerSlot::new(0));
             invalid(PlayerResources::NAME, Some(id))
         },
         |world| {
-            let entity = world.player_entity(Seat::new(0)).unwrap();
+            let entity = world.player_entity(PlayerSlot::new(0)).unwrap();
             world.entity_mut(entity).remove::<PlayerModifiers>();
-            let id = StableId::of_player(Seat::new(0));
+            let id = StableId::of_player(PlayerSlot::new(0));
             invalid(PlayerModifiers::NAME, Some(id))
         },
         // A unit: one the mode spawned loses its level, which stats declares for it, a unit
@@ -370,12 +377,12 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
         },
         // A player's entity takes a unit's kind and place.
         |world| {
-            let entity = world.player_entity(Seat::new(0)).unwrap();
+            let entity = world.player_entity(PlayerSlot::new(0)).unwrap();
             let position = Vec3::ZERO;
             world
                 .entity_mut(entity)
                 .insert((UnitEntity, Position::from(position)));
-            let id = StableId::of_player(Seat::new(0));
+            let id = StableId::of_player(PlayerSlot::new(0));
             invalid(UnitEntity::NAME, Some(id))
         },
     ];
@@ -507,7 +514,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     }
     // A player's modifiers: on its entity, each of the book, and none that reads an action's
     // param.
-    let player = game.player_entity(Seat::new(0)).unwrap();
+    let player = game.player_entity(PlayerSlot::new(0)).unwrap();
     let mut held = PlayerModifiers::default();
     held.add(ModifierId::new(0));
     let hosted = <PlayerModifiers as SimComponent>::Host::holds;

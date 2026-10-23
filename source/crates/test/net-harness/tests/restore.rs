@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use campfire_common::{StateHash, Tick};
 use campfire_harness::HashTrail;
+use campfire_host::internals::TickHashes;
+use campfire_host::{JournalCut, Publisher, RestoreError, ServerDir, SessionDir};
 use campfire_log::internals::LogCheck;
-use campfire_net::internals::TickHashes;
-use campfire_net::{JournalCut, Publisher, RestoreError, ServerDir, SessionDir};
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_protocol::internals::TestKey;

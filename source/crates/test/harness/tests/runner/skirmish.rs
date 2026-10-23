@@ -3,68 +3,68 @@
 
 use bevy_ecs::world::World;
 use campfire_combat::{Combat, DamageCause};
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
-use campfire_mode::{Choices, MatchEnd, Offer, SeatPick};
+use campfire_mode::{Choices, MatchEnd, ModeWorld, Offer, PlayerSlotPick};
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_production::Production;
-use campfire_protocol::{InputRules, Outcome, SeatPlan, SessionLog};
+use campfire_protocol::{InputRules, Outcome, PlayerSlotPlan, SessionLog};
 use campfire_runner::{Replay, SessionWorld};
 use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{Dead, Life, StatusTags, Units, UnitsWorld};
+use campfire_units::{Dead, Life, Owner, StatusTags, Units, UnitsWorld};
 use campfire_values::{Names, ResourceId, UnitType};
 
-/// The units of the type `name` that player `seat` owns, by stable id.
-fn owned(world: &World, name: &str, seat: u32) -> Vec<StableId> {
+/// The units of the type `name` that player `player_slot` owns, by stable id.
+fn owned(world: &World, name: &str, player_slot: u32) -> Vec<StableId> {
     let typed: UnitType = Units::type_named(world, name).unwrap();
     MatchUnits::of(world)
         .all()
         .filter(|(_, unit)| {
-            unit.get::<UnitType>() == Some(&typed) && MatchUnits::owned_by(unit, seat)
+            unit.get::<UnitType>() == Some(&typed) && MatchUnits::owned_by(unit, player_slot)
         })
         .map(|(id, _)| id)
         .collect()
 }
 
 /// The pick of the faction `base`, its center and its dozer, for each of the skirmish's 3 slots.
-fn bases() -> Vec<SeatPick> {
+fn bases() -> Vec<PlayerSlotPick> {
     (0..3)
-        .map(|seat| format!("{seat}:faction=base").parse().unwrap())
+        .map(|player_slot| format!("{player_slot}:faction=base").parse().unwrap())
         .collect()
 }
 
 /// The session of a skirmish whose slots `plan` opens, each of the faction `base`.
-fn session(plan: [SeatPlan; 3]) -> FixedSession {
-    unpicked(plan).seat_picked(&bases())
+fn session(plan: [PlayerSlotPlan; 3]) -> FixedSession {
+    unpicked(plan).player_slot_picked(&bases())
 }
 
 /// The session of a skirmish whose slots `plan` opens, of no faction picked.
-fn unpicked(plan: [SeatPlan; 3]) -> FixedSession {
+fn unpicked(plan: [PlayerSlotPlan; 3]) -> FixedSession {
     let packages = TestMode::Skirmish.packages();
     FixedSession::planned(packages, InputRules::ROOMY, plan)
 }
 
 /// A skirmish whose slots `plan` opens, after its start's tick.
-fn skirmish(plan: [SeatPlan; 3]) -> FixedMatch {
+fn skirmish(plan: [PlayerSlotPlan; 3]) -> FixedMatch {
     session(plan).start()
 }
 
-/// The money of player `seat`, the skirmish's one resource.
-fn money(world: &World, seat: u32) -> i64 {
+/// The money of player `player_slot`, the skirmish's one resource.
+fn money(world: &World, player_slot: u32) -> i64 {
     let resources: Names<ResourceId> = ["money"].into_iter().collect();
     let money = resources.named("money").unwrap();
     world
-        .player_resources(Seat::new(seat))
+        .player_resources(PlayerSlot::new(player_slot))
         .unwrap()
         .amount(money)
 }
 
-/// The one unit of the type `name` that player `seat` owns.
-fn one(fixed: &FixedMatch, name: &str, seat: u32) -> StableId {
-    let [unit] = owned(fixed.game(), name, seat)[..] else {
-        panic!("player {seat}'s {name}");
+/// The one unit of the type `name` that player `player_slot` owns.
+fn one(fixed: &FixedMatch, name: &str, player_slot: u32) -> StableId {
+    let [unit] = owned(fixed.game(), name, player_slot)[..] else {
+        panic!("player {player_slot}'s {name}");
     };
     unit
 }
@@ -84,9 +84,9 @@ fn is_ended(world: &World) -> bool {
         .is_some_and(|entity| world.entity(entity).contains::<MatchEnd>())
 }
 
-/// Whether the script holds player `seat` out of play.
-fn held_out(world: &World, seat: u32) -> bool {
-    let player = world.player_entity(Seat::new(seat)).unwrap();
+/// Whether the script holds player `player_slot` out of play.
+fn held_out(world: &World, player_slot: u32) -> bool {
+    let player = world.player_entity(PlayerSlot::new(player_slot)).unwrap();
     world.entity(player).contains::<HeldOut>()
 }
 
@@ -94,7 +94,11 @@ fn held_out(world: &World, seat: u32) -> bool {
 fn a_skirmish_starts_each_held_slot_and_ends_as_the_last_team_with_a_building_stands() {
     // With slots 2 and 3 open, player 1 alone starts: its center at its start, its dozer 2 m
     // along +z.
-    let fixed = skirmish([SeatPlan::Player, SeatPlan::Open, SeatPlan::Open]);
+    let fixed = skirmish([
+        PlayerSlotPlan::Player,
+        PlayerSlotPlan::Open,
+        PlayerSlotPlan::Open,
+    ]);
     let world = fixed.game();
     assert_eq!(owned(world, "center", 0).len(), 1);
     assert_eq!(owned(world, "dozer", 0).len(), 1);
@@ -107,7 +111,11 @@ fn a_skirmish_starts_each_held_slot_and_ends_as_the_last_team_with_a_building_st
     // holds that bot out of play and takes its dozer's life whole; two teams hold a building
     // that counts, so the match goes on, and the center despawns. The dozer dies, and despawns,
     // in the next tick's deaths.
-    let mut fixed = skirmish([SeatPlan::Player, SeatPlan::Bot, SeatPlan::Bot]);
+    let mut fixed = skirmish([
+        PlayerSlotPlan::Player,
+        PlayerSlotPlan::Bot,
+        PlayerSlotPlan::Bot,
+    ]);
     let center = one(&fixed, "center", 1);
     let dozer = one(&fixed, "dozer", 1);
     destroy(&mut fixed, &[center]);
@@ -134,56 +142,99 @@ fn a_skirmish_starts_each_held_slot_and_ends_as_the_last_team_with_a_building_st
     assert_eq!(fixed.end().outcome, Outcome::Won { team: 0 });
 
     // Of the last two centers dying in one tick, no team holds a building that counts: a draw.
-    let mut fixed = skirmish([SeatPlan::Player, SeatPlan::Bot, SeatPlan::Open]);
+    let mut fixed = skirmish([
+        PlayerSlotPlan::Player,
+        PlayerSlotPlan::Bot,
+        PlayerSlotPlan::Open,
+    ]);
     let centers = [one(&fixed, "center", 0), one(&fixed, "center", 1)];
     destroy(&mut fixed, &centers);
     assert_eq!(fixed.end().outcome, Outcome::Draw);
+}
+
+/// A player whose last building that counts goes with no death, as a site cancelled goes, is out
+/// of play as the tick's count finds it holds none, and two teams still hold one; one whose last
+/// one passes to another player is out alike, and the match ends, the taker's team the winner.
+#[test]
+fn a_player_whose_last_building_goes_or_changes_hands_is_out() {
+    let mut fixed = skirmish([
+        PlayerSlotPlan::Player,
+        PlayerSlotPlan::Bot,
+        PlayerSlotPlan::Bot,
+    ]);
+    let center = one(&fixed, "center", 1);
+    let world = fixed.game_mut();
+    let entity = world.unit_entity(center);
+    world.despawn(entity);
+    world.run_tick_alone();
+    let world = fixed.game();
+    assert!(held_out(world, 1) && !held_out(world, 0) && !held_out(world, 2));
+    assert!(!is_ended(world));
+
+    let center = one(&fixed, "center", 2);
+    let world = fixed.game_mut();
+    let team = world.team_of(PlayerSlot::new(0)).unwrap();
+    let entity = world.unit_entity(center);
+    world
+        .entity_mut(entity)
+        .insert((Owner::new(PlayerSlot::new(0)), team));
+    world.run_tick_alone();
+    assert!(held_out(fixed.game(), 2));
+    assert_eq!(fixed.end().outcome, Outcome::Won { team: 0 });
 }
 
 #[test]
 fn a_slot_starts_as_its_hosts_pick_and_one_of_no_pick_draws_its_faction_and_keeps_it() {
     // Player 1 picked the outpost, its center alone; the bots of slots 2 and 3 picked nothing,
     // each draws a faction, which counts as its pick, and starts as it.
-    let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Bot];
-    let outpost: SeatPick = "0:faction=outpost".parse().unwrap();
-    let fixed = unpicked(plan).seat_picked(&[outpost]).start();
+    let plan = [
+        PlayerSlotPlan::Player,
+        PlayerSlotPlan::Bot,
+        PlayerSlotPlan::Bot,
+    ];
+    let outpost: PlayerSlotPick = "0:faction=outpost".parse().unwrap();
+    let fixed = unpicked(plan).player_slot_picked(&[outpost]).start();
     let world = fixed.game();
-    // Each seat's row holds its faction, then its start, which none picked.
+    // Each player slot's row holds its faction, then its start, which none picked.
     let chosen = world.resource::<Choices>().offers();
-    let faction = |seat: usize| chosen[2 * seat];
+    let faction = |player_slot: usize| chosen[2 * player_slot];
     assert_eq!(chosen[..2], [Some(Offer::new(1)), None]);
     assert_eq!(owned(world, "center", 0).len(), 1);
     assert!(owned(world, "dozer", 0).is_empty());
-    for seat in [1, 2] {
-        let base = match faction(seat) {
+    for player_slot in [1, 2] {
+        let base = match faction(player_slot) {
             Some(offer) if offer == Offer::new(0) => true,
             Some(offer) if offer == Offer::new(1) => false,
-            other => panic!("slot {seat} drew {other:?}"),
+            other => panic!("slot {player_slot} drew {other:?}"),
         };
-        let seat = u32::try_from(seat).unwrap();
-        assert_eq!(owned(world, "center", seat).len(), 1);
+        let player_slot = u32::try_from(player_slot).unwrap();
+        assert_eq!(owned(world, "center", player_slot).len(), 1);
         assert_eq!(
-            owned(world, "dozer", seat).len(),
+            owned(world, "dozer", player_slot).len(),
             usize::from(base),
-            "slot {seat}"
+            "slot {player_slot}"
         );
     }
 }
 
 #[test]
-fn a_seat_that_picks_a_base_start_gets_its_factions_base_beside_its_start() {
+fn a_player_slot_that_picks_a_base_start_gets_its_factions_base_beside_its_start() {
     // Player 1 picked the start `base`: beside its center and dozer, its faction's base, a second
     // center and `base_count` dozers, 2; the bot of slot 2 picked none, and starts as standard
-    // (09-zero-hour.md, A seat picks its start; 09-zero-hour.md, A base start).
-    let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Open];
+    // (09-zero-hour.md, A player slot picks its start; 09-zero-hour.md, A base start).
+    let plan = [
+        PlayerSlotPlan::Player,
+        PlayerSlotPlan::Bot,
+        PlayerSlotPlan::Open,
+    ];
     let mut picks = bases();
     picks.push("0:start=base".parse().unwrap());
-    let fixed = unpicked(plan).seat_picked(&picks).start();
+    let fixed = unpicked(plan).player_slot_picked(&picks).start();
     let world = fixed.game();
-    let counts = |seat| {
+    let counts = |player_slot| {
         [
-            owned(world, "center", seat).len(),
-            owned(world, "dozer", seat).len(),
+            owned(world, "center", player_slot).len(),
+            owned(world, "dozer", player_slot).len(),
         ]
     };
     assert_eq!(counts(0), [2, 3]);
@@ -193,9 +244,13 @@ fn a_seat_that_picks_a_base_start_gets_its_factions_base_beside_its_start() {
 #[test]
 fn every_player_starts_with_the_money_the_host_picked_and_a_replay_plays_with_it() {
     // Of no pick, each held slot starts with the option's default, 100; of the pick of its
-    // second value, with 5,000, as the terms record it; an open seat starts with it too, as
+    // second value, with 5,000, as the terms record it; an open player slot starts with it too, as
     // the script gives each slot its money.
-    let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Open];
+    let plan = [
+        PlayerSlotPlan::Player,
+        PlayerSlotPlan::Bot,
+        PlayerSlotPlan::Open,
+    ];
     let fixed = skirmish(plan);
     assert_eq!([0, 1, 2].map(|slot| money(fixed.game(), slot)), [100; 3]);
     let picked = session(plan).picked(&[1]);
@@ -232,9 +287,13 @@ fn a_kill_pays_its_killers_player_its_share_of_the_victims_cost_rounded_up() {
             "fn on_match_start(ctx) {\n    ctx.set_bounty_share(ctx.players[0], num(1) / 4);\n",
         ),
     );
-    let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Bot];
+    let plan = [
+        PlayerSlotPlan::Player,
+        PlayerSlotPlan::Bot,
+        PlayerSlotPlan::Bot,
+    ];
     let mut fixed = FixedSession::planned(tree.load().unwrap(), InputRules::ROOMY, plan)
-        .seat_picked(&bases())
+        .player_slot_picked(&bases())
         .start();
     let dozer = one(&fixed, "dozer", 0);
     let center = one(&fixed, "center", 1);
@@ -286,9 +345,13 @@ fn a_kill_of_a_site_under_construction_pays_no_bounty_by_the_victim_filter() {
         if !filtered {
             tree.edit("zero-hour/data/rules.toml", Edit::Remove("bounty.victim"));
         }
-        let plan = [SeatPlan::Player, SeatPlan::Bot, SeatPlan::Bot];
+        let plan = [
+            PlayerSlotPlan::Player,
+            PlayerSlotPlan::Bot,
+            PlayerSlotPlan::Bot,
+        ];
         let mut fixed = FixedSession::planned(tree.load().unwrap(), InputRules::ROOMY, plan)
-            .seat_picked(&bases())
+            .player_slot_picked(&bases())
             .start();
         let dozer = one(&fixed, "dozer", 0);
         let center = one(&fixed, "center", 1);

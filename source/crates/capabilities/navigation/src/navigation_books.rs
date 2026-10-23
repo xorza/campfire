@@ -1,12 +1,11 @@
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, NamesListError, Section, Sections,
+    BookCx, BookError, BookPlace, ById, ByIdBuilder, NamesListError, Section, Sections,
 };
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::{Num, Vec3};
-use campfire_units::{
-    BodyForm, DeclaredTags, Layer, LayerNames, MapBook, MapPoint, MoveStep, Wall, WallBook,
-};
-use campfire_values::{Names, NamesError, PackageIndex};
+use campfire_units::{BodyForm, DeclaredTags, Layer, MapBook, MapPoint, MoveStep, Wall, WallBook};
+use campfire_values::{Names, NamesError, PackageIndex, UnitType};
+use std::sync::Arc;
 
 use crate::Navigation;
 use crate::error::NavigationDataError;
@@ -41,7 +40,7 @@ impl Navigation {
 
     /// The names of the mode's layers; an error for a name twice, or past the most layers a match
     /// holds.
-    pub(crate) fn layer_names(cx: &BookCx<'_>) -> Result<LayerNames, BookError> {
+    pub(crate) fn layer_names(cx: &BookCx<'_>) -> Result<Arc<Names<Layer>>, BookError> {
         let mut names = Names::default();
         let data = cx.mode_section::<ModeNavigationData>().into_iter();
         for name in data.flat_map(|data| &data.layers) {
@@ -54,7 +53,7 @@ impl Navigation {
                 BookError::rule(PackageIndex::MODE, at, error)
             })?;
         }
-        Ok(LayerNames(names))
+        Ok(Arc::new(names))
     }
 }
 
@@ -107,7 +106,7 @@ impl Navigation {
     /// polygon, or a point that has no place on the map.
     pub fn walls(cx: &BookCx<'_>) -> Result<WallBook, BookError> {
         let map = cx.book::<MapBook>()?;
-        let layers = cx.fact_if::<LayerNames>()?.map(|layers| &layers.0);
+        let layers = cx.names_if::<Layer>()?.map(|layers| &**layers);
         let walls = Self::walls_of(map, cx.source().map, layers);
         walls.map_err(|problem| BookError::rule(PackageIndex::MODE, BookPlace::Map, problem))
     }
@@ -152,10 +151,10 @@ impl Navigation {
 impl Walker {
     /// The kind of walker of each unit type that stands and walks, as its move step says; an error
     /// for one of a box body.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let bodies = cx.book::<ByType<BodyForm>>()?;
-        let steps = cx.book::<ByType<MoveStep>>()?;
-        let mut book = ByTypeBuilder::default();
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let bodies = cx.book::<ById<UnitType, BodyForm>>()?;
+        let steps = cx.book::<ById<UnitType, MoveStep>>()?;
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             if steps.get(unit.unit_type).is_none() {
                 continue;

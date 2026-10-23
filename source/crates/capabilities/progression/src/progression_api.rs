@@ -1,5 +1,6 @@
 use campfire_script::{ApiBuilder, ApiHolder, Checked, MemberDecl, Unit};
 use campfire_values::TrackId;
+use campfire_visibility::DataKind;
 
 use crate::progression_column::ProgressionColumn;
 use crate::track_data::TrackData;
@@ -29,7 +30,7 @@ impl ProgressionApi {
                 "its experience on `track`, one of its unit type's",
             ),
             |unit: Unit, track: TrackId| {
-                ProgressionColumn::xp(unit.view(), unit.row_index()?, track)
+                ProgressionColumn::xp(unit.view(), unit.admit(DataKind::Progression)?, track)
             },
         )
         .method(
@@ -39,7 +40,11 @@ impl ProgressionApi {
                 "its level on `track`, one of its unit type's",
             ),
             |unit: Unit, track: TrackId| -> Checked<i64> {
-                let level = ProgressionColumn::level(unit.view(), unit.row_index()?, track)?;
+                let level = ProgressionColumn::level(
+                    unit.view(),
+                    unit.admit(DataKind::Progression)?,
+                    track,
+                )?;
                 Ok(i64::from(level.get()))
             },
         )
@@ -49,7 +54,8 @@ impl ProgressionApi {
                 "its unspent points, which a unit with the `level` track has",
             ),
             |unit: &mut Unit| -> Checked<i64> {
-                let points = ProgressionColumn::points(unit.view(), unit.row_index()?)?;
+                let points =
+                    ProgressionColumn::points(unit.view(), unit.admit(DataKind::Progression)?)?;
                 Ok(i64::from(points.get()))
             },
         )

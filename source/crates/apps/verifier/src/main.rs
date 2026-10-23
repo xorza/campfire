@@ -1,6 +1,6 @@
 //! Replays a session log file with the packages under a directory, and logs the state hash after
 //! its last tick, in hex; with a directory of snapshots, each named by its fingerprint in hex, it
-//! also checks the snapshot of each checkpoint. It logs as `campfire_log::Logging` says, `info`
+//! also checks the snapshot of each checkpoint. It logs as `campfire_logging::Logging` says, `info`
 //! by default.
 
 use std::env;
@@ -8,7 +8,8 @@ use std::process::ExitCode;
 
 use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
-use campfire_log::{LogEvent, Logging};
+use campfire_log::LogEvent;
+use campfire_logging::Logging;
 use campfire_verifier::{Verified, verify_file};
 use tracing::error;
 

@@ -9,19 +9,24 @@ use bevy_ecs::world::World;
 use bevy_time::{Time, Virtual};
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::{Directive, Order};
-use campfire_common::{DeclaredName, Seat, Tick, TlsKey};
+use campfire_common::DeclaredName;
 use campfire_harness::HashTrail;
+use campfire_host::internals::SimClientWorldInternals;
+use campfire_host::internals::TickHashes;
+use campfire_host::{
+    ClientDir, JoinState, MatchClock, Os, Pace, PlannedBot, ServerBots, ServerDir, ServerSetup,
+    SessionDir, SessionTimes, UnixClock,
+};
 use campfire_log::internals::LogCheck;
 use campfire_mode::{PlayersData, SaveBy, SavesData};
-use campfire_net::internals::TickHashes;
-use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
+use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
-    ClientDir, JoinState, Lobby, LobbyOpening, LobbySetup, LobbyStart, MatchClock, Os, Pace,
-    PendingOrders, PendingRestore, PlannedBot, ServerBots, ServerDir, ServerSetup, SessionDir,
-    SessionOpening, SessionTimes, SimServerWorld, UdpLinks, UncheckedRestore, UnixClock,
+    Lobby, LobbyOpening, LobbySetup, LobbyStart, PendingOrders, PendingRestore, SessionOpening,
+    SimServerWorld, UdpLinks, UncheckedRestore,
 };
 use campfire_net_connection::Connected;
 use campfire_net_core::LinkDirection;
+use campfire_net_core::TlsKey;
 use campfire_net_emulator::{DirectionCounts, DuplexModel, LinkModel, Phase};
 use campfire_net_link::Unlink;
 use campfire_net_payload::UnlinkReason;
@@ -31,7 +36,7 @@ use campfire_net_sync::{LocalTimelineSync, TimelineSync};
 use campfire_net_udp::ServerIdentity;
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Entropy, InputRules, LogReplay, SeedChain, ServerInput, Signer};
+use campfire_protocol::{AppliedInput, InputRules, SeedChain, ServerInput};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, MatchRate, SimTick, SimWorld, StableId};
 use campfire_test_packages::{PackageTree, TestMode};
@@ -44,6 +49,7 @@ use crate::in_process_match::link_layout::{LinkLayout, LinkRows};
 use crate::in_process_match::match_stack::{Joiner, MatchStack};
 use crate::in_process_match::server_record::ServerRecord;
 
+pub(crate) mod bench;
 pub(crate) mod link_layout;
 mod match_stack;
 pub(crate) mod server_record;
@@ -56,39 +62,160 @@ const CONNECT_FRAMES: usize = 300;
 pub struct InProcessSetup {
     /// The players, a client each, in the slots from 0: one or two in the lane mode, a slot a
     /// side, and at most `MAX_PLAYERS`.
-    pub players: usize,
+    pub(crate) players: usize,
     /// How the server's links lie in its tables, which no result of the match may follow.
-    pub links: LinkLayout,
+    pub(crate) links: LinkLayout,
     /// When each player's client rolls its state back, by player; those past the players go
     /// unused.
-    pub rollbacks: [RollbackMode; Self::MAX_PLAYERS],
+    pub(crate) rollbacks: [RollbackMode; Self::MAX_PLAYERS],
     /// Server frames a tick: a real server runs frames faster than ticks.
-    pub server_frames: u32,
+    pub(crate) server_frames: u32,
     /// How each link carries packets, both ways, on the stack's emulator.
-    pub link: LinkModel,
+    pub(crate) link: LinkModel,
     /// The stepper's seed, from which each link's draws follow.
-    pub seed: u64,
+    pub(crate) seed: u64,
     /// The seed chain the server commits to.
-    pub seed_chain: SeedChain,
+    pub(crate) seed_chain: SeedChain,
     /// How long the server waits for a player whose link fails, and restores a stopped session.
-    pub times: SessionTimes,
+    pub(crate) times: SessionTimes,
     /// The lane mode's `[players]`.
-    pub rules: PlayersData,
+    pub(crate) rules: PlayersData,
     /// The lane mode's `[saves]`.
-    pub saves: SavesData,
+    pub(crate) saves: SavesData,
     /// The order script of the server's bot in each slot after the players', in slot order.
-    pub bots: &'static [&'static str],
+    pub(crate) bots: &'static [&'static str],
     /// The name of the mode's bot that plays each slot after those of `bots`, in slot order.
-    pub mode_bots: &'static [&'static str],
+    pub(crate) mode_bots: &'static [&'static str],
     /// The script of the server's bot in a slot its player left, when it plays one.
-    pub takeover: Option<&'static str>,
+    pub(crate) takeover: Option<&'static str>,
     /// The host's visibility settings, as `--visibility` gives them.
-    pub visibility: &'static [&'static str],
+    pub(crate) visibility: &'static [&'static str],
     /// The most spectators the session admits.
-    pub max_spectators: u32,
-    /// Whom the lobby waits for: its players, or a watcher too, of a plan that may seat bots
+    pub(crate) max_spectators: u32,
+    /// Whom the lobby waits for: its players, or a watcher too, of a plan that may hold bots
     /// alone.
-    pub start: LobbyStart,
+    pub(crate) start: LobbyStart,
+}
+
+/// What builds an `InProcessSetup`: each field as its setter gives it, the rest as the setup it
+/// starts from gives them; `build` checks the setup.
+#[derive(Debug, Clone)]
+pub struct InProcessSetupBuilder(InProcessSetup);
+
+impl InProcessSetupBuilder {
+    #[must_use]
+    pub const fn players(mut self, players: usize) -> Self {
+        self.0.players = players;
+        self
+    }
+
+    #[must_use]
+    pub const fn links(mut self, links: LinkLayout) -> Self {
+        self.0.links = links;
+        self
+    }
+
+    #[must_use]
+    pub const fn rollbacks(
+        mut self,
+        rollbacks: [RollbackMode; InProcessSetup::MAX_PLAYERS],
+    ) -> Self {
+        self.0.rollbacks = rollbacks;
+        self
+    }
+
+    #[must_use]
+    pub const fn server_frames(mut self, server_frames: u32) -> Self {
+        self.0.server_frames = server_frames;
+        self
+    }
+
+    #[must_use]
+    pub const fn link(mut self, link: LinkModel) -> Self {
+        self.0.link = link;
+        self
+    }
+
+    #[must_use]
+    pub const fn seed(mut self, seed: u64) -> Self {
+        self.0.seed = seed;
+        self
+    }
+
+    #[must_use]
+    pub fn seed_chain(mut self, seed_chain: SeedChain) -> Self {
+        self.0.seed_chain = seed_chain;
+        self
+    }
+
+    #[must_use]
+    pub const fn times(mut self, times: SessionTimes) -> Self {
+        self.0.times = times;
+        self
+    }
+
+    #[must_use]
+    pub const fn rules(mut self, rules: PlayersData) -> Self {
+        self.0.rules = rules;
+        self
+    }
+
+    #[must_use]
+    pub const fn saves(mut self, saves: SavesData) -> Self {
+        self.0.saves = saves;
+        self
+    }
+
+    #[must_use]
+    pub const fn bots(mut self, bots: &'static [&'static str]) -> Self {
+        self.0.bots = bots;
+        self
+    }
+
+    #[must_use]
+    pub const fn mode_bots(mut self, mode_bots: &'static [&'static str]) -> Self {
+        self.0.mode_bots = mode_bots;
+        self
+    }
+
+    #[must_use]
+    pub const fn takeover(mut self, takeover: Option<&'static str>) -> Self {
+        self.0.takeover = takeover;
+        self
+    }
+
+    #[must_use]
+    pub const fn visibility(mut self, visibility: &'static [&'static str]) -> Self {
+        self.0.visibility = visibility;
+        self
+    }
+
+    #[must_use]
+    pub const fn max_spectators(mut self, max_spectators: u32) -> Self {
+        self.0.max_spectators = max_spectators;
+        self
+    }
+
+    #[must_use]
+    pub const fn start(mut self, start: LobbyStart) -> Self {
+        self.0.start = start;
+        self
+    }
+
+    /// The setup; panics on one of more players than `MAX_PLAYERS`, or of a server that runs no
+    /// frame a tick.
+    pub fn build(self) -> InProcessSetup {
+        let Self(setup) = self;
+        assert!(
+            setup.players <= InProcessSetup::MAX_PLAYERS,
+            "a setup holds at most `MAX_PLAYERS` players"
+        );
+        assert!(
+            setup.server_frames > 0,
+            "the server runs a frame a tick at least"
+        );
+        setup
+    }
 }
 
 /// What a step cost each end: each client's frame, by client, and the server's worst frame.
@@ -104,15 +231,6 @@ impl StepCost {
         self.clients.clear();
         self.server = Duration::ZERO;
     }
-}
-
-/// A player's input the server's log applied: its seat, its stamp, and the tick it took effect
-/// in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AppliedInput {
-    pub seat: Seat,
-    pub stamp: Tick,
-    pub tick: Tick,
 }
 
 /// An app of a match: the server's, or a client's.
@@ -136,8 +254,8 @@ impl InProcessSetup {
         .with_latency(Duration::from_nanos(133_333_333))
         .with_jitter(Duration::from_nanos(33_333_333));
 
-    /// The seats of the match: its players', its order scripts' bots' and the mode's bots'.
-    pub const fn seats(&self) -> usize {
+    /// The player slots of the match: its players', its order scripts' bots' and the mode's bots'.
+    pub const fn player_slots(&self) -> usize {
         self.players + self.bots.len() + self.mode_bots.len()
     }
     /// One player, through perfect links.
@@ -168,11 +286,31 @@ impl InProcessSetup {
     /// Two players through `link`, whose clients roll back only on a misprediction, with a
     /// server that runs 3 frames a tick.
     pub fn duo(link: LinkModel, seed_chain: SeedChain) -> Self {
-        Self {
-            players: 2,
-            link,
-            ..Self::solo(RollbackMode::Check, 3, seed_chain)
-        }
+        Self::solo(RollbackMode::Check, 3, seed_chain)
+            .into_builder()
+            .players(2)
+            .link(link)
+            .build()
+    }
+
+    /// A builder that starts from this setup.
+    pub const fn into_builder(self) -> InProcessSetupBuilder {
+        InProcessSetupBuilder(self)
+    }
+
+    /// Server frames a tick.
+    pub const fn server_frames(&self) -> u32 {
+        self.server_frames
+    }
+
+    /// How each link carries packets.
+    pub const fn link(&self) -> &LinkModel {
+        &self.link
+    }
+
+    /// The most spectators the session admits.
+    pub const fn max_spectators(&self) -> u32 {
+        self.max_spectators
     }
 }
 
@@ -243,8 +381,8 @@ impl InProcessMatch {
     /// A match of the test lane mode at its default rate, its clients connected and synced.
     pub fn new(setup: InProcessSetup) -> Self {
         assert!(
-            (1..=2).contains(&setup.seats()),
-            "the lane mode takes 1 or 2 seats"
+            (1..=2).contains(&setup.player_slots()),
+            "the lane mode takes 1 or 2 player slots"
         );
         let packages = PackageTree::of(TestMode::Lane)
             .players_and_saves(&setup.rules, &setup.saves)
@@ -257,15 +395,6 @@ impl InProcessMatch {
     pub fn of_mode(setup: InProcessSetup, packages: ModePackages) -> Self {
         // The check the stepper holds, started before the packages' load, which logs too.
         let _log = LogCheck::start();
-        assert!(
-            setup.players <= InProcessSetup::MAX_PLAYERS,
-            "a setup holds at most {} players",
-            InProcessSetup::MAX_PLAYERS
-        );
-        assert!(
-            setup.server_frames > 0,
-            "the server runs a frame a tick at least"
-        );
         let packages = Arc::new(packages);
         let pace = Arc::new(Pace::default());
         let clock = UnixClock::manual(TestKey::NOW);
@@ -344,14 +473,9 @@ impl InProcessMatch {
         Self::rate(&self.packages).length()
     }
 
-    /// The signer of the test server's key, from which its TLS key derives.
-    fn server_signer() -> Signer {
-        Signer::new(TestKey::server(), Entropy::Fixed(5))
-    }
-
     /// The identity of the test server's endpoint, its raw key derived from its own.
     fn server_identity() -> ServerIdentity {
-        UdpLinks::identity(&Self::server_signer())
+        UdpLinks::identity(&TestKey::server_signer())
     }
 
     /// The TLS key every client pins: the test server's raw key.
@@ -443,11 +567,11 @@ impl InProcessMatch {
     /// times, a fixed clock and fixed random bytes.
     fn server_setup(&self) -> ServerSetup {
         ServerSetup {
-            signer: Arc::new(Self::server_signer()),
+            signer: Arc::new(TestKey::server_signer()),
             times: self.setup.times,
             os: Os {
                 clock: self.clock.clone(),
-                entropy: Entropy::Fixed(5),
+                entropy: TestKey::server_entropy(),
             },
         }
     }
@@ -580,7 +704,7 @@ impl InProcessMatch {
             bots: self.server_bots(),
             open: Vec::new(),
             options: Vec::new(),
-            seat_picks: Vec::new(),
+            player_slot_picks: Vec::new(),
             host: HostVisibility {
                 settings: self
                     .setup
@@ -588,7 +712,7 @@ impl InProcessMatch {
                     .iter()
                     .map(|text| text.parse().expect("a host setting"))
                     .collect(),
-                max_spectators: self.setup.max_spectators,
+                max_spectators: Some(self.setup.max_spectators),
             },
             server: self.server_setup(),
             start: self.setup.start,
@@ -598,7 +722,7 @@ impl InProcessMatch {
             tick_hz: packages.manifest().tick_hz.default(),
             seed_chain: self.setup.seed_chain.clone(),
             inputs: InputRules::LAN,
-            seats: self.setup.seats(),
+            player_slots: self.setup.player_slots(),
         })
         .expect("the lane mode runs at its default rate");
         if let Some(data) = self.stepper.server_world().get_resource::<ServerDir>() {
@@ -662,8 +786,7 @@ impl InProcessMatch {
 
     /// One tick of every end, each at its own frame rate: a frame of each client, and the
     /// server's frames, which fall together with the clients' at the tick's end run after them;
-    /// what each end's frames cost kept in `step_cost`. A server whose session went back to a
-    /// save then starts again on its data, as a local server does.
+    /// what each end's frames cost kept in `step_cost`.
     pub fn step(&mut self) {
         let apps = (0..self.stepper.client_count()).map(AppId::Client);
         for app in apps.chain([AppId::Server]) {
@@ -676,9 +799,6 @@ impl InProcessMatch {
             self.step_cost.clients.push(spent);
         }
         self.step_cost.server = self.stepper.take_slowest_frame(AppId::Server);
-        if self.stepper.server_world().is_reload_wanted() {
-            self.restart_server();
-        }
     }
 
     /// `ticks` ticks of the clients alone, then a frame of the server as long as their ticks: a
@@ -686,6 +806,15 @@ impl InProcessMatch {
     pub fn stall_server(&mut self, ticks: u32) {
         let stall = self.tick() * ticks;
         self.stepper.stall(AppId::Server, stall);
+        self.stepper.run_for(stall, StepOrder::ClientsFirst);
+    }
+
+    /// `ticks` ticks of the server and the other clients alone, then a frame of `client` as long
+    /// as their ticks: a client whose process stalled while the server ran on, and which then runs
+    /// every tick it missed in one frame.
+    pub fn stall_client(&mut self, client: usize, ticks: u32) {
+        let stall = self.tick() * ticks;
+        self.stepper.stall(AppId::Client(client), stall);
         self.stepper.run_for(stall, StepOrder::ClientsFirst);
     }
 
@@ -718,19 +847,7 @@ impl InProcessMatch {
     /// log's latest checkpoint on.
     pub fn applied_inputs(&self) -> Vec<AppliedInput> {
         let log = self.stepper.server_world().resource::<Session>().log();
-        let mut inputs = Vec::new();
-        let Some(mut replay) = LogReplay::of(log) else {
-            return inputs;
-        };
-        while !replay.is_done(log) {
-            let tick = replay.next_tick();
-            inputs.extend(replay.seal_tick(log).map(|input| AppliedInput {
-                seat: input.seat,
-                stamp: input.stamp,
-                tick,
-            }));
-        }
-        inputs
+        log.applied_inputs()
     }
 
     /// The next frame of `client` alone: one tick of it.
@@ -753,8 +870,8 @@ impl InProcessMatch {
 
     /// Makes `client` play `script`, as a bot does.
     pub fn play(&mut self, client: usize, script: &OrderScript) {
-        let books = self.packages.name_books();
-        let bot = BotScript::new(script, &BotNames::new(&books))
+        let books = self.packages.load_books();
+        let bot = BotScript::new(script, &BotNames::new(books))
             .expect("a test's bot names what its mode has");
         self.stepper.client_world_mut(client).insert_resource(bot);
     }
@@ -769,7 +886,7 @@ impl InProcessMatch {
     fn spawned_avatar(&self, client: usize) -> Option<StableId> {
         let world = self.stepper.server_world();
         let slot = world
-            .link_seat(self.link(client))
+            .link_player_slot(self.link(client))
             .expect("the match started, with the client's slot");
         world.avatar_of(slot).map(|avatar| avatar.id)
     }
@@ -895,214 +1012,5 @@ impl InProcessMatch {
     /// The packages of the session's mode.
     pub fn packages(&self) -> &ModePackages {
         &self.packages
-    }
-}
-
-pub(crate) mod bench {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::Duration;
-    use std::{env, process};
-
-    use campfire_bots::OrderScript;
-    use campfire_math::{Num, Vec3};
-    use campfire_net_emulator::LinkModel;
-    use campfire_net_prediction::RollbackMode;
-    use campfire_orders::OrdersDirective;
-    use campfire_sim::{Position, SimWorld};
-    use campfire_store::DurableDir;
-    use campfire_test_packages::TestMode;
-    use campfire_units::GroundPoint;
-
-    use crate::in_process_match::{CONNECT_FRAMES, End, InProcessMatch, InProcessSetup, StepCost};
-
-    /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new
-    /// order every 40 frames keeps the avatar walking and the server sending updates.
-    const LEG_FRAMES: u64 = 40;
-    /// The ticks of the lane 1v1 a worst case plays.
-    const MATCH_TICKS: u64 = 600;
-
-    /// The data directories the benches of this process made, each a new one.
-    static DATA_DIRS: AtomicU64 = AtomicU64::new(0);
-
-    /// How each player's client of the walking 3v3 rolls back: only on a misprediction, on
-    /// every confirmed update, and never.
-    const ROLLBACKS_3V3: [RollbackMode; 3] = [
-        RollbackMode::Check,
-        RollbackMode::Always,
-        RollbackMode::Disabled,
-    ];
-    /// The MOBA 3v3's first wave at its 30 Hz: 60 s of pick, then 60 s.
-    const FIRST_WAVE_3V3: u64 = 3600;
-    /// The pick of each slot of the MOBA 3v3, the players' then the bots': a hero each,
-    /// none twice, in tick 1, and the two spells in tick 2, as `Moba3v3`'s slots pick.
-    static PICKS_3V3: [&str; 6] = [
-        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-cinder\"\n\
-         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-gale\"\n\
-         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-husk\"\n\
-         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-kensho\"\n\
-         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-rime\"\n\
-         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-veil\"\n\
-         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-    ];
-
-    impl StepCost {
-        /// Adds each end's cost in `step` to its own.
-        fn add(&mut self, step: &Self) {
-            self.clients.resize(step.clients.len(), Duration::ZERO);
-            for (own, &spent) in self.clients.iter_mut().zip(&step.clients) {
-                *own += spent;
-            }
-            self.server += step.server;
-        }
-
-        /// Keeps each end's worse of its own and its cost in `step`.
-        fn keep_worst(&mut self, step: &Self) {
-            self.clients.resize(step.clients.len(), Duration::ZERO);
-            for (own, &spent) in self.clients.iter_mut().zip(&step.clients) {
-                *own = (*own).max(spent);
-            }
-            self.server = self.server.max(step.server);
-        }
-
-        /// The worst of the clients' costs.
-        pub(crate) fn worst_client(&self) -> Duration {
-            let worst = self.clients.iter().copied().max();
-            worst.expect("a cost of a match with clients")
-        }
-    }
-
-    impl InProcessMatch {
-        /// A solo match whose client rolls back as `rollback` says, started, for `walk_steps`.
-        pub(crate) fn walking(rollback: RollbackMode) -> Self {
-            let mut local = Self::new(InProcessSetup::solo(rollback, 1, Self::SEED_CHAIN));
-            local.start_match();
-            local
-        }
-
-        /// The MOBA 3v3 at its default rate, a server frame a tick, with a player in each
-        /// of the first slots, whose clients roll back as `ROLLBACKS_3V3` says, and the
-        /// server's bots in the others, every slot picking as `PICKS_3V3` says; played to its
-        /// first wave, each client holding its hero, for `walk_steps`.
-        pub(crate) fn walking_3v3() -> Self {
-            let players = ROLLBACKS_3V3.len();
-            let mut setup = InProcessSetup::solo(RollbackMode::Check, 1, Self::SEED_CHAIN);
-            setup.players = players;
-            setup.rollbacks[..players].copy_from_slice(&ROLLBACKS_3V3);
-            setup.bots = &PICKS_3V3[players..];
-            let packages = TestMode::Moba3v3.packages();
-            let mut local = Self::of_mode(setup, packages);
-            local.open_match();
-            for (client, pick) in PICKS_3V3[..players].iter().enumerate() {
-                local.play(client, &OrderScript::parse(pick).expect("a pick reads"));
-            }
-            while local.next_tick(End::Server) < FIRST_WAVE_3V3 {
-                local.step();
-            }
-            local.await_avatars(CONNECT_FRAMES);
-            local
-        }
-
-        /// Where each client's avatar stands on the server, by client, into `places`.
-        pub(crate) fn avatar_places(&self, places: &mut Vec<Vec3>) {
-            places.clear();
-            let world = self.stepper.server_world();
-            for client in 0..self.stepper.client_count() {
-                let avatar = world.entity_of(self.avatar(client));
-                let position = world.get::<Position>(avatar.expect("the avatar exists"));
-                places.push(position.expect("an avatar has a place").get());
-            }
-        }
-
-        /// `steps` frames of a walk from frame `*frame` on, which it advances: every
-        /// `LEG_FRAMES` frames, each client's avatar ordered to the target 5 m on the other side
-        /// of its point in `around`, along z; each end's frames' cost added to `spent`.
-        pub(crate) fn walk_steps(
-            &mut self,
-            frame: &mut u64,
-            steps: u64,
-            around: &[Vec3],
-            spent: &mut StepCost,
-        ) {
-            debug_assert_eq!(around.len(), self.stepper.client_count());
-            for _ in 0..steps {
-                if frame.is_multiple_of(LEG_FRAMES) {
-                    let side = if frame.is_multiple_of(2 * LEG_FRAMES) {
-                        5
-                    } else {
-                        -5
-                    };
-                    let side = Num::from_int(side).expect("a small integer");
-                    for (client, point) in around.iter().enumerate() {
-                        let (x, z) = (point.x, point.z + side);
-                        self.order(
-                            client,
-                            OrdersDirective::Move {
-                                to: GroundPoint { x, z },
-                            },
-                        );
-                    }
-                }
-                self.step();
-                spent.add(&self.step_cost);
-                *frame += 1;
-            }
-        }
-
-        /// Each end's worst step of `MATCH_TICKS` ticks of the lane 1v1, as the match scenario
-        /// plays it: the rollback of each avatar's death falls in the clients'. The server and
-        /// the clients keep their data, in a new directory under the system's temporary one, so
-        /// the journal and the receipts write as a real match's do; it is removed after.
-        pub(crate) fn worst_1v1() -> StepCost {
-            let dir = env::temp_dir().join(format!(
-                "campfire-bench-{}-{}",
-                process::id(),
-                DATA_DIRS.fetch_add(1, Ordering::Relaxed)
-            ));
-            let mut local = Self::new(InProcessSetup::duo(LinkModel::perfect(), Self::SEED_CHAIN));
-            local.keep_data(dir.clone());
-            local.start_match();
-            local.play_by_team(Self::SCENARIO_SCRIPTS);
-            let mut worst = StepCost::default();
-            for _ in 0..MATCH_TICKS {
-                local.step();
-                worst.keep_worst(&local.step_cost);
-            }
-            drop(local);
-            DurableDir::remove(&dir).expect("the bench's own data directory");
-            worst
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn a_step_cost_adds_and_keeps_the_worst_of_each_end() {
-            let micros = Duration::from_micros;
-            let step = |clients: &[u64], server: u64| StepCost {
-                clients: clients.iter().map(|&each| micros(each)).collect(),
-                server: micros(server),
-            };
-            let steps = [step(&[3, 9], 5), step(&[7, 2], 4)];
-            let (mut total, mut worst) = (StepCost::default(), StepCost::default());
-            for each in &steps {
-                total.add(each);
-                worst.keep_worst(each);
-            }
-            // Each end on its own: client 0 took 3 and 7, client 1 9 and 2, the server 5 and 4.
-            assert_eq!(total.clients, [micros(10), micros(11)]);
-            assert_eq!(total.server, micros(9));
-            assert_eq!(worst.clients, [micros(7), micros(9)]);
-            assert_eq!(worst.server, micros(5));
-            assert_eq!(worst.worst_client(), micros(9));
-            total.clear();
-            assert_eq!((total.clients.len(), total.server), (0, Duration::ZERO));
-        }
     }
 }

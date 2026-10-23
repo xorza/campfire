@@ -10,12 +10,7 @@ kind = "problem"
 [features]
 # The ECS derives and impls of a unit's team, type and tags and of the teams' relations, for the
 # glue crates that hold them as components
-ecs = [
-    "dep:bevy_ecs",
-    "dep:campfire-sim",
-    "dep:campfire-states",
-    "dep:campfire-visibility",
-]
+ecs = ["dep:bevy_ecs", "dep:campfire-sim", "dep:campfire-states"]
 internals = [
     "campfire-math/internals",
     "campfire-sim?/internals",
@@ -27,7 +22,7 @@ campfire-common.workspace = true
 campfire-math.workspace = true
 campfire-sim = { workspace = true, optional = true }
 campfire-states = { workspace = true, optional = true }
-campfire-visibility = { workspace = true, optional = true }
+campfire-visibility.workspace = true
 
 bevy_ecs = { workspace = true, features = ["std"], optional = true }
 derive_more = { workspace = true, features = ["display"] }

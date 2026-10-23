@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use campfire_actions::ActionSlots;
-use campfire_common::{DeclaredName, Seat};
-use campfire_declarations::{ByType, ByTypeBuilder};
+use campfire_common::{DeclaredName, PlayerSlot};
+use campfire_declarations::{ById, ByIdBuilder};
 use campfire_script::Teams;
 use campfire_units::{BodyForm, ScriptBook};
 use campfire_values::{Names, Relations, Team, UnitType};
@@ -28,11 +28,11 @@ pub struct ModeSpec {
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
     /// The unit types the mode spawns for a script's spawn.
-    spawned: ByType<()>,
+    spawned: ById<UnitType, ()>,
     /// The bodies of the unit types, which a box's spawn tests its room by.
-    bodies: ByType<BodyForm>,
+    bodies: ById<UnitType, BodyForm>,
     /// The slots each unit type spawns with, which a grant to a new unit counts from.
-    slots: ByType<ActionSlots>,
+    slots: ById<UnitType, ActionSlots>,
     /// The units the map places from the start.
     pub(crate) placed: Vec<PlacedUnit>,
     /// Whether the mode gives a `[bounty]`, whose share each player holds.
@@ -60,19 +60,19 @@ pub struct SpecLoad<'a> {
     pub units: ModeUnits,
     pub loadout_ranks: u8,
     pub scripts: &'a ScriptBook,
-    pub bodies: &'a ByType<BodyForm>,
-    pub slots: &'a ByType<ActionSlots>,
+    pub bodies: &'a ById<UnitType, BodyForm>,
+    pub slots: &'a ById<UnitType, ActionSlots>,
     /// Whether the mode gives a `[bounty]`, whose share each player holds.
     pub bounty: bool,
 }
 
 impl ModeSpec {
-    /// The team of player `seat`; `None` for a seat the session does not have.
-    pub fn team_of(&self, seat: Seat) -> Option<Team> {
-        self.teams.of(seat)
+    /// The team of player `player_slot`; `None` for a player slot the session does not have.
+    pub fn team_of(&self, player_slot: PlayerSlot) -> Option<Team> {
+        self.teams.of(player_slot)
     }
 
-    /// The book of `setup`, for players the teams seat, with what `load` gives.
+    /// The book of `setup`, for players the teams player slot, with what `load` gives.
     pub fn new(setup: ModeSetup<'_>, load: SpecLoad<'_>) -> Self {
         let SpecLoad {
             start,
@@ -88,10 +88,10 @@ impl ModeSpec {
             placed,
             relations,
         } = start;
-        let seats = setup.teams.iter().map(|team| team.seats);
-        let teams = Teams::new(teams, seats, setup.players)
+        let player_slots = setup.teams.iter().map(|team| team.player_slots);
+        let teams = Teams::new(teams, player_slots, setup.players)
             .expect("the session checked its players against the teams' slots");
-        let mut spawned = ByTypeBuilder::default();
+        let mut spawned = ByIdBuilder::default();
         for &unit_type in &units.unit_types {
             spawned.set(unit_type, ());
         }

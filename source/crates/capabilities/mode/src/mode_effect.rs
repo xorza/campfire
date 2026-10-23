@@ -2,15 +2,14 @@ use std::slice;
 
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, SlotKind, SlotsMut, SlotsMutItem, TimedSlots};
-use campfire_combat::Respawn;
-use campfire_common::{Seat, Ticks};
-use campfire_declarations::ByType;
+use campfire_common::PlayerSlot;
+use campfire_declarations::ById;
 use campfire_math::Num;
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_script::{Effect, EffectKind, Frame, ListPlace};
 use campfire_sim::{SimTick, SimWorld, StableId};
 use campfire_units::{SpawnAt, Spawner, UnitsWorld};
-use campfire_values::{ActionId, Rank, Relation, Team};
+use campfire_values::{ActionId, Rank, Relation, Team, UnitType};
 
 use crate::bounty_share::BountyShare;
 use crate::match_end::{MatchEnd, MatchResult};
@@ -41,14 +40,6 @@ pub(crate) enum ModeEffect {
         id: StableId,
         grant: SlotGrant,
     },
-    Respawn {
-        id: StableId,
-        ticks: Ticks,
-    },
-    Learn {
-        id: StableId,
-        slot: u8,
-    },
     SetRelation {
         a: Team,
         b: Team,
@@ -56,12 +47,12 @@ pub(crate) enum ModeEffect {
     },
     /// Holds `slot` out of play while `out`.
     SetOut {
-        seat: Seat,
+        player_slot: PlayerSlot,
         out: bool,
     },
     /// Sets `slot`'s bounty share, 0 or more, of a mode of a `[bounty]`.
     SetBountyShare {
-        seat: Seat,
+        player_slot: PlayerSlot,
         share: Num,
     },
     /// A save, at the end of the tick.
@@ -121,7 +112,7 @@ impl Effect for ModeEffect {
                 if grants.is_empty() {
                     Spawner::spawn(world, at, ());
                 } else {
-                    let book = world.get_resource::<ByType<ActionSlots>>();
+                    let book = world.get_resource::<ById<UnitType, ActionSlots>>();
                     let slots = book
                         .and_then(|book| book.get(at.unit_type))
                         .cloned()
@@ -142,23 +133,11 @@ impl Effect for ModeEffect {
                     unit.insert(granted);
                 }
             }
-            Self::Respawn { id, ticks } => {
-                let entity = world.entity_of(id);
-                let entity = entity.expect("a dead unit that stays is in the world");
-                let at = now.after(ticks);
-                world.entity_mut(entity).insert(Respawn { at });
-            }
-            Self::Learn { id, slot } => {
-                let entity = world.entity_of(id);
-                let entity = entity.expect("a unit the view read is in the world");
-                let slots = world.get_mut::<ActionSlots>(entity);
-                slots.expect("a unit with ability slots").learn(slot);
-            }
             Self::SetRelation { a, b, relation } => {
                 world.relations_mut().set_keeping_vision(a, b, relation);
             }
-            Self::SetOut { seat, out } => {
-                let player = world.player_entity(seat);
+            Self::SetOut { player_slot, out } => {
+                let player = world.player_entity(player_slot);
                 let mut player = world.entity_mut(player.expect("every slot has its entity"));
                 if out {
                     player.insert(HeldOut);
@@ -166,9 +145,9 @@ impl Effect for ModeEffect {
                     player.remove::<HeldOut>();
                 }
             }
-            Self::SetBountyShare { seat, share } => {
+            Self::SetBountyShare { player_slot, share } => {
                 let player = world
-                    .player_entity(seat)
+                    .player_entity(player_slot)
                     .expect("every slot has its entity");
                 world.entity_mut(player).insert(BountyShare(share));
             }

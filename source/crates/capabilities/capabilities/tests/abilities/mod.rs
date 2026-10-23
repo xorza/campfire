@@ -1,11 +1,10 @@
 use std::collections::BTreeMap;
-use std::num::NonZeroU8;
 use std::sync::Arc;
 
 use campfire_abilities::*;
 use campfire_actions::{
-    ActionData, ActionRange, DeliveryData, EffectData, EffectTo, KindSection, ListedEffect,
-    PipelineField, RangeField, Targeting,
+    ActionData, ActionKeys, ActionRange, DeliverySection, EffectData, EffectTo, KindSection,
+    ListedEffect, PipelineField, RangeField, Targeting,
 };
 use campfire_capabilities::Match;
 use campfire_capabilities::internals::*;
@@ -15,6 +14,7 @@ use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_players::Players;
 use campfire_production::TrainData;
+use campfire_projectiles::ProjectileDeliveryData;
 use campfire_script::ScriptLimits;
 use campfire_sim::Capability;
 use campfire_stats::{ModifierData, ModifierEffectData, StatChange, StatOp, Stats};
@@ -70,30 +70,33 @@ fn cost(name: &str, amount: Number) -> BTreeMap<DeclaredName, Ranked<Number>> {
 /// caster's mana, and damage within 3.5 m of 75 to 175, plus half the caster's ability power.
 fn lash_out() -> ActionData {
     ActionData {
-        script: Some(PackagePath::parse("scripts/lash_out.rhai").unwrap()),
-        cooldown_ms: Some(Ranked::PerRank(
-            [10_000, 9000, 8000, 7000, 6000].map(int).to_vec(),
-        )),
-        cost: cost("mana", int(35)),
-        params: BTreeMap::from([
-            (
-                DeclaredName::new("radius").unwrap(),
-                Param::Ranked(Ranked::One(Scalar::Decimal(half_meters(7)))),
-            ),
-            (
-                DeclaredName::new("damage").unwrap(),
-                Param::Scaling(Scaling {
-                    base: Ranked::PerRank([75, 100, 125, 150, 175].map(Num::int).to_vec()),
-                    per_level: Num::ZERO,
-                    bonus: BTreeMap::new(),
-                    ratios: [(Stat::named("ability_power").unwrap(), half_meters(1))].into(),
-                }),
-            ),
-            (
-                DeclaredName::new("cooldown_cut_ms").unwrap(),
-                Param::Ranked(Ranked::One(Scalar::Int(500))),
-            ),
-        ]),
+        keys: ActionKeys {
+            script: Some(PackagePath::parse("scripts/lash_out.rhai").unwrap()),
+            cooldown_ms: Some(Ranked::PerRank(
+                [10_000, 9000, 8000, 7000, 6000].map(int).to_vec(),
+            )),
+            cost: cost("mana", int(35)),
+            params: BTreeMap::from([
+                (
+                    DeclaredName::new("radius").unwrap(),
+                    Param::Ranked(Ranked::One(Scalar::Decimal(half_meters(7)))),
+                ),
+                (
+                    DeclaredName::new("damage").unwrap(),
+                    Param::Scaling(Scaling {
+                        base: Ranked::PerRank([75, 100, 125, 150, 175].map(Num::int).to_vec()),
+                        per_level: Num::ZERO,
+                        bonus: BTreeMap::new(),
+                        ratios: [(Stat::named("ability_power").unwrap(), half_meters(1))].into(),
+                    }),
+                ),
+                (
+                    DeclaredName::new("cooldown_cut_ms").unwrap(),
+                    Param::Ranked(Ranked::One(Scalar::Int(500))),
+                ),
+            ]),
+            ..ActionData::of(Targeting::None, CastData::default()).keys
+        },
         ..ActionData::of(Targeting::None, CastData::default())
     }
 }
@@ -102,19 +105,26 @@ fn lash_out() -> ActionData {
 /// mana and 4 rage.
 pub(crate) fn strike() -> ActionData {
     ActionData {
-        script: Some(PackagePath::parse("strike.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-            Num::int(5),
-        )))),
-        cooldown_ms: Some(Ranked::One(int(1001))),
-        cost: BTreeMap::from([
-            (DeclaredName::new("mana").unwrap(), Ranked::One(int(10))),
-            (DeclaredName::new("rage").unwrap(), Ranked::One(int(4))),
-        ]),
-        params: BTreeMap::from([(
-            DeclaredName::new("damage").unwrap(),
-            Param::Ranked(Ranked::One(Scalar::Int(50))),
-        )]),
+        keys: ActionKeys {
+            script: Some(PackagePath::parse("strike.rhai").unwrap()),
+            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                Num::int(5),
+            )))),
+            cooldown_ms: Some(Ranked::One(int(1001))),
+            cost: BTreeMap::from([
+                (DeclaredName::new("mana").unwrap(), Ranked::One(int(10))),
+                (DeclaredName::new("rage").unwrap(), Ranked::One(int(4))),
+            ]),
+            params: BTreeMap::from([(
+                DeclaredName::new("damage").unwrap(),
+                Param::Ranked(Ranked::One(Scalar::Int(50))),
+            )]),
+            ..ActionData::of(
+                Targeting::Unit(FilterData::parse("enemies").unwrap()),
+                CastData::default(),
+            )
+            .keys
+        },
         ..ActionData::of(
             Targeting::Unit(FilterData::parse("enemies").unwrap()),
             CastData::default(),
@@ -129,6 +139,7 @@ fn stat_attack() -> AttackData {
         rate: WeaponValue::Stat(Stat::named("armor").unwrap()),
         rate_bonus: None,
         damage: WeaponValue::Stat(Stat::named("attack_damage").unwrap()),
+        damage_bonus: None,
         damage_kind: DeclaredName::new("physical").unwrap(),
         clip: None,
         splash: None,
@@ -136,6 +147,7 @@ fn stat_attack() -> AttackData {
         pitch_deg: None,
         speed: None,
         streak: None,
+        pre_attack: None,
     }
 }
 
@@ -143,7 +155,7 @@ fn stat_attack() -> AttackData {
 fn a_kinds_section_names_the_first_pipeline_field_it_misuses() {
     // Strike is a cast: its script, cooldown, cost and params are a cast's to take.
     let mut action = strike();
-    assert_eq!(PipelineField::misused(&action), None);
+    assert_eq!(action.misused(), None);
     let attack = stat_attack();
     let train = TrainData {
         unit_type: DeclaredName::new("grunt").unwrap(),
@@ -158,50 +170,41 @@ fn a_kinds_section_names_the_first_pipeline_field_it_misuses() {
     // script, before the range a train never takes.
     let attacking = |action: &ActionData| of(action, Arc::new(attack.clone()));
     let training = |action: &ActionData| of(action, Arc::new(train.clone()));
-    assert_eq!(
-        PipelineField::misused(&attacking(&action)),
-        Some(PipelineField::Script)
-    );
-    assert_eq!(
-        PipelineField::misused(&training(&action)),
-        Some(PipelineField::Script)
-    );
+    assert_eq!(attacking(&action).misused(), Some(PipelineField::Script));
+    assert_eq!(training(&action).misused(), Some(PipelineField::Script));
     // With no script or cooldown, an attack takes the rest, an `on_hit` list among them, and
     // never an `on_end` list.
-    action.script = None;
-    action.cooldown_ms = None;
+    action.keys.script = None;
+    action.keys.cooldown_ms = None;
     action.on_hit = sapper(false).on_hit;
-    assert_eq!(PipelineField::misused(&attacking(&action)), None);
+    assert_eq!(attacking(&action).misused(), None);
     let ending = ActionData {
         on_end: action.on_hit.clone(),
         ..action.clone()
     };
-    assert_eq!(
-        PipelineField::misused(&attacking(&ending)),
-        Some(PipelineField::OnEnd)
-    );
+    assert_eq!(attacking(&ending).misused(), Some(PipelineField::OnEnd));
     // An attack must have a range.
     let unranged = ActionData {
-        range: None,
+        keys: ActionKeys {
+            range: None,
+            ..action.clone().keys
+        },
         ..action.clone()
     };
-    assert_eq!(
-        PipelineField::misused(&attacking(&unranged)),
-        Some(PipelineField::Range)
-    );
+    assert_eq!(attacking(&unranged).misused(), Some(PipelineField::Range));
     // A train never takes a range, params or a hit list; with none, it takes the rest.
-    assert_eq!(
-        PipelineField::misused(&training(&action)),
-        Some(PipelineField::Range)
-    );
+    assert_eq!(training(&action).misused(), Some(PipelineField::Range));
     let trained = ActionData {
-        targeting: Targeting::None,
-        range: None,
-        params: BTreeMap::new(),
+        keys: ActionKeys {
+            targeting: Targeting::None,
+            range: None,
+            params: BTreeMap::new(),
+            ..action.keys
+        },
         on_hit: Vec::new(),
         ..action
     };
-    assert_eq!(PipelineField::misused(&training(&trained)), None);
+    assert_eq!(training(&trained).misused(), None);
     assert_eq!(
         training(&trained).section::<TrainData>(),
         Some(&train),
@@ -300,10 +303,10 @@ fn scaling(
 /// damage.
 fn sapper(ranged: bool) -> ActionData {
     let meters = if ranged { 6 } else { 2 };
-    let delivery = ranged.then(|| DeliveryData::Projectile {
-        unit_type: DeclaredName::new("bolt").unwrap(),
-        count: NonZeroU8::MIN,
-        spread_deg: Num::ZERO,
+    let delivery = ranged.then(|| -> Arc<dyn DeliverySection> {
+        Arc::new(ProjectileDeliveryData::one(
+            DeclaredName::new("bolt").unwrap(),
+        ))
     });
     let bite = scaling(
         Ranked::One(Num::int(10)),
@@ -312,19 +315,26 @@ fn sapper(ranged: bool) -> ActionData {
         &[],
     );
     ActionData {
-        script: None,
-        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-            Num::int(meters),
-        )))),
+        keys: ActionKeys {
+            script: None,
+            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                Num::int(meters),
+            )))),
+            params: BTreeMap::from([
+                (
+                    DeclaredName::new("sap").unwrap(),
+                    Param::Ranked(Ranked::One(Scalar::Int(40))),
+                ),
+                (DeclaredName::new("bite").unwrap(), bite),
+            ]),
+            ..ActionData::of(
+                Targeting::Unit(FilterData::parse("enemies").unwrap()),
+                CastData::default(),
+            )
+            .keys
+        },
         section: Arc::new(stat_attack()),
         delivery,
-        params: BTreeMap::from([
-            (
-                DeclaredName::new("sap").unwrap(),
-                Param::Ranked(Ranked::One(Scalar::Int(40))),
-            ),
-            (DeclaredName::new("bite").unwrap(), bite),
-        ]),
         on_hit: vec![
             effect(
                 Arc::new(ModifierEffectData {

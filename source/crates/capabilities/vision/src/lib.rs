@@ -12,11 +12,12 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::EnumAll;
-use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
+use campfire_declarations::{ById, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
 use campfire_sim::Capability;
 use campfire_units::{SeenBy, UnitEntity, UnitsSystems};
 
 use crate::vision_column::RowReads;
+use campfire_values::UnitType;
 
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -94,7 +95,7 @@ impl Module for Vision {
         d.cache::<Fog>();
         d.component::<SeenBy>();
         d.component::<Sight>();
-        d.book::<ByType<Sight>>(Sight::book);
+        d.book::<ById<UnitType, Sight>>(Sight::book);
         d.book::<VisionBook>(VisionBook::build);
         d.rule(VisionBook::grid_rule);
         d.column::<VisionColumn, RowReads>(VisionColumn::fill_row);
@@ -130,7 +131,7 @@ pub mod internals {
     use campfire_geometry::{Bounds, Grid, Polygon};
     use campfire_math::Num;
     use campfire_script::FailureKind;
-    use campfire_script::{Budget, CallError, CallStart, Ctx, ScriptHost, ScriptRole};
+    use campfire_script::{ActionCast, Budget, CallError, CallStart, Ctx, ScriptHost, ScriptRole};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimTick, StableId};
     use campfire_units::{SeenBy, UnitsWorld};
@@ -198,16 +199,19 @@ pub mod internals {
             ctx.view().read(world);
             let now = world.resource::<SimTick>().start();
             let start = match actor {
-                Some(actor) => CallStart::cast(
-                    ActionId::new(0),
-                    Rank::FIRST,
-                    actor,
-                    PackageIndex::MODE,
-                    now,
-                ),
+                Some(actor) => {
+                    let cast = ActionCast {
+                        action: ActionId::new(0),
+                        rank: Rank::FIRST,
+                        caster: actor,
+                        allegiance: world.allegiance_of(actor).unwrap(),
+                        package: PackageIndex::MODE,
+                    };
+                    CallStart::cast(cast, now)
+                }
                 None => CallStart::mode(ScriptRole::Mode, now),
             };
-            ctx.frame().begin_alone(world, start).unwrap();
+            ctx.begin_alone(world, start).unwrap();
             let at = ctx.view().unit(at).unwrap();
             let source = format!("fn probe(ctx, at) {{ ctx.reveal(at.position, {radius}, {ms}) }}");
             let returned = {

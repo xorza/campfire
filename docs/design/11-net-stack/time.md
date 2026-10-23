@@ -53,6 +53,12 @@ How the stack answers "what time is it".
   cannot schedule a wire: each counts from its own first update, and a harness runs them at
   different rates and stalls them. Refused: due times in the sender's clock compared with the
   receiver's.
+- **One source of time, three uses.** `net-core`'s `TimeSource`, the OS's monotonic clock or a
+  driven one, is the wire clock of an emulated network and what an app's `Clock` resolves its
+  `ClockSource` to; `ClockSource` keeps `Auto`, a choice that follows how the app's time runs,
+  and an endpoint's time stays a value of its source, the frame's instant or the OS's origin.
+  Refused: one enum of the three, which holds a choice, a resolved source and a time value in one
+  type; an enum of each crate's own, which named one source three ways.
 - **Conversions are exact.** A `Duration` becomes ticks through its nanoseconds into fixed point,
   a `PositiveTickSpan` becomes a duration unsigned, and every narrowing goes through `TryFrom`.
   Timestamps are `Duration`s, never `f32` seconds, and an EMA updates on the small difference.
@@ -69,6 +75,18 @@ How the stack answers "what time is it".
   timers; sync's `LinkEstimator` takes one of the packet session's samples each 100 ms, its gains
   tuned for that rate, for a stable input delay. Refused: one estimate for both, whose gains suit
   one promise and break the other.
+- **The remote timeline takes one sample of each link a frame,** the largest tick of the packets
+  the frame admitted, so a frame weighs the same in its estimate whatever its packet count.
+  Refused: a sample of each packet, which weighs a frame of many packets more and costs an
+  observer call each.
+- **A packet carries its sender's instant,** its tick and a byte of its overstep, a 256th of a
+  tick, 0.13 ms at 30 Hz, below a link's jitter: a sender sends at its frame's end, up to a tick
+  past the tick it ran, and a receiver that took the tick for the instant estimated the sender
+  late by its mean overstep, which a host that wakes late and at random phases, as macOS in CI,
+  makes half a tick, and up to a whole one ([LAN late input](../../research/lan-late-input.md),
+  Run 39812856711). Netcode for Entities sends right after the tick, where the overstep is near
+  0. Refused: a half tick added at the receiver, a guess that is wrong on every host that wakes on
+  time; a send after each tick, which Bevy's frame-level I/O does not do.
 - **An unknown estimate is `None`,** not zero: the timelines wait for the handshake's samples.
 - **An input leads by one margin for each reason.** On loopback the local timeline leads the
   server by 2 ticks: one so that an input reaches the server before the server simulates its tick,
@@ -79,5 +97,12 @@ How the stack answers "what time is it".
 - **A client behind steps, a client ahead slews.** The input timeline steps to its objective once a
   deficit passes the deadband, as a late input costs more than latency, and the interpolation
   timeline slews, as a step shows as a jump ([LAN late input](../../research/lan-late-input.md)).
+- **An input is stamped for the frame's last tick.** A client gathers its frame's orders once and
+  stamps them for the last tick the frame predicts, as Netcode for Entities' command send gathers
+  them once a frame for the tick it predicts: the message leaves at the frame's end, so an input
+  stamped for an earlier tick of a frame that runs several, after a stall, would spend the lead
+  of the ticks after it and land late ([LAN late input](../../research/lan-late-input.md)).
+  Refused: a lead wider by a tick, which no stall longer than the lead respects and every player
+  pays in latency.
   Practice: NTP steps a large offset and slews a small one. Refused: a lead the server acknowledges,
   which comes back only after an input, as a client sends one only with an order.

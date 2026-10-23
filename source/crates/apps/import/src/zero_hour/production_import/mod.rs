@@ -11,15 +11,20 @@ use campfire_production::{
 };
 use campfire_values::{Number, Ranked, Share, TextId};
 
+use crate::zero_hour::axes;
+use crate::zero_hour::combat_import::CombatImport;
+use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::command_button_ini::{ButtonCommand, CommandButton};
-use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, Prerequisite};
-use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::import_names::ProductionNames;
-use crate::zero_hour::imported_type::{ImportedType, MONEY};
+use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectId};
+use crate::zero_hour::game_time;
+use crate::zero_hour::import_names::{NamedObject, ProductionNames};
+use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::skirmish_start::FactionStart;
 use crate::zero_hour::supply_import::{DOCK_RANGE, SupplyImport};
+use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's trains and builds (09-zero-hour.md, Every command set's trains and builds are
@@ -32,23 +37,24 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 pub(crate) struct ProductionImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedAction>,
     pub(crate) texts: BTreeMap<String, String>,
-    pub(crate) dropped: Vec<DroppedButton>,
+    pub(crate) dropped: Losses<ButtonDropCause>,
     /// Each producer's and builder's actions of its slot kind `command`, by its type's name, in
     /// its command set's order.
-    pub(crate) commands: BTreeMap<ImportName, Vec<DeclaredName>>,
+    pub(crate) commands: BTreeMap<TypeName, Vec<DeclaredName>>,
     /// Each producer's `production` section, by its type's name.
-    pub(crate) sections: BTreeMap<ImportName, ProductionData>,
+    pub(crate) sections: BTreeMap<TypeName, ProductionData>,
     /// The docks, supply centers, gatherers and free units of the types it visits.
     pub(crate) supply: SupplyImport,
 }
 
-/// A faction's base, which a seat that starts with one gets beside its start (09-zero-hour.md,
-/// A base start): each type its start builders build but its faction building, once each, in
-/// their command sets' order, and each type those buildings and its faction building train, once
-/// each, in that order; its army, those units that neither build nor gather, which a bot trains
-/// and sends (09-zero-hour.md, A builder and an attacker); its gatherers, those units that
-/// gather; and its drop-offs, its faction building and base buildings that take a load, which a
-/// bot counts its gatherers by (04-capabilities/control.md, A bot gathers).
+/// A faction's base, which a player slot that starts with one gets beside its start
+/// (09-zero-hour.md, A base start): each type its start builders build but its faction building,
+/// once each, in their command sets' order, and each type those buildings and its faction building
+/// train, once each, in that order; its army, those units that neither build nor gather and that a
+/// weapon arms, or one of the variants their train makes, which a bot trains and sends
+/// (09-zero-hour.md, A builder and an attacker); its gatherers, those units that gather; and its
+/// drop-offs, its faction building and base buildings that take a load, which a bot counts its
+/// gatherers by (04-capabilities/control.md, A bot gathers).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FactionBase {
     pub(crate) buildings: Vec<DeclaredName>,
@@ -56,6 +62,57 @@ pub(crate) struct FactionBase {
     pub(crate) army: Vec<DeclaredName>,
     pub(crate) gatherers: Vec<DeclaredName>,
     pub(crate) drop_offs: Vec<DeclaredName>,
+}
+
+impl FactionBase {
+    /// The base of `faction`, from the command sets `production` converted, its army armed by a
+    /// weapon `combat` converted.
+    pub(crate) fn of(
+        production: &ProductionImport,
+        combat: &CombatImport,
+        faction: &FactionStart,
+    ) -> Self {
+        let building = &faction.building;
+        let mut buildings: Vec<DeclaredName> = Vec::new();
+        for builder in &faction.units {
+            for made in production.made(builder, ActionKind::Build) {
+                if made != building && !buildings.contains(made) {
+                    buildings.push(made.clone());
+                }
+            }
+        }
+        let mut units: Vec<DeclaredName> = Vec::new();
+        for producer in [building].into_iter().chain(&buildings) {
+            for made in production.made(producer, ActionKind::Train) {
+                if !units.contains(made) {
+                    units.push(made.clone());
+                }
+            }
+        }
+        let army = units
+            .iter()
+            .filter(|unit| production.fights(unit) && production.armed(unit, combat))
+            .cloned()
+            .collect();
+        let gatherers = units
+            .iter()
+            .filter(|unit| production.gathers(unit))
+            .cloned()
+            .collect();
+        let drop_offs = [building]
+            .into_iter()
+            .chain(&buildings)
+            .filter(|building| production.supply.drop_offs.contains_key(*building))
+            .cloned()
+            .collect();
+        Self {
+            buildings,
+            units,
+            army,
+            gatherers,
+            drop_offs,
+        }
+    }
 }
 
 /// A train or a build as the mode's data writes it, `[actions.<id>]`: the pipeline's keys it
@@ -83,13 +140,6 @@ impl ImportedAction {
     }
 }
 
-/// A button the import drops, by its name, and why.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DroppedButton {
-    pub button: String,
-    pub cause: ButtonDropCause,
-}
-
 /// Why the import drops a button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
 pub enum ButtonDropCause {
@@ -108,6 +158,8 @@ pub enum ButtonDropCause {
     NoType,
     /// Its object's build time is below 0, or not finite.
     BadTime,
+    /// Its action's name, of its kind and its type's, passes the bytes a declared name holds.
+    LongName,
 }
 
 /// A button's kind, of those the import converts.
@@ -117,69 +169,37 @@ enum Making {
     Build,
 }
 
-/// The logic frames a second of the game, `LOGICFRAMES_PER_SECOND`.
-const FRAMES: f32 = 30.0;
-
 impl ProductionImport {
-    /// The base of a faction whose start is the building `building` and the units `builders`,
-    /// from the command sets it converted.
-    pub(crate) fn base(&self, building: &DeclaredName, builders: &[DeclaredName]) -> FactionBase {
-        let mut buildings: Vec<DeclaredName> = Vec::new();
-        for builder in builders {
-            for made in self.made(builder, ActionKind::Build) {
-                if made != building && !buildings.contains(made) {
-                    buildings.push(made.clone());
-                }
-            }
-        }
-        let mut units: Vec<DeclaredName> = Vec::new();
-        for producer in [building].into_iter().chain(&buildings) {
-            for made in self.made(producer, ActionKind::Train) {
-                if !units.contains(made) {
-                    units.push(made.clone());
-                }
-            }
-        }
-        let army = units
-            .iter()
-            .filter(|unit| self.fights(unit))
-            .cloned()
-            .collect();
-        let gatherers = units
-            .iter()
-            .filter(|unit| self.gathers(unit))
-            .cloned()
-            .collect();
-        let drop_offs = [building]
-            .into_iter()
-            .chain(&buildings)
-            .filter(|building| {
-                let name = ImportName::of(building.as_str().as_bytes());
-                self.supply.drop_offs.contains_key(&name)
-            })
-            .cloned()
-            .collect();
-        FactionBase {
-            buildings,
-            units,
-            army,
-            gatherers,
-            drop_offs,
-        }
-    }
-
     /// Whether `unit`'s command set holds a gather.
     fn gathers(&self, unit: &DeclaredName) -> bool {
-        let commands = self.commands.get(&ImportName::of(unit.as_str().as_bytes()));
+        let commands = self.commands.get(unit);
         commands
             .into_iter()
             .flatten()
             .any(|id| self.supply.gathers.contains_key(id))
     }
 
+    /// Whether a weapon of `combat` arms `unit`, or one of the variants a train of it makes, as
+    /// the technical's chassis hold its weapons.
+    fn armed(&self, unit: &DeclaredName, combat: &CombatImport) -> bool {
+        let arms = |name: &DeclaredName| {
+            combat
+                .weapons
+                .get(name)
+                .is_some_and(|weapons| !weapons.is_empty())
+        };
+        arms(unit)
+            || self.actions.values().any(|action| match &action.made {
+                MadeSection::Train(train) => {
+                    train.unit_type == *unit && train.variants.iter().any(arms)
+                }
+                MadeSection::Build(_) => false,
+            })
+    }
+
     /// Whether `unit`'s command set holds trains alone: none of its actions builds or gathers.
     fn fights(&self, unit: &DeclaredName) -> bool {
-        let commands = self.commands.get(&ImportName::of(unit.as_str().as_bytes()));
+        let commands = self.commands.get(unit);
         commands.into_iter().flatten().all(|id| {
             let action = self.actions.get(id);
             action.is_some_and(|action| matches!(action.made, MadeSection::Train(_)))
@@ -192,9 +212,7 @@ impl ProductionImport {
         producer: &DeclaredName,
         kind: ActionKind,
     ) -> impl Iterator<Item = &'a DeclaredName> {
-        let commands = self
-            .commands
-            .get(&ImportName::of(producer.as_str().as_bytes()));
+        let commands = self.commands.get(producer);
         commands
             .into_iter()
             .flatten()
@@ -207,27 +225,26 @@ impl ProductionImport {
     }
 
     /// The trains, builds and supply of `rules`, from the unit types `names` holds, each type a
-    /// converted button makes, a building frees, or its object's prerequisites name, named there,
-    /// and its own command set's buttons and supply converted in turn.
-    pub(crate) fn of(rules: &ZeroHourRules, names: &mut ProductionNames) -> Self {
+    /// converted button makes or its variations hold, a building frees, or its object's
+    /// prerequisites name, named there, and its own command set's buttons and supply converted in
+    /// turn.
+    pub(crate) fn of<'r>(rules: &'r ZeroHourRules, names: &mut ProductionNames<'r>) -> Self {
         let mut import = Self::default();
-        let mut queued: VecDeque<String> = names.typed_objects().into();
-        let mut seen: BTreeSet<String> = queued.iter().cloned().collect();
-        while let Some(name) = queued.pop_front() {
-            let Some(producer) = rules.objects.object(name.as_bytes()) else {
-                continue;
-            };
-            let set = producer.build().command_set.as_deref();
+        let mut queued: VecDeque<NamedObject<'r>> = names.typed_objects().into();
+        let mut seen: BTreeSet<ObjectId> = queued.iter().map(|named| named.object.id).collect();
+        while let Some(producer) = queued.pop_front() {
+            let set = producer.object.build().command_set.as_deref();
             let buttons = set.and_then(|set| rules.sets.buttons(set));
-            let mut made: Vec<String> = buttons
+            let mut made: Vec<NamedObject<'r>> = buttons
                 .into_iter()
                 .flatten()
-                .filter_map(|button_name| import.button(rules, producer, button_name, names))
+                .filter_map(|button_name| import.button(rules, &producer, button_name, names))
                 .collect();
-            made.extend(import.supply_of(rules, producer, names));
-            for object in made {
-                if seen.insert(object.clone()) {
-                    queued.push_back(object);
+            made.extend(import.supply_of(rules, &producer, names));
+            made.extend(names.take_fresh());
+            for named in made {
+                if seen.insert(named.object.id) {
+                    queued.push_back(named);
                 }
             }
         }
@@ -235,60 +252,62 @@ impl ProductionImport {
     }
 
     /// Converts the supply of `producer`, a unit type of `names`, its buttons converted: its
-    /// node, its drop-off, its gather, the last of its command slots, and the units it frees and
+    /// node, its drop-off, its gather and its hack, the last of its command slots, and the units it frees and
     /// keeps as its production's, a building that spawns and trains nothing taking the production
     /// of its `ProductionUpdate` (09-zero-hour.md, A spawner takes its production update); the
     /// names of the objects it frees and keeps.
-    fn supply_of(
+    fn supply_of<'r>(
         &mut self,
-        rules: &ZeroHourRules,
-        producer: &IniObject,
-        names: &mut ProductionNames,
-    ) -> Vec<String> {
+        rules: &'r ZeroHourRules,
+        producer: &NamedObject<'r>,
+        names: &mut ProductionNames<'r>,
+    ) -> Vec<NamedObject<'r>> {
         self.supply.dock(rules, producer);
-        let name = ImportName::object(producer);
-        if let Some(gather) = self.supply.gather(rules, producer, names) {
-            self.commands.entry(name.clone()).or_default().push(gather);
+        let NamedObject {
+            name,
+            object: producer,
+        } = producer;
+        let gather = self.supply.gather(rules, producer, names);
+        let hack = self.supply.hack(rules, producer, names);
+        for command in [gather, hack].into_iter().flatten() {
+            self.commands.entry(name.clone()).or_default().push(command);
         }
         let supply = producer.supply();
         let spawns = supply.kept().is_some() || supply.one_shots().next().is_some();
         if spawns
-            && !self.sections.contains_key(&name)
+            && !self.sections.contains_key(name)
             && let Some(section) = Self::section(producer.build())
         {
             self.sections.insert(name.clone(), section);
         }
-        let Some(section) = self.sections.get_mut(&name) else {
+        let Some(section) = self.sections.get_mut(name) else {
             self.supply.strand(rules, producer);
             return Vec::new();
         };
-        let freed = self.supply.free(rules, producer, names);
-        section.free = freed.iter().map(|unit| unit.unit_type.clone()).collect();
+        let mut freed = self.supply.free(rules, producer, names);
+        section.free = freed
+            .iter()
+            .map(|unit| unit.name.declared().clone())
+            .collect();
         let kept = self.supply.kept(rules, producer, names);
         section.spawns = kept.as_ref().map(|kept| kept.spawns.clone());
-        let freed = freed.into_iter().map(|unit| unit.object);
-        freed.chain(kept.map(|kept| kept.object)).collect()
+        freed.extend(kept.map(|kept| kept.unit));
+        freed
     }
 
     /// Converts the button `button_name` of the set of `producer`: its action, made once, and
     /// the producer's slot; the name of the object it makes, unless it drops the button or the
     /// button is no train or build.
-    fn button(
+    fn button<'r>(
         &mut self,
-        rules: &ZeroHourRules,
-        producer: &IniObject,
+        rules: &'r ZeroHourRules,
+        producer: &NamedObject<'r>,
         button_name: &str,
-        names: &mut ProductionNames,
-    ) -> Option<String> {
+        names: &mut ProductionNames<'r>,
+    ) -> Option<NamedObject<'r>> {
         // A button in several sets is reported once for each cause it drops by.
         let mut drop = |cause| {
-            let dropped = DroppedButton {
-                button: button_name.to_owned(),
-                cause,
-            };
-            if !self.dropped.contains(&dropped) {
-                self.dropped.push(dropped);
-            }
+            self.dropped.drop(button_name, cause);
             None
         };
         let Some(button) = rules.buttons.get(button_name) else {
@@ -311,7 +330,7 @@ impl ProductionImport {
             Ok(requires) => requires,
             Err(cause) => return drop(cause),
         };
-        let Ok(imported) = ImportedType::of(made, &rules.locomotors) else {
+        let Ok(imported) = ImportedType::of(made, rules) else {
             return drop(ButtonDropCause::NoType);
         };
         // A train of variations makes them in its object's place, so they walk, and it need not
@@ -324,7 +343,7 @@ impl ProductionImport {
             variations.push(variation);
         }
         let walks = |object: &IniObject| {
-            ImportedType::of(object, &rules.locomotors).is_ok_and(|imported| imported.walks())
+            ImportedType::of(object, rules).is_ok_and(|imported| imported.walks())
         };
         let trained_walk = if variations.is_empty() {
             imported.walks()
@@ -337,42 +356,43 @@ impl ProductionImport {
             _ => {}
         }
         let section = match making {
-            Making::Train => match Self::section(producer.build()) {
+            Making::Train => match Self::section(producer.object.build()) {
                 Some(section) => Some(section),
                 None => return drop(ButtonDropCause::NoQueue),
             },
             Making::Build => None,
         };
-        let Some(windup_ms) = Self::windup_ms(build.time) else {
+        let Ok(windup_ms) = game_time::of_build_seconds(build.time) else {
             return drop(ButtonDropCause::BadTime);
         };
         let mut units = Vec::with_capacity(requires.len());
         for line in requires {
             let mut any = Vec::with_capacity(line.len());
             for required in line {
-                let Ok(typed) = names.unit_type(required, &rules.locomotors) else {
+                let Ok(typed) = names.unit_type(required, rules) else {
                     return drop(ButtonDropCause::NoType);
                 };
-                any.push(typed.name);
+                any.push(typed.name.into());
             }
             units.push(RequiredUnit::any_of(any).expect("a prerequisite line names an object"));
         }
         let mut variants = Vec::with_capacity(variations.len());
         for variation in variations {
-            let Ok(typed) = names.unit_type(variation, &rules.locomotors) else {
+            let Ok(typed) = names.unit_type(variation, rules) else {
                 return drop(ButtonDropCause::NoType);
             };
-            variants.push(typed.name);
+            variants.push(typed.name.into());
         }
-        let Ok(typed) = names.unit_type(made, &rules.locomotors) else {
+        let Ok(typed) = names.unit_type(made, rules) else {
             return drop(ButtonDropCause::NoType);
         };
         let kind = match making {
             Making::Train => ActionKind::Train,
             Making::Build => ActionKind::Build,
         };
-        let id = DeclaredName::new(&format!("{}_{}", kind.name(), typed.name))
-            .expect("a kind and a type's name make a declared name");
+        let Ok(id) = typed.name.id(kind.name()) else {
+            return drop(ButtonDropCause::LongName);
+        };
         let message = format!("action-{}", id.as_str().replace('_', "-"));
         self.texts
             .entry(message.clone())
@@ -383,13 +403,13 @@ impl ProductionImport {
         });
         let made_section = match making {
             Making::Train => MadeSection::Train(TrainData {
-                unit_type: typed.name,
+                unit_type: typed.name.declared().clone(),
                 requires,
                 variants,
             }),
             Making::Build => MadeSection::Build(BuildData {
                 start_life: typed.imported.life().map(Self::one_life),
-                unit_type: typed.name,
+                unit_type: typed.name.declared().clone(),
                 requires,
                 construct: ConstructData::Builder,
                 start: BuildStart::Order,
@@ -397,7 +417,7 @@ impl ProductionImport {
                 placement: None,
             }),
         };
-        let money = DeclaredName::new(MONEY).expect("a resource is a declared name");
+        let money = rules.names.money.clone();
         let cost = (build.cost > 0).then(|| (money, Self::number(i64::from(build.cost))));
         let windup_ms = i64::try_from(windup_ms).expect("a windup of an `Int` of frames fits");
         self.actions.entry(id.clone()).or_insert_with(|| {
@@ -411,24 +431,24 @@ impl ProductionImport {
                 windup_ms: Some(Self::number(windup_ms)),
                 range: (making == Making::Build)
                     .then(|| Ranked::One(RangeField::Range(ActionRange::meters(DOCK_RANGE)))),
-                ..ActionKeys::new(kind, targeting)
+                ..ActionKeys::new(targeting)
             };
             ImportedAction {
                 keys,
                 made: made_section,
             }
         });
-        let commands = self
-            .commands
-            .entry(ImportName::object(producer))
-            .or_default();
+        let commands = self.commands.entry(producer.name.clone()).or_default();
         if !commands.contains(&id) {
             commands.push(id);
         }
         if let Some(section) = section {
-            self.sections.insert(ImportName::object(producer), section);
+            self.sections.insert(producer.name.clone(), section);
         }
-        Some(made.name.clone())
+        Some(NamedObject {
+            name: typed.name,
+            object: made,
+        })
     }
 
     /// The objects `build`'s prerequisites require, each line the objects any one of which passes
@@ -461,10 +481,9 @@ impl ProductionImport {
     /// its free units.
     fn section(build: &IniBuild) -> Option<ProductionData> {
         let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;
-        let frame = |[x, y]: [f32; 2]| {
-            let x = game_float::to_num(x).ok()?;
-            let y = game_float::to_num(y).ok()?;
-            FramePoint::new([x, y.checked_neg()?])
+        let frame = |point: [f32; 2]| {
+            let [x, y] = point.map(|axis| game_float::to_num(axis).ok());
+            FramePoint::new(axes::ground([x?, y?])?)
         };
         let exit = build.exit;
         Some(ProductionData {
@@ -492,28 +511,6 @@ impl ProductionImport {
     /// `value` at every rank.
     fn number(value: i64) -> Ranked<Number> {
         Ranked::One(Number::from(value))
-    }
-
-    /// The milliseconds of a build time of `seconds` the engine turns into the original's count
-    /// of frames, `BuildTime × 30` truncated, as `calcTimeToBuild` counts it: rounded up, the
-    /// engine's ⌈ms × 30 / 1000⌉ of ⌊frames × 100 / 3⌋ is the count; none for a time below 0, not
-    /// finite, or of more frames than the game's `Int` holds, 2³¹ and past, which its cast does
-    /// not define.
-    fn windup_ms(seconds: f32) -> Option<u64> {
-        /// 2³¹, the least count of frames past an `Int`.
-        const PAST_INT: f64 = 2_147_483_648.0;
-        let frames = seconds * FRAMES;
-        // Not a number and either infinity are out of the range too.
-        if !(0.0..PAST_INT).contains(&f64::from(frames)) {
-            return None;
-        }
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "the game truncates the frames of a build to an `Int`, toward 0"
-        )]
-        let frames = frames as u64;
-        Some(frames * 100 / 3)
     }
 
     /// The name of the action of `button`, which makes `made`: the text of its label, its

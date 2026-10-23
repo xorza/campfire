@@ -1,9 +1,8 @@
 use std::error::Error;
-use std::vec;
+use std::fmt::{self, Write};
 
 use bevy_ecs::resource::Resource;
 use campfire_sim::StableId;
-use thiserror::Error;
 
 use crate::scripts::error::{CallError, FailureKind};
 use crate::scripts::hook::Hook;
@@ -11,62 +10,139 @@ use crate::scripts::hook::Hook;
 /// The script calls of the running tick that failed. A failed call changed nothing; the list is
 /// for the host to see. Not state: it empties each tick. Each failure keeps what its error is and
 /// its text, not the error, whose raised value only the match's thread of scripts holds, so the
-/// host reads it as a plain resource.
-#[derive(Resource, Debug, Default)]
-pub struct ScriptFailures(Vec<ScriptFailure>);
+/// host reads it as a plain resource; the texts of every failure share one buffer, so a failure
+/// allocates nothing once the buffers have grown.
+#[derive(Resource, Default)]
+pub struct ScriptFailures {
+    failures: Vec<ScriptFailure>,
+    /// The messages of every failure's error chain, one after another.
+    text: String,
+    /// Where each message ends in `text`.
+    ends: Vec<u32>,
+}
 
-/// A call that failed: the unit it ran for, if any, its hook, what its error is, and the error as
-/// text.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A call that failed: the unit it ran for, if any, its hook, what its error is, and where its
+/// text lies among its failures'.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScriptFailure {
     pub id: Option<StableId>,
     pub hook: Hook,
     pub kind: FailureKind,
-    pub error: FailureText,
+    /// Its messages among the failures' ends, the first and the one past the last.
+    messages: [u32; 2],
 }
 
-/// A failed call's error as text: its message, then the error it comes from, each of its chain
-/// in turn, so a report of it reads as one of the error would.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("{message}")]
-pub struct FailureText {
-    message: String,
-    #[source]
-    source: Option<Box<Self>>,
+/// A failed call's error as text: its message, then the message of each error of its chain in
+/// turn. It writes as a report of the error does, each joined by `: `.
+#[derive(Debug, Clone, Copy)]
+pub struct FailureText<'a> {
+    text: &'a str,
+    /// Where each of its messages ends in `text`, and where the first starts.
+    ends: &'a [u32],
+    start: u32,
 }
 
-impl FailureText {
-    /// The text of `error` and of each error of its chain.
-    fn of(error: &dyn Error) -> Self {
-        Self {
-            message: error.to_string(),
-            source: error.source().map(|source| Box::new(Self::of(source))),
+impl FailureText<'_> {
+    /// The messages of its chain, its own first.
+    fn messages(&self) -> impl Iterator<Item = &str> + '_ {
+        let starts = std::iter::once(self.start).chain(self.ends.iter().copied());
+        starts
+            .zip(self.ends)
+            .map(|(start, &end)| &self.text[start as usize..end as usize])
+    }
+
+    /// The error's own message, with none of its chain.
+    pub fn message(&self) -> &str {
+        self.messages().next().unwrap_or_default()
+    }
+}
+
+impl fmt::Display for FailureText<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (at, message) in self.messages().enumerate() {
+            if at > 0 {
+                f.write_str(": ")?;
+            }
+            f.write_str(message)?;
         }
+        Ok(())
     }
 }
 
 impl ScriptFailures {
     pub fn get(&self) -> &[ScriptFailure] {
-        &self.0
+        &self.failures
     }
 
-    /// Takes the failures out, for a caller that keeps them past the tick.
-    pub fn drain(&mut self) -> vec::Drain<'_, ScriptFailure> {
-        self.0.drain(..)
+    pub const fn is_empty(&self) -> bool {
+        self.failures.is_empty()
+    }
+
+    /// The text of `failure`, one of its failures.
+    pub fn text(&self, failure: &ScriptFailure) -> FailureText<'_> {
+        let [first, end] = failure.messages.map(|at| at as usize);
+        let start = first.checked_sub(1).map_or(0, |before| self.ends[before]);
+        FailureText {
+            text: &self.text,
+            ends: &self.ends[first..end],
+            start,
+        }
+    }
+
+    /// Moves the failures into `kept`, after its own, for a caller that keeps them past the
+    /// tick.
+    pub fn move_into(&mut self, kept: &mut Self) {
+        let ends = u32::try_from(kept.ends.len()).expect("the messages fit u32");
+        let text = u32::try_from(kept.text.len()).expect("the failures' text fits u32");
+        kept.failures
+            .extend(self.failures.drain(..).map(|failure| ScriptFailure {
+                messages: failure.messages.map(|at| at + ends),
+                ..failure
+            }));
+        kept.ends.extend(self.ends.drain(..).map(|end| end + text));
+        kept.text.push_str(&self.text);
+        self.text.clear();
     }
 
     pub fn record(&mut self, id: Option<StableId>, hook: Hook, error: &CallError) {
-        self.0.push(ScriptFailure {
+        let first = self.ends.len();
+        let mut link: Option<&dyn Error> = Some(error);
+        while let Some(error) = link {
+            write!(self.text, "{error}").expect("text writes into a string");
+            let end = u32::try_from(self.text.len()).expect("the failures' text fits u32");
+            self.ends.push(end);
+            link = error.source();
+        }
+        let at = |at: usize| u32::try_from(at).expect("the messages fit u32");
+        self.failures.push(ScriptFailure {
             id,
             hook,
             kind: error.kind(),
-            error: FailureText::of(error),
+            messages: [at(first), at(self.ends.len())],
         });
     }
 
     /// Forgets the failures of the tick before, as a tick begins.
     pub fn clear(&mut self) {
-        self.0.clear();
+        self.failures.clear();
+        self.text.clear();
+        self.ends.clear();
+    }
+}
+
+/// Each failure, with its text.
+impl fmt::Debug for ScriptFailures {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
+        for failure in &self.failures {
+            list.entry(&(
+                failure.id,
+                failure.hook.name,
+                failure.kind,
+                self.text(failure).to_string(),
+            ));
+        }
+        list.finish()
     }
 }
 
@@ -88,7 +164,7 @@ pub(crate) mod internals {
 
     impl ScriptFailures {
         pub fn calls(&self) -> Vec<FailedCall> {
-            self.0
+            self.failures
                 .iter()
                 .map(|failure| FailedCall {
                     id: failure.id,
@@ -122,10 +198,24 @@ mod tests {
             panic!("one failure");
         };
         assert_eq!(failure.kind, FailureKind::Api(ApiError::NegativeRadius));
-        assert_eq!(failure.error.to_string(), error.to_string());
-        let source = failure.error.source().map(ToString::to_string);
-        assert_eq!(source, Some(ApiError::NegativeRadius.to_string()));
-        assert!(failure.error.source().and_then(Error::source).is_none());
+        let text = failures.text(failure);
+        assert_eq!(text.message(), error.to_string());
+        let report = format!("{error}: {}", ApiError::NegativeRadius);
+        assert_eq!(text.to_string(), report);
+        // A second failure's text follows the first's; moved into a list it keeps it.
+        failures.record(None, think, &CallError::Api(ApiError::PureCall));
+        let mut kept = ScriptFailures::default();
+        kept.record(None, think, &error);
+        failures.move_into(&mut kept);
+        assert!(failures.is_empty());
+        let texts: Vec<String> = kept
+            .get()
+            .iter()
+            .map(|failure| kept.text(failure).to_string())
+            .collect();
+        let pure = CallError::Api(ApiError::PureCall);
+        let pure = format!("{pure}: {}", ApiError::PureCall);
+        assert_eq!(texts, [report.clone(), report, pure]);
         failures.clear();
         assert!(failures.get().is_empty());
     }

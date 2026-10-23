@@ -1,7 +1,7 @@
 use std::num::NonZeroU64;
 
 use campfire_codec::{Binary, BinaryError};
-use campfire_combat::Kept;
+use campfire_combat::{Kept, UnansweredDeaths};
 use campfire_common::Tick;
 use campfire_progression::LevelUps;
 
@@ -188,13 +188,13 @@ fn a_join_or_a_leave_whose_call_finds_the_mode_pool_spent_waits() {
     // Each call spins 50 additions: a mode pool of 500 operations holds two of them, not three.
     let script = "
 fn on_player_join(ctx, player) {
-    ctx.state.kind += `join ${player.seat};`;
+    ctx.state.kind += `join ${player.player_slot};`;
     let spun = 0;
     for i in 0..50 { spun += i; }
 }
 
 fn on_player_leave(ctx, player) {
-    ctx.state.kind += `leave ${player.seat};`;
+    ctx.state.kind += `leave ${player.player_slot};`;
     let spun = 0;
     for i in 0..50 { spun += i; }
 }
@@ -206,27 +206,27 @@ fn on_player_leave(ctx, player) {
     let mut game = mode_match(script, limits);
     // Player 2 leaves, and players 1 and 2 join, in one tick: the first two calls run, in that
     // order, and player 2's join waits.
-    let (joined, left) = (SeatEventKind::Joined, SeatEventKind::Left);
-    Mode::tick_seats(&mut game, &[(2, left), (1, joined), (2, joined)]);
+    let (joined, left) = (PlayerSlotEventKind::Joined, PlayerSlotEventKind::Left);
+    Mode::tick_player_slots(&mut game, &[(2, left), (1, joined), (2, joined)]);
     assert_eq!(
         Mode::field(&game, "kind"),
         StateValue::Text("leave 2;join 1;".into())
     );
-    let waiting = game.resource::<UnansweredSeatEvents>();
-    let join = SeatEvent {
-        seat: Seat::new(2),
+    let waiting = game.resource::<UnansweredPlayerSlotEvents>();
+    let join = PlayerSlotEvent {
+        player_slot: PlayerSlot::new(2),
         kind: joined,
     };
     assert_eq!(waiting.0.iter().collect::<Vec<_>>(), [&join]);
     // The waiting join is state: it decodes to itself.
     let bytes = Binary::encode(waiting);
-    let decoded = Binary::decode::<UnansweredSeatEvents>(&bytes).ok();
+    let decoded = Binary::decode::<UnansweredPlayerSlotEvents>(&bytes).ok();
     assert_eq!(decoded.as_ref(), Some(waiting));
     // It runs first in the next tick, before that tick's leave of player 1.
-    Mode::tick_seats(&mut game, &[(1, left)]);
+    Mode::tick_player_slots(&mut game, &[(1, left)]);
     let all = "leave 2;join 1;join 2;leave 1;";
     assert_eq!(Mode::field(&game, "kind"), StateValue::Text(all.into()));
-    assert!(game.resource::<UnansweredSeatEvents>().0.is_empty());
+    assert!(game.resource::<UnansweredPlayerSlotEvents>().0.is_empty());
 }
 
 #[test]
@@ -250,8 +250,37 @@ fn on_input(ctx, player, name, value) {
     let mut spent = |name: &str| {
         Mode::tick_inputs(&mut game, &[(0, input(name, ""))]);
         let mut budgets = game.resource_mut::<ScriptBudgets>();
-        ScriptLimits::ROOMY.player - budgets.get_mut(Pool::Player(Seat::new(0))).left()
+        ScriptLimits::ROOMY.player - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left()
     };
     let (once, twice) = (spent("phase"), spent("rich"));
     assert_eq!(twice - once, 8);
+}
+
+#[test]
+fn a_list_of_the_view_costs_a_step_for_each_unit_it_visits() {
+    // The same list, of every unit tagged `grunt`, read before and after five grunts spawn: it
+    // visits every unit of the view, five more the second time, so it costs five more
+    // operations (02-engine-core.md, A list costs a step a row).
+    let script = r#"
+fn on_input(ctx, player, name, value) {
+    if name == "rich" {
+        for count in 0..5 {
+            ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].position);
+        }
+    } else {
+        ctx.units_tagged("grunt");
+    }
+}
+"#;
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    let spent = |game: &mut Match, name: &str| {
+        Mode::tick_inputs(game, &[(0, input(name, ""))]);
+        assert_eq!(Mode::failures(game), [], "{name}");
+        let mut budgets = game.resource_mut::<ScriptBudgets>();
+        ScriptLimits::ROOMY.player - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left()
+    };
+    let few = spent(&mut game, "phase");
+    spent(&mut game, "rich");
+    let more = spent(&mut game, "phase");
+    assert_eq!(more - few, 5);
 }

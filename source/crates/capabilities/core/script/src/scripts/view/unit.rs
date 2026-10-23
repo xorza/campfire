@@ -1,5 +1,6 @@
 use campfire_sim::StableId;
 use campfire_values::UnitType;
+use campfire_visibility::DataKind;
 
 use crate::scripts::api_holder::ScriptHandle;
 use crate::scripts::error::{ApiError, Checked};
@@ -51,12 +52,22 @@ impl Unit {
     }
 
     /// The unit's place among its view's rows; a unit the call creates has none yet, and fails
-    /// the call.
-    pub fn row_index(&self) -> Checked<usize> {
+    /// the call. Only the script crate reads it bare: any other code names the kind it reads
+    /// through `admit`.
+    pub(crate) fn row_index(&self) -> Checked<usize> {
         match self.at {
             UnitAt::Row(row) => Ok(row),
             UnitAt::Created(_) => Err(ApiError::Unspawned.fail().into()),
         }
+    }
+
+    /// The unit's place among its view's rows, for a read of its state of `kind`: a read the
+    /// view's viewer does not receive fails the call, as a unit the call creates does, which has
+    /// no row yet.
+    pub fn admit(&self, kind: DataKind) -> Checked<usize> {
+        let at = self.row_index()?;
+        self.view.admit_row(at, kind)?;
+        Ok(at)
     }
 
     /// What `read` reads of the unit's row, in place; a unit the call creates has none yet, and

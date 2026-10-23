@@ -236,8 +236,8 @@ fn allocator_and_entity_list_are_hashed() {
 
 #[test]
 fn a_digest_is_blake3_over_its_domain_and_its_bytes() {
-    let mut hasher = Hasher::new();
-    hasher.update(b"campfire/digest/v1").update(b"abc");
+    let mut hasher = Hasher::new_derive_key("campfire/digest/v1");
+    hasher.update(b"abc");
     assert_eq!(
         StateRegistry::digest(b"abc").as_bytes(),
         hasher.finalize().as_bytes()
@@ -274,6 +274,12 @@ fn snapshot_restores_the_same_state() {
     assert_eq!(restore(SNAPSHOT_TAG).err(), Some(SnapshotError::Truncated));
     let mut restored = restore(&bytes).unwrap();
     assert_eq!(registry().hash(&restored), registry().hash(&original));
+    // A restore gives the hash of the state it restored, the snapshot's own.
+    let mut again = World::new();
+    assert_eq!(
+        registry().restore(&bytes, &mut again),
+        Ok(registry().hash(&original))
+    );
     assert_eq!(snapshot(&restored), bytes);
     // The allocator continues where the original would.
     assert_eq!(allocate(&mut restored), allocate(&mut original));

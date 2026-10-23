@@ -10,7 +10,7 @@ use campfire_declarations::{BookError, Listed, ReadValue, SectionReaders};
 use campfire_deliveries::Delivering;
 use campfire_script::{ApiBuilder, CallError, Frame, View};
 use campfire_sim::Capability;
-use campfire_values::{Named, Number, UnitType};
+use campfire_values::{Named, Number, TypeScope, UnitType};
 use serde::Deserialize;
 
 use crate::area_data::AreaData;
@@ -105,7 +105,8 @@ impl ListedEffect for LandEffectData {
     }
 
     fn resolve(&self, cx: &mut dyn EffectResolveCx) -> Result<Arc<dyn ListedSpec>, EffectError> {
-        let area = cx.names().package_type(&self.area)?;
+        let scope = TypeScope::of_package(cx.names().package());
+        let area = cx.names().named::<UnitType>((scope, self.area.as_str()))?;
         Ok(Arc::new(LandEffectSpec {
             area,
             launch: cx.launch(&self.lists)?,

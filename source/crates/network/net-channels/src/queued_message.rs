@@ -28,6 +28,14 @@ impl QueuedMessage {
         }
     }
 
+    /// The bytes of the message.
+    pub(crate) const fn len(&self) -> usize {
+        match self {
+            Self::Whole { data, .. } => data.bytes.len(),
+            Self::Fragmented(message) => message.len(),
+        }
+    }
+
     pub(crate) const fn is_whole(&self) -> bool {
         matches!(self, Self::Whole { .. })
     }

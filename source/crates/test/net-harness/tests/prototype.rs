@@ -2,23 +2,22 @@
 //! predicting client over in-process channels, and the server's session log replayed in a bare
 //! `World` with the same state hash after every tick.
 
-use bevy_app::App;
+use bevy_app::{App, AppExit};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_actions::ActionProgress;
 use campfire_capabilities::Order;
 use campfire_combat::Respawn;
-use campfire_common::{DeclaredName, Seat, Tick, Ticks};
+use campfire_common::{DeclaredName, PlayerSlot, Tick, Ticks};
 use campfire_harness::ArchetypeWatch;
+use campfire_host::{InputMessage, InputMessageRefused, JoinState, SessionEnd};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MatchResult, ModeState, ModeWorld};
 use campfire_net::internals::SimServerWorldInternals;
-use campfire_net::{
-    InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders,
-};
+use campfire_net::{InputChannel, LinkLost, PendingOrders, SimServerWorld, StopRequest};
 use campfire_net_connection::{Client, Connected};
 use campfire_net_emulator::LinkModel;
-use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
+use campfire_net_harness::{End, InProcessMatch, InProcessSetup, InProcessSetupBuilder};
 use campfire_net_messages::MessageSender;
 use campfire_net_prediction::{PredictionSetup, RollbackMode};
 use campfire_net_replication::{Predicted, PredictionTarget, Replicate};
@@ -28,13 +27,15 @@ use campfire_projectiles::Projectile;
 use campfire_protocol::{InputError, Signature};
 use campfire_script::StateValue;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
-use campfire_stats::{Modifiers, Stats, StatsWorld};
+use campfire_stats::{Applier, Modifiers, Stats, StatsWorld};
+use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 use campfire_units::{
     AudienceAll, AudienceNone, DashTo, Dead, Destination, ForcedMove, GroundPoint, Life, MapBook,
     MoveStep, Owner, PoolId, Units, UnitsWorld,
 };
 use campfire_values::{Names, PackageIndex, Relation, Relations, ResourceId, Team};
+use std::panic;
 
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 120;
@@ -210,7 +211,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     assert_eq!(
         local.log().take::<InputMessageRefused>(),
         [InputMessageRefused {
-            seat: Seat::new(0),
+            player_slot: PlayerSlot::new(0),
             next_tick,
             error: InputError::BadSignature.to_string(),
         }]
@@ -303,10 +304,14 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
 
 #[test]
 fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
-    let mut local = InProcessMatch::new(InProcessSetup {
-        max_spectators: 1,
-        ..InProcessSetup::SOLO
-    });
+    let test_dir = TestDir::new();
+    let mut local = InProcessMatch::new(
+        InProcessSetup::SOLO
+            .into_builder()
+            .max_spectators(1)
+            .build(),
+    );
+    local.keep_data(test_dir.path("data"));
     local.start_match();
     let spectator = local.add_spectator();
     for _ in 0..300 {
@@ -411,6 +416,15 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
         local.step();
     }
     assert_eq!(local.log().take::<LinkLost>().len(), 1);
+    // The session runs on while its players hold their links, and a stop ends it, as its match
+    // ended.
+    let world = local.server_mut().world_mut();
+    assert_eq!(world.session_end(StopRequest::NotAsked), None);
+    assert_eq!(
+        world.session_end(StopRequest::Asked),
+        Some(SessionEnd::MatchEnded)
+    );
+    assert_eq!(world.exit_due(StopRequest::Asked), Some(AppExit::Success));
 }
 
 #[test]
@@ -433,7 +447,7 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
     for name in ["slow", "stun"] {
         let world = local.server_mut().world_mut();
         let modifier = Stats::modifier(world, PackageIndex::MODE, name).unwrap();
-        Stats::give_modifier(world, avatar, modifier, None, false);
+        Stats::give_modifier(world, avatar, modifier, Applier::MODE);
         let mut frames = 0;
         while !carries(local.client(0)) {
             local.step();
@@ -537,15 +551,17 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     let resources = packages.data().section_or_default::<ResourcesData>();
     let resources: Names<ResourceId> = resources.0.iter().map(DeclaredName::as_str).collect();
     let gold = resources.named("gold").unwrap();
-    let mut setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
-    setup.players = 2;
+    let setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN)
+        .into_builder()
+        .players(2)
+        .build();
     let mut local = InProcessMatch::of_mode(setup, packages);
     local.start_match();
     // A player's gold as `app` holds it: `None` for a player's entity it lacks, `Some(None)` for
     // one whose resources it lacks.
     let gold_of = |app: &App, slot| {
         let world = app.world();
-        let entity = world.player_entity(Seat::new(slot))?;
+        let entity = world.player_entity(PlayerSlot::new(slot))?;
         Some(
             world
                 .get::<PlayerResources>(entity)
@@ -596,8 +612,18 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
 
 #[test]
 fn each_players_client_rolls_back_as_the_setup_gives_for_that_player() {
-    let mut setup = InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN);
-    setup.rollbacks[1] = RollbackMode::Always;
+    let mut rollbacks = [RollbackMode::Check; InProcessSetup::MAX_PLAYERS];
+    rollbacks[1] = RollbackMode::Always;
+    let setup = InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN)
+        .into_builder()
+        .rollbacks(rollbacks)
+        .build();
+    // A setup past its bounds does not build: 7 players of 6 at most, a server of no frame.
+    let builds = |builder: InProcessSetupBuilder| panic::catch_unwind(|| builder.build()).is_ok();
+    let builder = || setup.clone().into_builder();
+    assert!(builds(builder().players(6)));
+    assert!(!builds(builder().players(7)));
+    assert!(!builds(builder().server_frames(0)));
     let local = InProcessMatch::new(setup);
     let mode = |client: usize| {
         let world = local.client(client).world();
@@ -653,14 +679,14 @@ impl Handoff {
             .get()
     }
 
-    fn slot(&self, client: usize) -> Seat {
+    fn slot(&self, client: usize) -> PlayerSlot {
         let world = self.local.server().world();
-        world.link_seat(self.local.link(client)).unwrap()
+        world.link_player_slot(self.local.link(client)).unwrap()
     }
 
     /// Gives the hero to `owner` on the server, or takes its owner, in the server's next tick, as
     /// the sim does.
-    fn set_owner(&mut self, owner: Option<Seat>) {
+    fn set_owner(&mut self, owner: Option<PlayerSlot>) {
         let hero = self.hero;
         self.local.server_fixed_update(move |world| {
             let mut unit = world.entity_mut(world.entity_of(hero).unwrap());
@@ -689,7 +715,7 @@ impl Handoff {
                 return;
             }
             self.local.client_frame(0);
-            for _ in 0..self.local.setup().server_frames {
+            for _ in 0..self.local.setup().server_frames() {
                 self.local.server_frame();
             }
         }
@@ -714,12 +740,12 @@ fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_al
     );
     let (first, second) = (game.slot(0), game.slot(1));
 
-    // The hero walks under its first owner, and the server gives it to the second player's seat
-    // on its way, as soon as it left its spawn: the second client takes it predicted, with its
-    // state as the server last sent it, and rolls back once to bring it to its own tick; the
-    // first takes it unpredicted. The second player's hero stands at its spawn, (0, 2), and sees
-    // 6 m: the first hero walks within 5 m of it, so the second client, which receives what its
-    // team sees, holds it throughout.
+    // The hero walks under its first owner, and the server gives it to the second player's
+    // player_slot on its way, as soon as it left its spawn: the second client takes it predicted,
+    // with its state as the server last sent it, and rolls back once to bring it to its own tick;
+    // the first takes it unpredicted. The second player's hero stands at its spawn, (0, 2), and
+    // sees 6 m: the first hero walks within 5 m of it, so the second client, which receives what
+    // its team sees, holds it throughout.
     let spawn = game.at(End::Server);
     game.local.order(0, move_to(-4, -1));
     game.step_until(|game| game.at(End::Server) != spawn);
@@ -741,19 +767,19 @@ fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_al
     assert_eq!((game.local.rollbacks(0), game.local.rollbacks(1)), (0, 1));
 
     // A unit with no owner is the server's alone: no client predicts it. Given back to the first
-    // player's seat, the first client predicts it again.
+    // player's player slot, the first client predicts it again.
     game.set_owner(None);
     game.step_until(|game| (game.held(0), game.held(1)) == (Held::Unpredicted, Held::Unpredicted));
     game.set_owner(Some(first));
     game.step_until(|game| game.held(0) == Held::Predicted);
-    // No client predicts a unit whose owner has no seated link: given to the second player's
+    // No client predicts a unit whose owner has no placed link: given to the second player's
     // slot as its link is gone, it leaves the first client's prediction, and none takes it. The
     // second client runs no more frames: one whose link is cut tries it again, which this
     // scenario does not follow.
     game.local.cut_link(1);
     game.step_first_until(|game| {
         let server = game.local.server().world();
-        server.link_seat(game.local.link(1)).is_none()
+        server.link_player_slot(game.local.link(1)).is_none()
     });
     game.set_owner(Some(second));
     game.step_first_until(|game| game.held(0) == Held::Unpredicted);

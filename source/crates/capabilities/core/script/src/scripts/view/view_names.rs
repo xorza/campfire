@@ -5,7 +5,8 @@ use campfire_values::NameId;
 use crate::scripts::id_name::IdName;
 use crate::scripts::script_names::ScriptNames;
 use crate::scripts::typed_list::TypedList;
-use crate::scripts::view::match_names::{AnyNames, MatchNames};
+use crate::scripts::view::match_names::MatchNames;
+use crate::scripts::view::name_tables::AnyNames;
 
 /// The names scripts read, as the script view derives them from the match's `MatchNames` as a
 /// batch reads it: those names, which it reads through, and each id's name as a script string,

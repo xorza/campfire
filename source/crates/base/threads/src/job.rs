@@ -1,43 +1,26 @@
-/// Writes `Job`, its `ALL` and each job's name from one list, so no job lacks either.
-macro_rules! jobs {
-    ($($(#[doc = $doc:literal])* $job:ident => $name:literal,)*) => {
-        /// A job that holds an OS thread of its own: every thread the engine starts, each under
-        /// its name, which a profiler and a panic show (02-engine-core.md, Every thread is a job of
-        /// one list).
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        pub enum Job {
-            $($(#[doc = $doc])* $job,)*
-        }
+use campfire_common::NamedEnum;
 
-        impl Job {
-            /// Every job, in the order of the list.
-            pub const ALL: &'static [Self] = &[$(Self::$job),*];
-
-            /// The name of its thread.
-            pub const fn name(self) -> &'static str {
-                match self {
-                    $(Self::$job => $name,)*
-                }
-            }
-        }
-    };
-}
-
-jobs! {
+/// A job that holds an OS thread of its own: every thread the engine starts, each under its name,
+/// which a profiler and a panic show (02-engine-core.md, Every thread is a job of one list).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, NamedEnum)]
+pub enum Job {
     /// Writes the process's log file.
-    Log => "log",
+    Log,
     /// Appends and syncs a session's journal.
-    Journal => "journal",
+    Journal,
     /// Applies, encodes, hashes and writes a session's checkpoint.
-    Checkpoints => "checkpoints",
+    Checkpoints,
     /// Writes a client's latest receipt.
-    Receipts => "receipts",
+    Receipts,
     /// Runs a singleplayer client's local server.
-    LocalServer => "local-server",
+    #[name = "local-server"]
+    LocalServer,
     /// Waits on a UDP endpoint's socket and runs its packet sessions' timers.
-    Endpoint => "net-endpoint",
+    #[name = "net-endpoint"]
+    Endpoint,
     /// Maps a server's port at its router.
-    PortMap => "port-map",
+    #[name = "port-map"]
+    PortMap,
 }
 
 impl Job {

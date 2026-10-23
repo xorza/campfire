@@ -28,7 +28,7 @@ use campfire_progression::{Learning, Points};
 use campfire_sim::{EntityIndex, SimTick, StableId, Unpredicted};
 use campfire_stats::{Level, Pools};
 use campfire_units::{Dead, Life};
-use campfire_values::{Rank, Team};
+use campfire_values::{Rank, Relation, Relations, Team};
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind, SlotPlace};
 use crate::hud::ring::Ring;
@@ -36,9 +36,9 @@ use crate::own_player::OwnPlayer;
 use crate::pointer::Pointer;
 use crate::selection::{Selection, SelectionSystems};
 use crate::view::ViewSystems;
-use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::look::UnitShape;
+use crate::view::match_hud::MatchHud;
 use crate::view::pixel_scale::PixelScale;
 
 mod gauge;
@@ -63,7 +63,7 @@ struct GaugeStand;
 #[derive(Component, Debug)]
 struct GaugeFill;
 
-/// Whether a unit is of the client's team.
+/// Whether the client's side regards a unit's team as friendly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Allegiance {
     Own,
@@ -259,6 +259,9 @@ type Reslotted<'w, 's> = Query<
     (Changed<ActionSlots>, Allow<Unpredicted>),
 >;
 
+/// The drawings of the units whose team changed this frame.
+type Resided<'w, 's> = Query<'w, 's, &'static Drawing, (Changed<Team>, Allow<Unpredicted>)>;
+
 /// The units whose gauges are new this frame, by their drawings' roots.
 type NewlyGauged<'w, 's> = Query<'w, 's, &'static DrawingOf, Added<Gauged>>;
 
@@ -320,6 +323,7 @@ impl Plugin for HudPlugin {
             Update,
             (
                 Self::regauge,
+                Self::reside,
                 Self::add_gauges,
                 Self::show_selected_bars.run_if(Self::shows_selected),
                 Self::face_camera,
@@ -378,19 +382,18 @@ impl HudPlugin {
         mut scratch: Local<'_, GaugeScratch>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Some(own_team) = own.side() else {
+        if own.side().is_none() {
             return;
-        };
+        }
         let avatar = own.avatar().map(|avatar| avatar.entity);
         for (root, &DrawingOf(unit), shape) in &roots {
             let Ok((team, life, pools, slots)) = units.get(unit) else {
                 continue;
             };
             let mine = Some(unit) == avatar;
-            let allegiance = if *team == own_team {
-                Allegiance::Own
-            } else {
-                Allegiance::Other
+            let allegiance = match own.relation_to(*team) {
+                Some(Relation::Friendly) => Allegiance::Own,
+                Some(Relation::Neutral | Relation::Hostile) | None => Allegiance::Other,
             };
             scratch.kinds.clear();
             if let Some(life) = life {
@@ -485,9 +488,37 @@ impl HudPlugin {
         }
     }
 
+    /// Takes down the gauges of each unit whose team changed, and of every unit once the teams'
+    /// relations change, so `add_gauges` makes them again in the colors of how the client's side
+    /// regards each unit now.
+    fn reside(
+        (moved, relations): (Resided<'_, '_>, Query<'_, '_, (), Changed<Relations>>),
+        (gauged, roots): (Query<'_, '_, Entity, With<Gauged>>, Roots<'_, '_>),
+        mut commands: Commands<'_, '_>,
+    ) {
+        let mut take_down = |root: Entity| {
+            let Ok(gauged) = roots.get(root) else {
+                return;
+            };
+            if let Some(stand) = gauged.stand {
+                commands.entity(stand).despawn();
+            }
+            commands.entity(root).remove::<Gauged>();
+        };
+        if relations.is_empty() {
+            for drawing in &moved {
+                take_down(drawing.root());
+            }
+        } else {
+            for root in &gauged {
+                take_down(root);
+            }
+        }
+    }
+
     /// Whether the mode's HUD file shows the bars of the selected and the pointed units alone.
-    fn shows_selected(data: Res<'_, ClientData>) -> bool {
-        data.hud.bars == ShownBars::Selected
+    fn shows_selected(hud: Res<'_, MatchHud>) -> bool {
+        hud.0.bars == ShownBars::Selected
     }
 
     /// Shows the bars of the units the player selected and of the one under the cursor alone,

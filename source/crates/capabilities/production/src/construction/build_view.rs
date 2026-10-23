@@ -9,9 +9,7 @@ use campfire_math::{Num, Vec3};
 use campfire_players::{PlayerResources, PlayerRows};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPoolsReadOnly};
-use campfire_units::{
-    ArrivedShort, Body, BuildTarget, Dead, Destination, GroundPoint, MapBook, Owner,
-};
+use campfire_units::{Body, BuildTarget, Dead, GroundPoint, MapBook, Owner, WalkReadOnly};
 use campfire_values::{Motion, Relation, Team, UnitTags, UnitType};
 use campfire_vision::TeamSight;
 
@@ -53,8 +51,7 @@ pub(crate) struct BuildView<'w, 's, S: TeamSight> {
             &'static SlotTimes,
             UnitPoolsReadOnly,
             &'static Builder,
-            Option<&'static Destination>,
-            Option<&'static ArrivedShort>,
+            Option<WalkReadOnly>,
             Option<&'static UnitTags>,
         ),
         Without<Dead>,
@@ -157,7 +154,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         let life = self.life.as_deref().and_then(PoolBook::life);
         let purse = Purse::of(pools.of(life), self.resources.of(owner));
         let modifiers = self.modifiers.of(owner);
-        let owner = owner.map(|owner| owner.seat());
+        let owner = owner.map(|owner| owner.player_slot());
         let aim = SlotAim {
             slot: order.slot,
             target: ActionTarget::Point(placed.position),
@@ -223,7 +220,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             .index
             .get(holder)
             .and_then(|unit| self.builders.get(unit).ok());
-        found.is_some_and(|(.., builder, _, _, _)| {
+        found.is_some_and(|(.., builder, _, _)| {
             builder
                 .order()
                 .is_some_and(|order| order.target == BuildTarget::Site(site))
@@ -237,7 +234,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     /// a point's build starts when it passes its checks, and ends else; a builder of a site
     /// builds when the site takes it.
     pub(crate) fn step(&self, entity: Entity) -> Step {
-        let Ok((_, &id, &from, body, _, owner, slots, _, _, builder, destination, arrived, _)) =
+        let Ok((_, &id, &from, body, _, owner, slots, _, _, builder, walk, _)) =
             self.builders.get(entity)
         else {
             return Step::End;
@@ -267,7 +264,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
                 .body
                 .shape()
                 .nearest_point(placed.position, from.get());
-            return if Destination::gives_up(destination, arrived, to) {
+            return if walk.is_none_or(|walk| walk.gives_up(to)) {
                 Step::End
             } else {
                 Step::Walk(to)

@@ -1,6 +1,6 @@
 use std::num::NonZeroU16;
 
-use campfire_actions::{Action, DeliveryShape, LoadedAction, ProjectileFlight};
+use campfire_actions::{Action, DeliveryAim, LoadedAction};
 use campfire_common::{DeclaredName, Ticks};
 use campfire_declarations::BookError;
 use campfire_math::Num;
@@ -16,8 +16,8 @@ use campfire_values::{
 use crate::attack_data::{AttackData, SplashData, StreakData, WeaponValue};
 use crate::error::CombatDataError;
 use crate::weapon::{
-    ClipRule, OuterRing, Pitch, Rate, Scatter, ScatterTag, Splash, Streak, StreakStage, Weapon,
-    WeaponDamage,
+    ClipRule, OuterRing, Pitch, PreAttackRule, Rate, Scatter, ScatterTag, Splash, Streak,
+    StreakStage, Weapon, WeaponDamage,
 };
 
 /// What an attack's weapon resolves by: its action as the load holds it and as the book holds
@@ -88,11 +88,23 @@ impl WeaponNames<'_> {
             })
         });
         let rate_bonus = data.rate_bonus.as_ref().map(|stat| self.stat(stat));
+        let damage_bonus = data.damage_bonus.as_ref().map(|stat| self.stat(stat));
         let streak = data.streak.as_ref().map(|streak| self.streak(streak));
+        let pre_attack = data.pre_attack.as_ref().map(|pre_attack| {
+            let ticks = self.at_ranks(|rank| {
+                let ms = self.loaded.data.whole_at(rank, &pre_attack.ms);
+                self.ticks(ms.ok_or(CombatDataError::PreAttack)?)
+            })?;
+            Ok::<_, BookError>(PreAttackRule {
+                ticks,
+                each: pre_attack.each,
+            })
+        });
         Ok(Weapon {
             rate,
             rate_bonus: rate_bonus.transpose()?,
             damage,
+            damage_bonus: damage_bonus.transpose()?,
             kind,
             clip: clip.transpose()?,
             splash: data
@@ -104,6 +116,7 @@ impl WeaponNames<'_> {
             pitch: data.pitch_deg.map(|pitch| Pitch::of(pitch.low, pitch.high)),
             speed: data.speed,
             streak: streak.transpose()?,
+            pre_attack: pre_attack.transpose()?,
         })
     }
 
@@ -152,28 +165,36 @@ impl WeaponNames<'_> {
 
     /// The rules of `data`'s fields: a weapon's delivery is a projectile launched at a unit, a
     /// splash goes off where a projectile of its delivery ends, a scatter aims a projectile of its
-    /// delivery that flies to a point, a speed delays the hit of a weapon of no delivery, a rate bonus speeds a period
-    /// of its own, and a streak's stages are some, their shots strictly growing
+    /// delivery that flies to a point, a speed delays the hit of a weapon of no delivery, a rate
+    /// bonus speeds a period of its own, a damage bonus and an outer ring go with an amount of its
+    /// own, and a streak's stages are some, their shots strictly growing
     /// (04-capabilities/combat.md, An attack may splash; 04-capabilities/combat.md, An attack may
     /// scatter; 04-capabilities/combat.md, A slow weapon delays its damage;
     /// 04-capabilities/combat.md, A weapon's own period may speed up by a stat;
+    /// 04-capabilities/combat.md, One bonus scales both rings;
     /// 04-capabilities/combat.md, A shot streak gives a stage's modifier).
     fn rule(self, data: &AttackData) -> Result<(), CombatDataError> {
         let delivery = self.action.delivery.as_ref();
-        let flight = delivery.and_then(|delivery| match delivery.shape {
-            DeliveryShape::Projectile { flight, .. } => Some(flight),
-            DeliveryShape::Area => None,
-        });
-        if delivery.is_some() && !flight.is_some_and(ProjectileFlight::is_at_unit) {
+        let aim = delivery.map(|delivery| delivery.aim);
+        if delivery.is_some() && !aim.is_some_and(DeliveryAim::is_at_unit) {
             Err(CombatDataError::Delivery)
-        } else if data.splash.is_some() && flight.is_none() {
+        } else if data.splash.is_some() && !aim.is_some_and(DeliveryAim::flies) {
             Err(CombatDataError::Splash)
-        } else if data.scatter.is_some() && !flight.is_some_and(ProjectileFlight::flies_to_point) {
+        } else if data.scatter.is_some() && !aim.is_some_and(DeliveryAim::flies_to_point) {
             Err(CombatDataError::Scatter)
         } else if data.speed.is_some() && delivery.is_some() {
             Err(CombatDataError::Speed)
         } else if data.rate_bonus.is_some() && data.rate.own().is_none() {
             Err(CombatDataError::RateBonus)
+        } else if data.damage_bonus.is_some() && data.damage.own().is_none() {
+            Err(CombatDataError::DamageBonus)
+        } else if data.damage.own().is_none()
+            && data
+                .splash
+                .as_ref()
+                .is_some_and(|splash| splash.outer.is_some())
+        {
+            Err(CombatDataError::OuterBesideStat)
         } else if data.streak.as_ref().is_some_and(|streak| {
             streak.stages.is_empty()
                 || !streak

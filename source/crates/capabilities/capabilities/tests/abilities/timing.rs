@@ -4,16 +4,22 @@ use std::num::NonZeroU8;
 use campfire_abilities::*;
 use campfire_actions::internals::LooseDues;
 use campfire_actions::{
-    ActionBook, ActionData, ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions,
-    ChannelData, ChargeRule, ChargeUpData, ChargesData, InProgress, ProgressDues, RangeField,
-    SlotKind, SlotTimes, SlotsMut, Targeting, TimedSlots, Toggle,
+    ActionBook, ActionData, ActionKeys, ActionProgress, ActionRange, ActionSlots, ActionTarget,
+    Actions, ChannelData, ChannelPaysData, ChargeRule, ChargeUpData, ChargesData, InProgress,
+    OrderPhase, ProgressDues, RangeField, SlotKind, SlotTimes, SlotsMut, Targeting, TimedSlots,
+    Toggle,
 };
 use campfire_capabilities::internals::*;
-use campfire_capabilities::{Match, Release};
+use campfire_capabilities::{Match, Order, Release};
 use campfire_combat::Combat;
-use campfire_common::{DeclaredName, Seat, Tick, Ticks};
+use campfire_common::{DeclaredName, PlayerSlot, Tick, Ticks};
 use campfire_declarations::Role;
+use campfire_declarations::internals::BookLoad;
 use campfire_math::{Num, Rng, RngStream, Vec3};
+use campfire_navigation::{Navigation, Paths};
+use campfire_orders::{HeldOrder, OrdersDirective};
+use campfire_players::PlayersWorld;
+use campfire_progression::{Experience, TrackBook, TrackSet};
 use campfire_script::FailureKind;
 use campfire_script::internals::FailedCall;
 use campfire_script::{CapabilityRefusal, Pool, ScriptBudgets, ScriptLimits};
@@ -21,9 +27,10 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimRng, SimWorld, StableId};
 use campfire_stats::{ModifierData, Modifiers, Stats};
 use campfire_units::internals::Spawn;
-use campfire_units::{Life, Owner, UnitTypeCore, Units};
+use campfire_units::{GroundPoint, Life, Owner, UnitTypeCore, Units};
 use campfire_values::{
-    ActionStart, Block, FilterData, PackageIndex, PackagePath, Rank, Ranked, Team,
+    ActionStart, Block, FilterData, Number, PackageIndex, PackagePath, Rank, Ranked, ResourceId,
+    Scalar, Team, TrackId,
 };
 
 use crate::abilities::{
@@ -45,16 +52,22 @@ fn charges_come_back(declared: &[Capability]) {
     let mut game = abilities_match_with(ScriptLimits::ROOMY, declared);
     Abilities::load_stats(&mut game);
     let plain = ActionData {
-        script: Some(PackagePath::parse("cast.rhai").unwrap()),
+        keys: ActionKeys {
+            script: Some(PackagePath::parse("cast.rhai").unwrap()),
+            ..ActionData::of(Targeting::None, CastData::default()).keys
+        },
         ..ActionData::of(Targeting::None, CastData::default())
     };
     let step = ActionData {
-        charges: Some(ChargesData {
-            max: Ranked::One(int(3)),
-            recharge_ms: Ranked::One(int(1000)),
-        }),
-        cooldown_ms: Some(Ranked::One(int(100))),
-        cost: cost("mana", int(10)),
+        keys: ActionKeys {
+            charges: Some(ChargesData {
+                max: Ranked::One(int(3)),
+                recharge_ms: Ranked::One(int(1000)),
+            }),
+            cooldown_ms: Some(Ranked::One(int(100))),
+            cost: cost("mana", int(10)),
+            ..plain.clone().keys
+        },
         ..plain.clone()
     };
     let idle = "fn on_resolve(ctx, caster, target) {}";
@@ -68,7 +81,7 @@ fn charges_come_back(declared: &[Capability]) {
     let dud = Abilities::load(&mut game, "dud", &plain, dud);
     let caster = Spawn::named(&game, "caster", Vec3::ZERO)
         .parts((
-            Owner::new(Seat::new(0)),
+            Owner::new(PlayerSlot::new(0)),
             TimedSlots::new(ActionSlots::new([
                 (step, SlotKind::new(0), Rank::new(1)),
                 (refill, SlotKind::new(0), Rank::new(1)),
@@ -127,7 +140,7 @@ fn charges_come_back(declared: &[Capability]) {
     // A unit that holds Step unlearned has no charges for Refill to add to.
     let learner = Spawn::named(&game, "caster", (5, 0, 0))
         .parts((
-            Owner::new(Seat::new(0)),
+            Owner::new(PlayerSlot::new(0)),
             TimedSlots::new(ActionSlots::new([
                 (step, SlotKind::new(0), Rank::new(0)),
                 (refill, SlotKind::new(0), Rank::new(1)),
@@ -164,23 +177,35 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let cast = || ActionData::of(Targeting::None, CastData::default());
     let step = ActionData {
-        charges: Some(ChargesData {
-            max: Ranked::One(int(3)),
-            recharge_ms: Ranked::One(int(1000)),
-        }),
-        cooldown_ms: Some(Ranked::One(int(100))),
+        keys: ActionKeys {
+            charges: Some(ChargesData {
+                max: Ranked::One(int(3)),
+                recharge_ms: Ranked::One(int(1000)),
+            }),
+            cooldown_ms: Some(Ranked::One(int(100))),
+            ..cast().keys
+        },
         ..cast()
     };
     let aura = ActionData {
-        toggle: Some(Toggle::CostPerSecond(BTreeMap::new())),
+        keys: ActionKeys {
+            toggle: Some(Toggle::CostPerSecond(BTreeMap::new())),
+            ..cast().keys
+        },
         ..cast()
     };
     let drain = ActionData {
-        channel: Some(ChannelData {
-            duration_ms: Ranked::One(int(300)),
-            tick_ms: Ranked::One(int(100)),
-            damage_interrupts: false,
-        }),
+        keys: ActionKeys {
+            channel: Some(ChannelData {
+                duration_ms: Some(Ranked::One(int(300))),
+                tick_ms: Ranked::One(int(100)),
+                damage_interrupts: false,
+                windup_spread: None,
+                wind_down_ms: None,
+                pays: None,
+            }),
+            ..cast().keys
+        },
         ..cast()
     };
     let caster = |game: &mut Match| {
@@ -224,7 +249,7 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
     let Some(InProgress::Channel { next, ends, .. }) = progress.in_progress() else {
         panic!("Drain channels");
     };
-    assert_eq!((next, ends), (Tick::new(6), Tick::new(12)));
+    assert_eq!((next, ends), (Tick::new(6), Some(Tick::new(12))));
 }
 
 #[test]
@@ -249,16 +274,26 @@ fn on_interrupt(ctx, caster, target) {
     };
     Stats::load_modifier(&mut game, PackageIndex::MODE, "ward", &ward, None);
     let drain = ActionData {
-        script: Some(PackagePath::parse("drain.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-            Num::int(5),
-        )))),
-        channel: Some(ChannelData {
-            duration_ms: Ranked::One(int(300)),
-            tick_ms: Ranked::One(int(100)),
-            damage_interrupts: false,
-        }),
-        hold: Some(DeclaredName::new("ward").unwrap()),
+        keys: ActionKeys {
+            script: Some(PackagePath::parse("drain.rhai").unwrap()),
+            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                Num::int(5),
+            )))),
+            channel: Some(ChannelData {
+                duration_ms: Some(Ranked::One(int(300))),
+                tick_ms: Ranked::One(int(100)),
+                damage_interrupts: false,
+                windup_spread: None,
+                wind_down_ms: None,
+                pays: None,
+            }),
+            hold: Some(DeclaredName::new("ward").unwrap()),
+            ..ActionData::of(
+                Targeting::Unit(FilterData::parse("enemies").unwrap()),
+                CastData::default(),
+            )
+            .keys
+        },
         ..ActionData::of(
             Targeting::Unit(FilterData::parse("enemies").unwrap()),
             CastData::default(),
@@ -346,21 +381,31 @@ fn on_resolve(ctx, caster, target) {
     let mut game = abilities_match();
     Abilities::load_stats(&mut game);
     let draw = ActionData {
-        script: Some(PackagePath::parse("draw.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-            Num::int(5),
-        )))),
-        charging: Some(ChargeUpData {
-            max_ms: Ranked::One(int(3000)),
-        }),
-        cost: cost("mana", int(10)),
+        keys: ActionKeys {
+            script: Some(PackagePath::parse("draw.rhai").unwrap()),
+            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                Num::int(5),
+            )))),
+            charging: Some(ChargeUpData {
+                max_ms: Ranked::One(int(3000)),
+            }),
+            cost: cost("mana", int(10)),
+            ..ActionData::of(
+                Targeting::Unit(FilterData::parse("enemies").unwrap()),
+                CastData::default(),
+            )
+            .keys
+        },
         ..ActionData::of(
             Targeting::Unit(FilterData::parse("enemies").unwrap()),
             CastData::default(),
         )
     };
     let plain = ActionData {
-        charging: None,
+        keys: ActionKeys {
+            charging: None,
+            ..draw.clone().keys
+        },
         ..draw.clone()
     };
     let draw = Abilities::load(&mut game, "draw", &draw, script);
@@ -376,7 +421,7 @@ fn on_resolve(ctx, caster, target) {
             game,
             position,
             Team::new(0),
-            (Owner::new(Seat::new(0)), slots),
+            (Owner::new(PlayerSlot::new(0)), slots),
         );
         let target = Abilities::spawn_combatant(game, (x + 3, 0, 0), Team::new(1), ());
         (caster, target)
@@ -432,7 +477,7 @@ fn on_resolve(ctx, caster, target) {
         &mut game,
         position,
         Team::new(0),
-        (Owner::new(Seat::new(0)), slots),
+        (Owner::new(PlayerSlot::new(0)), slots),
     );
     let target = Abilities::spawn_combatant(&mut game, (103, 0, 0), Team::new(1), ());
     Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
@@ -485,7 +530,10 @@ fn on_resolve(ctx, caster, target) {
     Abilities::load_stats(&mut game);
     let near = Abilities::load(&mut game, "strike", &strike(), script);
     let global = ActionData {
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Global))),
+        keys: ActionKeys {
+            range: Some(Ranked::One(RangeField::Range(ActionRange::Global))),
+            ..strike().keys
+        },
         ..strike()
     };
     let far = Abilities::load(&mut game, "far", &global, script);
@@ -518,7 +566,7 @@ fn on_resolve(ctx, caster, target) {
         (20, 0, 0),
         Team::new(0),
         (
-            Owner::new(Seat::new(0)),
+            Owner::new(PlayerSlot::new(0)),
             TimedSlots::new(ActionSlots::new([(action, SlotKind::new(0), Rank::new(1))])),
         ),
     );
@@ -561,7 +609,10 @@ fn a_cast_draws_from_its_casters_player_pool() {
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
         let mut game = abilities_match_with(limits, &declared);
         let data = ActionData {
-            params: BTreeMap::new(),
+            keys: ActionKeys {
+                params: BTreeMap::new(),
+                ..lash_out().keys
+            },
             ..lash_out()
         };
         let spin = Abilities::load(
@@ -577,7 +628,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             (0, 0, 1),
             Team::new(0),
             (
-                Owner::new(Seat::new(1)),
+                Owner::new(PlayerSlot::new(1)),
                 TimedSlots::new(ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))])),
             ),
         );
@@ -603,9 +654,152 @@ fn a_cast_draws_from_its_casters_player_pool() {
         } else {
             ScriptLimits::ROOMY.per_call.get()
         };
-        assert_eq!(budgets.get_mut(Pool::Player(Seat::new(0))).left(), spent);
-        left.push(budgets.get_mut(Pool::Player(Seat::new(1))).left());
+        assert_eq!(
+            budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left(),
+            spent
+        );
+        left.push(budgets.get_mut(Pool::Player(PlayerSlot::new(1))).left());
     }
     assert_eq!(left[0], left[1]);
     assert!(left[0] < ScriptLimits::ROOMY.per_call.get());
+}
+
+#[test]
+fn a_channel_with_no_end_pays_by_its_level_until_an_order_waits_out_its_wind_down() {
+    // Hack, as Zero Hour's hacker: a windup of 1000 ms, 30 ticks at 30 a second, spread by half
+    // each way; then a channel of no end that ticks each 100 ms, 3 ticks, and pays its owner 2
+    // gold at level 1 on `valor` and 5 at level 2; an order that cuts it waits 200 ms, 6 ticks.
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Abilities,
+        Capability::Navigation,
+        Capability::Orders,
+        Capability::Progression,
+    ];
+    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    Navigation::load_paths(&mut game, Paths::default());
+    let book = TrackBook::sample();
+    book.clone().load_into(&mut game);
+    let cast = || ActionData::of(Targeting::None, CastData::default());
+    let hack = ActionData {
+        keys: ActionKeys {
+            windup_ms: Some(Ranked::One(int(1000))),
+            channel: Some(ChannelData {
+                duration_ms: None,
+                tick_ms: Ranked::One(int(100)),
+                damage_interrupts: false,
+                windup_spread: Some(Ranked::One(Number::Value(Scalar::Decimal(Num::HALF)))),
+                wind_down_ms: Some(Ranked::One(int(200))),
+                pays: Some(ChannelPaysData {
+                    resource: DeclaredName::new("gold").unwrap(),
+                    track: Some(DeclaredName::new("valor").unwrap()),
+                    amount: vec![2, 5],
+                }),
+            }),
+            ..cast().keys
+        },
+        ..cast()
+    };
+    let hack = Actions::load(&mut game, PackageIndex::MODE, "hack", &hack, None, 1).unwrap();
+    let gold = |game: &Match| {
+        let resources = game.player_resources(PlayerSlot::new(0)).unwrap();
+        resources.amount(ResourceId::new(0))
+    };
+    let after = |game: &mut Match, tick: u64| game.run_until(tick + 1);
+    let underway = |game: &Match, id| game.part::<ActionProgress>(id).in_progress();
+    let order = |game: &mut Match, directive| {
+        game.step_with(&[(PlayerSlot::new(0), &Order::payload(&[directive]))]);
+    };
+    let walk = |id, x, z| {
+        let to = GroundPoint {
+            x: Num::int(x),
+            z: Num::int(z),
+        };
+        Order::one(id, OrdersDirective::Move { to })
+    };
+    // Cast at tick 0, its windup 30 × (1/2 + f) ticks, to whole ticks down, f the caster's draw
+    // of `abilities.windup` in that tick: 30 × (1/2 + 9 234 716 / 2²⁴) = 31.51, so 31.
+    let first = Abilities::walking_caster(&mut game, hack);
+    Abilities::cast(&mut game, first, ActionTarget::None);
+    let opener = game.resource::<SimRng>().opener();
+    let fraction = opener
+        .open(RngStream::new("abilities.windup"), first)
+        .fraction();
+    assert_eq!(fraction, Num::from_bits(9_234_716));
+    let Some(InProgress::Order {
+        phase: OrderPhase::Started(started),
+        ..
+    }) = underway(&game, first)
+    else {
+        panic!("Hack winds up");
+    };
+    assert_eq!(started.resolves_at, Tick::new(31));
+    // It channels from tick 32 and pays 2 in ticks 35, 38 and 41.
+    after(&mut game, 34);
+    assert_eq!(gold(&game), 0);
+    after(&mut game, 35);
+    assert_eq!(gold(&game), 2);
+    after(&mut game, 41);
+    assert_eq!(gold(&game), 6);
+    // A walk to z = 5 in tick 42 cuts it before its tick 44; it winds down to tick 48, where a
+    // walk to x = 5, given in tick 45, replaced the first: the unit stands, paid no more, then
+    // walks along x from tick 49, a meter a tick.
+    order(&mut game, walk(first, 0, 5));
+    let wind_down = InProgress::WindDown {
+        slot: 0,
+        until: Tick::new(48),
+    };
+    assert_eq!(underway(&game, first), Some(wind_down));
+    after(&mut game, 44);
+    order(&mut game, walk(first, 5, 0));
+    after(&mut game, 48);
+    assert_eq!(underway(&game, first), None);
+    assert_eq!(game.part::<Position>(first).get(), Vec3::ZERO);
+    assert_eq!(gold(&game), 6);
+    after(&mut game, 50);
+    assert_eq!(game.part::<Position>(first).get(), Vec3::from((2, 0, 0)));
+
+    // At level 2 on `valor`, 50 into it, a caster pays 5 a tick. A stop in its wind-down ends it
+    // at once and drops the walk it holds, so the unit stands; a death in its channel ends it at
+    // once too, with no wind-down: neither pays again.
+    let channel = |game: &mut Match, x: i16| {
+        let id = Abilities::walking_caster(game, hack);
+        *game.part_mut::<Position>(id) = Position::from((x, 0, 0));
+        let mut experience = Experience::new(TrackSet::from([TrackId::new(1)]));
+        experience.add(TrackId::new(1), Num::int(50), &book);
+        game.insert_parts(id, experience);
+        Abilities::cast(game, id, ActionTarget::None);
+        let Some(InProgress::Order {
+            phase: OrderPhase::Started(started),
+            ..
+        }) = underway(game, id)
+        else {
+            panic!("Hack winds up");
+        };
+        let paid = started.resolves_at.get() + 4;
+        let held = gold(game);
+        after(game, paid);
+        assert_eq!(gold(game), held + 5);
+        id
+    };
+    let stopped = channel(&mut game, 20);
+    order(&mut game, walk(stopped, 20, 5));
+    assert!(matches!(
+        underway(&game, stopped),
+        Some(InProgress::WindDown { .. })
+    ));
+    order(&mut game, Order::one(stopped, OrdersDirective::Stop));
+    assert_eq!(underway(&game, stopped), None);
+    assert_eq!(game.part::<HeldOrder>(stopped).get(), None);
+    let killed = channel(&mut game, 40);
+    Combat::queue_damage(&mut game, None, killed, Num::int(1000), "true");
+    game.step();
+    assert_eq!(underway(&game, killed), None);
+    let held = gold(&game);
+    let later = game.now().get() + 9;
+    game.run_until(later);
+    assert_eq!(gold(&game), held);
+    assert_eq!(game.part::<Position>(stopped).get(), Vec3::from((20, 0, 0)));
+    assert_eq!(Abilities::failed_calls(&game), []);
 }

@@ -117,7 +117,7 @@ impl RuleAt {
 /// its action's lists join, which the lists it holds join first.
 pub trait EffectResolveCx {
     /// The match's ids of the names the effect gives.
-    fn names(&self) -> &dyn EffectNames;
+    fn names(&self) -> EffectNames<'_>;
 
     /// The list the effect is of.
     fn list(&self) -> ListHook;

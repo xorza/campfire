@@ -29,12 +29,12 @@ use campfire_sim::{EntityIndex, SimTick, StableId, Unpredicted};
 use campfire_units::{Dead, Owner};
 use campfire_values::{ActionId, NameId, ResourceId, UnitType};
 
-use crate::action_names::ActionTexts;
 use crate::input_mode::InputMode;
+use crate::name_texts::NameTexts;
 use crate::own_player::OwnPlayer;
 use crate::placing::Placing;
 use crate::selection::{Selection, SelectionSystems};
-use crate::ui_style::{self, Corner, DIMMED, Panel, PanelRow, TEXT};
+use crate::ui_style::{self, Corner, DIMMED, Panel, PanelFunds, PanelRow, PanelRows, TEXT};
 use crate::view::unit_looks::UnitLooks;
 
 /// The command panel (02-engine-core.md, A command panel from the actions): it shows the first
@@ -53,18 +53,6 @@ pub(crate) struct CommandPanelPlugin;
 struct PanelSetup {
     resources: Vec<ResourceId>,
 }
-
-/// The panel's root, shown while it shows a unit.
-#[derive(Component, Debug)]
-struct PanelRoot;
-
-/// The panel's line of the player's amounts.
-#[derive(Component, Debug)]
-struct Funds;
-
-/// The holder of the panel's rows.
-#[derive(Component, Debug)]
-struct Rows;
 
 /// A button's row: its button, and its line of cost.
 #[derive(Component, Debug)]
@@ -129,9 +117,9 @@ struct PanelUnit<'a> {
 
 /// The panel's root, the holder of its rows, and its line of amounts.
 type PanelNodes<'w, 's> = (
-    Single<'w, 's, &'static mut Visibility, With<PanelRoot>>,
-    Single<'w, 's, Entity, With<Rows>>,
-    Single<'w, 's, Entity, With<Funds>>,
+    Single<'w, 's, &'static mut Visibility, With<Panel<CommandPanelPlugin>>>,
+    Single<'w, 's, Entity, With<PanelRows<CommandPanelPlugin>>>,
+    Single<'w, 's, Entity, With<PanelFunds<CommandPanelPlugin>>>,
 );
 
 /// The units the panel may show: each one's player, slots, train queue, site and its progress.
@@ -166,10 +154,7 @@ impl CommandPanelPlugin {
     }
 
     fn spawn(mut commands: Commands<'_, '_>) {
-        let panel = Panel::spawn(&mut commands, Corner::BottomRight, 320.0);
-        commands.entity(panel.root).insert(PanelRoot);
-        commands.entity(panel.funds).insert(Funds);
-        commands.entity(panel.rows).insert(Rows);
+        Panel::<Self>::spawn(&mut commands, Corner::BottomRight, 320.0);
     }
 
     /// Shows the unit the panel reads: its rows, made again when what it shows changes, and
@@ -185,7 +170,7 @@ impl CommandPanelPlugin {
         (book, builds, names, tick): (
             Res<'_, ActionBook>,
             Res<'_, BuildBook>,
-            Res<'_, ActionTexts>,
+            Res<'_, NameTexts<ActionId>>,
             Res<'_, SimTick>,
         ),
         setup: Res<'_, PanelSetup>,
@@ -200,14 +185,14 @@ impl CommandPanelPlugin {
         mut commands: Commands<'_, '_>,
         mut line: Local<'_, String>,
     ) {
-        let seat = own.seat();
+        let player_slot = own.player_slot();
         next.clear();
         for &unit in selection.get() {
             let Some(Ok((owner, slots, queue, site, _))) = index.get(unit).map(|at| units.get(at))
             else {
                 continue;
             };
-            if seat.is_none() || owner.map(|owner| owner.seat()) != seat {
+            if player_slot.is_none() || owner.map(|owner| owner.player_slot()) != player_slot {
                 continue;
             }
             let held = PanelUnit { slots, queue, site };
@@ -399,7 +384,12 @@ impl Shown {
 
     /// Spawns its rows in `rows`, each named as `names` names its action: its buttons, then its
     /// queue's entries, then its site.
-    fn spawn_rows(&self, commands: &mut Commands<'_, '_>, rows: Entity, names: &ActionTexts) {
+    fn spawn_rows(
+        &self,
+        commands: &mut Commands<'_, '_>,
+        rows: Entity,
+        names: &NameTexts<ActionId>,
+    ) {
         for &button in &self.buttons {
             let lines = PanelRow::spawn(commands, rows, names.of(button.action));
             commands

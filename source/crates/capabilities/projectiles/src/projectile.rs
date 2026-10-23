@@ -1,8 +1,9 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ProjectileFlight, ShotDamage};
-use campfire_declarations::ByType;
+use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::world::{DeferredWorld, World};
+use campfire_actions::{ActionBook, LaunchId, ShotDamage};
+use campfire_declarations::ById;
 use campfire_math::{Num, Vec3};
 use campfire_script::MatchNames;
 use campfire_sim::{SimComponent, StableId};
@@ -15,12 +16,14 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::curve::{Curve, MAX_POINTS};
 use crate::heading::Heading;
+use crate::homers::Homers;
+use crate::projectile_flight::ProjectileFlight;
 use crate::projectile_spec::ProjectileSpec;
 
 /// A projectile unit in flight: whose it is, how it flies, at its type's speed, and what it
 /// carries. None of it changes as it flies; its `FlightState` does.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
-#[component(immutable)]
+#[component(immutable, on_insert = Self::inserted, on_discard = Self::discarded)]
 #[require(DeliveryEntity)]
 pub struct Projectile {
     source: StableId,
@@ -77,7 +80,7 @@ impl Flight {
     /// its count of points at the type's speed, ⌈length ÷ speed⌉.
     fn curve(aim: LaunchAim, spec: &ProjectileSpec, map: &MapBook) -> Self {
         let LaunchAim { from, to, aimed } = aim;
-        let shape = spec.curve.expect("a curve's type has a curve");
+        let shape = spec.curve().expect("a curve's type has a curve");
         let curve = Curve::new(from, to, &shape, map.highest_along(from, to));
         Self::Curve {
             from,
@@ -92,7 +95,7 @@ impl Flight {
     /// leaving toward it (04-capabilities/actions.md, A steered flight leaves toward its target);
     /// or on its curve.
     pub(crate) fn aimed(aim: LaunchAim, spec: &ProjectileSpec, map: &MapBook) -> Self {
-        let Some(steer) = spec.steer else {
+        let Some(steer) = spec.steer() else {
             return Self::curve(aim, spec, map);
         };
         let LaunchAim { from, to, aimed } = aim;
@@ -130,8 +133,9 @@ impl Flight {
 }
 
 /// What a projectile carries: an attack's damage of `kind`, the rank of its weapon's slot and the
-/// roll it drew, or the action at `rank` whose `on_hit` and `on_end` it runs, with the projectiles
-/// of its cast in `group`, named by the first of them.
+/// roll it drew, or the action at `rank` whose `on_hit` and `on_end` it runs, or its `launch`'s
+/// lists when a listed launch set it out, with the projectiles of its cast in `group`, named by
+/// the first of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Payload {
     Attack(ShotDamage),
@@ -139,6 +143,7 @@ pub enum Payload {
         action: ActionId,
         rank: Rank,
         start: Option<ActionStart>,
+        launch: Option<LaunchId>,
         group: StableId,
     },
 }
@@ -177,16 +182,36 @@ impl Projectile {
         self.payload
     }
 
-    /// Whether it homes on `id`, or is steered tracking it.
-    pub(crate) const fn homes_on(&self, id: StableId) -> bool {
+    /// Adds the projectile of `context` to the homers when it homes on a unit, in a match of
+    /// projectiles.
+    fn inserted(mut world: DeferredWorld<'_>, context: HookContext) {
+        let entity = context.entity;
+        let target = world.get::<Self>(entity).and_then(Self::homed);
+        if let (Some(target), Some(mut homers)) = (target, world.get_resource_mut::<Homers>()) {
+            homers.add(target, entity);
+        }
+    }
+
+    /// Takes the projectile of `context` out of the homers, as its part is replaced or goes,
+    /// which Bevy calls a discard.
+    fn discarded(mut world: DeferredWorld<'_>, context: HookContext) {
+        let entity = context.entity;
+        let target = world.get::<Self>(entity).and_then(Self::homed);
+        if let (Some(target), Some(mut homers)) = (target, world.get_resource_mut::<Homers>()) {
+            homers.remove(target, entity);
+        }
+    }
+
+    /// The unit it homes on, or is steered tracking.
+    pub(crate) const fn homed(&self) -> Option<StableId> {
         match self.flight {
             Flight::Homing { target }
             | Flight::Steered {
                 tracks: Some(target),
                 ..
-            } => target.get() == id.get(),
+            } => Some(target),
             Flight::Steered { tracks: None, .. } | Flight::Line { .. } | Flight::Curve { .. } => {
-                false
+                None
             }
         }
     }
@@ -200,7 +225,7 @@ impl SimComponent for Projectile {
     // a rank past its ranks, or of a damage kind the mode lacks, has no rules for its flight or
     // its hit; its action's start lies within the world's bound, as every place does.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let specs = world.resource::<ByType<ProjectileSpec>>();
+        let specs = world.resource::<ById<UnitType, ProjectileSpec>>();
         let flies = world
             .get::<UnitType>(entity)
             .and_then(|&unit_type| specs.get(unit_type))

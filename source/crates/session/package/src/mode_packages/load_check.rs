@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::{ActionData, ActionKind};
-use campfire_capabilities::{LoadNames, PackageContent, Release};
+use campfire_capabilities::{Books, LoadNames, PackageContent, Release};
 use campfire_common::DeclaredName;
 use campfire_declarations::{
     BookError, BookPlace, ScriptParams, SectionReaders, SectionTable, TypePlace,
@@ -56,8 +56,9 @@ struct ScriptUse<'a> {
 }
 
 impl<'a> LoadCheck<'a> {
-    /// Checks `packages` against the script API `api`.
-    pub(crate) fn run(packages: &'a ModePackages, api: &'a ScriptApi) -> Result<(), LoadError> {
+    /// Checks `packages` against the script API `api`; the books it built of them, at the fastest
+    /// rate.
+    pub(crate) fn run(packages: &'a ModePackages, api: &'a ScriptApi) -> Result<Books, LoadError> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
         Self::sections_owned(packages, &Release::sections())?;
@@ -81,7 +82,7 @@ impl<'a> LoadCheck<'a> {
                 .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
         check.list()?;
-        Release::books(&input).map_err(|error| book_error(packages, error))?;
+        let books = Release::books(&input).map_err(|error| book_error(packages, error))?;
         // A name is the client's alone, so it is checked last: a train or a build whose other
         // problems the checks above find shows those.
         shown_named(packages.content.actions()).map_err(fail)?;
@@ -89,7 +90,7 @@ impl<'a> LoadCheck<'a> {
             shown_named(dependent.content.actions())
                 .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
-        Ok(())
+        Ok(books)
     }
 
     /// The mode package: the names players see of it, and what its data names.
@@ -253,7 +254,7 @@ impl<'a> LoadCheck<'a> {
                 named(actions)?;
             }
             DependentKind::Loadout => named(actions)?,
-            DependentKind::Rules(_) => {}
+            DependentKind::Rules => {}
         }
         self.package(view)
     }
@@ -774,7 +775,10 @@ fn text(package: &Package, id: &TextId, at: &Place) -> Result<(), LoadProblem> {
 
 /// Whether each of `actions`, a player's, has a name.
 fn named(actions: &BTreeMap<DeclaredName, ActionData>) -> Result<(), LoadProblem> {
-    match actions.iter().find(|(_, action)| action.name.is_none()) {
+    match actions
+        .iter()
+        .find(|(_, action)| action.keys.name.is_none())
+    {
         Some((id, _)) => Err(LoadProblem::UnnamedAction(id.clone())),
         None => Ok(()),
     }
@@ -787,7 +791,7 @@ fn shown_named(actions: &BTreeMap<DeclaredName, ActionData>) -> Result<(), LoadP
         |action: &ActionData| matches!(action.kind(), ActionKind::Train | ActionKind::Build);
     match actions
         .iter()
-        .find(|(_, action)| shown(action) && action.name.is_none())
+        .find(|(_, action)| shown(action) && action.keys.name.is_none())
     {
         Some((id, _)) => Err(LoadProblem::UnnamedAction(id.clone())),
         None => Ok(()),

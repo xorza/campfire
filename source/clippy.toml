@@ -121,9 +121,9 @@ disallowed-methods = [
     { path = "bevy_replicon::postcard_utils::from_buf", reason = "encode and decode through campfire_codec" },
     { path = "bevy_replicon::postcard_utils::entity_from_buf", reason = "encode and decode through campfire_codec" },
     # campfire-schedule alone sets a schedule's build settings, which can switch off the ambiguity and hierarchy checks, and its executor, which can run its systems on other threads.
-    { path = "bevy_ecs::schedule::Schedule::set_build_settings", reason = "build a sim schedule through campfire_schedule::StrictSchedule" },
-    { path = "bevy_ecs::schedule::Schedules::configure_schedules", reason = "build a sim schedule through campfire_schedule::StrictSchedule" },
-    { path = "bevy_ecs::schedule::Schedule::set_executor", reason = "run a schedule on one thread through campfire_schedule::OneThreadSchedule" },
+    { path = "bevy_ecs::schedule::Schedule::set_build_settings", reason = "build a sim schedule through campfire_schedule::ScheduleExt" },
+    { path = "bevy_ecs::schedule::Schedules::configure_schedules", reason = "build a sim schedule through campfire_schedule::ScheduleExt" },
+    { path = "bevy_ecs::schedule::Schedule::set_executor", reason = "run a schedule on one thread through campfire_schedule::ScheduleExt" },
     # Banned everywhere: a query run on the compute pool, as no pass gains threads inside itself (02-engine-core.md, The sim is one schedule on one thread; 02-engine-core.md, No query runs in parallel).
     { path = "bevy_ecs::system::Query::par_iter", reason = "iterate in order; a parallel pass is a decision with its measurement" },
     { path = "bevy_ecs::system::Query::par_iter_mut", reason = "iterate in order; a parallel pass is a decision with its measurement" },

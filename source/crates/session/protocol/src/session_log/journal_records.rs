@@ -1,7 +1,7 @@
 //! The log's journal: the record of each thing the log takes, as it takes it, and the log
 //! rebuilt from them.
 
-use campfire_common::{Seat, Tick, Version};
+use campfire_common::{PlayerSlot, Tick, Version};
 
 use crate::control::Control;
 use crate::session_log::applied::Applied;
@@ -209,7 +209,7 @@ impl SessionLog {
     /// where each chain whose head its player's current delegation signed stands durably: where
     /// the log holds it, as the journal was read back from the disk.
     pub(crate) fn resume_durable(&self, journal: &mut Journal) {
-        for (seat, held) in (0..).map(Seat::new).zip(self.control.iter()) {
+        for (player_slot, held) in (0..).map(PlayerSlot::new).zip(self.control.iter()) {
             let Control::Player { delegation, chain } = held.control else {
                 continue;
             };
@@ -222,7 +222,7 @@ impl SessionLog {
                 seq,
                 head: chain.head(),
             });
-            journal.durable_mut().set(seat, head);
+            journal.durable_mut().set(player_slot, head);
         }
     }
 

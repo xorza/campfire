@@ -160,7 +160,8 @@ mod scripted_match {
     fn the_lane_match_plays_to_its_golden_record() {
         let session = FixedSession::new(TestMode::Lane.packages(), 2);
         let mut fixed = session.start();
-        let mut record = MatchRecord::of(fixed.game_mut(), session.packages(), session.seats());
+        let mut record =
+            MatchRecord::of(fixed.game_mut(), session.packages(), session.player_slots());
         let walker = MatchUnits::of(fixed.game()).hero(0);
         // The first wave's creeps of the east, which spawn in tick 0, walk to the walker and strike
         // it as they meet; the west's strike the runner, so the walker alone fells these.
@@ -229,7 +230,7 @@ mod scripted_match {
                 "tick {tick}: {:?}",
                 failures.get()
             );
-            for death in world.resource::<Deaths>().iter() {
+            for death in world.resource::<Deaths>() {
                 if east.contains(&death.fallen.id) {
                     assert_eq!(death.killer, Some(walker), "tick {tick}");
                     felled.push(tick);

@@ -1,4 +1,3 @@
-use crate::compression_scratch::CompressionScratch;
 use crate::fragment_count::FragmentCount;
 use crate::fragment_index::FragmentIndex;
 use crate::fragmented_message::FragmentedMessage;
@@ -8,31 +7,16 @@ use campfire_net_core::Ticked;
 use super::*;
 use crate::channel_setup::DEFAULT_MAX_MESSAGE_LEN;
 
-/// The fragments of `bytes` at `fragment_len`, compressed with `compression` when that helps.
-fn split(
-    id: MessageId,
-    bytes: Bytes,
-    fragment_len: usize,
-    compression: CompressionSetup,
-) -> Vec<FragmentBody> {
-    FragmentedMessage::split(
-        id,
-        bytes,
-        fragment_len,
-        compression,
-        &mut CompressionScratch::default(),
-    )
-    .fragment_body()
+/// The fragments of `bytes` at `fragment_len`.
+fn split(id: MessageId, bytes: Bytes, fragment_len: usize) -> Vec<FragmentBody> {
+    FragmentedMessage::split(id, bytes, fragment_len).fragment_body()
 }
 
-fn cx(compression: CompressionSetup) -> FragmentCx {
-    FragmentCx {
-        expiry: PartialExpiry::Never,
-        compression,
-        max_message_len: DEFAULT_MAX_MESSAGE_LEN,
-        reservation: Reservation::Limited,
-    }
-}
+const CX: FragmentCx = FragmentCx {
+    expiry: PartialExpiry::Never,
+    max_message_len: DEFAULT_MAX_MESSAGE_LEN,
+    reservation: Reservation::Limited,
+};
 
 /// Receives with room to spare, returning the completed message, if any.
 fn receive(
@@ -55,29 +39,14 @@ fn fragments_out_of_order_rebuild_the_message() -> Result<()> {
     let mut receiver = FragmentReceiver::new();
     let message_len = FRAGMENT_LEN * 3 / 2;
     let message_bytes = Bytes::from(vec![1u8; message_len]);
-    let fragments = split(
-        MessageId(0),
-        message_bytes.clone(),
-        FRAGMENT_LEN,
-        CompressionSetup::DISABLED,
-    );
+    let fragments = split(MessageId(0), message_bytes.clone(), FRAGMENT_LEN);
 
     assert_eq!(
-        receive(
-            &mut receiver,
-            fragments[1].clone(),
-            NetTick(1),
-            &cx(CompressionSetup::DISABLED)
-        )?,
+        receive(&mut receiver, fragments[1].clone(), NetTick(1), &CX)?,
         None
     );
     assert_eq!(
-        receive(
-            &mut receiver,
-            fragments[0].clone(),
-            NetTick(0),
-            &cx(CompressionSetup::DISABLED)
-        )?,
+        receive(&mut receiver, fragments[0].clone(), NetTick(0), &CX)?,
         Some(Ticked::new(NetTick(1), message_bytes))
     );
     Ok(())
@@ -103,12 +72,7 @@ fn fragments_of_any_sender_fragment_len_reassemble_in_any_order() -> Result<()> 
             .map(|i| (i % 251) as u8)
             .collect::<Vec<u8>>()
             .into();
-        let fragments = split(
-            MessageId(4),
-            message_bytes.clone(),
-            fragment_len,
-            CompressionSetup::DISABLED,
-        );
+        let fragments = split(MessageId(4), message_bytes.clone(), fragment_len);
         assert_eq!(
             fragments
                 .iter()
@@ -126,7 +90,7 @@ fn fragments_of_any_sender_fragment_len_reassemble_in_any_order() -> Result<()> 
                     &mut receiver,
                     fragments[index].clone(),
                     NetTick(index as u32),
-                    &cx(CompressionSetup::DISABLED),
+                    &CX,
                 )?;
             }
             assert_eq!(
@@ -152,7 +116,7 @@ fn receive_bounded_fragments(
 ) -> Result<Option<Ticked<Bytes>>> {
     let cx = FragmentCx {
         max_message_len,
-        ..cx(CompressionSetup::DISABLED)
+        ..CX
     };
     let mut receiver = FragmentReceiver::new();
     let mut result = Ok(None);
@@ -162,7 +126,6 @@ fn receive_bounded_fragments(
             message_id: MessageId(9),
             fragment_index: FragmentIndex(index),
             fragments: FragmentCount(count),
-            compression: (index == 0).then_some(FragmentCompression::None),
             bytes: Bytes::from(vec![index as u8; len]),
         };
         result = receive(&mut receiver, fragment, NetTick(0), &cx);
@@ -178,25 +141,25 @@ fn receive_bounded_fragments(
 fn fragments_of_a_message_above_the_limit_are_refused() {
     assert!(matches!(
         receive_bounded_fragments(101, 100, &[(0, 1)]),
-        Err(ChannelReceiveError::FragmentCountTooLarge {
+        Err(ReceiveError::FragmentCountTooLarge {
             fragments: 101,
             max_message_len: 100
         })
     ));
     assert!(matches!(
         receive_bounded_fragments((1 << 62) - 1, 100, &[(5, 1)]),
-        Err(ChannelReceiveError::FragmentCountTooLarge { .. })
+        Err(ReceiveError::FragmentCountTooLarge { .. })
     ));
     assert!(matches!(
         receive_bounded_fragments(3, 100, &[(0, 50)]),
-        Err(ChannelReceiveError::MessageTooLarge {
+        Err(ReceiveError::MessageTooLarge {
             min_len: 101,
             max_message_len: 100
         })
     ));
     assert!(matches!(
         receive_bounded_fragments(3, 100, &[(2, 99)]),
-        Err(ChannelReceiveError::MessageTooLarge {
+        Err(ReceiveError::MessageTooLarge {
             min_len: 101,
             max_message_len: 100
         })
@@ -204,7 +167,7 @@ fn fragments_of_a_message_above_the_limit_are_refused() {
     // No sender splits a message into more than 16,383 fragments, whatever the size limit.
     assert!(matches!(
         receive_bounded_fragments(16_384, usize::MAX, &[(0, 1)]),
-        Err(ChannelReceiveError::FragmentCountTooLarge {
+        Err(ReceiveError::FragmentCountTooLarge {
             fragments: 16_384,
             ..
         })
@@ -227,21 +190,21 @@ fn the_receipts_of_a_message_span_several_words() {
 fn fragment_sizes_must_match_the_first_non_final_fragment() {
     assert!(matches!(
         receive_fragments(3, &[(0, 37), (1, 36)]),
-        Err(ChannelReceiveError::InvalidNonFinalFragmentLen {
+        Err(ReceiveError::InvalidNonFinalFragmentLen {
             actual: 36,
             expected: 37
         })
     ));
     assert!(matches!(
         receive_fragments(3, &[(1, 37), (0, 38)]),
-        Err(ChannelReceiveError::InvalidNonFinalFragmentLen {
+        Err(ReceiveError::InvalidNonFinalFragmentLen {
             actual: 38,
             expected: 37
         })
     ));
     assert!(matches!(
         receive_fragments(3, &[(0, 37), (2, 38)]),
-        Err(ChannelReceiveError::InvalidFinalFragmentLen {
+        Err(ReceiveError::InvalidFinalFragmentLen {
             actual: 38,
             max: 37
         })
@@ -250,14 +213,10 @@ fn fragment_sizes_must_match_the_first_non_final_fragment() {
     // rejects it.
     assert!(matches!(
         receive_fragments(3, &[(2, 38), (0, 37)]),
-        Err(ChannelReceiveError::InvalidFinalFragmentLen {
+        Err(ReceiveError::InvalidFinalFragmentLen {
             actual: 38,
             max: 37
         })
-    ));
-    assert!(matches!(
-        receive_fragments(3, &[(0, 0)]),
-        Err(ChannelReceiveError::EmptyNonFinalFragment)
     ));
 
     // A final fragment equal to the fragment size, and a message of one fragment with no
@@ -270,123 +229,54 @@ fn fragment_sizes_must_match_the_first_non_final_fragment() {
     assert_eq!(complete(receive_fragments(1, &[(0, 5)])), 5);
 }
 
-#[cfg(feature = "compression_lz4")]
-#[test]
-fn compressed_fragments_decompress_once_their_message_is_whole() -> Result<()> {
-    let compression = CompressionSetup {
-        min_payload_len: 0,
-        max_decompressed_payload_len: FRAGMENT_LEN * 4,
-        ..CompressionSetup::LZ4
-    };
-    let mut receiver = FragmentReceiver::new();
-    let message_bytes = Bytes::from(vec![7u8; FRAGMENT_LEN * 3]);
-    let fragments = split(
-        MessageId(1),
-        message_bytes.clone(),
-        FRAGMENT_LEN,
-        compression,
-    );
-
-    assert!(fragments.len() < 3);
-    assert_eq!(fragments[0].compression, Some(FragmentCompression::Lz4));
-    assert!(
-        fragments
-            .iter()
-            .skip(1)
-            .all(|fragment| fragment.compression.is_none())
-    );
-
-    let mut result = None;
-    for (index, fragment) in fragments.into_iter().enumerate() {
-        result = receive(
-            &mut receiver,
-            fragment,
-            NetTick(index as u32),
-            &cx(compression),
-        )?;
-    }
-
-    assert_eq!(result, Some(Ticked::new(NetTick(0), message_bytes)));
-    Ok(())
-}
-
-/// Each malformed fragment is refused with its own error: a count of 0, an index at the count, a
-/// count that changes within a message, a first fragment without its compression, and a
-/// compression that changes within a message.
+/// Each malformed fragment is refused with its own error, and opens no partial: a count of 0,
+/// an index at the count, a count that changes within a message, and an empty fragment, final or
+/// not.
 #[test]
 fn malformed_fragments_are_refused_with_their_error() {
-    type Case<'a> = (&'a [FragmentBody], fn(&ChannelReceiveError) -> bool);
-    let fragment = |index, count, compression| FragmentBody {
+    let fragment = |index, count, len| FragmentBody {
         message_id: MessageId(0),
         fragment_index: FragmentIndex(index),
         fragments: FragmentCount(count),
-        compression,
-        bytes: Bytes::from_static(&[7; 4]),
+        bytes: Bytes::from(vec![7; len]),
     };
-    let none = Some(FragmentCompression::None);
-    let cases: [Case<'_>; 5] = [
-        (&[fragment(0, 0, none)], |error| {
-            matches!(
-                error,
-                ChannelReceiveError::InvalidFragmentCount { fragments: 0 }
-            )
-        }),
-        (&[fragment(2, 2, None)], |error| {
-            matches!(
-                error,
-                ChannelReceiveError::InvalidFragmentIndex {
-                    fragment_index: 2,
-                    fragments: 2
-                }
-            )
-        }),
-        (&[fragment(1, 3, None), fragment(0, 2, none)], |error| {
-            matches!(
-                error,
-                ChannelReceiveError::FragmentCountMismatch {
-                    expected: 3,
-                    actual: 2
-                }
-            )
-        }),
-        (&[fragment(0, 2, None)], |error| {
-            matches!(error, ChannelReceiveError::MissingFragmentCompression)
-        }),
+    let cases: [(&[FragmentBody], ReceiveError); 5] = [
         (
-            &[
-                fragment(0, 3, none),
-                fragment(1, 3, Some(FragmentCompression::Lz4)),
-            ],
-            |error| {
-                matches!(
-                    error,
-                    ChannelReceiveError::FragmentCompressionMismatch {
-                        expected: "none",
-                        actual: "lz4"
-                    }
-                )
+            &[fragment(0, 0, 4)],
+            ReceiveError::InvalidFragmentCount { fragments: 0 },
+        ),
+        (
+            &[fragment(2, 2, 4)],
+            ReceiveError::InvalidFragmentIndex {
+                fragment_index: 2,
+                fragments: 2,
             },
         ),
+        (
+            &[fragment(1, 3, 4), fragment(0, 2, 4)],
+            ReceiveError::FragmentCountMismatch {
+                expected: 3,
+                actual: 2,
+            },
+        ),
+        (&[fragment(0, 3, 0)], ReceiveError::EmptyFragment),
+        (&[fragment(2, 3, 0)], ReceiveError::EmptyFragment),
     ];
     for (fragments, expected) in cases {
         let mut receiver = FragmentReceiver::new();
         let (last, first) = fragments.split_last().unwrap();
         for fragment in first {
-            let pending = receive(
-                &mut receiver,
-                fragment.clone(),
-                NetTick(0),
-                &cx(CompressionSetup::DISABLED),
-            );
-            assert!(matches!(pending, Ok(None)), "{pending:?}");
+            let pending = receive(&mut receiver, fragment.clone(), NetTick(0), &CX);
+            assert_eq!(pending, Ok(None));
         }
-        let error = receive(
-            &mut receiver,
-            last.clone(),
-            NetTick(0),
-            &cx(CompressionSetup::DISABLED),
-        )
-        .unwrap_err();
-        assert!(expected(&error), "{error:?}");
+        let partials = receiver.partial_len();
+        assert_eq!(
+            receive(&mut receiver, last.clone(), NetTick(0), &CX),
+            Err(expected)
+        );
+        assert!(receiver.partial_len() <= partials, "{expected:?}");
+        if first.is_empty() {
+            assert_eq!(receiver.held(), 0, "{expected:?}");
+        }
     }
 }

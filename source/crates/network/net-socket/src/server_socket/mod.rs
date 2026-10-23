@@ -1,7 +1,7 @@
 use core::net::SocketAddr;
 
-use campfire_common::TlsKey;
 use campfire_net_core::Random;
+use campfire_net_core::TlsKey;
 use campfire_net_packets::{DatagramIo, EndpointPieces};
 use campfire_net_udp::{AdmissionSetup, UdpServer};
 

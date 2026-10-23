@@ -87,7 +87,7 @@ impl ListedEffect for XpEffectData {
 
     fn resolve(&self, cx: &mut dyn EffectResolveCx) -> Result<Arc<dyn ListedSpec>, EffectError> {
         Ok(Arc::new(XpEffectSpec {
-            track: cx.names().track(&self.track)?,
+            track: cx.names().named::<TrackId>(self.track.as_str())?,
             amount: cx.amount(&self.amount)?,
         }))
     }

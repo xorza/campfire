@@ -24,7 +24,7 @@ impl Started {
         world
             .commands()
             .entity(context.entity)
-            .remove::<(Starting, Stopped, Stopping)>();
+            .try_remove::<(Starting, Stopped, Stopping)>();
     }
 
     fn on_remove(mut world: DeferredWorld<'_>, context: HookContext) {
@@ -44,7 +44,7 @@ impl Starting {
         world
             .commands()
             .entity(context.entity)
-            .remove::<(Started, Stopped, Stopping)>();
+            .try_remove::<(Started, Stopped, Stopping)>();
     }
 }
 
@@ -64,7 +64,7 @@ impl Stopped {
         world
             .commands()
             .entity(context.entity)
-            .remove::<(Started, Starting, Stopping)>();
+            .try_remove::<(Started, Starting, Stopping)>();
     }
 }
 
@@ -78,7 +78,7 @@ impl Stopping {
         world
             .commands()
             .entity(context.entity)
-            .remove::<(Started, Starting, Stopped)>();
+            .try_remove::<(Started, Starting, Stopped)>();
     }
 }
 

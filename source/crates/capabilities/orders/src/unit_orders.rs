@@ -1,19 +1,20 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, Without};
+use bevy_ecs::query::{Changed, Has, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{
-    ActionBook, ActionKind, ActionSlots, ActionTarget, ProgressIndexes, Targets,
+    ActionBook, ActionKind, ActionProgress, ActionSlots, ActionTarget, ProgressIndexes, Targets,
 };
 use campfire_declarations::{Role, Scratch};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{GroupBox, Party, PartyKey, Route, RouteDues};
-use campfire_players::TickCommands;
-use campfire_sim::{DueIndex, EntityIndex, Position, SimTick};
-use campfire_units::{BuildTarget, Dead, Destination, GroundPoint, MapBook, Owner, UnitOrdered};
+use campfire_players::{OrderedUnits, TickCommands};
+use campfire_sim::{DueIndex, Position, SimTick};
+use campfire_units::{BuildTarget, Dead, Destination, GroundPoint, MapBook, UnitOrdered};
 use campfire_values::Team;
 use campfire_vision::{SeenTargets, TeamSight};
 
+use crate::attack_move::{AttackMove, GoalDues};
 use crate::orders_directive::OrdersDirective;
 use crate::resetting::Resetting;
 use crate::unit_order::{OrderedUnit, UnitDues, UnitOrder};
@@ -25,7 +26,6 @@ pub struct OrderQueue(Vec<(Entity, UnitOrder)>);
 
 /// The parts of a unit a player's order checks.
 type Commanded = (
-    &'static Owner,
     Option<&'static Team>,
     &'static Position,
     Has<Destination>,
@@ -73,25 +73,18 @@ impl UnitOrders {
     /// walk moves them as a group: each walks to its own goal by the group's box, as one party,
     /// the order's.
     pub(super) fn check_player_orders<S: TeamSight>(
-        (tick, map, index): (Res<'_, SimTick>, Res<'_, MapBook>, Res<'_, EntityIndex>),
+        (tick, map): (Res<'_, SimTick>, Res<'_, MapBook>),
         mut orders: TickCommands<'_, '_, OrdersDirective>,
         book: Res<'_, ActionBook>,
         (targets, visible): (Targets<'_, '_>, SeenTargets<'_, '_, S>),
-        units: Query<'_, '_, Commanded, (Without<Dead>, Without<Resetting>)>,
+        units: OrderedUnits<'_, '_, Commanded, (Without<Dead>, Without<Resetting>)>,
         mut checked: ResMut<'_, OrderQueue>,
         mut movers: Local<'_, Vec<Mover>>,
     ) {
         debug_assert!(checked.is_clear(), "the last tick applied its orders");
         let now = tick.start();
         orders.for_each(|order| {
-            let controlled = order
-                .units
-                .iter()
-                .filter_map(|&id| {
-                    let entity = index.get(id)?;
-                    Some((entity, units.get(entity).ok()?))
-                })
-                .filter(|(_, (owner, ..))| order.controls(**owner));
+            let controlled = units.controlled(&order);
             let walk = match order.directive {
                 OrdersDirective::Move { to } => Some((to, Walk::Move)),
                 OrdersDirective::AttackMove { to } => Some((to, Walk::AttackMove)),
@@ -99,8 +92,8 @@ impl UnitOrders {
             };
             if let Some((GroundPoint { x, z }, walk)) = walk {
                 movers.clear();
-                movers.extend(controlled.filter(|(_, (.., walks, _))| *walks).map(
-                    |(entity, (_, _, &at, ..))| Mover {
+                movers.extend(controlled.filter(|(.., (_, _, walks, _))| *walks).map(
+                    |(_, entity, (_, &at, ..))| Mover {
                         entity,
                         position: at.get(),
                     },
@@ -115,7 +108,7 @@ impl UnitOrders {
                 let goal = map.bounds.clamp_ground([x, z]);
                 let key = PartyKey::Order {
                     tick: now,
-                    seat: order.seat,
+                    player_slot: order.player_slot,
                     number: order.number,
                 };
                 for &Mover {
@@ -132,7 +125,7 @@ impl UnitOrders {
                 }
                 return;
             }
-            for (entity, (_, team, _, _, slots)) in controlled {
+            for (_, entity, (team, _, _, slots)) in controlled {
                 let sees = |target| team.is_some_and(|&team| visible.sees(team, target));
                 let unit_order = match order.directive {
                     OrdersDirective::Attack { target } => {
@@ -146,7 +139,9 @@ impl UnitOrders {
                         (armed && sees(target)).then_some(UnitOrder::Attack { target })
                     }
                     OrdersDirective::Slot { slot, target } => {
-                        let kind = slots.and_then(|slots| slots.kind_in(&book, slot));
+                        let kind = slots
+                            .and_then(|slots| slots.learned(slot))
+                            .and_then(|held| held.kind_in(&book));
                         let hidden = matches!(target, ActionTarget::Unit(unit) if !sees(unit));
                         match (kind, target) {
                             _ if hidden => None,
@@ -160,7 +155,9 @@ impl UnitOrders {
                         }
                     }
                     OrdersDirective::Build { slot, target } => {
-                        let kind = slots.and_then(|slots| slots.kind_in(&book, slot));
+                        let kind = slots
+                            .and_then(|slots| slots.learned(slot))
+                            .and_then(|held| held.kind_in(&book));
                         let hidden = matches!(target, BuildTarget::Site(site) if !sees(site));
                         (kind == Some(ActionKind::Build) && !hidden)
                             .then_some(UnitOrder::Build { slot, target })
@@ -178,14 +175,63 @@ impl UnitOrders {
         });
     }
 
+    /// Gives each unit whose wind-down ended since the last run the order it holds, as every order
+    /// is given, and triggers it as `UnitOrdered`; a unit that died drops it. It runs before the
+    /// tick's orders, so one of them comes after it, as the last order wins.
+    pub(super) fn release_held(
+        tick: Res<'_, SimTick>,
+        map: Res<'_, MapBook>,
+        mut units: Query<'_, '_, (OrderedUnit, Has<Dead>), Changed<ActionProgress>>,
+        (mut indexes, mut asks, mut goals): (
+            ProgressIndexes<'_>,
+            ResMut<'_, DueIndex<Route>>,
+            ResMut<'_, DueIndex<AttackMove>>,
+        ),
+        mut commands: Commands<'_, '_>,
+    ) {
+        let now = tick.start();
+        for (mut parts, dead) in &mut units {
+            let Some(held) = parts.held.as_mut() else {
+                continue;
+            };
+            let Some(order) = held.get() else {
+                continue;
+            };
+            let winds_down = parts
+                .underway
+                .as_deref()
+                .is_some_and(ActionProgress::winds_down);
+            if winds_down && !dead {
+                continue;
+            }
+            held.drop_order();
+            if dead {
+                continue;
+            }
+            let (id, entity) = (*parts.id, parts.entity);
+            let mut dues = UnitDues {
+                progress: indexes.of(id, entity),
+                routes: RouteDues::new(&mut asks, id, entity),
+                goals: GoalDues::new(&mut goals, id, entity),
+            };
+            if let Some(order) = order.give(parts, &map.bounds, now, &mut dues) {
+                commands.trigger(UnitOrdered { entity, order });
+            }
+        }
+    }
+
     /// Applies the tick's checked player orders, in input order, each as every order applies, and
-    /// triggers each as `UnitOrdered`, in the same order; a player orders no reset.
+    /// triggers each it gives as `UnitOrdered`, in the same order; a player orders no reset.
     pub(super) fn apply_player_orders(
         tick: Res<'_, SimTick>,
         map: Res<'_, MapBook>,
         mut checked: ResMut<'_, OrderQueue>,
         mut units: Query<'_, '_, OrderedUnit>,
-        (mut indexes, mut asks): (ProgressIndexes<'_>, ResMut<'_, DueIndex<Route>>),
+        (mut indexes, mut asks, mut goals): (
+            ProgressIndexes<'_>,
+            ResMut<'_, DueIndex<Route>>,
+            ResMut<'_, DueIndex<AttackMove>>,
+        ),
         mut commands: Commands<'_, '_>,
     ) {
         let now = tick.start();
@@ -196,9 +242,11 @@ impl UnitOrders {
             let mut dues = UnitDues {
                 progress: indexes.of(id, entity),
                 routes: RouteDues::new(&mut asks, id, entity),
+                goals: GoalDues::new(&mut goals, id, entity),
             };
-            let order = order.give(parts, &map.bounds, now, &mut dues);
-            commands.trigger(UnitOrdered { entity, order });
+            if let Some(order) = order.give(parts, &map.bounds, now, &mut dues) {
+                commands.trigger(UnitOrdered { entity, order });
+            }
         }
     }
 }

@@ -7,19 +7,17 @@ use campfire_net_core::NetId;
 
 use super::*;
 
-use crate::packet_error::PacketError;
+use crate::error::ReceiveError;
 
-use campfire_net_bytes::ReadInteger;
-use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 
 impl Packet {
-    /// The messages of an uncompressed packet by channel, each of a channel whose messages
+    /// The messages of a packet by channel, each of a channel whose messages
     /// carry an id when `has_id` says so.
     pub(crate) fn parse_packet_payload(
         self,
         has_id: impl Fn(NetId) -> bool,
-    ) -> Result<HashMap<NetId, Vec<Bytes>>, PacketError> {
+    ) -> Result<HashMap<NetId, Vec<Bytes>>, ReceiveError> {
         let mut payload = self.payload.freeze();
         let _ = payload.split_to(OutgoingPayload::HEADROOM);
         let mut cursor = payload.into();
@@ -34,7 +32,7 @@ impl Packet {
         }
         while cursor.has_remaining() {
             let channel_id = NetId::from_bytes(&mut cursor)?;
-            let messages = cursor.read_u8().map_err(SerializationError::from)?;
+            let messages = cursor.read_u8()?;
             for _ in 0..messages {
                 let single_body = SingleBody::read(&mut cursor, has_id(channel_id))?;
                 res.entry(channel_id).or_default().push(single_body.bytes);

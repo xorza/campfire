@@ -5,7 +5,7 @@
 // pathfind cell, 10, as clear of each body, as the building may cover the rally; a unit with no
 // room within 20 cells is left out. A player's faction is the one its host picked, or one
 // drawn of the mode's factions, as the original draws a slot's Random, which then counts as its
-// pick. A seat whose host picked the start `base` also gets its faction's base: each of its base
+// pick. A player slot whose host picked the start `base` also gets its faction's base: each of its base
 // buildings, whole, at the room nearest its start within 40 cells, and `base_count` of each of
 // its base units at the room nearest its rally within 40, each left out with no room. A slot no
 // player or bot held as the match started, and a player whose start the map lacks, start with
@@ -15,7 +15,7 @@ fn on_match_start(ctx) {
     let factions = ctx.offers("faction");
     for player in ctx.players {
         ctx.add_resource(player, "money", ctx.params.start_money);
-        if !player.seated {
+        if !player.held {
             continue;
         }
         let picked = ctx.chosen(player, "faction");
@@ -26,7 +26,7 @@ fn on_match_start(ctx) {
         } else {
             picked[0]
         };
-        let n = player.seat + 1;
+        let n = player.player_slot + 1;
         let starts = start_marker(ctx, `Player_${n}_Start`);
         if starts.is_empty() {
             continue;

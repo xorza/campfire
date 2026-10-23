@@ -2,9 +2,13 @@ use std::any::{Any, TypeId, type_name};
 use std::cell::{Cell, OnceCell};
 use std::{fmt, mem};
 
-use campfire_script::ScriptId;
+use std::sync::Arc;
+
+use campfire_script::{NameTables, ScriptId};
 use campfire_sim::{Capability, MatchRate};
-use campfire_values::{NameId, Names, PackageIndex, PackagePath, TypeScope, UnitType};
+use campfire_values::{
+    MatchScope, NameId, Named, Names, PackageIndex, PackagePath, TypeScope, UnitType,
+};
 
 use crate::book::Book;
 use crate::book_source::{BookSource, SourceKind, SourcePackage, SourceType};
@@ -15,6 +19,10 @@ use crate::section::{Section, SectionTable};
 
 /// How a module builds a book or a fact from what the build gives it.
 pub type BuildFn<B> = fn(&BookCx<'_>) -> Result<B, BookError>;
+
+/// How a module builds the names of its ids of type `I` from what the build gives it, shared
+/// with a book of its that holds them.
+pub type NamesFn<I> = fn(&BookCx<'_>) -> Result<Arc<Names<I>>, BookError>;
 
 /// How a module adds its part to a book or a fact of a module it builds on.
 pub type ExtendFn<B> = fn(&BookCx<'_>, &mut B) -> Result<(), BookError>;
@@ -39,7 +47,19 @@ pub struct BookCx<'a> {
     /// extensions do nothing.
     absent: Vec<TypeId>,
     rules: Vec<RuleFn>,
+    /// The cells that hold a table of names, each of one kind of id.
+    name_cells: Vec<NameCell>,
 }
+
+/// A cell that holds the names of one kind of id, and how its table joins the others: none for
+/// a kind of a module the match does not run, whose table is empty.
+struct NameCell {
+    type_id: TypeId,
+    add: fn(Option<&(dyn Any + Send + Sync)>, &mut NameTables),
+}
+
+/// How a cell builds its value.
+type CellBuild = Box<dyn Fn(&BookCx<'_>) -> Result<Box<dyn Any + Send + Sync>, BookError>>;
 
 /// How an extension adds its module's part to the value of its cell.
 type Extension = Box<dyn Fn(&BookCx<'_>, &mut (dyn Any + Send + Sync)) -> Result<(), BookError>>;
@@ -50,10 +70,21 @@ struct BookCell {
     type_id: TypeId,
     name: &'static str,
     kept: Kept,
-    build: Box<dyn Fn(&BookCx<'_>) -> Result<Box<dyn Any + Send + Sync>, BookError>>,
+    build: CellBuild,
     extends: Vec<Extension>,
-    building: Cell<bool>,
+    phase: Cell<Phase>,
     value: OnceCell<Box<dyn Any + Send + Sync>>,
+}
+
+/// Where a cell's build stands, but once it holds its value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    /// Not built, or refused, so a later ask builds it again and returns the refusal again.
+    Open,
+    /// Building, so an ask of itself is a cycle.
+    Building,
+    /// Built, and its value taken out by the load, so no later ask builds a second one.
+    Taken,
 }
 
 /// What a built value is to the match.
@@ -114,6 +145,7 @@ impl<'a> BookCx<'a> {
             pending: Vec::new(),
             absent: Vec::new(),
             rules: Vec::new(),
+            name_cells: Vec::new(),
         }
     }
 
@@ -223,6 +255,34 @@ impl<'a> BookCx<'a> {
         self.value_if()
     }
 
+    /// The names of the ids of type `I`, which a module of the match declares, built if they are
+    /// not yet.
+    pub fn names<I: NameId + 'static>(&self) -> Result<&Arc<Names<I>>, BookError> {
+        let names = self.names_if::<I>()?;
+        Ok(names.unwrap_or_else(|| panic!("the match names its {}", type_name::<I>())))
+    }
+
+    /// The names of the ids of type `I`, built if they are not yet; none when no module of the
+    /// match declares them.
+    pub fn names_if<I: NameId + 'static>(&self) -> Result<Option<&Arc<Names<I>>>, BookError> {
+        self.value_if()
+    }
+
+    /// The names of every kind of id the match's modules declare, each built if it is not yet:
+    /// what a load that resolves any module's names reads.
+    pub fn name_tables(&self) -> Result<NameTables, BookError> {
+        let mut tables = NameTables::default();
+        for cell in &self.name_cells {
+            let at = self
+                .cells
+                .iter()
+                .position(|held| held.type_id == cell.type_id);
+            let value = at.map(|at| self.built(at)).transpose()?;
+            (cell.add)(value, &mut tables);
+        }
+        Ok(tables)
+    }
+
     fn value_if<T: Any>(&self) -> Result<Option<&T>, BookError> {
         let at = self
             .cells
@@ -243,20 +303,18 @@ impl<'a> BookCx<'a> {
         if let Some(value) = cell.value.get() {
             return Ok(&**value);
         }
-        assert!(
-            !cell.building.replace(true),
-            "{} builds of itself",
-            cell.name
-        );
+        match cell.phase.replace(Phase::Building) {
+            Phase::Open => {}
+            Phase::Building => panic!("{} builds of itself", cell.name),
+            Phase::Taken => panic!("{} is asked for after the load took it", cell.name),
+        }
         let built = (cell.build)(self).and_then(|mut value| {
             for extend in &cell.extends {
                 extend(self, &mut *value)?;
             }
             Ok(value)
         });
-        // A refused build ends its mark too, so a later ask returns the refusal again, not a
-        // loop.
-        cell.building.set(false);
+        cell.phase.set(Phase::Open);
         let value = built?;
         Ok(&**cell.value.get_or_init(|| value))
     }
@@ -271,7 +329,69 @@ impl<'a> BookCx<'a> {
         self.declare(Kept::Fact, build);
     }
 
+    /// Declares the names of the ids of type `I`, which `build` makes, as a fact.
+    pub fn declare_names<I: NameId + Named + 'static>(&mut self, build: NamesFn<I>)
+    where
+        Names<I>: Send + Sync,
+        I::Scope: MatchScope,
+    {
+        self.declare_cell::<Arc<Names<I>>>(
+            Kept::Fact,
+            Box::new(move |cx| {
+                let value: Box<dyn Any + Send + Sync> = Box::new(build(cx)?);
+                Ok(value)
+            }),
+        );
+        self.name_cells.push(NameCell {
+            type_id: TypeId::of::<Arc<Names<I>>>(),
+            add: Self::add_names::<I>,
+        });
+    }
+
+    /// Declares that a module of the release that the match does not run declares the names of
+    /// the ids of type `I`, which the match then has none of.
+    pub fn declare_absent_names<I: NameId + Named + 'static>(&mut self)
+    where
+        Names<I>: Send + Sync,
+        I::Scope: MatchScope,
+    {
+        let type_id = TypeId::of::<Arc<Names<I>>>();
+        if self.cells.iter().any(|cell| cell.type_id == type_id) {
+            return;
+        }
+        self.declare_absent::<Arc<Names<I>>>();
+        self.name_cells.push(NameCell {
+            type_id,
+            add: Self::add_names::<I>,
+        });
+    }
+
+    /// Adds the table of `I` that `value` holds, or an empty one, to `tables`.
+    fn add_names<I: NameId + Named + 'static>(
+        value: Option<&(dyn Any + Send + Sync)>,
+        tables: &mut NameTables,
+    ) where
+        Names<I>: Send + Sync,
+        I::Scope: MatchScope,
+    {
+        let names = value.map(|value| {
+            let names = value.downcast_ref::<Arc<Names<I>>>();
+            Arc::clone(names.expect("a cell holds its own type"))
+        });
+        tables.set(names.unwrap_or_default());
+    }
+
     fn declare<T: Send + Sync + 'static>(&mut self, kept: Kept, build: BuildFn<T>) {
+        self.declare_cell::<T>(
+            kept,
+            Box::new(move |cx| {
+                let value: Box<dyn Any + Send + Sync> = Box::new(build(cx)?);
+                Ok(value)
+            }),
+        );
+    }
+
+    fn declare_cell<T: Send + Sync + 'static>(&mut self, kept: Kept, build: CellBuild) {
         assert!(
             !self
                 .cells
@@ -288,12 +408,9 @@ impl<'a> BookCx<'a> {
             type_id: TypeId::of::<T>(),
             name: type_name::<T>(),
             kept,
-            build: Box::new(move |cx| {
-                let value: Box<dyn Any + Send + Sync> = Box::new(build(cx)?);
-                Ok(value)
-            }),
+            build,
             extends: extends.into_iter().map(|(_, _, extend)| extend).collect(),
-            building: Cell::new(false),
+            phase: Cell::new(Phase::Open),
             value: OnceCell::new(),
         });
     }
@@ -378,7 +495,9 @@ impl<'a> BookCx<'a> {
             return Ok(None);
         };
         self.built(at)?;
-        let value = self.cells[at].value.take().expect("the cell is built");
+        let cell = &mut self.cells[at];
+        cell.phase.set(Phase::Taken);
+        let value = cell.value.take().expect("the cell is built");
         Ok(Some(*value.downcast().expect("a cell holds its own type")))
     }
 

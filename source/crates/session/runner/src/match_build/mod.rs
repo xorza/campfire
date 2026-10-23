@@ -13,9 +13,9 @@ pub struct MatchBuild;
 
 impl MatchBuild {
     /// The spec of the match of `packages` for `players` players at `rate`, drawing from
-    /// `seed`: of the mode's declared capabilities, its scripts within the mode's limits. A
-    /// declared capability the release does not have yet installs nothing.
-    pub(crate) fn spec(
+    /// `seed`: its scripts within the mode's limits. Its capabilities are its books', the mode's
+    /// declared ones, of which one the release does not have yet installs nothing.
+    pub(crate) const fn spec(
         packages: &ModePackages,
         seed: SegmentSeed,
         rate: MatchRate,
@@ -26,12 +26,12 @@ impl MatchBuild {
             limits: manifest.script_limits,
             players,
         };
-        MatchSetup::new(seed, rate, Role::Server(pools)).set(manifest.capabilities)
+        MatchSetup::new(seed, rate, Role::Server(pools))
     }
 
     /// Builds the match of `spec` in `world`, a new world, of `packages`, for `players` players,
     /// with every package's scripts, the books at the match's rate, and the mode itself, of the
-    /// values `picks` gives its options and its seats' choices.
+    /// values `picks` gives its options and its player slots' choices.
     pub(crate) fn build(
         world: &mut World,
         match_setup: MatchSetup,
@@ -99,8 +99,8 @@ pub(crate) mod internals {
         /// defaults, which fails its test on any warning it logs.
         pub fn test_target(packages: &ModePackages, players: u32) -> Match {
             let log = LogCheck::start();
-            let seats = usize::try_from(players).expect("a player count fits usize");
-            let picks = HostPicks::defaults(packages.data(), seats);
+            let player_slots = usize::try_from(players).expect("a player count fits usize");
+            let picks = HostPicks::defaults(packages.data(), player_slots);
             Self::restore_target(packages, Self::rate(packages), players, &picks).with_log(log)
         }
 
@@ -111,8 +111,8 @@ pub(crate) mod internals {
             let log = LogCheck::start();
             let rate = Self::rate(packages);
             let spec = Self::spec(packages, SegmentSeed::ZERO, rate, players);
-            let seats = usize::try_from(players).expect("a player count fits usize");
-            let picks = HostPicks::defaults(packages.data(), seats);
+            let player_slots = usize::try_from(players).expect("a player count fits usize");
+            let picks = HostPicks::defaults(packages.data(), player_slots);
             let spec = spec.without_sync_points();
             let target = Self::restore_target_of(spec, packages, players, &picks);
             target.with_log(log)

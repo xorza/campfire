@@ -1,6 +1,8 @@
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
+use campfire_package_format::PackageFiles;
+use campfire_values::PackagePath;
 use derive_more::Display;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -18,6 +20,9 @@ pub struct Language {
 }
 
 impl Language {
+    /// The directory of a package's text files, each `<language>.ftl`.
+    pub(crate) const DIR: &str = PackageFiles::LOCALE;
+
     /// `text` as a language; `None` unless it is an identifier in its canonical spelling.
     pub fn parse(text: &str) -> Option<Self> {
         let identifier: LanguageIdentifier = text.parse().ok()?;
@@ -25,6 +30,18 @@ impl Language {
             text: text.into(),
             identifier,
         })
+    }
+
+    /// The path of its text file in a package: `locale/<language>.ftl`.
+    pub fn text_path(&self) -> PackagePath {
+        PackagePath::parse(&format!("{}/{}.ftl", Self::DIR, self.text))
+            .expect("a language's spelling is a package path's name")
+    }
+
+    /// The language whose text file `path` is, as `text_path` spells it; none for any other path.
+    pub(crate) fn of_text_path(path: &PackagePath) -> Option<Self> {
+        let name = path.as_str().strip_prefix(Self::DIR)?.strip_prefix('/')?;
+        Self::parse(name.strip_suffix(".ftl")?)
     }
 
     pub fn as_str(&self) -> &str {
@@ -101,5 +118,17 @@ mod tests {
         assert_eq!(brazil.to_string(), "pt-BR");
         // Ordered by spelling, as the locale files are named.
         assert!(Language::parse("de").unwrap() < brazil);
+        // Its text file is `locale/<language>.ftl`, and only such a path names a language.
+        assert_eq!(brazil.text_path().as_str(), "locale/pt-BR.ftl");
+        assert_eq!(Language::of_text_path(&brazil.text_path()), Some(brazil));
+        for other in [
+            "locale/pt-br.ftl",
+            "locale/en.toml",
+            "localen.ftl",
+            "data/en.ftl",
+        ] {
+            let path = PackagePath::parse(other).unwrap();
+            assert_eq!(Language::of_text_path(&path), None, "{other}");
+        }
     }
 }

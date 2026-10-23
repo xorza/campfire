@@ -4,9 +4,9 @@ use std::time::Duration;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_bots::OrderScript;
 use campfire_common::{ChannelBinding, DeclaredName};
-use campfire_mode::{PickError, SeatPickError};
+use campfire_mode::{PickError, PlayerSlotPickError};
 use campfire_net_connection::RemoteId;
-use campfire_net_core::{NetTick, PeerId};
+use campfire_net_core::PeerId;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     ConnectAnswer, ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy,
@@ -19,38 +19,40 @@ use campfire_visibility::DataKind;
 use campfire_visibility::{OutView, Setting, SpectatorFog, Visibility, VisibilityError};
 
 use super::*;
-use crate::net_protocol::join::{Join, JoinRole};
-use crate::os::Os;
-use crate::session_times::SessionTimes;
 use crate::sim_server::offering::Offered;
-use crate::sim_server::server_bots::PlannedBot;
-use crate::unix_clock::UnixClock;
+use campfire_host::Os;
+use campfire_host::PlannedBot;
+use campfire_host::SessionTimes;
+use campfire_host::UnixClock;
+use campfire_host::{Join, JoinRole};
 
-/// A session of the lane mode's 2 seats, with bots in seats `bots` and seats `open` open.
+/// A session of the lane mode's 2 player slots, with bots in player slots `bots` and player slots
+/// `open` open.
 fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
     LobbySetup {
         opening: opening(bots, open),
         seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
         tick_hz: NonZeroU32::new(30).unwrap(),
         inputs: InputRules::LAN,
-        seats: 2,
+        player_slots: 2,
     }
 }
 
-/// The opening of a session of the lane mode, with bots in seats `bots` and seats `open` open.
+/// The opening of a session of the lane mode, with bots in player slots `bots` and player slots
+/// `open` open.
 fn opening(bots: &[u32], open: &[u32]) -> LobbyOpening {
     let script = OrderScript::parse("end = 1").unwrap();
     let packages = TestMode::Lane.packages();
-    let seats = bots
+    let player_slots = bots
         .iter()
-        .map(|&seat| PlannedBot::orders(seat, script.clone()));
+        .map(|&player_slot| PlannedBot::orders(player_slot, script.clone()));
     LobbyOpening {
-        bots: ServerBots::new(seats, None, &packages).unwrap(),
+        bots: ServerBots::new(player_slots, None, &packages).unwrap(),
         packages: Arc::new(packages),
-        open: open.iter().copied().map(Seat::new).collect(),
+        open: open.iter().copied().map(PlayerSlot::new).collect(),
         host: HostVisibility::default(),
         options: Vec::new(),
-        seat_picks: Vec::new(),
+        player_slot_picks: Vec::new(),
         server: ServerSetup {
             signer: Arc::new(Signer::new(TestKey::server(), Entropy::Fixed(5))),
             times: SessionTimes::DEFAULT,
@@ -64,22 +66,37 @@ fn opening(bots: &[u32], open: &[u32]) -> LobbyOpening {
 }
 
 #[test]
-fn the_lobby_plans_each_seat_once_and_leaves_one_to_a_player_unless_it_is_watched() {
+fn the_lobby_plans_each_player_slot_once_and_leaves_one_to_a_player_unless_it_is_watched() {
     let plan = |bots: &[u32], open: &[u32]| {
-        Lobby::new(setup(bots, open)).map(|lobby| lobby.terms().seats.clone())
+        Lobby::new(setup(bots, open)).map(|lobby| lobby.terms().player_slots.clone())
     };
-    assert_eq!(plan(&[1], &[]), Ok(vec![SeatPlan::Player, SeatPlan::Bot]));
-    assert_eq!(plan(&[], &[0]), Ok(vec![SeatPlan::Open, SeatPlan::Player]));
-    let seat = Seat::new;
-    assert_eq!(plan(&[2], &[]), Err(LobbyError::NoSuchSeat(seat(2))));
-    assert_eq!(plan(&[1, 1], &[]), Err(LobbyError::SeatNamedTwice(seat(1))));
-    assert_eq!(plan(&[1], &[1]), Err(LobbyError::SeatNamedTwice(seat(1))));
+    assert_eq!(
+        plan(&[1], &[]),
+        Ok(vec![PlayerSlotPlan::Player, PlayerSlotPlan::Bot])
+    );
+    assert_eq!(
+        plan(&[], &[0]),
+        Ok(vec![PlayerSlotPlan::Open, PlayerSlotPlan::Player])
+    );
+    let player_slot = PlayerSlot::new;
+    assert_eq!(
+        plan(&[2], &[]),
+        Err(LobbyError::NoSuchPlayerSlot(player_slot(2)))
+    );
+    assert_eq!(
+        plan(&[1, 1], &[]),
+        Err(LobbyError::PlayerSlotNamedTwice(player_slot(1)))
+    );
+    assert_eq!(
+        plan(&[1], &[1]),
+        Err(LobbyError::PlayerSlotNamedTwice(player_slot(1)))
+    );
     assert_eq!(plan(&[0], &[1]), Err(LobbyError::NoPlayer));
-    // A local watch seats bots alone.
+    // A local watch holds bots alone.
     let mut watched = setup(&[0], &[1]);
     watched.opening.start = LobbyStart::Watched;
-    let watched = Lobby::new(watched).map(|lobby| lobby.terms().seats.clone());
-    assert_eq!(watched, Ok(vec![SeatPlan::Bot, SeatPlan::Open]));
+    let watched = Lobby::new(watched).map(|lobby| lobby.terms().player_slots.clone());
+    assert_eq!(watched, Ok(vec![PlayerSlotPlan::Bot, PlayerSlotPlan::Open]));
 }
 
 #[test]
@@ -90,7 +107,7 @@ fn the_lobby_takes_the_hosts_visibility_where_the_mode_leaves_it() {
         let mut setup = setup(&[], &[]);
         setup.opening.host = HostVisibility {
             settings: settings.iter().map(|text| text.parse().unwrap()).collect(),
-            max_spectators,
+            max_spectators: Some(max_spectators),
         };
         Lobby::new(setup).map(|lobby| {
             let terms = Visibility::decode(&lobby.terms().visibility).unwrap();
@@ -118,14 +135,14 @@ fn the_lobby_takes_the_hosts_visibility_where_the_mode_leaves_it() {
 
 #[test]
 fn the_lobby_records_the_hosts_picks_of_the_modes_options() {
-    let picked = |packages: ModePackages, seats, options: &[&str]| {
+    let picked = |packages: ModePackages, player_slots, options: &[&str]| {
         let mut setup = setup(&[], &[]);
         setup.opening.packages = Arc::new(packages);
-        setup.seats = seats;
+        setup.player_slots = player_slots;
         setup.opening.options = options.iter().map(|text| text.parse().unwrap()).collect();
         Lobby::new(setup).map(|lobby| lobby.terms().options.clone())
     };
-    // The skirmish's 3 seats, its money of 100 by default, or the 5,000 its host picks, its
+    // The skirmish's 3 player slots, its money of 100 by default, or the 5,000 its host picks, its
     // second value.
     let skirmish = || TestMode::Skirmish.packages();
     assert_eq!(picked(skirmish(), 3, &[]), Ok(vec![0]));
@@ -144,18 +161,18 @@ fn the_lobby_records_the_hosts_picks_of_the_modes_options() {
             DeclaredName::new("start_money").unwrap()
         )))
     );
-    // The lane declares no choice of values: a seat's pick of one is refused, and none makes no
-    // seat pick in the terms.
+    // The lane declares no choice of values: a player slot's pick of one is refused, and none makes
+    // no player slot pick in the terms.
     let mut setup = setup(&[], &[]);
-    setup.opening.seat_picks = vec!["0:faction=china".parse().unwrap()];
+    setup.opening.player_slot_picks = vec!["0:faction=china".parse().unwrap()];
     assert_eq!(
         Lobby::new(setup).err(),
-        Some(LobbyError::SeatPicks(SeatPickError::Unknown(
+        Some(LobbyError::PlayerSlotPicks(PlayerSlotPickError::Unknown(
             DeclaredName::new("faction").unwrap()
         )))
     );
     let lobby = Lobby::new(self::setup(&[], &[])).unwrap();
-    assert!(lobby.terms().seat_picks.is_empty());
+    assert!(lobby.terms().player_slot_picks.is_empty());
 }
 
 /// What a lobby's players join with: the terms their delegations grant, and the challenge it
@@ -180,7 +197,7 @@ impl Joining {
             offered: Offered {
                 challenge: ConnectChallenge::new([9; 32]),
                 binding: ChannelBinding::new([3; 32]),
-                sent: NetTick(0),
+                sent: Duration::ZERO,
                 first: Duration::ZERO,
             },
         }
@@ -283,11 +300,12 @@ fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
         Err(JoinError::Delegation(DelegationError::NotEvent(_)))
     ));
 
-    // Two seats: a refused join takes none; a second join of one main key, from another link,
-    // takes its seat back, and gives its older link; and a third player finds both taken.
+    // Two player slots: a refused join takes none; a second join of one main key, from another
+    // link, takes its player slot back, and gives its older link; and a third player finds both
+    // taken.
     let take = |lobby: &mut Lobby, link: Entity, join: &Join| {
         let delegation = lobby.offering.check(&offered, join)?;
-        lobby.seat(link, delegation)
+        lobby.player_slot(link, delegation)
     };
     let mut world = World::new();
     let links = links(&mut world);
@@ -299,40 +317,43 @@ fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
     assert_eq!(take(&mut lobby, links[0], &good), Ok(Some(links[2])));
     assert_eq!(take(&mut lobby, links[1], &player(3)), Ok(None));
     assert_eq!(take(&mut lobby, links[2], &player(4)), Err(JoinError::Full));
-    let seated =
+    let held =
         |lobby: &Lobby| -> Vec<Entity> { lobby.joined.iter().map(|&(link, _)| link).collect() };
-    assert_eq!(seated(&lobby), links[..2]);
+    assert_eq!(held(&lobby), links[..2]);
 
-    // The first player's link disconnects: their seat is free, their link no longer joined,
-    // and a fourth player takes the seat.
+    // The first player's link disconnects: their player slot is free, their link no longer joined,
+    // and a fourth player takes the player slot.
     world.entity_mut(links[0]).remove::<Connected>();
     world.insert_resource(lobby);
-    world.run_system_once(Lobby::free_seats).unwrap();
+    world.run_system_once(Lobby::free_player_slots).unwrap();
     assert!(!world.entity(links[0]).contains::<Joined>());
     let mut lobby = world.remove_resource::<Lobby>().unwrap();
-    assert_eq!(seated(&lobby), [links[1]]);
+    assert_eq!(held(&lobby), [links[1]]);
     assert_eq!(take(&mut lobby, links[3], &player(5)), Ok(None));
-    assert_eq!(seated(&lobby), [links[1], links[3]]);
+    assert_eq!(held(&lobby), [links[1], links[3]]);
 }
 
 #[test]
-fn a_servers_new_session_opens_every_seat_by_the_lan_rules_and_keeps_its_files() {
+fn a_servers_new_session_opens_every_player_slot_by_the_lan_rules_and_keeps_its_files() {
     let test_dir = TestDir::new();
     let data = ServerDir::open(&test_dir.path("data")).unwrap();
     let opening = |bots: &[u32]| opening(bots, &[]);
-    // The lane mode's 2 seats, both players', at its default and only rate of 30 Hz; the seed
-    // chain of 1024 segments from the server's entropy, every byte 5.
+    // The lane mode's 2 player slots, both players', at its default and only rate of 30 Hz; the
+    // seed chain of 1024 segments from the server's entropy, every byte 5.
     let lobby = Lobby::open(opening(&[]), &data).unwrap();
     let terms = lobby.terms();
-    assert_eq!(terms.seats, [SeatPlan::Player, SeatPlan::Player]);
+    assert_eq!(
+        terms.player_slots,
+        [PlayerSlotPlan::Player, PlayerSlotPlan::Player]
+    );
     assert_eq!(terms.tick_hz.get(), 30);
     assert_eq!(terms.inputs, InputRules::LAN);
     let seed_chain = SeedChain::new([5; 32], NonZeroU32::new(1024).unwrap());
     assert_eq!(terms.seed_commitment, seed_chain.commitment());
     assert!(lobby.files.is_some());
-    // A bot of a seat the mode does not have opens no session.
+    // A bot of a player slot the mode does not have opens no session.
     assert!(matches!(
         Lobby::open(opening(&[2]), &data),
-        Err(LobbyOpenError::Lobby(LobbyError::NoSuchSeat(seat))) if seat.get() == 2
+        Err(LobbyOpenError::Lobby(LobbyError::NoSuchPlayerSlot(player_slot))) if player_slot.get() == 2
     ));
 }

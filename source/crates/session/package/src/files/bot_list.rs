@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::files::script_list::ScriptSource;
 
 /// The bots a mode names, by name, as its `data/mode.toml` gives them under `bots`, which a host
-/// gives a seat by its name (08-sessions.md, A mode names its bots).
+/// gives a player slot by its name (08-sessions.md, A mode names its bots).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct BotList(BTreeMap<DeclaredName, BotData>);

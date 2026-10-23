@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use campfire_common::{ContentHash, PackageFingerprint};
-use campfire_package::{FileIndex, PackageWalk};
+use campfire_common::PackageFingerprint;
+use campfire_package_format::ContentHash;
+use campfire_package_format::{FileIndex, PackageWalk};
 use campfire_store::{DurableDir, DurableFile, OutputFile};
 use campfire_values::PackagePath;
 

@@ -1,14 +1,16 @@
 use bevy_ecs::system::{Query, Res, ResMut};
-use campfire_actions::{ActionTarget, ProjectileFlight, Shots, Targets};
-use campfire_declarations::ByType;
+use campfire_actions::{ActionTarget, Shots, Targets};
+use campfire_declarations::ById;
 use campfire_deliveries::{DeliverySpawner, NewDelivery};
 use campfire_sim::{EntityIndex, StableId};
 use campfire_units::Body;
 
 use crate::flight_state::FlightState;
-use crate::launches::{Launch, LaunchPayload, Launches};
 use crate::projectile::{Flight, LaunchAim, Payload, Projectile};
+use crate::projectile_flight::ProjectileFlight;
+use crate::projectile_launches::{Launch, LaunchPayload, ProjectileLaunches};
 use crate::projectile_spec::ProjectileSpec;
+use campfire_values::UnitType;
 
 /// The tick's shots and launches, which spawn as projectiles.
 #[derive(Debug)]
@@ -21,8 +23,8 @@ impl Launching {
     /// (04-capabilities/actions.md, A projectile may fly a curve; 04-capabilities/actions.md, A
     /// projectile may be steered).
     pub(super) fn take_shots(
-        (mut shots, mut launches): (ResMut<'_, Shots>, ResMut<'_, Launches>),
-        specs: Res<'_, ByType<ProjectileSpec>>,
+        (mut shots, mut launches): (ResMut<'_, Shots>, ResMut<'_, ProjectileLaunches>),
+        specs: Res<'_, ById<UnitType, ProjectileSpec>>,
         targets: Targets<'_, '_>,
         index: Res<'_, EntityIndex>,
         bodies: Query<'_, '_, &Body>,
@@ -64,11 +66,13 @@ impl Launching {
             };
             launches.push(Launch {
                 id: None,
-                source: shot.source,
                 from,
                 unit_type: shot.unit_type,
                 flight,
-                payload: LaunchPayload::Attack(shot.damage),
+                payload: LaunchPayload::Attack {
+                    source: shot.source,
+                    damage: shot.damage,
+                },
             });
         }
     }
@@ -80,20 +84,20 @@ impl Launching {
     /// whose source is gone launches nothing.
     pub(super) fn launch(
         mut spawner: DeliverySpawner<'_, '_>,
-        mut launches: ResMut<'_, Launches>,
-        specs: Res<'_, ByType<ProjectileSpec>>,
+        mut launches: ResMut<'_, ProjectileLaunches>,
+        specs: Res<'_, ById<UnitType, ProjectileSpec>>,
     ) {
         launches.sort_by_source();
         let mut group: Option<(u32, StableId)> = None;
-        for &Launch {
-            id,
-            source,
-            from,
-            unit_type,
-            flight,
-            payload,
-        } in &launches
-        {
+        for launch in &launches {
+            let &Launch {
+                id,
+                from,
+                unit_type,
+                flight,
+                payload,
+            } = launch;
+            let source = launch.source();
             let delivery = NewDelivery {
                 source,
                 unit_type,
@@ -102,12 +106,7 @@ impl Launching {
             };
             spawner.spawn(delivery, |id| {
                 let payload = match payload {
-                    LaunchPayload::Action {
-                        action,
-                        rank,
-                        start,
-                        cast,
-                    } => {
+                    LaunchPayload::Action { by, cast } => {
                         let first = match group {
                             Some((at, first)) if at == cast => first,
                             _ => {
@@ -116,13 +115,14 @@ impl Launching {
                             }
                         };
                         Payload::Action {
-                            action,
-                            rank,
-                            start,
+                            action: by.action,
+                            rank: by.rank,
+                            start: by.start,
+                            launch: by.launch,
                             group: first,
                         }
                     }
-                    LaunchPayload::Attack(damage) => Payload::Attack(damage),
+                    LaunchPayload::Attack { damage, .. } => Payload::Attack(damage),
                 };
                 let projectile = Projectile::new(source, flight, payload)
                     .expect("a launch flies a range and carries what holds");

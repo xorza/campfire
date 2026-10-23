@@ -1,7 +1,7 @@
 //! The rules of the capability crates' code: where their sets are named, their roles' and books'
 //! names, their lookups by name, and the words of a genre they leave to data.
 
-use crate::workspace::{Crate, crates, holder, sources_of};
+use crate::workspace::{Crate, Workspace};
 
 mod genre_words;
 mod lookups;
@@ -45,27 +45,26 @@ fn capability_sources() -> Vec<NamedCode> {
 
 /// The production code of the sources of each crate that `naming` names, by the path it gives.
 fn named_code(naming: impl Fn(&Crate) -> Option<Naming>) -> Vec<NamedCode> {
-    let crates = crates();
-    let named = crates.iter().filter(|krate| naming(krate).is_some());
+    let workspace = Workspace::read();
+    let crates = workspace.crates();
     let mut found = Vec::new();
-    for file in sources_of(named) {
-        let Some(krate) = holder(&crates, &file.path).map(|at| &crates[at]) else {
-            continue;
-        };
-        let Some(naming) = naming(krate) else {
-            continue;
-        };
-        let Some(within) = file.path.strip_prefix(&format!("{}/src/", krate.path)) else {
-            continue;
-        };
-        let Some(code) = file.production() else {
-            continue;
-        };
-        let path = match naming {
-            Naming::FromSrc => within.to_owned(),
-            Naming::Under(name) => format!("{name}/{within}"),
-        };
-        found.push(NamedCode { path, code });
+    for (krate, naming) in crates
+        .iter()
+        .filter_map(|krate| Some((krate, naming(krate)?)))
+    {
+        for file in workspace.sources_of(krate) {
+            let Some(within) = file.path.strip_prefix(&format!("{}/src/", krate.path)) else {
+                continue;
+            };
+            let Some(code) = file.production() else {
+                continue;
+            };
+            let path = match &naming {
+                Naming::FromSrc => within.to_owned(),
+                Naming::Under(name) => format!("{name}/{within}"),
+            };
+            found.push(NamedCode { path, code });
+        }
     }
     found
 }

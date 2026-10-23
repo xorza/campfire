@@ -17,7 +17,7 @@ pub struct MatchEntity;
 impl KindMarker for MatchEntity {}
 
 impl EntityKind for MatchEntity {
-    const AUDIENCE: KindAudience = KindAudience::EverySeat;
+    const AUDIENCE: KindAudience = KindAudience::EveryPlayerSlot;
     const OWNER_PREDICTS: bool = false;
 }
 

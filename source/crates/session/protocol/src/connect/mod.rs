@@ -45,7 +45,8 @@ impl ConnectAnswer<'_> {
     /// Checks a joining player's `answer` with `delegation`, at `now` in Unix seconds: the
     /// delegation names the server and the session of `terms` and has not expired, and its
     /// session key signed the challenge over the binding, the server's own end of the TLS
-    /// session.
+    /// session. The expiry bounds the connect alone: a player slot it admitted plays on past it
+    /// (08-sessions.md, A delegation's expiry bounds the connect).
     pub fn check(
         &self,
         verifier: &mut Verifier,

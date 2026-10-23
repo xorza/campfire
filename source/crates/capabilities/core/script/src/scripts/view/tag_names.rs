@@ -25,7 +25,7 @@ impl TagNames {
     }
 
     /// The tags' names.
-    pub fn names(&self) -> &Names<Tag> {
+    pub const fn names(&self) -> &Arc<Names<Tag>> {
         &self.names
     }
 

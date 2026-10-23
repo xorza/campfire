@@ -15,7 +15,7 @@ use criterion::{Criterion, Throughput};
 
 use crate::pointer::Pointed;
 use crate::pointer::unit_picking::UnitPicking;
-use crate::pointer::unit_picking::pick_scene::{Part, PartAssets, PickScene, Target};
+use crate::pointer::unit_picking::pick_scene::{Part, PartAssets, PartSetup, PickScene, Target};
 use crate::view::file_material::FileMaterial;
 use crate::view::footing::Footing;
 use crate::view::look::UnitShape;
@@ -80,13 +80,13 @@ fn scene(seed: u64, scale: &PixelScale) -> (PickScene, Assets<Mesh>) {
             shape,
             least: picking.least_at(scale, base + Vec3::Y * (shape.height / 2.0)),
         };
-        let part = Part {
-            to_local: GlobalTransform::from(place).affine().inverse(),
+        let part = Part::from(PartSetup {
+            place: GlobalTransform::from(place).affine(),
             center: Vec3::ZERO,
             half: Vec3::ONE,
             mesh,
             material: None,
-        };
+        });
         scene.push(target, [part]);
     }
     (scene, meshes)

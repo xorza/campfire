@@ -1,5 +1,4 @@
 //! Writing received values and removals into confirmed histories.
-use crate::history_component::HistoryComponent;
 use bevy_app::App;
 
 use bevy_ecs::prelude::*;
@@ -7,19 +6,14 @@ use bevy_replicon::prelude::AppMarkerExt;
 use bevy_replicon::prelude::RuleFns;
 use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
 use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
-use bevy_replicon::shared::replication::registry::ctx::{RemoveCtx, WriteCtx};
+use bevy_replicon::shared::replication::registry::ctx::WriteCtx;
 use bevy_replicon::shared::replication::registry::receive_fns::WriteFn;
 use bytes::Bytes;
-use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::ConfirmedHistory;
+use campfire_net_replication::HistoryComponent;
+use campfire_net_replication::HistoryDiffReceiver;
 use campfire_net_replication::Interpolated;
 use campfire_net_replication::InterpolatedSend;
-use campfire_net_replication::{receive_history_diff, replicated_message_tick};
-use tracing::debug;
-
-/// The components whose receive fns are set under the interpolation markers.
-#[derive(Resource, Debug, Default)]
-pub(crate) struct InterpolatedMarkerFns(pub(crate) Vec<ComponentTypeId>);
 
 pub(crate) fn register_marker_fns<C: HistoryComponent>(app: &mut App) {
     register_interpolated_marker_fns::<C>(app, write_history::<C>);
@@ -29,43 +23,20 @@ pub(crate) fn register_diff_marker_fns<C: HistoryComponent + RepliconDiffable>(a
     register_interpolated_marker_fns::<C>(app, write_history_diff::<C>);
 }
 
-/// Sets `C`'s receive fns under the interpolation markers, once.
+/// Sets `C`'s receive fns under the interpolation markers.
 fn register_interpolated_marker_fns<C: HistoryComponent>(app: &mut App, write: WriteFn<C>) {
-    let type_id = ComponentTypeId::of::<C>();
-    let mut registered = app
-        .world_mut()
-        .get_resource_or_init::<InterpolatedMarkerFns>();
-    if registered.0.contains(&type_id) {
-        return;
-    }
-    registered.0.push(type_id);
-    app.set_marker_fns::<Interpolated, C>(write, remove_history::<C>);
-    app.set_marker_fns::<InterpolatedSend, C>(write, remove_history::<C>);
+    app.set_marker_fns::<Interpolated, C>(write, ConfirmedHistory::<C>::receive_removal);
+    app.set_marker_fns::<InterpolatedSend, C>(write, ConfirmedHistory::<C>::receive_removal);
 }
 
-/// Instead of writing into a component directly, it writes data into [`ConfirmedHistory<C>`].
+/// Writes a whole value into `C`'s confirmed history, not into the live component.
 fn write_history<C: HistoryComponent>(
     ctx: &mut WriteCtx<'_>,
     rule_fns: &RuleFns<C>,
     entity: &mut DeferredEntity<'_>,
     message: &mut Bytes,
 ) -> Result<()> {
-    let component: C = rule_fns.deserialize(ctx, message)?;
-    let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
-        debug!(
-            message_tick = ?ctx.message_tick,
-            "dropping an interpolated value that no confirmed tick maps"
-        );
-        return Ok(());
-    };
-    if let Some(mut history) = entity.get_mut::<ConfirmedHistory<C>>() {
-        history.insert_present(tick, component);
-    } else {
-        let mut history = ConfirmedHistory::<C>::default();
-        history.insert_present(tick, component);
-        entity.insert(history);
-    }
-    Ok(())
+    ConfirmedHistory::receive_whole(ctx, rule_fns, entity, message, |_, _| {})
 }
 
 fn write_history_diff<C: HistoryComponent + RepliconDiffable>(
@@ -74,29 +45,5 @@ fn write_history_diff<C: HistoryComponent + RepliconDiffable>(
     entity: &mut DeferredEntity<'_>,
     message: &mut Bytes,
 ) -> Result<()> {
-    receive_history_diff::<C>(ctx, entity, message, |_, _| {})
-}
-
-/// Records a component removal in `ConfirmedHistory<C>`.
-///
-/// The live component is removed later by interpolation systems once the interpolation timeline
-/// reaches the server tick that produced this removal.
-pub(crate) fn remove_history<C: HistoryComponent>(
-    ctx: &mut RemoveCtx,
-    entity: &mut DeferredEntity<'_>,
-) {
-    let Some(tick) = replicated_message_tick(entity, ctx.message_tick) else {
-        debug!(
-            message_tick = ?ctx.message_tick,
-            "dropping an interpolated removal that no confirmed tick maps"
-        );
-        return;
-    };
-    if let Some(mut history) = entity.get_mut::<ConfirmedHistory<C>>() {
-        history.insert_removed(tick);
-    } else {
-        let mut history = ConfirmedHistory::<C>::default();
-        history.insert_removed(tick);
-        entity.insert(history);
-    }
+    HistoryDiffReceiver::<C>::receive(ctx, entity, message, |_, _| {})
 }

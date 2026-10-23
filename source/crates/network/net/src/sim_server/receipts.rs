@@ -2,45 +2,45 @@ use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_net_messages::MessageSender;
 use campfire_net_timeline::Clock;
 use campfire_protocol::{DurableHead, Receipt, SessionId, SignedReceipt};
 use campfire_runner::Session;
 
 use crate::net_protocol::MatchChannel;
-use crate::sim_server::journal_watch::JournalWatch;
-use crate::sim_server::seat_links::SeatLinks;
+use campfire_host::JournalWatch;
+use campfire_host::PlayerSlotLinks;
 
 /// How often the server gives receipts.
 const INTERVAL: Duration = Duration::from_secs(1);
 
-/// The receipts the server gave: about once a second, for each seated player whose chain stands
+/// The receipts the server gave: about once a second, for each placed player whose chain stands
 /// further in the journal's synced records than their last receipt said, the server signs where
 /// it stands and sends it.
 #[derive(Resource, Debug)]
 pub(crate) struct Receipts {
-    /// The last durable head each seat's player got a receipt of, by seat.
+    /// The last durable head each player slot's player got a receipt of, by player slot.
     given: Vec<Option<DurableHead>>,
     /// When the next round goes out, by the server's real clock.
     next: Duration,
 }
 
 impl Receipts {
-    pub(crate) fn new(seats: u32) -> Self {
+    pub(crate) fn new(player_slots: u32) -> Self {
         Self {
-            given: vec![None; usize::try_from(seats).expect("seats fit usize")],
+            given: vec![None; usize::try_from(player_slots).expect("player slots fit usize")],
             next: Duration::ZERO,
         }
     }
 
-    /// Gives each seated player whose durable head moved a receipt of it, once a second.
+    /// Gives each placed player whose durable head moved a receipt of it, once a second.
     pub(crate) fn give(
         clock: Res<'_, Clock>,
         mut receipts: ResMut<'_, Self>,
         mut session: ResMut<'_, Session>,
         journal: Option<Res<'_, JournalWatch>>,
-        seat_links: Res<'_, SeatLinks>,
+        player_slot_links: Res<'_, PlayerSlotLinks>,
         mut links: Query<'_, '_, &mut MessageSender<SignedReceipt>>,
     ) {
         let now = clock.now().elapsed();
@@ -62,18 +62,20 @@ impl Receipts {
         let journal = session
             .journal()
             .expect("a session with a journal's watch keeps its journal");
-        for (seat, seat_link) in seat_links.iter() {
-            let (Some(link), Some(head)) = (seat_link.link, journal.durable_head(seat)) else {
+        for (player_slot, player_slot_link) in player_slot_links.iter() {
+            let (Some(link), Some(head)) =
+                (player_slot_link.link, journal.durable_head(player_slot))
+            else {
                 continue;
             };
-            let given = &mut receipts.given[seat.index()];
+            let given = &mut receipts.given[player_slot.index()];
             if *given == Some(head) {
                 continue;
             }
             let Ok(mut sender) = links.get_mut(link) else {
                 continue;
             };
-            let receipt = Self::receipt(log.session_id(), seat, log.next_tick(), head);
+            let receipt = Self::receipt(log.session_id(), player_slot, log.next_tick(), head);
             sender.send::<MatchChannel>(SignedReceipt {
                 receipt,
                 signature: signer.sign(&receipt),
@@ -82,10 +84,15 @@ impl Receipts {
         }
     }
 
-    const fn receipt(session_id: SessionId, seat: Seat, tick: Tick, head: DurableHead) -> Receipt {
+    const fn receipt(
+        session_id: SessionId,
+        player_slot: PlayerSlot,
+        tick: Tick,
+        head: DurableHead,
+    ) -> Receipt {
         Receipt {
             session_id,
-            seat,
+            player_slot,
             delegation: head.delegation,
             tick,
             seq: head.seq,

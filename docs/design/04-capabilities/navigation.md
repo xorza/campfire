@@ -19,7 +19,7 @@
 
 ## Groups
 
-- **One command, one route.** A move of many units is one group, and the group plans one long route for each layer, for its widest walker, which each unit joins at the last waypoint its own straight line reaches; a group costs one search a layer, about a tenth of its units one by one.
+- **One command, one route.** A move of many units is one group, and the group plans one long route for each layer, for its widest walker, which each unit joins at the last waypoint its own straight line reaches; a group costs one search a layer, about a tenth of its units one by one. A route that stops short of the group's goal serves only a unit of the walker it was searched for that has that goal: a narrower one, or one of its own goal, plans its own, from the tick's route budget, as one that sees no waypoint does.
 - **Formation only away from the group.** Each unit keeps its offset from the group's center when the goal lies outside their box, and goes to the goal itself when it lies inside, as StarCraft II keeps a selection's formation only for a move away from it; a spawn group's wave shares its route alike.
 
 ## Waypoint paths
@@ -40,6 +40,7 @@
 ## Map checks
 
 - **A map that loads can be walked at its start.** The load checks, for each layer's widest walker, that each path's waypoints reach each other and that each marker of the mode's spawn tags is a place it may stand, using the regions the match uses.
+- **The walk check builds its own grid.** The load builds a grid for each layer's widest walker with the placed bodies and drops it; the match builds one for every walker kind, which its static tracking fills with the match's own bodies, as Zero Hour builds its pathfinder at each map load (`Pathfinder::newMap`). Refused: one grid kept as a book and cloned by each match, which moves the check from the package load to the match start, so a map that cannot be walked loads.
 - **Placed obstacles may overlap.** Placed static bodies may overlap walls and each other, as they block alike: Zero Hour's maps hold thousands of such overlaps and the original has no rule against them. A placement at run time still refuses an overlap ([Production](production.md#placement)).
 - **Walker classes and a route budget, planned.** A mode declares its walker classes, so the clearance and region sets are one for each class, not one for each distinct radius, once a Zero Hour import's count of distinct walker radii is measured; and a route budget for each tick takes the place of the map's cell count as the route work limit.
 

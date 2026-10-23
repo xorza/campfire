@@ -1,6 +1,7 @@
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_math::Num;
 use campfire_units::{Body, BodyForm, Layer};
+use campfire_values::UnitType;
 
 /// A kind of unit that walks, as routes see it: the layer it moves on and its body's radius, 0
 /// for one with no body. The pathing grid keeps the cells each kind may stand in.
@@ -39,6 +40,6 @@ impl Walker {
     }
 }
 
-impl PerType for Walker {
+impl PerId<UnitType> for Walker {
     const SCRIPTS_ONLY: bool = false;
 }

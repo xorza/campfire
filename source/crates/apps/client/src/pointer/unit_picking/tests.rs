@@ -21,6 +21,7 @@ use campfire_values::{EngineTag, FilterData, TagProperties};
 use super::*;
 use crate::pointer::Pointer;
 use crate::test_app;
+use crate::view::client_data::ClientLoad;
 use crate::view::file_material::{Factors, FileBlend};
 use crate::view::footing::Footing;
 
@@ -82,13 +83,13 @@ fn the_hits_rank_by_tier_then_depth_then_id_by_triangles_and_a_least_radius() {
             shape: post(size.x.min(size.z) / 2.0),
             least,
         };
-        let part = Part {
-            to_local: GlobalTransform::from(place).affine().inverse(),
+        let part = Part::from(PartSetup {
+            place: GlobalTransform::from(place).affine(),
             center: Vec3::ZERO,
             half: Vec3::splat(0.5),
             mesh: cube,
             material,
-        };
+        });
         scene.push(target, [part]);
         target.unit.id
     };
@@ -233,9 +234,9 @@ fn the_mode_s_tiers_rank_a_unit_by_its_type_s_tags_and_its_team_s_relation() {
     assert_eq!(refused.to_string(), "no filter \"enemies:flying\"");
     // The MOBA test content's file, against its match's tags: its heroes, then its enemies.
     let packages = TestMode::Moba3v3.packages();
-    let books = packages.name_books();
+    let books = packages.load_books();
     let tags = books.get::<UnitTypeBook>().unwrap().tags();
-    let moba = UnitPicking::resolve(&ClientData::read(&packages).picking, tags).unwrap();
+    let moba = UnitPicking::resolve(&ClientLoad::read(&packages).picking.0, tags).unwrap();
     let hero = TagSet::NONE.with(tags.named("avatar").unwrap());
     assert_eq!((moba.tiers(), moba.least_radius_px), (3, 0.0));
     assert_eq!(

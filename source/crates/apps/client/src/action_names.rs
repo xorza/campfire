@@ -1,20 +1,16 @@
 use bevy::app::{App, Plugin, Startup};
-use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Commands, Res};
 use campfire_actions::ActionBook;
 use campfire_values::{ActionId, NameId};
 
 use crate::client_packages::ClientPackages;
+use crate::name_texts::NameTexts;
 
 /// The name players see of each action of the mode's packages, in its package's own language,
 /// which the command panel shows: a train's or a build's, which the load requires; an action of
 /// no name shows its id.
 #[derive(Debug)]
 pub(crate) struct ActionNamesPlugin;
-
-/// Each action's name, by its id.
-#[derive(Resource, Debug)]
-pub(crate) struct ActionTexts(Vec<String>);
 
 impl Plugin for ActionNamesPlugin {
     fn build(&self, app: &mut App) {
@@ -34,9 +30,10 @@ impl ActionNamesPlugin {
         for view in packages.packages() {
             let header = &view.package.header;
             for (id, action) in view.content.actions() {
-                let (Some(name), Some(at)) =
-                    (&action.name, book.names().named((view.index, id.as_str())))
-                else {
+                let (Some(name), Some(at)) = (
+                    &action.keys.name,
+                    book.names().named((view.index, id.as_str())),
+                ) else {
                     continue;
                 };
                 names[at.index()] = texts
@@ -44,13 +41,6 @@ impl ActionNamesPlugin {
                     .expect("the load checked each action's name");
             }
         }
-        commands.insert_resource(ActionTexts(names));
-    }
-}
-
-impl ActionTexts {
-    /// The name of `action`.
-    pub(crate) fn of(&self, action: ActionId) -> &str {
-        &self.0[action.index()]
+        commands.insert_resource(names.into_iter().collect::<NameTexts<ActionId>>());
     }
 }

@@ -248,6 +248,19 @@ impl Analysis {
     }
 }
 
+/// Whether `code` names the crate `name` as the first segment of a path: its name with each `-`
+/// as `_`, then `::`, with no identifier character or `:` before it, so neither
+/// `campfire_net_bytes::` nor `other::bytes::` names `bytes`.
+pub(crate) fn names_crate(code: &str, name: &str) -> bool {
+    let path = format!("{}::", name.replace('-', "_"));
+    code.match_indices(&path).any(|(at, _)| {
+        !code[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|before| before.is_alphanumeric() || before == '_' || before == ':')
+    })
+}
+
 /// Each byte of `bytes` but a line's end as a space.
 fn blank(bytes: &mut [u8]) {
     let mut start = 0;
@@ -338,6 +351,20 @@ impl<'t> Lines<'t> {
 /// `code`'s lines, each with no space at its end, so a blanked line reads as empty.
 fn trimmed(code: &str) -> Vec<&str> {
     code.split('\n').map(str::trim_end).collect()
+}
+
+#[test]
+fn a_crate_is_named_by_a_path_it_starts() {
+    let code = "use bytes::Bytes;\nlet b = campfire_net_bytes::Reader::new();\nx::serde_json::f();";
+    assert!(names_crate(code, "bytes"));
+    assert!(names_crate(code, "campfire-net-bytes"));
+    assert!(!names_crate(
+        "let b = campfire_net_bytes::Reader::new();",
+        "bytes"
+    ));
+    assert!(!names_crate(code, "serde-json"));
+    assert!(names_crate("(serde_json::to_string(x))", "serde-json"));
+    assert!(!names_crate(code, "campfire-net"));
 }
 
 #[test]

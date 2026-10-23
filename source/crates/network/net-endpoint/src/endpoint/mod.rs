@@ -146,20 +146,19 @@ impl<Io: DatagramIo> Endpoint<Io> {
                         let closer: Weak<dyn ClosePacketSession> = weak;
                         let link = PacketSessionLink::new(closer, key);
                         let mtu = runtime.io().mtu(address);
-                        let carrier = if core.is_client() {
+                        let (carrier, ended) = if core.is_client() {
                             commands.entity(entity).insert((
                                 RemoteAddress(address),
                                 LocalAddress(runtime.io().local_address()),
                                 link,
                             ));
-                            core.carry(key, entity, mtu);
-                            entity
+                            (entity, core.carry(key, entity, mtu))
                         } else {
                             // The new link holds its packet session's budget and largest payload
                             // before it is linked, as the transport sizes its fragments at
                             // `Linked`.
                             let carrier = commands.spawn_empty().id();
-                            core.carry(key, carrier, mtu);
+                            let ended = core.carry(key, carrier, mtu);
                             let mut queues = Link::default();
                             core.hand_over(key, &mut queues.packet_session);
                             commands.entity(carrier).insert((
@@ -168,7 +167,7 @@ impl<Io: DatagramIo> Endpoint<Io> {
                                 RemoteAddress(address),
                                 link,
                             ));
-                            carrier
+                            (carrier, ended)
                         };
                         // `Linked` goes in a command of its own, after what the link's spawn
                         // makes an app add to it.
@@ -176,6 +175,14 @@ impl<Io: DatagramIo> Endpoint<Io> {
                             commands.entity(carrier).insert(LinkBinding(binding));
                         }
                         commands.entity(carrier).insert(Linked);
+                        // A packet session that ended before the frame carried it unlinks the
+                        // link it just made, which no later news names.
+                        if let Some(reason) = ended {
+                            commands.trigger(Unlink {
+                                entity: carrier,
+                                reason,
+                            });
+                        }
                     }
                     News::Ended { carrier, reason } => {
                         commands.trigger(Unlink {
@@ -256,7 +263,13 @@ impl<Io: DatagramIo> Endpoint<Io> {
                     .set_time(EndpointTime::Driven(clock.now()));
                 self.runtime.pass(&mut self.scratch.pass);
             }
-            Driver::Thread(worker) => worker.check(),
+            // An IO thread ends as its endpoint does, as the IO failed or the endpoint closed: only
+            // a thread that ends while its endpoint runs is one that panicked.
+            Driver::Thread(worker) => {
+                if !self.runtime.lock().is_ended() {
+                    worker.check();
+                }
+            }
         }
     }
 

@@ -12,24 +12,15 @@ use std::panic::Location;
 
 use crate::counting_allocator::{AllocWindow, CountingAllocator};
 
-/// One audit: how its fixture warms up, how many frames it measures, and what each of those may
-/// allocate. `AllocAudit::new().run(frame)` is the whole call for most fixtures: the probe, 64
-/// frames, none of them allocating.
+/// One audit: the frames its fixture warms up for, past the last growth of its buffers, how many
+/// frames it measures, and the allocations each of those may make, each named by what makes it
+/// (11-net-stack/testing.md, An audit holds each frame to a budget after a fixed warmup).
+/// `AllocAudit::new(warmup).run(frame)` measures 64 frames, none of them allocating.
 #[derive(Debug, Clone, Copy)]
 pub struct AllocAudit {
-    warmup: Warmup,
+    warmup: usize,
     frames: usize,
-    budget: u64,
-}
-
-/// How the warmup ends.
-#[derive(Debug, Clone, Copy)]
-enum Warmup {
-    /// Once `STABLE_RUN` frames in a row keep the budget, or after `MAX_WARMUP`. Wrong for a
-    /// fixture that cycles, whose quiet frames may come before its widest one: that one's growth
-    /// then lands in the measured frames, and such a fixture warms up for whole cycles.
-    Probe,
-    Fixed(usize),
+    budget: &'static [&'static str],
 }
 
 /// What an audit measured: its worst frame, the slack a budget has, and the count most frames
@@ -41,22 +32,12 @@ pub struct AuditReport {
 }
 
 impl AllocAudit {
-    const MAX_WARMUP: usize = 8;
-    const STABLE_RUN: usize = 2;
-
-    pub const fn new() -> Self {
+    pub const fn new(warmup: usize) -> Self {
         Self {
-            warmup: Warmup::Probe,
+            warmup,
             frames: 64,
-            budget: 0,
+            budget: &[],
         }
-    }
-
-    /// A warmup of exactly `frames`, in place of the probe.
-    #[must_use]
-    pub const fn warmup(mut self, frames: usize) -> Self {
-        self.warmup = Warmup::Fixed(frames);
-        self
     }
 
     #[must_use]
@@ -65,12 +46,16 @@ impl AllocAudit {
         self
     }
 
-    /// What one measured frame may allocate. A budget above zero pins a flat cost, not an absent
-    /// one: a cost that grew with the frames would pass it.
+    /// The allocations one measured frame may make, each named by what makes it. A budget of
+    /// some pins a flat cost, not an absent one: a cost that grew with the frames would pass it.
     #[must_use]
-    pub const fn budget(mut self, allocs: u64) -> Self {
+    pub const fn budget(mut self, allocs: &'static [&'static str]) -> Self {
         self.budget = allocs;
         self
+    }
+
+    const fn allowed(self) -> u64 {
+        self.budget.len() as u64
     }
 
     /// Warms `frame` up, then measures each frame on its own, so a growth on the nth frame fails
@@ -79,20 +64,14 @@ impl AllocAudit {
     pub fn run(self, mut frame: impl FnMut()) -> AuditReport {
         assert!(self.frames > 0, "an audit measures at least one frame");
         let at = Location::caller();
-        let warmup = match self.warmup {
-            Warmup::Fixed(frames) => {
-                for _ in 0..frames {
-                    frame();
-                }
-                frames
-            }
-            Warmup::Probe => self.probe(&mut frame),
-        };
+        for _ in 0..self.warmup {
+            frame();
+        }
         let mut counts = Vec::with_capacity(self.frames);
         for index in 0..self.frames {
             let window = CountingAllocator::window(&mut frame);
-            if window.allocs > self.budget {
-                self.fail(at, index, warmup, window);
+            if window.allocs > self.allowed() {
+                self.fail(at, index, window);
             }
             counts.push(window.allocs);
         }
@@ -109,39 +88,25 @@ impl AllocAudit {
             })
             .0;
         println!(
-            "alloc-audit {at}: worst {worst}, mode {mode}, budget {} over {} frames after {warmup} \
-             of warmup",
-            self.budget, self.frames,
+            "alloc-audit {at}: worst {worst}, mode {mode}, budget {} over {} frames after {} of \
+             warmup",
+            self.allowed(),
+            self.frames,
+            self.warmup,
         );
         AuditReport { worst, mode }
     }
 
-    fn probe(self, frame: &mut impl FnMut()) -> usize {
-        let mut warmup = 0;
-        let mut stable = 0;
-        while warmup < Self::MAX_WARMUP && stable < Self::STABLE_RUN {
-            let window = CountingAllocator::window(&mut *frame);
-            warmup += 1;
-            stable = if window.allocs <= self.budget {
-                stable + 1
-            } else {
-                0
-            };
-        }
-        warmup
-    }
-
-    fn fail(
-        self,
-        at: &'static Location<'static>,
-        index: usize,
-        warmup: usize,
-        mut window: AllocWindow,
-    ) -> ! {
+    fn fail(self, at: &'static Location<'static>, index: usize, mut window: AllocWindow) -> ! {
         eprintln!(
-            "alloc-audit {at}: frame {index} of {} (after {warmup} of warmup) allocated {} times, \
-             {} B; the budget is {} a frame",
-            self.frames, window.allocs, window.bytes, self.budget,
+            "alloc-audit {at}: frame {index} of {} (after {} of warmup) allocated {} times, {} B; \
+             the budget is {} a frame: {:?}",
+            self.frames,
+            self.warmup,
+            window.allocs,
+            window.bytes,
+            self.allowed(),
+            self.budget,
         );
         let traced = window.traces.len();
         for (number, trace) in window.traces.iter_mut().enumerate() {
@@ -156,13 +121,8 @@ impl AllocAudit {
         eprintln!("(set CAMPFIRE_ALLOC_FULL_BT=1 to see each backtrace whole)");
         panic!(
             "alloc budget exceeded at {at} on frame {index}: {} allocations, budget {}",
-            window.allocs, self.budget,
+            window.allocs,
+            self.allowed(),
         );
-    }
-}
-
-impl Default for AllocAudit {
-    fn default() -> Self {
-        Self::new()
     }
 }

@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_script::StateValue;
-use campfire_units::{AudienceAll, AudienceNone, UnitsWorld};
+use campfire_units::UnitsWorld;
 use campfire_values::Team;
 
 use crate::match_end::MatchEnd;
@@ -18,13 +18,9 @@ pub trait ModeWorld {
     /// it comes before.
     fn save_asked(&self) -> Option<Tick>;
 
-    /// The mode's state in the match, every field in the order of their names, as a
-    /// mode call reads it.
-    fn mode_state(&self) -> Vec<StateValue>;
-
-    /// The team of player `seat` in the match; `None` before the mode installs, or for
-    /// a seat the session does not have.
-    fn team_of(&self, seat: Seat) -> Option<Team>;
+    /// The team of player `player_slot` in the match; `None` before the mode installs, or for
+    /// a player slot the session does not have.
+    fn team_of(&self, player_slot: PlayerSlot) -> Option<Team>;
 }
 
 impl ModeWorld for World {
@@ -36,20 +32,8 @@ impl ModeWorld for World {
         self.get_resource::<SaveAsked>().map(|asked| asked.at())
     }
 
-    fn mode_state(&self) -> Vec<StateValue> {
-        let mut state = Vec::new();
-        let (none, all) = (
-            self.mode_fields::<AudienceNone>(),
-            self.mode_fields::<AudienceAll>(),
-        );
-        self.resource::<MatchMode>()
-            .schema
-            .merge_state(none, all, &mut state);
-        state
-    }
-
-    fn team_of(&self, seat: Seat) -> Option<Team> {
-        self.get_resource::<MatchMode>()?.team_of(seat)
+    fn team_of(&self, player_slot: PlayerSlot) -> Option<Team> {
+        self.get_resource::<MatchMode>()?.team_of(player_slot)
     }
 }
 
@@ -84,6 +68,37 @@ impl ModeWorldCrate for World {
             .expect("the match's entity holds the mode's state");
         if state.values() != values {
             state.values_mut().clone_from_slice(values);
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+    use campfire_script::StateValue;
+    use campfire_units::{AudienceAll, AudienceNone};
+
+    use crate::match_mode::MatchMode;
+    use crate::mode_world::ModeWorldCrate;
+
+    /// What the mode module gives a world, for the tests and benches of any crate.
+    pub trait ModeWorldInternals {
+        /// The mode's state in the match, every field in the order of their names, as a
+        /// mode call reads it.
+        fn mode_state(&self) -> Vec<StateValue>;
+    }
+
+    impl ModeWorldInternals for World {
+        fn mode_state(&self) -> Vec<StateValue> {
+            let mut state = Vec::new();
+            let (none, all) = (
+                self.mode_fields::<AudienceNone>(),
+                self.mode_fields::<AudienceAll>(),
+            );
+            self.resource::<MatchMode>()
+                .schema
+                .merge_state(none, all, &mut state);
+            state
         }
     }
 }

@@ -1,10 +1,11 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, Fact};
 use campfire_navigation::{MarkerPoint, NavigationBook, Paths, PlacedBody};
-use campfire_units::{BodyForm, MapPoint, TeamNames};
+use campfire_units::{BodyForm, MapPoint};
 use campfire_values::{
     Names, NamesError, PackageIndex, Relations, Team, TypeScope, UnitType, VisionShare,
 };
+use std::sync::Arc;
 
 use crate::error::ModeError;
 use crate::map_data::MapData;
@@ -66,7 +67,7 @@ impl ModeMap {
         let input = MapInput {
             map,
             relations: &data.relations,
-            teams: cx.fact::<TeamNames>()?.0.clone(),
+            teams: Names::clone(cx.names::<Team>()?),
             paths: cx.book_if::<NavigationBook>()?.map(|book| &book.paths),
         };
         let unit_type = |name: &str| {
@@ -147,14 +148,14 @@ impl ModeMap {
 
     /// The names of the match's teams, in the manifest's order the load gives; an error for two
     /// of one name, or more than a team index counts.
-    pub(crate) fn team_fact(cx: &BookCx<'_>) -> Result<TeamNames, BookError> {
+    pub(crate) fn team_table(cx: &BookCx<'_>) -> Result<Arc<Names<Team>>, BookError> {
         let teams = cx
             .given::<ModeTeams>()
             .expect("the load gives the mode's teams");
         let names = Self::team_names(&teams.0);
         let names =
             names.map_err(|error| BookError::rule(PackageIndex::MODE, BookPlace::Teams, error))?;
-        Ok(TeamNames(names))
+        Ok(Arc::new(names))
     }
 
     /// The markers of `map`, each with its team as `team` resolves it; an error for two of one

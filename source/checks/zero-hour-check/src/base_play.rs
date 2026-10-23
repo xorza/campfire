@@ -4,10 +4,10 @@ use campfire_capabilities::Match;
 use campfire_common::DeclaredName;
 use campfire_geometry::Placed;
 use campfire_harness::{FixedSession, MatchUnits};
-use campfire_mode::{ListEntry, ModeParam, OptionPicks, OptionValue, SeatPick};
+use campfire_mode::{ListEntry, ModeParam, OptionPicks, OptionValue, PlayerSlotPick};
 use campfire_package::ModePackages;
 use campfire_production::Site;
-use campfire_protocol::{InputRules, SeatPlan};
+use campfire_protocol::{InputRules, PlayerSlotPlan};
 use campfire_sim::Position;
 use campfire_units::{Body, Life, MoveStep, Units, WallBook};
 use campfire_values::{Scalar, UnitType};
@@ -19,11 +19,12 @@ use crate::pins::{BotMatchEnd, HZ};
 /// The most ticks the bots' match runs.
 const BASE_LIMIT: u64 = HZ * 60 * 20;
 
-/// A seat of the base play: it starts with its faction's base at its start, `Player_<n>_Start`
-/// of its `start`, and the mode's attacker plays it (09-zero-hour.md, A base start).
+/// A player slot of the base play: it starts with its faction's base at its start,
+/// `Player_<n>_Start` of its `start`, and the mode's attacker plays it (09-zero-hour.md, A base
+/// start).
 #[derive(Debug, Clone, Copy)]
 struct BaseBot {
-    seat: u32,
+    player_slot: u32,
     faction: &'static str,
     start: u32,
 }
@@ -31,23 +32,23 @@ struct BaseBot {
 /// China at Tournament Desert's first start, GLA at its second, whose gatherers walk.
 const BOTS: [BaseBot; 2] = [
     BaseBot {
-        seat: 0,
+        player_slot: 0,
         faction: "china",
         start: 1,
     },
     BaseBot {
-        seat: 1,
+        player_slot: 1,
         faction: "gla",
         start: 2,
     },
 ];
 
 /// A faction's base, as the imported mode's params give it: its base buildings, its base units,
-/// and how many of each a seat starts with.
+/// and how many of each a player slot starts with.
 #[derive(Debug)]
 struct Base {
-    buildings: Vec<String>,
-    units: Vec<String>,
+    buildings: Vec<DeclaredName>,
+    units: Vec<DeclaredName>,
     count: usize,
 }
 
@@ -75,21 +76,21 @@ impl BasePlay {
                 return None;
             }
         };
-        let seat_picks: Vec<SeatPick> = BOTS
+        let player_slot_picks: Vec<PlayerSlotPick> = BOTS
             .iter()
             .flat_map(|bot| {
                 [
-                    format!("{}:faction={}", bot.seat, bot.faction),
-                    format!("{}:start=base", bot.seat),
+                    format!("{}:faction={}", bot.player_slot, bot.faction),
+                    format!("{}:start=base", bot.player_slot),
                 ]
             })
-            .map(|pick| pick.parse().expect("a base seat's pick reads"))
+            .map(|pick| pick.parse().expect("a base player slot's pick reads"))
             .collect();
-        let session = FixedSession::planned(packages, InputRules::ROOMY, [SeatPlan::Bot; 2])
+        let session = FixedSession::planned(packages, InputRules::ROOMY, [PlayerSlotPlan::Bot; 2])
             .rate(rate)
             .picked(picks.places())
-            .seat_picked(&seat_picks);
-        let mut play = MatchPlay::new(session.start());
+            .player_slot_picked(&player_slot_picks);
+        let mut play = MatchPlay::new(session.start(), session.packages());
         let ended = Self::play(&mut play, session.packages(), failures);
         let closed = play.end();
         match ended.and_then(|ended| closed.map(|()| ended)) {
@@ -109,9 +110,9 @@ impl BasePlay {
     ) -> Result<BotMatchEnd, CheckFailure> {
         for bot in BOTS {
             let base = Base::of(packages, bot.faction)?;
-            base.check(play.game(), bot.seat, failures)?;
+            base.check(play.game(), bot.player_slot, failures)?;
             let home = play.start(bot.start)?;
-            play.drive_mode_bot(packages, bot.seat, "attacker", home)?;
+            play.drive_mode_bot(packages, bot.player_slot, "attacker", home)?;
         }
         let overlaps = overlaps(play.game());
         if overlaps > 0 {
@@ -133,8 +134,8 @@ impl Base {
             ModeParam::List(entries) => entries
                 .iter()
                 .map(|entry| match entry {
-                    ListEntry::Text(text) => Ok(text.clone()),
-                    ListEntry::Value(_) => Err(CheckFailure::NoBase(faction)),
+                    ListEntry::Name(name) => Ok(name.clone()),
+                    ListEntry::Value(_) | ListEntry::Text(_) => Err(CheckFailure::NoBase(faction)),
                 })
                 .collect(),
             _ => Err(CheckFailure::NoBase(faction)),
@@ -151,33 +152,33 @@ impl Base {
         })
     }
 
-    /// How many living units of the type `name`, each whole, player `seat` of `world` owns; a
-    /// failure when the mode has no such type.
-    fn count(world: &Match, name: &str, seat: u32) -> Result<usize, CheckFailure> {
-        let typed: UnitType = Units::type_named(world, name)
-            .ok_or_else(|| CheckFailure::BaseType(name.to_owned()))?;
+    /// How many living units of the type `name`, each whole, player `player_slot` of `world` owns;
+    /// a failure when the mode has no such type.
+    fn count(world: &Match, name: &DeclaredName, player_slot: u32) -> Result<usize, CheckFailure> {
+        let typed: UnitType = Units::type_named(world, name.as_str())
+            .ok_or_else(|| CheckFailure::BaseType(name.clone()))?;
         let held = MatchUnits::of(world).all().filter(|(_, unit)| {
             unit.get::<UnitType>() == Some(&typed)
-                && MatchUnits::owned_by(unit, seat)
+                && MatchUnits::owned_by(unit, player_slot)
                 && !unit.contains::<Site>()
                 && unit.get::<Life>().is_none_or(|life| !life.is_empty())
         });
         Ok(held.count())
     }
 
-    /// The failures of the base player `seat` of `world` started with: a base building it holds
-    /// none of whole, or a base unit it holds fewer than its count of.
+    /// The failures of the base player `player_slot` of `world` started with: a base building it
+    /// holds none of whole, or a base unit it holds fewer than its count of.
     fn check(
         &self,
         world: &Match,
-        seat: u32,
+        player_slot: u32,
         failures: &mut Vec<CheckFailure>,
     ) -> Result<(), CheckFailure> {
-        let count = |name: &str| Self::count(world, name, seat);
+        let count = |name: &DeclaredName| Self::count(world, name, player_slot);
         for building in &self.buildings {
             if count(building)? == 0 {
                 failures.push(CheckFailure::BaseBuilding {
-                    seat,
+                    player_slot,
                     unit: building.clone(),
                 });
             }
@@ -186,7 +187,7 @@ impl Base {
             let held = count(unit)?;
             if held < self.count {
                 failures.push(CheckFailure::BaseUnit {
-                    seat,
+                    player_slot,
                     unit: unit.clone(),
                     held,
                 });
@@ -196,21 +197,22 @@ impl Base {
     }
 }
 
-/// How many bodies of the two seats overlap a wall of their layer, and how many pairs of standing
-/// bodies of one layer, one of them a seat's, overlap: a walker its building frees or keeps leaves
-/// through the building's exit, as a trained unit does, and navigation pushes walkers apart.
+/// How many bodies of the two player slots overlap a wall of their layer, and how many pairs of
+/// standing bodies of one layer, one of them a player slot's, overlap: a walker its building frees
+/// or keeps leaves through the building's exit, as a trained unit does, and navigation pushes
+/// walkers apart.
 fn overlaps(world: &Match) -> usize {
     let bodies: Vec<_> = MatchUnits::of(world)
         .all()
         .filter_map(|(_, unit)| {
             let body = unit.get::<Body>()?;
             let position = unit.get::<Position>()?.get();
-            let seat = (0..2).any(|seat| MatchUnits::owned_by(&unit, seat));
+            let owned = (0..2).any(|player_slot| MatchUnits::owned_by(&unit, player_slot));
             let stands = !unit.contains::<MoveStep>();
             Some((
                 Placed::new(position, body.shape()),
                 body.layer(),
-                seat,
+                owned,
                 stands,
             ))
         })
@@ -218,15 +220,15 @@ fn overlaps(world: &Match) -> usize {
     let walls = world.resource::<WallBook>();
     let on_walls = bodies
         .iter()
-        .filter(|&&(placed, layer, seat, _)| seat && walls.overlaps(placed, layer))
+        .filter(|&&(placed, layer, owned, _)| owned && walls.overlaps(placed, layer))
         .count();
     let standing: Vec<_> = bodies.iter().filter(|body| body.3).collect();
     let mut pairs = 0;
-    for (at, &&(placed, layer, seat, _)) in standing.iter().enumerate() {
+    for (at, &&(placed, layer, owned, _)) in standing.iter().enumerate() {
         pairs += standing[at + 1..]
             .iter()
-            .filter(|&&&(other, other_layer, other_seat, _)| {
-                (seat || other_seat) && layer == other_layer && placed.overlaps(other)
+            .filter(|&&&(other, other_layer, other_owned, _)| {
+                (owned || other_owned) && layer == other_layer && placed.overlaps(other)
             })
             .count();
     }

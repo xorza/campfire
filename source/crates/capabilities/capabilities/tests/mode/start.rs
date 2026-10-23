@@ -57,8 +57,8 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
         .collect();
     let player = |slot| {
         (
-            StableId::of_player(Seat::new(slot)),
-            Some(Player::new(Seat::new(slot))),
+            StableId::of_player(PlayerSlot::new(slot)),
+            Some(Player::new(PlayerSlot::new(slot))),
         )
     };
     let [zero, one, two] = [0, 1, 2].map(player);
@@ -75,7 +75,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
         game.entity(game.match_entity().unwrap())
             .contains::<MatchEntity>()
     );
-    assert_eq!(game.player_entity(Seat::new(3)), None);
+    assert_eq!(game.player_entity(PlayerSlot::new(3)), None);
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
     let vision = game.resource::<VisionBook>().grid().unwrap();
     let grid = Grid::new(Num::int(1), map().bounds()).unwrap();
@@ -175,7 +175,7 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(
         Mode::failures(&game),
         [
-            FailureKind::Api(ApiError::UnknownMember(EngineEnum::PathEnd)),
+            FailureKind::Api(ApiError::UnknownMember(PathEnd::ENUM)),
             FailureKind::Runtime
         ]
     );

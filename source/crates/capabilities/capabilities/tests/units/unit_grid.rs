@@ -37,7 +37,11 @@ fn near_origin(game: &mut Match) -> (Vec<(StableId, Num)>, Tick) {
 fn refreshes_share_one_build_until_a_unit_comes_goes_moves_or_changes_its_body() {
     let mut game = Match::builder(&[]).role(Role::Rules).build();
     let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    Units::give_type(&mut game, unit_type, BodyForm::circle(Num::HALF).unwrap());
+    Units::give_type(
+        &mut game,
+        unit_type,
+        BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST),
+    );
     let spawn = |game: &mut Match, x: i16| Spawn::of(unit_type, (x, 0, 0)).place(game);
     let (first, second) = (spawn(&mut game, 0), spawn(&mut game, 10));
     let half = Num::HALF;

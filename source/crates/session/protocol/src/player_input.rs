@@ -1,4 +1,4 @@
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 
 /// One input of a player, as it is sent and logged: the tick it is for and its payload. Its place
 /// in the player's chain, its seq and the hash it links to, is not sent: sender and receiver
@@ -6,7 +6,7 @@ use campfire_common::{Seat, Tick};
 /// that they agree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerInput<'a> {
-    pub seat: Seat,
+    pub player_slot: PlayerSlot,
     /// The tick the player wants the input applied in.
     pub stamp: Tick,
     pub payload: &'a [u8],

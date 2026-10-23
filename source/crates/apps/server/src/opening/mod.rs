@@ -1,12 +1,12 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use campfire_common::MapName;
-use campfire_mode::{OptionPicks, OptionValue, SeatPick, SeatPicks};
+use campfire_host::{Publisher, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionDir};
+use campfire_mode::{OptionPicks, OptionValue, PlayerSlotPick, PlayerSlotPicks};
 use campfire_net::{
-    Lobby, LobbyOpening, LobbyStart, PendingRestore, Publisher, RestoredSession, ServerBots,
-    ServerDir, ServerSetup, SessionDir, SessionOpening, UncheckedRestore,
+    Lobby, LobbyOpening, LobbyStart, PendingRestore, SessionOpening, UncheckedRestore,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::SessionTerms;
@@ -17,12 +17,12 @@ use crate::opening::error::OpeningError;
 
 pub(crate) mod error;
 
-/// What a server starts with: its session, whose terms the mode's rules admit, and the seats
+/// What a server starts with: its session, whose terms the mode's rules admit, and the player_slots
 /// of that session.
 #[derive(Debug)]
 pub(crate) struct Opening {
     pub(crate) session: SessionOpening,
-    seats: NonZeroU32,
+    player_slots: NonZeroU32,
 }
 
 /// What `Opening::of` needs.
@@ -37,17 +37,18 @@ pub(crate) struct OpeningSetup<'a> {
     pub(crate) host: HostVisibility,
     /// The values the host picks of a new session's options; a restored session keeps its own.
     pub(crate) options: Vec<OptionValue>,
-    /// The values the host picks of a new session's seats' choices; a restored session keeps its
-    /// own.
-    pub(crate) seat_picks: Vec<SeatPick>,
+    /// The values the host picks of a new session's player slots' choices; a restored session keeps
+    /// its own.
+    pub(crate) player_slot_picks: Vec<PlayerSlotPick>,
 }
 
-/// How long a session waits to restore, and the time of the start that asks: a session whose
-/// journal was written within `length` of `now` restores.
+/// How long a session waits to restore, and the time of the start that asks, `now` in Unix
+/// seconds by the server's clock: a session whose journal was written within `length` of `now`
+/// restores.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RestoreWindow {
     pub(crate) length: Duration,
-    pub(crate) now: SystemTime,
+    pub(crate) now: u64,
 }
 
 impl Opening {
@@ -71,7 +72,7 @@ impl Opening {
             let rules = SessionRules::of(&restore.packages);
             let terms = restore.session.terms();
             Self::picks(rules, &terms.options, &setup.options)?;
-            Self::seat_picks(rules, terms, &setup.seat_picks)?;
+            Self::player_slot_picks(rules, terms, &setup.player_slot_picks)?;
             Self::visibility(rules, &visibility, &setup.host)?;
             (SessionOpening::Restored(Box::new(restore)), visibility)
         } else {
@@ -80,12 +81,17 @@ impl Opening {
             (SessionOpening::New(Box::new(lobby)), visibility)
         };
         let terms = session.terms();
-        let seats = u32::try_from(terms.seats.len()).expect("a session's seats fit u32");
-        let seats = seats
+        let player_slots =
+            u32::try_from(terms.player_slots.len()).expect("a session's player slots fit u32");
+        let player_slots = player_slots
             .checked_add(visibility.max_spectators())
-            .expect("a session's seats fit u32");
-        let seats = NonZeroU32::new(seats).expect("the rules admit a session of a seat at least");
-        Ok(Self { session, seats })
+            .expect("a session's player slots fit u32");
+        let player_slots = NonZeroU32::new(player_slots)
+            .expect("the rules admit a session of a player slot at least");
+        Ok(Self {
+            session,
+            player_slots,
+        })
     }
 
     /// The terms of the session it starts.
@@ -98,11 +104,11 @@ impl Opening {
         self.session.server()
     }
 
-    /// The seats of the session it starts: its seats and the most spectators it admits, which no
-    /// address of honest players passes in live connections (08-sessions.md, Limits for each
-    /// address, from the session's seats).
-    pub(crate) const fn seats(&self) -> NonZeroU32 {
-        self.seats
+    /// The player slots of the session it starts: its player slots and the most spectators it
+    /// admits, which no address of honest players passes in live connections (08-sessions.md,
+    /// Limits for each address, from the session's player slots).
+    pub(crate) const fn player_slots(&self) -> NonZeroU32 {
+        self.player_slots
     }
 
     /// The session a stop ended, under the data directory `data`: none when the directory holds
@@ -149,20 +155,20 @@ impl Opening {
         Ok(())
     }
 
-    /// An error when the host `asked` picks of the seats' choices of `rules`, and they are not
-    /// those `journal`, a waiting session's terms, hold, which it restores with, as its option
+    /// An error when the host `asked` picks of the player slots' choices of `rules`, and they are
+    /// not those `journal`, a waiting session's terms, hold, which it restores with, as its option
     /// picks are checked.
-    fn seat_picks(
+    fn player_slot_picks(
         rules: SessionRules<'_>,
         journal: &SessionTerms,
-        asked: &[SeatPick],
+        asked: &[PlayerSlotPick],
     ) -> Result<(), OpeningError> {
         if asked.is_empty() {
             return Ok(());
         }
-        let asked = SeatPicks::named(rules.choices(), journal.seats.len(), asked)
-            .map_err(OpeningError::SeatPicks)?;
-        if asked.places() != journal.seat_picks {
+        let asked = PlayerSlotPicks::named(rules.choices(), journal.player_slots.len(), asked)
+            .map_err(OpeningError::PlayerSlotPicks)?;
+        if asked.places() != journal.player_slot_picks {
             return Err(OpeningError::OtherPicks);
         }
         Ok(())
@@ -215,7 +221,7 @@ impl Opening {
             open: Vec::new(),
             host: setup.host,
             options: setup.options,
-            seat_picks: setup.seat_picks,
+            player_slot_picks: setup.player_slot_picks,
             server: setup.server,
             start: LobbyStart::Players,
         };
@@ -224,11 +230,13 @@ impl Opening {
 }
 
 impl RestoreWindow {
-    /// Whether a journal written at `modified` is within it; one written after `now`, as a
-    /// clock set back gives, is.
+    /// Whether a journal written at `modified` is within it, by whole seconds; one written after
+    /// `now`, as a clock set back gives, or before 1970, is.
     fn holds(self, modified: SystemTime) -> bool {
-        let idle = self.now.duration_since(modified).unwrap_or_default();
-        idle <= self.length
+        let written = modified
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        Duration::from_secs(self.now.saturating_sub(written)) <= self.length
     }
 }
 
@@ -237,6 +245,26 @@ mod tests {
     use campfire_test_packages::TestMode;
 
     use super::*;
+
+    #[test]
+    fn a_window_holds_a_journal_written_within_its_length() {
+        // A window of 60 s at 1000: a journal of 940 is within it, one of 939 is not; one written
+        // after now is, as a clock set back gives.
+        let window = RestoreWindow {
+            length: Duration::from_secs(60),
+            now: 1000,
+        };
+        let at = |seconds| UNIX_EPOCH + Duration::from_secs(seconds);
+        assert!(window.holds(at(940)));
+        assert!(!window.holds(at(939)));
+        assert!(window.holds(at(1001)));
+        // A shorter window refuses what the longer holds.
+        let short = RestoreWindow {
+            length: Duration::from_secs(59),
+            ..window
+        };
+        assert!(!short.holds(at(940)));
+    }
 
     #[test]
     fn a_waiting_sessions_map_is_loaded_and_another_asked_is_refused() {
@@ -294,14 +322,15 @@ mod tests {
         };
         let session = |host: &HostVisibility| rules.visibility().session(host).unwrap();
         // A session of two spectators who see all waits: nothing asked, and its own, restore it;
-        // another most of spectators, or another fog of theirs, is refused.
-        let own = hosted(&["spectators=all"], 2);
+        // another most of spectators, 0 among them, or another fog of theirs, is refused.
+        let own = hosted(&["spectators=all"], Some(2));
         let journal = session(&own);
         assert!(Opening::visibility(rules, &journal, &HostVisibility::default()).is_ok());
         assert!(Opening::visibility(rules, &journal, &own).is_ok());
         for other in [
-            hosted(&["spectators=all"], 3),
-            hosted(&["spectators=teams"], 2),
+            hosted(&["spectators=all"], Some(3)),
+            hosted(&["spectators=all"], Some(0)),
+            hosted(&["spectators=teams"], Some(2)),
         ] {
             assert!(matches!(
                 Opening::visibility(rules, &journal, &other),
@@ -310,7 +339,7 @@ mod tests {
         }
         // A setting the mode does not leave the host is refused as the visibility asked.
         assert!(matches!(
-            Opening::visibility(rules, &journal, &hosted(&["inventory=allies"], 2)),
+            Opening::visibility(rules, &journal, &hosted(&["inventory=allies"], Some(2))),
             Err(OpeningError::Visibility(_))
         ));
     }

@@ -23,7 +23,8 @@ impl RemoteParent {
 
     /// Gives each replicated entity whose server parent is mapped and that shows no [`ChildOf`] its
     /// view: a parent that arrives late, or that comes back after it was despawned here. It runs
-    /// after the receive, and only in a frame whose receive mapped an entity.
+    /// after each receive and visits the detached entities alone: Replicon inserts its map again
+    /// in each frame it receives, so no change of the map tells a frame that mapped an entity.
     pub(crate) fn attach(
         entity_map: Res<'_, ServerEntityMap>,
         detached: Query<'_, '_, (Entity, &Self), Without<ChildOf>>,

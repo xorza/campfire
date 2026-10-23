@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use campfire_capabilities::Match;
 use campfire_common::ErrorReport;
-use campfire_common::{DeclaredName, Seat, StateHash, Tick};
+use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick};
 use campfire_package::ModePackages;
 use campfire_players::{PlayersWorld, ResourcesData};
 use campfire_script::ScriptFailures;
@@ -85,7 +85,7 @@ impl Golden {
             bytes.push(unit.get::<Team>().map_or(u8::MAX, |team| team.get()));
             let owner = unit
                 .get::<Owner>()
-                .map_or(u32::MAX, |owner| owner.seat().get());
+                .map_or(u32::MAX, |owner| owner.player_slot().get());
             bytes.extend_from_slice(&owner.to_le_bytes());
             let meters = PoolMeters::of(game, entity);
             for pool in (0..).map_while(PoolId::new) {
@@ -100,7 +100,7 @@ impl Golden {
         if let Some(deaths) = game.get_resource::<Deaths>()
             && deaths.tick() == ran
         {
-            for death in deaths.iter() {
+            for death in deaths {
                 bytes.extend_from_slice(&death.fallen.id.get().to_le_bytes());
                 let killer = death.killer.map_or(u64::MAX, StableId::get);
                 bytes.extend_from_slice(&killer.to_le_bytes());
@@ -113,11 +113,12 @@ impl Golden {
             for failure in failures.get() {
                 let id = failure.id.map_or(u64::MAX, StableId::get);
                 bytes.extend_from_slice(&id.to_le_bytes());
-                write!(Text(bytes), "{} {}", failure.hook.name, failure.error)
+                let text = failures.text(failure);
+                write!(Text(bytes), "{} {}", failure.hook.name, text.message())
                     .expect("text writes into bytes");
             }
         }
-        for slot in (0..self.players).map(Seat::new) {
+        for slot in (0..self.players).map(PlayerSlot::new) {
             let Some(amounts) = game.player_resources(slot) else {
                 continue;
             };

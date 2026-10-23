@@ -14,8 +14,6 @@ mod wrapping_id;
 mod writer;
 
 pub use crate::byte_arena::ByteArena;
-pub use crate::reader::ReadInteger;
-pub use crate::reader::ReadVarInt;
 pub use crate::reader::Reader;
 pub use crate::serialization_error::SerializationError;
 pub use crate::to_bytes::ToBytes;

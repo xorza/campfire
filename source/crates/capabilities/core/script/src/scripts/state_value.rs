@@ -13,9 +13,10 @@ use crate::scripts::state_type::StateType;
 use crate::scripts::view::View;
 use crate::scripts::view::unit::Unit;
 
-/// A value of script state, of one of the declared types; an enum's is its member's text. Units
-/// are held by stable id, so a value outlives the handles a call holds. A text and a list are
-/// shared, so a copy of a value counts a reference.
+/// A value of script state, of one of the declared types; an enum's is its member's place among
+/// its field's members, which its field's declaration reads as the member's text. Units are held
+/// by stable id, so a value outlives the handles a call holds. A text and a list are shared, so a
+/// copy of a value counts a reference.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StateValue {
     Int(i64),
@@ -29,6 +30,7 @@ pub enum StateValue {
     NumList(Arc<[Num]>),
     BoolList(Arc<[bool]>),
     TextList(Arc<[Arc<str>]>),
+    Member(u8),
 }
 
 impl StateValue {
@@ -87,7 +89,7 @@ impl StateValue {
         value.clone().into_list()?.into_iter().map(item).collect()
     }
 
-    /// The type of field the value is of; an enum's value is a text.
+    /// The type of field the value is of.
     pub const fn kind(&self) -> StateType {
         match self {
             Self::Int(_) => StateType::Int,
@@ -101,11 +103,13 @@ impl StateValue {
             Self::NumList(_) => StateType::NumList,
             Self::BoolList(_) => StateType::BoolList,
             Self::TextList(_) => StateType::StringList,
+            Self::Member(_) => StateType::Enum,
         }
     }
 
     /// The value as a script sees it: a unit the view did not read is `()`, and is left out of a
-    /// list.
+    /// list. An enum's member reads through its field's declaration, `StateDecl::read`, which
+    /// holds its members.
     pub fn to_value(&self, view: &View) -> ScriptValue {
         let list = |items: &mut dyn Iterator<Item = ScriptValue>| {
             ScriptValue::of(items.collect::<ScriptList>())
@@ -131,6 +135,7 @@ impl StateValue {
                     .iter()
                     .map(|item| ScriptValue::of(ScriptText::from(&**item))),
             ),
+            Self::Member(_) => panic!("an enum's member reads through its field's declaration"),
         }
     }
 }

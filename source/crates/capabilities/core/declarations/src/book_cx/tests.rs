@@ -254,3 +254,13 @@ fn the_types_number_by_package_then_name_then_avatar_and_scripts_by_package() {
         })
     );
 }
+
+#[test]
+#[should_panic(expected = "is asked for after the load took it")]
+fn a_fact_asked_for_after_the_load_took_it_is_not_built_again() {
+    with_cx(|mut cx| {
+        cx.declare_fact::<Base>(|_| Ok(Base(3)));
+        assert_eq!(cx.take_fact::<Base>().unwrap(), Some(Base(3)));
+        let _ = cx.fact::<Base>();
+    });
+}

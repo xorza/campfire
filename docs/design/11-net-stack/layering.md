@@ -37,6 +37,21 @@ The kinds of crate, problem, IO, glue and test support, and their rules are the 
   model that needs no engine, so `net-packets` stays a problem crate; the sealed singleplayer link
   runs the emulated server and client (08-sessions.md, The answer binds to the TLS session).
   Refused: the emulated sockets behind `internals`, which the singleplayer link then cannot build.
+- **`net-link` is the endpoint's seam.** A link's state and its lifecycle, with no transport and
+  no connection in it, are `net-link`, which `net-endpoint` takes without the connection layer,
+  and `net-connection` builds on. Refused: the link inside `net-connection`, which makes every
+  endpoint carry the client's and the server's connection. Source: Lightyear's `lightyear_link`,
+  transport-agnostic link buffers and lifecycle markers that depend on no connection, and
+  `lightyear_connection`, which depends on it (`lightyear_link` and `lightyear_connection` 0.31
+  on docs.rs).
+- **Frame interpolation and the lerps are a crate below interpolation and prediction.**
+  `net-frame-interpolation` holds the frame rules, their registry and their pipeline, and the blend
+  context and lerps both interpolations share; `net-interpolation` keeps the delayed pipeline and
+  its own rules, as a frame rule maps a component to its visual and a delayed rule a component to
+  itself, so no rule serves both; `net-prediction` takes the frame crate alone, its correction
+  offsetting the visual. Refused: one registry for both pipelines, whose rules installed each
+  pipeline's systems by a flag of which plugins ran. Source: Lightyear's
+  `lightyear_frame_interpolation`, a crate of its own below its interpolation and prediction.
 - **`net-bytes` is the header codec alone.** `ToBytes`, `Reader` and `Writer` encode the stack's
   own headers, and a `ToBytes` write goes into the stack's own sinks and cannot fail; the serde
   bridge is `net-messages`', its one caller. Refused: the header codec in `codec`, which gives the
@@ -48,10 +63,5 @@ The kinds of crate, problem, IO, glue and test support, and their rules are the 
 - **A stack crate depends on Campfire's base crates, never on `sim` or a capability,** so the
   stack serves any app of the engine and no match's type crosses into it.
 - **A crate's dev-dependencies keep the workspace's rule** (02-engine-core.md, A dev-dependency
-  adds only test support to its crate's build; A problem crate's test runs no app): a glue crate's
-  test build holds the engine, and the stepper through `internals`.
-
-## Planned
-
-- **The split of interpolation.** A crate of lerp rules and frame interpolation below
-  `net-interpolation` and `net-prediction`, once a read of who owns each history shows the seam.
+  adds only test support to its crate's build; 02-engine-core.md, A problem crate's test runs no
+  app): a glue crate's test build holds the engine, and the stepper through `internals`.

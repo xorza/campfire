@@ -1,15 +1,16 @@
 use campfire_common::Ticks;
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, NamedScripts, PerType, ScriptParams,
+    BookCx, BookError, BookPlace, ById, ByIdBuilder, NamedScripts, PerId, ScriptParams,
 };
 use campfire_script::{Ctx, Hook, HookDecl, ScriptId, ScriptRole, Unit};
 use campfire_sim::MatchRate;
 use campfire_stats::{ModifierAppliers, Way};
 use campfire_units::ScriptBook;
-use campfire_values::TimeTooLarge;
+use campfire_values::{TimeTooLarge, UnitType};
 
 use crate::ai_data::AiData;
 use crate::error::AiError;
+use crate::next_turn::{NextTurn, TurnSpec};
 
 /// A unit type's AI: its compiled script, and its period in whole ticks, at least one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,9 +97,9 @@ impl Ai {
 
     /// The AI of each unit type that stands and takes orders, its script one of its package's; an
     /// error for a script the package does not hold, or an AI that does not load.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let scripts = cx.book::<ScriptBook>()?;
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(orders) = unit.data.section::<AiData>() else {
                 continue;
@@ -113,6 +114,19 @@ impl Ai {
     }
 }
 
-impl PerType for Ai {
+impl PerId<UnitType> for Ai {
     const SCRIPTS_ONLY: bool = true;
+}
+
+/// The tick a unit that thinks is due in again, a part of each unit of a type with AI from its
+/// spawn. A unit whose call found the think pool spent keeps its tick, so it stays due, and goes
+/// first in the next tick, before the units due later. A think writes it anew.
+pub type NextThink = NextTurn<Ai>;
+
+impl TurnSpec for Ai {
+    const NAME: &'static str = "orders.next_think";
+
+    fn period(&self) -> Ticks {
+        self.period
+    }
 }

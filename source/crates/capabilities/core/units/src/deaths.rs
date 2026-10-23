@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_declarations::{Report, Role};
 use campfire_sim::StableId;
 use campfire_values::{TagSet, Team};
@@ -36,7 +36,7 @@ struct Death {
 pub struct Fallen {
     pub id: StableId,
     pub team: Option<Team>,
-    pub owner: Option<Seat>,
+    pub owner: Option<PlayerSlot>,
     pub avatar: bool,
     pub tags: TagSet,
 }
@@ -110,10 +110,44 @@ impl Deaths {
     }
 
     /// The deaths, in the order the units died.
-    pub fn iter(&self) -> impl Iterator<Item = DeathView<'_>> {
-        (0..self.entries.len()).map(|at| self.get(at))
+    pub const fn iter(&self) -> DeathViews<'_> {
+        DeathViews {
+            deaths: self,
+            at: 0..self.entries.len(),
+        }
     }
 }
+
+impl<'a> IntoIterator for &'a Deaths {
+    type Item = DeathView<'a>;
+    type IntoIter = DeathViews<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// The deaths of a record, in the order the units died.
+#[derive(Debug, Clone)]
+pub struct DeathViews<'a> {
+    deaths: &'a Deaths,
+    at: Range<usize>,
+}
+
+impl<'a> Iterator for DeathViews<'a> {
+    type Item = DeathView<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let deaths = self.deaths;
+        Some(deaths.get(self.at.next()?))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.at.size_hint()
+    }
+}
+
+impl ExactSizeIterator for DeathViews<'_> {}
 
 impl Report for Deaths {
     fn installed(_: &Role) -> Option<Self> {
@@ -151,7 +185,11 @@ mod tests {
         deaths.push(fallen(7), None, []);
         let found = [1, 2, 5, 7, 9].map(|id| deaths.killed(unit(id)));
         assert_eq!(found, [false, true, true, false, true]);
-        assert_eq!(deaths.iter().count(), 4);
+        // Four deaths, the order they came in, by a loop over the record as by `iter`.
+        let order = |views: DeathViews<'_>| views.map(|view| view.fallen.id).collect::<Vec<_>>();
+        assert_eq!(deaths.iter().len(), 4);
+        assert_eq!(order((&deaths).into_iter()), [5, 2, 9, 7].map(unit));
+        assert_eq!(order(deaths.iter()), [5, 2, 9, 7].map(unit));
         deaths.clear(Tick::new(2));
         deaths.index_killed();
         assert!(!deaths.killed(unit(5)));

@@ -10,31 +10,33 @@ use bevy_ecs::world::Mut;
 use campfire_common::ChannelBinding;
 use campfire_log::LogEvent;
 use campfire_net_connection::{ClientOf, Connected, Disconnect};
-use campfire_net_core::NetTick;
 use campfire_net_endpoint::LinkBinding;
 use campfire_net_link::Unlinked;
 use campfire_net_messages::{MessageReceiver, MessageSender};
-use campfire_net_timeline::{Clock, LocalTimeline};
+use campfire_net_timeline::Clock;
 use campfire_protocol::{
     ConnectAnswer, ConnectChallenge, Delegation, Entropy, SessionTerms, Verifier,
 };
+use campfire_values::TeamSet;
 use tracing::debug;
 
 use crate::close_code::CloseCode;
-use crate::error::JoinError;
-use crate::events::join_refused::JoinRefused;
 use crate::net_protocol::MatchChannel;
-use crate::net_protocol::dismissed::Dismissed;
-use crate::net_protocol::join::{Join, JoinRole};
-use crate::net_protocol::joined::Joined;
-use crate::net_protocol::offer::SessionOffer;
-use crate::session_times::SessionTimes;
-use crate::sim_server::player_link::PlayerLink;
-use crate::sim_server::server_setup::ServerSetup;
-use crate::unix_clock::UnixClock;
+use campfire_host::Dismissed;
+use campfire_host::JoinError;
+use campfire_host::JoinRefused;
+use campfire_host::Joined;
+use campfire_host::PlayerLink;
+use campfire_host::PlayerSlots;
+use campfire_host::ServerSetup;
+use campfire_host::SessionOffer;
+use campfire_host::SessionTimes;
+use campfire_host::UnixClock;
+use campfire_host::{Join, JoinRole};
 
-/// Ticks between two sends of an offer that got no answer.
-const RESEND_TICKS: u32 = 30;
+/// How long an offer that got no answer waits before it goes again, in the server's real time, as
+/// the window to answer it is: a second, the 30 ticks it waited at 30 Hz.
+const RESEND_AFTER: Duration = Duration::from_secs(1);
 
 /// How long a link may stay silent after its first offer, which goes out as it connects, before
 /// the server closes it (05-protocol-spec.md, Connection): an honest client answers the first offer
@@ -55,17 +57,17 @@ pub(crate) struct Offering {
 }
 
 /// The challenge a link was offered, the channel binding of its TLS session, which its answer
-/// signs, the tick the offer last went out in, and when it first did, in the server's real time.
+/// signs, and when the offer last and first went out, in the server's real time.
 #[derive(Component, Debug, Clone, Copy)]
 pub(crate) struct Offered {
     pub(crate) challenge: ConnectChallenge,
     pub(crate) binding: ChannelBinding,
-    pub(crate) sent: NetTick,
+    pub(crate) sent: Duration,
     pub(crate) first: Duration,
 }
 
-/// Why the server refused a link's join, or took its seat: the link receives nothing more, and
-/// ends as `Dismissing` has it.
+/// Why the server refused a link's join, or took its player slot: the link receives nothing more,
+/// and ends as `Dismissing` has it.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Refused(pub JoinError);
 
@@ -85,15 +87,16 @@ pub(crate) struct Dismissing {
 const LINGER: Duration = Duration::from_secs(5);
 
 impl Dismissing {
-    /// Refuses `link` for `error`: its seat, when a newer login of its player took it, or its
-    /// join. The link carries no seat, receives no offer, and ends once its client is told.
+    /// Refuses `link` for `error`: its player slot, when a newer login of its player took it, or
+    /// its join. The link carries no player slot, receives no offer, and ends once its client is
+    /// told.
     pub(crate) fn refuse(commands: &mut Commands<'_, '_>, link: Entity, error: JoinError) {
         let dismissed = match error {
             JoinError::Superseded => Dismissed::Superseded,
             JoinError::Delegation(_)
             | JoinError::Connect(_)
             | JoinError::Full
-            | JoinError::NoSeat
+            | JoinError::NoPlayerSlot
             | JoinError::Refused(_)
             | JoinError::NoSpectatorPlace => Dismissed::JoinRefused,
         };
@@ -136,7 +139,7 @@ impl Dismissing {
                 commands.entity(link).remove::<Self>();
                 commands.trigger(Disconnect {
                     entity: link,
-                    reason: dismissing.dismissed.code().app(),
+                    reason: CloseCode::from(dismissing.dismissed).app(),
                 });
             }
         }
@@ -171,6 +174,12 @@ pub(crate) type ToAnswer = (Without<Joined>, Without<Refused>);
 pub(crate) type JoinLinks<'w, 's> = Query<'w, 's, JoinLink, ToAnswer>;
 
 impl Offered {
+    /// Whether the offer goes again at `now`, the server's real time: `RESEND_AFTER` or more
+    /// after it last went out.
+    fn resends_at(&self, now: Duration) -> bool {
+        now.saturating_sub(self.sent) >= RESEND_AFTER
+    }
+
     /// Closes each offered link still to answer `ANSWER_WINDOW` after its first offer, with
     /// `CloseCode::Unanswered`.
     pub(crate) fn close_silent(
@@ -192,20 +201,34 @@ impl Offered {
 }
 
 /// The joins of one frame, checked: the links that answered to play, with their delegations, those
-/// that answered to watch, and the links refused, with why.
+/// that answered to watch, with the teams they chose, and the links refused, with why.
 #[derive(Debug, Default)]
 pub(crate) struct CheckedJoins {
     /// In the order of the players' main keys, then their session keys.
     pub(crate) answered: Vec<(Entity, Delegation)>,
-    pub(crate) watching: Vec<Entity>,
+    pub(crate) watching: Vec<(Entity, TeamSet)>,
     pub(crate) refused: Vec<(Entity, JoinError)>,
 }
 
-/// When an offer goes out: the server's tick, and its real time.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct OfferTime {
-    pub(crate) tick: NetTick,
-    pub(crate) real: Duration,
+impl CheckedJoins {
+    /// Takes the frame's joins into `player_slots`, each in turn: the refused ones refused, then
+    /// each spectator admitted while a place is free, then each player placed, in
+    /// `Offering::check_all`'s order; a join its place refuses is refused with why.
+    pub(crate) fn admit<'w, 's>(&mut self, player_slots: &mut impl PlayerSlots<'w, 's>) {
+        for (link, error) in self.refused.drain(..) {
+            Offering::refuse(player_slots.commands(), link, error);
+        }
+        for (link, teams) in self.watching.drain(..) {
+            if let Err(error) = player_slots.watch(link, teams) {
+                Offering::refuse(player_slots.commands(), link, error);
+            }
+        }
+        for (link, delegation) in self.answered.drain(..) {
+            if let Err(error) = player_slots.player_slot(link, delegation) {
+                Offering::refuse(player_slots.commands(), link, error);
+            }
+        }
+    }
 }
 
 impl Offering {
@@ -221,18 +244,18 @@ impl Offering {
     }
 
     /// Offers the terms and a fresh challenge to each connected link that has none, and the same
-    /// offer again every `RESEND_TICKS` until it answers, at `at`: a client may not yet receive
-    /// messages when the link connects, and then the first offer is lost.
+    /// offer again every `RESEND_AFTER` until it answers, at `now`, the server's real time: a
+    /// client may not yet receive messages when the link connects, and then the first offer is
+    /// lost.
     pub(crate) fn offer(
         &self,
-        at: OfferTime,
+        now: Duration,
         links: &mut OfferLinks<'_, '_>,
         commands: &mut Commands<'_, '_>,
     ) {
-        let OfferTime { tick: now, real } = at;
         for (link, offered, binding, mut sender) in links {
             let challenge = match offered {
-                Some(offered) if now.0.wrapping_sub(offered.sent.0) < RESEND_TICKS => continue,
+                Some(offered) if !offered.resends_at(now) => continue,
                 Some(mut offered) => {
                     debug!(link = link.to_bits(), "sent the offer again");
                     offered.sent = now;
@@ -248,7 +271,7 @@ impl Offering {
                         challenge,
                         binding,
                         sent: now,
-                        first: real,
+                        first: now,
                     });
                     debug!(link = link.to_bits(), "offered the terms");
                     challenge
@@ -266,16 +289,11 @@ impl Offering {
     /// offering `H` holds: the lobby's before the start, the door's after it.
     pub(crate) fn offer_links<H: Resource + AsRef<Self>>(
         holder: Res<'_, H>,
-        timeline: Res<'_, LocalTimeline>,
         clock: Res<'_, Clock>,
         mut links: OfferLinks<'_, '_>,
         mut commands: Commands<'_, '_>,
     ) {
-        let at = OfferTime {
-            tick: timeline.tick(),
-            real: clock.now().elapsed(),
-        };
-        H::as_ref(&holder).offer(at, &mut links, &mut commands);
+        H::as_ref(&holder).offer(clock.now().elapsed(), &mut links, &mut commands);
     }
 
     /// The join an offered link sent, with the link and its offer; none when it sent none.
@@ -321,8 +339,8 @@ impl Offering {
     }
 
     /// Checks each of a frame's `joins`, each link's offer and join, into `checked`. A query gives
-    /// the links in the order of its tables, which changes from run to run once the network stack
-    /// iterates them in parallel, so the answered ones go in an order of what they sent.
+    /// the links in the order of its tables, which a link leaves as its parts change, so the
+    /// answered ones go in an order of what they sent.
     pub(crate) fn check_all(
         &mut self,
         joins: impl Iterator<Item = (Entity, Offered, Join)>,
@@ -336,7 +354,7 @@ impl Offering {
         for (link, offered, join) in joins {
             match (self.check(&offered, &join), join.role) {
                 (Ok(delegation), JoinRole::Play) => checked.answered.push((link, delegation)),
-                (Ok(_), JoinRole::Watch) => checked.watching.push(link),
+                (Ok(_), JoinRole::Watch { teams }) => checked.watching.push((link, teams)),
                 (Err(error), _) => checked.refused.push((link, error)),
             }
         }
@@ -401,7 +419,7 @@ mod tests {
         let offered = |first| Offered {
             challenge: ConnectChallenge::new([9; 32]),
             binding: ChannelBinding::new([3; 32]),
-            sent: NetTick(0),
+            sent: first,
             first,
         };
         let world = app.world_mut();
@@ -446,5 +464,22 @@ mod tests {
         );
         assert!(app.world().get::<Dismissing>(superseded).is_none());
         assert!(app.world().get::<Dismissing>(untold).is_some());
+    }
+
+    /// An offer sent at 2 s goes again from 3 s on, a second after, by the server's real time
+    /// whatever its tick rate; a clock read before the send waits.
+    #[test]
+    fn an_unanswered_offer_goes_again_a_second_after_it_went() {
+        let offered = Offered {
+            challenge: ConnectChallenge::new([9; 32]),
+            binding: ChannelBinding::new([3; 32]),
+            sent: Duration::from_secs(2),
+            first: Duration::ZERO,
+        };
+        let at = |millis| offered.resends_at(Duration::from_millis(millis));
+        assert_eq!(
+            [at(1_000), at(2_999), at(3_000), at(9_000)],
+            [false, false, true, true]
+        );
     }
 }

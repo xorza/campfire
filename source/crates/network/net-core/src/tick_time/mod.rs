@@ -4,7 +4,6 @@ use crate::tick_range_error::TickRangeError;
 #[cfg(feature = "reflect")]
 use bevy_reflect::Reflect;
 use campfire_math::{Num, Rounding, TickRate};
-use campfire_net_bytes::ReadInteger;
 use campfire_net_bytes::Reader;
 use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;

@@ -1,5 +1,5 @@
 use bevy_ecs::system::{Query, Res, ResMut};
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_sim::Position;
 use campfire_stats::{HeldModifiers, Projection};
 use campfire_values::{Team, UnitType};
@@ -17,7 +17,7 @@ impl AreaHolds {
     /// units within its radius, from its source, by its action at its rank. Stats select them as
     /// they select an aura's (04-capabilities/stats.md, An area holds as an aura does).
     pub(super) fn hold_inside(
-        specs: Res<'_, ByType<AreaSpec>>,
+        specs: Res<'_, ById<UnitType, AreaSpec>>,
         mut held: ResMut<'_, HeldModifiers>,
         areas: Query<'_, '_, (&Position, &Team, &UnitType, &Area)>,
     ) {

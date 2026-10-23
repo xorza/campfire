@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::Malformed;
 
 #[test]
 fn a_value_decodes_only_from_its_one_encoding() {
@@ -17,7 +18,9 @@ fn a_value_decodes_only_from_its_one_encoding() {
     assert_eq!(Binary::decode::<u32>(&[0xAC]), Err(BinaryError::Truncated));
     assert_eq!(
         Binary::decode::<bool>(&[2]),
-        Err(BinaryError::Malformed(postcard::Error::DeserializeBadBool))
+        Err(BinaryError::Malformed(Malformed(
+            postcard::Error::DeserializeBadBool
+        )))
     );
     // A length over-long inside a value: the string "ab" as 0x82 0x00 'a' 'b'.
     assert_eq!(
@@ -82,6 +85,10 @@ fn an_encode_appends_its_bytes_and_each_value_follows_the_last() {
     Binary::encode_into(&value, &mut appended);
     assert_eq!(appended.len(), 1 + 1 + 100 + 2 + 1 + 3);
     assert_eq!(appended[..2], [9, 100]);
+    // The batched path into a sink writes the same bytes as the append in place.
+    let mut batched = vec![9];
+    Binary::encode_to(&value, &mut batched);
+    assert_eq!(batched, appended);
     assert_eq!(
         Binary::decode::<(Vec<u8>, u32, &str)>(&appended[1..]),
         Ok(value)

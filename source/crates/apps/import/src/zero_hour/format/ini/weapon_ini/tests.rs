@@ -29,6 +29,7 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
             clip_size: 3,
             clip_reload_ms: 700,
             pre_attack_ms: 0,
+            pre_attack_type: PrefireType::Shot,
             projectile: None,
             stream: false,
             detonation_objects: false,
@@ -57,7 +58,15 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
         other.read(b"Weapon W\n  DamageType = SPLASH\nEnd\n"),
         Err(IniError::NotListed { line: 2 })
     );
-    assert_eq!(ini.get("Knife").unwrap().pre_attack_ms, 833);
+    let knife = ini.get("Knife").unwrap();
+    assert_eq!(
+        (knife.pre_attack_ms, knife.pre_attack_type),
+        (833, PrefireType::Attack)
+    );
+    assert_eq!(
+        other.read(b"Weapon W\n  PreAttackType = PER_TURN\nEnd\n"),
+        Err(IniError::NotListed { line: 2 })
+    );
     // A secondary damage, a stream's name and the objects of a detonation are read; a name of
     // `None` names no stream.
     let mut extra = WeaponIni::default();

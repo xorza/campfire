@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use campfire_abilities::{Abilities, CastData};
 use campfire_actions::{
-    ActionData, ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions, ChannelData,
-    RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
+    ActionData, ActionKeys, ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions,
+    ChannelData, RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
 use campfire_combat::Combat;
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_interaction::{UseActionData, UseSlot, UseSpec};
 use campfire_math::Num;
 use campfire_orders::OrdersDirective;
@@ -119,17 +119,27 @@ impl Objects {
 fn use_data(channel: Option<bool>) -> ActionData {
     let int = |value| Ranked::One(Number::Value(Scalar::Int(value)));
     ActionData {
+        keys: ActionKeys {
+            script: Some(PackagePath::parse("use.rhai").unwrap()),
+            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                Num::int(2),
+            )))),
+            windup_ms: Some(int(100)),
+            channel: channel.map(|damage_interrupts| ChannelData {
+                duration_ms: Some(int(300)),
+                tick_ms: int(100),
+                damage_interrupts,
+                windup_spread: None,
+                wind_down_ms: None,
+                pays: None,
+            }),
+            ..ActionData::of(
+                Targeting::Unit(FilterData::parse("all").unwrap()),
+                CastData::default(),
+            )
+            .keys
+        },
         section: Arc::new(UseActionData::default()),
-        script: Some(PackagePath::parse("use.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-            Num::int(2),
-        )))),
-        windup_ms: Some(int(100)),
-        channel: channel.map(|damage_interrupts| ChannelData {
-            duration_ms: int(300),
-            tick_ms: int(100),
-            damage_interrupts,
-        }),
         ..ActionData::of(
             Targeting::Unit(FilterData::parse("all").unwrap()),
             CastData::default(),
@@ -140,7 +150,7 @@ fn use_data(channel: Option<bool>) -> ActionData {
 /// Player 0's user of the type `name` at `x` on team 0, with its use slot empty.
 fn user(game: &mut Match, name: &str, x: i16) -> StableId {
     let slots = TimedSlots::new(ActionSlots::new([]).with_empty(USES, 1));
-    let parts = (Owner::new(Seat::new(0)), slots);
+    let parts = (Owner::new(PlayerSlot::new(0)), slots);
     Spawn::named(game, name, (x, 0, 0)).parts(parts).place(game)
 }
 
@@ -154,7 +164,7 @@ fn object(game: &mut Match, object: UnitType, x: i16, team: u8) -> StableId {
 /// Runs a tick in which player 0 orders `unit` `directive`.
 fn order(game: &mut Match, unit: StableId, directive: OrdersDirective) {
     let payload = Order::payload(&[Order::one(unit, directive)]);
-    game.step_with(&[(Seat::new(0), &payload)]);
+    game.step_with(&[(PlayerSlot::new(0), &payload)]);
 }
 
 const fn use_of(target: StableId) -> OrdersDirective {
@@ -262,7 +272,7 @@ fn a_use_is_dropped_by_a_unit_with_no_use_slot_one_its_users_refuse_or_one_beyon
     let shrine = object(&mut game, objects.shrine, 1, 0);
     // A combatant of player 0 has no use slot: it starts nothing, and the shrine keeps its
     // health past the tick a use would resolve in.
-    let owner = Owner::new(Seat::new(0));
+    let owner = Owner::new(PlayerSlot::new(0));
     let unslotted = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), owner);
     order(&mut game, unslotted, use_of(shrine));
     assert_eq!(game.part::<ActionProgress>(unslotted).in_progress(), None);
@@ -319,7 +329,7 @@ fn a_use_is_dropped_by_a_unit_with_no_use_slot_one_its_users_refuse_or_one_beyon
         ActionSlots::new([]).with_empty(USES, 2),
     ] {
         let (mut game, _) = Objects::load();
-        let parts = (Owner::new(Seat::new(0)), TimedSlots::new(slots));
+        let parts = (Owner::new(PlayerSlot::new(0)), TimedSlots::new(slots));
         let id = Spawn::named(&game, "caster", (0, 0, 0))
             .parts(parts)
             .place(&mut game);

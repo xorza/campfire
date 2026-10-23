@@ -11,11 +11,12 @@ use campfire_script::{
 use campfire_sim::StableId;
 use campfire_units::{Life, Meter, PoolId, StatId};
 use campfire_values::{ActionId, ModifierId, NameId, Rank, Team};
+use campfire_visibility::DataKind;
 
 use crate::error::StatsRefusal;
 use crate::level::Level;
 use crate::modifier_book::ModifierBook;
-use crate::modifier_handle::{HandleOf, ModifierHandle};
+use crate::modifier_handle::{HandleOf, HandleSetup, ModifierHandle};
 use crate::modifiers::Modifiers;
 use crate::modifiers::modifier_clocks::ModifierClocks;
 use crate::pool_book::PoolBook;
@@ -230,6 +231,18 @@ impl StatsColumn {
             .push(level, pools, stats, modifiers, clocks);
     }
 
+    /// The kind of the state of `pool`: the life pool's own, which every client receives unless the
+    /// mode says, or the other pools', which the owner alone does
+    /// (10-replication-audiences.md, Each kind has a default audience, and a mode may set it).
+    pub(crate) fn pool_kind(view: &View, pool: PoolId) -> DataKind {
+        let life = view.column(|column: &Self| column.life_pool == Some(pool));
+        if life == Some(true) {
+            DataKind::Life
+        } else {
+            DataKind::Pools
+        }
+    }
+
     /// What `read` gives of the column; an error for a match with no stats.
     fn read<R>(view: &View, read: impl FnOnce(&Self) -> Checked<R>) -> Checked<R> {
         view.column(read)
@@ -329,13 +342,14 @@ impl StatsColumn {
                         .iter()
                         .find(|modifier| modifier.id == id && modifier.source == source)
                 });
-                let (stacks, state) = match held {
-                    Some(held) => (
-                        spec.reapply.stacks(held.stacks, spec.max_stacks),
-                        column.rows.now().state(held),
-                    ),
-                    None => (1, spec.state.initial()),
-                };
+                let stacks =
+                    held.map_or(1, |held| spec.reapply.stacks(held.stacks, spec.max_stacks));
+                let held = held.map(|held| column.rows.now().state(held));
+                let first = held.is_none().then(|| spec.state.initial());
+                let state = held
+                    .into_iter()
+                    .flatten()
+                    .chain(first.into_iter().flatten());
                 let of = HandleOf {
                     carrier,
                     id,
@@ -343,7 +357,12 @@ impl StatsColumn {
                     stacks,
                 };
                 let schema = Arc::clone(&spec.state);
-                ModifierHandle::new(spare, of, state, schema, view.clone())
+                let setup = HandleSetup {
+                    of,
+                    schema,
+                    view: view.clone(),
+                };
+                ModifierHandle::new(spare, setup, state)
             })
             .expect("a match that applies a modifier has stats");
         call.hand_out(handle.clone());
@@ -384,7 +403,12 @@ impl StatsColumn {
             };
             let schema = Arc::clone(&column.modifier_book.get(id).spec.state);
             let state = column.rows.now().state(held);
-            let handle = ModifierHandle::new(call.spare(), of, state, schema, view.clone());
+            let setup = HandleSetup {
+                of,
+                schema,
+                view: view.clone(),
+            };
+            let handle = ModifierHandle::new(call.spare(), setup, state);
             call.hand_out(handle.clone());
             Ok(Some(handle))
         })
@@ -402,7 +426,12 @@ impl StatsColumn {
         let schema = view
             .column(|column: &Self| Arc::clone(&column.modifier_book.get(of.id).spec.state))
             .expect("a match with modifiers has stats");
-        let handle = ModifierHandle::new(call.spare(), of, state, schema, view.clone());
+        let setup = HandleSetup {
+            of,
+            schema,
+            view: view.clone(),
+        };
+        let handle = ModifierHandle::new(call.spare(), setup, state);
         call.hand_out(handle.clone());
         handle
     }
@@ -416,7 +445,10 @@ impl StatsColumn {
             data.removed = false;
             data.written = false;
             data.stacks = 1;
-            data.state.clone_from_slice(spec.state.initial());
+            debug_assert_eq!(data.state.len(), spec.state.len());
+            for (value, first) in data.state.iter_mut().zip(spec.state.initial()) {
+                value.clone_from(first);
+            }
         } else {
             data.stacks = spec.reapply.stacks(data.stacks, spec.max_stacks);
         }

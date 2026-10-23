@@ -3,14 +3,14 @@
 use std::ops::Range;
 
 use campfire_codec::BinaryError;
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 
 use crate::bytes::Bytes;
 use crate::checkpoint::Checkpoint;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::Delegation;
-use crate::seat_plan::SeatPlan;
-use crate::seat_start::SeatStart;
+use crate::player_slot_plan::PlayerSlotPlan;
+use crate::player_slot_start::PlayerSlotStart;
 use crate::server_input::ServerInput;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::server_seed::ServerSeed;
@@ -23,7 +23,7 @@ use crate::session_log::{Bounds, LoggedResult, Past, SessionLog, len, offset, pu
 use crate::session_terms::SessionTerms;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
-pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v8";
+pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v9";
 /// The bytes that start a player's packet and a server input in the file.
 pub(super) const PACKET_ENTRY: u8 = 0;
 pub(super) const SERVER_ENTRY: u8 = 1;
@@ -159,10 +159,10 @@ impl SessionLog {
 
     pub(super) fn put_header(&self, out: &mut Vec<u8>) {
         put(out, &self.header.terms);
-        put(out, &offset(self.header.seats.len()));
-        for start in &self.header.seats {
+        put(out, &offset(self.header.player_slots.len()));
+        for start in &self.header.player_slots {
             put(out, &start.plan().code());
-            if let SeatStart::Player(delegation) = start {
+            if let PlayerSlotStart::Player(delegation) = start {
                 put(out, delegation.json());
             }
         }
@@ -188,13 +188,13 @@ impl SessionLog {
     /// Writes the packet `index`, as `write_packet` does.
     pub(super) fn put_packet(&self, out: &mut Vec<u8>, index: u32) {
         let packet = self.entries.packet(index);
-        let seat = self.entries.input(packet.inputs.start).seat;
+        let player_slot = self.entries.input(packet.inputs.start).player_slot;
         let inputs = packet.inputs.clone().map(|index| {
             let input = self.entries.input(index);
             (input.stamp, input.payload)
         });
         let written = PlayerPacket {
-            seat,
+            player_slot,
             inputs,
             signature: &packet.signature,
         };
@@ -236,7 +236,7 @@ impl SessionLog {
         applied: &mut Vec<Applied>,
     ) -> Result<(), LogError> {
         let tick = self.next_tick();
-        let seat = Seat::new(take(rest)?);
+        let player_slot = PlayerSlot::new(take(rest)?);
         let count: u32 = take(rest)?;
         inputs.clear();
         for _ in 0..count {
@@ -246,7 +246,7 @@ impl SessionLog {
         }
         let signature = take(rest)?;
         let packet = PlayerPacket {
-            seat,
+            player_slot,
             inputs: inputs.iter().copied(),
             signature: &signature,
         };
@@ -314,14 +314,14 @@ impl SessionLog {
     }
 }
 
-/// Writes `packet`: its `u32` seat, its inputs as a `u32` count and each input's stamp and
+/// Writes `packet`: its `u32` player slot, its inputs as a `u32` count and each input's stamp and
 /// payload bytes, and its signature.
 pub(super) fn write_packet<'a>(
     out: &mut Vec<u8>,
     packet: PlayerPacket<'_, impl Iterator<Item = (Tick, &'a [u8])> + Clone>,
 ) {
     let count = u32::try_from(packet.inputs.clone().count()).expect("a packet's inputs fit u32");
-    put(out, &packet.seat.get());
+    put(out, &packet.player_slot.get());
     put(out, &count);
     for (stamp, payload) in packet.inputs {
         put(out, &stamp);
@@ -334,28 +334,31 @@ pub(super) fn write_packet<'a>(
 pub(super) fn take_header(rest: &mut &[u8]) -> Result<SessionHeader, LogError> {
     let terms: SessionTerms = take(rest)?;
     let count: u32 = take(rest)?;
-    let mut seats = Vec::new();
-    for seat in 0..count {
-        let plan = SeatPlan::try_from(take::<u8>(rest)?).map_err(|_| {
+    let mut player_slots = Vec::new();
+    for player_slot in 0..count {
+        let plan = PlayerSlotPlan::try_from(take::<u8>(rest)?).map_err(|_| {
             LogError::Header(HeaderError::UnknownStart {
-                seat: Seat::new(seat),
+                player_slot: PlayerSlot::new(player_slot),
             })
         })?;
         let start = match plan {
-            SeatPlan::Player => {
+            PlayerSlotPlan::Player => {
                 let json = take(rest)?;
                 let delegation = Delegation::parse(json).map_err(|error| {
                     LogError::Header(HeaderError::Delegation {
-                        seat: Seat::new(seat),
+                        player_slot: PlayerSlot::new(player_slot),
                         error,
                     })
                 })?;
-                SeatStart::player(delegation)
+                PlayerSlotStart::player(delegation)
             }
-            SeatPlan::Bot => SeatStart::Bot,
-            SeatPlan::Open => SeatStart::Open,
+            PlayerSlotPlan::Bot => PlayerSlotStart::Bot,
+            PlayerSlotPlan::Open => PlayerSlotStart::Open,
         };
-        seats.push(start);
+        player_slots.push(start);
     }
-    Ok(SessionHeader { terms, seats })
+    Ok(SessionHeader {
+        terms,
+        player_slots,
+    })
 }

@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, DeliveryShape};
+use campfire_actions::ActionTarget;
 use campfire_declarations::{CallbackTable, Callbacks};
 use campfire_math::Vec3;
 use campfire_sim::Capability;
@@ -30,10 +30,10 @@ impl Callbacks for Deliverers {
 }
 
 impl Deliverers {
-    /// How a delivery of `shape` sets out, which the match's capability of it declared.
-    pub fn of(&self, shape: DeliveryShape) -> Deliver {
+    /// How a delivery of `capability` sets out, which the match's capability declared.
+    pub fn of(&self, capability: Capability) -> Deliver {
         self.0
-            .get(shape.capability() as usize)
+            .get(capability as usize)
             .expect("the load refuses a delivery of a capability the match does not have")
     }
 }

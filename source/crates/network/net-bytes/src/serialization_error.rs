@@ -1,11 +1,10 @@
-use std::io;
-
-/// Errors that can occur during serialization or deserialization.
+/// Why bytes did not decode.
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SerializationError {
-    #[error(transparent)]
-    Io(#[from] io::Error),
+    /// Fewer bytes than the value takes.
+    #[error("the bytes end before the value does")]
+    Truncated,
     #[error("Invalid value")]
     InvalidValue,
     /// A value in an encoding longer than the one it takes.

@@ -19,7 +19,7 @@ fn a_shell_flies_its_weapons_speed_on_its_curve_and_hits_what_its_mask_names() {
         weapons.read(text.as_bytes()).unwrap();
         let object = ini.object(object.as_bytes()).unwrap();
         let flight = ObjectFlight::of(object, &locomotors).unwrap();
-        flight.projectile(weapons.get("W").unwrap(), object)
+        flight.projectile(weapons.get("W").unwrap(), object, &RulesNames::default())
     };
     let fired = |lines: &str| fired_by("TankShell", lines);
     let collides =
@@ -50,8 +50,11 @@ fn a_shell_flies_its_weapons_speed_on_its_curve_and_hits_what_its_mask_names() {
         "SMALL_MISSILES",
         "BALLISTIC_MISSILES",
     ] {
-        assert_eq!(collides(mask), Err(WeaponDrop::Collides), "{mask}");
+        assert_eq!(collides(mask), Err(WeaponDropCause::Collides), "{mask}");
     }
-    assert_eq!(fired("  WeaponSpeed = 0\n"), Err(WeaponDrop::BadNumber));
-    assert_eq!(fired_by("Steep", ""), Err(WeaponDrop::BadNumber));
+    assert_eq!(
+        fired("  WeaponSpeed = 0\n"),
+        Err(WeaponDropCause::BadNumber)
+    );
+    assert_eq!(fired_by("Steep", ""), Err(WeaponDropCause::BadNumber));
 }

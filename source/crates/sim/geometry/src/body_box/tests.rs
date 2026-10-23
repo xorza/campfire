@@ -32,7 +32,8 @@ impl Closer {
 impl BodyBox {
     /// Whether `position` lies inside the box at `center` or on its edge.
     fn holds(&self, center: Vec3, position: Vec3) -> bool {
-        self.frame().holds(flat(position) - flat(center))
+        self.frame()
+            .holds(Flat::ground(position) - Flat::ground(center))
     }
 }
 
@@ -54,7 +55,7 @@ fn halves(body: &BodyBox) -> [[i64; 2]; 2] {
 
 /// The box's corners at `center`, as a polygon.
 fn polygon(body: &BodyBox, center: Vec3) -> Polygon {
-    let at = flat(center);
+    let at = Flat::ground(center);
     let points = body.frame().corners().map(|corner| {
         (corner + at)
             .to_array()
@@ -68,7 +69,7 @@ fn distance(body: &BodyBox, center: Vec3, position: Vec3) -> i128 {
     let frame = body.frame();
     frame
         .nearest_to(
-            flat(position) - flat(center),
+            Flat::ground(position) - Flat::ground(center),
             &mut HalfDirections::new(frame),
         )
         .distance
@@ -302,7 +303,7 @@ fn the_nearest_point_lies_on_the_nearest_edge_or_corner() {
     assert_eq!(turned.nearest(center, point, Num::EPSILON), Ordering::Less);
     // Each coordinate rounds by half a bit at most, so the way to the point lies within a bit
     // of the exact distance, and the box's distance, rounded, within half a bit more.
-    let way = (flat(point) - flat(probe))
+    let way = (Flat::ground(point) - Flat::ground(probe))
         .length_squared()
         .nearest_root()
         .cast_signed();
@@ -667,12 +668,18 @@ fn check_point(body: &BodyBox, center: Vec3, probe: Vec3, reach: Num) {
         polygon(body, center).holds_point([probe.x, probe.z]),
         "{body:?} {probe:?}"
     );
-    let expected = if body.frame().holds_open(flat(probe) - flat(center)) {
+    let expected = if body
+        .frame()
+        .holds_open(Flat::ground(probe) - Flat::ground(center))
+    {
         Ordering::Less
     } else if holds {
         Num::ZERO.cmp(&reach)
     } else {
-        by_approaches(to_edges(body, flat(probe) - flat(center)), reach)
+        by_approaches(
+            to_edges(body, Flat::ground(probe) - Flat::ground(center)),
+            reach,
+        )
     };
     assert_eq!(
         body.nearest(center, probe, reach),
@@ -680,7 +687,8 @@ fn check_point(body: &BodyBox, center: Vec3, probe: Vec3, reach: Num) {
         "{body:?} {probe:?}"
     );
     let reach_bits = i128::from(reach.to_bits());
-    let within = Closer::new(body.frame(), reach_bits).holds_point(flat(probe) - flat(center));
+    let within = Closer::new(body.frame(), reach_bits)
+        .holds_point(Flat::ground(probe) - Flat::ground(center));
     assert_eq!(within, expected == Ordering::Less, "{body:?} {probe:?}");
     // The box grown by the reach holds every point closer than it; a grown box is none only past
     // the bound, which its corner, at most √2 times the reach farther, would pass.
@@ -692,7 +700,7 @@ fn check_point(body: &BodyBox, center: Vec3, probe: Vec3, reach: Num) {
         None => assert!(body.bound() + reach * 2 > MAX_BOUND, "{body:?} {reach:?}"),
     }
     // At both scales the shared terms decide as each edge's own measures do.
-    let off = flat(probe) - flat(center);
+    let off = Flat::ground(probe) - Flat::ground(center);
     for (frame, off, reach) in [
         (body.frame(), off, reach_bits),
         (body.frame_twice(), off * 2, reach_bits * 2),
@@ -806,7 +814,10 @@ fn by_edges(frame: Frame, off: Flat, reach: i128) -> Ordering {
 /// with the approaches of its ends to the edges and of the corners to it.
 fn check_path(body: &BodyBox, center: Vec3, from: Vec3, to: Vec3, reach: Num) {
     let approach = body.approach(center, from, to, reach);
-    let (start, path) = ((flat(from) - flat(center)), (flat(to) - flat(from)));
+    let (start, path) = (
+        (Flat::ground(from) - Flat::ground(center)),
+        (Flat::ground(to) - Flat::ground(from)),
+    );
     let case = format!("{body:?} {from:?} {to:?} {reach:?}");
     let comes_closer = body.comes_closer(center, from, to, reach);
     assert_eq!(comes_closer, approach.nearest == Ordering::Less, "{case}");
@@ -893,7 +904,7 @@ fn check_pair(body: &BodyBox, center: Vec3, other: &BodyBox, position: Vec3, rea
     } else if overlaps {
         Num::ZERO.cmp(&reach)
     } else {
-        let apart = flat(position) - flat(center);
+        let apart = Flat::ground(position) - Flat::ground(center);
         let ours = body
             .frame()
             .corners()

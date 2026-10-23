@@ -1,18 +1,30 @@
 use campfire_common::Tick;
 use campfire_sim::IdAllocator;
-use campfire_values::{ActionId, ModifierId, PackageIndex, Rank};
+use campfire_values::{ActionId, Allegiance, ModifierId, PackageIndex, Rank, Team};
 
 use super::*;
-use crate::scripts::call_start::Spent;
+use crate::scripts::call_start::{ActionCast, Spent};
 use crate::scripts::mode_scripts::ListPlace;
 
 #[test]
 fn a_call_draws_from_its_payers_pool_and_only_a_call_no_player_causes_waits() {
     let now = Tick::new(3);
     let unit = IdAllocator::default().allocate();
-    let slot = Seat::new(1);
+    let slot = PlayerSlot::new(1);
     let package = PackageIndex::MODE;
-    let cast = CallStart::cast(ActionId::new(0), Rank::FIRST, unit, package, now);
+    let cast = CallStart::cast(
+        ActionCast {
+            action: ActionId::new(0),
+            rank: Rank::FIRST,
+            caster: unit,
+            allegiance: Allegiance {
+                team: Team::new(0),
+                owner: None,
+            },
+            package,
+        },
+        now,
+    );
     let hook = CallStart::hook(ModifierId::new(0), package, 0, now);
     let mode = CallStart::mode(ScriptRole::Mode, now);
     let paid = |start: CallStart| CallStart {

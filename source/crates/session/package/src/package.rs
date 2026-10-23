@@ -6,9 +6,9 @@ use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;
 use crate::error::script_problem::ScriptProblem;
 use crate::files::package_header::PackageHeader;
-use crate::package_files::{PackageFiles, SCRIPTS};
-use crate::package_reader::PackageReader;
 use crate::package_text::PackageText;
+use campfire_package_format::PackageFiles;
+use campfire_package_format::PackageReader;
 
 /// A package as the load read it: its header, each of its scripts, its human text, and its files,
 /// whose index gives its fingerprint.
@@ -40,7 +40,7 @@ impl Package {
         let name = header.name.clone();
         let fail = |problem| LoadError::of(&name, problem);
         let mut scripts = Vec::new();
-        for path in files.files_under(SCRIPTS) {
+        for path in files.files_under(PackageFiles::SCRIPTS) {
             let source = files
                 .read_text(path)
                 .map_err(|error| fail(LoadProblem::Content(error)))?;

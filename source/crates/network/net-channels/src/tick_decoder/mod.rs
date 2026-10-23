@@ -1,34 +1,35 @@
-use campfire_net_bytes::{ReadInteger, Reader, SerializationError};
-use campfire_net_core::NetTick;
+use campfire_net_bytes::Reader;
+use campfire_net_core::{NetTick, Overstep, TickInstant};
 
-use crate::packet_error::PacketError;
+use crate::error::ReceiveError;
 use crate::tick_encoder::{LONG_TICK_MARK, SHORT_TICK_WINDOW};
 
-/// Reads each packet's tick, a short one as the nearest tick to the largest it read, as RFC 9000
-/// §A.3 reads a packet number.
+/// Reads each packet's sender instant: its tick, a short one as the nearest tick to the largest it
+/// read, as RFC 9000 §A.3 reads a packet number, then its overstep.
 #[derive(Debug, Default)]
 pub(crate) struct TickDecoder {
     largest: Option<NetTick>,
 }
 
 impl TickDecoder {
-    /// Reads the tick that starts `reader`; a short tick before any whole one breaks the
+    /// Reads the instant that starts `reader`; a short tick before any whole one breaks the
     /// protocol, as the sender sends none before the peer read one.
-    pub(crate) fn read(&mut self, reader: &mut Reader) -> Result<NetTick, PacketError> {
-        let first = reader.read_u8().map_err(SerializationError::from)?;
+    pub(crate) fn read(&mut self, reader: &mut Reader) -> Result<TickInstant, ReceiveError> {
+        let first = reader.read_u8()?;
         let tick = if first & LONG_TICK_MARK != 0 {
             if first != LONG_TICK_MARK {
-                return Err(PacketError::MalformedTick);
+                return Err(ReceiveError::MalformedTick);
             }
-            NetTick(reader.read_u32().map_err(SerializationError::from)?)
+            NetTick(reader.read_u32()?)
         } else {
-            let second = reader.read_u8().map_err(SerializationError::from)?;
+            let second = reader.read_u8()?;
             let short = u32::from(u16::from_be_bytes([first, second]));
-            let largest = self.largest.ok_or(PacketError::MalformedTick)?;
+            let largest = self.largest.ok_or(ReceiveError::MalformedTick)?;
             NetTick(nearest(largest.0, short))
         };
         self.largest = Some(self.largest.map_or(tick, |largest| largest.max(tick)));
-        Ok(tick)
+        let overstep = Overstep::from_u8(reader.read_u8()?);
+        Ok(TickInstant::from_tick_and_overstep(tick, overstep))
     }
 
     pub(crate) const fn reset(&mut self) {

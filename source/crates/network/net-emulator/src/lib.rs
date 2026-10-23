@@ -21,7 +21,6 @@ mod phase_mode;
 mod rate_limit;
 mod ready_buffer;
 mod side;
-mod wire_clock;
 
 pub use crate::direction_counts::DirectionCounts;
 pub use crate::duplex_model::DuplexModel;
@@ -36,7 +35,6 @@ pub use crate::phase::Phase;
 pub use crate::phase_mode::PhaseMode;
 pub use crate::rate_limit::RateLimit;
 pub use crate::side::Side;
-pub use crate::wire_clock::WireClock;
 
 #[cfg(feature = "internals")]
 pub mod internals {

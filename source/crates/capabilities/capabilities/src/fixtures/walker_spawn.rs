@@ -4,7 +4,7 @@ use campfire_navigation::Navigation;
 use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_units::internals::Spawn;
-use campfire_units::{BodyForm, Destination, MoveStep};
+use campfire_units::{BodyForm, BodyShape, Destination, Layer, MoveStep};
 use campfire_values::Team;
 
 /// A navigation test's unit of the mode's type `walker`, which `NavigationFixtures::walker_at`
@@ -15,12 +15,12 @@ pub struct WalkerSpawn {
     spawn: Spawn,
     angle: Num,
     form: Option<BodyForm>,
-    walk: Option<Walk>,
+    walk: Option<Stride>,
 }
 
 /// How a walker walks: `step` a tick, to `to`, or to nowhere.
 #[derive(Debug, Clone, Copy)]
-struct Walk {
+struct Stride {
     step: Num,
     to: Option<Vec3>,
 }
@@ -59,13 +59,16 @@ impl WalkerSpawn {
     /// With a circle's body of `radius`.
     #[must_use]
     pub fn circle(self, radius: impl Into<Num>) -> Self {
-        self.body(BodyForm::circle(radius.into()).unwrap())
+        self.body(BodyForm::new(
+            BodyShape::circle(radius.into()).unwrap(),
+            Layer::FIRST,
+        ))
     }
 
     /// Walking `step` a tick to `to`, or standing where it is with none.
     #[must_use]
     pub const fn walks(mut self, step: Num, to: Option<Vec3>) -> Self {
-        self.walk = Some(Walk { step, to });
+        self.walk = Some(Stride { step, to });
         self
     }
 
@@ -83,7 +86,7 @@ impl WalkerSpawn {
             (None, Some(walker)) => spawn.parts(walker).place(world),
             (None, None) => spawn.place(world),
         };
-        if let Some(Walk { to, .. }) = self.walk {
+        if let Some(Stride { to, .. }) = self.walk {
             *world.part_mut::<Destination>(id) = Destination::to(to);
         }
         id

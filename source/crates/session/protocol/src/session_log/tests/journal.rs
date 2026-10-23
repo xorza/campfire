@@ -113,16 +113,22 @@ fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
     // a packet, the result. No chain is durable before the log notes the synced records; once
     // the first two are, player 1's chain stands at their first packet, a and b, seq 1; once
     // all 8 are, at c, seq 2, the last, signed under their delegation.
-    let seat = Seat::new(1);
-    assert_eq!(journal.durable_head(seat), None);
+    let player_slot = PlayerSlot::new(1);
+    assert_eq!(journal.durable_head(player_slot), None);
     journal.advance_durable(1);
-    assert_eq!(journal.durable_head(seat), None);
+    assert_eq!(journal.durable_head(player_slot), None);
     journal.advance_durable(2);
-    assert_eq!(journal.durable_head(seat).map(|head| head.seq), Some(1));
+    assert_eq!(
+        journal.durable_head(player_slot).map(|head| head.seq),
+        Some(1)
+    );
     journal.advance_durable(6);
-    assert_eq!(journal.durable_head(seat).map(|head| head.seq), Some(1));
+    assert_eq!(
+        journal.durable_head(player_slot).map(|head| head.seq),
+        Some(1)
+    );
     journal.advance_durable(8);
-    let mut chain = InputChain::new(seat, root(1));
+    let mut chain = InputChain::new(player_slot, root(1));
     for (stamp, payload) in [(0, b"a"), (1, b"b"), (1, b"c")] {
         chain.extend(Tick::new(stamp), payload);
     }
@@ -131,16 +137,16 @@ fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
         seq: 2,
         head: chain.head(),
     };
-    assert_eq!(journal.durable_head(seat), Some(head));
-    assert_eq!(journal.durable_head(Seat::new(0)), None);
+    assert_eq!(journal.durable_head(player_slot), Some(head));
+    assert_eq!(journal.durable_head(PlayerSlot::new(0)), None);
 
     // The log the journal rebuilds, once its journal resumes, holds every chain durably.
     drop(journal);
     let journal = file.bytes();
     let rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
     let resumed = Journal::resume(&rebuilt, MemorySink::new().boxed(), len(journal.len()));
-    assert_eq!(resumed.durable_head(seat), Some(head));
-    assert_eq!(resumed.durable_head(Seat::new(0)), None);
+    assert_eq!(resumed.durable_head(player_slot), Some(head));
+    assert_eq!(resumed.durable_head(PlayerSlot::new(0)), None);
 }
 
 #[test]
@@ -154,8 +160,11 @@ fn a_renewal_forgets_where_the_chain_stands_durably() {
         .submit_to(&mut log, &mut applied, Some(&mut journal))
         .unwrap();
     journal.advance_durable(2);
-    let seat = Seat::new(1);
-    assert_eq!(journal.durable_head(seat).map(|head| head.seq), Some(1));
+    let player_slot = PlayerSlot::new(1);
+    assert_eq!(
+        journal.durable_head(player_slot).map(|head| head.seq),
+        Some(1)
+    );
 
     // Their renewal to session key 5: the head stays the old key's, which a receipt would name,
     // so none is durable; and none once the journal rebuilds the log either.
@@ -163,18 +172,18 @@ fn a_renewal_forgets_where_the_chain_stands_durably() {
         terms.session_key = session_key(5).x_only_public_key().0;
     });
     let renew = ServerInput::Renew {
-        seat,
+        player_slot,
         delegation: renewed,
     };
     serve_to(&mut log, renew, Some(&mut journal)).unwrap();
-    assert_eq!(journal.durable_head(seat), None);
+    assert_eq!(journal.durable_head(player_slot), None);
     journal.advance_durable(3);
-    assert_eq!(journal.durable_head(seat), None);
+    assert_eq!(journal.durable_head(player_slot), None);
     drop(journal);
     let journal = file.bytes();
     let rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
     let resumed = Journal::resume(&rebuilt, MemorySink::new().boxed(), len(journal.len()));
-    assert_eq!(resumed.durable_head(seat), None);
+    assert_eq!(resumed.durable_head(player_slot), None);
 }
 
 #[test]

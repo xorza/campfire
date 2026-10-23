@@ -1,11 +1,12 @@
 use campfire_actions::ActionData;
 use campfire_codec::StructFields;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_script::{
     ApiBuilder, ApiHolder, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberDecl, PlayerHandle,
     Status, Unit,
 };
 use campfire_values::{Block, TagProperty};
+use campfire_visibility::DataKind;
 
 use crate::build_data::BuildData;
 use crate::drop_off_data::DropOffData;
@@ -96,7 +97,7 @@ impl ProductionApi {
                     "what its living units and queued trains use of its supply",
                 ),
                 |ctx: &Ctx, player: &mut PlayerHandle| {
-                    Self::supply(ctx, player.seat(), SupplyCount::Used)
+                    Self::supply(ctx, player.player_slot(), SupplyCount::Used)
                 },
             )
             .bind(
@@ -106,14 +107,14 @@ impl ProductionApi {
                     "what its living, complete units give of supply, at most the mode's `max`",
                 ),
                 |ctx: &Ctx, player: &mut PlayerHandle| {
-                    Self::supply(ctx, player.seat(), SupplyCount::Cap)
+                    Self::supply(ctx, player.player_slot(), SupplyCount::Cap)
                 },
             );
     }
 
     /// `player`'s supply as the view read the match: the count `count` names.
-    fn supply(ctx: &Ctx, player: Seat, count: SupplyCount) -> Checked<i64> {
-        ctx.admit_seat(Some(player))?;
+    fn supply(ctx: &Ctx, player: PlayerSlot, count: SupplyCount) -> Checked<i64> {
+        ctx.view().admit_player(player, DataKind::Supply)?;
         let view = ctx.view();
         let supply = ProductionColumn::supply(view, player)
             .ok_or_else(|| ProductionRefusal::NoSupply.fail())?;

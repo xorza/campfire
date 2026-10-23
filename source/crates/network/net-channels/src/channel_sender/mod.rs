@@ -9,8 +9,6 @@ use crate::channel_mode::ChannelMode;
 use crate::channel_setup::ChannelSetup;
 use crate::channel_slots::ChannelSlots;
 use crate::channel_type_id::ChannelTypeId;
-use crate::compression_scratch::CompressionScratch;
-use crate::compression_setup::CompressionSetup;
 use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;
 use crate::message_ref::MessageRef;
@@ -20,7 +18,6 @@ use crate::send_message_key::SendMessageKey;
 use crate::single_body::SingleBody;
 use campfire_net_core::NetId;
 
-use crate::packet::MAX_FRAGMENTS;
 use crate::reliable_send_state::{ReliableDelivery, ReliableSendState};
 
 /// The sending half of one registered transport channel.
@@ -36,7 +33,7 @@ use crate::reliable_send_state::{ReliableDelivery, ReliableSendState};
 /// The private state enum contains only the queueing and acknowledgement state which differs
 /// between reliable and unreliable channels.
 #[derive(Debug)]
-pub struct ChannelSender {
+pub(crate) struct ChannelSender {
     channel_type_id: ChannelTypeId,
     channel_id: NetId,
     name: &'static str,
@@ -71,6 +68,8 @@ struct UnreliableSendState {
     delivery: UnreliableDelivery,
     /// The messages in buffering order; a key names one by its index here, for one flush.
     queue: VecDeque<Pending>,
+    /// The bytes of the messages of `queue`.
+    queued: usize,
     next_message_id: MessageId,
 }
 
@@ -145,36 +144,24 @@ impl ChannelSender {
         );
     }
 
-    /// The type-level channel key associated with this channel.
-    pub const fn channel_type_id(&self) -> ChannelTypeId {
-        self.channel_type_id
-    }
-
-    /// The compact channel identifier encoded on the wire.
-    pub const fn channel_id(&self) -> NetId {
-        self.channel_id
-    }
-
     /// The channel's type name, which diagnostics show.
-    pub const fn name(&self) -> &'static str {
+    pub(crate) const fn name(&self) -> &'static str {
         self.name
     }
 
-    /// The largest message this channel sends on a link of `fragment_len`, in uncompressed bytes:
-    /// its setting, or the `MAX_FRAGMENTS` fragments the link allows if fewer
-    /// (11-net-stack/transport.md, Each channel has a maximum message size).
-    pub const fn max_message_len(&self, fragment_len: usize) -> usize {
-        let fragmented = MAX_FRAGMENTS.saturating_mul(fragment_len);
-        if self.setup.max_message_len < fragmented {
-            self.setup.max_message_len
-        } else {
-            fragmented
-        }
+    /// The largest message this channel sends (11-net-stack/transport.md, Each channel has a
+    /// maximum message size).
+    pub(crate) const fn max_message_len(&self) -> usize {
+        self.setup.max_message_len
     }
 
-    /// The ordering and reliability mode implemented by this channel.
-    pub const fn mode(&self) -> ChannelMode {
-        self.setup.mode
+    /// The bytes of the messages the channel holds until it sends them, or on a reliable channel
+    /// until they are acknowledged.
+    pub(crate) const fn queued(&self) -> usize {
+        match &self.state {
+            SendState::Unreliable(state) => state.queued,
+            SendState::Reliable(state) => state.queued(),
+        }
     }
 
     /// Whether the transport tracks which packet carried each message, which only reliable
@@ -197,24 +184,10 @@ impl ChannelSender {
         message: Bytes,
         priority: f32,
         fragment_len: usize,
-        compression: CompressionSetup,
-        compression_scratch: &mut CompressionScratch,
     ) -> Option<MessageId> {
         match &mut self.state {
-            SendState::Unreliable(state) => state.buffer_send(
-                message,
-                priority,
-                fragment_len,
-                compression,
-                compression_scratch,
-            ),
-            SendState::Reliable(state) => state.buffer_send(
-                message,
-                priority,
-                fragment_len,
-                compression,
-                compression_scratch,
-            ),
+            SendState::Unreliable(state) => state.buffer_send(message, priority, fragment_len),
+            SendState::Reliable(state) => state.buffer_send(message, priority, fragment_len),
         }
     }
 
@@ -308,6 +281,7 @@ impl UnreliableSendState {
         Self {
             delivery,
             queue: VecDeque::new(),
+            queued: 0,
             next_message_id: MessageId(0),
         }
     }
@@ -317,24 +291,21 @@ impl UnreliableSendState {
         message: Bytes,
         priority: f32,
         fragment_len: usize,
-        compression: CompressionSetup,
-        compression_scratch: &mut CompressionScratch,
     ) -> Option<MessageId> {
+        if self.delivery == UnreliableDelivery::Sequenced {
+            // The receiver takes only the newest, so the message supersedes each one not started.
+            self.retain(QueuedMessage::is_started);
+        }
         let message_id = self.next_message_id;
         let is_fragmented = message.len() > fragment_len;
         let has_id = is_fragmented || self.delivery != UnreliableDelivery::Unordered;
 
         let message = if is_fragmented {
-            QueuedMessage::Fragmented(FragmentedMessage::split(
-                message_id,
-                message,
-                fragment_len,
-                compression,
-                compression_scratch,
-            ))
+            QueuedMessage::Fragmented(FragmentedMessage::split(message_id, message, fragment_len))
         } else {
             QueuedMessage::whole(SingleBody::new(has_id.then_some(message_id), message))
         };
+        self.queued += message.len();
         self.queue.push_back(Pending::new(message, priority));
 
         has_id.then(|| {
@@ -392,11 +363,22 @@ impl UnreliableSendState {
     /// a fragmented message it started, whose fragments the receiver waits for.
     fn end_send(&mut self, discard_unsent: bool) {
         if discard_unsent {
-            self.queue
-                .retain(|pending| pending.message.is_started() && !pending.message.is_sent());
+            self.retain(|message| message.is_started() && !message.is_sent());
         } else {
-            self.queue.retain(|pending| !pending.message.is_sent());
+            self.retain(|message| !message.is_sent());
         }
+    }
+
+    /// Keeps the messages `keep` takes, and counts the bytes of the others off.
+    fn retain(&mut self, keep: impl Fn(&QueuedMessage) -> bool) {
+        let queued = &mut self.queued;
+        self.queue.retain(|pending| {
+            let kept = keep(&pending.message);
+            if !kept {
+                *queued -= pending.message.len();
+            }
+            kept
+        });
     }
 }
 
@@ -453,9 +435,15 @@ impl SendTimer {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::channel_sender::{ChannelSender, SendState};
+    use crate::channel_type_id::ChannelTypeId;
     use crate::message_id::MessageId;
 
     impl ChannelSender {
+        /// The type-level channel key associated with this channel.
+        pub(crate) const fn channel_type_id(&self) -> ChannelTypeId {
+            self.channel_type_id
+        }
+
         /// The ids of the reliable messages not acknowledged yet; none for an unreliable channel.
         pub(crate) fn pending_reliable(&self) -> Vec<MessageId> {
             match &self.state {

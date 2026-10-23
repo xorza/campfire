@@ -8,16 +8,14 @@ use core::time::Duration;
 /// Setup to specify how delayed interpolation should behave
 #[derive(Resource, Clone, Copy, Debug, Reflect)]
 pub struct InterpolationSetup {
-    /// The minimum delay that we will apply for interpolation
-    /// This should be big enough so that the interpolated entity always has a server snapshot
-    /// to interpolate towards.
-    /// Set to 0.0 if you want to only use the Ratio
+    /// The least delay interpolation applies: big enough that an interpolated entity always has
+    /// a server snapshot to interpolate towards. [`Duration::ZERO`] leaves the delay to the ratio.
     pub min_delay: Duration,
     /// Base interpolation delay as a ratio of the server's replication interval.
     ///
     /// The effective delay also includes [`SyncSetup::jitter_multiple`] times the measured jitter
     /// and [`SyncSetup::jitter_margin`] simulation ticks.
-    /// Set to 0.0 if you want to only use the Delay
+    /// 0 leaves the delay to `min_delay`.
     pub send_interval_ratio: f32,
     pub sync: SyncSetup,
 }

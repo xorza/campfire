@@ -55,7 +55,7 @@ impl Units {
                 }
             }
             let collision = unit.data.section::<CollisionData>();
-            if spatial && collision.is_some_and(|collision| collision.form.is_box()) {
+            if spatial && collision.is_some_and(|collision| collision.shape.is_box()) {
                 return fail(UnitTypeError::BoxOnSpatial);
             }
         }

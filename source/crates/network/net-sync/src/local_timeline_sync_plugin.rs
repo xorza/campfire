@@ -80,8 +80,6 @@ impl LocalTimelineSyncPlugin {
         trace!(
             target: "campfire_net_debug::sync",
             kind = "relative_speed",
-            schedule = "Last",
-            sample_point = "Last",
             timeline = "LocalTimeline",
             tick = local_timeline.tick().0,
             base,
@@ -145,8 +143,6 @@ impl LocalTimelineSyncPlugin {
             trace!(
                 target: "campfire_net_debug::sync",
                 kind = "sync_adjustment",
-                schedule = "PostUpdate",
-                sample_point = "PostUpdate",
                 source = ?client,
                 timeline = "LocalTimeline",
                 local_tick = local_now.tick().0,
@@ -162,8 +158,6 @@ impl LocalTimelineSyncPlugin {
             trace!(
                 target: "campfire_net_debug::sync",
                 kind = "sync_sample",
-                schedule = "PostUpdate",
-                sample_point = "PostUpdate",
                 source = ?client,
                 timeline = "LocalTimeline",
                 local_tick = local_now.tick().0,
@@ -189,8 +183,6 @@ impl LocalTimelineSyncPlugin {
         trace!(
             target: "campfire_net_debug::sync",
             kind = "local_timeline_shift_apply",
-            schedule = "PostUpdate",
-            sample_point = "PostUpdate",
             timeline = "LocalTimeline",
             tick_span = trigger.delta,
             local_tick = local_timeline.tick().0,

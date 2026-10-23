@@ -7,7 +7,7 @@
 
 use crate::packet_kind::PacketKind;
 use crate::packet_message::PacketMessage;
-use crate::tick_encoder::LONG_TICK_LEN;
+use crate::tick_encoder::EncodedTick;
 use bytes::BytesMut;
 use campfire_net_bytes::VarInt;
 use campfire_net_payload::{DEFAULT_MTU, OutgoingPayload};
@@ -19,13 +19,11 @@ pub(crate) const MAX_FRAGMENTS: usize = 16_383;
 const MAX_FRAGMENT_CHANNEL_ID_BYTES: usize = VarInt::new(u16::MAX as u64).encoded_len();
 const MAX_FRAGMENT_ID_BYTES: usize = VarInt::new(MAX_FRAGMENTS as u64 - 1).encoded_len();
 const MAX_FRAGMENT_COUNT_BYTES: usize = VarInt::new(MAX_FRAGMENTS as u64).encoded_len();
-const INITIAL_FRAGMENT_COMPRESSION_BYTES: usize = 1;
 const FIXED_FRAGMENT_METADATA_BYTES: usize = MAX_FRAGMENT_CHANNEL_ID_BYTES
     + 2 // MessageId
     + MAX_FRAGMENT_ID_BYTES
-    + MAX_FRAGMENT_COUNT_BYTES
-    + INITIAL_FRAGMENT_COMPRESSION_BYTES;
-const FIXED_FRAGMENT_PACKET_BYTES: usize = LONG_TICK_LEN + FIXED_FRAGMENT_METADATA_BYTES;
+    + MAX_FRAGMENT_COUNT_BYTES;
+const FIXED_FRAGMENT_PACKET_BYTES: usize = EncodedTick::MAX_LEN + FIXED_FRAGMENT_METADATA_BYTES;
 
 /// The smallest payload which can carry a fragment packet with one byte of fragment.
 ///
@@ -42,7 +40,7 @@ pub(crate) const MIN_FRAGMENT_PAYLOAD: usize = FIXED_FRAGMENT_PACKET_BYTES
 /// message's fragments, so the two peers' links do not have to agree. Reserving the long tick and
 /// the largest identifier encodings ensures every fragment produced at this size fits even for
 /// long-running packet sessions and very large logical messages.
-pub const fn fragment_len_for_max_payload(max_payload: usize) -> Option<usize> {
+pub(crate) const fn fragment_len_for_max_payload(max_payload: usize) -> Option<usize> {
     let Some(available) = max_payload.checked_sub(FIXED_FRAGMENT_PACKET_BYTES) else {
         return None;
     };
@@ -78,10 +76,6 @@ pub(crate) struct Packet {
     pub(crate) kind: PacketKind,
     /// One entry per staged message.
     pub(crate) messages: Vec<PacketMessage>,
-    pub(crate) compression: Option<PacketCompressionInfo>,
-    /// The body compressed, but not to fewer bytes or not within its room, so it goes
-    /// uncompressed.
-    pub(crate) compression_abandoned: bool,
 }
 
 impl Packet {
@@ -107,10 +101,14 @@ impl Packet {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct PacketCompressionInfo {
-    pub(crate) original_len: usize,
-    pub(crate) compressed_len: usize,
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::packet::fragment_len_for_max_payload;
+
+    /// The fragment size of a link whose packets carry at most `max_payload` bytes.
+    pub const fn fragment_len(max_payload: usize) -> Option<usize> {
+        fragment_len_for_max_payload(max_payload)
+    }
 }
 
 #[cfg(test)]

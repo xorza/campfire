@@ -17,7 +17,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::ActionsSystems;
 use campfire_declarations::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, ServerForm,
+    ById, ClientForm, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, ServerForm,
     SetPlace, StateFields,
 };
 use campfire_math::Num;
@@ -27,16 +27,16 @@ use campfire_sim::{
     Capability, MatchRate, SimEdgeSystems, SimSystems, SimTick, SimWorld, StableId,
 };
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, Due, ModifierNames, Owner, PoolId, PoolNames, SpawnCallbacks,
-    StatNames, UnitGrid, UnitSteps, UnitsSystems,
+    BodyUnit, Dead, DeclaredTags, Due, Owner, PoolId, SpawnCallbacks, StatId, UnitGrid, UnitSteps,
+    UnitsSystems,
 };
-use campfire_values::{ActionId, ModifierId, Rank, Tag};
+use campfire_values::{ActionId, ModifierId, Rank, Tag, UnitType};
 
 use crate::action_params::ActionParams;
 use crate::action_passives::ActionPassives;
 use crate::application::{Adding, ApplyAt};
-use crate::aura_carriers::AuraCarriers;
 use crate::modifier_adds::ModifierAdd;
+use crate::modifier_carriers::ModifierCarriers;
 use crate::modifier_intervals::{IntervalDue, OnInterval};
 use crate::player_grants::PlayerGrants;
 use crate::stats_column::RowReads;
@@ -46,7 +46,6 @@ mod action_passives;
 mod application;
 mod applier;
 mod applier_param;
-mod aura_carriers;
 mod carried_mut;
 mod error;
 mod grant_pass;
@@ -66,6 +65,7 @@ mod mode_stats_data;
 mod modifier_adds;
 mod modifier_appliers;
 mod modifier_book;
+mod modifier_carriers;
 mod modifier_data;
 mod modifier_dues;
 mod modifier_effect_data;
@@ -124,7 +124,7 @@ pub use crate::error::{
     StatGraphError, StatsRefusal, UnitStartError, Way,
 };
 pub use crate::grant_pass::GrantPass;
-pub use crate::grants::{Grant, GrantChange, GrantFrom, Grants, GrantsIter, UnitGrants};
+pub use crate::grants::{Grant, GrantChange, GrantFrom, Grants, GrantsIter, UnitGrants, UnitRun};
 pub use crate::held_modifiers::{Held, HeldModifiers};
 pub use crate::held_pass::HeldPass;
 pub use crate::instance::{Instance, StackEnd, StatShare};
@@ -143,7 +143,7 @@ pub use crate::modifier_data::{AuraData, ModifierData, Reapply};
 pub use crate::modifier_effect_data::ModifierEffectData;
 pub use crate::modifier_ends::ModifierEnds;
 pub use crate::modifier_events::ModifierEvents;
-pub use crate::modifier_handle::{HandleData, HandleOf, ModifierHandle};
+pub use crate::modifier_handle::{HandleData, HandleOf, HandleSetup, ModifierHandle};
 pub use crate::modifier_hooks::{ModifierHook, ModifierHooks};
 pub use crate::modifier_intervals::ModifierIntervals;
 pub use crate::modifier_param_table::ModifierParamTable;
@@ -297,7 +297,7 @@ impl Module for Stats {
         d.component::<Pools>();
         d.scratch::<HeldModifiers>();
         d.scratch::<Grants>();
-        d.cache::<AuraCarriers>();
+        d.cache::<ModifierCarriers>();
         d.cache::<LiveCarriers>();
         d.derived::<UnitStats>();
         d.part::<Player, PlayerModifiers>(|_| Some(PlayerModifiers::default()));
@@ -316,14 +316,14 @@ impl Module for Stats {
         d.rule(ModifierWays::rule);
         d.extend::<StatGraph>(ModifierWays::stat_edges);
         d.extend::<NamedScripts>(ModifierWays::named_scripts);
-        d.fact::<ModifierNames>(ModifierBook::names_fact);
+        d.names::<ModifierId>(ModifierBook::name_table);
         d.fact::<ModifierParamTable>(ModifierParamTable::build);
         d.fact::<StatGraph>(StatGraph::build);
         d.rule(StatGraph::rule);
         d.book::<StatBook>(StatBook::build);
-        d.fact::<StatNames>(StatBook::names_fact);
+        d.names::<StatId>(StatBook::name_table);
         d.fact::<UnitSteps>(StatBook::unit_steps);
-        d.fact::<PoolNames>(ModePoolsData::names);
+        d.names::<PoolId>(ModePoolsData::names);
         d.rule(ModePoolsData::rule);
         d.book::<PoolBook>(PoolBook::build);
         d.fact::<TypePools>(TypePools::build);
@@ -332,8 +332,8 @@ impl Module for Stats {
         d.call_params::<StatsCall>();
         d.api(StatsApi::register);
         d.hook::<OnInterval>(Status::Runs(ApiVersion::FIRST));
-        d.book::<ByType<Pools>>(TypePools::pools);
-        d.book::<ByType<TypePassive>>(TypePassive::book);
+        d.book::<ById<UnitType, Pools>>(TypePools::pools);
+        d.book::<ById<UnitType, TypePassive>>(TypePassive::book);
         d.callback::<SpawnCallbacks>(Capability::Stats, TypePassive::grant);
         d.part::<BodyUnit, Level>(|_| Some(Level::default()));
         d.observer(Level::raise);
@@ -381,12 +381,12 @@ impl Module for Stats {
         cx.by_role(
             StatsSystems::Hold,
             (
-                AuraCarriers::track,
+                ModifierCarriers::track,
                 UnitGrid::before_reading(HeldPass::run::<ServerForm>),
             )
                 .chain(),
             (
-                AuraCarriers::track,
+                ModifierCarriers::track,
                 UnitGrid::before_reading(HeldPass::run::<ClientForm>),
             )
                 .chain(),
@@ -516,12 +516,11 @@ pub mod internals {
     use campfire_sim::{MatchRate, SimWorld, StableId};
     use campfire_units::{Life, ScriptBook, StatId, UnitTypeBook, Units};
     use campfire_values::{
-        ActionId, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet, UnitType,
+        ActionId, ModifierId, NameId, Names, PackageIndex, Param, Stat, TagSet, UnitType,
     };
 
     use crate::Stats;
     use crate::applier::Applier;
-    use crate::lifetime::Hold;
     use crate::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
     use crate::modifier_data::ModifierData;
     use crate::modifiers::Modifiers;
@@ -540,25 +539,14 @@ pub mod internals {
                 .named((package, name))
         }
 
-        /// Gives `target` the modifier `id` from `source`, by `action` at `rank`, and a passive
-        /// when `passive`, as an application in the running tick would.
+        /// Gives `target` the modifier `id` as `applier` applies it, as an application in the
+        /// running tick would.
         pub fn give_modifier(
             world: &mut World,
             target: StableId,
             id: ModifierId,
-            from: Option<(StableId, Option<ActionId>, u8)>,
-            passive: bool,
+            applier: Applier,
         ) {
-            let (source, action, rank) = from.map_or((None, None, 1), |(source, action, rank)| {
-                (Some(source), action, rank)
-            });
-            let rank = Rank::new(rank).expect("a modifier is given at a rank");
-            let applier = Applier {
-                source,
-                action,
-                rank,
-                hold: passive.then_some(Hold::Passive),
-            };
             let add = StatsEffect::Add {
                 target,
                 id,

@@ -4,7 +4,7 @@
 use bevy_app::App;
 use campfire_actions::SlotTimes;
 use campfire_bots::OrderScript;
-use campfire_common::Tick;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup, LinkLayout};
@@ -63,7 +63,7 @@ impl Downtime {
 
 /// Plays the match of `setup` and checks it; gives each client's rollbacks.
 fn play(setup: InProcessSetup) -> [u32; 2] {
-    let link = setup.link.clone();
+    let link = setup.link().clone();
     let mut local = InProcessMatch::new(setup);
     local.start_match();
     let heroes = [local.avatar(0), local.avatar(1)];
@@ -550,12 +550,13 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     ends(&mut local, away);
     // A stall of the whole host for 17 ticks, as the CI run's macOS runner stalled the server and
     // both bots for 0.55 s: the server runs the 17 it missed, and each client's virtual clock
-    // gives it 250 ms of them, its `max_delta`, 7.5 ticks, 9.5 fewer than the server ran. Of the
-    // 12 orders a client sends from then on, one each 5 frames, the first goes out in its first
-    // frame, before the third sample of its deficit, and takes effect 5 ticks late; then its input
-    // timeline steps to its objective, and each later order takes effect in the tick it was
-    // stamped for (11-net-stack/time.md, A client behind steps, a client ahead slews). A
-    // timeline that slews its deficit sends each of them late, by 5 ticks to 2.
+    // gives it 250 ms of them, its `max_delta`, 7.5 ticks, 9.5 fewer than the server ran. Its
+    // input timeline steps to its objective at the first sample of the deficit, and its first
+    // frame's order goes out stamped for that frame's last tick, so each of the 12 orders a client
+    // sends from then on, one each 5 frames, takes effect in the tick it was stamped for
+    // (11-net-stack/time.md, A client behind steps, a client ahead slews; 11-net-stack/time.md,
+    // An input is stamped for the frame's last tick). A timeline that slews its deficit sends each
+    // of them late, by 5 ticks to 2.
     let stalled = local.next_tick(End::Server);
     local.stall_host(17);
     for frame in 0..60 {
@@ -570,10 +571,47 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
         .filter(|input| input.stamp.get() >= stalled)
         .map(|input| input.tick.get() - input.stamp.get())
         .collect();
-    let mut expected = vec![5, 5];
-    expected.resize(2 * 12, 0);
-    assert_eq!(late, expected);
+    assert_eq!(late, [0; 2 * 12]);
     ends(&mut local, targets);
+}
+
+#[test]
+fn a_client_frame_of_many_ticks_sends_its_inputs_in_time() {
+    // Client 0 orders its hero on, then stalls 5 ticks, 167 ms, while the server runs on time, and
+    // runs the ticks it missed in one frame, as a slow runner's client does, 12 times over: the
+    // order goes out stamped for the frame's last tick, the one it predicts, so no stall spends
+    // its lead, and every input takes effect in the tick it was stamped for.
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
+        LinkModel::perfect(),
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.start_match();
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
+    while local.next_tick(End::Server) < 70 {
+        local.step();
+    }
+    for at in 0..12_i16 {
+        let to = GroundPoint {
+            x: Num::int((at % 3).into()),
+            z: Num::int(-2),
+        };
+        local.order(0, OrdersDirective::Move { to });
+        local.stall_client(0, 5);
+        for _ in 0..10 {
+            local.step();
+        }
+    }
+    let ordered = local.applied_inputs();
+    let ordered: Vec<_> = ordered
+        .iter()
+        .filter(|input| input.player_slot == PlayerSlot::new(0) && input.stamp.get() > 70)
+        .collect();
+    assert_eq!(ordered.len(), 12);
+    let late: Vec<_> = ordered
+        .iter()
+        .filter(|input| input.tick != input.stamp)
+        .collect();
+    assert!(late.is_empty(), "{late:?}");
 }
 
 #[test]
@@ -588,10 +626,10 @@ fn a_1v1_through_delayed_links() {
     // 3 steps each way and up to 2 more: the orders still land in time, and each client still
     // corrects only for its hero's death. Seed 5's jitter brings a client's first sealed datagram
     // to the server before its handshake's end, which the server holds for the packet session.
-    let setup = InProcessSetup {
-        seed: 5,
-        ..InProcessSetup::duo(InProcessSetup::DELAYED_LINK, InProcessMatch::SEED_CHAIN)
-    };
+    let setup = InProcessSetup::duo(InProcessSetup::DELAYED_LINK, InProcessMatch::SEED_CHAIN)
+        .into_builder()
+        .seed(5)
+        .build();
     let rollbacks = play(setup);
     assert_eq!(rollbacks, [1, 1]);
 }
@@ -613,10 +651,10 @@ fn a_match_plays_the_same_however_the_server_lays_its_links_out() {
     // plays the east, and the log of the first 100 ticks, whose two orders of tick 60 arrive in
     // one frame, is the same.
     let played = |links: LinkLayout| {
-        let setup = InProcessSetup {
-            links,
-            ..InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN)
-        };
+        let setup = InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN)
+            .into_builder()
+            .links(links)
+            .build();
         let mut local = InProcessMatch::new(setup);
         local.start_match();
         let teams = local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);

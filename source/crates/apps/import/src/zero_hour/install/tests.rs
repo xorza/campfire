@@ -1,3 +1,4 @@
+use campfire_store::DurableFile;
 use campfire_store::internals::TestDir;
 
 use super::*;
@@ -31,18 +32,11 @@ fn an_install_reads_each_file_from_the_first_archive_that_holds_it() {
         install.read(&ArchivePath::of("base.ini")).unwrap(),
         b"base only"
     );
-    let texture = |path: &str, kind| InstallTexture {
-        path: ArchivePath::of(path),
-        kind,
-    };
-    assert_eq!(
-        install.textures(),
-        [
-            texture("art\\terrain\\tsand.tga", TextureKind::Tga),
-            texture("art\\textures\\rock.dds", TextureKind::Dds),
-            texture("art\\textures\\sign.tga", TextureKind::Tga),
-        ]
-    );
+    // A texture's format by its extension, of any case as a key folds it; another file is none.
+    let kind = |path: &str| TextureKind::of(&ArchivePath::of(path));
+    assert_eq!(kind("art\\textures\\Rock.DDS"), Some(TextureKind::Dds));
+    assert_eq!(kind("art\\textures\\sign.tga"), Some(TextureKind::Tga));
+    assert_eq!(kind("data\\ini\\object.ini"), None);
     // The language directory whose `Art` the archives hold; the object INI files in the game's
     // order: the default file, then the file, its directory's files, and its directories'
     // below.
@@ -67,7 +61,7 @@ fn an_install_reads_each_file_from_the_first_archive_that_holds_it() {
     );
     assert!(matches!(
         install.read(&ArchivePath::of("missing.ini")),
-        Err(ZeroHourError::NotInArchives(path)) if path == "missing.ini"
+        Err(ZeroHourError::NotInArchives(path)) if path.as_str() == "missing.ini"
     ));
     // Each archive's hash, in the load order.
     let hashed = install.hashed().unwrap();
@@ -85,14 +79,19 @@ fn an_install_reads_each_file_from_the_first_archive_that_holds_it() {
     })
     .collect();
     assert_eq!(hashed, expected);
-    // The install holds no archive open, so another program may replace one; a read of it
-    // then is refused, as its length is another, and a read of another archive is not. A
-    // second language directory with `Art` leaves the importer unable to tell which one the
-    // game reads.
-    test_dir.write("zh/c.BIG", big(&[("Data\\German\\Art\\W3D\\x.w3d", b"x")]));
-    let changed = test_dir.path("zh/c.BIG");
+    // The install holds each archive open: another program's file of its name takes the name
+    // where a rename replaces an open file, and is refused where it does not, as on Windows;
+    // either way a read and the hash are still of the bytes it opened.
+    let german = big(&[("Data\\German\\Art\\W3D\\x.w3d", b"x")]);
+    DurableFile::write(&test_dir.path("zh/c.BIG"), &german).ok();
+    assert_eq!(install.read(&ArchivePath::of("c.ini")).unwrap(), b"c");
+    assert_eq!(install.hashed().unwrap(), expected);
+    // A write into an archive it holds open changes it: a read of it is then refused, and a read
+    // of another archive is not.
+    let changed = test_dir.path("zh/b.big");
+    test_dir.append("zh/b.big", b"more");
     assert!(matches!(
-        install.read(&ArchivePath::of("c.ini")),
+        install.read(&ArchivePath::of("b\\B.INI")),
         Err(ZeroHourError::ArchiveChanged { archive }) if archive == changed
     ));
     assert!(matches!(
@@ -100,6 +99,10 @@ fn an_install_reads_each_file_from_the_first_archive_that_holds_it() {
         Err(ZeroHourError::ArchiveChanged { .. })
     ));
     assert_eq!(install.read(&ArchivePath::of("data/A.ini")).unwrap(), b"A1");
+    // A second language directory with `Art` leaves the importer unable to tell which one the
+    // game reads; the install is closed first, as Windows replaces no file a program holds open.
+    drop(install);
+    test_dir.write("zh/c.BIG", german);
     assert!(matches!(
         Install::open(&test_dir.path("zh")).unwrap().language(),
         Err(ZeroHourError::Languages(languages)) if languages == ["english", "german"]
@@ -133,6 +136,19 @@ fn an_archive_the_game_cannot_read_fails_the_install() {
             "{error:?}"
         );
     }
+    // A root under a link keeps the path it is given; a root that is a link opens by its
+    // target, every link of the target's path followed, as a temporary directory's is on macOS.
+    let test_dir = TestDir::new();
+    test_dir.write("real/zh/x.big", b"BIG");
+    test_dir.link_dir("real", "up");
+    test_dir.link_dir("real/zh", "zh");
+    let archive_of = |root: &str| match Install::open(&test_dir.path(root)) {
+        Err(ZeroHourError::Archive { archive, .. }) => archive,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(archive_of("up/zh"), test_dir.path("up/zh/x.big"));
+    let target = DirEntries::link_target(&test_dir.path("real/zh")).unwrap();
+    assert_eq!(archive_of("zh"), target.join("x.big"));
     // Two archives of one path to the game, its case aside, as a changed `INIZH.BIG` beside
     // the genuine `INIZH.big`: the game reads one, so the import reads neither. A file
     // system that folds case, as Windows' and macOS's do, holds one file of the two names,

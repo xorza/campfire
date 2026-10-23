@@ -3,6 +3,7 @@ use super::*;
 use bevy_app::App;
 use bevy_app::PreUpdate;
 
+use bevy_time::Real;
 use bevy_time::Time;
 use bevy_time::Virtual;
 use campfire_net_sync::LinkEstimate;
@@ -15,11 +16,6 @@ use campfire_net_core::NetTick;
 use campfire_net_timeline::TimelineRate;
 
 use crate::interpolation_timeline_plugin::InterpolationTimelinePlugin;
-use crate::synced_interpolation_timeline::SyncedInterpolationTimeline;
-use bevy_app::Update;
-
-#[derive(Debug, Resource, Default)]
-struct SyncedParamRuns(u8);
 
 /// A controller reset keeps the cursor at tick 7; a link reset also clears the cursor
 /// and the send interval.
@@ -62,46 +58,38 @@ fn the_interpolation_objective_trails_the_remote_by_its_margin() {
     assert_eq!(objective, TickInstant::from(NetTick(97)));
 }
 
+/// The timeline advances by the frame's real time, clamped as the virtual time is, and not at
+/// the virtual time's speed, which the local timeline's synchronization sets; a virtual time at
+/// speed 0 or paused holds it. At 64 Hz a tick is 15.625 ms.
 #[test]
-fn the_synced_interpolation_timeline_waits_for_its_sync() {
-    fn require_synced_timeline(
-        timeline: SyncedInterpolationTimeline<'_, '_>,
-        mut runs: ResMut<'_, SyncedParamRuns>,
-    ) {
-        let _ = timeline.now();
-        runs.0 += 1;
-    }
+fn the_interpolation_timeline_advances_by_the_clamped_real_time() {
+    let tick = Duration::from_micros(15_625);
+    let advance = |speed: f32, paused: bool, real_delta: Duration| {
+        let mut app = App::new();
+        let mut virtual_time = Time::<Virtual>::default();
+        virtual_time.set_relative_speed(speed);
+        if paused {
+            virtual_time.pause();
+        }
+        let mut real = Time::<Real>::default();
+        real.update_with_duration(Duration::ZERO);
+        real.update_with_duration(real_delta);
+        bevy_time::update_virtual_time(&mut Time::default(), &mut virtual_time, &real);
+        app.insert_resource(virtual_time);
+        app.insert_resource(real);
+        app.insert_resource(TimelineRate(TickRate::try_from(64).unwrap()));
+        app.add_systems(PreUpdate, InterpolationTimelinePlugin::advance_timeline);
+        app.init_resource::<InterpolationTimeline>();
+        app.update();
+        app.world().resource::<InterpolationTimeline>().now()
+    };
+    let at = |ticks: u32| TickInstant::from(NetTick(ticks));
 
-    let mut app = App::new();
-    app.init_resource::<InterpolationTimeline>();
-    app.init_resource::<SyncedParamRuns>();
-    app.add_systems(Update, require_synced_timeline);
-
-    app.update();
-    assert_eq!(app.world().resource::<SyncedParamRuns>().0, 0);
-
-    app.world_mut()
-        .resource_mut::<InterpolationTimeline>()
-        .set_synced(true);
-
-    app.update();
-    assert_eq!(app.world().resource::<SyncedParamRuns>().0, 1);
-}
-
-#[test]
-fn a_paused_virtual_time_holds_the_interpolation_timeline() {
-    let mut app = App::new();
-    let mut virtual_time = Time::<Virtual>::default();
-    virtual_time.set_relative_speed(0.0);
-    app.insert_resource(virtual_time);
-    app.insert_resource(TimelineRate(TickRate::try_from(64).unwrap()));
-    app.add_systems(PreUpdate, InterpolationTimelinePlugin::advance_timeline);
-
-    app.init_resource::<InterpolationTimeline>();
-    let before = app.world().resource::<InterpolationTimeline>().now();
-
-    app.update();
-
-    let after = app.world().resource::<InterpolationTimeline>().now();
-    assert_eq!(after, before);
+    // Two ticks of real time, whatever the virtual speed.
+    assert_eq!(advance(1.0, false, tick * 2), at(2));
+    assert_eq!(advance(2.0, false, tick * 2), at(2));
+    // 500 ms of real time clamps to the virtual time's 250 ms: 250 / 15.625 = 16 ticks.
+    assert_eq!(advance(1.0, false, Duration::from_millis(500)), at(16));
+    assert_eq!(advance(0.0, false, tick * 2), at(0));
+    assert_eq!(advance(1.0, true, tick * 2), at(0));
 }

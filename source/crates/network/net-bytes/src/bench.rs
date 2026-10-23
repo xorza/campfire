@@ -8,7 +8,7 @@ use campfire_measure::Scale;
 use criterion::{BatchSize, BenchmarkId, Criterion};
 use std::hint::black_box;
 
-use crate::reader::{ReadVarInt, Reader};
+use crate::reader::Reader;
 use crate::var_int::VarInt;
 use crate::writer::{WriteInteger, Writer};
 

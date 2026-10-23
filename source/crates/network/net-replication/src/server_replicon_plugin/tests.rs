@@ -2,7 +2,7 @@ use super::*;
 use bevy_ecs::error;
 use bevy_replicon::shared::backend::connected_client::NetworkIdMap;
 use bevy_state::app::StatesPlugin;
-use campfire_net_channels::fragment_len_for_max_payload;
+use campfire_net_channels::internals::fragment_len;
 use campfire_net_connection::NetworkingState;
 use campfire_net_connection::RemoteId;
 use campfire_net_connection::Stopped;
@@ -42,14 +42,11 @@ fn a_connected_clients_max_len_is_the_transports_fragment_len() {
         app.world_mut().entity_mut(entity).insert(Connected);
         assert_eq!(
             app.world().get::<ConnectedClient>(entity).unwrap().max_size,
-            fragment_len_for_max_payload(max_payload).unwrap(),
+            fragment_len(max_payload).unwrap(),
             "{max_payload}"
         );
     }
-    assert_ne!(
-        fragment_len_for_max_payload(256),
-        fragment_len_for_max_payload(200)
-    );
+    assert_ne!(fragment_len(256), fragment_len(200));
 }
 
 /// Peer ids of each kind whose bits can be equal, `Entity(1)`, the address of port 1 and

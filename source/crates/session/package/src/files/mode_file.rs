@@ -2,6 +2,7 @@ use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
 use campfire_declarations::UnitDefaults;
 use campfire_mode::ModeData;
+use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -13,7 +14,7 @@ use crate::files::script_list::ScriptOrder;
 /// the mode's own data, and its actions and modifiers, which its content holds beside the unit
 /// types of `data/units.toml`.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ModeFile {
+pub struct ModeFile {
     pub(crate) scripts: ScriptOrder,
     pub(crate) bots: BotList,
     pub(crate) defaults: UnitDefaults,
@@ -22,6 +23,11 @@ pub(crate) struct ModeFile {
 }
 
 impl ModeFile {
+    /// Where a mode's package holds it.
+    pub fn path() -> PackagePath {
+        PackagePath::parse("data/mode.toml").expect("a package path")
+    }
+
     /// The key of the defaults of its unit types' sections.
     const DEFAULTS: &'static str = "defaults";
 }

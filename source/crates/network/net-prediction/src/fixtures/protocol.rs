@@ -3,12 +3,11 @@ use bevy_app::{App, Plugin};
 use bevy_curve::{Curve, Ease, FunctionCurve, Interval};
 use bevy_ecs::component::Component;
 use bevy_reflect::Reflect;
-use campfire_net_interpolation::AppInterpolationExt;
-use campfire_net_interpolation::FrameInterpolationPlugin;
+use campfire_net_frame_interpolation::{
+    AppFrameInterpolationExt, FrameInterpolationPlugin, FrameRule, InterpolationSampleCx,
+};
 use campfire_net_interpolation::InterpolationFns;
 use campfire_net_interpolation::InterpolationRegistrationExt;
-use campfire_net_interpolation::InterpolationRule;
-use campfire_net_interpolation::InterpolationSampleCx;
 use campfire_net_interpolation::internals::CompFull;
 use campfire_net_replication::AppComponentExt;
 use campfire_net_replication::Diffable;
@@ -52,38 +51,11 @@ macro_rules! correction_component {
 }
 
 correction_component!(CompCorr);
-correction_component!(CompCorrectionBundleA);
-correction_component!(CompCorrectionBundleB);
-correction_component!(CompMixedCorrectionBundleA);
-correction_component!(CompMixedCorrectionBundleB);
+correction_component!(ShownCorr);
 
-/// Offsets each member and adds the sample's interval, so a test tells the bundle's output from
-/// each member's own.
-pub fn correction_bundle_lerp(
-    start: (&CompCorrectionBundleA, &CompCorrectionBundleB),
-    end: (&CompCorrectionBundleA, &CompCorrectionBundleB),
-    cx: InterpolationSampleCx,
-) -> (CompCorrectionBundleA, CompCorrectionBundleB) {
-    let sample_delta_secs = cx.sample_delta_secs.unwrap_or_default();
-    (
-        CompCorrectionBundleA(100.0 + start.0.0 + (end.0.0 - start.0.0) * cx.t + sample_delta_secs),
-        CompCorrectionBundleB(200.0 + start.1.0 + (end.1.0 - start.1.0) * cx.t + sample_delta_secs),
-    )
-}
-
-/// Writes the sum into the corrected member, and a constant into the other, so a test sees a
-/// correction that fails to restore the bundle's output.
-pub fn mixed_correction_bundle_lerp(
-    start: (&CompMixedCorrectionBundleA, &CompMixedCorrectionBundleB),
-    end: (&CompMixedCorrectionBundleA, &CompMixedCorrectionBundleB),
-    cx: InterpolationSampleCx,
-) -> (CompMixedCorrectionBundleA, CompMixedCorrectionBundleB) {
-    let a = start.0.0 + (end.0.0 - start.0.0) * cx.t;
-    let b = start.1.0 + (end.1.0 - start.1.0) * cx.t;
-    (
-        CompMixedCorrectionBundleA(a + b + cx.sample_delta_secs.unwrap_or_default()),
-        CompMixedCorrectionBundleB(10_000.0),
-    )
+/// The visual of `CompCorr`: its linear blend between the last two ticks.
+pub fn show_corr(start: &CompCorr, end: &CompCorr, cx: InterpolationSampleCx) -> ShownCorr {
+    ShownCorr(start.0 + (end.0 - start.0) * cx.t)
 }
 
 /// The prediction layer's test protocol: predicted, corrected and local-rollback components.
@@ -98,56 +70,12 @@ impl Plugin for PredictionProtocolPlugin {
         app.register_component::<CompPredictionOnly>()
             .replicate()
             .predict();
-        app.register_component::<CompCorrectionBundleA>()
-            .replicate()
-            .predict()
-            .correct_linear::<CompCorrectionBundleA>();
-        app.register_component::<CompCorrectionBundleB>()
-            .replicate()
-            .predict()
-            .correct_linear::<CompCorrectionBundleB>();
-        app.register_interpolation_rule::<CompCorrectionBundleA, ()>(InterpolationRule::new(
-            InterpolationFns::no_history(
-                |_: &CompCorrectionBundleA, _: &CompCorrectionBundleA, _: f32| {
-                    CompCorrectionBundleA(1_000.0)
-                },
-            ),
-        ));
-        app.register_interpolation_rule::<CompCorrectionBundleB, ()>(InterpolationRule::new(
-            InterpolationFns::no_history(
-                |_: &CompCorrectionBundleB, _: &CompCorrectionBundleB, _: f32| {
-                    CompCorrectionBundleB(2_000.0)
-                },
-            ),
-        ));
-        app.register_bundle_interpolation_rule::<(CompCorrectionBundleA, CompCorrectionBundleB), ()>(InterpolationRule::new(InterpolationFns::no_history_with_cx(correction_bundle_lerp)));
-        app.register_component::<CompMixedCorrectionBundleA>()
-            .replicate()
-            .predict()
-            .correct_linear::<CompMixedCorrectionBundleA>();
-        app.register_component::<CompMixedCorrectionBundleB>()
-            .replicate()
-            .predict();
-        app.register_interpolation_rule::<CompMixedCorrectionBundleA, ()>(InterpolationRule::new(
-            InterpolationFns::no_history(
-                |_: &CompMixedCorrectionBundleA, _: &CompMixedCorrectionBundleA, _: f32| {
-                    CompMixedCorrectionBundleA(1_000.0)
-                },
-            ),
-        ));
-        app.register_interpolation_rule::<CompMixedCorrectionBundleB, ()>(InterpolationRule::new(
-            InterpolationFns::no_history(
-                |_: &CompMixedCorrectionBundleB, _: &CompMixedCorrectionBundleB, _: f32| {
-                    CompMixedCorrectionBundleB(2_000.0)
-                },
-            ),
-        ));
-        app.register_bundle_interpolation_rule::<(CompMixedCorrectionBundleA, CompMixedCorrectionBundleB), ()>(InterpolationRule::new(InterpolationFns::no_history_with_cx(mixed_correction_bundle_lerp)));
         app.register_component::<CompCorr>()
             .replicate()
             .predict()
-            .correct_linear::<CompCorr>()
+            .correct_linear::<ShownCorr, ShownCorr>()
             .interpolate(InterpolationFns::linear());
+        app.register_frame_rule::<CompCorr, ShownCorr, ()>(FrameRule::new(show_corr));
         app.register_component::<CompMap>()
             .already_replicated()
             .predict();

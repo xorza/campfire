@@ -1,4 +1,6 @@
-use campfire_math::Num;
+use bevy::math::Vec3;
+use campfire_math::{Num, Vec3 as SimVec3};
+use campfire_units::GroundPoint;
 
 /// A sim number as the renderer draws it. The sim's core does no float arithmetic, so the
 /// conversion lives here, with the drawing that needs it.
@@ -33,6 +35,22 @@ pub(crate) fn to_num(value: f32) -> Option<Num> {
     (-BITS_LIMIT..BITS_LIMIT)
         .contains(&bits)
         .then(|| Num::from_bits(bits as i64))
+}
+
+/// The ground point under `point`, its `x` and `z` each as `to_num` takes it, its height
+/// dropped; `None` for an axis past what a `Num` holds.
+pub(crate) fn ground_point(point: Vec3) -> Option<GroundPoint> {
+    Some(GroundPoint {
+        x: to_num(point.x)?,
+        z: to_num(point.z)?,
+    })
+}
+
+/// The sim place of `point`, each axis as `to_num` takes it; `None` for an axis past the bound
+/// of a place.
+pub(crate) fn position(point: Vec3) -> Option<SimVec3> {
+    let place = SimVec3::new(to_num(point.x)?, to_num(point.y)?, to_num(point.z)?);
+    place.within_bound().then_some(place)
 }
 
 #[cfg(test)]

@@ -76,7 +76,7 @@ impl ConfirmedTickMap {
     ///
     /// A confirmed tick older than every retained one, once the map is full, is not kept: the
     /// window holds the newest confirmed ticks.
-    pub fn record(&mut self, replicon_tick: RepliconTick, authoritative_tick: NetTick) {
+    pub(crate) fn record(&mut self, replicon_tick: RepliconTick, authoritative_tick: NetTick) {
         let mut index = match self.search(replicon_tick) {
             Ok(index) => {
                 self.entries[index].1 = authoritative_tick;
@@ -215,7 +215,7 @@ impl ConfirmedTickMap {
     /// confirmed ticks map to the same network tick, the newer Replicon confirmed tick wins.
     /// The resolved confirmed tick, even when an already-cached confirmed tick remains
     /// newer, or `None` if the mapping has not been received yet.
-    pub fn record_last_confirmed_tick(
+    pub(crate) fn record_last_confirmed_tick(
         &mut self,
         replicon_tick: RepliconTick,
     ) -> Option<ConfirmedTick> {
@@ -240,7 +240,7 @@ impl ConfirmedTickMap {
     }
 
     /// Forgets the link's confirmed ticks; the fault counts last.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.entries.clear();
         self.last_confirmed = None;
     }
@@ -274,6 +274,31 @@ impl ConfirmedTickMap {
                 );
                 confirmed_ticks.count_invalid_userdata();
             }
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_replicon::prelude::RepliconTick;
+    use campfire_net_core::NetTick;
+
+    use crate::confirmed_tick::ConfirmedTick;
+    use crate::confirmed_tick_map::ConfirmedTickMap;
+
+    /// The bridge's writes, for another crate's test that stands in for it.
+    impl ConfirmedTickMap {
+        /// Maps `replicon_tick` to `authoritative_tick`, as the bridge's `record` does.
+        pub fn bridge_record(&mut self, replicon_tick: RepliconTick, authoritative_tick: NetTick) {
+            self.record(replicon_tick, authoritative_tick);
+        }
+
+        /// Completes `replicon_tick`, as the bridge's `record_last_confirmed_tick` does.
+        pub fn bridge_record_last_confirmed_tick(
+            &mut self,
+            replicon_tick: RepliconTick,
+        ) -> Option<ConfirmedTick> {
+            self.record_last_confirmed_tick(replicon_tick)
         }
     }
 }

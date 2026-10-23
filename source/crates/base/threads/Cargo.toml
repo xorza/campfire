@@ -10,6 +10,9 @@ kind = "proxy"
 [features]
 internals = []
 
+[dependencies]
+campfire-common.workspace = true
+
 [dev-dependencies]
 campfire-threads = { workspace = true, features = ["internals"] }
 

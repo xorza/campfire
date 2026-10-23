@@ -1,7 +1,17 @@
+use std::fmt::Write as _;
+
+use proc_macro2::TokenStream;
+use syn::parse::Parser;
+use syn::punctuated::Punctuated;
+use syn::visit::Visit;
+use syn::{AttrStyle, Attribute, Meta, Path, Token};
+
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
 
-use crate::workspace::{crates, manifests, read, sim_closure, source, sources};
+use crate::allowlist::Allowlist;
+use crate::named_path::NamedPath;
+use crate::workspace::{Workspace, read, sim_closure, source};
 
 /// A proxy crate: the one crate that makes the calls of its group of `clippy.toml`'s bans, through
 /// an `expect` of the lints at its crate root alone, and gives every other crate what it needs
@@ -21,8 +31,18 @@ pub(crate) struct Proxy {
     /// What names its group's calls in source, which no other proxy's source holds.
     pub(crate) names: &'static [&'static str],
     /// The crates under `source/crates/` whose own `clippy.toml` bans its group, as Clippy reads
-    /// the nearest `clippy.toml` alone; none when the workspace's bans it everywhere.
-    pub(crate) crates: &'static [&'static str],
+    /// the nearest `clippy.toml` alone, with the comment and the reason of its entries; none when
+    /// the workspace's bans it everywhere.
+    pub(crate) crates: Option<CrateBans>,
+}
+
+/// The crates whose own `clippy.toml` holds a proxy's bans, each the workspace's with the bans
+/// added under `comment`, each entry of `reason`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CrateBans {
+    pub(crate) dirs: &'static [&'static str],
+    pub(crate) comment: &'static str,
+    pub(crate) reason: &'static str,
 }
 
 impl Proxy {
@@ -174,41 +194,56 @@ const DESPAWN_METHODS: [&str; 19] = [
     "bevy_ecs::world::World::try_despawn_no_free",
 ];
 
-/// The lints of the bans, and the groups that hold them, named in parts so that this file's own
-/// samples hold no attribute of them.
-const LINTS: [&str; 2] = [
-    concat!("clippy::", "disallowed_methods"),
-    concat!("clippy::", "disallowed_types"),
-];
-const GROUPS: [&str; 2] = [concat!("clippy::", "style"), concat!("clippy::", "all")];
+/// The lints of the bans, and the groups that hold them.
+const LINTS: [&str; 2] = ["clippy::disallowed_methods", "clippy::disallowed_types"];
+const GROUPS: [&str; 2] = ["clippy::style", "clippy::all"];
 
 /// Every proxy crate, each the owner of one group of the bans.
-pub(crate) const PROXIES: [Proxy; 6] = [
+pub(crate) const PROXIES: [Proxy; 7] = [
     Proxy {
         dir: "base/store",
         lints: &LINTS,
         methods: &STORAGE_METHODS,
         types: &STORAGE_TYPES,
         dependencies: &[
-            "campfire-common",
+            "campfire-platform",
             "campfire-threads",
-            "libc",
-            "signal-hook",
-            "socket2",
             "tempfile",
             "thiserror",
-            "windows",
             "zeroize",
         ],
         names: &["std::fs", "tempfile::"],
-        crates: &[],
+        crates: None,
+    },
+    // The OS's promises under the files, which open, name and expose files as `store` does.
+    Proxy {
+        dir: "base/platform",
+        lints: &LINTS,
+        methods: &STORAGE_METHODS,
+        types: &STORAGE_TYPES,
+        dependencies: &[
+            "campfire-common",
+            "libc",
+            "signal-hook",
+            "socket2",
+            "windows",
+        ],
+        names: &[
+            "std::fs",
+            "libc::",
+            "signal_hook::",
+            "socket2::",
+            "windows::",
+        ],
+        crates: None,
     },
     Proxy {
         dir: "base/threads",
         lints: &[LINTS[0]],
         methods: &THREAD_METHODS,
         types: &[],
-        dependencies: &[],
+        // Its jobs' names, a `NamedEnum` of `common`.
+        dependencies: &["campfire-common"],
         names: &[
             "thread::spawn",
             "thread::scope",
@@ -216,7 +251,7 @@ pub(crate) const PROXIES: [Proxy; 6] = [
             "spawn_scoped",
             "spawn_unchecked",
         ],
-        crates: &[],
+        crates: None,
     },
     Proxy {
         dir: "base/app-threads",
@@ -225,7 +260,7 @@ pub(crate) const PROXIES: [Proxy; 6] = [
         types: &APP_THREAD_TYPES,
         dependencies: &["bevy_app", "bevy_ecs", "bevy_tasks", "campfire-schedule"],
         names: &["TaskPoolPlugin", "TaskPoolOptions"],
-        crates: &[],
+        crates: None,
     },
     Proxy {
         dir: "base/codec",
@@ -241,7 +276,7 @@ pub(crate) const PROXIES: [Proxy; 6] = [
             "toml",
         ],
         names: &["postcard::", "serde_json::", "toml::", "postcard_utils"],
-        crates: &[],
+        crates: None,
     },
     Proxy {
         dir: "sim/schedule",
@@ -250,7 +285,7 @@ pub(crate) const PROXIES: [Proxy; 6] = [
         types: &[],
         dependencies: &["bevy_ecs"],
         names: &["set_build_settings", "configure_schedules", "set_executor"],
-        crates: &[],
+        crates: None,
     },
     Proxy {
         dir: "network/net-despawns",
@@ -259,12 +294,16 @@ pub(crate) const PROXIES: [Proxy; 6] = [
         types: &[],
         dependencies: &["bevy_ecs", "bevy_replicon"],
         names: &["despawn"],
-        crates: &[
-            "network/net-despawns",
-            "network/net-interpolation",
-            "network/net-prediction",
-            "network/net-replication",
-        ],
+        crates: Some(CrateBans {
+            dirs: &[
+                "network/net-despawns",
+                "network/net-interpolation",
+                "network/net-prediction",
+                "network/net-replication",
+            ],
+            comment: "campfire-net-despawns alone despawns in the network stack's replication crates (11-net-stack/replication.md, The server alone ends a replicated entity's life on the receiver): Bevy's despawn takes each child the server still owns.",
+            reason: "despawn through campfire_net_despawns::DespawnReplicated",
+        }),
     },
 ];
 
@@ -339,72 +378,128 @@ fn unlisted<'a>(clippy: &str, list: &str, rules: &[&'a str]) -> Vec<&'a str> {
 /// The lines of `text`, the source at `path` under `source/`, whose attribute exempts code from
 /// either lint other than as the proxies let it: only an `expect`, at a proxy's crate root, of a
 /// lint that proxy exempts, or of the types' lint at the head of a module that holds a
-/// `thread_local!` and names no other banned type; never `allow`, a `cfg_attr`, a group that
-/// holds the lint, or an attribute on an item or a statement, so a stale one fails and none hides.
+/// `thread_local!` and names no other banned type, the proxy's under a `cfg_attr` too, as the
+/// platform's calls differ by OS; never `allow`, a group that holds the lint, or an attribute on
+/// an item or a statement, so a stale one fails where it applies and none hides.
 fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
-    let line_of = |at: usize| text[..at].matches('\n').count() + 1;
-    let mut misplaced = Vec::new();
-    for name in LINTS.iter().chain(&GROUPS) {
-        for (at, _) in text.match_indices(name) {
-            if text[at + name.len()..].starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
-            {
-                continue;
+    struct Exemptions<'a> {
+        path: &'a str,
+        thread_module: bool,
+        found: Vec<usize>,
+    }
+    impl Exemptions<'_> {
+        /// Takes the lints of `level` an attribute names, `inner` at its module's head, `gated`
+        /// under a `cfg_attr`.
+        fn take(&mut self, level: &Path, lints: &[Path], inner: bool, gated: bool) {
+            let level = path_text(level);
+            if ["warn", "deny", "forbid"].contains(&level.as_str()) {
+                return;
             }
-            // Only an attribute counts: `#[` or `#![` before the name, with no `]` between, so
-            // the attribute is still open; else it is a mention, in a comment or a string.
-            let Some(start) = text[..at].rfind('#') else {
-                continue;
-            };
-            let opening = &text[start..at];
-            let inner = opening.starts_with("#![");
-            let Some(kind) = opening
-                .strip_prefix(if inner { "#![" } else { "#[" })
-                .filter(|_| !opening.contains(']'))
-                .and_then(|head| head.split_once('('))
-                .map(|(kind, _)| kind.trim())
-            else {
-                continue;
-            };
-            if ["warn", "deny", "forbid"].contains(&kind) {
-                continue;
-            }
-            let proxied = PROXIES
-                .iter()
-                .any(|proxy| proxy.root() == path && proxy.lints.contains(name));
-            let thread_state = *name == LINTS[1]
-                && text.contains("thread_local!")
-                && !TYPE_NAMES.iter().any(|banned| text.contains(banned));
-            let allowed = inner && kind == "expect" && (proxied || thread_state);
-            if !allowed {
-                misplaced.push(line_of(at));
+            for lint in lints {
+                let name = path_text(lint);
+                let Some(&name) = LINTS.iter().chain(&GROUPS).find(|banned| **banned == name)
+                else {
+                    continue;
+                };
+                let proxied = PROXIES
+                    .iter()
+                    .any(|proxy| proxy.root() == self.path && proxy.lints.contains(&name));
+                let thread_state = name == LINTS[1] && self.thread_module;
+                let allowed = inner && level == "expect" && (proxied || thread_state && !gated);
+                if !allowed {
+                    let at = lint.segments.first().expect("a lint has a name");
+                    self.found.push(at.ident.span().start().line);
+                }
             }
         }
     }
-    misplaced.sort_unstable();
-    misplaced
+    impl<'ast> Visit<'ast> for Exemptions<'_> {
+        fn visit_attribute(&mut self, attribute: &'ast Attribute) {
+            let inner = matches!(attribute.style, AttrStyle::Inner(_));
+            if attribute.path().is_ident("cfg_attr") {
+                let Ok(metas) =
+                    attribute.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
+                else {
+                    return;
+                };
+                for meta in metas.iter().skip(1) {
+                    if let Meta::List(list) = meta {
+                        let lints = lint_paths(&list.tokens);
+                        self.take(&list.path, &lints, inner, true);
+                    }
+                }
+            } else if let Meta::List(list) = &attribute.meta {
+                let lints = lint_paths(&list.tokens);
+                self.take(&list.path, &lints, inner, false);
+            }
+        }
+    }
+    let paths = NamedPath::of(text);
+    let thread_module = NamedPath::holds(&paths, "thread_local")
+        && !TYPE_NAMES
+            .iter()
+            .any(|banned| NamedPath::holds(&paths, banned));
+    let file = syn::parse_file(text).expect("a workspace source parses");
+    let mut exemptions = Exemptions {
+        path,
+        thread_module,
+        found: Vec::new(),
+    };
+    exemptions.visit_file(&file);
+    exemptions.found.sort_unstable();
+    exemptions.found
 }
 
-/// What of another group's names, another proxy's or no proxy's, `text`, a source of `proxy`'s,
-/// holds.
+/// A path as its segments joined by `::`.
+fn path_text(path: &Path) -> String {
+    let names: Vec<String> = (path.segments.iter())
+        .map(|segment| segment.ident.to_string())
+        .collect();
+    names.join("::")
+}
+
+/// The paths a lint level's list names, its `reason` left out.
+fn lint_paths(tokens: &TokenStream) -> Vec<Path> {
+    let metas = Punctuated::<Meta, Token![,]>::parse_terminated
+        .parse2(tokens.clone())
+        .unwrap_or_default();
+    metas
+        .into_iter()
+        .filter_map(|meta| match meta {
+            Meta::Path(path) => Some(path),
+            Meta::List(_) | Meta::NameValue(_) => None,
+        })
+        .collect()
+}
+
+/// What of another group's names, another proxy's that `proxy` does not list too, or no proxy's,
+/// `text`, a source of `proxy`'s, holds.
 pub(crate) fn foreign_names(proxy: &Proxy, text: &str) -> Vec<&'static str> {
-    PROXIES
+    let paths = NamedPath::of(text);
+    let mut found: Vec<&'static str> = Vec::new();
+    let names = PROXIES
         .iter()
         .filter(|other| other.dir != proxy.dir)
         .flat_map(|other| other.names.iter())
+        .filter(|name| !proxy.names.contains(name))
         .chain(&UNOWNED_NAMES)
-        .copied()
-        .filter(|name| text.contains(name))
-        .collect()
+        .copied();
+    for name in names {
+        if NamedPath::holds(&paths, name) && !found.contains(&name) {
+            found.push(name);
+        }
+    }
+    found
 }
 
 #[test]
 fn each_banned_call_goes_through_its_proxy_alone() {
+    let workspace = Workspace::read();
     let clippy = read(source().join("clippy.toml").to_str().unwrap());
-    let sources = sources();
+    let sources = workspace.sources();
     for proxy in &PROXIES {
-        let own: Vec<String> = proxy
-            .crates
-            .iter()
+        let own: Vec<String> = (proxy.crates.iter())
+            .flat_map(|crates| crates.dirs)
             .map(|dir| crate_clippy(dir).expect("a proxy's crate has its own clippy.toml"))
             .collect();
         let bans = if own.is_empty() {
@@ -471,26 +566,26 @@ fn crate_clippy(dir: &str) -> Option<String> {
 /// The most bytes a `clippy.toml` holds: far past the workspace's.
 const CLIPPY_LEN: usize = 1 << 16;
 
-/// `workspace`, the workspace's `clippy.toml`, with the entries of each list that `own`, a
-/// crate's, adds to it after that list's own: what a crate's `clippy.toml` holds, as Clippy reads
-/// the nearest one alone and so no crate file may drop a ban of the workspace's.
-fn with_own_entries(workspace: &str, own: &str) -> String {
+/// The `clippy.toml` of a crate that `bans`, of `proxy`, names: `workspace`'s, with the proxy's
+/// methods and types added at the end of their lists, under the bans' comment, each of their
+/// reason.
+fn with_proxy_bans(workspace: &str, proxy: &Proxy, bans: &CrateBans) -> String {
     let mut merged = workspace.to_owned();
-    for list in ["disallowed-types", "disallowed-methods"] {
-        let entries = |text: &str| -> Vec<String> {
-            text.split_once(&format!("{list} = [\n"))
-                .and_then(|(_, rest)| rest.split_once("\n]"))
-                .map_or_else(Vec::new, |(list, _)| {
-                    list.lines().map(str::to_owned).collect()
-                })
-        };
-        let shared = entries(workspace);
-        let added: Vec<String> = entries(own)
-            .into_iter()
-            .filter(|line| !shared.contains(line))
-            .collect();
-        if added.is_empty() {
+    for (list, paths) in [
+        ("disallowed-types", proxy.types),
+        ("disallowed-methods", proxy.methods),
+    ] {
+        if paths.is_empty() {
             continue;
+        }
+        let mut added = format!("\n    # {}", bans.comment);
+        for path in paths {
+            write!(
+                added,
+                "\n    {{ path = \"{path}\", reason = \"{}\" }},",
+                bans.reason
+            )
+            .expect("a String takes each write");
         }
         let head = format!("{list} = [\n");
         let start = merged
@@ -498,42 +593,59 @@ fn with_own_entries(workspace: &str, own: &str) -> String {
             .expect("the workspace's clippy.toml holds each list")
             + head.len();
         let end = start + merged[start..].find("\n]").expect("a list ends");
-        merged.insert_str(end, &format!("\n{}", added.join("\n")));
+        merged.insert_str(end, &added);
     }
     merged
 }
 
 #[test]
 fn a_crates_clippy_toml_is_the_workspaces_with_its_own_entries() {
-    // Each crate's own `clippy.toml` holds the workspace's, written again with `CAMPFIRE_BLESS=1`,
-    // and a proxy owns every crate that has one.
-    let workspace = read(source().join("clippy.toml").to_str().unwrap());
-    let mut owned: Vec<&str> = PROXIES
-        .iter()
-        .flat_map(|proxy| proxy.crates)
-        .copied()
-        .collect();
-    owned.sort_unstable();
-    let mut found = Vec::new();
-    for krate in crates() {
-        let dir = krate.path.trim_start_matches("crates/");
-        let Some(own) = crate_clippy(dir) else {
+    let workspace = Workspace::read();
+    // Each crate's own `clippy.toml` is the workspace's with its proxy's bans, written again with
+    // `CAMPFIRE_BLESS=1`, and a proxy owns every crate that has one.
+    let shared = read(source().join("clippy.toml").to_str().unwrap());
+    let mut owned = Vec::new();
+    for proxy in &PROXIES {
+        let Some(bans) = &proxy.crates else {
             continue;
         };
-        found.push(krate.path.clone());
-        let path = source().join(&krate.path).join("clippy.toml");
-        PinnedFile::new(&path).pin(with_own_entries(&workspace, &own).as_bytes(), CLIPPY_LEN);
+        let text = with_proxy_bans(&shared, proxy, bans);
+        for dir in bans.dirs {
+            let path = source().join("crates").join(dir).join("clippy.toml");
+            PinnedFile::new(&path).pin(text.as_bytes(), CLIPPY_LEN);
+            owned.push(format!("crates/{dir}"));
+        }
     }
+    owned.sort_unstable();
+    let mut found: Vec<String> = workspace
+        .crates()
+        .iter()
+        .filter(|krate| crate_clippy(krate.path.trim_start_matches("crates/")).is_some())
+        .map(|krate| krate.path.clone())
+        .collect();
     found.sort_unstable();
-    let owned: Vec<String> = owned.iter().map(|dir| format!("crates/{dir}")).collect();
     assert_eq!(found, owned);
-    // An entry the crate adds goes after its list's own; one the workspace holds stays once.
-    let workspace = "a = 1\ndisallowed-methods = [\n    { path = \"x\" },\n]\n";
-    let own = "a = 1\ndisallowed-methods = [\n    { path = \"x\" },\n    { path = \"y\" },\n]\n";
-    assert_eq!(with_own_entries(workspace, own), own);
-    assert_eq!(with_own_entries(workspace, workspace), workspace);
-    let stale = "a = 2\ndisallowed-methods = [\n    { path = \"y\" },\n]\n";
-    assert_eq!(with_own_entries(workspace, stale), own);
+    // The bans go at the end of their list, under their comment; a list the proxy bans nothing of
+    // stays the workspace's.
+    let workspace =
+        "a = 1\ndisallowed-types = [\n]\ndisallowed-methods = [\n    { path = \"x\" },\n]\n";
+    let proxy = Proxy {
+        methods: &["y", "z"],
+        ..PROXIES[0]
+    };
+    let bans = CrateBans {
+        dirs: &[],
+        comment: "c",
+        reason: "r",
+    };
+    let proxy = Proxy {
+        types: &[],
+        ..proxy
+    };
+    assert_eq!(
+        with_proxy_bans(workspace, &proxy, &bans),
+        "a = 1\ndisallowed-types = [\n]\ndisallowed-methods = [\n    { path = \"x\" },\n    # c\n    { path = \"y\", reason = \"r\" },\n    { path = \"z\", reason = \"r\" },\n]\n"
+    );
 }
 
 #[test]
@@ -559,8 +671,8 @@ fn the_ban_checks_fail_on_what_breaks_them() {
         ),
         (
             "crates/x/src/a.rs",
-            format!("{}let x = 1;\n", expect(types)),
-            vec![1],
+            format!("fn f() {{\n    {}    let x = 1;\n}}\n", expect(types)),
+            vec![2],
         ),
         (
             "crates/x/src/a.rs",
@@ -586,8 +698,8 @@ fn the_ban_checks_fail_on_what_breaks_them() {
         ("crates/base/codec/src/binary.rs", inner(methods), vec![1]),
         (
             "crates/sim/sim/src/sim_update/mod.rs",
-            format!("{}let x = 1;\n", expect(methods)),
-            vec![1],
+            format!("fn f() {{\n    {}    let x = 1;\n}}\n", expect(methods)),
+            vec![2],
         ),
         // A module that holds a thread-local: an `expect` of the types' lint at its head, while it
         // names no other banned type; of the methods' lint, or on an item, it is found.
@@ -614,6 +726,14 @@ fn the_ban_checks_fail_on_what_breaks_them() {
             ),
             vec![1],
         ),
+        (
+            "crates/x/src/a.rs",
+            format!(
+                "{}use std::{{\n    collections::HashMap,\n}};\nthread_local! {{}}\n",
+                inner(types)
+            ),
+            vec![1],
+        ),
         // An `allow`, even in `store`; a mention is no attribute.
         (
             "crates/base/store/src/lib.rs",
@@ -624,6 +744,23 @@ fn the_ban_checks_fail_on_what_breaks_them() {
             "crates/x/src/a.rs",
             format!("/// Mentions `{methods}`.\nfn f() {{}}\n"),
             vec![],
+        ),
+        // A proxy's `expect` under a condition, as the platform's is under its OS's; an `allow`
+        // so, or an `expect` so elsewhere, found.
+        (
+            "crates/base/platform/src/lib.rs",
+            format!("#![cfg_attr(feature = \"os\", expect({methods}, reason = \"r\"))]\n"),
+            vec![],
+        ),
+        (
+            "crates/base/platform/src/lib.rs",
+            format!("#![cfg_attr(feature = \"os\", allow({methods}))]\n"),
+            vec![1],
+        ),
+        (
+            "crates/x/src/lib.rs",
+            format!("#![cfg_attr(feature = \"os\", expect({methods}, reason = \"r\"))]\n"),
+            vec![1],
         ),
         // Turned off under a condition, or with another lint: both found.
         (
@@ -685,7 +822,9 @@ fn app_removals(text: &str) -> Vec<usize> {
 
 #[test]
 fn no_tick_reads_removals_that_age_with_the_app() {
-    let found: Vec<String> = sources()
+    let workspace = Workspace::read();
+    let found: Vec<String> = workspace
+        .sources()
         .iter()
         .filter(|file| file.gate.is_none())
         .filter(|file| TICK_CRATES.iter().any(|dir| file.path.starts_with(dir)))
@@ -713,11 +852,13 @@ const FLOAT_BAN: &str = "#![warn(clippy::float_arithmetic)]";
 
 #[test]
 fn each_crate_a_match_runs_on_bans_floats() {
+    let workspace = Workspace::read();
     // A proc-macro crate's code runs in the compiler, not in a match.
-    let reached = sim_closure(&manifests());
+    let reached = sim_closure(workspace.crates());
     let mut checked = 0;
     let mut missing = Vec::new();
-    for krate in crates()
+    for krate in workspace
+        .crates()
         .iter()
         .filter(|krate| reached.contains(&krate.name))
     {
@@ -733,4 +874,61 @@ fn each_crate_a_match_runs_on_bans_floats() {
     }
     assert_eq!(missing, Vec::<String>::new());
     assert_eq!(checked, reached.len());
+}
+
+/// The calls and types that read the wall clock, which no crate a match runs on names
+/// (02-engine-core.md, Determinism rules): a match runs the same on a server, a client and a
+/// verifier only on its ticks.
+const WALL_CLOCK: [&str; 5] = [
+    "Instant::now",
+    "SystemTime::now",
+    "UNIX_EPOCH",
+    "Time<Real>",
+    "Time<Virtual>",
+];
+
+/// The one module of a match's crates that reads the wall clock: the stage probes, which time each
+/// stage of a real tick from outside the state (02-engine-core.md, Stage probes keep the hashes).
+const WALL_CLOCK_READERS: [&str; 1] = ["crates/sim/sim/src/sim_update/stage_clock/"];
+
+/// The wall clock reads `code` names, of `WALL_CLOCK`.
+fn wall_clock_reads(code: &str) -> Vec<&'static str> {
+    WALL_CLOCK
+        .iter()
+        .filter(|read| code.contains(*read))
+        .copied()
+        .collect()
+}
+
+#[test]
+fn no_crate_a_match_runs_on_reads_the_wall_clock() {
+    let workspace = Workspace::read();
+    let reached = sim_closure(workspace.crates());
+    let readers = Allowlist::new(&WALL_CLOCK_READERS);
+    let mut found = Vec::new();
+    for krate in (workspace.crates().iter()).filter(|krate| reached.contains(&krate.name)) {
+        // A bench times its own runs, which no match reads.
+        let measured = |path: &str| path.ends_with("/bench.rs") || path.contains("/bench/");
+        for file in workspace
+            .sources_of(krate)
+            .filter(|file| !measured(&file.path))
+        {
+            let Some(code) = file.library() else {
+                continue;
+            };
+            let reads = wall_clock_reads(&code);
+            if !reads.is_empty() && !readers.allows(|dir| file.path.starts_with(dir)) {
+                found.push(format!("{}: {}", file.path, reads.join(", ")));
+            }
+        }
+    }
+    assert_eq!(found, Vec::<String>::new());
+    assert_eq!(readers.unused(), Vec::<&&str>::new());
+    // A read of the OS's time, by a call or by Bevy's real time, is found; a clock of the match's
+    // own is not.
+    assert_eq!(
+        wall_clock_reads("let t = Instant::now(); let r: Res<Time<Real>>;"),
+        ["Instant::now", "Time<Real>"]
+    );
+    assert!(wall_clock_reads("let t = clock.now(); let f: Res<Time<Fixed>>;").is_empty());
 }

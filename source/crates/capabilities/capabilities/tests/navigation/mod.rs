@@ -11,7 +11,8 @@ use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{
-    ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, TurnStep, Units, Wall,
+    ArrivedShort, Body, BodyForm, BodyShape, Dead, Destination, Facing, Layer, MapBook, TurnStep,
+    Units, Wall,
 };
 use campfire_values::{Block, PathId};
 
@@ -568,7 +569,7 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
         .place(&mut game);
     // An air unit of 0.5 m from (1, 3) to (11, 3), a meter a tick, flies straight over both: in
     // tick 2 it is on the ground unit, which does not move, and in tick 10 at its goal.
-    let body = BodyForm::circle(half).unwrap().on(AIR);
+    let body = BodyForm::new(BodyShape::circle(half).unwrap(), AIR);
     let flying = Navigation::walker_at(&mut game, (1, 0, 3))
         .body(body)
         .walks(Num::ONE, Some(Vec3::from((11, 0, 3))))
@@ -713,7 +714,7 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     game.step();
     assert_eq!(changed(&game), planned);
     assert_eq!(Navigation::ahead(&game, walker), [goal]);
-    Navigation::walker_at(&mut game, place(5, 1))
+    let tower = Navigation::walker_at(&mut game, place(5, 1))
         .circle(half)
         .place(&mut game);
     game.step();
@@ -727,14 +728,30 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     let pressed = Vec3::new(Num::int(48) / 10, Num::ZERO, Num::int(1) + half);
     let through = PlannedRoute::new(goal, pressed, &[goal]);
     game.insert_parts(walker, (Position::from(pressed), through.parts()));
+    let mut save = Vec::new();
+    game.snapshot(&mut save);
     let mut restored = walk_match();
     Navigation::load_open_pathing(&mut restored, Num::ONE, [0, 0], [8, 3], [ground(quarter)]);
     Release::restore_into(&game, &mut restored);
+    let mut played = Vec::new();
     for _ in 0..3 {
         game.step();
         restored.step();
         assert_eq!(restored.part::<Route>(walker), game.part::<Route>(walker));
         assert_eq!(restored.state_hash(), game.state_hash());
+        played.push(game.state_hash());
+    }
+
+    // Loaded in place there once that tower went, it plays those ticks again: its index clears
+    // and fills first again, so the tower the load puts back asks no route again.
+    let gone = restored.unit_entity(tower);
+    restored.despawn(gone);
+    restored.step();
+    Release::clear(&mut restored);
+    restored.restore(&save).unwrap();
+    for hash in played {
+        restored.step();
+        assert_eq!(restored.state_hash(), hash);
     }
 }
 

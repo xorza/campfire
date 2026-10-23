@@ -1,8 +1,8 @@
+use campfire_net_bytes::Reader;
 use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::VarInt;
 use campfire_net_bytes::WriteInteger;
-use campfire_net_bytes::{ReadVarInt, Reader};
 
 /// How many fragments a fragmented message has, serialized as a varint.
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -31,8 +31,8 @@ const HALF_PI_REDUCE: i128 =
 /// entries up to 51/64 cover π/4 with margin.
 const SIN_COS_STEP_BITS: u32 = 6;
 const SIN_COS_ENTRIES: usize = 52;
-const SIN_TABLE: [i64; SIN_COS_ENTRIES] = sin_cos_table(true);
-const COS_TABLE: [i64; SIN_COS_ENTRIES] = sin_cos_table(false);
+const SIN_TABLE: [i64; SIN_COS_ENTRIES] = sin_cos_table(SinCosColumn::Sin);
+const COS_TABLE: [i64; SIN_COS_ENTRIES] = sin_cos_table(SinCosColumn::Cos);
 
 /// `atan2` rotates by the nearest `atan(k / 32)`, which leaves a tangent of about 1/64 at most.
 const ATAN_STEP_BITS: u32 = 5;
@@ -325,17 +325,22 @@ const fn to_num_narrow(value: i64) -> Num {
     Num::from_bits(floor + up as i64)
 }
 
+#[derive(Debug, Clone, Copy)]
+enum SinCosColumn {
+    Sin,
+    Cos,
+}
+
 /// sin or cos of `k / 64` at 2⁻⁶², by the exact series.
-const fn sin_cos_table(sine: bool) -> [i64; SIN_COS_ENTRIES] {
+const fn sin_cos_table(column: SinCosColumn) -> [i64; SIN_COS_ENTRIES] {
     let mut table = [0; SIN_COS_ENTRIES];
     let mut k = 0;
     while k < SIN_COS_ENTRIES {
         let angle = (k as i128) << (WIDE_BITS - SIN_COS_STEP_BITS);
         let angle_squared = exact_mul(angle, angle);
-        table[k] = to_i64(if sine {
-            taylor(angle, 1, angle_squared)
-        } else {
-            taylor(WIDE_ONE as i128, 0, angle_squared)
+        table[k] = to_i64(match column {
+            SinCosColumn::Sin => taylor(angle, 1, angle_squared),
+            SinCosColumn::Cos => taylor(WIDE_ONE as i128, 0, angle_squared),
         });
         k += 1;
     }

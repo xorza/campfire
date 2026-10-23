@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_areas::{Area, AreaSpec, Areas, Inside};
 use campfire_common::{Tick, Ticks};
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_declarations::internals::BookLoad;
 use campfire_deliveries::Delivering;
 use campfire_math::Num;
@@ -27,7 +27,7 @@ impl AreasFixtures for Areas {
             affects: Filter::of_release_relations(RelationSet::All),
             inside: Inside::default(),
         };
-        ByType::<AreaSpec>::amend(world, |_, book| book.set(unit_type, spec));
+        ById::<UnitType, AreaSpec>::amend(world, |_, book| book.set(unit_type, spec));
         let by = Delivering {
             source: IdAllocator::default().allocate(),
             action: ActionId::new(0),

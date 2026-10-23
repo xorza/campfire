@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, RangeTakes, Takes};
+use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, PipelineField, Takes};
 use campfire_common::DeclaredName;
 use campfire_declarations::Listed;
 use campfire_script::ApiBuilder;
@@ -47,14 +47,19 @@ impl KindSection for BuildData {
 
     /// A build aims at a point within its range in meters, and its windup is its site's time.
     fn takes(&self) -> KindTakes {
-        KindTakes {
-            range: RangeTakes::Meters,
-            cooldown: Takes::May,
-            cost: Takes::May,
-            windup: Takes::Must,
-            passive: Takes::May,
-            ..KindTakes::NONE
-        }
+        KindTakes::NONE
+            .with(
+                Takes::Must,
+                &[PipelineField::Range, PipelineField::WindupMs],
+            )
+            .with(
+                Takes::May,
+                &[
+                    PipelineField::CooldownMs,
+                    PipelineField::Cost,
+                    PipelineField::PassiveModifier,
+                ],
+            )
     }
 
     fn numbers(&self) -> Vec<&Ranked<Number>> {

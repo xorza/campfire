@@ -1,7 +1,7 @@
 use crate::prediction_registration;
 use bevy_app::App;
 use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
-use campfire_net_interpolation::HistoryComponent;
+use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::{DiffReplicated, FullReplicated};
 
 /// How a component of a replication kind is predicted: whole, or from diffs.

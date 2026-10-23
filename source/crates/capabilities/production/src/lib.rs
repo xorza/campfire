@@ -12,17 +12,19 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
-use campfire_actions::{ActionsSystems, ByAction};
+use campfire_actions::ActionsSystems;
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
+    ById, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
 };
 use campfire_players::Player;
-use campfire_script::{ApiVersion, Status};
+use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimSystems};
 use campfire_stats::StatsSystems;
-use campfire_units::{BodyUnit, SpawnCallbacks, StatusTags, UnitGrid, UnitTypes, UnitsSystems};
-use campfire_values::{Block, EngineTag, TagProperties};
+use campfire_units::{
+    BodyUnit, OpenCellRun, SpawnCallbacks, StatusTags, UnitGrid, UnitTypes, UnitsSystems,
+};
+use campfire_values::{ActionId, Block, EngineTag, TagProperties, UnitType};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 use crate::holdings::Holdings;
@@ -205,18 +207,20 @@ impl Module for Production {
         d.callback::<SpawnCallbacks>(Capability::Production, Construction::spawned);
         d.resource::<TrainedUnits>();
         d.resource::<CompletedSites>();
+        d.mode_events::<TrainedUnits>(EventPhase::Makes);
+        d.mode_events::<CompletedSites>(EventPhase::Makes);
         d.hook::<OnUnitTrained>(Status::Runs(ApiVersion::FIRST));
         d.hook::<OnSiteComplete>(Status::Runs(ApiVersion::FIRST));
         d.component::<Node>();
         d.component::<Gatherer>();
         d.timed::<Gatherer>();
         d.extend::<UnitTypes>(Self::tag_types);
-        d.book::<ByType<ProducerSpec>>(ProducerSpec::book);
+        d.book::<ById<UnitType, ProducerSpec>>(ProducerSpec::book);
         d.listed::<TrainData>();
         d.listed::<BuildData>();
         d.listed::<GatherData>();
-        d.book::<ByAction<TrainSpec>>(TrainSpec::book);
-        d.book::<ByAction<GatherSpec>>(GatherSpec::book);
+        d.book::<ById<ActionId, TrainSpec>>(TrainSpec::book);
+        d.book::<ById<ActionId, GatherSpec>>(GatherSpec::book);
         d.book::<RequirementBook>(RequirementBook::build);
         d.book::<SupplyCostBook>(SupplyCostBook::build);
         d.book::<BuildBook>(BuildBook::build);
@@ -226,9 +230,9 @@ impl Module for Production {
         d.rule(Self::actions_rule);
         d.column::<ProductionColumn, RowReads>(ProductionColumn::fill_row);
         d.api(ProductionApi::register);
-        d.book::<ByType<Builder>>(Builder::book);
-        d.book::<ByType<Node>>(Node::book);
-        d.book::<ByType<Gatherer>>(Gatherer::book);
+        d.book::<ById<UnitType, Builder>>(Builder::book);
+        d.book::<ById<UnitType, Node>>(Node::book);
+        d.book::<ById<UnitType, Gatherer>>(Gatherer::book);
         d.part::<BodyUnit, TrainQueue>(|at| {
             at.of_type::<ProducerSpec>().map(|_| TrainQueue::default())
         });
@@ -265,8 +269,9 @@ impl Module for Production {
         if cx.book::<SupplyBook>().is_some_and(|book| book.counts()) {
             cx.server(ProductionSystems::Supply, PlayerSupply::refresh);
         }
-        // A build places a box, which only navigation tests for room, and a worker walks.
-        if !cx.has(Capability::Navigation) {
+        // A build places a box, which only the module that finds a walker's open cell tests for
+        // room, and a worker walks.
+        if cx.declared::<OpenCellRun>().is_none() {
             cx.by_role(
                 ProductionSystems::Start,
                 Trains::start_trains::<ServerForm>,
@@ -351,12 +356,12 @@ pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::internals::TestAction;
     use campfire_actions::{
-        ActionData, ActionKind, ActionRange, ActionTarget, Actions, Aim, ByAction, ProgressDues,
+        ActionData, ActionKind, ActionRange, ActionTarget, Actions, Aim, ProgressDues,
     };
     use campfire_common::DeclaredName;
     use campfire_common::Ticks;
-    use campfire_declarations::ByTypeBuilder;
     use campfire_declarations::internals::BookLoad;
+    use campfire_declarations::{ById, ByIdBuilder};
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
     use campfire_script::{Filter, MatchNames};
@@ -416,12 +421,12 @@ pub mod internals {
                 ..TestAction::new(ActionKind::Train, Aim::None, ActionRange::Global, time)
             };
             let id = Actions::add(world, "train", action);
-            if world.contains_resource::<ByAction<TrainSpec>>() {
+            if world.contains_resource::<ById<ActionId, TrainSpec>>() {
                 let spec = TrainSpec {
                     unit_type,
                     variants: variants.into(),
                 };
-                ByAction::<TrainSpec>::amend(world, |_, book| book.set(id, spec));
+                ById::<ActionId, TrainSpec>::amend(world, |_, book| book.set(id, spec));
             }
             id
         }
@@ -447,7 +452,7 @@ pub mod internals {
                 unit_type: named(&train.unit_type),
                 variants: train.variants.iter().map(named).collect(),
             };
-            ByAction::<TrainSpec>::amend(world, |_, book| book.set(action, spec));
+            ById::<ActionId, TrainSpec>::amend(world, |_, book| book.set(action, spec));
         }
 
         /// Adds `build`, aimed at a point, no pool and no cooldown, to the match's action book
@@ -483,17 +488,18 @@ pub mod internals {
                 time,
             );
             let id = Actions::add(world, "gather", action);
-            ByAction::<GatherSpec>::amend(world, |_, book| book.set(id, spec));
+            ById::<ActionId, GatherSpec>::amend(world, |_, book| book.set(id, spec));
             id
         }
 
         /// Counts supply, up to `max`, with each type's `supplies`, and the trains the book holds.
         pub fn count_supply(world: &mut World, max: u32, supplies: &[(UnitType, SupplyData)]) {
-            let mut types = ByTypeBuilder::default();
+            let mut types = ByIdBuilder::default();
             for &(unit_type, supply) in supplies {
                 types.set(unit_type, supply);
             }
-            let costs = SupplyCostBook::new(types.build(), world.resource::<ByAction<TrainSpec>>());
+            let costs =
+                SupplyCostBook::new(types.build(), world.resource::<ById<ActionId, TrainSpec>>());
             costs.load_into(world);
             (SupplyBook(Some(ModeSupplyData { max }))).load_into(world);
         }

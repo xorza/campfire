@@ -12,10 +12,10 @@ use campfire_values::{Relations, TagSet, Team, UnitTags};
 
 use crate::application::{Adding, ApplyAt};
 use crate::applier::Applier;
-use crate::aura_carriers::AuraCarriers;
 use crate::carried_mut::CarriedMut;
 use crate::held_modifiers::{Held, HeldModifiers};
 use crate::lifetime::Hold;
+use crate::modifier_carriers::ModifierCarriers;
 use crate::modifier_dues::ModifierIndexes;
 use crate::modifier_params::ModifierParams;
 use crate::modifiers::Modifiers;
@@ -43,7 +43,7 @@ type HeldUnits<'w, 's> = Query<
 
 /// The living units a predicting client holds as the server sent them: their auras reach the
 /// units it predicts, but the pass writes none of their modifiers.
-type HeldCarriers<'w, 's> = Query<
+type SentCarriers<'w, 's> = Query<
     'w,
     's,
     (
@@ -94,11 +94,15 @@ impl HeldPass {
         params: ModifierParams<'_, '_>,
         relations: OnMatch<'_, '_, Relations>,
         mut units: HeldUnits<'_, '_>,
-        carriers: HeldCarriers<'_, '_>,
+        sent: SentCarriers<'_, '_>,
         unseen: UnseenSources<'_, '_>,
-        (mut held, mut projections): (Local<'_, Vec<Held>>, Local<'_, Vec<Projection>>),
+        (mut held, mut projections, mut visits): (
+            Local<'_, Vec<Held>>,
+            Local<'_, Vec<Projection>>,
+            Local<'_, Vec<Entity>>,
+        ),
         near: UnitsNear<'_>,
-        auras: Res<'_, AuraCarriers>,
+        carriers: Res<'_, ModifierCarriers>,
         mut indexes: ModifierIndexes<'_>,
     ) {
         let StatBooks {
@@ -117,12 +121,12 @@ impl HeldPass {
         projections.clear();
         projections.extend(others.projections.drain(..));
         let granting = tag_book.granting();
-        let living = auras.iter().filter_map(|entity| {
+        let living = carriers.auras().filter_map(|entity| {
             let written = units
                 .get(entity)
                 .ok()
                 .map(|(id, at, team, tags, _, (modifiers, _), ..)| (id, at, team, tags, modifiers));
-            written.or_else(|| carriers.get(entity).ok())
+            written.or_else(|| sent.get(entity).ok())
         });
         for (&source, at, &team, carrier, modifiers) in living {
             let immune = carrier.map_or_else(TagSet::default, |tags| tags.immune);
@@ -173,7 +177,20 @@ impl HeldPass {
             });
         }
         held.sort_unstable();
-        for (&id, _, _, _, _, (modifiers, clocks), entity, _) in &mut units {
+        // The units held a modifier this tick, and those that carry a hold to let go of.
+        visits.clear();
+        visits.extend(carriers.held());
+        visits.extend(
+            held.iter()
+                .filter_map(|entry| unseen.index.get(entry.target)),
+        );
+        visits.sort_unstable();
+        visits.dedup();
+        for &entity in &*visits {
+            let Ok((&id, _, _, _, _, (modifiers, clocks), entity, _)) = units.get_mut(entity)
+            else {
+                continue;
+            };
             let mut carried = CarriedMut::new(modifiers, clocks, indexes.of(id, entity));
             let first = held.partition_point(|entry| entry.target < id);
             let mine = held[first..].iter().take_while(|entry| entry.target == id);

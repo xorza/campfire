@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::durable_dir::error::DurableDirError;
 use crate::path_error::PathError;
-use crate::platform::user_only::Exposure;
+use campfire_platform::Exposure;
 
 /// Why a data directory did not open, each case with the path of its step: the directory or
 /// one above it, the directory, or its lock file.

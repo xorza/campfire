@@ -2,13 +2,16 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
-use campfire_common::{DeclaredName, MapName, Seat, TlsKey};
-use campfire_mode::{OptionValue, SeatPick};
-use campfire_net::{JoinRole, SeatBotArg};
+use campfire_common::{DeclaredName, MapName, PlayerSlot};
+use campfire_host::{JoinRole, OrderFile, PlayerSlotBotArg};
+use campfire_mode::{OptionValue, PlayerSlotPick};
+use campfire_net_core::TlsKey;
+use campfire_package::ModePackages;
+use campfire_values::{Team, TeamSet};
 use clap::Parser;
 use secp256k1::XOnlyPublicKey;
 
-use crate::command_line::error::{ArgsError, ServerAddressError, TeamNameError};
+use crate::command_line::error::{ArgsError, ServerAddressError, TeamNameError, UnknownTeam};
 
 mod error;
 
@@ -17,13 +20,20 @@ mod error;
 /// as its listing gives it, or a local one, each with the data directory.
 #[derive(Debug)]
 pub(crate) struct Args {
-    pub(crate) bot: Option<PathBuf>,
-    pub(crate) role: JoinRole,
-    pub(crate) watch: Vec<DeclaredName>,
+    pub(crate) bot: Option<OrderFile>,
+    pub(crate) role: RoleArg,
     pub(crate) key: Option<PathBuf>,
     pub(crate) mode: PathBuf,
     pub(crate) map: Option<MapName>,
     pub(crate) server: PlayedServer,
+}
+
+/// Whether the player plays or watches, with the names of the teams a spectator watches, which
+/// the mode's packages resolve.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum RoleArg {
+    Play,
+    Watch { teams: Vec<DeclaredName> },
 }
 
 /// The server the client plays on.
@@ -38,12 +48,12 @@ pub(crate) enum PlayedServer {
         data: Option<PathBuf>,
     },
     /// A local server, on a thread of the client's process, with the bots of `bots`, the values
-    /// `options` picks of the mode's options and `seat_picks` of its seats' choices, its data in
-    /// the data directory `data`, which it needs.
+    /// `options` picks of the mode's options and `player_slot_picks` of its player slots' choices,
+    /// its data in the data directory `data`, which it needs.
     Local {
-        bots: Vec<SeatBotArg>,
+        bots: Vec<PlayerSlotBotArg>,
         options: Vec<OptionValue>,
-        seat_picks: Vec<SeatPick>,
+        player_slot_picks: Vec<PlayerSlotPick>,
         data: PathBuf,
     },
 }
@@ -68,7 +78,7 @@ pub(crate) struct CommandLine {
     /// Plays the mode alone on a local server, a thread of the client's process
     #[arg(long, requires = "data")]
     local: bool,
-    /// Watches the session as a spectator, with no slot; of a local server, which then admits it
+    /// Watches the session as a spectator, with no player slot; of a local server, which then admits it
     /// as its one spectator, who sees every unit
     #[arg(long, conflicts_with = "bot")]
     spectate: bool,
@@ -82,32 +92,37 @@ pub(crate) struct CommandLine {
         value_parser = CommandLine::team
     )]
     watch: Vec<DeclaredName>,
-    /// A bot of the mode, by its name, on the local server, in a slot other than the player's 0,
-    /// or in any slot of a client that watches
+    /// A bot of the mode, by its name, on the local server, in a player slot other than the
+    /// player's 0, or in any player slot of a client that watches
     #[arg(
         long = "server-bot",
-        value_name = "SLOT=BOT",
+        value_name = "PLAYER_SLOT=BOT",
         requires = "local",
-        value_parser = SeatBotArg::mode
+        value_parser = PlayerSlotBotArg::mode
     )]
-    server_bots: Vec<SeatBotArg>,
-    /// The order script of a bot of the local server, its orders at their ticks, in a slot as
+    server_bots: Vec<PlayerSlotBotArg>,
+    /// The order script of a bot of the local server, its orders at their ticks, in a player slot as
     /// `--server-bot` takes one
     #[arg(
         long = "server-orders",
-        value_name = "SLOT=ORDERS FILE",
+        value_name = "PLAYER_SLOT=ORDERS FILE",
         requires = "local",
-        value_parser = SeatBotArg::orders
+        value_parser = PlayerSlotBotArg::orders
     )]
-    server_orders: Vec<SeatBotArg>,
+    server_orders: Vec<PlayerSlotBotArg>,
     /// A value of one of the mode's options for the local server's session, as name=value; an
     /// option not named takes its default
     #[arg(long = "option", value_name = "NAME=VALUE", requires = "local")]
     options: Vec<OptionValue>,
-    /// A value of one of the mode's choices of values for a seat of the local server's session,
-    /// the player's 0 among them, as seat:choice=value; a seat's choice not named starts unpicked
-    #[arg(long = "pick", value_name = "SEAT:CHOICE=VALUE", requires = "local")]
-    seat_picks: Vec<SeatPick>,
+    /// A value of one of the mode's choices of values for a player slot of the local server's
+    /// session, the player's 0 among them, as player_slot:choice=value; a player slot's choice not
+    /// named starts unpicked
+    #[arg(
+        long = "pick",
+        value_name = "PLAYER_SLOT:CHOICE=VALUE",
+        requires = "local"
+    )]
+    player_slot_picks: Vec<PlayerSlotPick>,
     /// The mode's map the session plays, as the listing names it; the mode's only map when it has
     /// one
     #[arg(long, value_name = "NAME")]
@@ -134,24 +149,24 @@ struct Remote {
     tick_hz: NonZeroU32,
 }
 
-/// What the command line clap read as `line` names; an error for a server bot in slot 0 of a
+/// What the command line clap read as `line` names; an error for a server bot in player slot 0 of a
 /// client that plays it.
 impl TryFrom<CommandLine> for Args {
     type Error = ArgsError;
 
     fn try_from(line: CommandLine) -> Result<Self, ArgsError> {
         let role = if line.spectate {
-            JoinRole::Watch
+            RoleArg::Watch { teams: line.watch }
         } else {
-            JoinRole::Play
+            RoleArg::Play
         };
         let bots: Vec<_> = line
             .server_bots
             .into_iter()
             .chain(line.server_orders)
             .collect();
-        if role == JoinRole::Play && bots.iter().any(|bot| bot.seat == Seat::new(0)) {
-            return Err(ArgsError::ClientSlot);
+        if role == RoleArg::Play && bots.iter().any(|bot| bot.player_slot == PlayerSlot::new(0)) {
+            return Err(ArgsError::ClientPlayerSlot);
         }
         let server = match line.remote {
             Some(remote) => PlayedServer::Remote {
@@ -164,18 +179,47 @@ impl TryFrom<CommandLine> for Args {
             None => PlayedServer::Local {
                 bots,
                 options: line.options,
-                seat_picks: line.seat_picks,
+                player_slot_picks: line.player_slot_picks,
                 data: line.data.expect("clap takes --local only with --data"),
             },
         };
         Ok(Self {
-            bot: line.bot,
+            bot: line.bot.map(OrderFile::from),
             role,
-            watch: line.watch,
             key: line.key,
             mode: line.mode,
             map: line.map,
             server,
+        })
+    }
+}
+
+impl RoleArg {
+    /// The role of a join to a session of the mode `packages` holds: a spectator watches the
+    /// teams it names, every team's when it names none; an error for a name no team of the mode
+    /// has.
+    pub(crate) fn resolve(&self, packages: &ModePackages) -> Result<JoinRole, UnknownTeam> {
+        let names = match self {
+            Self::Play => return Ok(JoinRole::Play),
+            Self::Watch { teams } if teams.is_empty() => {
+                return Ok(JoinRole::Watch {
+                    teams: TeamSet::ALL,
+                });
+            }
+            Self::Watch { teams } => teams,
+        };
+        let teams = &packages.manifest().teams;
+        let watched = names.iter().map(|name| {
+            let index = teams
+                .iter()
+                .position(|team| team.name == *name)
+                .ok_or_else(|| UnknownTeam(name.clone()))?;
+            Ok(Team::new(
+                u8::try_from(index).expect("a team's index fits u8"),
+            ))
+        });
+        Ok(JoinRole::Watch {
+            teams: watched.collect::<Result<_, _>>()?,
         })
     }
 }

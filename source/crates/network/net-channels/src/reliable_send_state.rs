@@ -2,8 +2,6 @@ use bytes::Bytes;
 use core::time::Duration;
 use std::collections::VecDeque;
 
-use crate::compression_scratch::CompressionScratch;
-use crate::compression_setup::CompressionSetup;
 use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;
 use crate::message_ref::MessageRef;
@@ -20,7 +18,7 @@ use crate::single_body::SingleBody;
 /// half for the lag, and keeps every id in flight distinct in the 65,536-id space.
 pub(crate) const SEND_WINDOW: u16 = 16_384;
 
-/// A message waiting for room in the send window, already split and compressed: only its id is
+/// A message waiting for room in the send window, already split: only its id is
 /// missing.
 #[derive(Debug)]
 struct WaitingMessage {
@@ -64,6 +62,8 @@ pub(super) struct ReliableSendState {
     waiting: VecDeque<WaitingMessage>,
     /// The id of `pending`'s first slot.
     oldest_unacked: MessageId,
+    /// The bytes of the messages of `pending` and `waiting`.
+    queued: usize,
 }
 
 impl ReliableSendState {
@@ -74,7 +74,13 @@ impl ReliableSendState {
             due: Vec::new(),
             waiting: VecDeque::new(),
             oldest_unacked: MessageId(0),
+            queued: 0,
         }
+    }
+
+    /// The bytes of the messages the channel holds until they are acknowledged.
+    pub(super) const fn queued(&self) -> usize {
+        self.queued
     }
 
     /// The id the next admitted message takes.
@@ -109,8 +115,6 @@ impl ReliableSendState {
         message: Bytes,
         priority: f32,
         fragment_len: usize,
-        compression: CompressionSetup,
-        compression_scratch: &mut CompressionScratch,
     ) -> Option<MessageId> {
         // The id is set when the message enters the window.
         let message = if message.len() > fragment_len {
@@ -118,15 +122,16 @@ impl ReliableSendState {
                 MessageId(0),
                 message,
                 fragment_len,
-                compression,
-                compression_scratch,
             ))
         } else {
             QueuedMessage::whole(SingleBody::new(None, message))
         };
         if self.delivery == ReliableDelivery::Newest {
-            self.waiting.clear();
+            for waiting in self.waiting.drain(..) {
+                self.queued -= waiting.message.len();
+            }
         }
+        self.queued += message.len();
         self.waiting.push_back(WaitingMessage { message, priority });
         let admitted_before = self.next_message_id();
         self.admit_waiting();
@@ -144,7 +149,9 @@ impl ReliableSendState {
         {
             if self.delivery == ReliableDelivery::Newest {
                 self.oldest_unacked = self.next_message_id();
-                self.pending.clear();
+                for pending in self.pending.drain(..).flatten() {
+                    self.queued -= pending.message.len();
+                }
                 self.due.clear();
             }
             let message_id = self.next_message_id();
@@ -244,6 +251,7 @@ impl ReliableSendState {
         };
         let completed = pending.message.ack(key.part);
         if completed {
+            self.queued -= pending.message.len();
             self.pending[slot] = None;
             while self.pending.front().is_some_and(Option::is_none) {
                 self.pending.pop_front();
@@ -278,13 +286,7 @@ mod tests {
     use campfire_net_core::NetId;
 
     fn send(state: &mut ReliableSendState, bytes: Bytes) -> Option<MessageId> {
-        state.buffer_send(
-            bytes,
-            1.0,
-            FRAGMENT_LEN,
-            CompressionSetup::DISABLED,
-            &mut CompressionScratch::default(),
-        )
+        state.buffer_send(bytes, 1.0, FRAGMENT_LEN)
     }
 
     fn collect(state: &mut ReliableSendState) -> Vec<SendCandidate> {

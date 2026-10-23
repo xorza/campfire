@@ -45,6 +45,10 @@ impl Cache for UnitGrid {
     fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
+
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
 }
 
 impl UnitGrid {

@@ -1,11 +1,15 @@
+use core::num::NonZeroU32;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::Changed;
+use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentOnChange};
 use campfire_stats::Level;
-use campfire_units::UnitEntity;
+use campfire_units::{TrackLevel, TrackLevels, UnitEntity};
 use campfire_values::TrackId;
 use campfire_visibility::DataKind;
 use serde::de::Error;
@@ -59,6 +63,17 @@ impl Experience {
         self.tracks.iter().find(|held| held.track == track).copied()
     }
 
+    /// Shows each unit's levels in its `TrackLevels` once its experience changed, as a server's
+    /// capability below progression pays by them.
+    pub(crate) fn show_levels(mut units: Query<'_, '_, (&Self, &mut TrackLevels), Changed<Self>>) {
+        for (experience, mut levels) in &mut units {
+            levels.set(experience.iter().map(|held| TrackLevel {
+                track: held.track,
+                level: NonZeroU32::new(held.level.get()).expect("a level is 1 at least"),
+            }));
+        }
+    }
+
     /// Adds `amount`, not negative, to `track`, which the unit has, at most up to the largest
     /// number: its level rises to the one the experience reaches on `book`'s track, if that is
     /// higher.
@@ -83,13 +98,16 @@ impl SimComponent for Experience {
     const NAME: &'static str = "progression.experience";
     type Host = UnitEntity;
 
-    // A track the mode lacks has no thresholds to count levels by, and the `level` track's level
-    // is the unit's.
+    // A track the mode lacks has no thresholds to count levels by, a level is one its track has,
+    // as a death's experience by level reads its value at it, and the `level` track's level is
+    // the unit's.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let book = world.resource::<TrackBook>();
         let unit_level = world.get::<Level>(entity).copied();
         self.tracks.iter().all(|held| {
             book.names().has(held.track)
+                && usize::try_from(held.level.get())
+                    .is_ok_and(|level| level <= book.levels(held.track))
                 && (book.level_track() != Some(held.track) || unit_level == Some(held.level))
         })
     }

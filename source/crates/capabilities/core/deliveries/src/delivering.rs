@@ -1,6 +1,6 @@
-use campfire_actions::{ActionsColumn, Delivery, DeliveryShape, LaunchId};
+use campfire_actions::{ActionsColumn, Delivery, LaunchId};
 use campfire_script::{ApiError, Checked, Ctx};
-use campfire_sim::StableId;
+use campfire_sim::{Capability, StableId};
 use campfire_values::{ActionId, ActionStart, Rank};
 use serde::{Deserialize, Serialize};
 
@@ -25,16 +25,16 @@ pub struct Launcher {
 
 impl Launcher {
     /// The running action, from its acting unit, for an action's call that launches one more of
-    /// its deliveries, and the type it delivers; an error for an action whose delivery's shape
-    /// `shape` refuses.
-    pub fn of(ctx: &Ctx, shape: fn(DeliveryShape) -> bool) -> Checked<Self> {
+    /// its deliveries, and the type it delivers; an error for an action that `capability` does
+    /// not deliver.
+    pub fn of(ctx: &Ctx, capability: Capability) -> Checked<Self> {
         let frame = ctx.frame();
         let source = frame.acting().expect("an action's call has its unit");
         let action = frame.action().expect("an action's call has its action");
         let (rank, start) = (frame.rank(), frame.start());
         drop(frame);
         let delivery = ActionsColumn::delivers(ctx.view(), action);
-        let Some(delivery) = delivery.filter(|delivery| shape(delivery.shape)) else {
+        let Some(delivery) = delivery.filter(|delivery| delivery.capability == capability) else {
             return Err(ApiError::NoDelivery.fail().into());
         };
         let by = Delivering {

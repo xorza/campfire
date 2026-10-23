@@ -6,10 +6,12 @@
 #![warn(clippy::float_arithmetic)]
 
 mod capability_directive;
+mod held_at_start;
 mod held_out;
 mod match_entity;
 mod on_match;
 mod order_units;
+mod ordered_units;
 mod out_of_play;
 mod player;
 mod player_resources;
@@ -20,14 +22,15 @@ mod players_world;
 mod resource_amount;
 mod resource_book;
 mod resources_data;
-mod seated;
 mod tick_commands;
 
 pub use crate::capability_directive::CapabilityDirective;
+pub use crate::held_at_start::{PlayerSlotHolder, StartingPlayerSlot};
 pub use crate::held_out::HeldOut;
 pub use crate::match_entity::MatchEntity;
 pub use crate::on_match::OnMatch;
 pub use crate::order_units::OrderUnits;
+pub use crate::ordered_units::OrderedUnits;
 pub use crate::out_of_play::OutOfPlay;
 pub use crate::player::Player;
 pub use crate::player_resources::PlayerResources;
@@ -38,5 +41,4 @@ pub use crate::players_world::PlayersWorld;
 pub use crate::resource_amount::ResourceAmount;
 pub use crate::resource_book::ResourceBook;
 pub use crate::resources_data::ResourcesData;
-pub use crate::seated::{SeatHolder, StartingSeat};
 pub use crate::tick_commands::{TickCommand, TickCommands};

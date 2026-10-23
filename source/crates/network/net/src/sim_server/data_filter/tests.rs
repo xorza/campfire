@@ -1,11 +1,12 @@
 use bevy_ecs::world::Mut;
 use campfire_codec::Toml;
+use campfire_declarations::Role;
 use campfire_progression::{Experience, Points};
 use campfire_sim::{OnAny, SimComponent};
 use campfire_states::SentOnChange;
 use campfire_units::{AudienceAll, UnitState};
-use campfire_values::TeamSet;
-use campfire_visibility::{ModeVisibility, Visibility};
+use campfire_values::{PlayerView, TeamSet};
+use campfire_visibility::ModeVisibility;
 use serde::{Deserialize, Serialize};
 
 use super::*;
@@ -72,7 +73,11 @@ fn a_kinds_filter_follows_its_entitys_owner_and_team() {
     // gains it, each it changes to, and none of one once it loses it; a despawn changes
     // nothing.
     let mut app = App::new();
-    app.insert_resource(MatchVisibility(Visibility::DEFAULT));
+    app.insert_resource(MatchFacts {
+        set: CapabilitySet::CORE,
+        role: Role::Rules,
+        visibility: Visibility::DEFAULT,
+    });
     DataFilter::<ProgressionKind>::keep(&mut app);
     DataFilter::<ProgressionKind>::required_by::<Stray>(&mut app);
     let world = app.world_mut();
@@ -81,41 +86,62 @@ fn a_kinds_filter_follows_its_entitys_owner_and_team() {
             .get::<DataFilter<ProgressionKind>>(entity)
             .map(|filter| (filter.owner, filter.team))
     };
-    let (seat, team) = (Seat::new, Team::new);
-    let hero = world.spawn((Owner::new(seat(1)), team(0), Stray)).id();
+    let (player_slot, team) = (PlayerSlot::new, Team::new);
+    let hero = world
+        .spawn((Owner::new(player_slot(1)), team(0), Stray))
+        .id();
     world.flush();
-    assert_eq!(held(world, hero), Some((Some(seat(1)), Some(team(0)))));
-    world.entity_mut(hero).insert(Owner::new(seat(2)));
+    assert_eq!(
+        held(world, hero),
+        Some((Some(player_slot(1)), Some(team(0))))
+    );
+    world.entity_mut(hero).insert(Owner::new(player_slot(2)));
     world.flush();
-    assert_eq!(held(world, hero), Some((Some(seat(2)), Some(team(0)))));
+    assert_eq!(
+        held(world, hero),
+        Some((Some(player_slot(2)), Some(team(0))))
+    );
     world.entity_mut(hero).insert(team(1));
     world.flush();
-    assert_eq!(held(world, hero), Some((Some(seat(2)), Some(team(1)))));
+    assert_eq!(
+        held(world, hero),
+        Some((Some(player_slot(2)), Some(team(1))))
+    );
     world.entity_mut(hero).remove::<Owner>();
     world.flush();
     assert_eq!(held(world, hero), Some((None, Some(team(1)))));
-    world.entity_mut(hero).insert(Owner::new(seat(2)));
+    world.entity_mut(hero).insert(Owner::new(player_slot(2)));
     world.entity_mut(hero).remove::<Team>();
     world.flush();
-    assert_eq!(held(world, hero), Some((Some(seat(2)), None)));
+    assert_eq!(held(world, hero), Some((Some(player_slot(2)), None)));
     // A unit no player owns, as a creep; and one that holds no type of the kind.
     let creep = world.spawn((team(1), Stray)).id();
-    let tower = world.spawn((Owner::new(seat(1)), team(0))).id();
+    let tower = world.spawn((Owner::new(player_slot(1)), team(0))).id();
     world.flush();
     assert_eq!(held(world, creep), Some((None, Some(team(1)))));
     assert_eq!(held(world, tower), None);
-    // A player's own entity: its seat is its owner, through each change of its team.
-    let own = world.spawn((Player::new(seat(3)), team(0), Stray)).id();
+    // A player's own entity: its player slot is its owner, through each change of its team.
+    let own = world
+        .spawn((Player::new(player_slot(3)), team(0), Stray))
+        .id();
     world.flush();
-    assert_eq!(held(world, own), Some((Some(seat(3)), Some(team(0)))));
+    assert_eq!(
+        held(world, own),
+        Some((Some(player_slot(3)), Some(team(0))))
+    );
     world.entity_mut(own).remove::<Team>();
     world.flush();
-    assert_eq!(held(world, own), Some((Some(seat(3)), None)));
-    world.entity_mut(own).insert((Owner::new(seat(4)), team(1)));
+    assert_eq!(held(world, own), Some((Some(player_slot(3)), None)));
+    world
+        .entity_mut(own)
+        .insert((Owner::new(player_slot(4)), team(1)));
     world.entity_mut(own).remove::<Owner>();
     world.flush();
-    assert_eq!(held(world, own), Some((Some(seat(3)), Some(team(1)))));
-    world.entity_mut(hero).insert(Owner::new(seat(1)));
+    assert_eq!(
+        held(world, own),
+        Some((Some(player_slot(3)), Some(team(1))))
+    );
+    world.entity_mut(hero).insert(Owner::new(player_slot(1)));
     world.flush();
     world.despawn(hero);
     world.flush();
@@ -136,20 +162,20 @@ fn held<K: FilteredKind>(
 
 #[test]
 fn only_the_kinds_audience_in_the_match_holds_a_filtered_kind() {
-    let player = |seat, team| {
-        Some(Viewer::Player {
-            seat: Seat::new(seat),
+    let player = |player_slot, team| {
+        Some(Viewer::Player(PlayerView {
+            player_slot: PlayerSlot::new(player_slot),
             team: Team::new(team),
             out: false,
-        })
+        }))
     };
     let spectator = Some(Viewer::Spectator(Watching::Teams(TeamSet::ALL)));
     let client = Entity::PLACEHOLDER;
-    let (owner, team) = (Owner::new(Seat::new(1)), Team::new(0));
-    // The owner of team 0's unit, an ally, an enemy, a spectator, and a link with no seat.
+    let (owner, team) = (Owner::new(PlayerSlot::new(1)), Team::new(0));
+    // The owner of team 0's unit, an ally, an enemy, a spectator, and a link with no player slot.
     let viewers = [player(1, 0), player(0, 0), player(2, 1), spectator, None];
     // The defaults: prediction to the owner alone; a team field to its team; life to all.
-    let defaults = MatchVisibility(Visibility::DEFAULT);
+    let defaults = Visibility::DEFAULT;
     let prediction = DataFilter::<PredictionKind>::new(Some(&owner), Some(&team), &defaults);
     let team_state = DataFilter::<UnitStateTeamKind>::new(Some(&owner), Some(&team), &defaults);
     let life = DataFilter::<LifeKind>::new(Some(&owner), Some(&team), &defaults);
@@ -175,7 +201,7 @@ inventory = ["spectators"]
 "#,
     )
     .unwrap();
-    let set = MatchVisibility(*mode.settings());
+    let set = *mode.settings();
     let life = DataFilter::<LifeKind>::new(Some(&owner), Some(&team), &set);
     let inventory = DataFilter::<InventoryKind>::new(Some(&owner), Some(&team), &set);
     assert_eq!(

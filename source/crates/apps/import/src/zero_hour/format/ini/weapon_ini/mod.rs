@@ -19,7 +19,8 @@ pub(crate) struct WeaponIni {
 /// yes by default; its `RadiusDamageAffects` and its `ProjectileCollidesWith`; whether it deals its
 /// damage at its own place, `DamageDealtAtSelfPosition`; its continuous fire; its `DamageType`, of
 /// the game's types, `EXPLOSION` by default; its `DelayBetweenShots`, `ClipSize`, `ClipReloadTime`
-/// and `PreAttackDelay`, times in milliseconds; and its `ProjectileObject`, none for `NONE`.
+/// and `PreAttackDelay`, times in milliseconds; its `PreAttackType`, `PER_SHOT` by default; and its
+/// `ProjectileObject`, none for `NONE`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IniWeapon {
     pub(crate) damage: f32,
@@ -43,6 +44,7 @@ pub(crate) struct IniWeapon {
     pub(crate) clip_size: i32,
     pub(crate) clip_reload_ms: i32,
     pub(crate) pre_attack_ms: i32,
+    pub(crate) pre_attack_type: PrefireType,
     pub(crate) projectile: Option<String>,
     /// It names a `ProjectileStreamName`, which draws its projectiles as a stream.
     pub(crate) stream: bool,
@@ -134,6 +136,28 @@ pub(crate) struct CollideMask {
     pub(crate) controlled_structures: bool,
 }
 
+/// What starts a weapon's `PreAttackDelay` again, its `PreAttackType` (`WeaponPrefireType`): each
+/// shot, each target, or each clip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PrefireType {
+    Shot,
+    Attack,
+    Clip,
+}
+
+impl PrefireType {
+    /// The type `name` names, of `TheWeaponPrefireNames`, in any case.
+    fn of(name: &str) -> Option<Self> {
+        [
+            ("PER_SHOT", Self::Shot),
+            ("PER_ATTACK", Self::Attack),
+            ("PER_CLIP", Self::Clip),
+        ]
+        .into_iter()
+        .find_map(|(named, kind)| name.eq_ignore_ascii_case(named).then_some(kind))
+    }
+}
+
 /// A weapon's `DelayBetweenShots`: one time in milliseconds, or a range of `Min:` and `Max:`, of
 /// which the game draws one for each shot (`WeaponTemplate::parseShotDelay`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +190,7 @@ impl Default for IniWeapon {
             clip_size: 0,
             clip_reload_ms: 0,
             pre_attack_ms: 0,
+            pre_attack_type: PrefireType::Shot,
             projectile: None,
             stream: false,
             detonation_objects: false,
@@ -243,6 +268,10 @@ impl IniWeapon {
             "clipsize" => self.clip_size = at.int()?,
             "clipreloadtime" => self.clip_reload_ms = at.int()?,
             "preattackdelay" => self.pre_attack_ms = at.int()?,
+            "preattacktype" => {
+                self.pre_attack_type =
+                    PrefireType::of(at.value()?).ok_or(IniError::NotListed { line: at.number })?;
+            }
             "projectileobject" => self.projectile = none(at.value()?),
             "projectilestreamname" => self.stream = none(at.value()?).is_some(),
             "projectiledetonationocl" => self.detonation_objects = none(at.value()?).is_some(),
@@ -467,6 +496,7 @@ Weapon Knife\r
   DamageType = MELEE\r
   DelayBetweenShots = 1000\r
   PreAttackDelay = 833\r
+  PreAttackType = PER_ATTACK\r
 End\r
 Weapon Mortar\r
   PrimaryDamage = 40\r

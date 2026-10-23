@@ -4,7 +4,6 @@ use campfire_sim::Capability;
 use campfire_values::TimeTooLarge;
 use thiserror::Error;
 
-use crate::action_data::error::ActionField;
 use crate::list_hook::ListHook;
 use crate::listed_effect::error::{EffectError, EffectRule};
 use crate::pipeline_field::PipelineField;
@@ -107,4 +106,32 @@ impl From<TimeTooLarge> for ActionError {
     fn from(error: TimeTooLarge) -> Self {
         Self::Problem(ActionProblem::Time(error))
     }
+}
+
+/// A field that does not hold at a rank is the action's problem.
+impl From<ActionField> for ActionProblem {
+    fn from(field: ActionField) -> Self {
+        Self::Field(field)
+    }
+}
+
+/// A capability field of an action that the release runs, which does not give a value of its
+/// kind at a rank: a whole number of milliseconds or of a pool the mode declares, or a range of
+/// meters that is not negative, and never through a scaling param.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionField {
+    Range,
+    MinRange,
+    Cooldown,
+    Cost,
+    Windup,
+    /// Its charges: a count of 1 to 255, and a recharge of whole milliseconds.
+    Charges,
+    /// Its toggle's cost: whole amounts of the caster's pools.
+    Toggle,
+    /// Its channel: a length, a time between ticks and a wind-down of whole milliseconds, none
+    /// of them 0, and a windup spread of 0 to below 1.
+    Channel,
+    /// Its charge's most: whole milliseconds, not 0.
+    Charge,
 }

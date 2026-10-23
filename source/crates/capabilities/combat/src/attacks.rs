@@ -5,20 +5,22 @@ use bevy_ecs::query::{Has, QueryEntityError, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionProgress, ActionSlots, ActionTarget, ByAction, Caster,
-    InProgress, Payer, ProgressIndexes, Purse, RangeFit, Reached, Shot, ShotDamage, Shots, SlotAim,
-    SlotCommit, SlotTimes, StartFrom, Targets,
+    ActionBook, ActionCheck, ActionProgress, ActionSlots, ActionTarget, Caster, InProgress, Payer,
+    ProgressIndexes, Purse, RangeFit, Reached, Shot, ShotDamage, Shots, SlotAim, SlotCommit,
+    SlotTimes, StartFrom, Targets,
 };
 use campfire_common::Tick;
-use campfire_declarations::{ByType, RoleForm};
+use campfire_declarations::{ById, RoleForm};
 use campfire_deliveries::{AttackShot, Delivered, DeliveredPayload, DeliveryQueue};
+use campfire_geometry::Placed;
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_script::ScriptsWorld;
 use campfire_sim::{DueUnit, EntityIndex, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{ModifierEvents, PoolBook, UnitPools, UnitPoolsReadOnly, UnitStats};
 use campfire_units::{Body, Dead, Due, Facing, ForcedMove, MapBook, Owner, UnitsNear};
-use campfire_values::{Block, Motion, TagSet, Team, UnitTags, UnitType};
+use campfire_values::{ActionId, Allegiance, Block, Motion, TagSet, Team, UnitTags, UnitType};
 
+use crate::attack_data::PreAttackEach;
 use crate::clip_shots::ClipShots;
 use crate::combat_event::CombatEvent;
 use crate::damage::{Damage, DamageCause};
@@ -71,7 +73,7 @@ impl Attacks {
         due.clear();
         held.land(now, &mut due);
         for &damage in &*due {
-            if targets.lives(damage.target) {
+            if targets.living(damage.target).is_some() {
                 queue.push_damage(damage, now);
             }
         }
@@ -86,7 +88,7 @@ impl Attacks {
     /// id (04-capabilities/combat.md, An attack may splash; 04-capabilities/combat.md, A splash may
     /// have an outer ring).
     pub(super) fn take_hits(
-        (tick, weapons): (Res<'_, SimTick>, Res<'_, ByAction<Weapon>>),
+        (tick, weapons): (Res<'_, SimTick>, Res<'_, ById<ActionId, Weapon>>),
         (deliveries, mut queue): (Res<'_, DeliveryQueue>, ResMut<'_, PassQueue>),
         targets: Targets<'_, '_>,
         near: UnitsNear<'_>,
@@ -98,7 +100,7 @@ impl Attacks {
                 payload:
                     DeliveredPayload::Attack(AttackShot {
                         source,
-                        team,
+                        allegiance,
                         damage: shot,
                     }),
                 reach,
@@ -115,6 +117,7 @@ impl Attacks {
                 cause: DamageCause::Attack {
                     roll: shot.roll,
                     rank: shot.rank,
+                    allegiance,
                 },
                 action: Some(shot.action),
                 depth: 0,
@@ -133,15 +136,17 @@ impl Attacks {
                         let affects = if unit.id == source {
                             !splash.spares_source
                         } else {
-                            splash.affects.selects(targets.relation(team, unit.team))
+                            splash
+                                .affects
+                                .selects(targets.relation(allegiance.team, unit.team))
                         };
                         let ring = targets.volume_at(body.key).and_then(|volume| {
                             if volume.reaches(point, splash.radius) {
                                 Some(SplashRing::Inner)
                             } else {
-                                let outer = splash.outer.as_ref()?;
+                                let outer = splash.outer.as_ref().zip(shot.outer)?;
                                 volume
-                                    .reaches(point, outer.radius)
+                                    .reaches(point, outer.0.radius)
                                     .then_some(SplashRing::Outer)
                             }
                         });
@@ -154,9 +159,9 @@ impl Attacks {
                     for &(ring, target) in &*splashed {
                         let amount = match ring {
                             SplashRing::Inner => shot.amount,
-                            SplashRing::Outer => weapon
-                                .and_then(|weapon| weapon.outer_amount(shot.rank))
-                                .expect("a unit in an outer ring is of a splash that has one"),
+                            SplashRing::Outer => shot
+                                .outer
+                                .expect("a unit in an outer ring is of a shot that carries one"),
                         };
                         queue.push_damage(
                             Damage {
@@ -177,14 +182,15 @@ impl Attacks {
     /// the first weapon whose filter selects the target, once that weapon passes its checks, the
     /// target is within its reach, and, for a weapon of its turret's slot kind, the turret lies
     /// within its tolerance of the target's bearing (04-capabilities/combat.md, A unit type may
-    /// have a turret). An attack in its windup stops when the unit's tags keep it from
-    /// attacking, or it lives no more, and such a unit starts none. An attack target that is no
-    /// living enemy any more is dropped, with the attack on it.
+    /// have a turret), and the weapon's pre-attack, if it has one, is done
+    /// (04-capabilities/combat.md, A pre-attack). An attack in its windup stops when the unit's
+    /// tags keep it from attacking, or it lives no more, and such a unit starts none. An attack
+    /// target that is no living enemy any more is dropped, with the attack on it.
     pub(super) fn start_attacks(
         (tick, (book, weapons), turrets): (
             Res<'_, SimTick>,
-            (Res<'_, ActionBook>, Res<'_, ByAction<Weapon>>),
-            Res<'_, ByType<Turret>>,
+            (Res<'_, ActionBook>, Res<'_, ById<ActionId, Weapon>>),
+            Res<'_, ById<UnitType, Turret>>,
         ),
         (resources, life): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PoolBook>),
         targets: Targets<'_, '_>,
@@ -201,7 +207,7 @@ impl Attacks {
                 Option<&Body>,
                 Option<&UnitTags>,
                 Has<ForcedMove>,
-                (&UnitType, Option<&Facing>, Option<&TurretAngle>),
+                (&UnitType, Option<&Facing>, Option<&TurretAngle>, &ClipShots),
             ),
             Without<Dead>,
         >,
@@ -222,7 +228,7 @@ impl Attacks {
                 body,
                 tags,
                 forced,
-                (&unit_type, facing, turret_angle),
+                (&unit_type, facing, turret_angle, clips),
             )) = units.get_mut(entity).map_err(|error| {
                 if matches!(error, QueryEntityError::NotSpawned(_)) {
                     indexes.forget_attacker(id);
@@ -241,7 +247,8 @@ impl Attacks {
                 Some(
                     InProgress::Order { .. }
                     | InProgress::Charge { .. }
-                    | InProgress::Channel { .. },
+                    | InProgress::Channel { .. }
+                    | InProgress::WindDown { .. },
                 ) => {}
                 Some(InProgress::Attack { .. }) => {
                     if blocked {
@@ -261,20 +268,22 @@ impl Attacks {
                         progress.set_attack_target(None, &mut indexes.of(id, entity));
                         continue;
                     };
-                    if blocked {
-                        continue;
-                    }
                     let selects = (targets.relation(team, unit.team), unit.tags);
-                    let Some(slot) = slots.weapon_in(&book, Some(selects)) else {
+                    let weapon_slot = slots.weapon_in(&book, Some(selects));
+                    let (Some(slot), false) = (weapon_slot, blocked) else {
+                        progress.end_pre_attack();
                         continue;
                     };
-                    let kind = slots.slot(slot).expect("a weapon's slot").kind;
-                    let turret = turrets.get(unit_type).filter(|turret| turret.slot == kind);
+                    let held_slot = slots.slot(slot).expect("a weapon's slot");
+                    let turret = turrets
+                        .get(unit_type)
+                        .filter(|turret| turret.slot == held_slot.kind);
                     if let (Some(turret), Some(&facing), Some(&angle)) =
                         (turret, facing, turret_angle)
                     {
                         let aim = TurretAngle::toward(facing, position.get(), unit.position);
                         if !aim.is_some_and(|aim| angle.within(aim, turret.tolerance)) {
+                            progress.end_pre_attack();
                             continue;
                         }
                     }
@@ -297,10 +306,10 @@ impl Attacks {
                         purse,
                         aim,
                         relation,
-                        living: |id| targets.living(id),
+                        living: |id| targets.target(id),
                     };
-                    let pitch = slots.slot(slot).and_then(|held| held.action);
-                    let pitch = pitch.and_then(|action| weapons.get(action)?.pitch);
+                    let weapon = held_slot.action.and_then(|action| weapons.get(action));
+                    let pitch = weapon.and_then(|weapon| weapon.pitch);
                     // A weapon's bound of pitch is a bound of its reach, which its start tests
                     // past the range (04-capabilities/combat.md, An attack may bound its pitch).
                     let pitched = pitch.is_none_or(|pitch| {
@@ -308,11 +317,60 @@ impl Attacks {
                         let aimed = targets.volume_of(target);
                         aimed.is_some_and(|aimed| pitch.reaches(center, &aimed))
                     });
+                    let pre_attack = weapon.and_then(|weapon| weapon.pre_attack.as_ref());
+                    if let (Some(rule), Some(action), Some(rank)) =
+                        (pre_attack, held_slot.action, held_slot.rank)
+                    {
+                        // The pre-attack runs while the weapon reaches the target, ready or not, as
+                        // Zero Hour's aim and fire states run through a reload, a clip's loaded as
+                        // its reload starts.
+                        let values = held_slot.values_in(&book).expect("a held weapon's values");
+                        let fit = targets.reach(
+                            Placed::new(position.get(), Body::shape_of(body)),
+                            values.range,
+                            values.min_range,
+                            Placed::new(unit.position, unit.shape),
+                        );
+                        if fit != RangeFit::Within || !pitched {
+                            progress.end_pre_attack();
+                            continue;
+                        }
+                        let current = progress.pre_attack().filter(|held| held.of(slot, target));
+                        let ready = times.slot(slot).is_some_and(|time| time.ready_at <= now);
+                        let owed = match rule.each {
+                            PreAttackEach::Shot => true,
+                            PreAttackEach::Target => !current.is_some_and(|held| held.spent),
+                            PreAttackEach::Clip => clips.is_full(action),
+                        };
+                        if owed {
+                            match current.filter(|held| !held.spent) {
+                                Some(held) if now < held.done_at => continue,
+                                // One that ends before its weapon is ready starts again in the
+                                // next tick, as Zero Hour's fire state falls back to its aim,
+                                // which pre-fires again (`AIAttackFireWeaponState::update`).
+                                Some(_) if !ready => {
+                                    progress.end_pre_attack();
+                                    continue;
+                                }
+                                Some(_) => {}
+                                None => {
+                                    let done_at = now.after(rule.ticks[rank.index()]);
+                                    progress.begin_pre_attack(slot, target, done_at);
+                                    if now < done_at {
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
                     let started = times
                         .start(check, Some(from))
                         .filter(|started| started.reach == RangeFit::Within && pitched)
                         .map(|started| now.after(started.checked.values.windup));
                     if let Some(resolves_at) = started {
+                        if pre_attack.is_some() {
+                            progress.spend_pre_attack();
+                        }
                         progress.schedule_attack(slot, resolves_at, &mut indexes.of(id, entity));
                     }
                 }
@@ -325,7 +383,7 @@ impl Attacks {
     pub(super) fn collect_attacks(
         (volley, (book, weapons), pools): (
             Res<'_, Volley>,
-            (Res<'_, ActionBook>, Res<'_, ByAction<Weapon>>),
+            (Res<'_, ActionBook>, Res<'_, ById<ActionId, Weapon>>),
             Option<Res<'_, PoolBook>>,
         ),
         attackers: Query<'_, '_, Attacker<'_>, Without<Dead>>,
@@ -374,7 +432,7 @@ impl Attacks {
     /// Only the server pays them, as a client's pools come from the server.
     pub(super) fn pay_attack_toggles(
         ((book, weapons), life, volley): (
-            (Res<'_, ActionBook>, Res<'_, ByAction<Weapon>>),
+            (Res<'_, ActionBook>, Res<'_, ById<ActionId, Weapon>>),
             Res<'_, PoolBook>,
             Res<'_, Volley>,
         ),
@@ -431,7 +489,7 @@ impl Attacks {
         (clock, rng, (book, weapons), life): (
             TickClock<'_>,
             Res<'_, SimRng>,
-            (Res<'_, ActionBook>, Res<'_, ByAction<Weapon>>),
+            (Res<'_, ActionBook>, Res<'_, ById<ActionId, Weapon>>),
             Res<'_, PoolBook>,
         ),
         (mut queue, mut fired, mut resources, mut volley): (
@@ -452,7 +510,7 @@ impl Attacks {
                 Option<&UnitTags>,
                 Has<ForcedMove>,
                 Option<&Owner>,
-                (&mut ClipShots, Option<&Body>),
+                (&mut ClipShots, Option<&Body>, &Team),
             ),
             Without<Dead>,
         >,
@@ -487,7 +545,7 @@ impl Attacks {
                 tags,
                 forced,
                 owner,
-                (mut clips, body),
+                (mut clips, body, &team),
             )) = attackers.get_mut(entity)
             else {
                 // Only a death or a despawn takes an attacker out of reach: a living one that
@@ -579,6 +637,7 @@ impl Attacks {
                         action,
                         rank,
                         amount,
+                        outer: weapon.outer_amount(stats, rank),
                         kind: weapon.kind,
                         roll,
                     },
@@ -589,7 +648,14 @@ impl Attacks {
                     target,
                     amount,
                     kind: weapon.kind,
-                    cause: DamageCause::Attack { roll, rank },
+                    cause: DamageCause::Attack {
+                        roll,
+                        rank,
+                        allegiance: Allegiance {
+                            team,
+                            owner: owner.map(|owner| owner.player_slot()),
+                        },
+                    },
                     action: Some(action),
                     depth: 0,
                     hit: None,
@@ -618,7 +684,7 @@ impl Attacks {
     /// The weapon of the attack `progress` has under way, of a unit with `slots`.
     fn wielded<'a>(
         book: &'a ActionBook,
-        weapons: &'a ByAction<Weapon>,
+        weapons: &'a ById<ActionId, Weapon>,
         slots: &ActionSlots,
         progress: &ActionProgress,
     ) -> Wielded<'a> {

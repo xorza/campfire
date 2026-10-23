@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declarations::{Book, ByType};
+use campfire_declarations::{Book, ById};
 use campfire_script::MatchNames;
 use campfire_values::{ResourceId, UnitType};
 
@@ -10,8 +10,8 @@ use crate::resource_set::ResourceSet;
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 #[component(immutable)]
 pub struct NodeBook {
-    pub nodes: ByType<NodeSpec>,
-    pub drop_offs: ByType<ResourceSet>,
+    pub nodes: ById<UnitType, NodeSpec>,
+    pub drop_offs: ById<UnitType, ResourceSet>,
 }
 
 /// What a node type holds, and what becomes of its node once it runs out.

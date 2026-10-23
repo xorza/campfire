@@ -16,12 +16,11 @@ use bevy_curve::{Curve, Ease, FunctionCurve, Interval};
 use bevy_ecs::system::RunSystemOnce;
 
 use campfire_net_core::NetTick;
-use campfire_net_interpolation::AppInterpolationExt;
-use campfire_net_interpolation::FrameInterpolationHistory;
-use campfire_net_interpolation::InterpolationFns;
+use campfire_net_frame_interpolation::{
+    AppFrameInterpolationExt, FrameHolders, FrameInterpolationHistory, FrameInterpolationPlugin,
+    FrameRegistryPlugin, FrameRule, InterpolationSampleCx,
+};
 use campfire_net_interpolation::InterpolationMarkerPlugin;
-use campfire_net_interpolation::InterpolationRegistryPlugin;
-use campfire_net_interpolation::InterpolationRule;
 use campfire_net_timeline::LocalTimeline;
 use core::time::Duration;
 
@@ -58,9 +57,21 @@ impl ReplicationDiffable<Self> for TestPos {
     }
 }
 
+/// The predicted component `TestPos` shows, the visual a correction offsets.
+#[derive(Component, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+struct SimPos(f32);
+
+/// The predicted component `TestRot` shows.
+#[derive(Component, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+struct SimRot(f32);
+
 /// A frame-interpolated type with no correction, which a switch still re-seeds.
 #[derive(Component, Clone, Debug, Default, PartialEq)]
 struct FrameOnly(f32);
+
+/// The visual of `FrameOnly`.
+#[derive(Component, Clone, Debug, Default, PartialEq)]
+struct ShownFrameOnly(f32);
 
 /// Second corrected type: the example blends up to four (Position,
 /// Rotation, velocities), and per-type fan-out needs its own coverage —
@@ -95,7 +106,8 @@ fn switch_app() -> App {
     app.add_plugins((
         PredictionMarkerPlugin,
         InterpolationMarkerPlugin,
-        InterpolationRegistryPlugin,
+        FrameRegistryPlugin,
+        FrameInterpolationPlugin,
     ));
     app.init_resource::<PredictionRegistry>();
     // The resource `TimelineSwitchPlugin` installs.
@@ -104,24 +116,55 @@ fn switch_app() -> App {
     app.init_resource::<LocalTimeline>();
     app.init_resource::<LocalTimelineSync>();
     app.insert_resource(Time::<Virtual>::default());
-    app.register_component::<TestPos>()
+    app.register_component::<SimPos>()
         .replicate()
         .predict()
-        .correct_linear::<TestPos>();
-    app.register_component::<TestRot>()
+        .correct_linear::<TestPos, TestPos>();
+    app.register_component::<SimRot>()
         .replicate()
         .predict()
-        .correct_linear::<TestRot>();
-    app.register_interpolation_rule::<TestPos, ()>(InterpolationRule::new(
-        InterpolationFns::no_history(|start: &TestPos, end: &TestPos, t: f32| {
-            TestPos(start.0 + (end.0 - start.0) * t)
-        }),
+        .correct_linear::<TestRot, TestRot>();
+    app.register_frame_rule::<SimPos, TestPos, ()>(FrameRule::new(
+        |start: &SimPos, end: &SimPos, cx: InterpolationSampleCx| {
+            TestPos(start.0 + (end.0 - start.0) * cx.t)
+        },
     ));
-    app.register_interpolation_rule::<FrameOnly, ()>(InterpolationRule::new(
-        InterpolationFns::no_history(|_: &FrameOnly, end: &FrameOnly, _: f32| end.clone()),
+    app.register_frame_rule::<SimRot, TestRot, ()>(FrameRule::new(
+        |start: &SimRot, end: &SimRot, cx: InterpolationSampleCx| {
+            TestRot(start.0 + (end.0 - start.0) * cx.t)
+        },
+    ));
+    app.register_frame_rule::<FrameOnly, ShownFrameOnly, ()>(FrameRule::new(
+        |_: &FrameOnly, end: &FrameOnly, _| ShownFrameOnly(end.0),
     ));
     app.finish();
     app
+}
+
+/// Resolves the archetypes made since the last frame, as each frame does before it writes the
+/// visuals, so the correction finds where they are written.
+fn refresh_holders(app: &mut App) {
+    app.world_mut()
+        .run_system_once(FrameHolders::refresh)
+        .unwrap();
+}
+
+/// Prepares a rollback as `RollbackSystems::Prepare` does: each corrected visual is saved, and each
+/// predicted component rewinds to its state at the rollback tick.
+fn prepare_rollback(app: &mut App) {
+    app.world_mut()
+        .run_system_once(CorrectionFn::<SimPos, TestPos, TestPos>::save_rollback_visual)
+        .unwrap();
+    app.world_mut()
+        .run_system_once(CorrectionFn::<SimRot, TestRot, TestRot>::save_rollback_visual)
+        .unwrap();
+    app.world_mut()
+        .run_system_once(RollbackPlugin::prepare_rollback::<SimPos>)
+        .unwrap();
+    app.world_mut()
+        .run_system_once(RollbackPlugin::prepare_rollback::<SimRot>)
+        .unwrap();
+    app.world_mut().flush();
 }
 
 /// Runs the `PostUpdate` pass that saves the on-screen value of the
@@ -132,10 +175,10 @@ fn run_save(app: &mut App) {
         .unwrap();
     app.world_mut().flush();
     app.world_mut()
-        .run_system_once(CorrectionFn::<TestPos, TestPos>::save_switch_visual)
+        .run_system_once(CorrectionFn::<SimPos, TestPos, TestPos>::save_switch_visual)
         .unwrap();
     app.world_mut()
-        .run_system_once(CorrectionFn::<TestRot, TestRot>::save_switch_visual)
+        .run_system_once(CorrectionFn::<SimRot, TestRot, TestRot>::save_switch_visual)
         .unwrap();
     app.world_mut().flush();
 }
@@ -151,8 +194,9 @@ fn run_apply(app: &mut App) {
 /// Runs the `PostUpdate` pass that applies the correction to the live value,
 /// which is what makes `live` hold the rendered value.
 fn run_correction_apply(app: &mut App) {
+    refresh_holders(app);
     app.world_mut()
-        .run_system_once(CorrectionFn::<TestPos, TestPos>::update_visual_correction)
+        .run_system_once(CorrectionFn::<SimPos, TestPos, TestPos>::update_visual_correction)
         .unwrap();
     app.world_mut().flush();
 }
@@ -161,10 +205,10 @@ fn run_correction_apply(app: &mut App) {
 /// values: each correction's system, which is also what a rollback goes through.
 fn run_blend(app: &mut App) {
     app.world_mut()
-        .run_system_once(CorrectionFn::<TestPos, TestPos>::create_visual_correction)
+        .run_system_once(CorrectionFn::<SimPos, TestPos, TestPos>::create_visual_correction)
         .unwrap();
     app.world_mut()
-        .run_system_once(CorrectionFn::<TestRot, TestRot>::create_visual_correction)
+        .run_system_once(CorrectionFn::<SimRot, TestRot, TestRot>::create_visual_correction)
         .unwrap();
     app.world_mut().flush();
 }
@@ -186,10 +230,13 @@ fn blend_marker(world: &World, entity: Entity) -> SwitchBlend {
 #[test]
 fn a_switch_to_predicted_swaps_the_markers_and_saves_the_visual() {
     let mut app = switch_app();
-    let entity = app.world_mut().spawn((TestPos(10.0), Interpolated)).id();
+    let entity = app
+        .world_mut()
+        .spawn((SimPos(10.0), TestPos(10.0), Interpolated))
+        .id();
     app.world_mut().flush();
 
-    let request = TimelineSwitch::to_predicted().with_transition_secs(0.5);
+    let request = TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500));
     send_switch(&mut app, entity, request);
 
     let world = app.world();
@@ -216,7 +263,10 @@ fn a_switch_to_predicted_swaps_the_markers_and_saves_the_visual() {
             .and_then(|slot| slot.0.as_ref())
             .is_none()
     );
-    assert_eq!(blend_marker(world, entity).total_secs(), 0.5);
+    assert_eq!(
+        blend_marker(world, entity).total(),
+        Duration::from_millis(500)
+    );
 }
 
 #[test]
@@ -224,14 +274,14 @@ fn a_switch_to_interpolated_swaps_the_markers_and_saves_the_visual() {
     let mut app = switch_app();
     let entity = app
         .world_mut()
-        .spawn((TestPos(4.0), Predicted, FrameInterpolate))
+        .spawn((SimPos(4.0), TestPos(4.0), Predicted, FrameInterpolate))
         .id();
     app.world_mut().flush();
 
     send_switch(
         &mut app,
         entity,
-        TimelineSwitch::to_interpolated().with_transition_secs(0.25),
+        TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(250)),
     );
 
     let world = app.world();
@@ -259,14 +309,14 @@ fn blend_waits_for_a_component_the_destination_has_not_presented() {
     let mut app = switch_app();
     let entity = app
         .world_mut()
-        .spawn((TestPos(10.0), Predicted, FrameInterpolate))
+        .spawn((SimPos(10.0), TestPos(10.0), Predicted, FrameInterpolate))
         .id();
     app.world_mut().flush();
 
     send_switch(
         &mut app,
         entity,
-        TimelineSwitch::to_interpolated().with_transition_secs(0.5),
+        TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500)),
     );
     app.world_mut().entity_mut(entity).remove::<TestPos>();
     app.world_mut().flush();
@@ -318,18 +368,26 @@ fn blend_error_decays_on_the_window_curve() {
     let blended = app
         .world_mut()
         .spawn((
+            SimPos(10.0),
             TestPos(10.0),
             Predicted,
-            SwitchBlend::new(Duration::ZERO, 1.0, CorrectionEase::Smoothstep),
+            SwitchBlend::new(
+                Duration::ZERO,
+                Duration::from_secs(1),
+                CorrectionEase::Smoothstep,
+            ),
             VisualCorrection::active(TestPos(-1.0), Duration::ZERO),
+            FrameInterpolate,
         ))
         .id();
     let policy = app
         .world_mut()
         .spawn((
+            SimPos(10.0),
             TestPos(10.0),
             Predicted,
             VisualCorrection::active(TestPos(-1.0), Duration::ZERO),
+            FrameInterpolate,
         ))
         .id();
     // Slower than the policy's own exponential: the window and the policy
@@ -339,15 +397,17 @@ fn blend_error_decays_on_the_window_curve() {
     // two exponential periods apart.)
     let exponential = CorrectionEase::Exponential {
         decay_ratio: 0.5,
-        decay_period_secs: 0.4,
+        decay_period: Duration::from_millis(400),
     };
     let unbounded = app
         .world_mut()
         .spawn((
+            SimPos(10.0),
             TestPos(10.0),
             Predicted,
-            SwitchBlend::new(Duration::ZERO, 1.0, exponential),
+            SwitchBlend::new(Duration::ZERO, Duration::from_secs(1), exponential),
             VisualCorrection::active(TestPos(-1.0), Duration::ZERO),
+            FrameInterpolate,
         ))
         .id();
     app.world_mut().flush();
@@ -355,8 +415,9 @@ fn blend_error_decays_on_the_window_curve() {
     app.world_mut()
         .resource_mut::<Time<Virtual>>()
         .advance_by(Duration::from_millis(50));
+    refresh_holders(&mut app);
     app.world_mut()
-        .run_system_once(CorrectionFn::<TestPos, TestPos>::update_visual_correction)
+        .run_system_once(CorrectionFn::<SimPos, TestPos, TestPos>::update_visual_correction)
         .unwrap();
     app.world_mut().flush();
 
@@ -379,7 +440,10 @@ fn blend_error_decays_on_the_window_curve() {
     // visible here only because the window's period is slower than the
     // policy floor.
     assert!(
-        (error(unbounded) - -exponential.remaining(0.05, 1.0)).abs() < 1e-5,
+        (error(unbounded)
+            - -exponential.remaining(Duration::from_millis(50), Duration::from_secs(1)))
+        .abs()
+            < 1e-5,
         "an unbounded window keeps its constant ratio, got {}",
         error(unbounded)
     );
@@ -403,11 +467,16 @@ fn window_curve_never_outpaces_the_correction_policy() {
     let entity = app
         .world_mut()
         .spawn((
+            SimPos(10.0),
             TestPos(10.0),
             Predicted,
             // 99% through a half second window: the curve alone would drop
             // almost the whole error in this one frame.
-            SwitchBlend::new(Duration::ZERO, 0.5, CorrectionEase::Smoothstep),
+            SwitchBlend::new(
+                Duration::ZERO,
+                Duration::from_millis(500),
+                CorrectionEase::Smoothstep,
+            ),
             VisualCorrection::active(TestPos(-10.0), Duration::from_millis(479)),
         ))
         .id();
@@ -416,8 +485,10 @@ fn window_curve_never_outpaces_the_correction_policy() {
         .resource_mut::<Time<Virtual>>()
         .advance_by(Duration::from_millis(16));
 
+    refresh_holders(&mut app);
+
     app.world_mut()
-        .run_system_once(CorrectionFn::<TestPos, TestPos>::update_visual_correction)
+        .run_system_once(CorrectionFn::<SimPos, TestPos, TestPos>::update_visual_correction)
         .unwrap();
     app.world_mut().flush();
 
@@ -447,32 +518,30 @@ fn rollback_env(app: &mut App) {
 }
 
 /// History with a confirmed and a predicted value at `tick`.
-fn history_at(tick: u32, value: f32) -> (PredictionHistory<TestPos>, ConfirmedHistory<TestPos>) {
-    let mut predicted = PredictionHistory::<TestPos>::default();
-    predicted.add(NetTick(tick), Some(TestPos(value)));
-    let mut confirmed = ConfirmedHistory::<TestPos>::default();
-    confirmed.insert(NetTick(tick), HistoryState::Updated(TestPos(value)));
+fn history_at(tick: u32, value: f32) -> (PredictionHistory<SimPos>, ConfirmedHistory<SimPos>) {
+    let mut predicted = PredictionHistory::<SimPos>::default();
+    predicted.add(NetTick(tick), Some(SimPos(value)));
+    let mut confirmed = ConfirmedHistory::<SimPos>::default();
+    confirmed.insert(NetTick(tick), HistoryState::Updated(SimPos(value)));
     (predicted, confirmed)
 }
 
 /// Runs one rollback frame with no switch involved: rewind, replay to
 /// `replayed`, and let the rollback path compute the correction.
 fn rollback_frame(app: &mut App, replayed: f32) {
-    app.world_mut()
-        .run_system_once(RollbackPlugin::prepare_rollback::<TestPos>)
-        .unwrap();
-    app.world_mut()
-        .run_system_once(RollbackPlugin::prepare_rollback::<TestRot>)
-        .unwrap();
+    prepare_rollback(app);
     app.world_mut().flush();
     let entities: Vec<Entity> = app
         .world_mut()
-        .query_filtered::<Entity, With<PredictionHistory<TestPos>>>()
+        .query_filtered::<Entity, With<PredictionHistory<SimPos>>>()
         .iter(app.world())
         .collect();
     for entity in entities {
-        if let Some(mut position) = app.world_mut().get_mut::<TestPos>(entity) {
+        if let Some(mut position) = app.world_mut().get_mut::<SimPos>(entity) {
             position.0 = replayed;
+        }
+        if let Some(mut shown) = app.world_mut().get_mut::<TestPos>(entity) {
+            shown.0 = replayed;
         }
     }
     run_blend(app);
@@ -497,14 +566,15 @@ fn switch_to_interpolated_while_a_correction_is_in_progress() {
     let entity = app
         .world_mut()
         .spawn((
+            SimPos(10.0),
             TestPos(10.0),
             Predicted,
             FrameInterpolate,
             history,
             confirmed,
-            FrameInterpolationHistory::<TestPos> {
-                previous_value: Some(TestPos(5.0)),
-                current_value: Some(TestPos(10.0)),
+            FrameInterpolationHistory::<SimPos> {
+                previous_value: Some(SimPos(5.0)),
+                current_value: Some(SimPos(10.0)),
             },
         ))
         .id();
@@ -530,7 +600,7 @@ fn switch_to_interpolated_while_a_correction_is_in_progress() {
     // Now switch to the interpolation timeline.
     app.world_mut()
         .entity_mut(entity)
-        .insert(TimelineSwitch::to_interpolated().with_transition_secs(0.5));
+        .insert(TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500)));
     run_save(&mut app);
     run_apply(&mut app);
     // The destination timeline writes its first value.
@@ -555,23 +625,27 @@ fn switch_to_interpolated_while_a_correction_is_in_progress() {
 #[test]
 fn forced_rollback_that_finds_no_state_can_still_blend() {
     use bevy_time::Fixed;
-    use campfire_net_interpolation::InterpolationRegistry;
 
     let mut app = switch_app();
-    app.init_resource::<InterpolationRegistry>();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(1)));
     rollback_env(&mut app);
     // Confirmed data at tick 8 only: the rollback target is tick 5.
     let (history, confirmed) = history_at(8, 8.0);
     let entity = app
         .world_mut()
-        .spawn((TestPos(10.0), Interpolated, history, confirmed))
+        .spawn((
+            SimPos(10.0),
+            TestPos(10.0),
+            Interpolated,
+            history,
+            confirmed,
+        ))
         .id();
     app.world_mut().flush();
 
     app.world_mut()
         .entity_mut(entity)
-        .insert(TimelineSwitch::to_predicted().with_transition_secs(0.5));
+        .insert(TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)));
     run_save(&mut app);
     run_apply(&mut app);
     rollback_frame(&mut app, 30.0);
@@ -596,7 +670,6 @@ fn forced_rollback_that_finds_no_state_can_still_blend() {
 fn forced_rollback_captures_the_value_a_switch_blends_from() {
     use crate::prediction_history::PredictionHistory;
     use crate::prediction_setup::PredictionSetup;
-    use bevy_ecs::system::RunSystemOnce;
     use campfire_net_replication::ComponentRegistry;
     use campfire_net_timeline::LocalTimeline;
     use campfire_net_timeline::Rollback;
@@ -607,21 +680,27 @@ fn forced_rollback_captures_the_value_a_switch_blends_from() {
     app.insert_resource(PredictionSetup::default());
     app.insert_resource(Rollback(NetTick(5)));
     app.world_mut().resource_mut::<LocalTimeline>().shift(10);
-    let mut history = PredictionHistory::<TestPos>::default();
-    history.add(NetTick(5), Some(TestPos(5.0)));
-    let mut confirmed = ConfirmedHistory::<TestPos>::default();
-    confirmed.insert(NetTick(5), HistoryState::Updated(TestPos(5.0)));
+    let mut history = PredictionHistory::<SimPos>::default();
+    history.add(NetTick(5), Some(SimPos(5.0)));
+    let mut confirmed = ConfirmedHistory::<SimPos>::default();
+    confirmed.insert(NetTick(5), HistoryState::Updated(SimPos(5.0)));
     // Interpolated and showing 10.
     let entity = app
         .world_mut()
-        .spawn((TestPos(10.0), Interpolated, history, confirmed))
+        .spawn((
+            SimPos(10.0),
+            TestPos(10.0),
+            Interpolated,
+            history,
+            confirmed,
+        ))
         .id();
     app.world_mut().flush();
 
     // Frame F: the switch saves nothing in this direction.
     app.world_mut()
         .entity_mut(entity)
-        .insert(TimelineSwitch::to_predicted().with_transition_secs(0.5));
+        .insert(TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)));
     run_save(&mut app);
     assert!(
         app.world()
@@ -632,12 +711,7 @@ fn forced_rollback_captures_the_value_a_switch_blends_from() {
 
     // Frame F+1: the markers swap, then the rollback captures.
     run_apply(&mut app);
-    app.world_mut()
-        .run_system_once(RollbackPlugin::prepare_rollback::<TestPos>)
-        .unwrap();
-    app.world_mut()
-        .run_system_once(RollbackPlugin::prepare_rollback::<TestRot>)
-        .unwrap();
+    prepare_rollback(&mut app);
     app.world_mut().flush();
 
     // The rollback is the capture in this direction, and it takes the value
@@ -651,9 +725,9 @@ fn forced_rollback_captures_the_value_a_switch_blends_from() {
         "the rollback must capture the value the switch blends from"
     );
     assert_eq!(
-        app.world().get::<TestPos>(entity),
-        Some(&TestPos(5.0)),
-        "... while it rewinds the live value to the confirmed state"
+        app.world().get::<SimPos>(entity),
+        Some(&SimPos(5.0)),
+        "... while it rewinds the simulated value to the confirmed state"
     );
 }
 
@@ -670,22 +744,20 @@ fn frame_with_rollback(app: &mut App, replayed: f32) {
     app.world_mut().resource_mut::<LocalTimeline>().shift(10);
     app.world_mut().flush();
 
-    app.world_mut()
-        .run_system_once(RollbackPlugin::prepare_rollback::<TestPos>)
-        .unwrap();
-    app.world_mut()
-        .run_system_once(RollbackPlugin::prepare_rollback::<TestRot>)
-        .unwrap();
+    prepare_rollback(app);
     app.world_mut().flush();
     // Replay steps the simulation forward to the replayed value.
     let entities: Vec<Entity> = app
         .world_mut()
-        .query_filtered::<Entity, With<PredictionHistory<TestPos>>>()
+        .query_filtered::<Entity, With<PredictionHistory<SimPos>>>()
         .iter(app.world())
         .collect();
     for entity in entities {
-        if let Some(mut position) = app.world_mut().get_mut::<TestPos>(entity) {
+        if let Some(mut position) = app.world_mut().get_mut::<SimPos>(entity) {
             position.0 = replayed;
+        }
+        if let Some(mut shown) = app.world_mut().get_mut::<TestPos>(entity) {
+            shown.0 = replayed;
         }
     }
     run_blend(app);
@@ -704,22 +776,26 @@ fn frame_with_rollback(app: &mut App, replayed: f32) {
 fn rollback_during_a_to_predicted_blend_updates_the_correction() {
     use crate::prediction_history::PredictionHistory;
     use bevy_time::Fixed;
-    use campfire_net_interpolation::InterpolationRegistry;
     use campfire_net_timeline::LocalTimeline;
 
     let mut app = switch_app();
-    app.init_resource::<InterpolationRegistry>();
     app.init_resource::<LocalTimeline>();
     app.insert_resource(Time::<Fixed>::from_duration(Duration::from_secs(1)));
     // Interpolated, showing 10, with history at the tick the rollbacks will
     // rewind to.
-    let mut history = PredictionHistory::<TestPos>::default();
-    history.add(NetTick(5), Some(TestPos(5.0)));
-    let mut confirmed = ConfirmedHistory::<TestPos>::default();
-    confirmed.insert(NetTick(5), HistoryState::Updated(TestPos(5.0)));
+    let mut history = PredictionHistory::<SimPos>::default();
+    history.add(NetTick(5), Some(SimPos(5.0)));
+    let mut confirmed = ConfirmedHistory::<SimPos>::default();
+    confirmed.insert(NetTick(5), HistoryState::Updated(SimPos(5.0)));
     let entity = app
         .world_mut()
-        .spawn((TestPos(10.0), Interpolated, history, confirmed))
+        .spawn((
+            SimPos(10.0),
+            TestPos(10.0),
+            Interpolated,
+            history,
+            confirmed,
+        ))
         .id();
     app.world_mut().flush();
 
@@ -727,7 +803,7 @@ fn rollback_during_a_to_predicted_blend_updates_the_correction() {
     // and let the blend compute its correction.
     app.world_mut()
         .entity_mut(entity)
-        .insert(TimelineSwitch::to_predicted().with_transition_secs(0.5));
+        .insert(TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)));
     run_save(&mut app);
     run_apply(&mut app);
     frame_with_rollback(&mut app, 30.0);
@@ -778,6 +854,7 @@ fn switch_takes_over_an_in_flight_correction() {
     let entity = app
         .world_mut()
         .spawn((
+            SimPos(12.0),
             TestPos(12.0),
             Predicted,
             FrameInterpolate,
@@ -788,8 +865,9 @@ fn switch_takes_over_an_in_flight_correction() {
     app.world_mut()
         .resource_mut::<Time<Virtual>>()
         .advance_by(Duration::from_millis(16));
+    refresh_holders(&mut app);
     app.world_mut()
-        .run_system_once(CorrectionFn::<TestPos, TestPos>::update_visual_correction)
+        .run_system_once(CorrectionFn::<SimPos, TestPos, TestPos>::update_visual_correction)
         .unwrap();
     app.world_mut().flush();
     // What the entity is showing now, error included.
@@ -797,7 +875,7 @@ fn switch_takes_over_an_in_flight_correction() {
 
     app.world_mut()
         .entity_mut(entity)
-        .insert(TimelineSwitch::to_interpolated().with_transition_secs(0.5));
+        .insert(TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500)));
     run_save(&mut app);
     run_apply(&mut app);
     app.world_mut().get_mut::<TestPos>(entity).unwrap().0 = 16.0;
@@ -835,14 +913,14 @@ fn blend_records_one_jump_and_decays_it() {
     let mut app = switch_app();
     let entity = app
         .world_mut()
-        .spawn((TestPos(10.0), Predicted, FrameInterpolate))
+        .spawn((SimPos(10.0), TestPos(10.0), Predicted, FrameInterpolate))
         .id();
     app.world_mut().flush();
 
     send_switch(
         &mut app,
         entity,
-        TimelineSwitch::to_interpolated().with_transition_secs(0.5),
+        TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500)),
     );
     // The destination timeline writes its first value between the apply and
     // the seed.
@@ -881,7 +959,13 @@ fn switch_to_interpolated_saves_one_value_per_corrected_type() {
     let mut app = switch_app();
     let entity = app
         .world_mut()
-        .spawn((TestPos(4.0), TestRot(1.0), Predicted, FrameInterpolate))
+        .spawn((
+            SimPos(4.0),
+            TestPos(4.0),
+            TestRot(1.0),
+            Predicted,
+            FrameInterpolate,
+        ))
         .id();
     app.world_mut().flush();
 
@@ -927,16 +1011,16 @@ fn switch_to_interpolated_saves_one_value_per_corrected_type() {
 /// direction can keep it: while interpolated, frame interpolation is not
 /// recording it (it only runs for archetypes with `FrameInterpolate`), and
 /// once interpolated, frame interpolation stops reading it. Keeping a stale
-/// one would let the next era restore it over the live value. Every frame
+/// one would let the next era's first frames blend from it. Every frame
 /// rule's history goes, a corrected type's or not, on a blending switch or a
 /// snapping one.
 #[test]
 fn switch_drops_the_frame_history_in_both_directions() {
     let stale_histories = || {
         (
-            FrameInterpolationHistory::<TestPos> {
-                previous_value: Some(TestPos(47.0)),
-                current_value: Some(TestPos(47.7)),
+            FrameInterpolationHistory::<SimPos> {
+                previous_value: Some(SimPos(47.0)),
+                current_value: Some(SimPos(47.7)),
             },
             FrameInterpolationHistory::<FrameOnly> {
                 previous_value: Some(FrameOnly(47.0)),
@@ -947,19 +1031,20 @@ fn switch_drops_the_frame_history_in_both_directions() {
     let assert_dropped = |app: &App, entity: Entity, message: &str| {
         let entity = app.world().entity(entity);
         assert!(
-            !entity.contains::<FrameInterpolationHistory<TestPos>>()
+            !entity.contains::<FrameInterpolationHistory<SimPos>>()
                 && !entity.contains::<FrameInterpolationHistory<FrameOnly>>(),
             "{message}"
         );
     };
     for request in [
         TimelineSwitch::to_predicted(),
-        TimelineSwitch::to_predicted().with_transition_secs(0.0),
+        TimelineSwitch::to_predicted().with_transition(Duration::ZERO),
     ] {
         let mut app = switch_app();
         let entity = app
             .world_mut()
             .spawn((
+                SimPos(10.0),
                 TestPos(10.0),
                 FrameOnly(10.0),
                 Interpolated,
@@ -975,18 +1060,19 @@ fn switch_drops_the_frame_history_in_both_directions() {
     }
     for request in [
         TimelineSwitch::to_interpolated(),
-        TimelineSwitch::to_interpolated().with_transition_secs(0.0),
+        TimelineSwitch::to_interpolated().with_transition(Duration::ZERO),
     ] {
         let mut app = switch_app();
         let entity = app
             .world_mut()
             .spawn((
+                SimPos(10.0),
                 TestPos(10.0),
                 FrameOnly(10.0),
                 Predicted,
                 FrameInterpolate,
                 stale_histories(),
-                PredictionHistory::<TestPos>::default(),
+                PredictionHistory::<SimPos>::default(),
             ))
             .id();
         send_switch(&mut app, entity, request);
@@ -998,7 +1084,7 @@ fn switch_drops_the_frame_history_in_both_directions() {
         assert!(
             !app.world()
                 .entity(entity)
-                .contains::<PredictionHistory<TestPos>>(),
+                .contains::<PredictionHistory<SimPos>>(),
             "an interpolated entity keeps no prediction history to record into and prune from"
         );
     }
@@ -1006,15 +1092,18 @@ fn switch_drops_the_frame_history_in_both_directions() {
 
 #[test]
 fn a_snap_flips_with_no_blend() {
-    for duration in [0.0, -1.0, f32::NAN] {
+    {
         let mut app = switch_app();
-        let entity = app.world_mut().spawn((TestPos(1.0), Interpolated)).id();
+        let entity = app
+            .world_mut()
+            .spawn((SimPos(1.0), TestPos(1.0), Interpolated))
+            .id();
         app.world_mut().flush();
 
         send_switch(
             &mut app,
             entity,
-            TimelineSwitch::to_predicted().with_transition_secs(duration),
+            TimelineSwitch::to_predicted().with_transition(Duration::ZERO),
         );
 
         let world = app.world();
@@ -1043,15 +1132,22 @@ fn each_window_curve_starts_whole_ends_converged_and_never_grows() {
         CorrectionEase::EaseOutCubic,
         CorrectionEase::EaseInOutCubic,
     ] {
-        assert_eq!(ease.remaining(0.0, 1.0), 1.0, "{ease:?} starts whole");
-        assert_eq!(ease.remaining(1.0, 1.0), 0.0, "{ease:?} ends converged");
+        let window = Duration::from_secs(1);
+        assert_eq!(
+            ease.remaining(Duration::ZERO, window),
+            1.0,
+            "{ease:?} starts whole"
+        );
+        assert_eq!(
+            ease.remaining(window, window),
+            0.0,
+            "{ease:?} ends converged"
+        );
         let mut prev = f32::INFINITY;
-        let mut p = 0.0;
-        while p <= 1.0 {
-            let r = ease.remaining(p, 1.0);
-            assert!(r <= prev, "{ease:?} must not grow at {p}");
+        for p in (0..=1000).step_by(50).map(Duration::from_millis) {
+            let r = ease.remaining(p, window);
+            assert!(r <= prev, "{ease:?} must not grow at {p:?}");
             prev = r;
-            p += 0.05;
         }
     }
 }
@@ -1063,11 +1159,17 @@ fn each_window_curve_starts_whole_ends_converged_and_never_grows() {
 fn a_request_resolves_its_overrides_then_the_setup() {
     let mut app = switch_app();
     app.world_mut().insert_resource(TimelineSwitchSetup {
-        default_transition_secs: 2.0,
+        default_transition: Duration::from_secs(2),
         default_ease: CorrectionEase::Smoothstep,
     });
-    let bare = app.world_mut().spawn((TestPos(1.0), Interpolated)).id();
-    let overridden = app.world_mut().spawn((TestPos(2.0), Interpolated)).id();
+    let bare = app
+        .world_mut()
+        .spawn((SimPos(1.0), TestPos(1.0), Interpolated))
+        .id();
+    let overridden = app
+        .world_mut()
+        .spawn((SimPos(2.0), TestPos(2.0), Interpolated))
+        .id();
     app.world_mut().flush();
 
     send_switch(&mut app, bare, TimelineSwitch::to_predicted());
@@ -1075,14 +1177,17 @@ fn a_request_resolves_its_overrides_then_the_setup() {
         &mut app,
         overridden,
         TimelineSwitch::to_predicted()
-            .with_transition_secs(0.5)
+            .with_transition(Duration::from_millis(500))
             .with_ease(CorrectionEase::EaseOutCubic),
     );
 
     let world = app.world();
-    assert_eq!(blend_marker(world, bare).total_secs(), 2.0);
+    assert_eq!(blend_marker(world, bare).total(), Duration::from_secs(2));
     assert_eq!(blend_marker(world, bare).ease(), CorrectionEase::Smoothstep);
-    assert_eq!(blend_marker(world, overridden).total_secs(), 0.5);
+    assert_eq!(
+        blend_marker(world, overridden).total(),
+        Duration::from_millis(500)
+    );
     assert_eq!(
         blend_marker(world, overridden).ease(),
         CorrectionEase::EaseOutCubic
@@ -1097,6 +1202,7 @@ fn a_request_resolves_its_overrides_then_the_setup() {
 fn exponential_ease_matches_the_correction_policy() {
     let policy = CorrectionPolicy::new(0.5, Duration::from_millis(200));
     let ease = policy.ease();
+    let (window, ms) = (Duration::from_secs(1), Duration::from_millis);
     assert!(matches!(ease, CorrectionEase::Exponential { .. }));
     for dt in [
         Duration::from_millis(8),
@@ -1104,30 +1210,37 @@ fn exponential_ease_matches_the_correction_policy() {
         Duration::from_millis(50),
     ] {
         assert!(
-            (ease.keep(0.0, dt.as_secs_f32(), 1.0) - policy.lerp_ratio(0.0, dt)).abs() < 1e-6,
+            (ease.keep(Duration::ZERO, dt, window) - policy.lerp_ratio(Duration::ZERO, dt)).abs()
+                < 1e-6,
             "the ease must reproduce the policy's own ratio"
         );
     }
     assert!(
-        ease.remaining(0.99, 1.0) > 0.0,
+        ease.remaining(ms(990), window) > 0.0,
         "an exponential never reaches zero inside its window"
     );
-    assert_eq!(ease.remaining(1.0, 1.0), 0.0, "the window ends it");
+    assert_eq!(ease.remaining(window, window), 0.0, "the window ends it");
     assert_eq!(
-        ease.keep(0.99, 0.016, 1.0),
+        ease.keep(ms(990), ms(16), window),
         0.0,
         "the frame that reaches the window's end gives up the rest"
     );
-    // Half a decay period in, half of it is left.
-    assert!((ease.remaining(0.2, 1.0) - 0.5).abs() < 1e-6);
+    // One decay period in, half the error is left.
+    assert!((ease.remaining(ms(200), window) - 0.5).abs() < 1e-6);
 }
 
 #[test]
 fn an_invalid_request_is_dropped() {
     let mut app = switch_app();
-    let predicted = app.world_mut().spawn((TestPos(1.0), Predicted)).id();
-    let interpolated = app.world_mut().spawn((TestPos(2.0), Interpolated)).id();
-    let plain = app.world_mut().spawn(TestPos(3.0)).id();
+    let predicted = app
+        .world_mut()
+        .spawn((SimPos(1.0), TestPos(1.0), Predicted))
+        .id();
+    let interpolated = app
+        .world_mut()
+        .spawn((SimPos(2.0), TestPos(2.0), Interpolated))
+        .id();
+    let plain = app.world_mut().spawn((SimPos(3.0), TestPos(3.0))).id();
     app.world_mut().flush();
 
     // Wrong current mode (and a mode-less entity): nothing switches, no
@@ -1135,17 +1248,17 @@ fn an_invalid_request_is_dropped() {
     send_switch(
         &mut app,
         predicted,
-        TimelineSwitch::to_predicted().with_transition_secs(0.5),
+        TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)),
     );
     send_switch(
         &mut app,
         interpolated,
-        TimelineSwitch::to_interpolated().with_transition_secs(0.5),
+        TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500)),
     );
     send_switch(
         &mut app,
         plain,
-        TimelineSwitch::to_predicted().with_transition_secs(0.5),
+        TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)),
     );
     // A flip has nothing to flip from there either: it resolves against the
     // entity's markers, and there are none.
@@ -1164,7 +1277,7 @@ fn an_invalid_request_is_dropped() {
     send_switch(
         &mut app,
         interpolated,
-        TimelineSwitch::to_predicted().with_transition_secs(0.5),
+        TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)),
     );
     {
         let world = app.world();
@@ -1174,7 +1287,7 @@ fn an_invalid_request_is_dropped() {
     send_switch(
         &mut app,
         interpolated,
-        TimelineSwitch::to_interpolated().with_transition_secs(0.5),
+        TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500)),
     );
     let world = app.world();
     assert!(world.get::<Predicted>(interpolated).is_some());
@@ -1188,22 +1301,25 @@ fn an_invalid_request_is_dropped() {
 #[test]
 fn default_flips_the_entity_to_the_other_timeline() {
     let mut app = switch_app();
-    let to_predicted = app.world_mut().spawn((TestPos(1.0), Interpolated)).id();
+    let to_predicted = app
+        .world_mut()
+        .spawn((SimPos(1.0), TestPos(1.0), Interpolated))
+        .id();
     let to_interpolated = app
         .world_mut()
-        .spawn((TestPos(2.0), Predicted, FrameInterpolate))
+        .spawn((SimPos(2.0), TestPos(2.0), Predicted, FrameInterpolate))
         .id();
     app.world_mut().flush();
 
     send_switch(
         &mut app,
         to_predicted,
-        TimelineSwitch::default().with_transition_secs(0.5),
+        TimelineSwitch::default().with_transition(Duration::from_millis(500)),
     );
     send_switch(
         &mut app,
         to_interpolated,
-        TimelineSwitch::default().with_transition_secs(0.5),
+        TimelineSwitch::default().with_transition(Duration::from_millis(500)),
     );
 
     let world = app.world();
@@ -1213,8 +1329,14 @@ fn default_flips_the_entity_to_the_other_timeline() {
     assert!(world.get::<Predicted>(to_interpolated).is_none());
     // Both flips blend, so both entities carry the window the save pass
     // resolved from the override.
-    assert_eq!(blend_marker(world, to_predicted).total_secs(), 0.5);
-    assert_eq!(blend_marker(world, to_interpolated).total_secs(), 0.5);
+    assert_eq!(
+        blend_marker(world, to_predicted).total(),
+        Duration::from_millis(500)
+    );
+    assert_eq!(
+        blend_marker(world, to_interpolated).total(),
+        Duration::from_millis(500)
+    );
 }
 
 #[test]
@@ -1222,12 +1344,15 @@ fn an_expired_window_clears_the_state_of_a_missing_component() {
     use bevy_ecs::system::RunSystemOnce;
 
     let mut app = switch_app();
-    let entity = app.world_mut().spawn((TestPos(10.0), Predicted)).id();
+    let entity = app
+        .world_mut()
+        .spawn((SimPos(10.0), TestPos(10.0), Predicted))
+        .id();
     app.world_mut().flush();
     send_switch(
         &mut app,
         entity,
-        TimelineSwitch::to_interpolated().with_transition_secs(0.5),
+        TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500)),
     );
     app.world_mut().entity_mut(entity).remove::<TestPos>();
     app.world_mut().flush();
@@ -1236,7 +1361,7 @@ fn an_expired_window_clears_the_state_of_a_missing_component() {
         .resource_mut::<Time<Virtual>>()
         .advance_by(Duration::from_millis(600));
     app.world_mut()
-        .run_system_once(CorrectionFn::<TestPos, TestPos>::clear_expired_switch_state)
+        .run_system_once(CorrectionFn::<SimPos, TestPos, TestPos>::clear_expired_switch_state)
         .unwrap();
     app.world_mut()
         .run_system_once(TimelineSwitchPlugin::expire_switch_blends)
@@ -1261,17 +1386,16 @@ fn an_expired_window_clears_the_state_of_a_missing_component() {
 
 #[test]
 fn a_switch_saves_no_visual_on_an_interpolated_entity() {
-    fn histories(value: f32) -> (PredictionHistory<TestPos>, ConfirmedHistory<TestPos>) {
-        let mut predicted = PredictionHistory::<TestPos>::default();
-        predicted.add(NetTick(5), Some(TestPos(value)));
-        let mut confirmed = ConfirmedHistory::<TestPos>::default();
-        confirmed.insert(NetTick(5), HistoryState::Updated(TestPos(value)));
+    fn histories(value: f32) -> (PredictionHistory<SimPos>, ConfirmedHistory<SimPos>) {
+        let mut predicted = PredictionHistory::<SimPos>::default();
+        predicted.add(NetTick(5), Some(SimPos(value)));
+        let mut confirmed = ConfirmedHistory::<SimPos>::default();
+        confirmed.insert(NetTick(5), HistoryState::Updated(SimPos(value)));
         (predicted, confirmed)
     }
 
     use crate::prediction_history::PredictionHistory;
     use crate::prediction_setup::PredictionSetup;
-    use bevy_ecs::system::RunSystemOnce;
     use campfire_net_replication::ComponentRegistry;
     use campfire_net_timeline::Rollback;
 
@@ -1285,6 +1409,7 @@ fn a_switch_saves_no_visual_on_an_interpolated_entity() {
     let predicted = app
         .world_mut()
         .spawn((
+            SimPos(10.0),
             TestPos(10.0),
             Predicted,
             predicted_history,
@@ -1295,6 +1420,7 @@ fn a_switch_saves_no_visual_on_an_interpolated_entity() {
     let interp = app
         .world_mut()
         .spawn((
+            SimPos(10.0),
             TestPos(10.0),
             Interpolated,
             interp_history,
@@ -1302,17 +1428,12 @@ fn a_switch_saves_no_visual_on_an_interpolated_entity() {
         ))
         .id();
     app.world_mut().flush();
-    app.world_mut()
-        .run_system_once(RollbackPlugin::prepare_rollback::<TestPos>)
-        .unwrap();
-    app.world_mut()
-        .run_system_once(RollbackPlugin::prepare_rollback::<TestRot>)
-        .unwrap();
+    prepare_rollback(&mut app);
 
     let world = app.world();
     // Both rewind to the rollback target ...
-    assert_eq!(world.get::<TestPos>(predicted), Some(&TestPos(5.0)));
-    assert_eq!(world.get::<TestPos>(interp), Some(&TestPos(5.0)));
+    assert_eq!(world.get::<SimPos>(predicted), Some(&SimPos(5.0)));
+    assert_eq!(world.get::<SimPos>(interp), Some(&SimPos(5.0)));
     // ... but only the predicted one captures for correction.
     assert_eq!(
         world
@@ -1351,12 +1472,13 @@ fn forced_rollback_is_requested_only_for_to_predicted_with_a_scanned_tick() {
                 .set_last_processed_confirmed_tick(tick);
         }
         let entity = match direction {
-            SwitchDirection::ToPredicted => {
-                app.world_mut().spawn((TestPos(10.0), Interpolated)).id()
-            }
+            SwitchDirection::ToPredicted => app
+                .world_mut()
+                .spawn((SimPos(10.0), TestPos(10.0), Interpolated))
+                .id(),
             SwitchDirection::ToInterpolated => app
                 .world_mut()
-                .spawn((TestPos(10.0), Predicted, FrameInterpolate))
+                .spawn((SimPos(10.0), TestPos(10.0), Predicted, FrameInterpolate))
                 .id(),
         };
         app.world_mut().flush();
@@ -1366,10 +1488,10 @@ fn forced_rollback_is_requested_only_for_to_predicted_with_a_scanned_tick() {
             entity,
             match direction {
                 SwitchDirection::ToPredicted => {
-                    TimelineSwitch::to_predicted().with_transition_secs(0.5)
+                    TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500))
                 }
                 SwitchDirection::ToInterpolated => {
-                    TimelineSwitch::to_interpolated().with_transition_secs(0.5)
+                    TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500))
                 }
             },
         );
@@ -1400,12 +1522,15 @@ fn forced_rollback_is_requested_only_for_to_predicted_with_a_scanned_tick() {
 fn to_predicted_without_a_rollback_has_nothing_to_blend_from() {
     let mut app = switch_app();
     app.init_resource::<RollbackCheckState>();
-    let entity = app.world_mut().spawn((TestPos(10.0), Interpolated)).id();
+    let entity = app
+        .world_mut()
+        .spawn((SimPos(10.0), TestPos(10.0), Interpolated))
+        .id();
     app.world_mut().flush();
 
     app.world_mut()
         .entity_mut(entity)
-        .insert(TimelineSwitch::to_predicted().with_transition_secs(0.5));
+        .insert(TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)));
     run_save(&mut app);
     assert!(
         app.world()
@@ -1449,13 +1574,16 @@ fn to_predicted_without_a_rollback_has_nothing_to_blend_from() {
 #[test]
 fn requests_arriving_while_a_switch_is_committed_are_dropped() {
     let mut app = switch_app();
-    let entity = app.world_mut().spawn((TestPos(10.0), Predicted)).id();
+    let entity = app
+        .world_mut()
+        .spawn((SimPos(10.0), TestPos(10.0), Predicted))
+        .id();
     app.world_mut().flush();
 
     // Frame F: the request is committed, and its value on screen recorded.
     app.world_mut()
         .entity_mut(entity)
-        .insert(TimelineSwitch::to_interpolated().with_transition_secs(0.5));
+        .insert(TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500)));
     run_save(&mut app);
     {
         let world = app.world();
@@ -1476,7 +1604,7 @@ fn requests_arriving_while_a_switch_is_committed_are_dropped() {
     // drops it and leaves the committed switch alone.
     app.world_mut().entity_mut(entity).insert(
         TimelineSwitch::to_interpolated()
-            .with_transition_secs(0.25)
+            .with_transition(Duration::from_millis(250))
             .with_ease(CorrectionEase::Linear),
     );
     run_save(&mut app);
@@ -1490,7 +1618,8 @@ fn requests_arriving_while_a_switch_is_committed_are_dropped() {
             .get::<PendingSwitch>(entity)
             .expect("committed switch");
         assert_eq!(
-            committed.total_secs, 0.5,
+            committed.total,
+            Duration::from_millis(500),
             "the committed switch is untouched"
         );
         assert_eq!(committed.ease, CorrectionEase::default());
@@ -1503,14 +1632,20 @@ fn requests_arriving_while_a_switch_is_committed_are_dropped() {
     assert!(world.get::<Interpolated>(entity).is_some());
     assert!(world.get::<Predicted>(entity).is_none());
     assert!(world.get::<PendingSwitch>(entity).is_none());
-    assert_eq!(blend_marker(world, entity).total_secs(), 0.5);
+    assert_eq!(
+        blend_marker(world, entity).total(),
+        Duration::from_millis(500)
+    );
 
     // Nothing is left over to be applied later.
     run_save(&mut app);
     run_apply(&mut app);
     let world = app.world();
     assert!(world.get::<Interpolated>(entity).is_some());
-    assert_eq!(blend_marker(world, entity).total_secs(), 0.5);
+    assert_eq!(
+        blend_marker(world, entity).total(),
+        Duration::from_millis(500)
+    );
 }
 
 /// A request is a component, so two requests for the same entity in one
@@ -1539,7 +1674,10 @@ fn contradictory_requests_in_one_frame_keep_the_last_insert() {
         ),
     ] {
         let mut app = switch_app();
-        let entity = app.world_mut().spawn((TestPos(1.0), Interpolated)).id();
+        let entity = app
+            .world_mut()
+            .spawn((SimPos(1.0), TestPos(1.0), Interpolated))
+            .id();
         app.world_mut().flush();
 
         let request = |direction| match direction {
@@ -1564,17 +1702,23 @@ fn contradictory_requests_in_one_frame_keep_the_last_insert() {
     // Before the save pass commits, the last insert is the request that
     // sticks, including its blend length.
     let mut app = switch_app();
-    let entity = app.world_mut().spawn((TestPos(1.0), Interpolated)).id();
+    let entity = app
+        .world_mut()
+        .spawn((SimPos(1.0), TestPos(1.0), Interpolated))
+        .id();
     app.world_mut().flush();
     app.world_mut()
         .entity_mut(entity)
-        .insert(TimelineSwitch::to_predicted().with_transition_secs(0.5))
-        .insert(TimelineSwitch::to_predicted().with_transition_secs(0.25));
+        .insert(TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)))
+        .insert(TimelineSwitch::to_predicted().with_transition(Duration::from_millis(250)));
     run_save(&mut app);
     run_apply(&mut app);
     let world = app.world();
     assert!(world.get::<Predicted>(entity).is_some());
-    assert_eq!(blend_marker(world, entity).total_secs(), 0.25);
+    assert_eq!(
+        blend_marker(world, entity).total(),
+        Duration::from_millis(250)
+    );
 }
 
 #[test]
@@ -1582,7 +1726,10 @@ fn a_consumed_request_runs_once() {
     // One-shot semantics: running a handler with no request on the entity
     // changes nothing, even right after a switch.
     let mut app = switch_app();
-    let entity = app.world_mut().spawn((TestPos(1.0), Interpolated)).id();
+    let entity = app
+        .world_mut()
+        .spawn((SimPos(1.0), TestPos(1.0), Interpolated))
+        .id();
     app.world_mut().flush();
 
     send_switch(&mut app, entity, TimelineSwitch::to_predicted());

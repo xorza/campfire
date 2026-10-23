@@ -11,8 +11,8 @@ use campfire_capabilities::{Match, Order, Release};
 use campfire_codec::Binary;
 use campfire_combat::internals::Armed;
 use campfire_combat::internals::TestWeapon;
-use campfire_combat::{Combat, DamagePass, OnDeath, Respawn};
-use campfire_common::{Seat, Tick, Ticks};
+use campfire_combat::{Combat, OnDeath, Respawn};
+use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_declarations::MatchFacts;
 use campfire_declarations::Role;
 use campfire_geometry::{Bounds, Grid};
@@ -35,11 +35,11 @@ use campfire_sim::{
 use campfire_stats::Stats;
 use campfire_units::internals::Spawn;
 use campfire_units::{
-    BodyForm, Dead, Destination, GroundPoint, Layer, Life, MoveStep, Owner, SeenBy, UnitTypeCore,
-    Units,
+    BodyForm, BodyShape, Dead, Destination, GroundPoint, Layer, Life, MoveStep, Owner, SeenBy,
+    UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{PackagePath, PathId, Rank, Scalar, Team, TeamSet, UnitType};
-use campfire_visibility::OutView;
+use campfire_visibility::{OutView, SettingValue};
 use campfire_vision::Vision;
 
 mod acquire;
@@ -265,7 +265,7 @@ impl TwoHeroes {
 fn a_hero_walks_to_its_players_target() {
     let mut game = orders_match();
     let TwoHeroes { first, second } = TwoHeroes::place(&mut game);
-    game.step_with(&[(Seat::new(0), &move_to(first, 0, 5))]);
+    game.step_with(&[(PlayerSlot::new(0), &move_to(first, 0, 5))]);
     // Straight along z, one meter a tick: exact, and done in the fifth tick.
     assert_eq!(game.part::<Position>(first).get(), Vec3::from((0, 0, 1)));
     assert_eq!(
@@ -281,7 +281,7 @@ fn a_hero_walks_to_its_players_target() {
     // Offset (3, 0, 4) from slot 1's hero, distance 5: the first meter is 3/5 and 4/5, each
     // rounded once: 10 066 329.6 → 10 066 330 and 13 421 772.8 → 13 421 773. The order keeps
     // the hero's height, y = 2.
-    game.step_with(&[(Seat::new(1), &move_to(second, 7, 4))]);
+    game.step_with(&[(PlayerSlot::new(1), &move_to(second, 7, 4))]);
     assert_eq!(
         game.part::<Position>(second).get(),
         raw(4 * ONE + 10_066_330, 2 * ONE, 13_421_773)
@@ -321,8 +321,18 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
             },
         )])
     };
-    // The weapon's slot and a slot it does not have order nothing; the train's orders a train,
-    // which no capability here starts.
+    // The weapon's slot, a slot it does not have and a train it has not learned, in slot 2,
+    // order nothing; the train's orders a train, which no capability here starts.
+    let train = game
+        .part::<ActionSlots>(hero)
+        .slot(1)
+        .unwrap()
+        .action
+        .unwrap();
+    let entity = game.unit_entity(hero);
+    let mut unit = game.entity_mut(entity);
+    let mut held = unit.get_components_mut::<SlotsMut>().unwrap();
+    held.grant(SlotKind::new(0), &[train], None);
     let train_order = InProgress::Order {
         aim: SlotAim {
             slot: 1,
@@ -330,8 +340,8 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
         },
         phase: OrderPhase::Ordered,
     };
-    for (at, order) in [(0, None), (7, None), (1, Some(train_order))] {
-        game.step_with(&[(Seat::new(0), &slot(at))]);
+    for (at, order) in [(0, None), (7, None), (2, None), (1, Some(train_order))] {
+        game.step_with(&[(PlayerSlot::new(0), &slot(at))]);
         assert_eq!(ordered(&game), order, "slot {at}");
     }
 
@@ -356,18 +366,18 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
         },
         phase: OrderPhase::Ordered,
     };
-    game.step_with(&[(Seat::new(0), &at_unit(other))]);
+    game.step_with(&[(PlayerSlot::new(0), &at_unit(other))]);
     assert_eq!(ordered(&game), Some(train_order));
     // A player's entity of the hero's team holds a team and no `SeenBy`, and is no unit: an order
     // at it changes nothing either.
-    let own = Seat::new(0);
+    let own = PlayerSlot::new(0);
     Players::spawn(&mut game, 1, 0);
-    game.step_with(&[(Seat::new(0), &at_unit(StableId::of_player(own)))]);
+    game.step_with(&[(PlayerSlot::new(0), &at_unit(StableId::of_player(own)))]);
     assert_eq!(ordered(&game), Some(train_order));
-    game.step_with(&[(Seat::new(0), &at_unit(hero))]);
+    game.step_with(&[(PlayerSlot::new(0), &at_unit(hero))]);
     assert_eq!(ordered(&game), Some(aimed(hero)));
     game.insert_parts(other, SeenBy::new(TeamSet::of(Team::new(0))));
-    game.step_with(&[(Seat::new(0), &at_unit(other))]);
+    game.step_with(&[(PlayerSlot::new(0), &at_unit(other))]);
     assert_eq!(ordered(&game), Some(aimed(other)));
 
     // A predicting client holds only what its team sees, and takes each unit it holds as seen:
@@ -379,7 +389,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     assert_eq!(held, other);
     Vision::fog_grid(&mut client, 1);
     client.insert_parts(held, (SeenBy::new(TeamSet::NONE), Unpredicted));
-    client.step_with(&[(Seat::new(0), &at_unit(held))]);
+    client.step_with(&[(PlayerSlot::new(0), &at_unit(held))]);
     assert_eq!(ordered(&client), Some(aimed(held)));
 }
 
@@ -388,8 +398,8 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     let mut game = orders_match();
     let TwoHeroes { first, second } = TwoHeroes::place(&mut game);
     game.step_with(&[
-        (Seat::new(0), &move_to(first, 0, 5)),
-        (Seat::new(0), &move_to(first, 0, -5)),
+        (PlayerSlot::new(0), &move_to(first, 0, 5)),
+        (PlayerSlot::new(0), &move_to(first, 0, -5)),
     ]);
     // The last order in a tick wins.
     assert_eq!(game.part::<Position>(first).get(), Vec3::from((0, 0, -1)));
@@ -437,13 +447,13 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
         body: &order,
     }]);
     game.step_with(&[
-        (Seat::new(0), &beyond),
-        (Seat::new(0), &not_an_order),
-        (Seat::new(0), &undeclared),
-        (Seat::new(0), &order),
-        (Seat::new(0), &move_to(second, 9, 9)),
-        (Seat::new(2), &move_to(first, 9, 9)),
-        (Seat::new(1), &edge),
+        (PlayerSlot::new(0), &beyond),
+        (PlayerSlot::new(0), &not_an_order),
+        (PlayerSlot::new(0), &undeclared),
+        (PlayerSlot::new(0), &order),
+        (PlayerSlot::new(0), &move_to(second, 9, 9)),
+        (PlayerSlot::new(2), &move_to(first, 9, 9)),
+        (PlayerSlot::new(1), &edge),
     ]);
     // Only the order past the bound reaches the first hero, which walks 1 m along z = −1 towards
     // the edge; the second takes only its own player's.
@@ -459,17 +469,23 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
 
     // Player 0 out of play: its order applies while it sees what its team sees, the default, and
     // none does once it sees what a spectator sees; player 1's applies either way.
-    assert_eq!(game.resource::<MatchFacts>().out, OutView::Team);
+    assert_eq!(
+        game.resource::<MatchFacts>().visibility.out(),
+        OutView::Team
+    );
     Players::spawn(&mut game, 2, 0);
-    let out = game.player_entity(Seat::new(0)).unwrap();
+    let out = game.player_entity(PlayerSlot::new(0)).unwrap();
     game.entity_mut(out).insert(OutOfPlay);
     let destination = |game: &Match, unit| game.part::<Destination>(unit).get();
     for (view, x) in [(OutView::Team, 3_i16), (OutView::Spectators, 6)] {
-        game.resource_mut::<MatchFacts>().out = view;
+        game.resource_mut::<MatchFacts>()
+            .visibility
+            .set(SettingValue::Out(view))
+            .unwrap();
         let before = destination(&game, first);
         game.step_with(&[
-            (Seat::new(0), &move_to(first, x.into(), 3)),
-            (Seat::new(1), &move_to(second, x.into(), 3)),
+            (PlayerSlot::new(0), &move_to(first, x.into(), 3)),
+            (PlayerSlot::new(1), &move_to(second, x.into(), 3)),
         ]);
         let ordered = Some(Vec3::from((x, 0, 3)));
         let first_to = if view == OutView::Team {
@@ -498,7 +514,7 @@ fn an_attack_chases_winds_up_and_strikes_each_period() {
 
     // Ticks 0 to 3 walk 4 m, to 2 m from the dummy. Tick 4 starts an attack: it strikes in tick
     // 6, and the next may start in tick 4 + 5 = 9.
-    game.step_with(&[(Seat::new(0), &attack(fighter, dummy))]);
+    game.step_with(&[(PlayerSlot::new(0), &attack(fighter, dummy))]);
     game.run_until(4);
     assert_eq!(game.part::<Position>(fighter).get(), Vec3::from((4, 0, 0)));
     assert_eq!(Orders::strikes_at(&game, fighter), None);
@@ -533,13 +549,13 @@ fn a_move_cancels_a_windup_but_not_a_back_swing() {
 
     // An attack starts in tick 0, in range; a move in tick 1 cancels it before its strike in
     // tick 2, and leaves the fighter ready: the attack ordered in tick 2 starts at once.
-    game.step_with(&[(Seat::new(0), &attack(fighter, dummy))]);
+    game.step_with(&[(PlayerSlot::new(0), &attack(fighter, dummy))]);
     assert_eq!(Orders::strikes_at(&game, fighter), Some(Tick::new(2)));
-    game.step_with(&[(Seat::new(0), &move_to(fighter, 0, 0))]);
+    game.step_with(&[(PlayerSlot::new(0), &move_to(fighter, 0, 0))]);
     assert_eq!(game.part::<ActionProgress>(fighter).attack_target(), None);
     assert_eq!(Orders::strikes_at(&game, fighter), None);
     assert_eq!(Orders::ready_at(&game, fighter), Tick::new(0));
-    game.step_with(&[(Seat::new(0), &attack(fighter, dummy))]);
+    game.step_with(&[(PlayerSlot::new(0), &attack(fighter, dummy))]);
     assert_eq!(Stats::health(&game, dummy), 100);
     assert_eq!(Orders::strikes_at(&game, fighter), Some(Tick::new(4)));
     game.run_until(5);
@@ -548,9 +564,9 @@ fn a_move_cancels_a_windup_but_not_a_back_swing() {
 
     // A move in tick 5, after the strike, costs nothing: back to the dummy in tick 6, 2 m
     // away, the next attack starts in tick 7, when ready, and strikes in tick 9.
-    game.step_with(&[(Seat::new(0), &move_to(fighter, -1, 0))]);
+    game.step_with(&[(PlayerSlot::new(0), &move_to(fighter, -1, 0))]);
     assert_eq!(game.part::<Position>(fighter).get(), Vec3::from((-1, 0, 0)));
-    game.step_with(&[(Seat::new(0), &attack(fighter, dummy))]);
+    game.step_with(&[(PlayerSlot::new(0), &attack(fighter, dummy))]);
     assert_eq!(game.part::<Position>(fighter).get(), Vec3::from((0, 0, 0)));
     game.run_until(9);
     assert_eq!(Orders::strikes_at(&game, fighter), Some(Tick::new(9)));
@@ -575,7 +591,7 @@ fn attack_orders_need_a_living_enemy() {
 
     // The fighter kills `gone` in tick 9: it reaches 7 m in tick 6, 2 m from it, starts an
     // attack in tick 7 and strikes 2 ticks later.
-    game.step_with(&[(Seat::new(0), &attack(fighter, gone))]);
+    game.step_with(&[(PlayerSlot::new(0), &attack(fighter, gone))]);
     game.run_until(9);
     assert_eq!(Stats::health(&game, gone), 30);
     game.run_until(10);
@@ -586,7 +602,7 @@ fn attack_orders_need_a_living_enemy() {
         attack(fighter, fighter),
         attack(fighter, gone),
     ] {
-        game.step_with(&[(Seat::new(0), &order)]);
+        game.step_with(&[(PlayerSlot::new(0), &order)]);
         assert_eq!(
             game.part::<ActionProgress>(fighter).attack_target(),
             None,
@@ -603,7 +619,7 @@ fn attack_orders_need_a_living_enemy() {
         if let Some(seers) = seers {
             game.insert_parts(enemy, SeenBy::new(seers));
         }
-        game.step_with(&[(Seat::new(0), &attack(fighter, enemy))]);
+        game.step_with(&[(PlayerSlot::new(0), &attack(fighter, enemy))]);
         let expected = seers.is_some_and(|seers| seers.contains(Team::new(0)));
         assert_eq!(
             game.part::<ActionProgress>(fighter).attack_target(),
@@ -623,12 +639,12 @@ fn attack_orders_need_a_living_enemy() {
     );
     let fighter = Orders::hero(&mut game, hero, (0, 0, 0), Team::new(0), 0);
     let doomed = Orders::hero(&mut game, weak, (1, 0, 0), Team::new(1), 1);
-    game.step_with(&[(Seat::new(0), &attack(fighter, doomed))]);
+    game.step_with(&[(PlayerSlot::new(0), &attack(fighter, doomed))]);
     game.run_until(3);
     assert!(game.try_part::<Dead>(doomed).is_some());
     game.step_with(&[
-        (Seat::new(1), &move_to(doomed, 5, 5)),
-        (Seat::new(0), &attack(fighter, doomed)),
+        (PlayerSlot::new(1), &move_to(doomed, 5, 5)),
+        (PlayerSlot::new(0), &attack(fighter, doomed)),
     ]);
     assert_eq!(game.part::<Position>(doomed).get(), Vec3::from((1, 0, 0)));
     assert_eq!(game.part::<ActionProgress>(fighter).attack_target(), None);
@@ -676,7 +692,7 @@ fn a_tower_prefers_creeps_and_defends_its_heroes() {
     let ally = Spawn::of(hero, (1, 0, 0))
         .team(Team::new(1))
         .place(&mut game);
-    let owner = Owner::new(Seat::new(0));
+    let owner = Owner::new(PlayerSlot::new(0));
     let foe = Spawn::of(foe_hero, (3, 0, 0)).parts(owner).place(&mut game);
     let enemy_creep = Spawn::of(creep, (4, 0, 0)).place(&mut game);
     assert_eq!(tower.get(), 0);
@@ -688,7 +704,7 @@ fn a_tower_prefers_creeps_and_defends_its_heroes() {
     let mut targets = Vec::new();
     for tick in 0..=9 {
         match tick {
-            1 => Orders::think(&mut game, &[(Seat::new(0), &attack(foe, ally))]),
+            1 => Orders::think(&mut game, &[(PlayerSlot::new(0), &attack(foe, ally))]),
             _ => Orders::think(&mut game, &[]),
         }
         targets.push(game.part::<ActionProgress>(tower).attack_target());
@@ -776,7 +792,7 @@ fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
     let unit = |game: &mut Match, unit_type, team, at| {
         Spawn::of(unit_type, at).team(Team::new(team)).place(game)
     };
-    let owner = Owner::new(Seat::new(0));
+    let owner = Owner::new(PlayerSlot::new(0));
     let foe = Spawn::of(hero, (3, 0, 0))
         .team(Team::new(1))
         .parts(owner)
@@ -800,7 +816,7 @@ fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
     let mut targets = Vec::new();
     for tick in 0..=10 {
         match tick {
-            3 => Orders::think(&mut game, &[(Seat::new(0), &attack(foe, ally))]),
+            3 => Orders::think(&mut game, &[(PlayerSlot::new(0), &attack(foe, ally))]),
             _ => Orders::think(&mut game, &[]),
         }
         targets.push(
@@ -852,7 +868,7 @@ fn a_units_ai_waits_while_it_is_dead_and_thinks_again_once_it_respawns() {
         Some(enemy)
     );
     // It dies in tick 1, which ends its target, and waits dead past its next think, in tick 8.
-    DamagePass::kill(&mut game, thinker);
+    game.drain_life(thinker);
     for _ in 1..12 {
         Orders::think(&mut game, &[]);
     }
@@ -870,6 +886,30 @@ fn a_units_ai_waits_while_it_is_dead_and_thinks_again_once_it_respawns() {
         game.part::<ActionProgress>(thinker).attack_target(),
         Some(enemy)
     );
+}
+
+/// A thinker the scripts' view lacks, here one with no team, stays due, as one whose pool is
+/// spent, and thinks once the view holds it again.
+#[test]
+fn a_thinker_the_view_lacks_stays_due_and_thinks_once_it_holds_it() {
+    let mut game = orders_match();
+    let thinks = Orders::ai_type(&mut game, &[], &[], Some("fn on_think(ctx, unit) { }"));
+    let thinks = arm(&mut game, thinks, standing());
+    let thinker = Spawn::of(thinks, (0, 0, 0)).place(&mut game);
+    let next = |game: &Match| game.part::<NextThink>(thinker).get().map(Tick::get);
+    // It thinks in tick 0, its next in tick 8. With no team from tick 1, it is due since 8
+    // through tick 9; back in the view in tick 10, it thinks, its next in 10 + 8 = 18.
+    Orders::think(&mut game, &[]);
+    assert_eq!(next(&game), Some(8));
+    let entity = Mode::entity_by_id(&game, thinker.get());
+    let team = game.entity_mut(entity).take::<Team>().unwrap();
+    for _ in 1..10 {
+        Orders::think(&mut game, &[]);
+    }
+    assert_eq!(next(&game), Some(8));
+    game.entity_mut(entity).insert(team);
+    Orders::think(&mut game, &[]);
+    assert_eq!(next(&game), Some(18));
 }
 
 #[test]
@@ -1112,7 +1152,11 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
     };
     Navigation::load_pathing(&mut game, Grid::new(Num::ONE, bounds).unwrap(), [ground]);
     let tower = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    Units::give_type(&mut game, tower, BodyForm::circle(half).unwrap());
+    Units::give_type(
+        &mut game,
+        tower,
+        BodyForm::new(BodyShape::circle(half).unwrap(), Layer::FIRST),
+    );
     let walker_type = armed(
         &mut game,
         combatant(100, 1, 1, 5, 0).on_death(OnDeath::Stay),
@@ -1168,9 +1212,9 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
     // The hero strikes 30 in ticks 2 and 7, then runs from tick 8, a meter a tick. The monster,
     // thinking every 8 ticks, attacks it from tick 8 and follows at half a meter a tick: 4 m out
     // by its think in tick 16, 8 in tick 24, and 12, past its leash of 8, in tick 32: it resets.
-    Orders::think(&mut game, &[(Seat::new(0), &attack(hero, monster))]);
+    Orders::think(&mut game, &[(PlayerSlot::new(0), &attack(hero, monster))]);
     game.run_until(8);
-    Orders::think(&mut game, &[(Seat::new(0), &move_to(hero, 30, 0))]);
+    Orders::think(&mut game, &[(PlayerSlot::new(0), &move_to(hero, 30, 0))]);
     while game.now().get() < 32 {
         Orders::think(&mut game, &[]);
     }
@@ -1291,9 +1335,9 @@ fn on_think(ctx, unit) {
 
     // A player's move leaves the path too, as every order applies alike: a walker of player 0
     // on the path, ordered off it, walks there and no longer follows the path.
-    let parts = (on_path(), Owner::new(Seat::new(0)));
+    let parts = (on_path(), Owner::new(PlayerSlot::new(0)));
     let led = Spawn::of(led_type, (0, 0, 0)).parts(parts).place(&mut game);
-    game.step_with(&[(Seat::new(0), &move_to(led, -3, 0))]);
+    game.step_with(&[(PlayerSlot::new(0), &move_to(led, -3, 0))]);
     assert!(game.try_part::<PathWalker>(led).copied().unwrap().is_left());
     assert_eq!(
         game.part::<Destination>(led).get(),
@@ -1387,7 +1431,7 @@ fn every_orders_type_is_state_and_restores() {
     let still = Spawn::of(still, (9, 0, 0))
         .team(Team::new(1))
         .place(&mut game);
-    game.step_with(&[(Seat::new(0), &move_to(fighter, 0, 3))]);
+    game.step_with(&[(PlayerSlot::new(0), &move_to(fighter, 0, 3))]);
     game.insert_parts(still, Resetting);
 
     // A restore loads the match's books first: the same types and weapons, in the same order.
@@ -1455,7 +1499,7 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
         } else {
             order_to(&[walkers.as_slice(), &[other, still]].concat(), action)
         };
-        game.step_with(&[(Seat::new(0), &payload)]);
+        game.step_with(&[(PlayerSlot::new(0), &payload)]);
         assert_eq!(
             walkers.map(|id| game.part::<Destination>(id).get()),
             goals.map(Some),
@@ -1478,10 +1522,10 @@ fn a_list_of_units_out_of_order_or_twice_orders_nothing() {
         },
     };
     for units in [vec![], vec![second, first], vec![first, first]] {
-        game.step_with(&[(Seat::new(0), &order_to(&units, to))]);
+        game.step_with(&[(PlayerSlot::new(0), &order_to(&units, to))]);
         assert_eq!(game.part::<Destination>(first).get(), None, "{units:?}");
     }
-    game.step_with(&[(Seat::new(0), &order_to(&[first, second], to))]);
+    game.step_with(&[(PlayerSlot::new(0), &order_to(&[first, second], to))]);
     assert_eq!(
         game.part::<Destination>(first).get(),
         Some(Vec3::from((0, 0, 5)))
@@ -1500,7 +1544,7 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     let parts = (
         OnPath::new(PathId::new(0)),
         PathWalker::start(PathEnd::Start, lone()),
-        Owner::new(Seat::new(0)),
+        Owner::new(PlayerSlot::new(0)),
     );
     let walker = Spawn::of(walker_type, (0, 0, 0))
         .parts(parts)
@@ -1514,9 +1558,9 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     game.step_with(&[]);
     assert!(Orders::strikes_at(&game, walker).is_some());
     let stop = order_to(&[walker], OrdersDirective::Stop);
-    game.step_with(&[(Seat::new(1), &stop)]);
+    game.step_with(&[(PlayerSlot::new(1), &stop)]);
     assert!(Orders::strikes_at(&game, walker).is_some());
-    game.step_with(&[(Seat::new(0), &stop)]);
+    game.step_with(&[(PlayerSlot::new(0), &stop)]);
     assert_eq!(game.part::<ActionProgress>(walker).attack_target(), None);
     assert_eq!(game.part::<ActionProgress>(walker).in_progress(), None);
     assert_eq!(game.part::<Destination>(walker).get(), None);
@@ -1533,6 +1577,6 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
         unit.get_ref::<Destination>().unwrap().last_changed()
     };
     let before = changed(&game);
-    game.step_with(&[(Seat::new(0), &stop)]);
+    game.step_with(&[(PlayerSlot::new(0), &stop)]);
     assert_eq!(changed(&game), before);
 }

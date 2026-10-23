@@ -3,19 +3,20 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_actions::ByAction;
+use campfire_actions::ActionsData;
 use campfire_common::{Tick, Ticks};
+use campfire_declarations::{BookCx, BookError, ById};
 use campfire_sim::{
     DueIndex, DueUnit, SimComponent, SimTick, StableId, TimedKept, TimedProcess, TimedRuns,
 };
 use campfire_states::{NotSent, Replication};
-use campfire_stats::{Grant, GrantFrom, Grants, Hold};
+use campfire_stats::{Grant, GrantFrom, Grants, Hold, ModifierAppliers, Modifiers, Way};
 use campfire_units::{Dead, UnitEntity};
 use campfire_values::{ActionId, ModifierId, Rank};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-use crate::streak_book::StreakBook;
+use crate::attack_data::AttackData;
 use crate::streak_shots::{FiredShot, StreakShot, StreakShots};
 use crate::weapon::{Streak, Weapon};
 
@@ -42,6 +43,32 @@ struct Shots {
 }
 
 impl ShotStreak {
+    /// Adds that each package's streak weapons apply the modifiers of their stages, with no
+    /// action, as a unit's streak grants them, read from the actions' data, as the appliers come
+    /// before the action book; an error for a modifier its package does not have comes with the
+    /// weapons' book.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn applied_ways(
+        cx: &BookCx<'_>,
+        appliers: &mut ModifierAppliers,
+    ) -> Result<(), BookError> {
+        for (package, source) in cx.packages() {
+            let actions = source.content.get::<ActionsData>().into_iter();
+            for (_, action) in actions.flat_map(|actions| &actions.0) {
+                let streak = action
+                    .section::<AttackData>()
+                    .and_then(|data| data.streak.as_ref());
+                for stage in streak.into_iter().flat_map(|streak| &streak.stages) {
+                    appliers.apply(package, stage.modifier.as_str(), Way::NoAction);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Counts `shot`, of a weapon of `streak`: one more for the target of the shot before, or
     /// for another before the coast ends, else one; then the stage falls to none when the count
     /// is below its own stage's shots, or rises by one when it passes the next stage's, as Zero
@@ -94,7 +121,7 @@ impl ShotStreak {
     }
 
     /// The modifier of its stage, of the weapons of `weapons`, while it holds one.
-    fn modifier(self, weapons: &ByAction<Weapon>) -> Option<ModifierId> {
+    fn modifier(self, weapons: &ById<ActionId, Weapon>) -> Option<ModifierId> {
         let shots = self.0?;
         let stage = shots.stage?;
         let streak = weapons.get(shots.weapon)?.streak.as_ref()?;
@@ -104,7 +131,7 @@ impl ShotStreak {
     /// Counts each shot this tick's strikes fired of a streak weapon in its unit's streak, in the
     /// order they fired, and pushes the unit at its coast's end while it holds a stage.
     pub(crate) fn count(
-        (weapons, mut fired): (Res<'_, ByAction<Weapon>>, ResMut<'_, StreakShots>),
+        (weapons, mut fired): (Res<'_, ById<ActionId, Weapon>>, ResMut<'_, StreakShots>),
         (mut index, mut shots): (ResMut<'_, DueIndex<Self>>, Local<'_, Vec<FiredShot>>),
         mut streaks: Query<'_, '_, &mut Self>,
     ) {
@@ -151,25 +178,48 @@ impl ShotStreak {
         }
     }
 
-    /// Pushes the grants of each unit whose streak changed: its stage's modifier from itself at
-    /// rank 1, under the streak's hold, while it lives and holds a stage, and every other
-    /// streak modifier of `modifiers` granted no more.
+    /// Pushes the grants of each unit whose streak changed that differ from what it holds under
+    /// the streak's hold: its stage's modifier from itself at rank 1 while it lives and holds a
+    /// stage, and a release of each other streak modifier it holds. A shot that keeps the stage
+    /// pushes none.
     pub(crate) fn want(
-        (weapons, modifiers): (Res<'_, ByAction<Weapon>>, Res<'_, StreakBook>),
+        weapons: Res<'_, ById<ActionId, Weapon>>,
         mut grants: ResMut<'_, Grants>,
-        units: Query<'_, '_, (Entity, &StableId, &Self, Has<Dead>), Changed<Self>>,
+        units: Query<
+            '_,
+            '_,
+            (Entity, &StableId, &Self, Has<Dead>, Option<&Modifiers>),
+            Changed<Self>,
+        >,
     ) {
-        for (entity, &id, &streak, dead) in &units {
+        for (entity, &id, &streak, dead, modifiers) in &units {
             let wanted = streak.modifier(&weapons).filter(|_| !dead);
-            grants.unit(entity, id);
-            for modifier in modifiers.iter() {
-                grants.push(Grant {
-                    modifier,
-                    from: GrantFrom::Itself,
-                    hold: Hold::Streak,
-                    action: None,
-                    rank: (wanted == Some(modifier)).then_some(Rank::FIRST),
+            let streaks = modifiers
+                .into_iter()
+                .flat_map(Modifiers::iter)
+                .filter(|carried| {
+                    let instance = carried.instance;
+                    instance.source == Some(id) && instance.lifetime.held_by(Hold::Streak)
                 });
+            let grant = |modifier, rank| Grant {
+                modifier,
+                from: GrantFrom::Itself,
+                hold: Hold::Streak,
+                action: None,
+                rank,
+            };
+            let mut run = grants.of(entity, id);
+            let mut holds_wanted = false;
+            for carried in streaks {
+                let modifier = carried.instance.id;
+                if Some(modifier) == wanted {
+                    holds_wanted = true;
+                } else {
+                    run.push(grant(modifier, None));
+                }
+            }
+            if let Some(modifier) = wanted.filter(|_| !holds_wanted) {
+                run.push(grant(modifier, Some(Rank::FIRST)));
             }
         }
     }
@@ -198,7 +248,7 @@ impl SimComponent for ShotStreak {
             return true;
         };
         let streak = world
-            .resource::<ByAction<Weapon>>()
+            .resource::<ById<ActionId, Weapon>>()
             .get(shots.weapon)
             .and_then(|weapon| weapon.streak.as_ref());
         streak.is_some_and(|streak| {

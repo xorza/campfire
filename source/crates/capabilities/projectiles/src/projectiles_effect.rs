@@ -1,6 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_actions::ProjectileFlight;
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_deliveries::Delivering;
 use campfire_math::Vec3;
 use campfire_script::{Effect, EffectKind, Frame};
@@ -10,6 +9,7 @@ use campfire_values::UnitType;
 
 use crate::Projectiles;
 use crate::projectile::{Flight, LaunchAim};
+use crate::projectile_flight::ProjectileFlight;
 use crate::projectile_spec::ProjectileSpec;
 
 /// A projectile a call queued: `id`, the id the call took for it, of `by`, of `unit_type`, from
@@ -27,6 +27,7 @@ pub(crate) struct ProjectilesEffect {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Toward {
     Direction(Vec3),
+    Point(Vec3),
     Unit(StableId),
 }
 
@@ -34,13 +35,13 @@ impl Effect for ProjectilesEffect {
     const KIND: EffectKind = EffectKind::Change;
 
     /// Applies the effect: a launch this tick, its own cast, from the point of the map's bounds
-    /// nearest where it says, homing on its unit, on a curve or steered to its unit's center for
-    /// a type that flies one, or along its direction. A direction of no length, or a curve's unit that
-    /// is gone, launches nothing.
+    /// nearest where it says, homing on its unit, on a curve or steered to its unit's center or
+    /// to its point for a type that flies one, or along its direction. A direction of no length,
+    /// or a curve's or a steer's unit that is gone, launches nothing.
     fn apply(self, world: &mut World, _: &mut Frame) {
         let from = world.resource::<MapBook>().bounds.clamp(self.from);
         let spec = world
-            .resource::<ByType<ProjectileSpec>>()
+            .resource::<ById<UnitType, ProjectileSpec>>()
             .get(self.unit_type)
             .expect("a delivery's projectile type has a spec");
         let flight = match self.toward {
@@ -58,6 +59,15 @@ impl Effect for ProjectilesEffect {
                     from: map.point(from),
                     to,
                     aimed: Some(target),
+                };
+                Flight::aimed(aim, spec, map)
+            }
+            Toward::Point(to) => {
+                let map = world.resource::<MapBook>();
+                let aim = LaunchAim {
+                    from: map.point(from),
+                    to: map.point(map.bounds.clamp(to)),
+                    aimed: None,
                 };
                 Flight::aimed(aim, spec, map)
             }

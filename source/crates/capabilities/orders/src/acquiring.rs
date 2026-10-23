@@ -1,23 +1,21 @@
 use core::ops::ControlFlow;
 
-use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{
     ActionBook, ActionKind, ActionProgress, ActionRange, ActionSlots, AttackTarget,
     ProgressIndexes, RangeFit, Targets,
 };
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_geometry::Placed;
 use campfire_math::Num;
 use campfire_sim::{DueIndex, DueUnit, Position, SimTick, StableId};
-use campfire_units::{Body, Dead, Destination, UnitsNear};
+use campfire_units::{Body, Dead, UnitsNear, Walk};
 use campfire_values::{Team, UnitType};
 use campfire_vision::{ByVision, SeenTargets};
 
-use crate::acquire::Acquire;
+use crate::acquire::{Acquire, NextScan};
 use crate::attack_move::AttackMove;
-use crate::next_scan::NextScan;
 
 /// The idle scans of the units of types that declare one (04-capabilities/control.md, An idle
 /// unit scans for a target, as its type declares).
@@ -41,7 +39,7 @@ impl Acquiring {
         (tick, actions, book): (
             Res<'_, SimTick>,
             Res<'_, ActionBook>,
-            Res<'_, ByType<Acquire>>,
+            Res<'_, ById<UnitType, Acquire>>,
         ),
         (targets, seen, near): (
             Targets<'_, '_>,
@@ -54,7 +52,7 @@ impl Acquiring {
             (
                 (&Position, &Team, &UnitType, &NextScan),
                 (&ActionSlots, &mut ActionProgress),
-                (Option<&mut Destination>, Option<&mut AttackMove>),
+                (Option<Walk>, Option<&mut AttackMove>),
                 Option<&Body>,
             ),
             Without<Dead>,
@@ -73,7 +71,7 @@ impl Acquiring {
             let Ok((
                 (&position, &team, &unit_type, &next),
                 (slots, mut progress),
-                (destination, attack_move),
+                (walk, attack_move),
                 body,
             )) = units.get_mut(entity)
             else {
@@ -93,9 +91,7 @@ impl Acquiring {
             let moves = attack_move
                 .as_ref()
                 .is_some_and(|attack_move| attack_move.goal().is_some());
-            let walks = destination
-                .as_ref()
-                .is_some_and(|destination| destination.get().is_some());
+            let walks = walk.as_ref().is_some_and(|walk| walk.goal().is_some());
             let idle = progress.in_progress().is_none()
                 && progress.attack_target().is_none()
                 && (moves || !walks);
@@ -121,7 +117,9 @@ impl Acquiring {
                 let weapon = slots.weapon_in(&actions, Some((relation, unit.tags)));
                 let to = Placed::new(unit.position, unit.shape);
                 let reached = weapon.is_some_and(|slot| {
-                    let values = slots.values_of(&actions, slot);
+                    let values = slots
+                        .values_in(&actions, slot)
+                        .expect("a weapon's slot is learned");
                     targets.reach(from, values.range, values.min_range, to) == RangeFit::Within
                 });
                 if reached && acquire.targets.selects(relation, unit.tags) && seen.sees(team, other)
@@ -139,11 +137,11 @@ impl Acquiring {
             if let Some((_, target)) = nearest {
                 let target = Some(AttackTarget::scanned(target));
                 progress.set_attack_target(target, &mut indexes.of(id, entity));
-                if let (Some(mut destination), Some(mut attack_move)) = (destination, attack_move)
+                if let (Some(mut walk), Some(mut attack_move)) = (walk, attack_move)
                     && walks
                     && moves
                 {
-                    destination.set_if_neq(Destination::to(None));
+                    walk.to(None);
                     attack_move.stop();
                 }
             }

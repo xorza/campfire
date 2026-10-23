@@ -37,9 +37,9 @@ impl SkirmishStart {
     /// The start of each template of `rules` a player plays, its objects unit types `names`
     /// takes; an error for no such template, one of no building, an object the install lacks,
     /// or an object that gives no unit type.
-    pub(crate) fn of(
-        rules: &ZeroHourRules,
-        names: &mut ImportNames,
+    pub(crate) fn of<'r>(
+        rules: &'r ZeroHourRules,
+        names: &mut ImportNames<'r>,
     ) -> Result<Self, ZeroHourError> {
         let factions = rules
             .templates
@@ -57,23 +57,23 @@ impl SkirmishStart {
 
 impl FactionStart {
     /// The start of `template`, of the name `template_name`, as `SkirmishStart::of` makes each.
-    fn of(
-        rules: &ZeroHourRules,
-        names: &mut ImportNames,
+    fn of<'r>(
+        rules: &'r ZeroHourRules,
+        names: &mut ImportNames<'r>,
         template_name: &str,
         template: &PlayerTemplate,
     ) -> Result<Self, ZeroHourError> {
-        let (ini, locomotors) = (&rules.objects, &rules.locomotors);
+        let ini = &rules.objects;
         let no_start = || ZeroHourError::NoStart(template_name.to_owned());
         let building = template.building.as_deref().ok_or_else(no_start)?;
         let object = |name: &str| {
             ini.object(name.as_bytes())
                 .ok_or_else(|| ZeroHourError::NoStartObject(name.to_owned()))
         };
-        let mut unit_type = |object: &IniObject| {
+        let mut unit_type = |object: &'r IniObject| {
             names
-                .unit_type(object, locomotors)
-                .map(|named| named.name)
+                .unit_type(object, rules)
+                .map(|named| DeclaredName::from(named.name))
                 .map_err(|error| Self::type_error(object, error))
         };
         let building = object(building)?;
@@ -82,7 +82,7 @@ impl FactionStart {
             game_float::to_num(half).map_err(|_| Self::type_error(building, TypeError::Number))?;
         let faction = template_name.strip_prefix(LEAD).unwrap_or(template_name);
         Ok(Self {
-            name: ImportName::of(faction.as_bytes()).declared(),
+            name: ImportName::of(faction.as_bytes()).declared()?,
             building: unit_type(building)?,
             units: template
                 .units()

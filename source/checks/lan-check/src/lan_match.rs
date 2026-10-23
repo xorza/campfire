@@ -1,11 +1,13 @@
+use std::collections::BTreeMap;
+use std::ffi::OsStr;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use campfire_common::{Bytes32, Seat, Tick};
-use campfire_net::{InputLogged, Listening, MatchStarted};
+use campfire_common::{Bytes32, PlayerSlot, Tick};
+use campfire_host::{InputLogged, Listening, MatchStarted};
 use campfire_store::OutputFile;
 
 use crate::binaries::Binaries;
@@ -13,11 +15,16 @@ use crate::error::CheckError;
 use crate::log_tail::LogTail;
 use crate::process::Process;
 use crate::process_group::{POLL, ProcessGroup};
+use crate::process_log::ProcessLog;
 use crate::process_outcome::ProcessOutcome;
 
 /// How long the server gets to listen, and then the whole match to end, before the check stops
-/// what still runs: a match of 11 s, with a restart its clients notice in 5 s, ends in a few more.
+/// what still runs, on a machine of `RunnerSpeed::Local`: a match of 11 s, with a restart its
+/// clients notice in 5 s, ends in a few more.
 const DEADLINE: Duration = Duration::from_secs(30);
+/// How much longer CI's runners take: nextest's `ci` profile ends a test at 30 s where the default
+/// ends it at 5 s.
+const CI_SCALE: u32 = 6;
 /// The server's data directory, in the run's directory.
 pub(crate) const SERVER_DATA: &str = "server-data";
 /// The local client's data directory, in the run's directory; its local server's is `server`
@@ -40,13 +47,24 @@ const LOG_EXTRA: &str =
 /// wrong TLS key plays the first script.
 #[derive(Debug)]
 pub(crate) struct LanMatch<'a> {
-    pub(crate) binaries: &'a Binaries,
+    binaries: &'a Binaries,
     /// Where the logs, scripts and the session log go.
-    pub(crate) dir: &'a Path,
+    dir: &'a Path,
     /// The mode package directory the server opens and the bots play.
-    pub(crate) mode: &'a Path,
+    mode: &'a Path,
     /// The bots' order files.
-    pub(crate) scripts: &'a [PathBuf],
+    scripts: &'a [PathBuf],
+    deadline: Duration,
+    /// Each process's log, as the check read it while the process ran, so no line reads twice.
+    logs: BTreeMap<Process, LogTail>,
+}
+
+/// How fast the machine that runs the check is, which sets its deadline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RunnerSpeed {
+    Local,
+    /// One of CI's runners, `CI_SCALE` times slower.
+    Ci,
 }
 
 /// How each process of a match ended: the server's first process and the one the check started
@@ -82,14 +100,64 @@ impl Played {
     }
 }
 
-impl LanMatch<'_> {
-    /// Starts the server on a port the OS picks, waits until it listens, starts the bots and the
-    /// impostor; once the server logged the first order of bot `RESTARTED` and each other bot's
-    /// order of that stamp, stops that bot and starts it again with its key file; once it logged
-    /// an input stamped `SERVER_STOP` or later, stops the server and starts it again on its data
-    /// directory and its port; and waits until every process ended or the deadline passed.
-    pub(crate) fn play(&self) -> Result<Played, CheckError> {
-        let deadline = Instant::now() + DEADLINE;
+impl RunnerSpeed {
+    /// The speed that `profile`, the value of `NEXTEST_PROFILE`, names: CI's for nextest's `ci`
+    /// profile, which CI's gate runs the tests with, as the check is a step of that gate.
+    pub(crate) fn of(profile: Option<&OsStr>) -> Self {
+        if profile == Some(OsStr::new("ci")) {
+            Self::Ci
+        } else {
+            Self::Local
+        }
+    }
+
+    const fn deadline(self) -> Duration {
+        match self {
+            Self::Local => DEADLINE,
+            Self::Ci => DEADLINE.saturating_mul(CI_SCALE),
+        }
+    }
+}
+
+impl<'a> LanMatch<'a> {
+    /// The match of `binaries` in `dir`, of the bots of `scripts` playing the mode in `mode`, at
+    /// the deadline of `speed`.
+    pub(crate) const fn new(
+        binaries: &'a Binaries,
+        dir: &'a Path,
+        mode: &'a Path,
+        scripts: &'a [PathBuf],
+        speed: RunnerSpeed,
+    ) -> Self {
+        Self {
+            binaries,
+            dir,
+            mode,
+            scripts,
+            deadline: speed.deadline(),
+            logs: BTreeMap::new(),
+        }
+    }
+
+    /// The log of `process` as far as it wrote it: the whole of one that ended.
+    pub(crate) fn log(&mut self, process: Process) -> Result<&ProcessLog, CheckError> {
+        self.tail(process).read()
+    }
+
+    fn tail(&mut self, process: Process) -> &mut LogTail {
+        self.logs
+            .entry(process)
+            .or_insert_with(|| LogTail::new(process, self.dir))
+    }
+
+    /// Starts the server on a port the OS picks, waits until it listens; starts the impostor and
+    /// waits until it ended, so its start shares the machine with no order; starts the bots;
+    /// once the server logged the first order of bot `RESTARTED` and each other bot's order of
+    /// that stamp, stops that bot and starts it again with its key file; once it logged an input
+    /// stamped `SERVER_STOP` or later, stops the server and starts it again on its data directory
+    /// and its port; and waits until every process ended or the deadline passed.
+    pub(crate) fn play(&mut self) -> Result<Played, CheckError> {
+        let deadline = Instant::now() + self.deadline;
         let mut children = ProcessGroup::default();
         let any_port = SocketAddr::from(([127, 0, 0, 1], 0));
         children.start(Process::Server, self.server(Process::Server, any_port)?);
@@ -104,36 +172,43 @@ impl LanMatch<'_> {
             Listened::No(outcome) => return Ok(Played::unplayed(outcome, self.scripts.len())),
         };
         let wrong = Bytes32::new(tls_key.as_bytes().map(|byte| !byte)).to_string();
-        let bots = self
-            .scripts
-            .iter()
-            .enumerate()
-            .map(|(index, script)| (Process::Bot(index), script, tls_key.to_string()));
-        let impostor = (Process::Impostor, &self.scripts[0], wrong);
+        let tls_key = tls_key.to_string();
+        // The bots' starts borrow what the match holds apart from its logs, which the waits read.
+        let Self {
+            binaries,
+            dir,
+            mode,
+            scripts,
+            ..
+        } = *self;
         let bot = |process: Process, key: Process, script: &Path, tls_key: &str| {
-            let mut command = Command::new(&self.binaries.client);
+            let mut command = Command::new(&binaries.client);
             command
                 .arg("--bot")
                 .arg(script)
                 .arg("--key")
-                .arg(self.dir.join(format!("{}.nsec", key.file_stem())))
-                .arg(self.mode)
+                .arg(dir.join(format!("{}.nsec", key.file_stem())))
+                .arg(mode)
                 .arg(address.to_string())
                 .arg(tls_key)
                 .arg(server_key.to_string())
                 .arg(tick_hz.to_string());
-            self.start(process, &mut command)
+            start(dir, process, &mut command)
         };
-        for (process, script, tls_key) in bots.chain([impostor]) {
+        let impostor = Process::Impostor;
+        children.start(impostor, bot(impostor, impostor, &scripts[0], &wrong)?);
+        while children.try_wait(impostor)?.is_none() && Instant::now() < deadline {
+            thread::sleep(POLL);
+        }
+        for (index, script) in scripts.iter().enumerate() {
+            let process = Process::Bot(index);
             children.start(process, bot(process, process, script, &tls_key)?);
         }
         if self.first_orders_logged(deadline)? {
             let restarted = Process::Bot(RESTARTED);
             let again = Process::Rejoined(RESTARTED);
-            let script = &self.scripts[RESTARTED];
-            children.replace(restarted, again, || {
-                bot(again, restarted, script, &tls_key.to_string())
-            })?;
+            let script = &scripts[RESTARTED];
+            children.replace(restarted, again, || bot(again, restarted, script, &tls_key))?;
         }
         if self.logged_by(SERVER_STOP, deadline)? {
             children.replace(Process::Server, Process::ServerAgain, || {
@@ -156,13 +231,14 @@ impl LanMatch<'_> {
     /// Waits until the first server among `children` listens, ends, or the deadline passed, when
     /// the check stops it.
     fn listen(
-        &self,
+        &mut self,
         children: &mut ProcessGroup,
         deadline: Instant,
     ) -> Result<Listened, CheckError> {
-        let mut log = LogTail::new(Process::Server, self.dir);
+        let mut seen = 0;
         loop {
-            if let Some(listening) = log.read::<Listening>()?.into_iter().next() {
+            let log = self.tail(Process::Server);
+            if let Some(listening) = log.read_past::<Listening>(&mut seen)?.into_iter().next() {
                 return Ok(Listened::Yes(listening));
             }
             if Instant::now() >= deadline {
@@ -177,7 +253,8 @@ impl LanMatch<'_> {
 
     /// Starts the server as `process`, on its data directory, listening on `address`.
     fn server(&self, process: Process, address: SocketAddr) -> Result<Child, CheckError> {
-        self.start(
+        start(
+            self.dir,
             process,
             Command::new(&self.binaries.server)
                 .arg("--data")
@@ -189,10 +266,12 @@ impl LanMatch<'_> {
 
     /// Waits until the server logged an input stamped `stamp` or later, or the deadline passed;
     /// whether it did.
-    fn logged_by(&self, stamp: Tick, deadline: Instant) -> Result<bool, CheckError> {
-        let mut log = LogTail::new(Process::Server, self.dir);
+    fn logged_by(&mut self, stamp: Tick, deadline: Instant) -> Result<bool, CheckError> {
+        let mut seen = 0;
         while Instant::now() < deadline {
-            let logged = log.read::<InputLogged>()?;
+            let logged = self
+                .tail(Process::Server)
+                .read_past::<InputLogged>(&mut seen)?;
             if logged.iter().any(|input| input.stamp >= stamp) {
                 return Ok(true);
             }
@@ -201,38 +280,43 @@ impl LanMatch<'_> {
         Ok(false)
     }
 
-    /// Waits until the server logged the first input of the seat that bot `RESTARTED` learned it
-    /// plays, and an input of each bot's seat stamped as late or later, or the deadline passed;
-    /// whether it did. A bot's order of that stamp still on its way would share the machine with
-    /// the restarted bot's new process as it starts, and could miss its stamp tick.
-    fn first_orders_logged(&self, deadline: Instant) -> Result<bool, CheckError> {
-        let mut bots: Vec<LogTail> = (0..self.scripts.len())
-            .map(|bot| LogTail::new(Process::Bot(bot), self.dir))
-            .collect();
-        let mut seats: Vec<Option<Seat>> = vec![None; bots.len()];
-        let mut server = LogTail::new(Process::Server, self.dir);
+    /// Waits until the server logged the first input of the player slot that bot `RESTARTED`
+    /// learned it plays, and an input of each bot's player slot stamped as late or later, or the
+    /// deadline passed; whether it did. A bot's order of that stamp still on its way would share
+    /// the machine with the restarted bot's new process as it starts, and could miss its stamp
+    /// tick.
+    fn first_orders_logged(&mut self, deadline: Instant) -> Result<bool, CheckError> {
+        let mut player_slots: Vec<Option<PlayerSlot>> = vec![None; self.scripts.len()];
+        let mut seen_bots = vec![0; player_slots.len()];
+        let mut seen_server = 0;
         let mut logged = Vec::new();
         while Instant::now() < deadline {
-            for (log, seat) in bots.iter_mut().zip(&mut seats) {
-                if seat.is_none() {
-                    *seat = log
-                        .read::<MatchStarted>()?
+            for (bot, (player_slot, seen)) in
+                player_slots.iter_mut().zip(&mut seen_bots).enumerate()
+            {
+                if player_slot.is_none() {
+                    *player_slot = self
+                        .tail(Process::Bot(bot))
+                        .read_past::<MatchStarted>(seen)?
                         .first()
-                        .map(|started| started.seat);
+                        .map(|started| started.player_slot);
                 }
             }
-            logged.extend(server.read::<InputLogged>()?);
-            if let Some(seats) = seats.iter().copied().collect::<Option<Vec<_>>>() {
+            logged.extend(
+                self.tail(Process::Server)
+                    .read_past::<InputLogged>(&mut seen_server)?,
+            );
+            if let Some(player_slots) = player_slots.iter().copied().collect::<Option<Vec<_>>>() {
                 let first = logged
                     .iter()
-                    .filter(|input| input.seat == seats[RESTARTED])
+                    .filter(|input| input.player_slot == player_slots[RESTARTED])
                     .map(|input| input.stamp)
                     .min();
                 let reached = |stamp: Tick| {
-                    seats.iter().all(|&seat| {
+                    player_slots.iter().all(|&player_slot| {
                         logged
                             .iter()
-                            .any(|input| input.seat == seat && input.stamp >= stamp)
+                            .any(|input| input.player_slot == player_slot && input.stamp >= stamp)
                     })
                 };
                 if first.is_some_and(reached) {
@@ -245,11 +329,12 @@ impl LanMatch<'_> {
     }
 
     /// Plays a client bot of the first script alone on a local server with no network, a server
-    /// bot of the second in seat 1, and waits until it ended or the deadline passed.
+    /// bot of the second in player slot 1, and waits until it ended or the deadline passed.
     pub(crate) fn play_local(&self) -> Result<ProcessOutcome, CheckError> {
-        let deadline = Instant::now() + DEADLINE;
+        let deadline = Instant::now() + self.deadline;
         let mut children = ProcessGroup::default();
-        let client = self.start(
+        let client = start(
+            self.dir,
             Process::Local,
             Command::new(&self.binaries.client)
                 .arg("--local")
@@ -270,22 +355,41 @@ impl LanMatch<'_> {
         let mut ended = children.wait(deadline)?;
         Ok(ended.remove(&Process::Local).expect("the local client ran"))
     }
+}
 
-    /// Starts `command` as `process`, in the run's directory, logging JSON to its file and text to
-    /// a file beside it. Its file filter is the binary's own, whatever the check's environment
-    /// says, as the verdict reads its events at Debug.
-    fn start(&self, process: Process, command: &mut Command) -> Result<Child, CheckError> {
-        let text = self.dir.join(format!("{}.log", process.file_stem()));
-        let text = OutputFile::stdio(&text).map_err(CheckError::TextLog)?;
-        command
-            .current_dir(self.dir)
-            .env("CAMPFIRE_LOG", process.log_path(self.dir))
-            .env_remove("CAMPFIRE_LOG_FILTER")
-            .env("CAMPFIRE_LOG_FILTER_EXTRA", LOG_EXTRA)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(text)
-            .spawn()
-            .map_err(|error| CheckError::Start { process, error })
+/// Starts `command` as `process`, in the run's directory `dir`, logging JSON to its file and text
+/// to a file beside it. Its file filter is the binary's own, whatever the check's environment says,
+/// as the verdict reads its events at Debug.
+fn start(dir: &Path, process: Process, command: &mut Command) -> Result<Child, CheckError> {
+    let text = dir.join(format!("{}.log", process.file_stem()));
+    let text = OutputFile::stdio(&text).map_err(CheckError::TextLog)?;
+    command
+        .current_dir(dir)
+        .env("CAMPFIRE_LOG", process.log_path(dir))
+        .env_remove("CAMPFIRE_LOG_FILTER")
+        .env("CAMPFIRE_LOG_FILTER_EXTRA", LOG_EXTRA)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(text)
+        .spawn()
+        .map_err(|error| CheckError::Start { process, error })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cis_profile_scales_the_deadline() {
+        // 30 s on a machine of its own, 6 × 30 s = 180 s on CI's runners.
+        for (profile, speed, deadline) in [
+            (None, RunnerSpeed::Local, 30),
+            (Some("default"), RunnerSpeed::Local, 30),
+            (Some("ci"), RunnerSpeed::Ci, 180),
+        ] {
+            let read = RunnerSpeed::of(profile.map(OsStr::new));
+            assert_eq!(read, speed);
+            assert_eq!(read.deadline(), Duration::from_secs(deadline));
+        }
     }
 }

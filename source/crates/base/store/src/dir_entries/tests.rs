@@ -25,5 +25,8 @@ fn a_listing_gives_each_entry_by_its_names_bytes_with_its_kind_a_link_not_follow
     let refused = |relative: &str| DirEntries::read(&test_dir.path(relative)).unwrap_err();
     assert!(matches!(refused("none").error, ReadError::Missing));
     assert!(matches!(refused("dir/a").error, ReadError::NotDir));
+    // A link to a directory is refused, not followed, as a read follows none.
+    test_dir.link_dir("dir/B", "linked");
+    assert!(matches!(refused("linked").error, ReadError::Link));
     assert_eq!(refused("none").path, test_dir.path("none"));
 }

@@ -106,8 +106,19 @@ fn named_enum(input: &DeriveInput) -> syn::Result<Tokens> {
     let name = &input.ident;
     let type_name = name.to_string();
     let all = enum_all(input)?;
+    let visibility = &input.vis;
+    let members = variants.iter().map(|variant| &variant.ident);
     Ok(quote! {
         #all
+
+        impl #name {
+            /// The member's name, as `NamedEnum::NAMES` gives it, in a const context too.
+            #visibility const fn name(self) -> &'static str {
+                match self {
+                    #(Self::#members => #names,)*
+                }
+            }
+        }
 
         impl ::campfire_common::NamedEnum for #name {
             const TYPE: &'static str = #type_name;

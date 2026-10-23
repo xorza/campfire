@@ -5,7 +5,7 @@ use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut, SystemChangeTick, SystemParam};
 use bevy_ecs::world::World;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_declarations::Cache;
 use campfire_sim::Unpredicted;
 use campfire_stats::PlayerModifiers;
@@ -44,7 +44,7 @@ pub(crate) struct Holdings {
 #[derive(Debug, Clone, Copy)]
 struct Share {
     entity: Entity,
-    owner: Seat,
+    owner: PlayerSlot,
     supply: UnitSupply,
     held: Option<UnitType>,
 }
@@ -52,7 +52,7 @@ struct Share {
 /// How many living, complete units of a type a player holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct HeldCount {
-    owner: Seat,
+    owner: PlayerSlot,
     unit_type: UnitType,
     count: u32,
 }
@@ -86,7 +86,7 @@ impl Holdings {
             self.held.clear();
             self.marked.clear();
             for (entity, owner, parts) in &owned.units {
-                self.add(entity, owner.seat(), &parts, owned);
+                self.add(entity, owner.player_slot(), &parts, owned);
             }
             self.followed = Some(now);
             return;
@@ -109,31 +109,33 @@ impl Holdings {
         self.followed = Some(now);
     }
 
-    /// What `seat` uses.
-    pub(crate) fn used(&self, seat: Seat) -> u64 {
-        self.players.get(seat.index()).map_or(0, |sums| sums.used)
+    /// What `player_slot` uses.
+    pub(crate) fn used(&self, player_slot: PlayerSlot) -> u64 {
+        self.players
+            .get(player_slot.index())
+            .map_or(0, |sums| sums.used)
     }
 
-    /// What `seat`'s units give, at most `max`.
-    pub(crate) fn cap(&self, seat: Seat, max: u64) -> u64 {
-        let sums = self.players.get(seat.index()).copied();
+    /// What `player_slot`'s units give, at most `max`.
+    pub(crate) fn cap(&self, player_slot: PlayerSlot, max: u64) -> u64 {
+        let sums = self.players.get(player_slot.index()).copied();
         sums.unwrap_or_default().cap(max)
     }
 
-    /// Whether `seat` has room for `cost` more under its cap of at most `max`.
-    pub(crate) fn has_room(&self, seat: Seat, cost: u32, max: u64) -> bool {
-        self.used(seat) + u64::from(cost) <= self.cap(seat, max)
+    /// Whether `player_slot` has room for `cost` more under its cap of at most `max`.
+    pub(crate) fn has_room(&self, player_slot: PlayerSlot, cost: u32, max: u64) -> bool {
+        self.used(player_slot) + u64::from(cost) <= self.cap(player_slot, max)
     }
 
-    /// Counts `cost` more used by `seat`, as a train joins the queue of `producer`, whose share
-    /// then holds it, so a count of its queue gives the same.
-    pub(crate) fn reserve(&mut self, producer: Entity, seat: Seat, cost: u32) {
+    /// Counts `cost` more used by `player_slot`, as a train joins the queue of `producer`, whose
+    /// share then holds it, so a count of its queue gives the same.
+    pub(crate) fn reserve(&mut self, producer: Entity, player_slot: PlayerSlot, cost: u32) {
         let at = Self::index(producer);
         let share = self.units.get_mut(at).and_then(Option::as_mut);
-        let share = share.filter(|share| share.entity == producer && share.owner == seat);
+        let share = share.filter(|share| share.entity == producer && share.owner == player_slot);
         let share = share.expect("a train joins the queue of a unit of its player's");
         share.supply.used += u64::from(cost);
-        self.sums_mut(seat).used += u64::from(cost);
+        self.sums_mut(player_slot).used += u64::from(cost);
     }
 
     /// Whether a follow counted the units, as each tick's first does.
@@ -146,7 +148,7 @@ impl Holdings {
     /// no need.
     pub(crate) fn meet(
         &self,
-        owner: Option<Seat>,
+        owner: Option<PlayerSlot>,
         modifiers: Option<&PlayerModifiers>,
         required: Option<Required<'_>>,
     ) -> bool {
@@ -216,7 +218,7 @@ impl Holdings {
             self.take(share);
         }
         if let Ok((entity, owner, parts)) = owned.units.get(entity) {
-            self.add(entity, owner.seat(), &parts, owned);
+            self.add(entity, owner.player_slot(), &parts, owned);
         }
     }
 
@@ -225,7 +227,7 @@ impl Holdings {
     fn add(
         &mut self,
         entity: Entity,
-        owner: Seat,
+        owner: PlayerSlot,
         parts: &SupplyPartsItem<'_, '_>,
         owned: &OwnedUnits<'_, '_>,
     ) {
@@ -283,14 +285,14 @@ impl Holdings {
     }
 
     /// Where `owner`'s count of `unit_type` stands among the held, or would.
-    fn held_at(&self, owner: Seat, unit_type: UnitType) -> Result<usize, usize> {
+    fn held_at(&self, owner: PlayerSlot, unit_type: UnitType) -> Result<usize, usize> {
         self.held
             .binary_search_by_key(&(owner, unit_type), |held| (held.owner, held.unit_type))
     }
 
-    /// `seat`'s supply, to change, the players grown to hold it.
-    fn sums_mut(&mut self, seat: Seat) -> &mut SupplySums {
-        let at = seat.index();
+    /// `player_slot`'s supply, to change, the players grown to hold it.
+    fn sums_mut(&mut self, player_slot: PlayerSlot) -> &mut SupplySums {
+        let at = player_slot.index();
         if self.players.len() <= at {
             self.players.resize(at + 1, SupplySums::default());
         }
@@ -306,13 +308,16 @@ impl Cache for Holdings {
     fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
+
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use bevy_ecs::system::SystemState;
-    use campfire_actions::ByAction;
-    use campfire_declarations::ByTypeBuilder;
+    use campfire_declarations::{ById, ByIdBuilder};
 
     use super::*;
     use crate::mode_supply_data::ModeSupplyData;
@@ -332,7 +337,7 @@ mod tests {
     fn a_unit_that_takes_a_freed_index_before_the_follow_replaces_the_share_the_index_held() {
         // Depots give 4 and are held; a mode of a most of 10.
         let depot = UnitType::new(1);
-        let mut types = ByTypeBuilder::default();
+        let mut types = ByIdBuilder::default();
         types.set(
             depot,
             SupplyData {
@@ -342,12 +347,12 @@ mod tests {
         );
         let mut world = World::new();
         world.insert_resource(SupplyBook(Some(ModeSupplyData { max: 10 })));
-        world.insert_resource(SupplyCostBook::new(types.build(), &ByAction::default()));
+        world.insert_resource(SupplyCostBook::new(types.build(), &ById::default()));
         world.init_resource::<Holdings>();
         world.add_observer(Holdings::inserted);
         world.add_observer(Holdings::removed);
         let mut state = SystemState::new(&mut world);
-        let player = Seat::new(0);
+        let player = PlayerSlot::new(0);
         let owned = (Owner::new(player), depot);
         let first = world.spawn(owned).id();
         let second = world.spawn(owned).id();
@@ -389,7 +394,7 @@ mod tests {
 
     #[test]
     fn a_cap_is_what_the_units_give_at_most_the_max_and_a_reserve_adds_to_what_is_used() {
-        let [first, second, absent] = [0, 1, 5].map(Seat::new);
+        let [first, second, absent] = [0, 1, 5].map(PlayerSlot::new);
         let producer = Entity::from_raw_u32(3).unwrap();
         let mut holdings = Holdings {
             players: vec![

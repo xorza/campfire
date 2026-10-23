@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use campfire_common::ContentHash;
+use campfire_package_format::ContentHash;
 
 use crate::zero_hour::error::{VersionDifference, ZeroHourError};
 use crate::zero_hour::install::HashedArchive;
@@ -250,7 +250,7 @@ impl GameVersion {
 
 #[cfg(test)]
 pub(crate) mod reach_in {
-    use campfire_common::ContentHash;
+    use campfire_package_format::ContentHash;
 
     use crate::zero_hour::game_version::{ArchiveHash, GameVersion};
 

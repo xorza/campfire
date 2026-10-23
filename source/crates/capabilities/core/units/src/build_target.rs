@@ -8,7 +8,7 @@ use crate::order_refs::{Ids, OrderRefs, RefMap, SerdeRefs};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", bound = "R: SerdeRefs")]
 pub enum BuildTarget<R: OrderRefs = Ids> {
-    Point { at: R::Ground, angle: Num },
+    Point { at: R::Place, angle: Num },
     Site(R::Unit),
 }
 

@@ -7,7 +7,10 @@ const QUARTER: Num = Num::QUARTER;
 
 /// A box form of `width` by `height` meters.
 fn boxed(width: i64, height: i64) -> BodyForm {
-    BodyForm::box_sized([Num::int(width), Num::int(height)]).unwrap()
+    BodyForm::new(
+        BodyShape::box_sized([Num::int(width), Num::int(height)]).unwrap(),
+        Layer::FIRST,
+    )
 }
 
 /// The point `(x, z)` in quarters of a meter, on the ground.

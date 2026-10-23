@@ -1,7 +1,7 @@
-use campfire_actions::{DeliveryData, DeliveryShape};
 use campfire_deliveries::Launcher;
 use campfire_math::Vec3;
 use campfire_script::{ApiBuilder, Checked, Ctx, MemberDecl, RoleSet, ScriptPosition, Unit};
+use campfire_sim::Capability;
 
 use crate::area_data::{AreaData, AreaInsideData};
 use crate::areas_effect::AreasEffect;
@@ -21,7 +21,6 @@ impl AreasApi {
         api.call(area, |ctx: &mut Ctx, position: ScriptPosition| {
             Self::land(ctx, position.get())
         })
-        .own_fields::<DeliveryData>(&["area"])
         .data::<AreaData>(&[])
         .data::<AreaInsideData>(&[]);
     }
@@ -29,7 +28,7 @@ impl AreasApi {
     /// Queues an area of the running action, which delivers areas, from its acting unit: the new
     /// area, with the id the call takes for it.
     fn land(ctx: &Ctx, position: Vec3) -> Checked<Unit> {
-        let launcher = Launcher::of(ctx, |shape| shape == DeliveryShape::Area)?;
+        let launcher = Launcher::of(ctx, Capability::Areas)?;
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;
         let id = frame.take_id();

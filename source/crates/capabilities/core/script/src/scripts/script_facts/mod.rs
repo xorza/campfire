@@ -6,7 +6,7 @@ use derive_more::Display;
 use rhai::{AST, ASTNode, Expr, FnCallExpr, Position, ScriptFnMetadata, Stmt};
 
 use crate::script_host::ScriptHost;
-use crate::script_host::error::ScriptError;
+use crate::script_host::error::CompileError;
 use crate::scripts::api_holder::ApiHolder;
 use crate::scripts::applies::Applies;
 use crate::scripts::error::CtxMisuse;
@@ -131,7 +131,7 @@ impl ScriptFacts {
     /// variable of that name, as every hook's first parameter is by convention and every helper
     /// passes it on; a use that breaks the convention is recorded, so the facts see every use of
     /// `ctx` in a script that keeps it.
-    pub fn read(host: &ScriptHost, source: &str, api: &ScriptApi) -> Result<Self, ScriptError> {
+    pub fn read(host: &ScriptHost, source: &str, api: &ScriptApi) -> Result<Self, CompileError> {
         Ok(Self::of(&host.parse(source)?, api))
     }
 

@@ -9,6 +9,7 @@ use crate::receive_entity_map::ReceiveEntityMap;
 use crate::receive_map_view::ReceiveMapView;
 use crate::send_entity_map::SendEntityMap;
 use crate::send_map_view::SendMapView;
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Query, Res, SystemParam};
 use bevy_replicon::shared::replication::Replicated;
@@ -31,10 +32,10 @@ impl RepliconMapParam<'_, '_> {
         }
     }
 
-    /// The receive view of a server's side whose own pairs are `known`.
-    pub(crate) fn checked_view<'a>(&'a self, known: &'a SendEntityMap) -> ReceiveMapView<'a> {
+    /// The receive view of a server's side, of its link `link`.
+    pub(crate) fn checked_view(&self, link: Entity) -> ReceiveMapView<'_> {
         ReceiveMapView::Checked {
-            known,
+            link,
             replicated: &self.replicated,
         }
     }

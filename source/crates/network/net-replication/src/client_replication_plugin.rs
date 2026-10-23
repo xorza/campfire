@@ -5,7 +5,7 @@ use crate::pre_spawned_systems::PreSpawnedSystems;
 use crate::remote_parent::RemoteParent;
 use bevy_app::prelude::{App, Plugin};
 use bevy_app::prelude::{PostUpdate, PreUpdate};
-use bevy_ecs::prelude::{IntoScheduleConfigs, resource_exists_and_changed};
+use bevy_ecs::prelude::{IntoScheduleConfigs, resource_exists};
 use bevy_replicon::client::ClientSystems;
 use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
@@ -24,12 +24,11 @@ impl Plugin for ClientReplicationPlugin {
             PostUpdate,
             PreSpawnedPlugin::expire_unmatched_pre_spawns.in_set(PreSpawnedSystems::CleanUp),
         );
-        // A detached parent can only resolve once the receive mapped a new entity.
         app.add_systems(
             PreUpdate,
             RemoteParent::attach
                 .after(ClientSystems::Receive)
-                .run_if(resource_exists_and_changed::<ServerEntityMap>),
+                .run_if(resource_exists::<ServerEntityMap>),
         );
     }
 }

@@ -213,8 +213,8 @@ impl Num {
     }
 
     /// `count` whole units times `self`, from the exact product, rounded once by `rounding` to a
-    /// whole count, as a share of a span of ticks takes; `None` for a count below 0 or past
-    /// `u64`. The product of any `Num` and any `u64` fits an `i128`.
+    /// whole count, as a share of a span of ticks takes; `None` for a product below 0, of a
+    /// `self` below 0, or past `u64`. The product of any `Num` and any `u64` fits an `i128`.
     pub fn scale_count(self, count: u64, rounding: Rounding) -> Option<u64> {
         let product = i128::from(self.0) * i128::from(count);
         u64::try_from(rounding.shift_right(product, Self::FRAC_BITS)).ok()

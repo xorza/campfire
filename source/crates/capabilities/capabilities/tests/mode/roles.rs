@@ -1,6 +1,7 @@
-use campfire_script::{CapabilityRefusal, RoleSet, ScriptList, ScriptValue};
+use campfire_script::{CapabilityRefusal, Ctx, RoleSet, ScriptList, ScriptValue};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_values::Named;
+use campfire_visibility::DataKind;
 
 use super::*;
 
@@ -37,7 +38,7 @@ fn every_role_reads_the_match_and_all_but_the_ai_deal_damage_heal_and_restore() 
     // healed in the tick's pass, in the order queued: from 980 to 974, and so on; the pool from
     // 50, 3 a call. The AI's call only reads, as an AI reads and orders, and changes nothing.
     let gold = |game: &Match| {
-        let resources = game.player_resources(Seat::new(0));
+        let resources = game.player_resources(PlayerSlot::new(0));
         resources.unwrap().amount(resource("gold").unwrap())
     };
     let mut at = 0;
@@ -100,10 +101,6 @@ fn every_role_reads_the_match_and_all_but_the_ai_deal_damage_heal_and_restore() 
         (r#"ctx.damage(unit, "true", 10)"#, ScriptRole::Bot),
         (r#"ctx.reveal(unit.position, 1, 100, "a")"#, ScriptRole::Bot),
         ("ctx.avatars()", ScriptRole::Bot),
-        (
-            r#"ctx.find_visible(unit, unit.position, 1, "allies")"#,
-            ScriptRole::Bot,
-        ),
     ];
     for (call, role) in refused {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");
@@ -201,7 +198,7 @@ fn probe(ctx, unit) {
     for (call, refused) in [
         (
             r#"ctx.set_relation("a", "b", Relation::named("angry"))"#,
-            ApiError::UnknownMember(EngineEnum::Relation),
+            ApiError::UnknownMember(Relation::ENUM),
         ),
         (
             r#"ctx.set_relation("b", "b", Relation::Neutral)"#,
@@ -241,4 +238,90 @@ fn the_modes_damage_comes_from_the_source_it_names_else_from_none() {
         attackers(&mut game, r#"ctx.damage(other, "true", 1, unit)"#),
         1
     );
+}
+
+#[test]
+fn a_bot_reads_only_the_units_its_team_sees_and_of_them_what_its_player_slots_client_receives() {
+    // Player slot 0 plays team a. Its eye at the origin sees 3 m; b's scout 2 m east is in its
+    // sight, and b's other scout 8 m east is not.
+    let mut set = roles_set();
+    set.units.push_str(&stat_type("eye", &[]));
+    set.units.push_str("vision = { sight_range = \"3\" }\n");
+    set.units.push_str(&stat_type("scout", &[]));
+    set.units.push_str(
+        "state = { hits = { type = \"int\", audience = \"owner\" }, \
+         mark = { type = \"string\", audience = \"all\" } }\n",
+    );
+    let mut game = started(&set, ScriptLimits::ROOMY).unwrap();
+    Mode::tick_inputs(&mut game, &[]);
+    let eye = spawn_of(&mut game, "eye", Team::new(0));
+    game.insert_parts(eye, Owner::new(PlayerSlot::new(0)));
+    let near = Spawn::named(&game, "scout", (2, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
+    let far = Spawn::named(&game, "scout", (8, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
+    Mode::tick_inputs(&mut game, &[]);
+
+    // The bot's view makes a handle of the units its team sees alone; the mode's, of every unit.
+    let held = |game: &Match| {
+        let view = game.non_send::<Ctx>().view().clone();
+        [eye, near, far].map(|id| view.unit(id).is_some())
+    };
+    let empty = "fn probe(ctx, unit) {}";
+    Mode::probe_as(&mut game, empty, ScriptRole::Bot, eye, eye).unwrap();
+    assert_eq!(held(&game), [true, true, false]);
+    Mode::probe_as(&mut game, empty, ScriptRole::Mode, eye, eye).unwrap();
+    assert_eq!(held(&game), [true, true, true]);
+
+    // Of its own eye the bot reads its every pool and what its team sees; of b's scout in sight,
+    // the life pool and its state of audience all, as the defaults give every client, but not
+    // its other pools, its state of audience owner, its spawn point, what b's team sees by either
+    // question, nor the server's state. The mode reads all of it.
+    let near_of = r#"ctx.find_visible(unit, unit.position, 10, "hostiles")[0]"#;
+    let read = |game: &mut Match, call: &str, role| {
+        let source = format!("fn probe(ctx, unit) {{ let other = {near_of}; {call} }}");
+        Mode::probe_as(game, &source, role, eye, eye)
+    };
+    let mana = read(&mut game, r#"unit.pool("mana")"#, ScriptRole::Bot).unwrap();
+    assert_eq!(mana.cast::<Num>(), Num::int(100));
+    let sees = read(&mut game, "unit.can_see(other)", ScriptRole::Bot).unwrap();
+    assert_eq!(sees.as_bool(), Some(true));
+    let health = read(&mut game, r#"other.pool("health")"#, ScriptRole::Bot).unwrap();
+    assert_eq!(health.cast::<Num>(), Num::int(1000));
+    let mark = read(&mut game, "other.state.mark", ScriptRole::Bot).unwrap();
+    assert_eq!(mark.into_text().unwrap().as_str(), "");
+    for (call, refused) in [
+        (
+            r#"other.pool("mana")"#,
+            ApiError::Unreceived(DataKind::Pools),
+        ),
+        (
+            "other.state.hits",
+            ApiError::Unreceived(DataKind::UnitStateOwner),
+        ),
+        (
+            "other.spawn_pos",
+            ApiError::Unreceived(DataKind::Prediction),
+        ),
+        (
+            "other.recent_attackers(1000)",
+            ApiError::Unreceived(DataKind::Server),
+        ),
+        (
+            "unit.recent_attackers(1000)",
+            ApiError::Unreceived(DataKind::Server),
+        ),
+        ("other.can_see(unit)", ApiError::NotForRole),
+        (
+            r#"ctx.find_visible(other, other.position, 10, "all")"#,
+            ApiError::NotForRole,
+        ),
+    ] {
+        let failed = read(&mut game, call, ScriptRole::Bot).unwrap_err();
+        assert_eq!(failed.kind(), FailureKind::Api(refused), "{call}: {failed}");
+        let read = read(&mut game, call, ScriptRole::Mode);
+        assert!(read.is_ok(), "the mode reads {call}: {read:?}");
+    }
 }

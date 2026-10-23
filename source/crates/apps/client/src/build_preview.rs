@@ -173,7 +173,7 @@ impl BuildPreviewPlugin {
             .of(placing.action)
             .expect("a build button's action is a build");
         let form = spec.form();
-        let mesh = if let Some(radius) = form.circle_radius() {
+        let mesh = if let Some(radius) = form.shape().circle_radius() {
             Mesh::from(Cylinder::new(radius.float(), FOOTPRINT_HEIGHT))
         } else {
             let [a, b] = form
@@ -226,9 +226,9 @@ impl BuildPreviewPlugin {
             .and_then(|builder| builders.get(builder).ok())
             .map(|position| position.get().y);
         let at = ground.zip(height).and_then(|(ground, y)| {
-            let x = float_num::to_num(ground.x)?;
-            let z = float_num::to_num(ground.z)?;
-            Some((ground, SimVec3::new(x, y, z)))
+            let point = float_num::ground_point(ground)?;
+            let at = SimVec3::new(point.x, y, point.z);
+            at.within_bound().then_some((ground, at))
         });
         ghost.at = at.map(|(_, at)| at);
         let Some((ground, at)) = at else {
@@ -353,7 +353,7 @@ mod tests {
     use campfire_declarations::Role;
     use campfire_production::{BuildStart, NewBuild, Production, Style};
     use campfire_sim::{Capability, IdAllocator};
-    use campfire_units::BodyForm;
+    use campfire_units::{BodyForm, BodyShape, Layer};
     use campfire_values::{ActionId, Share, UnitType};
 
     use super::*;
@@ -405,9 +405,10 @@ mod tests {
         let (action, round) = (ActionId::new(0), ActionId::new(1));
         let mut builds = BuildBook::default();
         let forms = [
-            BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
-            BodyForm::circle(Num::int(2)).unwrap(),
-        ];
+            BodyShape::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+            BodyShape::circle(Num::int(2)).unwrap(),
+        ]
+        .map(|shape| BodyForm::new(shape, Layer::FIRST));
         for (id, form) in [action, round].into_iter().zip(forms) {
             let build = NewBuild {
                 unit_type: UnitType::new(0),

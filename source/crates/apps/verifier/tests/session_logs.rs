@@ -11,23 +11,26 @@ use std::path::Path;
 use campfire_actions::{ActionProgress, ActionSlots};
 use campfire_capabilities::{Match, Order};
 use campfire_common::ErrorReport;
-use campfire_common::{AfterLeave, PackageFingerprint, Seat, StateHash, Tick, Ticks, Version};
+use campfire_common::{
+    AfterLeave, PackageFingerprint, PlayerSlot, StateHash, Tick, Ticks, Version,
+};
 use campfire_harness::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
 use campfire_orders::OrdersDirective;
-use campfire_package::ModePackages;
-use campfire_package_disk::{PackageDir, PackageStore, StoreError};
+use campfire_package::{ModePackages, StoreError};
+use campfire_package_disk::{PackageDir, PackageStore};
 use campfire_projectiles::Projectile;
+use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
-    Applied, InputRules, JournalFrames, LeaveReason, Outcome, RecordSink, SeatChange,
-    SeatChangeKind, SeatPlan, SeedError, ServerInput, ServerSeed, ServerSeeds, SessionLog,
-    SessionResult, SessionTerms, SnapshotFingerprint, Taken,
+    Applied, InputRules, JournalFrames, LeaveReason, Outcome, PlayerSlotChange,
+    PlayerSlotChangeKind, PlayerSlotPlan, RecordSink, SeedError, ServerInput, ServerSeed,
+    ServerSeeds, SessionLog, SessionResult, SessionTerms, SnapshotFingerprint, Taken,
 };
 use campfire_runner::{
-    Replay, ReplayError, ResultMismatch, ResumeAt, ResumeError, SeatRuleError, ServerInputRefusal,
-    Session, SessionSource, SessionWorld, SnapshotCheckError, StartError, TermsError,
-    UncheckedSource,
+    PlayerSlotRuleError, Replay, ReplayError, ResultMismatch, ResumeAt, ResumeError,
+    ServerInputRefusal, Session, SessionSource, SessionWorld, SnapshotCheckError, StartError,
+    TermsError, UncheckedSource,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, StateRegistry};
 use campfire_store::internals::{PinnedFile, TestDir};
@@ -90,9 +93,7 @@ fn store() -> PackageStore {
 /// The packages `log`'s terms name, from the store, as the verifier's binary finds them.
 fn from_store(log: &SessionLog) -> ModePackages {
     let terms = &log.header().terms;
-    store()
-        .mode_packages(terms.mode, &terms.map, &terms.dependencies)
-        .unwrap()
+    ModePackages::found(&store(), terms.mode, &terms.map, &terms.dependencies).unwrap()
 }
 
 /// What refuses the replay of `log` on the packages its terms name in `store`, as the verifier's
@@ -118,9 +119,9 @@ struct Hero {
     destination: Destination,
 }
 
-/// Where player `seat`'s hero stands and walks to.
-fn hero(game: &Match, seat: u32) -> Hero {
-    let id = MatchUnits::of(game).hero(seat);
+/// Where player `player_slot`'s hero stands and walks to.
+fn hero(game: &Match, player_slot: u32) -> Hero {
+    let id = MatchUnits::of(game).hero(player_slot);
     let entity = game.entity_of(id).unwrap();
     let hero = game.entity(entity);
     Hero {
@@ -397,10 +398,10 @@ fn run_and_replay_agree_on_every_tick() {
     assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
 }
 
-/// The order that moves player `seat`'s hero to (`x`, `z`).
-fn move_order(fixed: &FixedMatch, seat: u32, x: i64, z: i64) -> Vec<u8> {
+/// The order that moves player `player_slot`'s hero to (`x`, `z`).
+fn move_order(fixed: &FixedMatch, player_slot: u32, x: i64, z: i64) -> Vec<u8> {
     Order::payload(&[Order::one(
-        MatchUnits::of(fixed.game()).hero(seat),
+        MatchUnits::of(fixed.game()).hero(player_slot),
         OrdersDirective::Move {
             to: GroundPoint {
                 x: Num::int(x),
@@ -421,7 +422,7 @@ fn standing(x: i16, z: i16) -> Hero {
 /// Player 0's leave of slot 0, the slot becoming `becomes`.
 const fn leave(becomes: AfterLeave) -> ServerInput<'static> {
     ServerInput::Leave {
-        seat: Seat::new(0),
+        player_slot: PlayerSlot::new(0),
         reason: LeaveReason::Asked,
         becomes,
     }
@@ -438,7 +439,7 @@ fn bot_and_returning_player(fixed: &mut FixedMatch, tick: u64) {
             fixed.send(0, Tick::new(0), &payload);
             let payload = move_order(fixed, 1, 3, 2);
             let order = ServerInput::Bot {
-                seat: Seat::new(1),
+                player_slot: PlayerSlot::new(1),
                 payload: &payload,
             };
             fixed.serve(order).unwrap();
@@ -449,13 +450,13 @@ fn bot_and_returning_player(fixed: &mut FixedMatch, tick: u64) {
         10 => {
             assert!(matches!(
                 fixed.serve(leave(AfterLeave::Bot)),
-                Err(ServerInputRefusal::Rule(SeatRuleError::Leaver {
+                Err(ServerInputRefusal::Rule(PlayerSlotRuleError::Leaver {
                     becomes: AfterLeave::Bot
                 }))
             ));
             assert!(matches!(
                 fixed.join(1),
-                Err(ServerInputRefusal::Rule(SeatRuleError::BotTakeover))
+                Err(ServerInputRefusal::Rule(PlayerSlotRuleError::BotTakeover))
             ));
             assert_eq!(fixed.game().session().log().next_place().index, 0);
             fixed.serve(leave(AfterLeave::Reserve)).unwrap();
@@ -476,7 +477,7 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     let session = FixedSession::planned(
         packages(),
         InputRules::ROOMY,
-        [SeatPlan::Player, SeatPlan::Bot],
+        [PlayerSlotPlan::Player, PlayerSlotPlan::Bot],
     );
     let mut fixed = session.start();
     let mut live = HashTrail::default();
@@ -491,19 +492,19 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
         [hero(game, 0), hero(game, 1)],
         [standing(-2, 5), standing(3, 2)]
     );
-    let seat = Seat::new(0);
+    let player_slot = PlayerSlot::new(0);
     let changes = [
-        SeatChange {
+        PlayerSlotChange {
             tick: Tick::new(10),
-            seat,
-            kind: SeatChangeKind::Left {
+            player_slot,
+            kind: PlayerSlotChangeKind::Left {
                 becomes: AfterLeave::Reserve,
             },
         },
-        SeatChange {
+        PlayerSlotChange {
             tick: Tick::new(20),
-            seat,
-            kind: SeatChangeKind::Joined { from: Taken::Own },
+            player_slot,
+            kind: PlayerSlotChangeKind::Joined { from: Taken::Own },
         },
     ];
     assert_eq!(game.session().log().changes(), changes);
@@ -525,16 +526,15 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     // does not start it.
     let mut log = session.log();
     let to_bot = leave(AfterLeave::Bot);
-    log.serve(to_bot, &FixedSession::server_signer(), None)
-        .unwrap();
+    log.serve(to_bot, &TestKey::server_signer(), None).unwrap();
     log.reveal_seed(session.seed(0));
     let refused = refusal(&log, &store());
     assert!(
         matches!(
             refused,
-            Some(VerifyError::Start(StartError::SeatRule {
-                change: SeatChange { tick, .. },
-                error: SeatRuleError::Leaver { becomes: AfterLeave::Bot },
+            Some(VerifyError::Start(StartError::PlayerSlotRule {
+                change: PlayerSlotChange { tick, .. },
+                error: PlayerSlotRuleError::Leaver { becomes: AfterLeave::Bot },
             })) if tick == Tick::new(0)
         ),
         "{refused:?}"
@@ -554,7 +554,7 @@ fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
             if checkpoint && tick == 40 {
                 fixed.checkpoint(snapshot);
             }
-            moba.play_tick(&mut fixed, tick);
+            moba.play_tick(&mut fixed);
             trail.record(fixed.game());
         }
         fixed.end();
@@ -772,19 +772,22 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         "{refused:?}"
     );
 
-    // Three slots, the session's player and two open, and the lane's two teams seat one each.
+    // Three slots, the session's player and two open, and the lane's two teams player slot one
+    // each.
     let mut terms = session.terms().clone();
-    terms.seats.extend([SeatPlan::Open; 2]);
+    terms.player_slots.extend([PlayerSlotPlan::Open; 2]);
     let mut log = SessionLog::new(session.header(terms)).unwrap();
     log.reveal_seed(session.seed(0));
     let refused = refusal(&log, &store);
     assert!(
         matches!(
             refused,
-            Some(VerifyError::Start(StartError::Terms(TermsError::Seats {
-                seats: 3,
-                most: 2
-            })))
+            Some(VerifyError::Start(StartError::Terms(
+                TermsError::PlayerSlots {
+                    player_slots: 3,
+                    most: 2
+                }
+            )))
         ),
         "{refused:?}"
     );

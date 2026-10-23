@@ -2,11 +2,10 @@ use crate::send_map_view::SendMapView;
 use crate::serialize_fns::ErasedSerializeFns;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::FilteredEntityMut;
-use campfire_common::ErrorReport;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::Writer;
 use campfire_net_channels::ChannelTypeId;
-use campfire_net_channels::TransportError;
+use campfire_net_channels::SendError;
 use campfire_net_core::NetId;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
@@ -64,6 +63,8 @@ const LISTED_SENDER: &str = "a link holds each sender it lists";
 
 /// A sender component, which holds a [`SendQueue<M>`].
 pub(crate) trait QueuedSender<M>: Component<Mutability = Mutable> {
+    fn queue(&self) -> &SendQueue<M>;
+
     fn queue_mut(&mut self) -> &mut SendQueue<M>;
 }
 
@@ -83,13 +84,23 @@ impl<M: 'static> SendQueue<M> {
 
     /// Serializes each value queued in the `S` among `senders`, after its net id, into `link`. A
     /// value whose serialization fails, or that is above its channel's size limit, is dropped
-    /// alone: the ones queued behind it are sent.
+    /// alone: the ones queued behind it are sent. A sender with nothing queued is read alone, so
+    /// it stays unchanged.
     pub(crate) fn send<S: QueuedSender<M>>(
         senders: &mut FilteredEntityMut<'_, '_>,
         net_id: NetId,
         serialize_fns: &ErasedSerializeFns,
         link: &mut SendLink<'_, '_>,
     ) {
+        if senders
+            .get::<S>()
+            .expect(LISTED_SENDER)
+            .queue()
+            .queued
+            .is_empty()
+        {
+            return;
+        }
         let mut sender = senders.get_mut::<S>().expect(LISTED_SENDER);
         let queue = sender.queue_mut();
         for Queued {
@@ -108,8 +119,6 @@ impl<M: 'static> SendQueue<M> {
             trace!(
                 target: "campfire_net_debug::message",
                 kind = "message_send",
-                schedule = "PostUpdate",
-                sample_point = "PostUpdate",
                 message_name = core::any::type_name::<M>(),
                 message_net_id = net_id.get(),
                 channel = link.channels.name(channel_id),
@@ -119,30 +128,41 @@ impl<M: 'static> SendQueue<M> {
             );
             match link.transport.send(channel_id, bytes, priority) {
                 Ok(()) => {}
-                Err(error @ TransportError::MessageTooLarge { .. }) => {
+                Err(error @ SendError::MessageTooLarge { .. }) => {
                     error!(
                         ?error,
                         message = core::any::type_name::<M>(),
                         "dropped a message above its channel's size limit"
                     );
                 }
-                Err(error) => {
+                Err(error @ SendError::Backlogged { .. }) => {
+                    error!(
+                        ?error,
+                        message = core::any::type_name::<M>(),
+                        "dropped a message past its link's send budget"
+                    );
+                }
+                Err(SendError::ChannelNotFound(channel)) => {
                     panic!(
-                        "a message is sent only on a channel its transport sends on: {}",
-                        ErrorReport::of(&error)
+                        "a message is sent only on a channel its transport sends on, not {channel:?}"
                     )
                 }
             }
         }
     }
 
-    /// Drops the queue of the `S` among `senders`, and returns how many values it held.
+    /// Drops the queue of the `S` among `senders`, and returns how many values it held; a sender
+    /// with nothing queued is read alone, so it stays unchanged.
     pub(crate) fn discard<S: QueuedSender<M>>(senders: &mut FilteredEntityMut<'_, '_>) -> usize {
-        let mut sender = senders.get_mut::<S>().expect(LISTED_SENDER);
-        let queue = sender.queue_mut();
-        let dropped = queue.queued.len();
+        let dropped = senders
+            .get::<S>()
+            .expect(LISTED_SENDER)
+            .queue()
+            .queued
+            .len();
         if dropped > 0 {
-            queue.queued.clear();
+            let mut sender = senders.get_mut::<S>().expect(LISTED_SENDER);
+            sender.queue_mut().queued.clear();
         }
         dropped
     }

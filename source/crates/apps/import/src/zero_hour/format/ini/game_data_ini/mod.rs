@@ -8,8 +8,7 @@ use crate::zero_hour::format::ini::ini_text::{BlockKinds, IniText};
 /// one.
 #[derive(Debug)]
 pub(crate) struct GameDataIni {
-    pub(crate) adjust_cliff_textures: bool,
-    pub(crate) three_way_blends: i32,
+    pub(crate) terrain: TerrainDraw,
     /// `CameraPitch` and `CameraYaw`, in degrees.
     pub(crate) camera_pitch: f32,
     pub(crate) camera_yaw: f32,
@@ -28,12 +27,24 @@ pub(crate) struct GameDataIni {
     pub(crate) box_value: NonZeroU32,
 }
 
+/// What the terrain's conversion reads of `GameData.ini`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TerrainDraw {
+    /// `AdjustCliffTextures`: a steep cell's tile is stretched to its slope, by its cliff UVs or
+    /// by its heights.
+    pub(crate) adjust_cliff_textures: bool,
+    /// `Use3WayTerrainBlends`: a cell draws its third blend.
+    pub(crate) three_way_blends: bool,
+}
+
 impl Default for GameDataIni {
     /// The game's defaults.
     fn default() -> Self {
         Self {
-            adjust_cliff_textures: false,
-            three_way_blends: 1,
+            terrain: TerrainDraw {
+                adjust_cliff_textures: false,
+                three_way_blends: true,
+            },
             camera_pitch: 0.0,
             camera_yaw: 0.0,
             min_camera_height: 100.0,
@@ -57,8 +68,9 @@ impl GameDataIni {
         for block in IniText::of(bytes).blocks(BlockKinds::One("gamedata")) {
             for line in &block?.fields {
                 match line.word().as_str() {
-                    "adjustclifftextures" => self.adjust_cliff_textures = line.yes()?,
-                    "use3wayterrainblends" => self.three_way_blends = line.int()?,
+                    "adjustclifftextures" => self.terrain.adjust_cliff_textures = line.yes()?,
+                    // Any count but 0 draws the third blend, as the game tests it.
+                    "use3wayterrainblends" => self.terrain.three_way_blends = line.int()? != 0,
                     "numbergloballights" => {
                         // The game keeps three lights a map, and draws past none it keeps.
                         let lights = line.int()?;

@@ -1,4 +1,4 @@
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_values::{EngineEnum, Relation};
 use rhai::{Array, Dynamic, ImmutableString, Map, Variant};
@@ -77,6 +77,38 @@ macro_rules! plain_script_arg {
         $crate::plain_script_arg!(@arg $ty, $name);
     )*};
 }
+
+/// Implements `ScriptArg` for each type, a time a script gives in milliseconds, which Rhai
+/// passes as an integer: the type's `of` at the match's rate, whose refusal fails the call.
+macro_rules! ms_script_arg {
+    ($($ty:ty),* $(,)?) => {$(
+        impl $crate::scripts::script_arg::ScriptArg for $ty {
+            type Raw = i64;
+            type Int = i64;
+            const NAME_KIND: Option<::campfire_values::NameKind> = None;
+            const ENUM: Option<::campfire_values::EngineEnum> = None;
+            const NUMBER: bool = false;
+            const TYPE: &'static str = "ms";
+
+            fn take(
+                ms: i64,
+                ctx: &$crate::scripts::arg_ctx::ArgCtx<'_>,
+            ) -> $crate::scripts::error::Checked<Self> {
+                Ok(Self::of(ctx.get().view().rate(), ms)
+                    .map_err($crate::scripts::error::ApiError::fail)?)
+            }
+
+            fn take_int(
+                ms: i64,
+                ctx: &$crate::scripts::arg_ctx::ArgCtx<'_>,
+            ) -> $crate::scripts::error::Checked<Self> {
+                Self::take(ms, ctx)
+            }
+        }
+    )*};
+}
+
+pub(crate) use ms_script_arg;
 
 /// An argument a script gives as a text, which a call reads as what it names.
 pub trait TextArg: Named + Sized + 'static {
@@ -173,7 +205,7 @@ impl ScriptArg for Num {
 }
 
 /// A player a script holds, as the slot of its handle.
-impl ScriptArg for Seat {
+impl ScriptArg for PlayerSlot {
     type Raw = PlayerHandle;
     type Int = PlayerHandle;
     const NAME_KIND: Option<NameKind> = None;
@@ -182,11 +214,11 @@ impl ScriptArg for Seat {
     const TYPE: &'static str = PlayerHandle::NAME;
 
     fn take(raw: PlayerHandle, _: &ArgCtx<'_>) -> Checked<Self> {
-        Ok(raw.seat())
+        Ok(raw.player_slot())
     }
 
     fn take_int(raw: PlayerHandle, _: &ArgCtx<'_>) -> Checked<Self> {
-        Ok(raw.seat())
+        Ok(raw.player_slot())
     }
 }
 

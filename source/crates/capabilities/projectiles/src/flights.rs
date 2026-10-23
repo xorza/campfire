@@ -2,18 +2,18 @@ use std::ops::ControlFlow;
 
 use bevy_ecs::entity::Entity;
 use campfire_actions::{Reached, Targets};
-use campfire_common::StableNumber;
+use campfire_common::{PlayerSlot, StableNumber};
 use campfire_deliveries::{AttackShot, Delivered, DeliveredPayload, Delivering, DeliveryQueue};
 use campfire_geometry::{BodyGrid, Metric, Placed, Shape, Volume};
 use campfire_math::{Num, Vec3};
 use campfire_script::Filters;
 use campfire_sim::{Position, StableId};
-use campfire_values::{Hit, Team};
+use campfire_values::{Allegiance, Hit, Team};
 
 use crate::curve::Curve;
 use crate::flight_state::FlightState;
 use crate::projectile::{Flight, Payload, Projectile};
-use crate::projectile_spec::ProjectileSpec;
+use crate::projectile_spec::{ProjectileSpec, StraightSpec};
 use crate::struck_units::{Struck, StruckUnits};
 
 /// The flights of a tick: where their hits and ends go, the units each line struck while it
@@ -57,11 +57,12 @@ struct Sphere<'a> {
     hits: &'a Filters,
 }
 
-/// A projectile as it reaches a unit or its end: itself, and its team.
+/// A projectile as it reaches a unit or its end: itself, its team and its player.
 #[derive(Debug, Clone, Copy)]
 struct Fired<'a> {
     projectile: &'a Projectile,
     team: Team,
+    owner: Option<PlayerSlot>,
 }
 
 /// A line a projectile flies: its origin, its unit direction and its range.
@@ -72,12 +73,13 @@ pub(crate) struct Line {
     range: Num,
 }
 
-/// A projectile in flight this tick: its stable id, its team, its type's spec, where it is,
-/// itself, and how far it flew.
+/// A projectile in flight this tick: its stable id, its team and its player, its type's spec,
+/// where it is, itself, and how far it flew.
 #[derive(Debug)]
 pub(crate) struct Aloft<'a> {
     pub id: StableId,
     pub team: Team,
+    pub owner: Option<PlayerSlot>,
     pub(crate) spec: &'a ProjectileSpec,
     pub(crate) position: &'a mut Position,
     pub(crate) projectile: &'a Projectile,
@@ -89,7 +91,17 @@ impl Aloft<'_> {
     /// itself.
     pub(crate) const fn strikes_by(&self) -> StableId {
         match self.projectile.payload() {
-            Payload::Action { group, .. } if self.spec.once_per_cast => group,
+            Payload::Action { group, .. }
+                if matches!(
+                    self.spec.straight(),
+                    Some(StraightSpec {
+                        once_per_cast: true,
+                        ..
+                    })
+                ) =>
+            {
+                group
+            }
             _ => self.id,
         }
     }
@@ -147,15 +159,20 @@ impl TickFlights<'_> {
         let Aloft {
             id,
             team,
+            owner,
             spec,
             position,
             projectile,
             state,
         } = aloft;
-        let fired = Fired { projectile, team };
+        let fired = Fired {
+            projectile,
+            team,
+            owner,
+        };
         let (flown, lost) = (state.flown(), state.is_lost());
         let from = *position;
-        let Some(unit) = targets.living(target).filter(|_| !lost) else {
+        let Some(unit) = targets.target(target).filter(|_| !lost) else {
             let hit = Hit {
                 delivery: Some(id.into()),
                 target: Some(target.into()),
@@ -209,12 +226,17 @@ impl TickFlights<'_> {
         let Aloft {
             id,
             team,
+            owner,
             spec,
             position,
             projectile,
             state,
         } = aloft;
-        let fired = Fired { projectile, team };
+        let fired = Fired {
+            projectile,
+            team,
+            owner,
+        };
         let flown = state.flown();
         let from = *position;
         let step = spec.speed.min(range - flown);
@@ -273,7 +295,7 @@ impl TickFlights<'_> {
             let hit = line(position, flown + travelled);
             self.struck.insert(Struck { by, id: struck });
             self.reach(fired, Reached::Hit(struck), hit);
-            if spec.stop_on_hit {
+            if spec.straight().is_some_and(|straight| straight.stop_on_hit) {
                 self.reach(fired, Reached::End, hit);
                 return true;
             }
@@ -308,12 +330,17 @@ impl TickFlights<'_> {
         let Aloft {
             id,
             team,
+            owner,
             spec,
             position,
             projectile,
             state,
         } = aloft;
-        let fired = Fired { projectile, team };
+        let fired = Fired {
+            projectile,
+            team,
+            owner,
+        };
         let FlightState::Curve {
             flown,
             steps,
@@ -322,7 +349,7 @@ impl TickFlights<'_> {
         else {
             panic!("a curve's state is a curve's");
         };
-        let shape = spec.curve.expect("a curve's type has a curve");
+        let shape = spec.curve().expect("a curve's type has a curve");
         let map = targets.map();
         let hit = |position, distance, direction| Hit {
             delivery: Some(id.into()),
@@ -400,12 +427,17 @@ impl TickFlights<'_> {
         let Aloft {
             id,
             team,
+            owner,
             spec,
             position,
             projectile,
             state,
         } = aloft;
-        let fired = Fired { projectile, team };
+        let fired = Fired {
+            projectile,
+            team,
+            owner,
+        };
         let FlightState::Steered {
             flown,
             steps,
@@ -416,7 +448,7 @@ impl TickFlights<'_> {
         else {
             panic!("a steered flight's state is a steered one's");
         };
-        let steer = spec.steer.expect("a steered type has a steer");
+        let steer = spec.steer().expect("a steered type has a steer");
         let map = targets.map();
         let hit = |position, distance, direction| Hit {
             delivery: Some(id.into()),
@@ -537,13 +569,17 @@ impl TickFlights<'_> {
     /// What `fired` delivers as it reaches what `reach` says, as `hit` says: an attack's shot hit
     /// or end, with its damage and its roll, or its action's `on_hit` or `on_end`.
     fn reach(&mut self, fired: Fired<'_>, reach: Reached, hit: Hit) {
-        let Fired { projectile, team } = fired;
+        let Fired {
+            projectile,
+            team,
+            owner,
+        } = fired;
         let source = projectile.source();
         match projectile.payload() {
             Payload::Attack(damage) => self.deliveries.deliver(Delivered {
                 payload: DeliveredPayload::Attack(AttackShot {
                     source,
-                    team,
+                    allegiance: Allegiance { team, owner },
                     damage,
                 }),
                 reach,
@@ -553,6 +589,7 @@ impl TickFlights<'_> {
                 action,
                 rank,
                 start,
+                launch,
                 ..
             } => self.deliveries.deliver(Delivered {
                 payload: DeliveredPayload::Action(Delivering {
@@ -560,7 +597,7 @@ impl TickFlights<'_> {
                     action,
                     rank,
                     start,
-                    launch: None,
+                    launch,
                 }),
                 reach,
                 hit,

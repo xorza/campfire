@@ -3,9 +3,8 @@ use campfire_capabilities::Match;
 use campfire_common::Tick;
 use campfire_package::ModePackages;
 use campfire_protocol::{Checkpoint, SeedError, SessionLog};
-use campfire_sim::{MatchRate, SimWorld};
+use campfire_sim::SimWorld;
 
-use crate::match_build::MatchBuild;
 use crate::replay::error::ReplayError;
 use crate::session::Session;
 use crate::session::error::{ResumeError, SnapshotCheckError, StartError};
@@ -159,19 +158,7 @@ impl<'p> Replay<'p> {
                 target.despawn_state();
                 target
             }
-            empty => {
-                let session = self.game.session();
-                let header = session.log().header();
-                let seats = u32::try_from(header.seats.len()).expect("the log counts seats in u32");
-                let rate = MatchRate::new(header.terms.tick_hz);
-                let picks = &session.checked().picks;
-                empty.insert(MatchBuild::restore_target(
-                    self.packages,
-                    rate,
-                    seats,
-                    picks,
-                ))
-            }
+            empty => empty.insert(self.game.session().restore_target(self.packages)),
         };
         let checked = Session::restore_checked(target, record, snapshot);
         if checked.is_err() {

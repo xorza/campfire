@@ -1,11 +1,11 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentOnce};
 use campfire_units::UnitEntity;
-use campfire_values::Block;
+use campfire_values::{Block, UnitType};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -61,6 +61,6 @@ impl Replication for UseGroup {
     type Sending = SentOnce;
 }
 
-impl PerType for UseGroup {
+impl PerId<UnitType> for UseGroup {
     const SCRIPTS_ONLY: bool = false;
 }

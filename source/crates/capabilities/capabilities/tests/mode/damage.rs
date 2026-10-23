@@ -1,8 +1,15 @@
 use campfire_common::Tick;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_values::Allegiance;
 
 use super::*;
+
+/// The allegiance of the attacks of the source, of team 0 and no player.
+const SOURCE: Allegiance = Allegiance {
+    team: Team::new(0),
+    owner: None,
+};
 
 #[test]
 fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
@@ -35,10 +42,12 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     let crit = DamageCause::Attack {
         roll: Num::from_bits((1 << Num::FRAC_BITS) / 4 - 1),
         rank: Rank::FIRST,
+        allegiance: SOURCE,
     };
     let attack = DamageCause::Attack {
         roll: Num::ONE / 4,
         rank: Rank::FIRST,
+        allegiance: SOURCE,
     };
     // 100 physical, its roll of 0.25 no crit, 150 dealt: armor 120 × (1 − 0.5) − 10 = 50, 150 ×
     // 100 ÷ 150 = 100, less the block of 5: 95.
@@ -63,6 +72,7 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     let lowest = DamageCause::Attack {
         roll: Num::ZERO,
         rank: Rank::FIRST,
+        allegiance: SOURCE,
     };
     Mode::damage_of_kind(&mut game, None, exposed, 100, "physical", lowest);
     Mode::tick_inputs(&mut game, &[]);

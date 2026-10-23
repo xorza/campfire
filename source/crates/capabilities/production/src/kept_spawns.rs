@@ -4,13 +4,13 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::Tick;
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_sim::{
     DueIndex, DueUnit, EntityIndex, SimComponent, SimTick, StableId, TimedKept, TimedProcess,
     TimedRuns,
 };
 use campfire_states::{NotSent, Replication};
-use campfire_units::{Dead, Deaths, Life, Spawner, UnitEntity};
+use campfire_units::{Dead, Deaths, Spawner, UnitEntity, UnitsWorld};
 use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
@@ -78,12 +78,7 @@ impl KeptSpawns {
             kept.returns.clear();
             let living = std::mem::take(&mut kept.living);
             for spawn in living {
-                let spawn = world.resource::<EntityIndex>().get(spawn);
-                let life = spawn.and_then(|spawn| world.get_mut::<Life>(spawn));
-                if let Some(mut life) = life {
-                    let all = life.current();
-                    life.take(all);
-                }
+                world.drain_life(spawn);
             }
         }
     }
@@ -119,7 +114,7 @@ impl KeptSpawns {
     fn spec(world: &World, entity: Entity) -> Option<SpawnSpec> {
         let unit_type = world.get::<UnitType>(entity)?;
         world
-            .resource::<ByType<ProducerSpec>>()
+            .resource::<ById<UnitType, ProducerSpec>>()
             .get(*unit_type)?
             .spawns
     }

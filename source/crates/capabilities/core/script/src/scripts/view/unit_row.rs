@@ -1,4 +1,4 @@
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_geometry::Shape;
 use campfire_math::Vec3;
 use campfire_sim::StableId;
@@ -16,7 +16,7 @@ pub struct UnitRow {
     pub spawn: Option<Vec3>,
     pub unit_type: UnitType,
     /// The player who controls it.
-    pub owner: Option<Seat>,
+    pub owner: Option<PlayerSlot>,
     /// Whether it lives by `stats`' living test: it is not dead, and its life, if it has one, is
     /// above 0; `combat` fills it, and the next.
     pub alive: bool,

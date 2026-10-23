@@ -25,7 +25,7 @@ const HEADER: usize = 16;
 
 impl BigArchive {
     /// The entries of the archive `file` opens, each checked to lie within it.
-    pub(crate) fn read(file: &mut InputRanges) -> Result<Self, BigReadError> {
+    pub(crate) fn read(file: &InputRanges) -> Result<Self, BigReadError> {
         let refused = BigReadError::Archive;
         let short = |error: PathError<ReadError>| match error.error {
             ReadError::Short { .. } => refused(ArchiveError::Short),

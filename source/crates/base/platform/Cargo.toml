@@ -1,0 +1,38 @@
+[package]
+name = "campfire-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.campfire]
+kind = "proxy"
+
+[features]
+internals = []
+
+[dependencies]
+campfire-common.workspace = true
+
+socket2 = { workspace = true, features = ["all"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true, features = ["std"] }
+signal-hook.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "std",
+] }
+
+[dev-dependencies]
+campfire-platform = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

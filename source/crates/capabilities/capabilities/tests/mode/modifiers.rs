@@ -41,6 +41,9 @@ fn take_input(ctx, player, name, value) {
         ctx.state.seen = hero.modifier("blessing").stacks;
     } else if value == "drop" {
         ctx.remove_modifier(hero.modifier("blessing"));
+    } else if value == "zero" {
+        let m = hero.modifier("blessing");
+        m.stacks = 0;
     } else if value == "unknown" {
         ctx.add_modifier(hero, "curse");
     } else if value == "rally" {
@@ -110,6 +113,14 @@ fn take_input(ctx, player, name, value) {
     assert_eq!(held(&game), []);
     Mode::tick_inputs(&mut game, &[(0, input("probe", "find"))]);
     assert_eq!(Mode::field(&game, "seen"), StateValue::Int(-1));
+    // Written no stack, a new one ends with its clock, as its last stack's end would: the hero
+    // holds it no more.
+    for probe in ["bless", "zero"] {
+        Mode::tick_inputs(&mut game, &[(0, input("probe", probe))]);
+    }
+    assert_eq!(held(&game), []);
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "check"))]);
+    assert_eq!(Mode::field(&game, "seen"), StateValue::Int(0));
     // A name the package does not declare fails; so does one the script computes, of a modifier
     // that reads a param of its applier's action, which the mode does not have.
     Mode::tick_inputs(
@@ -183,7 +194,7 @@ fn on_input(ctx, player, name, value) {
     };
     let (first, _) = unit(&game, 1);
     let (fourth, revived) = unit(&game, 4);
-    game.insert_parts(first, Owner::new(Seat::new(0)));
+    game.insert_parts(first, Owner::new(PlayerSlot::new(0)));
     game.insert_parts(fourth, Dead);
     Mode::tick_inputs(&mut game, &[]);
     assert_eq!(drilled(&game), Vec::<u64>::new());
@@ -191,7 +202,7 @@ fn on_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[]);
     assert_eq!(drilled(&game), [4]);
     let held = |game: &Match, slot| {
-        let entity = game.player_entity(Seat::new(slot)).unwrap();
+        let entity = game.player_entity(PlayerSlot::new(slot)).unwrap();
         game.get::<PlayerModifiers>(entity)
             .unwrap()
             .iter()

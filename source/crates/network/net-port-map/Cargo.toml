@@ -8,7 +8,7 @@ license.workspace = true
 kind = "io"
 
 [dependencies]
-campfire-store.workspace = true
+campfire-platform.workspace = true
 campfire-threads.workspace = true
 campfire-common.workspace = true
 campfire-net-core.workspace = true

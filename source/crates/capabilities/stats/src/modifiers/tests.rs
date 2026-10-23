@@ -93,7 +93,19 @@ fn a_hold_and_a_timed_application_of_one_instance_keep_both_lifetimes() {
     let (mut modifiers, mut clocks) = (Modifiers::default(), ModifierClocks::default());
     modifiers.apply(&mut clocks, held());
     modifiers.apply(&mut clocks, timed());
-    assert!(modifiers.release_held(&mut clocks, |_, _| false));
+    // A hold it holds not changes nothing; the aura's changes its lifetime alone.
+    assert_eq!(
+        modifiers.release(&mut clocks, id, a, Hold::Player),
+        Touched::default()
+    );
+    let lifetime_only = Touched {
+        stats: true,
+        clocks: false,
+    };
+    assert_eq!(
+        modifiers.release_held(&mut clocks, |_, _| false),
+        lifetime_only
+    );
     assert!(modifiers.get(id, a).is_some());
     modifiers.expire(&mut clocks, Tick::new(5));
     assert!(modifiers.get(id, a).is_some());
@@ -107,7 +119,10 @@ fn a_hold_and_a_timed_application_of_one_instance_keep_both_lifetimes() {
     modifiers.expire(&mut clocks, Tick::new(8));
     let kept = modifiers.get(id, a).unwrap();
     assert_eq!(kept.lifetime.until(), None);
-    assert!(modifiers.release_held(&mut clocks, |_, _| false));
+    assert_eq!(
+        modifiers.release_held(&mut clocks, |_, _| false),
+        Touched::BOTH
+    );
     assert!(modifiers.get(id, a).is_none());
     // Of a modifier that ignores a second application: applied until tick 6, then held by an
     // aura's application, whose hold joins it all the same, and its numbers stay: past tick 6
@@ -247,14 +262,15 @@ fn modifiers_refresh_stack_to_their_limit_ignore_and_end() {
     assert_eq!(ends(modifiers.get(id, a).unwrap()), [(14, 1), (31, 1)]);
     // Writing 4 stacks in tick 12 adds two that end as stacks of 2 ticks applied then do,
     // as 15 starts; writing 3 takes away the one that ends soonest.
-    modifiers.set_stacks(id, a, 4, Tick::new(12));
+    modifiers.set_stacks(&mut clocks, id, a, 4, Tick::new(12));
     assert_eq!(
         ends(modifiers.get(id, a).unwrap()),
         [(14, 1), (15, 2), (31, 1)]
     );
-    modifiers.set_stacks(id, a, 3, Tick::new(12));
+    modifiers.set_stacks(&mut clocks, id, a, 3, Tick::new(12));
     assert_eq!(ends(modifiers.get(id, a).unwrap()), [(15, 2), (31, 1)]);
-    // As 15 starts two of the 3 end; writing 0 then keeps the instance, with no ends.
+    // As 15 starts two of the 3 end; writing 0 then ends the instance, with its clock, as its
+    // last stack's end would.
     assert!(modifiers.expire(&mut clocks, Tick::new(15)).stats);
     assert_eq!(
         (
@@ -263,14 +279,11 @@ fn modifiers_refresh_stack_to_their_limit_ignore_and_end() {
         ),
         (1, vec![(31, 1)])
     );
-    modifiers.set_stacks(id, a, 0, Tick::new(16));
-    assert_eq!(
-        (
-            modifiers.get(id, a).unwrap().stacks,
-            ends(modifiers.get(id, a).unwrap())
-        ),
-        (0, vec![])
-    );
+    let held = clocks.len();
+    let touched = modifiers.set_stacks(&mut clocks, id, a, 0, Tick::new(16));
+    assert!(touched.stats && touched.clocks);
+    assert!(modifiers.get(id, a).is_none());
+    assert_eq!(clocks.len(), held - 1);
 
     // A passive whose last stack ends stays, with none: one stack of 2 ticks applied in
     // tick 16 ends as 19 starts.
@@ -286,18 +299,35 @@ fn modifiers_refresh_stack_to_their_limit_ignore_and_end() {
     );
     assert!(modifiers.expire(&mut clocks, Tick::new(19)).stats);
     assert_eq!(modifiers.get(ModifierId::new(3), a).unwrap().stacks, 0);
+    // Written 2 stacks and then 0, it stays alike.
+    for stacks in [2, 0] {
+        let touched =
+            modifiers.set_stacks(&mut clocks, ModifierId::new(3), a, stacks, Tick::new(19));
+        assert!(touched.stats && !touched.clocks);
+    }
+    assert_eq!(modifiers.get(ModifierId::new(3), a).unwrap().stacks, 0);
 
     // Removing one, then a death, which keeps only passives.
-    assert!(modifiers.remove(&mut clocks, ModifierId::new(0), b));
-    assert!(!modifiers.remove(&mut clocks, ModifierId::new(0), b));
+    assert_eq!(
+        modifiers.remove(&mut clocks, ModifierId::new(0), b),
+        Touched::BOTH
+    );
+    assert_eq!(
+        modifiers.remove(&mut clocks, ModifierId::new(0), b),
+        Touched::default()
+    );
     hold(
         (&mut modifiers, &mut clocks),
         ModifierId::new(0),
         a,
         Hold::Passive,
     );
-    modifiers.clear_on_death(&mut clocks);
+    let timed = applied(5, a, Reapply::Refresh, None, 1, Some(30), None);
+    modifiers.apply(&mut clocks, timed);
+    assert_eq!(modifiers.clear_on_death(&mut clocks), Touched::BOTH);
     assert_eq!(stacks(&modifiers), [(0, 1), (3, 0)]);
+    // A death with only passives left ends none.
+    assert_eq!(modifiers.clear_on_death(&mut clocks), Touched::default());
 }
 
 #[test]

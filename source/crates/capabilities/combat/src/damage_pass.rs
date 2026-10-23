@@ -9,9 +9,11 @@ use campfire_actions::{
     ProgressDues,
 };
 use campfire_common::Tick;
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_math::{Num, Rounding};
-use campfire_script::{CallStart, Ctx, Hook, HookDecl, ScriptBatch, ScriptRole, ScriptsWorld};
+use campfire_script::{
+    ActionCast, CallStart, Ctx, Hook, HookDecl, ScriptBatch, ScriptRole, ScriptsWorld,
+};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 use campfire_stats::{
     CarriedMut, ModifierBook, ModifierClocks, ModifierEvents, ModifierHooks, StatsWorld, UnitStats,
@@ -23,7 +25,7 @@ use campfire_values::{Block, NameId, Team, UnitTags, UnitType};
 use crate::armor::Armor;
 use crate::combat_book::CombatBook;
 use crate::combat_event::CombatEvent;
-use crate::damage::Damage;
+use crate::damage::{Damage, WeaponHit};
 use crate::damage_handle::DamageHandle;
 use crate::heal::{Heal, HealCause};
 use crate::heal_handle::HealHandle;
@@ -235,16 +237,6 @@ impl DamagePass {
         }
     }
 
-    /// Takes `unit`'s life whole, when it lives: it dies as the next tick's deaths find it, with no
-    /// killer.
-    pub fn kill(world: &mut World, unit: StableId) {
-        if let Some(entity) = Self::living(world, unit) {
-            let mut life = world.get_mut::<Life>(entity).expect("a living unit's life");
-            let all = life.current();
-            life.take(all);
-        }
-    }
-
     /// The entity of `id`, when it exists, the sim simulates it, it has a life and it lives, as
     /// `StatsWorld::lives` says: one that damage, heals and restores reach, and write. A
     /// predicting client writes none of a unit it holds as the server sent it, which
@@ -258,7 +250,7 @@ impl DamagePass {
     /// the whole for a type of none.
     fn armored(world: &World, target: Entity, damage: Damage) -> Num {
         let armor = world.get::<UnitType>(target).and_then(|&unit_type| {
-            let armors = world.get_resource::<ByType<Armor>>()?;
+            let armors = world.get_resource::<ById<UnitType, Armor>>()?;
             armors.get(unit_type)
         });
         armor.map_or(damage.amount, |armor| {
@@ -280,7 +272,9 @@ impl DamagePass {
     /// a hook's do. A call at `ScriptLimits::CHAIN_DEPTH`, or one that fails, applies nothing and
     /// is recorded. Any other damage has no list.
     fn run_weapon_list(batch: &mut ScriptBatch<'_>, ctx: &Ctx, damage: Damage, now: Tick) {
-        let (Some(rank), Some(weapon)) = (damage.cause.weapon_rank(), damage.action) else {
+        let (Some(WeaponHit { rank, allegiance }), Some(weapon)) =
+            (damage.cause.weapon_hit(), damage.action)
+        else {
             return;
         };
         let world = batch.world();
@@ -299,10 +293,17 @@ impl DamagePass {
             .get(weapon)
             .expect("a weapon is in the book")
             .package;
+        let cast = ActionCast {
+            action: weapon,
+            rank,
+            caster: source,
+            allegiance,
+            package,
+        };
         let start = CallStart {
             depth: damage.depth.saturating_add(1),
             hit: damage.hit,
-            ..CallStart::cast(weapon, rank, source, package, now)
+            ..CallStart::cast(cast, now)
         };
         batch.answer(start, ListHook::OnHit.hook(), Some(source), |batch| {
             let call = ListCall {
@@ -435,7 +436,7 @@ impl DamagePass {
             let fallen = Fallen {
                 id: damage.target,
                 team: world.get::<Team>(entity).copied(),
-                owner: world.get::<Owner>(entity).map(|owner| owner.seat()),
+                owner: world.get::<Owner>(entity).map(|owner| owner.player_slot()),
                 avatar: world.entity(entity).contains::<Avatar>(),
                 tags: world
                     .get::<UnitTags>(entity)

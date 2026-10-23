@@ -1,5 +1,6 @@
 use std::num::NonZeroU16;
 
+use crate::attack_data::PreAttackEach;
 use campfire_common::Ticks;
 use campfire_geometry::Volume;
 use campfire_math::{Num, Rounding, SinCos, Vec3};
@@ -15,6 +16,7 @@ pub struct Weapon {
     pub(crate) rate: Rate,
     pub(crate) rate_bonus: Option<StatId>,
     pub(crate) damage: WeaponDamage,
+    pub(crate) damage_bonus: Option<StatId>,
     pub kind: DamageKind,
     pub(crate) clip: Option<Box<[ClipRule]>>,
     pub splash: Option<Splash>,
@@ -22,6 +24,15 @@ pub struct Weapon {
     pub pitch: Option<Pitch>,
     pub speed: Option<Speed>,
     pub streak: Option<Streak>,
+    pub(crate) pre_attack: Option<PreAttackRule>,
+}
+
+/// A weapon's pre-attack as the match runs it (04-capabilities/combat.md, A pre-attack): its
+/// ticks at each rank, and what starts it again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreAttackRule {
+    pub(crate) ticks: Box<[Ticks]>,
+    pub(crate) each: PreAttackEach,
 }
 
 /// A weapon's splash as the match runs it (04-capabilities/combat.md, An attack may splash):
@@ -210,11 +221,11 @@ impl Weapon {
         })
     }
 
-    /// The damage it deals at `rank` for a unit of stats `stats`: its own amount, or its stat,
-    /// not negative.
+    /// The damage it deals at `rank` for a unit of stats `stats`: its own amount under its damage
+    /// bonus, or its stat, not negative.
     pub fn damage(&self, stats: &[Num], rank: Rank) -> Num {
         match &self.damage {
-            WeaponDamage::Amount(amounts) => amounts[rank.index()],
+            WeaponDamage::Amount(amounts) => self.bonused(stats, amounts[rank.index()]),
             WeaponDamage::Stat(damage) => {
                 let damage = stats.get(damage.index()).copied();
                 damage.unwrap_or(Num::ZERO).max(Num::ZERO)
@@ -222,10 +233,27 @@ impl Weapon {
         }
     }
 
-    /// The amount its splash's outer ring deals at `rank`, if it has one.
-    pub(crate) fn outer_amount(&self, rank: Rank) -> Option<Num> {
+    /// The amount its splash's outer ring deals at `rank` for a unit of stats `stats`, under its
+    /// damage bonus, if it has one.
+    pub(crate) fn outer_amount(&self, stats: &[Num], rank: Rank) -> Option<Num> {
         let outer = self.splash.as_ref()?.outer.as_ref()?;
-        Some(outer.amounts[rank.index()])
+        Some(self.bonused(stats, outer.amounts[rank.index()]))
+    }
+
+    /// `amount` times 1 plus the value of its damage bonus for a unit of stats `stats`, from the
+    /// exact product, rounded once, as Zero Hour's weapon bonus scales its primary and its
+    /// secondary damage alike (04-capabilities/combat.md, One bonus scales both rings); a factor
+    /// below 0 counts as 0, and one past the range of numbers saturates.
+    fn bonused(&self, stats: &[Num], amount: Num) -> Num {
+        let Some(bonus) = self.damage_bonus else {
+            return amount;
+        };
+        let bonus = stats.get(bonus.index()).copied().unwrap_or(Num::ZERO);
+        let factor = Num::ONE
+            .checked_add(bonus)
+            .unwrap_or(Num::MAX)
+            .max(Num::ZERO);
+        amount.saturating_mul(factor, Rounding::NearestEven)
     }
 
     /// Its clip at `rank`, if it has one, its reload sped by its rate bonus for a unit of stats
@@ -270,7 +298,15 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_values::{ModifierId, RelationSet};
 
-    use crate::weapon::{OuterRing, Splash, Streak, StreakStage};
+    use crate::attack_data::PreAttackEach;
+    use crate::weapon::{OuterRing, PreAttackRule, Splash, Streak, StreakStage};
+
+    impl PreAttackRule {
+        /// A pre-attack of `ticks` at each rank, started again `each`.
+        pub const fn new(ticks: Box<[Ticks]>, each: PreAttackEach) -> Self {
+            Self { ticks, each }
+        }
+    }
 
     impl Splash {
         /// A splash of `radius` to the units of `affects`, and to its source unless

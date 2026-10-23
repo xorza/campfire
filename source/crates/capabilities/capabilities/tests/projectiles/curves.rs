@@ -2,7 +2,7 @@ use campfire_actions::ShotDamage;
 use campfire_combat::{SCATTER_STREAM, Splash};
 use campfire_math::SinCos;
 use campfire_units::{CellSplit, Ground, HeightGrid, MapSpace};
-use campfire_values::{ActionId, DamageKind, Rank, RelationSet};
+use campfire_values::{DamageKind, RelationSet};
 
 use super::*;
 
@@ -39,10 +39,11 @@ impl Shelling {
         Projectiles::load_type(game, shell, data);
         let shooter = shooter(shell).load(game);
         let [flat, tall, tower] = [(); 3].map(|()| target().load(game));
-        let round = BodyForm::circle(Num::ONE).unwrap();
-        Units::give_type(game, flat, round);
-        Units::give_type(game, tall, round.raised(height).unwrap());
-        Units::give_type(game, tower, round.raised(Num::int(4)).unwrap());
+        let round = BodyShape::circle(Num::ONE).unwrap();
+        let raised = |height| BodyForm::new(round.raised(height).unwrap(), Layer::FIRST);
+        Units::give_type(game, flat, BodyForm::new(round, Layer::FIRST));
+        Units::give_type(game, tall, raised(height));
+        Units::give_type(game, tower, raised(Num::int(4)));
         Self {
             shell,
             shooter,
@@ -179,10 +180,13 @@ fn a_shells_sphere_meets_the_lowest_id_it_selects_on_its_way_and_never_its_sourc
     let both = filters(&["hostiles", "allies"]);
     let fixture = |game: &mut Match, data: &ProjectileData| {
         let volley = Shelling::place(game, data, Num::int(2));
-        let tall = BodyForm::circle(Num::ONE)
-            .unwrap()
-            .raised(Num::int(2))
-            .unwrap();
+        let tall = BodyForm::new(
+            BodyShape::circle(Num::ONE)
+                .unwrap()
+                .raised(Num::int(2))
+                .unwrap(),
+            Layer::FIRST,
+        );
         Units::give_type(game, volley.shooter, tall);
         volley
     };
@@ -317,6 +321,7 @@ fn a_restored_curve_holds_its_points_and_its_state_within_them() {
         action: ActionId::new(0),
         rank: Rank::FIRST,
         amount: Num::int(30),
+        outer: None,
         kind: DamageKind::new(0),
         roll: Num::ZERO,
     });

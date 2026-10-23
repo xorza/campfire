@@ -89,7 +89,11 @@ impl UdpPort {
         }
         events.clear();
         self.poller.wait(events, timeout)?;
-        self.wake.drain();
+        // A wake that came is drained, and only then: in level mode an undrained wake would end
+        // the next wait at once, and in oneshot mode the wait arms it anew.
+        if events.iter().any(|event| event.key == WAKE) {
+            self.wake.drain();
+        }
         Ok(())
     }
 

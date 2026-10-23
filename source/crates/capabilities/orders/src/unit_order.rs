@@ -1,18 +1,24 @@
 use bevy_ecs::change_detection::DetectChangesMut;
+use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryData;
-use campfire_actions::{ActionProgress, ActionTarget, AttackTarget, ProgressDues};
+use bevy_ecs::world::World;
+use campfire_actions::{ActionProgress, ActionSlots, ActionTarget, AttackTarget, ProgressDues};
 use campfire_common::Tick;
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{Party, PathWalker, Progress, RouteAsk, RouteDues, RouteMut};
-use campfire_sim::{Position, StableId};
-use campfire_units::{BuildTarget, Destination, GroundPoint, OrderKind, SpawnPoint};
+use campfire_sim::{Position, SimComponent, StableId};
+use campfire_states::{Replication, SentPredicted};
+use campfire_units::{BuildTarget, Destination, GroundPoint, OrderKind, SpawnPoint, UnitEntity};
+use campfire_visibility::DataKind;
+use serde::{Deserialize, Serialize};
 
-use crate::attack_move::AttackMove;
+use crate::attack_move::{AttackMove, GoalDues};
 
 /// An order to one unit, as every source gives it once it checked it: a player's command, a
 /// bot's input, or an order an AI call queued for the unit that thinks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnitOrder {
     /// Drop the target, and walk to the ground point `x`, `z` off any path, as one of `party`
     /// when a group moves.
@@ -53,6 +59,7 @@ pub enum UnitOrder {
 #[derive(Debug, QueryData)]
 #[query_data(mutable, derive(Debug))]
 pub(crate) struct OrderedUnit {
+    pub(crate) entity: Entity,
     pub(crate) id: &'static StableId,
     pub(crate) position: &'static Position,
     pub(crate) spawn: Option<&'static SpawnPoint>,
@@ -62,13 +69,16 @@ pub(crate) struct OrderedUnit {
     pub(crate) route: Option<RouteMut>,
     pub(crate) progress: Option<&'static mut Progress>,
     pub(crate) attack_move: Option<&'static mut AttackMove>,
+    pub(crate) held: Option<&'static mut HeldOrder>,
 }
 
-/// The indexes an order pushes its unit into: of its actions' progress and of its route's ask.
+/// The indexes an order pushes its unit into: of its actions' progress, of its route's ask, and
+/// of the units that attack-move.
 #[derive(Debug)]
-pub struct UnitDues<'a> {
-    pub progress: ProgressDues<'a>,
-    pub routes: RouteDues<'a>,
+pub(crate) struct UnitDues<'a> {
+    pub(crate) progress: ProgressDues<'a>,
+    pub(crate) routes: RouteDues<'a>,
+    pub(crate) goals: GoalDues<'a>,
 }
 
 impl UnitOrder {
@@ -84,20 +94,25 @@ impl UnitOrder {
     /// way, with nothing spent, drops the target and the destination, and leaves the path; a
     /// queue of trains stays. A build, its point taken into the bounds, and a gather drop the
     /// target and the destination. Every order cuts a channel and ends a cast that walks in
-    /// range, with its walk, and an attack cancels a charge. What it does to the unit's progress
-    /// and its route makes the unit due in `dues`.
+    /// range, with its walk, and an attack cancels a charge; but any order other than a stop that
+    /// a channel which winds down takes, or a wind-down, waits in the unit's held order, in place
+    /// of any held before, until the wind-down ends, and a stop ends both at once
+    /// (04-capabilities/actions.md, A channel with no end). What it does to the unit's progress
+    /// and its route makes the unit due in `dues`. What it asks, none for an order it holds.
     pub(crate) fn give(
         self,
         unit: OrderedUnitItem<'_, '_>,
         bounds: &Bounds,
         now: Tick,
         dues: &mut UnitDues<'_>,
-    ) -> OrderKind {
+    ) -> Option<OrderKind> {
         let UnitDues {
             progress: dues,
             routes,
+            goals,
         } = dues;
         let OrderedUnitItem {
+            entity: _,
             id: _,
             position: &at,
             spawn,
@@ -107,13 +122,24 @@ impl UnitOrder {
             route,
             progress,
             attack_move,
+            held,
         } = unit;
+        if let Some(mut held) = held {
+            if self == Self::Stop {
+                held.drop_order();
+            } else if let Some(underway) = &mut underway
+                && underway.wind_down(now, dues)
+            {
+                held.hold(self);
+                return None;
+            }
+        }
         if let Some(underway) = &mut underway {
             underway.cut_channel(dues);
             if underway.is_approaching() {
                 underway.end(dues);
                 if let Some(destination) = &mut destination {
-                    destination.set_if_neq(Destination::to(None));
+                    Destination::route_to(destination, None);
                 }
             }
         }
@@ -125,6 +151,7 @@ impl UnitOrder {
                 _ => None,
             };
             attack_move.set_if_neq(AttackMove::to(goal));
+            goals.push(*attack_move);
         }
         let to = match self {
             Self::Attack { target } => {
@@ -132,7 +159,7 @@ impl UnitOrder {
                     underway.cancel_charge();
                     underway.set_attack_target(Some(AttackTarget::ordered(target)), dues);
                 }
-                return kind;
+                return Some(kind);
             }
             Self::Slot { slot, target } => {
                 let target = match target {
@@ -142,9 +169,9 @@ impl UnitOrder {
                 if let Some(underway) = &mut underway {
                     underway.order(slot, target, dues);
                 }
-                return kind;
+                return Some(kind);
             }
-            Self::Use { .. } => return kind,
+            Self::Use { .. } => return Some(kind),
             Self::FollowPath => {
                 if let Some(underway) = &mut underway {
                     underway.set_attack_target(None, dues);
@@ -152,7 +179,7 @@ impl UnitOrder {
                 if let Some(mut walker) = walker {
                     walker.rejoin();
                 }
-                return kind;
+                return Some(kind);
             }
             Self::Move { x, z, .. } | Self::AttackMove { x, z, .. } => Some(ground(x, z)),
             Self::Reset => Some(
@@ -175,7 +202,7 @@ impl UnitOrder {
             walker.leave();
         }
         if let Some(mut destination) = destination {
-            destination.set_if_neq(Destination::to(to));
+            Destination::route_to(&mut destination, to);
         }
         let party = match self {
             Self::Move { party, .. } | Self::AttackMove { party, .. } => party,
@@ -191,7 +218,7 @@ impl UnitOrder {
             };
             route.ask(ask, &mut progress, routes);
         }
-        kind
+        Some(kind)
     }
 
     /// What the order asks of the capabilities that keep the unit's loops: a build's, its point
@@ -229,4 +256,58 @@ impl UnitOrder {
             | Self::Stop => OrderKind::Other,
         }
     }
+}
+
+/// The order a unit took while its channel winds down, which it runs once the wind-down ends:
+/// the last it took, as each replaces the one before; none while it holds none. A slot of each
+/// unit with slots, so a hold moves no entity between tables (04-capabilities/actions.md, A channel
+/// with no end).
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeldOrder(Option<UnitOrder>);
+
+impl HeldOrder {
+    /// No order held.
+    pub const NONE: Self = Self(None);
+
+    /// Holds `order`, in place of any held before it.
+    pub(crate) const fn hold(&mut self, order: UnitOrder) {
+        self.0 = Some(order);
+    }
+
+    /// Drops the order it holds, as a stop does.
+    pub(crate) const fn drop_order(&mut self) {
+        self.0 = None;
+    }
+
+    /// The order it holds.
+    pub const fn get(self) -> Option<UnitOrder> {
+        self.0
+    }
+}
+
+impl SimComponent for HeldOrder {
+    const NAME: &'static str = "orders.held_order";
+    type Host = UnitEntity;
+
+    // A held order of a slot names one its unit has, as the cast it starts reads it.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        let Some(
+            UnitOrder::Slot { slot, .. }
+            | UnitOrder::Build { slot, .. }
+            | UnitOrder::Gather { slot, .. },
+        ) = self.0
+        else {
+            return true;
+        };
+        world
+            .get::<ActionSlots>(entity)
+            .is_some_and(|slots| usize::from(slot) < slots.len())
+    }
+}
+
+/// Public, as the order a unit took is, and sent predicted, as a predicting client gives its own
+/// units' orders.
+impl Replication for HeldOrder {
+    const KIND: DataKind = DataKind::Unit;
+    type Sending = SentPredicted;
 }

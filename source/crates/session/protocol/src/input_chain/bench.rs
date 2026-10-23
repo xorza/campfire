@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_measure::{Kind, Scale};
 use criterion::Criterion;
 
@@ -21,7 +21,7 @@ pub(crate) fn chain_head(c: &mut Criterion) {
     let public_key = signer.public_key();
     let session_id = SessionId::new([5; 32]);
 
-    let mut chain = InputChain::new(Seat::new(3), InputHash::new([1; 32]));
+    let mut chain = InputChain::new(PlayerSlot::new(3), InputHash::new([1; 32]));
     chain.extend(Tick::new(40), b"an order");
     let signature = signer.sign(&chain.signed_head(session_id));
 

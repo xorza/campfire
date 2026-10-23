@@ -13,7 +13,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use campfire_common::{ErrorReport, ExitStatus};
-use campfire_log::Logging;
+use campfire_logging::Logging;
 use campfire_store::{DurableFile, InputFile};
 use tracing::{error, info};
 

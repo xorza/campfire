@@ -1,6 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
 use bevy_ecs::world::Mut;
+use campfire_combat::CombatRefusal;
 use campfire_common::Tick;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::{Position, SimEdgeSystems, SimSystems, SimUpdate};
@@ -103,14 +104,14 @@ fn on_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(0, input("probe", "tower"))]);
     assert_eq!(
         Mode::failures(&game),
-        [FailureKind::Api(ModeRefusal::RespawnAlive.refused())]
+        [FailureKind::Api(CombatRefusal::RespawnAlive.refused())]
     );
     let tower = Mode::entity_by_id(&game, 0);
     game.entity_mut(tower).insert(Dead);
     Mode::tick_inputs(&mut game, &[(0, input("probe", "tower"))]);
     assert_eq!(
         Mode::failures(&game),
-        [FailureKind::Api(ModeRefusal::RespawnDespawns.refused())]
+        [FailureKind::Api(CombatRefusal::RespawnDespawns.refused())]
     );
     assert!(game.get_entity(tower).is_err());
 }

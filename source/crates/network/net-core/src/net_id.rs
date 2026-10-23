@@ -1,10 +1,10 @@
 #[cfg(feature = "reflect")]
 use bevy_reflect::Reflect;
+use campfire_net_bytes::Reader;
 use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::VarInt;
 use campfire_net_bytes::WriteInteger;
-use campfire_net_bytes::{ReadVarInt, Reader};
 
 /// The id a protocol registry gives each registered type, in registration order: what names a
 /// message, a component or a channel on the wire. A varint of the `u16`.

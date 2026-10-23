@@ -16,7 +16,13 @@ pub struct Polygon {
 }
 
 impl Polygon {
-    /// The polygon of `points`; an error for fewer than three, for a point past the world's
+    /// The most points a polygon has: its check tests each pair of its edges, which 4,096 points
+    /// keep to 8,386,560 pairs, a load's few milliseconds, where map data that names more would
+    /// make each tens of seconds.
+    pub const MAX_POINTS: usize = 4096;
+
+    /// The polygon of `points`; an error for fewer than three or more than `MAX_POINTS`, for a
+    /// point past the world's
     /// bound, beyond which its edges' products leave a `Flat`'s range, or for two edges that meet
     /// where they should not: two that do not follow each other meet anywhere, or two that do
     /// overlap beyond the point they share, as a zero-length edge or a turn straight back does.
@@ -28,6 +34,9 @@ impl Polygon {
         let count = points.len();
         if count < 3 {
             return Err(PolygonError::TooFewPoints);
+        }
+        if count > Self::MAX_POINTS {
+            return Err(PolygonError::TooManyPoints);
         }
         let past = |&[x, z]: &[Num; 2]| !Vec3::new(x, Num::ZERO, z).within_bound();
         if let Some(point) = points.iter().position(past) {

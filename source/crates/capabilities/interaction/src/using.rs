@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::ActionSlots;
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_players::OnMatch;
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_units::Dead;
@@ -12,13 +12,13 @@ use crate::use_slot::UseSlot;
 use crate::use_spec::UseSpec;
 
 /// The uses as an order checks them: whether a unit may use an object, and with which slot and
-/// action. In a match without `interaction` no unit uses anything. A client reads the objects it
-/// holds, the server's among them, and the users it predicts.
+/// action. A client reads the objects it holds, the server's among them, and the users it
+/// predicts.
 #[derive(SystemParam, Debug)]
 pub struct Using<'w, 's> {
     index: Res<'w, EntityIndex>,
-    specs: Option<Res<'w, ByType<UseSpec>>>,
-    slots: Option<Res<'w, ByType<UseSlot>>>,
+    specs: Res<'w, ById<UnitType, UseSpec>>,
+    slots: Res<'w, ById<UnitType, UseSlot>>,
     relations: OnMatch<'w, 's, Relations>,
     objects: Objects<'w, 's>,
     users: Users<'w, 's>,
@@ -53,7 +53,7 @@ impl Using<'_, '_> {
     /// type has no `use`, the user's no `uses`, or the object's users do not select the user, by
     /// how the object's team regards the user's and the user's tags.
     pub fn of(&self, user: Entity, object: StableId) -> Option<UnitUse> {
-        let (specs, slots) = (self.specs.as_ref()?, self.slots.as_ref()?);
+        let (specs, slots) = (&self.specs, &self.slots);
         let (&object_type, &object_team) = self.objects.get(self.index.get(object)?).ok()?;
         let spec = *specs.get(object_type)?;
         let (&user_type, &team, tags, held) = self.users.get(user).ok()?;

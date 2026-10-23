@@ -1,8 +1,8 @@
 use crate::halves;
-use campfire_declarations::ByTypeBuilder;
+use campfire_declarations::ByIdBuilder;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
-use campfire_units::{GroundPoint, Layer, MapBook, SeenBy};
+use campfire_units::{GroundPoint, MapBook, SeenBy};
 use campfire_values::TeamSet;
 use campfire_vision::Vision;
 
@@ -31,7 +31,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
         };
         queue.push(queued, &[amount], Tick::new(0), &mut QueueDues::loose());
     }
-    let player = Seat::new(0);
+    let player = PlayerSlot::new(0);
     let producer = Production::allocate_id(&mut game);
     shop.producer(
         &mut game,
@@ -103,11 +103,11 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     };
     MapBook::amend(&mut game, |_, map| map.bounds = bounds);
     Navigation::load_pathing(&mut game, Grid::new(Num::ONE, bounds).unwrap(), [walker]);
-    let mut walkers = ByTypeBuilder::default();
+    let mut walkers = ByIdBuilder::default();
     walkers.set(shop.grunt, walker);
     walkers.build().load_into(&mut game);
     let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
-    let player = Seat::new(0);
+    let player = PlayerSlot::new(0);
     let producer = Production::allocate_id(&mut game);
     shop.producer(
         &mut game,
@@ -118,11 +118,13 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         train,
         TrainQueue::default(),
     );
-    let body = BodyForm::box_sized([Num::int(4), Num::int(2)])
-        .unwrap()
-        .at(Num::ZERO);
+    let body = BodyForm::new(
+        BodyShape::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+        Layer::FIRST,
+    )
+    .at(Num::ZERO);
     game.insert_parts(producer, body);
-    let half = BodyForm::circle(Num::HALF).unwrap();
+    let half = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST);
     let flag = Navigation::walker_at(&mut game, halves(0, 12))
         .team(Team::new(1))
         .body(half)
@@ -243,10 +245,10 @@ fn a_predicting_clients_train_reads_only_what_it_holds() {
         let shop = Shop::place(game);
         let train = Production::add_train(game, shop.grunt, Ticks::ZERO, None);
         let producer = Production::allocate_id(game);
-        let player = Seat::new(0);
+        let player = PlayerSlot::new(0);
         let queue = TrainQueue::default();
         shop.producer(game, producer, 0, Team::new(0), Some(player), train, queue);
-        let form = BodyForm::circle(Num::HALF).unwrap();
+        let form = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST);
         let flag = Navigation::walker_at(game, halves(0, 12))
             .team(Team::new(1))
             .body(form)

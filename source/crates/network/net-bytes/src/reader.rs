@@ -1,7 +1,6 @@
 use crate::serialization_error::SerializationError;
 use crate::var_int::{self, VarInt};
 use bytes::{Buf, Bytes};
-use std::io::{Error, ErrorKind, Read, Result};
 
 /// The unread bytes of a buffer: each read takes its bytes off the front, and a split shares the
 /// buffer's memory (11-net-stack/transport.md, Decoders take only what the bytes hold).
@@ -20,14 +19,6 @@ impl From<Vec<u8>> for Reader {
     }
 }
 
-impl Read for Reader {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let len = buf.len().min(self.0.len());
-        self.0.copy_to_slice(&mut buf[..len]);
-        Ok(len)
-    }
-}
-
 impl Buf for Reader {
     fn remaining(&self) -> usize {
         self.0.len()
@@ -43,13 +34,11 @@ impl Buf for Reader {
 }
 
 impl Reader {
-    /// Split of the next `len` bytes from the reader into a separate Bytes.
-    ///
-    /// This doesn't allocate and just increases some reference counts. O(1) cost.
-    /// Returns [`ErrorKind::UnexpectedEof`] if fewer than `len` bytes remain.
-    pub fn split_len(&mut self, len: usize) -> Result<Bytes> {
+    /// The next `len` bytes, split off into a `Bytes` that shares the buffer's memory;
+    /// `Truncated` when fewer remain.
+    pub fn split_len(&mut self, len: usize) -> Result<Bytes, SerializationError> {
         if len > self.0.len() {
-            return Err(Error::from(ErrorKind::UnexpectedEof));
+            return Err(SerializationError::Truncated);
         }
         Ok(self.0.split_to(len))
     }
@@ -65,11 +54,11 @@ impl Reader {
     ///
     /// Every `ToBytes` encoding takes at least one byte, so a count
     /// above the bytes left can not be honest: it is refused before anything is allocated for it.
-    pub fn read_count(&mut self) -> core::result::Result<usize, SerializationError> {
+    pub fn read_count(&mut self) -> Result<usize, SerializationError> {
         let count =
             usize::try_from(self.read_varint()?).map_err(|_| SerializationError::InvalidValue)?;
         if count > self.remaining() {
-            return Err(Error::from(ErrorKind::UnexpectedEof).into());
+            return Err(SerializationError::Truncated);
         }
         Ok(count)
     }
@@ -81,48 +70,43 @@ impl Reader {
     pub const fn remaining(&self) -> usize {
         self.0.len()
     }
-}
 
-pub trait ReadInteger: Read {
-    #[inline]
-    fn read_u8(&mut self) -> Result<u8> {
-        let mut buf = [0; 1];
-        self.read_exact(&mut buf)?;
-        Ok(buf[0])
+    /// The next `N` bytes; `Truncated` when fewer remain.
+    fn read_array<const N: usize>(&mut self) -> Result<[u8; N], SerializationError> {
+        let mut bytes = [0; N];
+        if self.0.len() < N {
+            return Err(SerializationError::Truncated);
+        }
+        self.0.copy_to_slice(&mut bytes);
+        Ok(bytes)
     }
 
-    #[inline]
-    fn read_u16(&mut self) -> Result<u16> {
-        let mut buf = [0; 2];
-        self.read_exact(&mut buf)?;
-        Ok(u16::from_be_bytes(buf))
+    pub fn read_u8(&mut self) -> Result<u8, SerializationError> {
+        Ok(self.read_array::<1>()?[0])
     }
 
-    #[inline]
-    fn read_u32(&mut self) -> Result<u32> {
-        let mut buf = [0; 4];
-        self.read_exact(&mut buf)?;
-        Ok(u32::from_be_bytes(buf))
+    pub fn read_u16(&mut self) -> Result<u16, SerializationError> {
+        self.read_array().map(u16::from_be_bytes)
     }
 
-    #[inline]
-    fn read_u64(&mut self) -> Result<u64> {
-        let mut buf = [0; 8];
-        self.read_exact(&mut buf)?;
-        Ok(u64::from_be_bytes(buf))
+    pub fn read_u32(&mut self) -> Result<u32, SerializationError> {
+        self.read_array().map(u32::from_be_bytes)
     }
-}
 
-pub trait ReadVarInt: ReadInteger {
+    pub fn read_u64(&mut self) -> Result<u64, SerializationError> {
+        self.read_array().map(u64::from_be_bytes)
+    }
+
     /// Reads an unsigned variable-length integer in network byte order, and refuses one longer
     /// than its value needs (11-net-stack/packet-session.md, A header decodes from one encoding).
-    fn read_varint(&mut self) -> core::result::Result<u64, SerializationError> {
+    pub fn read_varint(&mut self) -> Result<u64, SerializationError> {
         let first = self.read_u8()?;
         let len = var_int::encoded_len_of(first);
         let mut bytes = [0; size_of::<u64>()];
         let start = bytes.len() - len;
         bytes[start] = first & 0x3f;
-        self.read_exact(&mut bytes[start + 1..])?;
+        let rest = self.split_len(len - 1)?;
+        bytes[start + 1..].copy_from_slice(&rest);
         let value = u64::from_be_bytes(bytes);
         if VarInt::new(value).encoded_len() != len {
             return Err(SerializationError::NotCanonical);
@@ -130,9 +114,6 @@ pub trait ReadVarInt: ReadInteger {
         Ok(value)
     }
 }
-
-impl<T: Read> ReadInteger for T {}
-impl<T: Read> ReadVarInt for T {}
 
 #[cfg(test)]
 mod tests {
@@ -166,9 +147,7 @@ mod tests {
         assert_eq!(reader.split_len(2).unwrap(), [1, 2].as_slice());
         assert!(reader.split_len(4).is_err());
         assert_eq!(reader.remaining(), 3);
-        let mut byte = [0];
-        assert_eq!(reader.read(&mut byte).unwrap(), 1);
-        assert_eq!(byte, [3]);
+        assert_eq!(reader.read_u8(), Ok(3));
         assert_eq!(reader.take_remaining(), [4, 5].as_slice());
         assert!(!reader.has_remaining());
     }
@@ -208,7 +187,7 @@ mod tests {
             writer.write_varint(value);
         }
 
-        let mut reader = writer.as_slice();
+        let mut reader = Reader::from(writer);
         for value in values {
             assert_eq!(reader.read_varint().unwrap(), value);
         }

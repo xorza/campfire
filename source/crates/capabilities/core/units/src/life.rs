@@ -1,10 +1,11 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declarations::{ByType, PerType};
+use campfire_declarations::{ById, PerId};
 use campfire_math::Num;
 use campfire_sim::{MatchRate, SimComponent};
 use campfire_states::{Replication, SentOnChange};
+use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -77,7 +78,7 @@ impl SimComponent for Life {
     fn check(&self, world: &World, _: Entity) -> bool {
         let hz = world.resource::<MatchRate>().hz().get();
         world
-            .get_resource::<ByType<Self>>()
+            .get_resource::<ById<UnitType, Self>>()
             .is_some_and(|lives| !lives.is_empty())
             && self.0.is_settled(hz)
     }
@@ -88,7 +89,7 @@ impl Replication for Life {
     type Sending = SentOnChange;
 }
 
-impl PerType for Life {
+impl PerId<UnitType> for Life {
     const SCRIPTS_ONLY: bool = false;
 }
 

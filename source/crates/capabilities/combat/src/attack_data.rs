@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, RangeTakes, Takes};
+use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, PipelineField, Takes};
 use campfire_common::DeclaredName;
 use campfire_declarations::Listed;
 use campfire_geometry::MAX_BOUND;
@@ -16,7 +16,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// The section of an action of kind `attack`, a weapon: where its rate and its damage come from,
 /// the stat that speeds its own period, the kind of damage it deals, its clip, its projectile's
 /// splash and scatter, its bound of pitch, the speed that delays the hit of a weapon of no
-/// projectile, and its shot streak (04-capabilities/actions.md, Each kind owns its section).
+/// projectile, its shot streak, and its pre-attack (04-capabilities/actions.md, Each kind owns
+/// its section).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttackData {
     /// Its attacks a second, a stat `rate`, or its own time from one attack's start to the next,
@@ -27,6 +28,9 @@ pub struct AttackData {
     pub rate_bonus: Option<Stat>,
     /// Its damage, a stat `damage`, or its own `amount`.
     pub damage: WeaponValue,
+    /// The stat whose value scales its own amount and its splash's outer amount, times 1 plus the
+    /// value (04-capabilities/combat.md, One bonus scales both rings).
+    pub damage_bonus: Option<Stat>,
     pub damage_kind: DeclaredName,
     pub clip: Option<ClipData>,
     pub splash: Option<SplashData>,
@@ -36,6 +40,7 @@ pub struct AttackData {
     /// (04-capabilities/combat.md, A slow weapon delays its damage).
     pub speed: Option<Speed>,
     pub streak: Option<StreakData>,
+    pub pre_attack: Option<PreAttackData>,
 }
 
 /// Where a value of a weapon comes from, as its data gives it: a stat of its attacker, or its own
@@ -66,6 +71,7 @@ impl<'de> Deserialize<'de> for AttackData {
             rate: Option<Stat>,
             rate_bonus: Option<Stat>,
             damage: Option<Stat>,
+            damage_bonus: Option<Stat>,
             damage_kind: DeclaredName,
             amount: Option<Ranked<Number>>,
             period_ms: Option<Ranked<Number>>,
@@ -75,6 +81,7 @@ impl<'de> Deserialize<'de> for AttackData {
             pitch_deg: Option<PitchData>,
             speed: Option<Speed>,
             streak: Option<StreakData>,
+            pre_attack: Option<PreAttackData>,
         }
         let fields = Fields::deserialize(deserializer)?;
         let value = |stat, own, message| match (stat, own) {
@@ -94,6 +101,7 @@ impl<'de> Deserialize<'de> for AttackData {
                 fields.amount,
                 "a weapon's damage is a stat, `damage`, or its own `amount`: one of them",
             )?,
+            damage_bonus: fields.damage_bonus,
             damage_kind: fields.damage_kind,
             clip: fields.clip,
             splash: fields.splash,
@@ -101,6 +109,7 @@ impl<'de> Deserialize<'de> for AttackData {
             pitch_deg: fields.pitch_deg,
             speed: fields.speed,
             streak: fields.streak,
+            pre_attack: fields.pre_attack,
         })
     }
 }
@@ -113,6 +122,9 @@ impl Serialize for AttackData {
         match &self.damage {
             WeaponValue::Own(amount) => map.serialize_entry("amount", amount)?,
             WeaponValue::Stat(stat) => map.serialize_entry("damage", stat)?,
+        }
+        if let Some(stat) = &self.damage_bonus {
+            map.serialize_entry("damage_bonus", stat)?;
         }
         map.serialize_entry("damage_kind", &self.damage_kind)?;
         match &self.rate {
@@ -137,6 +149,9 @@ impl Serialize for AttackData {
         if let Some(speed) = &self.speed {
             map.serialize_entry("speed", speed)?;
         }
+        if let Some(pre_attack) = &self.pre_attack {
+            map.serialize_entry("pre_attack", pre_attack)?;
+        }
         if let Some(streak) = &self.streak {
             map.serialize_entry("streak", streak)?;
         }
@@ -156,16 +171,19 @@ impl KindSection for AttackData {
     /// A weapon's period stands for a cooldown, and its hit for a resolve: it takes no script,
     /// no time of a cast, and no list but `on_hit`.
     fn takes(&self) -> KindTakes {
-        KindTakes {
-            range: RangeTakes::Meters,
-            cost: Takes::May,
-            windup: Takes::May,
-            passive: Takes::May,
-            delivery: Takes::May,
-            params: Takes::May,
-            on_hit: Takes::May,
-            ..KindTakes::NONE
-        }
+        KindTakes::NONE
+            .with(Takes::Must, &[PipelineField::Range])
+            .with(
+                Takes::May,
+                &[
+                    PipelineField::Cost,
+                    PipelineField::WindupMs,
+                    PipelineField::PassiveModifier,
+                    PipelineField::Delivery,
+                    PipelineField::Params,
+                    PipelineField::OnHit,
+                ],
+            )
     }
 
     fn numbers(&self) -> Vec<&Ranked<Number>> {
@@ -177,8 +195,10 @@ impl KindSection for AttackData {
             .splash
             .iter()
             .filter_map(|splash| splash.outer.as_ref());
+        let pre_attack = self.pre_attack.iter().map(|pre_attack| &pre_attack.ms);
         own.chain(clip)
             .chain(outer.map(|outer| &outer.amount))
+            .chain(pre_attack)
             .collect()
     }
 }
@@ -202,6 +222,25 @@ impl Listed for AttackData {
 pub struct ClipData {
     pub shots: Ranked<Number>,
     pub reload_ms: Ranked<Number>,
+}
+
+/// A weapon's `pre_attack` (04-capabilities/combat.md, A pre-attack): the time its unit aims
+/// before a start of the weapon, and what starts it again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreAttackData {
+    pub ms: Ranked<Number>,
+    pub each: PreAttackEach,
+}
+
+/// What starts a weapon's pre-attack again, as Zero Hour's `PreAttackType`: each shot
+/// (`PER_SHOT`), each target (`PER_ATTACK`), or each clip (`PER_CLIP`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreAttackEach {
+    Shot,
+    Target,
+    Clip,
 }
 
 /// A weapon's `streak` (04-capabilities/combat.md, A shot streak gives a stage's

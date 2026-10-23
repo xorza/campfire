@@ -11,6 +11,9 @@ pub enum DurableDirError {
     NoParent,
     #[error("could not make the directory")]
     Create(#[source] io::Error),
+    /// A link holds the directory's name, and is not followed, as a read follows none.
+    #[error("a link holds the directory's name")]
+    Link,
     #[error("could not remove the directory")]
     Remove(#[source] io::Error),
     #[error("could not rename the directory")]

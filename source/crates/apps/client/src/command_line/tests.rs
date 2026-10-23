@@ -2,7 +2,8 @@ use std::error::Error;
 use std::ffi::OsString;
 
 use campfire_common::NotHex;
-use campfire_net::{BotArg, SeatBotArgError};
+use campfire_host::{BotArg, PlayerSlotBotArgError};
+use campfire_test_packages::TestMode;
 use clap::error::ErrorKind;
 
 use super::*;
@@ -68,22 +69,23 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
     let PlayedServer::Local {
         bots,
         options,
-        seat_picks,
+        player_slot_picks,
         data,
     } = local.server
     else {
         panic!("a local server");
     };
     assert_eq!(options, ["start_money=50000".parse().unwrap()]);
-    assert_eq!(seat_picks, ["0:faction=china".parse().unwrap()]);
+    assert_eq!(player_slot_picks, ["0:faction=china".parse().unwrap()]);
     assert_eq!(data, PathBuf::from("d"));
     // The bots of the mode first, then the order scripts.
     let bots: Vec<(u32, BotArg)> = bots
         .into_iter()
-        .map(|bot| (bot.seat.get(), bot.bot))
+        .map(|bot| (bot.player_slot.get(), bot.bot))
         .collect();
     let builder = BotArg::Mode(DeclaredName::new("builder").unwrap());
-    assert_eq!(bots, [(2, builder), (1, BotArg::Orders("a.toml".into()))]);
+    let orders = BotArg::Orders(OrderFile::from(PathBuf::from("a.toml")));
+    assert_eq!(bots, [(2, builder), (1, orders)]);
 
     for (args, kind) in [
         (&["--local", "mode"][..], ErrorKind::MissingRequiredArgument),
@@ -156,11 +158,11 @@ fn a_value_its_parser_refuses_gives_that_parsers_error_and_the_help_is_no_refusa
     };
     assert_eq!(
         bot("--server-orders", "a.toml"),
-        Some(SeatBotArgError::NotPair("a.toml".to_owned()))
+        Some(PlayerSlotBotArgError::NotPair("a.toml".to_owned()))
     );
     assert_eq!(
         bot("--server-bot", "1=a.toml"),
-        Some(SeatBotArgError::Name("a.toml".to_owned()))
+        Some(PlayerSlotBotArgError::Name("a.toml".to_owned()))
     );
     let wrong_tls_key = invalid(&["mode", "10.0.0.2:4433", "03", key, "30"]);
     assert_eq!(
@@ -212,17 +214,21 @@ fn a_spectator_watches_a_remote_or_a_local_server_and_names_teams_only_as_one() 
     let spectator =
         Args::try_from(watch(&["--spectate", "--watch", "west", "--watch", "east"]).unwrap())
             .unwrap();
-    assert_eq!(spectator.role, JoinRole::Watch);
     let names = |names: &[&str]| -> Vec<DeclaredName> {
         names
             .iter()
             .map(|name| DeclaredName::new(name).unwrap())
             .collect()
     };
-    assert_eq!(spectator.watch, names(&["west", "east"]));
+    assert_eq!(
+        spectator.role,
+        RoleArg::Watch {
+            teams: names(&["west", "east"])
+        }
+    );
     // A player, with neither.
     let player = read(&remote);
-    assert!(player.role == JoinRole::Play && player.watch.is_empty());
+    assert_eq!(player.role, RoleArg::Play);
     // A team named with no spectator, a spectator that is a bot, and no team's name.
     for (flags, kind) in [
         (&["--watch", "west"][..], ErrorKind::MissingRequiredArgument),
@@ -251,12 +257,45 @@ fn a_spectator_watches_a_remote_or_a_local_server_and_names_teams_only_as_one() 
     let PlayedServer::Local { bots, .. } = watcher.server else {
         panic!("a local server");
     };
-    assert_eq!(watcher.role, JoinRole::Watch);
-    assert_eq!(bots[0].seat, Seat::new(0));
+    assert_eq!(watcher.role, RoleArg::Watch { teams: Vec::new() });
+    assert_eq!(bots[0].player_slot, PlayerSlot::new(0));
     assert_eq!(
         Args::try_from(line(&local).unwrap()).unwrap_err(),
-        ArgsError::ClientSlot
+        ArgsError::ClientPlayerSlot
     );
     let team = refused(&[&["--spectate", "--watch", "west"], &local[..]].concat());
     assert_eq!(team.kind(), ErrorKind::ArgumentConflict);
+}
+
+#[test]
+fn a_role_resolves_its_team_names_in_the_mode() {
+    // The lane's teams are the west, 0, and the east, 1.
+    let packages = TestMode::Lane.packages();
+    let watch = |names: &[&str]| RoleArg::Watch {
+        teams: names
+            .iter()
+            .map(|name| DeclaredName::new(name).unwrap())
+            .collect(),
+    };
+    let watching = |teams: &[u8]| {
+        Ok(JoinRole::Watch {
+            teams: teams.iter().copied().map(Team::new).collect(),
+        })
+    };
+    assert_eq!(RoleArg::Play.resolve(&packages), Ok(JoinRole::Play));
+    assert_eq!(
+        watch(&[]).resolve(&packages),
+        Ok(JoinRole::Watch {
+            teams: TeamSet::ALL
+        })
+    );
+    assert_eq!(watch(&["east"]).resolve(&packages), watching(&[1]));
+    assert_eq!(
+        watch(&["east", "west"]).resolve(&packages),
+        watching(&[0, 1])
+    );
+    assert_eq!(
+        watch(&["west", "north"]).resolve(&packages),
+        Err(UnknownTeam(DeclaredName::new("north").unwrap()))
+    );
 }

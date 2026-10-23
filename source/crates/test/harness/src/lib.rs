@@ -19,7 +19,7 @@ mod scripted_mode;
 
 pub use crate::archetype_watch::ArchetypeWatch;
 pub use crate::fixed_session::FixedSession;
-pub use crate::fixed_session::fixed_match::FixedMatch;
+pub use crate::fixed_session::fixed_match::{CheckedMatch, FixedMatch};
 pub use crate::hash_trail::{Difference, HashTrail};
 pub use crate::match_record::MatchRecord;
 pub use crate::match_units::MatchUnits;

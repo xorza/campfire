@@ -3,12 +3,17 @@ use std::panic;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
+use crate::thread_name::ThreadName;
+
 /// A test's parallel run: independent jobs spread over as many threads as the machine has
 /// cores, so a suite of slow cases fits its time bound.
 #[derive(Debug)]
 pub struct Parallel;
 
 impl Parallel {
+    /// The name of each of its threads, as a profiler shows it.
+    const NAME: ThreadName = ThreadName::fixture("parallel");
+
     /// What `run` gave for each index below `count`, by index. A thread takes the next index as
     /// it ends the last one, so a slow job holds no other back; a job's panic passes on.
     pub fn map<T: Send>(count: usize, run: impl Fn(usize) -> T + Sync) -> Vec<T> {
@@ -39,7 +44,8 @@ impl Parallel {
             // Every thread spawns before the first join, or the jobs run one by one.
             let threads: Vec<_> = (0..width)
                 .map(|_| {
-                    scope.spawn(|| {
+                    let builder = thread::Builder::new().name(Self::NAME.as_str().to_owned());
+                    let started = builder.spawn_scoped(scope, || {
                         let mut done = Vec::new();
                         let mut state = None;
                         loop {
@@ -50,7 +56,8 @@ impl Parallel {
                             let state = state.get_or_insert_with(init);
                             done.push((index, run(state, index)));
                         }
-                    })
+                    });
+                    started.expect("a test's thread starts")
                 })
                 .collect();
             threads

@@ -2,12 +2,12 @@ use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::world::World;
 use campfire_actions::Actions;
 use campfire_capabilities::{Match, MatchKind, Order, Release};
-use campfire_common::{DeclaredName, Seat, SegmentSeed};
+use campfire_common::{DeclaredName, PlayerSlot, SegmentSeed};
 use campfire_log::internals::LogCheck;
 use campfire_math::Vec3;
 use campfire_package::ModePackages;
 use campfire_players::Players;
-use campfire_script::{ScriptFailure, ScriptFailures};
+use campfire_script::ScriptFailures;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{MatchRate, SimWorld, StableId};
 use campfire_stats::{ModePoolsData, Stats};
@@ -115,19 +115,20 @@ impl Arena {
         let mut kept = game
             .remove_non_send::<ArenaFailures>()
             .expect("an arena keeps its failures");
-        kept.0.extend(game.resource_mut::<ScriptFailures>().drain());
+        game.resource_mut::<ScriptFailures>().move_into(&mut kept.0);
         game.insert_non_send(kept);
     }
 
-    /// Runs a tick of `game`, the arena's match, in which player `seat` orders each of `orders`.
-    pub fn tick(&self, game: &mut World, seat: u32, orders: &[Order]) {
+    /// Runs a tick of `game`, the arena's match, in which player `player_slot` orders each of
+    /// `orders`.
+    pub fn tick(&self, game: &mut World, player_slot: u32, orders: &[Order]) {
         let payload = Order::payload(orders);
-        game.push_input(Seat::new(seat), &payload);
+        game.push_input(PlayerSlot::new(player_slot), &payload);
         self.step(game);
     }
 
     /// Every script failure since `game`, the arena's match, began, in order.
-    pub fn failures<'w>(&self, game: &'w World) -> &'w [ScriptFailure] {
+    pub fn failures<'w>(&self, game: &'w World) -> &'w ScriptFailures {
         &game.non_send::<ArenaFailures>().0
     }
 
@@ -144,4 +145,4 @@ impl Arena {
 
 /// Every script failure since an arena's match began; `ScriptFailures` keeps only the last tick's.
 #[derive(Debug, Default)]
-struct ArenaFailures(Vec<ScriptFailure>);
+struct ArenaFailures(ScriptFailures);

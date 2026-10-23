@@ -1,6 +1,5 @@
 use super::*;
 use crate::channel::Channel;
-use crate::channel_setup::DEFAULT_MAX_MESSAGE_LEN;
 use core::num::NonZeroU32;
 
 use crate::packet::FRAGMENT_LEN;
@@ -10,20 +9,9 @@ struct TestChannel;
 impl Channel for TestChannel {}
 
 impl ChannelSender {
-    /// Buffers `message` with a fresh compression scratch.
-    fn buffer(
-        &mut self,
-        message: Bytes,
-        priority: f32,
-        compression: CompressionSetup,
-    ) -> Option<MessageId> {
-        self.buffer_send(
-            message,
-            priority,
-            FRAGMENT_LEN,
-            compression,
-            &mut CompressionScratch::default(),
-        )
+    /// Buffers `message` for a link of the default fragment size.
+    fn buffer(&mut self, message: Bytes, priority: f32) -> Option<MessageId> {
+        self.buffer_send(message, priority, FRAGMENT_LEN)
     }
 }
 
@@ -53,20 +41,14 @@ fn every_channel_mode_constructs_one_channel_send() {
         (ChannelMode::OrderedReliable, true),
         (ChannelMode::SequencedReliable, true),
     ] {
-        let channel = channel(mode, true);
-        assert_eq!(channel.mode(), mode);
-        assert_eq!(channel.watches_acks(), watches_acks);
+        assert_eq!(channel(mode, true).watches_acks(), watches_acks);
     }
 }
 
 #[test]
 fn an_unreliable_candidate_stays_pending_until_its_commit() {
     let mut channel = channel(ChannelMode::UnorderedUnreliable, true);
-    channel.buffer(
-        Bytes::from_static(b"pending"),
-        1.0,
-        CompressionSetup::DISABLED,
-    );
+    channel.buffer(Bytes::from_static(b"pending"), 1.0);
     let mut candidates = Vec::new();
     channel.collect_send_candidates(&mut candidates);
     assert_eq!(candidates.len(), 1);
@@ -88,16 +70,8 @@ fn an_unreliable_candidate_stays_pending_until_its_commit() {
 #[test]
 fn candidates_name_their_message_and_carry_its_length_and_rank() {
     let mut channel = channel(ChannelMode::UnorderedUnreliable, true);
-    channel.buffer(
-        Bytes::from_static(b"pending"),
-        2.0,
-        CompressionSetup::DISABLED,
-    );
-    channel.buffer(
-        Bytes::from(vec![1; FRAGMENT_LEN + 1]),
-        1.0,
-        CompressionSetup::DISABLED,
-    );
+    channel.buffer(Bytes::from_static(b"pending"), 2.0);
+    channel.buffer(Bytes::from(vec![1; FRAGMENT_LEN + 1]), 1.0);
     let mut candidates = Vec::new();
     channel.collect_send_candidates(&mut candidates);
 
@@ -136,11 +110,7 @@ fn candidates_name_their_message_and_carry_its_length_and_rank() {
 #[test]
 fn a_reliable_channel_keeps_a_message_the_budget_held_back() {
     let mut channel = channel(ChannelMode::UnorderedReliable, false);
-    channel.buffer(
-        Bytes::from_static(b"reliable"),
-        1.0,
-        CompressionSetup::DISABLED,
-    );
+    channel.buffer(Bytes::from_static(b"reliable"), 1.0);
     let mut candidates = Vec::new();
     channel.collect_send_candidates(&mut candidates);
     assert_eq!(candidates.len(), 1);
@@ -153,11 +123,7 @@ fn a_reliable_channel_keeps_a_message_the_budget_held_back() {
 #[test]
 fn an_unreliable_channel_can_drop_a_message_the_budget_held_back() {
     let mut channel = channel(ChannelMode::UnorderedUnreliable, false);
-    channel.buffer(
-        Bytes::from_static(b"stale"),
-        1.0,
-        CompressionSetup::DISABLED,
-    );
+    channel.buffer(Bytes::from_static(b"stale"), 1.0);
     let mut candidates = Vec::new();
     channel.collect_send_candidates(&mut candidates);
     assert_eq!(candidates.len(), 1);
@@ -170,11 +136,7 @@ fn an_unreliable_channel_can_drop_a_message_the_budget_held_back() {
 #[test]
 fn discard_policy_only_applies_after_a_budget_limit() {
     let mut channel = channel(ChannelMode::UnorderedUnreliable, false);
-    channel.buffer(
-        Bytes::from_static(b"stale"),
-        1.0,
-        CompressionSetup::DISABLED,
-    );
+    channel.buffer(Bytes::from_static(b"stale"), 1.0);
 
     let mut candidates = Vec::new();
     channel.collect_send_candidates(&mut candidates);
@@ -197,11 +159,7 @@ fn a_drop_policy_finishes_a_fragmented_message_a_packet_started() {
     let message_len = FRAGMENT_LEN * 2 + 1;
 
     let mut wholly_unsent = channel(ChannelMode::UnorderedUnreliable, false);
-    wholly_unsent.buffer(
-        Bytes::from(vec![0; message_len]),
-        1.0,
-        CompressionSetup::DISABLED,
-    );
+    wholly_unsent.buffer(Bytes::from(vec![0; message_len]), 1.0);
     let mut candidates = Vec::new();
     wholly_unsent.collect_send_candidates(&mut candidates);
     assert_eq!(candidates.len(), 1);
@@ -211,11 +169,7 @@ fn a_drop_policy_finishes_a_fragmented_message_a_packet_started() {
     assert!(candidates.is_empty());
 
     let mut partially_sent = channel(ChannelMode::UnorderedUnreliable, false);
-    partially_sent.buffer(
-        Bytes::from(vec![0; message_len]),
-        1.0,
-        CompressionSetup::DISABLED,
-    );
+    partially_sent.buffer(Bytes::from(vec![0; message_len]), 1.0);
     partially_sent.collect_send_candidates(&mut candidates);
     partially_sent.commit_send(candidates[0].key);
     partially_sent.end_send(SendFlushOutcome::BudgetLimited);
@@ -245,11 +199,7 @@ fn a_budget_limit_does_not_discard_before_send_frequency() {
             ..ChannelSetup::default()
         },
     );
-    channel.buffer(
-        Bytes::from_static(b"not-yet-eligible"),
-        1.0,
-        CompressionSetup::DISABLED,
-    );
+    channel.buffer(Bytes::from_static(b"not-yet-eligible"), 1.0);
 
     let mut candidates = Vec::new();
     channel.collect_send_candidates(&mut candidates);
@@ -265,11 +215,7 @@ fn a_budget_limit_does_not_discard_before_send_frequency() {
 fn the_ack_of_a_reliable_fragment_reports_its_end_once_and_clears_its_resends() {
     let mut channel = channel(ChannelMode::UnorderedReliable, true);
     assert_eq!(
-        channel.buffer(
-            Bytes::from(vec![0; FRAGMENT_LEN + 1]),
-            1.0,
-            CompressionSetup::DISABLED,
-        ),
+        channel.buffer(Bytes::from(vec![0; FRAGMENT_LEN + 1]), 1.0),
         Some(MessageId(0))
     );
 
@@ -286,30 +232,15 @@ fn the_ack_of_a_reliable_fragment_reports_its_end_once_and_clears_its_resends() 
 #[test]
 fn a_channel_mode_sets_whether_a_message_carries_an_id() {
     let mut unordered = channel(ChannelMode::UnorderedUnreliable, true);
+    assert_eq!(unordered.buffer(Bytes::from_static(b"single"), 1.0), None);
     assert_eq!(
-        unordered.buffer(
-            Bytes::from_static(b"single"),
-            1.0,
-            CompressionSetup::DISABLED,
-        ),
-        None
-    );
-    assert_eq!(
-        unordered.buffer(
-            Bytes::from(vec![0; FRAGMENT_LEN + 1]),
-            1.0,
-            CompressionSetup::DISABLED,
-        ),
+        unordered.buffer(Bytes::from(vec![0; FRAGMENT_LEN + 1]), 1.0),
         Some(MessageId(0))
     );
 
     let mut sequenced = channel(ChannelMode::SequencedUnreliable, true);
     assert_eq!(
-        sequenced.buffer(
-            Bytes::from_static(b"single"),
-            1.0,
-            CompressionSetup::DISABLED,
-        ),
+        sequenced.buffer(Bytes::from_static(b"single"), 1.0),
         Some(MessageId(0))
     );
 }
@@ -325,11 +256,7 @@ fn every_reliable_mode_sends_again_at_a_loss_and_stops_after_ack() {
         ChannelMode::OrderedReliable,
     ] {
         let mut channel = channel(mode, true);
-        channel.buffer(
-            Bytes::from_static(b"reliable"),
-            1.0,
-            CompressionSetup::DISABLED,
-        );
+        channel.buffer(Bytes::from_static(b"reliable"), 1.0);
         let mut candidates = Vec::new();
         channel.collect_send_candidates(&mut candidates);
         assert_eq!(candidates.len(), 1);
@@ -351,34 +278,16 @@ fn every_reliable_mode_sends_again_at_a_loss_and_stops_after_ack() {
     }
 }
 
-/// The setting bounds a message unless its link's fragments are too small to carry it in
-/// `MAX_FRAGMENTS`: 16,383 fragments of 1 byte are 16,383 bytes, under the 512 KiB default;
-/// of `FRAGMENT_LEN` bytes they are above it.
-#[test]
-fn the_max_message_len_is_the_setting_or_the_fragment_bound() {
-    let sender = ChannelSender::new(
-        ChannelTypeId::of::<TestChannel>(),
-        NetId::new(0),
-        core::any::type_name::<TestChannel>(),
-        &ChannelSetup::default(),
-    );
-    assert_eq!(sender.max_message_len(1), 16_383);
-    assert_eq!(
-        sender.max_message_len(FRAGMENT_LEN),
-        DEFAULT_MAX_MESSAGE_LEN
-    );
-}
-
 /// A sequenced reliable channel's receiver discards older messages, so message 1 drops message
 /// 0 from the sender: only message 1 is sent again, and message 0's late ack completes nothing.
 #[test]
 fn a_newer_sequenced_reliable_message_drops_the_older() {
     let mut channel = channel(ChannelMode::SequencedReliable, true);
-    channel.buffer(Bytes::from_static(b"zero"), 1.0, CompressionSetup::DISABLED);
+    channel.buffer(Bytes::from_static(b"zero"), 1.0);
     let mut candidates = Vec::new();
     channel.collect_send_candidates(&mut candidates);
     channel.commit_send(candidates[0].key);
-    channel.buffer(Bytes::from_static(b"one"), 1.0, CompressionSetup::DISABLED);
+    channel.buffer(Bytes::from_static(b"one"), 1.0);
 
     assert_eq!(channel.pending_reliable(), [MessageId(1)]);
     assert!(!channel.receive_ack(SendMessageKey::of_id(MessageId(0), 0)));
@@ -389,6 +298,42 @@ fn a_newer_sequenced_reliable_message_drops_the_older() {
         .map(|candidate| candidate.key)
         .collect::<Vec<_>>();
     assert_eq!(keys, [SendMessageKey::of_id(MessageId(1), 0)]);
+}
+
+/// A sequenced unreliable channel's receiver takes only the newest message, so a message drops
+/// each one before it that no packet carried: of three of 3 bytes, the newest alone, id 2, is a
+/// candidate, and the channel queues its 3 bytes. A fragmented message with a fragment sent keeps
+/// its other fragment past a newer message, and the channel queues both, FRAGMENT_LEN + 1 + 3
+/// bytes.
+#[test]
+fn a_newer_sequenced_unreliable_message_drops_the_ones_not_started() {
+    let ids = |channel: &mut ChannelSender| {
+        let mut candidates = Vec::new();
+        channel.collect_send_candidates(&mut candidates);
+        candidates
+            .iter()
+            .map(|candidate| match channel.message(candidate.key) {
+                MessageRef::Single(single) => single.id,
+                MessageRef::Fragment(_) => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut channel = channel(ChannelMode::SequencedUnreliable, true);
+    for bytes in [b"one", b"two", b"new"] {
+        channel.buffer(Bytes::from_static(bytes), 1.0);
+    }
+    assert_eq!(channel.queued(), 3);
+    assert_eq!(ids(&mut channel), [Some(MessageId(2))]);
+
+    let mut channel = self::channel(ChannelMode::SequencedUnreliable, true);
+    channel.buffer(Bytes::from(vec![1; FRAGMENT_LEN + 1]), 1.0);
+    let mut candidates = Vec::new();
+    channel.collect_send_candidates(&mut candidates);
+    channel.commit_send(candidates[0].key);
+    channel.end_send(SendFlushOutcome::Complete);
+    channel.buffer(Bytes::from_static(b"new"), 1.0);
+    assert_eq!(channel.queued(), FRAGMENT_LEN + 1 + 3);
+    assert_eq!(ids(&mut channel), [None, Some(MessageId(1))]);
 }
 
 /// Priority grows by its base each second a message waits: a retained unreliable message of
@@ -408,7 +353,7 @@ fn a_priority_grows_while_its_message_waits_and_starts_again_once_sent() {
     };
 
     let mut unreliable = channel(ChannelMode::UnorderedUnreliable, true);
-    unreliable.buffer(Bytes::from_static(b"m"), 2.0, CompressionSetup::DISABLED);
+    unreliable.buffer(Bytes::from_static(b"m"), 2.0);
     unreliable.update(Duration::from_millis(100));
     assert_eq!(priorities(&mut unreliable), [0.2]);
     unreliable.update(Duration::from_millis(100));
@@ -417,7 +362,7 @@ fn a_priority_grows_while_its_message_waits_and_starts_again_once_sent() {
     assert_eq!(priorities(&mut unreliable), [0.4]);
 
     let mut channel = channel(ChannelMode::OrderedReliable, true);
-    channel.buffer(Bytes::from_static(b"m"), 1.0, CompressionSetup::DISABLED);
+    channel.buffer(Bytes::from_static(b"m"), 1.0);
     channel.update(Duration::from_millis(100));
     let mut candidates = Vec::new();
     channel.collect_send_candidates(&mut candidates);

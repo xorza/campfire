@@ -4,26 +4,28 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use campfire_codec::Json;
-use campfire_common::{StateHash, TlsKey};
+use campfire_common::StateHash;
+use campfire_host::SessionEnd;
+use campfire_net_core::TlsKey;
 use campfire_protocol::SessionId;
 
 use super::*;
 
-fn logged(seat: u32, stamp: u64, tick: u64) -> LoggedInput {
-    LoggedInput {
-        seat: Seat::new(seat),
+fn logged(player_slot: u32, stamp: u64, tick: u64) -> AppliedInput {
+    AppliedInput {
+        player_slot: PlayerSlot::new(player_slot),
         stamp: Tick::new(stamp),
         tick: Tick::new(tick),
     }
 }
 
-/// The messages of `sent`, by stamp, of the bot of `seat`, its first input at seq 0.
-fn orders_sent(seat: Option<u32>, sent: &[(u64, usize)]) -> Vec<OrdersSent> {
+/// The messages of `sent`, by stamp, of the bot of `player_slot`, its first input at seq 0.
+fn orders_sent(player_slot: Option<u32>, sent: &[(u64, usize)]) -> Vec<OrdersSent> {
     let mut seq = 0;
     sent.iter()
         .map(|&(stamp, orders)| {
             let message = OrdersSent {
-                seat: Seat::new(seat.unwrap_or(0)),
+                player_slot: PlayerSlot::new(player_slot.unwrap_or(0)),
                 seq,
                 stamp: Tick::new(stamp),
                 orders,
@@ -34,17 +36,17 @@ fn orders_sent(seat: Option<u32>, sent: &[(u64, usize)]) -> Vec<OrdersSent> {
         .collect()
 }
 
-/// The process of bot `index`, of a script of 2 orders, which started in `seat` and sent and kept
-/// `sent`, by stamp, and ran to its end.
-fn bot(index: usize, seat: Option<u32>, sent: &[(u64, usize)]) -> BotEvents {
+/// The process of bot `index`, of a script of 2 orders, which started in `player_slot` and sent and
+/// kept `sent`, by stamp, and ran to its end.
+fn bot(index: usize, player_slot: Option<u32>, sent: &[(u64, usize)]) -> BotEvents {
     BotEvents {
         bot: index,
-        started: seat.map(|seat| MatchStarted {
-            seat: Seat::new(seat),
+        started: player_slot.map(|player_slot| MatchStarted {
+            player_slot: PlayerSlot::new(player_slot),
             start_tick: 5,
         }),
-        sent: orders_sent(seat, sent),
-        kept: orders_sent(seat, sent),
+        sent: orders_sent(player_slot, sent),
+        kept: orders_sent(player_slot, sent),
         scripted: 2,
         whole: true,
     }
@@ -75,6 +77,7 @@ fn hash(byte: &str) -> StateHash {
 fn written(state_hash: StateHash) -> SessionWritten {
     SessionWritten {
         session: SessionId::new([1; 32]),
+        end: SessionEnd::PlayersLeft,
         file: PathBuf::from("s.campfire-log"),
         hash: state_hash,
     }
@@ -136,7 +139,7 @@ fn a_match_passes_when_every_order_lands_in_its_stamp_tick_or_waited_for_a_catch
 
 #[test]
 fn a_match_fails_by_each_flaw_it_has() {
-    // No listening; seat 0's input stamped 20 applied in 21, before a frame that caught up
+    // No listening; player slot 0's input stamped 20 applied in 21, before a frame that caught up
     // from 21, so it waited for none of it; of the 2 inputs bot 0 sent at 50,
     // the server logged 1; bot 0 sent 3 of its 2 orders; bot 1 never started; the verifier's
     // hash differs.
@@ -155,7 +158,7 @@ fn a_match_fails_by_each_flaw_it_has() {
         Some(&written(hash("aa"))),
         Some(&verified(hash("bb"))),
     );
-    let seat = Seat::new(0);
+    let player_slot = PlayerSlot::new(0);
     assert_eq!(
         found(&verdict),
         [
@@ -165,14 +168,14 @@ fn a_match_fails_by_each_flaw_it_has() {
                 sent: 3,
                 scripted: 2
             },
-            CheckFailure::NoSeat { bot: 1 },
+            CheckFailure::NoPlayerSlot { bot: 1 },
             CheckFailure::Moved {
-                seat,
+                player_slot,
                 stamp: Tick::new(20),
                 tick: Tick::new(21)
             },
             CheckFailure::Unlogged {
-                seat,
+                player_slot,
                 stamp: Tick::new(50),
                 sent: 2,
                 logged: 1

@@ -1,14 +1,17 @@
+use std::iter::Copied;
+use std::slice;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::world::World;
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder, PerType};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::Num;
 use campfire_script::UnknownName;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
-use campfire_values::{ActionId, Named, Rank, Relation, TagSet};
+use campfire_values::{ActionId, Named, Rank, Relation, TagSet, UnitType};
 use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -55,6 +58,11 @@ impl ActionSlot {
         book.get(self.action?)?.values_at(self.rank?)
     }
 
+    /// Its action's kind, as `book` gives it; none for a slot with no action.
+    pub fn kind_in(self, book: &ActionBook) -> Option<ActionKind> {
+        Some(book.get(self.action?)?.kind)
+    }
+
     /// Its action's rule of charges at its rank, as `book` gives it; none for a slot with no
     /// action, one not learned, or an action without charges at its rank.
     pub fn charge_rule(self, book: &ActionBook) -> Option<ChargeRule> {
@@ -70,10 +78,10 @@ impl ActionSlots {
     /// each at its kind's first rank, as its `slots` places them; an error for a kind the mode
     /// does not declare or an action its package does not have. An inventory and a use slot add
     /// their own empty slots to the type's.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let kinds = &cx.book::<SlotKindBook>()?.0;
         let actions = cx.book::<ActionBook>()?;
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(slots) = unit.data.section::<TypeSlotsData>() else {
                 continue;
@@ -116,33 +124,37 @@ impl ActionSlots {
         Some(u8::try_from(at).expect("a unit's slots fit u8"))
     }
 
-    /// The values of the learned action in `slot`, of `book`, at its rank.
-    pub fn values_of(&self, book: &ActionBook, slot: u8) -> RankValues {
-        let slot = self.slot(slot).expect("a unit's slot");
-        *slot
-            .values_in(book)
-            .expect("a learned slot's action is in the book")
+    /// The slot `slot`, when it holds an action it learned: an order of an action the unit has
+    /// not learned starts nothing.
+    pub fn learned(&self, slot: u8) -> Option<ActionSlot> {
+        let held = self.slot(slot)?;
+        (held.action.is_some() && held.rank.is_some()).then_some(held)
+    }
+
+    /// The values of the learned action in `slot`, of `book`, at its rank; none for a slot it
+    /// has not learned.
+    pub fn values_in(&self, book: &ActionBook, slot: u8) -> Option<RankValues> {
+        self.slot(slot)?.values_in(book).copied()
     }
 
     /// The range of the learned action in `slot`, of `book`, at its rank.
-    pub fn range_in(&self, book: &ActionBook, slot: u8) -> ActionRange {
-        self.values_of(book, slot).range
+    pub fn range_in(&self, book: &ActionBook, slot: u8) -> Option<ActionRange> {
+        Some(self.values_in(book, slot)?.range)
     }
 
-    /// The range in meters of the action in `slot`, of `book`, one that reaches in meters at
-    /// every rank, as a build's and a gather's do.
-    pub fn meters_in(&self, book: &ActionBook, slot: u8) -> Num {
-        let ActionRange::Meters(range) = self.range_in(book, slot) else {
-            panic!("a build's and a gather's ranks reach in meters, as their book checked");
-        };
-        range.get()
+    /// The range in meters of the learned action in `slot`, of `book`; none for a global one, or
+    /// a slot it has not learned. A build's and a gather's reach in meters at every rank.
+    pub fn meters_in(&self, book: &ActionBook, slot: u8) -> Option<Num> {
+        match self.range_in(book, slot)? {
+            ActionRange::Meters(range) => Some(range.get()),
+            ActionRange::Global => None,
+        }
     }
 
     /// The kind of the action in `slot`, as `book` gives it; none for a slot that is missing or
     /// holds none.
     pub fn kind_in(&self, book: &ActionBook, slot: u8) -> Option<ActionKind> {
-        let action = self.slot(slot)?.action?;
-        Some(book.get(action)?.kind)
+        self.slot(slot)?.kind_in(book)
     }
 
     /// The most slots a unit holds: every index a `u8` holds.
@@ -228,7 +240,7 @@ impl ActionSlots {
         self.slots.get(usize::from(slot)).copied()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = ActionSlot> + '_ {
+    pub fn iter(&self) -> Copied<slice::Iter<'_, ActionSlot>> {
         self.slots.iter().copied()
     }
 
@@ -251,6 +263,15 @@ impl ActionSlots {
         let slot = &mut self.slots[usize::from(slot)];
         let next = slot.rank.map_or(Some(Rank::FIRST), Rank::next);
         slot.rank = Some(next.expect("a rank below the action's ranks"));
+    }
+}
+
+impl<'a> IntoIterator for &'a ActionSlots {
+    type Item = ActionSlot;
+    type IntoIter = Copied<slice::Iter<'a, ActionSlot>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
@@ -344,6 +365,6 @@ impl Replication for ActionSlots {
     type Sending = SentPredicted;
 }
 
-impl PerType for ActionSlots {
+impl PerId<UnitType> for ActionSlots {
     const SCRIPTS_ONLY: bool = false;
 }

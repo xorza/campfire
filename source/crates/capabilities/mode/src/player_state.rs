@@ -4,7 +4,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_players::Player;
-use campfire_script::{StateSchema, StateValue};
+use campfire_script::{Audience, StateSchema, StateValue};
 use campfire_sim::SimComponent;
 use campfire_states::{NotSent, Replication, Sending, SentOnChange};
 use campfire_units::{AudienceAll, AudienceNone, AudienceOwner, AudienceTeam, StateAudience};
@@ -23,6 +23,16 @@ pub struct PlayerState<S: PlayerAudience> {
     values: Vec<StateValue>,
     #[serde(skip)]
     audience: PhantomData<S>,
+}
+
+/// The kind of the players' state fields of `audience`, as its class's component sends them.
+pub(crate) const fn kind_of(audience: Audience) -> DataKind {
+    match audience {
+        Audience::None => AudienceNone::PLAYER_KIND,
+        Audience::Owner => AudienceOwner::PLAYER_KIND,
+        Audience::Team => AudienceTeam::PLAYER_KIND,
+        Audience::All => AudienceAll::PLAYER_KIND,
+    }
 }
 
 /// A class of the players' state fields by their `audience`.
@@ -76,7 +86,7 @@ impl<S: PlayerAudience> PlayerState<S> {
     /// The fields of its class that `schema` declares, each at its first value, in the order of
     /// their names.
     pub(crate) fn initial(schema: &StateSchema) -> Self {
-        Self::new(schema.initial_of(S::AUDIENCE).cloned().collect())
+        Self::new(schema.initial_in(S::AUDIENCE).cloned().collect())
     }
 }
 

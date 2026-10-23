@@ -689,12 +689,10 @@ fn a_frame_that_spawns_1000_entities_sends_exact_bytes() {
         spawn(&mut stepper),
         StepperCounts {
             transport: TransportCounts {
-                sent_bytes: 8122,
+                sent_bytes: 8130,
                 sent_packets: 9,
                 resent_messages: 0,
-                received_bytes: 8143,
-                compression_saved_bytes: 0,
-                compression_abandoned: 0,
+                received_bytes: 8151,
             },
             replication: ChannelCounts {
                 sent_bytes: 8018,
@@ -723,12 +721,10 @@ fn a_frame_that_changes_1000_entities_sends_exact_bytes() {
         StepperCounts::read(&mut stepper) - before,
         StepperCounts {
             transport: TransportCounts {
-                sent_bytes: 8142,
+                sent_bytes: 8150,
                 sent_packets: 8,
                 resent_messages: 0,
-                received_bytes: 8135,
-                compression_saved_bytes: 0,
-                compression_abandoned: 0,
+                received_bytes: 8143,
             },
             replication: ChannelCounts {
                 sent_bytes: 8077,

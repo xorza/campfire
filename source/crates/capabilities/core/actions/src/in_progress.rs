@@ -1,4 +1,4 @@
-use campfire_common::Tick;
+use campfire_common::{Tick, Ticks};
 use campfire_math::Vec3;
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ActionStart, Rank};
@@ -32,16 +32,21 @@ pub enum InProgress {
         released: bool,
     },
     /// The channel of the action `aim` names, which resolved at its target, as it `start`ed: it
-    /// ticks next in `next`, and ends in `ends`; `action` at `rank` is what its slot held as it
-    /// began, which a cut channel keeps.
+    /// ticks next in `next`, and ends in `ends`, or with none only as it is cut; an order that
+    /// cuts it waits `wind_down`, when it winds down; `action` at `rank` is what its slot held as
+    /// it began, which a cut channel keeps.
     Channel {
         aim: SlotAim,
         next: Tick,
-        ends: Tick,
+        ends: Option<Tick>,
+        wind_down: Option<Ticks>,
         start: ActionStart,
         action: ActionId,
         rank: Rank,
     },
+    /// The wind-down of the channel of `slot` an order cut, until `until`: its unit takes no order
+    /// before, and the last given then runs (04-capabilities/actions.md, A channel with no end).
+    WindDown { slot: u8, until: Tick },
 }
 
 /// How far an ordered action got: not checked yet, walking in range of its target, which then
@@ -68,6 +73,7 @@ impl InProgress {
             }
             Self::Charge { aim, origin, .. } => aim.target.within_bound() && origin.within_bound(),
             Self::Channel { aim, start, .. } => aim.target.within_bound() && start.check(),
+            Self::WindDown { .. } => true,
         }
     }
 
@@ -92,7 +98,8 @@ impl InProgress {
             | Self::Channel {
                 aim: SlotAim { slot, .. },
                 ..
-            } => slot,
+            }
+            | Self::WindDown { slot, .. } => slot,
         }
     }
 
@@ -110,7 +117,10 @@ impl InProgress {
                 action,
                 rank,
             }),
-            Self::Attack { .. } | Self::Order { .. } | Self::Charge { .. } => None,
+            Self::Attack { .. }
+            | Self::Order { .. }
+            | Self::Charge { .. }
+            | Self::WindDown { .. } => None,
         }
     }
 
@@ -138,7 +148,8 @@ impl InProgress {
                 ..
             }
             | Self::Charge { .. }
-            | Self::Channel { .. } => None,
+            | Self::Channel { .. }
+            | Self::WindDown { .. } => None,
         }
     }
 }

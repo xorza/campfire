@@ -1,18 +1,16 @@
-use campfire_actions::{
-    ActionKind, ActionsData, ByAction, ByActionBuilder, LoadedAction, Targeting, TypeSlotsData,
-};
+use campfire_actions::{ActionKind, ActionsData, LoadedAction, Targeting, TypeSlotsData};
 use campfire_common::DeclaredName;
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section, SourceType, UnitTypeData,
+    BookCx, BookError, BookPlace, ById, ByIdBuilder, Section, SourceType, UnitTypeData,
 };
 use campfire_math::Num;
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, UnknownName};
 use campfire_sim::Capability;
 use campfire_stats::{LifePool, ModifierBook, StatsData, TypePoolsData};
-use campfire_units::{BodyForm, PoolNames, UnitTypes};
+use campfire_units::{BodyForm, PoolId, UnitTypes};
 use campfire_values::{
-    Distance, ModifierId, Named, ResourceId, Share, TimeTooLarge, TypeScope, UnitType,
+    ActionId, Distance, ModifierId, Named, ResourceId, Share, TimeTooLarge, TypeScope, UnitType,
 };
 
 use crate::Production;
@@ -88,7 +86,7 @@ impl Production {
                 let fail = |problem| Err(BookError::rule(package, at(), problem));
                 let train = action.section::<TrainData>();
                 if let Some(train) = train {
-                    if action.targeting != Targeting::None {
+                    if action.keys.targeting != Targeting::None {
                         return fail(ProductionDataError::TrainAims);
                     }
                     // A train of variants makes them, and never its own type.
@@ -111,11 +109,11 @@ impl Production {
                     }
                 }
                 let build = action.section::<BuildData>();
-                if build.is_some() && action.targeting != Targeting::Point {
+                if build.is_some() && action.keys.targeting != Targeting::Point {
                     return fail(ProductionDataError::BuildAims);
                 }
                 let gathers = action.section::<GatherData>().is_some();
-                if gathers && !matches!(action.targeting, Targeting::Unit(_)) {
+                if gathers && !matches!(action.keys.targeting, Targeting::Unit(_)) {
                     return fail(ProductionDataError::GatherAims);
                 }
                 let requires = train.and_then(|train| train.requires.as_ref());
@@ -181,7 +179,7 @@ impl BuildBook {
     /// building may stand on a circle), or a start of no life for a building that lives.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let tags = cx.fact::<UnitTypes>()?.tags();
-        let bodies = cx.book::<ByType<BodyForm>>()?;
+        let bodies = cx.book::<ById<UnitType, BodyForm>>()?;
         let mut book = Self::default();
         for action in LoadedAction::all(cx)? {
             let Some(data) = action.section::<BuildData>() else {
@@ -212,7 +210,7 @@ impl BuildBook {
             let unit_type = unit_type
                 .ok_or_else(|| action.unknown(UnknownName::new(UnitType::NAMES, building)))?;
             let form = bodies.get(unit_type).copied();
-            let form = form.filter(|form| form.circle_radius() != Some(Num::ZERO));
+            let form = form.filter(|form| form.shape().circle_radius() != Some(Num::ZERO));
             let form = form.ok_or_else(|| action.broken(ProductionDataError::NoBody))?;
             let alive = lives(cx, unit_type)?;
             let start_life = data.start_life;
@@ -243,8 +241,8 @@ impl BuildBook {
 impl TrainSpec {
     /// What each train makes: a unit type of its package, and its variants; an error for one it
     /// does not have.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByAction<Self>, BookError> {
-        let mut book = ByActionBuilder::default();
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<ActionId, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
         for action in LoadedAction::all(cx)? {
             let Some(data) = action.section::<TrainData>() else {
                 continue;
@@ -272,9 +270,9 @@ impl GatherSpec {
     /// What each gather gathers, carries, takes at each windup, looks for another node within and
     /// stands at a drop-off for; an error for a resource the mode does not declare, a unit past
     /// the take, or a time too large to count in ticks.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByAction<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<ActionId, Self>, BookError> {
         let resources = cx.book_if::<ResourceBook>()?;
-        let mut book = ByActionBuilder::default();
+        let mut book = ByIdBuilder::default();
         for action in LoadedAction::all(cx)? {
             let Some(data) = action.section::<GatherData>() else {
                 continue;
@@ -347,8 +345,8 @@ impl NodeBook {
     /// declare.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let resources = cx.book_if::<ResourceBook>()?;
-        let mut nodes = ByTypeBuilder::default();
-        let mut drop_offs = ByTypeBuilder::default();
+        let mut nodes = ByIdBuilder::default();
+        let mut drop_offs = ByIdBuilder::default();
         for unit in cx.standing() {
             let unknown =
                 |name| BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), name);
@@ -376,7 +374,7 @@ impl NodeBook {
 impl SupplyCostBook {
     /// What each train costs in supply, as the supply of its unit type gives it.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
-        let mut supplies = ByTypeBuilder::default();
+        let mut supplies = ByIdBuilder::default();
         for unit in cx.standing() {
             if let Some(&supply) = unit.data.section::<SupplyData>() {
                 supplies.set(unit.unit_type, supply);
@@ -384,7 +382,7 @@ impl SupplyCostBook {
         }
         Ok(Self::new(
             supplies.build(),
-            cx.book::<ByAction<TrainSpec>>()?,
+            cx.book::<ById<ActionId, TrainSpec>>()?,
         ))
     }
 }
@@ -402,8 +400,8 @@ impl ProducerSpec {
     /// spawn's unit type its package does not have, or one that does not walk out of its exit,
     /// for a kept spawn of no life, which would never die, and for a spawns' time too large to
     /// count in ticks.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByTypeBuilder::default();
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<ProductionData>() else {
                 continue;
@@ -458,8 +456,8 @@ impl ProducerSpec {
 
 impl Node {
     /// What each node type that stands holds as its unit spawns.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByTypeBuilder::default();
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             if let Some(node) = unit.data.section::<NodeData>() {
                 book.set(unit.unit_type, Self::new(node.amount.get()));
@@ -471,8 +469,8 @@ impl Node {
 
 impl Builder {
     /// A builder of each unit type that stands and places a build in its slots.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByTypeBuilder::default();
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             if Production::slots(cx, unit, ActionKind::Build) {
                 book.set(unit.unit_type, Self::default());
@@ -484,8 +482,8 @@ impl Builder {
 
 impl Gatherer {
     /// A gatherer of each unit type that stands and places a gather in its slots.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByTypeBuilder::default();
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             if Production::slots(cx, unit, ActionKind::Gather) {
                 book.set(unit.unit_type, Self::default());
@@ -498,11 +496,11 @@ impl Gatherer {
 /// Whether `unit_type` of the match `cx` loads has the life pool, so its units live and die.
 fn lives(cx: &BookCx<'_>, unit_type: UnitType) -> Result<bool, BookError> {
     let life = cx.fact_if::<LifePool>()?.and_then(|life| life.0);
-    let pools = cx.fact_if::<PoolNames>()?;
+    let pools = cx.names_if::<PoolId>()?;
     let held = cx.type_of(unit_type).data.section::<TypePoolsData>();
     Ok(held.is_some_and(|held| {
         held.0.iter().any(|name| {
-            let pool = pools.and_then(|pools| pools.0.named(name.as_str()));
+            let pool = pools.and_then(|pools| pools.named(name.as_str()));
             pool.is_some() && pool == life
         })
     }))

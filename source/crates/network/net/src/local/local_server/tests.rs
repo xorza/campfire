@@ -8,27 +8,26 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::hosting::Hosting;
-use crate::local::local_relink::LocalRelinkPlugin;
 use crate::local::local_server::{LocalServer, LocalServerSetup};
-use crate::net_protocol::join::JoinRole;
-use crate::net_protocol::save_command::SaveCommand;
-use crate::os::Os;
-use crate::pace::Pace;
-use crate::sim_client::join_state::JoinState;
-use crate::sim_client::server_pin::ServerPin;
-use crate::sim_client::session_signer::SessionSigner;
 use crate::sim_client::{PendingSaves, SimClientPlugin};
-use crate::sim_server::server_dir::ServerDir;
-use crate::sim_server::session_dir::SessionDir;
-use crate::unix_clock::UnixClock;
 use bevy_app::App;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_app_threads::OneThreadPlugins;
+use campfire_host::Hosting;
+use campfire_host::JoinRole;
+use campfire_host::JoinState;
+use campfire_host::Os;
+use campfire_host::Pace;
+use campfire_host::SaveCommand;
+use campfire_host::ServerDir;
+use campfire_host::ServerPin;
+use campfire_host::SessionDir;
+use campfire_host::SessionSigner;
+use campfire_host::UnixClock;
 use campfire_net_connection::Connect;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Entropy, Outcome, SessionLog, Signer};
+use campfire_protocol::{Entropy, Outcome, SessionLog};
 use campfire_runner::TermsError;
 use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
@@ -49,7 +48,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         data: test_dir.path("data"),
         bots: Vec::new(),
         options: Vec::new(),
-        seat_picks: Vec::new(),
+        player_slot_picks: Vec::new(),
         role: JoinRole::Play,
         pace,
         os: Os {
@@ -63,17 +62,18 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let mut client = App::new();
     client.add_plugins((OneThreadPlugins, TimePlugin, StatesPlugin));
     let setup = SimClientPlugin {
-        main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
-        session: SessionSigner::new(Signer::new(keys.session, Entropy::Fixed(4))),
+        main: Arc::new(TestKey::client_signer(keys.main)),
+        session: SessionSigner::new(TestKey::client_signer(keys.session)),
         server: server.pin(),
         role: JoinRole::Play,
         hosting: Hosting::Local,
         packages,
         os: Os {
             clock: UnixClock::manual(TestKey::NOW),
-            entropy: Entropy::Fixed(4),
+            entropy: TestKey::client_entropy(),
         },
         data: None,
+        bot: None,
     };
     // The lane runs at 30 Hz alone: a server pinned at 20 Hz fails the check, as a listing at a
     // rate the mode does not run at does.
@@ -88,15 +88,13 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         main: Arc::clone(&setup.main),
         os: setup.os.clone(),
         data: None,
-        session: SessionSigner::new(Signer::new(keys.session, Entropy::Fixed(4))),
+        session: SessionSigner::new(TestKey::client_signer(keys.session)),
         role: setup.role,
         hosting: setup.hosting,
+        bot: None,
     };
     assert_eq!(at_20.check(), Err(TermsError::TickRate(elsewhere.tick_hz)));
     client.add_plugins(setup);
-    client.add_plugins(LocalRelinkPlugin {
-        relinks: server.relinks(),
-    });
     client.finish();
     client.cleanup();
     let entity = SimClientPlugin::spawn(client.world_mut());

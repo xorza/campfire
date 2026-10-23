@@ -3,11 +3,11 @@ use std::num::NonZeroI64;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByTypeBuilder};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByIdBuilder};
 use campfire_math::{Num, Rounding};
 use campfire_script::{MatchNames, UnknownName};
 use campfire_sim::MatchRate;
-use campfire_units::{MoveStep, StatId, StatNames, TurnStep, UnitSteps};
+use campfire_units::{MoveStep, StatId, TurnStep, UnitSteps};
 use campfire_values::{EngineStat, NameId, Named, Names, PackageIndex, Stat, UnitType};
 
 use crate::mode_stats_data::ModeStatsData;
@@ -261,8 +261,8 @@ impl StatBook {
     pub fn unit_steps(cx: &BookCx<'_>) -> Result<UnitSteps, BookError> {
         let book = cx.book::<Self>()?;
         let rate = cx.rate();
-        let mut steps = ByTypeBuilder::default();
-        let mut turns = ByTypeBuilder::default();
+        let mut steps = ByIdBuilder::default();
+        let mut turns = ByIdBuilder::default();
         for unit in cx.standing() {
             let unit_type = unit.unit_type;
             let gives = |stat| {
@@ -295,9 +295,9 @@ impl StatBook {
 }
 
 impl StatBook {
-    /// The names of its stats, the fact an action's load resolves them by.
-    pub(crate) fn names_fact(cx: &BookCx<'_>) -> Result<StatNames, BookError> {
-        Ok(StatNames(Arc::clone(&cx.book::<Self>()?.names)))
+    /// The names of its stats, which the load resolves them by.
+    pub(crate) fn name_table(cx: &BookCx<'_>) -> Result<Arc<Names<StatId>>, BookError> {
+        Ok(Arc::clone(&cx.book::<Self>()?.names))
     }
 }
 

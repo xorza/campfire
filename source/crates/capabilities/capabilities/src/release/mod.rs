@@ -22,8 +22,8 @@ use campfire_players::Players;
 use campfire_production::Production;
 use campfire_progression::Progression;
 use campfire_projectiles::Projectiles;
-use campfire_script::{ApiBuilder, Ctx, Hook, ScriptApi, ScriptHost, ScriptId};
-use campfire_sim::{Capability, SimWorldBuilder, StateRewritten, Unpredicted};
+use campfire_script::{ApiBuilder, Hook, ScriptApi, ScriptHost, ScriptId};
+use campfire_sim::{Capability, SimWorld, SimWorldBuilder, StateRewritten, Unpredicted};
 use campfire_states::StateTypes;
 use campfire_stats::Stats;
 use campfire_units::Units;
@@ -31,10 +31,8 @@ use campfire_values::{EngineTag, NameId};
 use campfire_vision::Vision;
 
 use crate::books::Books;
-use crate::books::leftover_books::LeftoverBooks;
 use crate::books::units_seed::UnitsSeed;
-use crate::bot::bot_api::{BotApi, OnBotThink};
-use crate::bot::bot_call::BotCall;
+use crate::bot::bots::Bots;
 use crate::release::api_binder::ApiBinder;
 use crate::release::called_registries::CalledRegistries;
 use crate::release::capability_rows::CapabilityRows;
@@ -42,12 +40,13 @@ use crate::release::declaring::{Declaring, Scripts};
 use crate::release::engine_tag_list::EngineTagList;
 use crate::release::error::CapabilityError;
 use crate::release::hook_list::HookList;
-use crate::release::installing::{Installing, Walk};
+use crate::release::installing::{Installing, ModuleWalk};
 use crate::release::kinds_only::KindsOnly;
 use crate::release::match_core::MatchCore;
 use crate::release::match_kind::{MatchKind, ModeStart, PackageScript};
 use crate::release::match_setup::MatchSetup;
 use crate::release::section_list::SectionList;
+use crate::release::state_clear::StateClear;
 use crate::release::state_only::StateOnly;
 
 mod api_binder;
@@ -75,6 +74,7 @@ mod predicted_parts;
 mod resource_audit;
 mod section_list;
 mod stage_span_systems;
+mod state_clear;
 mod state_only;
 
 /// The engine's modules as the release runs them: the core, the mode's core, each capability in
@@ -107,6 +107,7 @@ impl Release {
         v.module::<Items>();
         v.module::<Interaction>();
         v.module::<Orders>();
+        v.module::<Bots>();
         v.scripted::<Mode>();
     }
 
@@ -154,7 +155,6 @@ impl Release {
     pub fn hooks() -> Vec<Hook> {
         let mut list = HookList::default();
         Self::declare(Self::capabilities(), &mut list);
-        list.0.push(Hook::of::<OnBotThink>());
         list.0
     }
 
@@ -234,19 +234,16 @@ impl Release {
         Self::declare(Self::capabilities(), &mut KindsOnly(v));
     }
 
-    /// Binds, with `builder`, the script API of a match of `set`: each module's, then the bots'
-    /// think, which reads through theirs.
+    /// Binds, with `builder`, the script API of a match of `set`: each module's.
     fn bind(set: CapabilitySet, builder: &mut ApiBuilder<'_>) {
         Self::declare(set, &mut ApiBinder(builder));
-        builder.module(None);
-        BotApi::register(builder);
     }
 
     /// Builds the match of `spec` in the world, a new world, of `books`, as `start` says: prepares
     /// it for the sim, keeps its facts, puts in the declarations of each module of the list the
     /// match runs, in order, its books among them, then adds the systems of each, so each install
-    /// reads every book; binds the script API of the match's modules and of the bots' think into
-    /// the script host the core's install puts in, gives its frame the bots' call, and the mode's names into the script view; then starts the match, as
+    /// reads every book; binds the script API of the match's modules into the script host the
+    /// core's install puts in, and the mode's names into the script view; then starts the match, as
     /// `start` says, and builds its schedule once. A match that ended runs no stage. The world then
     /// holds the match whole: its schedule, its state registry, and its facts.
     pub fn build(world: &mut World, match_setup: MatchSetup, books: Books, kind: MatchKind<'_>) {
@@ -259,11 +256,11 @@ impl Release {
         if match_setup.without_sync_points {
             sim.without_sync_points();
         }
-        let set = match_setup.set;
+        let set = books.set;
         let facts = MatchFacts {
             set,
             role,
-            out: match_setup.out,
+            visibility: match_setup.visibility,
         };
         let fields = sim.fields();
         fields.world.insert_resource(facts.clone());
@@ -276,24 +273,21 @@ impl Release {
             facts: &facts,
             mode_scripts: mode_scripts.as_ref(),
         };
-        let Books { mut built, inputs } = books;
+        let Books {
+            mut built, inputs, ..
+        } = books;
         Self::modules(&mut Installing::new(
             fields,
             &mut built,
             &install,
-            Walk::Declare,
+            ModuleWalk::Declare,
         ));
-        Self::declare(Self::capabilities(), &mut LeftoverBooks(&mut built));
         assert!(built.is_empty(), "each built book is declared: {built:?}");
         if facts.role.scripts() {
             let world = sim.fields().world;
             ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), |builder| {
                 Self::bind(set, builder);
             });
-            world
-                .non_send::<Ctx>()
-                .frame()
-                .add_params(BotCall::default());
         }
         #[cfg(feature = "internals")]
         if match_setup.end.leaves_open() {
@@ -308,7 +302,7 @@ impl Release {
         match kind {
             MatchKind::Rules => {}
             MatchKind::Predicting => {
-                Navigation::load_map(sim.fields().world, inputs.load.walkers);
+                Navigation::load_map(sim.fields().world);
             }
             MatchKind::Mode(ModeStart { scripts, setup }) => {
                 assert!(
@@ -322,7 +316,7 @@ impl Release {
                     fields,
                     &mut none,
                     &install,
-                    Walk::Scripted,
+                    ModuleWalk::Scripted,
                 ));
                 Mode::load(sim.fields().world, setup, inputs);
             }
@@ -343,9 +337,19 @@ impl Release {
             sim.fields(),
             &mut none,
             install,
-            Walk::Install,
+            ModuleWalk::Install,
         ));
         sim.fields().world.trigger(StateRewritten);
+    }
+
+    /// Clears the match for a load in place: despawns its sim entities, then clears each module's
+    /// derived state as its declarations say, so the save's snapshot restores into it as into a
+    /// match built fresh, as OpenRA builds a new `World` over the same `OrderManager`
+    /// (08-sessions.md, A load goes back in place).
+    pub fn clear(world: &mut World) {
+        world.despawn_state();
+        let MatchFacts { set, role, .. } = world.resource::<MatchFacts>().clone();
+        Self::declare(set, &mut StateClear { world, role });
     }
 
     /// Compiles `scripts` into the match's script host, each at its place among them, as the
@@ -391,7 +395,7 @@ pub(crate) mod internals {
     };
     use campfire_states::{Replication, StateTypes};
     use campfire_stats::ModifierBook;
-    use campfire_units::{EntityKinds, ScriptBook, UnitTypeBook, UnitTypes, Units, UnitsWorld};
+    use campfire_units::{EntityKinds, ScriptBook, UnitTypeBook, UnitTypes, Units};
     use campfire_values::{Speed, TextId};
 
     use crate::books::Books;
@@ -399,7 +403,7 @@ pub(crate) mod internals {
     use crate::fixtures::units::UnitsFixtures;
     use crate::release::Release;
     use crate::release::client_holds::ClientHolds;
-    use crate::release::installing::{Installing, Walk};
+    use crate::release::installing::{Installing, ModuleWalk};
     use crate::release::r#match::Match;
     use crate::release::module_sets::ModuleSets;
     use crate::release::resource_audit::DeclaredResources;
@@ -439,7 +443,7 @@ pub(crate) mod internals {
         /// starts from: each built from a mode of no data, on a planar map of the world's bounds,
         /// with no team, stat or script; but the unit types, the engine's tags alone, open as
         /// `UnitTypes::open_in` puts them.
-        pub fn empty_books(rate: MatchRate) -> Books {
+        pub fn empty_books(rate: MatchRate, set: CapabilitySet) -> Books {
             let data = ModeData::named(TextId::new("mode").unwrap());
             let (units, content) = (BTreeMap::new(), Sections::default());
             let mode = SourcePackage {
@@ -455,7 +459,7 @@ pub(crate) mod internals {
                 heights: None,
                 teams: &[],
                 max_move_speed: Speed::new(Num::MAX).unwrap(),
-                set: Self::capabilities(),
+                set,
                 engine_tags: &Self::engine_tags(),
                 packages: vec![mode],
                 scripts: &ScriptBook::new(Self::hooks()),
@@ -518,7 +522,7 @@ pub(crate) mod internals {
                 fields,
                 &mut none,
                 &install,
-                Walk::Scripted,
+                ModuleWalk::Scripted,
             ));
             Mode::load(sim.fields().world, setup, inputs);
             if open {
@@ -668,15 +672,10 @@ pub(crate) mod internals {
             fresh.restore(&snapshot).err()
         }
 
-        /// Despawns the match's entity it started with, as a restore takes a world of no entity.
-        pub fn clear(world: &mut World) {
-            if let Some(entity) = world.match_entity() {
-                world.despawn(entity);
-            }
-        }
-
-        /// Restores its state into `fresh`, a match that loaded the same books, as a restore does,
-        /// and asserts that the two hash the same.
+        /// Restores its state into `fresh`, a match that loaded the same books, as a load in place
+        /// does: restores it, plays two ticks of it, clears it and restores it again, so `fresh`
+        /// then holds what those ticks derived only as its caches clear it (08-sessions.md, A load
+        /// goes back in place). Asserts that each restore hashes as the match.
         pub fn restore_into(world: &World, fresh: &mut World) {
             assert_eq!(
                 Self::refusal_into(world, fresh),
@@ -687,6 +686,16 @@ pub(crate) mod internals {
                 fresh.state_hash(),
                 world.state_hash(),
                 "the restored match hashes as the match"
+            );
+            fresh.step();
+            fresh.step();
+            Self::clear(fresh);
+            let mut snapshot = Vec::new();
+            world.snapshot(&mut snapshot);
+            assert_eq!(
+                fresh.restore(&snapshot).ok(),
+                Some(world.state_hash()),
+                "the match loaded in place hashes as the match"
             );
         }
 

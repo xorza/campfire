@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use campfire_codec::{BinaryError, TomlError};
 use campfire_import::ZeroHourError;
-use campfire_package::{ContentError, LoadError};
+use campfire_package::LoadError;
+use campfire_package_format::ContentError;
 use campfire_store::{DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
 

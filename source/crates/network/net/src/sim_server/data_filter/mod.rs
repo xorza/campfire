@@ -14,16 +14,15 @@ use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 use bevy_replicon::shared::replication::registry::receive_fns::MutWrite;
 use bevy_replicon::shared::replication::visibility::VisibilityScope;
 use campfire_capabilities::Release;
-use campfire_common::Seat;
-use campfire_declarations::CapabilitySet;
+use campfire_common::PlayerSlot;
+use campfire_declarations::{CapabilitySet, MatchFacts};
 use campfire_players::Player;
 use campfire_sim::SimResource;
 use campfire_states::{Declared, Replication, Sending, SendingWays, StateTypes};
 use campfire_units::Owner;
 use campfire_values::Team;
-use campfire_visibility::{DataKind, Recipients};
+use campfire_visibility::{DataKind, Recipients, Visibility};
 
-use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::viewer::Viewer;
 
 /// A kind of state whose audience a mode may set, or that the owner alone receives, whose filter
@@ -81,7 +80,7 @@ filtered_kinds! {
     PoolsKind: Pools;
     /// A unit's modifiers.
     ModifiersKind: Modifiers;
-    /// A unit's seats' ready ticks, charges and toggles.
+    /// A unit's player slots' ready ticks, charges and toggles.
     CooldownsKind: Cooldowns;
     /// A unit's experience and points.
     ProgressionKind: Progression;
@@ -210,8 +209,8 @@ impl SendingWays for ScopeTypes<'_> {
     fn server<C: Replication>(&mut self, _: Declared) {}
 }
 
-/// Each entity's owner, a unit's or a player's entity's seat, and its team, of the entities that
-/// hold the filter of `K`.
+/// Each entity's owner, a unit's or a player's entity's player slot, and its team, of the entities
+/// that hold the filter of `K`.
 type Owners<'w, 's, K> = Query<
     'w,
     's,
@@ -223,16 +222,16 @@ type Owners<'w, 's, K> = Query<
     With<DataFilter<K>>,
 >;
 
-/// On each entity that holds a type of kind `K`: the seat that owns it, if one does, a player's
-/// entity its own seat, its team, if it has one, and the recipients beside the owner that receive
-/// the kind in the match. Replicon reads it to send the kind's types to them alone. Immutable, as
-/// replicon requires: a change of owner or team inserts a new one. Each type of the kind requires
-/// it, so it comes in the move that gives an entity the type, closed, to no recipient, until the
-/// hook of its addition puts its value in place.
+/// On each entity that holds a type of kind `K`: the player slot that owns it, if one does, a
+/// player's entity its own player slot, its team, if it has one, and the recipients beside the
+/// owner that receive the kind in the match. Replicon reads it to send the kind's types to them
+/// alone. Immutable, as replicon requires: a change of owner or team inserts a new one. Each type
+/// of the kind requires it, so it comes in the move that gives an entity the type, closed, to no
+/// recipient, until the hook of its addition puts its value in place.
 #[derive(Component, Debug)]
 #[component(immutable)]
 pub(crate) struct DataFilter<K: FilteredKind> {
-    owner: Option<Seat>,
+    owner: Option<PlayerSlot>,
     team: Option<Team>,
     audience: Recipients,
     kind: PhantomData<K>,
@@ -250,14 +249,14 @@ impl<K: FilteredKind> Default for DataFilter<K> {
 }
 
 impl<K: FilteredKind> DataFilter<K> {
-    const fn new(owner: Option<&Owner>, team: Option<&Team>, visibility: &MatchVisibility) -> Self {
+    const fn new(owner: Option<&Owner>, team: Option<&Team>, visibility: &Visibility) -> Self {
         Self {
             owner: match owner {
-                Some(owner) => Some(owner.seat()),
+                Some(owner) => Some(owner.player_slot()),
                 None => None,
             },
             team: team.copied(),
-            audience: visibility.0.audience(K::KIND),
+            audience: visibility.audience(K::KIND),
             kind: PhantomData,
         }
     }
@@ -267,11 +266,11 @@ impl<K: FilteredKind> DataFilter<K> {
         owner: Option<&Owner>,
         player: Option<&Player>,
         team: Option<&Team>,
-        visibility: &MatchVisibility,
+        visibility: &Visibility,
     ) -> Self {
         let owner = owner
             .copied()
-            .or_else(|| player.map(|player| Owner::new(player.seat())));
+            .or_else(|| player.map(|player| Owner::new(player.player_slot())));
         Self::new(owner.as_ref(), team, visibility)
     }
 
@@ -305,7 +304,7 @@ impl<K: FilteredKind> DataFilter<K> {
             entity.get::<Owner>(),
             entity.get::<Player>(),
             entity.get::<Team>(),
-            world.resource::<MatchVisibility>(),
+            &world.resource::<MatchFacts>().visibility,
         );
         world.commands().entity(context.entity).try_insert(filter);
     }
@@ -321,14 +320,14 @@ impl<K: FilteredKind> DataFilter<K> {
         app.add_observer(
             |removed: On<'_, '_, Remove<Owner>>,
              units: Owners<'_, '_, K>,
-             visibility: Res<'_, MatchVisibility>,
+             facts: Res<'_, MatchFacts>,
              mut commands: Commands<'_, '_>| {
                 if let Ok((_, player, team)) = units.get(removed.entity) {
                     commands.entity(removed.entity).try_insert(Self::of(
                         None,
                         player,
                         team,
-                        &visibility,
+                        &facts.visibility,
                     ));
                 }
             },
@@ -336,14 +335,14 @@ impl<K: FilteredKind> DataFilter<K> {
         app.add_observer(
             |removed: On<'_, '_, Remove<Team>>,
              units: Owners<'_, '_, K>,
-             visibility: Res<'_, MatchVisibility>,
+             facts: Res<'_, MatchFacts>,
              mut commands: Commands<'_, '_>| {
                 if let Ok((owner, player, _)) = units.get(removed.entity) {
                     commands.entity(removed.entity).try_insert(Self::of(
                         owner,
                         player,
                         None,
-                        &visibility,
+                        &facts.visibility,
                     ));
                 }
             },
@@ -355,14 +354,14 @@ impl<K: FilteredKind> DataFilter<K> {
         app.add_observer(
             |inserted: On<'_, '_, Insert<C>>,
              units: Owners<'_, '_, K>,
-             visibility: Res<'_, MatchVisibility>,
+             facts: Res<'_, MatchFacts>,
              mut commands: Commands<'_, '_>| {
                 if let Ok((owner, player, team)) = units.get(inserted.entity) {
                     commands.entity(inserted.entity).try_insert(Self::of(
                         owner,
                         player,
                         team,
-                        &visibility,
+                        &facts.visibility,
                     ));
                 }
             },

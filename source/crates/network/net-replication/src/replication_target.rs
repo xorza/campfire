@@ -125,18 +125,25 @@ impl<T: TargetKind> ReplicationTarget<T> {
         if trigger.trigger().new_archetype.is_none() {
             return;
         }
-        let entity = trigger.entity;
-        commands.queue(move |world: &mut World| {
-            if let Some(bit) = world.resource::<FilterRegistry>().get_bit::<Self>() {
-                let mut senders = world.query::<&mut ClientVisibility>();
-                for mut visibility in senders.iter_mut(world) {
-                    visibility.set(entity, bit, false);
-                }
+        commands.run_system_cached_with(Self::hide_removed, trigger.entity);
+    }
+
+    /// Hides `entity`, whose target went, from every link, and takes what leaves with it, through
+    /// one cached system rather than a query built for each removal.
+    fn hide_removed(
+        In(entity): In<Entity>,
+        registry: Res<'_, FilterRegistry>,
+        mut senders: Query<'_, '_, &mut ClientVisibility>,
+        mut commands: Commands<'_, '_>,
+    ) where
+        Self: VisibilityFilter,
+    {
+        if let Some(bit) = registry.get_bit::<Self>() {
+            for mut visibility in &mut senders {
+                visibility.set(entity, bit, false);
             }
-            if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
-                entity_mut.remove::<T::RemovedWith>();
-            }
-        });
+        }
+        commands.entity(entity).try_remove::<T::RemovedWith>();
     }
 }
 

@@ -4,7 +4,7 @@ use campfire_navigation::{
     MapNavigationData, MapPathsData, MapProblem, ModeNavigationData, Navigation,
     NavigationDataError, PathData, PathWalk, WalkCheck, Walker, WalkerKinds, WallData,
 };
-use campfire_units::{Layer, MapBook, MapPointError};
+use campfire_units::{BodyShape, Layer, MapBook, MapPointError};
 use campfire_values::NameId;
 
 use super::*;
@@ -68,7 +68,7 @@ fn check_walkable(
     };
     let teams = [TeamManifest {
         name: DeclaredName::new("west").unwrap(),
-        seats: 0,
+        player_slots: 0,
     }];
     let layers = layer_table(rules);
     let ground = MapBook::of(map.sections(), None).unwrap();
@@ -98,10 +98,10 @@ fn check_walkable(
 
 /// The corridor's bodies: a tower of 0.9 m on the ground, a cloud of the same width in the air.
 fn corridor_body(unit_type: &str) -> Option<BodyForm> {
-    let tower = BodyForm::circle(Num::from_bits((9 << Num::FRAC_BITS) / 10)).unwrap();
+    let tower = BodyShape::circle(Num::from_bits((9 << Num::FRAC_BITS) / 10)).unwrap();
     match unit_type {
-        "tower" => Some(tower),
-        "cloud" => Some(tower.on(AIR)),
+        "tower" => Some(BodyForm::new(tower, Layer::FIRST)),
+        "cloud" => Some(BodyForm::new(tower, AIR)),
         _ => None,
     }
 }
@@ -305,7 +305,8 @@ fn a_placed_box_lies_within_the_bounds_and_may_overlap_the_walls_and_the_bodies_
     let point = MapPoint::ground;
     let rules = ModeNavigationData::default();
     let body_of = |unit_type: &str| match unit_type {
-        "crate" => BodyForm::box_sized([Num::int(2), Num::int(2)]),
+        "crate" => BodyShape::box_sized([Num::int(2), Num::int(2)])
+            .map(|shape| BodyForm::new(shape, Layer::FIRST)),
         other => corridor_body(other),
     };
     let check = |boxes: &[(Num, Num)], walled: bool| {

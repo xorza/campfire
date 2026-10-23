@@ -4,6 +4,7 @@ use campfire_capabilities::Release;
 use campfire_codec::{TomlError, TomlTable, TomlValue};
 use campfire_common::DeclaredName;
 use campfire_declarations::{UnitDefaults, UnitTypeData};
+use campfire_values::PackagePath;
 use serde::{Deserialize, Serialize};
 
 /// The mode's `data/units.toml`: its unit types, by name, kept whole until the mode's defaults lie
@@ -15,6 +16,11 @@ pub struct UnitsFile {
 }
 
 impl UnitsFile {
+    /// Where a mode's package holds it.
+    pub fn path() -> PackagePath {
+        PackagePath::parse("data/units.toml").expect("a package path")
+    }
+
     /// The file of `units`, each unit type's table by its name, as a tool writes it.
     pub fn of(units: &BTreeMap<DeclaredName, TomlTable>) -> Self {
         Self {

@@ -9,23 +9,23 @@
 mod arena;
 mod events;
 mod match_build;
+mod player_slot_rules;
 mod replay;
-mod seat_rules;
 mod session;
 mod session_rules;
 
 pub use crate::events::script_call_failed::ScriptCallFailed;
 pub use crate::match_build::MatchBuild;
+pub use crate::player_slot_rules::error::PlayerSlotRuleError;
 pub use crate::replay::Replay;
 pub use crate::replay::error::ReplayError;
-pub use crate::seat_rules::error::SeatRuleError;
-pub use crate::session::Session;
 pub use crate::session::error::{
-    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefusal, SnapshotCheckError,
-    StartError,
+    CheckpointBeginError, ResultMismatch, ResumeError, SaveLoadError, ServerInputRefusal,
+    SnapshotCheckError, StartError,
 };
 pub use crate::session::session_source::{ResumeAt, SessionSource, UncheckedSource};
 pub use crate::session::session_world::SessionWorld;
+pub use crate::session::{PlayerSlotFor, Session};
 pub use crate::session_rules::error::TermsError;
 pub use crate::session_rules::{CheckedTerms, HostChoices, SessionRules};
 

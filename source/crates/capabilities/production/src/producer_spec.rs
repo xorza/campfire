@@ -1,7 +1,7 @@
 use std::num::NonZeroU8;
 
 use campfire_common::Ticks;
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_values::UnitType;
 
 use crate::frame_point::FramePoint;
@@ -37,6 +37,6 @@ impl ProducerSpec {
     }
 }
 
-impl PerType for ProducerSpec {
+impl PerId<UnitType> for ProducerSpec {
     const SCRIPTS_ONLY: bool = false;
 }

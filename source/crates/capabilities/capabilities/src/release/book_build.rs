@@ -1,7 +1,5 @@
-use campfire_actions::LoadoutRanks;
-use campfire_declarations::{BookCx, BookError, BookSource, ByType, Given};
-use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeTeams, ModeUnits};
-use campfire_navigation::{Walker, WalkerKinds};
+use campfire_declarations::{BookCx, BookError, BookSource, Given};
+use campfire_mode::{ModeInputs, ModeTeams};
 use campfire_stats::MoveSpeedCap;
 use campfire_units::UnitTypes;
 
@@ -18,28 +16,11 @@ impl Release {
     pub fn books(input: &BookInput<'_>) -> Result<Books, BookError> {
         Self::with_cx(input, |mut cx| {
             cx.build_all()?;
-            let units = cx.take_fact::<ModeUnits>()?.unwrap_or_default();
-            let map = cx
-                .take_fact::<ModeMap>()?
-                .expect("the mode's core resolves its map");
-            let loadout_ranks = cx.take_fact::<LoadoutRanks>()?.map_or(1, |ranks| ranks.0);
-            let built = cx.into_books();
-            let walkers = built.get::<ByType<Walker>>();
-            let walkers: WalkerKinds = walkers
-                .into_iter()
-                .flat_map(ByType::values)
-                .copied()
-                .collect();
+            let inputs = ModeInputs::take(&mut cx)?;
             Ok(Books {
-                built,
-                inputs: ModeInputs {
-                    units,
-                    load: ModeLoad {
-                        map,
-                        walkers,
-                        loadout_ranks,
-                    },
-                },
+                built: cx.into_books(),
+                inputs,
+                set: input.set,
             })
         })
     }

@@ -4,9 +4,9 @@ use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf, OnEnd, OnHit, Reached,
 };
-use campfire_script::{CallStart, ScriptValue, ScriptsWorld};
-use campfire_sim::{SimTick, SimWorld};
-use campfire_units::{HitHandle, Owner};
+use campfire_script::{ActionCast, CallStart, ScriptValue, ScriptsWorld};
+use campfire_sim::{SimTick, StableId};
+use campfire_units::{HitHandle, UnitsWorld};
 
 use crate::delivered::{Delivered, DeliveredPayload};
 use crate::delivery_queue::DeliveryQueue;
@@ -47,7 +47,8 @@ impl DeliveryHooks {
 
     /// Runs the hooks of `due`, in order: each with its action's params at its rank, its caster,
     /// `()` once gone, its target, `()` for an end, and its hit, from its caster's player's pool,
-    /// or the think pool. The action's list for the hook queues first, to the unit reached; a hook
+    /// or the think pool, for the delivery unit's allegiance, its caster's as it launched, or a
+    /// dash's caster's. The action's list for the hook queues first, to the unit reached; a hook
     /// its action's script does not define does not run, and its list applies alone. A launch's
     /// area runs its launch's list alone, and no hook. A failed call changes nothing, its list
     /// included, and is recorded.
@@ -83,19 +84,26 @@ impl DeliveryHooks {
                 if script.is_none() && lists.of(of).is_empty() {
                     continue;
                 }
+                let delivery = hit.delivery.map_or(by.source, StableId::from);
+                let allegiance = batch
+                    .world()
+                    .allegiance_of(delivery)
+                    .expect("a delivery's unit stays until its hooks ran");
                 let view = ctx.view();
                 let caster = view.unit_value(Some(by.source));
                 let target = view.unit_value(reach.unit());
-                let owner = batch
-                    .world()
-                    .entity_of(by.source)
-                    .and_then(|entity| batch.world().get::<Owner>(entity))
-                    .map(|owner| owner.seat());
+                let cast = ActionCast {
+                    action: by.action,
+                    rank: by.rank,
+                    caster: by.source,
+                    allegiance,
+                    package,
+                };
                 let start = CallStart {
                     hit: Some(hit),
                     start: by.start,
-                    payer: owner,
-                    ..CallStart::cast(by.action, by.rank, by.source, package, now)
+                    payer: allegiance.owner,
+                    ..CallStart::cast(cast, now)
                 };
                 batch.answer(start, hook, Some(by.source), |batch| {
                     let reached = reach.unit().map_or(ActionTarget::None, ActionTarget::Unit);

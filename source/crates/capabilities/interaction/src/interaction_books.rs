@@ -1,10 +1,10 @@
 use std::mem;
 
 use campfire_actions::{ActionBook, ActionSlots, SlotKind, SlotKindBook};
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder};
 use campfire_script::{Filter, UnknownName};
 use campfire_units::UnitTypes;
-use campfire_values::{ActionId, Named};
+use campfire_values::{ActionId, Named, UnitType};
 
 use crate::Interaction;
 use crate::use_data::UseData;
@@ -16,9 +16,9 @@ impl Interaction {
     /// Adds each use slot to its unit type's slots, empty, of its slot kind.
     pub(crate) fn use_slots(
         cx: &BookCx<'_>,
-        slots: &mut ByType<ActionSlots>,
+        slots: &mut ById<UnitType, ActionSlots>,
     ) -> Result<(), BookError> {
-        let uses = cx.book::<ByType<UseSlot>>()?;
+        let uses = cx.book::<ById<UnitType, UseSlot>>()?;
         let mut built = mem::take(slots).reopen();
         for unit in cx.standing() {
             let Some(uses) = uses.get(unit.unit_type) else {
@@ -36,10 +36,10 @@ impl Interaction {
 impl UseSpec {
     /// The use of each object type that stands, its action among its package's and its users
     /// among the match's tags; an error for a name the package or the match does not have.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let actions = cx.book::<ActionBook>()?;
         let tags = cx.fact::<UnitTypes>()?.tags();
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<UseData>() else {
                 continue;
@@ -62,9 +62,9 @@ impl UseSpec {
 impl UseSlot {
     /// The use slot of each user type that stands, of its slot kind; an error for a kind the mode
     /// does not declare.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let kinds = &cx.book::<SlotKindBook>()?.0;
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<UsesData>() else {
                 continue;

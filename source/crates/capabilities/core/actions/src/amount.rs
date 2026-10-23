@@ -17,7 +17,7 @@ pub enum Amount {
 impl Amount {
     /// `number`, which its effect list's book holds a sim number, its param resolved by
     /// `names`; an error for a param its action does not declare.
-    pub fn of(number: &Number, names: &dyn EffectNames) -> Result<Self, UnknownName> {
+    pub fn of(number: &Number, names: EffectNames<'_>) -> Result<Self, UnknownName> {
         Ok(match number {
             Number::Value(value) => Self::Value(
                 value

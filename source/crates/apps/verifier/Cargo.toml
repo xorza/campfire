@@ -11,6 +11,7 @@ kind = "app"
 [features]
 internals = [
     "campfire-log/internals",
+    "campfire-logging/internals",
     "campfire-package/internals",
     "campfire-package-disk/internals",
     "campfire-protocol/internals",
@@ -21,7 +22,8 @@ internals = [
 
 [dependencies]
 campfire-common.workspace = true
-campfire-log = { workspace = true, features = ["start"] }
+campfire-log.workspace = true
+campfire-logging.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
 campfire-protocol.workspace = true

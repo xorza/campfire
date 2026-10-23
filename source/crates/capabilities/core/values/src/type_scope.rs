@@ -1,3 +1,4 @@
+use crate::names::MatchScope;
 use crate::package_index::PackageIndex;
 
 /// Where a unit type's name is seen. The mode's scope holds the mode's types and each avatar's,
@@ -9,6 +10,11 @@ pub enum TypeScope {
     Mode,
     /// The package of this index, another than the mode.
     Package(PackageIndex),
+}
+
+/// The mode's types are the match's own names; a package's are its own.
+impl MatchScope for TypeScope {
+    const MATCH: Option<Self> = Some(Self::Mode);
 }
 
 impl TypeScope {

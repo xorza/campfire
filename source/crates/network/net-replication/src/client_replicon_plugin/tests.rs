@@ -1,8 +1,10 @@
 use super::*;
+use crate::fixtures::protocol::CompA;
 use crate::fixtures::replication_stack::ReplicationStack;
 use crate::fixtures::steps::ClientCopies;
 use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::replication_target::Replicate;
+use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_core::NetTick;
 use campfire_net_stepper::Stepper;
@@ -232,6 +234,8 @@ fn removing_the_receiver_cleans_up_as_a_disconnect_does() {
         stepper.client_world(0).get_entity(client_entity).is_err(),
         "Non-persistent replicated entity should be despawned on receiver removal"
     );
+    // The confirmed ticks clear with replicon's reset, in the next frame's state transition.
+    stepper.frame_step(1);
     assert_eq!(
         stepper
             .client_world(0)
@@ -282,6 +286,8 @@ fn despawning_a_persistent_receiver_keeps_its_entities() {
         stepper.client_world(0).get_entity(client_entity).is_ok(),
         "Persistent receiver should preserve entities while it is despawned"
     );
+    // The confirmed ticks clear with replicon's reset, in the next frame's state transition.
+    stepper.frame_step(1);
     assert_eq!(
         stepper
             .client_world(0)
@@ -337,4 +343,51 @@ fn the_receive_set_holds_replicons_receive() {
         .unwrap();
     assert!(!replicon.is_empty());
     assert!(replicon.iter().all(|system| stack.contains(system)));
+}
+
+/// A link that fails and comes back at once starts its replication afresh: replicon's reset and
+/// the confirmed ticks' clear run in one transition, so the client never holds a confirmed tick of
+/// the old link that the new one did not map, and the server's mutations reach it again.
+#[test]
+fn a_link_that_comes_back_at_once_starts_its_replication_afresh() {
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
+    let server_entity = stepper
+        .server_world_mut()
+        .spawn((Replicate::to_clients(NetworkTarget::All), CompA(0.0)))
+        .id();
+    let mutate = |stepper: &mut Stepper<ReplicationStack>, value: f32| {
+        stepper
+            .server_world_mut()
+            .entity_mut(server_entity)
+            .insert(CompA(value));
+        stepper.frame_step(PROPAGATION_FRAMES);
+    };
+    let held = |stepper: &Stepper<ReplicationStack>| {
+        let copy = stepper.client_copy(0, server_entity)?;
+        stepper.client_world(0).get::<CompA>(copy).cloned()
+    };
+    stepper.frame_step(PROPAGATION_FRAMES);
+    for value in [1.0, 2.0] {
+        mutate(&mut stepper, value);
+    }
+    assert_eq!(held(&stepper), Some(CompA(2.0)));
+    assert!(
+        stepper
+            .client_world(0)
+            .resource::<ConfirmedTickMap>()
+            .last_confirmed_tick()
+            .is_some()
+    );
+
+    stepper.disconnect(0);
+    stepper.reconnect(0);
+    stepper.frame_step(10);
+    for value in [3.0, 4.0] {
+        mutate(&mut stepper, value);
+    }
+    assert_eq!(held(&stepper), Some(CompA(4.0)));
+    let world = stepper.client_world(0);
+    let replicon = world.resource::<ServerMutateTicks>().last_confirmed_tick();
+    let mapped = world.resource::<ConfirmedTickMap>().last_confirmed();
+    assert_eq!(mapped.map(|confirmed| confirmed.replicon_tick), replicon);
 }

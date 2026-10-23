@@ -86,7 +86,7 @@ impl ModifierWays {
                     continue;
                 };
                 let by = ways.actions_of(package, id.as_str(), actions);
-                let given = by.flat_map(|(_, action)| action.params.keys());
+                let given = by.flat_map(|(_, action)| action.keys.params.keys());
                 let readable: BTreeSet<&DeclaredName> =
                     modifier.params.keys().chain(given).collect();
                 let params = ScriptParams::Named(readable.into_iter().cloned().collect());
@@ -135,7 +135,9 @@ impl ModifierWays {
                     // modifier's numbers read it, here; where its script does, as the script's
                     // checks find it.
                     let declared = modifier.params.contains_key(param)
-                        || by.iter().any(|action| action.params.contains_key(param));
+                        || by
+                            .iter()
+                            .any(|action| action.keys.params.contains_key(param));
                     if !declared {
                         if number {
                             let name = UnknownName::new(Param::NAMES, param);
@@ -176,7 +178,7 @@ impl ModifierWays {
                         }));
                     }
                 }
-                let appliers = by.iter().map(|action| &action.params);
+                let appliers = by.iter().map(|action| &action.keys.params);
                 modifier
                     .check_signs(appliers)
                     .map_err(|problem| fail(AppliedError::Sign(problem)))?;
@@ -206,7 +208,12 @@ impl ModifierWays {
                         continue;
                     };
                     for (action, data) in ways.actions_of(package, id.as_str(), actions) {
-                        let reads = data.params.get(name).into_iter().flat_map(Param::stats);
+                        let reads = data
+                            .keys
+                            .params
+                            .get(name)
+                            .into_iter()
+                            .flat_map(Param::stats);
                         for read in reads {
                             graph.add(read, changed).map_err(|error| {
                                 let (table, name, unknown) = match error {
@@ -279,7 +286,7 @@ impl ParamRead<'_> {
             let given = match way {
                 Way::Action(action) => actions
                     .get(action)
-                    .and_then(|action| action.params.get(self.param)),
+                    .and_then(|action| action.keys.params.get(self.param)),
                 Way::NoAction => None,
             };
             let given = given.ok_or((Some(way), ParamProblem::Missing))?;

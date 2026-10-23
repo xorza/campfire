@@ -31,7 +31,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `enemies` | `(team: text)`, `team` a team, gives a list of team names | every role | core | since 1.0 | the playing teams' names that `team` may attack, hostile or neutral, in order |
 | `every` | `(name: text, ms: ms)` or `(name: text, ms: ms, data: any)`, `name` a timer | mode | core | since 1.0 | calls `on_timer` as `after` does, and again each `ms` after, until its cancel |
 | `find` | `(of: Unit, position: Vector, radius: Num, filter: text)`, `filter` a filter | every role of the sim | core | since 1.0 | the living targets whose bodies come within `radius` of `position`, as an area's, that `filter` selects for `of`, seen or not, by stable id |
-| `find_visible` | `(of: Unit, position: Vector, radius: Num, filter: text)`, `filter` a filter | every role | core | since 1.0 | as `find`, of the units `of`'s team sees, every unit in a match with no vision; a bot's `of` is its own |
+| `find_visible` | `(of: Unit, position: Vector, radius: Num, filter: text)`, `filter` a filter | every role | core | since 1.0 | as `find`, of the units `of`'s team sees, every unit in a match with no vision; a bot's `of` is of its team's vision group |
 | `generate` | `(region)` | mode | core | planned | builds the map's region `region` through `on_generate` |
 | `give_item` | `(unit, id)` | every role of the sim | items | planned | gives `unit` the item `id`, in its first slot that takes it |
 | `grant` | `(unit: Unit, kind: text, ids: array)`, `kind` a slot kind | mode | abilities | since 1.0 | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
@@ -41,11 +41,11 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `kill` | `(unit: Unit)` | mode | combat | since 1.0 | takes `unit`'s life whole: it dies as the next tick's deaths find it, with no killer; nothing for a unit that does not live |
 | `knock_back` | `(unit: Unit, from: Vector, distance: Num, ms: ms)` | every role of the sim | navigation | since 1.0 | moves `unit` `distance` straight away from `from` over `ms` |
 | `land` | `(position: Vector)` | action | areas | since 1.0 | lands one more of the action's areas at `position`, its own cast; the new area, which spawns later in the tick |
-| `launch` | `(from: Vector, direction: Vector or Unit)` or `(from: Vector, unit: Vector or Unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, homing on `unit` for a homing type, or on a curve to `unit`'s center for a curve type; the new projectile, which spawns later in the tick |
+| `launch` | `(from: Vector, to: Vector or Unit)` or `(from: Vector, unit: Vector or Unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along the direction `to` for a line type, homing on `unit` for a homing type, or on a curve or steered to `unit`'s center or to the point `to` for a curve or a steered type; the new projectile, which spawns later in the tick |
 | `learn` | `(avatar: Unit, slot: int)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
 | `may_start` | `(unit: Unit, action: text)` | bot | orders | since 1.0 | whether `unit`, the bot's own, may start the train or the build of its slot that holds the action `action`, of any package, as the think began, as the order's own checks find it; a build's place its order finds |
-| `nearest_visible` | `(of: Unit, radius: Num, filter: text)`, `filter` a filter | every role | core | since 1.0 | the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, every unit in a match with no vision, `()` with none; a bot's `of` is its own |
+| `nearest_visible` | `(of: Unit, radius: Num, filter: text)`, `filter` a filter | every role | core | since 1.0 | the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, every unit in a match with no vision, `()` with none; a bot's `of` is of its team's vision group |
 | `offers` | `(choice: text)`, `choice` a choice | mode, bot | core | since 1.0 | the values `choice` offers, in order: the avatars in the order of the mode's dependencies, the loadout entries by id, or the values it lists |
 | `order` | `(units: array, directive: map)` | bot | orders | since 1.0 | gives `units`, a list of the bot's own, the order `directive`, a table as an order script's `directive` writes it, once the think returns |
 | `order_action` | `(slot, target)` | AI | orders | planned | the unit that thinks casts the action in its slot `slot` at `target`, as a player's action order does |
@@ -115,12 +115,12 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
-| `aimed` | read | abilities | since 1.0 | the unit the action aimed at, `()` with none |
-| `delivery` | read | abilities | since 1.0 | the projectile or area unit that delivered it, `()` when at once or gone |
-| `direction` | read | abilities | since 1.0 | the direction its delivery flew in, `()` for an area or a delivery that did not move |
-| `distance` | read | abilities | since 1.0 | how far its delivery flew |
+| `aimed` | read | core | since 1.0 | the unit the action aimed at, `()` with none |
+| `delivery` | read | core | since 1.0 | the projectile or area unit that delivered it, `()` when at once or gone |
+| `direction` | read | core | since 1.0 | the direction its delivery flew in, `()` for an area or a delivery that did not move |
+| `distance` | read | core | since 1.0 | how far its delivery flew |
 | `part` | read | hitboxes | planned | the body part a ray or a sweep struck, `()` with none |
-| `position` | read | abilities | since 1.0 | where it hit, or where its delivery ended |
+| `position` | read | core | since 1.0 | where it hit, or where its delivery ended |
 
 ## Map, `ctx.map`
 
@@ -160,10 +160,10 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | --- | --- | --- | --- | --- |
 | `!=` | operator | core | since 1.0 | whether the two are two players |
 | `==` | operator | core | since 1.0 | whether the two are one player |
+| `held` | read | core | since 1.0 | whether a player or a bot held its slot as the match started |
 | `is_out` | read | core | since 1.0 | whether it is out of play, as the last tick's end derived it |
+| `player_slot` | read | core | since 1.0 | its player slot's place, from 0 |
 | `resource` | `(name: text)`, `name` a player resource | core | since 1.0 | the amount of the player resource `name` it holds, with the call's changes |
-| `seat` | read | core | since 1.0 | its seat's place, from 0 |
-| `seated` | read | core | since 1.0 | whether a player or a bot held its slot as the match started |
 | `state` | read | core | since 1.0 | its script state, by name, as the mode's `[player_state]` declares it, which a call may write and read back |
 | `supply_cap` | read | production | since 1.0 | what its living, complete units give of supply, at most the mode's `max` |
 | `supply_used` | read | production | since 1.0 | what its living units and queued trains use of its supply |
@@ -264,7 +264,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `on_site_complete(ctx, unit)` | mode | production | since 1.0 |
 | `on_system(ctx, units)` | mode | core | planned |
 | `on_timer(ctx, name, data)` | mode | core | since 1.0 |
-| `on_unit_death(ctx, unit, killer, assisters)` | mode | core | since 1.0 |
+| `on_unit_death(ctx, unit, killer, assisters)` | mode | combat | since 1.0 |
 | `on_unit_trained(ctx, unit, producer)` | mode | production | since 1.0 |
 | `on_think(ctx, unit)` | AI | orders | since 1.0 |
 | `on_bot_think(ctx)` | bot | core | since 1.0 |
@@ -295,6 +295,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `state` | core | since 1.0 |
 | `collision` | core | since 1.0 |
 | `bounty` | core | since 1.0 |
+| `income` | core | since 1.0 |
 | `slots` | core | since 1.0 |
 | `pools` | stats | since 1.0 |
 | `stats` | stats | since 1.0 |
@@ -394,7 +395,6 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Field | Capability | Status |
 | --- | --- | --- |
 | `name` | core | since 1.0 |
-| `kind` | core | since 1.0 |
 | `script` | core | since 1.0 |
 | `targeting` | core | since 1.0 |
 | `range` | core | since 1.0 |
@@ -410,14 +410,16 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `charging` | core | since 1.0 |
 | `passive_modifier` | core | since 1.0 |
 | `passive_while_ready` | core | since 1.0 |
-| `delivery` | core | since 1.0 |
 | `params` | core | since 1.0 |
 | `on_resolve` | core | since 1.0 |
 | `on_hit` | core | since 1.0 |
 | `on_end` | core | since 1.0 |
+| `delivery` | core | since 1.0 |
+| `kind` | core | since 1.0 |
 | `rate` | combat | since 1.0 |
 | `rate_bonus` | combat | since 1.0 |
 | `damage` | combat | since 1.0 |
+| `damage_bonus` | combat | since 1.0 |
 | `damage_kind` | combat | since 1.0 |
 | `amount` | combat | since 1.0 |
 | `period_ms` | combat | since 1.0 |
@@ -427,6 +429,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `pitch_deg` | combat | since 1.0 |
 | `speed` | combat | since 1.0 |
 | `streak` | combat | since 1.0 |
+| `pre_attack` | combat | since 1.0 |
 | `unit_type` | production | since 1.0 |
 | `requires` | production | since 1.0 |
 | `variants` | production | since 1.0 |

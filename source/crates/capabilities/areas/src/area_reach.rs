@@ -1,5 +1,5 @@
 use bevy_ecs::system::{Res, SystemParam};
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_math::Num;
 use campfire_values::UnitType;
 
@@ -9,7 +9,7 @@ use crate::area_spec::AreaSpec;
 /// the client draws it.
 #[derive(SystemParam, Debug)]
 pub struct AreaReach<'w> {
-    specs: Res<'w, ByType<AreaSpec>>,
+    specs: Res<'w, ById<UnitType, AreaSpec>>,
 }
 
 impl AreaReach<'_> {

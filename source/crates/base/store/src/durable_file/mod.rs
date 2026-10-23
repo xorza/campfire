@@ -1,11 +1,11 @@
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, BufWriter, IntoInnerError, Write};
 use std::path::{Path, PathBuf};
 
 use crate::durable_file::error::{DurableCreateError, DurableError};
 use crate::path_error::PathError;
-use crate::platform::durable_name::DurableName;
-use crate::platform::user_only::UserOnly;
+use campfire_platform::DurableName;
+use campfire_platform::UserOnly;
 
 pub(crate) mod error;
 
@@ -32,6 +32,23 @@ impl DurableFile {
     /// directory's.
     pub fn write(path: &Path, bytes: &[u8]) -> Result<(), PathError<DurableError>> {
         Self::write_case(path, bytes).map_err(PathError::at(path))
+    }
+
+    /// Replaces the file at `path`, or makes it, as `write` does, with the bytes `fill` writes
+    /// into it as it goes, through a buffer, so a file of any length takes no more memory than
+    /// the buffer: a long log, as a session's published one. An error `fill` gives fails the write
+    /// as `Write`.
+    pub fn write_with(
+        path: &Path,
+        fill: &mut dyn FnMut(&mut dyn Write) -> io::Result<()>,
+    ) -> Result<(), PathError<DurableError>> {
+        let mut durable = || {
+            let mut temporary = Self::fill_beside(path, ".part", fill)?;
+            DurableName::rename(&temporary.path, path).map_err(DurableError::Rename)?;
+            temporary.named = true;
+            DurableName::sync_dir(temporary.directory).map_err(DurableError::SyncDir)
+        };
+        durable().map_err(PathError::at(path))
     }
 
     /// `write`, whose error its caller names the path of.
@@ -84,6 +101,16 @@ impl DurableFile {
         suffix: &str,
         bytes: &[u8],
     ) -> Result<Temporary<'a>, DurableError> {
+        Self::fill_beside(path, suffix, &mut |file| file.write_all(bytes))
+    }
+
+    /// Writes what `fill` writes, through a buffer, to a new temporary file beside `path`, as
+    /// `write_beside` writes its bytes, and syncs it.
+    fn fill_beside<'a>(
+        path: &'a Path,
+        suffix: &str,
+        fill: &mut dyn FnMut(&mut dyn Write) -> io::Result<()>,
+    ) -> Result<Temporary<'a>, DurableError> {
         let directory = path.parent().ok_or(DurableError::NoName)?;
         let temporary = Self::beside(path, suffix)?;
         match fs::remove_file(&temporary) {
@@ -91,18 +118,19 @@ impl DurableFile {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(DurableError::RemoveStale(error)),
         }
-        let mut file = UserOnly::create_new(&temporary).map_err(DurableError::Create)?;
+        let file = UserOnly::create_new(&temporary).map_err(DurableError::Create)?;
         let temporary = Temporary {
             directory,
             path: temporary,
             named: false,
         };
-        let written = file
-            .write_all(bytes)
+        let mut buffered = BufWriter::new(file);
+        // The file closes as its sync ends, or with the buffer on an error, before the temporary
+        // is named or removed, so no handle of it is open then.
+        let written = fill(&mut buffered)
+            .and_then(|()| buffered.into_inner().map_err(IntoInnerError::into_error))
             .map_err(DurableError::Write)
-            .and_then(|()| file.sync_all().map_err(DurableError::Sync));
-        // Closed before the temporary is named or removed, so no handle of it is open then.
-        drop(file);
+            .and_then(|file| file.sync_all().map_err(DurableError::Sync));
         written?;
         Ok(temporary)
     }

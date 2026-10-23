@@ -5,9 +5,10 @@ use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 
 use campfire_actions::{
-    ActionData, DeliveryData, EffectData, KindSections, ListedEffects, PlannedEffect, SlotKindData,
+    ActionData, DeliverySections, EffectData, KindSections, ListedEffects, PlannedEffect,
+    SlotKindData,
 };
-use campfire_areas::{AreaData, AreaInsideData};
+use campfire_areas::{AreaData, AreaDeliveryData, AreaInsideData};
 use campfire_capabilities::Release;
 use campfire_codec::StructFields;
 use campfire_combat::{
@@ -28,7 +29,7 @@ use campfire_production::{
     SupplyData, TrainData,
 };
 use campfire_progression::TrackData;
-use campfire_projectiles::ProjectileData;
+use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_script::*;
 use campfire_sim::Capability;
 use campfire_stats::{AuraData, ModifierData, ModifierHandle};
@@ -283,6 +284,10 @@ type Misuse = (fn(&mut ScriptApi), &'static str);
 type BindMisuse = (fn(&mut ApiBuilder<'_>), &'static str);
 
 /// A binding of `spec`, not written, of `status`, of no output and no types.
+#[expect(
+    clippy::large_types_passed_by_value,
+    reason = "the binding holds the member it takes"
+)]
 const fn binding(decl: MemberDecl, status: Status) -> ApiMember {
     ApiMember {
         decl,
@@ -422,7 +427,7 @@ fn a_binding_records_its_spec_once_and_whole() {
         ),
         (
             |api| {
-                api.own_fields::<DeliveryData>(&["areas"]);
+                api.own_fields::<AreaDeliveryData>(&["areas"]);
             },
             "the fields of An action's `delivery` a module owns are fields of its type",
         ),
@@ -542,6 +547,10 @@ fn the_data_fields_are_the_schemas() {
     action.dedup();
     let mut kind: Vec<&str> = sections.listed_keys::<KindSections>().collect();
     kind.sort_unstable();
+    // A delivery's keys are each form's own.
+    let mut delivery = serde_fields::<ProjectileDeliveryData>();
+    delivery.extend(serde_fields::<AreaDeliveryData>());
+    delivery.sort_unstable();
     let mut effect: Vec<&str> = sections.listed_keys::<ListedEffects>().collect();
     effect.extend(PlannedEffect::ALL.map(PlannedEffect::name));
     effect.push(EffectData::TO);
@@ -565,7 +574,7 @@ fn the_data_fields_are_the_schemas() {
         (ActionData::TABLE, action),
         (KindSections::TABLE, kind),
         (ListedEffects::TABLE, effect),
-        table::<DeliveryData>(),
+        (DeliverySections::TABLE, delivery),
         table::<ProjectileData>(),
         table::<AreaData>(),
         table::<AreaInsideData>(),

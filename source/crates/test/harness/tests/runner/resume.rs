@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use campfire_common::ErrorReport;
 use campfire_common::{StateHash, Tick};
-use campfire_harness::{FixedMatch, FixedSession, ProvingMatch};
+use campfire_harness::{CheckedMatch, FixedMatch, FixedSession, ProvingMatch};
+use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Checkpoint, SessionLog, SnapshotFingerprint};
 use campfire_runner::{
     Replay, ResumeAt, ResumeError, Session, SessionSource, SessionWorld, SnapshotCheckError,
@@ -35,7 +36,7 @@ impl Checkpointed {
         mut fixed: FixedMatch,
         at: [u64; 3],
         ticks: u64,
-        mut play: impl FnMut(&mut FixedMatch, u64),
+        mut play: impl FnMut(&mut FixedMatch),
     ) -> Self {
         let mut snapshots = Vec::new();
         let mut hashes = Vec::new();
@@ -47,7 +48,7 @@ impl Checkpointed {
                 fixed.checkpoint(&mut snapshot);
                 snapshots.push(snapshot);
             }
-            play(&mut fixed, tick);
+            play(&mut fixed);
             let world = fixed.game();
             hashes.push(fixed.game().state_hash());
             if world
@@ -101,7 +102,7 @@ impl Checkpointed {
                 log,
                 seeds: session.seeds(),
                 packages: session.packages(),
-                signer: Some(Arc::new(FixedSession::server_signer())),
+                signer: Some(Arc::new(TestKey::server_signer())),
             })
             .unwrap();
             let checkpoint_at = ResumeAt { segment, snapshot };
@@ -125,8 +126,8 @@ impl Checkpointed {
 fn the_proving_match_resumes_from_each_checkpoint_to_the_same_hashes() {
     let proving = ProvingMatch::load();
     let at = [100, 250, 400];
-    let run = Checkpointed::run(proving.start(), at, ProvingMatch::TICKS, |fixed, tick| {
-        proving.play_tick(fixed, tick);
+    let run = Checkpointed::run(proving.start(), at, ProvingMatch::TICKS, |fixed| {
+        proving.play_tick(fixed);
     });
     run.check(proving.session(), at);
 }
@@ -136,7 +137,7 @@ fn the_lane_match_resumes_from_each_checkpoint_to_the_same_hashes() {
     let packages = TestMode::Lane.packages();
     let session = FixedSession::new(packages, 2);
     let at = [100, 300, 600];
-    let run = Checkpointed::run(session.start(), at, 900, |fixed, _| {
+    let run = Checkpointed::run(session.start(), at, 900, |fixed| {
         fixed.game_mut().run_tick_alone();
     });
     run.check(&session, at);
@@ -168,7 +169,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
                 record.state_hash = StateHash::new([0; 32]);
             });
         }
-        proving.play_tick(&mut fixed, tick);
+        proving.play_tick(&mut fixed);
     }
     let garbage = checkpoint(&mut fixed, |record, snapshot| {
         *snapshot = b"no snapshot".to_vec();
@@ -182,7 +183,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
             log,
             seeds: proving.session().seeds(),
             packages: proving.packages(),
-            signer: Some(Arc::new(FixedSession::server_signer())),
+            signer: Some(Arc::new(TestKey::server_signer())),
         })
         .unwrap();
         Session::resume_match(source, ResumeAt { segment, snapshot }).err()
@@ -205,20 +206,26 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
 }
 
 #[test]
-fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
-    // A save before tick 100, segment 1, and a checkpoint before tick 150, segment 2.
+fn a_load_drops_the_log_after_its_save_plays_on_as_a_fresh_restore_and_the_published_log_verifies()
+{
+    // A save before tick 100, segment 1, and a checkpoint before tick 150, segment 2; a second
+    // match of the same session to the save, which a fresh restore loads.
     let proving = ProvingMatch::load();
-    let mut fixed = proving.start();
+    let (mut fixed, mut fresh) = (proving.start(), proving.start());
     let mut hashes = Vec::new();
     let mut save = Vec::new();
     for tick in 0..200 {
         if tick == 100 {
             fixed.checkpoint(&mut save);
+            fresh.checkpoint(&mut Vec::new());
         }
         if tick == 150 {
             fixed.checkpoint(&mut Vec::new());
         }
-        proving.play_tick(&mut fixed, tick);
+        proving.play_tick(&mut fixed);
+        if tick < 100 {
+            proving.play_tick(&mut fresh);
+        }
         hashes.push(fixed.game().state_hash());
     }
     let record = fixed
@@ -229,17 +236,28 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
         .unwrap()
         .clone();
 
-    // The load of the save: the match stands before tick 100 again, and plays 50 ticks with no
-    // order, unlike the ticks the load dropped.
+    // The load of the save in place: the match stands before tick 100 again, and plays 50 ticks
+    // with no order, unlike the ticks the load dropped, each to the hash of the fresh restore's.
     let at = ResumeAt {
         segment: 1,
         snapshot: &save,
     };
-    let mut game = Session::load_save(fixed.into_game(), proving.packages(), at).unwrap();
+    let CheckedMatch {
+        mut game,
+        log: _log,
+    } = fixed.into_checked();
+    game.load_save(at).unwrap();
+    let CheckedMatch {
+        game: fresh,
+        log: _fresh_log,
+    } = fresh.into_checked();
+    let mut fresh = Session::resume_save(fresh, proving.packages(), at).unwrap();
     assert_eq!(game.session().log().next_tick(), Tick::new(100));
     assert_eq!(game.state_hash(), hashes[99]);
-    for _ in 100..150 {
+    for tick in 100..150 {
         game.run_tick_alone();
+        fresh.run_tick_alone();
+        assert_eq!(game.state_hash(), fresh.state_hash(), "tick {tick}");
     }
     assert_ne!(game.state_hash(), hashes[149]);
     let result = game.session_result();

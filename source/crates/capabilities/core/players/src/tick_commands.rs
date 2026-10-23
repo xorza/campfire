@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use bevy_ecs::system::{Local, Res, SystemParam};
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_declarations::MatchFacts;
 use campfire_sim::{StableId, TickInputs};
 use campfire_units::Owner;
@@ -33,7 +33,7 @@ pub struct TickCommands<'w, 's, A: CapabilityDirective> {
 /// and its units.
 #[derive(Debug, Clone, Copy)]
 pub struct TickCommand<'a, A> {
-    pub seat: Seat,
+    pub player_slot: PlayerSlot,
     pub number: u32,
     pub directive: A,
     pub units: &'a [StableId],
@@ -41,17 +41,17 @@ pub struct TickCommand<'a, A> {
 
 #[derive(Debug, Clone, Copy)]
 struct Sent {
-    seat: Seat,
+    player_slot: PlayerSlot,
     orders: u32,
 }
 
 impl<A: CapabilityDirective> TickCommands<'_, '_, A> {
     /// Gives `apply` each order of the tick, in input order.
     pub fn for_each(&mut self, mut apply: impl FnMut(TickCommand<'_, A>)) {
-        let spectating = self.facts.out == OutView::Spectators;
+        let spectating = self.facts.visibility.out() == OutView::Spectators;
         self.sent.clear();
         for command in self.inputs.commands(A::CAPABILITY) {
-            if spectating && self.out.of_seat(command.seat).is_some() {
+            if spectating && self.out.of_player_slot(command.player_slot).is_some() {
                 continue;
             }
             self.units.clear();
@@ -59,8 +59,8 @@ impl<A: CapabilityDirective> TickCommands<'_, '_, A> {
                 continue;
             };
             apply(TickCommand {
-                seat: command.seat,
-                number: number(&mut self.sent, command.seat),
+                player_slot: command.player_slot,
+                number: number(&mut self.sent, command.player_slot),
                 directive,
                 units: &self.units,
             });
@@ -71,15 +71,18 @@ impl<A: CapabilityDirective> TickCommands<'_, '_, A> {
 impl<A> TickCommand<'_, A> {
     /// Whether its player controls a unit of `owner`, which alone carries it out.
     pub fn controls(&self, owner: Owner) -> bool {
-        owner.seat() == self.seat
+        owner.player_slot() == self.player_slot
     }
 }
 
-/// The number of `seat`'s next order, counted in `sent`.
-fn number(sent: &mut Vec<Sent>, seat: Seat) -> u32 {
-    let at = sent.iter().position(|sent| sent.seat == seat);
+/// The number of `player_slot`'s next order, counted in `sent`.
+fn number(sent: &mut Vec<Sent>, player_slot: PlayerSlot) -> u32 {
+    let at = sent.iter().position(|sent| sent.player_slot == player_slot);
     let at = at.unwrap_or_else(|| {
-        sent.push(Sent { seat, orders: 0 });
+        sent.push(Sent {
+            player_slot,
+            orders: 0,
+        });
         sent.len() - 1
     });
     let number = sent[at].orders;

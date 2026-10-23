@@ -80,7 +80,7 @@ impl ActionPassives {
             if !(every || changed || visits.binary_search(&entity).is_ok()) {
                 continue;
             }
-            grants.unit(entity, id);
+            let mut run = grants.of(entity, id);
             for (slot, time) in slots.iter().zip(times.iter()) {
                 let Some(action_id) = slot.action else {
                     continue;
@@ -93,7 +93,7 @@ impl ActionPassives {
                     if slot.rank.is_some() && cooling {
                         index.push(time.ready_at, id, entity);
                     }
-                    grants.push(Grant {
+                    run.push(Grant {
                         modifier: passive.modifier,
                         from: GrantFrom::Itself,
                         hold: Hold::Passive,
@@ -105,7 +105,7 @@ impl ActionPassives {
                 // slots, changes.
                 let toggles = action.ranks.iter().any(|rank| rank.toggle.is_some());
                 if let Some(hold) = action.hold.filter(|_| toggles) {
-                    grants.push(Grant {
+                    run.push(Grant {
                         modifier: hold,
                         from: GrantFrom::Itself,
                         hold: Hold::Running,

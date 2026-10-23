@@ -83,6 +83,9 @@ impl<Io: DatagramIo, C: Carrier> EndpointRuntime<Io, C> {
                     .pass(&mut scratch.datagrams, &mut scratch.outbound)
             });
             self.send(&mut scratch.outbound);
+            // A host with work wakes after the hold that gave it, not at the pass's end, which a
+            // flood of datagrams may hold off.
+            self.wake_host();
             if !full && rest.is_empty() {
                 return;
             }
@@ -121,7 +124,6 @@ impl<Io: DatagramIo, C: Carrier> EndpointRuntime<Io, C> {
             };
             self.io.wait(timeout);
             self.pass(&mut scratch);
-            self.wake_host();
         }
     }
 

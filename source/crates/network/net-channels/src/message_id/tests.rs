@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::fragment_body::FragmentBody;
-use crate::fragment_compression::FragmentCompression;
+
 use crate::fragment_count::FragmentCount;
 use crate::fragment_index::FragmentIndex;
 use crate::single_body::SingleBody;
@@ -39,39 +39,21 @@ fn a_single_body_reads_back_in_its_bytes_len() {
     }
 }
 
+/// A fragment body is its id's 2 bytes, a byte each for its index, its count and its length,
+/// and its 10 bytes, 15 in all, the first fragment's as any other's.
 #[test]
 fn a_fragment_body_reads_back_in_its_bytes_len() {
-    let bytes = Bytes::from(vec![0; 10]);
-    let data = FragmentBody {
-        message_id: MessageId(0),
-        fragment_index: FragmentIndex(2),
-        fragments: FragmentCount(3),
-        compression: None,
-        bytes: bytes.clone(),
-    };
-    let mut writer = vec![];
-    data.to_bytes(&mut writer);
-
-    assert_eq!(writer.len(), data.bytes_len());
-
-    let mut reader = writer.into();
-    let decoded = FragmentBody::from_bytes(&mut reader).unwrap();
-    assert_eq!(decoded, data);
-
-    let initial_data = FragmentBody {
-        message_id: MessageId(0),
-        fragment_index: FragmentIndex(0),
-        fragments: FragmentCount(3),
-        compression: Some(FragmentCompression::Lz4),
-        bytes,
-    };
-    let mut writer = vec![];
-    initial_data.to_bytes(&mut writer);
-
-    assert_eq!(writer.len(), initial_data.bytes_len());
-    assert_eq!(initial_data.bytes_len(), data.bytes_len() + 1);
-
-    let mut reader = writer.into();
-    let decoded = FragmentBody::from_bytes(&mut reader).unwrap();
-    assert_eq!(decoded, initial_data);
+    for index in [0, 2] {
+        let data = FragmentBody {
+            message_id: MessageId(0),
+            fragment_index: FragmentIndex(index),
+            fragments: FragmentCount(3),
+            bytes: Bytes::from(vec![0; 10]),
+        };
+        let mut writer = vec![];
+        data.to_bytes(&mut writer);
+        assert_eq!([writer.len(), data.bytes_len()], [15, 15]);
+        let decoded = FragmentBody::from_bytes(&mut writer.into()).unwrap();
+        assert_eq!(decoded, data);
+    }
 }

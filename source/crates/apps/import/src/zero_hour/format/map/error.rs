@@ -40,6 +40,9 @@ pub enum MapReadError {
     /// It holds a chunk twice.
     #[error("it holds a second {0} chunk")]
     Twice(Chunk),
+    /// Its terrain names past what it holds.
+    #[error("its terrain does not hold")]
+    Terrain(#[source] TerrainError),
     /// A chunk is of a version no shipped map has.
     #[error("its {chunk} chunk is version {version}, which the importer does not read")]
     Version { chunk: Chunk, version: u16 },
@@ -89,6 +92,9 @@ pub enum TerrainError {
     /// Its cells fill no whole rows of its columns.
     #[error("its cells fill no whole rows")]
     Shape,
+    /// It holds more tiles, its count, than a cell's tile can name.
+    #[error("it holds {0} tiles, past what a cell names")]
+    Tiles(u32),
     /// A cell, a blend or a cliff's UVs name a tile past its tiles.
     #[error("tile {0} is past its tiles")]
     Tile(u16),

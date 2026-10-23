@@ -2,9 +2,11 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use campfire_common::{DeclaredName, Version};
-use campfire_mode::{ChoiceData, HostPickError, HostPicks, OptionData, OptionPicks, SeatPicks};
+use campfire_mode::{
+    ChoiceData, HostPickError, HostPicks, OptionData, OptionPicks, PlayerSlotPicks,
+};
 use campfire_package::ModePackages;
-use campfire_protocol::{InputRules, SeatPlan, SeedCommitment, SessionTerms};
+use campfire_protocol::{InputRules, PlayerSlotPlan, SeedCommitment, SessionTerms};
 use campfire_visibility::{ModeVisibility, Visibility};
 use secp256k1::XOnlyPublicKey;
 
@@ -12,9 +14,9 @@ use crate::session_rules::error::TermsError;
 
 pub(crate) mod error;
 
-/// What a session's host chooses of its terms beside what its mode's rules fix: the server's
-/// key, the commitment to its seed chain, its tick rate, its input rules, how it opens each seat,
-/// its visibility, and the value it picked of each of the mode's options and of each seat's
+/// What a session's host chooses of its terms beside what its mode's rules fix: the server's key,
+/// the commitment to its seed chain, its tick rate, its input rules, how it opens each player slot,
+/// its visibility, and the value it picked of each of the mode's options and of each player slot's
 /// choices of values.
 #[derive(Debug, Clone)]
 pub struct HostChoices<'a> {
@@ -22,7 +24,7 @@ pub struct HostChoices<'a> {
     pub seed_commitment: SeedCommitment,
     pub tick_hz: NonZeroU32,
     pub inputs: InputRules,
-    pub seats: Vec<SeatPlan>,
+    pub player_slots: Vec<PlayerSlotPlan>,
     pub visibility: &'a Visibility,
     pub picks: &'a HostPicks,
 }
@@ -55,7 +57,7 @@ impl<'p> SessionRules<'p> {
         &self.packages.data().options
     }
 
-    /// The mode's choices, of whose listed values a host picks a seat's.
+    /// The mode's choices, of whose listed values a host picks a player slot's.
     pub const fn choices(&self) -> &'p BTreeMap<DeclaredName, ChoiceData> {
         &self.packages.data().choices
     }
@@ -66,7 +68,7 @@ impl<'p> SessionRules<'p> {
     }
 
     /// The terms of a session by these rules and the host's `choices`; an error when the mode
-    /// does not run at their tick rate, when they plan no seat or more than the mode's teams
+    /// does not run at their tick rate, when they plan no player slot or more than the mode's teams
     /// have, and for a visibility the mode does not admit.
     pub fn terms(&self, choices: HostChoices<'_>) -> Result<SessionTerms, TermsError> {
         let HostChoices {
@@ -74,7 +76,7 @@ impl<'p> SessionRules<'p> {
             seed_commitment,
             tick_hz,
             inputs,
-            seats,
+            player_slots,
             visibility,
             picks,
         } = choices;
@@ -87,20 +89,20 @@ impl<'p> SessionRules<'p> {
             mode: self.packages.fingerprint(),
             map: self.packages.map_name().clone(),
             dependencies: self.packages.dependency_fingerprints().collect(),
-            seats,
+            player_slots,
             visibility: visibility.encode(),
             options: picks.options.places().to_vec(),
-            seat_picks: picks.seats.places().to_vec(),
+            player_slot_picks: picks.player_slots.places().to_vec(),
         };
         self.check(&terms)?;
         Ok(terms)
     }
 
-    /// Whether `terms` name a session by these rules: of this release, of the mode, its map and
-    /// the dependencies, in their order, at a rate the mode runs at, of a seat at least and no
+    /// Whether `terms` name a session by these rules: of this release, of the mode, its map and the
+    /// dependencies, in their order, at a rate the mode runs at, of a player slot at least and no
     /// more than the mode's teams have, and of a visibility and picks the mode admits, which it
-    /// gives. The check is the one way to the terms' visibility and picks, so no reader takes
-    /// them from terms unchecked.
+    /// gives. The check is the one way to the terms' visibility and picks, so no reader takes them
+    /// from terms unchecked.
     pub fn check(&self, terms: &SessionTerms) -> Result<CheckedTerms, TermsError> {
         Self::check_release(terms)?;
         let packages = self.packages;
@@ -118,10 +120,11 @@ impl<'p> SessionRules<'p> {
         {
             return Err(TermsError::OtherDependencies);
         }
-        let seats = u64::try_from(terms.seats.len()).expect("a seat count fits u64");
-        let most = packages.manifest().seats();
-        if seats == 0 || seats > most {
-            return Err(TermsError::Seats { seats, most });
+        let player_slots =
+            u64::try_from(terms.player_slots.len()).expect("a player slot count fits u64");
+        let most = packages.manifest().player_slots();
+        if player_slots == 0 || player_slots > most {
+            return Err(TermsError::PlayerSlots { player_slots, most });
         }
         self.runs_at(terms.tick_hz)?;
         let visibility = Visibility::decode(&terms.visibility).map_err(TermsError::Visibility)?;
@@ -130,9 +133,16 @@ impl<'p> SessionRules<'p> {
         }
         let options =
             OptionPicks::checked(self.options(), &terms.options).map_err(HostPickError::from)?;
-        let seats = SeatPicks::checked(self.choices(), terms.seats.len(), &terms.seat_picks)
-            .map_err(HostPickError::from)?;
-        let picks = HostPicks { options, seats };
+        let player_slots = PlayerSlotPicks::checked(
+            self.choices(),
+            terms.player_slots.len(),
+            &terms.player_slot_picks,
+        )
+        .map_err(HostPickError::from)?;
+        let picks = HostPicks {
+            options,
+            player_slots,
+        };
         Ok(CheckedTerms { visibility, picks })
     }
 

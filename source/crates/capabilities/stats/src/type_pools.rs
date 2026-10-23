@@ -1,10 +1,10 @@
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Fact, NamesListError, SourceType,
+    BookCx, BookError, BookPlace, ById, ByIdBuilder, Fact, NamesListError, SourceType,
 };
 use campfire_math::Num;
 use campfire_script::UnknownName;
-use campfire_units::{Life, Meter, PoolId, PoolNames};
-use campfire_values::{NameId, Named, Stat};
+use campfire_units::{Life, Meter, PoolId};
+use campfire_values::{NameId, Named, Stat, UnitType};
 
 use crate::error::UnitStartError;
 use crate::life_pool::LifePool;
@@ -17,8 +17,8 @@ use crate::type_pools_data::TypePoolsData;
 /// life, of the mode's life pool, and its other pools.
 #[derive(Debug, Default)]
 pub struct TypePools {
-    pub lives: ByType<Life>,
-    pub pools: ByType<Pools>,
+    pub lives: ById<UnitType, Life>,
+    pub pools: ById<UnitType, Pools>,
 }
 
 impl Fact for TypePools {}
@@ -45,11 +45,11 @@ impl TypePools {
     /// or for a maximum the type's stats do not give or give no positive value of.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let stats = cx.book::<StatBook>()?;
-        let names = &cx.fact::<PoolNames>()?.0;
+        let names = cx.names::<PoolId>()?;
         let data = cx.mode_section::<ModePoolsData>();
         let life = cx.fact_if::<LifePool>()?.and_then(|life| life.0);
-        let mut lives = ByTypeBuilder::default();
-        let mut type_pools = ByTypeBuilder::default();
+        let mut lives = ByIdBuilder::default();
+        let mut type_pools = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(pools) = unit.data.section::<TypePoolsData>() else {
                 continue;
@@ -82,12 +82,12 @@ impl TypePools {
     }
 
     /// The life each unit type of the life pool starts with.
-    pub fn lives(cx: &BookCx<'_>) -> Result<ByType<Life>, BookError> {
+    pub fn lives(cx: &BookCx<'_>) -> Result<ById<UnitType, Life>, BookError> {
         Ok(cx.fact::<Self>()?.lives.clone())
     }
 
     /// The pools each unit type that stands starts with but its life.
-    pub fn pools(cx: &BookCx<'_>) -> Result<ByType<Pools>, BookError> {
+    pub fn pools(cx: &BookCx<'_>) -> Result<ById<UnitType, Pools>, BookError> {
         Ok(cx.fact::<Self>()?.pools.clone())
     }
 

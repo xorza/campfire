@@ -9,6 +9,7 @@
 
 mod action_id;
 mod action_start;
+mod allegiance;
 mod bits256;
 mod block;
 mod damage_kind;
@@ -29,6 +30,7 @@ mod package_index;
 mod package_path;
 mod param;
 mod path_id;
+mod player_view;
 mod rank;
 mod ranked;
 mod relation;
@@ -55,6 +57,7 @@ mod unit_type;
 
 pub use crate::action_id::ActionId;
 pub use crate::action_start::ActionStart;
+pub use crate::allegiance::Allegiance;
 pub use crate::bits256::Bits256;
 pub use crate::block::Block;
 pub use crate::damage_kind::DamageKind;
@@ -69,12 +72,13 @@ pub use crate::item_id::ItemId;
 pub use crate::modifier_id::ModifierId;
 pub use crate::name_kind::{Article, NameKind, NameScope, Named};
 pub use crate::name_table::NameTable;
-pub use crate::names::{NameId, NameKey, Names};
+pub use crate::names::{MatchScope, NameId, NameKey, Names};
 pub use crate::number::{Number, ParamRef};
 pub use crate::package_index::PackageIndex;
 pub use crate::package_path::PackagePath;
 pub use crate::param::{Param, Scaling};
 pub use crate::path_id::PathId;
+pub use crate::player_view::PlayerView;
 pub use crate::rank::Rank;
 pub use crate::ranked::Ranked;
 pub use crate::relation::Relation;

@@ -5,9 +5,8 @@ use bevy_math::Vec2;
 use campfire_client_files::{CameraFile, CameraHeight};
 
 use crate::zero_hour::format::ini::game_data_ini::GameDataIni;
+use crate::zero_hour::game_time;
 
-/// The game's frames a second, which its camera's speeds count by.
-const FRAMES: f32 = 30.0;
 /// The view's horizontal field of view, in degrees, which `View` fixes.
 const FIELD_OF_VIEW: f32 = 50.0;
 /// The tangent of half the field of view, which a camera's speeds are in the import's
@@ -39,7 +38,12 @@ const EDGE: f32 = 3.0;
 pub(crate) fn camera_file(data: &GameDataIni) -> Option<CameraFile> {
     let plane = 2.0 * TAN_HALF_FIELD / DISPLAY_WIDTH;
     let speed = |factor: f32| {
-        factor * SCROLL_PIXELS * data.default_scroll * SCROLL_RESOLUTION * plane * FRAMES
+        factor
+            * SCROLL_PIXELS
+            * data.default_scroll
+            * SCROLL_RESOLUTION
+            * plane
+            * game_time::FRAMES_PER_SECOND
     };
     CameraFile {
         pitch: data.camera_pitch.clamp(0.1, 89.9),
@@ -50,10 +54,10 @@ pub(crate) fn camera_file(data: &GameDataIni) -> Option<CameraFile> {
             most: data.max_camera_height.max(data.min_camera_height),
         },
         scroll: Vec2::new(speed(data.horizontal_scroll), speed(data.vertical_scroll)),
-        turn: data.rotate_speed * FRAMES,
+        turn: data.rotate_speed * game_time::FRAMES_PER_SECOND,
         drag_turn: DRAG_TURN,
         zoom_notch: ZOOM_HEIGHT,
-        zoom_key: ZOOM_HEIGHT * FRAMES,
+        zoom_key: ZOOM_HEIGHT * game_time::FRAMES_PER_SECOND,
         edge: EDGE,
     }
     .checked()

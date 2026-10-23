@@ -63,33 +63,22 @@ impl<'w> CarriedMut<'w> {
     /// See `Modifiers::release`.
     pub(crate) fn release(&mut self, id: ModifierId, source: Option<StableId>, hold: Hold) {
         let Parts { modifiers, clocks } = self.parts();
-        modifiers.release(clocks, id, source, hold);
-        self.mark(Touched {
-            stats: true,
-            clocks: true,
-        });
+        let touched = modifiers.release(clocks, id, source, hold);
+        self.mark(touched);
     }
 
     /// See `Modifiers::remove`.
     pub fn remove(&mut self, id: ModifierId, source: Option<StableId>) {
         let Parts { modifiers, clocks } = self.parts();
-        if modifiers.remove(clocks, id, source) {
-            self.mark(Touched {
-                stats: true,
-                clocks: true,
-            });
-        }
+        let touched = modifiers.remove(clocks, id, source);
+        self.mark(touched);
     }
 
     /// See `Modifiers::purge`.
     pub(crate) fn purge(&mut self, grants: impl Fn(ModifierId) -> bool) {
         let Parts { modifiers, clocks } = self.parts();
-        if modifiers.purge(clocks, grants) {
-            self.mark(Touched {
-                stats: true,
-                clocks: true,
-            });
-        }
+        let touched = modifiers.purge(clocks, grants);
+        self.mark(touched);
     }
 
     /// See `Modifiers::expire`.
@@ -110,22 +99,15 @@ impl<'w> CarriedMut<'w> {
     /// See `Modifiers::clear_on_death`.
     pub(crate) fn clear_on_death(&mut self) {
         let Parts { modifiers, clocks } = self.parts();
-        modifiers.clear_on_death(clocks);
-        self.mark(Touched {
-            stats: true,
-            clocks: true,
-        });
+        let touched = modifiers.clear_on_death(clocks);
+        self.mark(touched);
     }
 
     /// See `Modifiers::release_held`.
     pub(crate) fn release_held(&mut self, holds: impl FnMut(ModifierId, Option<StableId>) -> bool) {
         let Parts { modifiers, clocks } = self.parts();
-        if modifiers.release_held(clocks, holds) {
-            self.mark(Touched {
-                stats: true,
-                clocks: true,
-            });
-        }
+        let touched = modifiers.release_held(clocks, holds);
+        self.mark(touched);
     }
 
     /// See `ModifierClocks::advance_intervals`; the unit is pushed at its next interval, as the
@@ -175,17 +157,21 @@ impl<'w> CarriedMut<'w> {
         let Some(at) = self.modifiers.position(id, source) else {
             return;
         };
-        if self
+        let changes = self
             .modifiers
             .get(id, source)
-            .is_some_and(|held| held.stacks != stacks)
-        {
-            self.modifiers.set_stacks(id, source, stacks, now);
-        }
-        if self.clocks.state(at) != state {
+            .is_some_and(|held| held.stacks != stacks);
+        let touched = if changes {
+            let Parts { modifiers, clocks } = self.parts();
+            modifiers.set_stacks(clocks, id, source, stacks, now)
+        } else {
+            Touched::default()
+        };
+        let ended = self.modifiers.position(id, source).is_none();
+        if !ended && self.clocks.state(at) != state {
             self.clocks.set_state(at, state);
         }
-        self.dues.push(&self.modifiers, &self.clocks);
+        self.mark(touched);
     }
 
     fn parts(&mut self) -> Parts<'_> {
@@ -234,6 +220,31 @@ impl<'w> CarriedMut<'w> {
 struct Parts<'a> {
     modifiers: &'a mut Modifiers,
     clocks: &'a mut ModifierClocks,
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_common::Tick;
+    use campfire_sim::StableId;
+    use campfire_values::ModifierId;
+
+    use crate::carried_mut::{CarriedMut, Parts};
+
+    impl CarriedMut<'_> {
+        /// Writes `stacks` of the instance of `id` from `source` in tick `now`, as a script's
+        /// `m.stacks` does.
+        pub fn set_stacks(
+            &mut self,
+            id: ModifierId,
+            source: Option<StableId>,
+            stacks: u32,
+            now: Tick,
+        ) {
+            let Parts { modifiers, clocks } = self.parts();
+            let touched = modifiers.set_stacks(clocks, id, source, stacks, now);
+            self.mark(touched);
+        }
+    }
 }
 
 #[cfg(test)]

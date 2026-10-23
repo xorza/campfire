@@ -15,6 +15,7 @@ pub(crate) mod ctx_fn;
 pub(crate) mod data_section;
 pub(crate) mod data_table;
 pub(crate) mod error;
+pub(crate) mod event_phase;
 pub(crate) mod frame;
 pub(crate) mod given_names;
 pub(crate) mod hook;

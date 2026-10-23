@@ -5,13 +5,13 @@ use bevy_ecs::resource::Resource;
 use campfire_combat::CombatBook;
 use campfire_common::SegmentSeed;
 use campfire_declarations::internals::BookLoad;
-use campfire_declarations::{Book, ByType, Role};
+use campfire_declarations::{Book, ById, Role};
 use campfire_math::Num;
 use campfire_orders::Ai;
 use campfire_script::{MatchNames, ScriptLimits, ScriptPools};
 use campfire_sim::{Capability, SimWorld};
 use campfire_stats::{ModifierBook, ParamBook, StatBook, StatRule};
-use campfire_values::Stat;
+use campfire_values::{Stat, UnitType};
 
 use crate::books::Books;
 use crate::release::Release;
@@ -36,10 +36,15 @@ fn panic_of(run: impl FnOnce()) -> String {
     caught.downcast_ref::<String>().cloned().unwrap()
 }
 
+/// The books of a mode of stats alone, of no data.
+fn stats_books() -> Books {
+    let set = Release::capability_set(&[Capability::Stats]).unwrap();
+    Release::empty_books(Match::TEST_RATE, set)
+}
+
 /// A match of the rules of stats alone, of `books`.
 fn stats_match(books: Books) -> Match {
-    let set = Release::capability_set(&[Capability::Stats]).unwrap();
-    let setup = MatchSetup::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Rules).set(set);
+    let setup = MatchSetup::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Rules);
     Match::new(setup, books, MatchKind::Rules)
 }
 
@@ -52,12 +57,12 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
         players: 1,
     });
     let (unscripted, client) = (Role::Rules, Role::Client);
-    assert!(ByType::<Ai>::is_held(&scripts) && !ByType::<Ai>::is_held(&unscripted));
-    assert!(!ByType::<Ai>::is_held(&client));
+    assert!(ById::<UnitType, Ai>::is_held(&scripts) && !ById::<UnitType, Ai>::is_held(&unscripted));
+    assert!(!ById::<UnitType, Ai>::is_held(&client));
     assert!(ModifierBook::is_held(&client) && ParamBook::is_held(&client));
-    // The build puts each book the match holds, its builder's, before its module installs, and
-    // drops the rest: a match of stats holds the stat book built, and no combat book.
-    let mut books = Release::empty_books(Match::TEST_RATE);
+    // The build puts each book the match holds, its builder's, before its module installs: a
+    // match of stats holds the stat book built, and no combat book.
+    let mut books = stats_books();
     let rules = BTreeMap::from([(Stat::named("armor").unwrap(), StatRule::default())]);
     books.built.take::<StatBook>().unwrap();
     books.built.add(StatBook::new(&rules, Num::ONE));
@@ -81,14 +86,14 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
     StatBook::new(&rules, Num::ONE).load_into(&mut open);
     open.step();
     assert_eq!(open.resource::<StatBook>().len(), 1);
-    let mut missing = Release::empty_books(Match::TEST_RATE);
+    let mut missing = stats_books();
     missing.built.take::<ModifierBook>().unwrap();
     let said = panic_of(|| drop(stats_match(missing)));
     assert!(
         said.ends_with("ModifierBook is declared and built"),
         "{said}"
     );
-    let mut stray = Release::empty_books(Match::TEST_RATE);
+    let mut stray = stats_books();
     stray.built.add(StrayBook);
     let said = panic_of(|| drop(stats_match(stray)));
     assert!(said.starts_with("each built book is declared"), "{said}");

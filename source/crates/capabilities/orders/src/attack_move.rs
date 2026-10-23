@@ -1,14 +1,15 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Added, With, Without};
-use bevy_ecs::system::Query;
-use bevy_ecs::world::World;
+use bevy_ecs::query::{Added, Has, With, Without};
+use bevy_ecs::system::{Local, Query, ResMut};
+use bevy_ecs::world::{Mut, World};
 use campfire_actions::ActionProgress;
+use campfire_common::Tick;
 use campfire_math::Vec3;
-use campfire_sim::SimComponent;
+use campfire_sim::{DueIndex, DueUnit, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
 use campfire_states::{Replication, SentPredicted};
-use campfire_units::{Dead, Destination, UnitEntity};
+use campfire_units::{Dead, Destination, UnitEntity, Walk};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -48,23 +49,32 @@ impl AttackMove {
         self.stopped = true;
     }
 
-    /// For each living unit that attack-moves and stands, with no target and nothing under way:
-    /// one its scan stopped walks on to its goal, as its target died or left its reach; any
-    /// other ended its walk, at its goal, short of it or where a body kept it, and ends its
-    /// attack-move. A unit that died since the last run drops its goal, so it walks nowhere when
-    /// it lives again.
+    /// For each living unit of the index that attack-moves and stands, with no target and
+    /// nothing under way: one its scan stopped walks on to its goal, as its target died or left
+    /// its reach; any other ended its walk, at its goal, short of it or where a body kept it, and
+    /// ends its attack-move. A unit that died since the last run drops its goal, so it walks
+    /// nowhere when it lives again. The index forgets each unit whose goal ended, and each that is
+    /// dead, gone or walks not.
     pub(super) fn walk_on(
-        mut units: Query<'_, '_, (&mut Self, &ActionProgress, &mut Destination), Without<Dead>>,
+        mut units: Query<'_, '_, (&mut Self, &ActionProgress, Walk), Without<Dead>>,
         mut dead: Query<'_, '_, &mut Self, (Added<Dead>, With<Self>)>,
+        (mut index, mut held): (ResMut<'_, DueIndex<Self>>, Local<'_, Vec<DueUnit>>),
     ) {
         for mut attack_move in &mut dead {
             attack_move.set_if_neq(Self::NONE);
         }
-        for (mut attack_move, progress, mut destination) in &mut units {
-            let Some(goal) = attack_move.goal else {
+        held.clear();
+        held.extend(index.peek_due(Tick::ZERO));
+        for &DueUnit { id, entity } in &*held {
+            let Ok((mut attack_move, progress, mut walk)) = units.get_mut(entity) else {
+                index.forget(id);
                 continue;
             };
-            let stands = destination.get().is_none()
+            let Some(goal) = attack_move.goal else {
+                index.forget(id);
+                continue;
+            };
+            let stands = walk.goal().is_none()
                 && progress.attack_target().is_none()
                 && progress.in_progress().is_none();
             if !stands {
@@ -72,10 +82,76 @@ impl AttackMove {
             }
             if attack_move.stopped {
                 attack_move.set_if_neq(Self::to(Some(goal)));
-                destination.set_if_neq(Destination::to(Some(goal)));
+                walk.to(Some(goal));
             } else {
                 attack_move.set_if_neq(Self::NONE);
+                index.forget(id);
             }
+        }
+    }
+}
+
+/// The living units that walk and attack-move: each is due at once, and stays held while it has
+/// a goal, as `walk_on` checks in each tick whether it stands.
+impl TimedProcess for AttackMove {
+    const RUNS: TimedRuns = TimedRuns::EveryRole;
+    const KEPT: TimedKept = TimedKept::BySetters;
+    type Parts = (&'static Self, Has<Destination>, Has<Dead>);
+    type Books = ();
+
+    fn due((): &(), (attack_move, walks, dead): (&Self, bool, bool)) -> Option<Tick> {
+        attack_move
+            .goal
+            .filter(|_| walks && !dead)
+            .map(|_| Tick::ZERO)
+    }
+}
+
+/// The index of the units that attack-move, for the unit `id`, of `entity`, which an order
+/// pushes it into as it gives a goal.
+#[derive(Debug)]
+pub(crate) struct GoalDues<'a> {
+    index: &'a mut DueIndex<AttackMove>,
+    id: StableId,
+    entity: Entity,
+}
+
+impl<'a> GoalDues<'a> {
+    pub(crate) const fn new(
+        index: &'a mut DueIndex<AttackMove>,
+        id: StableId,
+        entity: Entity,
+    ) -> Self {
+        Self { index, id, entity }
+    }
+
+    /// Runs `change` on `world`, with the index of the unit `id`, of `entity`, as an effect
+    /// changes the unit.
+    pub(crate) fn with<R>(
+        world: &mut World,
+        id: StableId,
+        entity: Entity,
+        change: impl FnOnce(&mut World, &mut GoalDues<'_>) -> R,
+    ) -> R {
+        world.resource_scope(|world, mut index: Mut<'_, DueIndex<AttackMove>>| {
+            change(world, &mut GoalDues::new(&mut index, id, entity))
+        })
+    }
+
+    /// The same index, for a shorter borrow.
+    pub(crate) const fn reborrow(&mut self) -> GoalDues<'_> {
+        GoalDues {
+            index: self.index,
+            id: self.id,
+            entity: self.entity,
+        }
+    }
+
+    /// Pushes the unit as `attack_move` makes it due: at once, while it has a goal. `walk_on`
+    /// forgets one that walks not.
+    pub(crate) fn push(&mut self, attack_move: AttackMove) {
+        if attack_move.goal.is_some() {
+            self.index.push(Tick::ZERO, self.id, self.entity);
         }
     }
 }

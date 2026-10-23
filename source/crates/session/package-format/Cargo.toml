@@ -1,0 +1,27 @@
+[package]
+name = "campfire-package-format"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.campfire]
+kind = "problem"
+
+[features]
+internals = ["campfire-codec/internals", "campfire-values/internals"]
+
+[dependencies]
+campfire-codec.workspace = true
+campfire-common.workspace = true
+campfire-values.workspace = true
+
+derive_more = { workspace = true, features = ["display"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+sha2.workspace = true
+thiserror = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+campfire-package-format = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

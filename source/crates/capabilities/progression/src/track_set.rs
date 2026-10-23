@@ -1,5 +1,5 @@
-use campfire_declarations::PerType;
-use campfire_values::{NameId, TrackId};
+use campfire_declarations::PerId;
+use campfire_values::{NameId, TrackId, UnitType};
 
 /// The tracks a unit has, of the mode's at most `TrackId::LIMIT`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -38,7 +38,7 @@ impl TrackSet {
     }
 }
 
-impl PerType for TrackSet {
+impl PerId<UnitType> for TrackSet {
     const SCRIPTS_ONLY: bool = false;
 }
 

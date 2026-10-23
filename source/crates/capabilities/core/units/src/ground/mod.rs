@@ -65,19 +65,24 @@ struct CoarseCells {
     highest: Vec<u8>,
 }
 
+/// A span's coarse cells over a grid, checked: the span, the grid's own cells for none, and
+/// their count on each axis.
+#[derive(Debug, Clone, Copy)]
+struct Coarse {
+    span: CoarseSpan,
+    counts: [u32; 2],
+}
+
 impl Ground {
-    /// The ground of `grid`, split on `split`, with the coarse cells of `span`, or the grid's own
-    /// cells with none; an error for a span whose cell is smaller than the grid's, so a square may
-    /// hold no sample, that spans nothing on an axis, that lies past the world's bound, so its
-    /// arithmetic cannot overflow, or of more cells than the grid has samples, so its table is
-    /// never larger than the grid it is of. A span may reach past the grid: a
-    /// square there holds the samples of the grid's edge, as the original's height past its grid
-    /// is its clamped sample (`getClipHeight`).
-    pub fn new(
-        grid: HeightGrid,
-        split: CellSplit,
-        span: Option<CoarseSpan>,
-    ) -> Result<Self, GroundError> {
+    /// Whether `grid` makes a ground with the coarse cells of `span`, as `new` checks it, and
+    /// builds none, as an import checks a map the engine's load will build.
+    pub fn check(grid: &HeightGrid, span: Option<CoarseSpan>) -> Result<(), GroundError> {
+        Self::coarse(grid, span).map(drop)
+    }
+
+    /// The coarse cells of `span` over `grid`, or the grid's own cells with none, and their count
+    /// on each axis; an error as `new` gives it.
+    fn coarse(grid: &HeightGrid, span: Option<CoarseSpan>) -> Result<Coarse, GroundError> {
         let span = span.unwrap_or_else(|| CoarseSpan {
             cell: grid.cell(),
             from: grid.origin(),
@@ -105,7 +110,25 @@ impl Ground {
         let [Ok(across), Ok(along)] = [across, along].map(u32::try_from) else {
             return Err(GroundError::CoarseCount);
         };
-        let counts = [across, along];
+        Ok(Coarse {
+            span,
+            counts: [across, along],
+        })
+    }
+
+    /// The ground of `grid`, split on `split`, with the coarse cells of `span`, or the grid's own
+    /// cells with none; an error for a span whose cell is smaller than the grid's, so a square may
+    /// hold no sample, that spans nothing on an axis, that lies past the world's bound, so its
+    /// arithmetic cannot overflow, or of more cells than the grid has samples, so its table is
+    /// never larger than the grid it is of. A span may reach past the grid: a
+    /// square there holds the samples of the grid's edge, as the original's height past its grid
+    /// is its clamped sample (`getClipHeight`).
+    pub fn new(
+        grid: HeightGrid,
+        split: CellSplit,
+        span: Option<CoarseSpan>,
+    ) -> Result<Self, GroundError> {
+        let Coarse { span, counts } = Self::coarse(&grid, span)?;
         let mut highest = Vec::with_capacity(counts[0] as usize * counts[1] as usize);
         for row in 0..counts[1] {
             for column in 0..counts[0] {

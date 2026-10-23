@@ -14,8 +14,8 @@ udp = ["campfire-net-stack/udp"]
 internals = [
     "campfire-bots/internals",
     "campfire-capabilities/internals",
-    "campfire-codec/internals",
     "campfire-declarations/internals",
+    "campfire-host/internals",
     "campfire-log/internals",
     "campfire-math/internals",
     "campfire-mode/internals",
@@ -34,6 +34,7 @@ internals = [
     "campfire-net-transport/internals",
     "campfire-net-udp/internals",
     "campfire-package/internals",
+    "campfire-platform/internals",
     "campfire-players/internals",
     "campfire-protocol/internals",
     "campfire-runner/internals",
@@ -45,19 +46,19 @@ internals = [
     "campfire-threads/internals",
     "campfire-units/internals",
     "campfire-values/internals",
-    "campfire-vision/internals",
 ]
 
 [dependencies]
 campfire-app-threads.workspace = true
 campfire-bots.workspace = true
 campfire-capabilities.workspace = true
-campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-declarations.workspace = true
+campfire-host.workspace = true
 campfire-log.workspace = true
 campfire-mode.workspace = true
 campfire-package.workspace = true
+campfire-platform.workspace = true
 campfire-players.workspace = true
 campfire-protocol.workspace = true
 campfire-math.workspace = true
@@ -89,19 +90,18 @@ campfire-threads.workspace = true
 campfire-units.workspace = true
 campfire-values = { workspace = true, features = ["ecs"] }
 campfire-visibility.workspace = true
-campfire-vision.workspace = true
 
 bevy_app.workspace = true
 bevy_ecs = { workspace = true, features = ["std"] }
 bevy_replicon = { workspace = true, features = ["client", "server"] }
 bevy_state.workspace = true
 bevy_time.workspace = true
-secp256k1 = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive", "rc", "std"] }
 thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-harness.workspace = true
 campfire-net = { workspace = true, features = ["internals"] }
 campfire-orders = { workspace = true, features = ["internals"] }

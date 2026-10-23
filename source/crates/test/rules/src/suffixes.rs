@@ -5,8 +5,7 @@ use syn::{
     Signature, TraitItemFn, Type,
 };
 
-use crate::source_files::SourceFiles;
-use crate::workspace::source;
+use crate::workspace::Workspace;
 
 /// Each name of `text` that breaks its suffix: a system set not named `*Systems`; a plugin not
 /// named `*Plugin` and a plugin group not named `*Plugins`; a `*Manager`; a `*_hook` function whose
@@ -144,15 +143,13 @@ fn derives(attributes: &[Attribute], name: &str) -> bool {
 
 #[test]
 fn a_declared_name_keeps_its_suffix() {
-    let workspace = source();
+    let workspace = Workspace::read();
     let mut found = Vec::new();
     let mut files = 0;
-    for group in ["crates", "checks"] {
-        for file in SourceFiles::under(&workspace.join(group)) {
-            files += 1;
-            for name in misnamed(&file.text) {
-                found.push(format!("{group}/{}: {name}", file.path));
-            }
+    for file in workspace.sources() {
+        files += 1;
+        for name in misnamed(&file.text) {
+            found.push(format!("{}: {name}", file.path));
         }
     }
     assert_eq!(found, Vec::<String>::new());
@@ -194,4 +191,89 @@ fn a_declared_name_keeps_its_suffix() {
     for (code, count) in samples {
         assert_eq!(misnamed(code).len(), count, "{code}");
     }
+}
+
+/// The suffixes of a package's data as a package writes it (02-engine-core.md, A `*Spec` is a
+/// resolved section, a `*Setup` what a thing starts from).
+const DATA_SUFFIXES: [&str; 4] = ["Data", "File", "Patch", "Manifest"];
+
+/// The structs of `code`, out of its test modules, that read a package's data, by a name of `DATA_SUFFIXES`, and refuse no
+/// field they do not hold: a struct that derives `Deserialize` with neither
+/// `#[serde(deny_unknown_fields)]` nor `#[serde(transparent)]`, which takes its one field's.
+fn open_data(code: &str) -> Vec<String> {
+    struct Open(Vec<String>);
+    impl<'ast> Visit<'ast> for Open {
+        fn visit_item_struct(&mut self, item: &'ast ItemStruct) {
+            let name = item.ident.to_string();
+            let data = DATA_SUFFIXES.iter().any(|suffix| name.ends_with(suffix));
+            let serde = |word: &str| {
+                item.attrs.iter().any(|attribute| {
+                    let mut found = false;
+                    if attribute.path().is_ident("serde") {
+                        attribute
+                            .parse_nested_meta(|meta| {
+                                found |= meta.path.is_ident(word);
+                                if meta.input.peek(syn::Token![=]) {
+                                    meta.value()?.parse::<syn::Expr>()?;
+                                }
+                                Ok(())
+                            })
+                            .expect("a serde attribute lists its options");
+                    }
+                    found
+                })
+            };
+            if data
+                && derives(&item.attrs, "Deserialize")
+                && !serde("deny_unknown_fields")
+                && !serde("transparent")
+            {
+                self.0.push(name);
+            }
+            visit::visit_item_struct(self, item);
+        }
+
+        /// A test module's structs read no package's data.
+        fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {
+            let test = item.attrs.iter().any(|attribute| {
+                attribute.path().is_ident("cfg")
+                    && attribute
+                        .parse_args::<Ident>()
+                        .is_ok_and(|gate| gate == "test")
+            });
+            if !test {
+                visit::visit_item_mod(self, item);
+            }
+        }
+    }
+    let file = syn::parse_file(code).expect("a workspace source parses");
+    let mut open = Open(Vec::new());
+    open.visit_file(&file);
+    open.0
+}
+
+#[test]
+fn a_package_data_struct_refuses_a_field_it_does_not_hold() {
+    let workspace = Workspace::read();
+    let found: Vec<String> = workspace
+        .sources()
+        .iter()
+        .filter(|file| file.production().is_some())
+        .flat_map(|file| {
+            open_data(&file.text)
+                .into_iter()
+                .map(move |name| format!("{}: {name}", file.path))
+        })
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+    // A data struct that refuses an unknown field passes, and one that wraps its one field; one
+    // that takes any field is found, and a struct of no data's name is not.
+    let code = concat!(
+        "#[derive(Deserialize)]\n#[serde(deny_unknown_fields, rename_all = \"snake_case\")]\nstruct AData { a: u8 }\n",
+        "#[derive(Deserialize)]\n#[serde(transparent)]\nstruct BData(u8);\n",
+        "#[derive(Debug, Deserialize)]\nstruct CFile { c: u8 }\n",
+        "#[derive(Deserialize)]\nstruct Fields { d: u8 }\n",
+        "#[cfg(test)]\nmod tests {\n    #[derive(Deserialize)]\n    struct File { e: u8 }\n}\n",
+    );
+    assert_eq!(open_data(code), ["CFile"]);
 }

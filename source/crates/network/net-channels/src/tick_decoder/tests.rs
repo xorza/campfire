@@ -1,8 +1,8 @@
 use super::*;
 use crate::tick_encoder::TickEncoder;
 
-fn read(decoder: &mut TickDecoder, bytes: &[u8]) -> Result<NetTick, PacketError> {
-    decoder.read(&mut Reader::from(bytes.to_vec()))
+fn read(decoder: &mut TickDecoder, bytes: &[u8]) -> Result<NetTick, ReceiveError> {
+    Ok(decoder.read(&mut Reader::from(bytes.to_vec()))?.tick())
 }
 
 /// A short tick is the nearest to the largest read, across a wrap of its 15 bits each way:
@@ -17,17 +17,16 @@ fn a_short_tick_is_the_nearest_to_the_largest_read() {
 }
 
 /// What the encoder writes, the decoder reads back: a whole tick, then short ones near it,
-/// over the wrap of the low 15 bits.
+/// over the wrap of the low 15 bits, each with its overstep, at the wire's 1/256.
 #[test]
 fn the_decoder_reads_what_the_encoder_writes() {
     let mut encoder = TickEncoder::default();
     let mut decoder = TickDecoder::default();
-    for tick in [0x7FF0_u32, 0x7FF8, 0x8003, 0x8010] {
-        let encoded = encoder.encode(NetTick(tick));
-        assert_eq!(
-            read(&mut decoder, encoded.as_bytes()).unwrap(),
-            NetTick(tick)
-        );
+    for (tick, overstep) in [(0x7FF0_u32, 0), (0x7FF8, 1), (0x8003, 128), (0x8010, 255)] {
+        let at = TickInstant::from_tick_and_overstep(NetTick(tick), Overstep::from_u8(overstep));
+        let encoded = encoder.encode(at);
+        let mut reader = Reader::from(encoded.as_bytes().to_vec());
+        assert_eq!(decoder.read(&mut reader).unwrap(), at);
         encoder.on_sent(NetTick(tick));
         encoder.on_delivered(NetTick(tick));
     }
@@ -38,12 +37,15 @@ fn the_decoder_reads_what_the_encoder_writes() {
 fn a_tick_with_no_reference_or_a_bad_mark_is_refused() {
     let mut decoder = TickDecoder::default();
     assert!(matches!(
-        read(&mut decoder, &[0, 1]),
-        Err(PacketError::MalformedTick)
+        read(&mut decoder, &[0, 1, 0]),
+        Err(ReceiveError::MalformedTick)
     ));
     assert!(matches!(
-        read(&mut decoder, &[0x81, 0, 0, 0, 1]),
-        Err(PacketError::MalformedTick)
+        read(&mut decoder, &[0x81, 0, 0, 0, 1, 0]),
+        Err(ReceiveError::MalformedTick)
     ));
-    assert_eq!(read(&mut decoder, &[0x80, 0, 0, 0, 1]).unwrap(), NetTick(1));
+    assert_eq!(
+        read(&mut decoder, &[0x80, 0, 0, 0, 1, 0]).unwrap(),
+        NetTick(1)
+    );
 }

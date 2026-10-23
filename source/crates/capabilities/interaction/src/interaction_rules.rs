@@ -62,7 +62,8 @@ impl Interaction {
             let actions = source.content.get::<ActionsData>().into_iter();
             let mut actions = actions.flat_map(|actions| &actions.0);
             let aimless = actions.find(|(_, action)| {
-                action.kind() == ActionKind::Use && !matches!(action.targeting, Targeting::Unit(_))
+                action.kind() == ActionKind::Use
+                    && !matches!(action.keys.targeting, Targeting::Unit(_))
             });
             if let Some((id, _)) = aimless {
                 let at = BookPlace::Entry {

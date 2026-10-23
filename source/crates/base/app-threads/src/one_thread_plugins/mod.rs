@@ -1,15 +1,14 @@
 use bevy_app::{App, Plugin, PluginGroup, PluginGroupBuilder, TaskPoolOptions, TaskPoolPlugin};
 use bevy_ecs::schedule::Schedules;
 use bevy_tasks::{AsyncComputeTaskPool, ComputeTaskPool, IoTaskPool, TaskPool, block_on};
-use campfire_schedule::OneThreadSchedule;
+use campfire_schedule::SchedulesExt;
 
 /// The plugins of an app of one thread, a server's, a bot's client's or a test's: Bevy's task
 /// pools of one thread each, and each schedule of the app on the thread that updates it, set as
 /// the app finishes, after every plugin added its schedules; code that adds a schedule after
-/// that, as a test's system of a new label, gives it `OneThreadSchedule` itself. The pools are
-/// the process's, which
-/// the first app of a process sizes, so an app built after another runs on that app's
-/// (02-engine-core.md, An app's threads are one plan; 02-engine-core.md, Pools belong to the
+/// that, as a test's system of a new label, gives it `SchedulesExt::run_on_one_thread` itself.
+/// The pools are the process's, which the first app of a process sizes, so an app built after
+/// another runs on that app's (02-engine-core.md, An app's threads are one plan; 02-engine-core.md, Pools belong to the
 /// process).
 #[derive(Debug)]
 pub struct OneThreadPlugins;
@@ -47,7 +46,9 @@ impl Plugin for OneThreadExecutorPlugin {
     }
 
     fn cleanup(&self, app: &mut App) {
-        OneThreadSchedule::apply_all(&mut app.world_mut().resource_mut::<Schedules>());
+        app.world_mut()
+            .resource_mut::<Schedules>()
+            .run_on_one_thread();
     }
 }
 

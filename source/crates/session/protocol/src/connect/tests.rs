@@ -9,7 +9,7 @@ use crate::delegation::error::ScopeError;
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::harness::test_key::TestKey;
 use crate::input_rules::InputRules;
-use crate::seat_plan::SeatPlan;
+use crate::player_slot_plan::PlayerSlotPlan;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
 use crate::signed;
@@ -31,10 +31,10 @@ fn terms() -> SessionTerms {
         mode: PackageFingerprint::new([5; 32]),
         map: MapName::parse("lane").unwrap(),
         dependencies: vec![PackageFingerprint::new([4; 32])],
-        seats: vec![SeatPlan::Player],
+        player_slots: vec![PlayerSlotPlan::Player],
         visibility: Vec::new(),
         options: Vec::new(),
-        seat_picks: Vec::new(),
+        player_slot_picks: Vec::new(),
     }
 }
 

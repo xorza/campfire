@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
-use campfire_actions::ByAction;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
+use campfire_declarations::ById;
 use campfire_math::Num;
 use campfire_script::{
     AnyKeptRows, Checked, ColumnRows, IdNames, KeptRows, RowFill, ScriptText, ScriptValue, Unit,
@@ -11,6 +11,7 @@ use campfire_script::{
 };
 use campfire_units::Owner;
 use campfire_values::{ActionId, Team, UnitType};
+use campfire_visibility::DataKind;
 
 use crate::gatherer::Gatherer;
 use crate::mode_supply_data::ModeSupplyData;
@@ -42,7 +43,7 @@ pub struct ProductionColumn {
     rows: KeptRows<ProductionRows>,
     costs: SupplyCostBook,
     rules: Option<ModeSupplyData>,
-    trains: ByAction<TrainSpec>,
+    trains: ById<ActionId, TrainSpec>,
 }
 
 /// A unit's row of the production column: its player, none for a unit no player owns, what it
@@ -51,7 +52,7 @@ pub struct ProductionColumn {
 /// for no node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProductionRow {
-    owner: Option<Seat>,
+    owner: Option<PlayerSlot>,
     counted: UnitSupply,
     load: u32,
     site: Option<Num>,
@@ -71,7 +72,7 @@ struct ProductionRows {
 /// A unit's row as it joins, but its queue.
 #[derive(Debug, Clone, Copy)]
 struct RowOf {
-    owner: Option<Seat>,
+    owner: Option<PlayerSlot>,
     counted: UnitSupply,
     load: u32,
     site: Option<Num>,
@@ -154,7 +155,7 @@ impl ViewColumn for ProductionColumn {
         // A row holds what its unit counts for by the costs, so other costs fill every row again;
         // it holds its queue by train, which the column's trains name at each read.
         self.rules = world.resource::<SupplyBook>().0;
-        self.trains = world.resource::<ByAction<TrainSpec>>().clone();
+        self.trains = world.resource::<ById<ActionId, TrainSpec>>().clone();
         let costs = world.resource::<SupplyCostBook>();
         if costs.same(&self.costs) {
             return false;
@@ -172,7 +173,7 @@ impl ViewColumn for ProductionColumn {
 impl ProductionColumn {
     /// `unit.load`: the amount `unit` carries, 0 with none, or in a view with no production.
     pub fn load(unit: &Unit) -> Checked<i64> {
-        let row = unit.row_index()?;
+        let row = unit.admit(DataKind::Prediction)?;
         let load = unit
             .view()
             .column(|column: &Self| column.rows.now().rows[row].load);
@@ -182,7 +183,7 @@ impl ProductionColumn {
     /// `unit.site_progress`: the share of its site's time `unit`'s progress reached, from 0 to 1,
     /// `()` for no site, or in a view with no production.
     pub(crate) fn site_progress(unit: &Unit) -> Checked<ScriptValue> {
-        let row = unit.row_index()?;
+        let row = unit.admit(DataKind::Prediction)?;
         let site = unit
             .view()
             .column(|column: &Self| column.rows.now().rows[row].site);
@@ -192,7 +193,7 @@ impl ProductionColumn {
     /// `unit.queue`: the unit types of the trains `unit` queued, by name, first the one under way;
     /// none for no queue, or in a view with no production.
     pub(crate) fn queue(unit: &Unit) -> Checked<IdNames<UnitType>> {
-        let row = unit.row_index()?;
+        let row = unit.admit(DataKind::Queues)?;
         let view = unit.view();
         let queue = view.column(|column: &Self| {
             let names = column.rows.now().queue(row).iter().map(|&action| {
@@ -207,7 +208,7 @@ impl ProductionColumn {
     /// `unit.node_amount`: the amount `unit` holds as a node, `()` for no node, or in a view with
     /// no production.
     pub(crate) fn node_amount(unit: &Unit) -> Checked<ScriptValue> {
-        let row = unit.row_index()?;
+        let row = unit.admit(DataKind::Unit)?;
         let node = unit
             .view()
             .column(|column: &Self| column.rows.now().rows[row].node);
@@ -220,11 +221,11 @@ impl ProductionColumn {
         &self.costs
     }
 
-    /// `seat`'s supply as `view` read the match; `None` in a mode with no supply.
-    pub(crate) fn supply(view: &View, seat: Seat) -> Option<ReadSupply> {
+    /// `player_slot`'s supply as `view` read the match; `None` in a mode with no supply.
+    pub(crate) fn supply(view: &View, player_slot: PlayerSlot) -> Option<ReadSupply> {
         view.column(|column: &Self| {
             let rules = column.rules?;
-            let sums = column.rows.now().sums.get(seat.index());
+            let sums = column.rows.now().sums.get(player_slot.index());
             let total = sums.copied().unwrap_or_default();
             Some(ReadSupply {
                 used: total.used,
@@ -247,7 +248,7 @@ impl ProductionColumn {
             .and_then(|gatherer| gatherer.load())
             .map_or(0, |load| load.amount);
         let row = RowOf {
-            owner: owner.map(|owner| owner.seat()),
+            owner: owner.map(|owner| owner.player_slot()),
             counted,
             load,
             site: site
@@ -273,7 +274,7 @@ mod tests {
         // player owns counts for no one. Player 0 sums to (5, 10), player 1 to none. The rows
         // queue trains 0 and 1, none, 2, and 3, 4 and 5: runs 0..2, 2..2, 2..3 and 3..6.
         let row = |owner: Option<u32>, used, given| RowOf {
-            owner: owner.map(Seat::new),
+            owner: owner.map(PlayerSlot::new),
             counted: UnitSupply { used, given },
             load: 0,
             site: None,

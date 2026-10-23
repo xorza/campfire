@@ -76,7 +76,7 @@ fn pools_of(world: &World, entity: Entity) -> [Option<Num>; PoolId::LIMIT] {
     held
 }
 
-/// What the match left after each tick from the one before the shop: each hero, by seat.
+/// What the match left after each tick from the one before the shop: each hero, by player slot.
 #[derive(Debug, Default)]
 pub(crate) struct Showcase {
     ticks: Vec<[HeroState; 6]>,
@@ -134,8 +134,8 @@ fn item(moba: &ScriptedMode<Moba3v3>, name: &str) -> ItemId {
     items.named(name).unwrap()
 }
 
-/// The farm: every hero reaches level 6, Cinder and Veil 8 and Gale 7, and learns every ability,
-/// its ultimate, the fourth, at rank 1, so its points left are its level less its ranks.
+/// The farm: every hero reaches level 6, Gale 8 and Cinder, Rime and Veil 7, and learns every
+/// ability, its ultimate, the fourth, at rank 1, so its points left are its level less its ranks.
 pub(crate) fn assert_farm(showcase: &Showcase) {
     let mut farmed = Vec::new();
     for player in 0..Moba3v3::PLAYERS {
@@ -152,12 +152,12 @@ pub(crate) fn assert_farm(showcase: &Showcase) {
     assert_eq!(
         farmed,
         [
-            learned(8, [3, 2, 2, 1]),
             learned(7, [2, 2, 2, 1]),
-            learned(6, [2, 2, 1, 1]),
-            learned(6, [2, 2, 1, 1]),
-            learned(6, [2, 2, 1, 1]),
             learned(8, [3, 2, 2, 1]),
+            learned(6, [2, 2, 1, 1]),
+            learned(6, [2, 2, 1, 1]),
+            learned(7, [2, 2, 2, 1]),
+            learned(7, [2, 2, 2, 1]),
         ]
     );
 }
@@ -247,7 +247,7 @@ fn toggles_paid(
         .zip(hero.slots[..4].iter().zip(&hero.times))
         .filter(|(_, (_, time))| time.toggle == Some(Tick::new(at)));
     due.filter_map(|(index, (slot, _))| {
-        let Some(Toggle::CostPerSecond(costs)) = &action(moba, player, index).toggle else {
+        let Some(Toggle::CostPerSecond(costs)) = &action(moba, player, index).keys.toggle else {
             return None;
         };
         Some(Num::int(int(costs.get(name)?, slot.rank)))
@@ -310,8 +310,8 @@ pub(crate) fn assert_casts(
     // Cyclone, Gale's first, charges as its first cast starts and starts its cooldown as the
     // second releases it; the toggles, Dread and Chill Arrows, start as they turn on; Night Step
     // spends a charge. Kensho walks to Cinder for Flicker Strike, Cinder to Veil for Wildfire,
-    // and Rime from her post at (0, -20) toward (0, 15) for Snow Owl, whose first rank, which
-    // her farm leaves it at, reaches 25 m of the 35.
+    // and Rime from her post at (0, -20) toward (0, 15) for Snow Owl, whose second rank, which
+    // her farm takes it to, reaches 32.5 m of the 35, so she starts before Kensho's next cast.
     let expected = [
         (0, 2, INVENTORY, false),
         (7, 5, 0, false),
@@ -333,8 +333,8 @@ pub(crate) fn assert_casts(
         (26, 3, 1, false),
         (27, 0, 2, true),
         (30, 2, 0, false),
-        (32, 3, 2, false),
         (31, 4, 2, true),
+        (32, 3, 2, false),
         (33, 2, 3, false),
         (34, 0, 3, false),
         (35, 4, 3, false),
@@ -359,6 +359,7 @@ pub(crate) fn assert_casts(
         let rank = hero.slots[usize::from(slot)].rank;
         let is = &hero.times[usize::from(slot)];
         let windup = data
+            .keys
             .windup_ms
             .as_ref()
             .map_or(0, |windup| ticks(int(windup, rank)));
@@ -371,21 +372,21 @@ pub(crate) fn assert_casts(
         } else {
             assert_eq!(tick, goes_off, "{start:?}");
         }
-        if let Some(cooldown) = &data.cooldown_ms {
+        if let Some(cooldown) = &data.keys.cooldown_ms {
             assert_eq!(
                 is.ready_at,
                 Tick::new(tick + ticks(int(cooldown, rank))),
                 "{start:?}"
             );
         }
-        if let Some(charges) = &data.charges {
+        if let Some(charges) = &data.keys.charges {
             let charges_now = is.charges.unwrap();
             let max = u8::try_from(int(&charges.max, rank)).unwrap();
             let recharge = ticks(int(&charges.recharge_ms, rank));
             assert_eq!(charges_now.count, max - 1, "{start:?}");
             assert_eq!(charges_now.next, Tick::new(tick + recharge), "{start:?}");
         }
-        if data.toggle.is_some() {
+        if data.keys.toggle.is_some() {
             assert!(is.toggle.is_some(), "{start:?}");
         }
         // The cost, beside the pool's regeneration, taken as the tick before's, and the toggles'
@@ -394,7 +395,7 @@ pub(crate) fn assert_casts(
         // tick before, or a bit more or less.
         let pools = moba.packages().data().section_or_default::<ModePoolsData>();
         let pools: Names<PoolId> = pools.0.keys().map(DeclaredName::as_str).collect();
-        for (name, cost) in &data.cost {
+        for (name, cost) in &data.keys.cost {
             let pool = pools.named(name.as_str()).unwrap();
             let left = |at| showcase.at(at, player).pools[pool.index()].unwrap();
             let paid = |at| toggles_paid(moba, showcase, player, at, name);

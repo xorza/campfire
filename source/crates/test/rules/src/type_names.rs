@@ -6,7 +6,7 @@ use syn::{
 };
 
 use crate::source_file::Gate;
-use crate::workspace::{crates, holder, sources};
+use crate::workspace::Workspace;
 
 /// The names of the types, traits and aliases `text` declares visible past their module, but in a
 /// module only its crate's tests build: a private item is its module's word alone.
@@ -121,14 +121,16 @@ fn broken(shared: &BTreeMap<String, BTreeSet<String>>, one_meaning: &[&str]) -> 
 /// sides declare keeps one meaning).
 #[test]
 fn a_type_name_keeps_one_meaning() {
-    let crates = crates();
-    let sources = sources();
+    let workspace = Workspace::read();
+    let sources = workspace.sources();
     let files = sources
         .iter()
         .filter(|file| !tests_file(&file.path))
         .map(|file| {
-            let at = holder(&crates, &file.path).expect("each source is a crate's");
-            (crates[at].name.as_str(), file.text.as_str())
+            let holder = workspace
+                .holder(&file.path)
+                .expect("each source is a crate's");
+            (holder.name.as_str(), file.text.as_str())
         });
     assert_eq!(broken(&shared(files), &ONE_MEANING), Vec::<String>::new());
 
@@ -172,7 +174,8 @@ fn taken_features(crates: &[(&str, Vec<&str>)]) -> Vec<String> {
 /// keeps Campfire's meaning (02-engine-core.md, The stack's crates are `net-<name>`).
 #[test]
 fn a_stack_feature_names_no_campfire_crate() {
-    let crates = crates();
+    let workspace = Workspace::read();
+    let crates = workspace.crates();
     let named: Vec<(&str, Vec<&str>)> = crates
         .iter()
         .map(|krate| {

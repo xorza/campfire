@@ -8,7 +8,6 @@ license.workspace = true
 kind = "problem"
 
 [features]
-compression_lz4 = ["dep:lz4_flex"]
 # The channels' measurements and payload fixtures, and the fragment bench, for the tests and
 # benches of every layer above
 internals = [
@@ -26,11 +25,6 @@ campfire-net-bytes.workspace = true
 bytes = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
-lz4_flex = { workspace = true, features = [
-    "checked-decode",
-    "safe-decode",
-    "safe-encode",
-], optional = true }
 thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 

@@ -32,15 +32,19 @@ pub(super) struct Target {
     pub(super) least: f32,
 }
 
-/// A mesh that draws a unit: the turn from the world into its own frame, its box there, round
-/// `center` of `half` sides, its mesh, and its material when it has a file material.
+/// A mesh that draws a unit: its place in the world, its box in its own frame, round `center` of
+/// `half` sides, a sphere in the world that holds that box, its mesh, and its material when it
+/// has a file material. A ray tests the sphere first, so only a part it may meet turns the ray
+/// into its own frame.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Part {
-    pub(super) to_local: Affine3A,
-    pub(super) center: Vec3,
-    pub(super) half: Vec3,
-    pub(super) mesh: AssetId<Mesh>,
-    pub(super) material: Option<AssetId<FileMaterial>>,
+    place: Affine3A,
+    center: Vec3,
+    half: Vec3,
+    world_center: Vec3,
+    radius: f32,
+    mesh: AssetId<Mesh>,
+    material: Option<AssetId<FileMaterial>>,
 }
 
 /// A unit and the run of the scene's parts that draw it.
@@ -75,6 +79,60 @@ impl fmt::Debug for PartAssets<'_> {
     }
 }
 
+/// What a part is made of: its place in the world, its box in its own frame, its mesh and its
+/// material when it has a file material.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PartSetup {
+    pub(super) place: Affine3A,
+    pub(super) center: Vec3,
+    pub(super) half: Vec3,
+    pub(super) mesh: AssetId<Mesh>,
+    pub(super) material: Option<AssetId<FileMaterial>>,
+}
+
+/// The part of a setup: the sphere's radius scales the box's by the transform's Frobenius norm,
+/// which no stretch of it passes, shear and all.
+impl From<PartSetup> for Part {
+    fn from(setup: PartSetup) -> Self {
+        let PartSetup {
+            place,
+            center,
+            half,
+            mesh,
+            material,
+        } = setup;
+        let axes = place.matrix3;
+        let stretch = (axes.x_axis.length_squared()
+            + axes.y_axis.length_squared()
+            + axes.z_axis.length_squared())
+        .sqrt();
+        Self {
+            place,
+            center,
+            half,
+            world_center: place.transform_point3(center),
+            radius: half.length() * stretch,
+            mesh,
+            material,
+        }
+    }
+}
+
+impl Part {
+    /// How far along `ray` it enters the part's sphere, 0 from inside it; none when it misses.
+    fn sphere_entry(&self, ray: Ray3d) -> Option<f32> {
+        let to_center = self.world_center - ray.origin;
+        let along = to_center.dot(*ray.direction);
+        let apart = to_center.length_squared() - along * along;
+        let reach = self.radius * self.radius;
+        if apart > reach {
+            return None;
+        }
+        let half_chord = (reach - apart).sqrt();
+        (along + half_chord >= 0.0).then(|| (along - half_chord).max(0.0))
+    }
+}
+
 impl PickScene {
     /// Empties it for a new frame.
     pub(super) fn clear(&mut self) {
@@ -104,8 +162,15 @@ impl PickScene {
                 .then(|| target.shape.axis_entry(target.base, ray, target.least))
                 .flatten();
             for part in &self.parts[parts.clone()] {
-                let from = part.to_local.transform_point3(ray.origin);
-                let way = part.to_local.transform_vector3(*ray.direction);
+                let Some(near) = part.sphere_entry(ray) else {
+                    continue;
+                };
+                if depth.is_some_and(|depth| near >= depth) {
+                    continue;
+                }
+                let to_local = part.place.inverse();
+                let from = to_local.transform_point3(ray.origin);
+                let way = to_local.transform_vector3(*ray.direction);
                 let Some(entry) = mesh_ray::box_entry(from, way, part.center, part.half) else {
                     continue;
                 };
@@ -137,5 +202,35 @@ impl PickScene {
                 .then(a.depth.total_cmp(&b.depth))
                 .then(a.unit.id.cmp(&b.unit.id))
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::math::Dir3;
+
+    use super::*;
+
+    #[test]
+    fn a_ray_enters_a_parts_sphere_at_its_near_side_and_misses_one_behind_or_aside() {
+        // A box of half sides (1, 0, 0) round (0, 0, −5) under no turn: its sphere's radius is the
+        // half sides' length, 1, times the identity's norm, √3, so a ray from the origin toward
+        // −z enters it at 5 − √3, within the rounding of an `f32` square root.
+        let part = Part::from(PartSetup {
+            place: Affine3A::IDENTITY,
+            center: Vec3::new(0.0, 0.0, -5.0),
+            half: Vec3::X,
+            mesh: AssetId::default(),
+            material: None,
+        });
+        let ray = |origin: Vec3, direction: Dir3| Ray3d::new(origin, direction);
+        let entry = part.sphere_entry(ray(Vec3::ZERO, Dir3::NEG_Z)).unwrap();
+        assert!((entry - (5.0 - 3.0_f32.sqrt())).abs() < 1e-6, "{entry}");
+        // The sphere behind the ray, or 3 m aside of it, past √3, is missed; from inside, the
+        // ray is in it at once.
+        assert_eq!(part.sphere_entry(ray(Vec3::ZERO, Dir3::Z)), None);
+        assert_eq!(part.sphere_entry(ray(Vec3::X * 3.0, Dir3::NEG_Z)), None);
+        let inside = Vec3::new(0.0, 0.0, -5.0);
+        assert_eq!(part.sphere_entry(ray(inside, Dir3::Z)), Some(0.0));
     }
 }

@@ -5,7 +5,7 @@ use campfire_actions::{
 };
 use campfire_geometry::Placed;
 use campfire_sim::{DueUnit, Position};
-use campfire_units::{ArrivedShort, Body, Dead, Destination};
+use campfire_units::{Body, Dead, Walk};
 use campfire_values::Team;
 
 /// The destinations units walk to on their own: after their attack targets.
@@ -31,8 +31,7 @@ impl Destinations {
                 &Position,
                 &Team,
                 (&ActionSlots, &mut ActionProgress),
-                Option<&mut Destination>,
-                Option<&ArrivedShort>,
+                Option<Walk>,
                 Option<&Body>,
             ),
             Without<Dead>,
@@ -42,7 +41,7 @@ impl Destinations {
         held.clear();
         held.extend(indexes.attackers());
         for &DueUnit { id, entity } in &*held {
-            let Ok((&position, &team, (slots, mut progress), mut destination, arrived, body)) =
+            let Ok((&position, &team, (slots, mut progress), mut walk, body)) =
                 chasers.get_mut(entity)
             else {
                 continue;
@@ -57,10 +56,10 @@ impl Destinations {
             let aimed = targets.enemy(team, target).and_then(|unit| {
                 let selected = (targets.relation(team, unit.team), unit.tags);
                 let slot = slots.weapon_in(&book, Some(selected))?;
-                Some((unit, slots.values_of(&book, slot)))
+                Some((unit, slots.values_in(&book, slot)?))
             });
             let from = Placed::new(position.get(), Body::shape_of(body));
-            let walk = if let Some((unit, values)) = aimed {
+            let to = if let Some((unit, values)) = aimed {
                 let to = Placed::new(unit.position, unit.shape);
                 match targets.reach(from, values.range, values.min_range, to) {
                     RangeFit::Within => None,
@@ -74,8 +73,8 @@ impl Destinations {
                 progress.set_attack_target(None, &mut indexes.of(id, entity));
                 None
             };
-            if let Some(destination) = &mut destination {
-                Destination::walk_to(destination, arrived, walk);
+            if let Some(walk) = &mut walk {
+                walk.to(to);
             }
         }
     }

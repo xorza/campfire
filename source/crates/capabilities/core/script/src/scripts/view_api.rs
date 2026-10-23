@@ -1,5 +1,6 @@
 use campfire_geometry::Shape;
 use campfire_values::{Named, Param, Tag, Team, UnitType};
+use campfire_visibility::DataKind;
 
 use crate::scripts::api_holder::ApiHolder;
 use crate::scripts::api_holder::ScriptHandle;
@@ -85,6 +86,7 @@ impl ViewApi {
                     "where it spawned, where it respawns; `()` with none",
                 ),
                 |unit: &mut Unit| -> Checked<ScriptValue> {
+                    unit.admit(DataKind::Prediction)?;
                     let spawn = unit.read(|row| row.spawn)?;
                     Ok(spawn.map_or(ScriptValue::UNIT, ScriptValue::of))
                 },
@@ -156,7 +158,7 @@ impl ViewApi {
         let visible = MemberDecl::call(
             "find_visible",
             &[&["of", "position", "radius", "filter"]],
-            "as `find`, of the units `of`'s team sees, every unit in a match with no vision; a bot's `of` is its own",
+            "as `find`, of the units `of`'s team sees, every unit in a match with no vision; a bot's `of` is of its team's vision group",
         )
         .roles(RoleSet::SIM.and(RoleSet::BOT));
         api.call(
@@ -166,8 +168,8 @@ impl ViewApi {
              position: ScriptPosition,
              radius: ScriptRadius,
              filter: Filter| {
-                ctx.admit_seat(of.read(|row| row.owner)?)?;
                 let team = of.read(|row| row.team)?;
+                ctx.view().admit_sight(team)?;
                 ctx.view().find(
                     &of,
                     position.get(),
@@ -180,14 +182,14 @@ impl ViewApi {
         let nearest = MemberDecl::call(
             "nearest_visible",
             &[&["of", "radius", "filter"]],
-            "the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, every unit in a match with no vision, `()` with none; a bot's `of` is its own",
+            "the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, every unit in a match with no vision, `()` with none; a bot's `of` is of its team's vision group",
         )
         .roles(RoleSet::SIM.and(RoleSet::BOT));
         api.call(
             nearest,
             |ctx: &mut Ctx, of: Unit, radius: ScriptRadius, filter: Filter| {
-                ctx.admit_seat(of.read(|row| row.owner)?)?;
                 let team = of.read(|row| row.team)?;
+                ctx.view().admit_sight(team)?;
                 ctx.view()
                     .nearest(&of, radius.get(), &filter, |columns, row| {
                         columns.sees(row, team)

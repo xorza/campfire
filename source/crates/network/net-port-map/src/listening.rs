@@ -9,7 +9,7 @@ use tracing::{error, info, warn};
 
 use crate::port_mapper::{PortMapper, Routes};
 use crate::thread_stop::ThreadStop;
-use campfire_store::SharedPort;
+use campfire_platform::SharedPort;
 
 /// The poller's key of the announcements' socket.
 const ANNOUNCEMENTS: usize = 0;

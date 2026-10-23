@@ -108,6 +108,7 @@ struct Lints {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 struct BuildTarget {
+    name: Option<String>,
     #[serde(default)]
     required_features: Vec<String>,
 }
@@ -222,10 +223,10 @@ impl CargoManifest {
         self.features.get(name).map(Vec::as_slice)
     }
 
-    /// The optional dependencies that no feature turns on, by `dep:` or by a feature of theirs
-    /// not marked `?`: only the implicit feature of each name turns them on, which
-    /// `--all-features` sets and no build of the crate's own features does.
-    pub(crate) fn unturned_optionals(&self) -> Vec<&str> {
+    /// The optional dependencies that no feature names by `dep:`, each of which Cargo then gives
+    /// an implicit feature of its name: a feature of the crate's that names no feature of its, and
+    /// which `--all-features` sets and no build of the crate's own features does.
+    pub(crate) fn implicit_features(&self) -> Vec<&str> {
         let entries: Vec<&str> = self
             .features
             .values()
@@ -236,10 +237,9 @@ impl CargoManifest {
             .filter(|(_, dependency)| dependency.optional)
             .map(|(name, _)| name)
             .filter(|name| {
-                !entries.iter().any(|entry| {
-                    entry.strip_prefix("dep:") == Some(name)
-                        || entry.split_once('/').is_some_and(|(of, _)| of == *name)
-                })
+                !entries
+                    .iter()
+                    .any(|entry| entry.strip_prefix("dep:") == Some(name))
             })
             .collect()
     }
@@ -252,6 +252,14 @@ impl CargoManifest {
     /// Whether it takes the workspace's lints.
     pub(crate) const fn takes_workspace_lints(&self) -> bool {
         self.lints.workspace
+    }
+
+    /// The names of its `[[bench]]` targets, in their order; one of no name as its crate's.
+    pub(crate) fn bench_names(&self) -> Vec<String> {
+        self.bench
+            .iter()
+            .map(|bench| bench.name.clone().unwrap_or_else(|| self.name().to_owned()))
+            .collect()
     }
 
     /// Whether a test or bench target of its own requires `internals`.
@@ -379,14 +387,14 @@ fn a_manifest_reads_each_form_of_a_dependency_and_fails_on_a_section_it_does_not
         .map(|(name, _)| name)
         .collect();
     assert_eq!(turns, ["u"]);
-    // `t` is turned on by `dep:`, `w` by a feature of its own, and `y` only by its implicit
-    // feature, as `y?/x` turns nothing on.
+    // `t` is named by `dep:`; `w`, turned on by a feature of its own, and `y`, by none, as `y?/x`
+    // turns nothing on, each have an implicit feature.
     let optionals = CargoManifest::parse(concat!(
         "[features]\na = [\"dep:t\", \"w/x\", \"y?/x\"]\n\n[dependencies]\n",
         "t = { workspace = true, optional = true }\nw = { workspace = true, optional = true }\n",
         "y = { workspace = true, optional = true }\n",
     ));
-    assert_eq!(optionals.unturned_optionals(), ["y"]);
+    assert_eq!(optionals.implicit_features(), ["w", "y"]);
     let unknown = Toml::parse::<CargoManifest>("[build-dependencies]\na = \"1\"\n");
     assert!(unknown.is_err());
 }

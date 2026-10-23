@@ -61,6 +61,14 @@ pub struct Touched {
     pub(crate) clocks: bool,
 }
 
+impl Touched {
+    /// An operation that changed both, as an instance ends with its clock.
+    pub(crate) const BOTH: Self = Self {
+        stats: true,
+        clocks: true,
+    };
+}
+
 /// Where an instance's runs start in its carrier's buffers.
 #[derive(Debug, Clone, Copy, Default)]
 struct Starts {
@@ -170,10 +178,7 @@ impl Modifiers {
             Ok(at) => at,
             Err(at) => {
                 self.insert(clocks, at, new);
-                return Touched {
-                    stats: true,
-                    clocks: true,
-                };
+                return Touched::BOTH;
             }
         };
         match reapply {
@@ -189,10 +194,7 @@ impl Modifiers {
             }
             Reapply::Refresh => {
                 self.renew(clocks, at, new);
-                Touched {
-                    stats: true,
-                    clocks: true,
-                }
+                Touched::BOTH
             }
             Reapply::Stack => {
                 let stacks = reapply.stacks(self.instances[at].stacks, max_stacks);
@@ -205,10 +207,7 @@ impl Modifiers {
                     self.add_ends(at, 1, until);
                 }
                 self.instances[at].stacks = stacks;
-                Touched {
-                    stats: true,
-                    clocks: true,
-                }
+                Touched::BOTH
             }
         }
     }
@@ -221,36 +220,57 @@ impl Modifiers {
         id: ModifierId,
         source: Option<StableId>,
         hold: Hold,
-    ) {
-        if let Ok(at) = self.find(id, source)
-            && !self.instances[at].lifetime.release(hold)
-        {
+    ) -> Touched {
+        let Ok(at) = self.find(id, source) else {
+            return Touched::default();
+        };
+        let lifetime = &mut self.instances[at].lifetime;
+        let before = *lifetime;
+        if !lifetime.release(hold) {
             self.remove_at(clocks, at);
+            return Touched::BOTH;
+        }
+        Touched {
+            stats: *lifetime != before,
+            clocks: false,
         }
     }
 
-    /// Removes the instance of `id` from `source`, with its clock; whether it held one.
+    /// Removes the instance of `id` from `source`, with its clock, if it carries one.
     pub fn remove(
         &mut self,
         clocks: &mut ModifierClocks,
         id: ModifierId,
         source: Option<StableId>,
-    ) -> bool {
+    ) -> Touched {
         let Ok(at) = self.find(id, source) else {
-            return false;
+            return Touched::default();
         };
         self.remove_at(clocks, at);
-        true
+        Touched::BOTH
     }
 
     /// Writes `stacks` of the instance of `id` from `source` in tick `now`, as a script does,
     /// if it carries one. With a stack life, the stacks it takes away are those that end
-    /// soonest, and those it adds end as stacks applied now do.
-    pub fn set_stacks(&mut self, id: ModifierId, source: Option<StableId>, stacks: u32, now: Tick) {
+    /// soonest, and those it adds end as stacks applied now do. An instance left with none ends,
+    /// with its clock, as one whose last stack runs out does, but a passive, which stays with
+    /// none (04-capabilities/stats.md, An instance ends with its last stack).
+    pub fn set_stacks(
+        &mut self,
+        clocks: &mut ModifierClocks,
+        id: ModifierId,
+        source: Option<StableId>,
+        stacks: u32,
+        now: Tick,
+    ) -> Touched {
         let Ok(at) = self.find(id, source) else {
-            return;
+            return Touched::default();
         };
         let instance = self.instances[at];
+        if stacks == 0 && !instance.lifetime.held_as_passive() {
+            self.remove_at(clocks, at);
+            return Touched::BOTH;
+        }
         if let Some(life) = instance.stack_life {
             if stacks < instance.stacks {
                 self.end_soonest(at, instance.stacks - stacks);
@@ -259,6 +279,10 @@ impl Modifiers {
             }
         }
         self.instances[at].stacks = stacks;
+        Touched {
+            stats: true,
+            clocks: false,
+        }
     }
 
     /// Ends what no longer holds as tick `now` starts: each stack whose end it reached, then
@@ -290,7 +314,7 @@ impl Modifiers {
             };
             let instance = &mut self.instances[at];
             let keeps = if emptied {
-                instance.lifetime.held_by(Hold::Passive)
+                instance.lifetime.held_as_passive()
             } else {
                 instance.lifetime.lasts(now)
             };
@@ -350,38 +374,44 @@ impl Modifiers {
     }
 
     /// Ends every instance a death ends, with its clock: all but passives.
-    pub(crate) fn clear_on_death(&mut self, clocks: &mut ModifierClocks) {
-        self.remove_where(clocks, |instance| !instance.lifetime.held_by(Hold::Passive));
+    pub(crate) fn clear_on_death(&mut self, clocks: &mut ModifierClocks) -> Touched {
+        let removed = self.remove_where(clocks, |instance| !instance.lifetime.held_as_passive());
+        Touched {
+            stats: removed,
+            clocks: removed,
+        }
     }
 
     /// Lets go of the hold of every instance an aura, an area or a player holds that `holds` no
-    /// longer keeps, each ending, with its clock, when nothing else keeps it; whether any
-    /// changed.
+    /// longer keeps, each ending, with its clock, when nothing else keeps it.
     pub(crate) fn release_held(
         &mut self,
         clocks: &mut ModifierClocks,
         mut holds: impl FnMut(ModifierId, Option<StableId>) -> bool,
-    ) -> bool {
+    ) -> Touched {
         let mut changed = false;
-        self.remove_where(clocks, |instance| {
+        let removed = self.remove_where(clocks, |instance| {
             if !instance.lifetime.held_by(Hold::Held) || holds(instance.id, instance.source) {
                 return false;
             }
             changed = true;
             !instance.lifetime.release(Hold::Held)
         });
-        changed
+        Touched {
+            stats: changed,
+            clocks: removed,
+        }
     }
 
     /// Ends the applications of the instances whose modifier `grants` says grants a purged tag,
-    /// with their clocks: each ends unless a hold keeps it. Whether it changed any.
+    /// with their clocks: each ends unless a hold keeps it.
     pub(crate) fn purge(
         &mut self,
         clocks: &mut ModifierClocks,
         grants: impl Fn(ModifierId) -> bool,
-    ) -> bool {
+    ) -> Touched {
         let mut changed = false;
-        self.remove_where(clocks, |instance| {
+        let removed = self.remove_where(clocks, |instance| {
             if !grants(instance.id) || instance.lifetime.applied.is_none() {
                 return false;
             }
@@ -389,26 +419,33 @@ impl Modifiers {
             instance.lifetime.applied = None;
             instance.lifetime.holds.is_empty()
         });
-        changed
+        Touched {
+            stats: changed,
+            clocks: removed,
+        }
     }
 
-    /// Removes, with their clocks, the instances `ends` says end, which it may change.
+    /// Removes, with their clocks, the instances `ends` says end, which it may change; whether
+    /// it removed any.
     fn remove_where(
         &mut self,
         clocks: &mut ModifierClocks,
         mut ends: impl FnMut(&mut Instance) -> bool,
-    ) {
+    ) -> bool {
+        let mut removed = false;
         let mut starts = Starts::default();
         let mut at = 0;
         while at < self.instances.len() {
             if ends(&mut self.instances[at]) {
                 self.remove_run(clocks, at, starts);
+                removed = true;
             } else {
                 starts.ends += usize::from(self.instances[at].ends);
                 starts.shares += usize::from(self.instances[at].shares);
                 at += 1;
             }
         }
+        removed
     }
 
     fn find(&self, id: ModifierId, source: Option<StableId>) -> Result<usize, usize> {

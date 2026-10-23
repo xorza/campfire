@@ -19,6 +19,7 @@ campfire-bots.workspace = true
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-common.workspace = true
 campfire-harness.workspace = true
+campfire-host = { workspace = true, features = ["internals"] }
 campfire-log = { workspace = true, features = ["internals"] }
 campfire-math = { workspace = true, features = ["internals"] }
 campfire-measure.workspace = true

@@ -14,6 +14,7 @@ internals = [
     "campfire-codec/internals",
     "campfire-declarations/internals",
     "campfire-mode/internals",
+    "campfire-package-format/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-units/internals",
@@ -27,6 +28,7 @@ campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-declarations.workspace = true
 campfire-mode.workspace = true
+campfire-package-format.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-units.workspace = true

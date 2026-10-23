@@ -4,9 +4,10 @@
 
 use bevy_app::PluginGroupBuilder;
 use campfire_math::TickRate;
-use campfire_net_connection::{ConnectionPlugins, ServerConnectionPlugins};
+use campfire_net_connection::{ConnectionPlugins, ServerConnectionPlugin};
 #[cfg(any(feature = "emulator", feature = "udp"))]
 use campfire_net_endpoint::EndpointPlugin;
+use campfire_net_frame_interpolation::FrameRegistryPlugin;
 use campfire_net_interpolation::{
     InterpolationMarkerPlugin, InterpolationPlugins, InterpolationRegistryPlugin,
 };
@@ -51,6 +52,7 @@ pub(crate) fn shared(group: PluginGroupBuilder, tick_rate: TickRate) -> PluginGr
         .add(PredictionMarkerPlugin)
         .add(InterpolationMarkerPlugin)
         .add(InterpolationRegistryPlugin)
+        .add(FrameRegistryPlugin)
         .add(PredictionRegistryPlugin)
         .add_group(SyncPlugins)
 }
@@ -69,7 +71,7 @@ pub(crate) fn server(group: PluginGroupBuilder) -> PluginGroupBuilder {
     group
         .add(ServerLinkPlugin)
         .add_group(ServerReplicationPlugins)
-        .add_group(ServerConnectionPlugins)
+        .add(ServerConnectionPlugin)
 }
 
 #[cfg(test)]

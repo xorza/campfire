@@ -1,53 +1,50 @@
+use campfire_declarations::{ById, Fact};
 use campfire_sim::Capability;
 use campfire_values::UnitType;
 
 use crate::fan::Fan;
 
-/// How an action delivers, as a match runs it: the unit type it delivers, and its shape.
+/// How an action delivers, as a match runs it: the unit type it delivers, the capability that
+/// sets it out, its fan, and how it aims.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Delivery {
     pub unit_type: UnitType,
-    pub shape: DeliveryShape,
+    pub capability: Capability,
+    pub fan: Fan,
+    pub aim: DeliveryAim,
 }
 
-/// The shape of a delivery: a fan of projectiles, which fly as their type does, or an area.
+/// How a delivery's unit aims, as its module gives it for its type: along a line, which a script
+/// launches along a direction; at a unit alone; at a unit or a point it flies to; or placed where
+/// its action aims.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeliveryShape {
-    Projectile { fan: Fan, flight: ProjectileFlight },
-    Area,
+pub enum DeliveryAim {
+    Along,
+    AtUnit,
+    AtUnitOrPoint,
+    Placed,
 }
 
-impl DeliveryShape {
-    /// The capability of each shape, in the order of the shapes.
-    pub const CAPABILITIES: [Capability; 2] = [Capability::Projectiles, Capability::Areas];
-
-    /// The capability that delivers it.
-    pub const fn capability(self) -> Capability {
-        match self {
-            Self::Projectile { .. } => Self::CAPABILITIES[0],
-            Self::Area => Self::CAPABILITIES[1],
-        }
-    }
-}
-
-/// How a projectile type flies: along a line, which a script launches along a direction, or at a
-/// unit, homing on it, on a curve to it or steered toward it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProjectileFlight {
-    Line,
-    Homing,
-    Curve,
-    Steered,
-}
-
-impl ProjectileFlight {
+impl DeliveryAim {
     /// Whether a script launches it at a unit, not along a direction.
     pub const fn is_at_unit(self) -> bool {
-        matches!(self, Self::Homing | Self::Curve | Self::Steered)
+        matches!(self, Self::AtUnit | Self::AtUnitOrPoint)
     }
 
     /// Whether a shot of it at a point flies to that point, as a scatter aims it.
     pub const fn flies_to_point(self) -> bool {
-        matches!(self, Self::Curve | Self::Steered)
+        matches!(self, Self::AtUnitOrPoint)
+    }
+
+    /// Whether it flies to where it ends, as a splash goes off there.
+    pub const fn flies(self) -> bool {
+        !matches!(self, Self::Placed)
     }
 }
+
+/// How each delivery type aims, which each module that delivers fills for its types: what an
+/// action that delivers one checks its aim by.
+#[derive(Debug, Default)]
+pub struct DeliveryAims(pub ById<UnitType, DeliveryAim>);
+
+impl Fact for DeliveryAims {}

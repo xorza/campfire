@@ -6,6 +6,7 @@ mod error;
 mod facing_socket;
 mod gateway;
 mod listening;
+mod mapping;
 mod nat_pmp_map;
 mod pcp_map;
 mod port_map;

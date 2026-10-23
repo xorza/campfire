@@ -1,8 +1,8 @@
 use std::path::Path;
 use std::str;
 
+use campfire_host::{InputsDiscarded, OrdersSent};
 use campfire_log::{LogEvent, LogLine};
-use campfire_net::{InputsDiscarded, OrdersSent};
 use campfire_store::InputFile;
 
 use crate::error::CheckError;

@@ -19,27 +19,27 @@ fn delegation(main: u8, byte: u8) -> Delegation {
 
 #[test]
 fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
-    let seat = Seat::new(2);
+    let player_slot = PlayerSlot::new(2);
     let inputs = [
         ServerInput::Bot {
-            seat,
+            player_slot,
             payload: &[1, 2, 3],
         },
         ServerInput::Join {
-            seat,
+            player_slot,
             delegation: delegation(11, 21),
         },
         ServerInput::Renew {
-            seat,
+            player_slot,
             delegation: delegation(11, 22),
         },
         ServerInput::Leave {
-            seat,
+            player_slot,
             reason: LeaveReason::Grace,
             becomes: AfterLeave::Bot,
         },
-        ServerInput::Connected { seat },
-        ServerInput::Disconnected { seat },
+        ServerInput::Connected { player_slot },
+        ServerInput::Disconnected { player_slot },
     ];
     for input in &inputs {
         let mut bytes = Vec::new();
@@ -108,7 +108,7 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
 
     // A delegation that does not parse, and bytes that do not decode.
     let bytes = Binary::encode(&Wire::Join {
-        seat: 0,
+        player_slot: 0,
         delegation: "{}",
     });
     assert!(matches!(

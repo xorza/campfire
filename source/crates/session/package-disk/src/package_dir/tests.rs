@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use campfire_common::{ContentHash, PackageFingerprint};
+use campfire_common::PackageFingerprint;
+use campfire_package_format::ContentHash;
+use campfire_package_format::PackageFinder;
 use campfire_store::internals::{PinnedFile, TestDir};
 
 use super::*;
@@ -134,23 +136,20 @@ fn a_store_finds_each_package_by_fingerprint() {
     pack(&test_dir, "upper");
     let store = PackageStore::scan(root).unwrap();
     let upper = PackageDir::new(root.join("upper")).files().unwrap();
-    assert!(store.get(upper.fingerprint()).is_none());
+    assert!(!store.holds(upper.fingerprint()));
     let one = dir.files().unwrap().fingerprint();
     let two = PackageDir::new(root.join("nested/two"))
         .files()
         .unwrap()
         .fingerprint();
     for fingerprint in [one, two] {
-        assert_eq!(
-            store.get(fingerprint).map(PackageFiles::fingerprint),
-            Some(fingerprint)
-        );
+        assert!(store.holds(fingerprint));
     }
     let inner = PackageDir::new(root.join("one/inner"))
         .files()
         .unwrap()
         .fingerprint();
-    assert!(store.get(inner).is_none());
+    assert!(!store.holds(inner));
     let failures = store.failures();
     assert_eq!(failures.len(), 1);
     assert_eq!(failures[0].dir, root.join("bad"));
@@ -158,6 +157,15 @@ fn a_store_finds_each_package_by_fingerprint() {
         &failures[0].error,
         ContentError::Missing { path } if path.as_str() == FileIndex::PATH
     ));
+    // The scan read each index alone: a file changed after it fails only the read of its package,
+    // as a log names it.
+    test_dir.write("nested/two/manifest.toml", "changed");
+    assert!(store.holds(two));
+    assert!(matches!(
+        store.find(two),
+        Some(Err(ContentError::Changed { path })) if path.as_str() == PackageFiles::MANIFEST
+    ));
+    assert!(store.find(inner).is_none());
 }
 
 #[test]

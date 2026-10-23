@@ -2,16 +2,23 @@
 
 use core::marker::PhantomData;
 
-use crate::confirmed_history::ConfirmedHistory;
+use crate::component_codec::ComponentCodec;
+use crate::confirmed_history::{self, ConfirmedHistory, ReceivedValue};
+use crate::history_component::HistoryComponent;
 use crate::history_state::HistoryState;
 use bevy_ecs::error::BevyError;
 use bevy_ecs::prelude::{Entity, Query, ResMut};
+use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
+use bevy_replicon::shared::replication::diff::ComponentDelta;
 use bevy_replicon::shared::replication::diff::{
     DiffBuffer, Diffable as RepliconDiffable, diff_index::DiffIndex,
 };
-use bevy_replicon::shared::replication::storage::ReplicationStorage;
+use bevy_replicon::shared::replication::registry::ctx::WriteCtx;
+use bevy_replicon::shared::replication::storage::{EntityStorageCtx, ReplicationStorage};
+use bytes::Bytes;
 use campfire_net_core::NetTick;
 use campfire_net_core::Ticked;
+use tracing::debug;
 
 /// Why a diff message could not be queued or materialized.
 #[derive(Debug)]
@@ -164,6 +171,82 @@ impl<C: RepliconDiffable> Default for HistoryDiffReceiver<C> {
     }
 }
 
+impl<C: HistoryComponent + RepliconDiffable> HistoryDiffReceiver<C> {
+    /// Writes a diff message of `C` into its confirmed history: a snapshot's value, then each queued
+    /// diff that the history now gives a base for, in order. `before_write` sees each value before
+    /// the history records it, so a caller can act on it.
+    ///
+    /// A message that the entity's confirmed ticks do not map is dropped. An entity without a confirmed
+    /// history gets one: its values are written there and read back for the diffs they make ready,
+    /// as the entity's own component goes on only when the message's changes are flushed.
+    pub fn receive(
+        ctx: &mut WriteCtx<'_>,
+        entity: &mut DeferredEntity<'_>,
+        message: &mut Bytes,
+        mut before_write: impl FnMut(&mut DeferredEntity<'_>, ReceivedValue<'_, C>),
+    ) -> Result<(), BevyError> {
+        let diff: ComponentDelta<C> = ComponentCodec::read_replicon(message)?;
+        let Some(tick) = confirmed_history::replicated_message_tick(entity, ctx.message_tick)
+        else {
+            debug!(
+                message_tick = ?ctx.message_tick,
+                component = core::any::type_name::<C>(),
+                "dropping a diff that no confirmed tick maps"
+            );
+            return Ok(());
+        };
+        let mut new_history = None;
+        match diff {
+            ComponentDelta::Snapshot {
+                index,
+                mut component,
+            } => {
+                C::map_entities(&mut component, ctx);
+                ctx.get_or_default::<Self>()
+                    .record_cursor(tick, Some(index));
+                before_write(
+                    entity,
+                    ReceivedValue {
+                        tick,
+                        value: &component,
+                        snapshot: true,
+                    },
+                );
+                ConfirmedHistory::write(entity, &mut new_history, tick, component);
+            }
+            ComponentDelta::Diffs { index, diffs } => {
+                ctx.get_or_default::<Self>()
+                    .queue_diff(tick, index, diffs)?;
+            }
+        }
+        while let Some(Ticked { tick, value }) = {
+            let receiver = ctx.get_or_default::<Self>();
+            match new_history.as_ref() {
+                Some(history) => receiver.take_ready_update(history)?,
+                None => entity
+                    .get::<ConfirmedHistory<C>>()
+                    .map(|history| receiver.take_ready_update(history))
+                    .transpose()?
+                    .flatten(),
+            }
+        } {
+            before_write(
+                entity,
+                ReceivedValue {
+                    tick,
+                    value: &value,
+                    snapshot: false,
+                },
+            );
+            ConfirmedHistory::write(entity, &mut new_history, tick, value);
+        }
+        if let Some(history) = new_history {
+            entity.insert(history);
+        }
+        Ok(())
+    }
+}
+
 impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
     /// Gives `entity` a receiver whose base is the last diff Replicon applied to it, confirmed at
     /// `tick`: the diffs after it then resolve against the value that `tick` holds. An entity
@@ -191,7 +274,7 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
     ///
     /// Cursors older than the retained base are ignored. Recording `None`
     /// resets the receiver to a full-snapshot base for a new diff stream.
-    pub fn record_cursor(&mut self, tick: NetTick, cursor: Option<DiffIndex>) {
+    pub(crate) fn record_cursor(&mut self, tick: NetTick, cursor: Option<DiffIndex>) {
         if let Some(cursor) = cursor {
             if let Some(base_cursor) = self.base_cursor {
                 if cursor != base_cursor && !cursor.is_newer(base_cursor) {
@@ -264,7 +347,7 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
     /// diff messages without storing per-unchanged-tick cursor entries. When `base_is_present`
     /// is false, no cursor is promoted because the component is removed at the retained history
     /// floor.
-    pub fn clear_before_tick(&mut self, tick: NetTick, base_is_present: bool) {
+    pub(crate) fn clear_before_tick(&mut self, tick: NetTick, base_is_present: bool) {
         self.pending.retain(|pending| pending.tick >= tick);
         if self.has_pending_diffs() {
             return;
@@ -334,7 +417,7 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
     /// The method does not look up `ConfirmedHistory`; readiness is checked by
     /// [`Self::take_ready_update`], which is why out-of-order diff ranges can
     /// be queued before their base state arrives.
-    pub fn queue_diffs(
+    pub(crate) fn queue_diffs(
         &mut self,
         tick: NetTick,
         first_diff_index: DiffIndex,
@@ -376,7 +459,7 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
 
     /// Queues a Replicon diff message encoded as the final cursor plus all
     /// diffs needed to reach it.
-    pub fn queue_diff(
+    pub(crate) fn queue_diff(
         &mut self,
         tick: NetTick,
         index: DiffIndex,
@@ -399,7 +482,7 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
     ///
     /// A diff message is ready when the receiver has a tick for its base cursor
     /// and `ConfirmedHistory` can provide the corresponding base value.
-    pub fn take_ready_update(
+    pub(crate) fn take_ready_update(
         &mut self,
         history: &ConfirmedHistory<C>,
     ) -> Result<Option<Ticked<C>>, HistoryDiffError>
@@ -457,6 +540,57 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
                 continue;
             };
             receiver.clear_before_tick(front.tick, front.value.value().is_some());
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_replicon::shared::replication::diff::{
+        Diffable as RepliconDiffable, diff_index::DiffIndex,
+    };
+    use campfire_net_core::{NetTick, Ticked};
+
+    use crate::confirmed_history::ConfirmedHistory;
+    use crate::history_diff_receiver::{HistoryDiffError, HistoryDiffReceiver};
+
+    /// The bridge's writes, for another crate's test that stands in for it.
+    impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
+        /// Records `cursor` at `tick`, as the bridge's `record_cursor` does.
+        pub fn bridge_record_cursor(&mut self, tick: NetTick, cursor: Option<DiffIndex>) {
+            self.record_cursor(tick, cursor);
+        }
+
+        /// Queues a message of `diffs` from `first_diff_index`, as the bridge's `queue_diffs`
+        /// does.
+        pub fn bridge_queue_diffs(
+            &mut self,
+            tick: NetTick,
+            first_diff_index: DiffIndex,
+            diffs: Vec<C::Diff>,
+        ) -> Result<(), HistoryDiffError> {
+            self.queue_diffs(tick, first_diff_index, diffs)
+        }
+
+        /// Queues the diffs ending at `index`, as the bridge's `queue_diff` does.
+        pub fn bridge_queue_diff(
+            &mut self,
+            tick: NetTick,
+            index: DiffIndex,
+            diffs: Vec<C::Diff>,
+        ) -> Result<(), HistoryDiffError> {
+            self.queue_diff(tick, index, diffs)
+        }
+
+        /// The next update `history` lets apply, as the bridge's `take_ready_update` takes it.
+        pub fn bridge_take_ready_update(
+            &mut self,
+            history: &ConfirmedHistory<C>,
+        ) -> Result<Option<Ticked<C>>, HistoryDiffError>
+        where
+            C: Clone,
+        {
+            self.take_ready_update(history)
         }
     }
 }

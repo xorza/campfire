@@ -7,15 +7,15 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_script::{
-    ApiBuilder, CallExtension, CallParams, HookDecl, PlannedCapability, RowFill, RowReads, Status,
-    ViewColumn,
+    ApiBuilder, CallExtension, CallParams, EventPhase, HookDecl, ModeEvents, PlannedCapability,
+    RowFill, RowReads, Status, ViewColumn,
 };
 use campfire_sim::{Breach, Capability, HostRule, OwnResources, SimComponent, TimedProcess};
 use campfire_states::StateTypes;
-use campfire_values::EngineTag;
+use campfire_values::{EngineTag, MatchScope, NameId, Named, Names};
 
 use crate::book::Book;
-use crate::book_cx::{BuildFn, ExtendFn, RuleFn};
+use crate::book_cx::{BuildFn, ExtendFn, NamesFn, RuleFn};
 use crate::cache::Cache;
 use crate::callbacks::Callbacks;
 use crate::fact::Fact;
@@ -59,6 +59,13 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     /// `F`, a fact a module's books build on, which `build` makes from the match's packages.
     fn fact<F: Fact>(&mut self, build: BuildFn<F>);
 
+    /// The names of the module's ids of type `I`, which `build` makes from the match's packages:
+    /// what the load resolves the packages' names of `I` by.
+    fn names<I: NameId + Named + 'static>(&mut self, build: NamesFn<I>)
+    where
+        Names<I>: Send + Sync,
+        I::Scope: MatchScope;
+
     /// `extend`, which adds the module's part to `B`, a book or a fact of a module it builds on,
     /// as soon as `B` is built.
     fn extend<B: Send + Sync + 'static>(&mut self, extend: ExtendFn<B>);
@@ -87,6 +94,10 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
 
     /// `R`, a tick's record for the host.
     fn report<R: Report>(&mut self);
+
+    /// `Q`, a queue of the module's events that the mode's scripts answer by its hooks, in
+    /// `phase`, after the queues of that phase the modules before it declare.
+    fn mode_events<Q: ModeEvents>(&mut self, phase: EventPhase);
 
     /// `C`, a registry of callbacks the module calls.
     fn calls<C: Callbacks>(&mut self);
@@ -154,4 +165,9 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     /// server's match, by Bevy's required component, its default; a client receives it from the
     /// server, or, of state only the server holds, never holds it, as it does not compute it.
     fn server_part<H: Component, C: Component + Default>(&mut self);
+
+    /// `C`, a part every entity that holds `H` holds on every role, its default, by Bevy's
+    /// required component: one that gains `H` after its spawn, as a unit gains slots, gains `C`
+    /// with it.
+    fn part_with<H: Component, C: Component + Default>(&mut self);
 }

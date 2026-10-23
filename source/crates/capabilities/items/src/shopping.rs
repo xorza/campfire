@@ -1,6 +1,6 @@
 use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_geometry::Placed;
 use campfire_math::Vec3;
 use campfire_players::OnMatch;
@@ -20,7 +20,7 @@ use crate::shop_index::ShopIndex;
 pub struct Shopping<'w, 's> {
     index: Res<'w, EntityIndex>,
     items: Res<'w, ItemBook>,
-    shops: Res<'w, ByType<Shop>>,
+    shops: Res<'w, ById<UnitType, Shop>>,
     relations: OnMatch<'w, 's, Relations>,
     map: Res<'w, MapBook>,
     shop_units: ShopUnits<'w, 's>,

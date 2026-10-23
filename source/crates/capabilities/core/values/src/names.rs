@@ -24,6 +24,16 @@ pub trait NameKey<S>: Copy {
     fn text(&self) -> &str;
 }
 
+/// A scope of names, as a load asks whether the match has a name of its own: the scope a name of
+/// the match's own takes; none for a kind whose names are each a package's own.
+pub trait MatchScope: Copy {
+    const MATCH: Option<Self>;
+}
+
+impl MatchScope for () {
+    const MATCH: Option<Self> = Some(());
+}
+
 impl NameKey<()> for &str {
     fn scope(&self) {}
 

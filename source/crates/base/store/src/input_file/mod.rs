@@ -1,11 +1,12 @@
 use std::fs::{self, File, Metadata};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::input_file::error::ReadError;
 use crate::path_error::PathError;
-use crate::platform::no_follow::NoFollow;
+use campfire_platform::NoFollow;
+use campfire_platform::PositionalRead;
 
 pub(crate) mod error;
 
@@ -176,14 +177,19 @@ impl InputRanges {
         self.stamp.len == 0
     }
 
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     /// Its length and time of change as it opened.
     pub const fn stamp(&self) -> FileStamp {
         self.stamp
     }
 
-    /// The `len` bytes from `offset`. A range past the length it opened with is `Short` before
-    /// it reads, and so is one the file no longer holds as it reads, as when it shrank.
-    pub fn read_at(&mut self, offset: u64, len: usize) -> Result<Vec<u8>, PathError<ReadError>> {
+    /// The `len` bytes from `offset`, by a read that moves no cursor, so reads through one handle
+    /// need no turn. A range past the length it opened with is `Short` before it reads, and so is
+    /// one the file no longer holds as it reads, as when it shrank.
+    pub fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>, PathError<ReadError>> {
         let short = || ReadError::Short { offset, len };
         let wanted = u64::try_from(len).expect("a length fits u64");
         let read = || {
@@ -193,20 +199,31 @@ impl InputRanges {
             {
                 return Err(short());
             }
-            (&self.file)
-                .seek(SeekFrom::Start(offset))
-                .map_err(ReadError::Read)?;
-            let mut bytes = Vec::with_capacity(len);
-            (&self.file)
-                .take(wanted)
-                .read_to_end(&mut bytes)
-                .map_err(ReadError::Read)?;
-            if bytes.len() < len {
-                return Err(short());
-            }
+            let mut bytes = vec![0; len];
+            PositionalRead::exact_at(&self.file, &mut bytes, offset).map_err(|error| {
+                if error.kind() == io::ErrorKind::UnexpectedEof {
+                    short()
+                } else {
+                    ReadError::Read(error)
+                }
+            })?;
             Ok(bytes)
         };
         read().map_err(PathError::at(&self.path))
+    }
+
+    /// Whether its length and time of change are still those it opened with, as its handle's
+    /// metadata gives them now: a file another program wrote since is not.
+    pub fn unchanged(&self) -> Result<bool, PathError<ReadError>> {
+        let now = || {
+            let metadata = self.file.metadata().map_err(ReadError::Read)?;
+            let modified = metadata.modified().map_err(ReadError::Read)?;
+            Ok(FileStamp {
+                len: metadata.len(),
+                modified,
+            })
+        };
+        Ok(now().map_err(PathError::at(&self.path))? == self.stamp)
     }
 }
 

@@ -97,6 +97,17 @@ impl StateAudience for AudienceAll {
     type Sending = SentOnChange;
 }
 
+/// The kind of a unit's state fields of an audience, as its class's component sends them.
+pub(crate) struct KindOf;
+
+impl AudienceCall for KindOf {
+    type Output = DataKind;
+
+    fn call<S: StateAudience>(self) -> DataKind {
+        S::KIND
+    }
+}
+
 impl<S: StateAudience> UnitState<S> {
     pub const fn new(values: Vec<StateValue>) -> Self {
         Self {

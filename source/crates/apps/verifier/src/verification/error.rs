@@ -1,4 +1,4 @@
-use campfire_package_disk::StoreError;
+use campfire_package::StoreError;
 use campfire_protocol::LogError;
 use campfire_runner::{ReplayError, ResumeError, SnapshotCheckError, StartError, TermsError};
 use campfire_store::{PathError, ReadError};

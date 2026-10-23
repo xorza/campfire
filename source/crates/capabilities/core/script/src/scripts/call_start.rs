@@ -1,23 +1,29 @@
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_sim::StableId;
-use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, ModifierId, PackageIndex, Rank};
+use campfire_values::{
+    ActionId, ActionStart, Allegiance, DashDelivery, Hit, ModifierId, PackageIndex, PlayerView,
+    Rank,
+};
 
 use crate::scripts::mode_scripts::ListPlace;
 use crate::scripts::script_role::ScriptRole;
 
 /// What a call starts with: its role; whether it writes or only reads; its acting unit, a cast's
-/// caster, a modifier's source or the unit that thinks, none for the mode; the action whose params
+/// caster, a modifier's source or the unit that thinks, none for the mode, and a cast's caster's
+/// allegiance as its action began, which outlives the caster; the action whose params
 /// it reads, at `rank`, and its modifier's; the package whose names it means, 0 the mode's; the
 /// depth of the chain of combat events it runs in, 0 outside one; the hit a delivery's hook runs
 /// for, which the damage it deals carries; how its action started; the delivery a dash it starts
 /// carries, an instant action's own in its `on_resolve`; and the player whose pool pays for it,
 /// the acting unit's controller or the player whose input it answers, none when no player does;
-/// and, for a call of the mode's role, the place of its script in the mode's list.
+/// for a call of the mode's role, the place of its script in the mode's list; and the player whose
+/// view a bot's call reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CallStart {
     pub role: ScriptRole,
     pub purity: Purity,
     pub acting: Option<StableId>,
+    pub allegiance: Option<Allegiance>,
     pub action: Option<ActionId>,
     pub rank: Rank,
     pub modifier: Option<ModifierId>,
@@ -26,11 +32,24 @@ pub struct CallStart {
     pub hit: Option<Hit>,
     pub start: Option<ActionStart>,
     pub dash_delivers: Option<DashDelivery>,
-    pub payer: Option<Seat>,
+    pub payer: Option<PlayerSlot>,
     /// Only the mode's own script holds the mode's state and choices, and ends the match.
     pub listed: Option<ListPlace>,
     /// The tick the call runs in, which its effects apply in.
     pub now: Tick,
+    /// The player whose view the call reads, a bot's player slot's; none for a call of the sim's
+    /// roles, which read the match whole.
+    pub sight: Option<PlayerView>,
+}
+
+/// A cast of `action` of `package` at `rank` by `caster`, of `allegiance` as it began.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActionCast {
+    pub action: ActionId,
+    pub rank: Rank,
+    pub caster: StableId,
+    pub allegiance: Allegiance,
+    pub package: PackageIndex,
 }
 
 /// What a call does when it finds its pool spent: it fails, as a call a player causes does, or
@@ -57,6 +76,7 @@ impl CallStart {
             role,
             purity: Purity::Writes,
             acting: None,
+            allegiance: None,
             action: None,
             rank: Rank::FIRST,
             modifier: None,
@@ -68,6 +88,7 @@ impl CallStart {
             payer: None,
             listed: None,
             now,
+            sight: None,
         }
     }
 
@@ -99,13 +120,15 @@ impl CallStart {
         }
     }
 
-    /// The think of the bot of `seat` before tick `now`, outside the sim: a call that reads,
-    /// whose payer is the bot's seat, as it orders the seat's units (03-game-scripting.md, A bot
+    /// The think before tick `now` of the bot that plays as `player` views the match, outside the
+    /// sim: a call that reads, whose payer is the bot's player slot, as it orders the player slot's
+    /// units, and that sees what the player slot's client receives (03-game-scripting.md, A bot
     /// decides from what it sees, each think).
-    pub const fn bot(seat: Seat, now: Tick) -> Self {
+    pub const fn bot(player: PlayerView, now: Tick) -> Self {
         Self {
             purity: Purity::Reads,
-            payer: Some(seat),
+            payer: Some(player.player_slot),
+            sight: Some(player),
             ..Self::mode(ScriptRole::Bot, now)
         }
     }
@@ -118,19 +141,14 @@ impl CallStart {
         }
     }
 
-    /// A cast of `action` of `package` at `rank` by `caster` in tick `now`, for no hit.
-    pub const fn cast(
-        action: ActionId,
-        rank: Rank,
-        caster: StableId,
-        package: PackageIndex,
-        now: Tick,
-    ) -> Self {
+    /// A cast `cast` in tick `now`, for no hit.
+    pub const fn cast(cast: ActionCast, now: Tick) -> Self {
         Self {
-            acting: Some(caster),
-            action: Some(action),
-            rank,
-            package,
+            acting: Some(cast.caster),
+            allegiance: Some(cast.allegiance),
+            action: Some(cast.action),
+            rank: cast.rank,
+            package: cast.package,
             ..Self::mode(ScriptRole::Action, now)
         }
     }

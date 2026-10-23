@@ -1,6 +1,7 @@
 use crate::correction_ease::CorrectionEase;
 use crate::switch_direction::SwitchDirection;
 use bevy_ecs::prelude::*;
+use core::time::Duration;
 
 /// A resolved [`TimelineSwitch`], committed for the next frame's apply pass.
 ///
@@ -10,16 +11,15 @@ use bevy_ecs::prelude::*;
 pub(crate) struct PendingSwitch {
     /// The timeline to move to, resolved against the entity's markers.
     pub(crate) direction: SwitchDirection,
-    /// Blend length in seconds, resolved against [`TimelineSwitchSetup`].
-    /// `<= 0` (or non-finite) snaps.
-    pub(crate) total_secs: f32,
+    /// Blend length, resolved against [`TimelineSwitchSetup`]; none snaps.
+    pub(crate) total: Duration,
     /// Ease curve shaping the blend, resolved.
     pub(crate) ease: CorrectionEase,
 }
 
 impl PendingSwitch {
     /// Whether this switch blends instead of snapping.
-    pub(crate) fn blends(&self) -> bool {
-        self.total_secs.is_finite() && self.total_secs > 0.0
+    pub(crate) const fn blends(&self) -> bool {
+        !self.total.is_zero()
     }
 }

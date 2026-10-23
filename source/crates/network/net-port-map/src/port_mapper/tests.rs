@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use super::*;
-use crate::gateway::MappedBy;
 use crate::gateway::fake_gateway::FakeGateway;
+use crate::mapping::MappedBy;
 use crate::nat_pmp_map::NatPmpMap;
 use crate::pcp_map::PcpMap;
 use crate::upnp_gateway::fake_router::{Answer, FakeRouter};
@@ -264,6 +264,13 @@ fn a_port_no_router_maps_waits_its_retry_and_a_router_that_announces_itself_maps
     let router = FakeRouter::start(|_| Answer::Done);
     let from = SocketAddr::from((Ipv4Addr::LOCALHOST, 41_952));
     assert!(!mapper.hear(b"M-SEARCH * HTTP/1.1\r\n\r\n", from));
+    // The same announcement from another host, of its own address, is not taken: only the
+    // gateway, at 127.0.0.1 here, announces a router.
+    let other = SocketAddr::from((Ipv4Addr::new(192, 0, 2, 7), 41_952));
+    let spoofed = String::from_utf8(router.announcement())
+        .unwrap()
+        .replace("127.0.0.1", "192.0.2.7");
+    assert!(!mapper.hear(spoofed.as_bytes(), other));
     assert!(mapper.hear(&router.announcement(), from));
     // Each turn's PCP drew a nonce, so the renewal draws the 5th word.
     assert_eq!(turn(&mut mapper), BY_WORD_5);

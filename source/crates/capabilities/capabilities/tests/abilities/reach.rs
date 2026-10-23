@@ -1,12 +1,12 @@
 use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use campfire_abilities::*;
 use campfire_actions::{
-    ActionData, ActionProgress, ActionRange, ActionTarget, InProgress, OrderPhase, RangeField,
-    SlotAim, Targeting,
+    ActionData, ActionKeys, ActionProgress, ActionRange, ActionTarget, InProgress, OrderPhase,
+    RangeField, SlotAim, Targeting,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order};
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
@@ -31,11 +31,14 @@ fn on_resolve(ctx, caster, target) {
 }
 "#;
     let leap = |clamp| ActionData {
-        script: Some(PackagePath::parse("leap.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-            Num::int(4),
-        )))),
-        clamp_to_range: clamp,
+        keys: ActionKeys {
+            script: Some(PackagePath::parse("leap.rhai").unwrap()),
+            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                Num::int(4),
+            )))),
+            clamp_to_range: clamp,
+            ..ActionData::of(Targeting::Point, CastData::default()).keys
+        },
         ..ActionData::of(Targeting::Point, CastData::default())
     };
     let mut game = abilities_match();
@@ -117,15 +120,21 @@ impl Reaching {
     /// Loads Hop and Jab into `game`, a match of `CAPABILITIES`.
     fn place(game: &mut Match) -> Self {
         let hop = ActionData {
-            script: Some(PackagePath::parse("hop.rhai").unwrap()),
-            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-                Num::int(4),
-            )))),
+            keys: ActionKeys {
+                script: Some(PackagePath::parse("hop.rhai").unwrap()),
+                range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                    Num::int(4),
+                )))),
+                ..ActionData::of(Targeting::Point, CastData::default()).keys
+            },
             ..ActionData::of(Targeting::Point, CastData::default())
         };
         let jab = ActionData {
-            script: Some(PackagePath::parse("jab.rhai").unwrap()),
-            targeting: Targeting::Unit(FilterData::parse("enemies").unwrap()),
+            keys: ActionKeys {
+                script: Some(PackagePath::parse("jab.rhai").unwrap()),
+                targeting: Targeting::Unit(FilterData::parse("enemies").unwrap()),
+                ..hop.clone().keys
+            },
             ..hop.clone()
         };
         let hop_script = r#"
@@ -138,7 +147,10 @@ impl Reaching {
         let jab_script =
             r#"fn on_resolve(ctx, caster, target) { ctx.damage(target, "true", 10); }"#;
         let lob = ActionData {
-            min_range: Some(Ranked::One(Number::Value(Scalar::Int(2)))),
+            keys: ActionKeys {
+                min_range: Some(Ranked::One(Number::Value(Scalar::Int(2)))),
+                ..jab.clone().keys
+            },
             ..jab.clone()
         };
         let hop = Abilities::load(game, "hop", &hop, hop_script);
@@ -238,7 +250,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
     let far = Abilities::spawn_combatant(&mut game, (0, 0, 30), Team::new(1), ());
     let send = |game: &mut Match, action| {
         let payload = Order::payload(&[Order::one(mover, action)]);
-        game.step_with(&[(Seat::new(0), &payload)]);
+        game.step_with(&[(PlayerSlot::new(0), &payload)]);
     };
     let jab = OrdersDirective::Slot {
         slot: 0,

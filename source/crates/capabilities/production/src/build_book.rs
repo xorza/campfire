@@ -129,7 +129,7 @@ impl BuildBook {
     }
 
     /// The build in `slot` of `slots`, as `book` holds its action; `None` for a slot that holds
-    /// no build. It borrows the books alone, so a placement's test may run beside it.
+    /// no build, or one not learned. It borrows the books alone, so a placement's test may run beside it.
     pub(crate) fn building(
         &self,
         book: &ActionBook,
@@ -139,7 +139,7 @@ impl BuildBook {
         let spec = self.of(slots.slot(slot)?.action?)?;
         Some(Building {
             spec,
-            range: slots.meters_in(book, slot),
+            range: slots.meters_in(book, slot)?,
         })
     }
 
@@ -195,6 +195,8 @@ impl Book for BuildBook {
 
 #[cfg(test)]
 mod tests {
+    use campfire_units::{BodyShape, Layer};
+
     use super::*;
 
     #[test]
@@ -208,7 +210,10 @@ mod tests {
         {
             let build = NewBuild {
                 unit_type: UnitType::new(0),
-                form: BodyForm::box_sized([Num::ONE, Num::ONE]).unwrap(),
+                form: BodyForm::new(
+                    BodyShape::box_sized([Num::ONE, Num::ONE]).unwrap(),
+                    Layer::FIRST,
+                ),
                 start: BuildStart::Arrival,
                 style,
                 start_life: None,

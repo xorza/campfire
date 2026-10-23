@@ -5,7 +5,7 @@ language = "en"
 kind = "mode"
 capabilities = ["combat", "stats", "abilities", "projectiles", "areas", "orders", "navigation", "vision", "progression", "items"]
 tick_hz = { min = 20, max = 60, default = 30 }
-teams = [{ name = "north", seats = 3 }, { name = "south", seats = 3 }, { name = "camps", seats = 0 }]
+teams = [{ name = "north", player_slots = 3 }, { name = "south", player_slots = 3 }, { name = "camps", player_slots = 0 }]
 max_move_speed = "6.0"
 # A call's operations, and each pool's in a tick: a call for each of the 6 players, 10 AI calls,
 # 5 mode calls.

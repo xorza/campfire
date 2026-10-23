@@ -13,10 +13,10 @@ use crate::item_book::ItemBook;
 pub struct ItemHolds;
 
 impl ItemHolds {
-    /// Pushes the grants of each unit's carried items: each item modifier as a passive from the
-    /// unit itself at rank 1 while an item it carries holds it, once however many do, and none
-    /// once it carries none. No unit type's or action's passive is an item's modifier, which the
-    /// load checks, so every passive of an item's modifier is an item's. What a unit wants follows
+    /// Pushes the grants of each unit's carried items: each item modifier under the items' hold
+    /// from the unit itself at rank 1 while an item it carries holds it, once however many do, and
+    /// none once it carries none. The hold is the items' own, so a passive of the same modifier
+    /// neither keeps nor releases it. What a unit wants follows
     /// from its inventory, its modifiers and the books only, so a run visits only the units whose
     /// inventory or modifiers changed since its last, unless a book changed.
     pub(super) fn want_items(
@@ -43,13 +43,13 @@ impl ItemHolds {
             }));
             held.sort_unstable();
             held.dedup();
-            grants.unit(entity, id);
+            let mut run = grants.of(entity, id);
             for &modifier in items.modifiers() {
                 let holds = held.binary_search(&modifier).is_ok();
-                grants.push(Grant {
+                run.push(Grant {
                     modifier,
                     from: GrantFrom::Itself,
-                    hold: Hold::Passive,
+                    hold: Hold::Item,
                     action: None,
                     rank: holds.then_some(Rank::FIRST),
                 });

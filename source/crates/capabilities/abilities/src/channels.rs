@@ -1,3 +1,8 @@
+//! The channels units run, in Hit: their hooks on the server, and on a client their cut and their
+//! end alone.
+
+use core::num::NonZeroU32;
+
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
@@ -7,18 +12,18 @@ use campfire_actions::{
     ChannelStep, ProgressDues, ProgressIndexes, UseGroup,
 };
 use campfire_common::{Tick, Ticks};
+use campfire_players::PlayersWorld;
 use campfire_script::{
-    CallStart, Ctx, Hook, HookDecl, ScriptBatch, ScriptRole, ScriptValue, ScriptsWorld, Unit,
+    ActionCast, CallStart, Ctx, Hook, HookDecl, ScriptBatch, ScriptRole, ScriptValue, ScriptsWorld,
+    Unit,
 };
-use campfire_sim::{DueUnit, Keyed, Ordered, SimTick, StableId};
+use campfire_sim::{DueUnit, Keyed, SimTick, StableId};
 use campfire_stats::{Held, HeldModifiers};
-use campfire_units::{Due, ForcedMove, Owner};
-use campfire_values::{Motion, UnitTags};
+use campfire_units::{Due, ForcedMove, Owner, TrackLevels};
+use campfire_values::{Allegiance, Motion, Team, UnitTags};
 
 use crate::Abilities;
 
-/// The channels units run, in Hit: their hooks on the server, and on a client their cut and their
-/// end alone.
 /// A unit whose channel is due, keyed by its stable id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ChannelDue(Keyed);
@@ -50,11 +55,12 @@ impl HookDecl for OnInterrupt {
 
 impl Channeling {
     /// Runs each unit's channel in Hit, in the order of its stable id, after the casts resolve: a
-    /// cut one's `on_interrupt`, then a due tick's `on_channel_tick`, each a call of the channel's
-    /// action at its rank from the unit, in its player's pool; and one at its end ends. A unit
-    /// whose tags keep it from casting has its channel cut. A channel's calls share one snapshot of
-    /// the units, read as the batch begins. A channel that still runs holds its action's `hold`
-    /// on its unit this tick, from the unit at its rank.
+    /// cut one's `on_interrupt`, then a due tick's pay and its `on_channel_tick`, each a call of
+    /// the channel's action at its rank from the unit, in its player's pool; and one at its end
+    /// ends, as does a wind-down at its own. A unit whose tags keep it from casting has its
+    /// channel cut. A channel's calls share one snapshot of the units, read as the batch begins.
+    /// A channel that still runs holds its action's `hold` on its unit this tick, from the unit at
+    /// its rank.
     pub(super) fn run_channels(world: &mut World) {
         let due = world.resource_mut::<Due<ChannelDue>>().take();
         if !due.is_empty() {
@@ -68,11 +74,7 @@ impl Channeling {
     pub(super) fn collect_channels(
         units: Query<'_, '_, &ActionProgress>,
         mut indexes: ProgressIndexes<'_>,
-        (tick, mut order, mut held): (
-            Res<'_, SimTick>,
-            Local<'_, Ordered>,
-            Local<'_, Vec<DueUnit>>,
-        ),
+        (tick, mut held): (Res<'_, SimTick>, Local<'_, Vec<DueUnit>>),
         mut due: ResMut<'_, Due<ChannelDue>>,
     ) {
         held.clear();
@@ -86,10 +88,12 @@ impl Channeling {
             }
             runs
         });
-        let running = held
-            .iter()
-            .map(|&DueUnit { id, entity }| Keyed { id, entity });
-        due.refill(order.sort(running).iter().map(|&keyed| ChannelDue(keyed)));
+        // The index holds each at once, so by stable id alone.
+        debug_assert!(held.is_sorted_by_key(|unit| unit.id));
+        due.refill(
+            held.iter()
+                .map(|&DueUnit { id, entity }| ChannelDue(Keyed { id, entity })),
+        );
     }
 
     /// Runs the channels of `due`, in order.
@@ -102,6 +106,7 @@ impl Channeling {
                     Self::channel_call::<OnInterrupt>(batch, now, id, entity, call);
                 }
                 if let Some(call) = step.ticked {
+                    Self::pay(batch.world(), entity, call);
                     Self::channel_call::<OnChannelTick>(batch, now, id, entity, call);
                 }
             }
@@ -129,6 +134,31 @@ impl Channeling {
             action: Some(channel.action),
             rank: channel.rank,
         })
+    }
+
+    /// Pays the owner of `entity` what a tick of its channel `call` pays, as the channel's action
+    /// says, by the unit's level on its track; a unit of no player, or a pay its resource cannot
+    /// hold, pays nothing (04-capabilities/actions.md, A channel with no end).
+    fn pay(world: &mut World, entity: Entity, call: ChannelCall) {
+        let book = world.resource::<ActionBook>();
+        let Some(pay) = book
+            .get(call.action)
+            .and_then(|action| action.pays.as_ref())
+        else {
+            return;
+        };
+        let unit = world.entity(entity);
+        let level = pay.track.map_or(NonZeroU32::MIN, |track| {
+            unit.get::<TrackLevels>()
+                .map_or(NonZeroU32::MIN, |levels| levels.level(track))
+        });
+        let (resource, amount) = (pay.resource, i64::from(pay.amount(level)));
+        let Some(player_slot) = unit.get::<Owner>().map(|owner| owner.player_slot()) else {
+            return;
+        };
+        if let Some(mut resources) = world.player_resources_mut(player_slot) {
+            let _ = resources.add(resource, amount);
+        }
     }
 
     /// Runs the channel of `entity` at `now`, as `run_channels` does, and gives back the hooks due.
@@ -172,17 +202,24 @@ impl Channeling {
             rank,
         } = call;
         let world = batch.world();
-        let owner = world.get::<Owner>(entity).map(|owner| owner.seat());
+        let owner = world.get::<Owner>(entity).map(|owner| owner.player_slot());
+        let team = *world.get::<Team>(entity).expect("a channeler has a team");
         let book = world.resource::<ActionBook>();
         let action = book.get(id).expect("a channel's action is in the book");
         let (Some(script), Some(handle)) = (action.hook(hook), ctx.view().unit(caster)) else {
             return;
         };
-        let package = action.package;
+        let cast = ActionCast {
+            action: id,
+            rank,
+            caster,
+            allegiance: Allegiance { team, owner },
+            package: action.package,
+        };
         let start = CallStart {
             start: Some(start),
             payer: owner,
-            ..CallStart::cast(id, rank, caster, package, now)
+            ..CallStart::cast(cast, now)
         };
         let target = Abilities::target(ctx.view(), aim.target);
         batch.answer(start, hook, Some(caster), |batch| {

@@ -156,8 +156,8 @@ struct PlayedLog {
 impl PlayedLog {
     fn new(moba: &ScriptedMode<Moba3v3>) -> Self {
         let mut fixed = moba.start();
-        for tick in 0..TICKS {
-            moba.play_tick(&mut fixed, tick);
+        for _ in 0..TICKS {
+            moba.play_tick(&mut fixed);
         }
         let mut file = Vec::new();
         fixed.game().session().log().encode(&mut file);

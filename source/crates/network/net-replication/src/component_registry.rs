@@ -1,12 +1,11 @@
 use crate::component_type_id::ComponentTypeId;
 use bevy_ecs::prelude::*;
-use bevy_platform::collections::HashMap;
 use bevy_reflect::TypePath;
 
 use crate::replication_kind::ReplicationKind;
 use campfire_common::HashDomain;
 use campfire_net_core::RegistrySeal;
-use campfire_net_core::TypeMapper;
+use campfire_net_core::{NetId, TypeMapper};
 use campfire_net_core::{RegistryHash, RegistryHasher};
 
 /// The tag of the component registry's hash.
@@ -16,10 +15,10 @@ const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/componen
 /// replicates through Replicon's own API is unknown to prediction and interpolation.
 #[derive(Debug, Default, Clone, Resource, TypePath)]
 pub struct ComponentRegistry {
-    pub type_map: TypeMapper<ComponentTypeId>,
+    type_map: TypeMapper<ComponentTypeId>,
     seal: RegistrySeal,
-    /// How each component that replicates does it, as its registration set it.
-    replication: HashMap<ComponentTypeId, ReplicationKind>,
+    /// How each component replicates, as its registration set it, at the index of its id.
+    replication: Vec<Option<ReplicationKind>>,
 }
 
 impl ComponentRegistry {
@@ -29,6 +28,11 @@ impl ComponentRegistry {
 
     pub fn contains(&self, type_id: &ComponentTypeId) -> bool {
         self.type_map.net_id(type_id).is_some()
+    }
+
+    /// The network id of the component of `type_id`, if it is registered.
+    pub(crate) fn net_id(&self, type_id: &ComponentTypeId) -> Option<NetId> {
+        self.type_map.net_id(type_id).copied()
     }
 
     pub fn register_component<C: Component>(&mut self) {
@@ -44,9 +48,9 @@ impl ComponentRegistry {
     /// component's type and how it replicates, in the order of its id.
     pub(crate) fn seal(&mut self) {
         let mut hasher = RegistryHasher::new(HASH_DOMAIN);
-        for (type_id, name) in &self.type_map {
+        for (index, (_, name)) in self.type_map.iter().enumerate() {
             hasher.name(name);
-            hasher.write(&[match self.replication(type_id) {
+            hasher.write(&[match self.replication.get(index).copied().flatten() {
                 None => 0,
                 Some(ReplicationKind::Full) => 1,
                 Some(ReplicationKind::Diff) => 2,
@@ -62,7 +66,11 @@ impl ComponentRegistry {
 
     /// How the component replicates, if it does.
     pub fn replication(&self, type_id: &ComponentTypeId) -> Option<ReplicationKind> {
-        self.replication.get(type_id).copied()
+        let net_id = self.type_map.net_id(type_id)?;
+        self.replication
+            .get(usize::from(net_id.get()))
+            .copied()
+            .flatten()
     }
 
     /// Records how `C` replicates.
@@ -72,9 +80,16 @@ impl ComponentRegistry {
     /// When `C` was registered to replicate the other way: one component replicates one way.
     pub(crate) fn set_replication<C: Component>(&mut self, replication: ReplicationKind) {
         self.open();
-        let previous = self
-            .replication
-            .insert(ComponentTypeId::of::<C>(), replication);
+        let index = usize::from(
+            self.type_map
+                .net_id(&ComponentTypeId::of::<C>())
+                .expect("a component registers before how it replicates")
+                .get(),
+        );
+        if index >= self.replication.len() {
+            self.replication.resize(index + 1, None);
+        }
+        let previous = self.replication[index].replace(replication);
         assert!(
             previous.is_none_or(|previous| previous == replication),
             "{} replicates both whole and as diffs",

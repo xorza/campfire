@@ -5,8 +5,8 @@ use std::path::Path;
 
 use crate::durable_dir::error::{DurableDirCreateError, DurableDirError};
 use crate::path_error::PathError;
-use crate::platform::durable_name::DurableName;
-use crate::platform::user_only::UserOnly;
+use campfire_platform::DurableName;
+use campfire_platform::UserOnly;
 
 pub(crate) mod error;
 
@@ -20,7 +20,9 @@ pub struct DurableDir;
 const TOMBSTONE: &str = ".campfire-removed.";
 
 impl DurableDir {
-    /// Makes the directory `path` when it is missing; one already there stays as it is.
+    /// Makes the directory `path` when it is missing, and syncs its parent so the new name
+    /// survives a crash; one already there stays as it is, with no sync, and a link that holds the
+    /// name is `Link`, not followed.
     pub fn create(path: &Path) -> Result<(), PathError<DurableDirError>> {
         Self::create_case(path).map_err(PathError::at(path))
     }
@@ -29,23 +31,31 @@ impl DurableDir {
         let parent = path.parent().ok_or(DurableDirError::NoParent)?;
         match UserOnly::create_dir(path) {
             Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists && path.is_dir() => {}
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                return match fs::symlink_metadata(path) {
+                    Ok(named) if named.is_symlink() => Err(DurableDirError::Link),
+                    Ok(named) if named.is_dir() => Ok(()),
+                    _ => Err(DurableDirError::Create(error)),
+                };
+            }
             Err(error) => return Err(DurableDirError::Create(error)),
         }
         DurableName::sync_dir(parent).map_err(DurableDirError::SyncParent)
     }
 
     /// Makes the directory `path` and each one above it that is missing; one already there stays
-    /// as it is.
+    /// as it is. A directory above it may be a link, as a home is, and `path` itself is made as
+    /// `create` makes it.
     pub fn create_all(path: &Path) -> Result<(), PathError<DurableDirError>> {
         let missing: Vec<&Path> = path
             .ancestors()
+            .skip(1)
             .take_while(|dir| !dir.as_os_str().is_empty() && !dir.is_dir())
             .collect();
         for dir in missing.into_iter().rev() {
             Self::create(dir)?;
         }
-        Ok(())
+        Self::create(path)
     }
 
     /// Makes the directory `path` only when nothing holds its name: `Exists` otherwise, as a

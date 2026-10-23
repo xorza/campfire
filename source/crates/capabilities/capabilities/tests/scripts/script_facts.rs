@@ -3,11 +3,12 @@ use std::num::NonZeroU64;
 use campfire_actions::SlotKind;
 use campfire_capabilities::Release;
 use campfire_mode::{ChoiceId, MarkerTag, TimerId};
+use campfire_navigation::PathEnd;
 use campfire_script::internals::Undefined;
 use campfire_script::*;
 use campfire_units::{PoolId, StatId};
 use campfire_values::{
-    ActionId, DamageKind, EngineEnum, ModifierId, Named, PathId, ResourceId, Tag, Team, TrackId,
+    ActionId, DamageKind, ModifierId, Named, PathId, ResourceId, ScriptEnum, Tag, Team, TrackId,
     UnitType,
 };
 
@@ -125,7 +126,7 @@ fn on_x(ctx, unit) {
     let facts = ScriptFacts::read(&host, source, &api).unwrap();
     let string = EnumString {
         call: "spawn_group".to_owned(),
-        engine_enum: EngineEnum::PathEnd,
+        engine_enum: <PathEnd as ScriptEnum>::ENUM,
     };
     assert_eq!(facts.enum_strings, [string]);
     let path = |module: &str, name: &str, kind| EnumPath {
@@ -294,7 +295,7 @@ fn helper(ctx, unit) {}
     );
     let string = EnumString {
         call: "spawn_group".to_owned(),
-        engine_enum: EngineEnum::PathEnd,
+        engine_enum: <PathEnd as ScriptEnum>::ENUM,
     };
     assert_eq!(facts.enum_strings, [string]);
     assert_eq!(facts.params, ["width"]);

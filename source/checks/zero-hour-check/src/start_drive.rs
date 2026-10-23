@@ -41,8 +41,8 @@ impl StartDrive {
     ) -> Option<Self> {
         let session = FixedSession::new(packages, 1)
             .rate(rate)
-            .seat_picked(&america(1));
-        let mut play = MatchPlay::new(session.start());
+            .player_slot_picked(&america(1));
+        let mut play = MatchPlay::new(session.start(), session.packages());
         let start = |name| {
             let of = MarkerOf {
                 tag: "start",

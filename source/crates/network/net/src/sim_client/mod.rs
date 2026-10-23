@@ -3,19 +3,19 @@ use campfire_values::UnitTags;
 use std::sync::Arc;
 
 use bevy_app::{App, AppExit, First, FixedUpdate, Last, Plugin, PreUpdate, Update};
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{Add, Insert, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Added, Allow, Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::schedule::common_conditions::{
-    not, on_message, resource_exists, resource_exists_and_changed,
-};
+use bevy_ecs::schedule::common_conditions::{not, on_message, resource_changed, resource_exists};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{EntityWorldMut, Mut, World};
 use bevy_replicon::prelude::Remote;
-use campfire_bots::{BotOrder, BotScript, BotUnits, BotView, OrderScratch, ScriptedInput};
+use bevy_time::{Fixed, Time};
+use campfire_bots::{BotOrder, BotScript, BotUnits, ClientBotView, OrderScratch, ScriptedInput};
 use campfire_capabilities::{MatchKind, MatchSetup, Order, Release};
 use campfire_common::ErrorReport;
 use campfire_common::{SegmentSeed, Tick};
@@ -31,9 +31,7 @@ use campfire_net_payload::UnlinkReason;
 use campfire_net_prediction::{PredictionSetup, RollbackSystems};
 use campfire_net_replication::{Predicted, ReplicationReceiver};
 use campfire_net_stack::ClientPlugins;
-use campfire_net_sync::{
-    InputDelaySetup, InputTimelineSetup, RemoteTimeline, SyncSetup, SyncedLocalTimeline,
-};
+use campfire_net_sync::{InputTimelineSetup, RemoteTimeline, SyncedLocalTimeline};
 use campfire_net_timeline::{Clock, LocalTimeline, Rollback};
 use campfire_package::ModePackages;
 use campfire_protocol::{SignedReceipt, Signer, Verifier};
@@ -43,65 +41,57 @@ use campfire_sim::{
     TickInputs, Unpredicted,
 };
 use campfire_units::{Avatar, Dead, Fallen, Owner, UnitsWorld};
-use campfire_values::{Team, TeamSet};
-use campfire_vision::ByHolding;
+use campfire_values::Team;
 use tracing::info;
 
 use crate::close_code::CloseCode;
-use crate::events::bot_order_unsent::BotOrderUnsent;
-use crate::events::client_frame::ClientFrame;
-use crate::events::input_dropped::InputDropped;
-use crate::events::inputs_discarded::InputsDiscarded;
 use crate::events::link_lost::{LinkLossCause, LinkLost};
-use crate::events::match_ended::MatchEnded;
-use crate::events::match_started::MatchStarted;
-use crate::events::order_dropped::OrderDropped;
-use crate::events::orders_sent::OrdersSent;
-use crate::events::receipt_refused::ReceiptRefused;
-use crate::events::session_refused::SessionRefused;
-use crate::events::unit_died::UnitDied;
-use crate::faults::WorkerFaults;
-use crate::hosting::Hosting;
-use crate::net_protocol::dismissed::Dismissed;
-use crate::net_protocol::input_ack::InputAck;
-use crate::net_protocol::input_message::InputMessage;
-use crate::net_protocol::join::{Join, JoinRole};
-use crate::net_protocol::leave_match::LeaveMatch;
-use crate::net_protocol::match_start::MatchStart;
-use crate::net_protocol::offer::SessionOffer;
-use crate::net_protocol::save_command::SaveCommand;
-use crate::net_protocol::watch_start::WatchStart;
-use crate::net_protocol::watch_teams::WatchTeams;
 use crate::net_protocol::{InputChannel, JoinChannel, NetProtocolPlugin};
-use crate::os::Os;
-use crate::sim_client::client_dir::ClientDir;
-use crate::sim_client::join_state::{JoinState, Joining, LinkLoss, Retry, StartEffect};
-use crate::sim_client::player_signer::PlayerSigner;
-use crate::sim_client::receipt_writer::ReceiptWriter;
-use crate::sim_client::sent_inputs::SentInputs;
-use crate::sim_client::server_pin::ServerPin;
-use crate::sim_client::session_signer::SessionSigner;
+use crate::sim_client::bot_leave::BotLeave;
+use campfire_host::BotOrderUnsent;
+use campfire_host::ClientDir;
+use campfire_host::ClientFrame;
+use campfire_host::Dismissed;
+use campfire_host::Hosting;
+use campfire_host::InputAck;
+use campfire_host::InputDropped;
+use campfire_host::InputMessage;
+use campfire_host::InputsDiscarded;
+use campfire_host::LeaveMatch;
+use campfire_host::MatchEnded;
+use campfire_host::MatchLoaded;
+use campfire_host::MatchStart;
+use campfire_host::MatchStarted;
+use campfire_host::OrderDropped;
+use campfire_host::OrdersSent;
+use campfire_host::Os;
+use campfire_host::PlayerSigner;
+use campfire_host::ReceiptRefused;
+use campfire_host::ReceiptWriter;
+use campfire_host::SaveCommand;
+use campfire_host::SentInputs;
+use campfire_host::ServerPin;
+use campfire_host::SessionOffer;
+use campfire_host::SessionRefused;
+use campfire_host::SessionSigner;
+use campfire_host::UnitDied;
+use campfire_host::WatchStart;
+use campfire_host::WatchTeams;
+use campfire_host::WorkerFaults;
+use campfire_host::{Join, JoinRole};
+use campfire_host::{JoinState, Joining, LinkLoss, Retry, StartEffect};
 
-pub(crate) mod chain_history;
-pub(crate) mod client_dir;
-pub(crate) mod client_layout;
-pub(crate) mod join_state;
-pub(crate) mod player_signer;
-pub(crate) mod receipt_writer;
-pub(crate) mod sent_inputs;
-pub(crate) mod server_pin;
-pub(crate) mod session_signer;
-pub(crate) mod sim_client_world;
+pub(crate) mod bot_leave;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
 const PREDICTION_SEED: SegmentSeed = SegmentSeed::ZERO;
 
 /// Plays a session on a network stack client: answers the server's offer with a delegation of a
-/// session key, sends the player's orders as chained inputs, signed once per message with the
-/// session key, and runs the sim in every fixed tick, rollbacks included, with the player's own
-/// inputs, on the units the client predicts. It adds the network stack's client at the server's
-/// tick, the protocol, and the prediction; its app adds its frame loop or clock, and its link's
-/// endpoint: a UDP socket's, or the emulator's in the process.
+/// session key, sends the player's orders, or those of its bot script, as chained inputs, signed
+/// once per message with the session key, and runs the sim in every fixed tick, rollbacks included,
+/// with the player's own inputs, on the units the client predicts. It adds the network stack's
+/// client at the server's tick, the protocol, and the prediction; its app adds its frame loop or
+/// clock, and its link's endpoint: a UDP socket's, or the emulator's in the process.
 #[derive(Debug)]
 pub struct SimClientPlugin {
     /// The signer of the player's Nostr identity, which signs the delegation.
@@ -109,7 +99,7 @@ pub struct SimClientPlugin {
     /// The signer of this session's key, which the delegation lets sign the player's inputs.
     pub session: SessionSigner,
     pub server: ServerPin,
-    /// Whether the player plays a seat or watches.
+    /// Whether the player plays a player slot or watches.
     pub role: JoinRole,
     /// Where the server runs.
     pub hosting: Hosting,
@@ -120,18 +110,15 @@ pub struct SimClientPlugin {
     /// The client's data directory, held locked, where it writes the newest receipt of its
     /// session; none writes none.
     pub data: Option<Arc<ClientDir>>,
+    /// The order script the client plays for the player, which leaves after the tick the script
+    /// ends at when it names one; none for a player's own orders.
+    pub bot: Option<BotScript>,
 }
 
 /// The player's wish to leave the match: the client tells the server once, and then tries its
 /// link no more. The server logs the leave at once, and ends the link.
 #[derive(Resource, Debug)]
 pub struct LeaveRequest;
-
-/// A spectator's choice of the teams whose views it watches together, in a session whose
-/// spectators watch teams' views: the client tells the server as it starts to watch, again after
-/// each rejoin, and as the choice changes.
-#[derive(Resource, Debug, Clone, Copy)]
-pub struct WatchRequest(pub TeamSet);
 
 /// The player's save commands, which a local server takes, sent while the client plays.
 #[derive(Resource, Debug, Default)]
@@ -206,8 +193,7 @@ impl Plugin for SimClientPlugin {
         let world = app.world_mut();
         let packages = &self.packages;
         // A client runs no scripts: it predicts only its own player's units.
-        let set = packages.manifest().capabilities;
-        let setup = MatchSetup::new(PREDICTION_SEED, rate, Role::Client).set(set);
+        let setup = MatchSetup::new(PREDICTION_SEED, rate, Role::Client);
         Release::build(world, setup, packages.books(rate), MatchKind::Predicting);
         mark_unpredicted(world);
         world.insert_resource(PlayerSigner(self.session.take()));
@@ -223,15 +209,13 @@ impl Plugin for SimClientPlugin {
         if let Some(data) = &self.data {
             world.insert_resource(ReceiptWriter::start(Arc::clone(data)));
         }
-        // Prediction covers all the latency, with no input delay: an input goes out stamped with
-        // the tick the client predicts it in, which the network stack keeps ahead of the server's
-        // present tick by half the round trip and its margins, so the input arrives before the
-        // server runs that tick; with input delay it would keep that tick nearer, and the input
-        // would land late.
-        app.insert_resource(InputTimelineSetup::new(
-            SyncSetup::default(),
-            InputDelaySetup::no_input_delay(),
-        ));
+        if let Some(script) = &self.bot {
+            app.insert_resource(script.clone());
+            if let Some(after) = script.end() {
+                app.insert_resource(BotLeave::new(after));
+                app.add_systems(Update, BotLeave::leave);
+            }
+        }
         app.init_resource::<PendingOrders>();
         app.init_resource::<PendingSaves>();
         app.init_resource::<WorkerFaults>();
@@ -245,7 +229,8 @@ impl Plugin for SimClientPlugin {
             retry_link,
             send_leave.run_if(resource_exists::<LeaveRequest>),
             send_saves,
-            send_watch_request.run_if(resource_exists_and_changed::<WatchRequest>),
+            send_watch_teams.run_if(resource_changed::<JoinState>),
+            receive_loaded.after(receive_input_acks),
             answer_offer,
             receive_dismissed,
             receive_match_start,
@@ -280,10 +265,16 @@ impl Plugin for SimClientPlugin {
                 .before(RollbackSystems::Rollback)
                 .run_if(Rollback::is_active),
         );
+        // A frame's orders go out once, stamped for its last tick, the one it predicts: a frame
+        // that runs several ticks sends at its end, so an order stamped for its first would lose
+        // the lead of the ticks after it (11-net-stack/time.md, An input is stamped for the
+        // frame's last tick).
         app.add_systems(
             FixedUpdate,
             (
-                send_orders.run_if(not(Rollback::is_active)),
+                send_orders
+                    .run_if(not(Rollback::is_active))
+                    .run_if(last_tick_of_frame),
                 run_predicted_tick,
             )
                 .chain()
@@ -352,13 +343,13 @@ fn receive_match_start(
                 StartEffect::No => {}
                 StartEffect::Playing { discarded } => {
                     MatchStarted {
-                        seat: start.seat,
-                        start_tick: start.start_tick,
+                        player_slot: start.player_slot,
+                        start_tick: start.clock.start().0,
                     }
                     .log();
                     if discarded > 0 {
                         InputsDiscarded {
-                            seat: start.seat,
+                            player_slot: start.player_slot,
                             count: discarded,
                         }
                         .log();
@@ -374,6 +365,31 @@ fn receive_match_start(
                         reason: CloseCode::ChainRewritten.app(),
                     });
                 }
+            }
+        }
+    }
+}
+
+/// Ends the match of a client whose session went back to a save, its link kept, as
+/// `JoinState::load` says: it drops the inputs it sent and the orders it holds, as the load drops
+/// those past the save, and answers the next offer. The replication despawns the units the load
+/// took back, and sends those it restored.
+fn receive_loaded(
+    mut receivers: Query<'_, '_, &mut MessageReceiver<MatchLoaded>, With<Client>>,
+    hosting: Res<'_, Hosting>,
+    mut state: ResMut<'_, JoinState>,
+    mut sent: ResMut<'_, SentInputs>,
+    mut pending: ResMut<'_, PendingOrders>,
+) {
+    for mut receiver in &mut receivers {
+        for MatchLoaded { tick } in receiver.receive() {
+            if state.load(*hosting) {
+                info!(
+                    tick = tick.get(),
+                    "the session went back to a save; joining again"
+                );
+                sent.clear();
+                pending.clear();
             }
         }
     }
@@ -442,7 +458,7 @@ fn receive_dismissed(
             continue;
         };
         state.dismiss(dismissed);
-        let code = dismissed.code();
+        let code = CloseCode::from(dismissed);
         LinkLost {
             cause: LinkLossCause::ClientClosed(code),
         }
@@ -454,41 +470,27 @@ fn receive_dismissed(
     }
 }
 
-/// Tells the server the teams a spectator watches, as its choice changes while it watches.
-fn send_watch_request(
+/// Tells the server the teams a spectator chose since its join, once it watches.
+fn send_watch_teams(
     mut sender: Single<'_, '_, &mut MessageSender<WatchTeams>, With<Client>>,
-    state: Res<'_, JoinState>,
-    request: Res<'_, WatchRequest>,
+    mut state: ResMut<'_, JoinState>,
 ) {
-    if state.watching_clock().is_some() {
-        sender.send::<JoinChannel>(WatchTeams(request.0));
+    // The mark of what the server holds is no change a system reads, and would run this again.
+    if let Some(teams) = state.bypass_change_detection().untold_teams() {
+        sender.send::<JoinChannel>(WatchTeams(teams));
     }
 }
 
-/// Watches the match the server's start names, for a client that answered to watch, and tells
-/// the server the teams it chose, as each join starts it on every team's; see
+/// Watches the match the server's start names, for a client that answered to watch; see
 /// `JoinState::watch`.
 fn receive_watch_start(
-    mut links: Query<
-        '_,
-        '_,
-        (
-            &mut MessageReceiver<WatchStart>,
-            &mut MessageSender<WatchTeams>,
-        ),
-        With<Client>,
-    >,
+    mut receivers: Query<'_, '_, &mut MessageReceiver<WatchStart>, With<Client>>,
     mut state: ResMut<'_, JoinState>,
-    request: Option<Res<'_, WatchRequest>>,
 ) {
-    for (mut receiver, mut sender) in &mut links {
+    for mut receiver in &mut receivers {
         for start in receiver.receive() {
-            if !state.watch(start) {
-                continue;
-            }
-            info!(first = start.first.get(), "watching the match");
-            if let Some(request) = &request {
-                sender.send::<JoinChannel>(WatchTeams(request.0));
+            if state.watch(start) {
+                info!(first = start.clock.first().get(), "watching the match");
             }
         }
     }
@@ -549,7 +551,7 @@ fn retry_link(
 
 /// Logs the start of each frame in which the client plays, with the sim tick it predicts next.
 fn log_frame(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_, '_>>) {
-    if let Some(tick) = state.sim_tick(timeline.as_ref()) {
+    if let Some(tick) = state.sim_tick(timeline.as_ref().map(|timeline| timeline.tick())) {
         ClientFrame { tick }.log();
     }
 }
@@ -558,7 +560,9 @@ fn log_frame(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_,
 /// clock names the server's network tick, which a server started again counts from 0, while the
 /// client's timeline counts the old link's until its first sync on the new one shifts it.
 fn is_playing(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_, '_>>) -> bool {
-    state.sim_tick(timeline.as_ref()).is_some()
+    state
+        .sim_tick(timeline.as_ref().map(|timeline| timeline.tick()))
+        .is_some()
 }
 
 /// Takes the server's word on where each of the player's inputs takes effect, so a rollback
@@ -604,12 +608,12 @@ fn report_deaths(
     state: Res<'_, JoinState>,
     died: Died<'_, '_>,
 ) {
-    let tick = state.sim_tick(timeline.as_ref());
+    let tick = state.sim_tick(timeline.as_ref().map(|timeline| timeline.tick()));
     for (&id, team, owner, avatar, tags) in &died {
         let fallen = Fallen {
             id,
             team: team.copied(),
-            owner: owner.map(|owner| owner.seat()),
+            owner: owner.map(|owner| owner.player_slot()),
             avatar,
             tags: tags.map_or(TagSet::NONE, |tags| tags.tags),
         };
@@ -635,7 +639,7 @@ fn send_orders(
     prediction: Res<'_, PredictionSetup>,
     timeline_config: Res<'_, InputTimelineSetup>,
     bot: Option<ResMut<'_, BotScript>>,
-    view: BotView<'_, '_, ByHolding>,
+    view: ClientBotView<'_, '_>,
     mut scratch: Local<'_, OrderScratch>,
     mut orders: Local<'_, Vec<Order>>,
     signer: Res<'_, PlayerSigner>,
@@ -669,18 +673,18 @@ fn send_orders(
         for input in bot.due_inputs(stamp) {
             pending.push_input(input.clone());
         }
-        let seat = playing.chain.seat();
-        let avatar = view.avatar(seat).is_some();
+        let player_slot = playing.chain.player_slot();
+        let avatar = view.avatar(player_slot).is_some();
         let ready = |order: &BotOrder| avatar || order.units != BotUnits::Avatar;
         for scripted in bot.due_orders_while(stamp, ready) {
             orders.clear();
-            let unsent = scripted.orders(seat, &view, &mut scratch, &mut orders);
+            let unsent = scripted.orders(player_slot, &view, &mut scratch, &mut orders);
             for order in orders.drain(..) {
                 pending.push(order);
             }
             if let Some(cause) = unsent {
                 BotOrderUnsent {
-                    seat,
+                    player_slot,
                     cause,
                     directive: scripted.named.clone(),
                 }
@@ -727,7 +731,7 @@ fn send_orders(
         return;
     }
     OrdersSent {
-        seat: playing.chain.seat(),
+        player_slot: playing.chain.player_slot(),
         seq: playing.chain.next_seq(),
         stamp,
         orders: payloads.len(),
@@ -739,6 +743,12 @@ fn send_orders(
     let inputs = payloads.map(|payload| (stamp, payload));
     let signature = signer.0.sign(&playing.chain.signed_head(session.id));
     sender.send::<InputChannel>(InputMessage::new(inputs, signature));
+}
+
+/// Whether the fixed tick that runs is its frame's last: the frame's time left is under a tick,
+/// as Bevy's loop takes each tick's time before it runs the tick.
+fn last_tick_of_frame(time: Res<'_, Time<Fixed>>) -> bool {
+    time.overstep() < time.timestep()
 }
 
 /// Runs the sim tick of the current network tick with the player's inputs stamped for it; in a
@@ -753,7 +763,7 @@ fn run_predicted_tick(world: &mut World) {
     if world.match_entity().is_none() {
         return;
     }
-    let seat = playing.chain.seat();
+    let player_slot = playing.chain.player_slot();
     let Some(sim_tick) = playing.clock.sim_tick(tick) else {
         return;
     };
@@ -761,7 +771,10 @@ fn run_predicted_tick(world: &mut World) {
     world.resource_scope(|world, sent: Mut<'_, SentInputs>| {
         let mut inputs = world.resource_mut::<TickInputs>();
         for payload in sent.at(sim_tick) {
-            inputs.push(TickInput { seat, payload });
+            inputs.push(TickInput {
+                player_slot,
+                payload,
+            });
         }
     });
     world.run_schedule(SimUpdate);

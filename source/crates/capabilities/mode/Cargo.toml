@@ -18,7 +18,6 @@ internals = [
     "campfire-navigation/internals",
     "campfire-players/internals",
     "campfire-production/internals",
-    "campfire-progression/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-states/internals",
@@ -38,11 +37,10 @@ campfire-math.workspace = true
 campfire-navigation.workspace = true
 campfire-players.workspace = true
 campfire-production.workspace = true
-campfire-progression.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-states.workspace = true
-campfire-stats = { workspace = true, optional = true }
+campfire-stats.workspace = true
 campfire-units.workspace = true
 campfire-values = { workspace = true, features = ["ecs"] }
 campfire-visibility.workspace = true

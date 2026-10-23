@@ -1,7 +1,10 @@
+use core::any::TypeId;
+
 use bevy_ecs::resource::Resource;
 use bevy_reflect::TypePath;
 use campfire_common::HashDomain;
 use campfire_net_channels::Channel;
+use campfire_net_channels::ChannelReader;
 use campfire_net_channels::ChannelSetup;
 use campfire_net_channels::ChannelTypeId;
 use campfire_net_core::LinkDirections;
@@ -9,8 +12,6 @@ use campfire_net_core::NetId;
 use campfire_net_core::RegistrySeal;
 use campfire_net_core::TypeMapper;
 use campfire_net_core::{RegistryHash, RegistryHasher};
-
-use crate::channel_reader::ChannelReader;
 
 /// The tag of the channel registry's hash.
 const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/channel-registry/v1");
@@ -31,12 +32,37 @@ pub struct ChannelRegistry {
     seal: RegistrySeal,
 }
 
-/// A registered channel: its setup, the directions it travels in, and the layer that reads it.
+/// A registered channel: its setup, the directions it travels in, the links that get its receiver,
+/// and the layer that reads it.
 #[derive(Clone, Copy, Debug)]
 struct RegisteredChannel {
     setup: ChannelSetup,
     directions: LinkDirections,
+    gate: ChannelGate,
     reader: ChannelReader,
+}
+
+/// Which links of a channel's receiving side get its receiver (11-net-stack/transport.md, A
+/// channel opens to a link the app admits).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ChannelGate {
+    /// Every link, as its transport comes.
+    #[default]
+    Open,
+    /// A link once it holds the component of this type.
+    After(TypeId),
+}
+
+/// A registered channel, as a link opens it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct OpenedChannel {
+    pub(crate) id: NetId,
+    pub(crate) type_id: ChannelTypeId,
+    pub(crate) name: &'static str,
+    pub(crate) setup: ChannelSetup,
+    pub(crate) reader: ChannelReader,
+    pub(crate) directions: LinkDirections,
+    pub(crate) gate: ChannelGate,
 }
 
 impl ChannelRegistry {
@@ -51,19 +77,56 @@ impl ChannelRegistry {
         self.channels.push(RegisteredChannel {
             setup,
             directions: LinkDirections::default(),
+            gate: ChannelGate::default(),
             reader: ChannelReader::default(),
         });
         self.net_id(type_id).unwrap()
     }
 
-    /// Widens the directions `C` travels in.
-    pub(crate) fn add_direction<C: Channel>(&mut self, directions: LinkDirections) {
+    /// Widens the directions `C` travels in, its receiver behind `gate`: one gate for every
+    /// direction of a channel.
+    pub(crate) fn add_direction<C: Channel>(
+        &mut self,
+        directions: LinkDirections,
+        gate: ChannelGate,
+    ) {
         self.open();
         let net_id = self
             .net_id(ChannelTypeId::of::<C>())
             .expect("a channel is registered before its direction");
         let channel = &mut self.channels[usize::from(net_id.get())];
+        assert!(
+            channel.directions.is_empty() || channel.gate == gate,
+            "channel {} opens behind two gates",
+            core::any::type_name::<C>()
+        );
         channel.directions = channel.directions.union(directions);
+        channel.gate = gate;
+    }
+
+    /// Whether a channel opens behind `gate`.
+    pub(crate) fn gates(&self, gate: ChannelGate) -> bool {
+        self.channels
+            .iter()
+            .any(|channel| !channel.directions.is_empty() && channel.gate == gate)
+    }
+
+    /// Each channel that travels in a direction, as a link opens it.
+    pub(crate) fn channels(&self) -> impl Iterator<Item = OpenedChannel> + '_ {
+        self.type_map
+            .iter()
+            .zip(&self.channels)
+            .zip(0..)
+            .filter(|((_, channel), _)| !channel.directions.is_empty())
+            .map(|((&(type_id, name), channel), id)| OpenedChannel {
+                id: NetId::new(id),
+                type_id,
+                name,
+                setup: channel.setup,
+                reader: channel.reader,
+                directions: channel.directions,
+                gate: channel.gate,
+            })
     }
 
     /// Makes the layer that registered `C` its reader.
@@ -79,11 +142,12 @@ impl ChannelRegistry {
         self.seal.assert_open("channel registry");
     }
 
-    /// Seals the registry, as `TransportPlugin::finish` does. Its hash holds each channel's type,
-    /// setup and directions, in the order of its id.
+    /// Seals the registry, as `TransportPlugin::finish` does, once each channel's bounds hold. Its
+    /// hash holds each channel's type, setup and directions, in the order of its id.
     pub(crate) fn seal(&mut self) {
         let mut hasher = RegistryHasher::new(HASH_DOMAIN);
         for ((_, name), channel) in self.type_map.iter().zip(&self.channels) {
+            channel.setup.assert_bounds();
             hasher.name(name);
             channel.setup.hash_into(&mut hasher);
             hasher.write(&[u8::from(channel.directions)]);
@@ -106,12 +170,6 @@ impl ChannelRegistry {
         self.channels
             .get(usize::from(net_id.get()))
             .map(|channel| &channel.setup)
-    }
-
-    /// The layer that reads the channel `type_id`, if it is registered.
-    pub fn reader(&self, type_id: ChannelTypeId) -> Option<ChannelReader> {
-        let net_id = self.net_id(type_id)?;
-        Some(self.channels[usize::from(net_id.get())].reader)
     }
 
     /// The type_id of the channel `net_id`, if it is registered.

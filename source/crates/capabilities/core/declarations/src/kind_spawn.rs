@@ -6,8 +6,8 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use campfire_values::UnitType;
 
-use crate::by_type::ByType;
-use crate::per_type::PerType;
+use crate::by_id::ById;
+use crate::per_id::PerId;
 
 /// An entity of the host `H` as its parts are made, at its spawn or as a restore checks it: the
 /// world it is in, the entity, which holds what its spawn's caller gave it, and the core it
@@ -87,8 +87,8 @@ impl<'w, H> KindSpawn<'w, H> {
 
     /// What the book of `T` holds for the unit's type, of its core; none when the type has none,
     /// the match does not hold the book, or a restored unit lacks its type.
-    pub fn of_type<T: PerType>(&self) -> Option<&'w T> {
-        let book = self.world.get_resource::<ByType<T>>()?;
+    pub fn of_type<T: PerId<UnitType>>(&self) -> Option<&'w T> {
+        let book = self.world.get_resource::<ById<UnitType, T>>()?;
         book.get(self.unit_type()?)
     }
 }

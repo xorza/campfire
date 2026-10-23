@@ -151,7 +151,7 @@ pub(crate) mod internals {
     use bevy_ecs::resource::Resource;
     use bevy_ecs::schedule::{Schedule, Schedules};
     use bevy_ecs::world::World;
-    use campfire_schedule::StrictSchedule;
+    use campfire_schedule::internals::ScheduleExtInternals;
 
     use crate::sim_update::SimUpdate;
     use crate::sim_world_builder::{SimWorldBuilder, Unbuilt};
@@ -251,7 +251,7 @@ pub(crate) mod internals {
         /// it lies between, so `build` then panics on every pair of systems that only a sync
         /// point keeps in order. A schedule keeps it through a reopen.
         pub fn without_sync_points(&mut self) {
-            StrictSchedule::without_sync_points(&mut self.schedule);
+            self.schedule.without_sync_points();
         }
 
         /// Ends the build with the tick's schedule unbuilt, each system in its graph, for a test

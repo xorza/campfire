@@ -15,7 +15,7 @@ use campfire_actions::ShotDamage;
 use campfire_areas::{AreaSpec, Areas};
 use campfire_capabilities::internals::AreasFixtures;
 use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, ModelScale, ModelTop};
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_math::Num;
 use campfire_projectiles::{Flight, Payload};
 use campfire_script::MatchNames;
@@ -26,6 +26,7 @@ use campfire_values::{ActionId, DamageKind, PackageIndex, PackagePath, Rank};
 use super::*;
 use crate::test_app;
 use crate::view::area_view::{AREA_LIFT, AreaViewPlugin};
+use crate::view::map_metric::MapMetric;
 use crate::view::unit_looks::LookNodes;
 
 /// A unit type the client data draws with no model, as every type of a view with no looks: its
@@ -100,6 +101,10 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
         .id();
     app.update();
     let world = app.world();
+    // The client's own unit wears its own color, the received one its team's.
+    let palette = world.resource::<Palette>();
+    assert_eq!(figure(world, predicted).0, palette.own);
+    assert_eq!(figure(world, received).0, palette.teams[0]);
     let (first, glide, at) = root(world, predicted);
     assert_eq!(
         (glide, at),
@@ -186,9 +191,10 @@ fn a_drawing_shows_its_unit_as_it_stands_after_a_rollback() {
         ))
         .id();
     app.update();
+    // The unit is the client's own, as only those roll back.
     let (alive, standing) = figure(app.world(), unit);
     let dead = app.world().resource::<Palette>().dead.clone();
-    assert_eq!(alive, app.world().resource::<Palette>().teams[1]);
+    assert_eq!(alive, app.world().resource::<Palette>().own);
     assert_eq!(standing.rotation, Quat::IDENTITY);
     // A structure's capsule of radius 0.9 lies with its axis 0.9 over the ground.
     let lying =
@@ -300,14 +306,12 @@ fn a_position_stands_on_the_drawn_ground_of_a_planar_map_and_is_its_own_point_on
         vec![8; 16],
     )
     .unwrap();
-    let mut data = ClientData {
-        heights: Some(GroundHeights::of(grid, None)),
-        ..ClientData::default()
-    };
+    let heights = GroundHeights::of(grid, None);
     let position = Position::from((3, 2, 0));
-    assert_eq!(ground(position, data.lifts()), Vec3::new(3.0, 6.0, 0.0));
-    data.metric = Metric::Spatial;
-    assert_eq!(ground(position, data.lifts()), Vec3::new(3.0, 2.0, 0.0));
+    let planar = MapMetric(Metric::Planar).lifts(Some(&heights));
+    assert_eq!(ground(position, planar), Vec3::new(3.0, 6.0, 0.0));
+    let spatial = MapMetric(Metric::Spatial).lifts(Some(&heights));
+    assert_eq!(ground(position, spatial), Vec3::new(3.0, 2.0, 0.0));
 }
 
 #[test]
@@ -347,10 +351,8 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
             .collect(),
         ..ClientUnits::default()
     };
-    let data = ClientData {
-        heights: Some(GroundHeights::of(grid, None)),
-        ..ClientData::of_looks([looks])
-    };
+    let data = ClientLoad::of_looks([looks]);
+    app.insert_resource(GroundHeights::of(grid, None));
     let origins: TypeOriginBook = names
         .map(|name| TypeOrigin {
             package: PackageIndex::MODE,
@@ -443,7 +445,7 @@ fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as
         hide: Vec::new(),
         top: None,
     }]);
-    let data = ClientData::of_looks([ClientUnits {
+    let data = ClientLoad::of_looks([ClientUnits {
         units: [(DeclaredName::new("shell").unwrap(), shell)]
             .into_iter()
             .collect(),
@@ -466,6 +468,7 @@ fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as
     let payload = Payload::Attack(ShotDamage {
         action: ActionId::new(0),
         amount: Num::ONE,
+        outer: None,
         kind: DamageKind::new(0),
         rank: Rank::FIRST,
         roll: Num::ZERO,
@@ -551,7 +554,7 @@ fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
         let radius = Num::from_bits(5 << (Num::FRAC_BITS - 1));
         // The client holds the areas' book as the client's areas declare it, and the names the
         // books share.
-        app.init_resource::<ByType<AreaSpec>>();
+        app.init_resource::<ById<UnitType, AreaSpec>>();
         app.init_resource::<MatchNames>();
         area = Some(Areas::standing(app.world_mut(), unit_type, radius));
         app.add_plugins(AreaViewPlugin);

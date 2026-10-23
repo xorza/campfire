@@ -1,8 +1,8 @@
 use crate::combatant;
 use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
-use campfire_units::MapSpace;
 use campfire_units::internals::Spawn;
+use campfire_units::{BodyForm, BodyShape, Died, Layer, MapSpace, Teleported};
 use campfire_values::TagSet;
 use std::collections::BTreeMap;
 use std::num::NonZeroU16;
@@ -25,8 +25,7 @@ use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
 use campfire_combat::internals::{Armed, Attack, TestWeapon};
 use campfire_combat::*;
-use campfire_common::{DeclaredName, Seat, SegmentSeed, Tick, Ticks};
-use campfire_deliveries::{Died, Teleported};
+use campfire_common::{DeclaredName, PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
@@ -41,12 +40,13 @@ use campfire_stats::{
     Pools, StatBook, StatRule, Stats, StatsSystems,
 };
 use campfire_units::{
-    BodyForm, Dead, Deaths, Fallen, Life, MapBook, Owner, PoolCost, PoolId, SpawnPoint, StatId,
-    UnitTypeCore, Units, UnitsWorld,
+    Dead, Deaths, Fallen, Life, MapBook, Owner, PoolCost, PoolId, SpawnPoint, StatId, UnitTypeCore,
+    Units, UnitsWorld,
 };
 use campfire_values::{
-    ActionId, Block, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex, Rank,
-    Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType, VisionShare,
+    ActionId, Allegiance, Block, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex,
+    Rank, Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
+    VisionShare,
 };
 
 /// 100 health, and 30 damage within 2 m, 2 ticks after the start of an attack every 5 ticks.
@@ -161,9 +161,13 @@ fn an_attack_winds_up_and_strikes_each_period() {
 }
 
 /// Spawns a unit of a rifle of 5 damage every 3 ticks, 100 ms at 30 ticks a second, in a clip of
-/// 3 shots that reloads in 21 ticks, 700 ms, at (4, 0), and a dummy of team 1 with `held` at
-/// (6, 0), which the rifle attacks; the two.
-fn rifle_fight(game: &mut Match, held: impl Bundle<Effect: NoBundleEffect>) -> [StableId; 2] {
+/// 3 shots that reloads in 21 ticks, 700 ms, and of `pre_attack`, at (4, 0), and a dummy of team
+/// 1 with `held` at (6, 0), which the rifle attacks; the two.
+fn rifle_fight(
+    game: &mut Match,
+    held: impl Bundle<Effect: NoBundleEffect>,
+    pre_attack: Option<PreAttackRule>,
+) -> [StableId; 2] {
     let [dummy] = load_types(game, [dummy()]);
     let weapon = TestWeapon {
         rate: Rate::Period(Box::new([Ticks::new(3)])),
@@ -172,6 +176,7 @@ fn rifle_fight(game: &mut Match, held: impl Bundle<Effect: NoBundleEffect>) -> [
             shots: NonZeroU16::new(3).unwrap(),
             reload: Ticks::new(21),
         }),
+        pre_attack,
         ..TestWeapon::new(
             Filter::of_match_relations(game, RelationSet::Enemies),
             ActionRange::meters(Num::int(2)),
@@ -218,7 +223,7 @@ fn a_weapon_of_its_own_amount_and_period_fires_its_clip_then_reloads() {
     // holds no stat: 7 strikes leave 65.
     let readies = [3, 6, 27, 30, 33, 54, 57];
     let mut game = fight_match();
-    let fight = rifle_fight(&mut game, ());
+    let fight = rifle_fight(&mut game, (), None);
     let [ready, hits] = rifle_ticks(&mut game, fight);
     assert_eq!(ready, readies);
     assert_eq!(hits, [0, 3, 6, 27, 30, 33, 54]);
@@ -230,10 +235,57 @@ fn a_weapon_of_its_own_amount_and_period_fires_its_clip_then_reloads() {
         .role(Role::Client)
         .build();
     Combat::load_weapon_stats(&mut client);
-    let fight = rifle_fight(&mut client, Unpredicted);
+    let fight = rifle_fight(&mut client, Unpredicted, None);
     let [ready, hits] = rifle_ticks(&mut client, fight);
     assert_eq!(ready, readies);
     assert_eq!(hits, Vec::<u64>::new());
+}
+
+#[test]
+fn a_pre_attack_runs_before_a_start_and_starts_again_as_its_each_says() {
+    // The rifle strikes in the tick its pre-attack ends once it is ready, and the pre-attack
+    // starts in the tick after a strike, so it runs through the period; one that ends before the
+    // rifle is ready starts again in the tick after. With one of 2 ticks each shot, the strikes
+    // come at 2, 5 and 8, as 2 + 3 + 3; the clip then reloads to 29, and the pre-attacks begun in
+    // 9, 12, … 27 end in 29: 29, 32, 35. One of 4 ticks each shot outlasts the period: 4, then
+    // 5 + 4 = 9 and 14, empty, ready at 35; those begun in 15, 20, 25, 30 and 35 end in 19, 24,
+    // 29, 34 and 39: 39, 40 + 4 = 44, 49. Of 4 ticks each target, the first shot alone waits: 4,
+    // 7, 10, then 31, 34, 37 after the reload. Of each clip, the pre-attack starts again as the
+    // clip empties, as its reload loads it: of 4 ticks, 4, 7, 10, and those begun in 11, 16, 21,
+    // 26 and 31 end in 35: 35, 38, 41; of 2 ticks, as of each shot, 2, 5, 8, 29, 32, 35.
+    let pre = |ticks: u64, each| Some(PreAttackRule::new(Box::new([Ticks::new(ticks)]), each));
+    let hits = |pre_attack| {
+        let mut game = fight_match();
+        let fight = rifle_fight(&mut game, (), pre_attack);
+        rifle_ticks(&mut game, fight)[1].clone()
+    };
+    assert_eq!(hits(pre(2, PreAttackEach::Shot)), [2, 5, 8, 29, 32, 35]);
+    assert_eq!(hits(pre(4, PreAttackEach::Shot)), [4, 9, 14, 39, 44, 49]);
+    assert_eq!(hits(pre(4, PreAttackEach::Target)), [4, 7, 10, 31, 34, 37]);
+    assert_eq!(hits(pre(4, PreAttackEach::Clip)), [4, 7, 10, 35, 38, 41]);
+    assert_eq!(hits(pre(2, PreAttackEach::Clip)), [2, 5, 8, 29, 32, 35]);
+
+    // A loss of reach ends it: the dummy steps out in tick 2 and back in tick 3, so the
+    // pre-attack the shooter began in tick 0 starts again in tick 3, done in 7.
+    let mut game = fight_match();
+    let [shooter, dummy] = rifle_fight(&mut game, (), pre(4, PreAttackEach::Shot));
+    game.run_until(2);
+    let held = |game: &Match| {
+        let progress = game.try_part::<ActionProgress>(shooter).unwrap();
+        progress
+            .pre_attack()
+            .map(|pre| (pre.done_at.get(), pre.spent))
+    };
+    assert_eq!(held(&game), Some((4, false)));
+    *game.part_mut::<Position>(dummy) = Position::from((20, 0, 0));
+    game.run_until(3);
+    assert_eq!(held(&game), None);
+    *game.part_mut::<Position>(dummy) = Position::from((6, 0, 0));
+    game.run_until(4);
+    assert_eq!(held(&game), Some((7, false)));
+    game.run_until(8);
+    assert_eq!(Stats::health(&game, dummy), 95);
+    assert_eq!(held(&game), Some((7, true)));
 }
 
 #[test]
@@ -242,7 +294,7 @@ fn every_unit_with_slots_counts_its_clips_from_its_spawn_or_a_grant() {
     // empty. A unit of no slots holds none, and one once a grant gives it the rifle's.
     let mut game = fight_match();
     let bare = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    let [shooter, dummy] = rifle_fight(&mut game, ());
+    let [shooter, dummy] = rifle_fight(&mut game, (), None);
     let counts = |game: &Match, id| game.try_part::<ClipShots>(id).cloned();
     assert_eq!(counts(&game, shooter), Some(ClipShots::default()));
     assert_eq!(counts(&game, dummy), Some(ClipShots::default()));
@@ -281,7 +333,11 @@ fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
         let types = [fighter(), dummy()].map(|armed| armed.load(&mut game));
         if bodies {
             for unit_type in types {
-                Units::give_type(&mut game, unit_type, BodyForm::circle(half).unwrap());
+                Units::give_type(
+                    &mut game,
+                    unit_type,
+                    BodyForm::new(BodyShape::circle(half).unwrap(), Layer::FIRST),
+                );
             }
         }
         let fighter = Spawn::of(types[0], (0, 0, 0)).place(&mut game);
@@ -465,7 +521,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     let mut game = fight_match();
     let gold = ResourceId::new(0);
     Players::spawn(&mut game, 1, 1);
-    game.player_resources_mut(Seat::new(0))
+    game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(gold, 5)
         .unwrap();
@@ -488,7 +544,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     let dummy = dummy().load(&mut game);
     let pools = Pools::new([(mana, Num::int(100))]).unwrap();
     Units::give_type(&mut game, paying, pools);
-    let owner = Owner::new(Seat::new(0));
+    let owner = Owner::new(PlayerSlot::new(0));
     let id = Spawn::of(paying, (0, 0, 0)).parts(owner).place(&mut game);
     let dummy = Spawn::of(dummy, (1, 0, 0))
         .team(Team::new(1))
@@ -501,11 +557,14 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             .unwrap()
             .to_int()
             .expect("a whole amount");
-        let gold = game.player_resources(Seat::new(0)).unwrap().amount(gold);
+        let gold = game
+            .player_resources(PlayerSlot::new(0))
+            .unwrap()
+            .amount(gold);
         (mana, gold, Stats::health(game, dummy))
     };
     let add_gold = |game: &mut Match, amount| {
-        let mut resources = game.player_resources_mut(Seat::new(0)).unwrap();
+        let mut resources = game.player_resources_mut(PlayerSlot::new(0)).unwrap();
         resources.add(gold, amount).unwrap();
     };
 
@@ -908,7 +967,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
         let [first, killer] =
             [4, 6].map(|x| Spawn::of(fighter, (x, 0, 0)).team(team).place(&mut game));
         let slow_one = Spawn::of(slow, (5, 0, 0)).team(team).place(&mut game);
-        let owner = Owner::new(Seat::new(3));
+        let owner = Owner::new(PlayerSlot::new(3));
         let hero = Spawn::of(hero, (5, 0, 1))
             .team(Team::new(1))
             .parts(owner)
@@ -952,7 +1011,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
             seen,
             [
                 (
-                    fallen(hero, Some(Seat::new(3))),
+                    fallen(hero, Some(PlayerSlot::new(3))),
                     Some(killer),
                     [first, slow_one][..assisted].to_vec()
                 ),
@@ -1073,6 +1132,10 @@ struct Apart;
 const ATTACK: DamageCause = DamageCause::Attack {
     roll: Num::ZERO,
     rank: Rank::FIRST,
+    allegiance: Allegiance {
+        team: Team::new(0),
+        owner: None,
+    },
 };
 
 #[test]

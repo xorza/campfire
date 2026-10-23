@@ -36,11 +36,7 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
     )
     .unwrap();
     let num = |value| Num::from_int(value).unwrap();
-    let walk = |to| {
-        Directive::Orders(OrdersDirective::Move {
-            to: GroundLocation::At(to),
-        })
-    };
+    let walk = |to| Directive::Orders(OrdersDirective::Move { to });
     assert_eq!(
         script.orders(),
         [
@@ -103,12 +99,12 @@ fn a_script_reads_its_mode_inputs_in_tick_order_or_its_flaw() {
         [
             ScriptedInput {
                 tick: Tick::new(0),
-                name: "hero".to_owned(),
+                name: DeclaredName::new("hero").unwrap(),
                 value: ScriptedValue::Text("hero-x".to_owned()),
             },
             ScriptedInput {
                 tick: Tick::new(0),
-                name: "spells".to_owned(),
+                name: DeclaredName::new("spells").unwrap(),
                 value: ScriptedValue::List(vec!["haste".to_owned(), "mend".to_owned()]),
             },
         ]
@@ -217,7 +213,7 @@ fn an_order_names_its_units_by_type_its_slot_and_item_by_name_its_target_by_a_fi
         order(
             6,
             Directive::Orders(OrdersDirective::Move {
-                to: GroundLocation::At(marker("east_spawn")),
+                to: marker("east_spawn"),
             }),
         ),
         ScriptedOrder {
@@ -227,7 +223,7 @@ fn an_order_names_its_units_by_type_its_slot_and_item_by_name_its_target_by_a_fi
         order(
             8,
             Directive::Orders(OrdersDirective::AttackMove {
-                to: GroundLocation::At(at(num(10), num(-3) + Num::HALF)),
+                to: at(num(10), num(-3) + Num::HALF),
             }),
         ),
     ];

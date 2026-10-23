@@ -11,7 +11,7 @@ use campfire_package::ModePackages;
 use campfire_players::OrderUnits;
 use campfire_production::{Site, TrainQueue};
 use campfire_projectiles::Projectile;
-use campfire_protocol::{InputRules, SeatPlan};
+use campfire_protocol::{InputRules, PlayerSlotPlan};
 use campfire_script::MatchNames;
 use campfire_units::UnitsWorld;
 use campfire_values::ResourceId;
@@ -120,12 +120,12 @@ impl SkirmishPlay {
                 return None;
             }
         };
-        let plan = [SeatPlan::Player, SeatPlan::Bot];
+        let plan = [PlayerSlotPlan::Player, PlayerSlotPlan::Bot];
         let session = FixedSession::planned(packages, InputRules::ROOMY, plan)
             .rate(rate)
             .picked(picks.places())
-            .seat_picked(&america(2));
-        let mut playing = MatchPlay::new(session.start());
+            .player_slot_picked(&america(2));
+        let mut playing = MatchPlay::new(session.start(), session.packages());
         let names = playing.game().resource::<MatchNames>();
         let Some(money) = names.named::<ResourceId>("money") else {
             failures.push(CheckFailure::NoMoney);

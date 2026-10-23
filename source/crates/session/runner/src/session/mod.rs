@@ -4,18 +4,20 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_capabilities::Match;
-use campfire_common::{AfterLeave, Tick, Ticks};
+use campfire_common::{AfterLeave, PlayerSlot, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
-use campfire_players::SeatHolder;
+use campfire_package::ModePackages;
+use campfire_players::PlayerSlotHolder;
 use campfire_protocol::{
-    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal, LogLoadError,
-    LogReplay, PlayerPacket, RecordSink, ResultError, SeatStart, SeedError, ServerInput,
-    ServerSeeds, SessionLog, SessionResult, Signer, SnapshotFingerprint,
+    Applied, Checkpoint, CheckpointBegun, CheckpointError, Controller, Delegation, InputChain,
+    InputError, Journal, LogLoadError, LogReplay, PlayerPacket, PlayerSlotChangeKind,
+    PlayerSlotStart, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog,
+    SessionResult, Signer, SnapshotFingerprint, Taken,
 };
 use campfire_sim::{MatchRate, SimWorld};
 
 use crate::match_build::MatchBuild;
-use crate::seat_rules::SeatRules;
+use crate::player_slot_rules::PlayerSlotRules;
 use crate::session::error::{
     CheckpointBeginError, ResumeError, ServerInputRefusal, SnapshotCheckError, StartError,
 };
@@ -39,8 +41,8 @@ pub struct Session {
     /// The segment whose seed the sim draws from.
     segment: u32,
     log: SessionLog,
-    /// Who the mode lets take a seat.
-    rules: SeatRules,
+    /// Who the mode lets take a player slot.
+    rules: PlayerSlotRules,
     /// Who may ask for a save, and the mode's autosaves.
     saves: SavesData,
     /// The ticks between two autosaves, without which the mode makes none.
@@ -56,6 +58,21 @@ pub struct Session {
     replay: Option<LogReplay>,
     /// The log's terms as the mode's rules checked them, once for the session.
     checked: CheckedTerms,
+}
+
+/// Where the player of a delegation sits as they join, as `Session::player_slot_for` finds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerSlotFor {
+    /// The player slot their main key holds, with its chain as logged; `renews` when the delegation
+    /// names another session key than the player slot's, which the player takes back by a renewal.
+    Held {
+        player_slot: PlayerSlot,
+        chain: InputChain,
+        renews: bool,
+    },
+    /// A player slot they join: the one they left, else an open one, else a bot's, as the mode's
+    /// `[players]` admits.
+    Join(PlayerSlot),
 }
 
 impl Session {
@@ -91,15 +108,15 @@ impl Session {
             .seed(segment)
             .expect("the seeds reach the log's last segment");
         let seed = header.segment_seed(segment, server_seed);
-        let rules = SeatRules::new(packages.data().players);
+        let rules = PlayerSlotRules::new(packages.data().players);
         for &change in log.changes() {
             rules
                 .check(change.kind)
-                .map_err(|error| StartError::SeatRule { change, error })?;
+                .map_err(|error| StartError::PlayerSlotRule { change, error })?;
         }
-        let players = u32::try_from(header.seats.len()).expect("the log counts seats in u32");
+        let players = log.player_slot_count();
         let rate = MatchRate::new(header.terms.tick_hz);
-        let spec = MatchBuild::spec(packages, seed, rate, players).out(visibility.out());
+        let spec = MatchBuild::spec(packages, seed, rate, players).visibility(*visibility);
         MatchBuild::build(world, spec, packages, players, picks);
         let saves = packages.data().saves;
         let autosave = saves.autosave_ms.map(|ms| {
@@ -138,11 +155,6 @@ impl Session {
         }
     }
 
-    /// The log's terms as the mode's rules checked them, once for the session.
-    pub(crate) const fn checked(&self) -> &CheckedTerms {
-        &self.checked
-    }
-
     /// Restores `snapshot` in `world`, a match built for it, when it is the snapshot `record`,
     /// a checkpoint of the log, names, and checks that it restores to the state the record
     /// holds. An error for another snapshot, bytes that do not restore, and another state.
@@ -154,10 +166,9 @@ impl Session {
         if SnapshotFingerprint::of(snapshot) != record.snapshot {
             return Err(SnapshotCheckError::Fingerprint);
         }
-        world
+        let restored = world
             .restore(snapshot)
             .map_err(SnapshotCheckError::Restore)?;
-        let restored = world.state_hash();
         if restored != record.state_hash {
             return Err(SnapshotCheckError::Hash {
                 logged: record.state_hash,
@@ -165,6 +176,15 @@ impl Session {
             });
         }
         Ok(())
+    }
+
+    /// The match of its packages `packages` to restore a snapshot of its log into, of the log's
+    /// player slots and tick rate and the picks its terms hold, as `MatchBuild::restore_target`
+    /// builds one.
+    pub fn restore_target(&self, packages: &ModePackages) -> Match {
+        let rate = MatchRate::new(self.log.header().terms.tick_hz);
+        let picks = &self.checked.picks;
+        MatchBuild::restore_target(packages, rate, self.log.player_slot_count(), picks)
     }
 
     /// Logs a player's packet before the next tick; see `SessionLog::record`.
@@ -180,14 +200,68 @@ impl Session {
         self.log.record(packet, applied, self.journal.as_mut())
     }
 
+    /// Where the player of `delegation` sits as they join: the player slot their main key holds;
+    /// else the player slot they left, unless another player holds it; else the first open player
+    /// slot, with late join; else the first bot's, with bot takeover; none when no player slot is
+    /// theirs or open to them.
+    pub fn player_slot_for(&self, delegation: &Delegation) -> Option<PlayerSlotFor> {
+        let main = delegation.main_key();
+        let log = &self.log;
+        let player_slots = (0..log.player_slot_count()).map(PlayerSlot::new);
+        let held =
+            player_slots
+                .clone()
+                .find_map(|player_slot| match log.controller(player_slot)? {
+                    Controller::Player {
+                        delegation: holder,
+                        chain,
+                    } if holder.main_key() == main => Some(PlayerSlotFor::Held {
+                        player_slot,
+                        chain,
+                        renews: holder.terms().session_key != delegation.terms().session_key,
+                    }),
+                    _ => None,
+                });
+        if held.is_some() {
+            return held;
+        }
+        // A player slot they left that another player took since is not theirs.
+        let left = player_slots.clone().find(|&player_slot| {
+            log.leaver(player_slot) == Some(*main)
+                && !matches!(log.controller(player_slot), Some(Controller::Player { .. }))
+        });
+        let joinable = |from: Taken| {
+            self.rules
+                .check(PlayerSlotChangeKind::Joined { from })
+                .is_ok()
+        };
+        let free = |wanted: Controller<'_>| {
+            player_slots
+                .clone()
+                .find(|&player_slot| log.controller(player_slot) == Some(wanted))
+        };
+        let open = joinable(Taken::Open)
+            .then(|| free(Controller::Open))
+            .flatten();
+        let bot = || {
+            joinable(Taken::Bot)
+                .then(|| free(Controller::Bot))
+                .flatten()
+        };
+        left.or(open).or_else(bot).map(PlayerSlotFor::Join)
+    }
+
     /// Logs a server input before the next tick, signed in the log by the server at the place it
-    /// takes; see `SessionLog::serve`. The mode's `[players]` refuses a change of a seat's
+    /// takes; see `SessionLog::serve`. The mode's `[players]` refuses a change of a player slot's
     /// controller it does not allow, before the log takes it.
     pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefusal> {
-        self.check_rules(&input)?;
+        let serving = self.log.serving(input).map_err(ServerInputRefusal::Log)?;
+        if let Some(change) = serving.change() {
+            self.rules.check(change).map_err(ServerInputRefusal::Rule)?;
+        }
         let server = Self::server(self.signer.as_deref());
-        self.log
-            .serve(input, server, self.journal.as_mut())
+        serving
+            .log(server, self.journal.as_mut())
             .map_err(ServerInputRefusal::Log)
     }
 
@@ -201,14 +275,6 @@ impl Session {
         self.signer.as_ref()
     }
 
-    /// Refuses a change of a seat's controller that the mode's `[players]` does not allow.
-    fn check_rules(&self, input: &ServerInput<'_>) -> Result<(), ServerInputRefusal> {
-        if let Some(change) = self.log.change_of(input).map_err(ServerInputRefusal::Log)? {
-            self.rules.check(change).map_err(ServerInputRefusal::Rule)?;
-        }
-        Ok(())
-    }
-
     /// Goes back to the save that starts segment `segment`; see `SessionLog::load`. The match's
     /// world is then stale: a new one resumes from the save.
     pub fn load(&mut self, segment: u32) -> Result<(), LogLoadError> {
@@ -220,7 +286,7 @@ impl Session {
         self.saves
     }
 
-    /// What the seat of a player who leaves becomes, as the mode's `[players] leaver` says.
+    /// What the player slot of a player who leaves becomes, as the mode's `[players] leaver` says.
     pub const fn after_leave(&self) -> AfterLeave {
         self.rules.after_leave()
     }
@@ -306,29 +372,29 @@ impl Session {
         &self.log
     }
 
-    /// Whether a player or a bot held each seat of the session, in order, as the match started:
-    /// as its log's header gives it, whatever a later change made of the seat, so a replay of a
-    /// published log starts as the run did.
-    fn holders(&self) -> Vec<SeatHolder> {
-        let starts = self.log.header().seats.iter();
+    /// Whether a player or a bot held each player slot of the session, in order, as the match
+    /// started: as its log's header gives it, whatever a later change made of the player slot, so a
+    /// replay of a published log starts as the run did.
+    fn holders(&self) -> Vec<PlayerSlotHolder> {
+        let starts = self.log.header().player_slots.iter();
         starts
             .map(|start| match start {
-                SeatStart::Player(_) | SeatStart::Bot => SeatHolder::Held,
-                SeatStart::Open => SeatHolder::Open,
+                PlayerSlotStart::Player(_) | PlayerSlotStart::Bot => PlayerSlotHolder::Held,
+                PlayerSlotStart::Open => PlayerSlotHolder::Open,
             })
             .collect()
     }
 
     /// Prepares the world, a new one, for the match of `source`'s log's header, of the mode its
-    /// packages hold, at the header's tick rate and with the randomness of the first segment's
-    /// seed of its seeds and the players' contributions; starts the match; and inserts the
-    /// session, which records into the log from its first tick. An error when the terms name
-    /// another release, mode or dependencies than this release and the packages, a tick rate
-    /// outside the mode's range, or more seats than the mode's teams have, when the seeds are not
-    /// those of the chain the header commits to or do not reach the log's last segment, when a
-    /// change of a seat's controller the log holds, as a published log replayed does, breaks the
-    /// mode's `[players]`, when the packages do not load into the match, or when the log's file
-    /// starts at a checkpoint, whose snapshot a resume starts from.
+    /// packages hold, at the header's tick rate and with the randomness of the first segment's seed
+    /// of its seeds and the players' contributions; starts the match; and inserts the session,
+    /// which records into the log from its first tick. An error when the terms name another
+    /// release, mode or dependencies than this release and the packages, a tick rate outside the
+    /// mode's range, or more player slots than the mode's teams have, when the seeds are not those
+    /// of the chain the header commits to or do not reach the log's last segment, when a change of
+    /// a player slot's controller the log holds, as a published log replayed does, breaks the
+    /// mode's `[players]`, when the mode's `on_match_start` fails, or when the log's file starts at
+    /// a checkpoint, whose snapshot a resume starts from.
     pub fn start(world: &mut World, source: SessionSource<'_>) -> Result<(), StartError> {
         if let Some(record) = source.log.starts_at() {
             return Err(StartError::AtCheckpoint {
@@ -402,10 +468,10 @@ pub(crate) mod internals {
     use crate::session::session_source::{ResumeAt, SessionSource};
 
     impl Session {
-        /// Loads into `game`, a session's match of the mode `packages` holds, the save `at`: the
-        /// log goes back to it, as `SessionLog::load` says, and the match resumes from it, as
-        /// `resume_match` does.
-        pub fn load_save(
+        /// Loads the save `at` of `game`, a session's match of the mode `packages` holds, into a
+        /// match built fresh: the log goes back to it, as `SessionLog::load` says, and the match
+        /// resumes from it, as `resume_match` does; what a load in place must match.
+        pub fn resume_save(
             mut game: Match,
             packages: &ModePackages,
             at: ResumeAt<'_>,

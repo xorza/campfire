@@ -50,35 +50,12 @@ filter = 'package(campfire-net-stack) & test(=scenario::wire_cost::tests::each_c
 threads-required = 5
 
 # CI's runners run the suite 3.5 to 6 times slower than an M5, and share their cores: a test of
-# 0.79 s alone on an M5, the 3v3's resume of then, took 4.5 s on Windows. So a test ends at 30 s there, and a scripted
-# match at 3 min.
+# 0.79 s alone on an M5, the 3v3's resume of then, took 4.5 s on Windows. So a test ends at 30 s
+# there, and a scripted match at 3 min. The profile inherits the rest from `default`, whose
+# overrides apply after its own.
 [profile.ci]
-fail-fast = false
 slow-timeout = { period = "1s", terminate-after = 30 }
-
-[profile.ci.junit]
-path = "junit.xml"
 
 [[profile.ci.overrides]]
 filter = 'test(/(^|::)scripted_match::/)'
 slow-timeout = { period = "15s", terminate-after = 12 }
-
-[[profile.ci.overrides]]
-filter = 'package(campfire-harness) & test(/^runner::match_3v3::scripted_match::/)'
-threads-required = "num-cpus"
-
-[[profile.ci.overrides]]
-filter = 'package(campfire-net-stack) & test(/^scenario::tests::(each_seed_of_the_swarm|one_seed_repeats)/)'
-threads-required = "num-cpus"
-
-[[profile.ci.overrides]]
-filter = 'package(campfire-harness) & test(/^runner::proving_match::sweep::/)'
-threads-required = "num-cpus"
-
-[[profile.ci.overrides]]
-filter = 'package(campfire-protocol) & test(=session_log::tests::every_truncation_and_every_flip_of_a_log_file_is_refused)'
-threads-required = "num-cpus"
-
-[[profile.ci.overrides]]
-filter = 'package(campfire-net-stack) & test(=scenario::wire_cost::tests::each_case_puts_exact_counts_on_the_wire)'
-threads-required = 5

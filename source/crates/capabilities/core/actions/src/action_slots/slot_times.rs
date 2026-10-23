@@ -1,4 +1,5 @@
-use std::iter;
+use std::iter::{self, Copied};
+use std::slice;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -24,7 +25,7 @@ use crate::action_target::ActionTarget;
 use crate::checked_action::CheckedAction;
 use crate::purse::Purse;
 use crate::range_fit::RangeFit;
-use crate::rank_fields::TogglePer;
+use crate::rank_toggle::TogglePer;
 use crate::rank_values::ChargeRule;
 use crate::slot_aim::SlotAim;
 use crate::slot_kind::SlotKind;
@@ -277,7 +278,7 @@ impl SlotTimes {
         self.0.get(usize::from(slot)).copied()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = SlotTime> + '_ {
+    pub fn iter(&self) -> Copied<slice::Iter<'_, SlotTime>> {
         self.0.iter().copied()
     }
 
@@ -412,46 +413,67 @@ impl SlotTimes {
         }
     }
 
-    /// Takes `cut` off the cooldown of each slot of `slots` of `action`, and off the time to its
-    /// next charge, to no earlier than `now`.
-    pub fn cut_cooldown(&mut self, slots: &ActionSlots, action: ActionId, cut: Ticks, now: Tick) {
-        let cut = |at: Tick| {
-            let left = at.since(now).unwrap_or(Ticks::ZERO);
-            now.after(Ticks::new(left.get().saturating_sub(cut.get())))
-        };
+    /// Takes `cut` off what is left at `now` of the cooldown of each slot of `slots` that
+    /// `select` picks, and of the time to its next charge, to no earlier than `now`.
+    pub fn cut(&mut self, slots: &ActionSlots, select: SlotSelect, cut: Cut, now: Tick) {
         for (held, time) in self.paired_mut(slots) {
-            if held.action != Some(action) {
+            if !select.picks(held) {
                 continue;
             }
-            time.ready_at = cut(time.ready_at);
+            time.ready_at = cut.of(time.ready_at, now);
             if let Some(charges) = &mut time.charges {
-                charges.next = cut(charges.next);
+                charges.next = cut.of(charges.next, now);
             }
         }
     }
+}
 
-    /// Takes `fraction`, from 0 to 1, of what is left of the cooldown of each slot of `slots` of
-    /// `kind` at `now`, and of the time to its next charge; what stays rounds up to a whole tick,
-    /// as every time does.
-    pub fn cut_cooldowns(&mut self, slots: &ActionSlots, kind: SlotKind, fraction: Num, now: Tick) {
-        debug_assert!((Num::ZERO..=Num::ONE).contains(&fraction));
-        let keep = Num::ONE - fraction;
-        let cut = |at: Tick| {
-            let left = at.since(now).unwrap_or(Ticks::ZERO);
-            let kept = keep
-                .scale_count(left.get(), Rounding::Ceiling)
-                .expect("a share of 0 to 1 of a time is a time");
-            now.after(Ticks::new(kept))
-        };
-        for (held, time) in self.paired_mut(slots) {
-            if held.kind != kind {
-                continue;
-            }
-            time.ready_at = cut(time.ready_at);
-            if let Some(charges) = &mut time.charges {
-                charges.next = cut(charges.next);
-            }
+impl<'a> IntoIterator for &'a SlotTimes {
+    type Item = SlotTime;
+    type IntoIter = Copied<slice::Iter<'a, SlotTime>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// The slots a cut of cooldowns picks: those of one action, or those of one kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlotSelect {
+    Action(ActionId),
+    Kind(SlotKind),
+}
+
+impl SlotSelect {
+    fn picks(self, slot: ActionSlot) -> bool {
+        match self {
+            Self::Action(action) => slot.action == Some(action),
+            Self::Kind(kind) => slot.kind == kind,
         }
+    }
+}
+
+/// How much a cut takes off a time: a span, or a share from 0 to 1 of what is left, what stays
+/// rounding up to a whole tick, as every time does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cut {
+    By(Ticks),
+    Share(Num),
+}
+
+impl Cut {
+    fn of(self, at: Tick, now: Tick) -> Tick {
+        let left = at.since(now).unwrap_or(Ticks::ZERO).get();
+        let kept = match self {
+            Self::By(cut) => left.saturating_sub(cut.get()),
+            Self::Share(share) => {
+                debug_assert!((Num::ZERO..=Num::ONE).contains(&share));
+                (Num::ONE - share)
+                    .scale_count(left, Rounding::Ceiling)
+                    .expect("a share of 0 to 1 of a time is a time")
+            }
+        };
+        now.after(Ticks::new(kept))
     }
 }
 
@@ -528,7 +550,12 @@ mod tests {
         let one = ActionSlots::new([(ActionId::new(0), kind, Some(Rank::FIRST))]);
         let mut times = SlotTimes::ready(&one);
         let two = one.with_empty(kind, 1);
-        times.cut_cooldowns(&two, kind, Num::QUARTER, Tick::ZERO);
+        times.cut(
+            &two,
+            SlotSelect::Kind(kind),
+            Cut::Share(Num::QUARTER),
+            Tick::ZERO,
+        );
     }
 
     #[test]
@@ -545,15 +572,33 @@ mod tests {
             next: Tick::new(3),
         };
         times.set_charges(0, Some(charges));
-        times.cut_cooldowns(&slots, kind, Num::QUARTER, Tick::ZERO);
+        times.cut(
+            &slots,
+            SlotSelect::Kind(kind),
+            Cut::Share(Num::QUARTER),
+            Tick::ZERO,
+        );
         let time = times.slot(0).unwrap();
         assert_eq!(time.ready_at, Tick::new(3 << 60));
         assert_eq!(time.charges.map(|charges| charges.next), Some(Tick::new(3)));
         // A whole cut leaves none; a cut of another kind's slots none of these.
-        times.cut_cooldowns(&slots, SlotKind::new(1), Num::ONE, Tick::ZERO);
+        let other = SlotSelect::Kind(SlotKind::new(1));
+        times.cut(&slots, other, Cut::Share(Num::ONE), Tick::ZERO);
         assert_eq!(times.slot(0).unwrap().ready_at, Tick::new(3 << 60));
-        times.cut_cooldowns(&slots, kind, Num::ONE, Tick::ZERO);
+        let all = SlotSelect::Kind(kind);
+        times.cut(&slots, all, Cut::Share(Num::ONE), Tick::ZERO);
         assert_eq!(times.slot(0).unwrap().ready_at, Tick::ZERO);
+        // At tick 10, a cooldown to tick 50 has 40 left: 15 off its action keeps 25, to tick 35,
+        // where 15 off another action keeps all, and 100 off keeps none, to tick 10, not before.
+        times.cool_down(0, Tick::new(50));
+        let now = Tick::new(10);
+        let of = |action| SlotSelect::Action(ActionId::new(action));
+        times.cut(&slots, of(0), Cut::By(Ticks::new(15)), now);
+        assert_eq!(times.slot(0).unwrap().ready_at, Tick::new(35));
+        times.cut(&slots, of(1), Cut::By(Ticks::new(15)), now);
+        assert_eq!(times.slot(0).unwrap().ready_at, Tick::new(35));
+        times.cut(&slots, of(0), Cut::By(Ticks::new(100)), now);
+        assert_eq!(times.slot(0).unwrap().ready_at, now);
     }
 
     #[test]

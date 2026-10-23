@@ -6,6 +6,8 @@ use campfire_math::Num;
 use campfire_navigation::WallData;
 use campfire_units::MapPoint;
 
+use crate::zero_hour::axes::cell_frame::CellFrame;
+
 /// A map's cliffs as the pathfinder blocks them (09-zero-hour.md, Cliffs are walls): each cliff
 /// cell of the game's, and each cell of the eight round one, as `Pathfinder::classifyMap` grows
 /// them, merged row by row into rectangles of whole cells, each a run of one row's cells and the
@@ -20,16 +22,6 @@ pub(crate) struct CliffWalls {
 struct CellRect {
     columns: RangeInclusive<usize>,
     rows: RangeInclusive<usize>,
-}
-
-/// Where the game's cells lie on the engine's axes: the engine's point of the game's sample
-/// `[0, rows − 1]`, the north-west corner of its heights, a cell's side, and the game's rows of
-/// samples, which the engine's `z` runs back along.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct CellFrame {
-    pub(crate) north_west: [Num; 2],
-    pub(crate) cell: Num,
-    pub(crate) rows: usize,
 }
 
 impl CliffWalls {
@@ -87,18 +79,11 @@ impl CliffWalls {
         self.rects
             .iter()
             .filter_map(|rect| {
-                // The game's cell `[x, y]` spans its samples `x` to `x + 1` and `y` to `y + 1`;
-                // its sample `y` lies `rows − 1 − y` cells along the engine's `z` from the north.
-                let along = |cells: usize| {
-                    frame.cell * i64::try_from(cells).expect("a map's cells fit i64")
-                };
-                let x = [
-                    frame.north_west[0] + along(*rect.columns.start()),
-                    frame.north_west[0] + along(*rect.columns.end() + 1),
-                ];
-                let back =
-                    |sample: usize| frame.north_west[1] + along(frame.rows - 1) - along(sample);
-                let z = [back(*rect.rows.end() + 1), back(*rect.rows.start())];
+                // The game's cell `[x, y]` spans its samples `x` to `x + 1` and `y` to `y + 1`, and
+                // its north is the engine's `−z`.
+                let [x0, z0] = frame.sample([*rect.columns.start(), *rect.rows.end() + 1])?;
+                let [x1, z1] = frame.sample([*rect.columns.end() + 1, *rect.rows.start()])?;
+                let (x, z) = ([x0, x1], [z0, z1]);
                 let cut =
                     |[from, to]: [Num; 2], axis: usize| [from.max(low[axis]), to.min(high[axis])];
                 let ([x0, x1], [z0, z1]) = (cut(x, 0), cut(z, 1));
@@ -147,19 +132,17 @@ mod tests {
         );
         assert_eq!(at(&[]).rects, []);
 
-        // On a frame of 10 m cells whose north-west sample is at (−10, −10), of 4 rows of samples:
-        // row `y`'s cells span z from −10 + 30 − 10 (y + 1) = 10 − 10 y to 20 − 10 y, and column
-        // `x`'s x from −10 + 10 x. In bounds from (−10, −20) to (40, 10), row 0's runs, z 10 to
-        // 20, lie wholly past them, so they are none; the run of every column of rows 1 and 2,
-        // x −10 to 60 and z −10 to 10, is cut at x 40; the run 2 to 4 of row 3 spans x 10 to 40
-        // and z −20 to −10.
+        // On a frame of 10 m cells of a border of 1: sample `x` lies at x −10 + 10 x and sample
+        // `y` at z 10 − 10 y, so row `y`'s cells span z −10 y to 10 − 10 y. In bounds from
+        // (−10, −30) to (40, 0), row 0's runs, z 0 to 10, lie wholly past them, so they are none;
+        // the run of every column of rows 1 and 2, x −10 to 60 and z −20 to 0, is cut at x 40;
+        // the run 2 to 4 of row 3 spans x 10 to 40 and z −30 to −20.
         let frame = CellFrame {
-            north_west: [Num::int(-10), Num::int(-10)],
+            border: 1,
             cell: Num::int(10),
-            rows: 4,
         };
         let bounds =
-            Bounds::new([Num::int(-10), Num::int(-20)], [Num::int(40), Num::int(10)]).unwrap();
+            Bounds::new([Num::int(-10), Num::int(-30)], [Num::int(40), Num::int(0)]).unwrap();
         let square = |[x0, z0, x1, z1]: [i64; 4]| {
             [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]
                 .map(|[x, z]| MapPoint::Ground([Num::int(x), Num::int(z)]))
@@ -173,8 +156,8 @@ mod tests {
         assert_eq!(
             points,
             [
-                (None, square([-10, -10, 40, 10])),
-                (None, square([10, -20, 40, -10])),
+                (None, square([-10, -20, 40, 0])),
+                (None, square([10, -30, 40, -20])),
             ]
         );
     }

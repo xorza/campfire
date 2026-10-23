@@ -44,8 +44,8 @@ impl PlayerSupply {
         let max = u64::from(rules.max);
         for (player, mut held) in &mut players {
             held.set_if_neq(Self {
-                used: holdings.used(player.seat()),
-                cap: holdings.cap(player.seat(), max),
+                used: holdings.used(player.player_slot()),
+                cap: holdings.cap(player.player_slot(), max),
             });
         }
     }

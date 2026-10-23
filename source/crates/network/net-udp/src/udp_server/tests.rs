@@ -1,6 +1,7 @@
 use campfire_net_core::Instant;
+use campfire_net_core::TimeSource;
 use campfire_net_emulator::internals::per_mille;
-use campfire_net_emulator::{DuplexModel, EmulatedNetwork, LinkModel, WireClock};
+use campfire_net_emulator::{DuplexModel, EmulatedNetwork, LinkModel};
 use campfire_net_packets::EmulatedWires;
 use campfire_net_packets::internals::{CLIENT, PlainHost};
 use campfire_net_payload::{PayloadFate, PayloadToken, UnlinkReason};
@@ -30,7 +31,7 @@ impl Sim {
 
     /// A client and a server whose wire follows `models`, and whose random numbers follow `seed`.
     fn with_models(trust: &ServerTrust, setup: &UdpSetup, models: DuplexModel, seed: u64) -> Self {
-        let network = EmulatedNetwork::new(WireClock::Driven);
+        let network = EmulatedNetwork::new(TimeSource::Driven);
         let pair = network.pair(models.with_seed(seed));
         let mut server =
             PlainHost::driven(TestLink::server(setup.clone()).emulated(TestLink::roomy(), seed));

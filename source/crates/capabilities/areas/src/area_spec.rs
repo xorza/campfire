@@ -1,10 +1,10 @@
 use campfire_common::{DeclaredName, Ticks};
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_math::Num;
 use campfire_script::{Filter, TagNames, UnknownName};
 use campfire_sim::MatchRate;
 use campfire_stats::Affects;
-use campfire_values::{ModifierId, RelationSet, TimeTooLarge};
+use campfire_values::{ModifierId, RelationSet, TimeTooLarge, UnitType};
 
 use crate::area_data::AreaData;
 use crate::error::AreaError;
@@ -68,6 +68,6 @@ impl Inside {
     }
 }
 
-impl PerType for AreaSpec {
+impl PerId<UnitType> for AreaSpec {
     const SCRIPTS_ONLY: bool = false;
 }

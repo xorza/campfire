@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bevy_ecs::world::World;
 use campfire_combat::{CalcDamage, CalcHeal, Damage, DamageHandle, Heal, HealHandle};
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_math::Num;
 use campfire_script::{
     CallError, CallStart, CapabilityRefusal, Ctx, Hook, HookDecl, ListPlace, ModeAnswer,
@@ -82,7 +82,7 @@ impl<'w> Calls<'_, 'w> {
     pub(crate) fn answer<H: HookDecl>(
         &mut self,
         id: Option<StableId>,
-        payer: Option<Seat>,
+        payer: Option<PlayerSlot>,
         args: H::Args,
     ) -> ControlFlow<()>
     where

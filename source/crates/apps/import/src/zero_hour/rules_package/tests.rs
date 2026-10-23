@@ -8,12 +8,9 @@ use campfire_stats::StatOp;
 use campfire_values::{Number, Stat};
 
 use super::*;
-use crate::zero_hour::combat_import::{RATE_OF_FIRE, StageModifier};
+use crate::zero_hour::combat_import::StageModifier;
 use crate::zero_hour::format::ini::damage_type::DamageType;
-use crate::zero_hour::imported_type::{
-    BASE_DEFENSE, INFANTRY, LIFE, MONEY, STRUCTURE, VICTORY, WALL,
-};
-use crate::zero_hour::map_import::START;
+use crate::zero_hour::rules_names::RulesNames;
 
 #[test]
 fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
@@ -47,7 +44,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         "{none}"
     );
     // A stage's modifier reads back as the modifier that adds to the rate of fire.
-    let rate = Stat::named(RATE_OF_FIRE).unwrap();
+    let rate = RulesNames::default().rate_of_fire;
     let one = Number::Value(Scalar::Decimal(Num::ONE));
     let stage = StageModifier {
         stats: BTreeMap::from([(rate.clone(), one.clone())]),
@@ -79,7 +76,6 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
         .take::<TomlTable>("turret")
         .unwrap()
         .unwrap();
-    let declared = |name: &str| DeclaredName::new(name).unwrap();
     let kinds: Vec<DeclaredName> = DamageType::ALL.map(DamageType::kind).into();
     let damage_kinds = combat.take::<Vec<DeclaredName>>("damage_kinds");
     assert_eq!(damage_kinds.unwrap().unwrap(), kinds);
@@ -88,17 +84,34 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
         .take::<Vec<DeclaredName>>("resources")
         .unwrap()
         .unwrap();
-    assert_eq!((life, resources), (declared(LIFE), vec![declared(MONEY)]));
-    assert!(stats.holds(LIFE) && stats.holds(RATE_OF_FIRE) && pools.holds(LIFE));
-    for tag in [VICTORY, STRUCTURE, WALL, BASE_DEFENSE, INFANTRY] {
-        assert!(tags.holds(tag), "{tag}");
+    // Each name the import writes is one the rules package declares.
+    let names = RulesNames::default();
+    assert_eq!((&life, resources), (&names.life, vec![names.money.clone()]));
+    for stat in [&names.life_stat, &names.rate_of_fire] {
+        assert!(stats.holds(stat.name()), "{stat}");
     }
-    assert_eq!(navigation.spawn_tags, [declared(START)]);
+    assert!(pools.holds(names.life.as_str()));
+    assert_eq!(names.life_stat, Stat::named(names.life.as_str()).unwrap());
+    for tag in [
+        &names.counts_for_victory,
+        &names.structure,
+        &names.wall,
+        &names.base_defense,
+        &names.infantry,
+    ] {
+        assert!(tags.holds(tag.as_str()), "{tag}");
+    }
+    assert_eq!(navigation.spawn_tags, std::slice::from_ref(&names.start));
+    let marker_params = rules.take::<Vec<DeclaredName>>("marker_params");
+    assert_eq!(
+        marker_params.unwrap().unwrap(),
+        std::slice::from_ref(&names.waypoint_name)
+    );
     let slots = rules.take::<Vec<SlotKindData>>("slots").unwrap().unwrap();
-    let slots: Vec<&str> = slots.iter().map(|slot| slot.name.as_str()).collect();
-    assert_eq!(slots, ["weapon", "command"]);
+    let slots: Vec<&DeclaredName> = slots.iter().map(|slot| &slot.name).collect();
+    assert_eq!(slots, [&names.weapon_slot, &names.command_slot]);
     let slot = turret.take::<DeclaredName>("slot").unwrap().unwrap();
-    assert_eq!(slot, declared("weapon"));
+    assert_eq!(slot, names.weapon_slot);
 }
 
 /// The text the Fluent message `value` gives, as `fluent-syntax` parses it.

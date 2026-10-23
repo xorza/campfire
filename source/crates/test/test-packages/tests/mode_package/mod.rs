@@ -18,9 +18,10 @@ use campfire_geometry::Metric;
 use campfire_math::Num;
 use campfire_mode::{ModeData, ModeDataError, PlayerControl};
 use campfire_package::{
-    ContentError, LoadProblem, ModePackages, PackageName, PackageRef, Place, ScriptProblem,
+    LoadProblem, ModePackages, ModeRead, PackageName, PackageRef, Place, ScriptProblem,
 };
 use campfire_package_disk::PackageDir;
+use campfire_package_format::ContentError;
 use campfire_progression::TrackError;
 use campfire_projectiles::{ProjectileDeliveryError, ProjectileError};
 use campfire_script::internals::Undefined;
@@ -169,8 +170,8 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 #[test]
-fn a_choice_of_values_lists_fewer_than_a_seat_picks_none() {
-    // A seat pick's byte holds a value's place, 255 its none: 254 values load, 255 do not.
+fn a_choice_of_values_lists_fewer_than_a_player_slot_picks_none() {
+    // A player slot pick's byte holds a value's place, 255 its none: 254 values load, 255 do not.
     let side = |count: usize| {
         let values: Vec<String> = (0..count).map(|at| format!("\"v{at}\"")).collect();
         format!(
@@ -291,14 +292,46 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_point_its_speed_none_and_it
         load(&edited(files))
     };
     // A homing bolt splashes and bounds its pitch; a curve and a steered bolt, which fly to a
-    // point, scatter too. A splash of 0 m with an
-    // outer ring past it loads.
+    // point, scatter too. A splash of 0 m with an outer ring past it loads on a weapon of its own
+    // amount, under a damage bonus or not; beside the stat `damage`, the ring and the bonus are
+    // each refused, as no bonus would scale the ring as the weapon's damage.
     assert!(set(&[splash, pitch]).is_ok());
     let ringed = (
         "actions.tower_attack.splash",
         r#"{ radius = "0", affects = "enemies", outer = { radius = "3", amount = "5" } }"#,
     );
-    assert!(set(&[ringed]).is_ok());
+    let own = |ring: (&'static str, &'static str), bonus: bool| {
+        let mut files = vec![
+            (MODE_DATA, Edit::Remove("actions.tower_attack.damage")),
+            (
+                MODE_DATA,
+                Edit::Set("actions.tower_attack.amount", r#""10""#),
+            ),
+            (MODE_DATA, Edit::Set(ring.0, ring.1)),
+        ];
+        if bonus {
+            files.push((
+                MODE_DATA,
+                Edit::Set("actions.tower_attack.damage_bonus", r#""armor""#),
+            ));
+        }
+        load(&edited(files))
+    };
+    assert!(own(ringed, false).is_ok());
+    assert!(own(ringed, true).is_ok());
+    let refused = |problem: &LoadProblem, rule: &CombatDataError| {
+        rule_at(problem, &entry("actions", "tower_attack"), rule)
+    };
+    let error = set(&[ringed]).unwrap_err();
+    assert!(
+        refused(&error.problem, &CombatDataError::OuterBesideStat),
+        "{error:?}"
+    );
+    let error = set(&[("actions.tower_attack.damage_bonus", r#""armor""#)]).unwrap_err();
+    assert!(
+        refused(&error.problem, &CombatDataError::DamageBonus),
+        "{error:?}"
+    );
     assert!(set(&[splash, scatter, pitch, curve]).is_ok());
     assert!(set(&[scatter, steered]).is_ok());
     // A homing bolt does not scatter, and a weapon of no projectile does not splash.
@@ -337,7 +370,7 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_point_its_speed_none_and_it
         "actions.tower_attack.splash",
         r#"{ radius = "1", affects = "enemies", outer = { radius = "3", amount = "-5" } }"#,
     );
-    let error = set(&[negative]).unwrap_err();
+    let error = own(negative, false).unwrap_err();
     let outer = |problem: &LoadProblem| {
         rule_at(
             problem,
@@ -472,7 +505,7 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
     let edit = Edit::Replace(MELEE_END, &on_hit);
     let packages = load(&edited([(MODE_DATA, edit)])).unwrap();
     let weapon = &packages.content().actions()["melee_creep_attack"];
-    assert_eq!((weapon.on_hit.len(), weapon.params.len()), (1, 1));
+    assert_eq!((weapon.on_hit.len(), weapon.keys.params.len()), (1, 1));
     let on_end = biting("on_end");
     let edit = Edit::Replace(MELEE_END, &on_end);
     let error = load(&edited([(MODE_DATA, edit)])).unwrap_err();
@@ -771,9 +804,11 @@ fn a_mode_holds_kinds_and_resources_to_their_limits_and_a_hero_is_no_mode() {
     );
 
     // A hero is no mode.
-    let husk = PackageDir::new(moba().join("heroes/husk"))
-        .mode_packages(Some(&two_lanes()))
-        .unwrap_err();
+    let husk = ModePackages::at(
+        &PackageDir::new(moba().join("heroes/husk")),
+        Some(&two_lanes()),
+    )
+    .unwrap_err();
     assert!(matches!(*husk.problem, LoadProblem::WrongKind), "{husk}");
 }
 
@@ -867,17 +902,26 @@ fn a_mode_loads_the_map_its_session_names() {
     let planar = load(&two).unwrap();
     assert_eq!(planar.map_name(), &two_lanes());
     assert_eq!(planar.map().metric(), Metric::Planar);
-    let spatial = two.mode_packages(Some(&second)).unwrap();
+    let spatial = ModePackages::at(&two, Some(&second)).unwrap();
     assert_eq!(spatial.map_name(), &second);
     assert_eq!(spatial.map().metric(), Metric::Spatial);
     let third = MapName::parse("third").unwrap();
-    let error = two.mode_packages(Some(&third)).unwrap_err();
+    let error = ModePackages::at(&two, Some(&third)).unwrap_err();
+    assert!(matches!(&*error.problem, LoadProblem::NoMap(map) if *map == third));
+    // Read once, the mode loads on each of its maps as a load of each reads it again.
+    let read = ModeRead::at(&two).unwrap();
+    assert_eq!(read.on(Some(&second)).unwrap().map_name(), &second);
+    assert_eq!(
+        read.on(Some(&two_lanes())).unwrap().map_name(),
+        &two_lanes()
+    );
+    let error = read.on(Some(&third)).unwrap_err();
     assert!(matches!(&*error.problem, LoadProblem::NoMap(map) if *map == third));
 
     // With no map named, the only map; of two, neither, and the error names both in order.
-    let only = edited([]).mode_packages(None).unwrap();
+    let only = ModePackages::at(&edited([]), None).unwrap();
     assert_eq!(only.map_name(), &two_lanes());
-    let error = two.mode_packages(None).unwrap_err();
+    let error = ModePackages::at(&two, None).unwrap_err();
     assert!(
         matches!(&*error.problem, LoadProblem::MapNeeded(maps) if *maps == [second, two_lanes()]),
         "{error:?}"

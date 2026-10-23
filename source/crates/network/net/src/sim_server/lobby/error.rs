@@ -1,26 +1,26 @@
-use campfire_common::Seat;
-use campfire_mode::{PickError, SeatPickError};
+use campfire_common::PlayerSlot;
+use campfire_mode::{PickError, PlayerSlotPickError};
 use campfire_runner::TermsError;
 use campfire_store::{AppendOpenError, PathError};
 use campfire_visibility::VisibilityError;
 use thiserror::Error;
 
-use crate::sim_server::session_dir::error::SessionCreateError;
+use campfire_host::SessionCreateError;
 
 /// Why a session's lobby does not open.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum LobbyError {
     #[error(transparent)]
     Terms(TermsError),
-    /// A bot or an open seat names a seat the session does not have.
-    #[error("the session has no seat {}", .0.get())]
-    NoSuchSeat(Seat),
-    /// Two bots, or a bot and an open seat, name the same seat.
-    #[error("seat {} is a bot's or open twice", .0.get())]
-    SeatNamedTwice(Seat),
-    /// Every seat is a bot's or open, in a lobby that waits for its players: no player starts
-    /// the session.
-    #[error("every seat is a bot's or open")]
+    /// A bot or an open player slot names a player slot the session does not have.
+    #[error("the session has no player slot {}", .0.get())]
+    NoSuchPlayerSlot(PlayerSlot),
+    /// Two bots, or a bot and an open player slot, name the same player slot.
+    #[error("player slot {} is a bot's or open twice", .0.get())]
+    PlayerSlotNamedTwice(PlayerSlot),
+    /// Every player slot is a bot's or open, in a lobby that waits for its players: no player
+    /// starts the session.
+    #[error("every player slot is a bot's or open")]
     NoPlayer,
     /// The host's visibility settings are not ones the mode leaves it.
     #[error("the host's visibility")]
@@ -28,9 +28,9 @@ pub enum LobbyError {
     /// The host picks a value of no option of the mode's, or one its option lacks.
     #[error("the host's options")]
     Options(#[source] PickError),
-    /// The host picks a seat's value of no choice of the mode's.
-    #[error("the host's seat picks")]
-    SeatPicks(#[source] SeatPickError),
+    /// The host picks a player slot's value of no choice of the mode's.
+    #[error("the host's player slot picks")]
+    PlayerSlotPicks(#[source] PlayerSlotPickError),
 }
 
 /// Why a server's new session does not open.

@@ -141,23 +141,27 @@ impl UnitsColumn {
         Ok(found.ok_or_else(|| ApiError::UnknownState.fail())?)
     }
 
-    /// The value of `field` of the unit in row `row`, as a script reads it.
-    pub(crate) fn read(view: &View, row: usize, field: StateField) -> ScriptValue {
+    /// The value of `field` of the unit in row `row`, of `unit_type`, as a script reads it.
+    pub(crate) fn read(
+        view: &View,
+        row: usize,
+        unit_type: UnitType,
+        field: StateField,
+    ) -> ScriptValue {
         let value = view
             .column(|column: &Self| {
                 let rows = column.rows.now();
                 rows.values[rows.rows[row].start as usize + field.index()].clone()
             })
             .expect("a view of units has their state");
-        value.to_value(view)
+        Self::schema(view, unit_type, |schema| schema.read(field, &value, view))
     }
 
     /// The first value of `field` of `unit_type`, as a script reads it.
     pub(crate) fn initial(view: &View, unit_type: UnitType, field: StateField) -> ScriptValue {
-        let value = Self::schema(view, unit_type, |schema| {
-            schema.initial()[field.index()].clone()
-        });
-        value.to_value(view)
+        Self::schema(view, unit_type, |schema| {
+            schema.read(field, schema.initial_of(field), view)
+        })
     }
 
     /// Writes `value` to `field` of the unit in row `row`, as a call's write applies to the

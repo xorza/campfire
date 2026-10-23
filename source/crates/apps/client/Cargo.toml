@@ -17,19 +17,19 @@ internals = [
     "campfire-combat/internals",
     "campfire-declarations/internals",
     "campfire-geometry/internals",
+    "campfire-host/internals",
     "campfire-interaction/internals",
     "campfire-items/internals",
-    "campfire-log/internals",
+    "campfire-logging/internals",
     "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-net/internals",
     "campfire-net-endpoint/internals",
-    "campfire-net-replication/internals",
     "campfire-net-socket/internals",
-    "campfire-net-sync/internals",
     "campfire-orders/internals",
     "campfire-package/internals",
     "campfire-package-disk/internals",
+    "campfire-package-format/internals",
     "campfire-players/internals",
     "campfire-protocol/internals",
     "campfire-production/internals",
@@ -57,20 +57,21 @@ campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-declarations.workspace = true
 campfire-geometry.workspace = true
+campfire-host.workspace = true
 campfire-interaction.workspace = true
 campfire-items.workspace = true
-campfire-log = { workspace = true, features = ["start"] }
+campfire-logging.workspace = true
 campfire-math.workspace = true
 campfire-mode.workspace = true
 campfire-net = { workspace = true, features = ["udp"] }
 campfire-net-connection.workspace = true
+campfire-net-core.workspace = true
 campfire-net-endpoint.workspace = true
-campfire-net-replication.workspace = true
 campfire-net-socket.workspace = true
-campfire-net-sync.workspace = true
 campfire-orders.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
+campfire-package-format.workspace = true
 campfire-players.workspace = true
 campfire-protocol.workspace = true
 campfire-production.workspace = true
@@ -110,7 +111,6 @@ bevy = { workspace = true, features = [
     "default_font",
     "ktx2",
     "multi_threaded",
-    "png",
     # A world asset, as a model's glTF scene, spawns its components by reflection, which needs each
     # type registered, and Bevy's own plugins register theirs only through it.
     "reflect_auto_register",

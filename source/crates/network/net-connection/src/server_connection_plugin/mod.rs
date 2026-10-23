@@ -26,7 +26,7 @@ use tracing::trace;
 /// its start, each of its links a connection, and a link is despawned once it is
 /// [`Disconnected`], for any cause, and a reconnect is a new entity.
 #[derive(Debug)]
-pub(crate) struct ServerConnectionPlugin;
+pub struct ServerConnectionPlugin;
 
 impl ServerConnectionPlugin {
     /// Starting a server starts its link.
@@ -151,7 +151,7 @@ impl ServerConnectionPlugin {
             trace!("Server Stop! Triggering Unlink");
             // Stopping goes first: an IO layer that unlinks at once inserts Stopped, which a later
             // Stopping would remove.
-            commands.entity(trigger.entity).insert(Stopping);
+            commands.entity(trigger.entity).try_insert(Stopping);
             commands.trigger(Unlink {
                 entity: trigger.entity,
                 reason: UnlinkReason::Closed(trigger.reason),

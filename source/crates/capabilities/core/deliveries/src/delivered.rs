@@ -1,6 +1,6 @@
 use campfire_actions::{Reached, ShotDamage};
 use campfire_sim::StableId;
-use campfire_values::{Hit, Team};
+use campfire_values::{Allegiance, Hit};
 
 use crate::delivering::Delivering;
 
@@ -22,10 +22,10 @@ pub enum DeliveredPayload {
     Attack(AttackShot),
 }
 
-/// A ranged attack's shot: `source`'s, of `team` as it fired, with its `damage`.
+/// A ranged attack's shot: `source`'s, of `allegiance` as it fired, with its `damage`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AttackShot {
     pub source: StableId,
-    pub team: Team,
+    pub allegiance: Allegiance,
     pub damage: ShotDamage,
 }

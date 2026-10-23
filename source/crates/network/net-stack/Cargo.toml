@@ -8,7 +8,6 @@ license.workspace = true
 kind = "glue"
 
 [features]
-compression_lz4 = ["campfire-net-transport/compression_lz4"]
 # The endpoint of an emulated network's wires, `net-packets`' `EmulatedWires`, which the plugin
 # groups add; the caller makes the `EmulatedNetwork` through `net-emulator`
 emulator = ["dep:campfire-net-endpoint", "dep:campfire-net-packets"]
@@ -19,11 +18,11 @@ udp = ["dep:campfire-net-endpoint", "dep:campfire-net-packets", "dep:campfire-ne
 internals = [
     "emulator",
     "udp",
-    "compression_lz4",
     "dep:bevy",
     "dep:campfire-app-threads",
     "dep:campfire-net-stepper",
     "campfire-net-endpoint/internals",
+    "campfire-net-frame-interpolation/internals",
     "campfire-net-interpolation/internals",
     "campfire-net-messages/internals",
     "campfire-net-prediction/internals",
@@ -49,6 +48,7 @@ campfire-net-transport.workspace = true
 campfire-net-messages.workspace = true
 campfire-net-sync.workspace = true
 campfire-net-replication.workspace = true
+campfire-net-frame-interpolation.workspace = true
 campfire-net-interpolation.workspace = true
 campfire-net-prediction.workspace = true
 campfire-net-endpoint = { workspace = true, optional = true }

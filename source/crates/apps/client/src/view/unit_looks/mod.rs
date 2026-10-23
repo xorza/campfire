@@ -14,7 +14,7 @@ use campfire_math::Num;
 use campfire_units::TypeOriginBook;
 use campfire_values::{NameId, PackageIndex, UnitType};
 
-use crate::view::client_data::ClientData;
+use crate::view::client_data::ClientLoad;
 use crate::view::match_colors::Paint;
 use crate::view::package_source::PackageAssets;
 
@@ -54,7 +54,7 @@ pub(crate) struct LookNodes {
 
 impl UnitLooks {
     /// The looks of every type of `origins`: the models of the type's key in its package's units.
-    pub(crate) fn of(origins: &TypeOriginBook, data: &ClientData, assets: &AssetServer) -> Self {
+    pub(crate) fn of(origins: &TypeOriginBook, data: &ClientLoad, assets: &AssetServer) -> Self {
         let looks = origins
             .iter()
             .map(|(_, origin)| {

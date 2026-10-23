@@ -8,7 +8,8 @@ use serde::de::DeserializeOwned;
 
 use crate::ground_point::GroundPoint;
 
-/// What an order's directive names a unit, a slot, a place and an item type by: its ids, `Ids`, as
+/// What an order's directive names a unit, a slot, a place, an item type and a stack a unit
+/// carries by: its ids, `Ids`, as
 /// a command carries them, or another form while the order is not due, as a bot's script names
 /// them (04-capabilities/control.md, A directive is generic over its references).
 pub trait OrderRefs: Debug + Clone + Copy + PartialEq + Eq {
@@ -16,9 +17,13 @@ pub trait OrderRefs: Debug + Clone + Copy + PartialEq + Eq {
     type Slot: Debug + Clone + PartialEq + Eq;
     /// A point of the ground plane.
     type Ground: Debug + Clone + PartialEq + Eq;
+    /// The point of the ground plane a build places its building at.
+    type Place: Debug + Clone + PartialEq + Eq;
     /// A point of the map, a height among its coordinates.
     type Point: Debug + Clone + PartialEq + Eq;
     type Item: Debug + Clone + PartialEq + Eq;
+    /// A stack a unit carries.
+    type Carried: Debug + Clone + PartialEq + Eq;
 }
 
 /// References that serde writes and reads, which each action's serde form names as its bound.
@@ -29,8 +34,10 @@ pub trait SerdeRefs:
         Unit: Serialize + DeserializeOwned,
         Slot: Serialize + DeserializeOwned,
         Ground: Serialize + DeserializeOwned,
+        Place: Serialize + DeserializeOwned,
         Point: Serialize + DeserializeOwned,
         Item: Serialize + DeserializeOwned,
+        Carried: Serialize + DeserializeOwned,
     >
 {
 }
@@ -40,14 +47,17 @@ impl<R> SerdeRefs for R where
             Unit: Serialize + DeserializeOwned,
             Slot: Serialize + DeserializeOwned,
             Ground: Serialize + DeserializeOwned,
+            Place: Serialize + DeserializeOwned,
             Point: Serialize + DeserializeOwned,
             Item: Serialize + DeserializeOwned,
+            Carried: Serialize + DeserializeOwned,
         >
 {
 }
 
 /// The references of an order as a command carries it: a unit by its stable id, a slot by its
-/// place among the unit's, a place by its coordinates, and an item type by its id.
+/// place among the unit's, a place by its coordinates, an item type by its id, and a carried
+/// stack by its place in the unit's inventory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ids;
 
@@ -55,8 +65,10 @@ impl OrderRefs for Ids {
     type Unit = StableId;
     type Slot = u8;
     type Ground = GroundPoint;
+    type Place = GroundPoint;
     type Point = Vec3;
     type Item = ItemId;
+    type Carried = u8;
 }
 
 /// Gives the references of `To` for those of `From`, each in its turn as an action's map of
@@ -71,9 +83,11 @@ pub trait RefMap<From: OrderRefs, To: OrderRefs> {
     fn ground(&mut self, ground: From::Ground) -> Result<To::Ground, Self::Error>;
 
     /// The point a build places its building at, whose box turns `angle` degrees.
-    fn place(&mut self, place: From::Ground, angle: Num) -> Result<To::Ground, Self::Error>;
+    fn place(&mut self, place: From::Place, angle: Num) -> Result<To::Place, Self::Error>;
 
     fn point(&mut self, point: From::Point) -> Result<To::Point, Self::Error>;
 
     fn item(&mut self, item: From::Item) -> Result<To::Item, Self::Error>;
+
+    fn carried(&mut self, carried: From::Carried) -> Result<To::Carried, Self::Error>;
 }

@@ -2,7 +2,7 @@
 //! setting): a link with no slot, admitted while the session holds a place for it, watches every
 //! unit through any fog, or the teams' views it chooses, and holds of each entity what its kind's
 //! audience gives spectators. It predicts nothing, and its join's burst of the whole world crosses
-//! a slow link in the frames its rate allows. A watched session may seat bots alone, and starts as
+//! a slow link in the frames its rate allows. A watched session may hold bots alone, and starts as
 //! its watcher joins.
 
 use std::collections::BTreeSet;
@@ -10,10 +10,8 @@ use std::collections::BTreeSet;
 use bevy_app::{App, AppExit};
 use bevy_ecs::query::{Allow, With};
 use campfire_bots::OrderScript;
-use campfire_net::{
-    CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, LobbyStart, Loss,
-    MatchClock, SimServerWorld, StopRequest, WatchRequest,
-};
+use campfire_host::{JoinError, JoinRefused, JoinState, Loss, MatchClock, SessionEnd};
+use campfire_net::{CloseCode, LinkLossCause, LinkLost, LobbyStart, SimServerWorld, StopRequest};
 use campfire_net_core::LinkDirection;
 use campfire_net_emulator::{LinkModel, RateLimit};
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
@@ -32,11 +30,11 @@ const JOIN_STEPS: usize = 300;
 
 /// A duo of the lane mode whose host gives `visibility` and admits `spectators`.
 fn duo(visibility: &'static [&'static str], spectators: u32) -> InProcessSetup {
-    InProcessSetup {
-        visibility,
-        max_spectators: spectators,
-        ..InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN)
-    }
+    InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN)
+        .into_builder()
+        .visibility(visibility)
+        .max_spectators(spectators)
+        .build()
 }
 
 fn state(local: &InProcessMatch, client: usize) -> &JoinState {
@@ -116,15 +114,17 @@ fn a_spectator_watches_every_unit_holds_what_spectators_may_and_only_one_finds_a
 #[test]
 fn a_watched_session_of_bots_alone_starts_as_its_watcher_joins_and_runs_on_until_a_stop() {
     // Two bots, one a side, each picking its hero in tick 0, and no player
-    // (08-sessions.md, A local session may seat bots alone).
+    // (08-sessions.md, A local session may hold bots alone).
     const PICK: &str = "[[input]]\ntick = 0\nname = \"pick\"\nvalue = \"runner\"\n";
     let test_dir = TestDir::new();
-    let mut local = InProcessMatch::new(InProcessSetup {
-        players: 0,
-        bots: &[PICK, PICK],
-        start: LobbyStart::Watched,
-        ..duo(&[], 1)
-    });
+    let mut local = InProcessMatch::new(
+        duo(&[], 1)
+            .into_builder()
+            .players(0)
+            .bots(&[PICK, PICK])
+            .start(LobbyStart::Watched)
+            .build(),
+    );
     local.keep_data(test_dir.path("data"));
     local.open_lobby();
     for _ in 0..JOIN_STEPS {
@@ -155,6 +155,10 @@ fn a_watched_session_of_bots_alone_starts_as_its_watcher_joins_and_runs_on_until
     }
     let world = local.server_mut().world_mut();
     assert_eq!(world.exit_due(StopRequest::NotAsked), None);
+    assert_eq!(
+        world.session_end(StopRequest::Asked),
+        Some(SessionEnd::Stopped)
+    );
     assert_eq!(world.exit_due(StopRequest::Asked), Some(AppExit::Success));
 }
 
@@ -175,7 +179,8 @@ fn a_spectator_of_the_teams_views_watches_the_teams_it_chooses() {
     local
         .client_mut(spectator)
         .world_mut()
-        .insert_resource(WatchRequest(west_alone));
+        .resource_mut::<JoinState>()
+        .choose_teams(west_alone);
     for _ in 0..5 {
         local.step();
     }
@@ -208,10 +213,12 @@ struct JoinBurst {
 impl JoinBurst {
     /// The join over links of `link`, the server running a frame a tick.
     fn over(link: LinkModel) -> Self {
-        let mut setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
-        setup.bots = &PICKS[1..];
-        setup.max_spectators = 1;
-        setup.link = link;
+        let setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN)
+            .into_builder()
+            .bots(&PICKS[1..])
+            .max_spectators(1)
+            .link(link)
+            .build();
         let mut local = InProcessMatch::of_mode(setup, short_3v3(&[], ""));
         local.open_match();
         local.play(0, &OrderScript::parse(PICKS[0]).unwrap());
@@ -256,19 +263,19 @@ const fn rated(bytes_per_second: u32) -> LinkModel {
 #[test]
 fn a_join_burst_fits_the_initial_window_and_a_megabit_link_delays_it_one_tick() {
     // At 10 Mbit/s each datagram arrives at the other end's next frame, as the link takes time to
-    // carry it: the handshake's frames, then the world's 58 entities in one frame of 4,431 bytes,
-    // the largest, which takes 3.6 ms. It is below NewReno's initial window of 10 packets of
+    // carry it: the handshake's frames, then the world's 58 entities in one frame of 4,565 bytes,
+    // the largest, which takes 3.5 ms. It is below NewReno's initial window of 10 packets of
     // 1,200 bytes, so the packet session's budget sends it whole (11-net-stack/packet-session.md,
     // Congestion control is NewReno, in the packet session).
     let fast = JoinBurst::over(rated(1_250_000));
-    assert_eq!(fast.frames, [0, 43, 0, 431, 0, 600, 46, 4_431, 417]);
+    assert_eq!(fast.frames, [0, 43, 0, 431, 0, 601, 47, 4_565, 421]);
     assert_eq!(fast.entities, 58);
     assert!(fast.largest() < 10 * 1_200);
 
-    // At 1 Mbit/s the 4,431 bytes take 35,448 µs, past the tick of 33,333 µs: the spectator
+    // At 1 Mbit/s the 4,565 bytes take 36,520 µs, past the tick of 33,333 µs: the spectator
     // holds the world one frame later, in which the server sent one more frame's bytes.
     let slow = JoinBurst::over(rated(125_000));
-    assert_eq!(slow.frames, [0, 43, 0, 431, 0, 600, 46, 4_431, 417, 429]);
+    assert_eq!(slow.frames, [0, 43, 0, 431, 0, 601, 47, 4_565, 421, 436]);
     assert_eq!(slow.entities, 58);
-    assert_eq!(slow.largest() * 1_000_000 / 125_000, 35_448);
+    assert_eq!(slow.largest() * 1_000_000 / 125_000, 36_520);
 }

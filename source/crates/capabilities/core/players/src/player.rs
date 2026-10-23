@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_declarations::{EntityKind, KindAudience};
 use campfire_script::MatchNames;
 use campfire_sim::{KindMarker, SimComponent, StableId};
@@ -10,19 +10,19 @@ use campfire_units::EntityKinds;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-/// The entity of a player seat, of the seat's named id, which holds the player's state that
+/// The entity of a player slot, of the player slot's named id, which holds the player's state that
 /// clients receive (10-replication-audiences.md, The match and each player are entities).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable, on_add = EntityKinds::one)]
 #[serde(transparent)]
-pub struct Player(Seat);
+pub struct Player(PlayerSlot);
 
 impl Player {
-    pub const fn new(seat: Seat) -> Self {
-        Self(seat)
+    pub const fn new(player_slot: PlayerSlot) -> Self {
+        Self(player_slot)
     }
 
-    pub const fn seat(self) -> Seat {
+    pub const fn player_slot(self) -> PlayerSlot {
         self.0
     }
 }
@@ -30,7 +30,7 @@ impl Player {
 impl KindMarker for Player {}
 
 impl EntityKind for Player {
-    const AUDIENCE: KindAudience = KindAudience::EverySeat;
+    const AUDIENCE: KindAudience = KindAudience::EveryPlayerSlot;
     const OWNER_PREDICTS: bool = false;
 }
 
@@ -38,8 +38,9 @@ impl SimComponent for Player {
     const NAME: &'static str = "players.player";
     type Host = Self;
 
-    // A seat the session lacks has no place in the players' tables, and an id not the seat's
-    // would hide the player's state from where it is looked for; and an entity is of one kind.
+    // A player slot the session lacks has no place in the players' tables, and an id not the player
+    // slot's would hide the player's state from where it is looked for; and an entity is of one
+    // kind.
     fn check(&self, world: &World, entity: Entity) -> bool {
         world.get::<StableId>(entity) == Some(&StableId::of_player(self.0))
             && world.resource::<MatchNames>().has_player(self.0)

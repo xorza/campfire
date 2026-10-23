@@ -1,5 +1,5 @@
 use crate::halves;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 
 use super::*;
 
@@ -52,7 +52,7 @@ const fn ordered(goal: Vec3) -> Party {
     Party {
         key: PartyKey::Order {
             tick: Tick::new(0),
-            seat: Seat::new(0),
+            player_slot: PlayerSlot::new(0),
             number: 0,
         },
         goal,
@@ -134,6 +134,48 @@ fn a_party_searches_once_and_each_member_takes_the_route_from_the_last_waypoint_
 }
 
 #[test]
+fn a_member_that_the_shared_route_stops_short_of_its_goal_plans_its_own() {
+    // Walls from (4, 0) to (6, 4) and from (4, 5) to (6, 12) leave a gap a meter wide at z from 4
+    // to 5, which a walker of no body passes and one of a meter's radius does not. Both, one
+    // party, go from x = 1 to (10, 2): the party searches for the wide one, whose route stops
+    // short of the gap, so the narrow one plans its own, a second search, and reaches the goal.
+    let mut game = walk_match();
+    let box_of = |[x0, z0]: [i64; 2], [x1, z1]: [i64; 2]| {
+        let area = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(|point| point.map(Num::int));
+        Polygon::new(area).unwrap()
+    };
+    let walls = [([4, 0], [6, 4]), ([4, 5], [6, 12])].map(|(low, high)| Wall {
+        layer: Layer::FIRST,
+        area: box_of(low, high),
+    });
+    Navigation::load_walled(
+        &mut game,
+        Num::ONE,
+        [0, 0],
+        [20, 12],
+        vec![ground(Num::ZERO), ground(Num::ONE)],
+        &walls,
+    );
+    let goal = Vec3::from((10, 0, 2));
+    let party = ordered(goal);
+    let narrow = member(&mut game, Vec3::from((1, 0, 2)), goal, party);
+    let wide = Navigation::walker_at(&mut game, (1, 0, 8))
+        .circle(Num::ONE)
+        .walks(Num::ONE, Some(goal))
+        .place(&mut game);
+    let ask = RouteAsk {
+        goal,
+        tick: Tick::new(0),
+        party: Some(party),
+    };
+    Navigation::ask_route(&mut game, wide, ask);
+    game.step();
+    assert_eq!(route_searches(&game), 2);
+    assert!(game.part::<Route>(narrow).is_reached());
+    assert!(!game.part::<Route>(wide).is_reached());
+}
+
+#[test]
 fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
     // One walker asked alone in tick 0 for (9, 5), and waits; in tick 3 it joins a party with
     // another, and keeps its first tick. The two still search once.
@@ -210,7 +252,7 @@ fn a_party_searches_once_for_each_layer_it_moves_on() {
     let goal = Vec3::from((8, 0, 1));
     let party = ordered(goal);
     let ground = [2, 3].map(|x| member(&mut game, Vec3::from((x, 0, 1)), goal, party));
-    let body = BodyForm::circle(Num::QUARTER).unwrap().on(AIR);
+    let body = BodyForm::new(BodyShape::circle(Num::QUARTER).unwrap(), AIR);
     let air = [1, 2].map(|z| {
         let id = Navigation::walker_at(&mut game, (2, 0, z))
             .body(body)

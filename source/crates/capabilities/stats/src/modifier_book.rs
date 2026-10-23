@@ -8,7 +8,7 @@ use campfire_script::{
     HookSet, MatchNames, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames, UnknownName,
 };
 use campfire_sim::MatchRate;
-use campfire_units::{ModifierNames, ScriptBook, StatId, StatusTags, UnitTypes};
+use campfire_units::{ScriptBook, StatId, StatusTags, UnitTypes};
 use campfire_values::{
     ActionId, ModifierId, NameId, Named, Names, PackageIndex, Rank, Stat, TagSet,
 };
@@ -331,7 +331,7 @@ impl ModifierBook {
                 live: read.live,
             }
         });
-        let passive = from.hold == Some(Hold::Passive);
+        let passive = from.hold.is_some_and(Hold::is_passive);
         let counts = passive && stack_life.is_some();
         let first = stack_life.filter(|_| !counts).map(|ticks| StackEnd {
             until: Instance::end(now, ticks),
@@ -355,7 +355,7 @@ impl ModifierBook {
             interval,
             shield: not_negative(spec.shield.as_ref()),
             stats: shares,
-            state: spec.state.initial().iter().cloned(),
+            state: spec.state.initial().cloned(),
         };
         Application {
             instance,
@@ -416,9 +416,9 @@ impl ModifierBook {
 }
 
 impl ModifierBook {
-    /// The names of its modifiers, the fact an action's load resolves them by.
-    pub(crate) fn names_fact(cx: &BookCx<'_>) -> Result<ModifierNames, BookError> {
-        Ok(ModifierNames(Arc::clone(&cx.book::<Self>()?.names)))
+    /// The names of its modifiers, which the load resolves them by.
+    pub(crate) fn name_table(cx: &BookCx<'_>) -> Result<Arc<Names<ModifierId>>, BookError> {
+        Ok(Arc::clone(&cx.book::<Self>()?.names))
     }
 }
 

@@ -132,8 +132,10 @@ fn a_prediction_history_is_pruned_to_its_rollback_horizon() {
         Update,
         (
             PredictionHistory::<TestValue>::update,
+            PredictionHistory::<TestValue>::prune_predicted,
             PredictionHistory::<TestValue>::prune_confirmed,
-        ),
+        )
+            .chain(),
     );
 
     let mut history = PredictionHistory::default();
@@ -172,8 +174,8 @@ fn a_prediction_history_is_pruned_to_its_rollback_horizon() {
 fn confirmed_through(tick: NetTick) -> ConfirmedTickMap {
     let mut confirmed_ticks = ConfirmedTickMap::default();
     let replicon_tick = RepliconTick::new(1);
-    confirmed_ticks.record(replicon_tick, tick);
-    confirmed_ticks.record_last_confirmed_tick(replicon_tick);
+    confirmed_ticks.bridge_record(replicon_tick, tick);
+    confirmed_ticks.bridge_record_last_confirmed_tick(replicon_tick);
     confirmed_ticks
 }
 
@@ -270,7 +272,7 @@ fn a_late_predicted_marker_backfills_a_confirmation_older_than_the_window() {
     let mut world = World::new();
     let mut confirmed_ticks = ConfirmedTickMap::default();
     for replicon_tick in 10..=12 {
-        confirmed_ticks.record(
+        confirmed_ticks.bridge_record(
             RepliconTick::new(replicon_tick),
             NetTick(replicon_tick * 10),
         );

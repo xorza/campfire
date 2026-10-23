@@ -10,7 +10,9 @@ kind = "glue"
 [features]
 internals = [
     "dep:serde",
+    "dep:campfire-net-interpolation",
     "campfire-net-interpolation/internals",
+    "campfire-net-frame-interpolation/internals",
     "dep:campfire-net-stepper",
     "campfire-net-timeline/internals",
     "campfire-net-sync/internals",
@@ -28,7 +30,8 @@ campfire-net-connection.workspace = true
 campfire-net-stepper = { workspace = true, optional = true }
 campfire-net-sync.workspace = true
 campfire-net-replication.workspace = true
-campfire-net-interpolation.workspace = true
+campfire-net-frame-interpolation.workspace = true
+campfire-net-interpolation = { workspace = true, optional = true }
 
 bytes = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive", "rc", "std"], optional = true }

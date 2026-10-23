@@ -1,4 +1,4 @@
-use campfire_script::{ApiVersion, CtxMisuse, ScriptError};
+use campfire_script::{ApiVersion, CompileError, CtxMisuse};
 use campfire_values::EngineEnum;
 use thiserror::Error;
 
@@ -13,7 +13,7 @@ pub enum ScriptProblem {
     Missing,
     /// It does not compile.
     #[error(transparent)]
-    Compile(ScriptError),
+    Compile(CompileError),
     /// A function named like a hook is no hook of a role the script serves, or takes another
     /// count of parameters.
     #[error("{0} is no hook of the script's roles")]

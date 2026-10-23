@@ -38,6 +38,10 @@ impl<M: Message> MessageSender<M> {
 }
 
 impl<M: Message> QueuedSender<M> for MessageSender<M> {
+    fn queue(&self) -> &SendQueue<M> {
+        &self.queue
+    }
+
     fn queue_mut(&mut self) -> &mut SendQueue<M> {
         &mut self.queue
     }

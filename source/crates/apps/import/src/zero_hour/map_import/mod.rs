@@ -14,15 +14,17 @@ use campfire_mode::{MapData, MapPatch, MarkerData, ModeParam, PlacedUnitData};
 use campfire_navigation::MapNavigationData;
 use campfire_units::{BoundsData, CellSplit, CoarseSpan, Ground, GroundData, HeightGrid, MapPoint};
 
-use crate::zero_hour::cliff_walls::{CellFrame, CliffWalls};
+use crate::zero_hour::axes;
+use crate::zero_hour::axes::cell_frame::CellFrame;
+use crate::zero_hour::cliff_walls::CliffWalls;
 use crate::zero_hour::error::MapError;
+use crate::zero_hour::format::ini::game_data_ini::TerrainDraw;
 use crate::zero_hour::format::ini::object_ini::PlacedAs;
 use crate::zero_hour::format::look_conditions::LookConditions;
-use crate::zero_hour::format::map::map_file::{GameLight, MapHeights, ZeroHourMap};
+use crate::zero_hour::format::map::map_file::{MapHeights, ZeroHourMap};
 use crate::zero_hour::format::map::map_object::ObjectPlace;
-use crate::zero_hour::format::map::terrain::Terrain;
-use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::import_names::ImportNames;
+use crate::zero_hour::import_team::{ImportTeam, SLOTS};
 use crate::zero_hour::terrain_atlas::{ClassTexture, TerrainAtlas};
 use crate::zero_hour::terrain_cells::TerrainCells;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
@@ -52,8 +54,8 @@ struct Waypoint {
     position: [Num; 2],
 }
 
-/// A waypoint a skirmish starts a seat's player at, by the seat's number from 1: its start, or
-/// its rally.
+/// A waypoint a skirmish starts a player slot's player at, by the player slot's number from 1: its
+/// start, or its rally.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SkirmishPoint {
     Start(u8),
@@ -86,12 +88,12 @@ impl SkirmishPoint {
 /// looks of the package's `client/units.toml`, how many of the map's lights the game draws, and the
 /// settings of `GameData.ini` its terrain is drawn by.
 #[derive(Debug)]
-pub(crate) struct MapSources<'a> {
-    pub(crate) rules: &'a ZeroHourRules,
-    pub(crate) names: &'a mut ImportNames,
+pub(crate) struct MapSources<'a, 'r> {
+    pub(crate) rules: &'r ZeroHourRules,
+    pub(crate) names: &'a mut ImportNames<'r>,
     pub(crate) looks: &'a ClientUnits,
     pub(crate) lights: usize,
-    pub(crate) game: GameData,
+    pub(crate) game: TerrainDraw,
     /// The texture of each of the map's texture classes, in their order.
     pub(crate) textures: &'a [Option<ClassTexture>],
 }
@@ -119,24 +121,6 @@ const PATHFIND_CELL: i64 = 10;
 /// A step of height, 0.625 units (`MAP_HEIGHT_SCALE`): 5 · 2⁻³, exact in a `Num`.
 const STEP: Num = Num::from_bits(5 << (Num::FRAC_BITS - 3));
 
-/// The team every placed unit stands on until the import reads the map's sides.
-const NEUTRAL: &str = "neutral";
-
-/// The tag of a marker made from a waypoint.
-const WAYPOINT: &str = "waypoint";
-
-/// The param of a marker made from a waypoint that holds the waypoint's name.
-const WAYPOINT_NAME: &str = "name";
-
-/// The tag beside `waypoint` of a skirmish's start and rally waypoints, which the mode spawns its
-/// players' start objects at (09-zero-hour.md, A skirmish starts with the faction's start objects).
-pub(crate) const START: &str = "start";
-
-/// The seats of a game, `MAX_SEATS`: the starts a map may name, from `Player_1_Start`,
-/// and the players of a skirmish, each its own team, as the original's default skirmish holds
-/// them (09-zero-hour.md, Eight teams of one).
-pub(crate) const SLOTS: u8 = 8;
-
 impl MapImport {
     /// The files of `file`, of `sources`: its heights on the engine's axes, its terrain over them
     /// as a terrain file, its texture the atlas the game builds of its classes; its objects as a
@@ -149,7 +133,7 @@ impl MapImport {
     /// Cliffs are walls); and its first `lights` object lights, as the game draws
     /// `NumberGlobalLights` of each, which the terrain is lit by too; their ambient color is the
     /// first light's, as the game takes it.
-    pub(crate) fn new(file: &ZeroHourMap, sources: MapSources<'_>) -> Result<Self, MapError> {
+    pub(crate) fn new(file: &ZeroHourMap, sources: MapSources<'_, '_>) -> Result<Self, MapError> {
         let MapSources {
             rules,
             names,
@@ -158,22 +142,21 @@ impl MapImport {
             game,
             textures,
         } = sources;
-        let (ini, locomotors) = (&rules.objects, &rules.locomotors);
+        let ini = &rules.objects;
         let heights = Self::heights(&file.heights)?;
-        // The ground a match loads, checked as its load checks it, so a map the load would refuse
-        // is refused here, not by the match.
+        // The ground a match loads, checked as its load checks it and not built, so a map the load
+        // would refuse is refused here, not by the match.
         let ground = Self::ground(&file.heights);
-        Ground::new(heights.clone(), ground.split, ground.high).map_err(MapError::Ground)?;
+        Ground::check(&heights, ground.high).map_err(MapError::Ground)?;
         let map_lights = MapLights::new(
             file.lights[0].ambient,
             file.lights[..lights].iter().map(|light| MapLight {
                 color: light.diffuse,
-                direction: Self::axes(light),
+                direction: Vec3::from_array(axes::y_up(light.position)),
             }),
         )
         .ok_or(MapError::LightDirection)?;
-        let terrain =
-            Terrain::new(file.terrain.clone(), file.heights.width).map_err(MapError::Terrain)?;
+        let terrain = &file.terrain;
         let atlas = TerrainAtlas::new(terrain.fields(), textures);
         let cells = TerrainCells::new(terrain.fields(), &file.heights, &atlas, game);
         let untextured = cells.untextured();
@@ -189,13 +172,11 @@ impl MapImport {
             }
             point
         };
-        let declared =
-            |name: &str| DeclaredName::new(name).expect("the import's own names are declared");
         let (neutral, waypoint_tag, waypoint_name, start_tag) = (
-            declared(NEUTRAL),
-            declared(WAYPOINT),
-            declared(WAYPOINT_NAME),
-            declared(START),
+            ImportTeam::Neutral.name(),
+            &rules.names.waypoint,
+            &rules.names.waypoint_name,
+            &rules.names.start,
         );
         let mut bridges = Vec::new();
         let mut units = Vec::new();
@@ -207,7 +188,8 @@ impl MapImport {
                 continue;
             }
             if let Some(waypoint) = &object.waypoint {
-                let position = object.ground().ok_or(MapError::Placement(at))?;
+                let position = object.ground().and_then(axes::ground);
+                let position = position.ok_or(MapError::Placement(at))?;
                 let id = u32::try_from(waypoint.id)
                     .ok()
                     .ok_or(MapError::WaypointId(waypoint.id))?;
@@ -227,14 +209,16 @@ impl MapImport {
                 let Some(template) = ini.object(&object.template) else {
                     continue;
                 };
+                let placement = object.placement();
                 let ObjectPlace {
                     ground,
                     height,
                     degrees,
-                } = object.placement().ok_or(MapError::Placement(at))?;
+                } = placement.ok_or(MapError::Placement(at))?;
+                let ground = axes::ground(ground).ok_or(MapError::Placement(at))?;
                 let placed = template.placed_as();
                 if matches!(placed, PlacedAs::Tree | PlacedAs::Prop) {
-                    let look = names.take(template)?.declared();
+                    let look = DeclaredName::from(names.take(template)?);
                     if looks.objects.contains_key(&look) {
                         client.objects.push(ClientObject {
                             look,
@@ -247,7 +231,7 @@ impl MapImport {
                 }
                 let placed_type =
                     names
-                        .unit_type(template, locomotors)
+                        .unit_type(template, rules)
                         .map_err(|error| MapError::UnitType {
                             object: template.name.clone(),
                             error,
@@ -259,7 +243,7 @@ impl MapImport {
                     }
                 }
                 let unit = PlacedUnitData {
-                    unit_type: placed_type.name,
+                    unit_type: placed_type.name.into(),
                     team: neutral.clone(),
                     position: MapPoint::Ground(take(ground)),
                     angle: degrees,
@@ -303,7 +287,7 @@ impl MapImport {
                 continue;
             }
             markers.push(MarkerData {
-                name: declared(&format!("w{id}")),
+                name: DeclaredName::new(&format!("w{id}")).expect("a `w` and digits are a name"),
                 tags,
                 position: Some(MapPoint::Ground(position)),
                 region: None,
@@ -311,12 +295,14 @@ impl MapImport {
                 params: [(waypoint_name.clone(), ModeParam::Text(name))].into(),
             });
         }
-        let cliffs: Vec<bool> = file.terrain.cells.iter().map(|cell| cell.cliff).collect();
-        let frame = CellFrame {
-            north_west: heights.origin(),
-            cell: Num::int(CELL),
-            rows: file.heights.depth,
-        };
+        let cliffs: Vec<bool> = file
+            .terrain
+            .fields()
+            .cells
+            .iter()
+            .map(|cell| cell.cliff)
+            .collect();
+        let frame = Self::frame(&file.heights);
         let walls = CliffWalls::of(&cliffs, file.heights.width).walls(frame, bounds);
         // A planar map of its bounds, its ground and its navigation, the sections it gives, then
         // the units and markers of the mode's own.
@@ -346,13 +332,6 @@ impl MapImport {
         })
     }
 
-    /// The way `light` goes on the engine's axes: the game's `x`, `y` and `z` are its `x`, `−z`
-    /// and `y`.
-    fn axes(light: &GameLight) -> Vec3 {
-        let [x, y, z] = light.position;
-        Vec3::new(x, z, -y)
-    }
-
     /// The ground as the original's logic reads it (04-capabilities/00-overview.md, The sim's
     /// ground is the map's height grid): each cell split on its own corners 0 to 2, the file's 1 to
     /// 3 (`BaseHeightMapRenderObjClass::getHeightMapHeight`), and the partition's cells from its
@@ -377,9 +356,17 @@ impl MapImport {
         }
     }
 
-    /// The heights on the engine's axes. The original's sample of column `i` and row `j` lies at
-    /// `x = (i − border) · 10` and its `y = (j − border) · 10`, which is the engine's `−z`: so
-    /// the engine's rows run the file's in reverse, from `z = −(depth − 1 − border) · 10`.
+    /// Where the samples of `heights` lie: the original's sample of column `i` and row `j` at
+    /// `x = (i − border) · 10` and `y = (j − border) · 10`.
+    const fn frame(heights: &MapHeights) -> CellFrame {
+        CellFrame {
+            border: heights.border,
+            cell: Num::int(CELL),
+        }
+    }
+
+    /// The heights on the engine's axes, whose `z` runs back along the game's rows: so the
+    /// engine's rows run the file's in reverse, from its last row's.
     fn heights(heights: &MapHeights) -> Result<HeightGrid, MapError> {
         let MapHeights {
             width,
@@ -391,14 +378,9 @@ impl MapImport {
         if border >= width || border >= depth {
             return Err(MapError::Heights);
         }
-        let back = |count: usize| {
-            i64::try_from(count)
-                .ok()
-                .and_then(|count| count.checked_mul(-CELL))
-                .and_then(Num::from_int)
-                .ok_or(MapError::Heights)
-        };
-        let origin = [back(*border)?, back(depth - 1 - border)?];
+        // The grid's first sample is the file's of column 0 and its last row.
+        let origin = Self::frame(heights).sample([0, depth - 1]);
+        let origin = origin.ok_or(MapError::Heights)?;
         HeightGrid::new(
             origin,
             Num::int(CELL),

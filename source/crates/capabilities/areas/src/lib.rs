@@ -12,9 +12,9 @@
 
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, ActionsSystems};
+use campfire_actions::{ActionTarget, ActionsSystems, DeliveryAims};
 use campfire_common::EnumAll;
-use campfire_declarations::{ByType, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
+use campfire_declarations::{ById, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_math::Vec3;
 use campfire_sim::{Capability, SimSystems, StableId};
@@ -27,6 +27,7 @@ use crate::area_launches::AreaLaunch;
 mod area;
 mod area_books;
 mod area_data;
+mod area_delivery_data;
 mod area_holds;
 mod area_launches;
 mod area_life;
@@ -39,6 +40,7 @@ mod land_effect_data;
 
 pub use crate::area::{Area, AreaTrigger};
 pub use crate::area_data::{AreaData, AreaInsideData};
+pub use crate::area_delivery_data::AreaDeliveryData;
 pub use crate::area_holds::AreaHolds;
 pub use crate::area_launches::AreaLaunches;
 pub use crate::area_life::AreaLife;
@@ -98,8 +100,13 @@ impl Module for Areas {
         d.scratch::<AreaLaunches>();
         d.callback::<Deliverers>(Capability::Areas, Self::deliver);
         d.listed::<LandEffectData>();
-        d.extend::<UnitTypes>(Self::tag_types);
-        d.book::<ByType<AreaSpec>>(AreaSpec::book);
+        d.listed::<AreaDeliveryData>();
+        d.extend::<DeliveryAims>(Self::aims);
+        d.extend::<UnitTypes>(|cx, types| {
+            types.tag_section::<AreaData>(cx, Self::TAG.tag());
+            Ok(())
+        });
+        d.book::<ById<UnitType, AreaSpec>>(AreaSpec::book);
         d.rule(Self::deliveries_rule);
         d.extend::<ModifierAppliers>(Self::inside_ways);
         d.api(AreasApi::register);
@@ -164,7 +171,7 @@ impl Areas {
 pub mod internals {
     use bevy_ecs::world::World;
     use campfire_common::DeclaredName;
-    use campfire_declarations::ByType;
+    use campfire_declarations::ById;
     use campfire_declarations::internals::BookLoad;
     use campfire_script::UnknownName;
     use campfire_sim::MatchRate;
@@ -195,7 +202,7 @@ pub mod internals {
             let tags = world.resource::<UnitTypeBook>().tags();
             let spec = AreaSpec::of(data, tags, rate, modifier)
                 .expect("a test's area holds in ticks and names what its match has");
-            ByType::<AreaSpec>::amend(world, |_, book| book.set(unit_type, spec));
+            ById::<UnitType, AreaSpec>::amend(world, |_, book| book.set(unit_type, spec));
         }
     }
 }

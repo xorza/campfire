@@ -134,7 +134,7 @@ An optional module, off by default. Hosts turn on the models they want and set p
 
 **Player consent.** Every price is shown before joining; nothing else can be charged. Time-based and per-event payments draw on a budget the player's wallet grants and can cancel.
 
-**Wager pools.** The host sets stake rules (equal or free) and payout split (even or by stake); the default is equal and even. A crashed match is restored; it aborts only if its server is not back within the restore window, and an abort refunds everyone. A leaver, who left or stayed disconnected past the grace period, loses the stake. Bot seats never stake, and the defaults keep bots out of wagers.
+**Wager pools.** The host sets stake rules (equal or free) and payout split (even or by stake); the default is equal and even. A crashed match is restored; it aborts only if its server is not back within the restore window, and an abort refunds everyone. A leaver, who left or stayed disconnected past the grace period, loses the stake. Bot player slots never stake, and the defaults keep bots out of wagers.
 
 **Spectator bets** are off by default. The host sets when betting closes and the spectator delay; players in the match cannot bet.
 

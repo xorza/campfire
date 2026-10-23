@@ -1,5 +1,8 @@
 use super::*;
 
+/// A change a test makes to a checkpoint record before the server key signs it.
+type Forge = fn(&mut Checkpoint);
+
 /// The checkpoint record of the segment after `log`'s last, at its next tick, carrying its own
 /// state, with a state hash and a snapshot fingerprint of `byte`.
 fn checkpoint(log: &SessionLog, byte: u8) -> Checkpoint {
@@ -49,22 +52,22 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     let mut log = two_ticks();
     // Player 0 has sent nothing; player 1's chain holds x and y, stamped 1 and 2, one input
     // of stamp 2 so far, and y is due in tick 2, its last spill.
-    let mut chain = InputChain::new(Seat::new(1), root(1));
+    let mut chain = InputChain::new(PlayerSlot::new(1), root(1));
     chain.extend(Tick::new(1), b"x");
     chain.extend(Tick::new(2), b"y");
-    let player = |seat, chain| Control::Player {
-        delegation: Box::new(delegation(seat)),
+    let player = |player_slot, chain| Control::Player {
+        delegation: Box::new(delegation(player_slot)),
         chain,
     };
     let expected = LogCarry {
-        seats: vec![
-            CarriedSeat {
-                control: player(0, InputChain::new(Seat::new(0), root(0))),
+        player_slots: vec![
+            CarriedPlayerSlot {
+                control: player(0, InputChain::new(PlayerSlot::new(0), root(0))),
                 leaver: None,
                 stamps: StampCount::default(),
                 spill: Spill::default(),
             },
-            CarriedSeat {
+            CarriedPlayerSlot {
                 control: player(1, chain),
                 leaver: None,
                 stamps: StampCount {
@@ -80,7 +83,7 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
         ],
         pending: vec![CarriedInput {
             tick: Tick::new(2),
-            seat: Seat::new(1),
+            player_slot: PlayerSlot::new(1),
             stamp: Tick::new(2),
             payload: b"y".to_vec(),
         }],
@@ -310,7 +313,7 @@ fn flawed_segments_in_a_log_file_are_refused() {
     // The file from segment 1's checkpoint on: a byte of its carry changed, or its record
     // signed by another key, it fails the record's signature; its first segment named as 2, its
     // record is of another; a carry the server key signs with an input due before the boundary,
-    // or with one seat of the header's two, is no state a log holds.
+    // or with one player slot of the header's two, is no state a log holds.
     let mut based = Vec::new();
     log.encode_from(1, &mut based);
     assert!(SessionLog::decode(&based).is_ok());
@@ -358,10 +361,86 @@ fn flawed_segments_in_a_log_file_are_refused() {
         .concat();
         SessionLog::decode(&file).err()
     };
-    let early = forged(|record| record.carry.pending[0].tick = Tick::new(1));
-    assert_eq!(early, refused(CheckpointError::BadCarry));
-    let one_seat = forged(|record| drop(record.carry.seats.pop()));
-    assert_eq!(one_seat, refused(CheckpointError::BadCarry));
+    // Each flaw of a carry the server key signs is refused with its own: an input due before the
+    // boundary; one player slot of the header's two; player 1's stamps counting u64::MAX inputs,
+    // past the 2 of its chain, or 3 of one stamp, past the max of 2 a tick; player 0's main key on
+    // player slot 1 too; a spill of 3; an input of player slot 0 after one of player slot 1 in the
+    // same tick; a payload past the max; three inputs of one player slot in one tick; and an input
+    // of an open player slot.
+    let player_slot = PlayerSlot::new;
+    let flaws: [(Forge, CarryFlaw); 10] = [
+        (
+            |record| record.carry.pending[0].tick = Tick::new(1),
+            CarryFlaw::Pending(0),
+        ),
+        (
+            |record| drop(record.carry.player_slots.pop()),
+            CarryFlaw::PlayerSlots,
+        ),
+        (
+            |record| record.carry.player_slots[1].stamps.total = u64::MAX,
+            CarryFlaw::Chain(player_slot(1)),
+        ),
+        (
+            |record| record.carry.player_slots[1].stamps.at_last = MAX_INPUTS_PER_TICK + 1,
+            CarryFlaw::Stamps(player_slot(1)),
+        ),
+        (
+            |record| {
+                let first = record.carry.player_slots[0].control.clone();
+                if let (
+                    Control::Player { delegation, .. },
+                    Control::Player {
+                        delegation: second, ..
+                    },
+                ) = (first, &mut record.carry.player_slots[1].control)
+                {
+                    *second = delegation;
+                }
+            },
+            CarryFlaw::MainKeyHeld(player_slot(1)),
+        ),
+        (
+            |record| record.carry.player_slots[1].spill.count = MAX_INPUTS_PER_TICK + 1,
+            CarryFlaw::Spill(player_slot(1)),
+        ),
+        (
+            |record| {
+                let mut other = record.carry.pending[0].clone();
+                other.player_slot = PlayerSlot::new(0);
+                record.carry.pending.push(other);
+            },
+            CarryFlaw::Pending(1),
+        ),
+        (
+            |record| {
+                record.carry.pending[0].payload = vec![0; MAX_PAYLOAD_LEN as usize + 1];
+            },
+            CarryFlaw::Pending(0),
+        ),
+        (
+            |record| {
+                let input = record.carry.pending[0].clone();
+                record
+                    .carry
+                    .pending
+                    .extend(iter::repeat_n(input, MAX_INPUTS_PER_TICK as usize));
+            },
+            CarryFlaw::Pending(MAX_INPUTS_PER_TICK as usize),
+        ),
+        (
+            |record| {
+                record.carry.player_slots[0].control = Control::Open;
+                let mut open = record.carry.pending[0].clone();
+                open.player_slot = PlayerSlot::new(0);
+                record.carry.pending.insert(0, open);
+            },
+            CarryFlaw::Pending(0),
+        ),
+    ];
+    for (change, flaw) in flaws {
+        assert_eq!(forged(change), refused(CheckpointError::BadCarry(flaw)));
+    }
 
     let seed_at = valid.len() - 1 - 32;
     let first_seed = [
@@ -411,7 +490,7 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     let saved = encoded(&twin);
     let sealed: Vec<_> = log
         .seal_tick(Some(&mut journal))
-        .map(|input| (input.seat.get(), input.payload.to_vec()))
+        .map(|input| (input.player_slot.get(), input.payload.to_vec()))
         .collect();
     assert_eq!(sealed, [(1, b"y".to_vec())]);
     assert_eq!(seal(&mut twin), [(1, b"y".to_vec())]);
@@ -457,15 +536,17 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     z[0].submit_to(&mut log, &mut applied, Some(&mut journal))
         .unwrap();
     z[0].submit(&mut twin, &mut applied).unwrap();
-    let seat = Seat::new(0);
+    let player_slot = PlayerSlot::new(0);
     journal.advance_durable(written);
-    assert_eq!(journal.durable_head(seat), None);
+    assert_eq!(journal.durable_head(player_slot), None);
     journal.advance_durable(written + 1);
-    let Some(Controller::Player { chain, .. }) = log.controller(seat) else {
-        panic!("player 0 controls seat 0");
+    let Some(Controller::Player { chain, .. }) = log.controller(player_slot) else {
+        panic!("player 0 controls player slot 0");
     };
     assert_eq!(
-        journal.durable_head(seat).map(|head| (head.seq, head.head)),
+        journal
+            .durable_head(player_slot)
+            .map(|head| (head.seq, head.head)),
         Some((chain.next_seq() - 1, chain.head()))
     );
     // The journal publishes the log loaded and gone on, z once after the load: its twin's file.

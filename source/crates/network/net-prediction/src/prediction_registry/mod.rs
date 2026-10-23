@@ -2,6 +2,7 @@ use crate::mismatch_fn::MismatchFn;
 use bevy_app::App;
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::prelude::*;
+use campfire_net_core::RegistrySeal;
 use campfire_net_replication::ComponentTypeId;
 use core::any::Any;
 use std::sync::Arc;
@@ -20,9 +21,8 @@ pub(crate) struct ComponentFns {
 /// What the registry keeps of a networked predicted component.
 #[derive(Debug, Clone)]
 pub(crate) struct PredictionFns {
-    /// Whether a correction smooths the component's jumps, the stack's own or one the app runs,
-    /// so a rollback saves the value it replaces.
-    pub(crate) corrected: bool,
+    /// What smooths the component's jumps.
+    correction: Correction,
     /// The [`MismatchFn<C>`] that compares the confirmed value with the predicted one: whether
     /// they differ, which asks for a rollback. `PartialEq::ne` unless the app sets its own.
     mismatch: Arc<dyn Any + Send + Sync>,
@@ -32,10 +32,21 @@ impl PredictionFns {
     fn new<C: PartialEq + 'static>() -> Self {
         let mismatch: MismatchFn<C> = <C as PartialEq>::ne;
         Self {
-            corrected: false,
+            correction: Correction::None,
             mismatch: Arc::new(mismatch),
         }
     }
+}
+
+/// What smooths a predicted component's jumps; a rollback saves the value it replaces from one
+/// that something smooths.
+#[derive(Debug, Clone)]
+enum Correction {
+    None,
+    /// A correction the app runs.
+    Custom,
+    /// The stack's correction, by the `CorrectionFn` of the component on its error type.
+    Stack(Arc<dyn Any + Send + Sync>),
 }
 
 #[derive(Resource, Default, Debug)]
@@ -46,24 +57,23 @@ pub struct PredictionRegistry {
     /// fns need the markers' plugins: run by [`install`].
     installs: Vec<fn(&mut App)>,
     /// Set by [`seal`], after which a registration would install no system.
-    finalized: bool,
+    seal: RegistrySeal<()>,
 }
+
+const NAME: &str = "prediction registry";
 
 /// The app's prediction registry, created by its first registration, which must come before the
 /// app finishes its plugins.
 pub(crate) fn open(app: &mut App) -> Mut<'_, PredictionRegistry> {
     let registry = app.world_mut().get_resource_or_init::<PredictionRegistry>();
-    assert!(
-        !registry.finalized,
-        "a component registers for prediction before the app finishes its plugins"
-    );
+    registry.seal.assert_open(NAME);
     registry
 }
 
 /// Refuses each later registration, on a server as on a client:
 /// `PredictionRegistryPlugin::finish`.
 pub(crate) fn seal(app: &mut App) {
-    open(app).finalized = true;
+    open(app).seal.seal(NAME, ());
 }
 
 /// Runs each registration's install, which only a predicting app needs:
@@ -165,25 +175,55 @@ impl PredictionRegistry {
             .expect("a component's compare fn is its own type's")
     }
 
-    /// Whether a correction smooths `C`'s jumps.
-    pub(crate) fn corrects<C: 'static>(&self) -> bool {
+    /// Whether a correction the app runs smooths `C`'s jumps, from the value `C` held before
+    /// each, which the rollback saves.
+    pub(crate) fn corrects_custom<C: 'static>(&self) -> bool {
         self.prediction::<C>()
-            .is_some_and(|prediction| prediction.corrected)
+            .is_some_and(|prediction| matches!(prediction.correction, Correction::Custom))
     }
 
-    /// Marks `C` corrected, by the stack's correction or one the app runs.
+    /// Marks `C` corrected by a correction the app runs.
     ///
     /// # Panics
     ///
     /// When `C` already registered a correction: a component takes one.
-    pub(crate) fn set_corrected<C: 'static>(&mut self) {
+    pub(crate) fn set_custom_correction<C: 'static>(&mut self) {
+        self.set_correction::<C>(Correction::Custom);
+    }
+
+    /// Has the stack's correction smooth `C`'s jumps by `correction`, its `CorrectionFn`.
+    ///
+    /// # Panics
+    ///
+    /// When `C` already registered a correction: a component takes one.
+    pub(crate) fn set_stack_correction<C: 'static>(&mut self, correction: impl Any + Send + Sync) {
+        self.set_correction::<C>(Correction::Stack(Arc::new(correction)));
+    }
+
+    fn set_correction<C: 'static>(&mut self, correction: Correction) {
         let prediction = self.prediction_mut::<C>();
         assert!(
-            !prediction.corrected,
+            matches!(prediction.correction, Correction::None),
             "{} registers more than one correction",
             core::any::type_name::<C>()
         );
-        prediction.corrected = true;
+        prediction.correction = correction;
+    }
+
+    /// The stack's correction of `C`, its `CorrectionFn` `F`.
+    pub(crate) fn stack_correction<C: 'static, F: 'static>(&self) -> &F {
+        let Some(Correction::Stack(correction)) = self
+            .prediction::<C>()
+            .map(|prediction| &prediction.correction)
+        else {
+            panic!(
+                "{} has no correction of the stack",
+                core::any::type_name::<C>()
+            );
+        };
+        correction
+            .downcast_ref()
+            .expect("a component's correction is on its own error type")
     }
 }
 

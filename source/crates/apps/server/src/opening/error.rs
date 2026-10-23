@@ -1,6 +1,7 @@
 use campfire_common::MapName;
-use campfire_mode::{PickError, SeatPickError};
-use campfire_net::{AbortError, LobbyOpenError, WaitingError};
+use campfire_host::{AbortError, WaitingError};
+use campfire_mode::{PickError, PlayerSlotPickError};
+use campfire_net::LobbyOpenError;
 use campfire_runner::TermsError;
 use campfire_visibility::VisibilityError;
 use thiserror::Error;
@@ -16,12 +17,14 @@ pub(crate) enum OpeningError {
     /// The options' picks asked are none of the mode's.
     #[error("the options asked")]
     Options(#[source] PickError),
-    /// The seat picks asked are none of the mode's choices.
-    #[error("the seat picks")]
-    SeatPicks(#[source] SeatPickError),
-    /// A session waits to restore, and other picks of its options or seats than its own were
+    /// The player slot picks asked are none of the mode's choices.
+    #[error("the player slot picks")]
+    PlayerSlotPicks(#[source] PlayerSlotPickError),
+    /// A session waits to restore, and other picks of its options or player slots than its own were
     /// asked.
-    #[error("a session waits to restore, and other picks of its options or seats were asked")]
+    #[error(
+        "a session waits to restore, and other picks of its options or player slots were asked"
+    )]
     OtherPicks,
     /// The visibility settings asked are none the mode leaves the host.
     #[error("the visibility asked")]
@@ -31,8 +34,8 @@ pub(crate) enum OpeningError {
     OtherVisibility,
     #[error("could not end the session")]
     Abort(#[source] AbortError),
-    /// The new session does not open, as a bot names a seat the mode does not have, or keeps no
-    /// files.
+    /// The new session does not open, as a bot names a player slot the mode does not have, or keeps
+    /// no files.
     #[error("the session does not open")]
     Open(#[source] LobbyOpenError),
     /// The session's terms are not of the mode's rules, as a journal of another release holds.

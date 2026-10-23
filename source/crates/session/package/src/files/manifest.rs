@@ -1,5 +1,11 @@
+use campfire_package_format::PackageFiles;
+use campfire_script::ApiVersion;
 use campfire_sim::Capability;
 use serde::Deserialize;
+
+use crate::error::load_problem::LoadProblem;
+use crate::error::{LoadError, PackageRef};
+use crate::package_name::PackageName;
 
 use crate::files::mode_manifest::ModeManifest;
 use crate::files::package_header::LocaleManifest;
@@ -20,6 +26,42 @@ pub(crate) enum Manifest {
 }
 
 impl Manifest {
+    /// The manifest of `files`, the package `package`, once its API version is one the release
+    /// loads: the version and the name are read first, as every version of the format names both,
+    /// so a package of another version fails as `OtherApi` before any other field or file of it
+    /// is read (03-game-scripting.md, A versioned package API).
+    pub(crate) fn read(files: &PackageFiles, package: &PackageRef) -> Result<Self, LoadError> {
+        #[derive(Debug, Deserialize)]
+        struct Targets {
+            name: PackageName,
+            api: ApiVersion,
+        }
+        let path = PackageFiles::manifest_path();
+        if let Ok(Targets { name, api }) = files.read_data(&path)
+            && !ApiVersion::RELEASE.loads(api)
+        {
+            return Err(LoadError::of(&name, LoadProblem::OtherApi(api)));
+        }
+        files
+            .read_data(&path)
+            .map_err(|error| LoadError::new(package.clone(), LoadProblem::Content(error)))
+    }
+
+    /// The manifest of `files`, a mode's, as the package `package`; an error for a manifest that
+    /// does not read, or of another kind of package.
+    pub(crate) fn read_mode(
+        files: &PackageFiles,
+        package: &PackageRef,
+    ) -> Result<ModeManifest, LoadError> {
+        let fail = |problem| LoadError::new(package.clone(), problem);
+        match Self::read(files, package)? {
+            Self::Mode(manifest) => manifest
+                .checked()
+                .map_err(|error| fail(LoadProblem::Capabilities(error))),
+            _ => Err(fail(LoadProblem::WrongKind)),
+        }
+    }
+
     pub(crate) const fn header(&self) -> &PackageHeader {
         match self {
             Self::Mode(mode) => &mode.header,

@@ -22,9 +22,9 @@ use campfire_sim::{StableId, Unpredicted};
 use campfire_values::ItemId;
 
 use crate::input_map::{Act, InputMap};
-use crate::item_names::ItemTexts;
+use crate::name_texts::NameTexts;
 use crate::own_player::OwnPlayer;
-use crate::ui_style::{self, Corner, DIMMED, Panel, PanelRow, TEXT};
+use crate::ui_style::{self, Corner, DIMMED, Panel, PanelFunds, PanelRow, PanelRows, TEXT};
 use crate::view::ViewSystems;
 
 /// The shop panel, as League of Legends': the shop chord, P of the engine's, opens and closes
@@ -34,18 +34,6 @@ use crate::view::ViewSystems;
 /// resource above; an item the avatar cannot buy now is dimmed, and a click buys it.
 #[derive(Debug)]
 pub(crate) struct ShopPanelPlugin;
-
-/// The panel's root, shown while it is open.
-#[derive(Component, Debug)]
-struct PanelRoot;
-
-/// The panel's line of the player's amount of the shop's resource.
-#[derive(Component, Debug)]
-struct Funds;
-
-/// The holder of the panel's rows.
-#[derive(Component, Debug)]
-struct Rows;
 
 /// A row of the panel: the item it sells, and its lines of name and price.
 #[derive(Component, Debug)]
@@ -58,6 +46,12 @@ struct ShopRow {
 /// The shop unit the panel shows, whose rows it holds; none before it shows one.
 #[derive(Resource, Debug, Default)]
 struct Shown(Option<StableId>);
+
+/// The holder of the panel's rows, and its line of the player's amount.
+type ShopNodes<'w, 's> = (
+    Single<'w, 's, Entity, With<PanelRows<ShopPanelPlugin>>>,
+    Single<'w, 's, Entity, With<PanelFunds<ShopPanelPlugin>>>,
+);
 
 impl Plugin for ShopPanelPlugin {
     fn build(&self, app: &mut App) {
@@ -74,13 +68,10 @@ impl Plugin for ShopPanelPlugin {
 
 impl ShopPanelPlugin {
     fn spawn(mut commands: Commands<'_, '_>) {
-        let panel = Panel::spawn(&mut commands, Corner::TopRight, 280.0);
-        commands.entity(panel.root).insert(PanelRoot);
-        commands.entity(panel.funds).insert(Funds);
-        commands.entity(panel.rows).insert(Rows);
+        Panel::<Self>::spawn(&mut commands, Corner::TopRight, 280.0);
     }
 
-    fn toggle(mut panel: Single<'_, '_, &mut Visibility, With<PanelRoot>>) {
+    fn toggle(mut panel: Single<'_, '_, &mut Visibility, With<Panel<Self>>>) {
         let shown = **panel == Visibility::Hidden;
         **panel = if shown {
             Visibility::Inherited
@@ -97,14 +88,14 @@ impl ShopPanelPlugin {
         reason = "a system takes each resource and query it reads"
     )]
     fn show(
-        panel: Single<'_, '_, &Visibility, With<PanelRoot>>,
+        panel: Single<'_, '_, &Visibility, With<Panel<Self>>>,
         own: OwnPlayer<'_, '_>,
         shopping: Shopping<'_, '_>,
         carriers: Query<'_, '_, &Inventory, Allow<Unpredicted>>,
-        (mut shown, names): (ResMut<'_, Shown>, Res<'_, ItemTexts>),
-        (rows, mut texts): (Single<'_, '_, Entity, With<Rows>>, Query<'_, '_, &mut Text>),
-        (funds, mut colors, row_items): (
-            Single<'_, '_, Entity, With<Funds>>,
+        (mut shown, names): (ResMut<'_, Shown>, Res<'_, NameTexts<ItemId>>),
+        (rows, funds): ShopNodes<'_, '_>,
+        (mut texts, mut colors, row_items): (
+            Query<'_, '_, &mut Text>,
             Query<'_, '_, &mut TextColor>,
             Query<'_, '_, &ShopRow>,
         ),
@@ -220,7 +211,7 @@ mod tests {
         let mut world = World::new();
         world.run_system_once(ShopPanelPlugin::spawn).unwrap();
         let shown = |world: &mut World| {
-            let mut panel = world.query_filtered::<&Visibility, With<PanelRoot>>();
+            let mut panel = world.query_filtered::<&Visibility, With<Panel<ShopPanelPlugin>>>();
             *panel.single(world).unwrap() != Visibility::Hidden
         };
         assert!(!shown(&mut world));

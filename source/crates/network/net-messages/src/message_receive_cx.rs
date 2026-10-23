@@ -32,9 +32,7 @@ impl core::fmt::Debug for MessageReceiveCx<'_, '_, '_> {
     }
 }
 
-/// The read-only header of each received message, handed to
-/// [`MessageReceiver::retain_received_messages`] validators alongside `&mut`
-/// access to the message data.
+/// The read-only header of each received message.
 #[derive(Debug, Clone, Copy)]
 pub struct ReceivedMessageHeader {
     /// NetTick on the remote peer when the message was sent.

@@ -1,13 +1,14 @@
 use bevy::ecs::query::Allow;
 use bevy::ecs::system::{Query, Res, SystemParam};
-use campfire_actions::{ActionSlots, ActionTarget, ByAction};
+use campfire_actions::{ActionSlots, ActionTarget};
 use campfire_capabilities::Order;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
+use campfire_declarations::ById;
 use campfire_orders::OrdersDirective;
 use campfire_production::{GatherSpec, Gatherer, Load, NodeBook, ResourceSet};
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_units::Owner;
-use campfire_values::{ResourceId, UnitType};
+use campfire_values::{ActionId, ResourceId, UnitType};
 
 /// What a right click on a unit is to a selection's gatherers (02-engine-core.md, A
 /// right-click on a node gathers): a node of its resource, or a drop-off of its player, of the
@@ -15,7 +16,10 @@ use campfire_values::{ResourceId, UnitType};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DockClick {
     Node(ResourceId),
-    DropOff { owner: Seat, takes: ResourceSet },
+    DropOff {
+        owner: PlayerSlot,
+        takes: ResourceSet,
+    },
 }
 
 /// A selected unit as a dock click reads it: its slots, its player and its load.
@@ -26,15 +30,14 @@ type Docker = (
 );
 
 /// What a dock click reads of the match: the units by id, the clicked unit's type and player,
-/// each selected unit's slots, player and load, and the books of nodes and gathers, none in a
-/// match without production.
+/// each selected unit's slots, player and load, and the books of nodes and gathers.
 #[derive(SystemParam, Debug)]
 pub(crate) struct Docks<'w, 's> {
     index: Res<'w, EntityIndex>,
     clicked: Query<'w, 's, (&'static UnitType, Option<&'static Owner>), Allow<Unpredicted>>,
     selected: Query<'w, 's, Docker, Allow<Unpredicted>>,
-    nodes: Option<Res<'w, NodeBook>>,
-    gathers: Option<Res<'w, ByAction<GatherSpec>>>,
+    nodes: Res<'w, NodeBook>,
+    gathers: Res<'w, ById<ActionId, GatherSpec>>,
 }
 
 impl DockClick {
@@ -44,7 +47,7 @@ impl DockClick {
     /// its first gather of the load's resource, which returns the load; none else.
     pub(crate) fn slot(
         self,
-        owner: Option<Seat>,
+        owner: Option<PlayerSlot>,
         load: Option<Load>,
         gathers: impl IntoIterator<Item = (u8, ResourceId)>,
     ) -> Option<u8> {
@@ -68,17 +71,16 @@ impl Docks<'_, '_> {
         let Some(dock) = self.dock(target) else {
             return Vec::new();
         };
-        let gathers = self.gathers.as_deref();
         selection
             .iter()
             .filter_map(|&unit| {
                 let (slots, owner, gatherer) = self.selected.get(self.index.get(unit)?).ok()?;
                 let held = slots.indexed().filter_map(|(slot, held)| {
-                    let spec = gathers?.get(held.action?)?;
+                    let spec = self.gathers.get(held.action?)?;
                     Some((slot, spec.resource))
                 });
                 let load = gatherer.and_then(|gatherer| gatherer.load());
-                let slot = dock.slot(owner.copied().map(Owner::seat), load, held)?;
+                let slot = dock.slot(owner.copied().map(Owner::player_slot), load, held)?;
                 let directive = OrdersDirective::Slot {
                     slot,
                     target: ActionTarget::Unit(target),
@@ -90,13 +92,13 @@ impl Docks<'_, '_> {
 
     /// What `target` is to a dock click: a node, or a drop-off of a player; none else.
     fn dock(&self, target: StableId) -> Option<DockClick> {
-        let nodes = self.nodes.as_deref()?;
+        let nodes = &self.nodes;
         let (&unit_type, owner) = self.clicked.get(self.index.get(target)?).ok()?;
         if let Some(node) = nodes.nodes.get(unit_type) {
             return Some(DockClick::Node(node.resource));
         }
         let takes = *nodes.drop_offs.get(unit_type)?;
-        let owner = owner?.seat();
+        let owner = owner?.player_slot();
         Some(DockClick::DropOff { owner, takes })
     }
 }
@@ -108,7 +110,7 @@ mod tests {
     #[test]
     fn a_dock_click_gathers_a_node_by_its_resource_and_returns_a_load_to_its_own_drop_off() {
         let [gold, wood] = [0, 1].map(ResourceId::new);
-        let [own, other] = [0, 1].map(Seat::new);
+        let [own, other] = [0, 1].map(PlayerSlot::new);
         // Slot 1 gathers wood, slot 3 gold: a node of gold takes slot 3, of wood slot 1, whatever
         // the unit carries or whose it is.
         let gathers = [(1, wood), (3, gold)];

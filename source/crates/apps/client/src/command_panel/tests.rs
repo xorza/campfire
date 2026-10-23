@@ -4,7 +4,7 @@ use campfire_declarations::Role;
 use campfire_production::internals::TestBuild;
 use campfire_production::{BuildStart, NewBuild, Production, QueueDues, Queued, SiteStart, Style};
 use campfire_sim::{Capability, IdAllocator};
-use campfire_units::BodyForm;
+use campfire_units::{BodyForm, BodyShape, Layer};
 use campfire_values::Rank;
 use campfire_values::Share;
 
@@ -24,7 +24,10 @@ fn the_panel_shows_a_producers_trains_and_builds_its_queue_and_a_site() {
         resource_cost: None,
         build: NewBuild {
             unit_type: barracks,
-            form: BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+            form: BodyForm::new(
+                BodyShape::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+                Layer::FIRST,
+            ),
             start: BuildStart::Arrival,
             style: Style::Builder,
             start_life: None,

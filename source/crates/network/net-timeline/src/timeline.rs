@@ -13,7 +13,7 @@ pub struct Timeline<T: TimelineSetup> {
     pub state: T::State,
     pub now: TickInstant,
     #[reflect(ignore)]
-    pub marker: core::marker::PhantomData<T>,
+    marker: core::marker::PhantomData<T>,
 }
 
 impl<T: TimelineSetup> Deref for Timeline<T> {

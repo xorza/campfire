@@ -65,7 +65,7 @@ impl PathEnd {
 
 /// `PathEnd::Start` and `PathEnd::End` in scripts.
 impl ScriptEnum for PathEnd {
-    const ENUM: EngineEnum = EngineEnum::PathEnd;
+    const ENUM: EngineEnum = EngineEnum::new("PathEnd");
     const SCRIPT_NAMES: &'static [&'static str] = &Self::IDENTS;
 }
 

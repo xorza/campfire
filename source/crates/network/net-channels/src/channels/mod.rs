@@ -1,39 +1,37 @@
 use crate::bench_counter::BenchCounter;
 use crate::candidate_order::CandidateOrder;
+use crate::channel_reader::ChannelReader;
 use crate::channel_receiver::BufferOutcome;
 use crate::channel_receiver::ChannelReceiver;
 use crate::channel_sender::ChannelSender;
 use crate::channel_sender::SendFlushOutcome;
 use crate::channel_slots::ChannelSlots;
 use crate::channel_type_id::ChannelTypeId;
-use crate::compression::decompress_payload;
-use crate::compression_scratch::CompressionScratch;
-use crate::compression_setup::CompressionSetup;
+use crate::error::{ReceiveError, SendError};
 use crate::fragment_body::FragmentBody;
 use crate::message_id::MessageId;
-use crate::packet::{FRAGMENT_LEN, MIN_FRAGMENT_PAYLOAD, fragment_len_for_max_payload};
+use crate::packet::{
+    FRAGMENT_LEN, MAX_FRAGMENTS, MIN_FRAGMENT_PAYLOAD, fragment_len_for_max_payload,
+};
 use crate::packet_builder::PacketBuilder;
 use crate::packet_builder::{CandidateCursor, PacketSource};
-use crate::packet_error::PacketError;
 use crate::packet_kind::PacketKind;
 use crate::receive_budget::{DEFAULT_RECEIVE_BUDGET, ReceiveBudget};
-use crate::receive_message::ReceiveMessage;
+use crate::send_budget::SEND_BUDGET;
 use crate::single_body::SingleBody;
 use crate::tick_decoder::TickDecoder;
 use crate::tick_encoder::TickEncoder;
 use bytes::Bytes;
-use campfire_net_bytes::{ReadInteger, Reader, SerializationError, ToBytes};
+use campfire_net_bytes::{Reader, ToBytes};
 use campfire_net_core::Instant;
-use campfire_net_core::{NetId, NetTick};
+use campfire_net_core::{NetId, TickInstant};
 use campfire_net_payload::{
-    OpenedPayload, PacketNumber, PacketSessionQueues, PayloadFate, PayloadKind, PayloadToken,
+    OpenedPayload, PacketSessionQueues, PayloadFate, PayloadKind, PayloadToken,
 };
 use core::time::Duration;
-use tracing::{error, trace};
+use tracing::trace;
 
 use crate::channel::Channel;
-use crate::transport_error::TransportError;
-use campfire_net_bytes::Writer;
 use campfire_net_payload::SendPayload;
 
 use crate::channel_setup::ChannelSetup;
@@ -48,15 +46,6 @@ pub(crate) struct StagedMessage {
     pub(crate) priority: f32,
 }
 
-/// A staged message that a new link's packet session refused: its payload makes the channel's
-/// message bound smaller than the message, so the message is dropped before it is sent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RefusedMessage {
-    pub channel: ChannelTypeId,
-    pub len: usize,
-    pub max_len: usize,
-}
-
 /// What became of one received packet whose bytes keep the protocol; a protocol violation is the
 /// `Err` of `receive_packet`, which closes the link (11-net-stack/transport.md, A received packet
 /// ends one of three ways).
@@ -64,7 +53,7 @@ pub struct RefusedMessage {
 enum PacketOutcome {
     /// The payload reached its channels, and the frame accepts the packet, which the packet session
     /// then acknowledges.
-    Admitted { remote_tick: NetTick },
+    Admitted { remote: TickInstant },
     /// The receive budget had no room for a message it carries. It is not accepted, so the
     /// peer finds it lost and sends its reliable messages again once deliveries free room.
     OverBudget,
@@ -78,17 +67,16 @@ fn receive_packet(
     channels: &mut Channels,
     kind: PayloadKind,
     packet: Bytes,
-) -> Result<PacketOutcome, TransportError> {
+) -> Result<PacketOutcome, ReceiveError> {
     let packet_len = packet.len();
     channels.received_bytes.add(packet_len);
-    let mut packet_kind = PacketKind::try_from(kind)?;
+    let packet_kind = PacketKind::try_from(kind)?;
     let mut cursor = Reader::from(packet);
-    let tick = channels.tick_decoder.read(&mut cursor)?;
+    let remote = channels.tick_decoder.read(&mut cursor)?;
+    let tick = remote.tick();
     trace!(
         target: "campfire_net_debug::transport",
         kind = "packet_recv",
-        schedule = "PreUpdate",
-        sample_point = "PreUpdate",
         remote_tick = tick.0,
         bytes = packet_len,
         ?packet_kind,
@@ -96,16 +84,6 @@ fn receive_packet(
     );
 
     let mut budget = channels.receive_room();
-    if packet_kind.is_compressed() {
-        let compressed_payload = cursor.take_remaining();
-        decompress_payload(
-            compressed_payload.as_ref(),
-            channels.compression,
-            &mut channels.decompression,
-        )?;
-        cursor = Reader::from(channels.decompression.take_written());
-        packet_kind = packet_kind.uncompressed_variant();
-    }
 
     if packet_kind == PacketKind::DataFragment {
         let channel_id = NetId::from_bytes(&mut cursor)?;
@@ -113,71 +91,58 @@ fn receive_packet(
         trace!(
             target: "campfire_net_debug::transport",
             kind = "channel_recv_fragment",
-            schedule = "PreUpdate",
-            sample_point = "PreUpdate",
             remote_tick = tick.0,
             channel_id = channel_id.get(),
             bytes = fragment_body.bytes.len(),
             "received channel fragment"
         );
-        let compression = channels.compression;
         let receiver = channels
             .receivers
             .get_mut(channel_id)
-            .ok_or(PacketError::ChannelNotFound)?;
+            .ok_or(ReceiveError::UnknownChannel(channel_id))?;
         receiver.received_bytes.add(fragment_body.bytes.len());
-        let message = ReceiveMessage {
-            data: fragment_body.into(),
-            remote_sent_tick: tick,
-            compression,
-        };
-        if receiver.buffer_receive(message, &mut budget)? == BufferOutcome::OverBudget {
+        if receiver.receive_fragment(fragment_body, tick, &mut budget)? == BufferOutcome::OverBudget
+        {
             return Ok(PacketOutcome::OverBudget);
         }
     }
     while cursor.has_remaining() {
         let channel_id = NetId::from_bytes(&mut cursor)?;
-        let messages = cursor.read_u8().map_err(SerializationError::from)?;
+        let messages = cursor.read_u8()?;
+        if messages == 0 {
+            return Err(ReceiveError::EmptyBatch);
+        }
         trace!(
             target: "campfire_net_debug::transport",
             kind = "channel_recv_batch",
-            schedule = "PreUpdate",
-            sample_point = "PreUpdate",
             remote_tick = tick.0,
             channel_id = channel_id.get(),
             messages,
             "received channel message batch"
         );
-        let compression = channels.compression;
         let receiver = channels
             .receivers
             .get_mut(channel_id)
-            .ok_or(PacketError::ChannelNotFound)?;
+            .ok_or(ReceiveError::UnknownChannel(channel_id))?;
         let has_id = receiver.single_has_id();
         for _ in 0..messages {
             let single_body = SingleBody::read(&mut cursor, has_id)?;
             trace!(
                 target: "campfire_net_debug::transport",
                 kind = "channel_recv_message",
-                schedule = "PreUpdate",
-                sample_point = "PreUpdate",
                 remote_tick = tick.0,
                 channel_id = channel_id.get(),
                 bytes = single_body.bytes.len(),
                 "received channel message bytes"
             );
             receiver.received_bytes.add(single_body.bytes.len());
-            let message = ReceiveMessage {
-                data: single_body.into(),
-                remote_sent_tick: tick,
-                compression,
-            };
-            if receiver.buffer_receive(message, &mut budget)? == BufferOutcome::OverBudget {
+            if receiver.receive_single(single_body, tick, &mut budget) == BufferOutcome::OverBudget
+            {
                 return Ok(PacketOutcome::OverBudget);
             }
         }
     }
-    Ok(PacketOutcome::Admitted { remote_tick: tick })
+    Ok(PacketOutcome::Admitted { remote })
 }
 
 /// The channels of one link and their two packet steps: [`Self::receive`] reads what the link's
@@ -197,25 +162,18 @@ pub struct Channels {
     pub(crate) tick_encoder: TickEncoder,
     /// Reads each received packet's tick.
     pub(crate) tick_decoder: TickDecoder,
-    /// The packets of the frame's receive that reached their channels, which the packet session
-    /// acknowledges.
-    pub(crate) accepted: Vec<PacketNumber>,
     /// The longest the transport stays silent: past it, a flush with no message sends a packet
     /// of its tick alone.
     heartbeat: Duration,
     /// When the transport last gave its packet session a packet.
     pub(crate) last_sent: Option<Instant>,
-    /// Compression workspace shared by all channel senders and the packet builder.
-    pub(crate) compression_scratch: CompressionScratch,
-    /// The chunks that received packets decompress into: a message read from one keeps its
-    /// chunk until the message is dropped.
-    pub(crate) decompression: Writer,
     /// Fragment payload size of the senders, derived from the largest payload of the link's
     /// packet session.
     fragment_len: usize,
-    compression: CompressionSetup,
-    /// The bytes the receive side may hold for messages it can not deliver yet; see
-    /// [`Self::with_receive_budget`].
+    /// The bytes the receive side may hold for messages it can not deliver yet: partial messages
+    /// being reassembled, and ordered messages waiting behind a gap. A packet that would pass it
+    /// is not accepted, so the packet session sends no ACK for it and the peer sends its reliable
+    /// messages again once it finds the packet lost.
     receive_budget: usize,
 
     /// The packets in flight: the tick of each, and its reliable messages, so that a sender learns
@@ -225,6 +183,8 @@ pub struct Channels {
     /// Messages staged for the next send, in staging order (11-net-stack/transport.md, A link's
     /// `Channels` queue its sends in a `Vec`, in the `Transport` component).
     pub(crate) staged: Vec<StagedMessage>,
+    /// The bytes of the messages of `staged`.
+    staged_len: usize,
     /// Bytes of the packets given to the packet session.
     pub(crate) sent_bytes: BenchCounter,
     /// Packets given to the packet session.
@@ -233,10 +193,6 @@ pub struct Channels {
     pub(crate) resent_messages: BenchCounter,
     /// Bytes of the packets the packet session opened.
     pub(crate) received_bytes: BenchCounter,
-    /// Bytes that compression removed from the packets sent.
-    pub(crate) compression_saved_bytes: BenchCounter,
-    /// Packets sent uncompressed as their compressed form was not smaller.
-    pub(crate) compression_abandoned: BenchCounter,
 }
 
 impl Default for Channels {
@@ -249,22 +205,17 @@ impl Default for Channels {
             next_token: 0,
             tick_encoder: TickEncoder::default(),
             tick_decoder: TickDecoder::default(),
-            accepted: Vec::new(),
             heartbeat: Self::DEFAULT_HEARTBEAT,
             last_sent: None,
-            compression_scratch: CompressionScratch::default(),
-            decompression: Writer::default(),
             fragment_len: FRAGMENT_LEN,
-            compression: CompressionSetup::default(),
             receive_budget: DEFAULT_RECEIVE_BUDGET,
             sent: UnsettledPackets::default(),
             staged: Vec::new(),
+            staged_len: 0,
             sent_bytes: BenchCounter::default(),
             sent_packets: BenchCounter::default(),
             resent_messages: BenchCounter::default(),
             received_bytes: BenchCounter::default(),
-            compression_saved_bytes: BenchCounter::default(),
-            compression_abandoned: BenchCounter::default(),
         }
     }
 }
@@ -273,37 +224,6 @@ impl Channels {
     /// The default [`Self::set_heartbeat`]: 100 ms, the interval the ping messages kept before
     /// the packet session gave the RTT.
     pub const DEFAULT_HEARTBEAT: Duration = Duration::from_millis(100);
-
-    /// Sets how the packets and fragmented messages this transport sends are compressed, and the
-    /// limits it decompresses what it receives within.
-    pub const fn set_compression(&mut self, compression: CompressionSetup) {
-        self.compression = compression;
-    }
-
-    /// Sets the bytes the receive side may hold for messages it can not deliver yet: partial
-    /// messages being reassembled, and ordered messages waiting behind a gap. A packet that would
-    /// pass it is not accepted, so the packet session sends no ACK for it and the peer sends its
-    /// reliable messages again once it finds the packet lost.
-    ///
-    /// It must be at least twice every receiving channel's `max_message_len`, the most one
-    /// partial message can reserve, so that the largest message always completes.
-    #[must_use]
-    pub fn with_receive_budget(mut self, bytes: usize) -> Self {
-        self.receive_budget = bytes;
-        for receiver in &self.receivers {
-            self.assert_budget_admits(receiver.max_message_len());
-        }
-        self
-    }
-
-    fn assert_budget_admits(&self, max_message_len: usize) {
-        assert!(
-            self.receive_budget >= max_message_len.saturating_mul(2),
-            "a receive budget of {} bytes can not admit a channel's {max_message_len}-byte \
-             message: it needs twice that",
-            self.receive_budget
-        );
-    }
 
     /// The room left in the receive budget once every channel's held bytes are counted.
     pub(crate) fn receive_room(&self) -> ReceiveBudget {
@@ -346,34 +266,13 @@ impl Channels {
 
 impl Channels {
     /// A new packet session: its tick has no reference yet, and its largest payload, once it handed
-    /// one over, sizes the fragments. A smaller fragment makes a channel's message bound smaller,
-    /// so each staged message above its new bound is dropped and returned.
-    pub fn link(&mut self, max_payload: usize) -> Result<Vec<RefusedMessage>, PacketError> {
+    /// one over, sizes the fragments.
+    pub fn link(&mut self, max_payload: usize) {
         self.tick_encoder.reset();
         self.tick_decoder.reset();
         if max_payload > 0 {
-            self.size_fragments(max_payload)?;
+            self.size_fragments(max_payload);
         }
-        let mut refused = Vec::new();
-        let Self {
-            staged,
-            senders,
-            fragment_len,
-            ..
-        } = self;
-        staged.retain(|message| {
-            let max_len = senders[message.channel_id].max_message_len(*fragment_len);
-            let fits = message.bytes.len() <= max_len;
-            if !fits {
-                refused.push(RefusedMessage {
-                    channel: senders[message.channel_id].channel_type_id(),
-                    len: message.bytes.len(),
-                    max_len,
-                });
-            }
-            fits
-        });
-        Ok(refused)
     }
 
     /// The size the senders split a message's fragments to, which the largest payload of the
@@ -382,15 +281,26 @@ impl Channels {
         self.fragment_len
     }
 
-    /// Derives the senders' fragment size from the largest payload of the link's packet session.
-    pub fn size_fragments(&mut self, max_payload: usize) -> Result<(), PacketError> {
-        let fragment_len =
-            fragment_len_for_max_payload(max_payload).ok_or(PacketError::PayloadTooSmall {
-                actual: max_payload,
-                min: MIN_FRAGMENT_PAYLOAD,
-            })?;
-        self.fragment_len = fragment_len;
-        Ok(())
+    /// Derives the senders' fragment size from the largest payload of the link's packet session,
+    /// which holds every sending channel's largest message in [`MAX_FRAGMENTS`] fragments.
+    pub fn size_fragments(&mut self, max_payload: usize) {
+        self.fragment_len = fragment_len_for_max_payload(max_payload).unwrap_or_else(|| {
+            panic!(
+                "a payload of {max_payload} bytes holds no fragment: it needs \
+                 {MIN_FRAGMENT_PAYLOAD}"
+            )
+        });
+        for sender in &self.senders {
+            self.assert_fragments_hold(sender.max_message_len());
+        }
+    }
+
+    fn assert_fragments_hold(&self, max_message_len: usize) {
+        assert!(
+            max_message_len <= MAX_FRAGMENTS * self.fragment_len,
+            "a channel's {max_message_len}-byte message passes {MAX_FRAGMENTS} fragments of {}",
+            self.fragment_len
+        );
     }
 
     /// The receiving channel registered for `channel_id`.
@@ -398,57 +308,81 @@ impl Channels {
         self.receivers.get_mut(channel_id)
     }
 
-    /// Iterates over the registered receiving channels.
-    pub fn channel_receivers(&self) -> impl Iterator<Item = &ChannelReceiver> {
-        self.receivers.iter()
-    }
-
     /// Mutably iterates over the registered receiving channels.
     pub fn channel_receivers_mut(&mut self) -> impl Iterator<Item = &mut ChannelReceiver> {
         self.receivers.iter_mut()
     }
 
-    /// Adds a manually configured sending channel.
-    ///
-    /// An app's setup adds its channels from the channel registry, as `Transport` does.
+    /// Adds the sending channel of `C` at `channel_id`, unless the transport sends on one there.
     pub fn add_channel_send<C: Channel>(&mut self, setup: ChannelSetup, channel_id: NetId) {
-        self.senders.insert(
+        self.open_send(
+            ChannelTypeId::of::<C>(),
+            core::any::type_name::<C>(),
+            setup,
             channel_id,
-            ChannelSender::new(
-                ChannelTypeId::of::<C>(),
-                channel_id,
-                core::any::type_name::<C>(),
-                &setup,
-            ),
         );
     }
 
-    /// Adds a manually configured receiving channel.
-    ///
-    /// An app's setup adds its channels from the channel registry, as `Transport` does.
+    /// Adds the receiving channel of `C` at `channel_id`, unless the transport receives on one
+    /// there.
     pub fn add_channel_receive<C: Channel>(&mut self, setup: ChannelSetup, channel_id: NetId) {
-        self.assert_budget_admits(setup.max_message_len);
-        self.receivers.insert(
+        self.open_receive(
+            ChannelTypeId::of::<C>(),
+            core::any::type_name::<C>(),
+            setup,
             channel_id,
-            ChannelReceiver::new(
-                ChannelTypeId::of::<C>(),
-                core::any::type_name::<C>(),
-                &setup,
-            ),
+            ChannelReader::Messages,
         );
+    }
+
+    /// Adds the sending channel `channel`, of the type named `name`, at `channel_id`, unless the
+    /// transport sends on one there, which keeps its state.
+    pub fn open_send(
+        &mut self,
+        channel: ChannelTypeId,
+        name: &'static str,
+        setup: ChannelSetup,
+        channel_id: NetId,
+    ) {
+        if self.senders.get(channel_id).is_some() {
+            return;
+        }
+        self.assert_fragments_hold(setup.max_message_len);
+        self.senders.insert(
+            channel_id,
+            ChannelSender::new(channel, channel_id, name, &setup),
+        );
+    }
+
+    /// Adds the receiving channel `channel`, as [`Self::open_send`] adds a sending one.
+    pub fn open_receive(
+        &mut self,
+        channel: ChannelTypeId,
+        name: &'static str,
+        setup: ChannelSetup,
+        channel_id: NetId,
+        reader: ChannelReader,
+    ) {
+        if self.receivers.get(channel_id).is_some() {
+            return;
+        }
+        let receiver = ChannelReceiver::new(channel, name, &setup, reader);
+        self.receivers.insert(channel_id, receiver);
     }
 
     /// Stages a message on the sending channel `channel_id` for the next send.
     ///
     /// A message above the channel's `max_message_len` is refused with
-    /// [`TransportError::MessageTooLarge`]; nothing is staged then.
+    /// [`SendError::MessageTooLarge`], and one that would pass the link's send budget with
+    /// [`SendError::Backlogged`]; nothing is staged then.
     pub fn send(
         &mut self,
         channel_id: NetId,
         bytes: SendPayload,
         priority: f32,
-    ) -> Result<(), TransportError> {
-        self.check_message_len(channel_id, bytes.len())?;
+    ) -> Result<(), SendError> {
+        self.check_send(channel_id, bytes.len())?;
+        self.staged_len += bytes.len();
         self.staged.push(StagedMessage {
             channel_id,
             bytes,
@@ -457,20 +391,38 @@ impl Channels {
         Ok(())
     }
 
-    fn check_message_len(&self, channel_id: NetId, len: usize) -> Result<(), TransportError> {
+    /// Whether a message of `len` bytes may go on the sending channel `channel_id`: within the
+    /// channel's bound and the link's send budget (11-net-stack/transport.md, A link's queued
+    /// bytes have a budget).
+    fn check_send(&self, channel_id: NetId, len: usize) -> Result<(), SendError> {
         let max_len = self
             .senders
             .get(channel_id)
-            .ok_or(TransportError::ChannelNotFound(channel_id))?
-            .max_message_len(self.fragment_len);
+            .ok_or(SendError::ChannelNotFound(channel_id))?
+            .max_message_len();
         if len > max_len {
-            return Err(TransportError::MessageTooLarge { len, max_len });
+            return Err(SendError::MessageTooLarge { len, max_len });
+        }
+        let queued = self.queued();
+        if queued + len > SEND_BUDGET {
+            return Err(SendError::Backlogged { len, queued });
         }
         Ok(())
     }
 
+    /// The bytes the link queues: its staged messages, and what its senders hold until they send
+    /// them, or on a reliable channel until they are acknowledged.
+    fn queued(&self) -> usize {
+        self.staged_len
+            + self
+                .senders
+                .iter()
+                .map(ChannelSender::queued)
+                .sum::<usize>()
+    }
+
     /// Buffers bytes in the sender of `channel_id`, a channel this transport sends on, of a size
-    /// its bound was checked against: at staging, and again at each link that sizes the bound.
+    /// its bound was checked against at staging.
     fn buffer_send(
         &mut self,
         channel_id: NetId,
@@ -478,40 +430,28 @@ impl Channels {
         priority: f32,
     ) -> Option<MessageId> {
         debug_assert!(
-            self.check_message_len(channel_id, bytes.len()).is_ok(),
+            bytes.len() <= self.senders[channel_id].max_message_len(),
             "a message is checked against its bound before it is buffered"
         );
-        let Self {
-            senders,
-            compression_scratch,
-            compression,
-            fragment_len,
-            ..
-        } = self;
-        let channel_sender = senders
+        let fragment_len = self.fragment_len;
+        self.senders
             .get_mut(channel_id)
-            .expect("a channel id names a sender of this transport");
-        channel_sender.buffer_send(
-            bytes,
-            priority,
-            *fragment_len,
-            *compression,
-            compression_scratch,
-        )
+            .expect("a channel id names a sender of this transport")
+            .buffer_send(bytes, priority, fragment_len)
     }
 
     /// The receive step at `now`, after a frame of `delta`: the channels' timers advance, each
     /// packet the packet session opened reaches its channels, the packet session accepts each one
     /// that did, and each sender learns the fate of each packet that carried its reliable messages.
-    /// `admitted` hears the remote tick of each packet that reached its channels. A packet that
-    /// breaks the protocol ends the reading, and its error comes back once the fates are taken.
+    /// It returns the latest remote instant of a packet that reached its channels, if one did. A
+    /// packet that breaks the protocol ends the reading, and its error comes back once the fates
+    /// are taken.
     pub fn receive(
         &mut self,
         queues: &mut PacketSessionQueues,
         now: Instant,
         delta: Duration,
-        mut admitted: impl FnMut(NetTick),
-    ) -> Result<(), TransportError> {
+    ) -> Result<Option<TickInstant>, ReceiveError> {
         self.senders
             .iter_mut()
             .for_each(|channel_sender| channel_sender.update(delta));
@@ -519,18 +459,19 @@ impl Channels {
             .iter_mut()
             .for_each(|channel_receiver| channel_receiver.update(now));
         let mut violation = None;
-        for OpenedPayload {
+        let mut largest = None;
+        while let Some(OpenedPayload {
             number,
             kind,
             payload,
-        } in queues.opened()
+        }) = queues.pop_opened()
         {
             // The packet session is the last receive stage that changes a payload in place. Freeze
             // here so transport parsing can retain cheap immutable subslices.
             match receive_packet(self, kind, payload.freeze()) {
-                Ok(PacketOutcome::Admitted { remote_tick }) => {
-                    self.accepted.push(number);
-                    admitted(remote_tick);
+                Ok(PacketOutcome::Admitted { remote }) => {
+                    queues.accept(number);
+                    largest = largest.max(Some(remote));
                 }
                 Ok(PacketOutcome::OverBudget) => {
                     trace!("refused a packet over the receive budget");
@@ -541,8 +482,9 @@ impl Channels {
                 }
             }
         }
-        for number in self.accepted.drain(..) {
-            queues.accept(number);
+        if violation.is_some() {
+            // The link ends: its other packets go unread.
+            drop(queues.opened());
         }
 
         let Self {
@@ -559,8 +501,6 @@ impl Channels {
             trace!(
                 target: "campfire_net_debug::transport",
                 kind = "packet_fate",
-                schedule = "PreUpdate",
-                sample_point = "PreUpdate",
                 ?token,
                 delivered,
                 "transport packet fate"
@@ -592,13 +532,15 @@ impl Channels {
             }
         }
         sent.release();
-        violation.map_or(Ok(()), Err)
+        violation.map_or(Ok(largest), Err)
     }
 
-    /// The send step at `now` for the tick `tick`: each staged message enters its channel, and
-    /// packets go to the packet session while its budget lasts; a flush that sends nothing past the
-    /// heartbeat sends the tick alone. A packet session that handed over nothing yet takes nothing.
-    pub fn flush(&mut self, queues: &mut PacketSessionQueues, tick: NetTick, now: Instant) {
+    /// The send step at `now`, at `at` on the sender's timeline: each staged message enters its
+    /// channel, and packets go to the packet session while its budget lasts; a flush that sends
+    /// nothing past the heartbeat sends the instant alone. A packet session that handed over
+    /// nothing yet takes nothing.
+    pub fn flush(&mut self, queues: &mut PacketSessionQueues, at: TickInstant, now: Instant) {
+        let tick = at.tick();
         // A link whose packet session has not handed over yet takes nothing: the staged messages
         // wait for the next frame.
         let max_payload = queues.max_payload();
@@ -618,8 +560,6 @@ impl Channels {
             trace!(
                 target: "campfire_net_debug::transport",
                 kind = "channel_send_buffer",
-                schedule = "PostUpdate",
-                sample_point = "PostUpdate",
                 tick = ?tick,
                 tick_id = u64::from(tick.0),
                 channel = %self.senders[channel_id].name(),
@@ -630,6 +570,7 @@ impl Channels {
             self.buffer_send(channel_id, bytes, priority);
         }
         self.staged = staged;
+        self.staged_len = 0;
 
         // Collect candidates while each channel keeps its pending queues.
         self.candidate_order.clear();
@@ -641,7 +582,7 @@ impl Channels {
         }
         self.candidate_order.prioritize();
 
-        let encoded_tick = self.tick_encoder.encode(tick);
+        let encoded_tick = self.tick_encoder.encode(at);
         let mut candidate_cursor = CandidateCursor::default();
         let mut total_bytes_sent: usize = 0;
         let mut first_token = None;
@@ -651,25 +592,16 @@ impl Channels {
                 tick: encoded_tick,
                 candidates: self.candidate_order.candidates(),
                 messages: &self.senders,
-                compression: self.compression,
                 max_payload,
             };
-            let staged = self.packet_builder.build_next_packet(
-                &source,
-                &mut candidate_cursor,
-                &mut self.compression_scratch,
-            );
-            let mut packet = match staged {
-                Ok(Some(packet)) => packet,
-                Ok(None) => break,
-                Err(error) => {
-                    error!(?error, "failed to stage transport packet");
-                    break;
-                }
+            let Some(mut packet) = self
+                .packet_builder
+                .build_next_packet(&source, &mut candidate_cursor)
+            else {
+                break;
             };
             let messages = packet.messages.len();
             let packet_len = packet.len();
-            let packet_compression = packet.compression;
             if packet_len > queues.budget() {
                 // Staging has no channel side effects. Reliable messages are retained; each
                 // unreliable channel applies its retry-unsent policy when this flush
@@ -683,17 +615,10 @@ impl Channels {
             trace!(
                 target: "campfire_net_debug::transport",
                 kind = "packet_send",
-                schedule = "PostUpdate",
-                sample_point = "PostUpdate",
                 ?token,
                 local_tick = tick.0,
                 bytes = packet_len,
                 messages,
-                compression_enabled = self.compression.is_enabled(),
-                compression_algorithm = ?self.compression.algorithm,
-                packet_compressed = packet_compression.is_some(),
-                compression_original_len = packet_compression.map_or(0, |info| info.original_len),
-                compression_compressed_len = packet_compression.map_or(0, |info| info.compressed_len),
                 "sending transport packet"
             );
 
@@ -705,13 +630,6 @@ impl Channels {
             queues.send(token, kind.into(), payload);
             self.sent.push(token, tick);
             self.sent_packets.add(1);
-            if let Some(compression_info) = packet.compression {
-                self.compression_saved_bytes
-                    .add(compression_info.original_len - compression_info.compressed_len);
-            }
-            if packet.compression_abandoned {
-                self.compression_abandoned.add(1);
-            }
 
             let mut packet_messages = core::mem::take(&mut packet.messages);
             #[expect(clippy::iter_with_drain, reason = "the drained list is recycled")]
@@ -767,8 +685,6 @@ impl Channels {
             trace!(
                 target: "campfire_net_debug::transport",
                 kind = "send_flush",
-                schedule = "PostUpdate",
-                sample_point = "PostUpdate",
                 local_tick = tick.0,
                 sent_bytes = total_bytes_sent,
                 "flushed transport packets to the packet session"
@@ -785,11 +701,10 @@ impl Channels {
         self.packet_builder = PacketBuilder::default();
         self.tick_encoder.reset();
         self.tick_decoder.reset();
-        self.accepted.clear();
         self.last_sent = None;
-        self.compression_scratch = CompressionScratch::default();
         self.sent.clear();
         self.staged.clear();
+        self.staged_len = 0;
     }
 }
 
@@ -799,8 +714,8 @@ pub(crate) mod internals {
     use crate::channel_sender::ChannelSender;
     use crate::channel_type_id::ChannelTypeId;
     use crate::channels::Channels;
+    use crate::error::SendError;
     use crate::message_id::MessageId;
-    use crate::transport_error::TransportError;
     use campfire_net_core::NetId;
     use campfire_net_payload::SendPayload;
     use core::ops::{Add, Sub};
@@ -868,10 +783,6 @@ pub(crate) mod internals {
         pub resent_messages: u64,
         /// Bytes of the packets the packet session opened.
         pub received_bytes: u64,
-        /// Bytes that compression removed from the packets sent.
-        pub compression_saved_bytes: u64,
-        /// Packets whose compressed form was not smaller, so they were sent uncompressed.
-        pub compression_abandoned: u64,
     }
 
     impl Add for TransportCounts {
@@ -883,8 +794,6 @@ pub(crate) mod internals {
                 sent_packets: self.sent_packets + rhs.sent_packets,
                 resent_messages: self.resent_messages + rhs.resent_messages,
                 received_bytes: self.received_bytes + rhs.received_bytes,
-                compression_saved_bytes: self.compression_saved_bytes + rhs.compression_saved_bytes,
-                compression_abandoned: self.compression_abandoned + rhs.compression_abandoned,
             }
         }
     }
@@ -898,9 +807,6 @@ pub(crate) mod internals {
                 sent_packets: self.sent_packets - base.sent_packets,
                 resent_messages: self.resent_messages - base.resent_messages,
                 received_bytes: self.received_bytes - base.received_bytes,
-                compression_saved_bytes: self.compression_saved_bytes
-                    - base.compression_saved_bytes,
-                compression_abandoned: self.compression_abandoned - base.compression_abandoned,
             }
         }
     }
@@ -913,8 +819,8 @@ pub(crate) mod internals {
             channel_id: NetId,
             bytes: SendPayload,
             priority: f32,
-        ) -> Result<Option<MessageId>, TransportError> {
-            self.check_message_len(channel_id, bytes.len())?;
+        ) -> Result<Option<MessageId>, SendError> {
+            self.check_send(channel_id, bytes.len())?;
             Ok(self.buffer_send(channel_id, bytes, priority))
         }
 
@@ -958,8 +864,6 @@ pub(crate) mod internals {
                 sent_packets: self.sent_packets.get(),
                 resent_messages: self.resent_messages.get(),
                 received_bytes: self.received_bytes.get(),
-                compression_saved_bytes: self.compression_saved_bytes.get(),
-                compression_abandoned: self.compression_abandoned.get(),
             }
         }
 

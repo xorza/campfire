@@ -82,7 +82,6 @@ pub use crate::prediction_systems::PredictionSystems;
 pub use crate::previous_visual::PreviousVisual;
 pub use crate::rollback_check_state::RollbackCheckState;
 pub use crate::rollback_mode::RollbackMode;
-pub use crate::rollback_plugin::RollbackPlugin;
 pub use crate::rollback_setup::RollbackSetup;
 pub use crate::rollback_systems::RollbackSystems;
 pub use crate::switch_blend::SwitchBlend;
@@ -97,8 +96,7 @@ pub use crate::visual_correction::{VisualCorrection, VisualOffset};
 pub mod internals {
     pub use crate::fixtures::prediction_stack::PredictionStack;
     pub use crate::fixtures::protocol::{
-        CompCorr, CompCorrectionBundleA, CompCorrectionBundleB, CompMixedCorrectionBundleA,
-        CompMixedCorrectionBundleB, CompNotNetworked, CompPredictionOnly, PredictionProtocolPlugin,
-        correction_bundle_lerp, mixed_correction_bundle_lerp,
+        CompCorr, CompNotNetworked, CompPredictionOnly, PredictionProtocolPlugin, ShownCorr,
+        show_corr,
     };
 }

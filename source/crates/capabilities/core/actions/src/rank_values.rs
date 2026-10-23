@@ -1,19 +1,14 @@
 use std::num::NonZeroU8;
 use std::ops::Range;
 
-use campfire_common::{DeclaredName, Ticks};
+use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
-use campfire_sim::MatchRate;
 use campfire_units::PoolCost;
-use campfire_values::{Distance, Rank, TimeTooLarge};
+use campfire_values::Distance;
 
-use crate::action_data::ActionData;
 use crate::action_range::ActionRange;
-use crate::cost_target::CostTarget;
-use crate::error::ActionProblem;
-use crate::kind_takes::RangeTakes;
-use crate::rank_fields::RankToggle;
+use crate::rank_toggle::RankToggle;
 
 /// An action's fields at each rank: its values, and its costs in player resources, each rank's
 /// run in one buffer.
@@ -51,7 +46,7 @@ pub(crate) struct CostRun {
 }
 
 impl CostRun {
-    fn new(start: usize, end: usize) -> Self {
+    pub(crate) fn new(start: usize, end: usize) -> Self {
         let at = |place: usize| u32::try_from(place).expect("an action's costs fit u32");
         Self {
             start: at(start),
@@ -65,13 +60,16 @@ impl CostRun {
     }
 }
 
-/// How long a channel runs, and the time between its ticks, in ticks, both at least one, and
-/// whether damage of more than 0 to its unit cuts it.
+/// How long a channel runs, none for one with no end, and the time between its ticks, in ticks,
+/// each at least one; whether damage of more than 0 to its unit cuts it; the fraction its cast's
+/// windup spreads each way; and the ticks an order that cuts it waits, at least one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelRule {
-    pub(crate) duration: Ticks,
+    pub(crate) duration: Option<Ticks>,
     pub tick: Ticks,
     pub(crate) damage_interrupts: bool,
+    pub windup_spread: Option<Num>,
+    pub(crate) wind_down: Option<Ticks>,
 }
 
 /// How many charges an action holds at most, and the ticks one takes to come back.
@@ -93,76 +91,6 @@ impl RankValues {
             range.get().to_bits(),
         )))
     }
-
-    /// The fields of `data` at each of its `ranks` ranks, times in ticks at `rate`, what its
-    /// cost's names take from by `target`; an error for a per-rank array of another length, a
-    /// field that does not hold at a rank, a use's, a build's or a gather's range that is global
-    /// at a rank, a minimum range not within a range of meters at a rank, or a time that does not
-    /// count in ticks.
-    pub(crate) fn all(
-        data: &ActionData,
-        ranks: u8,
-        rate: MatchRate,
-        target: impl Fn(&DeclaredName) -> Option<CostTarget>,
-    ) -> Result<LoadedRanks, ActionProblem> {
-        if !data.check_ranks(usize::from(ranks)) {
-            return Err(ActionProblem::RankCount(ranks));
-        }
-        let ticks = |ms: u64| rate.ticks(ms).ok_or(TimeTooLarge);
-        let metered = data.section.takes().range == RangeTakes::Meters;
-        let mut loaded = LoadedRanks {
-            values: Vec::with_capacity(usize::from(ranks)),
-            resource_costs: Vec::new(),
-        };
-        for rank in (1..=ranks).filter_map(Rank::new) {
-            let fields = data
-                .fields_at(rank, &target)
-                .map_err(ActionProblem::Field)?;
-            if metered && fields.range == ActionRange::Global {
-                return Err(ActionProblem::Global);
-            }
-            let within = |min: Distance| match fields.range {
-                ActionRange::Meters(range) => min < range,
-                ActionRange::Global => false,
-            };
-            if fields.min_range.is_some_and(|min| !within(min)) {
-                return Err(ActionProblem::MinRange);
-            }
-            let start = loaded.resource_costs.len();
-            loaded.resource_costs.extend(fields.resource_cost);
-            let resource_cost = CostRun::new(start, loaded.resource_costs.len());
-            loaded.values.push(Self {
-                range: fields.range,
-                min_range: fields.min_range,
-                cooldown: ticks(fields.cooldown_ms)?,
-                cost: fields.cost,
-                windup: ticks(fields.windup_ms)?,
-                charges: fields
-                    .charges
-                    .map(|charges| {
-                        Ok::<_, TimeTooLarge>(ChargeRule {
-                            max: charges.max,
-                            recharge: ticks(charges.recharge_ms)?,
-                        })
-                    })
-                    .transpose()?,
-                toggle: fields.toggle,
-                channel: fields
-                    .channel
-                    .map(|channel| {
-                        Ok::<_, TimeTooLarge>(ChannelRule {
-                            duration: ticks(channel.duration_ms)?,
-                            tick: ticks(channel.tick_ms)?,
-                            damage_interrupts: channel.damage_interrupts,
-                        })
-                    })
-                    .transpose()?,
-                charge: fields.charge_ms.map(ticks).transpose()?,
-                resource_cost,
-            });
-        }
-        Ok(loaded)
-    }
 }
 
 #[cfg(feature = "internals")]
@@ -179,44 +107,5 @@ pub(crate) mod internals {
         pub(crate) fn whole(costs: &[ResourceAmount]) -> Self {
             Self::new(0, costs.len())
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::num::NonZeroU32;
-
-    use campfire_codec::Toml;
-    use campfire_units::PoolId;
-    use campfire_values::ResourceId;
-
-    use super::*;
-    use crate::kind_section::tests::TestKind;
-
-    #[test]
-    fn each_rank_holds_the_run_of_its_own_resource_costs() {
-        // Costs in name order: gems 3 at both ranks, gold 50 then 75, and mana, a pool's, apart.
-        let text = "targeting = \"none\"\ncost = { gold = [50, 75], gems = 3, mana = 10 }";
-        let data = ActionData::read(Toml::parse(text).unwrap(), &TestKind::readers()).unwrap();
-        let [gems, gold] = [0, 1].map(ResourceId::new);
-        let target = |name: &DeclaredName| match name.as_str() {
-            "gems" => Some(CostTarget::Resource(gems)),
-            "gold" => Some(CostTarget::Resource(gold)),
-            "mana" => PoolId::new(0).map(CostTarget::Pool),
-            _ => None,
-        };
-        let rate = MatchRate::new(NonZeroU32::new(30).unwrap());
-        let loaded = RankValues::all(&data, 2, rate, target).unwrap();
-        let cost = |resource, amount| ResourceAmount { resource, amount };
-        let runs: Vec<&[ResourceAmount]> = (loaded.values.iter())
-            .map(|values| &loaded.resource_costs[values.resource_cost.range()])
-            .collect();
-        assert_eq!(
-            runs,
-            [
-                &[cost(gems, 3), cost(gold, 50)][..],
-                &[cost(gems, 3), cost(gold, 75)][..],
-            ]
-        );
     }
 }

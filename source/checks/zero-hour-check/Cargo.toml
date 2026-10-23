@@ -20,13 +20,14 @@ campfire-declarations.workspace = true
 campfire-geometry.workspace = true
 campfire-harness.workspace = true
 campfire-import.workspace = true
-campfire-log = { workspace = true, features = ["start"] }
+campfire-logging.workspace = true
 campfire-math.workspace = true
 campfire-mode = { workspace = true, features = ["internals"] }
 campfire-navigation.workspace = true
 campfire-orders.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
+campfire-package-format.workspace = true
 campfire-players.workspace = true
 campfire-production.workspace = true
 campfire-projectiles.workspace = true

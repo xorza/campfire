@@ -1,12 +1,12 @@
-use crate::channel_registry::ChannelRegistry;
+use crate::channel_registry::{ChannelGate, ChannelRegistry};
 use crate::transport_plugin::TransportPlugin;
 use bevy_app::App;
 use bevy_ecs::component::Component;
 use campfire_net_channels::Channel;
 use campfire_net_connection::Client;
 use campfire_net_connection::ClientOf;
-use campfire_net_connection::LinkSide;
 use campfire_net_core::LinkDirections;
+use core::any::TypeId;
 
 #[derive(Debug)]
 pub struct ChannelRegistration<'a, C> {
@@ -25,15 +25,13 @@ impl<C: Channel> ChannelRegistration<'_, C> {
         self
     }
 
-    /// Widens the directions the channel travels in.
+    /// Widens the directions the channel travels in. Each link gets the channel's sender as its
+    /// side sends on it, and its receiver as its side receives on it, as its transport comes.
     pub fn add_direction(&mut self, directions: impl Into<LinkDirections>) -> &mut Self {
-        let directions = directions.into();
         self.app
             .world_mut()
             .resource_mut::<ChannelRegistry>()
-            .add_direction::<C>(directions);
-        self.add_side_direction::<Client>(directions);
-        self.add_side_direction::<ClientOf>(directions);
+            .add_direction::<C>(directions.into(), ChannelGate::Open);
         self
     }
 
@@ -43,44 +41,23 @@ impl<C: Channel> ChannelRegistration<'_, C> {
     /// protocol violation, and nothing on it waits in the link's receive budget
     /// (11-net-stack/transport.md, A channel opens to a link the app admits). The receiver stays
     /// for the link's life, as `G` goes and through a reset of its transport.
+    ///
+    /// A channel opens behind one gate: its registration with another, or with none, panics.
     pub fn add_direction_after<G: Component>(
         &mut self,
         directions: impl Into<LinkDirections>,
     ) -> &mut Self {
-        let directions = directions.into();
-        self.app
-            .world_mut()
-            .resource_mut::<ChannelRegistry>()
-            .add_direction::<C>(directions);
-        self.add_side_direction_after::<Client, G>(directions);
-        self.add_side_direction_after::<ClientOf, G>(directions);
+        let gate = ChannelGate::After(TypeId::of::<G>());
+        let mut registry = self.app.world_mut().resource_mut::<ChannelRegistry>();
+        let first = !registry.gates(gate);
+        registry.add_direction::<C>(directions.into(), gate);
+        if first {
+            self.app
+                .add_observer(TransportPlugin::on_gate::<Client, G>)
+                .add_observer(TransportPlugin::on_gate::<ClientOf, G>)
+                .add_observer(TransportPlugin::on_gated_transport::<Client, G>)
+                .add_observer(TransportPlugin::on_gated_transport::<ClientOf, G>);
+        }
         self
-    }
-
-    /// Gives each link of side `R` the channel's sender as `directions` have it send, and its
-    /// receiver once the link holds `G` as they have it receive.
-    fn add_side_direction_after<R: LinkSide, G: Component>(&mut self, directions: LinkDirections) {
-        if directions.contains(R::SENDS) {
-            self.app
-                .add_observer(TransportPlugin::add_sender_channel::<C, R>);
-        }
-        if directions.contains(R::RECEIVES) {
-            self.app
-                .add_observer(TransportPlugin::open_receiver_channel::<C, R, G>)
-                .add_observer(TransportPlugin::open_admitted_receiver_channel::<C, R, G>);
-        }
-    }
-
-    /// Gives each link of side `R` the channel's sender or receiver, as `directions` have it send
-    /// or receive.
-    fn add_side_direction<R: LinkSide>(&mut self, directions: LinkDirections) {
-        if directions.contains(R::SENDS) {
-            self.app
-                .add_observer(TransportPlugin::add_sender_channel::<C, R>);
-        }
-        if directions.contains(R::RECEIVES) {
-            self.app
-                .add_observer(TransportPlugin::add_receiver_channel::<C, R>);
-        }
     }
 }

@@ -86,7 +86,7 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
     // Ranges of "12345" from one handle: from the start, from the middle, to the end, and none
     // at the end; a range past the 5 bytes it opened with is short, and names the path, as one
     // whose end passes what a u64 holds is.
-    let mut ranges = InputFile::ranges(&five).unwrap();
+    let ranges = InputFile::ranges(&five).unwrap();
     assert_eq!(ranges.len(), 5);
     assert_eq!(ranges.read_at(0, 2).unwrap(), b"12");
     assert_eq!(ranges.read_at(1, 3).unwrap(), b"234");
@@ -153,7 +153,8 @@ fn a_range_the_file_no_longer_holds_as_it_is_read_is_short() {
     // and the 3 from byte 0 are still whole.
     let test_dir = TestDir::new();
     test_dir.write("shrinking", b"abcdef");
-    let mut ranges = InputFile::ranges(&test_dir.path("shrinking")).unwrap();
+    let ranges = InputFile::ranges(&test_dir.path("shrinking")).unwrap();
+    assert!(ranges.unchanged().unwrap());
     OpenOptions::new()
         .write(true)
         .truncate(true)
@@ -162,6 +163,8 @@ fn a_range_the_file_no_longer_holds_as_it_is_read_is_short() {
         .write_all(b"abc")
         .unwrap();
     assert_eq!(ranges.len(), 6);
+    // Its handle sees the write: the file is no longer the one it opened.
+    assert!(!ranges.unchanged().unwrap());
     assert!(matches!(
         ranges.read_at(1, 4).unwrap_err().error,
         ReadError::Short { offset: 1, len: 4 }

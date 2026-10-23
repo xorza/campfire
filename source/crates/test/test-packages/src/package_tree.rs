@@ -2,7 +2,7 @@ use campfire_mode::{ModeData, PlayersData, SavesData};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::str;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use campfire_codec::Toml;
 use campfire_codec::internals::TomlDocument;
@@ -18,11 +18,14 @@ use crate::test_mode::TestMode;
 const FILE_LEN: usize = 64 << 20;
 
 /// The tree of a test mode, every file in memory by its path from the tree's root, as a test
-/// edits it before it loads the mode. Each load indexes every package of the tree again.
+/// edits it before it loads the mode. The first load after an edit indexes every package of the
+/// tree again, and the loads after it share that tree.
 #[derive(Debug, Clone)]
 pub struct PackageTree {
     mode: TestMode,
     files: BTreeMap<PathBuf, Vec<u8>>,
+    /// The files with each package's index, once a load built them since the last edit.
+    indexed: OnceLock<Arc<BTreeMap<PathBuf, Vec<u8>>>>,
 }
 
 /// An edit of one file of a `PackageTree`: text added after its end on a line of its own, text
@@ -50,7 +53,11 @@ impl PackageTree {
             Path::new(""),
             &mut files,
         );
-        Self { mode, files }
+        Self {
+            mode,
+            files,
+            indexed: OnceLock::new(),
+        }
     }
 
     /// The text of `file`, by its path from the tree's root.
@@ -77,6 +84,7 @@ impl PackageTree {
             Edit::Rename(at, name) => self.edited(file, |document| document.rename(at, name)),
         };
         self.files.insert(PathBuf::from(file), edited.into_bytes());
+        self.indexed = OnceLock::new();
         self
     }
 
@@ -108,18 +116,21 @@ impl PackageTree {
     /// writes, new or in place of the one there.
     pub fn put(&mut self, file: &str, bytes: Vec<u8>) -> &mut Self {
         self.files.insert(PathBuf::from(file), bytes);
+        self.indexed = OnceLock::new();
         self
     }
 
     /// The package at `root`, by its path from the tree's root, in memory.
     pub fn dir(&self, root: &str) -> TreeDir {
-        TreeDir::new(Arc::new(TreeDir::reindexed(self.files.clone())), root)
+        let tree = self
+            .indexed
+            .get_or_init(|| Arc::new(TreeDir::reindexed(self.files.clone())));
+        TreeDir::new(Arc::clone(tree), root)
     }
 
     /// The tree's mode on its map, or why it does not load.
     pub fn load(&self) -> Result<ModePackages, LoadError> {
-        self.dir(self.mode.root())
-            .mode_packages(Some(&self.mode.map()))
+        ModePackages::at(&self.dir(self.mode.root()), Some(&self.mode.map()))
     }
 
     /// The tree's mode on its map.
@@ -152,7 +163,7 @@ mod tests {
 
     /// The packages of `dir`, as two loads compare them.
     fn seen(dir: &TreeDir) -> String {
-        let packages = dir.mode_packages(Some(&TestMode::Moba3v3.map())).unwrap();
+        let packages = ModePackages::at(dir, Some(&TestMode::Moba3v3.map())).unwrap();
         let views: Vec<_> = packages
             .packages()
             .map(|view| format!("{:?}", view.content))
@@ -190,6 +201,7 @@ mod tests {
         let tree = PackageTree {
             mode: TestMode::Lane,
             files: BTreeMap::from([("a.toml".into(), b"[t]\nx = 1\ny = [2, 3]\n".to_vec())]),
+            indexed: OnceLock::new(),
         };
         let cases = [
             (Edit::Append("z = 4\n"), "[t]\nx = 1\ny = [2, 3]\n\nz = 4\n"),

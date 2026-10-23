@@ -1,6 +1,7 @@
 use bevy_curve::{Curve, EaseFunction};
 use bevy_reflect::Reflect;
 use core::fmt::Debug;
+use core::time::Duration;
 
 /// A curve that gives a correction error up over time.
 ///
@@ -8,7 +9,7 @@ use core::fmt::Debug;
 /// come in two shapes:
 ///
 /// * **Unbounded**: [`Exponential`](Self::Exponential) has no end of its own —
-///   `decay_ratio` of the error is left after each `decay_period_secs`, so it only
+///   `decay_ratio` of the error is left after each `decay_period`, so it only
 ///   ever approaches zero. This is the shape for reconciliation, where the aim is
 ///   to catch up with the server; it is what `CorrectionPolicy` uses.
 /// * **Bounded**: the rest are normalised over a window, reaching zero at its
@@ -42,7 +43,7 @@ pub enum CorrectionEase {
     EaseOutCubic,
     /// Slow start, fast middle, slow finish.
     EaseInOutCubic,
-    /// `decay_ratio` of the error remains after each `decay_period_secs` seconds.
+    /// `decay_ratio` of the error remains after each `decay_period`.
     ///
     /// Unlike the curves above this one has no end of its own, so it is the
     /// window it runs in that ends it. Its shape is
@@ -53,10 +54,10 @@ pub enum CorrectionEase {
     /// gap is released at a steady rate from the first frame instead of being
     /// held while the curve warms up.
     Exponential {
-        /// Fraction of the error left after one `decay_period_secs`.
+        /// Fraction of the error left after one `decay_period`.
         decay_ratio: f32,
         /// Time for the error to fall to `decay_ratio` of its value.
-        decay_period_secs: f32,
+        decay_period: Duration,
     },
 }
 
@@ -75,7 +76,7 @@ impl Default for CorrectionEase {
     fn default() -> Self {
         Self::Exponential {
             decay_ratio: Self::DEFAULT_DECAY_RATIO,
-            decay_period_secs: Self::DEFAULT_DECAY_PERIOD_SECS,
+            decay_period: Self::DEFAULT_DECAY_PERIOD,
         }
     }
 }
@@ -83,33 +84,33 @@ impl Default for CorrectionEase {
 impl CorrectionEase {
     /// The default exponential's fraction of the error left after each period.
     pub const DEFAULT_DECAY_RATIO: f32 = 0.5;
-    /// The default exponential's period, in seconds.
-    pub const DEFAULT_DECAY_PERIOD_SECS: f32 = 0.2;
+    /// The default exponential's period.
+    pub const DEFAULT_DECAY_PERIOD: Duration = Duration::from_millis(200);
 
     /// How long an exponential takes to keep under `fraction` of its error: the window that
     /// ends it once what it would keep is not worth carrying.
-    pub fn exponential_window_secs(decay_ratio: f32, decay_period_secs: f32, fraction: f32) -> f32 {
+    pub fn exponential_window(decay_ratio: f32, decay_period: Duration, fraction: f32) -> Duration {
         if decay_ratio <= 0.0 || decay_ratio >= 1.0 {
-            return decay_period_secs.max(0.0);
+            return decay_period;
         }
-        decay_period_secs * fraction.ln() / decay_ratio.ln()
+        decay_period.mul_f32(fraction.ln() / decay_ratio.ln())
     }
 
-    /// Fraction of the error still left, `elapsed` seconds in, for a curve
-    /// running over a `duration`-long window.
+    /// Fraction of the error still left, `elapsed` in, for a curve running over a
+    /// `duration`-long window.
     ///
     /// `duration` bounds every curve; an unbounded one ignores it for its shape
     /// and is cut off by it: nothing remains from the window's end.
-    pub fn remaining(&self, elapsed: f32, duration: f32) -> f32 {
+    pub fn remaining(&self, elapsed: Duration, duration: Duration) -> f32 {
         match self {
             Self::Exponential {
                 decay_ratio,
-                decay_period_secs,
+                decay_period,
             } => {
-                if *decay_period_secs <= 0.0 || elapsed >= duration {
+                if decay_period.is_zero() || elapsed >= duration {
                     return 0.0;
                 }
-                decay_ratio.powf(elapsed / decay_period_secs)
+                decay_ratio.powf(elapsed.div_duration_f32(*decay_period))
             }
             Self::Linear => bounded_remaining(EaseFunction::Linear, elapsed, duration),
             Self::Smoothstep => bounded_remaining(EaseFunction::SmoothStep, elapsed, duration),
@@ -118,8 +119,8 @@ impl CorrectionEase {
         }
     }
 
-    /// Per-frame keep ratio for the frame that starts `elapsed` seconds into a
-    /// curve running over a `duration`-long window.
+    /// Per-frame keep ratio for the frame that starts `elapsed` into a curve
+    /// running over a `duration`-long window.
     ///
     /// This is `remaining(next) / remaining(prev)`, so the error telescopes along
     /// the curve exactly, whatever the frame rate. The frame covers
@@ -128,17 +129,18 @@ impl CorrectionEase {
     /// gap. Looking backwards instead clamps the previous edge to `0` on that
     /// frame, which makes the keep ratio exactly `1`: the rendered value is put
     /// back onto the one it already had, so the frame does not move at all.
-    pub fn keep(&self, elapsed: f32, dt: f32, duration: f32) -> f32 {
+    pub fn keep(&self, elapsed: Duration, dt: Duration, duration: Duration) -> f32 {
+        let end = elapsed.saturating_add(dt);
         // The exponential's ratio is constant inside its window, so it does not need the edges;
         // the frame that reaches the window's end gives up the rest.
         if let Self::Exponential { .. } = self {
-            if elapsed + dt >= duration {
+            if end >= duration {
                 return 0.0;
             }
-            return self.remaining(dt, f32::INFINITY);
+            return self.remaining(dt, Duration::MAX);
         }
         let prev = self.remaining(elapsed, duration);
-        let next = self.remaining(elapsed + dt, duration);
+        let next = self.remaining(end, duration);
         if prev > 0.0 {
             (next / prev).clamp(0.0, 1.0)
         } else {
@@ -147,13 +149,13 @@ impl CorrectionEase {
     }
 }
 
-/// What a bounded curve keeps of the error `elapsed` seconds into its `duration`-long window,
-/// over which it is normalised.
-fn bounded_remaining(curve: EaseFunction, elapsed: f32, duration: f32) -> f32 {
-    if !duration.is_finite() || duration <= 0.0 {
+/// What a bounded curve keeps of the error `elapsed` into its `duration`-long window, over which
+/// it is normalised.
+fn bounded_remaining(curve: EaseFunction, elapsed: Duration, duration: Duration) -> f32 {
+    if duration.is_zero() {
         return 0.0;
     }
-    1.0 - curve.sample_clamped(elapsed / duration)
+    1.0 - curve.sample_clamped(elapsed.div_duration_f32(duration))
 }
 
 #[cfg(test)]
@@ -171,9 +173,10 @@ mod tests {
             (CorrectionEase::EaseOutCubic, 0.125),
             (CorrectionEase::EaseInOutCubic, 0.5),
         ] {
-            assert_eq!(ease.remaining(0.0, 1.0), 1.0, "{ease:?}");
-            assert_eq!(ease.remaining(0.5, 1.0), half, "{ease:?}");
-            assert_eq!(ease.remaining(1.0, 1.0), 0.0, "{ease:?}");
+            let (window, at) = (Duration::from_secs(1), Duration::from_millis);
+            assert_eq!(ease.remaining(at(0), window), 1.0, "{ease:?}");
+            assert_eq!(ease.remaining(at(500), window), half, "{ease:?}");
+            assert_eq!(ease.remaining(at(1000), window), 0.0, "{ease:?}");
         }
     }
 }

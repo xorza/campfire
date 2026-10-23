@@ -57,12 +57,12 @@ impl Stack for ReplicationStack {
 
     fn client_link(&self, link: &mut EntityWorldMut<'_>) {
         MessagesStack.client_link(link);
-        link.insert((ReplicationSender, ReplicationReceiver));
+        link.insert(ReplicationReceiver);
     }
 
     fn server_link(&self, link: &mut EntityWorldMut<'_>) {
         MessagesStack.server_link(link);
-        link.insert((ReplicationSender, ReplicationReceiver));
+        link.insert(ReplicationSender);
     }
 
     fn is_ready(&self, world: &World) -> bool {

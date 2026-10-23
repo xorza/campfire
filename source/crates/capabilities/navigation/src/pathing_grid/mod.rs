@@ -63,9 +63,7 @@ impl PathingGrid {
             Self::by_column(&grid, &walled[span.clone()], &mut walled_columns[span]);
         }
         let blocked = walled.clone();
-        let regions: Vec<Regions> = (0..walkers.len())
-            .map(|at| Regions::new(&grid, &blocked[at * words..(at + 1) * words]))
-            .collect();
+        let regions = Self::regions_of(&grid, &blocked, words, walkers.len());
         let chunks = regions.first().map_or(0, Regions::chunks);
         Self {
             grid,
@@ -79,6 +77,13 @@ impl PathingGrid {
             cleared: Vec::new(),
             dirty: vec![false; chunks],
         }
+    }
+
+    /// The regions of each of `walkers` clearances of `blocked`, `words` words a clearance.
+    fn regions_of(grid: &Grid, blocked: &[u64], words: usize, walkers: usize) -> Vec<Regions> {
+        (0..walkers)
+            .map(|at| Regions::new(grid, &blocked[at * words..(at + 1) * words]))
+            .collect()
     }
 
     /// Follows the last update of `statics`, which held the static bodies this grid was marked
@@ -305,6 +310,14 @@ impl Clearance<'_> {
 impl Cache for PathingGrid {
     fn installed(_: &World) -> Option<Self> {
         None
+    }
+
+    /// As the load built it: no static body, each cell blocked by the walls alone.
+    fn clear(&mut self) {
+        self.blocked.copy_from_slice(&self.walled);
+        self.regions = Self::regions_of(&self.grid, &self.blocked, self.words, self.walkers.len());
+        self.cleared.clear();
+        self.dirty.fill(false);
     }
 }
 

@@ -1,18 +1,17 @@
 use campfire_common::SegmentSeed;
-use campfire_declarations::{CapabilitySet, Role};
+use campfire_declarations::Role;
 use campfire_sim::MatchRate;
-use campfire_visibility::OutView;
+use campfire_visibility::Visibility;
 
-/// What a match is built of: its tick rate and seed, its capabilities, its role, and what its
-/// players out of play see.
+/// What a match is built of beside its books, which hold its capabilities: its tick rate and
+/// seed, its role, and its session's visibility.
 #[derive(Debug, Clone)]
 #[must_use = "a spec builds nothing until a match is built of it"]
 pub struct MatchSetup {
     pub(crate) seed: SegmentSeed,
     pub(crate) tick_rate: MatchRate,
-    pub(crate) set: CapabilitySet,
     pub(crate) role: Role,
-    pub(crate) out: OutView,
+    pub(crate) visibility: Visibility,
     /// Whether the tick's schedule leaves out Bevy's automatic sync points, for the ambiguity
     /// check that sees every pair only a sync point keeps in order.
     #[cfg(feature = "internals")]
@@ -23,17 +22,15 @@ pub struct MatchSetup {
 }
 
 impl MatchSetup {
-    /// A match at `rate`, drawing from `seed`, of `role`, of no capability but the core until the
-    /// spec says otherwise. A client's predicts: each of its sim's queries skips the units the
+    /// A match at `rate`, drawing from `seed`, of `role`. A client's predicts: each of its sim's queries skips the units the
     /// client holds as the server sent them, `Unpredicted`, unless it names them, as the marker's
     /// filter is in place before any system's query is made.
     pub const fn new(seed: SegmentSeed, rate: MatchRate, role: Role) -> Self {
         Self {
             seed,
             tick_rate: rate,
-            set: CapabilitySet::CORE,
             role,
-            out: OutView::Team,
+            visibility: Visibility::DEFAULT,
             #[cfg(feature = "internals")]
             without_sync_points: false,
             #[cfg(feature = "internals")]
@@ -46,15 +43,10 @@ impl MatchSetup {
         self.tick_rate
     }
 
-    /// The match's capabilities.
-    pub fn set(self, set: CapabilitySet) -> Self {
-        Self { set, ..self }
-    }
-
-    /// The match of a session whose players out of play see as `out` says, as its terms carry it;
-    /// `OutView::Team` until the spec says otherwise.
-    pub fn out(self, out: OutView) -> Self {
-        Self { out, ..self }
+    /// The match of a session of `visibility`, as its terms carry it; the default, of no mode or
+    /// host's setting, until the spec says otherwise.
+    pub fn visibility(self, visibility: Visibility) -> Self {
+        Self { visibility, ..self }
     }
 }
 

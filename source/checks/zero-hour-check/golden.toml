@@ -3,8 +3,8 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "308221eb329296dc6a5f89713ee7f0e673d03b9333b1c60b11e3d857bcc2d6ce"
-rules = "7bf0a0974efd598268cd53d596960151f0638d5faa1760e6d9ac2da6778b8965"
+game = "2c0504131f560f65ac595b237b310e9db036ddf14c64e9f9e32d64a788b00dd6"
+rules = "8bb3faa5280573cf226db560f8504f785d954be64a796adf485d202603521b62"
 
 [map]
 heights = [270, 340]
@@ -29,17 +29,18 @@ snowy = 17
 [produced]
 trains = 192
 builds = 160
-dropped = [0, 22, 31, 6, 0, 0, 0]
+dropped = [0, 22, 31, 6, 0, 0, 0, 0]
 
 [supplied]
 nodes = 4
 drop_offs = 15
 gathers = 12
-dropped = [0, 0, 5, 6, 0, 0]
+hacks = 5
+dropped = [0, 0, 5, 6, 0, 0, 0, 5, 5, 5, 5, 5]
 
 [fought]
-weapons = 57
-dropped = [0, 0, 8, 0, 2, 0, 1, 0, 8, 9, 0, 1, 2, 12, 1, 0, 0, 14, 0, 0, 1, 6, 0, 2]
+weapons = 67
+dropped = [0, 0, 8, 0, 2, 0, 1, 0, 8, 9, 0, 1, 2, 12, 1, 0, 0, 0, 4, 1, 6, 0, 2, 0]
 armors = 53
 kinds = 38
 unliving = 38
@@ -83,11 +84,9 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
 
 [base]
-standing = [9, 8]
+standing = [12, 2]
+think_ops = 15955
 
 [attack]
-ended = 26198
-standing = [6, 0]
-
-[attack.result]
-Won = 0
+standing = [6, 1]
+think_ops = 9680

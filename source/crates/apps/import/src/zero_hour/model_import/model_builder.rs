@@ -11,6 +11,7 @@ use gltf_json::{Accessor, Extras, Index, Material, Mesh, Node};
 
 use crate::gltf::glb_builder::GlbBuilder;
 use crate::pose::RigidPose;
+use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::axes;
 use crate::zero_hour::error::ModelError;
 use crate::zero_hour::format::w3d::hierarchy::Hierarchy;
@@ -31,6 +32,8 @@ pub(super) struct ModelBuilder {
     pub(super) glb: GlbBuilder,
     keys: Vec<MaterialKey>,
     pub(super) missing_textures: BTreeSet<String>,
+    /// The files of the textures its meshes draw with, which the import converts.
+    pub(super) textures: BTreeSet<ArchivePath>,
 }
 
 impl ModelBuilder {
@@ -41,6 +44,7 @@ impl ModelBuilder {
             glb: GlbBuilder::new(),
             keys: Vec::new(),
             missing_textures: BTreeSet::new(),
+            textures: BTreeSet::new(),
         }
     }
 
@@ -389,6 +393,7 @@ impl ModelBuilder {
         };
         let texture = &mesh.textures[usize::try_from(id).expect("a u32 fits usize")];
         if let Some(path) = textures.get(&texture.name) {
+            self.textures.insert(path.clone());
             Surface::Texture {
                 path: path.clone(),
                 flags: texture.flags,

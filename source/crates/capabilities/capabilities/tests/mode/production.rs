@@ -6,6 +6,7 @@ use campfire_production::{
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Position;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_units::Unfinished;
 
 use super::*;
 
@@ -30,14 +31,14 @@ fn on_unit_trained(ctx, unit, producer) {
     set.units
         .push_str("production = { queue = 2 }\nslots = { spell = [\"train_grunt\"] }\n");
     let mut game = started(&set, ScriptLimits::ROOMY).unwrap();
-    let owner = Owner::new(Seat::new(0));
+    let owner = Owner::new(PlayerSlot::new(0));
     let barracks = Spawn::named(&game, "barracks", Vec3::ZERO).parts(owner);
     let barracks = barracks.place(&mut game);
     let producer = game.unit_entity(barracks);
     let barracks_type = *game.get::<UnitType>(producer).unwrap();
     Mode::tick_inputs(&mut game, &[]);
     let gold = resource("gold").unwrap();
-    let player = Seat::new(0);
+    let player = PlayerSlot::new(0);
     let mut resources = game.player_resources_mut(player).unwrap();
     resources.add(gold, 15).unwrap();
     let order = |game: &mut Match| {
@@ -100,7 +101,7 @@ fn on_unit_trained(ctx, unit, producer) {
     let made: Vec<_> = grunts
         .iter(&game)
         .filter(|&(&unit_type, ..)| unit_type != barracks_type)
-        .map(|(_, owner, grunt_pos)| (owner.seat(), grunt_pos.get()))
+        .map(|(_, owner, grunt_pos)| (owner.player_slot(), grunt_pos.get()))
         .collect();
     assert_eq!(made, [(player, position); 3]);
     assert!(
@@ -157,7 +158,7 @@ fn on_input(ctx, player, name, value) {
         .zip(loads)
     {
         let position = Vec3::ZERO;
-        let owner = Owner::new(Seat::new(slot));
+        let owner = Owner::new(PlayerSlot::new(slot));
         let id = Spawn::of(grunt, position).parts(owner).place(&mut game);
         grunts.push(id);
         if dead {
@@ -258,4 +259,82 @@ fn on_path_end(ctx, unit, path) {
     assert!(game.resource::<PathArrivals>().0.is_empty());
     assert!(game.resource::<CompletedSites>().0.is_empty());
     assert_eq!(Mode::failures(&game), []);
+}
+
+#[test]
+fn an_income_pays_each_period_from_its_spawn_and_a_capture_once_after_its_first() {
+    // A mill of player 0 pays 5 gold each 300 ms, 3 ticks at 10 a second, from its spawn before
+    // tick 0, so in ticks 3, 7, 13 and 17 as below, and a capture 20 once its first period
+    // ended. Player 1 captures it before tick 4: its clock starts again, so it pays in 7, and the
+    // capture pays 20 in 4. It is unfinished from tick 8 to 12, so tick 10 pays nothing but its
+    // clock goes on; player 0 takes it back before tick 14, of no bonus left, so it pays 5 in 17
+    // alone. A second mill of player 0 has no owner from tick 1, which keeps its period, so its
+    // first ends in 3, paying nothing, and makes its bonus due: player 1 captures it before tick
+    // 4 for 20 more, then takes 5 in 7, 10, 13 and 16. Player 0 holds 5 + 5, player 1
+    // 20 + 20 + 5 + 5 + 5 + 5 + 5 + 5.
+    let mut set = mode_packages("fn on_input(ctx, player, name, value) {}\n");
+    set.units.push_str(&stat_type("mill", &[]));
+    set.units
+        .push_str("income = { resource = \"gold\", amount = 5, period_ms = 300, capture = 20 }\n");
+    let mut game = started(&set, ScriptLimits::ROOMY).unwrap();
+    let gold = resource("gold").unwrap();
+    let held = |game: &Match| {
+        [0, 1].map(|player_slot| {
+            game.player_resources(PlayerSlot::new(player_slot))
+                .unwrap()
+                .amount(gold)
+        })
+    };
+    let before = held(&game);
+    let mill = Spawn::named(&game, "mill", Vec3::ZERO)
+        .parts(Owner::new(PlayerSlot::new(0)))
+        .place(&mut game);
+    let mill = game.unit_entity(mill);
+    let second = Spawn::named(&game, "mill", Vec3::ZERO)
+        .parts(Owner::new(PlayerSlot::new(0)))
+        .place(&mut game);
+    let second = game.unit_entity(second);
+    let mut paid = Vec::new();
+    for tick in 0..18 {
+        match tick {
+            1 => {
+                game.entity_mut(second).remove::<Owner>();
+            }
+            4 => {
+                game.entity_mut(mill).insert(Owner::new(PlayerSlot::new(1)));
+                game.entity_mut(second)
+                    .insert(Owner::new(PlayerSlot::new(1)));
+            }
+            8 => {
+                game.entity_mut(mill).insert(Unfinished);
+            }
+            12 => {
+                game.entity_mut(mill).remove::<Unfinished>();
+            }
+            14 => {
+                game.entity_mut(mill).insert(Owner::new(PlayerSlot::new(0)));
+            }
+            _ => {}
+        }
+        let was = held(&game);
+        Mode::tick_inputs(&mut game, &[]);
+        let now = held(&game);
+        if now != was {
+            paid.push((tick, [now[0] - was[0], now[1] - was[1]]));
+        }
+    }
+    assert_eq!(
+        paid,
+        [
+            (3, [5, 0]),
+            (4, [0, 40]),
+            (7, [0, 10]),
+            (10, [0, 5]),
+            (13, [0, 10]),
+            (16, [0, 5]),
+            (17, [5, 0]),
+        ]
+    );
+    let now = held(&game);
+    assert_eq!([now[0] - before[0], now[1] - before[1]], [10, 70]);
 }

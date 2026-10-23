@@ -37,13 +37,13 @@ impl<P: Plan> ScriptedMode<P> {
     /// A match at tick 0, after what the plan sends at the start.
     pub fn start(&self) -> FixedMatch {
         let mut fixed = self.session.start();
-        P::start(&mut fixed, &self.session.terms().seats);
+        P::start(&mut fixed, &self.session.terms().player_slots);
         fixed
     }
 
-    /// Runs tick `tick` of `fixed`: first logs the joins and the leaves the script holds in it,
+    /// Runs the next tick of `fixed`: first logs the joins and the leaves the script holds in it,
     /// then sends the scripted orders stamped for it, then runs it.
-    pub fn play_tick(&self, fixed: &mut FixedMatch, tick: u64) {
-        Scripted::play_tick(&self.script, fixed, tick);
+    pub fn play_tick(&self, fixed: &mut FixedMatch) {
+        Scripted::play_tick(&self.script, fixed);
     }
 }

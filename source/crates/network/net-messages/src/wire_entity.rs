@@ -1,5 +1,5 @@
 use bevy_ecs::entity::{Entity, EntityGeneration, EntityIndex};
-use campfire_net_bytes::{ReadVarInt, Reader, SerializationError, ToBytes, VarInt, WriteInteger};
+use campfire_net_bytes::{Reader, SerializationError, ToBytes, VarInt, WriteInteger};
 
 /// An entity in its wire form: its index word, then its generation unless it is the first. Both
 /// are usually small, so each goes as a varint. A newtype, as the orphan rule keeps `ToBytes` off
@@ -28,12 +28,20 @@ impl ToBytes for WireEntity {
         }
     }
 
+    /// An entity of the first generation in its long form, the flag clear and its generation
+    /// sent, is refused, as each entity has one encoding.
     fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError> {
         let word = buffer.read_varint()?;
+        let first = EntityGeneration::FIRST.to_bits();
         let generation = if word & FIRST_GENERATION == 0 {
-            u32::try_from(buffer.read_varint()?).map_err(|_| SerializationError::InvalidValue)?
+            let generation = u32::try_from(buffer.read_varint()?)
+                .map_err(|_| SerializationError::InvalidValue)?;
+            if generation == first {
+                return Err(SerializationError::NotCanonical);
+            }
+            generation
         } else {
-            0
+            first
         };
         let index = u32::try_from(word >> 1).map_err(|_| SerializationError::InvalidValue)?;
         let index = EntityIndex::from_raw_u32(index).ok_or(SerializationError::InvalidValue)?;
@@ -84,5 +92,12 @@ mod tests {
         assert_eq!(round_trip(entity(1, 0)), 1);
         assert_eq!(round_trip(entity(1, 1)), 2);
         assert_eq!(round_trip(entity(10, 1 << 31)), 9);
+        // Index 1 of the first generation as its long form, its word 2 and its generation 0,
+        // which the short form `[3]` encodes: refused.
+        let mut long = Reader::from(vec![2, 0]);
+        assert_eq!(
+            WireEntity::from_bytes(&mut long),
+            Err(SerializationError::NotCanonical)
+        );
     }
 }

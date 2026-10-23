@@ -1,25 +1,29 @@
+use std::sync::Arc;
+
 use bevy_app::AppExit;
 use bevy_ecs::world::World;
 use campfire_common::ErrorReport;
 use campfire_log::LogEvent;
+use campfire_mode::ModeWorld;
+use campfire_package::ModePackages;
 use campfire_protocol::SessionTerms;
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
 use tracing::{Span, error, info_span};
 
-use crate::events::session_written::SessionWritten;
-use crate::faults::WorkerFaults;
-use crate::faults::error::SnapshotWriteError;
-use crate::faults::fault::Fault;
-use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::door::Door;
-use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::pending_restore::PendingRestore;
-use crate::sim_server::server_dir::ServerDir;
-use crate::sim_server::server_phase::ServerPhase;
-use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::session_dir::SessionDir;
+use campfire_host::Checkpoints;
+use campfire_host::Fault;
+use campfire_host::JournalWatch;
+use campfire_host::ServerDir;
+use campfire_host::ServerPhase;
+use campfire_host::ServerSetup;
+use campfire_host::SessionDir;
+use campfire_host::SnapshotWriteError;
+use campfire_host::WorkerFaults;
+use campfire_host::{SessionEnd, SessionWritten};
 
 /// What the sim server module gives a world, for every crate.
 pub trait SimServerWorld {
@@ -35,19 +39,21 @@ pub trait SimServerWorld {
     /// ends with no result.
     fn end_session(&mut self) -> Result<(), SnapshotWriteError>;
 
-    /// Whether the session went back to a save, and its server is to start again on
-    /// its data, which restores the match from it.
-    fn is_reload_wanted(&self) -> bool;
-
     /// How the server of the session exits in this frame, when it does: as `WorkerFaults`
     /// says, once a worker failed, which for its journal or a checkpoint's snapshot is with
     /// `ExitStatus::Storage`; before the match started, at once when `stop` asks it to. Once the
-    /// match started, when `stop` asks it to or, of a plan that seats a player, every player
+    /// match started, when `stop` asks it to or, of a plan that places a player, every player
     /// left, it ends the session, as the mode ended the match or aborted, and closes its journal,
     /// whose last sync's failure ends it as one in a frame does; it then publishes the log in its
     /// `ServerDir`, and exits, with an error when the log is not written, as the session it holds
     /// is lost.
     fn exit_due(&mut self, stop: StopRequest) -> Option<AppExit>;
+
+    /// What ends the session in this frame of a match that started, as `exit_due` ends it: the
+    /// match, once its mode ended it, when `stop` asks or every player left; a stop of the owner,
+    /// as `stop` asks; every player's leave, of a plan that places a player; none while it runs
+    /// on.
+    fn session_end(&self, stop: StopRequest) -> Option<SessionEnd>;
 }
 
 /// The session a server opens: a new one, its lobby open to its players, or the one a stop
@@ -74,6 +80,14 @@ impl SessionOpening {
         info_span!("session", id = %self.terms().session_id())
     }
 
+    /// The packages of the session's mode.
+    pub fn packages(&self) -> &Arc<ModePackages> {
+        match self {
+            Self::New(lobby) => lobby.packages(),
+            Self::Restored(restore) => &restore.packages,
+        }
+    }
+
     /// The setup of the server that opens it.
     pub fn server(&self) -> &ServerSetup {
         match self {
@@ -88,16 +102,6 @@ impl SessionOpening {
 pub enum StopRequest {
     Asked,
     NotAsked,
-}
-
-/// What the sim server module gives a world, for its own crate.
-pub(crate) trait SimServerWorldCrate {
-    /// Loads the save that starts segment `segment` in the session: logs the record of
-    /// the checkpoint on its thread first, then goes back in the log, as `SessionLog::load`
-    /// says, which the journal logs. The match then runs no tick and logs nothing: its server
-    /// starts again on its data, which restores the match from the save, once `reload_wanted`
-    /// says so. An error when the checkpoint's snapshot was not written.
-    fn load_session_save(&mut self, segment: u32) -> Result<(), SnapshotWriteError>;
 }
 
 impl SimServerWorld for World {
@@ -129,8 +133,24 @@ impl SimServerWorld for World {
         Ok(())
     }
 
-    fn is_reload_wanted(&self) -> bool {
-        ServerPhase::now(self) == ServerPhase::Reloading
+    fn session_end(&self, stop: StopRequest) -> Option<SessionEnd> {
+        let log = self.resource::<Session>().log();
+        if log.result().is_none() {
+            // Every player slot a player controlled left, and no player holds a link; a session of
+            // bots alone runs on until its match ends or a stop (08-sessions.md, A local session
+            // may hold bots alone).
+            let bots_alone = !log.header().terms.places_a_player();
+            if stop == StopRequest::NotAsked && (bots_alone || !Door::is_empty(self)) {
+                return None;
+            }
+        }
+        Some(if log.result().is_some() || self.match_end().is_some() {
+            SessionEnd::MatchEnded
+        } else if stop == StopRequest::Asked {
+            SessionEnd::Stopped
+        } else {
+            SessionEnd::PlayersLeft
+        })
     }
 
     fn exit_due(&mut self, stop: StopRequest) -> Option<AppExit> {
@@ -138,26 +158,16 @@ impl SimServerWorld for World {
         if let Some(exit) = WorkerFaults::apply(self) {
             return Some(exit);
         }
-        if !matches!(
-            ServerPhase::now(self),
-            ServerPhase::Running | ServerPhase::Reloading
-        ) {
+        if ServerPhase::now(self) != ServerPhase::Running {
             return (stop == StopRequest::Asked).then_some(AppExit::Success);
         }
-        let log = self.resource::<Session>().log();
-        if log.result().is_none() {
-            // Every seat a player controlled left, and no player holds a link; a session of bots
-            // alone runs on until its match ends or a stop (08-sessions.md, A local session
-            // may seat bots alone).
-            let bots_alone = !log.header().terms.seats_a_player();
-            if stop == StopRequest::NotAsked && (bots_alone || !Door::is_empty(self)) {
-                return None;
-            }
-            if let Err(error) = self.end_session() {
-                self.resource_mut::<WorkerFaults>()
-                    .report(Fault::Snapshot(error));
-                return WorkerFaults::apply(self);
-            }
+        let end = self.session_end(stop)?;
+        if self.resource::<Session>().log().result().is_none()
+            && let Err(error) = self.end_session()
+        {
+            self.resource_mut::<WorkerFaults>()
+                .report(Fault::Snapshot(error));
+            return WorkerFaults::apply(self);
         }
         self.session_mut().close_journal();
         JournalWatch::report_failure(self);
@@ -178,6 +188,7 @@ impl SimServerWorld for World {
             Ok(file) => {
                 SessionWritten {
                     session: id,
+                    end,
                     file,
                     hash,
                 }
@@ -192,32 +203,21 @@ impl SimServerWorld for World {
     }
 }
 
-impl SimServerWorldCrate for World {
-    fn load_session_save(&mut self, segment: u32) -> Result<(), SnapshotWriteError> {
-        Checkpoints::settle(self)?;
-        self.resource_mut::<Session>()
-            .load(segment)
-            .expect("a save of the session's log");
-        ServerPhase::go(self, ServerPhase::Reloading);
-        Ok(())
-    }
-}
-
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
-    use campfire_common::{Seat, Tick};
+    use campfire_common::{PlayerSlot, Tick};
     use campfire_runner::SessionWorld;
     use campfire_sim::MatchRate;
 
-    use crate::faults::WorkerFaults;
-    use crate::faults::fault::Fault;
-    use crate::sim_server::bot_driver::BotDriver;
-    use crate::sim_server::checkpoints::Checkpoints;
-    use crate::sim_server::player_link::PlayerLink;
     use crate::sim_server::receipts::Receipts;
-    use crate::sim_server::server_bots::SeatBot;
+    use campfire_host::BotDriver;
+    use campfire_host::Checkpoints;
+    use campfire_host::Fault;
+    use campfire_host::PlayerLink;
+    use campfire_host::PlayerSlotBot;
+    use campfire_host::WorkerFaults;
 
     /// What a server's world gives the tests and benches of any crate.
     pub trait SimServerWorldInternals {
@@ -228,9 +228,9 @@ pub(crate) mod internals {
         /// real clock, says when they go out.
         fn hold_receipts(&mut self);
 
-        /// The seats of the plan's bots of `seats` that play their script from tick `next` of
-        /// the world's session on, as a server that starts or restores builds its driver.
-        fn planned_bots(&self, seats: Vec<SeatBot>, next: Tick) -> Vec<Seat>;
+        /// The player slots of the plan's bots of `player_slots` that play their script from tick
+        /// `next` of the world's session on, as a server that starts or restores builds its driver.
+        fn planned_bots(&self, player_slots: Vec<PlayerSlotBot>, next: Tick) -> Vec<PlayerSlot>;
 
         /// Waits for the checkpoint on its thread in the session, whose server keeps its
         /// files, and logs its record; reports the fault when its snapshot was not written.
@@ -240,9 +240,9 @@ pub(crate) mod internals {
         /// server keeps its files.
         fn request_checkpoint(&mut self, tick: Tick);
 
-        /// The seat of the player the client link `link` carries the inputs of; none for a link
-        /// of no player.
-        fn link_seat(&self, link: Entity) -> Option<Seat>;
+        /// The player slot of the player the client link `link` carries the inputs of; none for a
+        /// link of no player.
+        fn link_player_slot(&self, link: Entity) -> Option<PlayerSlot>;
 
         /// Whether the log refused one of the messages of the client link `link`; none for a
         /// link of no player.
@@ -258,10 +258,10 @@ pub(crate) mod internals {
             self.resource_mut::<Receipts>().hold();
         }
 
-        fn planned_bots(&self, seats: Vec<SeatBot>, next: Tick) -> Vec<Seat> {
+        fn planned_bots(&self, player_slots: Vec<PlayerSlotBot>, next: Tick) -> Vec<PlayerSlot> {
             let rate = *self.resource::<MatchRate>();
-            let planned = BotDriver::planned(seats, self.session().log(), next, rate);
-            planned.iter().map(|driven| driven.seat).collect()
+            let planned = BotDriver::planned(player_slots, self.session().log(), next, rate);
+            planned.iter().map(|driven| driven.player_slot).collect()
         }
 
         fn settle_checkpoint(&mut self) {
@@ -275,8 +275,8 @@ pub(crate) mod internals {
             self.resource_mut::<Checkpoints>().request(tick);
         }
 
-        fn link_seat(&self, link: Entity) -> Option<Seat> {
-            self.get::<PlayerLink>(link).map(|link| link.seat())
+        fn link_player_slot(&self, link: Entity) -> Option<PlayerSlot> {
+            self.get::<PlayerLink>(link).map(|link| link.player_slot())
         }
 
         fn link_refused(&self, link: Entity) -> Option<bool> {

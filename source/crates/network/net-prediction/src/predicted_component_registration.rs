@@ -3,12 +3,12 @@ use crate::mismatch_fn::MismatchFn;
 use crate::prediction_registration;
 use crate::prediction_registry;
 use bevy_curve::Ease;
-use campfire_net_interpolation::HistoryComponent;
-use campfire_net_interpolation::LerpFn;
-use campfire_net_interpolation::linear_lerp;
+use campfire_net_frame_interpolation::LerpFn;
+use campfire_net_frame_interpolation::linear_lerp;
 use campfire_net_replication::ComponentRegistration;
 use campfire_net_replication::ComponentRegistrator;
 use campfire_net_replication::Diffable;
+use campfire_net_replication::HistoryComponent;
 use core::fmt::Debug;
 
 /// Registration state returned after prediction has been enabled for a component.
@@ -16,13 +16,10 @@ use core::fmt::Debug;
 /// Rollback comparison and visual correction are only meaningful for a predicted component, so
 /// they are only on this state.
 ///
-/// A correction smooths a rollback by storing the pre-rollback visual value and then decaying
-/// the difference between that value and the corrected state over several frames. It does not
-/// register an interpolation rule: the corrected component needs an applicable rule with an
-/// interpolation function when correction runs, a component rule for `C` or a bundle rule such
-/// as `(A, B)` that contains `C`. Other members of the selected bundle need no correction of
-/// their own: their repaired predicted frame histories are still available as inputs when
-/// computing the corrected sample for `C`.
+/// A correction smooths a rollback by storing the visual before it and then decaying the
+/// difference between that visual and the one the corrected state shows over several frames. It
+/// registers no frame rule: the corrected component needs a frame rule that shows it through the
+/// visual the correction names.
 #[derive(Debug)]
 pub struct PredictedComponentRegistration<'a, C, M> {
     registration: ComponentRegistration<'a, C, M>,
@@ -47,40 +44,47 @@ impl<'a, C, M> PredictedComponentRegistration<'a, C, M> {
         self
     }
 
-    /// Store the pre-rollback visual value without the stack's correction systems, for a
-    /// correction applied elsewhere: for example when `Position` and `Rotation` are predicted
-    /// but correction and frame interpolation are applied on `Transform`.
+    /// Store the value `C` held before each rollback without the stack's correction systems, for
+    /// a correction the app applies itself: for example when `Position` and `Rotation` are
+    /// predicted and the app's own system corrects the `Transform` it makes of both.
     pub fn correct_custom(self) -> Self
     where
         C: HistoryComponent,
     {
-        prediction_registry::open(self.registration.app).set_corrected::<C>();
+        prediction_registry::open(self.registration.app).set_custom_correction::<C>();
         self
     }
 
-    /// Correct rollbacks by linear interpolation on errors of type `D`, the diff type
-    /// [`Diffable::diff`] returns for `C`: the error decays from `D::default()` along an
-    /// [`Ease`] curve. `D` is `C` for a component that diffs into itself.
-    pub fn correct_linear<D>(self) -> Self
+    /// Correct rollbacks on `C`'s visual `V` by linear interpolation on errors of type `D`, the
+    /// diff type [`Diffable::diff`] returns for `V`: the error decays from `D::default()` along an
+    /// [`Ease`] curve. `D` is `V` for a visual that diffs into itself.
+    pub fn correct_linear<V, D>(self) -> Self
     where
-        C: HistoryComponent + Diffable<D>,
+        C: HistoryComponent,
+        V: HistoryComponent + Diffable<D>,
         D: Ease + Debug + Clone + Default + Send + Sync + 'static,
     {
-        self.correct_with::<D>(linear_lerp::<D>)
+        self.correct_with::<V, D>(linear_lerp::<D>)
     }
 
-    /// Correct rollbacks by `correction_fn` on errors of type `D`: for a `D` that should not
-    /// use [`Ease`] interpolation, or whose decay follows component-specific logic.
-    pub fn correct_with<D>(self, correction_fn: LerpFn<D>) -> Self
+    /// Correct rollbacks on `C`'s visual `V` by `correction_fn` on errors of type `D`: for a `D`
+    /// that should not use [`Ease`] interpolation, or whose decay follows component-specific
+    /// logic.
+    ///
+    /// # Panics
+    ///
+    /// As the app finishes its plugins, when no frame rule shows `C` through `V`.
+    pub fn correct_with<V, D>(self, correction_fn: LerpFn<D>) -> Self
     where
-        C: HistoryComponent + Diffable<D>,
+        C: HistoryComponent,
+        V: HistoryComponent + Diffable<D>,
         D: Debug + Clone + Default + Send + Sync + 'static,
     {
         let app = &mut *self.registration.app;
-        app.insert_resource(correction::CorrectionFn::<C, D>::new(correction_fn));
         let mut registry = prediction_registry::open(app);
-        registry.set_corrected::<C>();
-        registry.defer(correction::add_correction_systems::<C, D>);
+        let correction = correction::CorrectionFn::<C, V, D>::new(correction_fn);
+        registry.set_stack_correction::<C>(correction);
+        registry.defer(correction::add_correction_systems::<C, V, D>);
         self
     }
 }

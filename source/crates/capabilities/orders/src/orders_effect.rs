@@ -5,6 +5,7 @@ use campfire_script::{Effect, EffectKind, Frame};
 use campfire_sim::SimWorld;
 use campfire_units::{MapBook, UnitOrdered};
 
+use crate::attack_move::GoalDues;
 use crate::resetting::Resetting;
 use crate::unit_order::{OrderedUnit, UnitDues, UnitOrder};
 
@@ -30,17 +31,23 @@ impl Effect for OrdersEffect {
         }
         let order = ProgressDues::with(world, id, entity, |world, progress| {
             RouteDues::with(world, id, entity, |world, routes| {
-                let mut unit = world.entity_mut(entity);
-                let parts = unit
-                    .get_components_mut::<OrderedUnit>()
-                    .expect("an ordered unit stands");
-                let mut dues = UnitDues {
-                    progress: progress.reborrow(),
-                    routes: routes.reborrow(),
-                };
-                self.0.give(parts, &bounds, now, &mut dues)
+                GoalDues::with(world, id, entity, |world, goals| {
+                    let mut unit = world.entity_mut(entity);
+                    let parts = unit
+                        .get_components_mut::<OrderedUnit>()
+                        .expect("an ordered unit stands");
+                    let mut dues = UnitDues {
+                        progress: progress.reborrow(),
+                        routes: routes.reborrow(),
+                        goals: goals.reborrow(),
+                    };
+                    self.0.give(parts, &bounds, now, &mut dues)
+                })
             })
         });
+        let Some(order) = order else {
+            return;
+        };
         if self.0 == UnitOrder::Reset {
             world.entity_mut(entity).insert(Resetting);
         }

@@ -6,7 +6,7 @@ use campfire_math::Num;
 use campfire_script::{ApiBuilder, CallError, Frame, View};
 use campfire_sim::Capability;
 use campfire_units::{CollisionData, SpawnAt};
-use campfire_values::{Named, Number, UnitType};
+use campfire_values::{Named, Number, TypeScope, UnitType};
 use serde::Deserialize;
 
 use crate::action_target::ActionTarget;
@@ -80,7 +80,7 @@ impl ListedEffect for SpawnEffectData {
             return Err(cx.unknown(UnitType::NAMES, &self.unit_type));
         };
         let collision = spawned.section::<CollisionData>();
-        if collision.is_some_and(|collision| collision.form.is_box()) {
+        if collision.is_some_and(|collision| collision.shape.is_box()) {
             return Err(cx.fail(EffectRule::SpawnBox));
         }
         Ok(())
@@ -88,7 +88,10 @@ impl ListedEffect for SpawnEffectData {
 
     fn resolve(&self, cx: &mut dyn EffectResolveCx) -> Result<Arc<dyn ListedSpec>, EffectError> {
         Ok(Arc::new(SpawnEffectSpec {
-            unit_type: cx.names().package_type(&self.unit_type)?,
+            unit_type: cx.names().named::<UnitType>((
+                TypeScope::of_package(cx.names().package()),
+                self.unit_type.as_str(),
+            ))?,
             duration_ms: cx.amount_if(self.duration_ms.as_ref())?,
         }))
     }
@@ -96,12 +99,20 @@ impl ListedEffect for SpawnEffectData {
 
 impl ListedSpec for SpawnEffectSpec {
     /// Queues the unit where the acting unit stands, for a spawn to the source, or at the point
-    /// or the unit the list reached, of the acting unit's team and player.
+    /// or the unit the list reached, of the caster's allegiance as its action began, which a
+    /// delivery's list keeps once its caster is gone. A spawn to the source of a caster gone spawns
+    /// nothing, as it has no place, as the area of a land does.
     fn queue(&self, at: ListedAt, frame: &mut Frame, view: &View) -> Result<(), CallError> {
-        let source = frame.acting().and_then(|id| view.row(id));
-        let source = source.expect("an action's list runs for its acting unit");
+        let allegiance = frame
+            .allegiance()
+            .expect("an action's list runs for its caster's allegiance");
         let position = match (at.to, at.reached) {
-            (EffectTo::Source, _) => source.position,
+            (EffectTo::Source, _) => {
+                let Some(source) = frame.acting().and_then(|id| view.row(id)) else {
+                    return Ok(());
+                };
+                source.position
+            }
             (EffectTo::Reached, ActionTarget::Point(point)) => point,
             (EffectTo::Reached, ActionTarget::Unit(id)) => {
                 view.row(id)
@@ -115,8 +126,8 @@ impl ListedSpec for SpawnEffectSpec {
         let spawn = SpawnAt {
             id: frame.take_id(),
             unit_type: self.unit_type,
-            team: source.team,
-            owner: source.owner,
+            team: allegiance.team,
+            owner: allegiance.owner,
             position,
             angle: Num::ZERO,
         };

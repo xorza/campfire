@@ -5,6 +5,7 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 use campfire_values::Team;
 
+use crate::script_host::call_charge::CallCharge;
 use crate::scripts::view::filter::Filter;
 use crate::scripts::view::unit_row::UnitRow;
 use crate::scripts::view::view_column::ViewColumns;
@@ -53,40 +54,43 @@ impl TargetIndex {
     }
 
     /// Calls `visit` with the body of each target of `rows` that `query` reaches and `seen` lets
-    /// by the rows' columns, in the order the grid holds them.
+    /// by the rows' columns, in the order the grid holds them; a step of `charge` for each body
+    /// the grid gives.
     pub(crate) fn visit(
         &mut self,
         rows: &ViewRows,
         query: TargetQuery<'_>,
-        seen: impl Fn(&ViewColumns, usize) -> bool,
+        (seen, charge): (impl Fn(&ViewColumns, usize) -> bool, &CallCharge),
         visit: impl FnMut(&Indexed<usize, StableId>),
     ) {
         self.index(rows.units());
-        Self::each_reached(&self.bodies, rows, query, seen, visit);
+        Self::each_reached(&self.bodies, rows, query, (seen, charge), visit);
     }
 
-    /// The rows of the targets of `rows` that `query` reaches and `seen` lets, in row order.
+    /// The rows of the targets of `rows` that `query` reaches and `seen` lets, in row order; a
+    /// step of `charge` for each body the grid gives.
     pub(crate) fn find(
         &mut self,
         rows: &ViewRows,
         query: TargetQuery<'_>,
-        seen: impl Fn(&ViewColumns, usize) -> bool,
+        (seen, charge): (impl Fn(&ViewColumns, usize) -> bool, &CallCharge),
     ) -> &[usize] {
         self.index(rows.units());
         self.found.clear();
-        Self::each_reached(&self.bodies, rows, query, seen, |entry| {
+        Self::each_reached(&self.bodies, rows, query, (seen, charge), |entry| {
             self.found.push(entry.key);
         });
         self.found.sort_unstable();
         &self.found
     }
 
-    /// Calls `visit` with each body of `bodies` that `query` reaches and `seen` lets.
+    /// Calls `visit` with each body of `bodies` that `query` reaches and `seen` lets, a step of
+    /// `charge` for each the grid gives.
     fn each_reached(
         bodies: &BodyGrid<usize, StableId>,
         rows: &ViewRows,
         query: TargetQuery<'_>,
-        seen: impl Fn(&ViewColumns, usize) -> bool,
+        (seen, charge): (impl Fn(&ViewColumns, usize) -> bool, &CallCharge),
         mut visit: impl FnMut(&Indexed<usize, StableId>),
     ) {
         let TargetQuery {
@@ -100,6 +104,7 @@ impl TargetIndex {
         let metric = rows.metric();
         let from = Placed::new(from, shape);
         bodies.visit_near(from.position, reach, |entry| {
+            charge.add(1);
             let row = &rows.units()[entry.key];
             let relation = rows.relations().between(team, row.team);
             if metric.reaches(from, radius, entry.body)

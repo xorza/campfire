@@ -1,17 +1,21 @@
 use bevy_ecs::world::{Mut, World};
-use campfire_common::ErrorReport;
+use campfire_capabilities::Release;
 use campfire_common::Tick;
 use campfire_log::LogEvent;
 use campfire_mode::{MatchEnd, MatchResult, ModeWorld};
-use campfire_protocol::{Checkpoint, Outcome, SeatChangeKind, SessionResult, SnapshotFingerprint};
+use campfire_protocol::{
+    Checkpoint, LogLoadError, Outcome, PlayerSlotChangeKind, SessionResult, SnapshotFingerprint,
+};
 use campfire_script::ScriptFailures;
 use campfire_sim::{
-    SeatEvent, SeatEventKind, SimRng, SimTick, SimUpdate, SimWorld, TickInput, TickInputs,
+    PlayerSlotEvent, PlayerSlotEventKind, SimRng, SimTick, SimUpdate, SimWorld, TickInput,
+    TickInputs,
 };
 
 use crate::events::script_call_failed::ScriptCallFailed;
 use crate::session::Session;
-use crate::session::error::ResultMismatch;
+use crate::session::error::{ResultMismatch, SaveLoadError};
+use crate::session::session_source::ResumeAt;
 
 /// What a session gives the world that runs its match: a bare one on a verifier, the network
 /// stack's on a server.
@@ -22,9 +26,9 @@ pub trait SessionWorld {
     /// The session of the match, to change.
     fn session_mut(&mut self) -> Mut<'_, Session>;
 
-    /// Seals the next tick in the session's log and runs it with the inputs and the changes of
-    /// a seat's controller applied in it, drawing from the seed of the segment that starts there
-    /// when one does, and logs each script call of the tick that failed.
+    /// Seals the next tick in the session's log and runs it with the inputs and the changes of a
+    /// player slot's controller applied in it, drawing from the seed of the segment that starts
+    /// there when one does, and logs each script call of the tick that failed.
     fn run_session_tick(&mut self);
 
     /// Runs the next tick as `run_session_tick` does, in a world no `App` updates, a replay, a
@@ -64,6 +68,14 @@ pub trait SessionWorld {
     /// Whether the log's result, once every tick before it ran, holds: its state hash is the
     /// state's, and its outcome the one the mode ended the match with, aborted when it did not.
     fn check_result(&self) -> Result<(), ResultMismatch>;
+
+    /// Loads the save `at` in place, in a live session: the log goes back to it, as
+    /// `SessionLog::load` says; the match clears, as `Release::clear` says, and the save's
+    /// snapshot restores into it, drawing from its segment's seed, so it plays on as a fresh
+    /// restore of the save would (08-sessions.md, A load goes back in place). An error, with
+    /// nothing changed, when the log holds no such save or no room for the load, or the snapshot
+    /// is not the one the save names.
+    fn load_save(&mut self, at: ResumeAt<'_>) -> Result<(), SaveLoadError>;
 }
 
 impl SessionWorld for World {
@@ -101,7 +113,7 @@ impl SessionWorld for World {
             let changes = if let Some(replay) = &mut session.replay {
                 for input in replay.seal_tick(&session.log) {
                     inputs.push(TickInput {
-                        seat: input.seat,
+                        player_slot: input.player_slot,
                         payload: input.payload,
                     });
                 }
@@ -109,7 +121,7 @@ impl SessionWorld for World {
             } else {
                 for input in session.log.seal_tick(session.journal.as_mut()) {
                     inputs.push(TickInput {
-                        seat: input.seat,
+                        player_slot: input.player_slot,
                         payload: input.payload,
                     });
                 }
@@ -117,11 +129,11 @@ impl SessionWorld for World {
             };
             for change in changes {
                 let kind = match change.kind {
-                    SeatChangeKind::Joined { .. } => SeatEventKind::Joined,
-                    SeatChangeKind::Left { .. } => SeatEventKind::Left,
+                    PlayerSlotChangeKind::Joined { .. } => PlayerSlotEventKind::Joined,
+                    PlayerSlotChangeKind::Left { .. } => PlayerSlotEventKind::Left,
                 };
-                inputs.push_seat_event(SeatEvent {
-                    seat: change.seat,
+                inputs.push_player_slot_event(PlayerSlotEvent {
+                    player_slot: change.player_slot,
                     kind,
                 });
             }
@@ -135,7 +147,7 @@ impl SessionWorld for World {
                     tick,
                     unit: failure.id,
                     hook: failure.hook.name.to_owned(),
-                    error: ErrorReport::of(&failure.error).to_string(),
+                    error: failures.text(failure).to_string(),
                 }
                 .log();
             }
@@ -229,6 +241,35 @@ impl SessionWorld for World {
                 ended,
             });
         }
+        Ok(())
+    }
+
+    fn load_save(&mut self, at: ResumeAt<'_>) -> Result<(), SaveLoadError> {
+        let session = self.session();
+        debug_assert!(session.replay.is_none(), "a live session loads a save");
+        let record = session
+            .log
+            .checkpoints()
+            .find(|record| record.segment == at.segment)
+            .ok_or(SaveLoadError::Log(LogLoadError::NoCheckpoint))?
+            .clone();
+        if SnapshotFingerprint::of(at.snapshot) != record.snapshot {
+            return Err(SaveLoadError::Fingerprint);
+        }
+        self.resource_scope(|world, mut session: Mut<'_, Session>| {
+            session.load(at.segment).map_err(SaveLoadError::Log)?;
+            Release::clear(world);
+            let server_seed = session
+                .seeds
+                .seed(at.segment)
+                .expect("the seeds reach the log's last segment");
+            let seed = session.log.header().segment_seed(at.segment, server_seed);
+            world.insert_resource(SimRng::new(seed));
+            session.segment = at.segment;
+            Ok(())
+        })?;
+        Session::restore_checked(self, &record, at.snapshot)
+            .expect("the session's own save restores to the state its checkpoint records");
         Ok(())
     }
 }

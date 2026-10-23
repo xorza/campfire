@@ -1,9 +1,10 @@
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_script::{
     ApiBuilder, ApiHolder, ApiVersion, Applies, Checked, Ctx, MemberDecl, ScriptValue, Status, Unit,
 };
 use campfire_units::{Meter, PoolId, StatId};
 use campfire_values::{ModifierId, Rank, TagProperty};
+use campfire_visibility::DataKind;
 
 use crate::modifier_data::{AuraData, ModifierData};
 use crate::modifier_handle::ModifierHandle;
@@ -28,7 +29,7 @@ impl StatsApi {
         api.bind(
             field("level", "its level"),
             |unit: &mut Unit| -> Checked<i64> {
-                let level = StatsColumn::level(unit.view(), unit.row_index()?)?;
+                let level = StatsColumn::level(unit.view(), unit.admit(DataKind::Unit)?)?;
                 Ok(i64::from(level))
             },
         )
@@ -38,7 +39,9 @@ impl StatsApi {
                 &[&["name"]],
                 "its value of a stat the mode declares",
             ),
-            |unit: Unit, stat: StatId| StatsColumn::stat(unit.view(), unit.row_index()?, stat),
+            |unit: Unit, stat: StatId| {
+                StatsColumn::stat(unit.view(), unit.admit(DataKind::Modifiers)?, stat)
+            },
         )
         .method(
             method(
@@ -47,13 +50,15 @@ impl StatsApi {
                 "the current amount of its pool `name`",
             ),
             |unit: Unit, pool: PoolId| {
-                StatsColumn::pool(unit.view(), unit.row_index()?, pool, Meter::current)
+                let row = unit.admit(StatsColumn::pool_kind(unit.view(), pool))?;
+                StatsColumn::pool(unit.view(), row, pool, Meter::current)
             },
         )
         .method(
             method("pool_max", &[&["name"]], "the maximum of its pool `name`"),
             |unit: Unit, pool: PoolId| {
-                StatsColumn::pool(unit.view(), unit.row_index()?, pool, Meter::max)
+                let row = unit.admit(StatsColumn::pool_kind(unit.view(), pool))?;
+                StatsColumn::pool(unit.view(), row, pool, Meter::max)
             },
         )
         .method(
@@ -63,7 +68,7 @@ impl StatsApi {
                 "whether it carries the modifier of the script's package",
             ),
             |unit: Unit, id: ModifierId| {
-                StatsColumn::has_modifier(unit.view(), unit.row_index()?, id)
+                StatsColumn::has_modifier(unit.view(), unit.admit(DataKind::Modifiers)?, id)
             },
         );
         let modifier = method(
@@ -86,7 +91,7 @@ impl StatsApi {
     fn modifier(ctx: &Ctx, unit: &Unit, id: ModifierId, pick: CarriedPick) -> Checked<ScriptValue> {
         let carried = Carried {
             carrier: unit.id,
-            row: unit.row_index()?,
+            row: unit.admit(DataKind::Modifiers)?,
             id,
             pick,
         };
@@ -109,7 +114,7 @@ impl StatsApi {
                  action, so the modifier declares each param it reads",
             )
             .applies(Applies::WithoutAction),
-            |ctx: &mut Ctx, player: Seat, id: ModifierId| {
+            |ctx: &mut Ctx, player: PlayerSlot, id: ModifierId| {
                 Self::add_player_modifier(ctx, player, id)
             },
         )
@@ -120,7 +125,7 @@ impl StatsApi {
                 "takes the modifier `id` of the script's package from `player`, and so from each \
                  unit it owns, if it holds it",
             ),
-            |ctx: &mut Ctx, player: Seat, id: ModifierId| {
+            |ctx: &mut Ctx, player: PlayerSlot, id: ModifierId| {
                 ctx.queue(StatsEffect::RemovePlayer { player, id })
             },
         )
@@ -138,7 +143,7 @@ impl StatsApi {
 
     /// Queues modifier `id` of the call's package for `player`, one of the session's; an error
     /// when `id` reads a param it does not declare.
-    fn add_player_modifier(ctx: &Ctx, player: Seat, id: ModifierId) -> Checked<()> {
+    fn add_player_modifier(ctx: &Ctx, player: PlayerSlot, id: ModifierId) -> Checked<()> {
         StatsColumn::check_way(
             ctx.view(),
             StatsCall::of(&ctx.frame()),

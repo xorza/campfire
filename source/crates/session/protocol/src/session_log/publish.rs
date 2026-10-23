@@ -1,15 +1,20 @@
 //! The published log, written from the log's journal in two walks of its records.
 
+use std::io::{self, Write};
+use std::mem;
 use std::ops::Range;
 
+use campfire_codec::Binary;
+use serde::Serialize;
+
 use crate::server_seed::ServerSeed;
-use crate::session_log::error::PublishError;
+use crate::session_log::error::{PublishError, PublishWriteError};
 use crate::session_log::file::{LOG_TAG, PACKET_ENTRY, SERVER_ENTRY};
 use crate::session_log::journal_records::{
     JOURNAL_CHECKPOINT_BEGUN, JOURNAL_CHECKPOINT_DONE, JOURNAL_HEADER, JOURNAL_LOADED,
     JOURNAL_PACKET, JOURNAL_RESULT, JOURNAL_SEALED, JOURNAL_SERVER,
 };
-use crate::session_log::{SessionLog, offset, put, take};
+use crate::session_log::{SessionLog, offset, take};
 
 /// What gives a journal's records in order, each to the function it is given, at each call.
 pub(crate) type JournalWalk<'w> = dyn FnMut(&mut dyn FnMut(&[u8])) + 'w;
@@ -51,27 +56,61 @@ struct Cursor {
     entered: bool,
 }
 
+/// The published file as it goes to its writer: each value encoded into one scratch buffer and
+/// written on; the first write that fails stops the rest, and its error ends the publication.
+struct PublishOut<'w> {
+    writer: &'w mut dyn Write,
+    scratch: Vec<u8>,
+    failed: Option<io::Error>,
+}
+
+impl PublishOut<'_> {
+    fn bytes(&mut self, bytes: &[u8]) {
+        if self.failed.is_none()
+            && let Err(error) = self.writer.write_all(bytes)
+        {
+            self.failed = Some(error);
+        }
+    }
+
+    fn byte(&mut self, byte: u8) {
+        self.bytes(&[byte]);
+    }
+
+    fn put<T: Serialize + ?Sized>(&mut self, value: &T) {
+        let mut scratch = mem::take(&mut self.scratch);
+        scratch.clear();
+        Binary::encode_into(value, &mut scratch);
+        self.bytes(&scratch);
+        self.scratch = scratch;
+    }
+}
+
 impl SessionLog {
-    /// Writes into `out`, which is cleared first, the file of the log whose journal `walk` gives,
+    /// Writes into `writer` the file of the log whose journal `walk` gives,
     /// with the server seed `revealed` of its last segment: the bytes `encode` writes for the log
     /// the journal rebuilds, each load's cut applied (08-sessions.md, A published log is written
     /// from the journal). `walk` gives the journal's records in order to the function it is given,
     /// twice: once to count what the file's counts need, once to write each record the file
     /// keeps, so the memory a publication takes is a record's and the counts'. An error for a
-    /// journal that holds no header, a record that does not read, and a checkpoint begun with no
-    /// record.
+    /// journal that holds no header, a record that does not read, a checkpoint begun with no
+    /// record, and a write that fails.
     pub fn publish(
         walk: &mut JournalWalk<'_>,
         revealed: &ServerSeed,
-        out: &mut Vec<u8>,
-    ) -> Result<(), PublishError> {
+        writer: &mut dyn Write,
+    ) -> Result<(), PublishWriteError> {
         let shape = Shape::of(walk)?;
-        out.clear();
-        out.extend_from_slice(LOG_TAG);
-        out.extend_from_slice(&shape.header);
+        let out = &mut PublishOut {
+            writer,
+            scratch: Vec::new(),
+            failed: None,
+        };
+        out.bytes(LOG_TAG);
+        out.bytes(&shape.header);
         // A published log is the whole session's: its first segment is 0.
-        put(out, &0_u32);
-        put(out, &offset(shape.segments.len()));
+        out.put(&0_u32);
+        out.put(&offset(shape.segments.len()));
         let mut cursor = Cursor::default();
         let mut index = 0;
         walk(&mut |record| {
@@ -98,19 +137,21 @@ impl SessionLog {
             cursor.enter(&shape, out);
             let open = cursor.open.as_mut().expect("an entry goes in a tick");
             *open -= 1;
-            out.push(entry);
-            out.extend_from_slice(body);
+            out.byte(entry);
+            out.bytes(body);
         });
         cursor.finish(&shape, out);
-        put(out, &Some(revealed));
+        out.put(&Some(revealed));
         match &shape.result {
             Some(result) => {
-                out.push(1);
-                out.extend_from_slice(result);
+                out.byte(1);
+                out.bytes(result);
             }
-            None => out.push(0),
+            None => out.byte(0),
         }
-        Ok(())
+        out.failed
+            .take()
+            .map_or(Ok(()), |error| Err(PublishWriteError::Write(error)))
     }
 }
 
@@ -208,7 +249,7 @@ impl Cursor {
     /// Opens the next place an entry goes, when none is open: the next tick of the segment, past
     /// those it wrote, its segment's own counts first, or, past the last segment's last tick, the
     /// entries since the last tick.
-    fn enter(&mut self, shape: &Shape, out: &mut Vec<u8>) {
+    fn enter(&mut self, shape: &Shape, out: &mut PublishOut<'_>) {
         if self.open.is_some() || self.tail {
             return;
         }
@@ -216,22 +257,19 @@ impl Cursor {
             let Some(segment) = shape.segments.get(self.segment) else {
                 self.tail = true;
                 self.open = Some(shape.tail);
-                put(out, &shape.tail);
+                out.put(&shape.tail);
                 return;
             };
             if !self.entered {
                 if let Some(record) = &segment.record {
-                    out.extend_from_slice(record);
+                    out.bytes(record);
                 }
-                put(
-                    out,
-                    &u64::try_from(segment.ticks.len()).expect("ticks fit u64"),
-                );
+                out.put(&u64::try_from(segment.ticks.len()).expect("ticks fit u64"));
                 self.entered = true;
             }
             if let Some(&count) = segment.ticks.get(self.tick) {
                 self.open = Some(count);
-                put(out, &count);
+                out.put(&count);
                 return;
             }
             self.segment += 1;
@@ -242,7 +280,7 @@ impl Cursor {
 
     /// Writes the counts of what follows the last record: the segments of no tick after it, and
     /// the entries since the last tick.
-    fn finish(&mut self, shape: &Shape, out: &mut Vec<u8>) {
+    fn finish(&mut self, shape: &Shape, out: &mut PublishOut<'_>) {
         debug_assert!(
             self.tail || self.open.is_none(),
             "only the entries since the last tick stay open"

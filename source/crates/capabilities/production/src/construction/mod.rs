@@ -1,10 +1,11 @@
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut, SystemState};
 use bevy_ecs::world::{EntityMut, World};
 use campfire_actions::{ActionBook, ActionKind, ActionSlots, Payer, SlotCommit, SlotTimes};
 use campfire_common::Tick;
-use campfire_declarations::{ByType, RoleForm};
+use campfire_declarations::{ById, RoleForm};
 use campfire_geometry::Placed;
 use campfire_math::Num;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
@@ -13,8 +14,8 @@ use campfire_sim::{
 };
 use campfire_stats::{StatsWorld, UnitPools};
 use campfire_units::{
-    Body, BuildTarget, Dead, Destination, GridBuild, Life, MapBook, Owner, SpawnAt, Spawner,
-    StatusTags,
+    Body, BuildTarget, Dead, GridBuild, Life, MapBook, Owner, SpawnAt, Spawner, StatusTags,
+    Unfinished, Walk,
 };
 use campfire_values::{Team, UnitTags, UnitType};
 use campfire_vision::TeamSight;
@@ -48,7 +49,7 @@ impl Construction {
         let unit_type = *world
             .get::<UnitType>(entity)
             .expect("a producer has a type");
-        let producers = world.resource::<ByType<ProducerSpec>>();
+        let producers = world.resource::<ById<UnitType, ProducerSpec>>();
         let Some(spec) = producers.get(unit_type) else {
             return;
         };
@@ -161,17 +162,17 @@ impl Construction {
                 .expect("a build view is always valid")
                 .step(entity);
             match step {
-                Step::Walk(to) => Destination::go_to(world, entity, Some(to)),
-                Step::Build => Destination::go_to(world, entity, None),
+                Step::Walk(to) => Walk::go_to(world, entity, Some(to)),
+                Step::Build => Walk::go_to(world, entity, None),
                 Step::Take(site) => {
-                    Destination::go_to(world, entity, None);
+                    Walk::go_to(world, entity, None);
                     let id = *world.get::<StableId>(entity).expect("a builder has an id");
                     let mut site_part = world.get_mut::<Site>(site).expect("a site to take");
                     site_part.hold(id);
                 }
                 Step::End => Builder::set_in(world, entity, None),
                 Step::Start(start) => {
-                    Destination::go_to(world, entity, None);
+                    Walk::go_to(world, entity, None);
                     Self::spawn_site::<S>(world, entity, start, &mut paid);
                 }
             }
@@ -214,7 +215,7 @@ impl Construction {
             let pools = pools.expect("a builder's pools").of(life);
             Payer::of(pools, resources).pay(&start.cost, paid);
         };
-        let player = owner.and_then(|owner| world.player_entity(owner.seat()));
+        let player = owner.and_then(|owner| world.player_entity(owner.player_slot()));
         match (F::PREDICTS, player) {
             (true, _) => {}
             (false, Some(player)) => {
@@ -249,7 +250,7 @@ impl Construction {
             unit_type: start.unit_type,
             team,
             position: start.position,
-            owner: owner.map(Owner::seat),
+            owner: owner.map(Owner::player_slot),
             angle: start.angle,
         };
         let spec = world
@@ -262,7 +263,7 @@ impl Construction {
         // The site's life starts at its share of the most its type's life holds, as it spawns; a
         // mode of no life pool has no book of lives, and its site no life.
         let full = world
-            .get_resource::<ByType<Life>>()
+            .get_resource::<ById<UnitType, Life>>()
             .and_then(|lives| lives.get(start.unit_type).copied());
         let gain = full.map_or(Num::ZERO, |full| {
             let max = full.max();
@@ -308,7 +309,7 @@ impl Construction {
             Res<'_, ActionBook>,
             Res<'_, BuildBook>,
             Res<'_, MapBook>,
-            Res<'_, ByType<ProducerSpec>>,
+            Res<'_, ById<UnitType, ProducerSpec>>,
         ),
         mut sites: Query<
             '_,
@@ -368,7 +369,9 @@ impl Construction {
             else {
                 continue;
             };
-            let range = slots.meters_in(&book, slot);
+            let range = slots
+                .meters_in(&book, slot)
+                .expect("a build order's slot is learned and reaches in meters");
             let placed = BuildFootprint {
                 position: at.get(),
                 body: *site_body,
@@ -403,14 +406,23 @@ impl Construction {
                 (Style::Builder, None) => 0,
                 (Style::Alone | Style::Builders(_), _) => builders,
             };
-            let progressed = progress.grow(site, spec.rate(count));
+            // A site no builder grows changes neither its progress nor its life.
+            let before = *progress;
+            let progressed = progress
+                .bypass_change_detection()
+                .grow(site, spec.rate(count));
+            if *progress != before {
+                progress.set_changed();
+            }
             // Life is sent on change and not predicted (10-replication-audiences.md, A client
             // writes only what it predicts or derives).
-            if let Some(mut life) = life.filter(|_| !F::PREDICTS) {
+            if let Some(mut life) = life.filter(|_| !F::PREDICTS && progressed.life != Num::ZERO) {
                 life.add(progressed.life);
             }
             if progressed.complete {
-                commands.entity(entity).remove::<(Site, SiteProgress)>();
+                commands
+                    .entity(entity)
+                    .remove::<(Site, SiteProgress, Unfinished)>();
                 *status = status.turned(Production::CONSTRUCTING, false);
                 done.push(id);
                 if producers.get(unit_type).is_some_and(ProducerSpec::sends) && !F::PREDICTS {

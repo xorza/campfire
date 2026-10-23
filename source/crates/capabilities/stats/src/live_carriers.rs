@@ -84,6 +84,11 @@ impl Cache for LiveCarriers {
     fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
+
+    fn clear(&mut self) {
+        self.carried.clear();
+        self.ids.clear();
+    }
 }
 
 #[cfg(feature = "internals")]

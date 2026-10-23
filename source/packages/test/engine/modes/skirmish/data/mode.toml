@@ -25,7 +25,7 @@ start_offset_base = "2"
 start_building_outpost = "center"
 start_units_outpost = []
 start_offset_outpost = "2"
-# What a seat that starts with a base gets besides, by its faction: a second center and two
+# What a player slot that starts with a base gets besides, by its faction: a second center and two
 # dozers, or nothing.
 base_buildings_base = ["center"]
 base_units_base = ["dozer"]
@@ -41,14 +41,14 @@ drop_offs_base = []
 drop_offs_outpost = []
 base_count = 2
 
-# The faction each player plays, which the session's host picks for a seat, and a seat with no
+# The faction each player plays, which the session's host picks for a player slot, and a player slot with no
 # pick draws.
 [choices.faction]
 name = "choice-faction"
 offers = "values"
 values = ["base", "outpost"]
 
-# Whether each seat starts with a base too, which the session's host picks for a seat; a seat
+# Whether each player slot starts with a base too, which the session's host picks for a player slot; a player_slot
 # with no pick starts with none.
 [choices.start]
 name = "choice-start"

@@ -163,14 +163,13 @@ mod tests {
 
     #[test]
     fn each_draw_is_blake3_of_the_seed_and_its_count_and_a_fixed_entropy_repeats() {
-        // BLAKE3 of the domain's tag, the seed, then the count as 8 little-endian bytes.
+        // BLAKE3 keyed by the domain's tag, of the seed, then the count as 8 little-endian bytes.
         let seeded = AuxDraws::Seeded {
             seed: Zeroizing::new([5; 32]),
             drawn: AtomicU64::new(0),
         };
         let by_hand = |count: u64| {
-            let mut hasher = blake3::Hasher::new();
-            hasher.update(b"campfire/signature-aux/v1");
+            let mut hasher = blake3::Hasher::new_derive_key("campfire/signature-aux/v1");
             hasher.update(&[5; 32]);
             hasher.update(&count.to_le_bytes());
             *hasher.finalize().as_bytes()

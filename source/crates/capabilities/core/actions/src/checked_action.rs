@@ -135,7 +135,7 @@ impl CheckedAction<'_> {
     /// What it aims at, as `targets` hold it.
     fn aimed(&self, targets: &Targets<'_, '_>) -> Aimed {
         match (self.action.aim, self.target) {
-            (Aim::Unit(_), ActionTarget::Unit(target)) => match targets.living(target) {
+            (Aim::Unit(_), ActionTarget::Unit(target)) => match targets.target(target) {
                 Some(unit) => Aimed::At(Placed::new(unit.position, unit.shape)),
                 None => Aimed::Gone,
             },

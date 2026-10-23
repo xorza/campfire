@@ -11,6 +11,7 @@ use crate::scripts::script_args::ScriptArgs;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_value::ScriptValue;
+use crate::scripts::view::call_sight::CallSight;
 
 /// A group of script calls in one stage: they share the view as the stage began, the `ctx` of
 /// their calls, and the host, out of the world while they run.
@@ -30,12 +31,30 @@ impl ScriptBatch<'_> {
     /// Runs one call in the batch's frame: begins `start`, then runs `body`, which queues what
     /// the call does and calls its script; applies the frame in the call's tick when both succeed
     /// and the call writes. A failure applies nothing, for its caller to answer.
+    ///
+    /// The call reads the view as its viewer, a bot's as its player slot's player and any other's
+    /// as the match, and the call it ran in again once it ends.
     pub fn run<T>(
         &mut self,
         start: CallStart,
         body: impl FnOnce(&mut ScriptBatch<'_>) -> Result<T, CallError>,
     ) -> Result<T, CallError> {
         let ctx = self.ctx.clone();
+        let view = ctx.view();
+        let outer = view.sight();
+        view.set_sight(CallSight::of(&start));
+        let ran = self.run_framed(&ctx, &start, body);
+        view.set_sight(outer);
+        ran
+    }
+
+    /// Runs the call `start` as `run` says, in its frame.
+    fn run_framed<T>(
+        &mut self,
+        ctx: &Ctx,
+        start: &CallStart,
+        body: impl FnOnce(&mut ScriptBatch<'_>) -> Result<T, CallError>,
+    ) -> Result<T, CallError> {
         // The frame's borrow ends before `body`, which borrows it again.
         ctx.frame().begin(self.world, start)?;
         let ran = body(self)?;

@@ -1,6 +1,6 @@
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
-use campfire_net_interpolation::FrameInterpolate;
+use campfire_net_frame_interpolation::FrameInterpolate;
 use core::fmt::Debug;
 
 /// The value a corrected component showed before a rollback or a timeline switch moved it,

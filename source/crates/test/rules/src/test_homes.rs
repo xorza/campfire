@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::allowlist::Allowlist;
 use crate::dev_dependencies::is_test_support;
-use crate::manifest::CargoManifest;
 use crate::source_file::SourceFile;
-use crate::workspace::{Crate, DevEdges, crates, holder, manifests, sources, test_build};
+use crate::workspace::{Crate, DevEdges, Workspace, holder, test_build};
 
 /// The crates of `crates` whose paths `code` names, `campfire_x::` for `campfire-x`.
 fn named_crates<'a>(crates: &'a [Crate], code: &str) -> BTreeSet<&'a str> {
@@ -81,12 +81,12 @@ fn helper_files<'s>(
 
 /// The crates whose items the tests of `taker`, a crate of `manifests`, reach: the crate, what its
 /// test build holds, and each crate of the workspace it may take as test support.
-fn reach<'a>(manifests: &'a [(String, CargoManifest)], taker: &'a str) -> BTreeSet<&'a str> {
+fn reach<'a>(manifests: &'a [Crate], taker: &'a str) -> BTreeSet<&'a str> {
     let mut reached = test_build(manifests, taker, DevEdges::Left);
     reached.insert(taker);
     let support = manifests
         .iter()
-        .map(|(name, _)| name.as_str())
+        .map(|krate| krate.name.as_str())
         .filter(|other| is_test_support(manifests, taker, other));
     reached.extend(support);
     reached
@@ -99,8 +99,8 @@ fn reach<'a>(manifests: &'a [(String, CargoManifest)], taker: &'a str) -> BTreeS
 /// `super::` or a test runs the crate's binary, lie in that crate's reach.
 fn misplaced_tests(
     crates: &[Crate],
-    manifests: &[(String, CargoManifest)],
     sources: &[SourceFile],
+    kept: &Allowlist<&str>,
 ) -> Vec<String> {
     let files: BTreeMap<&str, &SourceFile> = sources
         .iter()
@@ -128,7 +128,7 @@ fn misplaced_tests(
         if code.contains("CARGO_BIN_EXE_") {
             named.insert(own.name.as_str());
         }
-        let below: BTreeSet<&str> = test_build(manifests, &own.name, DevEdges::Left)
+        let below: BTreeSet<&str> = test_build(crates, &own.name, DevEdges::Left)
             .into_iter()
             .filter(|other| crates.iter().any(|krate| krate.name == *other))
             .collect();
@@ -136,9 +136,7 @@ fn misplaced_tests(
             .iter()
             .copied()
             .filter(|lower| {
-                let reached = reaches
-                    .entry(lower)
-                    .or_insert_with(|| reach(manifests, lower));
+                let reached = reaches.entry(lower).or_insert_with(|| reach(crates, lower));
                 named.is_subset(reached)
             })
             .collect();
@@ -146,11 +144,11 @@ fn misplaced_tests(
             .iter()
             .copied()
             .filter(|home| {
-                let under = test_build(manifests, home, DevEdges::Left);
+                let under = test_build(crates, home, DevEdges::Left);
                 !homes.iter().any(|other| under.contains(other))
             })
             .collect();
-        if !lowest.is_empty() && !KEPT_BY_DECISION.contains(&file.path.as_str()) {
+        if !lowest.is_empty() && !kept.allows(|path| *path == file.path) {
             found.push(format!("{} could live in {}", file.path, lowest.join(", ")));
         }
     }
@@ -159,33 +157,19 @@ fn misplaced_tests(
 
 #[test]
 fn a_test_lives_in_the_lowest_crate_that_can_hold_it() {
-    let misplaced = misplaced_tests(&crates(), &manifests(), &sources());
+    let workspace = Workspace::read();
+    let kept = Allowlist::new(&KEPT_BY_DECISION);
+    let misplaced = misplaced_tests(workspace.crates(), workspace.sources(), &kept);
     assert_eq!(misplaced, Vec::<String>::new());
+    assert_eq!(kept.unused(), Vec::<&&str>::new());
     // `high` depends on `low`. Of its test files, `a.rs` and `y/tests.rs` name `low` alone, so
     // `low` can hold them; `b.rs` names `high`, `c.rs` reads its helpers from the target's root,
     // which names `high`, `x/tests.rs` reads `super::`, and `e.rs` runs `high`'s binary, so each
     // stays; `d.rs` holds no test.
-    let krate = |name: &str, manifest: &str| Crate {
-        dir_name: name.to_owned(),
-        path: format!("crates/{name}"),
-        name: name.to_owned(),
-        manifest: CargoManifest::parse(manifest),
-    };
     let crates = [
-        krate("high", "[dependencies]\nlow.workspace = true\n"),
-        krate("low", ""),
+        Crate::sample("high", "[dependencies]\nlow.workspace = true\n"),
+        Crate::sample("low", ""),
     ];
-    let manifests = crates
-        .iter()
-        .map(|krate| {
-            let text = if krate.name == "high" {
-                "[dependencies]\nlow.workspace = true\n"
-            } else {
-                ""
-            };
-            (krate.name.clone(), CargoManifest::parse(text))
-        })
-        .collect::<Vec<_>>();
     let test = "#[test]\nfn t() {}\n";
     let sources = [
         (
@@ -211,7 +195,7 @@ fn a_test_lives_in_the_lowest_crate_that_can_hold_it() {
     ]
     .map(|(path, text)| SourceFile::new(path, text));
     assert_eq!(
-        misplaced_tests(&crates, &manifests, &sources),
+        misplaced_tests(&crates, &sources, &Allowlist::new(&[])),
         [
             "crates/high/tests/a.rs could live in low",
             "crates/high/src/y/tests.rs could live in low",

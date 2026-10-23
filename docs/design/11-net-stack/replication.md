@@ -58,6 +58,17 @@ visibility.
   first, which leaves the receiver's own despawns recursive. Source: Unreal does not destroy the
   actors attached to an actor it destroys, and an app that wants them gone destroys them itself
   (Epic Developer Community, "How can you destroy attached actors when parent is destroyed?").
+- **The value on screen is its own component.** A frame rule maps a fixed-tick component `C` to a
+  visual component `V` the app names, which each frame writes from `C`'s last two ticks at the fixed
+  overstep, and on an entity that is not frame-interpolated from `C`'s live value; `C` keeps the
+  simulated value, so every fixed tick, a rollback's replay among them, reads the simulation, and a
+  correction offsets `V` only where a frame rule of `C` writes it, as only that write takes the
+  offset away again. Source: Bevy's `physics_in_fixed_timestep` example, and Unity Physics'
+  graphical smoothing, which writes `LocalToWorld` and leaves `LocalTransform`. Refused: the visual
+  written into `C` and the simulated value restored before the fixed loop, which leaves every other
+  entry into the fixed schedule, a rollback's replay among them, to remember the restore; frame
+  interpolation and correction deleted, as no shipped code uses them, which loses the feature for a
+  future game.
 - **Every despawn of the replication crates is `DespawnReplicated`, in a proxy crate of its own.**
   `net-replication`, `net-interpolation` and `net-prediction` each have a `clippy.toml`, the
   workspace's plus its own entries, that bans Bevy's despawns, and `net-despawns`, the one crate

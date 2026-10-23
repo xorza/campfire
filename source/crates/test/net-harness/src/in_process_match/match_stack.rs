@@ -5,18 +5,16 @@ use bevy_ecs::world::{EntityWorldMut, World};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_app_threads::OneThreadPlugins;
+use campfire_host::internals::TickHashes;
+use campfire_host::{Hosting, JoinRole, Os, Pace, ServerPin, SessionSigner, UnixClock};
 use campfire_math::TickRate;
-use campfire_net::internals::TickHashes;
-use campfire_net::{
-    Hosting, JoinRole, LocalPacePlugin, Os, Pace, ServerPin, SessionSigner, SimClientPlugin,
-    SimServerPlugins, UnixClock,
-};
+use campfire_net::{LocalPacePlugin, SimClientPlugin, SimServerPlugins};
 use campfire_net_prediction::{PredictionSetup, RollbackMode};
 use campfire_net_stepper::Stack;
 use campfire_net_sync::{LocalTimelineSync, TimelineSync};
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Entropy, Signer};
+use campfire_values::TeamSet;
 
 use crate::in_process_match::link_layout::{LinkLayout, LinkRows};
 use crate::in_process_match::{InProcessMatch, InProcessSetup};
@@ -58,13 +56,15 @@ impl Stack for MatchStack {
             ),
             Joiner::Spectator(spectator) => (
                 TestKey::spectator(u32::try_from(spectator).unwrap()),
-                JoinRole::Watch,
+                JoinRole::Watch {
+                    teams: TeamSet::ALL,
+                },
                 RollbackMode::Check,
             ),
         };
         let sim_client = SimClientPlugin {
-            main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
-            session: SessionSigner::new(Signer::new(keys.session, Entropy::Fixed(4))),
+            main: Arc::new(TestKey::client_signer(keys.main)),
+            session: SessionSigner::new(TestKey::client_signer(keys.session)),
             server: ServerPin {
                 key: TestKey::server().x_only_public_key().0,
                 tls_key: InProcessMatch::tls_key(),
@@ -75,9 +75,10 @@ impl Stack for MatchStack {
             packages: Arc::clone(&self.packages),
             os: Os {
                 clock: self.clock.clone(),
-                entropy: Entropy::Fixed(4),
+                entropy: TestKey::client_entropy(),
             },
             data: None,
+            bot: None,
         };
         app.add_plugins((OneThreadPlugins, TimePlugin, StatesPlugin));
         app.add_plugins(sim_client);

@@ -1,10 +1,13 @@
 use std::num::NonZeroU32;
 
+use campfire_actions::{ChannelData, ChannelPaysData};
 use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnsData};
-use campfire_values::{Distance, FilterData};
+use campfire_values::{Distance, FilterData, Scalar};
 
 use super::*;
+use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
+use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::supply_import::{ImportedGather, SupplyDropCause};
 
@@ -12,22 +15,26 @@ use crate::zero_hour::supply_import::{ImportedGather, SupplyDropCause};
 fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction_building() {
     // The dozer builds the center, which the start already holds, the barracks twice, by two
     // buttons, and gathers, which makes nothing; the worker the barracks again and the factory.
-    // The center trains the dozer, the barracks the ranger and the dozer again, the factory the
-    // tank and the truck, which gathers: the base is the barracks and the factory, and the dozer,
-    // the ranger, the tank and the truck, in that order (09-zero-hour.md, A base start); its army
-    // the ranger and the tank, which neither build nor gather; its gatherers the dozer and the
-    // truck; and its drop-offs the center and the factory, which take a load.
+    // The center trains the dozer, the barracks the ranger, the dozer again and the mortar, the
+    // factory the tank, the truck, which gathers, the scout and the technical, whose chassis
+    // variant holds its weapon: the base is the barracks and the factory, and the dozer, the
+    // ranger, the mortar, the tank, the truck, the scout and the technical, in that order
+    // (09-zero-hour.md, A base start); its army the ranger, the tank and the technical, which
+    // neither build nor gather and a weapon arms, but the scout, of no weapon, and the mortar,
+    // whose weapon dropped; its gatherers the dozer and the truck; and its drop-offs the center
+    // and the factory, which take a load.
     let name = |text: &str| DeclaredName::new(text).unwrap();
-    let train = |unit: &str| ImportedAction {
-        keys: ActionKeys::new(ActionKind::Train, Targeting::None),
+    let train_of = |unit: &str, variants: &[&str]| ImportedAction {
+        keys: ActionKeys::new(Targeting::None),
         made: MadeSection::Train(TrainData {
             unit_type: name(unit),
             requires: None,
-            variants: Vec::new(),
+            variants: variants.iter().map(|&variant| name(variant)).collect(),
         }),
     };
+    let train = |unit: &str| train_of(unit, &[]);
     let build = |unit: &str| ImportedAction {
-        keys: ActionKeys::new(ActionKind::Build, Targeting::Point),
+        keys: ActionKeys::new(Targeting::Point),
         made: MadeSection::Build(BuildData {
             unit_type: name(unit),
             requires: None,
@@ -48,6 +55,9 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         ("train_ranger", train("ranger")),
         ("train_tank", train("tank")),
         ("train_truck", train("truck")),
+        ("train_mortar", train("mortar")),
+        ("train_scout", train("scout")),
+        ("train_technical", train_of("technical", &["chassis"])),
     ] {
         import.actions.insert(name(id), action);
     }
@@ -58,14 +68,20 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         ),
         ("worker", &["build_barracks", "build_factory"]),
         ("center", &["train_dozer"]),
-        ("barracks", &["train_ranger", "train_dozer"]),
-        ("factory", &["train_tank", "train_truck"]),
+        ("barracks", &["train_ranger", "train_dozer", "train_mortar"]),
+        (
+            "factory",
+            &[
+                "train_tank",
+                "train_truck",
+                "train_scout",
+                "train_technical",
+            ],
+        ),
         ("truck", &["gather"]),
     ] {
         let ids = ids.iter().map(|&id| name(id)).collect();
-        import
-            .commands
-            .insert(ImportName::of(producer.as_bytes()), ids);
+        import.commands.insert(TypeName::named(producer), ids);
     }
     import
         .supply
@@ -75,23 +91,49 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         resources: vec![name("money")],
     };
     for drop_off in ["center", "factory"] {
-        let at = ImportName::of(drop_off.as_bytes());
-        import.supply.drop_offs.insert(at, money.clone());
+        import
+            .supply
+            .drop_offs
+            .insert(TypeName::named(drop_off), money.clone());
     }
-    let base = import.base(&name("center"), &[name("dozer"), name("worker")]);
+    let mut combat = CombatImport::default();
+    for (unit, weapon) in [
+        ("ranger", "weapon_rifle"),
+        ("tank", "weapon_cannon"),
+        ("chassis", "weapon_gun"),
+    ] {
+        combat
+            .weapons
+            .insert(TypeName::named(unit), vec![name(weapon)]);
+    }
+    let start = |units: &[&str]| FactionStart {
+        name: name("faction"),
+        building: name("center"),
+        units: units.iter().map(|&unit| name(unit)).collect(),
+        offset: Num::ZERO,
+    };
+    let base = FactionBase::of(&import, &combat, &start(&["dozer", "worker"]));
     let names = |names: &[&str]| names.iter().map(|&text| name(text)).collect::<Vec<_>>();
     assert_eq!(
         base,
         FactionBase {
             buildings: names(&["barracks", "factory"]),
-            units: names(&["dozer", "ranger", "tank", "truck"]),
-            army: names(&["ranger", "tank"]),
+            units: names(&[
+                "dozer",
+                "ranger",
+                "mortar",
+                "tank",
+                "truck",
+                "scout",
+                "technical",
+            ]),
+            army: names(&["ranger", "tank", "technical"]),
             gatherers: names(&["dozer", "truck"]),
             drop_offs: names(&["center", "factory"]),
         }
     );
     // A start of no builder has no base buildings, and its faction building's trains alone.
-    let alone = import.base(&name("center"), &[]);
+    let alone = FactionBase::of(&import, &combat, &start(&[]));
     assert_eq!(
         (alone.buildings, alone.units),
         (Vec::new(), names(&["dozer"]))
@@ -112,29 +154,9 @@ fn a_sites_start_is_the_least_share_of_billionths_that_gives_one_life() {
     assert_eq!(share(Num::HALF), Share::ALL);
 }
 
-#[test]
-#[expect(
-    clippy::lossy_float_literal,
-    reason = "71,582,784 and 71,582,792 are multiples of 8, which an f32 of 2²⁶ to 2²⁷ holds exactly"
-)]
-fn a_build_time_is_its_frames_in_milliseconds_within_the_games_int() {
-    // 5 s is 150 frames, ⌊150 × 100 / 3⌋ = 5,000 ms; 0.1 s is 3 frames, 100 ms. 71,582,784 s
-    // is 2,147,483,520 frames, the most an `f32` holds below 2³¹, ⌊2,147,483,520 × 100 / 3⌋
-    // = 71,582,784,000 ms; 71,582,792 s, the next time an `f32` holds, is 2³¹ frames, past
-    // the game's `Int`, and gives none, as what is not a time at all does.
-    let windup = ProductionImport::windup_ms;
-    assert_eq!(windup(5.0), Some(5000));
-    assert_eq!(windup(0.1), Some(100));
-    assert_eq!(windup(0.0), Some(0));
-    assert_eq!(windup(71_582_784.0), Some(71_582_784_000));
-    for refused in [71_582_792.0, f32::MAX, -1.0, f32::NAN, f32::INFINITY] {
-        assert_eq!(windup(refused), None, "{refused}");
-    }
-}
-
 /// A China supply center that trains and frees its truck, a dock that stays, a pile that goes,
 /// a dock of no box, a helipad that frees a helicopter, a tunnel that trains nothing and frees
-/// a guard, and a Helix whose AI module carries no box.
+/// a guard, a Helix whose AI module carries no box, and two hackers.
 const SUPPLY: &str = "Object Center\n\
      CommandSet = CenterSet\n\
      Behavior = ProductionUpdate M1\n End\n\
@@ -151,6 +173,8 @@ const SUPPLY: &str = "Object Center\n\
     Object Pile\n Behavior = SupplyWarehouseDockUpdate M1\n  StartingBoxes = 150\n\
        DeleteWhenEmpty = Yes\n End\nEnd\n\
     Object EmptyDock\n Behavior = SupplyWarehouseDockUpdate M1\n  StartingBoxes = 0\n End\n\
+    End\n\
+    Object DropZone\n Behavior = OCLUpdate M1\n  OCL = OCL_CargoPlane\n  MinDelay = 240000\n End\n\
     End\n\
     Object Helipad\n CommandSet = HelipadSet\n Behavior = ProductionUpdate M1\n End\n\
      Behavior = SpawnBehavior M2\n  SpawnNumber = 1\n  SpawnTemplateName = Heli\n\
@@ -188,7 +212,15 @@ const SUPPLY: &str = "Object Center\n\
     Object Crowd\n Behavior = ProductionUpdate M1\n End\n\
      Behavior = SpawnBehavior M2\n  SpawnNumber = 0\n  SpawnTemplateName = Guard\n End\n\
     End\n\
-    Object Helix\n Locomotor = SET_NORMAL JetWings\n Behavior = ChinookAIUpdate M1\n End\nEnd\n";
+    Object Helix\n Locomotor = SET_NORMAL JetWings\n Behavior = ChinookAIUpdate M1\n End\nEnd\n\
+    Object Hacker\n Locomotor = SET_NORMAL TankTreads\n Behavior = HackInternetAIUpdate M1\n\
+      UnpackTime = 7900\n  PackTime = 2100\n  PackUnpackVariationFactor = 0.5\n\
+      CashUpdateDelay = 2000\n  CashUpdateDelayFast = 1800\n  RegularCashAmount = 5\n\
+      VeteranCashAmount = 6\n  EliteCashAmount = 8\n  HeroicCashAmount = 10\n\
+      XpPerCashUpdate = 1\n End\nEnd\n\
+    Object Lamer\n Locomotor = SET_NORMAL TankTreads\n Behavior = HackInternetAIUpdate M1\n\
+      CashUpdateDelay = 1000\n  CashUpdateDelayFast = 1000\n  PackUnpackVariationFactor = 0.5\n\
+     End\nEnd\n";
 
 const SETS: &str = "CommandSet CenterSet\n 1 = Command_Truck\n 2 = Command_Jeep\n\
                       3 = Command_Kite\nEnd\n\
@@ -217,6 +249,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         "Dock",
         "Pile",
         "EmptyDock",
+        "DropZone",
         "Helipad",
         "Tunnel",
         "Helix",
@@ -225,18 +258,20 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         "Shelter",
         "Crowd",
         "Haunt",
+        "Hacker",
+        "Lamer",
     ] {
         let object = rules.objects.object(placed.as_bytes()).unwrap();
-        names.unit_type(object, &rules.locomotors).unwrap();
+        names.unit_type(object, &rules).unwrap();
     }
     let import = ProductionImport::of(&rules, &mut names.into_production());
     let supply = &import.supply;
-    let name = |name: &str| ImportName::of(name.as_bytes());
+    let name = |name: &str| TypeName::new(&ImportName::of(name.as_bytes())).unwrap();
     let declared = |name: &str| DeclaredName::new(name).unwrap();
 
     // The dock holds its 400 boxes, 30,000, and stays; the pile its 150, 11,250, and goes.
     let node = |amount, empty| NodeData {
-        resource: declared(MONEY),
+        resource: declared("money"),
         amount: NonZeroU32::new(amount).unwrap(),
         empty,
     };
@@ -254,7 +289,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     );
     // The center takes money, starts its gatherers and frees its truck, which it trains.
     let money = DropOffData {
-        resources: vec![declared(MONEY)],
+        resources: vec![declared("money")],
     };
     assert_eq!(supply.drop_offs.get(&name("Center")), Some(&money));
     assert_eq!(supply.drop_offs.len(), 1);
@@ -272,13 +307,10 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(10),
         )))),
-        ..ActionKeys::new(
-            ActionKind::Gather,
-            Targeting::Unit(FilterData::parse("all").unwrap()),
-        )
+        ..ActionKeys::new(Targeting::Unit(FilterData::parse("all").unwrap()))
     };
     let gather = GatherData {
-        resource: declared(MONEY),
+        resource: declared("money"),
         take: NonZeroU32::new(300).unwrap(),
         unit: NonZeroU32::new(75),
         bounce: Distance::new(Num::int(700)),
@@ -289,6 +321,43 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         keys.table(&gather)
     );
     assert_eq!(supply.gathers.len(), 1);
+    // The hacker hacks as its last command: a windup of its unpack, 7,900 ms, 237 frames, spread
+    // by half each way, then a channel of no end that pays its regular 5 of money each 2,000 ms,
+    // 60 frames, and makes an order wait its pack, 2,100 ms, 63 frames. The lamer, of no unpack,
+    // no pack and no cash, pays 1, as the original falls through its levels to it, and spreads
+    // nothing, as its windup is none.
+    assert_eq!(import.commands[&name("Hacker")], [declared("hack_hacker")]);
+    let hack = |windup_ms: Option<i64>, tick_ms: i64, wind_down_ms: Option<i64>, cash| {
+        let ms = |ms: Option<i64>| ms.map(|ms| Ranked::One(Number::from(ms)));
+        ActionKeys {
+            windup_ms: ms(windup_ms),
+            channel: Some(ChannelData {
+                duration_ms: None,
+                tick_ms: Ranked::One(Number::from(tick_ms)),
+                damage_interrupts: false,
+                windup_spread: Some(Ranked::One(Number::Value(Scalar::Decimal(Num::HALF)))),
+                wind_down_ms: ms(wind_down_ms),
+                pays: Some(ChannelPaysData {
+                    resource: declared("money"),
+                    track: None,
+                    amount: vec![cash],
+                }),
+            }),
+            ..ActionKeys::new(Targeting::None)
+        }
+    };
+    let hacks: Vec<(&str, &ActionKeys)> = supply
+        .hacks
+        .iter()
+        .map(|(name, keys)| (name.as_str(), keys))
+        .collect();
+    assert_eq!(
+        hacks,
+        [
+            ("hack_hacker", &hack(Some(7900), 2000, Some(2100), 5)),
+            ("hack_lamer", &hack(None, 1000, None, 1)),
+        ]
+    );
     // The jeep, of no locomotor, trains as one of its two variations, each a type of its own; the
     // kite, one of whose variations flies, drops (09-zero-hour.md, `BuildVariations` converts to a
     // train's variants).
@@ -302,11 +371,17 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
             &vec![declared("jeepone"), declared("jeeptwo")]
         )
     );
-    let kite = DroppedButton {
-        button: "Command_Kite".to_owned(),
+    let kite = Dropped {
+        name: "Command_Kite".to_owned(),
         cause: ButtonDropCause::NoWalker,
     };
-    assert!(import.dropped.contains(&kite), "{:?}", import.dropped);
+    assert!(
+        (&import.dropped)
+            .into_iter()
+            .any(|dropped| *dropped == kite),
+        "{:?}",
+        import.dropped
+    );
     // The site of a production update keeps 3 guards, each back 30,000 ms, 900 frames, after
     // it dies, and trains nothing (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns).
     let spawns = SpawnsData {
@@ -322,23 +397,73 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         (&burrow.spawns, &burrow.free),
         (&None, &vec![declared("guard"), declared("guard")])
     );
-    // The dock of no box, the helicopter, which flies, the guard of a tunnel and of a shelter,
-    // of no production, once for its cause, the guard a crowd keeps none of, and the wisp a haunt
-    // keeps, of no life, are dropped, in the order the types are visited; the Helix, of no box,
-    // is no gatherer, so nothing of it is dropped.
-    let dropped: Vec<(&str, SupplyDropCause)> = supply
-        .dropped
-        .iter()
-        .map(|dropped| (dropped.object.as_str(), dropped.cause))
+    // The drop zone, whose objects come over time, the dock of no box, the helicopter, which
+    // flies, the guard of a tunnel and of a shelter, of no production, once for its cause, the
+    // guard a crowd keeps none of, and the wisp a haunt keeps, of no life, are dropped, in the
+    // order the types are visited; the Helix, of no box, is no gatherer, so nothing of it is
+    // dropped. Of the hacker go its cash past regular, its experience, its delay in a building
+    // and its pack's spread; the lamer, whose cash is 1 at each level, whose delays are one and
+    // who packs at once, loses nothing.
+    let dropped: Vec<(&str, SupplyDropCause)> = (&supply.dropped)
+        .into_iter()
+        .map(|dropped| (dropped.name.as_str(), dropped.cause))
         .collect();
     assert_eq!(
         dropped,
         [
             ("Guard", SupplyDropCause::BadNumber),
+            ("DropZone", SupplyDropCause::ObjectsOverTime),
             ("EmptyDock", SupplyDropCause::NoBoxes),
+            ("Hacker", SupplyDropCause::HackVeterancy),
+            ("Hacker", SupplyDropCause::HackExperience),
+            ("Hacker", SupplyDropCause::HackInBuilding),
+            ("Hacker", SupplyDropCause::PackSpread),
             ("Wisp", SupplyDropCause::Unliving),
             ("Heli", SupplyDropCause::NoWalker),
             ("Guard", SupplyDropCause::NoExit),
         ]
     );
+}
+
+/// The objects a converted button's variations hold and its prerequisites name join the walk, so
+/// their own command sets convert too: the center trains the jeep, which trains as its one
+/// variation, the scout, whose set trains the wisp; the wisp needs the lab, which no button makes
+/// and no map places, and whose set trains the ghost.
+#[test]
+fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
+    const OBJECTS: &str = "\
+        Object Center\n CommandSet = CenterSet\n Behavior = ProductionUpdate M1\n End\nEnd\n\
+        Object Jeep\n BuildCost = 500\n BuildTime = 5.0\n BuildVariations = Scout\nEnd\n\
+        Object Scout\n Locomotor = SET_NORMAL TankTreads\n CommandSet = ScoutSet\n\
+         Behavior = ProductionUpdate M1\n End\nEnd\n\
+        Object Wisp\n Locomotor = SET_NORMAL TankTreads\n BuildCost = 100\n BuildTime = 1.0\n\
+         Prerequisites\n  Object = Lab\n End\nEnd\n\
+        Object Lab\n CommandSet = LabSet\n Behavior = ProductionUpdate M1\n End\nEnd\n\
+        Object Ghost\n Locomotor = SET_NORMAL TankTreads\n BuildCost = 100\n BuildTime = 1.0\n\
+        End\n";
+    const SETS: &str = "CommandSet CenterSet\n 1 = Command_Jeep\nEnd\n\
+                        CommandSet ScoutSet\n 1 = Command_Wisp\nEnd\n\
+                        CommandSet LabSet\n 1 = Command_Ghost\nEnd\n";
+    const BUTTONS: &str = "\
+        CommandButton Command_Jeep\n Command = UNIT_BUILD\n Object = Jeep\nEnd\n\
+        CommandButton Command_Wisp\n Command = UNIT_BUILD\n Object = Wisp\nEnd\n\
+        CommandButton Command_Ghost\n Command = UNIT_BUILD\n Object = Ghost\nEnd\n";
+    let mut rules = ZeroHourRules::default();
+    rules.objects.read(OBJECTS.as_bytes()).unwrap();
+    rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+    rules.sets.read(SETS.as_bytes()).unwrap();
+    rules.buttons.read(BUTTONS.as_bytes()).unwrap();
+    let mut names = ImportNames::default();
+    let center = rules.objects.object(b"Center").unwrap();
+    names.unit_type(center, &rules).unwrap();
+    let import = ProductionImport::of(&rules, &mut names.into_production());
+    let declared = |name: &str| DeclaredName::new(name).unwrap();
+    for train in ["train_jeep", "train_wisp", "train_ghost"] {
+        assert!(
+            import.actions.contains_key(&declared(train)),
+            "{train}: {:?}, {:?}",
+            import.actions.keys().collect::<Vec<_>>(),
+            import.dropped
+        );
+    }
 }

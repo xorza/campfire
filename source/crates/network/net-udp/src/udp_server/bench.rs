@@ -3,17 +3,18 @@
 //! datagrams, a pass that sends each link its keep-alive, a frame's own steps over its links, and
 //! a pass over a full batch of handshakes' starts, and one over their ends.
 
+use core::ops::Range;
 use core::time::Duration;
 
 use campfire_measure::{Kind, Scale};
+use campfire_net_core::TimeSource;
 use campfire_net_core::{Instant, LinkDirection};
-use campfire_net_emulator::{
-    DirectionCounts, DuplexModel, EmulatedLinkId, EmulatedNetwork, WireClock,
-};
+use campfire_net_emulator::{DirectionCounts, DuplexModel, EmulatedLinkId, EmulatedNetwork};
 use campfire_net_packets::EmulatedWires;
 use campfire_net_packets::internals::{CLIENT, HOLD_BATCH, HoldClock, PlainHost};
 use criterion::{BenchmarkId, Criterion, Throughput};
 
+use crate::secure_establishment::server_side::MAX_PENDING;
 use crate::test_link::TestLink;
 
 /// The links of each case of a server with links.
@@ -89,7 +90,14 @@ struct ServerLoad {
 impl ServerLoad {
     /// A server and `links` clients that each sent it their first `Initial`.
     fn started(links: usize) -> Self {
-        let network = EmulatedNetwork::new(WireClock::Driven);
+        let mut load = Self::unstarted(links);
+        load.start(0..links);
+        load
+    }
+
+    /// A server and `links` clients, none of which started its handshake.
+    fn unstarted(links: usize) -> Self {
+        let network = EmulatedNetwork::new(TimeSource::Driven);
         let mut server =
             PlainHost::driven(TestLink::server(TestLink::setup()).emulated(TestLink::roomy(), 0));
         server.start(Instant::ZERO);
@@ -100,9 +108,7 @@ impl ServerLoad {
             ids.push(pair.server.link());
             server.io().add(pair.server);
             let client = TestLink::client(TestLink::setup()).emulated(pair.client, seed);
-            let mut client = PlainHost::driven(client);
-            client.start(Instant::ZERO);
-            clients.push(client);
+            clients.push(PlainHost::driven(client));
         }
         Self {
             network,
@@ -115,23 +121,41 @@ impl ServerLoad {
         }
     }
 
-    /// A server and `links` clients linked, quiet since each client's last answer.
+    /// The clients of `range` send their first `Initial` now.
+    fn start(&mut self, range: Range<usize>) {
+        let now = self.instant();
+        for client in &mut self.clients[range] {
+            client.start(now);
+        }
+    }
+
+    /// A server and `links` clients linked, quiet since each client's last answer: the clients
+    /// start in waves of as many handshakes as the server holds pending.
     fn linked(links: usize) -> Self {
-        let mut load = Self::started(links);
+        let mut load = Self::unstarted(links);
+        for wave in (0..links).step_by(MAX_PENDING) {
+            let started = (wave + MAX_PENDING).min(links);
+            load.start(wave..started);
+            load.link(started);
+        }
+        load.keep_alives();
+        load
+    }
+
+    /// Frames until the server and its first `started` clients are linked.
+    fn link(&mut self, started: usize) {
         for _ in 0..LINK_FRAMES {
-            if load.server.linked().count() == links
-                && load
-                    .clients
+            if self.server.linked().count() == started
+                && self.clients[..started]
                     .iter()
                     .all(|client| client.link(CLIENT).is_some_and(|link| link.linked))
             {
-                load.keep_alives();
-                return load;
+                return;
             }
-            load.advance(FRAME);
-            load.frames();
+            self.advance(FRAME);
+            self.frames();
         }
-        panic!("{links} clients link within {LINK_FRAMES} frames");
+        panic!("{started} clients link within {LINK_FRAMES} frames of their wave");
     }
 
     /// A server and `links` clients each about to send their `Initial` again with the token of

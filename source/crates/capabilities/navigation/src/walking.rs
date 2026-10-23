@@ -136,7 +136,7 @@ impl Walking {
         }
         for (mut destination, mut route, mut progress) in &mut units {
             if destination.get().is_some() {
-                destination.set_if_neq(Destination::to(None));
+                Destination::route_to(&mut destination, None);
             }
             if route.goal().is_some() {
                 route.clear();
@@ -195,7 +195,7 @@ impl Walking {
             loop {
                 let Some(&waypoint) = route.read().ahead().first() else {
                     if route.asked().is_none() {
-                        destination.set_if_neq(Destination::to(None));
+                        Destination::route_to(&mut destination, None);
                         if route.is_reached() {
                             route.clear();
                             progress.restart();

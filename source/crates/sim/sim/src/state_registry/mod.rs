@@ -257,7 +257,7 @@ impl StateRegistry {
     /// changes their format, a type's layout included, as Minecraft's `DataVersion` is: a snapshot
     /// of another is refused, naming both, and the converter from the version before, which saves
     /// plan (02-engine-core.md, One-way converters), comes with the first release that raises it.
-    pub const DATA_VERSION: u32 = 48;
+    pub const DATA_VERSION: u32 = 59;
 
     /// The builder of a registry with the sim's own state: the entity list, the id allocator,
     /// the tick and positions.
@@ -314,12 +314,13 @@ impl StateRegistry {
         total.finish()
     }
 
-    /// Restores `snapshot` into `world`, which must hold no sim entities, and refuses bytes that
-    /// are not the canonical encoding of what they restore, or a value that breaks its type's
-    /// rules, each type checked once all are decoded. Every state holds each resource, so one
-    /// the snapshot records as absent is refused. On an error the world is left partly restored
-    /// and should be discarded.
-    pub fn restore(&self, snapshot: &[u8], world: &mut World) -> Result<(), SnapshotError> {
+    /// Restores `snapshot` into `world`, which must hold no sim entities, and gives the restored
+    /// state's hash, `hash`'s, from the snapshot's own bodies; refuses bytes that are not the
+    /// canonical encoding of what they restore, or a value that breaks its type's rules, each
+    /// type checked once all are decoded. Every state holds each resource, so one the snapshot
+    /// records as absent is refused. On an error the world is left partly restored and should be
+    /// discarded.
+    pub fn restore(&self, snapshot: &[u8], world: &mut World) -> Result<StateHash, SnapshotError> {
         assert!(
             world
                 .get_resource::<EntityIndex>()
@@ -370,13 +371,20 @@ impl StateRegistry {
         // The caches that follow the state's changes build again from the restored state.
         world.trigger(StateRewritten);
         // Postcard accepts some encodings that are not its own, such as an overlong varint, so
-        // only a second encoding shows that no other bytes restore to this state.
-        let mut canonical = Vec::with_capacity(snapshot.len());
-        self.snapshot(world, &mut canonical);
-        if canonical != snapshot {
-            return Err(SnapshotError::NotCanonical);
+        // only a second encoding shows that no other bytes restore to this state: each type's
+        // again, in one buffer of the largest, against its body in place. The bodies, then the
+        // state's, hash as a snapshot's do.
+        let mut total = DomainHasher::new(HASH_DOMAIN);
+        let mut canonical = Vec::new();
+        for (entry, body) in self.entries.iter().zip(&bodies) {
+            canonical.clear();
+            (entry.encode)(world, &mut canonical);
+            if canonical != *body {
+                return Err(SnapshotError::NotCanonical);
+            }
+            fold(&mut total, entry.name, &HashSink::of(body));
         }
-        Ok(())
+        Ok(total.finish())
     }
 
     /// Puts each type's section of `bodies` in `world`, and checks the state: each resource as
@@ -478,6 +486,19 @@ impl StateRegistry {
             queries.push(entry.copy_query.map(|make| make(world)));
         }
         world.insert_resource(queries);
+        self.changes(world, delta);
+    }
+
+    /// Starts the record of the changes of `world`'s state again, which `track` started, and
+    /// writes its whole state into `delta`, as `track` does: a load in place despawns ids and
+    /// restores them again, which no delta follows, so a copy starts again from an empty world.
+    pub fn track_again(&self, world: &mut World, delta: &mut StateDelta) {
+        assert!(
+            world.contains_resource::<StateChanges>(),
+            "a world records its changes again once it records them"
+        );
+        let changes = StateChanges::new(world.resource::<EntityIndex>());
+        world.insert_resource(changes);
         self.changes(world, delta);
     }
 
@@ -608,7 +629,7 @@ fn take<T: DeserializeOwned + Serialize>(bytes: &[u8]) -> Result<Decoded<'_, T>,
     Binary::take(bytes).map_err(|error| match error {
         BinaryError::Truncated => SnapshotError::Truncated,
         BinaryError::NotCanonical => SnapshotError::NotCanonical,
-        BinaryError::Malformed(_) => SnapshotError::Malformed(error),
+        BinaryError::Malformed(malformed) => SnapshotError::Malformed(malformed),
     })
 }
 
@@ -776,13 +797,13 @@ fn copy_resource<R: SimResource>(
     out: &mut Vec<u8>,
 ) {
     match world.get_resource_ref::<R>() {
-        None => Binary::encode_to(&None::<&R>, out),
+        None => Binary::encode_into(&None::<&R>, out),
         Some(value)
             if copying
                 .since
                 .is_none_or(|since| value.last_changed().is_newer_than(since, copying.now)) =>
         {
-            Binary::encode_to(&Some(&*value), out);
+            Binary::encode_into(&Some(&*value), out);
         }
         Some(_) => {}
     }

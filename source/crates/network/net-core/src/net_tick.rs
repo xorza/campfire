@@ -2,10 +2,6 @@ use core::ops::{Add, AddAssign, Deref as CoreDeref, Sub};
 
 #[cfg(feature = "reflect")]
 use bevy_reflect::Reflect;
-use campfire_net_bytes::SerializationError;
-use campfire_net_bytes::ToBytes;
-use campfire_net_bytes::WriteInteger;
-use campfire_net_bytes::{ReadInteger, Reader};
 use serde::{Deserialize, Serialize};
 
 /// Monotonically increasing simulation tick shared by the server and clients (11-net-stack/time.md,
@@ -21,20 +17,6 @@ use serde::{Deserialize, Serialize};
 )]
 #[cfg_attr(feature = "reflect", derive(Reflect))]
 pub struct NetTick(pub u32);
-
-impl ToBytes for NetTick {
-    fn bytes_len(&self) -> usize {
-        size_of::<u32>()
-    }
-
-    fn to_bytes(&self, buffer: &mut impl WriteInteger) {
-        buffer.write_u32(self.0);
-    }
-
-    fn from_bytes(buffer: &mut Reader) -> Result<Self, SerializationError> {
-        Ok(Self(buffer.read_u32()?))
-    }
-}
 
 impl From<u32> for NetTick {
     fn from(value: u32) -> Self {

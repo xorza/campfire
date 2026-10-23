@@ -1,4 +1,6 @@
 use crate::channel_mode::ChannelMode;
+use crate::packet::{FRAGMENT_LEN, MAX_FRAGMENTS};
+use crate::receive_budget::DEFAULT_RECEIVE_BUDGET;
 use campfire_net_core::RegistryHasher;
 use core::time::Duration;
 
@@ -22,13 +24,13 @@ pub struct ChannelSetup {
     /// already been admitted, its remaining fragments are also retained to avoid guaranteeing an
     /// incomplete local send.
     pub retry_unsent_messages: bool,
-    /// The largest message this channel carries, in uncompressed bytes.
+    /// The largest message this channel carries.
     ///
-    /// A larger send is refused with [`TransportError::MessageTooLarge`]; a peer whose fragments
+    /// A larger send is refused with [`SendError::MessageTooLarge`]; a peer whose fragments
     /// claim a larger message breaks the protocol. It bounds what one partial message makes the
     /// receiver allocate.
     ///
-    /// [`TransportError::MessageTooLarge`]: crate::transport_error::TransportError::MessageTooLarge
+    /// [`SendError::MessageTooLarge`]: crate::error::SendError::MessageTooLarge
     pub max_message_len: usize,
 }
 
@@ -36,7 +38,23 @@ pub struct ChannelSetup {
 /// `RecvMaxMessageSize` also uses.
 pub(crate) const DEFAULT_MAX_MESSAGE_LEN: usize = 512 * 1024;
 
+// A message the receive budget holds goes in `MAX_FRAGMENTS` fragments of a link of the default
+// payload, so the budget bounds a channel's message alone.
+const _: () = assert!(DEFAULT_RECEIVE_BUDGET <= MAX_FRAGMENTS * FRAGMENT_LEN);
+
 impl ChannelSetup {
+    /// Asserts that the receive budget holds this channel's largest message and a fragment more,
+    /// which the buffer of a partial message can reserve past it, as a registry's seal checks
+    /// each channel (11-net-stack/transport.md, Each link's `Channels` has one receive budget).
+    pub fn assert_bounds(&self) {
+        assert!(
+            self.max_message_len.saturating_add(FRAGMENT_LEN) <= DEFAULT_RECEIVE_BUDGET,
+            "a channel's {}-byte message and a {FRAGMENT_LEN}-byte fragment pass the receive \
+             budget of {DEFAULT_RECEIVE_BUDGET} bytes",
+            self.max_message_len
+        );
+    }
+
     /// Adds this setup to a registry's hash, so peers whose channel setups differ fail the protocol
     /// check instead of every packet after it.
     pub fn hash_into(&self, hasher: &mut RegistryHasher) {
@@ -71,5 +89,32 @@ impl Default for ChannelSetup {
             retry_unsent_messages: true,
             max_message_len: DEFAULT_MAX_MESSAGE_LEN,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup(max_message_len: usize) -> ChannelSetup {
+        ChannelSetup {
+            max_message_len,
+            ..ChannelSetup::default()
+        }
+    }
+
+    /// The default 512 KiB message and its fragment fit the 1 MiB budget, as does the largest
+    /// message that leaves a fragment's room.
+    #[test]
+    fn a_message_and_a_fragment_within_the_budget_hold() {
+        ChannelSetup::default().assert_bounds();
+        setup(DEFAULT_RECEIVE_BUDGET - FRAGMENT_LEN).assert_bounds();
+    }
+
+    /// One byte more than the budget less a fragment fails the bounds.
+    #[test]
+    #[should_panic(expected = "pass the receive budget")]
+    fn a_message_and_a_fragment_past_the_budget_fail() {
+        setup(DEFAULT_RECEIVE_BUDGET - FRAGMENT_LEN + 1).assert_bounds();
     }
 }

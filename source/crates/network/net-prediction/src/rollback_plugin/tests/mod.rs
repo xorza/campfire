@@ -278,8 +278,8 @@ fn record_completed_mutate_tick(world: &mut World, replicon_tick: RepliconTick, 
         mutate_ticks.confirm(replicon_tick, 1);
     }
     let mut confirmed_ticks = world.resource_mut::<ConfirmedTickMap>();
-    confirmed_ticks.record(replicon_tick, tick);
-    confirmed_ticks.record_last_confirmed_tick(replicon_tick);
+    confirmed_ticks.bridge_record(replicon_tick, tick);
+    confirmed_ticks.bridge_record_last_confirmed_tick(replicon_tick);
 }
 
 /// The newest tick whose mutations the client received. A fake completion at or before it meets
@@ -592,13 +592,13 @@ fn a_rollback_keeps_the_later_confirmed_values_of_other_entities() {
     let world = stepper.client_world_mut(0);
     world
         .resource_mut::<ConfirmedTickMap>()
-        .record(RepliconTick::default(), rollback_tick);
+        .bridge_record(RepliconTick::default(), rollback_tick);
     world
         .resource_mut::<ConfirmedTickMap>()
-        .record(rollback_replicon_tick, rollback_tick);
+        .bridge_record(rollback_replicon_tick, rollback_tick);
     world
         .resource_mut::<ConfirmedTickMap>()
-        .record(later_replicon_tick, later_confirmed_tick);
+        .bridge_record(later_replicon_tick, later_confirmed_tick);
     insert_confirmed(world, predicted_a, rollback_tick, Some(CompFull(100.0)));
     world
         .entity_mut(predicted_a)
@@ -773,7 +773,7 @@ fn a_completed_mutate_tick_checks_each_unchanged_entity() {
     record_completed_mutate_tick(world, updated_replicon_tick, completed_tick);
     world
         .resource_mut::<ConfirmedTickMap>()
-        .record(previous_replicon_tick, previous_confirmed_tick);
+        .bridge_record(previous_replicon_tick, previous_confirmed_tick);
 
     insert_confirmed(world, updated, completed_tick, Some(CompFull(1.0)));
     world
@@ -970,18 +970,18 @@ fn the_diff_confirmed_tick_follows_the_earliest_pending_diff_of_all_entities() {
         }
 
         let mut receiver_a = HistoryDiffReceiver::<CompRepliconDiff>::default();
-        receiver_a.record_cursor(oldest_completed_tick, Some(DiffIndex::new(0)));
+        receiver_a.bridge_record_cursor(oldest_completed_tick, Some(DiffIndex::new(0)));
         receiver_a
-            .queue_diff(pending_a_tick, DiffIndex::new(2), vec![2])
+            .bridge_queue_diff(pending_a_tick, DiffIndex::new(2), vec![2])
             .unwrap();
         world
             .resource_mut::<ReplicationStorage>()
             .insert(predicted_a, receiver_a);
 
         let mut receiver_b = HistoryDiffReceiver::<CompRepliconDiff>::default();
-        receiver_b.record_cursor(oldest_completed_tick, Some(DiffIndex::new(0)));
+        receiver_b.bridge_record_cursor(oldest_completed_tick, Some(DiffIndex::new(0)));
         receiver_b
-            .queue_diff(pending_b_tick, DiffIndex::new(2), vec![2])
+            .bridge_queue_diff(pending_b_tick, DiffIndex::new(2), vec![2])
             .unwrap();
         world
             .resource_mut::<ReplicationStorage>()
@@ -1029,7 +1029,7 @@ fn the_diff_confirmed_tick_follows_the_earliest_pending_diff_of_all_entities() {
             .resource_mut::<ReplicationStorage>()
             .get_mut::<HistoryDiffReceiver<CompRepliconDiff>>(predicted_b)
             .unwrap()
-            .record_cursor(pending_b_tick, Some(DiffIndex::new(2)));
+            .bridge_record_cursor(pending_b_tick, Some(DiffIndex::new(2)));
     }
     stepper.client_app_mut(0).update();
     assert_eq!(
@@ -1054,7 +1054,7 @@ fn the_diff_confirmed_tick_follows_the_earliest_pending_diff_of_all_entities() {
             .resource_mut::<ReplicationStorage>()
             .get_mut::<HistoryDiffReceiver<CompRepliconDiff>>(predicted_a)
             .unwrap()
-            .record_cursor(pending_a_tick, Some(DiffIndex::new(2)));
+            .bridge_record_cursor(pending_a_tick, Some(DiffIndex::new(2)));
     }
     stepper.client_app_mut(0).update();
     assert_eq!(
@@ -1082,7 +1082,7 @@ fn the_diff_confirmed_tick_follows_the_earliest_pending_diff_of_all_entities() {
             .resource_mut::<ReplicationStorage>()
             .get_mut::<HistoryDiffReceiver<CompRepliconDiff>>(predicted_b)
             .unwrap()
-            .queue_diff(candidate_tick + 1, DiffIndex::new(4), vec![4])
+            .bridge_queue_diff(candidate_tick + 1, DiffIndex::new(4), vec![4])
             .unwrap();
         world.insert_resource(RollbackCheckState::default());
     }
@@ -1122,9 +1122,9 @@ fn a_pending_diff_with_no_earlier_confirmed_tick_skips_the_check() {
             .insert(ConfirmHistory::new(candidate_replicon_tick));
 
         let mut receiver = HistoryDiffReceiver::<CompRepliconDiff>::default();
-        receiver.record_cursor(history_tick, Some(DiffIndex::new(0)));
+        receiver.bridge_record_cursor(history_tick, Some(DiffIndex::new(0)));
         receiver
-            .queue_diff(pending_tick, DiffIndex::new(2), vec![2])
+            .bridge_queue_diff(pending_tick, DiffIndex::new(2), vec![2])
             .unwrap();
         world
             .resource_mut::<ReplicationStorage>()
@@ -1185,9 +1185,9 @@ fn an_always_rollback_takes_the_confirmed_tick_the_diffs_allow() {
             .insert(ConfirmHistory::new(candidate_replicon_tick));
 
         let mut receiver = HistoryDiffReceiver::<CompRepliconDiff>::default();
-        receiver.record_cursor(previous_tick, Some(DiffIndex::new(0)));
+        receiver.bridge_record_cursor(previous_tick, Some(DiffIndex::new(0)));
         receiver
-            .queue_diff(pending_tick, DiffIndex::new(2), vec![2])
+            .bridge_queue_diff(pending_tick, DiffIndex::new(2), vec![2])
             .unwrap();
         world
             .resource_mut::<ReplicationStorage>()
@@ -1554,9 +1554,9 @@ fn a_rollback_of_a_completed_mutate_tick_keeps_the_later_confirmed_values() {
     let world = stepper.client_world_mut(0);
     {
         let mut confirmed_ticks = world.resource_mut::<ConfirmedTickMap>();
-        confirmed_ticks.record(same_replicon_tick, rollback_tick);
-        confirmed_ticks.record(previous_replicon_tick, previous_confirmed_tick);
-        confirmed_ticks.record(later_replicon_tick, later_confirmed_tick);
+        confirmed_ticks.bridge_record(same_replicon_tick, rollback_tick);
+        confirmed_ticks.bridge_record(previous_replicon_tick, previous_confirmed_tick);
+        confirmed_ticks.bridge_record(later_replicon_tick, later_confirmed_tick);
     }
 
     insert_confirmed(
@@ -2045,6 +2045,20 @@ fn local_despawn_is_pruned_to_the_rollback_window() {
     world.insert_resource(InputTimelineSetup::default());
     let entities = [1, 16, 17].map(|tick| (NetTick(tick), world.spawn_empty().id()));
     world.resource_mut::<RollbackCheckState>().local_despawn = entities.to_vec();
+    // Protections ending at ticks 15, 16 and 17: the one before tick 16 ends, rolled back
+    // again, the other two stay; one ended for a unit gone ends with nothing to roll back.
+    let protected = [15, 16, 17].map(|tick| (NetTick(tick), world.spawn(DisableRollback).id()));
+    let gone = world.spawn_empty().id();
+    world
+        .commands()
+        .entity(gone)
+        .queue_silenced(DespawnReplicated);
+    world.flush();
+    let mut skips = vec![(NetTick(14), gone)];
+    skips.extend(protected);
+    world
+        .resource_mut::<RollbackCheckState>()
+        .local_skip_despawn = skips;
 
     world
         .run_system_once(RollbackPlugin::prune_local_despawn)
@@ -2054,6 +2068,12 @@ fn local_despawn_is_pruned_to_the_rollback_window() {
         world.resource::<RollbackCheckState>().local_despawn,
         entities[1..]
     );
+    assert_eq!(
+        world.resource::<RollbackCheckState>().local_skip_despawn,
+        protected[1..]
+    );
+    let disabled = protected.map(|(_, entity)| world.entity(entity).contains::<DisableRollback>());
+    assert_eq!(disabled, [false, true, true]);
 }
 
 /// A timeline switch's rollback keeps a spawn protection that its tick has not passed; a

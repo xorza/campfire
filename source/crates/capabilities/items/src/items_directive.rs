@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 pub enum ItemsDirective<R: OrderRefs = Ids> {
     /// Buy one `item` at the shop unit `shop`.
     Buy { item: R::Item, shop: R::Unit },
-    /// Sell the stack in inventory slot `slot` at the shop unit `shop`.
-    Sell { slot: u8, shop: R::Unit },
-    /// Swap inventory slots `from` and `to`.
-    Swap { from: u8, to: u8 },
+    /// Sell the carried stack `stack` at the shop unit `shop`.
+    Sell { stack: R::Carried, shop: R::Unit },
+    /// Move the carried stack `from` to inventory slot `to`, which swaps it with what `to` holds.
+    Swap { from: R::Carried, to: u8 },
 }
 
 impl Copy for ItemsDirective {}
@@ -32,11 +32,14 @@ impl<R: OrderRefs> ItemsDirective<R> {
                 item: refs.item(item)?,
                 shop: refs.unit(shop)?,
             },
-            Self::Sell { slot, shop } => ItemsDirective::Sell {
-                slot,
+            Self::Sell { stack, shop } => ItemsDirective::Sell {
+                stack: refs.carried(stack)?,
                 shop: refs.unit(shop)?,
             },
-            Self::Swap { from, to } => ItemsDirective::Swap { from, to },
+            Self::Swap { from, to } => ItemsDirective::Swap {
+                from: refs.carried(from)?,
+                to,
+            },
         })
     }
 }

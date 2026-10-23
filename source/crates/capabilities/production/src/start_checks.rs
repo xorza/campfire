@@ -91,20 +91,20 @@ impl StartChecks<'_, '_> {
         let Some(StartChecked { checked, .. }) = times.start(check, None) else {
             return false;
         };
-        let seat = owner.map(|owner| owner.seat());
+        let player_slot = owner.map(|owner| owner.player_slot());
         let modifiers = self.modifiers.of(owner);
         match action.kind {
             ActionKind::Train => queue.is_some_and(|queue| {
                 let ask = TrainAsk {
                     unit_type,
                     queue,
-                    owner: seat,
+                    owner: player_slot,
                     modifiers,
                     action: checked.id,
                 };
                 books.admits(holdings, ask) != TrainAdmission::Refused
             }),
-            _ => holdings.meet(seat, modifiers, books.requirements.of(checked.id)),
+            _ => holdings.meet(player_slot, modifiers, books.requirements.of(checked.id)),
         }
     }
 }

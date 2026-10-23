@@ -78,6 +78,15 @@ impl FakeGateway {
         self.requests.kept.lock().unwrap().clone()
     }
 
+    /// The requests it kept, each sent again right after itself dropped: a client sends a
+    /// request again when its answer comes past its wait, as a loaded runner may run the
+    /// gateway's thread late (RFC 6887, 8.1.1; RFC 6886, 3.1).
+    pub(crate) fn distinct_requests(&self) -> Vec<Vec<u8>> {
+        let mut requests = self.requests();
+        requests.dedup();
+        requests
+    }
+
     /// The requests it kept, once it kept `count` or a second passed: it reads each on a thread
     /// of its own, which a loaded runner may run after the client stopped waiting for an answer.
     pub(crate) fn requests_once(&self, count: usize) -> Vec<Vec<u8>> {

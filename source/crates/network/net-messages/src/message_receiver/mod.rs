@@ -3,7 +3,6 @@ use crate::link_messages::{EndpointList, ListedEndpoint};
 use crate::message::Message;
 use crate::message_error::MessageError;
 use crate::message_receive_cx::MessageReceiveCx;
-use crate::message_receive_cx::ReceivedMessageHeader;
 use crate::message_type_id::MessageTypeId;
 use crate::messages_unread::MessagesUnread;
 use crate::received_message::ReceivedMessage;
@@ -54,43 +53,6 @@ impl<M: Message> MessageReceiver<M> {
         self.ready_mut().drain(..)
     }
 
-    /// Mutate and/or drop the buffered messages in place, *before* they are
-    /// consumed by the receiving system.
-    ///
-    /// This is the hook for validation/sanitization systems that run between
-    /// message receipt and whatever consumes the messages (e.g. server-side
-    /// input validation between `MessageSystems::Receive` and the input-buffer
-    /// apply). Returning `false` from `keep` drops that message; mutating the
-    /// `&mut M` rewrites it. The message header (remote tick, channel,
-    /// message id) is preserved automatically — unlike drain-then-re-push.
-    pub fn retain_messages(&mut self, mut keep: impl FnMut(&mut M) -> bool) {
-        self.ready_mut()
-            .retain_mut(|received| keep(&mut received.data));
-    }
-
-    /// Like [`retain_messages`](Self::retain_messages), but the predicate also
-    /// gets the per-message [`ReceivedMessageHeader`] (`remote_tick`, channel, and
-    /// message id) that `retain_messages` hides.
-    ///
-    /// Use this when validation needs the header, e.g. rate limiting,
-    /// tick-window / staleness checks, replay diagnostics, or per-channel
-    /// policy. The header is passed **by value (read-only)** — only the
-    /// message data is `&mut` (mutate to rewrite, return `false` to drop) — so a
-    /// validator can't accidentally rewrite the wire header.
-    pub fn retain_received_messages(
-        &mut self,
-        mut keep: impl FnMut(ReceivedMessageHeader, &mut M) -> bool,
-    ) {
-        self.ready_mut().retain_mut(|received| {
-            let header = ReceivedMessageHeader {
-                remote_tick: received.remote_tick,
-                channel_type_id: received.channel_type_id,
-                message_id: received.message_id,
-            };
-            keep(header, &mut received.data)
-        });
-    }
-
     pub const fn len(&self) -> usize {
         self.ready().len()
     }
@@ -133,12 +95,7 @@ impl<M: Message> MessageReceiver<M> {
             commands,
             link: entity,
             reader,
-            header:
-                ReceivedMessageHeader {
-                    remote_tick,
-                    channel_type_id,
-                    message_id,
-                },
+            header,
             channel_name,
             serialize_fns,
             entity_map,
@@ -147,30 +104,24 @@ impl<M: Message> MessageReceiver<M> {
         let receiver = receivers.get_mut::<Self>();
         let insert_receiver = receiver.is_none();
         let data = serialize_fns.deserialize::<M>(reader, entity_map)?;
-        let message = ReceivedMessage {
-            data,
-            remote_tick,
-            channel_type_id,
-            message_id,
-        };
+        let message = ReceivedMessage { data, header };
         if let Some(mut receiver) = receiver {
             receiver.push_received(message);
         } else {
             Self::queue_received(commands, entity, message);
         }
         trace!(
-            "Received message {:?} on channel {channel_type_id:?}",
-            DebugName::type_name::<M>()
+            "Received message {:?} on channel {:?}",
+            DebugName::type_name::<M>(),
+            header.channel_type_id
         );
         trace!(
             target: "campfire_net_debug::message",
             kind = "message_receive_typed",
-            schedule = "PreUpdate",
-            sample_point = "PreUpdate",
             message_name = core::any::type_name::<M>(),
             channel = channel_name,
-            remote_tick = remote_tick.0,
-            message_id = ?message_id,
+            remote_tick = header.remote_tick.0,
+            message_id = ?header.message_id,
             insert_receiver,
             "deserialized message into receiver"
         );

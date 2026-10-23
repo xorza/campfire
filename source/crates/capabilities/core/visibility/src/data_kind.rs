@@ -1,11 +1,11 @@
-use campfire_common::EnumAll;
+use campfire_common::NamedEnum;
 
 use crate::recipients::Recipients;
 
 /// A group of a match's state that the rules send to clients as one: each kind has its own
 /// audience, `audience`, so a state type of one kind goes to one set of clients. The order its
 /// kinds are declared in is the one the session's terms keep.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, NamedEnum)]
 pub enum DataKind {
     /// A unit's public state: its type, team, owner, place, body, level, death, destination and
     /// the action under way.
@@ -55,38 +55,6 @@ pub enum DataKind {
 }
 
 impl DataKind {
-    /// Its name in a mode's `[visibility]` and a host's settings.
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Unit => "unit",
-            Self::Life => "life",
-            Self::Pools => "pools",
-            Self::Modifiers => "modifiers",
-            Self::Cooldowns => "cooldowns",
-            Self::Progression => "progression",
-            Self::Inventory => "inventory",
-            Self::Match => "match",
-            Self::ModeState => "mode_state",
-            Self::Resources => "resources",
-            Self::Supply => "supply",
-            Self::Queues => "queues",
-            Self::PlayerModifiers => "player_modifiers",
-            Self::Prediction => "prediction",
-            Self::UnitStateOwner => "unit_state_owner",
-            Self::UnitStateTeam => "unit_state_team",
-            Self::UnitStateAll => "unit_state_all",
-            Self::PlayerStateOwner => "player_state_owner",
-            Self::PlayerStateTeam => "player_state_team",
-            Self::PlayerStateAll => "player_state_all",
-            Self::Server => "server",
-        }
-    }
-
-    /// The kind of the name `name`; `None` for no kind's.
-    pub fn named(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|kind| kind.name() == name)
-    }
-
     /// Whether a client receives state of this kind.
     pub const fn is_sent(self) -> bool {
         !matches!(self, Self::Server)

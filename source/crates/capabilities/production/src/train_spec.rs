@@ -1,5 +1,5 @@
-use campfire_actions::PerAction;
-use campfire_values::UnitType;
+use campfire_declarations::PerId;
+use campfire_values::{ActionId, UnitType};
 
 /// What a train action runs: the unit type it makes, and the types it makes in that type's
 /// place, one drawn for each unit, when it has some.
@@ -9,6 +9,6 @@ pub struct TrainSpec {
     pub variants: Box<[UnitType]>,
 }
 
-impl PerAction for TrainSpec {
+impl PerId<ActionId> for TrainSpec {
     const SCRIPTS_ONLY: bool = false;
 }

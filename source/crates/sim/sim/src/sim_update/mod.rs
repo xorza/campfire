@@ -2,7 +2,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, ScheduleLabel, SystemSet
 use bevy_ecs::system::{Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::{EnumAll, SegmentSeed};
-use campfire_schedule::{OneThreadSchedule, StrictSchedule};
+use campfire_schedule::ScheduleExt;
 
 use crate::id_allocator::IdAllocator;
 use crate::match_rate::MatchRate;
@@ -61,13 +61,13 @@ impl SimUpdate {
     /// after it, and `SimEdgeSystems::Start` before the first. The tick's random sequences start
     /// before `SimEdgeSystems::Start`; after `SimEdgeSystems::After(SimSystems::Vision)`, in
     /// `TickEndSystems`, the tick advances, its inputs are cleared and its removal records age, so
-    /// an edge's systems read the tick's random sequences and inputs. It is a `StrictSchedule`, so
+    /// an edge's systems read the tick's random sequences and inputs. It is strict, as `ScheduleExt::strict` makes one, so
     /// an ambiguity or a redundant edge fails every test that builds it, not only as a log line of
     /// a running match. It runs on one thread whatever features the build turns on, Bevy's parallel
     /// executor among them (02-engine-core.md, The sim is one schedule on one thread).
     pub(crate) fn schedule() -> Schedule {
-        let mut schedule = StrictSchedule::of(Self);
-        OneThreadSchedule::apply(&mut schedule);
+        let mut schedule = Schedule::strict(Self);
+        schedule.run_on_one_thread();
         schedule.configure_sets(SimEdgeSystems::Start.before(SimSystems::Inputs));
         for stages in SimSystems::ALL.windows(2) {
             schedule.configure_sets((

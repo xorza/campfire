@@ -1,9 +1,9 @@
 use std::num::NonZeroU32;
 
 use campfire_harness::FixedSession;
-use campfire_mode::{OptionPicks, OptionValue, SeatPick};
+use campfire_mode::{OptionPicks, OptionValue, PlayerSlotPick};
 use campfire_package::ModePackages;
-use campfire_protocol::{InputRules, SeatPlan};
+use campfire_protocol::{InputRules, PlayerSlotPlan};
 use campfire_script::MatchNames;
 use campfire_values::ResourceId;
 
@@ -59,12 +59,12 @@ impl SupplyPlay {
                 return None;
             }
         };
-        let china: SeatPick = CHINA.parse().expect("the play's pick");
-        let session = FixedSession::planned(packages, InputRules::ROOMY, [SeatPlan::Player])
+        let china: PlayerSlotPick = CHINA.parse().expect("the play's pick");
+        let session = FixedSession::planned(packages, InputRules::ROOMY, [PlayerSlotPlan::Player])
             .rate(rate)
             .picked(picks.places())
-            .seat_picked(&[china]);
-        let mut play = MatchPlay::new(session.start());
+            .player_slot_picked(&[china]);
+        let mut play = MatchPlay::new(session.start(), session.packages());
         let names = play.game().resource::<MatchNames>();
         let Some(money) = names.named::<ResourceId>("money") else {
             failures.push(CheckFailure::NoMoney);

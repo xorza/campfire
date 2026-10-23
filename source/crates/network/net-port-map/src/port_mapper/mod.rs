@@ -9,11 +9,12 @@ use campfire_net_core::Random;
 use tracing::{debug, info, warn};
 
 use crate::error::PortMapError;
-use crate::gateway::{Gateway, MapAsk, Mapping, Tries, Wait};
+use crate::gateway::{Gateway, Tries, Wait};
+use crate::mapping::{MapAsk, Mapping};
 use crate::pcp_map::MapNonce;
 use crate::ssdp_announcement::SsdpAnnouncement;
 use crate::upnp_gateway::{SSDP, UpnpGateway};
-use campfire_store::SharedPort;
+use campfire_platform::SharedPort;
 
 /// The port PCP and NAT-PMP gateways answer on (RFC 6887 §19.1, RFC 6886 §3).
 const PCP_PORT: u16 = 5351;
@@ -72,6 +73,9 @@ pub(crate) struct PortMapper {
     /// The last router that announced itself, which a turn maps through when no search finds a
     /// router.
     heard: Option<SsdpAnnouncement>,
+    /// The default gateway's address as the last turn read it, the one source an announcement is
+    /// taken from; none before a turn, or when the OS names none.
+    gateway: Option<Ipv4Addr>,
     /// Whether the host was told that no router maps the port, since the last mapping.
     told: bool,
     /// Where each mapping's PCP nonce, each renewal's time and each UPnP port are drawn from
@@ -170,6 +174,7 @@ impl PortMapper {
             times,
             held: None,
             heard: None,
+            gateway: None,
             told: false,
             random: Random::os(),
         }
@@ -188,6 +193,7 @@ impl PortMapper {
     /// same port until it ends: so a refusal's wait is at most the lifetime the map asks for, as a
     /// router's refusal may last for years. `stop` ends the turn between two requests.
     pub(crate) fn turn(&mut self, stop: &AtomicBool) -> Duration {
+        self.gateway = self.routes.pcp().ok().map(|pcp| *pcp.ip());
         if let Some(held) = &mut self.held {
             let known = held.mapping.external();
             match held.renew(self.request, self.times, stop, &mut self.random) {
@@ -238,8 +244,17 @@ impl PortMapper {
     /// Takes `datagram`, which came from `from` to the announcements' socket: whether it starts a
     /// turn at once, an announcement of a router at an address not heard before while no router
     /// maps the port, so a host that varies its location starts one turn at most. Each
-    /// announcement replaces the one before, for the next turn.
+    /// announcement replaces the one before, for the next turn. Only the default gateway's is
+    /// taken, from the address the last turn read: an announcement names the host the mapper then
+    /// asks over HTTP, and any host that reaches the socket could name one (11-net-stack/port-map.md,
+    /// Only the gateway announces a router).
     pub(crate) fn hear(&mut self, datagram: &[u8], from: SocketAddr) -> bool {
+        if self
+            .gateway
+            .is_none_or(|gateway| from.ip() != IpAddr::V4(gateway))
+        {
+            return false;
+        }
         let Some(announcement) = SsdpAnnouncement::parse(datagram, from) else {
             return false;
         };

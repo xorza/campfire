@@ -3,13 +3,14 @@ use std::ops::Range;
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_actions::Targets;
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_script::{
     AnyKeptRows, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptList, ScriptValue,
     ScriptWindow, Unit, ViewColumn,
 };
 use campfire_units::{Dead, Life};
 use campfire_values::{Team, UnitTags, UnitType};
+use campfire_visibility::DataKind;
 
 use crate::on_death::OnDeath;
 use crate::recent_attack::RecentAttack;
@@ -53,8 +54,8 @@ impl ViewColumn for CombatColumn {
 
     fn begin(&mut self, world: &World) -> bool {
         self.staying.clear();
-        let deaths = world.get_resource::<ByType<OnDeath>>();
-        let types = deaths.into_iter().flat_map(ByType::iter);
+        let deaths = world.get_resource::<ById<UnitType, OnDeath>>();
+        let types = deaths.into_iter().flat_map(ById::iter);
         let staying = types.filter(|&(_, &on_death)| on_death == OnDeath::Stay);
         self.staying.extend(staying.map(|(unit_type, _)| unit_type));
         false
@@ -114,7 +115,7 @@ impl CombatColumn {
 
     /// Whether `unit` stays when it dies, for the mode to bring back, as its type says; none does
     /// in a view with no combat.
-    pub fn stays(unit: &Unit) -> Checked<bool> {
+    pub(crate) fn stays(unit: &Unit) -> Checked<bool> {
         let unit_type = unit.read(|row| row.unit_type)?;
         let view = unit.view();
         let stays = view.column(|column: &Self| column.staying.binary_search(&unit_type).is_ok());
@@ -126,7 +127,7 @@ impl CombatColumn {
     pub(crate) fn recent_attackers(unit: &Unit, ms: ScriptWindow) -> Checked<ScriptList> {
         let view = unit.view();
         let (window, now) = (ms.get(), view.now());
-        let row = unit.row_index()?;
+        let row = unit.admit(DataKind::Server)?;
         let attackers = view.column(|column: &Self| {
             column
                 .rows

@@ -1,9 +1,9 @@
-use crate::history_component::HistoryComponent;
 use crate::interpolation_bundle::InterpolationBundle;
 use crate::interpolation_rule::InterpolationRule;
 use crate::rule_building;
 use bevy_app::App;
 use bevy_ecs::query::ArchetypeFilter;
+use campfire_net_replication::HistoryComponent;
 
 /// Interpolation rules beyond a component's default one: for a filter, a priority, or a bundle.
 ///

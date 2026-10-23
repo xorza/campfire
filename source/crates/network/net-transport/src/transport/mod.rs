@@ -6,12 +6,8 @@ use bevy_ecs::lifecycle::{HookContext, Insert};
 use bevy_ecs::observer::On;
 use bevy_ecs::system::Query;
 use bevy_ecs::world::DeferredWorld;
-use campfire_net_channels::{Channel, ChannelTypeId, Channels, RefusedMessage};
-use campfire_net_core::NetId;
+use campfire_net_channels::Channels;
 use campfire_net_link::{Link, Linked};
-use tracing::{error, trace, warn};
-
-use crate::channel_registry::ChannelRegistry;
 
 /// The [`Channels`] of a link, on its entity: the largest payload its packet session hands over
 /// sizes their fragments, when the transport comes and at each link (11-net-stack/layering.md, The
@@ -39,9 +35,7 @@ impl Transport {
         let Some(mut transport) = world.get_mut::<Self>(context.entity) else {
             return;
         };
-        if let Err(error) = transport.size_fragments(max_payload) {
-            error!(?error, "invalid link payload for transport");
-        }
+        transport.size_fragments(max_payload);
     }
 
     /// A new packet session: the channels start their tick again, and its largest payload sizes
@@ -53,46 +47,41 @@ impl Transport {
         let Ok((link, mut transport)) = query.get_mut(trigger.entity) else {
             return;
         };
-        match transport.link(link.packet_session.max_payload()) {
-            Ok(refused) => {
-                for RefusedMessage {
-                    channel,
-                    len,
-                    max_len,
-                } in refused
-                {
-                    warn!(
-                        ?channel,
-                        len,
-                        max_len,
-                        "dropping a staged message above the new link's message bound"
-                    );
-                }
-            }
-            Err(error) => error!(?error, "invalid link payload for transport"),
+        transport.link(link.packet_session.max_payload());
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_net_channels::{Channel, ChannelTypeId};
+    use campfire_net_core::NetId;
+
+    use crate::channel_registry::ChannelRegistry;
+    use crate::transport::Transport;
+
+    impl Transport {
+        /// Adds a sending channel of `C` with its registered setup and wire ID.
+        pub fn add_channel_send_from_registry<C: Channel>(&mut self, registry: &ChannelRegistry) {
+            let channel_id = Self::registered::<C>(registry);
+            self.add_channel_send::<C>(*registry.setup(channel_id).unwrap(), channel_id);
         }
-    }
 
-    /// Adds a sending channel of `C` with its registered setup and wire ID.
-    pub fn add_channel_send_from_registry<C: Channel>(&mut self, registry: &ChannelRegistry) {
-        trace!(
-            "Adding sender from registry for channel {}",
-            core::any::type_name::<C>()
-        );
-        let channel_id = Self::registered::<C>(registry);
-        self.add_channel_send::<C>(*registry.setup(channel_id).unwrap(), channel_id);
-    }
+        /// Adds a receiving channel of `C` with its registered setup and wire ID.
+        pub fn add_channel_receive_from_registry<C: Channel>(
+            &mut self,
+            registry: &ChannelRegistry,
+        ) {
+            let channel_id = Self::registered::<C>(registry);
+            self.add_channel_receive::<C>(*registry.setup(channel_id).unwrap(), channel_id);
+        }
 
-    /// Adds a receiving channel of `C` with its registered setup and wire ID.
-    pub fn add_channel_receive_from_registry<C: Channel>(&mut self, registry: &ChannelRegistry) {
-        let channel_id = Self::registered::<C>(registry);
-        self.add_channel_receive::<C>(*registry.setup(channel_id).unwrap(), channel_id);
-    }
-
-    fn registered<C: Channel>(registry: &ChannelRegistry) -> NetId {
-        registry
-            .net_id(ChannelTypeId::of::<C>())
-            .unwrap_or_else(|| panic!("channel {} is not registered", core::any::type_name::<C>()))
+        fn registered<C: Channel>(registry: &ChannelRegistry) -> NetId {
+            registry
+                .net_id(ChannelTypeId::of::<C>())
+                .unwrap_or_else(|| {
+                    panic!("channel {} is not registered", core::any::type_name::<C>())
+                })
+        }
     }
 }
 

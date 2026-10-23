@@ -1,10 +1,8 @@
-use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section, Sections,
-};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, Section, Sections};
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::Num;
-use campfire_units::{MapBook, TeamNames};
-use campfire_values::PackageIndex;
+use campfire_units::MapBook;
+use campfire_values::{PackageIndex, Team, UnitType};
 
 use crate::brush_map::BrushMap;
 use crate::error::VisionDataError;
@@ -31,7 +29,7 @@ impl VisionBook {
     /// grid holds.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let map = cx.book::<MapBook>()?;
-        let teams = cx.fact::<TeamNames>()?.0.len();
+        let teams = cx.names::<Team>()?.len();
         let book = Self::of(map, cx.source().map, teams);
         let at = BookPlace::MapSection(GridData::KEY);
         book.map_err(|problem| BookError::rule(PackageIndex::MODE, at, problem))
@@ -68,8 +66,8 @@ impl VisionBook {
 
 impl Sight {
     /// The sight of each unit type with a `vision` section, a delivery type's among them.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
-        let mut book = ByTypeBuilder::default();
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
         for unit in cx.types() {
             if let Some(vision) = unit.data.section::<VisionData>() {
                 book.set(unit.unit_type, vision.sight);

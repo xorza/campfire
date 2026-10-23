@@ -1,5 +1,7 @@
 use std::num::NonZeroU32;
 
+use campfire_visibility::Visibility;
+
 use campfire_codec::Toml;
 use campfire_sim::MatchRate;
 
@@ -9,7 +11,6 @@ use crate::scripts::error::{CallError, FailureKind};
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::state_decl::state_field_decl::{Audience, StateFieldDecl};
-use crate::scripts::view::View;
 
 #[test]
 fn a_field_starts_at_its_default_or_its_types_zero() {
@@ -81,13 +82,11 @@ fn an_enum_starts_at_its_default_or_first_member_and_holds_only_its_members() {
     let initial = |members, default| {
         StateDecl::enumeration(members, default).map(|decl| decl.initial().clone())
     };
-    assert_eq!(
-        initial(members(), None),
-        Some(StateValue::Text("pick".into()))
-    );
+    // A member's value is its place among the members: `pick` 0, `play` 1.
+    assert_eq!(initial(members(), None), Some(StateValue::Member(0)));
     assert_eq!(
         initial(members(), text("play")),
-        Some(StateValue::Text("play".into()))
+        Some(StateValue::Member(1))
     );
     // No member, a member twice, and a default that is no member, or no text, fail.
     let twice = vec!["a".to_owned(), "a".to_owned()];
@@ -99,11 +98,12 @@ fn an_enum_starts_at_its_default_or_first_member_and_holds_only_its_members() {
     ] {
         assert_eq!(initial(members, default), None);
     }
-    // A member's text is its value; another text, or a value of another type, fails the call.
+    // A member's text takes its place; another text, or a value of another type, fails the call.
     let decl = StateDecl::enumeration(members(), None).unwrap();
     assert_eq!(decl.kind(), StateType::Enum);
     let play = ScriptValue::of(ScriptText::from("play"));
-    assert_eq!(decl.take(&play).unwrap(), StateValue::Text("play".into()));
+    assert_eq!(decl.take(&play).unwrap(), StateValue::Member(1));
+    assert_eq!(decl.member(1), "play");
     let fails = |value: ScriptValue| {
         let error = decl.take(&value).unwrap_err();
         CallError::from_script(ScriptError::from_eval(error)).kind()
@@ -116,19 +116,21 @@ fn an_enum_starts_at_its_default_or_first_member_and_holds_only_its_members() {
         fails(ScriptValue::of(1_i64)),
         FailureKind::Api(ApiError::WrongStateType)
     );
-    assert!(decl.holds(&StateValue::Text("play".into())));
-    assert!(!decl.holds(&StateValue::Text("end".into())));
+    assert!(decl.holds(&StateValue::Member(1)));
+    assert!(!decl.holds(&StateValue::Member(2)));
+    assert!(!decl.holds(&StateValue::Text("play".into())));
     assert!(!decl.holds(&StateValue::Int(0)));
     // A field of another type holds its type's values alone, a text whatever it says.
     let string = StateDecl::new(StateType::String, None).unwrap();
     assert!(string.holds(&StateValue::Text("end".into())));
     assert!(!string.holds(&StateValue::Int(0)));
+    assert!(!string.holds(&StateValue::Member(0)));
     // Data gives an enum its members as `values`, which no other type takes, and an enum
     // needs.
     let read = |text: &str| Toml::parse::<StateFieldDecl>(text).map(|field| field.decl);
     let phase = read("type = \"enum\"\nvalues = [\"pick\", \"play\"]\ndefault = \"play\"");
     let phase = phase.unwrap();
-    assert_eq!(phase.initial(), &StateValue::Text("play".into()));
+    assert_eq!(phase.initial(), &StateValue::Member(1));
     // It writes its members and its first value, and reads back to itself.
     assert_eq!(Toml::parse::<StateDecl>(&Toml::write(&phase)), Ok(phase));
     let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
@@ -172,7 +174,11 @@ fn a_list_of_scalars_holds_items_of_its_type_alone() {
     assert_eq!(take(StateType::BoolList, &list(vec![word])), None);
     assert_eq!(take(StateType::IntList, &one), None);
     // Each list starts empty, and reads back as the list it holds.
-    let view = View::new(MatchRate::new(NonZeroU32::new(30).unwrap()), |_| {});
+    let view = View::new(
+        MatchRate::new(NonZeroU32::new(30).unwrap()),
+        Visibility::DEFAULT,
+        |_| {},
+    );
     let back = StateValue::IntList(Arc::from([1, 2])).to_value(&view);
     let items: Vec<_> = back
         .into_list()
@@ -181,6 +187,17 @@ fn a_list_of_scalars_holds_items_of_its_type_alone() {
         .map(|item| item.as_int())
         .collect();
     assert_eq!(items, [Some(1), Some(2)]);
+    // An enum's member reads as its text, one text for each member, shared by every read.
+    let members = vec!["pick".to_owned(), "play".to_owned()];
+    let phase = StateDecl::enumeration(members, None).unwrap();
+    let read = |at| {
+        phase
+            .read(&StateValue::Member(at), &view)
+            .into_text()
+            .unwrap()
+    };
+    assert_eq!((read(0).as_str(), read(1).as_str()), ("pick", "play"));
+    assert!(read(1).same(&read(1)));
     let empty = StateDecl::new(StateType::StringList, None).unwrap();
     assert_eq!(empty.initial(), &StateValue::TextList(Arc::from([])));
 }

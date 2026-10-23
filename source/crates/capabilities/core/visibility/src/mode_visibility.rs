@@ -1,6 +1,5 @@
 use std::fmt;
 
-use campfire_common::NamedEnum;
 use serde::de::{Error, MapAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -13,11 +12,11 @@ use crate::visibility::Visibility;
 /// What a session's host sets of its visibility (10-replication-audiences.md, Three layers;
 /// 10-replication-audiences.md, The host admits spectators, and their fog is a setting): the
 /// settings it gives in place of the mode's, and the most spectators it admits, none unless it
-/// says.
+/// says; a most of none it says is one it asks, as a restore checks it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostVisibility {
     pub settings: Vec<SettingValue>,
-    pub max_spectators: u32,
+    pub max_spectators: Option<u32>,
 }
 
 /// A mode's `[visibility]` (10-replication-audiences.md, Each kind has a default audience, and a
@@ -80,7 +79,7 @@ impl ModeVisibility {
             }
             visibility.set(given)?;
         }
-        Ok(visibility.with_max_spectators(host.max_spectators))
+        Ok(visibility.with_max_spectators(host.max_spectators.unwrap_or(0)))
     }
 }
 

@@ -72,10 +72,11 @@ pub(crate) struct PlanWalker {
     pub(crate) goal: Vec3,
 }
 
-/// The route a party plans once for the members of one layer.
+/// The route a party plans once for the members of one layer, for the walker it was searched for.
 #[derive(Debug, Clone)]
 struct SharedRoute {
     layer: Layer,
+    walker: Walker,
     waypoints: Range<usize>,
     reached: bool,
 }
@@ -283,6 +284,7 @@ impl RouteAsks {
         self.shared.extend_from_slice(&self.waypoints);
         self.layers.push(SharedRoute {
             layer,
+            walker: widest,
             waypoints: start..self.shared.len(),
             reached: outcome.reached,
         });
@@ -291,7 +293,9 @@ impl RouteAsks {
     /// Gives `member` its route from its layer's shared route: from the last waypoint whose
     /// straight line it passes by its own walker's test, the waypoints tested from the goal back,
     /// on to its own goal when the line to it from the waypoint before the party's goal passes,
-    /// else to the party's goal. A member that sees no waypoint plans its own route.
+    /// else to the party's goal. A member that sees no waypoint plans its own route, and so does
+    /// one for whom a route that stops short of the party's goal says nothing: a narrower walker,
+    /// or one of another goal (04-capabilities/navigation.md, One command, one route).
     fn follow(
         &mut self,
         search: &mut PartySearch<'_, '_>,
@@ -308,8 +312,11 @@ impl RouteAsks {
         let route = &self.shared[shared.waypoints];
         let walkable = search.walkable(member.walker);
         let planner = &mut *search.planner;
+        let shares =
+            shared.reached || (member.walker == shared.walker && member.goal == party.goal);
         let seen = (0..route.len())
             .rev()
+            .filter(|_| shares)
             .find(|&at| planner.sees(walkable, Segment::new(member.position, route[at])));
         let Some(first) = seen else {
             let outcome = planner.plan(walkable, member.position, member.goal, &mut self.waypoints);

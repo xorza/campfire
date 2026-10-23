@@ -47,7 +47,7 @@ bevy_app.workspace = true
 bevy_derive.workspace = true
 bevy_ecs = { workspace = true, features = ["serialize", "std"] }
 bevy_reflect = { workspace = true, features = ["smallvec", "std"] }
-bevy_replicon = { workspace = true, features = ["client", "server"] }
+bevy_replicon.workspace = true
 bevy_utils = { workspace = true, features = ["debug"] }
 
 [dev-dependencies]

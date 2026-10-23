@@ -1,3 +1,4 @@
+use campfire_abilities::AbilitiesRefusal;
 use campfire_common::Tick;
 use campfire_progression::ProgressionRefusal;
 use campfire_script::CapabilityRefusal;
@@ -48,28 +49,28 @@ fn on_input(ctx, player, name, value) {
         (
             "thrice",
             [0, 1],
-            Some(FailureKind::Api(ModeRefusal::MaxRank.refused())),
+            Some(FailureKind::Api(AbilitiesRefusal::MaxRank.refused())),
         ),
         ("twice", [2, 1], None),
         (
             "once",
             [2, 1],
-            Some(FailureKind::Api(ModeRefusal::MaxRank.refused())),
+            Some(FailureKind::Api(AbilitiesRefusal::MaxRank.refused())),
         ),
         (
             "spell",
             [2, 1],
-            Some(FailureKind::Api(ModeRefusal::MaxRank.refused())),
+            Some(FailureKind::Api(AbilitiesRefusal::MaxRank.refused())),
         ),
         (
             "none",
             [2, 1],
-            Some(FailureKind::Api(ModeRefusal::NoAbilitySlot.refused())),
+            Some(FailureKind::Api(AbilitiesRefusal::NoAbilitySlot.refused())),
         ),
         (
             "negative",
             [2, 1],
-            Some(FailureKind::Api(ModeRefusal::NoAbilitySlot.refused())),
+            Some(FailureKind::Api(AbilitiesRefusal::NoAbilitySlot.refused())),
         ),
     ];
     for (value, expected, failure) in steps {
@@ -207,11 +208,11 @@ fn take_input(ctx, player, name, value) {
         &mut game,
         &[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))],
     );
-    let hero = |game: &mut Match, seat| {
+    let hero = |game: &mut Match, player_slot| {
         let mut owned = game.query::<(Entity, &Owner)>();
         let (entity, _) = owned
             .iter(game)
-            .find(|(_, owner)| owner.seat() == Seat::new(seat))
+            .find(|(_, owner)| owner.player_slot() == PlayerSlot::new(player_slot))
             .unwrap();
         entity
     };

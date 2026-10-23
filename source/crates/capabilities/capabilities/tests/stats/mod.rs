@@ -493,7 +493,7 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
     Stats::load_modifier(&mut game, PackageIndex::MODE, "slow", &data, None);
     let slow = Stats::modifier(&game, PackageIndex::MODE, "slow").unwrap();
     let target = *game.get::<StableId>(unit).unwrap();
-    Stats::give_modifier(&mut game, target, slow, None, false);
+    Stats::give_modifier(&mut game, target, slow, Applier::MODE);
     game.step();
     let step = game.get::<MoveStep>(unit).unwrap().get();
     assert_eq!(step, Num::from_bits(1_118_481));
@@ -570,7 +570,7 @@ fn a_scaling_aura_radius_and_shield_below_zero_hold_zero_and_restore() {
     let unit = unit(&mut game, 0);
     game.step();
     let id = *game.get::<StableId>(unit).unwrap();
-    Stats::give_modifier(&mut game, id, warding, Some((id, None, 1)), false);
+    Stats::give_modifier(&mut game, id, warding, Applier::from_unit(id));
     let modifiers = game.get::<Modifiers>(unit).unwrap();
     let carried = modifiers.get(warding, Some(id)).unwrap();
     let clocks = game.get::<ModifierClocks>(unit).unwrap();
@@ -592,7 +592,7 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
     let unit = unit(&mut game, 0);
     game.step();
     let id = *game.get::<StableId>(unit).unwrap();
-    Stats::give_modifier(&mut game, id, warding, Some((id, None, 1)), false);
+    Stats::give_modifier(&mut game, id, warding, Applier::from_unit(id));
     let made = game.get::<ModifierClocks>(unit).unwrap().clone();
     let check = |change: fn(&mut ModifierClock)| {
         let mut clocks = made.clone();
@@ -698,21 +698,27 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     game.entity_mut(far_entity).insert(moved);
     game.step();
     assert_eq!([near, far].map(|id| holds(&game, id)), [false, true]);
-    // An aura's instance of no stack projects nothing, nor does one its carrier's immunity
+    // An aura written no stack ends, and projects nothing, nor does one its carrier's immunity
     // suppresses: the aura grants tag 0, to which the carrier, warded, is immune.
-    let stacks = |game: &mut Match, stacks| {
-        let holder = entity(game, carrier);
-        let mut modifiers = game.get_mut::<Modifiers>(holder).unwrap();
-        modifiers.set_stacks(presence, Some(carrier), stacks, Tick::new(0));
-    };
-    stacks(&mut game, 0);
+    let holder = entity(&game, carrier);
+    CarriedMut::with(&mut game, holder, |carried| {
+        carried.set_stacks(presence, Some(carrier), 0, Tick::new(0));
+    })
+    .unwrap();
     game.step();
     assert!(!holds(&game, far));
-    stacks(&mut game, 1);
+    assert!(
+        game.get::<Modifiers>(holder)
+            .unwrap()
+            .get(presence, Some(carrier))
+            .is_none()
+    );
+    let presence_aura = aura(presence, carrier, Num::int(2));
+    CarriedMut::with(&mut game, holder, |carried| carried.apply(presence_aura)).unwrap();
     game.step();
     assert!(holds(&game, far));
     let ward = Stats::modifier(&game, PackageIndex::MODE, "ward").unwrap();
-    Stats::give_modifier(&mut game, carrier, ward, None, false);
+    Stats::give_modifier(&mut game, carrier, ward, Applier::MODE);
     game.step();
     assert!(!holds(&game, far));
     let carrier_entity = entity(&game, carrier);
@@ -821,8 +827,7 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
     let push = |game: &mut Match, id: StableId, rank| {
         let entity = game.unit_entity(id);
         let mut grants = game.resource_mut::<Grants>();
-        grants.unit(entity, id);
-        grants.push(grant(rank));
+        grants.of(entity, id).push(grant(rank));
     };
     let held = |game: &Match| {
         let modifiers = game.get::<Modifiers>(unit).unwrap();

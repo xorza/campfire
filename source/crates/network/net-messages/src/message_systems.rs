@@ -9,4 +9,6 @@ pub enum MessageSystems {
     /// Serializes the messages of every [`MessageSender<M>`](crate::message_sender::MessageSender)
     /// and buffers them in the transport.
     Send,
+    /// Clears what the frame's receivers hold that no system read, in `Last`.
+    Clear,
 }

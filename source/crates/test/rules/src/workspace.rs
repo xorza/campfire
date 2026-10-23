@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -21,22 +22,10 @@ pub(crate) fn source() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../.."))
 }
 
-/// The dependencies of the crate at `dir`, under `source/crates/`, sorted.
-pub(crate) fn crate_dependencies(dir: &str) -> Vec<String> {
-    let path = source().join("crates").join(dir).join("Cargo.toml");
-    let manifest = CargoManifest::parse(&read(path.to_str().unwrap()));
-    let mut names: Vec<String> = manifest
-        .dependencies()
-        .map(|(name, _)| name.to_owned())
-        .collect();
-    names.sort_unstable();
-    names
-}
-
 /// The crates of the workspace a match runs on, by name: the release and each crate of the
 /// workspace its required dependencies reach, of `manifests`, the workspace's.
-pub(crate) fn sim_closure(manifests: &[(String, CargoManifest)]) -> BTreeSet<String> {
-    let workspace = |name: &str| manifests.iter().any(|(crate_name, _)| crate_name == name);
+pub(crate) fn sim_closure(manifests: &[Crate]) -> BTreeSet<String> {
+    let workspace = |name: &str| manifests.iter().any(|krate| krate.name == name);
     let mut reached = required_closure(manifests, "campfire-capabilities");
     reached.retain(|name| workspace(name));
     reached.insert("campfire-capabilities".to_owned());
@@ -46,15 +35,12 @@ pub(crate) fn sim_closure(manifests: &[(String, CargoManifest)]) -> BTreeSet<Str
 /// Every crate the build of `name`, a crate of `manifests`, requires, by name: its required
 /// dependencies, and theirs through each crate of the workspace, as a dependency from outside it
 /// names its own in no manifest here.
-pub(crate) fn required_closure(
-    manifests: &[(String, CargoManifest)],
-    name: &str,
-) -> BTreeSet<String> {
+pub(crate) fn required_closure(manifests: &[Crate], name: &str) -> BTreeSet<String> {
     let manifest = |name: &str| {
         manifests
             .iter()
-            .find(|(crate_name, _)| crate_name == name)
-            .map(|(_, manifest)| manifest)
+            .find(|krate| krate.name == name)
+            .map(|krate| &krate.manifest)
     };
     let mut reached = BTreeSet::new();
     let mut next = vec![name.to_owned()];
@@ -86,13 +72,17 @@ pub(crate) enum DevEdges {
 /// edge turns on; a crate outside the workspace is reached as a manifest here names it. With
 /// `DevEdges::Followed`, its dev-dependencies too.
 pub(crate) fn test_build<'a>(
-    manifests: &'a [(String, CargoManifest)],
+    manifests: &'a [Crate],
     name: &str,
     dev_edges: DevEdges,
 ) -> BTreeSet<&'a str> {
-    let (root, manifest) = manifests
+    let Crate {
+        name: root,
+        manifest,
+        ..
+    } = manifests
         .iter()
-        .find(|(crate_name, _)| crate_name == name)
+        .find(|krate| krate.name == name)
         .expect("a test build starts at a crate of the workspace");
     let mut build = FeatureBuild {
         manifests,
@@ -119,7 +109,7 @@ pub(crate) fn test_build<'a>(
 /// A build's walk of the crates and features it turns on, from the steps it has yet to take.
 #[derive(Debug)]
 struct FeatureBuild<'a> {
-    manifests: &'a [(String, CargoManifest)],
+    manifests: &'a [Crate],
     crates: BTreeSet<&'a str>,
     features: BTreeSet<(&'a str, &'a str)>,
     /// Each optional dependency a crate's features turned on: the crate, and the dependency.
@@ -142,8 +132,8 @@ impl<'a> FeatureBuild<'a> {
         let manifests = self.manifests;
         manifests
             .iter()
-            .find(|(crate_name, _)| crate_name == name)
-            .map(|(_, manifest)| manifest)
+            .find(|krate| krate.name == name)
+            .map(|krate| &krate.manifest)
     }
 
     fn edge(&mut self, other: &'a str, dependency: &'a CargoDependency) {
@@ -249,78 +239,142 @@ pub(crate) struct Crate {
     pub(crate) manifest: CargoManifest,
 }
 
-/// The crates of the workspace, by their packages' names: each directory of `crates/` and `checks/`
-/// that holds a `Cargo.toml`, at any depth of the groups; the walk goes on into a crate's
-/// directory, so a test finds a crate that one holds.
-pub(crate) fn crates() -> Vec<Crate> {
-    let mut found = Vec::new();
-    let mut dirs = vec![source().join("crates"), source().join("checks")];
-    while let Some(dir) = dirs.pop() {
-        let entries = DirEntries::read(&dir).unwrap();
-        if entries
-            .iter()
-            .any(|inner: &DirEntry| inner.name == "Cargo.toml")
-        {
-            let manifest = CargoManifest::parse(&read(dir.join("Cargo.toml").to_str().unwrap()));
-            // Joined by `/` on every OS, as a source file's path is.
-            let path: Vec<&str> = dir
-                .strip_prefix(source())
-                .unwrap()
-                .components()
-                .map(|part| part.as_os_str().to_str().unwrap())
-                .collect();
-            found.push(Crate {
-                dir_name: dir.file_name().unwrap().to_str().unwrap().to_owned(),
-                path: path.join("/"),
-                name: manifest.name().to_owned(),
-                manifest,
-            });
+impl Crate {
+    /// A crate of the name `name` at `crates/<name>`, of the manifest `text`, as a rule's sample
+    /// gives one.
+    pub(crate) fn sample(name: &str, text: &str) -> Self {
+        Self {
+            dir_name: name.to_owned(),
+            path: format!("crates/{name}"),
+            name: name.to_owned(),
+            manifest: CargoManifest::parse(text),
         }
-        let own = ["src", "tests", "benches", "examples"];
-        dirs.extend(
-            entries
+    }
+
+    /// Its dependencies, sorted.
+    pub(crate) fn dependencies(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .manifest
+            .dependencies()
+            .map(|(name, _)| name.to_owned())
+            .collect();
+        names.sort_unstable();
+        names
+    }
+}
+
+/// The workspace as the rules read it: its crates, each with its manifest, read once, and its
+/// Rust sources, read once on the first rule that asks.
+#[derive(Debug)]
+pub(crate) struct Workspace {
+    crates: Vec<Crate>,
+    sources: OnceCell<Vec<SourceFile>>,
+}
+
+impl Workspace {
+    /// The crates of the workspace, by their packages' names: each directory of `crates/` and
+    /// `checks/` that holds a `Cargo.toml`, at any depth of the groups; the walk goes on into a
+    /// crate's directory, so a test finds a crate that one holds.
+    pub(crate) fn read() -> Self {
+        let mut found = Vec::new();
+        let mut dirs = vec![source().join("crates"), source().join("checks")];
+        while let Some(dir) = dirs.pop() {
+            let entries = DirEntries::read(&dir).unwrap();
+            if entries
                 .iter()
-                .filter(|entry| entry.kind == EntryKind::Dir)
-                .filter(|entry| !own.iter().any(|name| entry.name == *name))
-                .map(|entry| dir.join(&entry.name)),
-        );
-    }
-    found.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-    found
-}
-
-/// The crates of the workspace, each by its package's name, with its manifest.
-pub(crate) fn manifests() -> Vec<(String, CargoManifest)> {
-    crates()
-        .into_iter()
-        .map(|krate| (krate.name, krate.manifest))
-        .collect()
-}
-
-/// Each Rust source file of the workspace's crates and checks, by its path under `source/`,
-/// with its text.
-pub(crate) fn sources() -> Vec<SourceFile> {
-    let mut read = Vec::new();
-    for dir_name in ["crates", "checks"] {
-        for mut file in SourceFiles::under(&source().join(dir_name)) {
-            file.path = format!("{dir_name}/{}", file.path);
-            read.push(file);
+                .any(|inner: &DirEntry| inner.name == "Cargo.toml")
+            {
+                let manifest =
+                    CargoManifest::parse(&read(dir.join("Cargo.toml").to_str().unwrap()));
+                // Joined by `/` on every OS, as a source file's path is.
+                let path: Vec<&str> = dir
+                    .strip_prefix(source())
+                    .unwrap()
+                    .components()
+                    .map(|part| part.as_os_str().to_str().unwrap())
+                    .collect();
+                found.push(Crate {
+                    dir_name: dir.file_name().unwrap().to_str().unwrap().to_owned(),
+                    path: path.join("/"),
+                    name: manifest.name().to_owned(),
+                    manifest,
+                });
+            }
+            let own = ["src", "tests", "benches", "examples"];
+            dirs.extend(
+                entries
+                    .iter()
+                    .filter(|entry| entry.kind == EntryKind::Dir)
+                    .filter(|entry| !own.iter().any(|name| entry.name == *name))
+                    .map(|entry| dir.join(&entry.name)),
+            );
+        }
+        found.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        Self {
+            crates: found,
+            sources: OnceCell::new(),
         }
     }
-    read
-}
 
-/// Each Rust source file of `crates`, by its path under `source/`, with its text: the walk of
-/// their directories alone, for a rule that reads a few crates of the workspace.
-pub(crate) fn sources_of<'a>(crates: impl IntoIterator<Item = &'a Crate>) -> Vec<SourceFile> {
-    let mut read = Vec::new();
-    for krate in crates {
-        for mut file in SourceFiles::under(&source().join(&krate.path)) {
-            file.path = format!("{}/{}", krate.path, file.path);
-            read.push(file);
-        }
+    pub(crate) fn crates(&self) -> &[Crate] {
+        &self.crates
     }
-    read
+
+    /// The crate of the directory `dir`, under `source/crates/`.
+    pub(crate) fn crate_at(&self, dir: &str) -> &Crate {
+        let path = format!("crates/{dir}");
+        self.crates
+            .iter()
+            .find(|krate| krate.path == path)
+            .unwrap_or_else(|| panic!("no crate at {path}"))
+    }
+
+    /// Each Rust source file of the workspace's crates and checks, by its path under `source/`,
+    /// with its text.
+    pub(crate) fn sources(&self) -> &[SourceFile] {
+        self.sources.get_or_init(|| {
+            let mut read = Vec::new();
+            for dir_name in ["crates", "checks"] {
+                for mut file in SourceFiles::under(&source().join(dir_name)) {
+                    file.path = format!("{dir_name}/{}", file.path);
+                    read.push(file);
+                }
+            }
+            read
+        })
+    }
+
+    /// The sources of `krate`, of the workspace's.
+    pub(crate) fn sources_of<'a>(
+        &'a self,
+        krate: &'a Crate,
+    ) -> impl Iterator<Item = &'a SourceFile> {
+        let dir = format!("{}/", krate.path);
+        self.sources()
+            .iter()
+            .filter(move |file| file.path.starts_with(&dir))
+    }
+
+    /// The crate that holds the source file at `path`, under `source/`: the deepest whose
+    /// directory holds it.
+    pub(crate) fn holder(&self, path: &str) -> Option<&Crate> {
+        holder(&self.crates, path).map(|at| &self.crates[at])
+    }
+
+    /// The code `view` keeps of each of its crates, in their order: each source's that no crate
+    /// nested in its directory holds.
+    pub(crate) fn code_by_crate(&self, view: fn(&SourceFile) -> Option<String>) -> Vec<String> {
+        let mut code = vec![String::new(); self.crates.len()];
+        for file in self.sources() {
+            let Some(at) = holder(&self.crates, &file.path) else {
+                continue;
+            };
+            if let Some(kept) = view(file) {
+                code[at].push_str(&kept);
+            }
+        }
+        code
+    }
 }
 
 /// The index in `crates` of the crate that holds the source file at `path`, under `source/`: the

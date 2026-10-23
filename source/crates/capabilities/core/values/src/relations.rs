@@ -19,6 +19,23 @@ use crate::team_set::TeamSet;
 pub struct Relations {
     /// The pairs that differ from the default, the lower team first, sorted by their teams.
     pairs: Vec<RelationPair>,
+    /// Derived from the pairs, as each change of them derives it again.
+    #[serde(skip)]
+    roots: VisionRoots,
+}
+
+/// The lowest team of each team's vision group, by team index: two teams see as one when their
+/// roots are one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VisionRoots([u8; Team::LIMIT]);
+
+/// Each team its own group, as no pair shares vision.
+impl Default for VisionRoots {
+    fn default() -> Self {
+        Self(array::from_fn(|at| {
+            u8::try_from(at).expect("a team index fits u8")
+        }))
+    }
 }
 
 /// A pair of teams, `a` below `b`, as they regard each other.
@@ -71,6 +88,7 @@ impl Relations {
             ),
             (Err(_), true) => {}
         }
+        self.roots = self.find_roots();
     }
 
     /// Sets how the two teams regard each other, their vision as it was.
@@ -100,18 +118,26 @@ impl Relations {
     /// The teams that see as one with `team`: those it shares vision with, those they share it
     /// with, and so on, `team` among them.
     pub fn vision_group(&self, team: Team) -> TeamSet {
-        let lowest = self.vision_lowest();
-        let own = lowest[team.index()];
+        let roots = &self.roots.0;
+        let own = roots[team.index()];
         (0..=u8::MAX)
-            .filter(|&at| lowest[usize::from(at)] == own)
+            .filter(|&at| roots[usize::from(at)] == own)
             .fold(TeamSet::NONE, |group, at| group.with(Team::new(at)))
     }
 
-    /// The lowest team of each team's vision group, by team index, from one pass over the pairs
-    /// that share vision.
-    pub fn vision_lowest(&self) -> [u8; Team::LIMIT] {
-        let mut root: [u8; Team::LIMIT] =
-            array::from_fn(|at| u8::try_from(at).expect("a team index fits u8"));
+    /// Whether `of` and `other` see as one, of one vision group.
+    pub fn see_as_one(&self, of: Team, other: Team) -> bool {
+        self.roots.0[of.index()] == self.roots.0[other.index()]
+    }
+
+    /// The lowest team of each team's vision group, by team index.
+    pub const fn vision_lowest(&self) -> [u8; Team::LIMIT] {
+        self.roots.0
+    }
+
+    /// The roots of the pairs, from one pass over those that share vision.
+    fn find_roots(&self) -> VisionRoots {
+        let VisionRoots(mut root) = VisionRoots::default();
         let find = |root: &mut [u8; Team::LIMIT], mut at: usize| {
             while usize::from(root[at]) != at {
                 let up = usize::from(root[at]);
@@ -128,7 +154,7 @@ impl Relations {
         for at in 0..Team::LIMIT {
             root[at] = root[usize::from(root[at])];
         }
-        root
+        VisionRoots(root)
     }
 
     fn find(&self, of: Team, other: Team) -> Result<usize, usize> {
@@ -155,7 +181,12 @@ impl<'de> Deserialize<'de> for Relations {
                 "relations out of order or held needlessly",
             ));
         }
-        Ok(Self { pairs })
+        let mut relations = Self {
+            pairs,
+            roots: VisionRoots::default(),
+        };
+        relations.roots = relations.find_roots();
+        Ok(relations)
     }
 }
 
@@ -204,12 +235,16 @@ mod tests {
         assert_eq!(relations.between(a, c), Relation::Friendly);
         assert_eq!(relations.between(b, a), Relation::Neutral);
         assert_eq!(relations.vision_pairs().collect::<Vec<_>>(), [(a, c)]);
+        // `a` and `c` share vision, so see as one; `b`, neutral, sees alone.
+        assert!(relations.see_as_one(c, a) && !relations.see_as_one(a, b));
+        assert_eq!(relations.vision_group(c), TeamSet::NONE.with(a).with(c));
         // Vision off holds through a change of relation; back to hostile with vision on, the pair
         // is the default and no longer held.
         relations.set(a, c, Relation::Friendly, VisionShare::Apart);
         relations.set_keeping_vision(c, a, Relation::Neutral);
         relations.set_keeping_vision(c, a, Relation::Friendly);
         assert_eq!(relations.vision_pairs().count(), 0);
+        assert!(!relations.see_as_one(a, c));
         relations.set(a, b, Relation::Hostile, VisionShare::Shared);
         assert_eq!(relations.pairs.len(), 1);
         // A snapshot that holds a default pair fails to decode.
@@ -218,7 +253,11 @@ mod tests {
             Binary::decode::<Relations>(&bytes).err(),
             Some(BinaryError::REFUSED)
         );
+        // A decode derives the groups again: `a` and `c`, friends sharing vision, see as one.
+        relations.set(a, c, Relation::Friendly, VisionShare::Shared);
         let bytes = Binary::encode(&relations);
-        assert_eq!(Binary::decode::<Relations>(&bytes).ok(), Some(relations));
+        let decoded = Binary::decode::<Relations>(&bytes).unwrap();
+        assert!(decoded.see_as_one(a, c));
+        assert_eq!(decoded, relations);
     }
 }

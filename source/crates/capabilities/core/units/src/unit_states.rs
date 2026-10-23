@@ -34,7 +34,7 @@ impl UnitStates {
     pub(crate) fn initial(book: &UnitStateBook, unit_type: UnitType) -> Self {
         let mut states = Self::default();
         if let Some(schema) = book.schema(unit_type) {
-            for (value, place) in schema.initial().iter().zip(schema.places()) {
+            for (value, place) in schema.initial().zip(schema.places()) {
                 states.push(place.audience, value.clone());
             }
         }

@@ -25,8 +25,9 @@ use tracing::trace;
 pub struct RemoteEstimate {
     /// Whether a packet of the remote peer arrived this frame.
     received_packet: bool,
-    /// Most recent tick received from the Server
-    last_received_tick: Option<NetTick>,
+    /// The latest instant a packet of the remote peer carried: its tick and its overstep as it
+    /// sent the packet.
+    last_received: Option<TickInstant>,
     /// Our estimate of the offset of the remote timeline compared with our estimate
     /// if we just updated the timeline without any adjustments
     ///
@@ -40,16 +41,15 @@ impl Default for RemoteEstimate {
     fn default() -> Self {
         Self {
             received_packet: false,
-            last_received_tick: None,
+            last_received: None,
             offset: TickSpan::from(0),
             first_estimate: true,
         }
     }
 }
 
-/// The setup of a [`RemoteTimeline`], beside the timeline it configures.
-#[derive(Component, Default, Debug, Reflect)]
-#[require(RemoteTimeline)]
+/// The setup of a [`RemoteTimeline`], which holds no setting: the timeline's type alone.
+#[derive(Default, Debug, Reflect)]
 pub struct RemoteTimelineSetup;
 
 impl TimelineSetup for RemoteTimelineSetup {
@@ -68,7 +68,7 @@ impl RemoteTimeline {
     /// An Option containing the most recent NetTick if available, or None if no ticks have been
     /// received.
     pub fn last_received_tick(&self) -> Option<NetTick> {
-        self.state.last_received_tick
+        self.state.last_received.map(TickInstant::tick)
     }
 
     /// Updates the local estimate after receiving a packet from the remote peer.
@@ -78,31 +78,33 @@ impl RemoteTimeline {
     ///
     /// # Arguments
     ///
-    /// * `remote_tick` - The tick from the remote peer's timeline included in the received packet
+    /// * `remote` - The instant of the remote peer's timeline the received packet carried, its tick
+    ///   and its overstep as it sent the packet, which a frame's end leaves up to a tick past the
+    ///   tick
     /// * `estimate` - The link's latency estimate
     ///
     /// # Note
     ///
-    /// This method will only update the estimate if the received tick is newer than
-    /// the previously received tick.
+    /// This method will only update the estimate if the received instant is newer than
+    /// the previously received one.
     pub(crate) fn update(
         &mut self,
-        remote_tick: NetTick,
+        remote: TickInstant,
         estimate: LinkEstimate,
         tick_rate: TickRate,
     ) {
         if self
             .state
-            .last_received_tick
-            .is_none_or(|previous_tick| remote_tick >= previous_tick)
+            .last_received
+            .is_none_or(|previous| remote >= previous)
         {
             // only update if the remote tick is newer than the last received tick
             self.state.received_packet = true;
-            self.state.last_received_tick = Some(remote_tick);
+            self.state.last_received = Some(remote);
 
             // we have received the packet now, so the remote must already be at RTT/2 ahead
             let network_delay = TickSpan::from_duration(estimate.rtt() / 2, tick_rate);
-            let new_estimate = TickInstant::from(remote_tick) + network_delay;
+            let new_estimate = remote + network_delay;
             let ideal_estimate = self.now();
 
             let old_offset = self.offset;
@@ -127,9 +129,7 @@ impl RemoteTimeline {
             trace!(
                 target: "campfire_net_debug::sync",
                 kind = "remote_estimate_update",
-                schedule = "PreUpdate",
-                sample_point = "PreUpdate",
-                remote_tick = remote_tick.0,
+                remote_tick = remote.tick().0,
                 estimated_tick = self.current_estimate().tick().0,
                 timeline_tick = self.tick().0,
                 ?estimate,
@@ -153,7 +153,7 @@ impl RemoteTimeline {
             timeline.received_packet = false;
             timeline.offset = TickSpan::from(0);
             timeline.first_estimate = true;
-            timeline.last_received_tick = None;
+            timeline.last_received = None;
         }
     }
 
@@ -167,30 +167,26 @@ impl RemoteTimeline {
         if let Ok((mut t, estimator)) = query.get_mut(trigger.entity) {
             trace!(
                 "Received packet received with remote tick {:?}",
-                trigger.remote_tick
+                trigger.remote
             );
             trace!(
                 target: "campfire_net_debug::timeline",
                 kind = "packet_remote_tick",
-                schedule = "PreUpdate",
-                sample_point = "PreUpdate",
                 entity = ?trigger.entity,
-                remote_tick = trigger.remote_tick.0,
+                remote_tick = trigger.remote.tick().0,
                 "packet carried remote timeline tick"
             );
             let Some(estimate) = estimator.estimate() else {
                 trace!(
                     target: "campfire_net_debug::sync",
                     kind = "remote_estimate_waiting_for_latency_samples",
-                    schedule = "PreUpdate",
-                    sample_point = "PreUpdate",
-                    remote_tick = trigger.remote_tick.0,
+                    remote_tick = trigger.remote.tick().0,
                     latency_samples = estimator.samples(),
                     "remote timeline estimate skipped until latency samples are available"
                 );
                 return;
             };
-            t.update(trigger.remote_tick, estimate, tick_rate.0);
+            t.update(trigger.remote, estimate, tick_rate.0);
         }
     }
 
@@ -266,7 +262,7 @@ mod tests {
     }
 
     use campfire_net_connection::RemoteId;
-    use campfire_net_core::PeerId;
+    use campfire_net_core::{Overstep, PeerId};
 
     const TICK: TickRate = TickRate::hertz(NonZeroU32::new(100).unwrap());
 
@@ -286,18 +282,41 @@ mod tests {
     #[test]
     fn the_first_update_takes_the_raw_offset_and_an_older_tick_is_ignored() {
         let mut timeline = RemoteTimeline::default();
-        timeline.update(NetTick(100), estimate(Duration::ZERO), TICK);
+        timeline.update(
+            TickInstant::from(NetTick(100)),
+            estimate(Duration::ZERO),
+            TICK,
+        );
         assert_eq!(timeline.last_received_tick(), Some(NetTick(100)));
         assert_eq!(timeline.offset, TickSpan::from(0));
         assert_eq!(timeline.current_estimate(), TickInstant::from(NetTick(101)));
         assert!(timeline.has_received_packet());
 
-        timeline.update(NetTick(99), estimate(Duration::ZERO), TICK);
+        timeline.update(
+            TickInstant::from(NetTick(99)),
+            estimate(Duration::ZERO),
+            TICK,
+        );
         assert_eq!(timeline.last_received_tick(), Some(NetTick(100)));
         assert_eq!(timeline.current_estimate(), TickInstant::from(NetTick(101)));
 
+        // A packet sent half a tick past tick 100 estimates the remote half a tick later: 101.5.
+        let mut halfway = RemoteTimeline::default();
+        let sent = TickInstant::from_tick_and_overstep(NetTick(100), Overstep::from_u8(128));
+        halfway.update(sent, estimate(Duration::ZERO), TICK);
+        assert_eq!(halfway.current_estimate(), sent + TickSpan::from(1));
+        assert_eq!(
+            halfway.current_estimate() - timeline.current_estimate(),
+            span("0.5")
+        );
+        assert_eq!(halfway.last_received_tick(), Some(NetTick(100)));
+
         let mut late = RemoteTimeline::default();
-        late.update(NetTick(3_000_000_000), estimate(Duration::ZERO), TICK);
+        late.update(
+            TickInstant::from(NetTick(3_000_000_000)),
+            estimate(Duration::ZERO),
+            TICK,
+        );
         assert_eq!(
             late.current_estimate(),
             TickInstant::from(NetTick(3_000_000_001))
@@ -313,9 +332,9 @@ mod tests {
     fn a_later_update_smooths_the_offset_by_the_jitter() {
         let smoothed = |jitter, updates| {
             let mut timeline = RemoteTimeline::default();
-            timeline.update(NetTick(100), estimate(jitter), TICK);
+            timeline.update(TickInstant::from(NetTick(100)), estimate(jitter), TICK);
             for _ in 0..updates {
-                timeline.update(NetTick(110), estimate(jitter), TICK);
+                timeline.update(TickInstant::from(NetTick(110)), estimate(jitter), TICK);
             }
             timeline.offset
         };
@@ -333,7 +352,11 @@ mod tests {
         let mut world = World::new();
         world.add_observer(RemoteTimeline::handle_connect);
         let mut timeline = RemoteTimeline::default();
-        timeline.update(NetTick(100), estimate(Duration::ZERO), TICK);
+        timeline.update(
+            TickInstant::from(NetTick(100)),
+            estimate(Duration::ZERO),
+            TICK,
+        );
         let entity = world.spawn((timeline, RemoteId(PeerId::Server))).id();
         world.entity_mut(entity).insert(Connected);
         let timeline = world.get::<RemoteTimeline>(entity).unwrap();

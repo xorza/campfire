@@ -222,14 +222,7 @@ impl<'de> Visitor<'de> for TableSeed<'_> {
             rest: TomlTable::default(),
         };
         while let Some(key) = map.next_key::<String>()? {
-            if let Some(reader) = self.readers.reader(self.table, &key) {
-                let seed = SectionSeed {
-                    reader,
-                    readers: self.readers,
-                };
-                read.sections.push(map.next_value_seed(seed)?);
-                read.delivers |= reader.table == SectionTable::DeliveryType;
-            } else {
+            if !self.next_section(&key, &mut map, &mut read)? {
                 read.rest.insert(key, map.next_value()?);
             }
         }

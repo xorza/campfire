@@ -1,0 +1,262 @@
+use std::fs::{self, DirBuilder, File, Metadata, OpenOptions};
+use std::mem::MaybeUninit;
+use std::os::unix::fs::{DirBuilderExt, FileExt, MetadataExt, OpenOptionsExt};
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::{io, ptr};
+
+use libc::{SIGHUP, SIGINT, SIGTERM, c_int};
+use signal_hook::flag;
+use socket2::Socket;
+
+use crate::stop_signals::StopSignals;
+
+/// The Unix side of the platform layer: a mode given as a file or directory is made keeps it its
+/// owner's only, and `fsync` of a directory keeps its names. A file is its user's only when its
+/// owner is the process's effective user, or root, who may open any file, and its mode lets
+/// neither its group nor others in. A stop's signal is caught by `signal-hook`, whose handler
+/// does only what a signal's handler may. A shared port takes `SO_REUSEADDR` and `SO_REUSEPORT`,
+/// as BSD and macOS bind a port twice only with the second.
+#[derive(Debug)]
+pub(crate) struct Native;
+
+/// The bits of a mode that let a file's group or others in.
+const SHARED: u32 = 0o077;
+
+/// The signals that stop a process.
+const STOP: [c_int; 3] = [SIGINT, SIGTERM, SIGHUP];
+
+/// Root's user id.
+const ROOT: u32 = 0;
+
+impl Native {
+    pub(crate) fn share_port(socket: &Socket) -> io::Result<()> {
+        socket.set_reuse_address(true)?;
+        socket.set_reuse_port(true)
+    }
+
+    pub(crate) fn create_user_only(path: &Path) -> io::Result<File> {
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)
+    }
+
+    pub(crate) fn open_user_only(path: &Path) -> io::Result<File> {
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(path)
+    }
+
+    pub(crate) fn create_dir_user_only(path: &Path) -> io::Result<()> {
+        DirBuilder::new().mode(0o700).create(path)
+    }
+
+    pub(crate) fn exposure(file: &File) -> io::Result<Option<String>> {
+        Ok(Self::exposure_of(&file.metadata()?))
+    }
+
+    /// Who besides the process's user may open a file of `metadata`.
+    fn exposure_of(metadata: &Metadata) -> Option<String> {
+        // SAFETY: `geteuid` reads the process's effective user, and has no failure.
+        let user = unsafe { libc::geteuid() };
+        Self::exposed(metadata.mode(), metadata.uid(), user)
+    }
+
+    /// Who besides `user` may open a file of `mode` whose owner is `owner`: the group and others
+    /// its mode lets in, and an owner who is neither `user` nor root.
+    fn exposed(mode: u32, owner: u32, user: u32) -> Option<String> {
+        let mut others = Vec::new();
+        if mode & SHARED != 0 {
+            others.push(format!("mode {:o}", mode & 0o777));
+        }
+        if owner != user && owner != ROOT {
+            others.push(format!("its owner, user {owner}"));
+        }
+        (!others.is_empty()).then(|| others.join(", "))
+    }
+
+    pub(crate) fn rename(from: &Path, to: &Path) -> io::Result<()> {
+        fs::rename(from, to)
+    }
+
+    /// `link` fails with `EEXIST` when a file holds `to`, as POSIX makes it; the temporary name
+    /// goes once the new one holds the file.
+    pub(crate) fn create_name(from: &Path, to: &Path) -> io::Result<()> {
+        fs::hard_link(from, to)?;
+        fs::remove_file(from)
+    }
+
+    pub(crate) fn open_dir(path: &Path) -> io::Result<File> {
+        File::open(path)
+    }
+
+    pub(crate) fn read_exact_at(file: &File, buf: &mut [u8], offset: u64) -> io::Result<()> {
+        file.read_exact_at(buf, offset)
+    }
+
+    pub(crate) fn open_no_follow(path: &Path) -> io::Result<Option<File>> {
+        match OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+        {
+            Ok(file) => Ok(Some(file)),
+            Err(error) if error.raw_os_error() == Some(libc::ELOOP) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub(crate) fn sync_dir(directory: &Path) -> io::Result<()> {
+        File::open(directory)?.sync_all()
+    }
+
+    /// Raises `received` at each stop's signal the process did not start with ignored, and ends
+    /// the process at the next: the end's handler goes first, so the first signal finds the flag
+    /// down, as `signal-hook` has it.
+    pub(crate) fn catch_stop(received: &Arc<AtomicBool>) -> io::Result<()> {
+        for signal in STOP {
+            if Self::ignored(signal)? {
+                continue;
+            }
+            let code = c_int::from(StopSignals::EXIT_CODE);
+            flag::register_conditional_shutdown(signal, code, Arc::clone(received))?;
+            flag::register(signal, Arc::clone(received))?;
+        }
+        Ok(())
+    }
+
+    /// Whether the process ignores `signal`.
+    fn ignored(signal: c_int) -> io::Result<bool> {
+        let mut action = MaybeUninit::<libc::sigaction>::uninit();
+        // SAFETY: with no new action, `sigaction` only writes the signal's disposition to a valid
+        // out pointer.
+        if unsafe { libc::sigaction(signal, ptr::null(), action.as_mut_ptr()) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `sigaction` succeeded, so it wrote the whole action.
+        let action = unsafe { action.assume_init() };
+        Ok(action.sa_sigaction == libc::SIG_IGN)
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
+    use std::os::unix::process::CommandExt;
+    use std::path::Path;
+    use std::process::Command;
+    use std::{fs, io};
+
+    use libc::{SIGHUP, SIGINT, SIGTERM};
+
+    use crate::os::Native;
+
+    impl Native {
+        pub(crate) fn ignore_terminal(command: &mut Command) {
+            // SAFETY: the closure runs in the child between its fork and its exec, and calls only
+            // `signal`, which POSIX makes async-signal-safe.
+            unsafe {
+                command.pre_exec(|| {
+                    for signal in [SIGINT, SIGHUP] {
+                        if libc::signal(signal, libc::SIG_IGN) == libc::SIG_ERR {
+                            return Err(io::Error::last_os_error());
+                        }
+                    }
+                    Ok(())
+                })
+            };
+        }
+
+        pub(crate) fn stop(child: u32) -> io::Result<()> {
+            let child = libc::pid_t::try_from(child).expect("a process id fits pid_t");
+            // SAFETY: `kill` sends a signal to a process by its id, and touches no memory.
+            if unsafe { libc::kill(child, SIGTERM) } != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        }
+
+        pub(crate) fn expose(path: &Path) -> io::Result<()> {
+            fs::set_permissions(path, fs::Permissions::from_mode(0o644))
+        }
+
+        pub(crate) fn link_file(target: &Path, link: &Path) -> io::Result<()> {
+            symlink(target, link)
+        }
+
+        pub(crate) fn link_dir(target: &Path, link: &Path) -> io::Result<()> {
+            symlink(target, link)
+        }
+
+        pub(crate) fn file_id(path: &Path) -> io::Result<[u64; 2]> {
+            let metadata = fs::metadata(path)?;
+            Ok([metadata.dev(), metadata.ino()])
+        }
+
+        pub(crate) fn exposure_at(path: &Path) -> io::Result<Option<String>> {
+            Ok(Self::exposure_of(&fs::metadata(path)?))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use libc::SIGUSR2;
+
+    use crate::os::Native;
+
+    #[test]
+    fn an_ignored_signal_is_read_as_ignored() {
+        // `SIGUSR2`, which nothing of the test process catches, so its disposition is the
+        // test's to change.
+        assert!(!Native::ignored(SIGUSR2).unwrap());
+        // SAFETY: `signal` sets a disposition, and touches no memory.
+        unsafe { libc::signal(SIGUSR2, libc::SIG_IGN) };
+        assert!(Native::ignored(SIGUSR2).unwrap());
+        // SAFETY: as above.
+        unsafe { libc::signal(SIGUSR2, libc::SIG_DFL) };
+        assert!(!Native::ignored(SIGUSR2).unwrap());
+    }
+
+    #[test]
+    fn a_file_is_exposed_by_its_mode_and_by_another_owner() {
+        // `SHARED`, 0o077, holds the group's and the others' bits; the owner's and the file
+        // type's, as a regular file's 0o100000, expose nothing. The user is 1000.
+        for (mode, owner) in [
+            (0o600, 1000),
+            (0o700, 1000),
+            (0o400, 1000),
+            (0o100_600, 1000),
+        ] {
+            assert_eq!(Native::exposed(mode, owner, 1000), None, "{mode:o}");
+        }
+        // Root, who may open any file, owns it: as its own.
+        assert_eq!(Native::exposed(0o600, 0, 1000), None);
+        for (mode, owner, text) in [
+            (0o644, 1000, "mode 644"),
+            (0o640, 1000, "mode 640"),
+            (0o604, 1000, "mode 604"),
+            (0o610, 1000, "mode 610"),
+            (0o100_660, 1000, "mode 660"),
+            (0o600, 1001, "its owner, user 1001"),
+            (0o640, 1001, "mode 640, its owner, user 1001"),
+        ] {
+            assert_eq!(
+                Native::exposed(mode, owner, 1000).as_deref(),
+                Some(text),
+                "{mode:o}"
+            );
+        }
+        // Root reads a file another user owns as that user's: the promise holds for root too.
+        assert_eq!(
+            Native::exposed(0o600, 1000, 0).as_deref(),
+            Some("its owner, user 1000")
+        );
+    }
+}

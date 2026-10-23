@@ -6,8 +6,8 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use campfire_net_channels::{ChannelMode, ChannelSetup};
 use campfire_net_connection::Connected;
-use campfire_net_core::LinkDirections;
 use campfire_net_core::PositiveTickSpan;
+use campfire_net_core::{LinkDirection, LinkDirections};
 use campfire_net_messages::LinkMessages;
 use campfire_net_messages::{AppEventExt, EventSender, RemoteEvent};
 use campfire_net_timeline::TimelineRate;
@@ -27,17 +27,19 @@ impl Plugin for HelloPlugin {
             priority: 10.0,
             ..Default::default()
         })
-        .add_direction(LinkDirections::BOTH);
+        .add_direction(LinkDirections::from(LinkDirection::ServerToClient));
         app.register_event_to_bytes::<SenderHello>()
-            .add_direction(LinkDirections::BOTH);
+            .add_direction(LinkDirections::from(LinkDirection::ServerToClient));
         app.add_observer(Self::send_sender_hello);
         app.add_observer(Self::receive_sender_hello);
     }
 }
 
 impl HelloPlugin {
-    /// Sends the sender's hello once a link both is connected and replicates, whichever of
-    /// the two comes last: a link that never replicates gets none.
+    /// Sends the server's hello once a link both is connected and replicates, whichever of the two
+    /// comes last: a link that never replicates gets none. Only a server's link replicates, so the
+    /// hello goes to the client alone, which maps the server's entities as only a client does
+    /// (11-net-stack/api.md, Only a client maps the entities a message names).
     fn send_sender_hello(
         trigger: On<'_, '_, Add<(Connected, ReplicationSender)>>,
         replication_timer: Res<'_, ReplicationTimer>,

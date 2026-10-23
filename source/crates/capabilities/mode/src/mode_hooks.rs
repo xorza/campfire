@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use bevy_ecs::system::{Local, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_script::{
     Ctx, HookDecl, IdName, ModeEvents, PlayerHandle, ScriptList, ScriptRole, ScriptText,
     ScriptValue,
@@ -15,10 +15,10 @@ use crate::mode_input::{InputValue, ModeInput};
 use crate::timer_id::TimerId;
 use crate::timers::Timers;
 
-/// One mode input of the tick: its player's seat, and its body in the scratch buffer.
+/// One mode input of the tick: its player's player slot, and its body in the scratch buffer.
 #[derive(Debug)]
 pub(super) struct Input {
-    seat: Seat,
+    player_slot: PlayerSlot,
     body: Range<usize>,
 }
 
@@ -47,10 +47,6 @@ pub(crate) struct OnPlayerLeave;
 /// `on_timer(ctx, name, data)`: a timer of the mode's is due.
 #[derive(Debug)]
 pub(crate) struct OnTimer;
-
-/// `on_unit_death(ctx, unit, killer, assisters)`: a unit died, its killer `()` when none or gone.
-#[derive(Debug)]
-pub(crate) struct OnUnitDeath;
 
 /// `on_generate(ctx, region)`: planned, the map's generation fills a region.
 #[derive(Debug)]
@@ -82,7 +78,6 @@ mode_hook! {
     OnPlayerJoin: "on_player_join", ["player"], (Ctx, PlayerHandle);
     OnPlayerLeave: "on_player_leave", ["player"], (Ctx, PlayerHandle);
     OnTimer: "on_timer", ["name", "data"], (Ctx, IdName<TimerId>, ScriptValue);
-    OnUnitDeath: "on_unit_death", ["unit", "killer", "assisters"], (Ctx, ScriptValue, ScriptValue, ScriptList);
     OnGenerate: "on_generate", ["region"], (Ctx, ScriptValue);
     OnSystem: "on_system", ["units"], (Ctx, ScriptList);
     OnQuestStage: "on_quest_stage", ["player", "quest", "stage"], (Ctx, PlayerHandle, ScriptText, i64);
@@ -106,7 +101,7 @@ impl ModeHooks {
             let start = bodies.len();
             bodies.extend_from_slice(command.body);
             inputs.push(Input {
-                seat: command.seat,
+                player_slot: command.player_slot,
                 body: start..bodies.len(),
             });
         }
@@ -131,9 +126,14 @@ impl ModeHooks {
                     ),
                 };
                 let name = ScriptText::from(decoded.name);
-                let args = (call.ctx.clone(), PlayerHandle::new(input.seat), name, value);
+                let args = (
+                    call.ctx.clone(),
+                    PlayerHandle::new(input.player_slot),
+                    name,
+                    value,
+                );
                 // An input is answered once: one whose call finds its player's pool spent fails.
-                let answered = call.answer::<OnInput>(None, Some(input.seat), args);
+                let answered = call.answer::<OnInput>(None, Some(input.player_slot), args);
                 debug_assert!(answered.is_continue(), "an input's call never waits");
             }
         });

@@ -1,7 +1,6 @@
-use crate::reader::ReadVarInt;
+use crate::reader::Reader;
 use crate::serialization_error::SerializationError;
 use crate::writer::WriteInteger;
-use std::io;
 
 #[test]
 fn a_one_byte_varint_round_trips() {
@@ -11,7 +10,7 @@ fn a_one_byte_varint_round_trips() {
     writer.write_varint(val);
     assert_eq!(writer.len(), 1);
 
-    let mut reader = io::Cursor::new(writer);
+    let mut reader = Reader::from(writer);
     let read_val = reader.read_varint().unwrap();
     assert_eq!(val, read_val);
 
@@ -21,7 +20,7 @@ fn a_one_byte_varint_round_trips() {
     writer.write_varint(val);
     assert_eq!(writer.len(), 1);
 
-    let mut reader = io::Cursor::new(writer);
+    let mut reader = Reader::from(writer);
     let read_val = reader.read_varint().unwrap();
     assert_eq!(val, read_val);
 }
@@ -34,7 +33,7 @@ fn a_two_byte_varint_round_trips() {
     writer.write_varint(val);
     assert_eq!(writer.len(), 2);
 
-    let mut reader = io::Cursor::new(writer);
+    let mut reader = Reader::from(writer);
     let read_val = reader.read_varint().unwrap();
     assert_eq!(val, read_val);
 
@@ -44,7 +43,7 @@ fn a_two_byte_varint_round_trips() {
     writer.write_varint(val);
     assert_eq!(writer.len(), 2);
 
-    let mut reader = io::Cursor::new(writer);
+    let mut reader = Reader::from(writer);
     let read_val = reader.read_varint().unwrap();
     assert_eq!(val, read_val);
 }
@@ -57,7 +56,7 @@ fn a_four_byte_varint_round_trips() {
     writer.write_varint(val);
     assert_eq!(writer.len(), 4);
 
-    let mut reader = io::Cursor::new(writer);
+    let mut reader = Reader::from(writer);
     let read_val = reader.read_varint().unwrap();
     assert_eq!(val, read_val);
 
@@ -67,7 +66,7 @@ fn a_four_byte_varint_round_trips() {
     writer.write_varint(val);
     assert_eq!(writer.len(), 4);
 
-    let mut reader = io::Cursor::new(writer);
+    let mut reader = Reader::from(writer);
     let read_val = reader.read_varint().unwrap();
     assert_eq!(val, read_val);
 }
@@ -80,7 +79,7 @@ fn an_eight_byte_varint_round_trips() {
     writer.write_varint(val);
     assert_eq!(writer.len(), 8);
 
-    let mut reader = io::Cursor::new(writer);
+    let mut reader = Reader::from(writer);
     let read_val = reader.read_varint().unwrap();
     assert_eq!(val, read_val);
 
@@ -90,7 +89,7 @@ fn an_eight_byte_varint_round_trips() {
     writer.write_varint(val);
     assert_eq!(writer.len(), 8);
 
-    let mut reader = io::Cursor::new(writer);
+    let mut reader = Reader::from(writer);
     let read_val = reader.read_varint().unwrap();
     assert_eq!(val, read_val);
 }
@@ -114,7 +113,7 @@ fn each_encoding_matches_the_one_of_rfc_9000() {
         let mut writer = vec![];
         writer.write_varint(value);
         assert_eq!(writer, encoded, "{value}");
-        assert_eq!(io::Cursor::new(encoded).read_varint().unwrap(), value);
+        assert_eq!(Reader::from(encoded.to_vec()).read_varint().unwrap(), value);
     }
     let longer: [&[u8]; 4] = [
         &[0x40, 0x25],
@@ -125,7 +124,7 @@ fn each_encoding_matches_the_one_of_rfc_9000() {
     for encoded in longer {
         assert!(
             matches!(
-                io::Cursor::new(encoded).read_varint(),
+                Reader::from(encoded.to_vec()).read_varint(),
                 Err(SerializationError::NotCanonical)
             ),
             "{encoded:x?}"
@@ -140,6 +139,6 @@ fn each_encoding_matches_the_one_of_rfc_9000() {
         ),
     ];
     for (encoded, value) in smallest {
-        assert_eq!(io::Cursor::new(encoded).read_varint().unwrap(), value);
+        assert_eq!(Reader::from(encoded.to_vec()).read_varint().unwrap(), value);
     }
 }

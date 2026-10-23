@@ -1,5 +1,4 @@
 use campfire_common::DeclaredName;
-use campfire_declarations::BookPlace;
 use thiserror::Error;
 
 use campfire_values::ItemId;
@@ -28,12 +27,6 @@ pub enum ItemsDataError {
     /// The item is built, through its components, from itself.
     #[error("built from itself through its components")]
     ComponentLoop,
-    /// The item holds `modifier`, the passive of `holder`, which would share its hold.
-    #[error("holds modifier {modifier}, the passive of {holder}")]
-    SharedPassive {
-        modifier: DeclaredName,
-        holder: BookPlace,
-    },
     /// The item's action is a use, which only its object runs.
     #[error("its action {0} is a use, which only its object runs")]
     UseAction(DeclaredName),

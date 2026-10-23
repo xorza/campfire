@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, ActionTarget};
 use campfire_capabilities::{Match, Order};
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_harness::{FixedMatch, MatchUnits, ProvingMatch, ScriptedMode};
 use campfire_orders::OrdersDirective;
 use campfire_runner::MatchBuild;
@@ -79,8 +79,8 @@ impl Base {
     fn new() -> Self {
         let proving = ProvingMatch::load();
         let mut fixed = proving.start();
-        for tick in 0..60 {
-            proving.play_tick(&mut fixed, tick);
+        for _ in 0..60 {
+            proving.play_tick(&mut fixed);
         }
         let mut snapshot = Vec::new();
         fixed.game().snapshot(&mut snapshot);
@@ -165,7 +165,7 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
                 return Case::Refused;
             }
             let orders = every_slot_orders(target);
-            let inputs: Vec<(Seat, &[u8])> = orders
+            let inputs: Vec<(PlayerSlot, &[u8])> = orders
                 .iter()
                 .map(|(slot, payload)| (*slot, payload.as_slice()))
                 .collect();
@@ -188,12 +188,12 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
 /// For each player, an order of each slot of each living unit it controls, at a living unit of
 /// the match: a slot's at the unit as many places past it, by stable id, as the slot's number,
 /// plus one, so the slots of a unit meet different units.
-fn every_slot_orders(world: &World) -> Vec<(Seat, Vec<u8>)> {
+fn every_slot_orders(world: &World) -> Vec<(PlayerSlot, Vec<u8>)> {
     let units: Vec<_> = MatchUnits::of(world)
         .all()
         .filter(|(_, unit)| unit.contains::<Position>() && !unit.contains::<Dead>())
         .collect();
-    let mut by_player: BTreeMap<Seat, Vec<Order>> = BTreeMap::new();
+    let mut by_player: BTreeMap<PlayerSlot, Vec<Order>> = BTreeMap::new();
     for (at, (id, unit)) in units.iter().enumerate() {
         let (Some(owner), Some(slots)) = (unit.get::<Owner>(), unit.get::<ActionSlots>()) else {
             continue;
@@ -206,7 +206,7 @@ fn every_slot_orders(world: &World) -> Vec<(Seat, Vec<u8>)> {
                 target: ActionTarget::Unit(target),
             };
             by_player
-                .entry(owner.seat())
+                .entry(owner.player_slot())
                 .or_default()
                 .push(Order::one(*id, action));
         }

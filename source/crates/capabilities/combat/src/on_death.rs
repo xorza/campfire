@@ -1,4 +1,5 @@
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
+use campfire_values::UnitType;
 use serde::{Deserialize, Serialize};
 
 /// What becomes of a unit when it dies, as its unit type says: in data, `stay` or `despawn`. A
@@ -13,6 +14,6 @@ pub enum OnDeath {
     Despawn,
 }
 
-impl PerType for OnDeath {
+impl PerId<UnitType> for OnDeath {
     const SCRIPTS_ONLY: bool = false;
 }

@@ -1,24 +1,17 @@
-//! Fragment validation, reassembly, and decompression for channel receives.
+//! Fragment validation and reassembly for channel receives.
 
 use bevy_platform::collections::HashMap;
 use campfire_net_core::Instant;
 
-use crate::channel_receive_error::ChannelReceiveError;
-
-type Result<T> = core::result::Result<T, ChannelReceiveError>;
-use crate::compression::decompress_payload;
-#[cfg(feature = "compression_lz4")]
-use crate::compression_algorithm::CompressionAlgorithm;
-use crate::compression_setup::CompressionSetup;
+use crate::error::ReceiveError;
 use crate::fragment_body::FragmentBody;
-use crate::fragment_compression::FragmentCompression;
 use crate::message_id::MessageId;
 use crate::packet::MAX_FRAGMENTS;
-use crate::packet_error::PacketError;
-use crate::receive_budget::ReceiveBudget;
+use crate::receive_budget::{ReceiveBudget, Reservation};
 use bytes::Bytes;
-use campfire_net_bytes::Writer;
 use campfire_net_core::NetTick;
+
+type Result<T> = core::result::Result<T, ReceiveError>;
 use tracing::trace;
 
 /// The fragmented messages of a channel being built again, each taking its fragments' length from
@@ -31,12 +24,15 @@ pub(crate) struct FragmentReceiver {
     held: usize,
 }
 
+/// What a partial message costs the receive budget past the bytes it holds: its entry in the
+/// receiver's map.
+pub(crate) const PARTIAL_COST: usize = size_of::<(MessageId, FragmentConstructor)>();
+
 /// What a received fragment is checked and stored against.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FragmentCx {
     pub(crate) expiry: PartialExpiry,
-    pub(crate) compression: CompressionSetup,
-    /// The channel's largest message, uncompressed.
+    /// The channel's largest message.
     pub(crate) max_message_len: usize,
     pub(crate) reservation: Reservation,
 }
@@ -48,16 +44,6 @@ pub(crate) enum PartialExpiry {
     Never,
     /// The partial ages from this arrival of one of its fragments.
     Since(Instant),
-}
-
-/// How a new partial message's buffer is charged to the receive budget.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Reservation {
-    /// Refused when the budget has no room for it.
-    Limited,
-    /// Charged even past the limit: the message an ordered channel delivers next, without which
-    /// nothing waiting behind it can be delivered to free room.
-    Head,
 }
 
 /// What became of a received fragment.
@@ -111,7 +97,8 @@ impl FragmentReceiver {
         });
     }
 
-    fn remove(&mut self, message_id: MessageId) {
+    /// Drops the partial of `message_id`, if one is held.
+    pub(crate) fn remove(&mut self, message_id: MessageId) {
         if let Some(constructor) = self.fragment_messages.remove(&message_id) {
             self.held -= constructor.charged;
         }
@@ -135,10 +122,10 @@ impl FragmentReceiver {
         let fragments = fragment.fragments.0;
         let fragment_index = fragment.fragment_index.0;
         if fragments == 0 {
-            return Err(ChannelReceiveError::InvalidFragmentCount { fragments });
+            return Err(ReceiveError::InvalidFragmentCount { fragments });
         }
         if fragment_index >= fragments {
-            return Err(ChannelReceiveError::InvalidFragmentIndex {
+            return Err(ReceiveError::InvalidFragmentIndex {
                 fragment_index,
                 fragments,
             });
@@ -148,36 +135,32 @@ impl FragmentReceiver {
         let fragments = usize::try_from(fragments)
             .ok()
             .filter(|&count| count <= cx.max_message_len.min(MAX_FRAGMENTS))
-            .ok_or(ChannelReceiveError::FragmentCountTooLarge {
+            .ok_or(ReceiveError::FragmentCountTooLarge {
                 fragments,
                 max_message_len: cx.max_message_len,
             })?;
         let fragment_index = usize::try_from(fragment_index).unwrap();
+        if fragment.bytes.is_empty() {
+            return Err(ReceiveError::EmptyFragment);
+        }
 
         let message_id = fragment.message_id;
-        let fragment_compression = fragment.compression;
         let fragment_message = self
             .fragment_messages
             .entry(message_id)
             .or_insert_with(|| FragmentConstructor::new(remote_sent_tick, fragments));
         if fragment_message.fragments != fragments {
-            return Err(ChannelReceiveError::FragmentCountMismatch {
+            return Err(ReceiveError::FragmentCountMismatch {
                 expected: fragment_message.fragments,
                 actual: fragments,
             });
-        }
-        if let Some(fragment_compression) = fragment_compression {
-            fragment_message.set_compression(fragment_compression)?;
-        } else if fragment_index == 0 {
-            return Err(ChannelReceiveError::MissingFragmentCompression);
         }
 
         let charged_before = fragment_message.charged;
         let stored = fragment_message.receive_fragment(fragment_index, fragment.bytes, cx, budget);
         self.held += fragment_message.charged - charged_before;
         let empty = fragment_message.received_fragments == 0;
-        let fragment_compression = fragment_message.compression;
-        let (tick, payload) = match stored {
+        let (tick, bytes) = match stored {
             Ok(Stored::Pending) => return Ok(FragmentOutcome::Pending),
             Ok(Stored::Complete { tick, bytes }) => (tick, bytes),
             Ok(Stored::OverBudget) => {
@@ -192,19 +175,7 @@ impl FragmentReceiver {
             }
         };
         self.remove(message_id);
-        {
-            let fragment_compression =
-                fragment_compression.ok_or(ChannelReceiveError::MissingFragmentCompression)?;
-            let compression = CompressionSetup {
-                max_decompressed_payload_len: cx
-                    .compression
-                    .max_decompressed_payload_len
-                    .min(cx.max_message_len),
-                ..cx.compression
-            };
-            decompress_fragment_payload(fragment_compression, payload, compression)
-                .map(|bytes| FragmentOutcome::Complete { tick, bytes })
-        }
+        Ok(FragmentOutcome::Complete { tick, bytes })
     }
 }
 
@@ -224,7 +195,6 @@ pub(super) struct FragmentConstructor {
     layout: FragmentLayout,
 
     tick: NetTick,
-    compression: Option<FragmentCompression>,
     expiry: PartialExpiry,
     /// The bytes charged to the receive budget for this partial.
     charged: usize,
@@ -261,24 +231,9 @@ impl FragmentConstructor {
                 final_fragment: None,
             },
             tick,
-            compression: None,
             expiry: PartialExpiry::Never,
             charged: 0,
         }
-    }
-
-    pub(super) fn set_compression(&mut self, compression: FragmentCompression) -> Result<()> {
-        if let Some(expected) = self.compression {
-            if expected != compression {
-                return Err(ChannelReceiveError::FragmentCompressionMismatch {
-                    expected: expected.as_str(),
-                    actual: compression.as_str(),
-                });
-            }
-        } else {
-            self.compression = Some(compression);
-        }
-        Ok(())
     }
 
     fn receive_fragment(
@@ -298,7 +253,7 @@ impl FragmentConstructor {
         } else if let FragmentLayout::Known(buffer) = &self.layout
             && bytes.len() > buffer.fragment_len
         {
-            return Err(ChannelReceiveError::InvalidFinalFragmentLen {
+            return Err(ReceiveError::InvalidFinalFragmentLen {
                 actual: bytes.len(),
                 max: buffer.fragment_len,
             });
@@ -327,7 +282,7 @@ impl FragmentConstructor {
                 // The other fragments hold at least a byte each before it.
                 let min_len = self.fragments - 1 + bytes.len();
                 if min_len > max_message_len {
-                    return Err(ChannelReceiveError::MessageTooLarge {
+                    return Err(ReceiveError::MessageTooLarge {
                         min_len,
                         max_message_len,
                     });
@@ -339,11 +294,11 @@ impl FragmentConstructor {
                         bytes,
                     });
                 }
-                if !reserve(budget, cx.reservation, bytes.len()) {
+                if !charge_to(&mut self.charged, PARTIAL_COST + bytes.len(), cx, budget) {
                     return Ok(Stored::OverBudget);
                 }
-                self.charged = bytes.len();
-                *final_fragment = Some(bytes);
+                // A copy, as the partial outlives its packet.
+                *final_fragment = Some(Bytes::copy_from_slice(&bytes));
                 // The final fragment alone of several completes nothing: the layout is known
                 // once a non-final one arrives.
                 self.received_fragments += 1;
@@ -367,7 +322,7 @@ impl FragmentConstructor {
                 return if fragment_len == buffer.fragment_len {
                     Ok(true)
                 } else {
-                    Err(ChannelReceiveError::InvalidNonFinalFragmentLen {
+                    Err(ReceiveError::InvalidNonFinalFragmentLen {
                         actual: fragment_len,
                         expected: buffer.fragment_len,
                     })
@@ -375,13 +330,10 @@ impl FragmentConstructor {
             }
             FragmentLayout::Unknown { final_fragment } => final_fragment,
         };
-        if fragment_len == 0 {
-            return Err(ChannelReceiveError::EmptyNonFinalFragment);
-        }
         if let Some(final_fragment) = final_fragment
             && final_fragment.len() > fragment_len
         {
-            return Err(ChannelReceiveError::InvalidFinalFragmentLen {
+            return Err(ReceiveError::InvalidFinalFragmentLen {
                 actual: final_fragment.len(),
                 max: fragment_len,
             });
@@ -393,7 +345,7 @@ impl FragmentConstructor {
             .checked_mul(fragment_len)
             .and_then(|len| len.checked_add(final_len))
             .filter(|&len| len <= max_message_len)
-            .ok_or_else(|| ChannelReceiveError::MessageTooLarge {
+            .ok_or_else(|| ReceiveError::MessageTooLarge {
                 min_len: (self.fragments - 1)
                     .saturating_mul(fragment_len)
                     .saturating_add(final_len),
@@ -401,20 +353,21 @@ impl FragmentConstructor {
             })?;
         // At most `max_message_len + fragment_len - 1` bytes, by the check above.
         let capacity = min_len - final_len + fragment_len;
+        let words = self.fragments.div_ceil(64);
         // A final fragment already charged its own length, which the buffer takes over.
-        if !reserve(
+        if !charge_to(
+            &mut self.charged,
+            PARTIAL_COST + capacity + words * size_of::<u64>(),
+            cx,
             budget,
-            cx.reservation,
-            capacity.saturating_sub(self.charged),
         ) {
             return Ok(false);
         }
-        self.charged = self.charged.max(capacity);
 
         let mut buffer = ReassemblyBuffer {
             fragment_len,
             bytes: vec![0; capacity],
-            received: vec![0; self.fragments.div_ceil(64)],
+            received: vec![0; words],
         };
         if let Some(final_fragment) = final_fragment.take() {
             buffer.mark_received(self.fragments - 1);
@@ -425,14 +378,21 @@ impl FragmentConstructor {
     }
 }
 
-const fn reserve(budget: &mut ReceiveBudget, reservation: Reservation, bytes: usize) -> bool {
-    match reservation {
-        Reservation::Limited => budget.try_charge(bytes),
-        Reservation::Head => {
-            budget.charge(bytes);
-            true
-        }
+/// Charges a partial that `charged` bytes were charged for up to `total` bytes, as `cx` reserves
+/// them, and returns false when the budget has no room for them.
+const fn charge_to(
+    charged: &mut usize,
+    total: usize,
+    cx: &FragmentCx,
+    budget: &mut ReceiveBudget,
+) -> bool {
+    if !budget.reserve(cx.reservation, total.saturating_sub(*charged)) {
+        return false;
     }
+    if total > *charged {
+        *charged = total;
+    }
+    true
 }
 
 impl ReassemblyBuffer {
@@ -454,72 +414,6 @@ impl ReassemblyBuffer {
             self.bytes.truncate(end);
         }
         self.bytes[start..end].copy_from_slice(fragment);
-    }
-}
-
-fn decompress_fragment_payload(
-    compression: FragmentCompression,
-    payload: Bytes,
-    setup: CompressionSetup,
-) -> Result<Bytes> {
-    match compression {
-        FragmentCompression::None => Ok(payload),
-        FragmentCompression::Lz4 => {
-            let setup = setup_for_fragment_compression(compression, setup)?;
-            let mut out = Writer::with_capacity(0);
-            decompress_payload(payload.as_ref(), setup, &mut out)
-                .map_err(|error| map_fragment_decompression_error(&error))?;
-            Ok(out.into_bytes())
-        }
-    }
-}
-
-#[cfg_attr(
-    not(feature = "compression_lz4"),
-    expect(
-        clippy::missing_const_for_fn,
-        reason = "the lz4 arm calls a non-const fn"
-    )
-)]
-fn setup_for_fragment_compression(
-    compression: FragmentCompression,
-    setup: CompressionSetup,
-) -> Result<CompressionSetup> {
-    match compression {
-        FragmentCompression::None => Ok(setup),
-        FragmentCompression::Lz4 => {
-            #[cfg(feature = "compression_lz4")]
-            {
-                if setup.algorithm == Some(CompressionAlgorithm::Lz4) {
-                    Ok(setup)
-                } else {
-                    Err(ChannelReceiveError::UnsupportedFragmentCompression {
-                        compression: compression.as_str(),
-                    })
-                }
-            }
-            #[cfg(not(feature = "compression_lz4"))]
-            {
-                Err(ChannelReceiveError::UnsupportedFragmentCompression {
-                    compression: compression.as_str(),
-                })
-            }
-        }
-    }
-}
-
-const fn map_fragment_decompression_error(error: &PacketError) -> ChannelReceiveError {
-    match *error {
-        PacketError::UnsupportedCompression => {
-            ChannelReceiveError::UnsupportedFragmentCompression {
-                compression: FragmentCompression::Lz4.as_str(),
-            }
-        }
-        PacketError::DecompressionFailed => ChannelReceiveError::FragmentDecompressionFailed,
-        PacketError::DecompressedPayloadTooLarge { actual, limit } => {
-            ChannelReceiveError::FragmentDecompressedPayloadTooLarge { actual, limit }
-        }
-        _ => ChannelReceiveError::FragmentDecompressionFailed,
     }
 }
 

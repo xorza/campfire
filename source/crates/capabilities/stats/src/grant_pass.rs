@@ -46,7 +46,8 @@ impl GrantPass {
             };
             let dues = indexes.of(unit.unit, unit.entity);
             let mut carried = CarriedMut::new(modifiers, clocks, dues);
-            let source = params.source(unit.unit);
+            // The unit's params, resolved at its first apply, as a release reads none.
+            let mut source = None;
             for &grant in unit.grants {
                 let Grant {
                     modifier,
@@ -62,10 +63,16 @@ impl GrantPass {
                             rank,
                             hold: Some(hold),
                         };
+                        let source = match grant.source(unit.unit) {
+                            Some(_) => source
+                                .get_or_insert_with(|| params.source(unit.unit))
+                                .as_ref(),
+                            None => None,
+                        };
                         let adding = Adding {
                             id: modifier,
                             applier,
-                            source: grant.source(unit.unit).and(source.as_ref()),
+                            source,
                             duration: None,
                         };
                         carried.add(&book, at, adding);

@@ -161,7 +161,7 @@ impl MaterialKey {
                     }
                 };
                 Some(KeyTexture {
-                    uri: game_path::relative_uri(model, &path.texture_path()?),
+                    uri: game_path::relative_uri(model, &game_path::texture(path)?),
                     wrap_s: wrap(CLAMP_U),
                     wrap_t: wrap(CLAMP_V),
                 })

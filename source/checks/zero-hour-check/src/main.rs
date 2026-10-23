@@ -1,43 +1,6 @@
-//! The Zero Hour install check, on request: imports the install `GENERALSZH_DATA` names into the
-//! directory its command line names, in place of the packages an earlier run wrote there once the
-//! new ones are whole, and checks what the import gives against what it expects: what a closed
-//! form of the game's data gives, and what it measured once, which `golden.toml` beside it pins
-//! (09-zero-hour.md, The check's measures are a golden file). It checks the fingerprints of the
-//! imported package and the rules package, which a run on Linux and a run on macOS give alike;
-//! Tournament Desert's height samples, placed units and their types, client objects and their
-//! looks, each kind's templates logged for review, and markers; its terrain file's ground quads,
-//! overlays, and its texture's copies and border wraps; that the import reports no cell of its
-//! terrain whose tile has no texture; its walls of its grown cliffs; and that it loads in a match
-//! of the imported mode, where player 1 starts with America's command center at `Player_1_Start`
-//! and its dozer clear of the center's box, and the dozer, ordered to `Player_2_Start`, gets
-//! there in its pinned ticks, in no wall in any tick. It counts the trains and builds the import
-//! converts from the command sets and the buttons it drops by cause, and the docks, supply centers
-//! and gatherers it converts and the supply it drops by cause; and in a match of its own,
-//! player 1's command center trains a dozer, its dozer builds a barracks, and the barracks trains
-//! a ranger, each in its ticks and paid from the 50,000 the host picks of the starting money;
-//! then its dozer builds a power plant, a supply center and a war factory, the factory trains
-//! three crusaders, and their shells destroy the bot's command center, in the ticks of the first
-//! shot, the first damage and the center's death, and the match goes on, as the bot's other
-//! buildings count for its victory. The bot plays the builder's orders, the check's fixture
-//! `fixtures/builder.toml`: it builds its base, trains its units, each counted and pinned, and
-//! attacks nothing, its units no
-//! farther from its center than the pinned distance. In a third match, player 1 plays China: its
-//! dozer builds a power plant and a supply center, whose free truck gathers at the nearest dock,
-//! and the money after each of its first deliveries is pinned. In a fourth, player 1 plays China
-//! against America's bot: its dozer builds a power plant and a Gattling Cannon, and the cannon,
-//! ordered nothing, fires at the bot's dozer, which drives within its reach, its hits coming
-//! sooner as the original's spin up, and kills it; a second plays America, whose Patriot battery,
-//! a building on a circle, kills the dozer so, and a third GLA, whose Stinger site's kept
-//! soldiers kill it. In a fifth, player 1 plays China against
-//! America's bot: its dozer builds a barracks, which trains a Tank Hunter, and the hunter, ordered
-//! nothing, fires steered missiles at the bot's dozer, which drives within its reach, and kills
-//! it. In a sixth, two bots, China and America, start with their factions' bases, every base
-//! building whole and two of each base unit, no body on another or on a wall, and the mode's
-//! attacker plays each, until one side's last building that counts falls or 20 minutes pass, and
-//! how the match ended and the buildings each holds are pinned. In a seventh, the mode's attacker
-//! and its builder play America from standard starts, for at most 15 minutes, pinned so.
-//! Every other map the game lists loads in the imported mode. It fails when `GENERALSZH_DATA`
-//! names no install, so a machine with no copy never passes as one that checked.
+//! The Zero Hour install check, on request: imports the install `GENERALSZH_DATA` names, checks
+//! the import and its matches against a closed form of the game's data and against `golden.toml`
+//! (09-zero-hour.md, The check's measures are a golden file), and fails when it names no install.
 //!
 //! Run it with `cargo drive run zero-hour [out]`, which builds it with the `release-dev` profile;
 //! it writes to `~/zh-package` unless `out` names another directory. `CAMPFIRE_BLESS=1` before
@@ -50,7 +13,8 @@ use std::process::ExitCode;
 use campfire_common::ErrorReport;
 use campfire_common::{ExitStatus, MapName};
 use campfire_import::{Imported, ZeroHour};
-use campfire_log::Logging;
+use campfire_logging::Logging;
+use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
 use campfire_store::{DirEntries, DurableDir, EntryKind, ReadError};
 use tracing::{error, info};
@@ -126,7 +90,7 @@ fn run(out: &Path) -> Result<Vec<CheckFailure>, CheckError> {
         imported: &imported,
         game: &game,
         map: &map,
-        packages: game.mode_packages(Some(&map)).map_err(CheckError::Load)?,
+        packages: ModePackages::at(&game, Some(&map)).map_err(CheckError::Load)?,
         golden,
         measured: Measured::default(),
         failures: Vec::new(),

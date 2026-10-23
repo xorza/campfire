@@ -5,8 +5,8 @@ use campfire_sim::KindMarker;
 pub enum KindAudience {
     /// The links of the teams that see an entity, as vision says.
     Seers,
-    /// Every seated link, whatever vision says.
-    EverySeat,
+    /// Every placed link, whatever vision says.
+    EveryPlayerSlot,
 }
 
 /// A kind of entity, by its marker, which each entity of the kind holds and no other: who

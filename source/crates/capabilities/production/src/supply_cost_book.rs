@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_actions::ByAction;
-use campfire_declarations::{Book, ByType};
+use campfire_declarations::{Book, ById};
 use campfire_script::MatchNames;
-use campfire_values::{NameId, UnitType};
+use campfire_values::{ActionId, NameId, UnitType};
 
 use crate::supply_data::SupplyData;
 use crate::train_queue::TrainQueue;
@@ -16,7 +15,7 @@ use crate::train_spec::TrainSpec;
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 #[component(immutable)]
 pub struct SupplyCostBook {
-    types: Arc<ByType<SupplyData>>,
+    types: Arc<ById<UnitType, SupplyData>>,
     /// By action, up to the last train, 0 for an action that trains nothing.
     trains: Arc<[u32]>,
 }
@@ -41,9 +40,9 @@ pub struct SupplyUnit<'a> {
 
 impl SupplyCostBook {
     /// The costs of `types`, and of `trains`.
-    pub fn new(types: ByType<SupplyData>, trains: &ByAction<TrainSpec>) -> Self {
+    pub fn new(types: ById<UnitType, SupplyData>, trains: &ById<ActionId, TrainSpec>) -> Self {
         let mut costs = Vec::new();
-        for (action, train) in trains.iter() {
+        for (action, train) in trains {
             costs.resize(action.index() + 1, 0);
             costs[action.index()] = types.get(train.unit_type).map_or(0, |supply| supply.cost);
         }

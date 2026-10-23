@@ -1,31 +1,18 @@
-use campfire_values::PackagePath;
 use derive_more::Display;
-
-use crate::zero_hour::error::NoPackagePath;
-use crate::zero_hour::game_path;
 
 /// A path inside the install's archives, as the game finds a file by it: its ASCII lowercase,
 /// with `\` between names, whatever the OS. Not an OS path, so `std::path::Path`, whose separators
 /// differ by OS, never reads one.
 #[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct ArchivePath(String);
+pub struct ArchivePath(String);
 
 impl ArchivePath {
-    /// Where the texture at this path goes in the package: `client/textures/` and its path
-    /// with `/` between names, its extension `.ktx2`; an error for a name no package path holds.
-    pub(crate) fn texture_path(&self) -> Result<PackagePath, NoPackagePath> {
-        game_path::package_path(format!(
-            "client/textures/{}.ktx2",
-            self.without_extension().replace('\\', "/")
-        ))
-    }
-
     /// The path the game finds `path` by: `/` read as `\`, letters folded to lowercase.
     pub(crate) fn of(path: &str) -> Self {
         Self(path.replace('/', "\\").to_ascii_lowercase())
     }
 
-    pub(crate) fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.0
     }
 

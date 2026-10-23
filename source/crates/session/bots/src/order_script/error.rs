@@ -1,7 +1,4 @@
-use std::path::PathBuf;
-
 use campfire_codec::TomlError;
-use campfire_store::{PathError, ReadError};
 use thiserror::Error;
 
 /// Why an order script does not read.
@@ -15,17 +12,4 @@ pub enum OrderScriptError {
     /// The script ends at `end`, before its last order.
     #[error("the script ends at tick {end}, before its last order")]
     EndsEarly { end: u64 },
-}
-
-/// Why an order script's file does not give a script.
-#[derive(Debug, Error)]
-pub enum OrderScriptReadError {
-    #[error("the order script does not read")]
-    Read(#[source] PathError<ReadError>),
-    #[error("{} holds no order script", .path.display())]
-    Script {
-        path: PathBuf,
-        #[source]
-        error: OrderScriptError,
-    },
 }

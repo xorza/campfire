@@ -3,7 +3,7 @@ use std::panic;
 use campfire_declarations::Role;
 
 use campfire_capabilities::Match;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_players::*;
 use campfire_sim::Capability;
 use campfire_stats::PlayerModifiers;
@@ -23,7 +23,7 @@ fn a_match_with_no_mode_starts_with_its_entity_then_its_players_and_none_joins_o
     let entity = game.match_entity().unwrap();
     assert_eq!(game.get::<Relations>(entity), Some(&Relations::default()));
     for (slot, team) in [(0, 1), (1, 0)] {
-        let slot = Seat::new(slot);
+        let slot = PlayerSlot::new(slot);
         let player = game.entity(game.player_entity(slot).unwrap());
         assert_eq!(player.get::<Player>(), Some(&Player::new(slot)));
         assert_eq!(player.get::<Team>(), Some(&Team::new(team)));
@@ -33,7 +33,7 @@ fn a_match_with_no_mode_starts_with_its_entity_then_its_players_and_none_joins_o
         );
         assert_eq!(game.player_resources(slot), Some(&PlayerResources::new(2)));
     }
-    assert_eq!(game.player_entity(Seat::new(2)), None);
+    assert_eq!(game.player_entity(PlayerSlot::new(2)), None);
 
     // A player joins only a match that started: one of no match entity refuses it.
     let mut unstarted = Match::builder(&[Capability::Stats])

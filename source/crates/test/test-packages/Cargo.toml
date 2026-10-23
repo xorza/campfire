@@ -19,6 +19,7 @@ campfire-common.workspace = true
 campfire-mode.workspace = true
 campfire-package.workspace = true
 campfire-package-disk = { workspace = true, features = ["internals"] }
+campfire-package-format = { workspace = true, features = ["internals"] }
 campfire-store.workspace = true
 
 [dev-dependencies]

@@ -87,7 +87,7 @@ impl CallScene {
             // The 3v3 lists its own script alone.
             Case::Weigh => CallStart::pure(ListPlace::FIRST, now),
         };
-        ctx.frame().begin_alone(world, start).unwrap();
+        ctx.begin_alone(world, start).unwrap();
         let mut host = world.non_send_mut::<ScriptHost>();
         let called = match case {
             Case::Find => {

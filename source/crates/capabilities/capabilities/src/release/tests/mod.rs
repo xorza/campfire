@@ -13,16 +13,17 @@ use bevy_ecs::world::Mut;
 use campfire_actions::ActionBook;
 use campfire_codec::Toml;
 use campfire_common::SegmentSeed;
-use campfire_declarations::{ByType, EntityParts, Module, Role};
+use campfire_declarations::{ById, EntityParts, Module, Role};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
 use campfire_players::{Player, PlayerResources};
 use campfire_script::{PlannedCapability, ScriptLimits, ScriptPools, View};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{SimUpdate, SimWorld, StateRegistry};
+use campfire_sim::{SimUpdate, StateRegistry};
 use campfire_store::{DirEntries, EntryKind, InputFile};
-use campfire_units::UnitTypeCore;
 use campfire_units::internals::Spawn;
+use campfire_units::{UnitTypeCore, ViewReader};
+use campfire_values::UnitType;
 use serde::Deserialize;
 
 use super::*;
@@ -115,8 +116,9 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_p
     for (world, scripts) in [(&scripted, true), (&client, false)] {
         assert_eq!(world.get_non_send::<ScriptHost>().is_some(), scripts);
         assert!(world.contains_resource::<ActionBook>());
-        assert_eq!(world.contains_resource::<ByType<Ai>>(), scripts);
-        assert!(world.get_non_send::<View>().is_some());
+        assert_eq!(world.contains_resource::<ById<UnitType, Ai>>(), scripts);
+        assert_eq!(world.get_non_send::<View>().is_some(), scripts);
+        assert_eq!(world.contains_resource::<ViewReader>(), scripts);
         // With no mode, the match holds the players' state, and a player its parts.
         let mut types = Vec::new();
         world
@@ -285,14 +287,28 @@ const MANIFEST_LEN: usize = 1 << 16;
 #[derive(Debug, Deserialize)]
 struct Dependencies {
     #[serde(default)]
-    dependencies: BTreeMap<String, TomlValue>,
+    dependencies: BTreeMap<String, Dependency>,
 }
 
-/// A capability crate and the capability crates it depends on.
+/// A dependency of a manifest: a version alone, or a table, which may make it optional.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum Dependency {
+    Version(#[expect(dead_code, reason = "a version is read only to tell it from a table")] String),
+    Table {
+        #[serde(default)]
+        optional: bool,
+    },
+}
+
+/// A capability crate and the capability crates it depends on: each, which the layers order, and
+/// those a build of its own needs, which its modules need or use; an optional one serves only a
+/// feature, as a test's `internals`.
 #[derive(Debug)]
 struct CapabilityCrate {
     crate_dir: String,
     depends: Vec<String>,
+    required: Vec<String>,
 }
 
 impl CapabilityCrates {
@@ -333,12 +349,28 @@ impl CapabilityCrates {
                 let path = root.join(&crate_dir).join("Cargo.toml");
                 let manifest: Dependencies =
                     Toml::parse(&InputFile::read_text(&path, MANIFEST_LEN).unwrap()).unwrap();
-                let depends = (manifest.dependencies.keys())
-                    .filter_map(|dependency| dependency.strip_prefix("campfire-"))
-                    .filter(|dependency| names.iter().any(|name| name == dependency))
-                    .map(str::to_owned)
+                let capability_crates =
+                    (manifest.dependencies.iter()).filter_map(|(dependency, value)| {
+                        let dependency = dependency.strip_prefix("campfire-")?;
+                        names
+                            .iter()
+                            .any(|name| name == dependency)
+                            .then_some((dependency, value))
+                    });
+                let optional =
+                    |value: &Dependency| matches!(value, Dependency::Table { optional: true });
+                let depends = (capability_crates.clone())
+                    .map(|(dependency, _)| dependency.to_owned())
                     .collect();
-                CapabilityCrate { crate_dir, depends }
+                let required = capability_crates
+                    .filter(|(_, value)| !optional(value))
+                    .map(|(dependency, _)| dependency.to_owned())
+                    .collect();
+                CapabilityCrate {
+                    crate_dir,
+                    depends,
+                    required,
+                }
             })
             .collect();
         Self(crates)
@@ -430,7 +462,7 @@ fn a_capabilitys_crate_depends_on_exactly_what_it_needs_or_uses() {
         let krate = crates
             .named(name)
             .expect("each module of the release is a crate's");
-        let mut depends: Vec<String> = (krate.depends.iter())
+        let mut depends: Vec<String> = (krate.required.iter())
             .filter(|dependency| {
                 Capability::ALL
                     .iter()
@@ -513,13 +545,10 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
             limits: ScriptLimits::ROOMY,
             players: 1,
         };
-        let setup = MatchSetup::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Server(budgets))
-            .set(Release::capability_set(declared).unwrap());
-        let world = Match::new(
-            setup,
-            Release::empty_books(Match::TEST_RATE),
-            MatchKind::Rules,
-        );
+        let setup = MatchSetup::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Server(budgets));
+        let set = Release::capability_set(declared).unwrap();
+        let books = Release::empty_books(Match::TEST_RATE, set);
+        let world = Match::new(setup, books, MatchKind::Rules);
         let schedules = world.resource::<Schedules>();
         let systems = schedules.get(SimUpdate).unwrap().systems().unwrap();
         let names: Vec<String> = systems

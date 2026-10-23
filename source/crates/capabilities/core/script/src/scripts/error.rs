@@ -1,5 +1,6 @@
 use campfire_sim::Capability;
 use campfire_values::EngineEnum;
+use campfire_visibility::DataKind;
 use rhai::EvalAltResult;
 use thiserror::Error;
 
@@ -20,9 +21,16 @@ pub enum CallError {
     /// tick waits, or the call fails.
     #[error("the call's pool is spent")]
     PoolSpent,
-    /// The script failed otherwise.
-    #[error(transparent)]
-    Script(ScriptError),
+    /// The call ran past the operation limit of one call.
+    #[error("script call over its operation limit")]
+    CallLimit,
+    /// A value raised and not caught, but the API's refusal: a `NumError`, or a script's own
+    /// `throw`.
+    #[error("script call raised {:?}", .0.0)]
+    Raised(Raised),
+    /// Any other failure Rhai reports, as `ScriptError::Runtime` gives it.
+    #[error("script call failed")]
+    Runtime(#[source] Box<EvalAltResult>),
 }
 
 /// Why the script API refused a call: a script gave it a value it does not take.
@@ -52,6 +60,11 @@ pub enum ApiError {
     /// A call of a role the running script does not serve.
     #[error("the call is not one of the script's role")]
     NotForRole,
+    /// A read of a unit's state of a kind its viewer's client does not receive, as a bot reads only
+    /// what its player slot's client receives (03-game-scripting.md, A bot decides from what it
+    /// sees, each think).
+    #[error("its viewer receives no {} state of the unit", .0.name())]
+    Unreceived(DataKind),
     /// A name that reads the mode, in a match with none.
     #[error("the match has no mode")]
     NoMode,
@@ -188,28 +201,25 @@ impl CallError {
     /// A failed call's error: the API's own when it refused the call, and `PoolSpent` for a
     /// spent budget.
     pub fn from_script(error: ScriptError) -> Self {
-        let refused = match &error {
-            ScriptError::Raised(raised) => raised.get::<ApiError>(),
-            ScriptError::TickBudget => return Self::PoolSpent,
-            _ => None,
-        };
-        refused.map_or(Self::Script(error), CallError::Api)
+        match error {
+            ScriptError::CallLimit => Self::CallLimit,
+            ScriptError::TickBudget => Self::PoolSpent,
+            ScriptError::Raised(raised) => match raised.get::<ApiError>() {
+                Some(api) => Self::Api(api),
+                None => Self::Raised(raised),
+            },
+            ScriptError::Runtime(error) => Self::Runtime(error),
+        }
     }
 
     /// What it is, its raised value read once.
     pub fn kind(&self) -> FailureKind {
         match self {
             Self::Api(api) => FailureKind::Api(*api),
-            Self::Script(ScriptError::Compile(_)) => FailureKind::Compile,
-            Self::Script(ScriptError::CallLimit) => FailureKind::CallLimit,
             Self::PoolSpent => FailureKind::PoolSpent,
-            Self::Script(ScriptError::TickBudget) => {
-                unreachable!("a spent budget is a spent pool")
-            }
-            Self::Script(ScriptError::Raised(raised)) => {
-                FailureKind::Raised(raised.get::<NumError>())
-            }
-            Self::Script(ScriptError::Runtime(_)) => FailureKind::Runtime,
+            Self::CallLimit => FailureKind::CallLimit,
+            Self::Raised(raised) => FailureKind::Raised(raised.get::<NumError>()),
+            Self::Runtime(_) => FailureKind::Runtime,
         }
     }
 }
@@ -226,9 +236,40 @@ impl ApiError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailureKind {
     Api(ApiError),
-    Compile,
     CallLimit,
     PoolSpent,
     Raised(Option<NumError>),
     Runtime,
+}
+
+#[cfg(test)]
+mod tests {
+    use rhai::{Dynamic, EvalAltResult, Position};
+
+    use crate::script_host::error::{NumError, Raised, ScriptError};
+    use crate::scripts::error::{ApiError, CallError, FailureKind};
+
+    #[test]
+    fn a_call_error_keeps_each_case_a_call_can_fail_by() {
+        let kind = |error| CallError::from_script(error).kind();
+        // A spent budget is a spent pool; an API's refusal is the API's, a `NumError` raised is
+        // read back, and a script's own `throw` is a value of no error.
+        assert_eq!(kind(ScriptError::TickBudget), FailureKind::PoolSpent);
+        assert_eq!(kind(ScriptError::CallLimit), FailureKind::CallLimit);
+        let of = |value| ScriptError::Raised(Raised(value));
+        assert_eq!(
+            kind(of(Dynamic::from(ApiError::NoMode))),
+            FailureKind::Api(ApiError::NoMode)
+        );
+        assert_eq!(
+            kind(of(Dynamic::from(NumError::Overflow))),
+            FailureKind::Raised(Some(NumError::Overflow))
+        );
+        assert_eq!(kind(of(Dynamic::from(1_i64))), FailureKind::Raised(None));
+        let runtime = EvalAltResult::ErrorArithmetic(String::new(), Position::NONE);
+        assert_eq!(
+            kind(ScriptError::Runtime(runtime.into())),
+            FailureKind::Runtime
+        );
+    }
 }

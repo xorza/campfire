@@ -1,10 +1,11 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentPredicted};
+use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -58,7 +59,7 @@ impl<'de> Deserialize<'de> for MoveStep {
     }
 }
 
-impl PerType for MoveStep {
+impl PerId<UnitType> for MoveStep {
     const SCRIPTS_ONLY: bool = false;
 }
 

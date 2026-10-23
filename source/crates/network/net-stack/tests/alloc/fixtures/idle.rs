@@ -8,7 +8,7 @@ use campfire_net_stepper::StepperSetup;
 #[track_caller]
 fn audit_idle(kind: ClientKind) {
     let mut stepper = Stepper::new(FullStack, StepperSetup::with_clients(kind, 1));
-    AUDIT.budget(LINK).run(|| stepper.frame_step(1));
+    AUDIT.budget(&LINK).run(|| stepper.frame_step(1));
 }
 
 #[test]

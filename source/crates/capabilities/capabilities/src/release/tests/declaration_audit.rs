@@ -13,7 +13,7 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, CastSpends, DeliveryShape};
+use campfire_actions::{ActionSlots, CastSpends};
 use campfire_combat::{ClipShots, ShotStreak};
 use campfire_common::EnumAll;
 use campfire_declarations::{
@@ -25,9 +25,10 @@ use campfire_deliveries::Deliverers;
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_players::Player;
 use campfire_production::{Gatherer, PlayerSupply};
+use campfire_progression::Experience;
 use campfire_script::{
-    ApiBuilder, CallExtension, CallParams, HookDecl, MatchNames, PlannedCapability, RowReads,
-    Status, ViewColumn,
+    ApiBuilder, CallExtension, CallParams, EventPhase, HookDecl, MatchNames, ModeEvents,
+    PlannedCapability, RowReads, Status, ViewColumn,
 };
 use campfire_sim::{
     Breach, Capability, DueIndex, HostRule, OnAny, OwnResources, SimComponent, SimResource,
@@ -35,13 +36,16 @@ use campfire_sim::{
 };
 use campfire_states::{NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
-use campfire_units::{BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, UnitEntity};
-use campfire_values::{EngineTag, NameId, TagProperties};
+use campfire_units::{
+    BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, TrackLevels, UnitEntity,
+};
+use campfire_values::{EngineTag, MatchScope, NameId, Named as NamedId, Names, TagProperties};
 use campfire_visibility::DataKind;
 use campfire_vision::VisionColumn;
 use serde::{Deserialize, Serialize};
 
 use crate::release::Release;
+use campfire_declarations::NamesFn;
 
 /// A type, by its id, with its name for the problems.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -364,6 +368,13 @@ impl Declarations for DeclarationAudit {
 
     fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
 
+    fn names<I: NameId + NamedId + 'static>(&mut self, _: NamesFn<I>)
+    where
+        Names<I>: Send + Sync,
+        I::Scope: MatchScope,
+    {
+    }
+
     fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
 
     fn rule(&mut self, _: RuleFn) {}
@@ -422,6 +433,8 @@ impl Declarations for DeclarationAudit {
         self.parts.push((Named::of::<H>(), kinds, Named::of::<C>()));
     }
 
+    fn mode_events<Q: ModeEvents>(&mut self, _: EventPhase) {}
+
     fn calls<C: Callbacks>(&mut self) {
         self.calls.push(Named::of::<C>());
     }
@@ -462,6 +475,8 @@ impl Declarations for DeclarationAudit {
 
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 
+    fn part_with<H: Component, C: Component + Default>(&mut self) {}
+
     fn server_part<H: Component, C: Component + Default>(&mut self) {
         self.server_parts.push((Named::of::<H>(), Named::of::<C>()));
     }
@@ -484,15 +499,14 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats', the players' and the
     // mode's five parts of a player, its bounty share among them, the mode's three of the match,
-    // the 32 of a unit, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
-    // production's
-    // `StatusTags` and combat's `TurretAngle` among them, and the 59 books, 14 of the core's,
-    // interaction's two, combat's armors, turrets, weapons and streaks' modifiers, orders' scans,
-    // production's trains and gathers, the mode's victory and bounty, and progression's
-    // experience among them.
+    // the 33 of a unit, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
+    // production's `StatusTags`, combat's `TurretAngle` and the mode's `IncomeClock` among them,
+    // and the 61 books, 14 of the core's, interaction's two, combat's armors, turrets and weapons,
+    // navigation's walkers, orders' scans, production's trains and gathers, the mode's victory,
+    // bounty, incomes and inputs, and progression's experience among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 42);
-    assert_eq!(audit.books.len(), 59);
+    assert_eq!(audit.parts.len(), 43);
+    assert_eq!(audit.books.len(), 61);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 14);
     // The observers, the runs out of the schedule and the parts a server derives, which the
@@ -503,6 +517,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "UnitTracker<GridUnits>::aged",
             "UnitTracker<GridUnits>::lost_body",
             "Units::refill_view",
+            "OrderSteps::forget_gone",
             "Level::raise",
             "HeldHits::drop_died",
             "UnitTracker<StaticBodies>::aged",
@@ -520,8 +535,8 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "ShopIndex::typed",
             "ShopIndex::untyped",
             "UseOrders::ordered",
-            "NextScan::revived",
-            "NextThink::revived",
+            "NextTurn<Acquire>::revived",
+            "NextTurn<Ai>::revived",
         ]
     );
     // The parts whose removals a module reads, which reach it as the tick ages them.
@@ -553,6 +568,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(
         server,
         [
+            (type_name::<Experience>(), type_name::<TrackLevels>()),
             (type_name::<ActionSlots>(), type_name::<ClipShots>()),
             (type_name::<ActionSlots>(), type_name::<ShotStreak>()),
             (type_name::<UnitEntity>(), type_name::<SeenBy>()),
@@ -715,11 +731,14 @@ fn each_key_a_caller_asks_for_has_its_callback() {
             .iter()
             .any(|callback| callback.registry.name == registry && callback.key == key)
     };
-    for capability in DeliveryShape::CAPABILITIES {
+    for capability in [Capability::Projectiles, Capability::Areas] {
         assert!(declared(
             type_name::<Deliverers>(),
             format!("{capability:?}")
         ));
     }
-    assert!(declared(type_name::<CastSpends>(), format!("{:?}", ())));
+    assert!(declared(
+        type_name::<CastSpends>(),
+        format!("{:?}", Capability::Items)
+    ));
 }

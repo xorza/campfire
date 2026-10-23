@@ -4,7 +4,7 @@ use campfire_net_emulator::EmulatedIo;
 
 use crate::emulated_wires::EmulatedWires;
 use crate::endpoint_setup::EndpointSetup;
-use crate::establish::{ClientEstablish, ServerEstablish};
+use crate::establish::{ClientEstablish, Establish, ServerEstablish};
 use crate::plain_establishment::PlainEstablishment;
 
 /// What an endpoint is made of: its IO, the establishment that makes its packet sessions, its side
@@ -29,6 +29,23 @@ pub(crate) enum EndpointSide {
     Server {
         establish: Box<dyn ServerEstablish>,
     },
+}
+
+impl EndpointSide {
+    /// The establishment, in the calls both sides take.
+    pub(crate) fn establish(&mut self) -> &mut dyn Establish {
+        match self {
+            Self::Client { establish, .. } => establish.as_mut(),
+            Self::Server { establish } => establish.as_mut(),
+        }
+    }
+
+    pub(crate) fn establish_ref(&self) -> &dyn Establish {
+        match self {
+            Self::Client { establish, .. } => establish.as_ref(),
+            Self::Server { establish } => establish.as_ref(),
+        }
+    }
 }
 
 impl<Io> EndpointPieces<Io> {

@@ -9,7 +9,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlots, SlotKind, TimedSlots};
 use campfire_combat::Combat;
 use campfire_combat::internals::Armed;
-use campfire_common::{Seat, Ticks};
+use campfire_common::{PlayerSlot, Ticks};
 use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
 use campfire_math::{Num, Vec3};
@@ -26,8 +26,8 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, IdAllocator, Position, SimWorld, StableId};
 use campfire_units::internals::Spawn;
 use campfire_units::{
-    Body, BodyForm, BodyUnit, Destination, Owner, TypeOrigin, UnitCore, UnitTypeCore, UnitTypes,
-    Units,
+    Body, BodyForm, BodyShape, BodyUnit, Destination, Layer, Owner, TypeOrigin, UnitCore,
+    UnitTypeCore, UnitTypes, Units,
 };
 use campfire_values::{PackageIndex, Rank, RelationSet, ResourceId, Team, TypeScope, UnitType};
 use criterion::{Criterion, Throughput};
@@ -111,10 +111,13 @@ fn two_fields() -> Match {
     let all = Filter::of_match_relations(&world, RelationSet::All);
     let action = Production::add_gather(&mut world, spec, all, Num::int(16), Ticks::new(3));
 
-    let player = Owner::new(Seat::new(0));
+    let player = Owner::new(PlayerSlot::new(0));
     let at = |x: Num, z: Num| Vec3::new(x, Num::ZERO, z);
     for field in [0, 40] {
-        let body = BodyForm::box_sized([Num::int(16), Num::int(2)]).unwrap();
+        let body = BodyForm::new(
+            BodyShape::box_sized([Num::int(16), Num::int(2)]).unwrap(),
+            Layer::FIRST,
+        );
         let core = Core {
             unit_type: drop_off_type,
             team: Team::new(0),
@@ -129,7 +132,10 @@ fn two_fields() -> Match {
         let nodes: Vec<NodeAt> = (0..NODES)
             .map(|nth| {
                 let position = at(Num::int(field - 7 + 2 * nth), Num::int(3));
-                let body = BodyForm::box_sized([Num::int(2), Num::ONE]).unwrap();
+                let body = BodyForm::new(
+                    BodyShape::box_sized([Num::int(2), Num::ONE]).unwrap(),
+                    Layer::FIRST,
+                );
                 let core = Core {
                     unit_type: node_type,
                     team: Team::new(2),
@@ -178,7 +184,10 @@ fn two_fields() -> Match {
     for _ in 0..30 {
         world.step();
     }
-    let gold_in = world.player_resources(Seat::new(0)).unwrap().amount(gold);
+    let gold_in = world
+        .player_resources(PlayerSlot::new(0))
+        .unwrap()
+        .amount(gold);
     assert_eq!(gold_in, 2 * NODES * 9 * 5, "the scene runs the loop");
     world
 }
@@ -313,7 +322,11 @@ fn missiles() -> Match {
     };
     Projectiles::load_type(&mut world, missile, &data);
     let round = Armed::unarmed(Num::int(100)).load(&mut world);
-    Units::give_type(&mut world, round, BodyForm::circle(Num::ONE).unwrap());
+    Units::give_type(
+        &mut world,
+        round,
+        BodyForm::new(BodyShape::circle(Num::ONE).unwrap(), Layer::FIRST),
+    );
     let source = Spawn::of(round, (0, 0, 0)).place(&mut world);
     let targets: Vec<StableId> = (0..10)
         .map(|nth| {

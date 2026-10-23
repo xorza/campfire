@@ -3,14 +3,15 @@ use std::slice;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Changed, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_actions::{ActionBook, ActionKind, ActionSlots, Aim, ByAction};
-use campfire_common::{Seat, Tick, Ticks};
+use campfire_actions::{ActionBook, ActionKind, ActionSlots, Aim};
+use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_declarations::ById;
 use campfire_geometry::Placed;
 use campfire_math::Vec3;
 use campfire_players::{OnMatch, PlayerResources, PlayerRows, ResourceAmount};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
-use campfire_units::{ArrivedShort, Body, Dead, Destination, MapBook, Owner};
-use campfire_values::{Relations, ResourceId, Team, UnitTags, UnitType};
+use campfire_units::{Body, Dead, MapBook, Owner, WalkReadOnlyItem};
+use campfire_values::{ActionId, Relations, ResourceId, Team, UnitTags, UnitType};
 
 use crate::gather_loop::WorkerParts;
 use crate::gather_loop::checked_gather::CheckedGather;
@@ -30,7 +31,7 @@ pub(crate) struct GatherView<'w, 's> {
     pub(super) tick: Res<'w, SimTick>,
     pub(super) index: Res<'w, EntityIndex>,
     pub(super) book: Res<'w, ActionBook>,
-    pub(super) gathers: Res<'w, ByAction<GatherSpec>>,
+    pub(super) gathers: Res<'w, ById<ActionId, GatherSpec>>,
     pub(super) nodes_book: Res<'w, NodeBook>,
     pub(super) map: Res<'w, MapBook>,
     pub relations: OnMatch<'w, 's, Relations>,
@@ -88,8 +89,7 @@ struct Seeker<'a> {
 }
 
 /// A worker as it takes its load to a drop-off: where it stands, its owner, its loop, its load,
-/// its node while it stands, how it looks at nodes, its destination, and its report of a short
-/// arrival.
+/// its node while it stands, how it looks at nodes, and its walk.
 #[derive(Debug, Clone, Copy)]
 struct Hauler<'a> {
     worker: LoopTarget,
@@ -98,14 +98,13 @@ struct Hauler<'a> {
     load: Option<Load>,
     node: Option<FoundNode>,
     seeker: Seeker<'a>,
-    destination: Option<&'a Destination>,
-    arrived: Option<&'a ArrivedShort>,
+    walk: Option<&'a WalkReadOnlyItem<'a, 'a>>,
 }
 
 /// A load a worker of `owner` brings: its resource, which a drop-off of the player takes or not.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Haul {
-    pub(crate) owner: Seat,
+    pub(crate) owner: PlayerSlot,
     pub(crate) resource: ResourceId,
 }
 
@@ -127,7 +126,7 @@ impl GatherView<'_, '_> {
             return None;
         };
         let rank = action_slot.rank?;
-        let range = slots.meters_in(&self.book, slot);
+        let range = slots.meters_in(&self.book, slot)?;
         let ticks = action.values(rank).windup.get().max(1);
         Some(Gather {
             spec,
@@ -186,7 +185,8 @@ impl GatherView<'_, '_> {
     /// Whether a drop-off of `unit_type` that `drop_owner` owns takes `delivery`: one of the
     /// worker's player that takes its resource.
     pub(crate) fn takes(&self, drop_owner: Owner, unit_type: UnitType, delivery: Haul) -> bool {
-        drop_owner.seat() == delivery.owner && self.nodes_book.takes(unit_type, delivery.resource)
+        drop_owner.player_slot() == delivery.owner
+            && self.nodes_book.takes(unit_type, delivery.resource)
     }
 
     /// Where the living, complete drop-off `id` stands, when it takes `delivery`.
@@ -219,13 +219,13 @@ impl GatherView<'_, '_> {
 
     /// Whether player `owner`'s resources take `load`: a match that keeps them, and an amount the
     /// load does not carry past the largest an amount holds.
-    fn joins(&self, owner: Seat, load: Load) -> bool {
+    fn joins(&self, owner: PlayerSlot, load: Load) -> bool {
         let amount = ResourceAmount {
             resource: load.resource,
             amount: i64::from(load.amount),
         };
         self.resources
-            .of_seat(owner)
+            .of_player_slot(owner)
             .is_some_and(|resources| resources.takes(slice::from_ref(&amount)))
     }
 
@@ -243,7 +243,7 @@ impl GatherView<'_, '_> {
     /// What the worker of `entity` does in its loop this tick, with the match's `relations`, which
     /// the caller reads once for each read of the view.
     pub(crate) fn step(&self, entity: Entity, relations: &Relations) -> Step {
-        let Ok((_, &id, &from, body, &team, owner, slots, gatherer, destination, arrived, tags)) =
+        let Ok((_, &id, &from, body, &team, owner, slots, gatherer, walk, tags)) =
             self.workers.get(entity)
         else {
             return Step::Hold;
@@ -285,8 +285,7 @@ impl GatherView<'_, '_> {
             load: gatherer.load(),
             node,
             seeker,
-            destination,
-            arrived,
+            walk: walk.as_ref(),
         };
         match order.step {
             GatherStep::Ordered => Step::Hold,
@@ -295,7 +294,7 @@ impl GatherView<'_, '_> {
                     return search();
                 };
                 if !self.reaches(worker, gather, location) {
-                    return location.walk_from(from.get(), destination, arrived);
+                    return location.walk_from(from.get(), walk.as_ref());
                 }
                 let (.., node, _, _) = self.nodes.get(entity).expect("a node found this tick");
                 if node.holder().is_none() {
@@ -343,7 +342,7 @@ impl GatherView<'_, '_> {
             return Step::Deliver(at.node.map(|_| order.node));
         };
         // A worker no player owns has no drop-off.
-        let Some(owner) = at.owner.map(Owner::seat) else {
+        let Some(owner) = at.owner.map(Owner::player_slot) else {
             return Step::Stand;
         };
         let delivery = Haul {
@@ -363,7 +362,7 @@ impl GatherView<'_, '_> {
             // One pushed off as it stood there walks back, and stands its whole time again.
             return match since {
                 Some(_) => Step::Choose(drop_off),
-                None => location.walk_from(from, at.destination, at.arrived),
+                None => location.walk_from(from, at.walk),
             };
         }
         let deliver = gather.spec.deliver;
@@ -459,7 +458,7 @@ impl GatherView<'_, '_> {
         }
         let returns = gatherer.load().zip(owner).is_some_and(|(load, owner)| {
             let delivery = Haul {
-                owner: owner.seat(),
+                owner: owner.player_slot(),
                 resource: load.resource,
             };
             let location = self.drop_off_location(target, delivery);

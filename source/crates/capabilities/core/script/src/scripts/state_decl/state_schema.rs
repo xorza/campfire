@@ -6,16 +6,15 @@ use crate::scripts::state_decl::StateDecl;
 use crate::scripts::state_decl::state_field_decl::Audience;
 use crate::scripts::state_type::StateType;
 use crate::scripts::state_value::StateValue;
+use crate::scripts::view::View;
 
 /// The fields of one declared script state, the mode's, a unit type's or a modifier's: each field's
-/// name, found once, its declaration, its first value, and where its value is held. The fields are
+/// name, found once, its declaration, which holds its first value, and where its value is held. The fields are
 /// in the order of their names. Package data, built once at the load.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StateSchema {
     names: Names<StateField>,
     decls: Box<[StateDecl]>,
-    /// The first value of each field.
-    initial: Box<[StateValue]>,
     places: Box<[StatePlace]>,
 }
 
@@ -49,7 +48,7 @@ impl StateSchema {
     /// order of their names, as data's tables give them.
     pub fn new<'a>(fields: impl IntoIterator<Item = (&'a str, Audience, &'a StateDecl)>) -> Self {
         let mut names = Names::default();
-        let (mut decls, mut initial, mut places) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut decls, mut places) = (Vec::new(), Vec::new());
         let mut counts = [0; Audience::ALL.len()];
         let mut previous: Option<&str> = None;
         for (name, audience, decl) in fields {
@@ -65,13 +64,11 @@ impl StateSchema {
                 at: *class,
             });
             *class += 1;
-            initial.push(decl.initial().clone());
             decls.push(decl.clone());
         }
         Self {
             names,
             decls: decls.into(),
-            initial: initial.into(),
             places: places.into(),
         }
     }
@@ -91,14 +88,24 @@ impl StateSchema {
         self.decls[field.index()].take(value)
     }
 
+    /// `value`, a value of `field`, as a script sees it, as its declaration reads it.
+    pub fn read(&self, field: StateField, value: &StateValue, view: &View) -> ScriptValue {
+        self.decls[field.index()].read(value, view)
+    }
+
     /// Where `field`'s value is held.
     pub fn place(&self, field: StateField) -> StatePlace {
         self.places[field.index()]
     }
 
     /// The first value of each field, in the order of their names.
-    pub fn initial(&self) -> &[StateValue] {
-        &self.initial
+    pub fn initial(&self) -> impl ExactSizeIterator<Item = &StateValue> + Clone {
+        self.decls.iter().map(StateDecl::initial)
+    }
+
+    /// The first value of `field`.
+    pub fn initial_of(&self, field: StateField) -> &StateValue {
+        self.decls[field.index()].initial()
     }
 
     /// Where each field's value is held, in the order of their names.
@@ -129,8 +136,8 @@ impl StateSchema {
     }
 
     /// The first value of each field of class `audience`, in the order of their names.
-    pub fn initial_of(&self, audience: Audience) -> impl Iterator<Item = &StateValue> {
-        let fields = self.initial.iter().zip(&self.places);
+    pub fn initial_in(&self, audience: Audience) -> impl Iterator<Item = &StateValue> {
+        let fields = self.initial().zip(&self.places);
         fields
             .filter(move |(_, place)| place.audience == audience)
             .map(|(initial, _)| initial)
@@ -173,9 +180,12 @@ mod tests {
         let c = schema.field("c").unwrap();
         assert_eq!((c.index(), schema.kind(c)), (2, StateType::Int));
         assert_eq!(schema.len(), 4);
-        let owner: Vec<_> = schema.initial_of(Audience::Owner).collect();
+        let owner: Vec<_> = schema.initial_in(Audience::Owner).collect();
         assert_eq!(owner, [&StateValue::Int(0), &StateValue::Int(7)]);
-        assert_eq!(schema.initial_of(Audience::All).count(), 0);
+        assert_eq!(schema.initial_in(Audience::All).count(), 0);
+        // Each field's first value is its declaration's: `c`'s default of 7, one for each field.
+        assert_eq!(schema.initial_of(c), &StateValue::Int(7));
+        assert_eq!(schema.initial().len(), 4);
 
         // A class holds exactly its fields, in order and of their types; one with no field holds
         // no value.

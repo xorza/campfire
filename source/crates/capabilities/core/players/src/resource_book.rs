@@ -31,6 +31,11 @@ impl ResourceBook {
         }
         Ok(Self(Arc::new(names)))
     }
+
+    /// The names of its resources, which the load resolves them by.
+    pub(crate) fn name_table(cx: &BookCx<'_>) -> Result<Arc<Names<ResourceId>>, BookError> {
+        Ok(Arc::clone(&cx.book::<Self>()?.0))
+    }
 }
 
 impl Book for ResourceBook {

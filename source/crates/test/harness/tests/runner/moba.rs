@@ -2,7 +2,7 @@
 //! the heroes' experience.
 
 use bevy_ecs::world::World;
-use campfire_common::{DeclaredName, Seat};
+use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_harness::{FixedMatch, Moba3v3, ScriptedMode};
 use campfire_math::Num;
 use campfire_players::{PlayersWorld, ResourcesData};
@@ -26,12 +26,12 @@ fn now(world: &World) -> u64 {
     world.resource::<SimTick>().start().get()
 }
 
-/// The gold player `seat` holds in `world`, a match of `moba`.
-pub(crate) fn gold(moba: &ScriptedMode<Moba3v3>, world: &World, seat: u32) -> i64 {
+/// The gold player `player_slot` holds in `world`, a match of `moba`.
+pub(crate) fn gold(moba: &ScriptedMode<Moba3v3>, world: &World, player_slot: u32) -> i64 {
     let resources = moba.packages().data().section_or_default::<ResourcesData>();
     let resources: Names<ResourceId> = resources.0.iter().map(DeclaredName::as_str).collect();
     let gold = resources.named("gold").unwrap();
-    let held = world.player_resources(Seat::new(seat));
+    let held = world.player_resources(PlayerSlot::new(player_slot));
     held.expect("a player of the 3v3 holds its resources")
         .amount(gold)
 }

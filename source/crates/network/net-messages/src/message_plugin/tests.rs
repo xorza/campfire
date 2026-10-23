@@ -14,6 +14,7 @@ use crate::messages_unread::MessagesUnread;
 use crate::multi_message_sender::MultiMessageSender;
 use crate::received_message::ReceivedMessage;
 use crate::remote_event::RemoteEvent;
+use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::UniqueEntityArray;
 use bevy_ecs::event::Event;
 use bevy_ecs::prelude::ResMut;
@@ -22,7 +23,7 @@ use bevy_replicon::shared::replication::Replicated;
 use bevy_utils::prelude::DebugName;
 use campfire_log::internals::LogCheck;
 use campfire_math::TickRate;
-use campfire_net_channels::fragment_len_for_max_payload;
+use campfire_net_channels::internals::fragment_len;
 use campfire_net_connection::NetworkingState;
 use campfire_net_core::LinkDirections;
 use campfire_net_link::Link;
@@ -178,7 +179,8 @@ fn a_sent_message_is_received_through_the_link() {
     app.add_plugins(TestTransportPlugin);
 
     // Register the message before adding the MessagePlugin
-    app.register_message::<M>();
+    app.register_message::<M>()
+        .add_direction(LinkDirections::BOTH);
     app.add_plugins(MessagePlugin);
     app.finish();
 
@@ -223,7 +225,17 @@ fn a_sent_message_is_received_through_the_link() {
         .collect::<Vec<_>>();
     assert_eq!(messages, received_messages);
 
+    // A frame whose sender holds nothing leaves the sender unchanged.
+    let written = |app: &App| {
+        app.world()
+            .entity(entity)
+            .get_ref::<MessageSender<M>>()
+            .unwrap()
+            .last_changed()
+    };
+    let before = written(&app);
     app.update();
+    assert_eq!(written(&app), before);
 
     // check that the message has been dropped
     assert_eq!(
@@ -244,7 +256,8 @@ fn an_unread_message_is_dropped_at_the_frame_end() {
     app.add_plugins(TestTimelinePlugins {
         tick_rate: TickRate::try_from(100).unwrap(),
     });
-    app.register_message::<M>();
+    app.register_message::<M>()
+        .add_direction(LinkDirections::BOTH);
     app.add_plugins((LinkPlugin, TransportPlugin, MessagePlugin));
     app.finish();
 
@@ -262,9 +275,11 @@ fn an_unread_message_is_dropped_at_the_frame_end() {
         .unwrap()
         .push_received(ReceivedMessage {
             data: M(2),
-            remote_tick: NetTick::default(),
-            channel_type_id: ChannelTypeId::of::<TestChannel>(),
-            message_id: None,
+            header: ReceivedMessageHeader {
+                remote_tick: NetTick::default(),
+                channel_type_id: ChannelTypeId::of::<TestChannel>(),
+                message_id: None,
+            },
         });
     app.update();
 
@@ -318,7 +333,7 @@ fn message_is_ready_in_the_receive_phase_it_arrives_in() {
     assert_eq!(received.len(), 1);
     assert_eq!(received[0].data, M(8));
     // The sender's local tick, 10, travels with the message.
-    assert_eq!(received[0].remote_tick, NetTick(10));
+    assert_eq!(received[0].header.remote_tick, NetTick(10));
 }
 
 #[test]
@@ -413,9 +428,11 @@ fn a_disconnect_removes_the_message_receivers() {
         .unwrap()
         .push_received(ReceivedMessage {
             data: M(0),
-            remote_tick: NetTick(1),
-            channel_type_id: ChannelTypeId::of::<TestChannel>(),
-            message_id: None,
+            header: ReceivedMessageHeader {
+                remote_tick: NetTick(1),
+                channel_type_id: ChannelTypeId::of::<TestChannel>(),
+                message_id: None,
+            },
         });
     app.world_mut()
         .entity_mut(entity)
@@ -469,7 +486,7 @@ fn messages_cross_both_ways_for_each_client_kind() {
             .unwrap()
             .packet_session
             .max_payload();
-        let fragment = fragment_len_for_max_payload(max_payload).unwrap();
+        let fragment = fragment_len(max_payload).unwrap();
         let long = StringMessage("ab".repeat(fragment) + "c");
         stepper
             .client_mut(0)

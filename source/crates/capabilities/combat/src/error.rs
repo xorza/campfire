@@ -49,6 +49,16 @@ pub enum CombatDataError {
     /// A rate bonus beside the stat `rate`, which already speeds the weapon.
     #[error("a rate bonus speeds a weapon's own period")]
     RateBonus,
+    /// A pre-attack whose time is not a whole number of milliseconds at least 0 at a rank.
+    #[error("a pre-attack lasts a whole number of milliseconds at least 0")]
+    PreAttack,
+    /// A damage bonus beside the stat `damage`, which already gives the weapon's damage.
+    #[error("a damage bonus scales a weapon's own amount")]
+    DamageBonus,
+    /// A splash's outer ring beside the stat `damage`, whose own amount no bonus would scale as
+    /// the weapon's.
+    #[error("a splash's outer ring goes with a weapon's own amount")]
+    OuterBesideStat,
     /// A streak of no stage, or of stages whose shots do not strictly grow.
     #[error("a streak has stages, their shots strictly growing")]
     Stages,
@@ -62,6 +72,10 @@ pub enum CombatRefusal {
     NegativeHeal,
     /// An attack field or an extra attack of a unit that has no attack.
     NoAttack,
+    /// A unit to respawn that is alive.
+    RespawnAlive,
+    /// A unit to respawn whose type despawns when it dies.
+    RespawnDespawns,
 }
 
 impl CapabilityRefusal for CombatRefusal {
@@ -73,6 +87,8 @@ impl CapabilityRefusal for CombatRefusal {
             Self::NegativeDamage => "damage is negative",
             Self::NegativeHeal => "amount to heal is negative",
             Self::NoAttack => "unit has no attack",
+            Self::RespawnAlive => "unit to respawn is alive",
+            Self::RespawnDespawns => "unit to respawn despawns when it dies",
         }
     }
 }

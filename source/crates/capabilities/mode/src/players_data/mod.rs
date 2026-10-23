@@ -11,7 +11,7 @@ use crate::player_control::PlayerControl;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct PlayersData {
-    /// A new player may take an open seat.
+    /// A new player may take an open player slot.
     pub late_join: bool,
     /// A new player may take a slot a bot plays; only with `late_join`, which the load checks.
     pub bot_takeover: bool,

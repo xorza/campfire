@@ -14,29 +14,18 @@ use campfire_protocol::SignedReceipt;
 use campfire_sim::{SimResource, StableId};
 use campfire_states::{Declared, Replication, Sending, SendingWays, StateTypes};
 
-use crate::net_protocol::dismissed::Dismissed;
-use crate::net_protocol::input_ack::InputAck;
-use crate::net_protocol::input_message::InputMessage;
-use crate::net_protocol::join::Join;
-use crate::net_protocol::joined::Joined;
-use crate::net_protocol::leave_match::LeaveMatch;
-use crate::net_protocol::match_start::MatchStart;
-use crate::net_protocol::offer::SessionOffer;
-use crate::net_protocol::save_command::SaveCommand;
-use crate::net_protocol::watch_start::WatchStart;
-use crate::net_protocol::watch_teams::WatchTeams;
-
-pub(crate) mod dismissed;
-pub(crate) mod input_ack;
-pub(crate) mod input_message;
-pub(crate) mod join;
-pub(crate) mod joined;
-pub(crate) mod leave_match;
-pub(crate) mod match_start;
-pub(crate) mod offer;
-pub(crate) mod save_command;
-pub(crate) mod watch_start;
-pub(crate) mod watch_teams;
+use campfire_host::Dismissed;
+use campfire_host::InputAck;
+use campfire_host::InputMessage;
+use campfire_host::Join;
+use campfire_host::Joined;
+use campfire_host::LeaveMatch;
+use campfire_host::MatchLoaded;
+use campfire_host::MatchStart;
+use campfire_host::SaveCommand;
+use campfire_host::SessionOffer;
+use campfire_host::WatchStart;
+use campfire_host::WatchTeams;
 
 /// Carries player inputs to the server. Reliable and ordered: the log refuses an input that does
 /// not link to the one before it.
@@ -83,8 +72,8 @@ impl Plugin for NetProtocolPlugin {
             mode: ChannelMode::OrderedReliable,
             ..ChannelSetup::default()
         };
-        // A link receives inputs only once its player took a seat, so a peer that did not join
-        // fills no input channel and holds no part of its link's receive budget with one.
+        // A link receives inputs only once its player took a player slot, so a peer that did not
+        // join fills no input channel and holds no part of its link's receive budget with one.
         app.register_channel::<InputChannel>(reliable)
             .add_direction_after::<Joined>(LinkDirection::ClientToServer);
         app.register_channel::<MatchChannel>(reliable)
@@ -100,6 +89,8 @@ impl Plugin for NetProtocolPlugin {
         app.register_message::<SessionOffer>()
             .add_direction(LinkDirection::ServerToClient);
         app.register_message::<Dismissed>()
+            .add_direction(LinkDirection::ServerToClient);
+        app.register_message::<MatchLoaded>()
             .add_direction(LinkDirection::ServerToClient);
         app.register_message::<SignedReceipt>()
             .add_direction(LinkDirection::ServerToClient);

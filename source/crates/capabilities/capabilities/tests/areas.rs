@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use campfire_abilities::*;
-use campfire_actions::{ActionData, ActionTarget, DeliveryData, LaunchId, Targeting};
+use campfire_actions::{ActionData, ActionKeys, ActionTarget, LaunchId, Targeting};
 use campfire_areas::*;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
@@ -272,10 +273,13 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
         };
         Areas::load_type(&mut game, blast, PackageIndex::MODE, &data);
         let shot = ActionData {
-            targeting: Targeting::Point,
-            delivery: Some(DeliveryData::Area {
-                unit_type: DeclaredName::new("blast").unwrap(),
-            }),
+            keys: ActionKeys {
+                targeting: Targeting::Point,
+                ..strike().keys
+            },
+            delivery: Some(Arc::new(AreaDeliveryData {
+                area: DeclaredName::new("blast").unwrap(),
+            })),
             ..strike()
         };
         // Each hook deals damage only when it reads the area still there, no aimed unit, and no
@@ -396,10 +400,13 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     // The tag book, which a match's stats derive each unit's tags from, once every type is tagged.
     Units::seal_tags(&mut game, &BTreeMap::new());
     let shot = ActionData {
-        targeting: Targeting::Point,
-        delivery: Some(DeliveryData::Area {
-            unit_type: DeclaredName::new("field").unwrap(),
-        }),
+        keys: ActionKeys {
+            targeting: Targeting::Point,
+            ..strike().keys
+        },
+        delivery: Some(Arc::new(AreaDeliveryData {
+            area: DeclaredName::new("field").unwrap(),
+        })),
         ..strike()
     };
     let source = r#"

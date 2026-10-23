@@ -11,7 +11,7 @@ pub struct ModeSetup<'a> {
     /// The scripts its list names, compiled.
     pub scripts: ModeScripts,
     pub data: &'a ModeData,
-    /// What its session's host picked of `data`'s options and of each seat's choices.
+    /// What its session's host picked of `data`'s options and of each player slot's choices.
     pub picks: &'a HostPicks,
     /// The playing teams, in the manifest's order; their slots in that order make the player
     /// slots.

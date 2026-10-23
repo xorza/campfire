@@ -1,4 +1,4 @@
-use campfire_common::{DomainHasher, HashDomain, Seat, Tick};
+use campfire_common::{DomainHasher, HashDomain, PlayerSlot, Tick};
 use serde::{Deserialize, Serialize};
 
 use crate::delegation::delegation_id::DelegationId;
@@ -18,16 +18,16 @@ const JOIN_DOMAIN: HashDomain<InputHash> = HashDomain::new("campfire/join-root/v
 /// records, so both reach the same head, which the player's signature covers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputChain {
-    seat: Seat,
+    player_slot: PlayerSlot,
     head: InputHash,
     next_seq: u64,
 }
 
 impl InputChain {
     /// A chain with no input yet: the first one links to `root`.
-    pub const fn new(seat: Seat, root: InputHash) -> Self {
+    pub const fn new(player_slot: PlayerSlot, root: InputHash) -> Self {
         Self {
-            seat,
+            player_slot,
             head: root,
             next_seq: 0,
         }
@@ -38,20 +38,20 @@ impl InputChain {
     /// place, which no other join of the log holds. A player who joins again with the same
     /// delegation so starts a chain that none of their earlier packets extends, and the host
     /// cannot log those again.
-    pub fn joined(seat: Seat, delegation: &DelegationId, place: InputPlace) -> Self {
+    pub fn joined(player_slot: PlayerSlot, delegation: &DelegationId, place: InputPlace) -> Self {
         let mut hasher = DomainHasher::new(JOIN_DOMAIN);
         hasher
             .update(delegation.as_bytes())
             .update(&place.tick.get().to_le_bytes())
             .update(&place.index.to_le_bytes());
-        Self::new(seat, hasher.finish())
+        Self::new(player_slot, hasher.finish())
     }
 
     /// A chain whose next input is the `next_seq`th, linking to `head`: as the log holds it, for
     /// a player who takes their chain up again from there.
-    pub const fn resume(seat: Seat, head: InputHash, next_seq: u64) -> Self {
+    pub const fn resume(player_slot: PlayerSlot, head: InputHash, next_seq: u64) -> Self {
         Self {
-            seat,
+            player_slot,
             head,
             next_seq,
         }
@@ -62,8 +62,8 @@ impl InputChain {
         self.next_seq
     }
 
-    pub const fn seat(&self) -> Seat {
-        self.seat
+    pub const fn player_slot(&self) -> PlayerSlot {
+        self.player_slot
     }
 
     /// The hash of the last input, or the root before the first.
@@ -71,21 +71,21 @@ impl InputChain {
         self.head
     }
 
-    /// The player's next input, stamped for `stamp`. The head moves on to `BLAKE3(domain ‖
-    /// previous head ‖ u32 seat ‖ u64 seq ‖ u64 stamp ‖ payload)`, little-endian, seq counting
-    /// the player's inputs from 0; the payload comes last, so it needs no length.
+    /// The player's next input, stamped for `stamp`. The head moves on to `BLAKE3(domain ‖ previous
+    /// head ‖ u32 player slot ‖ u64 seq ‖ u64 stamp ‖ payload)`, little-endian, seq counting the
+    /// player's inputs from 0; the payload comes last, so it needs no length.
     pub fn extend<'a>(&mut self, stamp: Tick, payload: &'a [u8]) -> PlayerInput<'a> {
         let mut hasher = DomainHasher::new(HASH_DOMAIN);
         hasher
             .update(self.head.as_bytes())
-            .update(&self.seat.get().to_le_bytes())
+            .update(&self.player_slot.get().to_le_bytes())
             .update(&self.next_seq.to_le_bytes())
             .update(&stamp.get().to_le_bytes())
             .update(payload);
         self.head = hasher.finish();
         self.next_seq = self.next_seq.checked_add(1).expect("input seq exhausted");
         PlayerInput {
-            seat: self.seat,
+            player_slot: self.player_slot,
             stamp,
             payload,
         }
@@ -109,7 +109,7 @@ pub struct SignedHead<'a> {
     pub session_id: SessionId,
 }
 
-/// `domain ‖ session id ‖ u32 seat ‖ u64 seq ‖ head`, little-endian, where seq is the last
+/// `domain ‖ session id ‖ u32 player slot ‖ u64 seq ‖ head`, little-endian, where seq is the last
 /// input's.
 impl Signed for SignedHead<'_> {
     const DOMAIN: SignatureDomain = SignatureDomain::new("campfire/input/v1");
@@ -121,7 +121,7 @@ impl Signed for SignedHead<'_> {
             .checked_sub(1)
             .expect("a signed chain head follows an input");
         message.extend_from_slice(self.session_id.as_bytes());
-        message.extend_from_slice(&chain.seat.get().to_le_bytes());
+        message.extend_from_slice(&chain.player_slot.get().to_le_bytes());
         message.extend_from_slice(&seq.to_le_bytes());
         message.extend_from_slice(chain.head.as_bytes());
     }

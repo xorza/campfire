@@ -2,7 +2,6 @@ use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
-use campfire_common::Seat;
 use campfire_sim::StableId;
 use rhai::{Dynamic, NativeCallContext};
 
@@ -43,8 +42,10 @@ impl Ctx {
         }))
     }
 
-    /// Tags `host` with the ctx, which `of_call` reads in each call of its scripts.
+    /// Tags `host` with the ctx, which `of_call` reads in each call of its scripts, and counts
+    /// the native work of its view's lists toward the host's calls.
     pub fn tag(&self, host: &mut ScriptHost) {
+        host.share_charge(self.view().charge().clone());
         host.engine_mut()
             .set_default_tag(Dynamic::from(self.clone()));
     }
@@ -67,11 +68,10 @@ impl Ctx {
     /// an AI's, which reads, orders and draws (06-script-api.md, An AI reads and orders), and a
     /// bot's, which runs outside the sim.
     pub fn write(&self) -> Checked<RefMut<'_, Frame>> {
-        let frame = self.drawing()?;
-        if matches!(frame.role(), Some(ScriptRole::Ai | ScriptRole::Bot)) {
+        if matches!(self.frame().role(), Some(ScriptRole::Ai | ScriptRole::Bot)) {
             return Err(ApiError::NotForRole.fail().into());
         }
-        Ok(frame)
+        self.drawing()
     }
 
     /// The frame to draw from, or to give an order through, as `frame`; a pure hook's call fails.
@@ -97,17 +97,6 @@ impl Ctx {
             return Ok(());
         }
         self.require(roles)
-    }
-
-    /// Fails a bot's call that reads what only the player of `seat`, or no player's units, hold,
-    /// unless it is the bot's own seat, as a bot sees what its player sees (03-game-scripting.md,
-    /// A bot decides from what it sees, each think).
-    pub fn admit_seat(&self, seat: Option<Seat>) -> Checked<()> {
-        let frame = self.frame();
-        if frame.role() == Some(ScriptRole::Bot) && (seat.is_none() || frame.payer() != seat) {
-            return Err(ApiError::NotForRole.fail().into());
-        }
-        Ok(())
     }
 
     /// Fails the call unless its role is one of `roles`: a call given to some roles reads or
@@ -162,4 +151,26 @@ impl ScriptHandle for Ctx {
 impl ScriptHandle for Params {
     const NAME: &'static str = "Params";
     const TITLE: &'static str = "`ctx.params`";
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
+    use crate::scripts::call_start::CallStart;
+    use crate::scripts::ctx::Ctx;
+    use crate::scripts::error::CallError;
+    use crate::scripts::view::call_sight::CallSight;
+
+    impl Ctx {
+        /// Starts the call `start` in `world` alone, as a test's probe makes one: in a batch of
+        /// its own, as `Frame::begin` says, read by the viewer of its role until the next call
+        /// begins.
+        pub fn begin_alone(&self, world: &World, start: CallStart) -> Result<(), CallError> {
+            self.view().set_sight(CallSight::of(&start));
+            let mut frame = self.frame();
+            frame.begin_batch(world);
+            frame.begin(world, &start)
+        }
+    }
 }

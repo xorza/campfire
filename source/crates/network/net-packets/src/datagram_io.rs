@@ -1,20 +1,25 @@
 use bytes::{Bytes, BytesMut};
-use core::net::SocketAddr;
+use core::net::{IpAddr, SocketAddr};
 use core::time::Duration;
 
 use crate::io_failed::IoFailed;
 
-/// A datagram to send, and where.
+/// A datagram to send, where, and the local address it leaves from: the one its peer's datagrams
+/// came to, so a socket bound to an unspecified address answers from the address its peer sent to;
+/// none for the OS's choice.
 #[derive(Debug)]
 pub struct Outbound {
     pub to: SocketAddr,
+    pub from_ip: Option<IpAddr>,
     pub datagram: Bytes,
 }
 
-/// A datagram an IO received, and the address it came from.
+/// A datagram an IO received, the address it came from, and the local address it came to, which a
+/// socket tells; none where the IO does not.
 #[derive(Debug, Clone)]
 pub struct Datagram {
     pub from: SocketAddr,
+    pub local: Option<IpAddr>,
     pub payload: BytesMut,
 }
 

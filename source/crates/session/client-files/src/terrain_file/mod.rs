@@ -162,11 +162,18 @@ impl TerrainQuads {
 }
 
 impl TerrainTexture {
-    /// An error unless it has a texel and a level, its sides halve to a texel at each level, and
-    /// every copy and border wrap lies within it, each place and size on texels each level halves
-    /// to.
+    /// The longest side a terrain texture has: wgpu's default `max_texture_dimension_2d`, the
+    /// most every GPU the client runs on takes, a first level of 256 MiB at four bytes a texel.
+    pub const MOST_SIDE: u32 = 8192;
+
+    /// An error unless its sides are within `MOST_SIDE`, it has a texel and a level, its sides
+    /// halve to a texel at each level, and every copy and border wrap lies within it, each place
+    /// and size on texels each level halves to.
     fn check(&self) -> Result<(), TerrainFileError> {
         let [width, height] = self.size.to_array();
+        if width > Self::MOST_SIDE || height > Self::MOST_SIDE {
+            return Err(TerrainFileError::TextureSize);
+        }
         let last = self
             .levels
             .checked_sub(1)

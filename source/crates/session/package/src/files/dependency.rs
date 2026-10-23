@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::files::dependency_path::DependencyPath;
+use campfire_package_format::DependencyPath;
 
 /// Where a dependency is: in the workspace, a path relative to the mode's manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

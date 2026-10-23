@@ -67,8 +67,10 @@ fn alike(local: &InProcessMatch, id: StableId) -> bool {
 fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_once() {
     // Cinder's player alone, beside Gale at the north's spawn; Rime of the south 6 m south. The
     // mode keeps every unit's modifiers from the enemies.
-    let mut setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
-    setup.bots = &PICKS[1..];
+    let setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN)
+        .into_builder()
+        .bots(&PICKS[1..])
+        .build();
     let hidden = "\n[visibility]\nmodifiers = [\"spectators\"]\n";
     let mut local = InProcessMatch::of_mode(setup, short_3v3(&AURAS, hidden));
     local.open_match();

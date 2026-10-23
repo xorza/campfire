@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, SystemState};
 use bevy_ecs::world::World;
 use campfire_actions::Targets;
-use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section};
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, ById, ByIdBuilder, Section};
 use campfire_geometry::Placed;
 use campfire_math::{Num, Rounding};
 use campfire_script::{Filter, MatchNames, UnknownName};
@@ -31,7 +31,7 @@ pub(crate) struct ExperienceShare {
     track: TrackId,
     to: To,
     victim: Filter,
-    gives: ByType<Gives>,
+    gives: ById<UnitType, Gives>,
 }
 
 /// To whom a death's experience goes, its filter resolved.
@@ -83,7 +83,7 @@ impl ExperienceBook {
             })?),
             None => None,
         };
-        let mut gives = ByTypeBuilder::default();
+        let mut gives = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<ExperienceData>() else {
                 continue;
@@ -180,7 +180,7 @@ impl ExperienceShare {
             let (deaths, book, index, units_near, targets, units) =
                 reads.expect("a match that shares experience holds what the share reads");
             let share = book.share().expect("the pass installs with a share");
-            for death in deaths.iter() {
+            for death in &deaths {
                 if !share.victim.selects_tags(death.fallen.tags) {
                     continue;
                 }

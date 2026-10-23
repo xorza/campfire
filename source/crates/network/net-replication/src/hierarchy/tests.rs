@@ -370,6 +370,18 @@ fn a_later_disable_detaches_the_subtree() {
         assert!(!entity.contains::<ReplicateLike>());
         assert!(!entity.contains::<Replicate>());
     }
+
+    // Its removal attaches the subtree to the root again.
+    app.world_mut()
+        .entity_mut(child)
+        .remove::<DisableReplicateHierarchy>();
+    app.update();
+    for entity in [child, grandchild] {
+        assert!(
+            app.world().get::<ReplicateLike>(entity).is_some(),
+            "{entity:?}"
+        );
+    }
 }
 
 /// A child moved to another parent follows the new root's aspects, and keeps the ones it
@@ -417,6 +429,16 @@ fn a_reparented_child_follows_its_new_root() {
     assert_eq!(own.get::<Rooms>(), Some(&Rooms::single(RoomId(2))));
     assert!(own.contains::<Overridden<Replicate>>());
     assert!(own.contains::<Overridden<Rooms>>());
+
+    // Moved under a parent that replicates not, the plain child leaves its root, as a child that
+    // leaves its parent does.
+    let plain = plain.id();
+    let bare = app.world_mut().spawn_empty().id();
+    app.world_mut().entity_mut(plain).insert(ChildOf(bare));
+    app.update();
+    let plain = app.world().entity(plain);
+    assert!(!plain.contains::<ReplicateLike>());
+    assert!(!plain.contains::<Replicate>());
 }
 
 fn setup_hierarchy() -> (Stepper<ReplicationStack>, Entity, Entity, Entity) {

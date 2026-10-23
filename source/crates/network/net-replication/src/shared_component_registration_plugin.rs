@@ -1,5 +1,4 @@
 use crate::component_registry::ComponentRegistry;
-use crate::confirmed_tick_map::ConfirmedTickMap;
 use crate::controlled_send::ControlledSend;
 use crate::hierarchy;
 use crate::replication_target::InterpolatedSend;
@@ -7,7 +6,6 @@ use crate::replication_target::PredictedSend;
 use crate::sent_marker::SentMarker;
 use bevy_app::prelude::{App, Plugin};
 use bevy_ecs::prelude::ChildOf;
-use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
 use bevy_replicon::prelude::{AppMarkerExt, AppRuleExt, RuleFns};
 
 /// Registers the sender-side markers `PredictedSend`, `InterpolatedSend` and `ControlledSend` with
@@ -30,12 +28,6 @@ impl Plugin for SharedComponentRegistrationPlugin {
             hierarchy::deserialize_child_of,
         ))
         .set_receive_fns::<ChildOf>(hierarchy::write_child_of, hierarchy::remove_child_of);
-
-        // ServerMutateTicks is normally only initialized by bevy_replicon's ClientPlugin,
-        // but prediction systems on server-only builds also reference it. Init it here
-        // so it's always available (defaults to empty/harmless state).
-        app.init_resource::<ServerMutateTicks>();
-        app.init_resource::<ConfirmedTickMap>();
     }
 
     fn finish(&self, app: &mut App) {

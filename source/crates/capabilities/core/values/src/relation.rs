@@ -37,7 +37,7 @@ impl<'de> Deserialize<'de> for Relation {
 
 /// `Relation::Hostile` and the others in scripts.
 impl ScriptEnum for Relation {
-    const ENUM: EngineEnum = EngineEnum::Relation;
+    const ENUM: EngineEnum = EngineEnum::new("Relation");
     const SCRIPT_NAMES: &'static [&'static str] = &Self::IDENTS;
 }
 

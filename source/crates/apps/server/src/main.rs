@@ -1,5 +1,5 @@
 //! Headless game server: opens a session of a mode on an address, lets its players join over
-//! the stack's UDP, runs the match, and writes the session log once every player left. Its data
+//! the stack's UDP, runs the match, and writes the session log once the session ends. Its data
 //! directory, which it holds locked while it runs, keeps its key. Ctrl-C, `SIGTERM` or `SIGHUP`,
 //! each unless its start ignored it, stops it by an exit with code 130: its links close and its
 //! port mapping goes, and its session waits in the journal for the next start to restore; a
@@ -14,31 +14,22 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::SystemTime;
 
-use bevy_app::{App, AppExit, Update};
-use bevy_ecs::lifecycle::Add;
-use bevy_ecs::observer::On;
-use bevy_ecs::query::With;
-use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::system::Query;
-use bevy_ecs::world::World;
 use campfire_common::ErrorReport;
-use campfire_common::{ExitStatus, TlsKey};
-use campfire_declarations::CapabilitySet;
-use campfire_log::{LogEvent, Logging};
-use campfire_net::{
-    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, Os, PacedRunnerPlugin, Publisher,
-    RestoredSession, ServerBots, ServerDir, ServerFrameSystems, ServerSetup, SessionOpening,
-    SimServerPlugins, SimServerWorld, StopRequest, UdpLinks, exit_code,
+use campfire_host::{
+    JournalFailed, KeyFile, Listening, Os, Publisher, RestoredSession, ServerBots, ServerDir,
+    ServerSetup, exit_code,
 };
-use campfire_net_connection::Start;
+use campfire_log::LogEvent;
+use campfire_logging::Logging;
+use campfire_net::{LobbyOpenError, ServerAppSetup, ServerRun, SessionOpening, UdpLinks};
+use campfire_net_core::TlsKey;
 use campfire_net_endpoint::Endpoint;
-use campfire_net_link::{Linked, Server};
 use campfire_net_port_map::PortMap;
 use campfire_net_socket::ServerSocket;
+use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
-use campfire_store::StopSignals;
+use campfire_platform::StopSignals;
 use tracing::{error, info};
 
 use crate::command_line::{Args, CommandLine};
@@ -54,7 +45,7 @@ mod opening;
 const TERMINAL_FILTER: &str = "info";
 /// What the log file holds when `CAMPFIRE_LOG_FILTER` does not say: Campfire's messages down to
 /// `debug`, and the stack's rollbacks; of the rest, `info` and above.
-const FILE_FILTER: &str = "info,campfire_server=debug,campfire_net=debug,campfire_runner=debug,\
+const FILE_FILTER: &str = "info,campfire_server=debug,campfire_host=debug,campfire_net=debug,campfire_runner=debug,\
                            campfire_script=debug,campfire_net_prediction=debug";
 
 fn main() -> ExitCode {
@@ -87,7 +78,7 @@ fn run() -> Result<ExitCode, LaunchError> {
         map,
         host,
         options,
-        seat_picks,
+        player_slot_picks,
         address,
         port_map,
         ..
@@ -109,9 +100,8 @@ fn run() -> Result<ExitCode, LaunchError> {
     let waiting = Opening::waiting(&data).map_err(no_session)?;
     let journal = waiting.as_ref().map(|session| &session.terms().map);
     let map = Opening::map(journal, map).map_err(no_session)?;
-    let packages = PackageDir::new(&mode).mode_packages(map.as_ref())?;
-    let bots = ServerBots::new(scripts.seats, scripts.takeover.as_ref(), &packages)?;
-    let capabilities = packages.manifest().capabilities;
+    let packages = ModePackages::at(&PackageDir::new(&mode), map.as_ref())?;
+    let bots = ServerBots::new(scripts.player_slots, scripts.takeover.as_ref(), &packages)?;
     let setup = OpeningSetup {
         data: &data,
         packages,
@@ -123,20 +113,23 @@ fn run() -> Result<ExitCode, LaunchError> {
         bots,
         host,
         options,
-        seat_picks,
+        player_slot_picks,
     };
     let opening = open(waiting, setup).map_err(no_session)?;
     let local = socket.local_address();
-    let admission = UdpLinks::admission(opening.seats(), opening.server().times.grace);
+    let admission = UdpLinks::admission(opening.player_slots(), opening.server().times.grace);
     let listening = announce(&opening, &mode, local, tls_key);
     let session = opening.session.span();
-    let mut app = server_app(opening, data, listening, capabilities, stop);
     let port_map = port_map
         .then(|| PortMap::start(local, "campfire"))
         .flatten();
-    let endpoint = Endpoint::from(socket.serve(admission));
-    let server = app.world_mut().spawn((Server::default(), endpoint)).id();
-    app.world_mut().trigger(Start { entity: server });
+    let mut app = ServerAppSetup {
+        opening: opening.session,
+        data,
+        endpoint: Endpoint::from(socket.serve(admission)),
+        run: ServerRun::Dedicated { stop, listening },
+    }
+    .build();
     let exit = session.in_scope(|| app.run());
     // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP request's
     // 10 s, which no client waits for (11-net-stack/port-map.md, A server maps its own port).
@@ -174,52 +167,10 @@ fn open(
     };
     let window = RestoreWindow {
         length: setup.server.times.restore_window,
-        now: SystemTime::now(),
+        now: setup.server.os.clock.unix_now(),
     };
     let found = Opening::find(waiting, window, publisher)?;
     Opening::of(found, setup)
-}
-
-/// The server's app: its plugins at the rate of the session of `opening`, that session, a
-/// `listening` event logged once its transport listens, and the end once every player left, or at
-/// a signal `stop` caught, with its code, the session left in its journal for the next start to
-/// restore (08-sessions.md, A stop is an exit, not a crash).
-fn server_app(
-    opening: Opening,
-    data: ServerDir,
-    listening: Listening,
-    set: CapabilitySet,
-    stop: StopSignals,
-) -> App {
-    let mut app = App::new();
-    app.add_plugins((
-        SimServerPlugins {
-            tick_hz: opening.terms().tick_hz,
-            capabilities: set,
-            hosting: Hosting::Remote,
-        },
-        PacedRunnerPlugin,
-    ));
-    app.world_mut().open_session(opening.session);
-    app.insert_resource(data);
-    app.add_observer(
-        move |added: On<'_, '_, Add<Linked>>, servers: Query<'_, '_, (), With<Server>>| {
-            if servers.contains(added.entity) {
-                listening.log();
-            }
-        },
-    );
-    app.add_systems(
-        Update,
-        (exit_when_due, move |world: &mut World| {
-            if stop.is_received() {
-                world.write_message(AppExit::from_code(ExitStatus::Interrupted.code()));
-            }
-        })
-            .chain()
-            .after(ServerFrameSystems::Saves),
-    );
-    app
 }
 
 /// What the server logs once its transport listens for the session `opening` starts: how a
@@ -231,7 +182,7 @@ fn announce(opening: &Opening, mode: &Path, address: SocketAddr, tls_key: TlsKey
         info!(
             session = %terms.session_id(),
             %address,
-            players = terms.seats.len(),
+            players = terms.player_slots.len(),
             mode = %mode.display(),
             "opened a session"
         );
@@ -248,12 +199,5 @@ fn announce(opening: &Opening, mode: &Path, address: SocketAddr, tls_key: TlsKey
             mode.display(),
             address.port()
         ),
-    }
-}
-
-/// Exits as `SimServerWorld::exit_due` says: the server stops only once its session ended.
-fn exit_when_due(world: &mut World) {
-    if let Some(exit) = world.exit_due(StopRequest::NotAsked) {
-        world.write_message(exit);
     }
 }

@@ -60,8 +60,8 @@ use crate::timeline_switch_setup::TimelineSwitchSetup;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_time::{Time, Virtual};
-use campfire_net_interpolation::FrameInterpolate;
-use campfire_net_interpolation::InterpolationRegistry;
+use campfire_net_frame_interpolation::FrameInterpolate;
+use campfire_net_frame_interpolation::FrameRegistry;
 use campfire_net_replication::DeferredEntityCommands;
 use campfire_net_replication::Interpolated;
 use campfire_net_replication::Predicted;
@@ -174,11 +174,11 @@ impl TimelineSwitchPlugin {
             // nothing to measure a correction from, and a saved value would be left
             // behind with no reader. A switch to the prediction timeline still gets
             // the rollback's own correction, which is what a snap wants.
-            let total_secs = pending.total_secs;
+            let total = pending.total;
             let direction = pending.direction;
             saves.remove::<TimelineSwitch>(entity);
             saves.insert(entity, pending);
-            trace!(?entity, ?direction, total_secs, "saved switch visual");
+            trace!(?entity, ?direction, ?total, "saved switch visual");
         }
     }
 
@@ -187,7 +187,7 @@ impl TimelineSwitchPlugin {
         time: Res<'_, Time<Virtual>>,
         mut pending: Query<'_, '_, (Entity, &PendingSwitch)>,
         metadata: Option<ResMut<'_, RollbackCheckState>>,
-        interpolation_registry: Res<'_, InterpolationRegistry>,
+        frame_registry: Res<'_, FrameRegistry>,
         registry: Res<'_, PredictionRegistry>,
         mut commands: Commands<'_, '_>,
         mut deferred: Deferred<'_, DeferredEntityCommands>,
@@ -202,10 +202,9 @@ impl TimelineSwitchPlugin {
                 SwitchDirection::ToPredicted => {
                     deferred.remove::<Interpolated>(entity);
                     deferred.insert(entity, Predicted);
-                    // Predicted entities render through frame interpolation, and a
-                    // blend only shows while `FrameInterpolate` is present. (The
-                    // saved value requires it too; on a snapping switch there is no
-                    // saved value, hence the explicit insert.)
+                    // A predicted entity's visual blends its last two fixed ticks under
+                    // `FrameInterpolate`. (The saved value requires it too; on a snapping
+                    // switch there is no saved value, hence the explicit insert.)
                     deferred.insert(entity, FrameInterpolate);
                     // Forced rollback at K: the rollback check below consumes this
                     // before its policy scan, rewinds the world to confirmed data at
@@ -218,19 +217,18 @@ impl TimelineSwitchPlugin {
                 SwitchDirection::ToInterpolated => {
                     deferred.remove::<Predicted>(entity);
                     deferred.insert(entity, Interpolated);
-                    // Delayed interpolation writes the visual value directly every
-                    // render frame, and frame interpolation would restore its stale
-                    // history over that write and freeze the render, so the switch
-                    // holds this removal.
+                    // Delayed interpolation writes the component every render frame, which
+                    // the visual then shows as it is, so no fixed tick's history blends into
+                    // it.
                     deferred.remove::<FrameInterpolate>(entity);
                 }
             }
             // The frame histories belong to the era the entity leaves: they froze while it was
             // interpolated, and once it is interpolated nothing reads them. Kept, the next
-            // predicted era would restore a stale value over the live one; dropped, they re-seed
-            // from it.
+            // predicted era's first frames would blend from a stale value; dropped, they re-seed
+            // from the live one.
             let mut entity_commands = commands.entity(entity);
-            for &history in interpolation_registry.frame_history_component_ids() {
+            for &history in frame_registry.frame_history_component_ids() {
                 entity_commands.remove_by_id(history);
             }
             // The prediction histories are the predicted era's too. Kept on an interpolated entity,
@@ -245,10 +243,7 @@ impl TimelineSwitchPlugin {
             // with the markers it swapped.
             deferred.remove::<PendingSwitch>(entity);
             if switch.blends() {
-                deferred.insert(
-                    entity,
-                    SwitchBlend::new(now, switch.total_secs, switch.ease),
-                );
+                deferred.insert(entity, SwitchBlend::new(now, switch.total, switch.ease));
             }
             trace!(
                 ?entity,

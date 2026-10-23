@@ -1,7 +1,11 @@
 use std::collections::BTreeMap;
 
-use crate::source_file::SourceFile;
-use crate::workspace::{crates, holder, sources};
+use proc_macro2::Ident;
+use syn::visit::{self, Visit};
+use syn::{Attribute, FnArg, ImplItem, ItemFn, ItemImpl, ItemMod, Signature, Type, Visibility};
+
+use crate::source_file::{Gate, SourceFile};
+use crate::workspace::Workspace;
 
 /// A function whose first parameter is a world: its line, its name with its owner's, as
 /// `Owner::name`, or alone for a free function, and whether code past its module may call it.
@@ -12,105 +16,80 @@ struct WorldFirst {
     visible: bool,
 }
 
-/// The end of the bracketed run that opens at `text[at]`, past its closing bracket.
-fn bracket_end(text: &str, at: usize, open: char, close: char) -> usize {
-    let mut depth = 0;
-    for (offset, c) in text[at..].char_indices() {
-        if c == open {
-            depth += 1;
-        } else if c == close {
-            depth -= 1;
-            if depth == 0 {
-                return at + offset + 1;
+/// Each function of `text` whose first parameter is a world, a reference to a `World`: a free
+/// function at any depth, or a method of an inherent `impl`, not of a trait's; none of an item
+/// that a gate holds, which only tests and their helpers build.
+fn world_first(text: &str) -> Vec<WorldFirst> {
+    struct Functions(Vec<WorldFirst>);
+    impl Functions {
+        fn take(&mut self, owner: Option<&Ident>, visibility: &Visibility, signature: &Signature) {
+            let Some(FnArg::Typed(first)) = signature.inputs.first() else {
+                return;
+            };
+            let Type::Reference(reference) = &*first.ty else {
+                return;
+            };
+            if !matches!(&*reference.elem, Type::Path(referent) if referent.path.is_ident("World"))
+            {
+                return;
+            }
+            let name = signature.ident.to_string();
+            let visible = match visibility {
+                Visibility::Public(_) => true,
+                Visibility::Restricted(restricted) => !restricted.path.is_ident("super"),
+                Visibility::Inherited => false,
+            };
+            self.0.push(WorldFirst {
+                line: signature.fn_token.span.start().line,
+                name: owner.map_or_else(|| name.clone(), |owner| format!("{owner}::{name}")),
+                visible,
+            });
+        }
+    }
+    fn gated(attributes: &[Attribute]) -> bool {
+        attributes
+            .iter()
+            .any(|attribute| Gate::of(attribute).is_some())
+    }
+    impl<'ast> Visit<'ast> for Functions {
+        fn visit_item_fn(&mut self, item: &'ast ItemFn) {
+            if gated(&item.attrs) {
+                return;
+            }
+            self.take(None, &item.vis, &item.sig);
+            visit::visit_item_fn(self, item);
+        }
+
+        fn visit_item_mod(&mut self, item: &'ast ItemMod) {
+            if !gated(&item.attrs) {
+                visit::visit_item_mod(self, item);
+            }
+        }
+
+        fn visit_item_impl(&mut self, item: &'ast ItemImpl) {
+            if gated(&item.attrs) {
+                return;
+            }
+            let owner = match &*item.self_ty {
+                Type::Path(path) if item.trait_.is_none() => path.path.segments.last(),
+                _ => None,
+            };
+            for inner in &item.items {
+                if let ImplItem::Fn(function) = inner
+                    && !gated(&function.attrs)
+                {
+                    if let Some(owner) = owner {
+                        self.take(Some(&owner.ident), &function.vis, &function.sig);
+                    }
+                    visit::visit_block(self, &function.block);
+                }
             }
         }
     }
-    text.len()
-}
-
-/// The type an `impl` line of `line` gives methods to, none for a trait's impl.
-fn impl_self_type(line: &str) -> Option<&str> {
-    let mut rest = line.trim_start().strip_prefix("impl")?;
-    if rest.starts_with('<') {
-        rest = &rest[bracket_end(rest, 0, '<', '>')..];
-    }
-    let rest = rest.trim_start();
-    if rest.contains(" for ") {
-        return None;
-    }
-    let end = rest
-        .find(|c: char| !(c.is_alphanumeric() || c == '_'))
-        .unwrap_or(rest.len());
-    Some(&rest[..end])
-}
-
-/// Each function of `text` whose first parameter is a world, a reference to a `World`.
-fn world_first(text: &str) -> Vec<WorldFirst> {
-    let lines: Vec<&str> = text.lines().collect();
-    let mut found = Vec::new();
-    for (at, _) in text.match_indices("fn ") {
-        let line_start = text[..at].rfind('\n').map_or(0, |end| end + 1);
-        let head = &text[line_start..at];
-        let modifiers = head.trim_start();
-        let words = modifiers
-            .split_whitespace()
-            .all(|word| word.starts_with("pub") || word == "const");
-        if !words || text[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_') {
-            continue;
-        }
-        let rest = &text[at + 3..];
-        let name_end = rest
-            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
-            .unwrap_or(rest.len());
-        let name = &rest[..name_end];
-        let mut params = at + 3 + name_end;
-        if text[params..].starts_with('<') {
-            params = bracket_end(text, params, '<', '>');
-        }
-        if !text[params..].starts_with('(') {
-            continue;
-        }
-        let close = bracket_end(text, params, '(', ')') - 1;
-        let list = &text[params + 1..close];
-        let first = list.split(',').next().unwrap_or("");
-        let Some((_, kind)) = first.split_once(':') else {
-            continue;
-        };
-        let Some(referent) = kind.trim().strip_prefix('&') else {
-            continue;
-        };
-        let referent = referent.trim_start();
-        let referent = referent.strip_prefix('\'').map_or(referent, |lifetime| {
-            lifetime
-                .trim_start_matches(|c: char| c.is_alphanumeric() || c == '_')
-                .trim_start()
-        });
-        let referent = referent
-            .strip_prefix("mut ")
-            .map_or(referent, str::trim_start);
-        if referent != "World" {
-            continue;
-        }
-        let line = text[..at].matches('\n').count();
-        let indent = head.len() - modifiers.len();
-        let owner = lines[..line].iter().rev().find_map(|above| {
-            let code = above.trim_start();
-            let at_impl = indent >= 4 && above.len() - code.len() == indent - 4;
-            (at_impl && code.starts_with("impl")).then(|| impl_self_type(above))
-        });
-        let name = match owner {
-            Some(None) => continue,
-            Some(Some(owner)) => format!("{owner}::{name}"),
-            None => name.to_owned(),
-        };
-        let visible = modifiers.starts_with("pub") && !modifiers.starts_with("pub(super)");
-        found.push(WorldFirst {
-            line: line + 1,
-            name,
-            visible,
-        });
-    }
-    found
+    let file = syn::parse_file(text).expect("a workspace source parses");
+    let mut functions = Functions(Vec::new());
+    functions.visit_file(&file);
+    functions.0
 }
 
 /// Whether `text` names the function `name`, as `Owner::name` or alone, as a value: Bevy
@@ -132,18 +111,19 @@ fn named_as_value(text: &str, name: &str) -> bool {
 
 #[test]
 fn a_free_function_that_takes_a_world_first_is_a_system() {
+    let workspace = Workspace::read();
     // The world rule (02-engine-core.md, Structural rules): what acts on the match's content is a
     // function of its module's type, and a value made from the world a constructor of its own. A
     // free function past its module that takes the world first is a system or a function a table
     // holds, named as a value.
-    let sources = sources();
-    let production: Vec<(&str, String)> = sources
+    let sources = workspace.sources();
+    let production: Vec<(&SourceFile, String)> = sources
         .iter()
-        .filter_map(|file| Some((file.path.as_str(), file.production()?)))
+        .filter_map(|file| Some((file, file.production()?)))
         .collect();
     let mut found = Vec::new();
-    for (path, code) in &production {
-        let free = world_first(code)
+    for (file, _) in &production {
+        let free = world_first(&file.text)
             .into_iter()
             .filter(|f| f.visible && !f.name.contains("::"));
         for function in free {
@@ -151,7 +131,7 @@ fn a_free_function_that_takes_a_world_first_is_a_system() {
                 .iter()
                 .any(|(_, text)| named_as_value(text, &function.name));
             if !valued {
-                found.push(format!("{path}:{} {}", function.line, function.name));
+                found.push(format!("{}:{} {}", file.path, function.line, function.name));
             }
         }
     }
@@ -197,6 +177,7 @@ fn refused_traits(text: &str) -> Vec<(usize, &str)> {
 
 #[test]
 fn no_trait_is_a_test_trait_on_the_world_or_a_modules_trait_on_a_match() {
+    let workspace = Workspace::read();
     // The world rule (02-engine-core.md, Structural rules): a world trait holds the whole match and
     // the fast access to a module's systems, for other crates, its own crate, or the tests and
     // benches of any crate; a test's verbs belong to its fixture or its capability's type, and a
@@ -204,7 +185,7 @@ fn no_trait_is_a_test_trait_on_the_world_or_a_modules_trait_on_a_match() {
     // this file holds a source of each form for the check's own test.
     let mut found = Vec::new();
     let own = "crates/test/rules/src/world.rs";
-    for file in sources().into_iter().filter(|file| file.path != own) {
+    for file in workspace.sources().iter().filter(|file| file.path != own) {
         for (line, name) in refused_traits(&file.text) {
             found.push(format!("{}:{line} {name}", file.path));
         }
@@ -283,21 +264,18 @@ fn foreign_crate_traits<'a>(
 
 #[test]
 fn no_crate_names_another_crates_own_world_trait() {
-    let crates = crates();
+    let workspace = Workspace::read();
     let own = "crates/test/rules/src/world.rs";
-    let files: Vec<SourceFile> = sources()
-        .into_iter()
+    let files: Vec<&SourceFile> = workspace
+        .sources()
+        .iter()
         .filter(|file| file.path != own)
         .collect();
     let files: Vec<(&str, &str, &str)> = files
         .iter()
         .filter_map(|file| {
-            let holder = holder(&crates, &file.path)?;
-            Some((
-                crates[holder].name.as_str(),
-                file.path.as_str(),
-                file.text.as_str(),
-            ))
+            let holder = workspace.holder(&file.path)?;
+            Some((holder.name.as_str(), file.path.as_str(), file.text.as_str()))
         })
         .collect();
     let found: Vec<String> = foreign_crate_traits(&files)
@@ -346,12 +324,12 @@ use x::XWorldCrate;
 fn the_world_rule_finds_each_function_that_takes_a_world_first() {
     // A free function and methods, of each form of a reference to a world, their visibility
     // read from their modifiers; a method of a trait's impl, one that takes the world later,
-    // and one that takes a world by value are none.
+    // one that takes a world by value and one a gate holds are none.
     let text = "pub fn a(world: &World) {}\n\
         impl<'w> Owner<'w> {\n    pub(crate) const fn b<T>(\n        w: &'w mut World,\n    ) {}\n\
         \x20   pub(super) fn c(world: &mut World, x: u8) {}\n    fn d(x: u8, world: &World) {}\n}\n\
         impl Trait for Owner {\n    fn e(world: &World) {}\n}\n\
-        fn f(world: World) {}\nfn g(world: &'a World) {}\n";
+        fn f(world: World) {}\nfn g(world: &'a World) {}\n#[cfg(test)]\nfn h(world: &World) {}\n";
     let found = world_first(text);
     let expected = [
         (1, "a", true),

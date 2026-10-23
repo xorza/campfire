@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, With, Without};
 use bevy_ecs::system::{Query, SystemParam, SystemState};
 use bevy_ecs::world::World;
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_sim::{StableId, Unpredicted};
 use campfire_values::UnitType;
 
@@ -47,46 +47,50 @@ pub struct Commanded {
 }
 
 impl PlayerUnits<'_, '_> {
-    /// The avatar of `seat`; the lowest stable id should it own several, none before it spawns
-    /// or in a mode with no avatars.
-    pub fn avatar(&self, seat: Seat) -> Option<Commanded> {
-        Commanded::avatar_among(self.avatars.iter(), seat)
+    /// The avatar of `player_slot`; the lowest stable id should it own several, none before it
+    /// spawns or in a mode with no avatars.
+    pub fn avatar(&self, player_slot: PlayerSlot) -> Option<Commanded> {
+        Commanded::avatar_among(self.avatars.iter(), player_slot)
     }
 
-    /// Puts into `out`, cleared first, the living units `seat` owns of `unit_type`, by stable id,
-    /// rising.
-    pub fn typed(&self, seat: Seat, unit_type: UnitType, out: &mut Vec<StableId>) {
+    /// Puts into `out`, cleared first, the living units `player_slot` owns of `unit_type`, by
+    /// stable id, rising.
+    pub fn typed(&self, player_slot: PlayerSlot, unit_type: UnitType, out: &mut Vec<StableId>) {
         out.clear();
         out.extend(
             self.living
                 .iter()
-                .filter(|&(_, owner, &typed)| owner.seat() == seat && typed == unit_type)
+                .filter(|&(_, owner, &typed)| {
+                    owner.player_slot() == player_slot && typed == unit_type
+                })
                 .map(|(&id, ..)| id),
         );
         out.sort_unstable();
     }
 
-    /// Puts into `out`, cleared first, the living units `seat` owns, by stable id, rising.
-    pub fn owned(&self, seat: Seat, out: &mut Vec<StableId>) {
+    /// Puts into `out`, cleared first, the living units `player_slot` owns, by stable id, rising.
+    pub fn owned(&self, player_slot: PlayerSlot, out: &mut Vec<StableId>) {
         out.clear();
         out.extend(
             self.living
                 .iter()
-                .filter(|&(_, owner, _)| owner.seat() == seat)
+                .filter(|&(_, owner, _)| owner.player_slot() == player_slot)
                 .map(|(&id, ..)| id),
         );
         out.sort_unstable();
     }
 
-    /// Puts into `out`, cleared first, the living units of `ids`, rising, that `seat` owns, by
-    /// stable id, rising: of a bot's think, the units it names that are its own.
-    pub fn listed(&self, seat: Seat, ids: &[StableId], out: &mut Vec<StableId>) {
+    /// Puts into `out`, cleared first, the living units of `ids`, rising, that `player_slot` owns,
+    /// by stable id, rising: of a bot's think, the units it names that are its own.
+    pub fn listed(&self, player_slot: PlayerSlot, ids: &[StableId], out: &mut Vec<StableId>) {
         debug_assert!(ids.is_sorted(), "the listed ids rise");
         out.clear();
         out.extend(
             self.living
                 .iter()
-                .filter(|&(id, owner, _)| owner.seat() == seat && ids.binary_search(id).is_ok())
+                .filter(|&(id, owner, _)| {
+                    owner.player_slot() == player_slot && ids.binary_search(id).is_ok()
+                })
                 .map(|(&id, ..)| id),
         );
         out.sort_unstable();
@@ -94,13 +98,13 @@ impl PlayerUnits<'_, '_> {
 }
 
 impl Commanded {
-    /// The avatar of `seat` among `avatars`: the lowest stable id should it own several.
+    /// The avatar of `player_slot` among `avatars`: the lowest stable id should it own several.
     pub(crate) fn avatar_among<'a>(
         avatars: impl Iterator<Item = (Entity, &'a StableId, &'a Owner)>,
-        seat: Seat,
+        player_slot: PlayerSlot,
     ) -> Option<Self> {
         avatars
-            .filter(|&(_, _, owner)| owner.seat() == seat)
+            .filter(|&(_, _, owner)| owner.player_slot() == player_slot)
             .map(|(entity, &id, _)| Self { entity, id })
             .min_by_key(|unit| unit.id)
     }

@@ -7,7 +7,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_stats::Stats;
 use campfire_units::internals::Spawn;
-use campfire_units::{BodyForm, Dead, UnitTypeCore, Units};
+use campfire_units::{BodyForm, BodyShape, Dead, Layer, UnitTypeCore, Units};
 use campfire_values::{Team, TypeScope, UnitType};
 
 use crate::projectiles::{target, volley_match};
@@ -46,9 +46,10 @@ impl Steering {
             .on_death(OnDeath::Stay)
             .load(game);
         let [round, tall] = [(); 2].map(|()| target().load(game));
-        let circle = BodyForm::circle(Num::ONE).unwrap();
-        Units::give_type(game, round, circle);
-        Units::give_type(game, tall, circle.raised(Num::int(2)).unwrap());
+        let circle = BodyShape::circle(Num::ONE).unwrap();
+        Units::give_type(game, round, BodyForm::new(circle, Layer::FIRST));
+        let raised = circle.raised(Num::int(2)).unwrap();
+        Units::give_type(game, tall, BodyForm::new(raised, Layer::FIRST));
         Self {
             shooter,
             round,

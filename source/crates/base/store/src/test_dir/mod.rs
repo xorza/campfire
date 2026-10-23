@@ -1,5 +1,5 @@
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 
 use tempfile::TempDir;
@@ -8,8 +8,8 @@ use crate::dir_entries::{DirEntries, EntryKind};
 use crate::durable_dir::DurableDir;
 use crate::durable_file::DurableFile;
 use crate::input_file::InputFile;
-use crate::platform::file_link::FileLink;
-use crate::platform::user_only::{Exposure, UserOnly};
+use campfire_platform::internals::FileLink;
+use campfire_platform::{Exposure, UserOnly};
 
 /// The most bytes a test reads of a file it wrote: far past any fixture, short of what a test
 /// should hold.
@@ -72,6 +72,18 @@ impl TestDir {
         DurableFile::write(&path, bytes.as_ref()).unwrap_or_else(|error| panic!("{error:?}"));
     }
 
+    /// Adds `bytes` at the end of the file `relative`, in place: the file a handle holds open
+    /// changes under it, as another program's write would, where `write` gives the name a new
+    /// file.
+    pub fn append(&self, relative: impl AsRef<Path>, bytes: impl AsRef<[u8]>) {
+        let path = self.path(relative);
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .and_then(|mut file| file.write_all(bytes.as_ref()))
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    }
+
     pub fn read(&self, relative: impl AsRef<Path>) -> Vec<u8> {
         InputFile::read(&self.path(relative), MAX_LEN).unwrap_or_else(|error| panic!("{error:?}"))
     }
@@ -132,6 +144,11 @@ impl TestDir {
     /// Makes `link` a symbolic link to the file `target`, both relative to the root.
     pub fn link(&self, target: impl AsRef<Path>, link: impl AsRef<Path>) {
         FileLink::make(&self.path(target), &self.path(link));
+    }
+
+    /// Makes `link` a symbolic link to the directory `target`, both relative to the root.
+    pub fn link_dir(&self, target: impl AsRef<Path>, link: impl AsRef<Path>) {
+        FileLink::make_dir(&self.path(target), &self.path(link));
     }
 
     /// Whether `a` and `b`, both relative to the root, name one file on disk.

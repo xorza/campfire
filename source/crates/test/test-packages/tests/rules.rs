@@ -3,7 +3,8 @@
 use campfire_common::DeclaredName;
 use campfire_mode::ModeParam;
 use campfire_package::{
-    DataOverride, LoadError, LoadProblem, ModePackages, PackageName, PackageRef, ScriptProblem,
+    DataOverride, LoadError, LoadProblem, ModePackages, PackageName, PackageRef, Place,
+    ScriptProblem,
 };
 use campfire_script::{ListPlace, ModeScripts, ScriptId, StateValue};
 use campfire_sim::Capability;
@@ -336,4 +337,27 @@ fn a_victory_of_a_tag_no_type_holds_fails_the_load() {
         matches!(&refused, LoadProblem::Unknown { name, .. } if name == "crowns"),
         "{refused:?}"
     );
+}
+
+/// A victory and a bounty follow the match's deaths, which combat makes: a mode without combat,
+/// as the ruled mode is, that gives either fails its load with the section.
+#[test]
+fn a_victory_and_a_bounty_need_combat() {
+    for (key, section) in [
+        ("victory", "[victory]\ncounts = \"hero\""),
+        ("bounty", "[bounty]\nkiller = \"enemies:hero\""),
+    ] {
+        let refused = ruled(&[(MODE_DATA, Edit::Append(section))]).unwrap_err();
+        assert!(
+            matches!(
+                *refused.problem,
+                LoadProblem::Undeclared {
+                    capability: Capability::Combat,
+                    at: Place::Section(at),
+                } if at == key
+            ),
+            "{key}: {:?}",
+            refused.problem
+        );
+    }
 }

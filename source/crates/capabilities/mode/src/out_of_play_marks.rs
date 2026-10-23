@@ -29,7 +29,7 @@ impl OutOfPlayMarks {
     ) {
         avatars.clear();
         for (owner, dead) in &units {
-            let at = owner.seat().index();
+            let at = owner.player_slot().index();
             if avatars.len() <= at {
                 avatars.resize(at + 1, Avatars::default());
             }
@@ -38,7 +38,7 @@ impl OutOfPlayMarks {
         }
         for (entity, player, held_out, marked) in &players {
             let of = avatars
-                .get(player.seat().index())
+                .get(player.player_slot().index())
                 .copied()
                 .unwrap_or_default();
             let out = held_out || (of.held && !of.living);

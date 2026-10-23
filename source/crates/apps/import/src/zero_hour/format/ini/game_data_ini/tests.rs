@@ -2,18 +2,24 @@ use super::*;
 
 #[test]
 fn a_field_keeps_the_default_until_a_file_sets_it_and_the_last_file_wins() {
-    // The terrain's fields: `AdjustCliffTextures` off and three-way blends on by default.
+    // The terrain's fields: `AdjustCliffTextures` off and three-way blends on by default, and
+    // the blends on for any count but 0.
     let mut ini = GameDataIni::default();
-    let fields = |ini: &GameDataIni| (ini.adjust_cliff_textures, ini.three_way_blends);
-    assert_eq!(fields(&ini), (false, 1));
+    let fields = |ini: &GameDataIni| {
+        (
+            ini.terrain.adjust_cliff_textures,
+            ini.terrain.three_way_blends,
+        )
+    };
+    assert_eq!(fields(&ini), (false, true));
     ini.read(b"GameData\n  MapName = NoName.map\nEnd\n")
         .unwrap();
     ini.read(b"GameData\n  AdjustCliffTextures = Yes\n  Use3WayTerrainBlends = 0\nEnd\n")
         .unwrap();
-    assert_eq!(fields(&ini), (true, 0));
+    assert_eq!(fields(&ini), (true, false));
     ini.read(b"GameData\n  adjustclifftextures = NO\n  Use3WayTerrainBlends = 2\nEnd\n")
         .unwrap();
-    assert_eq!(fields(&ini), (false, 2));
+    assert_eq!(fields(&ini), (false, true));
     // A box pays 100 by default, the shipped file's 75 once it reads; none of no money.
     assert_eq!(ini.box_value.get(), 100);
     ini.read(b"GameData\n  ValuePerSupplyBox = 75\nEnd\n")

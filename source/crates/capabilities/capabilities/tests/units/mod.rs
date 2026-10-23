@@ -9,7 +9,7 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, CombatRefusal, RecentAttackers};
-use campfire_common::{ErrorReport, Seat, Tick};
+use campfire_common::{ErrorReport, PlayerSlot, Tick};
 use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
 use campfire_deliveries::Deliveries;
@@ -336,7 +336,7 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
         assert_eq!(unit(&fresh), unit(&game));
         Release::clear(&mut fresh);
         let restored = fresh.restore(&snapshot);
-        restored.map_err(|error| (error, id))
+        restored.map(drop).map_err(|error| (error, id))
     };
     assert_eq!(restores(Num::int(10)), Ok(()));
     let (error, unit) = restores(Num::int(10) + Num::EPSILON).unwrap_err();
@@ -410,7 +410,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let hero = Units::tagged_type(&mut game, &["avatar"], &[window, range]);
     arm(&mut game, hero, Armed::sparring());
     // On a path, but the scene has no `navigation`, which binds `unit.path`.
-    let owner = Owner::new(Seat::new(2));
+    let owner = Owner::new(PlayerSlot::new(2));
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
     let spawn = SpawnPoint::new(Vec3::from((5, 0, -5)));
@@ -441,7 +441,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let value = |game: &mut Match, expression: &str| read(game, expression).unwrap();
     assert!(value(&mut game, "of.is_avatar").as_bool().unwrap());
     assert!(value(&mut game, "of.is_alive").as_bool().unwrap());
-    assert_eq!(value(&mut game, "of.owner.seat").as_int(), Some(2));
+    assert_eq!(value(&mut game, "of.owner.player_slot").as_int(), Some(2));
     // A match with no `navigation` binds no `unit.path`.
     let unbound = read(&mut game, "of.path").unwrap_err();
     let unbound = ErrorReport::of(&unbound).to_string();

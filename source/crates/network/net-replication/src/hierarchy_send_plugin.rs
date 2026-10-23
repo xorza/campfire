@@ -21,6 +21,8 @@ use tracing::trace;
 ///   [`Overridden`]. Each member holds its own copies, so the send path reads no root.
 /// - A child that leaves its parent, or gains `DisableReplicateHierarchy`, leaves its root with
 ///   its subtree. The nearest member with a `Replicate` of its own becomes their root.
+/// - A child that moves under a parent that gives no root leaves its root too, and one that loses
+///   `DisableReplicateHierarchy` takes the root its parent gives, with its subtree.
 #[derive(Debug, Default)]
 pub(crate) struct HierarchySendPlugin;
 
@@ -69,8 +71,9 @@ impl Plugin for HierarchySendPlugin {
         app.sync_related_entities::<ChildOf>();
 
         app.add_observer(Self::detach_on_replicate_removed);
-        app.add_observer(Self::reattach_unparented);
+        app.add_observer(Self::reattach_moved);
         app.add_observer(Self::reattach_disabled);
+        app.add_observer(Self::reattach_enabled);
         app.add_systems(
             PostUpdate,
             Self::link_hierarchy.before(ReplicationSystems::Send),
@@ -191,18 +194,30 @@ impl HierarchySendPlugin {
         }
     }
 
-    /// A child that leaves its parent leaves its root: it and its subtree are reattached as if the
-    /// child were a root, so they follow the child's own `Replicate` or none.
-    fn reattach_unparented(
-        trigger: On<'_, '_, Remove<ChildOf>>,
+    /// A child that leaves its parent, or moves under one that gives no root, leaves its root:
+    /// it and its subtree are reattached as if the child were a root, so they follow the child's
+    /// own `Replicate` or none. `Discard` fires as a parent goes, by a removal or by an insert that
+    /// replaces it, which no `Remove` shows; the check runs once the change is in place. A parent
+    /// that gives a root is the walk's: its `Children` change shows it the child.
+    fn reattach_moved(trigger: On<'_, '_, Discard<ChildOf>>, mut commands: Commands<'_, '_>) {
+        if trigger.trigger().new_archetype.is_some() {
+            commands.run_system_cached_with(Self::detach_unless_rooted, trigger.entity);
+        }
+    }
+
+    /// Detaches `entity` and its subtree from its root unless its parent gives one.
+    fn detach_unless_rooted(
+        In(entity): In<Entity>,
+        parents: Query<'_, '_, &ChildOf>,
         children: Query<'_, '_, &Children>,
         states: Query<'_, '_, AttachState>,
         mut commands: Commands<'_, '_>,
     ) {
-        if trigger.trigger().new_archetype.is_none() {
+        let parent = parents.get(entity).map(ChildOf::parent);
+        if parent.is_ok_and(|parent| Self::root_below(parent, &states).is_some()) {
             return;
         }
-        Self::reattach_subtree(trigger.entity, None, &children, &states, &mut commands);
+        Self::reattach_subtree(entity, None, &children, &states, &mut commands);
     }
 
     /// An entity that gains `DisableReplicateHierarchy` leaves its root with its subtree, as one
@@ -214,6 +229,42 @@ impl HierarchySendPlugin {
         mut commands: Commands<'_, '_>,
     ) {
         Self::reattach_subtree(trigger.entity, None, &children, &states, &mut commands);
+    }
+
+    /// An entity that loses `DisableReplicateHierarchy` takes the root its parent gives, with its
+    /// subtree, once the marker is gone: a `Remove` observer still sees it.
+    fn reattach_enabled(
+        trigger: On<'_, '_, Remove<DisableReplicateHierarchy>>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        if trigger.trigger().new_archetype.is_some() {
+            commands.run_system_cached_with(Self::reattach_to_parent, trigger.entity);
+        }
+    }
+
+    /// Attaches `entity` and its subtree to the root its parent gives, none without a parent.
+    fn reattach_to_parent(
+        In(entity): In<Entity>,
+        parents: Query<'_, '_, &ChildOf>,
+        children: Query<'_, '_, &Children>,
+        states: Query<'_, '_, AttachState>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let root = parents
+            .get(entity)
+            .ok()
+            .and_then(|child_of| Self::root_below(child_of.parent(), &states));
+        Self::reattach_subtree(entity, root, &children, &states, &mut commands);
+    }
+
+    /// The root the children of `parent` attach to: its root, or itself when its `Replicate` is
+    /// its own; none below a `DisableReplicateHierarchy` entity or an entity that replicates not.
+    fn root_below(parent: Entity, states: &Query<'_, '_, AttachState>) -> Option<Entity> {
+        let state = states.get(parent).ok().filter(|state| !state.disabled)?;
+        state
+            .replicate_like
+            .map(|like| like.root)
+            .or_else(|| state.holds_replicate().then_some(parent))
     }
 
     /// Attaches `start` to `root`, or detaches it, and its descendants to what they follow then:

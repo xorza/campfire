@@ -4,10 +4,10 @@ use crate::emulated_direction::EmulatedDirection;
 use crate::emulated_link_id::EmulatedLinkId;
 use crate::phase::Phase;
 use crate::side::Side;
-use crate::wire_clock::WireClock;
 use bevy_platform::time::Instant as OsInstant;
 use bytes::Bytes;
 use campfire_net_core::LinkDirection;
+use campfire_net_core::TimeSource;
 use core::net::IpAddr;
 use core::net::Ipv4Addr;
 use core::net::SocketAddr;
@@ -30,7 +30,7 @@ pub struct EmulatedNetwork {
 
 #[derive(Debug)]
 struct EmulatedNetworkState {
-    wire: WireClock,
+    wire: TimeSource,
     origin: OsInstant,
     driven_now: Duration,
     links: Vec<EmulatedLink>,
@@ -47,7 +47,7 @@ struct EmulatedLink {
 }
 
 impl EmulatedNetwork {
-    pub fn new(wire: WireClock) -> Self {
+    pub fn new(wire: TimeSource) -> Self {
         Self {
             inner: Arc::new(Mutex::new(EmulatedNetworkState {
                 wire,
@@ -83,12 +83,12 @@ impl EmulatedNetwork {
         }
     }
 
-    /// Sets the wire time of a [`WireClock::Driven`] network.
+    /// Sets the wire time of a [`TimeSource::Driven`] network.
     pub fn set_time(&self, now: Duration) {
         let mut state = self.lock();
         assert_eq!(
             state.wire,
-            WireClock::Driven,
+            TimeSource::Driven,
             "only a driven wire clock is set"
         );
         debug_assert!(now >= state.driven_now, "the wire time does not go back");
@@ -192,8 +192,8 @@ impl EmulatedNetwork {
 impl EmulatedNetworkState {
     fn now(&self) -> Duration {
         match self.wire {
-            WireClock::Os => self.origin.elapsed(),
-            WireClock::Driven => self.driven_now,
+            TimeSource::Os => self.origin.elapsed(),
+            TimeSource::Driven => self.driven_now,
         }
     }
 }

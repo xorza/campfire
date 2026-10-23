@@ -1,4 +1,4 @@
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use serde::{Deserialize, Serialize};
 
 use crate::bytes::Bytes;
@@ -9,19 +9,19 @@ use crate::main_key::MainKey;
 use crate::spill::Spill;
 use crate::stamp_count::StampCount;
 
-/// The log's own state at a checkpoint's boundary, which a log file that starts at the
-/// checkpoint starts from: each seat's controller, with a player's delegation and chain, the main
-/// key of the player who left it last, its stamp counts and its spill; and the inputs logged
-/// before the boundary and due from it on, in the order they apply.
+/// The log's own state at a checkpoint's boundary, which a log file that starts at the checkpoint
+/// starts from: each player slot's controller, with a player's delegation and chain, the main key
+/// of the player who left it last, its stamp counts and its spill; and the inputs logged before the
+/// boundary and due from it on, in the order they apply.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogCarry {
-    pub(crate) seats: Vec<CarriedSeat>,
+    pub(crate) player_slots: Vec<CarriedPlayerSlot>,
     pub(crate) pending: Vec<CarriedInput>,
 }
 
-/// One seat of a `LogCarry`.
+/// One player slot of a `LogCarry`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CarriedSeat {
+pub(crate) struct CarriedPlayerSlot {
     pub(crate) control: Control<Box<Delegation>>,
     pub(crate) leaver: Option<MainKey>,
     pub(crate) stamps: StampCount,
@@ -32,7 +32,7 @@ pub(crate) struct CarriedSeat {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CarriedInput {
     pub(crate) tick: Tick,
-    pub(crate) seat: Seat,
+    pub(crate) player_slot: PlayerSlot,
     pub(crate) stamp: Tick,
     pub(crate) payload: Vec<u8>,
 }
@@ -41,13 +41,13 @@ pub(crate) struct CarriedInput {
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct CarryWire<'a> {
     #[serde(borrow)]
-    seats: Vec<SeatWire<'a>>,
+    player_slots: Vec<PlayerSlotWire<'a>>,
     #[serde(borrow)]
     pending: Vec<InputWire<'a>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct SeatWire<'a> {
+struct PlayerSlotWire<'a> {
     #[serde(borrow)]
     control: Control<&'a str>,
     leaver: Option<MainKey>,
@@ -58,7 +58,7 @@ struct SeatWire<'a> {
 #[derive(Debug, Serialize, Deserialize)]
 struct InputWire<'a> {
     tick: Tick,
-    seat: Seat,
+    player_slot: PlayerSlot,
     stamp: Tick,
     #[serde(borrow)]
     payload: Bytes<'a>,
@@ -66,14 +66,17 @@ struct InputWire<'a> {
 
 impl LogCarry {
     pub(crate) fn wire(&self) -> CarryWire<'_> {
-        let seats = self
-            .seats
+        let player_slots = self
+            .player_slots
             .iter()
-            .map(|seat| SeatWire {
-                control: seat.control.as_ref().map(|delegation| delegation.json()),
-                leaver: seat.leaver,
-                stamps: seat.stamps,
-                spill: seat.spill,
+            .map(|player_slot| PlayerSlotWire {
+                control: player_slot
+                    .control
+                    .as_ref()
+                    .map(|delegation| delegation.json()),
+                leaver: player_slot.leaver,
+                stamps: player_slot.stamps,
+                spill: player_slot.spill,
             })
             .collect();
         let pending = self
@@ -81,27 +84,30 @@ impl LogCarry {
             .iter()
             .map(|input| InputWire {
                 tick: input.tick,
-                seat: input.seat,
+                player_slot: input.player_slot,
                 stamp: input.stamp,
                 payload: Bytes(&input.payload),
             })
             .collect();
-        CarryWire { seats, pending }
+        CarryWire {
+            player_slots,
+            pending,
+        }
     }
 
     /// The carry `wire` holds; an error for a delegation that does not parse.
     pub(crate) fn from_wire(wire: CarryWire<'_>) -> Result<Self, CheckpointDecodeError> {
-        let mut seats = Vec::with_capacity(wire.seats.len());
-        for (seat, carried) in (0..).zip(wire.seats) {
+        let mut player_slots = Vec::with_capacity(wire.player_slots.len());
+        for (player_slot, carried) in (0..).zip(wire.player_slots) {
             let control = carried.control.try_map(|delegation| {
                 Delegation::parse(delegation)
                     .map(Box::new)
                     .map_err(|error| CheckpointDecodeError::Delegation {
-                        seat: Seat::new(seat),
+                        player_slot: PlayerSlot::new(player_slot),
                         error,
                     })
             })?;
-            seats.push(CarriedSeat {
+            player_slots.push(CarriedPlayerSlot {
                 control,
                 leaver: carried.leaver,
                 stamps: carried.stamps,
@@ -113,12 +119,15 @@ impl LogCarry {
             .into_iter()
             .map(|input| CarriedInput {
                 tick: input.tick,
-                seat: input.seat,
+                player_slot: input.player_slot,
                 stamp: input.stamp,
                 payload: input.payload.0.to_vec(),
             })
             .collect();
-        Ok(Self { seats, pending })
+        Ok(Self {
+            player_slots,
+            pending,
+        })
     }
 }
 
@@ -127,10 +136,10 @@ pub(crate) mod internals {
     use crate::checkpoint::log_carry::LogCarry;
 
     impl LogCarry {
-        /// A carry of no seat and no input, for a test of a checkpoint outside a log.
+        /// A carry of no player slot and no input, for a test of a checkpoint outside a log.
         pub const fn empty() -> Self {
             Self {
-                seats: Vec::new(),
+                player_slots: Vec::new(),
                 pending: Vec::new(),
             }
         }

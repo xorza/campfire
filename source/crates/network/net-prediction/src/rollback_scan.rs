@@ -6,10 +6,10 @@ use bevy_ecs::prelude::*;
 use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use campfire_net_core::NetTick;
-use campfire_net_interpolation::HistoryComponent;
 use campfire_net_replication::ComponentRegistry;
 use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::ConfirmedHistory;
+use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::HistoryDiffReceiver;
 use tracing::trace;
 use tracing::warn;
@@ -77,8 +77,6 @@ impl RollbackScan {
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "rollback_rejected",
-                schedule = "PreUpdate",
-                sample_point = "PreUpdate",
                 local_tick = tick.0,
                 rollback_tick = rollback_tick.0,
                 rollback_delta = delta,
@@ -93,8 +91,6 @@ impl RollbackScan {
         trace!(
             target: "campfire_net_debug::prediction",
             kind = "rollback_requested",
-            schedule = "PreUpdate",
-            sample_point = "PreUpdate",
             local_tick = tick.0,
             rollback_tick = rollback_tick.0,
             rollback_delta = delta,

@@ -1,9 +1,10 @@
 use campfire_common::MapName;
 
-use crate::zero_hour::SkippedModel;
-use crate::zero_hour::combat_import::DroppedWeapon;
-use crate::zero_hour::production_import::DroppedButton;
-use crate::zero_hour::supply_import::DroppedSupply;
+use crate::zero_hour::dropped::Dropped;
+use crate::zero_hour::model_writer::SkippedModel;
+use crate::zero_hour::production_import::ButtonDropCause;
+use crate::zero_hour::supply_import::SupplyDropCause;
+use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 
 /// What the import does not hold of the install as the original holds it, each with what it is
 /// and why (09-zero-hour.md, Losses).
@@ -12,7 +13,7 @@ pub enum ImportLoss {
     /// A model the objects name that the package lacks.
     Model(SkippedModel),
     /// A texture a model names that no archive holds, by the name the model gives, which it
-    /// draws untextured.
+    /// draws as the game's `MissingTexture`, its lit color tinted.
     Texture(String),
     /// Cells of a map whose terrain draws a tile of no texture, by their count.
     UntexturedCells { map: MapName, cells: usize },
@@ -20,12 +21,12 @@ pub enum ImportLoss {
     Waypoint { map: MapName, waypoint: String },
     /// A command button the import does not convert (09-zero-hour.md, Every command set's
     /// trains and builds are imported).
-    Button(DroppedButton),
+    Button(Dropped<ButtonDropCause>),
     /// A supply module the import does not convert (09-zero-hour.md, A box is money).
-    Supply(DroppedSupply),
+    Supply(Dropped<SupplyDropCause>),
     /// A weapon the import does not convert (09-zero-hour.md, A weapon converts when it hits one
     /// target at once).
-    Weapon(DroppedWeapon),
+    Weapon(Dropped<WeaponDropCause>),
     /// An object whose body the import gives no life, by its name (09-zero-hour.md, Life is the
     /// original's).
     Unliving(String),

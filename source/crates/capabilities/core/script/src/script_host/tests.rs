@@ -18,7 +18,9 @@ fn ample() -> Budget {
 
 /// Runs `body` as the function `f` of a new script.
 fn run(host: &mut ScriptHost, body: &str) -> Result<Dynamic, ScriptError> {
-    let script = host.compile(&format!("fn f() {{ {body} }}"))?;
+    let script = host
+        .compile(&format!("fn f() {{ {body} }}"))
+        .expect("a test's body compiles");
     host.call(&mut ample(), script, "f", ())
 }
 
@@ -147,12 +149,12 @@ fn only_what_scripts_need_is_there() {
     // No floats: a decimal literal does not parse.
     assert!(matches!(
         host.compile("fn f() { 1.5 }"),
-        Err(ScriptError::Compile(_))
+        Err(CompileError(_))
     ));
     // No `eval`, no imports, no `sleep`, no clock.
     assert!(matches!(
         host.compile(r#"fn f() { eval("1") }"#),
-        Err(ScriptError::Compile(_))
+        Err(CompileError(_))
     ));
     for (body, error) in [
         (r#"import "x" as x; 1"#, "Too many modules imported"),

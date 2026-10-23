@@ -1,12 +1,12 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_math::Num;
 use campfire_sim::{MatchRate, SimComponent};
 use campfire_states::{Replication, SentOnChange};
 use campfire_units::{Meter, PoolId, UnitEntity};
-use campfire_values::NameId;
+use campfire_values::{NameId, UnitType};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -87,7 +87,7 @@ impl Replication for Pools {
     type Sending = SentOnChange;
 }
 
-impl PerType for Pools {
+impl PerId<UnitType> for Pools {
     const SCRIPTS_ONLY: bool = false;
 }
 

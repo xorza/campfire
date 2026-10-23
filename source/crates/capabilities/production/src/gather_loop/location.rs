@@ -1,5 +1,5 @@
 use campfire_math::Vec3;
-use campfire_units::{ArrivedShort, Body, Destination};
+use campfire_units::{Body, WalkReadOnlyItem};
 
 use crate::gather_loop::step::Step;
 
@@ -18,16 +18,11 @@ impl LoopTarget {
         from.ground_offset(near).length_squared_bits()
     }
 
-    /// Walks a worker at `from`, whose destination and report of a short arrival are given, to
+    /// Walks a worker at `from`, whose walk is given, to
     /// its point nearest it, or stops it when it arrived short of that point.
-    pub(super) fn walk_from(
-        self,
-        from: Vec3,
-        destination: Option<&Destination>,
-        arrived: Option<&ArrivedShort>,
-    ) -> Step {
+    pub(super) fn walk_from(self, from: Vec3, walk: Option<&WalkReadOnlyItem<'_, '_>>) -> Step {
         let to = Body::shape_of(self.body.as_ref()).nearest_point(self.position, from);
-        if Destination::gives_up(destination, arrived, to) {
+        if walk.is_none_or(|walk| walk.gives_up(to)) {
             Step::Stop
         } else {
             Step::Walk(to)

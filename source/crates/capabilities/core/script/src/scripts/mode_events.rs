@@ -4,7 +4,7 @@ use std::ops::ControlFlow;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_sim::StableId;
 
 use crate::script_host::ScriptId;
@@ -121,7 +121,7 @@ impl<'a, 'w> ModeAnswer<'a, 'w> {
     pub fn call_from<H: HookDecl>(
         &mut self,
         id: Option<StableId>,
-        payer: Option<Seat>,
+        payer: Option<PlayerSlot>,
         args: impl Fn(&Ctx) -> Option<H::Args>,
     ) -> ControlFlow<()> {
         let hook = Hook::of::<H>();
@@ -169,7 +169,7 @@ impl<'a, 'w> ModeAnswer<'a, 'w> {
         place: ListPlace,
         script: ScriptId,
         id: Option<StableId>,
-        payer: Option<Seat>,
+        payer: Option<PlayerSlot>,
         args: &impl Fn(&Ctx) -> Option<H::Args>,
     ) -> Outcome {
         let Some(args) = args(self.batch.ctx()) else {

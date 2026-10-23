@@ -2,13 +2,14 @@
 
 use crate::flaws::{Flaw, fails_each};
 use campfire_actions::{ActionProblem, EffectRule, ListHook};
+use campfire_navigation::PathEnd;
 use campfire_package::{LoadProblem, Place, ScriptProblem};
 use campfire_production::ProductionDataError;
 use campfire_script::CtxMisuse;
 use campfire_script::internals::Undefined;
 use campfire_sim::Capability;
 use campfire_test_packages::Edit;
-use campfire_values::{DamageKind, EngineEnum, ModifierId, Named, Param};
+use campfire_values::{DamageKind, ModifierId, Named, Param, ScriptEnum};
 
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule_at, rule_of};
@@ -235,7 +236,7 @@ pub(super) static SCRIPT_FLAWS: &[Flaw] = &[
         MODE_SCRIPT,
         Edit::Replace("lane_end(ctx, team), wave", r#""start", wave"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::EnumString { call, takes: EngineEnum::PathEnd }, .. } if call == "spawn_group"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::EnumString { call, takes }, .. } if call == "spawn_group" && *takes == PathEnd::ENUM),
     ),
     Flaw::of(
         MODE_SCRIPT,
@@ -244,13 +245,13 @@ pub(super) static SCRIPT_FLAWS: &[Flaw] = &[
             "PathEnd::Middle",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownEnumMember { path, of: EngineEnum::PathEnd }, .. } if path == "PathEnd::Middle"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownEnumMember { path, of }, .. } if path == "PathEnd::Middle" && *of == PathEnd::ENUM),
     ),
     Flaw::of(
         MODE_SCRIPT,
         Edit::Replace("PathEnd::named(spawn_marker", "PathEnd::name(spawn_marker"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownEnumMember { path, of: EngineEnum::PathEnd }, .. } if path == "PathEnd::name"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownEnumMember { path, of }, .. } if path == "PathEnd::name" && *of == PathEnd::ENUM),
     ),
     Flaw::of(
         MODE_SCRIPT,

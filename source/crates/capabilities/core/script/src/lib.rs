@@ -10,7 +10,7 @@ mod script_host;
 mod scripts;
 
 pub use crate::script_host::budget::Budget;
-pub use crate::script_host::error::{NumError, Raised, ScriptError};
+pub use crate::script_host::error::{CompileError, NumError, Raised, ScriptError};
 pub use crate::script_host::script_prints::{PrintKind, ScriptPrint, ScriptPrints};
 pub use crate::script_host::{ScriptHost, ScriptId};
 pub use crate::scripts::api_holder::{ApiHolder, ScriptHandle};
@@ -18,7 +18,7 @@ pub use crate::scripts::api_version::ApiVersion;
 pub use crate::scripts::applies::Applies;
 pub use crate::scripts::arg_ctx::ArgCtx;
 pub use crate::scripts::call_extension::{CallExtension, CallParams, Commit};
-pub use crate::scripts::call_start::{CallStart, Purity, Spent};
+pub use crate::scripts::call_start::{ActionCast, CallStart, Purity, Spent};
 pub use crate::scripts::capability_refusal::CapabilityRefusal;
 pub use crate::scripts::core_api::CoreApi;
 pub use crate::scripts::ctx::{Ctx, Params};
@@ -28,6 +28,7 @@ pub use crate::scripts::data_table::DataTable;
 pub use crate::scripts::error::{
     ApiError, CallError, Checked, CtxMisuse, FailureKind, ParamProblem, Refusal, UnknownName,
 };
+pub use crate::scripts::event_phase::EventPhase;
 pub use crate::scripts::frame::Frame;
 pub use crate::scripts::frame::effects::{Effect, EffectKind};
 pub use crate::scripts::given_names::{GivenNames, NameShape};
@@ -89,6 +90,7 @@ pub use crate::scripts::view::kept_rows::{AnyKeptRows, ColumnRows, KeptRows, Run
 pub use crate::scripts::view::listing::Listing;
 pub use crate::scripts::view::living_unit::LivingUnit;
 pub use crate::scripts::view::match_names::MatchNames;
+pub use crate::scripts::view::name_tables::NameTables;
 pub use crate::scripts::view::row_fill::RowFill;
 pub use crate::scripts::view::row_reads::RowReads;
 pub use crate::scripts::view::tag_names::TagNames;

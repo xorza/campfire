@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::ByAction;
+use campfire_declarations::ById;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
@@ -31,6 +31,13 @@ struct Fired {
 }
 
 impl ClipShots {
+    /// Whether the clip of `action` is full: it fired no shot since its clip was last full.
+    pub(crate) fn is_full(&self, action: ActionId) -> bool {
+        self.0
+            .binary_search_by_key(&action, |fired| fired.action)
+            .is_err()
+    }
+
     /// Counts a shot of `action`, of `clip` at its rank: whether the shot emptied the clip, which
     /// is then full again, so the weapon reloads.
     pub(crate) fn shoot(&mut self, action: ActionId, clip: ClipRule) -> bool {
@@ -70,7 +77,7 @@ impl SimComponent for ClipShots {
     // A weapon the book lacks, or one whose clip holds no more shots than it fired at every rank,
     // has no clip to count.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let weapons = world.resource::<ByAction<Weapon>>();
+        let weapons = world.resource::<ById<ActionId, Weapon>>();
         self.0.iter().all(|fired| {
             let clips = weapons
                 .get(fired.action)

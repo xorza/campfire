@@ -82,16 +82,16 @@ pub(crate) enum MessageModeFns {
 pub(crate) struct RegisteredMessage {
     pub(crate) mode: MessageModeFns,
     pub(crate) serialize_fns: ErasedSerializeFns,
-    /// The directions declared with `add_direction`; empty before any is declared, which
-    /// accepts both.
+    /// The directions declared with `add_direction`, at least one by the seal.
     pub(crate) directions: LinkDirections,
 }
 
 impl RegisteredMessage {
-    /// Whether the message travels in `direction`: one it declared, or either before it declared
-    /// any.
+    /// Whether the message travels in `direction`, one it declared: a peer's message the other
+    /// way breaks the protocol (11-net-stack/transport.md, A received packet ends one of three
+    /// ways).
     pub(crate) const fn travels(&self, direction: LinkDirection) -> bool {
-        self.directions.is_empty() || self.directions.contains(direction)
+        self.directions.contains(direction)
     }
 
     pub(crate) const fn send(&self) -> &SenderFns {
@@ -115,31 +115,14 @@ impl RegisteredMessage {
     }
 }
 
-/// A [`Resource`] that will keep track of all the [`Message`]s that can be sent over the network.
-/// A [`Message`] is any type that is serializable and deserializable.
+/// Every message the network carries, each by its net id, registered through
+/// `AppMessageExt::register_message`.
 ///
-///
-/// ### Adding Messages
-///
-/// You register messages by calling the `add_message` method directly on the App.
-///
-/// You can provide a [`LinkDirection`](campfire_net_core::Direction), or
-/// [`LinkDirections::BOTH`](campfire_net_core::Directions::BOTH), to specify if the message should
-/// be sent from the client to the server, from the server to the client, or both. Messages are sent
-/// through `MessageSender<M>` and read through `MessageReceiver<M>`. Adding a
-/// [`LinkDirection`](campfire_net_core::Direction) installs the sender as a required component on
-/// the sending side. The receiving side gets its exact typed receiver lazily when the first payload
-/// arrives.
-///
-///
-/// ### Customizing Message behaviour
-///
-/// There are some cases where you might want to define additional behaviour for a message.
-/// For example, if the message contains Entities, you need to specify how those en
-/// entities will be mapped from the remote world to the local world.
-///
-/// Provided that your type implements [`MapEntities`], you can extend the protocol to support this
-/// behaviour, by calling the `MessageRegistration::add_map_entities` method.
+/// Each message declares the directions it travels in, a [`LinkDirection`] or
+/// [`LinkDirections::BOTH`], which the seal requires one of. A direction installs the
+/// `MessageSender` as a required component on the sending side, and the receiving side gets its
+/// typed receiver as its first payload arrives. A message that names entities maps them from the
+/// remote world to the local one through `MessageRegistration::add_map_entities`.
 #[derive(Debug, Default, Clone, Resource, TypePath)]
 pub struct MessageRegistry {
     /// Each message, at the index of its net id.
@@ -286,9 +269,17 @@ impl MessageRegistry {
     /// Seals the registry, as `MessagePlugin::finish` builds the message systems from it. Its
     /// hash holds each message's type, the directions it travels in and whether it maps entities,
     /// in the order of its id.
+    ///
+    /// # Panics
+    ///
+    /// When a message declared no direction, which no peer may then send.
     pub(crate) fn seal(&mut self) {
         let mut hasher = RegistryHasher::new(HASH_DOMAIN);
         for ((_, name), message) in self.type_map.iter().zip(&self.messages) {
+            assert!(
+                !message.directions.is_empty(),
+                "message {name} declares no direction it travels in"
+            );
             hasher.name(name);
             hasher.write(&[
                 u8::from(message.directions),

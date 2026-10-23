@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_math::{Num, Vec3};
 use campfire_sim::SimComponent;
 use campfire_states::{NotSent, Replication};
@@ -60,7 +60,7 @@ impl FlightState {
             Flight::Steered { heading, .. } => Self::Steered {
                 flown: Num::ZERO,
                 steps: 0,
-                speed: spec.steer.expect("a steered type has a steer").launch,
+                speed: spec.steer().expect("a steered type has a steer").launch,
                 heading,
                 lost: false,
             },
@@ -123,7 +123,9 @@ impl SimComponent for FlightState {
                     let top = world
                         .get::<UnitType>(entity)
                         .and_then(|&unit_type| {
-                            world.resource::<ByType<ProjectileSpec>>().get(unit_type)
+                            world
+                                .resource::<ById<UnitType, ProjectileSpec>>()
+                                .get(unit_type)
                         })
                         .map(|spec| spec.speed);
                     top.is_some_and(|top| speed <= top) && (tracks.is_some() || !lost)

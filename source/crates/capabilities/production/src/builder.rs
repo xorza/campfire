@@ -2,10 +2,11 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_sim::{SimComponent, TimedKept, TimedProcess, TimedRuns};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::{BuildTarget, UnitEntity};
+use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -81,6 +82,6 @@ impl Replication for Builder {
     type Sending = SentPredicted;
 }
 
-impl PerType for Builder {
+impl PerId<UnitType> for Builder {
     const SCRIPTS_ONLY: bool = false;
 }

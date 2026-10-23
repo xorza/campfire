@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use campfire_common::{Secret, TlsKey};
+use campfire_common::Secret;
+use campfire_net_core::TlsKey;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use rustls::crypto::ring as provider;
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};

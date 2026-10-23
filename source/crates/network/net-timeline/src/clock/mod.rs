@@ -6,7 +6,7 @@ use bevy_time::{Real, Time, TimeUpdateStrategy};
 use core::time::Duration;
 
 use crate::clock_source::ClockSource;
-use campfire_net_core::Instant;
+use campfire_net_core::{Instant, TimeSource};
 
 /// An app's network clock: ping stamps, packet send and receive times, retransmit timers and the
 /// bandwidth bucket all read it (11-net-stack/time.md, One clock per app, owned by the stack).
@@ -17,32 +17,13 @@ use campfire_net_core::Instant;
 pub struct Clock {
     source: ClockSource,
     /// What the source resolved to on the last frame.
-    reads: Reading,
+    reads: TimeSource,
     /// The OS moment of the app's first update, the origin of every [`Instant`].
     first_update: Option<OsInstant>,
     /// The start of the current frame.
     frame: Instant,
     /// The time since the previous frame's start.
     delta: Duration,
-}
-
-/// Where a [`Clock`] reads, once [`ClockSource::Auto`] is resolved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Reading {
-    Os,
-    Frame,
-}
-
-impl Reading {
-    /// `Auto` reads the OS until a frame shows the app's time is driven.
-    const fn of(source: ClockSource, driven: bool) -> Self {
-        match source {
-            ClockSource::Os => Self::Os,
-            ClockSource::Frame => Self::Frame,
-            ClockSource::Auto if driven => Self::Frame,
-            ClockSource::Auto => Self::Os,
-        }
-    }
 }
 
 impl Default for Clock {
@@ -55,7 +36,7 @@ impl Clock {
     pub const fn new(source: ClockSource) -> Self {
         Self {
             source,
-            reads: Reading::of(source, false),
+            reads: ClockSource::resolve(source, false),
             first_update: None,
             frame: Instant::ZERO,
             delta: Duration::ZERO,
@@ -70,8 +51,8 @@ impl Clock {
     /// start on [`ClockSource::Frame`], and [`Instant::ZERO`] before the first update.
     pub fn now(&self) -> Instant {
         match (self.reads, self.first_update) {
-            (Reading::Os, Some(first_update)) => Instant::from_elapsed(first_update.elapsed()),
-            (Reading::Frame, _) | (Reading::Os, None) => self.frame,
+            (TimeSource::Os, Some(first_update)) => Instant::from_elapsed(first_update.elapsed()),
+            (TimeSource::Driven, _) | (TimeSource::Os, None) => self.frame,
         }
     }
 
@@ -79,8 +60,8 @@ impl Clock {
     /// its first update: a thread off the frame reads the same time by it.
     pub const fn os_origin(&self) -> Option<OsInstant> {
         match self.reads {
-            Reading::Os => self.first_update,
-            Reading::Frame => None,
+            TimeSource::Os => self.first_update,
+            TimeSource::Driven => None,
         }
     }
 
@@ -103,7 +84,7 @@ impl Clock {
             strategy.as_deref(),
             None | Some(TimeUpdateStrategy::Automatic)
         );
-        clock.reads = Reading::of(clock.source, driven);
+        clock.reads = ClockSource::resolve(clock.source, driven);
         clock.first_update = time.first_update();
         clock.frame = Instant::from_elapsed(time.elapsed());
         clock.delta = time.delta();
@@ -114,9 +95,9 @@ impl Clock {
 pub(crate) mod internals {
     use core::time::Duration;
 
-    use crate::clock::{Clock, Reading};
+    use crate::clock::Clock;
     use crate::clock_source::ClockSource;
-    use campfire_net_core::Instant;
+    use campfire_net_core::{Instant, TimeSource};
 
     impl Clock {
         /// A [`ClockSource::Frame`] clock whose current frame starts at `frame`, `delta` after the
@@ -124,7 +105,7 @@ pub(crate) mod internals {
         pub const fn frame_at(frame: Instant, delta: Duration) -> Self {
             Self {
                 source: ClockSource::Frame,
-                reads: Reading::of(ClockSource::Frame, false),
+                reads: TimeSource::Driven,
                 first_update: None,
                 frame,
                 delta,

@@ -60,8 +60,7 @@ impl TestMode {
 
     /// The mode's packages on its map, as the workspace holds them.
     pub fn packages(self) -> ModePackages {
-        PackageDir::new(self.dir())
-            .mode_packages(Some(&self.map()))
+        ModePackages::at(&PackageDir::new(self.dir()), Some(&self.map()))
             .expect("a test mode loads")
     }
 }

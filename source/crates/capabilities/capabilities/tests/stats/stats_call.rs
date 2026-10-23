@@ -8,11 +8,12 @@ use campfire_script::{CallExtension, CallStart, ScriptRole, StateValue, View};
 use campfire_sim::IdAllocator;
 use campfire_stats::*;
 use campfire_values::ModifierId;
+use campfire_visibility::Visibility;
 
 #[test]
 fn a_handle_no_script_holds_serves_the_next_call_again() {
     // No world holds units for the view to read.
-    let view = View::new(Match::TEST_RATE, |_| {});
+    let view = View::new(Match::TEST_RATE, Visibility::DEFAULT, |_| {});
     let carrier = IdAllocator::default().allocate();
     let of = |stacks| HandleOf {
         carrier,
@@ -20,9 +21,12 @@ fn a_handle_no_script_holds_serves_the_next_call_again() {
         source: None,
         stacks,
     };
-    let handle = |stacks, state: &[StateValue]| {
-        ModifierHandle::new(None, of(stacks), state, Arc::default(), view.clone())
+    let setup = |stacks| HandleSetup {
+        of: of(stacks),
+        schema: Arc::default(),
+        view: view.clone(),
     };
+    let handle = |stacks, state: &[StateValue]| ModifierHandle::new(None, setup(stacks), state);
     // The call holds two handles; a script still holds a copy of the second as the next
     // call begins, so only the first is spare.
     let mut call = StatsCall::default();
@@ -39,7 +43,7 @@ fn a_handle_no_script_holds_serves_the_next_call_again() {
     assert!(call.spare().is_none());
     // Filled again, it is the first's storage with the new instance, and nothing written.
     let state = [StateValue::Int(7), StateValue::Int(8)];
-    let again = ModifierHandle::new(Some(spare), of(3), &state, Arc::default(), view.clone());
+    let again = ModifierHandle::new(Some(spare), setup(3), &state);
     let data = again.data();
     assert_eq!(ptr::from_ref(&*data).addr(), first);
     assert_eq!((data.stacks, data.state.as_slice()), (3, &state[..]));

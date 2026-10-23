@@ -3,6 +3,7 @@ use tempfile::TempDir;
 use super::*;
 use crate::dir_entries::DirEntries;
 use crate::durable_file::DurableFile;
+use crate::test_dir::TestDir;
 
 #[test]
 fn a_durable_directory_is_made_once_and_its_users_only() {
@@ -29,6 +30,26 @@ fn a_durable_directory_is_made_once_and_its_users_only() {
             ..
         })
     ));
+    // A link to a directory in its name is refused by each make, not followed; a directory above
+    // it may be a link.
+    let test_dir = TestDir::new();
+    test_dir.create_dir("real");
+    test_dir.link_dir("real", "link");
+    let link = test_dir.path("link");
+    for create in [DurableDir::create, DurableDir::create_all] {
+        assert!(matches!(
+            create(&link),
+            Err(PathError {
+                error: DurableDirError::Link,
+                ..
+            })
+        ));
+    }
+    DurableDir::create_all(&link.join("under")).unwrap();
+    assert_eq!(
+        DirEntries::read(&test_dir.path("real")).unwrap()[0].name,
+        "under"
+    );
     // Each missing directory above one is made, its user's only; one already there stays. A new
     // directory is made once, and a file holds its name as one does.
     let deep = dir.path().join("a").join("b");

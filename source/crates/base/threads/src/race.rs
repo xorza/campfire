@@ -1,12 +1,17 @@
 use std::sync::Barrier;
 use std::thread;
 
+use crate::thread_name::ThreadName;
+
 /// A test's race: copies of one closure, each on a thread of its own, released at once by a
 /// barrier, so a test meets what two writers of one file do at the same time.
 #[derive(Debug)]
 pub struct Race;
 
 impl Race {
+    /// The name of each of its threads, as a profiler shows it.
+    const NAME: ThreadName = ThreadName::fixture("race");
+
     /// What `run` gave on each of `count` threads, by the index each was given.
     pub fn run<T: Send>(count: usize, run: impl Fn(usize) -> T + Sync) -> Vec<T> {
         Self::race(count, &Barrier::new(count), &run)
@@ -21,10 +26,12 @@ impl Race {
             )]
             let threads: Vec<_> = (0..count)
                 .map(|index| {
-                    scope.spawn(move || {
+                    let builder = thread::Builder::new().name(Self::NAME.as_str().to_owned());
+                    let started = builder.spawn_scoped(scope, move || {
                         barrier.wait();
                         run(index)
-                    })
+                    });
+                    started.expect("a racer's thread starts")
                 })
                 .collect();
             threads

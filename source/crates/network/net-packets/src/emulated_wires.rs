@@ -86,6 +86,7 @@ impl DatagramIo for EmulatedWires {
                 .receive_ends(&wires.ends, max, |end, bytes| {
                     let payload = arenas.copy(&bytes);
                     out.push(Datagram {
+                        local: None,
                         from: end.remote_address(),
                         payload,
                     });
@@ -98,7 +99,7 @@ impl DatagramIo for EmulatedWires {
     fn send(&self, outbound: &mut Vec<Outbound>) {
         let wires = self.lock();
         let mut outbound = outbound.drain(..).peekable();
-        while let Some(Outbound { to, datagram }) = outbound.next() {
+        while let Some(Outbound { to, datagram, .. }) = outbound.next() {
             let run = iter::once(datagram).chain(iter::from_fn(|| {
                 outbound
                     .next_if(|next| next.to == to)

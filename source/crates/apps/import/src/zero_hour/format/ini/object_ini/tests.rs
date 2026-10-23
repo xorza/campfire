@@ -75,7 +75,12 @@ fn draws_of(ini: &ObjectIni, name: &str) -> Vec<DrawModule> {
         turret: draw.turret.clone(),
         ..DrawModule::new(draw.kind)
     };
-    ini.objects[name].draws().iter().map(default).collect()
+    ini.named(name)
+        .unwrap()
+        .draws()
+        .iter()
+        .map(default)
+        .collect()
 }
 
 #[test]
@@ -141,7 +146,7 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
     };
     let tank_draw = DrawModule {
         turret: Some("Turret".to_owned()),
-        ..model("TANK", tank_look)
+        ..model("tank", tank_look)
     };
     let tank = [tank_draw, DrawModule::new(DrawKind::Other)];
     assert_eq!(draws_of(&ini, "Tank"), tank);
@@ -152,11 +157,11 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
         hide_show: vec![change("Hatch", false)],
         ..StateLook::default()
     };
-    assert_eq!(draws_of(&ini, "TankRed"), [model("TANK", red)]);
-    // The tree names its model by `ModelName`; the stump's `NONE` is no model; a first state
-    // of no flag is the default.
+    assert_eq!(draws_of(&ini, "TankRed"), [model("tank", red)]);
+    // The tree names its model by `ModelName`, `PTOak01` read in lowercase, as every model's
+    // name is; the stump's `NONE` is no model; a first state of no flag is the default.
     let tree = DrawModule {
-        model: Some("PTOak01".to_owned()),
+        model: Some("ptoak01".to_owned()),
         ..DrawModule::new(DrawKind::Tree)
     };
     assert_eq!(draws_of(&ini, "Tree"), [tree]);
@@ -164,7 +169,7 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
     assert_eq!((stump[0].kind, &stump[0].model), (DrawKind::Prop, &None));
     assert_eq!(
         draws_of(&ini, "Rock"),
-        [model("Rock01", StateLook::default())]
+        [model("rock01", StateLook::default())]
     );
     // A template finds its object of its case alone, as `findTemplate` does.
     assert_eq!(
@@ -190,8 +195,8 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
 fn kinds_fences_and_scales_place_objects_as_a_multiplayer_game_does() {
     let mut ini = ObjectIni::default();
     ini.read(PLACED.as_bytes()).unwrap();
-    let placed = |name: &str| ini.objects[name].placed_as();
-    let scale = |name: &str| ini.objects[name].scale().get();
+    let placed = |name: &str| ini.named(name).unwrap().placed_as();
+    let scale = |name: &str| ini.named(name).unwrap().scale().get();
     // A tree, a prop, and fluff: a build clears it, and its fence is 0 wide, or none; a fence
     // a build clears, and an object of neither kind, are units.
     assert_eq!(placed("Oak"), PlacedAs::Tree);
@@ -375,13 +380,13 @@ End
         ..StateLook::default()
     };
     let barracks = |model: &str| (Some(model.to_owned()), flag.clone());
-    assert_eq!(drawn("Barracks", at(false, false)), barracks("DAY"));
-    assert_eq!(drawn("Barracks", at(true, false)), barracks("NIGHT"));
-    assert_eq!(drawn("Barracks", at(false, true)), barracks("SNOW"));
-    assert_eq!(drawn("Barracks", at(true, true)), barracks("NIGHTSNOW"));
+    assert_eq!(drawn("Barracks", at(false, false)), barracks("day"));
+    assert_eq!(drawn("Barracks", at(true, false)), barracks("night"));
+    assert_eq!(drawn("Barracks", at(false, true)), barracks("snow"));
+    assert_eq!(drawn("Barracks", at(true, true)), barracks("nightsnow"));
     // A lamp ignores the night, so it draws its default at night; its default's alias holds
     // snow, so it draws its default in snow too.
-    let lamp = (Some("LAMP".to_owned()), StateLook::default());
+    let lamp = (Some("lamp".to_owned()), StateLook::default());
     for conditions in [at(true, false), at(false, true), at(true, true)] {
         assert_eq!(drawn("Lamp", conditions), lamp, "{conditions:?}");
     }
@@ -413,10 +418,11 @@ fn an_object_gives_supply_its_dock_center_gatherer_and_one_shot_spawns() {
                   SupplyCenterActionDelay = 400\n  SupplyWarehouseActionDelay = 1000\n\
                   SupplyWarehouseScanDistance = 700\n  Turret\n   TurretTurnRate = 60\n  End\n\
                  End\nEnd\n\
-                Object Worker\n Behavior = WorkerAIUpdate M1\n  MaxBoxes = 1\n End\nEnd\n";
+                Object Worker\n Behavior = WorkerAIUpdate M1\n  MaxBoxes = 1\n End\nEnd\n\
+                Object Zone\n Behavior = OCLUpdate M1\n  OCL = OCL_CargoPlane\n End\nEnd\n";
     let mut ini = ObjectIni::default();
     ini.read(text.as_bytes()).unwrap();
-    let supply = |name: &str| ini.objects[name].supply().clone();
+    let supply = |name: &str| ini.named(name).unwrap().supply().clone();
     // The center takes boxes, and its exit starts its gatherers. Its one-shot spawn makes 4,
     // stepping through its three names and back to the first; its other spawn, not one-shot,
     // none as it is made.
@@ -428,7 +434,7 @@ fn an_object_gives_supply_its_dock_center_gatherer_and_one_shot_spawns() {
     let spawned: Vec<&str> = center.one_shots().collect();
     assert_eq!(spawned, ["Truck", "Worker", "Other", "Truck"]);
     assert_eq!(
-        ini.objects["Center"].build().exit,
+        ini.named("Center").unwrap().build().exit,
         Some(ProductionExit {
             create: [1.0, 2.0],
             rally: [3.0, 4.0],
@@ -457,15 +463,18 @@ fn an_object_gives_supply_its_dock_center_gatherer_and_one_shot_spawns() {
     assert_eq!(supply("Truck").gatherer, gatherer(4, 400, 1000, 700.0));
     assert_eq!(supply("Worker").gatherer, gatherer(1, 0, 0, 100.0));
     assert_eq!(supply("Truck").one_shots().count(), 0);
+    // An `OCLUpdate`'s objects come over time; no other object has one.
+    assert!(supply("Zone").creates_over_time);
+    assert!(!supply("Center").creates_over_time);
     // A gatherer's module is an AI module, whose turret combat reads too.
-    let turret = ini.objects["Truck"].fight().turret;
+    let turret = ini.named("Truck").unwrap().fight().turret;
     assert_eq!(turret.map(|turret| turret.turn_rate), Some(60.0));
 }
 
 #[test]
 fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
     fn build(ini: &ObjectIni, name: &str) -> IniBuild {
-        ini.objects[name].build().clone()
+        ini.named(name).unwrap().build().clone()
     }
     let mut ini = ObjectIni::default();
     ini.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
@@ -592,7 +601,7 @@ End
 fn an_object_gives_combat_its_shells_curve_and_its_first_turret() {
     let mut ini = ObjectIni::default();
     ini.read(FIGHTERS.as_bytes()).unwrap();
-    let fight = |name: &str| ini.objects[name].fight().clone();
+    let fight = |name: &str| ini.named(name).unwrap().fight().clone();
     // A percent is a fraction of 1: 50% is 0.5, and 90% is 90 ÷ 100 in the game's `f32`.
     assert_eq!(
         fight("Shell").shell,

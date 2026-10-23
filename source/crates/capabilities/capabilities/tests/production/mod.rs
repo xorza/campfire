@@ -7,10 +7,10 @@ use campfire_actions::{ActionProgress, ActionSlots, SlotKind, TimedSlots};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
-use campfire_common::{Seat, Tick, Ticks};
+use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
-use campfire_declarations::{ByType, PerType};
+use campfire_declarations::{ById, PerId};
 use campfire_math::{Num, Vec3};
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_production::*;
@@ -18,8 +18,8 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimTick, SimWorld, StableId, Unpredicted};
 use campfire_units::internals::Spawn;
 use campfire_units::{
-    BodyForm, Dead, Destination, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner, StatusTags,
-    UnitTypeCore, Units,
+    BodyForm, BodyShape, Dead, Destination, Layer, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner,
+    StatusTags, UnitTypeCore, Units,
 };
 use campfire_values::{ActionId, Rank, ResourceId, Team, TypeScope, UnitType};
 
@@ -91,10 +91,17 @@ impl Shop {
         Self::give(
             game,
             gate,
-            BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+            BodyForm::new(
+                BodyShape::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+                Layer::FIRST,
+            ),
         );
         Self::give(game, grunt, MoveStep::new(Num::ONE).unwrap());
-        Self::give(game, grunt, BodyForm::circle(Num::HALF).unwrap());
+        Self::give(
+            game,
+            grunt,
+            BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST),
+        );
         let gold = ResourceId::new(0);
         Self {
             grunt,
@@ -107,13 +114,13 @@ impl Shop {
     }
 
     /// Gives `unit_type` `value` in its book, as the books of a mode's type do.
-    fn give<T: PerType>(game: &mut World, unit_type: UnitType, value: T) {
-        ByType::<T>::amend(game, |_, book| book.set(unit_type, value));
+    fn give<T: PerId<UnitType>>(game: &mut World, unit_type: UnitType, value: T) {
+        ById::<UnitType, T>::amend(game, |_, book| book.set(unit_type, value));
     }
 
     /// Gives `unit_type` `value` in its book in place of the one it has.
-    fn regive<T: PerType>(game: &mut World, unit_type: UnitType, value: T) {
-        ByType::<T>::amend(game, |_, book| {
+    fn regive<T: PerId<UnitType>>(game: &mut World, unit_type: UnitType, value: T) {
+        ById::<UnitType, T>::amend(game, |_, book| {
             let mut built = mem::take(book).reopen();
             built.take(unit_type);
             built.set(unit_type, value);
@@ -131,7 +138,7 @@ impl Shop {
                 id,
                 team,
                 position: point.get(),
-                owner: owner.map(|owner| owner.seat()),
+                owner: owner.map(|owner| owner.player_slot()),
             })
             .collect();
         spawned.sort_unstable_by_key(|spawned| spawned.id);
@@ -150,7 +157,7 @@ impl Shop {
         id: StableId,
         x: i64,
         team: Team,
-        owner: Option<Seat>,
+        owner: Option<PlayerSlot>,
         train: ActionId,
         queue: TrainQueue,
     ) {
@@ -168,7 +175,7 @@ impl Shop {
 
     /// Each grunt trained so far, in order: the team and position of the producer it came from,
     /// and its owner.
-    fn spawns(self, game: &mut World) -> Vec<(Team, Vec3, Option<Seat>)> {
+    fn spawns(self, game: &mut World) -> Vec<(Team, Vec3, Option<PlayerSlot>)> {
         let spawned = Self::spawned(game, self.grunt);
         spawned
             .iter()
@@ -178,7 +185,7 @@ impl Shop {
 
     /// Player 0's gold.
     fn gold(self, game: &World) -> i64 {
-        game.player_resources(Seat::new(0))
+        game.player_resources(PlayerSlot::new(0))
             .unwrap()
             .amount(self.gold)
     }
@@ -192,10 +199,12 @@ impl Shop {
     /// Player 0's hall at `position`.
     fn hall(self, game: &mut World, position: impl Into<Vec3>) -> StableId {
         let position = position.into();
-        let body = BodyForm::box_sized([Num::int(4), Num::int(2)])
-            .unwrap()
-            .at(Num::ZERO);
-        let parts = (Owner::new(Seat::new(0)), body);
+        let body = BodyForm::new(
+            BodyShape::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+            Layer::FIRST,
+        )
+        .at(Num::ZERO);
+        let parts = (Owner::new(PlayerSlot::new(0)), body);
         Spawn::of(self.depot, position).parts(parts).place(game)
     }
 }
@@ -206,7 +215,7 @@ struct Spawned {
     id: StableId,
     team: Team,
     position: Vec3,
-    owner: Option<Seat>,
+    owner: Option<PlayerSlot>,
 }
 
 /// A queue of `train`, once for each of `times`, in ticks, pushed at tick 0.
@@ -229,7 +238,7 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
     let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
-    let player = Seat::new(0);
+    let player = PlayerSlot::new(0);
     // The first id goes to the producer spawned second, so the world holds them out of id order.
     let (first, second) = (
         Production::allocate_id(&mut game),
@@ -329,7 +338,7 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
     let gold = ResourceId::new(0);
-    let player = Seat::new(0);
+    let player = PlayerSlot::new(0);
     Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(player)
         .unwrap()
@@ -433,7 +442,7 @@ fn a_producer_whose_tags_block_production_neither_pays_nor_queues() {
     // The engine tags' properties come with the sealed types, as a match's load gives them.
     Units::seal_types(&mut game, &BTreeMap::new());
     let gold = ResourceId::new(0);
-    let player = Seat::new(0);
+    let player = PlayerSlot::new(0);
     Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(player)
         .unwrap()

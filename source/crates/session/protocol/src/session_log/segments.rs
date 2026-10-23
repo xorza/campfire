@@ -33,9 +33,9 @@ pub(super) struct SegmentStart {
 }
 
 /// The log's own state at a segment's boundary, beside what its checkpoint's carry records: where
-/// its buffers ended, the delegation whose key signed each seat's chain's head, the inputs still
-/// to apply by index, and the bytes of its file, its checkpoint's record among them once it came.
-/// A load goes back to it, and a replay of a log that forgot what came before starts there.
+/// its buffers ended, the delegation whose key signed each player slot's chain's head, the inputs
+/// still to apply by index, and the bytes of its file, its checkpoint's record among them once it
+/// came. A load goes back to it, and a replay of a log that forgot what came before starts there.
 #[derive(Debug, Clone)]
 pub(super) struct Boundary {
     pub(super) entries: EntriesAt,

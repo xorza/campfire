@@ -10,24 +10,23 @@ kind = "app"
 [dependencies]
 campfire-bots.workspace = true
 campfire-common.workspace = true
-campfire-declarations.workspace = true
-campfire-log = { workspace = true, features = ["start"] }
+campfire-host.workspace = true
+campfire-log.workspace = true
+campfire-logging.workspace = true
 campfire-mode.workspace = true
 campfire-net = { workspace = true, features = ["udp"] }
-campfire-net-connection.workspace = true
+campfire-net-core.workspace = true
 campfire-net-endpoint.workspace = true
-campfire-net-link.workspace = true
 campfire-net-port-map.workspace = true
 campfire-net-socket.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
+campfire-platform.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true
 campfire-store.workspace = true
 campfire-visibility.workspace = true
 
-bevy_app.workspace = true
-bevy_ecs = { workspace = true, features = ["std"] }
 clap = { workspace = true, features = [
     "derive",
     "error-context",

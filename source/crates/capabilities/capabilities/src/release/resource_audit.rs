@@ -16,8 +16,8 @@ use campfire_declarations::{
 };
 use campfire_mode::ModeWorld;
 use campfire_script::{
-    ApiBuilder, CallExtension, CallParams, HookDecl, PlannedCapability, RowReads, Status,
-    ViewColumn,
+    ApiBuilder, CallExtension, CallParams, EventPhase, HookDecl, ModeEvents, PlannedCapability,
+    RowReads, Status, ViewColumn,
 };
 use campfire_sim::{
     Breach, Capability, DueIndex, HostRule, OwnResources, Removed, SimComponent, SimResource,
@@ -28,6 +28,8 @@ use campfire_units::EntityKinds;
 use campfire_values::EngineTag;
 
 use crate::release::Release;
+use campfire_declarations::NamesFn;
+use campfire_values::{MatchScope, NameId, Named, Names};
 
 /// A scratch resource, by its name, and whether a world holds it clear.
 #[derive(Debug, Clone, Copy)]
@@ -115,6 +117,13 @@ impl Declarations for DeclaredResources {
 
     fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
 
+    fn names<I: NameId + Named + 'static>(&mut self, _: NamesFn<I>)
+    where
+        Names<I>: Send + Sync,
+        I::Scope: MatchScope,
+    {
+    }
+
     fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
 
     fn rule(&mut self, _: RuleFn) {}
@@ -148,6 +157,8 @@ impl Declarations for DeclaredResources {
     fn report<R: Report>(&mut self) {
         self.ids.push(TypeId::of::<R>());
     }
+
+    fn mode_events<Q: ModeEvents>(&mut self, _: EventPhase) {}
 
     fn calls<C: Callbacks>(&mut self) {
         self.ids.push(TypeId::of::<C>());
@@ -190,6 +201,8 @@ impl Declarations for DeclaredResources {
     }
 
     fn server_part<H: Component, C: Component + Default>(&mut self) {}
+
+    fn part_with<H: Component, C: Component + Default>(&mut self) {}
 
     fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
 

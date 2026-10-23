@@ -7,7 +7,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimWorld, SnapshotError};
 use campfire_stats::Level;
 use campfire_units::internals::Spawn;
-use campfire_units::{UnitTypeCore, Units};
+use campfire_units::{TrackLevels, UnitTypeCore, Units};
 use campfire_values::TrackId;
 
 const fn track(at: u8) -> TrackId {
@@ -49,6 +49,22 @@ fn experience_is_state_and_restores() {
     assert_eq!(restored.part::<Experience>(id), game.part::<Experience>(id));
     assert_eq!(restored.part::<Level>(id).get(), 2);
     assert_eq!(restored.part::<Points>(id).get(), 2);
+    // A step shows each unit's levels once its experience changed, on the match and on its
+    // restore: 2 on `level`, 1 on `valor`; before it, 1 on each, as on a track a unit lacks.
+    // Then 40 more into `valor`, 50 in all, reach its level 2.
+    let shown = |game: &Match| {
+        let levels = game.part::<TrackLevels>(id);
+        [track(0), track(1)].map(|track| levels.level(track).get())
+    };
+    assert_eq!(shown(&game), [1, 1]);
+    for game in [&mut game, &mut restored] {
+        game.step();
+        assert_eq!(shown(game), [2, 1]);
+    }
+    game.part_mut::<Experience>(id)
+        .add(track(1), Num::int(40), &book);
+    game.step();
+    assert_eq!(shown(&game), [2, 2]);
     // Only a unit with the `level` track has points: one with `valor` alone has none at its
     // spawn, and points on it fail the check.
     let valor = TrackSet::from([track(1)]);

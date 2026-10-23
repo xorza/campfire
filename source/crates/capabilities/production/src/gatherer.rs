@@ -2,13 +2,13 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_declarations::PerType;
+use campfire_declarations::PerId;
 use campfire_math::Vec3;
 use campfire_players::PlayersWorld;
 use campfire_sim::{SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
-use campfire_values::{NameId, ResourceId};
+use campfire_values::{NameId, ResourceId, UnitType};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -150,7 +150,7 @@ impl Replication for Gatherer {
     type Sending = SentPredicted;
 }
 
-impl PerType for Gatherer {
+impl PerId<UnitType> for Gatherer {
     const SCRIPTS_ONLY: bool = false;
 }
 

@@ -4,8 +4,9 @@ use std::sync::Arc;
 use campfire_abilities::internals::scaling_stats;
 use campfire_abilities::*;
 use campfire_actions::{
-    ActionData, ActionRange, ActionSlots, ActionTarget, AttackTarget, EffectData, EffectTo,
-    LaunchLists, ListedEffect, ProgressDues, RangeField, SlotKind, Targeting, TimedSlots,
+    ActionData, ActionKeys, ActionRange, ActionSlots, ActionTarget, AttackTarget, EffectData,
+    EffectTo, LaunchLists, ListedEffect, ProgressDues, RangeField, SlotKind, SpawnEffectData,
+    Targeting, TimedSlots,
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas, LandEffectData};
 use campfire_capabilities::internals::*;
@@ -17,9 +18,9 @@ use campfire_projectiles::{ProjectileData, Projectiles};
 use campfire_script::internals::FailedCall;
 use campfire_script::{ApiError, FailureKind, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, SimWorld};
+use campfire_sim::{Capability, SimWorld, StableId};
 use campfire_stats::{ModifierData, StatBook, StatRule, StatValue, Stats, StatsData};
-use campfire_units::{Life, UnitTypeCore, Units};
+use campfire_units::{Life, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{
     Block, DamageKind, FilterData, Number, PackageIndex, Rank, Ranked, Stat, Team, TypeScope,
     UnitType,
@@ -109,7 +110,10 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
         let weapon = Abilities::load_weapon(&mut game, "sapper", &sapper(ranged));
         let for_allies = (row == "extra past a weapon for allies").then(|| {
             let data = ActionData {
-                targeting: Targeting::Unit(FilterData::parse("allies").unwrap()),
+                keys: ActionKeys {
+                    targeting: Targeting::Unit(FilterData::parse("allies").unwrap()),
+                    ..sapper(false).keys
+                },
                 on_hit: Vec::new(),
                 ..sapper(false)
             };
@@ -119,9 +123,12 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
         let target = Abilities::spawn_combatant(&mut game, (out, 0, 0), Team::new(1), ());
         let attacker = if by_cast {
             let data = ActionData {
-                range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-                    Num::int(5),
-                )))),
+                keys: ActionKeys {
+                    range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                        Num::int(5),
+                    )))),
+                    ..strike().keys
+                },
                 ..strike()
             };
             let cast = Abilities::load(&mut game, "swing", &data, extra);
@@ -213,7 +220,10 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
         &[],
     );
     let cannon = ActionData {
-        params: BTreeMap::from([(DeclaredName::new("splash").unwrap(), splash)]),
+        keys: ActionKeys {
+            params: BTreeMap::from([(DeclaredName::new("splash").unwrap(), splash)]),
+            ..sapper(false).keys
+        },
         on_hit: vec![effect(blast, EffectTo::Reached)],
         ..sapper(false)
     };
@@ -285,6 +295,47 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
     assert_eq!(areas.iter(&game).count(), 0);
 }
 
+/// A blast's `on_hit` list spawns a fighter on what it reaches, of the attacker's allegiance as
+/// it struck: the attacker despawned after tick 0, as a dead creep does, so its row is gone as
+/// the blast triggers in tick 1, and the spawn holds its team and player still.
+#[test]
+fn a_list_spawns_for_its_attacker_once_the_attacker_is_gone() {
+    let (mut game, fighter) = weapon_match();
+    let spawn: Arc<dyn ListedEffect> = Arc::new(SpawnEffectData {
+        unit_type: DeclaredName::new("fighter").unwrap(),
+        duration_ms: None,
+    });
+    let blast = launch("blast", vec![effect(spawn, EffectTo::Reached)], Vec::new());
+    let cannon = ActionData {
+        on_hit: vec![effect(blast, EffectTo::Reached)],
+        ..sapper(false)
+    };
+    let weapon = Abilities::load_weapon(&mut game, "cannon", &cannon);
+    let attacker = Abilities::fighter(
+        &mut game,
+        fighter,
+        TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))])),
+    );
+    let target = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    ProgressDues::change_unit(&mut game, attacker, |progress, dues| {
+        progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
+    });
+    let allegiance = game.allegiance_of(attacker).unwrap();
+    game.step();
+    let entity = game.unit_entity(attacker);
+    game.despawn(entity);
+    game.step();
+    assert_eq!(Abilities::failed_calls(&game), []);
+    let mut fighters = game.query::<(&StableId, &UnitType)>();
+    let spawned = fighters
+        .iter(&game)
+        .filter(|&(_, &unit_type)| unit_type == fighter)
+        .map(|(&id, _)| id)
+        .collect::<Vec<_>>();
+    assert_eq!(spawned.len(), 1);
+    assert_eq!(game.allegiance_of(spawned[0]), Some(allegiance));
+}
+
 #[test]
 fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_target() {
     // Attacks of 40 by the sapper, queued straight into the pass: on a living target at depth 0,
@@ -308,6 +359,7 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
     Units::set_blocks(&mut game, blocked, &[Block::Damage]);
     game.part_mut::<Life>(spent).take(Num::int(500));
     Abilities::give_from(&mut game, warded, warded, "ward");
+    let allegiance = game.allegiance_of(attacker).unwrap();
     let attack = |target, depth| Damage {
         source: Some(attacker),
         target,
@@ -316,6 +368,7 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
         cause: DamageCause::Attack {
             roll: Num::ZERO,
             rank: Rank::FIRST,
+            allegiance,
         },
         action: Some(weapon),
         depth,

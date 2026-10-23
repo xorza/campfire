@@ -3,7 +3,7 @@
 
 use bytes::Buf;
 use core::cmp::Reverse;
-use core::net::SocketAddr;
+use core::net::{IpAddr, SocketAddr};
 use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 
 use bevy_platform::time::Instant as OsInstant;
@@ -16,9 +16,7 @@ use crate::connection_id::ConnectionId;
 use crate::datagram_io::Datagram;
 use crate::datagram_io::Outbound;
 use crate::endpoint_pieces::EndpointSide;
-use crate::establish::{
-    ClientEstablish, Establish, Established, Establishing, ReadCost, ServerEstablish,
-};
+use crate::establish::{Established, Establishing, ReadCost};
 use crate::header::IO_BIT;
 use crate::packet_session::{PacketSession, PathOutcome, Received};
 use crate::packet_session_setup::PacketSessionSetup;
@@ -64,35 +62,12 @@ pub enum News<C> {
     Ended { carrier: C, reason: UnlinkReason },
 }
 
-/// Whether the endpoint opens one packet session to its server or takes packet sessions, with the
-/// establishment of that side.
-#[derive(Debug)]
-enum Side<C> {
-    /// A client's endpoint, whose packet session the host's own carrier carries from its start.
-    Client {
-        server: SocketAddr,
-        carrier: Option<C>,
-        establish: Box<dyn ClientEstablish>,
-    },
-    /// A server's endpoint, whose establishment takes new peers while it accepts.
-    Server { establish: Box<dyn ServerEstablish> },
-}
-
-impl<C> Side<C> {
-    /// The establishment, in the calls both sides take.
-    fn establish(&mut self) -> &mut dyn Establish {
-        match self {
-            Self::Client { establish, .. } => establish.as_mut(),
-            Self::Server { establish } => establish.as_mut(),
-        }
-    }
-
-    fn establish_ref(&self) -> &dyn Establish {
-        match self {
-            Self::Client { establish, .. } => establish.as_ref(),
-            Self::Server { establish } => establish.as_ref(),
-        }
-    }
+/// What routes a packet session's datagrams, fixed as its endpoint is made: its connection ID, on a
+/// server whose establishment checks a peer's new path, or else its peer's address.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Routing {
+    ById,
+    ByAddress,
 }
 
 /// The time the endpoint's packet sessions read: the frame's, as the frame sets it, on a driven
@@ -120,11 +95,16 @@ struct Peer<C> {
     /// opens.
     reset_token: Option<[u8; stateless_reset::TOKEN_LEN]>,
     address: SocketAddr,
+    /// The local address the peer's datagrams came to, which the packet session's leave from.
+    local: Option<IpAddr>,
     /// A new address the peer's packets came from, which its packet session checks.
     candidate: Option<SocketAddr>,
     route: Option<ConnectionId>,
     /// What carries the packet session for the host, once the host gave it one.
     carrier: Option<C>,
+    /// Whether the host gave it a carrier, which a close takes back: a packet session that ends
+    /// before its carry keeps its reason for it.
+    carried: bool,
     /// The largest datagram the IO carries to the peer, which the host names as it carries the
     /// packet session: a peer's MTU holds for its packet session's life.
     mtu: usize,
@@ -147,6 +127,10 @@ impl<C> Peer<C> {
 /// lock).
 pub(crate) const HOLD_BATCH: usize = 160;
 
+/// The share of each hold kept for the packet sessions that are due, so a flood of datagrams that
+/// fills every hold still leaves their timers, keep-alives and idle timeouts run.
+const DUE_SHARE: usize = HOLD_BATCH / 4;
+
 /// What a hold left for its pass's next: the datagrams it took and did not route, and whether a
 /// packet session it did not poll is due.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -167,7 +151,14 @@ impl HoldRest {
 #[derive(Debug)]
 pub struct EndpointCore<C> {
     setup: PacketSessionSetup,
-    side: Side<C>,
+    side: EndpointSide,
+    routing: Routing,
+    /// The host's own carrier, its endpoint's, which the start gives: a client's carries its packet
+    /// session, and either learns that the IO failed.
+    own: Option<C>,
+    /// The reason each packet session ended that ended before the host carried it, which the carry
+    /// gives the host, so the link it made for it unlinks.
+    ended_uncarried: BTreeMap<PeerKey, UnlinkReason>,
     peers: Vec<Option<Peer<C>>>,
     /// The empty slots of `peers`, which a new packet session takes before the vector grows.
     free: Vec<usize>,
@@ -206,23 +197,29 @@ enum SleepsTo {
 impl<C: Carrier> EndpointCore<C> {
     pub(crate) fn new(
         setup: PacketSessionSetup,
-        side: EndpointSide,
+        mut side: EndpointSide,
         conditioner: Option<LinkConditioner<Datagram>>,
     ) -> Self {
         assert!(
             setup.keep_alive < setup.idle_timeout,
             "a keep-alive less often than the idle timeout lets a quiet packet session time out"
         );
+        let routing = match &mut side {
+            EndpointSide::Server { establish } => {
+                if establish.path_check().is_some() {
+                    Routing::ById
+                } else {
+                    Routing::ByAddress
+                }
+            }
+            EndpointSide::Client { .. } => Routing::ByAddress,
+        };
         Self {
             setup,
-            side: match side {
-                EndpointSide::Client { server, establish } => Side::Client {
-                    server,
-                    carrier: None,
-                    establish,
-                },
-                EndpointSide::Server { establish } => Side::Server { establish },
-            },
+            side,
+            routing,
+            own: None,
+            ended_uncarried: BTreeMap::new(),
             peers: Vec::new(),
             free: Vec::new(),
             routes: BTreeMap::new(),
@@ -263,12 +260,12 @@ impl<C: Carrier> EndpointCore<C> {
         }
     }
 
-    pub(crate) const fn is_ended(&self) -> bool {
+    pub const fn is_ended(&self) -> bool {
         self.ended
     }
 
     pub const fn is_client(&self) -> bool {
-        matches!(self.side, Side::Client { .. })
+        matches!(self.side, EndpointSide::Client { .. })
     }
 
     pub fn now(&self) -> Instant {
@@ -283,13 +280,9 @@ impl<C: Carrier> EndpointCore<C> {
     /// `carrier`, and a server accepts.
     pub fn start(&mut self, carrier: C, out: &mut Vec<Outbound>) {
         let now = self.now();
+        self.own = Some(carrier);
         match &mut self.side {
-            Side::Client {
-                server,
-                carrier: client,
-                establish,
-            } => {
-                *client = Some(carrier);
+            EndpointSide::Client { server, establish } => {
                 // A client that connects again drops its last packet session, closing or not: the
                 // new one's datagrams come from the same address.
                 self.free.clear();
@@ -300,14 +293,14 @@ impl<C: Carrier> EndpointCore<C> {
                 self.timers.clear();
                 establish.connect(now, *server, &mut self.establishing);
             }
-            Side::Server { establish } => establish.set_accepting(true),
+            EndpointSide::Server { establish } => establish.set_accepting(true),
         }
         self.apply_establishing(now, out);
     }
 
     /// Takes no new peer, as a server that stopped.
     pub fn stop_accepting(&mut self) {
-        if let Side::Server { establish } = &mut self.side {
+        if let EndpointSide::Server { establish } = &mut self.side {
             establish.set_accepting(false);
         }
     }
@@ -334,7 +327,7 @@ impl<C: Carrier> EndpointCore<C> {
         } else {
             self.backlog.extend(datagrams.drain(..));
         }
-        let mut room = HOLD_BATCH;
+        let mut room = HOLD_BATCH - DUE_SHARE;
         while room > 0
             && let Some(datagram) = self.backlog.pop_front()
         {
@@ -345,7 +338,7 @@ impl<C: Carrier> EndpointCore<C> {
         }
         self.side.establish().poll(now, &mut self.establishing);
         self.apply_establishing(now, out);
-        self.poll_due(now, room, out);
+        self.poll_due(now, room + DUE_SHARE, out);
         debug_assert!(
             self.peers
                 .iter()
@@ -393,6 +386,8 @@ impl<C: Carrier> EndpointCore<C> {
             if let Some(reason) = peer.packet_session.ended() {
                 if let Some(carrier) = peer.carrier {
                     self.news.push_back(News::Ended { carrier, reason });
+                } else if !peer.carried {
+                    self.ended_uncarried.insert(key, reason);
                 }
                 self.side.establish().ended(peer.route);
                 self.routes.remove(&peer.route_key());
@@ -444,11 +439,7 @@ impl<C: Carrier> EndpointCore<C> {
     /// server takes new.
     fn deliver(&mut self, now: Instant, datagram: Datagram, out: &mut Vec<Outbound>) {
         let from = datagram.from;
-        let routes_by_id = match &mut self.side {
-            Side::Server { establish } => establish.path_check().is_some(),
-            Side::Client { .. } => false,
-        };
-        let route = if routes_by_id {
+        let route = if self.routing == Routing::ById {
             let Some(id) = datagram
                 .payload
                 .first_chunk()
@@ -464,7 +455,7 @@ impl<C: Carrier> EndpointCore<C> {
         let slot = if let Some(&slot) = self.routes.get(&route_key) {
             slot
         } else {
-            let Side::Server { establish } = &mut self.side else {
+            let EndpointSide::Server { establish } = &mut self.side else {
                 return;
             };
             establish.unknown(now, &datagram, &mut self.establishing);
@@ -503,7 +494,7 @@ impl<C: Carrier> EndpointCore<C> {
         if path == Path::Candidate
             && peer.candidate != Some(from)
             && received == (Received::Read { largest: true })
-            && let Side::Server { establish } = &mut self.side
+            && let EndpointSide::Server { establish } = &mut self.side
             && let Some(check) = establish.path_check()
         {
             peer.candidate = Some(from);
@@ -524,12 +515,9 @@ impl<C: Carrier> EndpointCore<C> {
             self.open(now, established, out);
         }
         if let Some(reason) = self.establishing.failed.take()
-            && let Side::Client {
-                carrier: Some(carrier),
-                ..
-            } = &self.side
+            && self.is_client()
+            && let Some(carrier) = self.own
         {
-            let carrier = *carrier;
             self.news.push_back(News::Ended { carrier, reason });
         }
     }
@@ -537,6 +525,7 @@ impl<C: Carrier> EndpointCore<C> {
     fn open(&mut self, now: Instant, established: Established, out: &mut Vec<Outbound>) {
         let Established {
             peer,
+            local,
             protection,
             prefix,
             route,
@@ -557,18 +546,17 @@ impl<C: Carrier> EndpointCore<C> {
         // Each end's first packet tells its peer the packet session is open: a client's server
         // spawns its link, and a server's client stops sending its handshake's end.
         packet_session.ping(now, &mut self.transmits);
-        let carrier = match &self.side {
-            Side::Client { carrier, .. } => *carrier,
-            Side::Server { .. } => None,
-        };
+        let carrier = self.own.filter(|_| self.is_client());
         let mut peer = Peer {
             packet_session,
             key,
             reset_token,
             address: peer,
+            local,
             candidate: None,
             route,
             carrier,
+            carried: carrier.is_some(),
             mtu: 0,
             scheduled: None,
         };
@@ -610,6 +598,7 @@ impl<C: Carrier> EndpointCore<C> {
             };
             out.push(Outbound {
                 to,
+                from_ip: peer.local,
                 datagram: datagram.freeze(),
             });
         }
@@ -628,12 +617,16 @@ impl<C: Carrier> EndpointCore<C> {
     }
 
     /// Records that `carrier` carries the packet session `key` names, whose datagrams the IO
-    /// carries at most `mtu` bytes.
-    pub fn carry(&mut self, key: PeerKey, carrier: C, mtu: usize) {
-        if let Some(peer) = self.peer(key) {
-            peer.carrier = Some(carrier);
-            peer.mtu = mtu;
-        }
+    /// carries at most `mtu` bytes; the reason it ended, when it ended before its carry, for the
+    /// host to unlink `carrier` by.
+    pub fn carry(&mut self, key: PeerKey, carrier: C, mtu: usize) -> Option<UnlinkReason> {
+        let Some(peer) = self.peer(key) else {
+            return self.ended_uncarried.remove(&key);
+        };
+        peer.carrier = Some(carrier);
+        peer.carried = true;
+        peer.mtu = mtu;
+        None
     }
 
     fn peer(&mut self, key: PeerKey) -> Option<&mut Peer<C>> {
@@ -701,18 +694,27 @@ impl<C: Carrier> EndpointCore<C> {
         Self::schedule(peer, &mut self.timers, now);
     }
 
-    /// Ends every packet session as the IO failed: each carrier of one learns it, and the pass
-    /// ends.
+    /// Ends every packet session as the IO failed: the host's own carrier learns it, a client's
+    /// that still connects among them, then each other carrier of one, and one the host carries
+    /// next; and the pass ends.
     pub(crate) fn fail(&mut self) {
         self.ended = true;
         self.stop_accepting();
         self.free.clear();
+        let reason = UnlinkReason::SocketFailed;
+        if let Some(carrier) = self.own {
+            self.news.push_back(News::Ended { carrier, reason });
+        }
         for peer in self.peers.drain(..).flatten() {
-            if let Some(carrier) = peer.carrier {
-                self.news.push_back(News::Ended {
-                    carrier,
-                    reason: UnlinkReason::SocketFailed,
-                });
+            match peer.carrier {
+                Some(carrier) if Some(carrier) != self.own => {
+                    self.news.push_back(News::Ended { carrier, reason });
+                }
+                Some(_) => {}
+                None if !peer.carried => {
+                    self.ended_uncarried.insert(peer.key, reason);
+                }
+                None => {}
             }
         }
         self.routes.clear();

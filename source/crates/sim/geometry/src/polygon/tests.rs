@@ -17,6 +17,19 @@ fn quarters([x, z]: [i64; 2]) -> Flat {
 fn a_polygon_needs_three_points_and_edges_that_meet_only_where_they_follow() {
     let refused = [
         (vec![[0, 0], [1, 0]], PolygonError::TooFewPoints),
+        // One point past the most a polygon holds, refused before its edges are tested; at the
+        // most, its edges are, and its zero-length first one meets the next.
+        (
+            vec![[0, 0]; Polygon::MAX_POINTS + 1],
+            PolygonError::TooManyPoints,
+        ),
+        (
+            vec![[0, 0]; Polygon::MAX_POINTS],
+            PolygonError::EdgesMeet {
+                first: 0,
+                second: 1,
+            },
+        ),
         // A bow tie: edges 0, (0, 0) to (2, 2), and 2, (2, 0) to (0, 2), cross at (1, 1).
         (
             vec![[0, 0], [2, 2], [2, 0], [0, 2]],

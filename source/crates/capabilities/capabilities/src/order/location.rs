@@ -13,8 +13,8 @@ pub enum Location {
     At(MapPoint),
 }
 
-/// A point of the ground a bot's script names: a location; or, for a build's place, the nearest
-/// point round one where the build passes its placement as the order goes out, `{ near =
+/// The place of a build a bot's script names: a location; or the nearest point round one where
+/// the build passes its placement as the order goes out, `{ near =
 /// <location>, gap = <meters>, steps = <count> }`, on the grid of `gap` within `steps` gaps, at
 /// most 128 (04-capabilities/control.md, A bot finds a building's place as the build tests it).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

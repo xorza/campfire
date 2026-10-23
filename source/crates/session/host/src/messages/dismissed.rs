@@ -1,0 +1,14 @@
+use serde::{Deserialize, Serialize};
+
+/// Tells a client that the server ends its link, and why: it stops, tries its link no more, and
+/// ends the link itself with the reason's code, which tells the server that the word arrived. A
+/// word, not only a close code, as an in-process link carries none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Dismissed {
+    /// A newer login of its player took the player slot; tried again, the two logins would take the
+    /// player slot in turn.
+    Superseded,
+    /// The server refused its join, which the server's log names; a join again would meet the
+    /// same refusal.
+    JoinRefused,
+}

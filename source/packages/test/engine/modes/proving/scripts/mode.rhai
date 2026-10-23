@@ -7,9 +7,9 @@
 fn on_match_start(ctx) {
     let heroes = ["hero-lancer", "hero-sage"];
     for player in ctx.players {
-        ctx.choose(player, "hero", heroes[player.seat]);
+        ctx.choose(player, "hero", heroes[player.player_slot]);
         let team = player.team;
-        ctx.spawn_unit(heroes[player.seat], team, spawn_marker(ctx, team).position, player);
+        ctx.spawn_unit(heroes[player.player_slot], team, spawn_marker(ctx, team).position, player);
         for marker in ctx.map.markers("barracks") {
             if marker.team == team {
                 ctx.spawn_unit("barracks", team, marker.position, player);
@@ -22,11 +22,11 @@ fn on_match_start(ctx) {
 }
 
 fn on_player_join(ctx, player) {
-    ctx.state.joined = player.seat;
+    ctx.state.joined = player.player_slot;
 }
 
 fn on_player_leave(ctx, player) {
-    ctx.state.left = player.seat;
+    ctx.state.left = player.player_slot;
 }
 
 fn on_timer(ctx, name, data) {

@@ -1,12 +1,13 @@
 use campfire_actions::{ActionBook, ActionKind, ActionSlots};
 use campfire_common::Ticks;
-use campfire_declarations::{BookCx, BookError, BookPlace, ByType, ByTypeBuilder, PerType};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_script::Filters;
 use campfire_units::UnitTypes;
-use campfire_values::TimeTooLarge;
+use campfire_values::{TimeTooLarge, UnitType};
 
 use crate::acquire_data::AcquireData;
 use crate::error::AcquireError;
+use crate::next_turn::{NextTurn, TurnSpec};
 
 /// A unit type's idle scan as a match runs it: its period in whole ticks, at least one, and the
 /// units it may take as its target (04-capabilities/control.md, An idle unit scans for a target,
@@ -22,11 +23,11 @@ impl Acquire {
     /// match's tags; an error for a period too long to count, no filter, a tag the match lacks, or
     /// a type with no weapon or one that builds or gathers
     /// (04-capabilities/control.md, A unit that scans neither builds nor gathers).
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let tags = cx.fact::<UnitTypes>()?.tags();
         let actions = cx.book::<ActionBook>()?;
-        let slots = cx.book::<ByType<ActionSlots>>()?;
-        let mut book = ByTypeBuilder::default();
+        let slots = cx.book::<ById<UnitType, ActionSlots>>()?;
+        let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<AcquireData>() else {
                 continue;
@@ -59,6 +60,18 @@ impl Acquire {
     }
 }
 
-impl PerType for Acquire {
+impl PerId<UnitType> for Acquire {
     const SCRIPTS_ONLY: bool = false;
+}
+
+/// The tick a unit that scans is due in again, a part of each unit of a type with an idle scan
+/// from its spawn. A scan writes it anew.
+pub type NextScan = NextTurn<Acquire>;
+
+impl TurnSpec for Acquire {
+    const NAME: &'static str = "orders.next_scan";
+
+    fn period(&self) -> Ticks {
+        self.period
+    }
 }

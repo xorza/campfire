@@ -6,11 +6,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{ActionProgress, ProgressIndexes};
-use campfire_declarations::ByType;
-use campfire_deliveries::{Died, Teleported};
+use campfire_declarations::ById;
 use campfire_sim::{DueIndex, DueUnit, Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::UnitPools;
-use campfire_units::{Avatar, Dead, Life, Owner, SpawnPoint};
+use campfire_units::{Avatar, Dead, Died, Life, Owner, SpawnPoint, Teleported};
 use campfire_units::{Deaths, Fallen};
 use campfire_values::TagSet;
 use campfire_values::UnitTags;
@@ -65,7 +64,7 @@ impl Dying {
                 let fallen = Fallen {
                     id,
                     team: team.copied(),
-                    owner: owner.map(|owner| owner.seat()),
+                    owner: owner.map(|owner| owner.player_slot()),
                     avatar,
                     tags: tags.map_or(TagSet::NONE, |tags| tags.tags),
                 };
@@ -78,7 +77,7 @@ impl Dying {
     /// tick a later stage stopped keeping them.
     pub(super) fn despawn_dead(
         mut commands: Commands<'_, '_>,
-        deaths: Res<'_, ByType<OnDeath>>,
+        deaths: Res<'_, ById<UnitType, OnDeath>>,
         dead: Query<'_, '_, (Entity, &UnitType), (With<Dead>, Without<Kept>)>,
     ) {
         for (entity, &unit_type) in &dead {

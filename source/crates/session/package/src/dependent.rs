@@ -1,3 +1,5 @@
+use std::mem;
+
 use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
 use campfire_declarations::UnitDefaults;
@@ -5,17 +7,17 @@ use campfire_script::{ScriptApi, ScriptHost};
 
 use crate::avatar_unit::AvatarUnit;
 use crate::error::load_problem::LoadProblem;
-use crate::error::{ContentError, LoadError, PackageRef};
+use crate::error::{LoadError, PackageRef};
 use crate::files::avatar_file::{AvatarFile, AvatarSeed};
 use crate::files::bot_list::BotList;
 use crate::files::loadout_file::{LoadoutFile, LoadoutSeed};
 use crate::files::manifest::Manifest;
-use crate::files::package_name::PackageName;
 use crate::files::rules_manifest::RulesNeeds;
 use crate::files::script_list::ScriptOrder;
 use crate::package::Package;
-use crate::package_files::PackageFiles;
-use crate::rules_package::RulesPackage;
+use crate::package_name::PackageName;
+use campfire_package_format::ContentError;
+use campfire_package_format::PackageFiles;
 
 const AVATAR_DATA: &str = "data/avatar.toml";
 const LOADOUT_DATA: &str = "data/loadout.toml";
@@ -30,12 +32,12 @@ pub struct Dependent {
 }
 
 /// The kind of a package the mode depends on: an avatar, with its one unit type, a loadout, or a
-/// rules package, with what it needs and its data beside its scripts.
+/// rules package, whose data the mode's lies over as it loads.
 #[derive(Debug)]
 pub enum DependentKind {
     Avatar(Box<AvatarUnit>),
     Loadout,
-    Rules(Box<RulesPackage>),
+    Rules,
 }
 
 impl Dependent {
@@ -46,7 +48,7 @@ impl Dependent {
         files: &'f PackageFiles,
     ) -> Result<OpenedDependent<'f>, LoadError> {
         let fail = |problem| LoadError::of(name, problem);
-        let manifest = files.manifest(&PackageRef::Name(name.clone()))?;
+        let manifest = Manifest::read(files, &PackageRef::Name(name.clone()))?;
         let header = manifest.header();
         if header.name != *name {
             return Err(fail(LoadProblem::OtherName(header.name.clone())));
@@ -128,9 +130,11 @@ impl OpenedDependent<'_> {
         }
     }
 
-    /// Its data, a rules package's, which the mode's own lies over; none for another kind.
-    pub(crate) fn rules_data(&self) -> Option<&TomlTable> {
-        self.needs().map(|_| &self.data)
+    /// Its data, a rules package's, moved out for the mode's own to lie over; none for another
+    /// kind.
+    pub(crate) fn take_rules_data(&mut self) -> Option<TomlTable> {
+        self.needs()?;
+        Some(mem::take(&mut self.data))
     }
 
     /// The package, its data read with `defaults` under its unit types' sections, and its scripts
@@ -163,16 +167,7 @@ impl OpenedDependent<'_> {
                 let LoadoutFile(content) = read.map_err(data(LOADOUT_DATA))?;
                 (content, DependentKind::Loadout)
             }
-            FileKind::Rules(needs) => {
-                let rules = RulesPackage {
-                    needs,
-                    data: self.data,
-                };
-                (
-                    PackageContent::default(),
-                    DependentKind::Rules(Box::new(rules)),
-                )
-            }
+            FileKind::Rules(_) => (PackageContent::default(), DependentKind::Rules),
         };
         let package = Package::read(self.files, self.manifest.header(), host, api)?;
         Ok(Dependent {

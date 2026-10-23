@@ -11,8 +11,17 @@
     reason = "the one crate that sets a schedule's build settings and executor, which clippy.toml denies the others"
 )]
 
-mod one_thread_schedule;
-mod strict_schedule;
+mod schedule_ext;
+mod schedules_ext;
 
-pub use crate::one_thread_schedule::OneThreadSchedule;
-pub use crate::strict_schedule::StrictSchedule;
+pub use crate::schedule_ext::ScheduleExt;
+pub use crate::schedules_ext::SchedulesExt;
+
+#[cfg(feature = "internals")]
+pub mod internals {
+    #[expect(
+        clippy::module_name_repetitions,
+        reason = "a trait's extension for tests and benches is `<Trait>Internals` (AGENTS.md)"
+    )]
+    pub use crate::schedule_ext::internals::ScheduleExtInternals;
+}

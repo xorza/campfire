@@ -55,6 +55,7 @@ impl RecvBatch {
                 iter::from_fn(move || {
                     (!data.is_empty()).then(|| Datagram {
                         from: meta.addr,
+                        local: meta.dst_ip,
                         payload: data.split_to(meta.stride.min(data.len())),
                     })
                 })

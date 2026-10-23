@@ -39,90 +39,23 @@ impl<T: Component> RowReads for Has<T> {
     }
 }
 
-impl<A: RowReads, B: RowReads> RowReads for (A, B) {
-    type Changed = Or<(A::Changed, B::Changed)>;
+/// Implements `RowReads` for a tuple of reads: changed when any of its reads is, and reading the
+/// parts each of them reads.
+macro_rules! tuple_row_reads {
+    ($($read:ident),+) => {
+        impl<$($read: RowReads),+> RowReads for ($($read,)+) {
+            type Changed = Or<($($read::Changed,)+)>;
 
-    fn components(into: &mut Vec<(TypeId, &'static str)>) {
-        A::components(into);
-        B::components(into);
-    }
+            fn components(into: &mut Vec<(TypeId, &'static str)>) {
+                $($read::components(into);)+
+            }
+        }
+    };
 }
 
-impl<A: RowReads, B: RowReads, C: RowReads> RowReads for (A, B, C) {
-    type Changed = Or<(A::Changed, B::Changed, C::Changed)>;
-
-    fn components(into: &mut Vec<(TypeId, &'static str)>) {
-        A::components(into);
-        B::components(into);
-        C::components(into);
-    }
-}
-
-impl<A: RowReads, B: RowReads, C: RowReads, D: RowReads> RowReads for (A, B, C, D) {
-    type Changed = Or<(A::Changed, B::Changed, C::Changed, D::Changed)>;
-
-    fn components(into: &mut Vec<(TypeId, &'static str)>) {
-        A::components(into);
-        B::components(into);
-        C::components(into);
-        D::components(into);
-    }
-}
-
-impl<A: RowReads, B: RowReads, C: RowReads, D: RowReads, E: RowReads> RowReads for (A, B, C, D, E) {
-    type Changed = Or<(A::Changed, B::Changed, C::Changed, D::Changed, E::Changed)>;
-
-    fn components(into: &mut Vec<(TypeId, &'static str)>) {
-        A::components(into);
-        B::components(into);
-        C::components(into);
-        D::components(into);
-        E::components(into);
-    }
-}
-
-impl<A: RowReads, B: RowReads, C: RowReads, D: RowReads, E: RowReads, F: RowReads> RowReads
-    for (A, B, C, D, E, F)
-{
-    type Changed = Or<(
-        A::Changed,
-        B::Changed,
-        C::Changed,
-        D::Changed,
-        E::Changed,
-        F::Changed,
-    )>;
-
-    fn components(into: &mut Vec<(TypeId, &'static str)>) {
-        A::components(into);
-        B::components(into);
-        C::components(into);
-        D::components(into);
-        E::components(into);
-        F::components(into);
-    }
-}
-
-impl<A: RowReads, B: RowReads, C: RowReads, D: RowReads, E: RowReads, F: RowReads, G: RowReads>
-    RowReads for (A, B, C, D, E, F, G)
-{
-    type Changed = Or<(
-        A::Changed,
-        B::Changed,
-        C::Changed,
-        D::Changed,
-        E::Changed,
-        F::Changed,
-        G::Changed,
-    )>;
-
-    fn components(into: &mut Vec<(TypeId, &'static str)>) {
-        A::components(into);
-        B::components(into);
-        C::components(into);
-        D::components(into);
-        E::components(into);
-        F::components(into);
-        G::components(into);
-    }
-}
+tuple_row_reads!(A, B);
+tuple_row_reads!(A, B, C);
+tuple_row_reads!(A, B, C, D);
+tuple_row_reads!(A, B, C, D, E);
+tuple_row_reads!(A, B, C, D, E, F);
+tuple_row_reads!(A, B, C, D, E, F, G);

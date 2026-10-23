@@ -1,9 +1,10 @@
 use std::io;
 use std::path::PathBuf;
 
-use campfire_bots::OrderScriptReadError;
 use campfire_common::ExitStatus;
-use campfire_net::{KeyFileError, LobbyOpenError, ServerBotsError};
+use campfire_host::OrderFileError;
+use campfire_host::{KeyFileError, ServerBotsError};
+use campfire_net::LobbyOpenError;
 use campfire_net_socket::BindError;
 use campfire_package::LoadError;
 use campfire_store::DataDirError;
@@ -21,7 +22,7 @@ pub(crate) enum LaunchError {
     #[error("the stop's signals are not caught")]
     Signals(#[from] io::Error),
     #[error("a bot's orders do not read")]
-    BotOrders(#[from] OrderScriptReadError),
+    BotOrders(#[from] OrderFileError),
     #[error("the data directory does not open")]
     DataDir(#[from] DataDirError),
     #[error("the server's key does not open")]

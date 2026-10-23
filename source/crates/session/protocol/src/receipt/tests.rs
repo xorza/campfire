@@ -10,7 +10,7 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
     let key = server.x_only_public_key().0;
     let receipt = Receipt {
         session_id: SessionId::new([8; 32]),
-        seat: Seat::new(1),
+        player_slot: PlayerSlot::new(1),
         delegation: DelegationId::new([2; 32]),
         tick: Tick::new(90),
         seq: 7,
@@ -53,7 +53,7 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
             ..receipt
         },
         Receipt {
-            seat: Seat::new(0),
+            player_slot: PlayerSlot::new(0),
             ..receipt
         },
         Receipt {

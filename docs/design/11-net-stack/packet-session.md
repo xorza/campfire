@@ -31,8 +31,9 @@ packet stream under the transport's messages. The sealed handshake is in [UDP](u
 - **Two IO kinds: the socket and the emulated network.** The emulated network on the OS clock
   with a perfect model is the in-process link. Refused: crossbeam as a third IO with the same
   behaviour.
-- **One endpoint core and one pass for each IO.** An endpoint holds its packet sessions, its
-  establishment and its IO behind one mutex, and its pass takes the IO's datagrams, opens them,
+- **One endpoint core and one pass for each IO.** An endpoint holds its packet sessions and its
+  establishment behind one mutex, its core, and its IO beside it, which the IO thread reads, writes
+  and waits on outside the lock; its pass takes the IO's datagrams, opens them,
   runs the timers and sends. On the OS clock its IO thread runs the pass when a datagram may have
   come, a timer is due or the frame wakes it, so a frame that stalls stops no timer and no
   keep-alive; on a driven clock the frame runs the same pass itself, so a seed gives the same run.

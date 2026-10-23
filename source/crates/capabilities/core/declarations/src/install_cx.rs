@@ -2,6 +2,7 @@ use std::any::TypeId;
 use std::fmt;
 use std::marker::PhantomData;
 
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::ScheduleSystem;
 use bevy_ecs::world::World;
@@ -53,6 +54,11 @@ impl<'a, S: ModuleSystems> InstallCx<'a, S> {
     /// The book `B`, which the module's declarations put in; none in a role that holds none.
     pub fn book<B: Book>(&self) -> Option<&B> {
         self.world.get_resource::<B>()
+    }
+
+    /// The resource `R`, which the declarations put in; none when they put in none.
+    pub fn declared<R: Resource>(&self) -> Option<&R> {
+        self.world.get_resource::<R>()
     }
 
     /// The mode's scripts, in a match that runs its mode.

@@ -2,7 +2,9 @@ use super::*;
 use bevy_ecs::system::RunSystemOnce;
 use bytes::BytesMut;
 use campfire_app_threads::OneThreadPlugins;
-use campfire_net_channels::{Channels, PacketKind};
+use campfire_net_channels::ChannelTypeId;
+use campfire_net_channels::Channels;
+use campfire_net_channels::internals::whole_messages;
 use campfire_net_core::Instant;
 use campfire_net_payload::{OpenedPayload, PacketNumber, ReceivePayload};
 use core::time::Duration;
@@ -35,7 +37,7 @@ fn a_protocol_violation_unlinks_the_link_once() {
     let mut link = Link::default();
     link.packet_session.push_opened(OpenedPayload {
         number: PacketNumber(0),
-        kind: PacketKind::Data.into(),
+        kind: whole_messages(),
         payload: ReceivePayload::Mutable(BytesMut::from(&[0_u8, 1][..])),
     });
     world.spawn((link, Linked, Transport::from(Channels::default())));
@@ -84,7 +86,7 @@ fn a_gated_channel_opens_to_a_link_once_admitted() {
     use campfire_net_core::LinkDirection;
 
     let mut app = App::new();
-    app.init_resource::<ChannelRegistry>();
+    app.add_plugins(TransportPlugin);
     app.register_channel::<TestChannel>(ChannelSetup::default())
         .add_direction_after::<Admitted>(LinkDirection::ClientToServer);
     let channel = app
@@ -120,4 +122,64 @@ fn a_gated_channel_opens_to_a_link_once_admitted() {
     let mut client_transport = world.get_mut::<Transport>(client).unwrap();
     let sent = client_transport.send(channel, bytes::Bytes::from_static(&[1]), 1.0);
     assert!(sent.is_ok());
+}
+
+/// An open channel's sender comes with a link's transport on the side that sends on it, and its
+/// receiver on the side that receives; a second insert of the link's side keeps them with their
+/// state: a reliable message buffered before it is still pending after it.
+#[test]
+fn an_open_channel_comes_with_the_transport_and_keeps_its_state() {
+    use crate::app_channel_ext::AppChannelExt;
+    use crate::fixtures::protocol::ChannelOrderedReliable;
+    use campfire_net_channels::{ChannelMode, ChannelSetup, SendError};
+    use campfire_net_connection::{Client, ClientOf};
+    use campfire_net_core::LinkDirection;
+
+    let mut app = App::new();
+    app.add_plugins(TransportPlugin);
+    let setup = ChannelSetup {
+        mode: ChannelMode::OrderedReliable,
+        ..ChannelSetup::default()
+    };
+    app.register_channel::<ChannelOrderedReliable>(setup)
+        .add_direction(LinkDirection::ClientToServer);
+    let channel = app
+        .world()
+        .resource::<ChannelRegistry>()
+        .net_id(ChannelTypeId::of::<ChannelOrderedReliable>())
+        .unwrap();
+    let world = app.world_mut();
+    let client = world.spawn((Client, Transport::default())).id();
+    let link = world.spawn((ClientOf, Transport::default())).id();
+    let mut server = world.get_mut::<Transport>(link).unwrap();
+    assert!(server.channel_receiver_mut(channel).is_some());
+    assert_eq!(
+        server.send(channel, bytes::Bytes::new(), 1.0),
+        Err(SendError::ChannelNotFound(channel))
+    );
+
+    let mut transport = world.get_mut::<Transport>(client).unwrap();
+    assert!(transport.channel_receiver_mut(channel).is_none());
+    transport
+        .send_mut(channel, bytes::Bytes::from_static(b"m"), 1.0)
+        .unwrap();
+    world.entity_mut(client).insert(Client);
+    let pending = world.get::<Transport>(client).unwrap().pending_reliable();
+    assert_eq!(pending.len(), 1);
+}
+
+/// A channel opens behind one gate: its registration open and then behind a gate panics.
+#[test]
+#[should_panic(expected = "opens behind two gates")]
+fn a_channel_of_two_gates_panics() {
+    use crate::app_channel_ext::AppChannelExt;
+    use crate::fixtures::test_transport_plugin::TestChannel;
+    use campfire_net_channels::ChannelSetup;
+    use campfire_net_core::LinkDirection;
+
+    let mut app = App::new();
+    app.add_plugins(TransportPlugin);
+    app.register_channel::<TestChannel>(ChannelSetup::default())
+        .add_direction(LinkDirection::ServerToClient)
+        .add_direction_after::<Admitted>(LinkDirection::ClientToServer);
 }

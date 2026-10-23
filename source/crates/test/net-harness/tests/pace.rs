@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use bevy_time::{Fixed, Time};
-use campfire_net::{JoinState, PaceSpeed};
+use campfire_host::{JoinState, PaceSpeed};
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_sim::MatchRate;

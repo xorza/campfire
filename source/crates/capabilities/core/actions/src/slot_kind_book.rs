@@ -1,3 +1,5 @@
+use crate::slot_kind::SlotKind;
+use campfire_values::Names;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
@@ -17,6 +19,11 @@ impl SlotKindBook {
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let kinds = cx.mode_section::<SlotKinds>().cloned();
         Ok(Self(Arc::new(kinds.unwrap_or_default())))
+    }
+
+    /// The names of the mode's slot kinds, which the load resolves them by.
+    pub(crate) fn name_table(cx: &BookCx<'_>) -> Result<Arc<Names<SlotKind>>, BookError> {
+        Ok(Arc::clone(cx.book::<Self>()?.0.names()))
     }
 }
 

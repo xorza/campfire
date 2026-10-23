@@ -36,6 +36,6 @@ impl<S: TeamSight> SeenTargets<'_, '_, S> {
         if self.vision.as_deref().and_then(VisionBook::grid).is_none() {
             return true;
         }
-        S::sees(seen, team).unwrap_or_else(|| self.relations.get().vision_group(own).contains(team))
+        S::sees(seen, team).unwrap_or_else(|| self.relations.get().see_as_one(own, team))
     }
 }

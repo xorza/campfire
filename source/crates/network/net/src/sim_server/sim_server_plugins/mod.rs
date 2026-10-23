@@ -1,15 +1,16 @@
 use std::num::NonZeroU32;
 
 use bevy_app::{App, FixedUpdate, Plugin, PluginGroup, PluginGroupBuilder, Update};
+use bevy_ecs::schedule::Schedule;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_app_threads::OneThreadPlugins;
 use campfire_declarations::CapabilitySet;
-use campfire_schedule::StrictSchedule;
+use campfire_schedule::ScheduleExt;
 use campfire_sim::MatchRate;
 
-use crate::hosting::Hosting;
 use crate::sim_server::SimServerPlugin;
+use campfire_host::Hosting;
 
 /// The plugins of every server's app, as Bevy's `MinimalPlugins` groups its own: an app of one
 /// thread, time and states, and `SimServerPlugin` at the session's rate `tick_hz`, whose
@@ -48,8 +49,8 @@ impl Plugin for StrictFramePlugin {
     fn build(&self, _: &mut App) {}
 
     fn cleanup(&self, app: &mut App) {
-        app.edit_schedule(Update, StrictSchedule::apply);
-        app.edit_schedule(FixedUpdate, StrictSchedule::apply);
+        app.edit_schedule(Update, Schedule::make_strict);
+        app.edit_schedule(FixedUpdate, Schedule::make_strict);
     }
 }
 

@@ -2,12 +2,12 @@ use crate::tick_range_error::TickRangeError;
 #[cfg(feature = "reflect")]
 use bevy_reflect::Reflect;
 use campfire_math::Num;
-use campfire_net_bytes::ReadInteger;
 use campfire_net_bytes::Reader;
 use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::WriteInteger;
 use core::fmt::Debug;
+use core::time::Duration;
 
 /// The fraction of the next tick a timeline has run, in `[0, 1)`, a `Num` of 24 fractional bits
 /// (11-net-stack/time.md, One number type). It compares at its full precision and travels as
@@ -33,16 +33,15 @@ impl Overstep {
         self.value
     }
 
-    /// The nearest overstep to `value`, which Bevy's fixed time gives as an `f32`: an `f32` in
-    /// `[0, 1)` times 2^24 is exact, and only its rounding to a whole step and the clamp to
-    /// `[0, 1 - 2^-24]` move it.
-    pub fn from_f32(value: f32) -> Self {
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "the clamp keeps the steps at 0 or more, and a NaN is 0"
-        )]
-        let bits = (value * 16_777_216.0).round().clamp(0.0, 16_777_215.0) as u32;
-        Self::from_fraction_bits(bits)
+    /// The share of `timestep` that `overstep` ran, as Bevy's fixed time gives both, to the
+    /// nearest 2^-24 from their nanoseconds, a half up, and at most 1 - 2^-24 (11-net-stack/time.md,
+    /// Conversions are exact).
+    pub fn of(overstep: Duration, timestep: Duration) -> Self {
+        let (ran, tick) = (overstep.as_nanos(), timestep.as_nanos());
+        debug_assert!(tick > 0, "a tick takes time");
+        let steps = ((ran << (Num::FRAC_BITS + 1)) + tick) / (tick << 1);
+        let most = (1 << Num::FRAC_BITS) - 1;
+        Self::from_fraction_bits(u32::try_from(steps.min(most)).expect("the clamp fits u32"))
     }
 
     /// The overstep as an `f32`, which holds its 24 bits exactly.
@@ -93,6 +92,8 @@ impl ToBytes for Overstep {
 
 #[cfg(test)]
 mod tests {
+    use core::time::Duration;
+
     use crate::overstep::Overstep;
     use crate::tick_range_error::TickRangeError;
     use campfire_math::Num;
@@ -111,23 +112,28 @@ mod tests {
     }
 
     #[test]
-    fn an_overstep_quantizes_to_one_in_2_to_the_24_and_truncates_to_one_in_256() {
-        // `from_f32` rounds to the nearest 2^-24, and `to_u8` truncates that to 1/256: i / 10
-        // maps to floor(round(i / 10 · 2^24) / 2^16) / 256, and 1.0 clamps to 1 - 2^-24.
+    fn an_overstep_is_the_share_of_its_tick_to_one_in_2_to_the_24_and_travels_to_one_in_256() {
+        // i/10 of a 100 ms tick is i · 2^24 / 10 steps to the nearest, and `to_u8` truncates that
+        // to 1/256: floor(round(i · 2^24 / 10) / 2^16) / 256. A whole tick clamps to 1 - 2^-24.
+        let tick = Duration::from_millis(100);
         let expected: [u8; 11] = [0, 25, 51, 76, 102, 128, 153, 179, 204, 230, 255];
         for (i, expected) in (0..=10_u8).zip(expected) {
-            let quantized = Overstep::from_f32(f32::from(i) / 10.0).to_u8();
+            let quantized = Overstep::of(tick * u32::from(i) / 10, tick).to_u8();
             assert_eq!(quantized, expected, "{i} / 10");
             assert_eq!(
                 Overstep::from_u8(quantized).to_f32(),
                 f32::from(expected) / 256.0
             );
         }
-        // 0.1 as an `f32` is 13,421,773 · 2^-27, 1,677,721.625 steps of 2^-24, to the nearest
-        // 1,677,722.
-        assert_eq!(Overstep::from_f32(0.1).value(), Num::from_bits(1_677_722));
-        assert_eq!(Overstep::from_f32(1.0).value(), Num::ONE - Num::EPSILON);
-        assert_eq!(Overstep::from_f32(-0.5), Overstep::default());
-        assert_eq!(Overstep::from_f32(f32::NAN), Overstep::default());
+        // A tenth is 1,677,721.6 steps, to the nearest 1,677,722; 1 ns of a tick of 2^25 ns is half
+        // a step, a half up to 1.
+        assert_eq!(
+            Overstep::of(Duration::from_millis(10), tick).value(),
+            Num::from_bits(1_677_722)
+        );
+        let half = Overstep::of(Duration::from_nanos(1), Duration::from_nanos(1 << 25));
+        assert_eq!(half.value(), Num::from_bits(1));
+        assert_eq!(Overstep::of(tick, tick).value(), Num::ONE - Num::EPSILON);
+        assert_eq!(Overstep::of(Duration::ZERO, tick), Overstep::default());
     }
 }

@@ -21,7 +21,8 @@ use campfire_harness::{
     ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, Moba3v3, ScriptedMode,
 };
 use campfire_math::{Num, Vec3};
-use campfire_mode::{ModeParam, ModeWorld};
+use campfire_mode::ModeParam;
+use campfire_mode::internals::ModeWorldInternals;
 use campfire_navigation::PathWalker;
 use campfire_progression::Points;
 use campfire_runner::SessionWorld;
@@ -160,7 +161,7 @@ fn units(game: &Match) -> Vec<Unit> {
                 team: *unit.get::<Team>()?,
                 kind: *unit.get::<UnitType>()?,
                 position: unit.get::<Position>()?.get(),
-                controller: unit.get::<Owner>().map(|owner| owner.seat().get()),
+                controller: unit.get::<Owner>().map(|owner| owner.player_slot().get()),
                 walks: unit.contains::<PathWalker>(),
                 slots: unit
                     .get::<ActionSlots>()
@@ -194,7 +195,7 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
             fixed.checkpoint(&mut snapshot);
             snapshots.push(snapshot);
         }
-        moba.play_tick(&mut fixed, tick);
+        moba.play_tick(&mut fixed);
         record.tick(fixed.game_mut());
         watch.tick(fixed.game(), tick);
         let game = fixed.game();

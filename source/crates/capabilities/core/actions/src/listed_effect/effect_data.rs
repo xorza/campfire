@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use campfire_codec::{TomlError, TomlTable, TomlValue};
-use campfire_common::DeclaredName;
+use campfire_common::{DeclaredName, NamedEnum};
 use campfire_declarations::{BookError, SectionReaders};
 use campfire_sim::Capability;
 use campfire_values::Number;

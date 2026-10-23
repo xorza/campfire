@@ -31,6 +31,11 @@ in [UDP research](../../research/udp.md#port-mapping).
   at the router's address. An announcement of a router at an address not heard before, while no
   router maps the port, starts a turn at once, so a host that varies its location starts one turn
   at most; a turn whose search finds no router maps through the last router heard.
+- **Only the gateway announces a router.** An announcement is taken only from the default
+  gateway's IPv4 address, as each turn reads it from the OS: an announcement names the host the
+  mapper then asks over HTTP, so one any host could send, from any address it makes up, would aim
+  the mapper at hosts of its choice. Refused: a sender's address alone, which an off-path host
+  forges.
 - **A mapping asks for 7,200 s and renews at 1/2 to 5/8 of what it got,** as RFC 6887 §11.2.1 has
   it; a UPnP router that takes only a lease that never ends gets one, which the map still renews.
   A map that fails is tried again in 30 minutes, or, after a PCP refusal, once the refusal's

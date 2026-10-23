@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_script::MatchNames;
-use campfire_units::{PoolId, PoolNames, StatId};
+use campfire_units::{PoolId, StatId};
 use campfire_values::{Names, PackageIndex, Stat};
 
 use crate::life_pool::LifePool;
@@ -86,7 +86,7 @@ impl PoolBook {
         let none = BTreeMap::new();
         let pools = cx.mode_section::<ModePoolsData>();
         let pools = pools.map_or(&none, |pools| &pools.0);
-        let names = Arc::clone(&cx.fact::<PoolNames>()?.0);
+        let names = Arc::clone(cx.names::<PoolId>()?);
         let life = cx.fact_if::<LifePool>()?.and_then(|life| life.0);
         let stats = cx.book::<StatBook>()?;
         Self::new(pools, names, life, |pool, stat| {

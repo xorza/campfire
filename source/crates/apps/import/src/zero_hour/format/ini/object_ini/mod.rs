@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::ops::Index;
 
 use campfire_client_files::ModelScale;
 
@@ -17,9 +18,16 @@ pub(crate) mod ini_supply;
 /// draw modules show by default.
 #[derive(Debug, Default)]
 pub(crate) struct ObjectIni {
-    /// Each object by its name, of its case, as `ThingFactory::findTemplate` finds it.
-    objects: BTreeMap<String, IniObject>,
+    /// Each object, in the order the files define them, at its id.
+    objects: Vec<IniObject>,
+    /// Each object's id by its name, of its case, as `ThingFactory::findTemplate` finds it.
+    by_name: BTreeMap<String, ObjectId>,
 }
+
+/// An object of the INI files, by its place in their order: what every stage names an object by,
+/// as the files hold one object of a name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct ObjectId(u32);
 
 /// An object as the game holds it once read, a reskin a copy of its base with its own fields
 /// over it (`ThingTemplate::copyFrom`): its name as the INI writes it, its draw modules, and the
@@ -28,6 +36,7 @@ pub(crate) struct ObjectIni {
 /// each the game's default when absent.
 #[derive(Debug, Clone)]
 pub(crate) struct IniObject {
+    pub(crate) id: ObjectId,
     pub(crate) name: String,
     draws: Vec<DrawModule>,
     kinds: ObjectKinds,
@@ -102,6 +111,7 @@ pub(crate) enum PlacedAs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DrawModule {
     pub(crate) kind: DrawKind,
+    /// Its default state's model, in lowercase.
     pub(crate) model: Option<String>,
     pub(crate) look: StateLook,
     pub(crate) turret: Option<String>,
@@ -292,7 +302,9 @@ impl ObjectIni {
             let word = line.word();
             if word == "end" {
                 if let Some(done) = reading.end(line.number)? {
-                    self.objects.insert(done.name.clone(), done);
+                    debug_assert_eq!(done.id, self.next_id(), "an object opens with the next id");
+                    self.by_name.insert(done.name.clone(), done.id);
+                    self.objects.push(done);
                 }
             } else if reading.stack.is_empty() {
                 reading.open(self.object_of(&word, &line)?);
@@ -309,14 +321,26 @@ impl ObjectIni {
 
     /// Every object, in the order of their names.
     pub(crate) fn objects(&self) -> impl Iterator<Item = &IniObject> {
-        self.objects.values()
+        self.by_name.values().map(|&id| &self[id])
     }
 
     /// The object a map's template names, of its case, as `findTemplate` finds it; none for a
     /// template no INI object names, which the game spawns nothing of.
     pub(crate) fn object(&self, template: &[u8]) -> Option<&IniObject> {
         let name: String = template.iter().map(|&byte| char::from(byte)).collect();
-        self.objects.get(&name)
+        self.named(&name)
+    }
+
+    /// The object of the name `name`, of its case; none for a name no object has.
+    pub(crate) fn named(&self, name: &str) -> Option<&IniObject> {
+        self.by_name.get(name).map(|&id| &self[id])
+    }
+
+    /// The id the next object read takes.
+    fn next_id(&self) -> ObjectId {
+        ObjectId(
+            u32::try_from(self.objects.len()).expect("an install holds fewer than 2³² objects"),
+        )
     }
 
     /// The object a top-level line of `word` opens: a new one, or a copy of the reskin's base.
@@ -328,11 +352,13 @@ impl ObjectIni {
             _ => return Err(IniError::NotBlock { line }),
         };
         let name = *at.tokens.get(1).ok_or(IniError::NoName { line })?;
-        if self.objects.contains_key(name) {
+        if self.by_name.contains_key(name) {
             return Err(IniError::Redefined { line });
         }
+        let id = self.next_id();
         let object = match base {
             None => IniObject {
+                id,
                 name: name.to_owned(),
                 draws: Vec::new(),
                 kinds: ObjectKinds::default(),
@@ -346,12 +372,9 @@ impl ObjectIni {
                 fight: FightData::default(),
             },
             Some(base) => IniObject {
+                id,
                 name: name.to_owned(),
-                ..self
-                    .objects
-                    .get(base)
-                    .ok_or(IniError::NoBase { line })?
-                    .clone()
+                ..self.named(base).ok_or(IniError::NoBase { line })?.clone()
             },
         };
         Ok(OpenObject {
@@ -366,12 +389,21 @@ impl ObjectIni {
         OPEN_WITH_VALUE.contains(&word) || (tokens.len() == 1 && OPEN_ALONE.contains(&word))
     }
 
-    /// A model field's value: none for `NONE`.
+    /// A model field's value, in lowercase, as the game finds a model's file whatever its case:
+    /// none for `NONE`.
     fn model(tokens: &[&str]) -> Option<String> {
         tokens
             .get(1)
             .filter(|model| !model.eq_ignore_ascii_case("none"))
-            .map(|model| (*model).to_owned())
+            .map(|model| model.to_ascii_lowercase())
+    }
+}
+
+impl Index<ObjectId> for ObjectIni {
+    type Output = IniObject;
+
+    fn index(&self, id: ObjectId) -> &IniObject {
+        &self.objects[usize::try_from(id.0).expect("a u32 fits usize")]
     }
 }
 
@@ -881,10 +913,12 @@ impl Reading {
                 let module = *module;
                 let open = self.object.as_mut().expect("a module is an object's");
                 open.object.supply.module_field(module, word, at)?;
-                // A gatherer's module is an AI module, whose turret combat reads.
+                // A gatherer's or a hacker's module is an AI module, whose turret combat reads.
                 let inner = match module {
-                    SupplyModule::Gatherer => open.object.fight.field(FightBlock::Ai, word, at)?,
-                    SupplyModule::Dock | SupplyModule::Spawn => None,
+                    SupplyModule::Gatherer | SupplyModule::Hacker => {
+                        open.object.fight.field(FightBlock::Ai, word, at)?
+                    }
+                    SupplyModule::Dock | SupplyModule::Spawn | SupplyModule::Deposit => None,
                 };
                 match inner {
                     Some(inner) => self.stack.push(Block::Fight(inner)),

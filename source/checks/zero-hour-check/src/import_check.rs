@@ -7,8 +7,7 @@ use campfire_codec::Binary;
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
 use campfire_import::{
-    ButtonDropCause, DroppedButton, DroppedSupply, DroppedWeapon, ImportLoss, Imported,
-    SupplyDropCause, WeaponDrop,
+    ButtonDropCause, Dropped, ImportLoss, Imported, SupplyDropCause, WeaponDropCause,
 };
 use campfire_math::Num;
 use campfire_navigation::MapNavigationData;
@@ -185,7 +184,7 @@ impl ImportCheck<'_> {
 
     /// The trains and builds of every command set, and the buttons dropped, by cause.
     pub(crate) fn production(&mut self) {
-        let dropped: Vec<&DroppedButton> = self
+        let dropped: Vec<&Dropped<ButtonDropCause>> = self
             .imported
             .losses
             .iter()
@@ -210,7 +209,7 @@ impl ImportCheck<'_> {
         self.measured.produced = Some(produced);
         for dropped in &dropped {
             info!(
-                button = dropped.button,
+                button = dropped.name,
                 cause = ?dropped.cause,
                 "a command button is not imported"
             );
@@ -223,10 +222,10 @@ impl ImportCheck<'_> {
         );
     }
 
-    /// The docks' nodes, the supply centers' drop-offs, the gatherers' gathers, and the supply
-    /// dropped, by cause.
+    /// The docks' nodes, the supply centers' drop-offs, the gatherers' gathers, the hackers'
+    /// hacks, each action whose channel pays, and the supply dropped, by cause.
     pub(crate) fn supply(&mut self) {
-        let dropped: Vec<&DroppedSupply> = self
+        let dropped: Vec<&Dropped<SupplyDropCause>> = self
             .imported
             .losses
             .iter()
@@ -246,6 +245,16 @@ impl ImportCheck<'_> {
             nodes,
             drop_offs,
             gathers: self.kind_count(ActionKind::Gather),
+            hacks: self
+                .packages
+                .content()
+                .actions()
+                .values()
+                .filter(|action| {
+                    let channel = action.keys.channel.as_ref();
+                    channel.is_some_and(|channel| channel.pays.is_some())
+                })
+                .count(),
             dropped: SupplyDropCause::ALL.map(|cause| {
                 dropped
                     .iter()
@@ -259,7 +268,7 @@ impl ImportCheck<'_> {
         self.measured.supplied = Some(supplied);
         for dropped in &dropped {
             info!(
-                object = dropped.object,
+                object = dropped.name,
                 cause = ?dropped.cause,
                 "an object's supply is not imported"
             );
@@ -268,8 +277,9 @@ impl ImportCheck<'_> {
             nodes = supplied.nodes,
             drop_offs = supplied.drop_offs,
             gathers = supplied.gathers,
+            hacks = supplied.hacks,
             dropped = ?supplied.dropped,
-            "the docks, supply centers and gatherers"
+            "the docks, supply centers, gatherers and hackers"
         );
     }
 
@@ -277,7 +287,7 @@ impl ImportCheck<'_> {
     pub(crate) fn combat(&mut self) {
         let combat = self.packages.data().section_or_default::<ModeCombatData>();
         let losses = &self.imported.losses;
-        let dropped: Vec<&DroppedWeapon> = losses
+        let dropped: Vec<&Dropped<WeaponDropCause>> = losses
             .iter()
             .filter_map(|loss| match loss {
                 ImportLoss::Weapon(weapon) => Some(weapon),
@@ -287,7 +297,7 @@ impl ImportCheck<'_> {
         let count = |kind: fn(&ImportLoss) -> bool| losses.iter().filter(|loss| kind(loss)).count();
         let fought = FoughtCounts {
             weapons: self.kind_count(ActionKind::Attack),
-            dropped: WeaponDrop::ALL.map(|cause| {
+            dropped: WeaponDropCause::ALL.map(|cause| {
                 dropped
                     .iter()
                     .filter(|weapon| weapon.cause == cause)
@@ -304,7 +314,7 @@ impl ImportCheck<'_> {
         self.measured.fought = Some(fought);
         for dropped in &dropped {
             info!(
-                weapon = dropped.weapon,
+                weapon = dropped.name,
                 cause = ?dropped.cause,
                 "a weapon is not imported"
             );
@@ -318,10 +328,7 @@ impl ImportCheck<'_> {
     pub(crate) fn plays(mut self) -> Result<Vec<CheckFailure>, CheckError> {
         let rate = u32::try_from(HZ).ok().and_then(NonZeroU32::new);
         let rate = rate.expect("a rate");
-        let played = self
-            .game
-            .mode_packages(Some(self.map))
-            .map_err(CheckError::Load)?;
+        let played = ModePackages::at(self.game, Some(self.map)).map_err(CheckError::Load)?;
         if let Some(SkirmishSteps {
             production,
             factory,
@@ -378,10 +385,7 @@ impl ImportCheck<'_> {
                 "the builder bot built its base and trained its units"
             );
         }
-        let played = self
-            .game
-            .mode_packages(Some(self.map))
-            .map_err(CheckError::Load)?;
+        let played = ModePackages::at(self.game, Some(self.map)).map_err(CheckError::Load)?;
         if let Some(supply) = SupplyPlay::run(played, rate, &mut self.failures) {
             let ticks = supply.ticks();
             let expected = SupplySteps::expected(self.pinned(|golden| golden.supply, ticks));
@@ -395,10 +399,7 @@ impl ImportCheck<'_> {
                 "player 1 built a supply center as China, and its free truck delivered its loads"
             );
         }
-        let played = self
-            .game
-            .mode_packages(Some(self.map))
-            .map_err(CheckError::Load)?;
+        let played = ModePackages::at(self.game, Some(self.map)).map_err(CheckError::Load)?;
         if let Some(defense) = DefensePlay::GATTLING.run(played, rate, &mut self.failures) {
             let expected = self.pinned(|golden| golden.defense, defense);
             self.failures
@@ -411,10 +412,7 @@ impl ImportCheck<'_> {
                 "player 1's Gattling Cannon, ordered nothing, spun up and killed the bot's dozer"
             );
         }
-        let played = self
-            .game
-            .mode_packages(Some(self.map))
-            .map_err(CheckError::Load)?;
+        let played = ModePackages::at(self.game, Some(self.map)).map_err(CheckError::Load)?;
         if let Some(patriot) = DefensePlay::PATRIOT.run(played, rate, &mut self.failures) {
             let expected = self.pinned(|golden| golden.patriot, patriot);
             self.failures
@@ -427,10 +425,7 @@ impl ImportCheck<'_> {
                 "player 1's Patriot battery, ordered nothing, killed the bot's dozer"
             );
         }
-        let played = self
-            .game
-            .mode_packages(Some(self.map))
-            .map_err(CheckError::Load)?;
+        let played = ModePackages::at(self.game, Some(self.map)).map_err(CheckError::Load)?;
         if let Some(stinger) = DefensePlay::STINGER.run(played, rate, &mut self.failures) {
             let expected = self.pinned(|golden| golden.stinger, stinger);
             self.failures
@@ -443,10 +438,7 @@ impl ImportCheck<'_> {
                 "player 1's Stinger site's soldiers, ordered nothing, killed the bot's dozer"
             );
         }
-        let played = self
-            .game
-            .mode_packages(Some(self.map))
-            .map_err(CheckError::Load)?;
+        let played = ModePackages::at(self.game, Some(self.map)).map_err(CheckError::Load)?;
         if let Some(missile) = MissilePlay::run(played, rate, &mut self.failures) {
             let expected = self.pinned(|golden| golden.missile, missile);
             self.failures
@@ -461,10 +453,7 @@ impl ImportCheck<'_> {
                 "player 1's Tank Hunter, ordered nothing, killed the bot's dozer with its missiles"
             );
         }
-        let played = self
-            .game
-            .mode_packages(Some(self.map))
-            .map_err(CheckError::Load)?;
+        let played = ModePackages::at(self.game, Some(self.map)).map_err(CheckError::Load)?;
         if let Some(base) = BasePlay::run(played, rate, &mut self.failures) {
             let expected = self.pinned(|golden| golden.base, base);
             self.failures
@@ -477,10 +466,7 @@ impl ImportCheck<'_> {
                 "two bots started with their bases, and fought"
             );
         }
-        let played = self
-            .game
-            .mode_packages(Some(self.map))
-            .map_err(CheckError::Load)?;
+        let played = ModePackages::at(self.game, Some(self.map)).map_err(CheckError::Load)?;
         if let Some(attack) = AttackPlay::run(played, rate, &mut self.failures) {
             let expected = self.pinned(|golden| golden.attack, attack);
             self.failures

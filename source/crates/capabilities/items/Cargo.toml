@@ -20,6 +20,7 @@ internals = [
     "campfire-stats/internals",
     "campfire-units/internals",
     "campfire-values/internals",
+    "campfire-vision/internals",
 ]
 
 [dependencies]
@@ -36,6 +37,7 @@ campfire-stats.workspace = true
 campfire-units.workspace = true
 campfire-values = { workspace = true, features = ["ecs"] }
 campfire-visibility.workspace = true
+campfire-vision.workspace = true
 
 bevy_ecs = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive", "rc", "std"] }

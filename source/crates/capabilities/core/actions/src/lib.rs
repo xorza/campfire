@@ -13,7 +13,7 @@
 use bevy_ecs::schedule::SystemSet;
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    ByType, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, NamedTexts, SetPlace,
+    ById, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, NamedTexts, SetPlace,
 };
 use campfire_sim::{Capability, SimSystems};
 use campfire_units::{BodyUnit, UnitsSystems};
@@ -21,6 +21,7 @@ use campfire_units::{BodyUnit, UnitsSystems};
 use crate::actions_api::ActionsApi;
 use crate::actions_column::RowReads;
 use crate::holds::{Charges, Holds};
+use campfire_values::UnitType;
 
 mod action;
 mod action_book;
@@ -40,20 +41,18 @@ mod actions_column;
 mod actions_data;
 mod actions_effect;
 mod amount;
-mod by_action;
 mod cast_spends;
 mod channel_call;
+mod channel_pay;
 mod checked_action;
 mod cost_target;
-mod damage_kind_book;
 mod delivery;
-mod delivery_data;
+mod delivery_section;
 mod dyn_eq;
 mod effect_list_book;
 mod effect_names;
 mod error;
 mod fan;
-mod flights;
 mod holds;
 mod in_progress;
 mod kind_section;
@@ -65,13 +64,12 @@ mod lists_of;
 mod loaded_action;
 mod loadout_ranks;
 mod payer;
-mod per_action;
 mod pipeline_field;
 mod planned_effect;
 mod purse;
 mod range_field;
 mod range_fit;
-mod rank_fields;
+mod rank_toggle;
 mod rank_values;
 mod reached;
 mod shot_damage;
@@ -85,15 +83,13 @@ mod slot_kinds;
 mod spawn_effect_data;
 mod targeting;
 mod targets;
-mod track_names;
 mod type_slots_data;
 
 pub use crate::action::{Action, Aim, Passive};
 pub use crate::action_book::{ActionBook, PackageAction};
 pub use crate::action_call::{ActionCall, ResolvedCast, StartedOrder};
-pub use crate::action_data::error::ActionField;
 pub use crate::action_data::{
-    ActionData, ActionKeys, ChannelData, ChargeUpData, ChargesData, Toggle,
+    ActionData, ActionKeys, ChannelData, ChannelPaysData, ChargeUpData, ChargesData, Toggle,
 };
 pub use crate::action_kind::ActionKind;
 pub use crate::action_load::ActionLoad;
@@ -103,12 +99,14 @@ pub use crate::action_range::ActionRange;
 pub use crate::action_ranks::ActionRanks;
 pub use crate::action_slots::action_progress::ActionProgress;
 pub use crate::action_slots::action_progress::attack_target::{AttackTarget, TargetSource};
+pub use crate::action_slots::action_progress::pre_attack::PreAttack;
 pub use crate::action_slots::action_progress::progress_dues::{
-    AttackTargets, ChannelSteps, ProgressDues, ProgressIndexes, ResolveKind, Resolves,
+    AttackTargets, ChannelSteps, OrderSteps, ProgressDues, ProgressIndexes, ResolveKind, Resolves,
 };
 pub use crate::action_slots::caster::Caster;
 pub use crate::action_slots::slot_times::{
-    ActionCheck, SlotCharges, SlotCommit, SlotTime, SlotTimes, StartChecked, StartFrom,
+    ActionCheck, Cut, SlotCharges, SlotCommit, SlotSelect, SlotTime, SlotTimes, StartChecked,
+    StartFrom,
 };
 pub use crate::action_slots::timed_slots::TimedSlots;
 pub use crate::action_slots::use_group::UseGroup;
@@ -117,23 +115,21 @@ pub use crate::action_target::ActionTarget;
 pub use crate::actions_column::{ActionsColumn, SlotRow};
 pub use crate::actions_data::ActionsData;
 pub use crate::amount::Amount;
-pub use crate::by_action::{ByAction, ByActionBuilder};
 pub use crate::cast_spends::CastSpends;
 pub use crate::channel_call::{ChannelCall, ChannelStep};
+pub use crate::channel_pay::ChannelPay;
 pub use crate::checked_action::CheckedAction;
 pub use crate::cost_target::CostTarget;
-pub use crate::damage_kind_book::DamageKindBook;
-pub use crate::delivery::{Delivery, DeliveryShape, ProjectileFlight};
-pub use crate::delivery_data::DeliveryData;
+pub use crate::delivery::{Delivery, DeliveryAim, DeliveryAims};
+pub use crate::delivery_section::{DeliverySection, DeliverySections};
 pub use crate::dyn_eq::DynEq;
 pub use crate::effect_list_book::{EffectListBook, EffectSpec, ListCall};
 pub use crate::effect_names::EffectNames;
-pub use crate::error::{ActionError, ActionProblem, SlotError, SlotKindsError};
+pub use crate::error::{ActionError, ActionField, ActionProblem, SlotError, SlotKindsError};
 pub use crate::fan::Fan;
-pub use crate::flights::Flights;
 pub use crate::in_progress::{InProgress, OrderPhase};
 pub use crate::kind_section::{KindSection, KindSections};
-pub use crate::kind_takes::{KindTakes, RangeTakes, Takes};
+pub use crate::kind_takes::{KindTakes, Takes};
 pub use crate::launch_id::LaunchId;
 pub use crate::list_hook::{ListHook, OnEnd, OnHit, OnResolve};
 pub use crate::listed_effect::effect_data::{EffectData, LaunchLists};
@@ -146,13 +142,12 @@ pub use crate::lists_of::{ListsOf, ReachHook};
 pub use crate::loaded_action::LoadedAction;
 pub use crate::loadout_ranks::LoadoutRanks;
 pub use crate::payer::Payer;
-pub use crate::per_action::PerAction;
 pub use crate::pipeline_field::PipelineField;
 pub use crate::planned_effect::PlannedEffect;
 pub use crate::purse::Purse;
 pub use crate::range_field::RangeField;
 pub use crate::range_fit::RangeFit;
-pub use crate::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
+pub use crate::rank_toggle::{RankToggle, TogglePer};
 pub use crate::rank_values::{ChannelRule, ChargeRule, LoadedRanks, RankValues};
 pub use crate::reached::Reached;
 pub use crate::shot_damage::ShotDamage;
@@ -166,7 +161,6 @@ pub use crate::slot_kinds::SlotKinds;
 pub use crate::spawn_effect_data::SpawnEffectData;
 pub use crate::targeting::Targeting;
 pub use crate::targets::Targets;
-pub use crate::track_names::TrackNames;
 pub use crate::type_slots_data::TypeSlotsData;
 
 /// The core's actions: every action a match loads, and the slots units hold them in.
@@ -270,6 +264,8 @@ impl Module for Actions {
         d.timed::<Resolves>();
         d.timed::<ChannelSteps>();
         d.timed::<AttackTargets>();
+        d.timed::<OrderSteps>();
+        d.observer(OrderSteps::forget_gone);
         d.scratch::<Shots>();
         d.require::<ActionSlots, SlotTimes>();
         d.require::<ActionSlots, ActionProgress>();
@@ -277,11 +273,13 @@ impl Module for Actions {
         d.book::<ActionBook>(ActionLoad::book);
         d.book::<EffectListBook>(ActionLoad::effects);
         d.book::<SlotKindBook>(SlotKindBook::build);
+        d.names::<SlotKind>(SlotKindBook::name_table);
         d.listed::<SpawnEffectData>();
         d.column::<ActionsColumn, RowReads>(ActionsColumn::fill_row);
         d.api(ActionsApi::register);
-        d.book::<ByType<ActionSlots>>(ActionSlots::book);
+        d.book::<ById<UnitType, ActionSlots>>(ActionSlots::book);
         d.fact::<SlotClaims>(|_| Ok(SlotClaims::default()));
+        d.fact::<DeliveryAims>(|_| Ok(DeliveryAims::default()));
         d.rule(SlotClaims::rule);
         d.rule(Self::rule);
         d.fact::<ActionRanks>(ActionRanks::build);
@@ -308,19 +306,15 @@ impl Module for Actions {
 pub mod internals {
     pub use crate::action_slots::action_progress::progress_dues::internals::LooseDues;
 
-    use std::num::NonZeroU8;
-
     use bevy_ecs::world::World;
-    use campfire_common::{DeclaredName, Ticks};
+    use campfire_common::Ticks;
     use campfire_declarations::internals::BookLoad;
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
-    use campfire_script::{HookSet, MatchNames, UnknownName};
-    use campfire_units::{PoolCost, PoolId};
-    use campfire_values::{
-        ActionId, DamageKind, Distance, ModifierId, Named, PackageIndex, Param, Tag, TrackId,
-        TypeScope, UnitType,
-    };
+    use campfire_script::{HookSet, MatchNames};
+    use campfire_sim::Capability;
+    use campfire_units::PoolCost;
+    use campfire_values::{ActionId, Distance, PackageIndex, UnitType};
 
     use crate::Actions;
     use crate::action::{Action, Aim};
@@ -328,11 +322,11 @@ pub mod internals {
     use crate::action_data::ActionData;
     use crate::action_kind::ActionKind;
     use crate::action_range::ActionRange;
-    use crate::delivery::{Delivery, DeliveryShape, ProjectileFlight};
+    use crate::delivery::{Delivery, DeliveryAim};
     use crate::effect_list_book::EffectListBook;
     use crate::effect_names::EffectNames;
     use crate::fan::Fan;
-    use crate::rank_fields::{RankToggle, TogglePer};
+    use crate::rank_toggle::{RankToggle, TogglePer};
     use crate::rank_values::{CostRun, RankValues};
 
     impl Actions {
@@ -373,6 +367,7 @@ pub mod internals {
                     script: None,
                     hooks: HookSet::default(),
                     delivery: action.delivery,
+                    pays: None,
                 },
             )
         }
@@ -408,6 +403,7 @@ pub mod internals {
                     script: None,
                     hooks: HookSet::default(),
                     delivery: None,
+                    pays: None,
                 },
             )
         }
@@ -455,108 +451,31 @@ pub mod internals {
             Self {
                 delivery: Some(Delivery {
                     unit_type,
-                    shape: DeliveryShape::Projectile {
-                        fan: Fan {
-                            count: NonZeroU8::MIN,
-                            spread_deg: Num::ZERO,
-                        },
-                        flight: ProjectileFlight::Homing,
-                    },
+                    capability: Capability::Projectiles,
+                    fan: Fan::ONE,
+                    aim: DeliveryAim::AtUnit,
                 }),
                 ..self
             }
         }
     }
 
-    /// The names of an action's effect lists as a match's world resolves them: its names, the
-    /// action's params as its data names them, and the modifiers of the action's package.
-    #[derive(Debug)]
-    pub struct MatchEffectNames<'w> {
-        world: &'w World,
-        data: &'w ActionData,
-        package: PackageIndex,
-    }
-
     impl Actions {
         /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which
-        /// the package load checked: each name resolved to its id, each param to its place among
-        /// the action's params.
+        /// the package load checked: each name resolved to its id by the match's names, each
+        /// param to its place among the action's params.
         pub fn load_effect_lists(
             world: &mut World,
             action: ActionId,
             package: PackageIndex,
             data: &ActionData,
         ) {
-            let mut lists = world.remove_resource::<EffectListBook>().unwrap();
-            let names = MatchEffectNames::new(world, data, package);
-            lists
-                .push(action, data, &names)
-                .expect("a test's effect lists name what its match has");
-            world.insert_resource(lists);
-        }
-    }
-
-    impl<'w> MatchEffectNames<'w> {
-        pub const fn new(world: &'w World, data: &'w ActionData, package: PackageIndex) -> Self {
-            MatchEffectNames {
-                world,
-                data,
-                package,
-            }
-        }
-    }
-
-    impl EffectNames for MatchEffectNames<'_> {
-        fn param(&self, name: &DeclaredName) -> Result<usize, UnknownName> {
-            self.data
-                .params
-                .keys()
-                .position(|held| held == name)
-                .ok_or_else(|| UnknownName::new(Param::NAMES, name))
-        }
-
-        fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
-            self.world
-                .resource::<MatchNames>()
-                .named(name.as_str())
-                .ok_or_else(|| UnknownName::new(DamageKind::NAMES, name))
-        }
-
-        fn pool(&self, name: &DeclaredName) -> Result<PoolId, UnknownName> {
-            let pools = self.world.resource::<MatchNames>().table::<PoolId>();
-            pools
-                .and_then(|pools| pools.named(name.as_str()))
-                .ok_or_else(|| UnknownName::new(PoolId::NAMES, name))
-        }
-
-        fn modifier(&self, name: &DeclaredName) -> Result<ModifierId, UnknownName> {
-            let modifiers = self.world.resource::<MatchNames>().table::<ModifierId>();
-            modifiers
-                .and_then(|modifiers| modifiers.named((self.package, name.as_str())))
-                .ok_or_else(|| UnknownName::new(ModifierId::NAMES, name))
-        }
-
-        fn track(&self, name: &DeclaredName) -> Result<TrackId, UnknownName> {
-            self.world
-                .resource::<MatchNames>()
-                .named(name.as_str())
-                .ok_or_else(|| UnknownName::new(TrackId::NAMES, name))
-        }
-
-        fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
-            self.world
-                .resource::<MatchNames>()
-                .tags()
-                .named(name.as_str())
-                .ok_or_else(|| UnknownName::new(Tag::NAMES, name))
-        }
-
-        fn package_type(&self, name: &DeclaredName) -> Result<UnitType, UnknownName> {
-            let scope = TypeScope::of_package(self.package);
-            self.world
-                .resource::<MatchNames>()
-                .named((scope, name.as_str()))
-                .ok_or_else(|| UnknownName::new(UnitType::NAMES, name))
+            let tables = world.resource::<MatchNames>().tables();
+            let names = EffectNames::new(tables, &data.keys.params, package);
+            let lists = world
+                .resource::<EffectListBook>()
+                .pushed(action, data, names);
+            world.insert_resource(lists.expect("a test's effect lists name what its match has"));
         }
     }
 }

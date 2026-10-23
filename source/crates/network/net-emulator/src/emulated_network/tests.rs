@@ -10,7 +10,7 @@ struct Harness {
 
 impl Harness {
     fn new(models: DuplexModel) -> Self {
-        let network = EmulatedNetwork::new(WireClock::Driven);
+        let network = EmulatedNetwork::new(TimeSource::Driven);
         let pair = network.pair(models);
         Self { network, pair }
     }
@@ -149,7 +149,7 @@ fn the_link_mtu_is_each_ends_in_every_phase() {
 /// and every client end's peer is the one server's address.
 #[test]
 fn each_link_names_its_client_end_by_its_own_address() {
-    let network = EmulatedNetwork::new(WireClock::Driven);
+    let network = EmulatedNetwork::new(TimeSource::Driven);
     let addresses = [(); 2].map(|()| {
         let pair = network.pair(DuplexModel::default());
         let address = pair.client.client_address();
@@ -189,7 +189,7 @@ fn a_receive_hands_at_most_its_bound() {
 /// link's 3 and one of the second's.
 #[test]
 fn a_read_over_many_ends_bounds_them_together() {
-    let network = EmulatedNetwork::new(WireClock::Driven);
+    let network = EmulatedNetwork::new(TimeSource::Driven);
     let pairs = [(); 2].map(|()| network.pair(DuplexModel::perfect()));
     for (pair, count) in pairs.iter().zip([3_u8, 2]) {
         pair.client

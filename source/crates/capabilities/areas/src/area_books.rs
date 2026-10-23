@@ -1,19 +1,36 @@
-use campfire_actions::{ActionsData, DeliveryData, Targeting};
+use std::mem;
+
+use campfire_actions::{ActionsData, DeliveryAim, DeliveryAims, Targeting};
 use campfire_common::DeclaredName;
-use campfire_declarations::{
-    BookCx, BookError, BookPlace, ByType, ByTypeBuilder, Section, TypePlace,
-};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, Section, TypePlace};
 use campfire_script::UnknownName;
 use campfire_stats::{ModifierAppliers, ModifierBook, ModifiersData, Way};
 use campfire_units::UnitTypes;
-use campfire_values::{ModifierId, Named};
+use campfire_values::{ModifierId, Named, UnitType};
 
 use crate::Areas;
 use crate::area_data::AreaData;
+use crate::area_delivery_data::AreaDeliveryData;
 use crate::area_spec::AreaSpec;
 use crate::error::{AreaDeliveryError, AreaError};
 
 impl Areas {
+    /// Each area type is placed where the action that delivers it aims.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn aims(cx: &BookCx<'_>, aims: &mut DeliveryAims) -> Result<(), BookError> {
+        let mut by_type = mem::take(&mut aims.0).reopen();
+        for unit in cx.types() {
+            if unit.data.section::<AreaData>().is_some() {
+                by_type.set(unit.unit_type, DeliveryAim::Placed);
+            }
+        }
+        aims.0 = by_type.build();
+        Ok(())
+    }
+
     /// Adds that each action that delivers an area applies the modifiers the area holds on the
     /// units inside it; an error for one its package does not have, through which no way passes.
     pub(crate) fn inside_ways(
@@ -24,7 +41,7 @@ impl Areas {
             let modifiers = source.content.get::<ModifiersData>();
             let actions = source.content.get::<ActionsData>();
             for (id, action) in actions.into_iter().flat_map(|actions| &actions.0) {
-                let Some(DeliveryData::Area { unit_type }) = &action.delivery else {
+                let Some(AreaDeliveryData { area: unit_type }) = action.delivery() else {
                     continue;
                 };
                 let area = source.units.get(unit_type);
@@ -64,30 +81,15 @@ impl Areas {
                     let unit = source.units.get(*name);
                     unit.is_some_and(|unit| unit.section::<AreaData>().is_none())
                 };
-                let delivered = match &action.delivery {
-                    Some(DeliveryData::Area { unit_type }) => Some(unit_type),
-                    Some(DeliveryData::Projectile { .. }) | None => None,
-                };
+                let delivered = action
+                    .delivery::<AreaDeliveryData>()
+                    .map(|delivery| &delivery.area);
                 if let Some(name) = delivered.filter(not_area) {
                     return fail(AreaDeliveryError::NotArea(name.clone()));
                 }
-                if delivered.is_some() && action.targeting == Targeting::Direction {
+                if delivered.is_some() && action.keys.targeting == Targeting::Direction {
                     return fail(AreaDeliveryError::Direction);
                 }
-            }
-        }
-        Ok(())
-    }
-
-    /// Tags each area type `area`.
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "a book's builder and an extension take the build's signature"
-    )]
-    pub(crate) fn tag_types(cx: &BookCx<'_>, types: &mut UnitTypes) -> Result<(), BookError> {
-        for unit in cx.types() {
-            if unit.data.section::<AreaData>().is_some() {
-                types.give_tag(unit.unit_type, Self::TAG.tag());
             }
         }
         Ok(())
@@ -98,10 +100,10 @@ impl AreaSpec {
     /// The spec of each area type, its filters resolved against the match's tags and its modifiers
     /// among its package's; an error for a name the match does not have, or a time too large to
     /// count in ticks.
-    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let tags = cx.fact::<UnitTypes>()?.tags();
         let modifiers = cx.book::<ModifierBook>()?;
-        let mut book = ByTypeBuilder::default();
+        let mut book = ByIdBuilder::default();
         for unit in cx.types() {
             let Some(area) = unit.data.section::<AreaData>() else {
                 continue;

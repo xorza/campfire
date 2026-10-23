@@ -6,7 +6,7 @@ use bevy_ecs::world::Mut;
 use campfire_abilities::internals::MANA;
 use campfire_abilities::*;
 use campfire_actions::{
-    ActionData, ActionRange, ActionSlots, ActionTarget, Actions, DeliveryData, EffectTo,
+    ActionData, ActionKeys, ActionRange, ActionSlots, ActionTarget, Actions, EffectTo,
     ListedEffect, RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
 };
 use campfire_capabilities::internals::*;
@@ -15,19 +15,19 @@ use campfire_combat::{
     CombatBook, CombatRefusal, Damage, DamageCause, DamageEffectData, DamagePass, PassEntry,
     RecentAttackers,
 };
-use campfire_common::{DeclaredName, Seat, StateHash, Tick, Ticks};
+use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_declarations::internals::BookLoad;
 use campfire_math::{Num, Vec3};
 use campfire_progression::{
     Experience, Progression, ProgressionRefusal, Thresholds, TrackData, TrackSet, XpEffectData,
 };
-use campfire_projectiles::{ProjectileData, Projectiles};
+use campfire_projectiles::{ProjectileData, ProjectileDeliveryData, Projectiles};
 use campfire_script::internals::FailedCall;
 use campfire_script::{ApiError, CapabilityRefusal, FailureKind, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, EntityIndex, PredictionStarted, SimTick, SimWorld, Unpredicted};
 use campfire_stats::{
-    Hold, IntervalRevival, ModifierBook, ModifierClocks, ModifierData, Modifiers, Pools,
+    Applier, Hold, IntervalRevival, ModifierBook, ModifierClocks, ModifierData, Modifiers, Pools,
     PurgeEffectData, Stats,
 };
 use campfire_units::internals::Spawn;
@@ -55,8 +55,8 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     };
     Stats::load_modifier(&mut game, PackageIndex::MODE, "guard", &guard, None);
     let mut data = lash_out();
-    data.passive_modifier = Some(DeclaredName::new("guard").unwrap());
-    data.passive_while_ready = true;
+    data.keys.passive_modifier = Some(DeclaredName::new("guard").unwrap());
+    data.keys.passive_while_ready = true;
     let action = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
     let caster = Abilities::caster(&mut game, action, 0);
     let entity = game.unit_entity(caster);
@@ -118,16 +118,16 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     };
     Stats::load_modifier(&mut game, PackageIndex::MODE, "ward", &ward, None);
     let mut claws = lash_out();
-    claws.script = None;
-    claws.cooldown_ms = None;
-    claws.cost = BTreeMap::new();
-    claws.params = BTreeMap::new();
-    claws.targeting = Targeting::Unit(FilterData::parse("enemies").unwrap());
-    claws.range = Some(Ranked::One(RangeField::Range(ActionRange::meters(
+    claws.keys.script = None;
+    claws.keys.cooldown_ms = None;
+    claws.keys.cost = BTreeMap::new();
+    claws.keys.params = BTreeMap::new();
+    claws.keys.targeting = Targeting::Unit(FilterData::parse("enemies").unwrap());
+    claws.keys.range = Some(Ranked::One(RangeField::Range(ActionRange::meters(
         Num::int(2),
     ))));
     claws.section = Arc::new(stat_attack());
-    claws.passive_modifier = Some(DeclaredName::new("ward").unwrap());
+    claws.keys.passive_modifier = Some(DeclaredName::new("ward").unwrap());
     let claws = Actions::load(&mut game, PackageIndex::MODE, "claws", &claws, None, 1).unwrap();
     let slots = TimedSlots::new(ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]));
     let beast = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), slots);
@@ -160,8 +160,8 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     }
     let waiting = |name: &str, modifier: &str| {
         let mut data = lash_out();
-        data.passive_modifier = Some(DeclaredName::new(modifier).unwrap());
-        data.passive_while_ready = true;
+        data.keys.passive_modifier = Some(DeclaredName::new(modifier).unwrap());
+        data.keys.passive_while_ready = true;
         (name.to_owned(), data)
     };
     let [first, second] = [waiting("lash_out", "guard"), waiting("bulwark", "ward")]
@@ -170,7 +170,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
         (first, SlotKind::new(0), Rank::new(1)),
         (second, SlotKind::new(0), Rank::new(1)),
     ]));
-    let parts = (Owner::new(Seat::new(0)), slots);
+    let parts = (Owner::new(PlayerSlot::new(0)), slots);
     let caster = Spawn::named(&game, "caster", Vec3::ZERO)
         .parts(parts)
         .place(&mut game);
@@ -388,7 +388,10 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         tag: DeclaredName::new("stunned").unwrap(),
     });
     let data = ActionData {
-        script: None,
+        keys: ActionKeys {
+            script: None,
+            ..strike().keys
+        },
         on_resolve: vec![effect(purge, EffectTo::Reached)],
         ..strike()
     };
@@ -407,7 +410,7 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     Abilities::give_from(&mut game, freed, second, "slow");
     let [stun, slow] =
         ["stun", "slow"].map(|name| Stats::modifier(&game, PackageIndex::MODE, name).unwrap());
-    Stats::give_modifier(&mut game, held, stun, Some((first, None, 1)), true);
+    Stats::give_modifier(&mut game, held, stun, Applier::from_unit(first).passive());
     Abilities::give_from(&mut game, held, first, "stun");
     Abilities::give_from(&mut game, held, second, "stun");
     game.step();
@@ -514,7 +517,10 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
     // the track fails the cast, which changes nothing, its damage, cost and cooldown included.
     let (mut game, valor) = with_valor(&[]);
     let data = ActionData {
-        script: None,
+        keys: ActionKeys {
+            script: None,
+            ..strike().keys
+        },
         on_resolve: vec![
             effect(true_damage(), EffectTo::Reached),
             effect(valor_xp(), EffectTo::Reached),
@@ -573,14 +579,17 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
     };
     Projectiles::load_type(&mut game, bolt, &flight);
     let data = ActionData {
-        script: None,
-        targeting: Targeting::Direction,
-        range: None,
-        delivery: Some(DeliveryData::Projectile {
-            unit_type: DeclaredName::new("bolt").unwrap(),
+        keys: ActionKeys {
+            script: None,
+            targeting: Targeting::Direction,
+            range: None,
+            ..strike().keys
+        },
+        delivery: Some(Arc::new(ProjectileDeliveryData {
+            projectile: DeclaredName::new("bolt").unwrap(),
             count: NonZeroU8::new(1).unwrap(),
             spread_deg: Num::ZERO,
-        }),
+        })),
         on_hit: vec![
             effect(true_damage(), EffectTo::Reached),
             effect(valor_xp(), EffectTo::Source),
@@ -695,7 +704,7 @@ fn an_interval_runs_nothing_while_its_carrier_is_dead_and_comes_back_by_its_poli
         };
         let mut game = abilities_match_with_modifiers(log, &[("pulse", pulse)]);
         let mut data = lash_out();
-        data.passive_modifier = Some(DeclaredName::new("pulse").unwrap());
+        data.keys.passive_modifier = Some(DeclaredName::new("pulse").unwrap());
         let action = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
         let caster = Abilities::caster(&mut game, action, 1);
         let entity = game.unit_entity(caster);

@@ -4,7 +4,7 @@ use rustls::pki_types::{CertificateDer, ServerName, SubjectPublicKeyInfoDer, Uni
 use rustls::{CertificateError, DigitallySignedStruct, Error, SignatureScheme};
 
 use crate::spki::Spki;
-use campfire_common::TlsKey;
+use campfire_net_core::TlsKey;
 
 /// A client's check of the server: the raw key the client pinned and no other, with no certificate,
 /// chain, name or date to read (11-net-stack/udp.md, A server's identity and a client's trust

@@ -12,6 +12,7 @@
     reason = "the one crate that calls the formats and holds their values, which clippy.toml denies the others"
 )]
 
+mod appended;
 mod batch;
 mod binary;
 mod compare;
@@ -29,7 +30,7 @@ mod toml_table;
 mod toml_value;
 
 pub use crate::binary::{Binary, Decoded};
-pub use crate::error::{BinaryError, JsonError, TaggedError, TomlError, TomlWriteError};
+pub use crate::error::{BinaryError, JsonError, Malformed, TaggedError, TomlError, TomlWriteError};
 pub use crate::json::Json;
 pub use crate::json_value::JsonValue;
 pub use crate::sink::Sink;

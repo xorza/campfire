@@ -1,15 +1,16 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use bevy::app::{App, Plugin};
+use bevy::app::{App, Plugin, PostStartup};
 use bevy::ecs::resource::Resource;
+use bevy::ecs::system::Commands;
 use campfire_client_files::{
     CameraFile, ClientFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions,
     MapLights, PickingFile, TeamColors, TerrainFile,
 };
 use campfire_common::{ErrorReport, MapName};
-use campfire_geometry::Metric;
-use campfire_package::{ContentError, ModePackages, PackageReader};
+use campfire_package::ModePackages;
+use campfire_package_format::{ContentError, PackageReader};
 use campfire_units::HeightGrid;
 use campfire_values::{PackageIndex, PackagePath};
 use tracing::error;
@@ -17,37 +18,46 @@ use tracing::error;
 use crate::client_packages::ClientPackages;
 use crate::input_map::InputMap;
 use crate::view::ground_heights::GroundHeights;
+use crate::view::map_metric::MapMetric;
+use crate::view::match_colors::MatchColors;
+use crate::view::match_hud::MatchHud;
+use crate::view::match_picking::MatchPicking;
 
-/// The client data of the mode's packages, which the view draws units by: each package's own, by
-/// the package's place; the ground's heights from the map's heightmap, which the packages hold; and
-/// the mode's own package's camera, `client/camera.toml`, HUD, `client/hud.toml`, picking,
-/// `client/picking.toml`, and team colors, `client/team_colors.toml`, the map's lights,
-/// `client/maps/<map>/lights.toml`, its client objects, `client/maps/<map>/objects.toml`, whose
-/// looks are its package's, and its terrain, `client/maps/<map>/terrain.bin`, kept when its quads
-/// are the heights' cells. Each file is read once, as the view starts, and checked against its
-/// package's index; one that does not read is logged, and drawn as if it were not there.
+/// The client data of the mode's packages that the client's start alone reads, which then goes:
+/// each package's unit looks, by the package's place; the mode's own package's camera,
+/// `client/camera.toml`; the map's lights, `client/maps/<map>/lights.toml`, its client objects,
+/// `client/maps/<map>/objects.toml`, whose looks are its package's, and its terrain,
+/// `client/maps/<map>/terrain.bin`, kept when its quads are the heights' cells. Each file is read
+/// once, as the view starts, and checked against its package's index; one that does not read is
+/// logged, and drawn as if it were not there.
 #[derive(Resource, Debug, Default)]
-pub(crate) struct ClientData {
+pub(crate) struct ClientLoad {
     pub(crate) packages: Vec<PackageClient>,
-    /// The ground's heights from the map's heightmap; none for a map of no heightmap.
-    pub(crate) heights: Option<GroundHeights>,
-    /// How the map reads a position: above its ground, or as a point in space.
-    pub(crate) metric: Metric,
     /// The map's terrain over its heights; none for a map of no heights, of no terrain file, or
     /// of one that does not read or is not the heights' shape.
     pub(crate) terrain: Option<TerrainFile>,
     /// The mode's own package's camera file.
     pub(crate) camera: Option<CameraFile>,
-    /// The mode's own package's HUD file, its default for a package of none.
-    pub(crate) hud: HudFile,
-    /// The mode's own package's picking file, its default for a package of none.
-    pub(crate) picking: PickingFile,
-    /// The mode's own package's team colors, the engine's for a package of none.
-    pub(crate) team_colors: TeamColors,
     /// The map's lights, which its units are drawn in.
     pub(crate) lights: Option<MapLights>,
     /// The map's client objects, none when it has no file of them.
     pub(crate) objects: ClientObjects,
+}
+
+/// The client data of the mode's packages as the client reads it: what its start reads, and the
+/// facts its frames read, each its own resource for the match: the ground's heights from the
+/// map's heightmap, which the packages hold, none for a map of none; how the map reads a
+/// position; and the mode's own package's HUD, `client/hud.toml`, picking,
+/// `client/picking.toml`, and team colors, `client/team_colors.toml`, each its default for a
+/// package of none.
+#[derive(Debug)]
+pub(crate) struct ClientFiles {
+    pub(crate) load: ClientLoad,
+    pub(crate) heights: Option<GroundHeights>,
+    pub(crate) metric: MapMetric,
+    pub(crate) hud: MatchHud,
+    pub(crate) picking: MatchPicking,
+    pub(crate) colors: MatchColors,
 }
 
 /// A package's client data: its unit looks, `client/units.toml`.
@@ -56,9 +66,9 @@ pub(crate) struct PackageClient {
     pub(crate) units: ClientUnits,
 }
 
-/// Reads the mode's client data as the client starts: the one source of `ClientData`, which the
-/// view, the camera, the models, the terrain and the pointer read, of `ClientPackages`, and of
-/// the `InputMap`, the mode's own package's `client/keys.toml`.
+/// Reads the mode's client data as the client starts: the one source of `ClientLoad`, which goes
+/// once the start ran, of the facts the frames read, of `ClientPackages`, and of the `InputMap`,
+/// the mode's own package's `client/keys.toml`.
 #[derive(Debug)]
 pub(crate) struct ClientFilesPlugin {
     pub(crate) packages: Arc<ModePackages>,
@@ -66,40 +76,59 @@ pub(crate) struct ClientFilesPlugin {
 
 impl Plugin for ClientFilesPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ClientData::read(&self.packages));
+        let ClientFiles {
+            load,
+            heights,
+            metric,
+            hud,
+            picking,
+            colors,
+        } = ClientLoad::read(&self.packages);
+        app.insert_resource(load);
+        if let Some(heights) = heights {
+            app.insert_resource(heights);
+        }
+        app.insert_resource(metric);
+        app.insert_resource(hud);
+        app.insert_resource(picking);
+        app.insert_resource(colors);
+        app.add_systems(PostStartup, ClientLoad::drop);
         app.insert_resource(ClientPackages::of(&self.packages));
         let mode = &self.packages.mode().package.files;
-        let input = ClientData::file::<KeysFile>(mode, &KeysFile::path()).unwrap_or_default();
+        let input = ClientLoad::file::<KeysFile>(mode, &KeysFile::path()).unwrap_or_default();
         app.insert_resource(InputMap::new(input));
     }
 }
 
-impl ClientData {
-    pub(crate) fn read(packages: &ModePackages) -> Self {
-        let mut data = Self::default();
+impl ClientLoad {
+    pub(crate) fn read(packages: &ModePackages) -> ClientFiles {
+        let mut load = Self::default();
         for view in packages.packages() {
-            data.read_package(view.index, &view.package.files);
+            load.read_package(view.index, &view.package.files);
         }
         let mode = &packages.mode().package.files;
-        data.read_map(mode, packages.map_name(), packages.heights().cloned());
-        data.metric = packages.map().metric();
-        data
-    }
-
-    /// The drawn heights a sim position stands above: the ground's on a planar map, where a
-    /// position's height is above its ground; none on a spatial map, where a position is a point
-    /// in space (04-capabilities/00-overview.md, The sim's ground is the map's height grid).
-    pub(crate) const fn lifts(&self) -> Option<&GroundHeights> {
-        match self.metric {
-            Metric::Planar => self.heights.as_ref(),
-            Metric::Spatial => None,
+        let map = packages.map_name();
+        let heights = load.read_ground(mode, map, packages.heights().cloned());
+        load.read_map(mode, map);
+        ClientFiles {
+            load,
+            heights,
+            metric: MapMetric(packages.map().metric()),
+            hud: MatchHud(Self::file(mode, &HudFile::path()).unwrap_or_default()),
+            picking: MatchPicking(Self::file(mode, &PickingFile::path()).unwrap_or_default()),
+            colors: MatchColors::new(Self::file(mode, &TeamColors::path()).unwrap_or_default()),
         }
     }
 
-    /// Reads the mode's own package's files of `map`: its terrain over `grid`, its heights, which
-    /// the packages read as they load, the camera, the map's lights and its client objects; and its
-    /// conditions, by which each look takes its variant.
-    fn read_map(&mut self, mode: &PackageReader, map: &MapName, grid: Option<HeightGrid>) {
+    /// Reads the terrain of `map` over `grid`, the map's heights, which the packages read as they
+    /// load, kept when its quads are the grid's cells; and gives the ground's heights, split as
+    /// the terrain draws its cells, none for a map of no heights.
+    fn read_ground(
+        &mut self,
+        mode: &PackageReader,
+        map: &MapName,
+        grid: Option<HeightGrid>,
+    ) -> Option<GroundHeights> {
         let terrain = TerrainFile::path(map);
         self.terrain = grid.as_ref().and_then(|grid| {
             let file = Self::file::<TerrainFile>(mode, &terrain)?;
@@ -110,11 +139,18 @@ impl ClientData {
             fits.then_some(file)
         });
         let quads = self.terrain.as_ref().map(TerrainFile::quads);
-        self.heights = grid.map(|grid| GroundHeights::of(grid, quads));
+        grid.map(|grid| GroundHeights::of(grid, quads))
+    }
+
+    /// Drops the start's files once the start ran: no frame reads them.
+    fn drop(mut commands: Commands<'_, '_>) {
+        commands.remove_resource::<Self>();
+    }
+
+    /// Reads the mode's own package's files of `map` that the start reads: the camera, the map's
+    /// lights and its client objects; and its conditions, by which each look takes its variant.
+    fn read_map(&mut self, mode: &PackageReader, map: &MapName) {
         self.camera = Self::file(mode, &CameraFile::path());
-        self.hud = Self::file(mode, &HudFile::path()).unwrap_or_default();
-        self.picking = Self::file(mode, &PickingFile::path()).unwrap_or_default();
-        self.team_colors = Self::file(mode, &TeamColors::path()).unwrap_or_default();
         self.lights = Self::file(mode, &MapLights::path(map));
         self.objects = Self::file(mode, &ClientObjects::path(map)).unwrap_or_default();
         // The map's conditions are fixed for the match, so each look takes its variant once.
@@ -175,7 +211,7 @@ impl ClientData {
 }
 
 #[cfg(test)]
-impl ClientData {
+impl ClientLoad {
     /// The client data of packages of the looks `units`, in their places' order, as a test of the
     /// looks draws.
     pub(crate) fn of_looks(units: impl IntoIterator<Item = ClientUnits>) -> Self {

@@ -325,12 +325,12 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "efdcea82c7b060865fca81440cf99b003e7554238e6c3e953669535efc7c7621",
+            digest: "90b9603cfa408d570fc4d6cabd1dc727b5aead571f499f07c998bbf4bd8e5a28",
         },
         Section {
             name: "tick",
             run: tick_section,
-            digest: "e9893149cbba864817a3512da5641c052fcf4d79a177970f12e741634d403837",
+            digest: "8e0d0f938fc61b13f04956669c08a0cad01a01e17cf66206fb6365221b64fe76",
         },
     ];
     let mut mismatches = String::new();

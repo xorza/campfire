@@ -1,4 +1,8 @@
+use std::sync::Arc;
+
 use bevy_ecs::world::World;
+use campfire_common::DeclaredName;
+use campfire_mode::ModeParam;
 use campfire_script::{
     CallError, CallExtension, CallParams, CallStart, Commit, ParamScope, ScriptRole, ScriptValue,
 };
@@ -14,8 +18,8 @@ use crate::order::named_refs::NamedRefs;
 /// scripts' directives).
 #[derive(Debug, Default)]
 pub struct BotCall {
-    /// Each param of the thinking bot, by name, as `ctx.params` reads it.
-    params: Vec<(String, ScriptValue)>,
+    /// Each param of the thinking bot, by name, which `ctx.params` reads as a script value.
+    params: Arc<[(DeclaredName, ModeParam)]>,
     /// Each unit of the bot, by stable id, with each action of its slots it may start, the units
     /// rising.
     startable: Vec<(StableId, ActionId)>,
@@ -24,14 +28,14 @@ pub struct BotCall {
     orders: Vec<ThinkOrder>,
 }
 
-/// What a bot's think reads of its units that only the world's systems tell, as its driver finds
-/// it before the think: each unit, by stable id, with each action of its slots it may start, the
-/// units rising, and the units that stand idle, rising (03-game-scripting.md, A bot reads what its
-/// units may start; 04-capabilities/control.md, A bot gathers).
-#[derive(Debug, Clone, Copy)]
+/// What a bot's think reads of its units that only the world's systems tell, which its driver
+/// writes before the think: each unit, by stable id, with each action of its slots it may start,
+/// the units rising, and the units that stand idle, rising (03-game-scripting.md, A bot reads what
+/// its units may start; 04-capabilities/control.md, A bot gathers).
+#[derive(Debug)]
 pub struct BotFacts<'a> {
-    pub startable: &'a [(StableId, ActionId)],
-    pub idle: &'a [StableId],
+    pub startable: &'a mut Vec<(StableId, ActionId)>,
+    pub idle: &'a mut Vec<StableId>,
 }
 
 /// An order a bot's think gives: the units it names, by stable id, and the directive, in the
@@ -43,24 +47,18 @@ pub struct ThinkOrder {
 }
 
 impl BotCall {
-    /// Readies it for the think of a bot of `params`, each by its name, whose units are as
-    /// `facts` finds them.
-    pub fn ready(
-        &mut self,
-        params: impl IntoIterator<Item = (String, ScriptValue)>,
-        facts: BotFacts<'_>,
-    ) {
-        let BotFacts { startable, idle } = facts;
-        debug_assert!(
-            startable.is_sorted_by_key(|&(id, _)| id) && idle.is_sorted(),
-            "the units of a bot's facts rise"
-        );
-        self.params.clear();
-        self.params.extend(params);
-        self.startable.clear();
-        self.startable.extend_from_slice(startable);
-        self.idle.clear();
-        self.idle.extend_from_slice(idle);
+    /// Readies it for the think of a bot of `params`: they are shared, and each converts as a
+    /// script reads it.
+    pub fn ready(&mut self, params: &Arc<[(DeclaredName, ModeParam)]>) {
+        self.params = Arc::clone(params);
+    }
+
+    /// Its facts, for the driver to write before the think, its units rising.
+    pub const fn facts_mut(&mut self) -> BotFacts<'_> {
+        BotFacts {
+            startable: &mut self.startable,
+            idle: &mut self.idle,
+        }
     }
 
     /// Whether the unit `id` stood idle as the think began.
@@ -108,8 +106,8 @@ impl CallParams for BotCall {
     const SCOPE: ParamScope = ParamScope::Bot;
 
     fn param(&self, name: &str) -> Option<ScriptValue> {
-        let held = self.params.iter().find(|(held, _)| held == name);
-        held.map(|(_, value)| value.clone())
+        let held = self.params.iter().find(|(held, _)| held.as_str() == name);
+        held.map(|(_, value)| value.to_value())
     }
 
     /// None: no effect list numbers a bot's param by its place.

@@ -72,7 +72,7 @@ fn auto_follows_a_driven_time_and_reads_the_os_otherwise() {
 fn default_is_the_auto_clock() {
     let clock = Clock::default();
     assert_eq!(clock.source(), ClockSource::Auto);
-    assert_eq!(clock.reads, Reading::Os);
+    assert_eq!(clock.reads, TimeSource::Os);
     assert_eq!(Clock::new(ClockSource::Auto).reads, clock.reads);
 }
 

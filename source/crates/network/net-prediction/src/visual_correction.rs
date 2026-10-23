@@ -28,8 +28,8 @@ pub struct VisualOffset<D> {
     /// The error between the original visual value and the new visual value.
     /// Will decay over time.
     ///
-    /// It is an offset: the apply adds it to the live value every frame, so what
-    /// is rendered is `live + error`, and the decay shrinks it towards zero.
+    /// It is an offset: the apply adds it to the visual the frame wrote, every frame, so what is
+    /// rendered is `visual + error`, and the decay shrinks it towards zero.
     ///
     /// A live [`SwitchBlend`](crate::switch_blend::SwitchBlend) window shapes that decay instead of
     /// the entity's `CorrectionPolicy`.
@@ -55,9 +55,9 @@ impl<D> VisualOffset<D> {
         }
     }
 
-    /// How long this error has been decaying at the `now` clock reading, in seconds.
-    pub const fn elapsed_secs(&self, now: Duration) -> f32 {
-        now.saturating_sub(self.start).as_secs_f32()
+    /// How long this error has been decaying at the `now` clock reading.
+    pub const fn elapsed(&self, now: Duration) -> Duration {
+        now.saturating_sub(self.start)
     }
 }
 

@@ -1,3 +1,7 @@
+use campfire_common::NamedEnum;
+
+use crate::pipeline_field::PipelineField;
+
 /// Whether a kind of action takes a field of the pipeline: never, so data that gives it is
 /// refused; when data gives it; or always, so data that does not give it is refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -7,80 +11,50 @@ pub enum Takes {
     Must,
 }
 
-/// Whether a kind of action takes a range: never; one data may give, global at a rank or in
-/// meters, global when absent; or one data must give, in meters at every rank.
+/// The pipeline's fields a kind of action takes, by field, which its section declares: a field
+/// its kind does not run is one it never takes, so no data the kind ignores loads
+/// (04-capabilities/actions.md, Each kind owns its section). A range a kind must take is in meters
+/// at every rank; a kind takes a minimum range with any range, and its passive's hold only while
+/// ready with its passive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RangeTakes {
-    Never,
-    May,
-    Meters,
-}
-
-/// The pipeline's fields a kind of action takes, which its section declares: a field its kind
-/// does not run is one it never takes, so no data the kind ignores loads
-/// (04-capabilities/actions.md, Each kind owns its section).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct KindTakes {
-    pub script: Takes,
-    pub range: RangeTakes,
-    pub cooldown: Takes,
-    pub cost: Takes,
-    pub windup: Takes,
-    pub clamp_to_range: Takes,
-    pub toggle: Takes,
-    pub channel: Takes,
-    pub hold: Takes,
-    pub charges: Takes,
-    pub charging: Takes,
-    /// Its passive modifier, and whether it holds only while ready.
-    pub passive: Takes,
-    pub delivery: Takes,
-    pub params: Takes,
-    pub on_resolve: Takes,
-    pub on_hit: Takes,
-    pub on_end: Takes,
-}
+pub struct KindTakes([Takes; <PipelineField as NamedEnum>::ALL.len()]);
 
 impl KindTakes {
     /// A kind that takes no field of the pipeline, which a kind's own names what it takes from.
-    pub const NONE: Self = Self {
-        script: Takes::Never,
-        range: RangeTakes::Never,
-        cooldown: Takes::Never,
-        cost: Takes::Never,
-        windup: Takes::Never,
-        clamp_to_range: Takes::Never,
-        toggle: Takes::Never,
-        channel: Takes::Never,
-        hold: Takes::Never,
-        charges: Takes::Never,
-        charging: Takes::Never,
-        passive: Takes::Never,
-        delivery: Takes::Never,
-        params: Takes::Never,
-        on_resolve: Takes::Never,
-        on_hit: Takes::Never,
-        on_end: Takes::Never,
-    };
+    pub const NONE: Self = Self([Takes::Never; <PipelineField as NamedEnum>::ALL.len()]);
 
     /// A kind that may take every field of the pipeline, as a cast does.
-    pub const ANY: Self = Self {
-        script: Takes::May,
-        range: RangeTakes::May,
-        cooldown: Takes::May,
-        cost: Takes::May,
-        windup: Takes::May,
-        clamp_to_range: Takes::May,
-        toggle: Takes::May,
-        channel: Takes::May,
-        hold: Takes::May,
-        charges: Takes::May,
-        charging: Takes::May,
-        passive: Takes::May,
-        delivery: Takes::May,
-        params: Takes::May,
-        on_resolve: Takes::May,
-        on_hit: Takes::May,
-        on_end: Takes::May,
-    };
+    pub const ANY: Self = Self([Takes::May; <PipelineField as NamedEnum>::ALL.len()]);
+
+    /// It with each of `fields` taken as `takes`; a field it takes with another, a minimum range
+    /// or a passive's hold while ready, is a caller's error.
+    #[must_use]
+    pub const fn with(self, takes: Takes, fields: &[PipelineField]) -> Self {
+        let mut held = self.0;
+        let mut at = 0;
+        while at < fields.len() {
+            let field = fields[at];
+            assert!(!field.follows(), "a field another's take decides");
+            held[field as usize] = takes;
+            at += 1;
+        }
+        Self(held)
+    }
+
+    /// Whether it takes `field`.
+    pub const fn of(self, field: PipelineField) -> Takes {
+        match field {
+            PipelineField::MinRange => match self.0[PipelineField::Range as usize] {
+                Takes::Never => Takes::Never,
+                Takes::May | Takes::Must => Takes::May,
+            },
+            PipelineField::PassiveWhileReady => self.0[PipelineField::PassiveModifier as usize],
+            _ => self.0[field as usize],
+        }
+    }
+
+    /// Whether its range is in meters at every rank, as it must take one.
+    pub const fn metered(self) -> bool {
+        matches!(self.0[PipelineField::Range as usize], Takes::Must)
+    }
 }

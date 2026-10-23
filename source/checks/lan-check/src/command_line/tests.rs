@@ -20,7 +20,7 @@ fn the_command_line_names_a_mode_and_its_directory() {
     assert_eq!(
         read(&[]).unwrap(),
         Args::Play {
-            root: env::temp_dir().join("campfire-lan-check")
+            root: default_root()
         }
     );
     assert_eq!(read(&["run"]).unwrap(), Args::Play { root: dir.clone() });

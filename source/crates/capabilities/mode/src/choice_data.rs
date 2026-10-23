@@ -24,7 +24,8 @@ pub struct ChoiceData {
 }
 
 /// What a choice offers: the avatar packages the mode depends on, the entries of its loadout
-/// packages, or the values its own data lists, which a session's host may pick for each seat.
+/// packages, or the values its own data lists, which a session's host may pick for each player
+/// slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Offers {

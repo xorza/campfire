@@ -1,7 +1,9 @@
 use bevy_ecs::world::World;
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_sim::{IdAllocator, StableId};
-use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, PackageIndex, Rank, Scalar};
+use campfire_values::{
+    ActionId, ActionStart, Allegiance, DashDelivery, Hit, PackageIndex, Rank, Scalar,
+};
 
 use crate::scripts::call_extension::{CallExtension, CallExtensions, CallParams, Commit};
 use crate::scripts::call_start::{CallStart, Purity};
@@ -54,8 +56,14 @@ impl Frame {
         self.call?.acting
     }
 
-    /// The seat whose player pays for the running call, or whose bot thinks in it.
-    pub fn payer(&self) -> Option<Seat> {
+    /// The allegiance of a cast's caster as its action began, which a list reads once the caster
+    /// is gone.
+    pub fn allegiance(&self) -> Option<Allegiance> {
+        self.call?.allegiance
+    }
+
+    /// The player slot whose player pays for the running call, or whose bot thinks in it.
+    pub fn payer(&self) -> Option<PlayerSlot> {
         self.call?.payer
     }
 
@@ -128,15 +136,15 @@ impl Frame {
     /// Starts the call `start` in `world`, every part readied for it; a part that fails to ready,
     /// as a param that overflows at the call's rank, fails the call, and so does one at
     /// `ScriptLimits::CHAIN_DEPTH` of a chain of combat events, which the pass must end.
-    pub(crate) fn begin(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
+    pub(crate) fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
         if start.depth >= ScriptLimits::CHAIN_DEPTH {
             return Err(CallError::Api(ApiError::ChainTooDeep));
         }
         self.ids.clone_from(world.resource::<IdAllocator>());
         self.ids_taken = false;
-        self.call = Some(start);
+        self.call = Some(*start);
         self.effects.clear();
-        self.extensions.begin(world, &start)
+        self.extensions.begin(world, start)
     }
 
     /// Queues `effect`, which applies when the call's effects do.
@@ -192,22 +200,13 @@ impl Frame {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use bevy_ecs::world::World;
     use campfire_common::Tick;
 
     use crate::scripts::call_start::CallStart;
-    use crate::scripts::error::CallError;
     use crate::scripts::frame::Frame;
     use crate::scripts::script_role::ScriptRole;
 
     impl Frame {
-        /// Starts the call `start` in `world` alone, as a test's probe makes one: in a batch of
-        /// its own, as `Frame::begin` says.
-        pub fn begin_alone(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
-            self.begin_batch(world);
-            self.begin(world, start)
-        }
-
         /// A frame whose mode call runs in tick `now`, as a test applies an effect in: it reads
         /// no world.
         pub fn in_tick(now: Tick) -> Self {

@@ -3,20 +3,21 @@ use campfire_common::DeclaredName;
 use campfire_declarations::SectionWriter;
 use campfire_geometry::BodyBox;
 use campfire_math::Num;
-use campfire_mode::{BountyData, Pays};
+use campfire_mode::{BountyData, IncomeData, IncomePays, Pays};
 use campfire_orders::AcquirePatch;
 use campfire_projectiles::ProjectileData;
 use campfire_stats::{StatValue, StatsData, TypePoolsData};
-use campfire_units::{BodyForm, CollisionData, TypeTagsData};
-use campfire_values::{EngineStat, FilterData, Stat};
+use campfire_units::{BodyShape, CollisionData, TypeTagsData};
+use campfire_values::{EngineStat, Stat};
 
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::format::game_float;
-use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
 use crate::zero_hour::format::ini::object_ini::fight_data::BodyKind;
 use crate::zero_hour::format::ini::object_ini::{GeometryShape, IniObject};
+use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::weapon_drop;
+use crate::zero_hour::rules_names::RulesNames;
+use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// An object's unit type as the import writes it in `data/units.toml`  (09-zero-hour.md, Units move
 /// by the generic backends with the original's numbers; 09-zero-hour.md, Only walkers and standing
@@ -29,14 +30,17 @@ use crate::zero_hour::weapon_drop;
 /// the armor of its starting armor set; the tags of its kinds, of victory for a structure that
 /// counts for one, and of a structure, a wall and infantry, which a projectile's hits and a scatter
 /// name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its
-/// `BuildCost` in money as the cost a kill's bounty takes its share of. Every other object has none
-/// of these. What every type shares, a death that despawns and a turret's tolerance and slot kind,
+/// `BuildCost` in money as the cost a kill's bounty takes its share of; and the money its
+/// `AutoDepositUpdate` pays over time, a capture's bonus among it (04-capabilities/games.md, Income
+/// over time). Every other object has none of these. What every type shares, a death that despawns and a turret's tolerance and slot kind,
 /// is Zero Hour's rules data, `[defaults]`, which lies under each type's own (03-game-scripting.md,
 /// Defaults under each unit type). A fired projectile's type is a projectile alone
 /// (09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and slow weapons;
 /// 09-zero-hour.md, A missile converts to a steered projectile).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedType {
+    /// Its most life, of a type that lives, which its `stats` hold too.
+    life: Option<Num>,
     pools: Option<TypePoolsData>,
     tags: Option<TypeTagsData>,
     stats: StatsData,
@@ -47,29 +51,13 @@ pub(crate) struct ImportedType {
     /// Its turn rate, the one field of its `turret` the install gives, completed as `combat` is.
     turret: Option<TurretPatch>,
     bounty: Option<BountyData>,
+    income: Option<IncomeData>,
     projectile: Option<ProjectileData>,
     /// The period of its AI module's idle scan, and every hostile unit for one that attacks
     /// buildings, as the install gives them, completed from the rules data's defaults, for a type
     /// of a weapon (09-zero-hour.md, A scan follows `AutoAcquireEnemiesWhenIdle`).
     acquire: Option<AcquirePatch>,
 }
-
-/// The player resource every cost is in.
-pub(crate) const MONEY: &str = "money";
-
-/// The mode's pool of life, and the stat of its maximum.
-pub(crate) const LIFE: &str = "life";
-
-/// The tag of a type that counts for a multiplayer victory (09-zero-hour.md, Defeat by the last
-/// building that counts).
-pub(crate) const VICTORY: &str = "counts_for_victory";
-
-/// The tags of a structure, a wall, a base defense and infantry, of the objects' `KindOf` and
-/// `FenceWidth`.
-pub(crate) const STRUCTURE: &str = "structure";
-pub(crate) const WALL: &str = "wall";
-pub(crate) const BASE_DEFENSE: &str = "base_defense";
-pub(crate) const INFANTRY: &str = "infantry";
 
 /// The widest a driving type's circle is, 25 m: the original's largest pathfinding footprint, 2
 /// cells of 10 m on each side of a center cell (`MAX_RADIUS` of `getRadiusAndCenter`), which our
@@ -78,13 +66,16 @@ pub(crate) const INFANTRY: &str = "infantry";
 const MAX_WALKER: f32 = 25.0;
 
 impl ImportedType {
-    /// The unit type of `object`, its locomotors found in `locomotors`; an error for a locomotor
-    /// no file defines, as the game refuses one, a number past what the engine holds, or a body
-    /// or a turret a unit type's load refuses, as the engine's types refuse them.
-    pub(crate) fn of(object: &IniObject, locomotors: &LocomotorIni) -> Result<Self, TypeError> {
+    /// The unit type of `object`, its locomotors found in `rules`, its names those `rules`
+    /// give; an error for a locomotor no file defines, as the game refuses one, a number past what
+    /// the engine holds, or a body or a turret a unit type's load refuses, as the engine's types
+    /// refuse them.
+    pub(crate) fn of(object: &IniObject, rules: &ZeroHourRules) -> Result<Self, TypeError> {
+        let names = &rules.names;
         let mut drive = None;
         for name in object.locomotors() {
-            let locomotor = locomotors
+            let locomotor = rules
+                .locomotors
                 .get(name)
                 .ok_or_else(|| TypeError::NoLocomotor(name.clone()))?;
             if drive.is_none() && locomotor.drives() {
@@ -92,26 +83,26 @@ impl ImportedType {
             }
         }
         let geometry = object.geometry();
-        let form = match drive {
-            Some(_) => Some(BodyForm::circle(num(geometry
+        let shape = match drive {
+            Some(_) => Some(BodyShape::circle(num(geometry
                 .bounding_circle()
                 .min(MAX_WALKER))?)),
             None if object.is_structure() && !geometry.small => Some(match geometry.shape {
                 GeometryShape::Box => {
-                    BodyForm::box_sized([num(2.0 * geometry.major)?, num(2.0 * geometry.minor)?])
+                    BodyShape::box_sized([num(2.0 * geometry.major)?, num(2.0 * geometry.minor)?])
                 }
                 GeometryShape::Sphere | GeometryShape::Cylinder => {
-                    BodyForm::circle(num(geometry.major)?)
+                    BodyShape::circle(num(geometry.major)?)
                 }
             }),
             None => None,
         };
-        let collision = match form {
-            Some(form) => {
+        let collision = match shape {
+            Some(shape) => {
                 let height = num(geometry.height())?;
-                let form = form.and_then(|form| form.raised(height));
-                let form = form.ok_or(TypeError::Body)?;
-                Some(CollisionData { form, layer: None })
+                let shape = shape.and_then(|shape| shape.raised(height));
+                let shape = shape.ok_or(TypeError::Body)?;
+                Some(CollisionData { shape, layer: None })
             }
             None => None,
         };
@@ -131,25 +122,27 @@ impl ImportedType {
             .map(|body| num(body.max))
             .transpose()?;
         if let Some(life) = life {
-            stats.push((Self::life_stat(), StatValue::flat(life)));
+            stats.push((names.life_stat.clone(), StatValue::flat(life)));
         }
+        let armor = fight
+            .starting_armor()
+            .map(|armor| ImportName::latin(armor).declared())
+            .transpose()?;
         let combat = life.map(|_| CombatPatch {
-            armor: fight
-                .starting_armor()
-                .map(|armor| ImportName::latin(armor).declared()),
+            armor,
             ..CombatPatch::default()
         });
         let kinds = [
-            (object.counts_for_victory(), VICTORY),
-            (object.is_structure(), STRUCTURE),
-            (object.is_wall(), WALL),
-            (object.is_base_defense(), BASE_DEFENSE),
-            (object.is_infantry(), INFANTRY),
+            (object.counts_for_victory(), &names.counts_for_victory),
+            (object.is_structure(), &names.structure),
+            (object.is_wall(), &names.wall),
+            (object.is_base_defense(), &names.base_defense),
+            (object.is_infantry(), &names.infantry),
         ];
         let tags: Vec<DeclaredName> = kinds
             .into_iter()
             .filter(|&(holds, _)| holds)
-            .map(|(_, tag)| declared(tag))
+            .map(|(_, tag)| tag.clone())
             .collect();
         // A turret that turns no weapon, or does not turn, aims nothing the engine's turret aims.
         let turret = fight
@@ -170,31 +163,55 @@ impl ImportedType {
         let acquire = scan
             .idle
             .then(|| {
-                let scan_ms = weapon_drop::game_ms(scan.check_rate_ms);
+                let scan_ms = game_time::of_ms(scan.check_rate_ms);
                 let scan_ms = scan_ms.map_err(|_| TypeError::Number)?;
-                let hostiles = FilterData::parse("hostiles").expect("the filter of the hostile");
                 Ok::<_, TypeError>(AcquirePatch {
                     scan_ms: Some(scan_ms),
-                    targets: scan.attack_buildings.then(|| vec![hostiles]),
+                    targets: scan.attack_buildings.then(|| vec![names.hostiles.clone()]),
                 })
             })
             .transpose()?;
         let cost = object.build().cost;
         let bounty = (life.is_some() && cost > 0).then(|| BountyData {
-            resource: declared(MONEY),
+            resource: names.money.clone(),
             pays: Pays::Cost(u32::from(cost)),
         });
+        let income = Self::income(object, names)?;
         Ok(Self {
-            pools: life.map(|_| TypePoolsData(vec![declared(LIFE)])),
+            life,
+            pools: life.map(|_| TypePoolsData(vec![names.life.clone()])),
             tags: (!tags.is_empty()).then_some(TypeTagsData(tags)),
             stats: stats.into_iter().collect(),
             collision,
             combat,
             turret,
             bounty,
+            income,
             projectile: None,
             acquire,
         })
+    }
+
+    /// The income of `object`'s `AutoDepositUpdate` in money: its amount each period of its
+    /// timing, and its capture's bonus; none for a deposit of no money, of no amount, or of no
+    /// time, which pays each frame (`AutoDepositUpdate::update`).
+    fn income(object: &IniObject, names: &RulesNames) -> Result<Option<IncomeData>, TypeError> {
+        let Some(deposit) = object.supply().deposit else {
+            return Ok(None);
+        };
+        let period_ms = game_time::of_ms(deposit.timing_ms).map_err(|_| TypeError::Number)?;
+        let Ok(amount) = u32::try_from(deposit.amount) else {
+            return Ok(None);
+        };
+        if !deposit.actual_money || amount == 0 || period_ms == 0 {
+            return Ok(None);
+        }
+        Ok(Some(IncomeData {
+            resource: names.money.clone(),
+            pays: IncomePays::Amount(amount),
+            period_ms,
+            capture: u32::try_from(deposit.capture).unwrap_or(0),
+        }))
     }
 
     /// Its idle scan, which a type of a weapon gives.
@@ -226,6 +243,9 @@ impl ImportedType {
         if let Some(bounty) = &self.bounty {
             writer.section(bounty);
         }
+        if let Some(income) = &self.income {
+            writer.section(income);
+        }
         if let Some(projectile) = &self.projectile {
             writer.section(projectile);
         }
@@ -234,6 +254,7 @@ impl ImportedType {
     /// The type of a projectile, of `projectile` alone: it has no life, no body and no tag.
     pub(crate) fn of_projectile(projectile: ProjectileData) -> Self {
         Self {
+            life: None,
             pools: None,
             tags: None,
             stats: StatsData::default(),
@@ -241,19 +262,15 @@ impl ImportedType {
             combat: None,
             turret: None,
             bounty: None,
+            income: None,
             projectile: Some(projectile),
             acquire: None,
         }
     }
 
-    /// The stat of the most life.
-    fn life_stat() -> Stat {
-        Stat::named(LIFE).expect("the life stat's name is a stat's")
-    }
-
     /// Its most life, of a type that lives.
-    pub(crate) fn life(&self) -> Option<Num> {
-        self.stats.value(&Self::life_stat()).map(|life| life.base)
+    pub(crate) const fn life(&self) -> Option<Num> {
+        self.life
     }
 
     /// Its armor, of a type that lives.
@@ -264,11 +281,11 @@ impl ImportedType {
     /// How far its body reaches from its unit's place along `x` and `z`, at `angle` degrees, as
     /// a map's load measures a placed box against its bounds; none for no body.
     pub(crate) fn reach(&self, angle: Num) -> Option<[Num; 2]> {
-        let form = self.collision.as_ref()?.form;
-        if let Some(radius) = form.circle_radius() {
+        let shape = self.collision.as_ref()?.shape;
+        if let Some(radius) = shape.circle_radius() {
             return Some([radius; 2]);
         }
-        let size = form.box_size().expect("a form is a circle or a box");
+        let size = shape.box_size().expect("a shape is a circle or a box");
         let body = BodyBox::new(size, angle).expect("a box's size alone decides whether it is one");
         Some(body.extent())
     }
@@ -293,11 +310,6 @@ impl ImportedType {
 /// `value` exactly as a `Num`; an error for one that is not finite, or past what a `Num` holds.
 fn num(value: f32) -> Result<Num, TypeError> {
     game_float::to_num(value).map_err(|_| TypeError::Number)
-}
-
-/// `name`, a name the import gives, as a declared name.
-fn declared(name: &str) -> DeclaredName {
-    DeclaredName::new(name).expect("the import's names are declared names")
 }
 
 #[cfg(test)]

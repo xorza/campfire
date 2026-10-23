@@ -1,8 +1,10 @@
 use std::num::NonZeroU32;
 use std::time::Duration;
 
-use campfire_common::{Secret, TlsKey};
-use campfire_net_emulator::{DuplexModel, EmulatedNetwork, WireClock};
+use campfire_common::Secret;
+use campfire_net_core::TimeSource;
+use campfire_net_core::TlsKey;
+use campfire_net_emulator::{DuplexModel, EmulatedNetwork};
 use campfire_net_endpoint::Endpoint;
 use campfire_net_packets::EmulatedWires;
 use campfire_net_udp::{
@@ -12,9 +14,9 @@ use campfire_protocol::{Entropy, Signer};
 
 /// What each Campfire link takes of the stack's sealed UDP protocol: the ALPN `campfire`, a
 /// server's identity from its own key, from which the stack derives its raw TLS key and its reset
-/// key, so a key file keeps its published key, and an admission of the session's seats from each
-/// address (08-sessions.md, A raw key derived from the server's key; 08-sessions.md, Limits for
-/// each address, from the session's seats).
+/// key, so a key file keeps its published key, and an admission of the session's player slots from
+/// each address (08-sessions.md, A raw key derived from the server's key; 08-sessions.md, Limits
+/// for each address, from the session's player slots).
 #[derive(Debug)]
 pub struct UdpLinks;
 
@@ -43,10 +45,11 @@ impl UdpLinks {
         UdpClient::new(ServerTrust::pinned(tls_key), Self::setup())
     }
 
-    /// At most `seats` live links from one address, and `seats` new handshakes from it, which
-    /// come back over `grace` (08-sessions.md, Limits for each address, from the session's seats).
-    pub const fn admission(seats: NonZeroU32, grace: Duration) -> AdmissionSetup {
-        AdmissionSetup::new(seats, grace)
+    /// At most `player_slots` live links from one address, and `player_slots` new handshakes from
+    /// it, which come back over `grace` (08-sessions.md, Limits for each address, from the
+    /// session's player slots).
+    pub const fn admission(player_slots: NonZeroU32, grace: Duration) -> AdmissionSetup {
+        AdmissionSetup::new(player_slots, grace)
     }
 
     /// A sealed link between a server whose own key `signer` holds and its client in the same
@@ -59,7 +62,7 @@ impl UdpLinks {
         // One draw for both ends, as a fixed entropy gives each draw the same bytes.
         let bytes = entropy.random();
         let seed = |at: usize| u64::from_le_bytes(bytes[at..at + 8].try_into().expect("8 bytes"));
-        let wires = EmulatedNetwork::new(WireClock::Os).pair(DuplexModel::perfect());
+        let wires = EmulatedNetwork::new(TimeSource::Os).pair(DuplexModel::perfect());
         // The one client of the process: no address to limit.
         let admission = Self::admission(NonZeroU32::MAX, Duration::from_secs(1));
         let server = Endpoint::from(server.emulated(admission, seed(0)));

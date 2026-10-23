@@ -10,15 +10,15 @@ use bevy::shape::{InfinitePlane3d, Ray3d};
 use bevy::transform::components::{GlobalTransform, Transform};
 use bevy::ui::Node;
 use bevy::window::{PrimaryWindow, Window};
-use campfire_common::Seat;
+use campfire_common::PlayerSlot;
 use campfire_sim::{StableId, Unpredicted};
 use campfire_units::{Dead, Owner};
 use campfire_values::Team;
 
 use crate::own_player::OwnPlayer;
 use crate::pointer::unit_picking::UnderMouse;
-use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
+use crate::view::ground_heights::GroundHeights;
 
 pub(crate) mod unit_picking;
 
@@ -32,7 +32,7 @@ pub(crate) struct Pointer<'w, 's> {
     units: LivingUnits<'w, 's>,
     drawings: Query<'w, 's, &'static Transform, With<DrawingOf>>,
     under: Res<'w, UnderMouse>,
-    data: Res<'w, ClientData>,
+    heights: Option<Res<'w, GroundHeights>>,
     hovers: Res<'w, HoverMap>,
     nodes: Query<'w, 's, (), With<Node>>,
 }
@@ -56,7 +56,7 @@ type LivingUnits<'w, 's> = Query<
 pub(crate) struct Pointed {
     pub(crate) id: StableId,
     pub(crate) team: Team,
-    pub(crate) owner: Option<Seat>,
+    pub(crate) owner: Option<PlayerSlot>,
 }
 
 impl Pointer<'_, '_> {
@@ -77,7 +77,7 @@ impl Pointer<'_, '_> {
     /// the drawn ground of a map with heights, else the plane at height 0.
     pub(crate) fn ground(&self) -> Option<Vec3> {
         let ray = self.ray()?;
-        match self.data.heights.as_ref() {
+        match self.heights.as_deref() {
             Some(heights) => heights.hit(ray.origin, *ray.direction),
             None => ray.plane_intersection_point(Vec3::ZERO, InfinitePlane3d::new(Vec3::Y)),
         }
@@ -94,8 +94,8 @@ impl Pointer<'_, '_> {
 
     /// The living unit of the player's own under the cursor.
     pub(crate) fn own_unit_under(&self) -> Option<StableId> {
-        let seat = self.own.seat();
-        let unit = self.under.iter().find(|unit| unit.owned_by(seat))?;
+        let player_slot = self.own.player_slot();
+        let unit = self.under.iter().find(|unit| unit.owned_by(player_slot))?;
         Some(unit.id)
     }
 
@@ -112,7 +112,7 @@ impl Pointer<'_, '_> {
         let shown = self
             .drawn()
             .map(|(unit, at)| (unit, camera.world_to_viewport(place, at).ok()));
-        out.extend(shown_within(rect, self.own.seat(), shown));
+        out.extend(shown_within(rect, self.own.player_slot(), shown));
     }
 
     /// Each living unit with a drawing, and where the drawing stands.
@@ -130,28 +130,28 @@ impl Pointed {
         Self {
             id,
             team,
-            owner: owner.map(|owner| owner.seat()),
+            owner: owner.map(|owner| owner.player_slot()),
         }
     }
 
-    /// Whether the player of `seat` controls it; a client of no slot, a spectator's, controls no
-    /// unit.
-    fn owned_by(self, seat: Option<Seat>) -> bool {
-        seat.is_some() && self.owner == seat
+    /// Whether the player of `player_slot` controls it; a client of no slot, a spectator's,
+    /// controls no unit.
+    fn owned_by(self, player_slot: Option<PlayerSlot>) -> bool {
+        player_slot.is_some() && self.owner == player_slot
     }
 }
 
 /// Of `units`, each with the point of the window its ground point shows at, if it shows, the
-/// stable ids of those the player of `seat` controls whose point lies within `rect`, edges
+/// stable ids of those the player of `player_slot` controls whose point lies within `rect`, edges
 /// included.
 fn shown_within(
     rect: Rect,
-    seat: Option<Seat>,
+    player_slot: Option<PlayerSlot>,
     units: impl Iterator<Item = (Pointed, Option<Vec2>)>,
 ) -> impl Iterator<Item = StableId> {
     units
         .filter(move |&(unit, shown)| {
-            unit.owned_by(seat) && shown.is_some_and(|shown| rect.contains(shown))
+            unit.owned_by(player_slot) && shown.is_some_and(|shown| rect.contains(shown))
         })
         .map(|(unit, _)| unit.id)
 }
@@ -172,8 +172,8 @@ mod tests {
     #[test]
     fn a_drag_selects_the_players_own_units_shown_within_its_rectangle() {
         let mut ids = IdAllocator::default();
-        let (own, other) = (Seat::new(0), Seat::new(1));
-        let mut unit = |owner: Option<Seat>| Pointed {
+        let (own, other) = (PlayerSlot::new(0), PlayerSlot::new(1));
+        let mut unit = |owner: Option<PlayerSlot>| Pointed {
             id: ids.allocate(),
             team: Team::new(0),
             owner,

@@ -1,15 +1,7 @@
-use crate::compression::{CompressionOutcome, compress_fragment};
-#[cfg(feature = "compression_lz4")]
-use crate::compression_algorithm::CompressionAlgorithm;
-use crate::compression_scratch::CompressionScratch;
-use crate::compression_setup::CompressionSetup;
-use crate::fragment_compression::FragmentCompression;
 use crate::message_id::MessageId;
 use bytes::Bytes;
 use campfire_net_bytes::ToBytes;
-use campfire_net_bytes::VarInt;
 use campfire_net_bytes::WriteInteger;
-use tracing::trace;
 
 /// A message too large for one packet: its bytes once, which each fragment slices at its index,
 /// and the state of each fragment.
@@ -19,10 +11,8 @@ use tracing::trace;
 #[derive(Debug)]
 pub(crate) struct FragmentedMessage {
     message_id: MessageId,
-    /// The message, compressed when that made it smaller.
     bytes: Bytes,
     fragment_len: usize,
-    compression: FragmentCompression,
     states: Vec<PartState>,
     /// No fragment before it is due.
     due_from: u16,
@@ -51,44 +41,19 @@ impl PartState {
 }
 
 impl FragmentedMessage {
-    /// Splits `message`, which is longer than `fragment_len`, into fragments of that size,
-    /// after compressing it when that makes it smaller.
-    pub(crate) fn split(
-        message_id: MessageId,
-        message: Bytes,
-        fragment_len: usize,
-        compression: CompressionSetup,
-        compression_scratch: &mut CompressionScratch,
-    ) -> Self {
+    /// Splits `bytes`, which is longer than `fragment_len`, into fragments of that size.
+    pub(crate) fn split(message_id: MessageId, bytes: Bytes, fragment_len: usize) -> Self {
         debug_assert!(
-            message.len() > fragment_len,
+            bytes.len() > fragment_len,
             "a message of {} bytes fits a fragment of {fragment_len}",
-            message.len()
+            bytes.len()
         );
-        let (bytes, compression) =
-            match compress_fragment(message.as_ref(), compression, compression_scratch) {
-                Ok(CompressionOutcome::Compressed {
-                    original_len,
-                    compressed_len,
-                }) if let Some(fragment_compression) = fragment_compression(compression) => {
-                    trace!(
-                        original_len,
-                        compressed_len, "compressed fragmented message payload"
-                    );
-                    // The message holds a copy of the compressed bytes until it is sent or acked,
-                    // so the scratch keeps its buffer.
-                    let bytes = Bytes::copy_from_slice(compression_scratch.output(compressed_len));
-                    (bytes, fragment_compression)
-                }
-                _ => (message, FragmentCompression::None),
-            };
         let fragments = u16::try_from(bytes.len().div_ceil(fragment_len))
             .expect("a channel's message bound keeps its fragments under 2^16");
         Self {
             message_id,
             bytes,
             fragment_len,
-            compression,
             states: vec![PartState::Unsent; usize::from(fragments)],
             due_from: 0,
             sent: 0,
@@ -98,6 +63,11 @@ impl FragmentedMessage {
 
     pub(crate) const fn set_message_id(&mut self, message_id: MessageId) {
         self.message_id = message_id;
+    }
+
+    /// The bytes of the message.
+    pub(crate) const fn len(&self) -> usize {
+        self.bytes.len()
     }
 
     pub(crate) fn fragments(&self) -> u16 {
@@ -191,42 +161,15 @@ impl<'a> FragmentRef<'a> {
         &self.message.bytes[start..end]
     }
 
-    /// The bytes [`Self::write`] writes.
-    pub(crate) fn bytes_len(self) -> usize {
-        let payload_len = self.payload().len();
-        self.message.message_id.bytes_len()
-            + VarInt::new(u64::from(self.index)).encoded_len()
-            + VarInt::new(u64::from(self.message.fragments())).encoded_len()
-            + if self.index == 0 {
-                self.message.compression.bytes_len()
-            } else {
-                0
-            }
-            + VarInt::new(payload_len as u64).encoded_len()
-            + payload_len
-    }
-
     /// Writes the fragment as [`FragmentBody`](crate::fragment_body::FragmentBody) reads it: the
-    /// message id, the fragment's index and count, the message's compression on its first
-    /// fragment, and its bytes.
+    /// message id, the fragment's index and count, and its bytes.
     pub(crate) fn write(self, buffer: &mut impl WriteInteger) {
         self.message.message_id.to_bytes(buffer);
         buffer.write_varint(u64::from(self.index));
         buffer.write_varint(u64::from(self.message.fragments()));
-        if self.index == 0 {
-            self.message.compression.to_bytes(buffer);
-        }
         let payload = self.payload();
         buffer.write_varint(payload.len() as u64);
         buffer.write_bytes(payload);
-    }
-}
-
-const fn fragment_compression(compression: CompressionSetup) -> Option<FragmentCompression> {
-    match compression.algorithm {
-        #[cfg(feature = "compression_lz4")]
-        Some(CompressionAlgorithm::Lz4) => Some(FragmentCompression::Lz4),
-        None => None,
     }
 }
 
@@ -254,7 +197,6 @@ pub(crate) mod internals {
                 message_id: self.message.message_id,
                 fragment_index: FragmentIndex(u64::from(self.index)),
                 fragments: FragmentCount(u64::from(self.message.fragments())),
-                compression: (self.index == 0).then_some(self.message.compression),
                 bytes: Bytes::copy_from_slice(self.payload()),
             }
         }
@@ -276,14 +218,11 @@ mod tests {
             MessageId(7),
             Bytes::from((0..len).map(|byte| byte as u8).collect::<Vec<_>>()),
             FRAGMENT_LEN,
-            CompressionSetup::DISABLED,
-            &mut CompressionScratch::default(),
         )
     }
 
     /// 2.5 fragments of bytes make 3 fragments, each a slice at its index; each writes what
-    /// `FragmentBody` reads back, its compression on the first alone, and in the length it
-    /// counts.
+    /// `FragmentBody` reads back.
     #[test]
     fn each_fragment_writes_what_the_receiver_reads() {
         let len = FRAGMENT_LEN * 5 / 2;
@@ -300,7 +239,6 @@ mod tests {
             let mut writer = Writer::default();
             fragment.write(&mut writer);
             let written = writer.take_written();
-            assert_eq!(written.len(), fragment.bytes_len());
             let read = FragmentBody::from_bytes(&mut Reader::from(written)).unwrap();
             assert_eq!(
                 read,
@@ -308,7 +246,6 @@ mod tests {
                     message_id: MessageId(7),
                     fragment_index: FragmentIndex(u64::from(index)),
                     fragments: FragmentCount(3),
-                    compression: (index == 0).then_some(FragmentCompression::None),
                     bytes: bytes.slice(range),
                 }
             );

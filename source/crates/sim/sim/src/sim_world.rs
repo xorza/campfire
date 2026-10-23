@@ -34,9 +34,9 @@ pub trait SimWorld {
     /// Writes a snapshot of the state into `out`, and gives its hash.
     fn snapshot(&self, out: &mut Vec<u8>) -> StateHash;
 
-    /// Restores `snapshot` into the world, which holds no sim entities, as
-    /// `StateRegistry::restore` does.
-    fn restore(&mut self, snapshot: &[u8]) -> Result<(), SnapshotError>;
+    /// Restores `snapshot` into the world, which holds no sim entities, and gives the restored
+    /// state's hash, as `StateRegistry::restore` does.
+    fn restore(&mut self, snapshot: &[u8]) -> Result<StateHash, SnapshotError>;
 
     /// Despawns every sim entity, so the world takes a restore again, as a target that checks
     /// one snapshot after another does.
@@ -48,6 +48,10 @@ pub trait SimWorld {
     /// Starts recording the changes of the state, and writes the whole state into `delta`, as
     /// `StateRegistry::track` does.
     fn track(&mut self, delta: &mut StateDelta);
+
+    /// Starts recording the changes of the state again, and writes the whole state into `delta`,
+    /// as `StateRegistry::track_again` does.
+    fn track_again(&mut self, delta: &mut StateDelta);
 
     /// Writes into `delta` the state that changed since the last copy, as
     /// `StateRegistry::changes` does.
@@ -89,7 +93,7 @@ impl SimWorld for World {
         self.resource::<StateRegistry>().snapshot(self, out)
     }
 
-    fn restore(&mut self, snapshot: &[u8]) -> Result<(), SnapshotError> {
+    fn restore(&mut self, snapshot: &[u8]) -> Result<StateHash, SnapshotError> {
         self.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
             registry.restore(snapshot, world)
         })
@@ -121,6 +125,12 @@ impl SimWorld for World {
         });
     }
 
+    fn track_again(&mut self, delta: &mut StateDelta) {
+        self.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
+            registry.track_again(world, delta);
+        });
+    }
+
     fn changes(&mut self, delta: &mut StateDelta) {
         self.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
             registry.changes(world, delta);
@@ -140,8 +150,8 @@ pub(crate) mod internals {
     };
     use bevy_ecs::system::ScheduleSystem;
     use bevy_ecs::world::{Mut, World};
-    use campfire_common::{Seat, Tick};
-    use campfire_schedule::StrictSchedule;
+    use campfire_common::{PlayerSlot, StateHash, Tick};
+    use campfire_schedule::internals::ScheduleExtInternals;
 
     use crate::restoring::Restoring;
     use crate::sim_tick::SimTick;
@@ -186,12 +196,12 @@ pub(crate) mod internals {
         /// nothing to change so.
         fn mutate_state(&mut self, name: &str, draws: &mut Draws, mutation: Mutation) -> bool;
 
-        /// Queues player `seat`'s input of `payload` for the next tick, as a session's log gives
-        /// one.
-        fn push_input(&mut self, seat: Seat, payload: &[u8]);
+        /// Queues player `player_slot`'s input of `payload` for the next tick, as a session's log
+        /// gives one.
+        fn push_input(&mut self, player_slot: PlayerSlot, payload: &[u8]);
 
-        /// Runs a tick in which each seat sends its payload, in their order.
-        fn step_with(&mut self, inputs: &[(Seat, &[u8])]);
+        /// Runs a tick in which each player slot sends its payload, in their order.
+        fn step_with(&mut self, inputs: &[(PlayerSlot, &[u8])]);
 
         /// The tick the match runs next.
         fn now(&self) -> Tick;
@@ -215,13 +225,13 @@ pub(crate) mod internals {
         fn insert_parts(&mut self, id: StableId, parts: impl Bundle);
 
         /// Restores `snapshot` into a restore target, in place of what the last restore left.
-        fn restore_in_place(&mut self, snapshot: &[u8]) -> Result<(), SnapshotError>;
+        fn restore_in_place(&mut self, snapshot: &[u8]) -> Result<StateHash, SnapshotError>;
     }
 
     impl SimWorldInternals for World {
         fn build_without_sync_points(&mut self) -> Result<(), String> {
             self.schedule_scope(SimUpdate, |world, schedule| {
-                StrictSchedule::without_sync_points(schedule);
+                schedule.without_sync_points();
                 let built = schedule.initialize(world).map(drop);
                 built.map_err(|error| error.to_string(schedule.graph(), world))
             })
@@ -287,14 +297,16 @@ pub(crate) mod internals {
             mutated
         }
 
-        fn push_input(&mut self, seat: Seat, payload: &[u8]) {
-            self.resource_mut::<TickInputs>()
-                .push(TickInput { seat, payload });
+        fn push_input(&mut self, player_slot: PlayerSlot, payload: &[u8]) {
+            self.resource_mut::<TickInputs>().push(TickInput {
+                player_slot,
+                payload,
+            });
         }
 
-        fn step_with(&mut self, inputs: &[(Seat, &[u8])]) {
-            for &(seat, payload) in inputs {
-                self.push_input(seat, payload);
+        fn step_with(&mut self, inputs: &[(PlayerSlot, &[u8])]) {
+            for &(player_slot, payload) in inputs {
+                self.push_input(player_slot, payload);
             }
             self.step();
         }
@@ -331,7 +343,7 @@ pub(crate) mod internals {
             self.entity_mut(entity).insert(parts);
         }
 
-        fn restore_in_place(&mut self, snapshot: &[u8]) -> Result<(), SnapshotError> {
+        fn restore_in_place(&mut self, snapshot: &[u8]) -> Result<StateHash, SnapshotError> {
             let entities: Vec<Entity> = self
                 .resource::<EntityIndex>()
                 .iter()

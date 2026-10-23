@@ -6,23 +6,22 @@
 //! - the rendered value should not snap from the pre-rollback visual state to
 //!   the corrected visual state in one frame.
 //!
-//! Correction is installed for components registered with `correct_linear`,
-//! `correct_with`, or `correct_custom`. A built-in correction adds typed systems
-//! for its component `C` and its error `D`, which record, decay and clear its
-//! [`VisualCorrection`].
+//! A predicted component `C` shows through a visual component `V`, which a frame rule writes each
+//! frame from `C`'s last two ticks while `C` keeps the simulated value (11-net-stack/replication.md,
+//! The value on screen is its own component). Correction is installed for components registered
+//! with `correct_linear`, `correct_with`, or `correct_custom`. A built-in correction adds typed
+//! systems for `C`, its visual `V` and the error `D` of `V`, which record, decay and clear its
+//! [`VisualCorrection`] on `V`.
 //!
 //! # How a correction is recorded
 //!
-//! Every correction is one measurement of one jump: the value that was on screen
-//! before it, against the value that is on screen now.
+//! Every correction is one measurement of one jump: the visual before it, against the visual
+//! now.
 //!
-//! The value before the jump is saved as [`PreviousVisual`], and the value now is
-//! whatever the live component holds when the correction is recorded. Recording
-//! happens in `PostUpdate`, after [`FrameInterpolationSystems::Interpolate`] has
-//! written the value the frame renders, so the measurement is against exactly
-//! what the entity would show without a correction. Nothing needs to know how
-//! that value was produced: the frame-interpolation rules, including bundle
-//! rules and the fixed overstep, have already run.
+//! The visual before the jump is saved as [`PreviousVisual`], and the visual now is whatever the
+//! frame wrote into `V` when the correction is recorded. Recording happens in `PostUpdate`, after
+//! [`FrameInterpolationSystems::Interpolate`] has written the value the frame renders, so the
+//! measurement is against exactly what the entity would show without a correction.
 //!
 //! So a correction samples nothing of its own: it runs after the frame interpolation it would
 //! otherwise repeat. A timeline switch is the same measurement with a different value before the
@@ -48,19 +47,14 @@
 //! - Frame interpolation reads a predicted `C` from its [`PredictionHistory`],
 //!   which prediction registers as `C`'s frame source: its value at the last
 //!   tick and the tick before.
-//! - [`FrameInterpolationSystems::Restore`] runs in `RunFixedMainLoop` before
-//!   fixed simulation and restores the live component `C` to its value at the
-//!   last tick, so fixed systems read simulation state, not the previous frame's
-//!   visual interpolation.
 //! - [`FrameInterpolationSystems::Interpolate`] runs in `PostUpdate` and writes
-//!   the visual `C` by interpolating those two values with the current fixed
-//!   overstep.
-//! - Rollback runs in `PreUpdate`. Just before a live predicted `C` is
-//!   overwritten, rollback saves [`PreviousVisual`] if `C` has correction
-//!   enabled, whatever it is about to do to the component. Replay then advances
-//!   the live component to the corrected simulation value for the current tick,
-//!   and rewrites the prediction history the frame interpolation reads, so
-//!   nothing repairs a frame history after it.
+//!   `V` from those two values at the current fixed overstep, on each entity whose
+//!   archetype a frame rule of `C` writes; only there does the offset leave `V` with
+//!   the next frame's write, so only there is it applied.
+//! - Rollback runs in `PreUpdate`. As it prepares, it saves [`PreviousVisual`] from `V`,
+//!   which still holds what the last frame showed. Replay then advances `C` to the
+//!   corrected simulation value for the current tick, and rewrites the prediction
+//!   history the frame interpolation reads, so nothing repairs a frame history after it.
 //!
 //! [`PreviousVisual`] is only cleared by the system that records the correction,
 //! so a component that is removed and added back still has its jump measured, and
@@ -72,6 +66,7 @@
 use crate::correction_policy::CorrectionPolicy;
 use crate::pending_switch::PendingSwitch;
 use crate::prediction_history::PredictionHistory;
+use crate::prediction_registry::PredictionRegistry;
 use crate::prediction_setup::PredictionSetup;
 use crate::prediction_systems::PredictionSystems;
 use crate::previous_visual::PreviousVisual;
@@ -81,26 +76,29 @@ use crate::switch_direction::SwitchDirection;
 use crate::timeline_switch_plugin::TimelineSwitchPlugin;
 use crate::visual_correction::{CONVERGED, VisualCorrection, VisualOffset};
 use bevy_app::prelude::*;
+use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
 use bevy_time::{Time, Virtual};
 use bevy_utils::prelude::DebugName;
-use campfire_net_interpolation::FrameInterpolationSystems;
-use campfire_net_interpolation::HistoryComponent;
-use campfire_net_interpolation::LerpFn;
+use campfire_net_frame_interpolation::FrameHolders;
+use campfire_net_frame_interpolation::FrameInterpolationSystems;
+use campfire_net_frame_interpolation::FrameRegistry;
+use campfire_net_frame_interpolation::LerpFn;
 use campfire_net_replication::DeferredEntityCommands;
 use campfire_net_replication::Diffable;
+use campfire_net_replication::HistoryComponent;
+use campfire_net_replication::Interpolated;
 use core::fmt::Debug;
 use tracing::trace;
 
-/// The correction fn of component `C` on errors of type `D`, which its `(C, D)` correction
-/// system reads typed.
-#[derive(Resource)]
-pub(crate) struct CorrectionFn<C, D> {
+/// The correction fn of component `C`'s visual `V` on errors of type `D`, which the prediction
+/// registry holds and its `(C, V, D)` correction systems read typed.
+pub(crate) struct CorrectionFn<C, V, D> {
     correction_fn: LerpFn<D>,
-    marker: core::marker::PhantomData<fn() -> C>,
+    marker: core::marker::PhantomData<fn() -> (C, V)>,
 }
 
-impl<C, D> CorrectionFn<C, D> {
+impl<C, V, D> CorrectionFn<C, V, D> {
     pub(crate) const fn new(correction_fn: LerpFn<D>) -> Self {
         Self {
             correction_fn,
@@ -112,14 +110,13 @@ impl<C, D> CorrectionFn<C, D> {
     /// of each entity whose switch resolved this frame into a blend.
     ///
     /// A switch to the prediction timeline saves nothing: the forced rollback that it asks for
-    /// captures the same value from the same live component in `PreUpdate` of the next frame, and
-    /// nothing writes the live value in between, so saving it here would write the same thing
-    /// twice.
+    /// saves the same visual in `PreUpdate` of the next frame, and no frame writes it in between,
+    /// so saving it here would write the same thing twice.
     pub(crate) fn save_switch_visual(
-        switches: Query<'_, '_, (Entity, &PendingSwitch, &C), Added<PendingSwitch>>,
+        switches: Query<'_, '_, (Entity, &PendingSwitch, &V), Added<PendingSwitch>>,
         mut deferred: Deferred<'_, DeferredEntityCommands>,
     ) where
-        C: HistoryComponent + Diffable<D>,
+        V: HistoryComponent + Diffable<D>,
         D: Send + Sync + 'static,
     {
         for (entity, switch, value) in &switches {
@@ -129,10 +126,8 @@ impl<C, D> CorrectionFn<C, D> {
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "switch_previous_visual_saved",
-                schedule = "PostUpdate",
-                sample_point = "PostUpdate",
                 entity = ?entity,
-                component = ?DebugName::type_name::<C>(),
+                component = ?DebugName::type_name::<V>(),
                 value = ?value,
                 "saved value for timeline switch blend"
             );
@@ -148,9 +143,9 @@ impl<C, D> CorrectionFn<C, D> {
     /// correction still there is converging, and the apply holds it.
     pub(crate) fn clear_expired_switch_state(
         time: Res<'_, Time<Virtual>>,
-        mut blends: Query<'_, '_, (&SwitchBlend, &mut PreviousVisual<C>)>,
+        mut blends: Query<'_, '_, (&SwitchBlend, &mut PreviousVisual<V>)>,
     ) where
-        C: HistoryComponent + Diffable<D>,
+        V: HistoryComponent + Diffable<D>,
         D: Send + Sync + 'static,
     {
         let now = time.elapsed();
@@ -187,15 +182,15 @@ impl<C, D> CorrectionFn<C, D> {
             '_,
             (
                 Entity,
-                &mut PreviousVisual<C>,
-                Option<&C>,
+                &mut PreviousVisual<V>,
+                Option<&V>,
                 Option<&mut VisualCorrection<D>>,
                 Has<SwitchBlend>,
             ),
         >,
         mut deferred: Deferred<'_, DeferredEntityCommands>,
     ) where
-        C: HistoryComponent + Diffable<D>,
+        V: HistoryComponent + Diffable<D>,
         D: Debug + Send + Sync + 'static,
     {
         let start = time.elapsed();
@@ -222,10 +217,8 @@ impl<C, D> CorrectionFn<C, D> {
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "visual_correction_created",
-                schedule = "PostUpdate",
-                sample_point = "PostUpdate",
                 entity = ?entity,
-                component = ?DebugName::type_name::<C>(),
+                component = ?DebugName::type_name::<V>(),
                 previous = ?previous,
                 current_visual = ?live,
                 error = ?error,
@@ -244,27 +237,44 @@ impl<C, D> CorrectionFn<C, D> {
     }
 }
 
-impl<C, D> Debug for CorrectionFn<C, D> {
+impl<C, V, D> Debug for CorrectionFn<C, V, D> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("CorrectionFn").finish_non_exhaustive()
     }
 }
 
-/// Installs built-in visual correction systems for predicted component `C`.
+/// Installs built-in visual correction systems for predicted component `C`, on its visual `V`.
 ///
-/// The corrections are recorded in [`PostUpdate`], after frame interpolation,
-/// and the visual error decays in [`PostUpdate`], in
+/// The visual is saved as a rollback prepares, the corrections are recorded in [`PostUpdate`],
+/// after frame interpolation, and the visual error decays in [`PostUpdate`], in
 /// [`RollbackSystems::VisualCorrection`].
 pub(crate) fn add_correction_systems<
-    C: HistoryComponent + Diffable<D>,
+    C: HistoryComponent,
+    V: HistoryComponent + Diffable<D>,
     D: Default + Clone + Debug + Send + Sync + 'static,
 >(
     app: &mut App,
 ) {
+    // A correction offsets the visual a frame writes, which the next frame writes again; a visual
+    // no frame rule of `C` writes would keep each offset. The registry sealed before prediction's.
+    let shown = app
+        .world()
+        .get_resource::<FrameRegistry>()
+        .is_some_and(FrameRegistry::maps::<C, V>);
+    assert!(
+        shown,
+        "{} corrects rollbacks on {}, which no frame rule shows it through",
+        core::any::type_name::<C>(),
+        core::any::type_name::<V>()
+    );
+    app.add_systems(
+        PreUpdate,
+        CorrectionFn::<C, V, D>::save_rollback_visual.in_set(RollbackSystems::Prepare),
+    );
     app.add_systems(
         PostUpdate,
         (
-            CorrectionFn::<C, D>::create_visual_correction
+            CorrectionFn::<C, V, D>::create_visual_correction
                 // The measurement is `previous - live`, so `live` has to be the
                 // value this frame renders. Without this edge the system is only
                 // ordered before the apply, leaving it free to run *before*
@@ -275,12 +285,12 @@ pub(crate) fn add_correction_systems<
                 .before(RollbackSystems::VisualCorrection),
             // A window's state is cleared as it ends, after its last measurement and before the
             // window goes.
-            CorrectionFn::<C, D>::clear_expired_switch_state
+            CorrectionFn::<C, V, D>::clear_expired_switch_state
                 .in_set(PredictionSystems::All)
                 .after(RollbackSystems::VisualCorrection)
                 .before(TimelineSwitchPlugin::expire_switch_blends),
             // The value a new switch blends from is saved once the request resolves.
-            CorrectionFn::<C, D>::save_switch_visual
+            CorrectionFn::<C, V, D>::save_switch_visual
                 .in_set(PredictionSystems::All)
                 .after(TimelineSwitchPlugin::save_previous_visuals),
         ),
@@ -297,64 +307,97 @@ pub(crate) fn add_correction_systems<
     );
     app.add_systems(
         PostUpdate,
-        CorrectionFn::<C, D>::update_visual_correction.in_set(RollbackSystems::VisualCorrection),
+        CorrectionFn::<C, V, D>::update_visual_correction.in_set(RollbackSystems::VisualCorrection),
     );
     // Correction state cannot outlive its component: without live `C` the
     // apply query never runs, so leftovers would linger until despawn — and a
     // lingering blend window would permanently block every later switch.
-    app.add_observer(CorrectionFn::<C, D>::remove_correction_state_on_live_removed);
-    app.add_observer(CorrectionFn::<C, D>::insert_correction_slots);
+    app.add_observer(CorrectionFn::<C, V, D>::remove_correction_state_on_live_removed);
+    app.add_observer(CorrectionFn::<C, V, D>::insert_correction_slots);
 }
 
-impl<C: HistoryComponent + Diffable<D>, D: Default + Clone + Debug + Send + Sync + 'static>
-    CorrectionFn<C, D>
+impl<C, V, D> CorrectionFn<C, V, D>
+where
+    C: HistoryComponent,
+    V: HistoryComponent + Diffable<D>,
+    D: Default + Clone + Debug + Send + Sync + 'static,
 {
+    /// Saves the visual each predicted entity shows as a rollback prepares: the rollback rewrites
+    /// `C`, never `V`, which still holds what the last frame showed, the value a correction is
+    /// measured from. An interpolated entity is not corrected, as its visual follows the delayed
+    /// interpolation.
+    pub(crate) fn save_rollback_visual(
+        mut visuals: Query<
+            '_,
+            '_,
+            (Entity, &V, Option<&mut PreviousVisual<V>>),
+            (With<PredictionHistory<C>>, Without<Interpolated>),
+        >,
+        mut deferred: Deferred<'_, DeferredEntityCommands>,
+    ) {
+        for (entity, visual, previous) in &mut visuals {
+            let saved = PreviousVisual(Some(visual.clone()));
+            // The slot comes with the history, so the write moves no table; one an app put the
+            // history on by hand takes it now.
+            match previous {
+                Some(mut previous) => *previous = saved,
+                None => deferred.insert(entity, saved),
+            }
+            trace!(
+                target: "campfire_net_debug::prediction",
+                kind = "previous_visual_stored",
+                entity = ?entity,
+                component = ?DebugName::type_name::<V>(),
+                "stored previous visual for correction"
+            );
+        }
+    }
+
     /// Applies and decays a stored visual correction after frame interpolation.
     ///
-    /// This typed system runs in [`PostUpdate`], in
-    /// [`RollbackSystems::VisualCorrection`], after
-    /// [`FrameInterpolationSystems::Interpolate`]. Frame interpolation first writes
-    /// the corrected visual value for the render frame; this system then applies
-    /// the decaying [`VisualCorrection`] error on top. If the remaining error is
-    /// small enough, it removes the correction component.
+    /// This typed system runs in [`PostUpdate`], in [`RollbackSystems::VisualCorrection`], after
+    /// [`FrameInterpolationSystems::Interpolate`]. Frame interpolation first writes the visual for
+    /// the render frame; this system then applies the decaying [`VisualCorrection`] error on top,
+    /// on each entity whose visual a frame rule of `C` wrote, as only that write takes the offset
+    /// away again. If the remaining error is small enough, it removes the correction.
     ///
-    /// `C` must have an interpolation rule with a frame-interpolation apply
-    /// function, because the error is measured against the value that rule produced
-    /// for this frame. The error is stored as `D` and given up by the correction
-    /// function registered through `correct_linear` or `correct_with`.
+    /// The error is stored as `D` and given up by the correction function registered through
+    /// `correct_linear` or `correct_with`.
     pub(crate) fn update_visual_correction(
         time: Res<'_, Time<Virtual>>,
-        correction: Res<'_, Self>,
+        registry: Res<'_, PredictionRegistry>,
         setup: Res<'_, PredictionSetup>,
+        holders: Res<'_, FrameHolders>,
         mut query: Query<
             '_,
             '_,
             (
                 Entity,
-                &mut C,
+                EntityLocation,
+                &mut V,
                 &mut VisualCorrection<D>,
                 Option<&CorrectionPolicy>,
                 Option<&SwitchBlend>,
             ),
         >,
     ) {
+        let correction_fn = registry.stack_correction::<C, Self>().correction_fn;
         let dt = time.delta();
         let now = time.elapsed();
         let global = &setup.correction_policy;
         query.iter_mut().for_each(
-            |(entity, mut component, mut slot, override_policy, blend_marker)| {
+            |(entity, location, mut visual, mut slot, override_policy, blend_marker)| {
                 // An idle slot is only read, so its change tick stays.
-                if slot.0.is_none() {
+                if slot.0.is_none() || !holders.shows::<C>(location.archetype_id) {
                     return;
                 }
                 let Some(visual_correction) = slot.0.as_mut() else {
                     return;
                 };
-                let dt_secs = dt.as_secs_f32();
-                let elapsed_secs = visual_correction.elapsed_secs(now);
+                let elapsed = visual_correction.elapsed(now);
                 let policy_ratio = override_policy
                     .map_or(global, |policy| policy)
-                    .lerp_ratio(elapsed_secs, dt);
+                    .lerp_ratio(elapsed, dt);
                 // A live window's ease curve shapes the decay, so the length and
                 // curve the caller asked for are what the transition looks like. The
                 // curve never gives the error up *faster* than the entity's own
@@ -364,7 +407,7 @@ impl<C: HistoryComponent + Diffable<D>, D: Default + Clone + Debug + Send + Sync
                 // ceiling, and a converged error ends the blend early.
                 let r = blend_marker
                     .filter(|marker| !marker.is_expired(now))
-                    .and_then(|marker| marker.curve_keep(now, dt_secs))
+                    .and_then(|marker| marker.curve_keep(now, dt))
                     .map_or(policy_ratio, |curve_ratio| curve_ratio.max(policy_ratio));
                 // The correction converges on its own rule, whatever the error's type: once it
                 // keeps under `CONVERGED` of its recorded jump, or its window ends, nothing is left
@@ -374,10 +417,8 @@ impl<C: HistoryComponent + Diffable<D>, D: Default + Clone + Debug + Send + Sync
                     trace!(
                         target: "campfire_net_debug::prediction",
                         kind = "visual_correction_removed",
-                        schedule = "PostUpdate",
-                        sample_point = "PostUpdate",
                         entity = ?entity,
-                        component = ?DebugName::type_name::<C>(),
+                        component = ?DebugName::type_name::<V>(),
                         error = ?visual_correction.error,
                         "removed visual correction because it converged"
                     );
@@ -385,16 +426,13 @@ impl<C: HistoryComponent + Diffable<D>, D: Default + Clone + Debug + Send + Sync
                     return;
                 }
                 visual_correction.remaining = remaining;
-                let new_error =
-                    (correction.correction_fn)(&D::default(), &visual_correction.error, r);
-                component.apply_diff(&new_error);
+                let new_error = correction_fn(&D::default(), &visual_correction.error, r);
+                visual.apply_diff(&new_error);
                 trace!(
                     target: "campfire_net_debug::prediction",
                     kind = "visual_correction_apply",
-                    schedule = "PostUpdate",
-                    sample_point = "PostUpdate",
                     entity = ?entity,
-                    component = ?DebugName::type_name::<C>(),
+                    component = ?DebugName::type_name::<V>(),
                     previous_error = ?visual_correction.error,
                     new_error = ?new_error,
                     ratio = r,
@@ -406,7 +444,7 @@ impl<C: HistoryComponent + Diffable<D>, D: Default + Clone + Debug + Send + Sync
     }
 }
 
-impl<C: Component, D: Send + Sync + 'static> CorrectionFn<C, D> {
+impl<C: Component, V: Component, D: Send + Sync + 'static> CorrectionFn<C, V, D> {
     /// Puts the correction slots on an entity as its prediction history of `C` goes on, so that no
     /// rollback or correction later moves it between tables.
     fn insert_correction_slots(
@@ -414,16 +452,16 @@ impl<C: Component, D: Send + Sync + 'static> CorrectionFn<C, D> {
         mut commands: Commands<'_, '_>,
     ) {
         commands.entity(trigger.entity).try_insert_if_new((
-            PreviousVisual::<C>::default(),
+            PreviousVisual::<V>::default(),
             VisualCorrection::<D>::default(),
         ));
     }
 
     /// Drops the decaying correction when its live component is removed.
     ///
-    /// Without live `C` nothing applies or decays the error, so it would sit there
-    /// until despawn and be added to whatever the value becomes when the component
-    /// returns.
+    /// Without live `C` no frame rule writes `V`, so nothing applies or decays the error, which
+    /// would sit there until despawn and be added to whatever the visual becomes when the
+    /// component returns.
     ///
     /// The saved value is deliberately kept: a component can be removed and added
     /// back — replication flux, or a rollback that removes it at the rollback tick

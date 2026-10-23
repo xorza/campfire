@@ -91,6 +91,11 @@ impl PacketSessionQueues {
         self.opened.drain(..)
     }
 
+    /// The oldest payload the packet session opened that the frame has not read.
+    pub fn pop_opened(&mut self) -> Option<OpenedPayload> {
+        self.opened.pop_front()
+    }
+
     /// The fates of sent payloads since the last drain.
     pub fn fates(&mut self) -> vec::Drain<'_, PayloadFate> {
         self.fates.drain(..)
@@ -256,5 +261,22 @@ mod tests {
         assert_eq!(queues.fates().count(), 0);
         assert!(queues.rtt_samples().is_empty());
         assert_eq!([queues.budget(), queues.max_payload()], [0, 1000]);
+    }
+
+    /// The opened payloads pop oldest first, then none.
+    #[test]
+    fn the_opened_payloads_pop_in_arrival_order() {
+        let mut queues = PacketSessionQueues::default();
+        for number in [4, 2] {
+            queues.push_opened(OpenedPayload {
+                number: PacketNumber(number),
+                kind: PayloadKind::new(0),
+                payload: ReceivePayload::Frozen(bytes::Bytes::new()),
+            });
+        }
+        let popped = core::iter::from_fn(|| queues.pop_opened())
+            .map(|opened| opened.number)
+            .collect::<Vec<_>>();
+        assert_eq!(popped, [PacketNumber(4), PacketNumber(2)]);
     }
 }

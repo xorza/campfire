@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use campfire_common::{AfterLeave, Seat, Tick};
+use campfire_common::{AfterLeave, PlayerSlot, Tick};
 
 use crate::delegation::Delegation;
 use crate::player_input::PlayerInput;
@@ -44,7 +44,7 @@ pub(super) struct EntriesAt {
 
 #[derive(Debug)]
 struct LoggedInput {
-    seat: Seat,
+    player_slot: PlayerSlot,
     stamp: Tick,
     payload: BytesAt,
 }
@@ -71,23 +71,23 @@ pub(super) enum Served {
         input: u32,
     },
     Join {
-        seat: Seat,
+        player_slot: PlayerSlot,
         delegation: u32,
     },
     Renew {
-        seat: Seat,
+        player_slot: PlayerSlot,
         delegation: u32,
     },
     Leave {
-        seat: Seat,
+        player_slot: PlayerSlot,
         reason: LeaveReason,
         becomes: AfterLeave,
     },
     Connected {
-        seat: Seat,
+        player_slot: PlayerSlot,
     },
     Disconnected {
-        seat: Seat,
+        player_slot: PlayerSlot,
     },
 }
 
@@ -234,7 +234,7 @@ impl LogEntries {
     pub(super) fn input(&self, index: u32) -> PlayerInput<'_> {
         let logged = &self.inputs[at(index)];
         PlayerInput {
-            seat: logged.seat,
+            player_slot: logged.player_slot,
             stamp: logged.stamp,
             payload: self.payloads.get(logged.payload),
         }
@@ -250,7 +250,7 @@ impl LogEntries {
         let index = self.inputs_len();
         let payload = self.payloads.push(input.payload);
         self.inputs.push(LoggedInput {
-            seat: input.seat,
+            player_slot: input.player_slot,
             stamp: input.stamp,
             payload,
         });
@@ -282,29 +282,35 @@ impl LogEntries {
             Served::Bot { input } => {
                 let input = self.input(input);
                 ServerInput::Bot {
-                    seat: input.seat,
+                    player_slot: input.player_slot,
                     payload: input.payload,
                 }
             }
-            Served::Join { seat, delegation } => ServerInput::Join {
-                seat,
+            Served::Join {
+                player_slot,
+                delegation,
+            } => ServerInput::Join {
+                player_slot,
                 delegation: self.delegation(delegation).clone(),
             },
-            Served::Renew { seat, delegation } => ServerInput::Renew {
-                seat,
+            Served::Renew {
+                player_slot,
+                delegation,
+            } => ServerInput::Renew {
+                player_slot,
                 delegation: self.delegation(delegation).clone(),
             },
             Served::Leave {
-                seat,
+                player_slot,
                 reason,
                 becomes,
             } => ServerInput::Leave {
-                seat,
+                player_slot,
                 reason,
                 becomes,
             },
-            Served::Connected { seat } => ServerInput::Connected { seat },
-            Served::Disconnected { seat } => ServerInput::Disconnected { seat },
+            Served::Connected { player_slot } => ServerInput::Connected { player_slot },
+            Served::Disconnected { player_slot } => ServerInput::Disconnected { player_slot },
         }
     }
 }

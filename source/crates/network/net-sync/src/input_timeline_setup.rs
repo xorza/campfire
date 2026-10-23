@@ -16,25 +16,6 @@ pub struct InputTimelineSetup {
 }
 
 impl InputTimelineSetup {
-    pub const fn new(sync_setup: SyncSetup, input_delay: InputDelaySetup) -> Self {
-        Self {
-            sync: sync_setup,
-            input_delay_setup: input_delay,
-        }
-    }
-
-    #[must_use]
-    pub const fn with_input_delay(mut self, input_delay: InputDelaySetup) -> Self {
-        self.input_delay_setup = input_delay;
-        self
-    }
-
-    #[must_use]
-    pub const fn with_sync_setup(mut self, sync_setup: SyncSetup) -> Self {
-        self.sync = sync_setup;
-        self
-    }
-
     /// Maximum number of ticks the local simulation may predict beyond confirmed remote input.
     #[inline]
     pub const fn max_predicted_ticks(&self) -> u16 {
@@ -53,6 +34,27 @@ impl Default for InputTimelineSetup {
                 ..SyncSetup::default()
             },
             input_delay_setup: InputDelaySetup::no_input_delay(),
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::input_delay_setup::InputDelaySetup;
+    use crate::input_timeline_setup::InputTimelineSetup;
+    use crate::sync_setup::SyncSetup;
+
+    impl InputTimelineSetup {
+        #[must_use]
+        pub const fn with_input_delay(mut self, input_delay: InputDelaySetup) -> Self {
+            self.input_delay_setup = input_delay;
+            self
+        }
+
+        #[must_use]
+        pub const fn with_sync_setup(mut self, sync_setup: SyncSetup) -> Self {
+            self.sync = sync_setup;
+            self
         }
     }
 }

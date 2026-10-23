@@ -33,3 +33,29 @@ fn a_number_draws_as_its_value() {
     assert_eq!(Num::from_bits(-3 << (Num::FRAC_BITS - 2)).float(), -0.75);
     assert_eq!(Num::ZERO.float(), 0.0);
 }
+
+#[test]
+fn a_point_is_a_sim_place_within_the_bound() {
+    // Exactly, its height among its axes: 0.1 in `f32` is 13,421,773 · 2⁻²⁷, which rounds to
+    // the step 1,677,722 of 2⁻²⁴, not a millimeter's multiple.
+    assert_eq!(
+        position(Vec3::new(3.0, 0.0, -2.0)),
+        Some(SimVec3::from((3, 0, -2)))
+    );
+    let tenth = position(Vec3::new(0.1, 0.0, 0.0)).unwrap();
+    assert_eq!(tenth.x.to_bits(), 1_677_722);
+    // The bound is 2²⁰ on each axis: at it a place, one past it none, though a `Num` holds it;
+    // past what a `Num` holds, none.
+    assert_eq!(
+        position(Vec3::new(0.0, -1_048_576.0, 0.0)),
+        Some(SimVec3::from((0, -1_048_576, 0)))
+    );
+    assert_eq!(position(Vec3::new(0.0, 0.0, 1_048_577.0)), None);
+    assert_eq!(position(Vec3::new(1e15, 0.0, 0.0)), None);
+    // A ground point drops the height, and holds what a `Num` holds, past the bound too.
+    assert_eq!(
+        ground_point(Vec3::new(1_048_577.0, 7.0, -2.0)),
+        Some(GroundPoint::new(Num::from(1_048_577), Num::from(-2)))
+    );
+    assert_eq!(ground_point(Vec3::new(f32::NAN, 0.0, 0.0)), None);
+}

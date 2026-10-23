@@ -2,13 +2,16 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::path::{Path, PathBuf};
 
-use campfire_common::{ContentHash, ContentHashMeaning, ContentHasher};
-use campfire_store::{DirEntries, EntryKind, FileStamp, InputFile, InputRanges};
+use campfire_package_format::{ContentHash, ContentHashMeaning, ContentHasher};
+use campfire_store::{
+    DirEntries, DirEntry, EntryKind, InputFile, InputRanges, PathError, ReadError,
+};
 
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::big::big_archive::BigArchive;
 use crate::zero_hour::format::big::error::BigReadError;
+use crate::zero_hour::format::ini::error::IniError;
 
 /// A Zero Hour install as the game reads it: every `.big` archive under its directory, its
 /// subdirectories' included, in the case-insensitive order of their paths, and each file's path in
@@ -24,14 +27,13 @@ pub(crate) struct Install {
     files: BTreeMap<ArchivePath, Located>,
 }
 
-/// One archive: its path in the install, with `/` between names, its path on disk, and its stamp
-/// as it was first read. Each read opens it again, so no handle outlives a read, and refuses it
-/// when its stamp changed, so every read is of the bytes the version check hashed.
+/// One archive: its path in the install, with `/` between names, and its file, open once as its
+/// entries are read, which every read and the version check's hash take; a read refuses it when
+/// another program changed it since, so every read is of the bytes the version check hashed.
 #[derive(Debug)]
 struct Archive {
     name: String,
-    path: PathBuf,
-    stamp: FileStamp,
+    file: InputRanges,
 }
 
 /// Where a file's bytes are: its archive, by its place in the load order, and their range.
@@ -49,18 +51,22 @@ pub(crate) struct InstallMap {
     pub(crate) dir: String,
 }
 
-/// A texture the install holds: its key, and its kind by its extension.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct InstallTexture {
-    pub(crate) path: ArchivePath,
-    pub(crate) kind: TextureKind,
-}
-
 /// A texture's file format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TextureKind {
     Dds,
     Tga,
+}
+
+impl TextureKind {
+    /// The format of the texture at `path`, by its extension; none for a file of another kind.
+    pub(crate) fn of(path: &ArchivePath) -> Option<Self> {
+        match path.extension()? {
+            "dds" => Some(Self::Dds),
+            "tga" => Some(Self::Tga),
+            _ => None,
+        }
+    }
 }
 
 /// One archive of the install and the SHA-256 of its bytes, as a version check compares them.
@@ -85,10 +91,23 @@ const SKIPPED: &str = "data\\ini\\inizh.big";
 const HASH_CHUNK: u64 = 1 << 20;
 
 impl Install {
-    /// The install under `root`, its archives read in the game's order.
+    /// The install under `root`, its archives read in the game's order: a root whose last name
+    /// is a link, as a player's install may be, by its target, as a listing follows no link, and
+    /// any other root by the path it is given.
     pub(crate) fn open(root: &Path) -> Result<Self, ZeroHourError> {
-        let mut found = Vec::new();
-        Self::find(root, "", &mut found)?;
+        let (root, entries) = match DirEntries::read(root) {
+            Ok(entries) => (root.to_owned(), entries),
+            Err(PathError {
+                error: ReadError::Link,
+                ..
+            }) => {
+                let target = DirEntries::link_target(root)?;
+                let entries = DirEntries::read(&target)?;
+                (target, entries)
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let mut found = Self::find(root, entries)?;
         found.retain(|archive| ArchivePath::of(&archive.name).as_str() != SKIPPED);
         // The game compares paths ignoring case, `\` between names; two that differ only in case
         // keep their bytes' order, so one tree gives one order.
@@ -109,8 +128,8 @@ impl Install {
         let mut archives = Vec::new();
         let mut files = BTreeMap::new();
         for Found { name, path } in found {
-            let mut file = InputFile::ranges(&path)?;
-            let big = BigArchive::read(&mut file).map_err(|error| match error {
+            let file = InputFile::ranges(&path)?;
+            let big = BigArchive::read(&file).map_err(|error| match error {
                 BigReadError::Read(error) => ZeroHourError::Read(error),
                 BigReadError::Archive(error) => ZeroHourError::Archive {
                     archive: path.clone(),
@@ -126,13 +145,26 @@ impl Install {
                     });
                 }
             }
-            archives.push(Archive {
-                name,
-                path,
-                stamp: file.stamp(),
-            });
+            archives.push(Archive { name, file });
         }
         Ok(Self { archives, files })
+    }
+
+    /// `into` after `read` read each INI file of `name`, in the game's order.
+    pub(crate) fn read_inis<T>(
+        &self,
+        name: &str,
+        mut into: T,
+        read: fn(&mut T, &[u8]) -> Result<(), IniError>,
+    ) -> Result<T, ZeroHourError> {
+        for path in self.inis(name) {
+            let bytes = self.read(&path)?;
+            read(&mut into, &bytes).map_err(|error| ZeroHourError::Ini {
+                path: path.clone(),
+                error,
+            })?;
+        }
+        Ok(into)
     }
 
     /// The bytes of the file at `path`, as the game names it, in the first archive that holds
@@ -141,12 +173,9 @@ impl Install {
         let located = *self
             .files
             .get(path)
-            .ok_or_else(|| ZeroHourError::NotInArchives(path.to_string()))?;
+            .ok_or_else(|| ZeroHourError::NotInArchives(path.clone()))?;
         let len = usize::try_from(located.size).expect("a u32 fits usize");
-        self.archives[located.archive]
-            .open()?
-            .read_at(located.offset, len)
-            .map_err(ZeroHourError::Read)
+        self.archives[located.archive].read_at(located.offset, len)
     }
 
     /// The maps the game lists, as `MapCache::loadMapsFromDisk` finds them: each `.map` under
@@ -226,38 +255,18 @@ impl Install {
         inis
     }
 
-    /// The textures the install holds, each by its key once: every `.dds` and `.tga`, in the order
-    /// of their keys.
-    pub(crate) fn textures(&self) -> Vec<InstallTexture> {
-        self.files
-            .keys()
-            .filter_map(|path| {
-                let kind = match path.extension()? {
-                    "dds" => TextureKind::Dds,
-                    "tga" => TextureKind::Tga,
-                    _ => return None,
-                };
-                Some(InstallTexture {
-                    path: path.clone(),
-                    kind,
-                })
-            })
-            .collect()
-    }
-
     /// Each archive's path and SHA-256, in the load order, each of the file of the stamp its
     /// entries were read with, so the bytes a version check knows are the bytes the import reads.
     pub(crate) fn hashed(&self) -> Result<Vec<HashedArchive>, ZeroHourError> {
         self.archives
             .iter()
             .map(|archive| {
-                let mut file = archive.open()?;
                 let mut hasher = ContentHasher::<ContentHashMeaning>::new();
                 let mut at = 0;
-                while at < file.len() {
-                    let len = (file.len() - at).min(HASH_CHUNK);
+                while at < archive.file.len() {
+                    let len = (archive.file.len() - at).min(HASH_CHUNK);
                     let chunk = usize::try_from(len).expect("a chunk fits usize");
-                    let bytes = file.read_at(at, chunk)?;
+                    let bytes = archive.read_at(at, chunk)?;
                     hasher.update(&bytes);
                     at += len;
                 }
@@ -269,41 +278,48 @@ impl Install {
             .collect()
     }
 
-    /// The archives under `dir`, `at` its path in the install: each file, or link to one, whose
-    /// name ends in `.big`, ignoring case, as the game's search finds them, a link by its
-    /// target's path, as a read follows no link. A name that is not UTF-8 sorts by its lossy
-    /// text, and opens by its own.
-    fn find(dir: &Path, at: &str, found: &mut Vec<Found>) -> Result<(), ZeroHourError> {
-        for entry in DirEntries::read(dir)? {
-            let name = format!("{at}{}", entry.name.to_string_lossy());
-            let path = dir.join(&entry.name);
-            let big = Path::new(&entry.name)
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("big"));
-            match entry.kind {
-                EntryKind::Dir => Self::find(&path, &format!("{name}/"), found)?,
-                EntryKind::File if big => found.push(Found { name, path }),
-                EntryKind::Link if big => {
-                    let path = DirEntries::link_target(&path)?;
-                    found.push(Found { name, path });
+    /// The archives under `root`, whose entries are `entries`: each file, or link to one, whose
+    /// name ends in `.big`, ignoring case, as the game's search finds them, by its path in the
+    /// install, a link by its target's path, as a read follows no link. A name that is not UTF-8
+    /// sorts by its lossy text, and opens by its own.
+    fn find(root: PathBuf, entries: Vec<DirEntry>) -> Result<Vec<Found>, ZeroHourError> {
+        let mut found = Vec::new();
+        let mut dirs = vec![(root, String::new(), entries)];
+        while let Some((dir, at, entries)) = dirs.pop() {
+            for entry in entries {
+                let name = format!("{at}{}", entry.name.to_string_lossy());
+                let path = dir.join(&entry.name);
+                let big = Path::new(&entry.name)
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("big"));
+                match entry.kind {
+                    EntryKind::Dir => {
+                        let entries = DirEntries::read(&path)?;
+                        dirs.push((path, format!("{name}/"), entries));
+                    }
+                    EntryKind::File if big => found.push(Found { name, path }),
+                    EntryKind::Link if big => {
+                        let path = DirEntries::link_target(&path)?;
+                        found.push(Found { name, path });
+                    }
+                    EntryKind::File | EntryKind::Link | EntryKind::Other => {}
                 }
-                EntryKind::File | EntryKind::Link | EntryKind::Other => {}
             }
         }
-        Ok(())
+        Ok(found)
     }
 }
 
 impl Archive {
-    /// Its file, open to read ranges of; `ArchiveChanged` when its stamp is not the one its
-    /// entries were read with.
-    fn open(&self) -> Result<InputRanges, ZeroHourError> {
-        let file = InputFile::ranges(&self.path)?;
-        if file.stamp() == self.stamp {
-            Ok(file)
+    /// The `len` bytes from `offset` of its file; `ArchiveChanged` when another program changed
+    /// it since its entries were read.
+    fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>, ZeroHourError> {
+        let bytes = self.file.read_at(offset, len)?;
+        if self.file.unchanged()? {
+            Ok(bytes)
         } else {
             Err(ZeroHourError::ArchiveChanged {
-                archive: self.path.clone(),
+                archive: self.file.path().to_owned(),
             })
         }
     }

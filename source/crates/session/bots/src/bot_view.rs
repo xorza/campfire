@@ -5,14 +5,15 @@ use bevy_ecs::system::{Query, Res, SystemParam, SystemState};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlots};
 use campfire_capabilities::BotFacts;
-use campfire_common::{Seat, Tick};
+use campfire_common::{PlayerSlot, Tick};
+use campfire_items::Inventory;
 use campfire_players::OnMatch;
 use campfire_production::{BuildPlaces, Builder, Gatherer, PlaceSearch, StartChecks};
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_units::{Commanded, Dead, Destination, GroundPoint, MapBook, PlayerUnits};
-use campfire_values::{ActionId, Block, Relations, Team, UnitTags, UnitType};
-use campfire_vision::{ByVision, SeenTargets, TeamSight};
+use campfire_values::{Block, ItemId, Relations, Team, UnitTags, UnitType};
+use campfire_vision::{ByHolding, ByVision, SeenTargets, TeamSight};
 
 use crate::loaded::ActionName;
 
@@ -33,7 +34,14 @@ pub struct BotView<'w, 's, S: TeamSight> {
     places: BuildPlaces<'w, 's, S>,
     starts: StartChecks<'w, 's>,
     orders: Query<'w, 's, UnitOrders, Allow<Unpredicted>>,
+    inventories: Query<'w, 's, &'static Inventory, Allow<Unpredicted>>,
 }
+
+/// A bot's view of a client's world: the units its client holds are those its team sees.
+pub type ClientBotView<'w, 's> = BotView<'w, 's, ByHolding>;
+
+/// A bot's view of a server's world: the units its team sees, by the match's vision.
+pub type ServerBotView<'w, 's> = BotView<'w, 's, ByVision>;
 
 /// What a `BotView` reads of a unit's orders: the action under way and its target, where it walks
 /// to, its gather loop and its build order.
@@ -54,58 +62,53 @@ type UnitRow = (
     Has<Dead>,
 );
 
-/// What a bot's think reads of its units that the world's systems tell, as found before the
-/// think: each unit, by stable id, with the action of each slot it may start, and the units that
-/// stand idle, each rising; and the units the seat owns, as it lists them.
-#[derive(Debug, Default)]
-pub(crate) struct ThinkFacts {
-    pub(crate) starts: Vec<(StableId, ActionId)>,
-    pub(crate) idle: Vec<StableId>,
-    pub(crate) owned: Vec<StableId>,
-}
-
-impl ThinkFacts {
-    /// Them as a bot's call reads them.
-    pub(crate) fn of_call(&self) -> BotFacts<'_> {
-        BotFacts {
-            startable: &self.starts,
-            idle: &self.idle,
-        }
-    }
-}
-
 /// A `BotView` of a server's world, held for a caller with the world and no system of its own.
-pub struct HeldBotView(SystemState<BotView<'static, 'static, ByVision>>);
+pub struct HeldBotView(SystemState<ServerBotView<'static, 'static>>);
 
 impl<S: TeamSight> BotView<'_, '_, S> {
-    /// The avatar of the player of `seat`, when it has one.
-    pub fn avatar(&self, seat: Seat) -> Option<Commanded> {
-        self.players.avatar(seat)
+    /// The avatar of the player of `player_slot`, when it has one.
+    pub fn avatar(&self, player_slot: PlayerSlot) -> Option<Commanded> {
+        self.players.avatar(player_slot)
     }
 
-    /// Puts in `out` the stable ids of the living units of `unit_type` the player of `seat` owns,
-    /// in increasing order.
-    pub(crate) fn typed(&self, seat: Seat, unit_type: UnitType, out: &mut Vec<StableId>) {
-        self.players.typed(seat, unit_type, out);
-    }
-
-    /// Puts in `out` the stable ids of the living units of `ids`, rising, the player of `seat`
+    /// Puts in `out` the stable ids of the living units of `unit_type` the player of `player_slot`
     /// owns, in increasing order.
-    pub(crate) fn listed(&self, seat: Seat, ids: &[StableId], out: &mut Vec<StableId>) {
-        self.players.listed(seat, ids, out);
+    pub(crate) fn typed(
+        &self,
+        player_slot: PlayerSlot,
+        unit_type: UnitType,
+        out: &mut Vec<StableId>,
+    ) {
+        self.players.typed(player_slot, unit_type, out);
     }
 
-    /// Puts in `facts` what the units of the player of `seat` are in tick `now`: each train and
-    /// build each may start, as the order's own checks find them, by unit, rising, then by slot;
-    /// and each that stands idle, with no action under way, no target, no destination, no gather
-    /// loop and no build order (04-capabilities/control.md, A bot gathers).
-    pub(crate) fn facts(&self, seat: Seat, now: Tick, facts: &mut ThinkFacts) {
-        let ThinkFacts {
-            starts,
+    /// Puts in `out` the stable ids of the living units of `ids`, rising, the player of
+    /// `player_slot` owns, in increasing order.
+    pub(crate) fn listed(
+        &self,
+        player_slot: PlayerSlot,
+        ids: &[StableId],
+        out: &mut Vec<StableId>,
+    ) {
+        self.players.listed(player_slot, ids, out);
+    }
+
+    /// Puts in `facts` what the units of the player of `player_slot` are in tick `now`: each train
+    /// and build each may start, as the order's own checks find them, by unit, rising, then by
+    /// slot; and each that stands idle, with no action under way, no target, no destination, no
+    /// gather loop and no build order (04-capabilities/control.md, A bot gathers).
+    pub(crate) fn facts(
+        &self,
+        player_slot: PlayerSlot,
+        now: Tick,
+        owned: &mut Vec<StableId>,
+        facts: BotFacts<'_>,
+    ) {
+        let BotFacts {
+            startable: starts,
             idle,
-            owned,
         } = facts;
-        self.players.owned(seat, owned);
+        self.players.owned(player_slot, owned);
         starts.clear();
         idle.clear();
         idle.extend(owned.iter().copied().filter(|&id| self.idle(id)));
@@ -126,6 +129,10 @@ impl<S: TeamSight> BotView<'_, '_, S> {
                 }
             }
         }
+        debug_assert!(
+            starts.is_sorted_by_key(|&(id, _)| id) && idle.is_sorted(),
+            "the units of a bot's facts rise"
+        );
     }
 
     /// Whether the unit `id` stands idle: none of its parts holds an order under way.
@@ -158,6 +165,14 @@ impl<S: TeamSight> BotView<'_, '_, S> {
             .indexed()
             .find(|(_, slot)| slot.action.is_some_and(holds));
         found.map(|(at, _)| at)
+    }
+
+    /// The place of the first stack of `item` that the unit `unit` carries, when it carries one.
+    pub(crate) fn carried(&self, unit: StableId, item: ItemId) -> Option<u8> {
+        let inventory = self.inventories.get(self.index.get(unit)?).ok()?;
+        let place = (inventory.slots().iter())
+            .position(|held| held.is_some_and(|held| held.item == item))?;
+        Some(u8::try_from(place).expect("an inventory's places fit a slot's"))
     }
 
     /// The nearest to the unit `from` of the living units `filter` selects for its team that its
@@ -193,7 +208,7 @@ impl HeldBotView {
         Self(SystemState::new(world))
     }
 
-    pub fn get<'w, 's>(&'s mut self, world: &'w World) -> BotView<'w, 's, ByVision> {
+    pub fn get<'w, 's>(&'s mut self, world: &'w World) -> ServerBotView<'w, 's> {
         self.0.get(world).expect("its params are always valid")
     }
 }

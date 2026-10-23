@@ -26,7 +26,7 @@ fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
             .collect(),
         ..ClientUnits::default()
     };
-    let mut data = ClientData::of_looks([
+    let mut data = ClientLoad::of_looks([
         units(vec![
             (
                 "tank",

@@ -8,7 +8,7 @@ language = "en"
 kind = "mode"
 capabilities = ["stats", "combat", "navigation", "orders", "production"]
 tick_hz = { min = 30, max = 30, default = 30 }
-teams = [{ name = "player_1", seats = 1 }, { name = "player_2", seats = 1 }, { name = "player_3", seats = 1 }, { name = "neutral", seats = 0 }]
+teams = [{ name = "player_1", player_slots = 1 }, { name = "player_2", player_slots = 1 }, { name = "player_3", player_slots = 1 }, { name = "neutral", player_slots = 0 }]
 max_move_speed = "1.0"
 script_limits = { per_call = 1000, player = 1000, think = 1000, mode = 1000 }
 

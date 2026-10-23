@@ -87,13 +87,11 @@ fn a_checked_view_keeps_only_what_the_check_holds_or_the_link_knows() {
     let unmarked = world.spawn_empty().id();
     let despawned = world.spawn(Marked).id();
     world.despawn(despawned);
-    let mut known = SendEntityMap::default();
-    known.insert(own, Entity::from_raw_u32(1).unwrap());
     let mut state = world.query_filtered::<(), With<Marked>>();
     let query = state.query(&world);
 
     let mut view = ReceiveMapView::Checked {
-        known: &known,
+        link: own,
         replicated: &query,
     };
     assert_eq!(view.get_mapped(marked), marked);
@@ -118,5 +116,8 @@ fn a_remap_keeps_the_bijection() {
     assert_eq!(map.remote_to_local().get(&entity(1)), None);
     assert_eq!(map.remote_to_local().len(), 1);
     assert_eq!(map.local_to_remote().len(), 1);
-    assert_eq!(map.get_local(entity(2)), Some(entity(20)));
+    assert_eq!(
+        map.remote_to_local().get(&entity(2)).copied(),
+        Some(entity(20))
+    );
 }

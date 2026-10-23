@@ -10,7 +10,7 @@ pub(crate) enum Args {
     Play { root: PathBuf },
     /// Verify the session log of a match played in `dir`, perhaps on another machine, with this
     /// machine's verifier, and compare the server's final hash: `verifier` when it is given, or
-    /// the one the cargo that runs the check builds.
+    /// the one beside the check.
     Verify {
         dir: PathBuf,
         verifier: Option<PathBuf>,
@@ -41,8 +41,8 @@ enum Command {
     Verify {
         /// The run's directory
         dir: PathBuf,
-        /// The verifier to run, built beforehand, so that the check needs no cargo; by default,
-        /// cargo builds the workspace's
+        /// The verifier to run; by default, the one beside the check, which `cargo drive run lan`
+        /// builds with it
         #[arg(long)]
         verifier: Option<PathBuf>,
     },
@@ -55,12 +55,16 @@ impl Args {
         match line.command {
             Some(Command::Verify { dir, verifier }) => Self::Verify { dir, verifier },
             None => Self::Play {
-                root: line
-                    .root
-                    .unwrap_or_else(|| env::temp_dir().join("campfire-lan-check")),
+                root: line.root.unwrap_or_else(default_root),
             },
         }
     }
+}
+
+/// The root of a run whose command line names none: `campfire-lan-check` in the OS's temporary
+/// directory.
+fn default_root() -> PathBuf {
+    env::temp_dir().join("campfire-lan-check")
 }
 
 #[cfg(test)]

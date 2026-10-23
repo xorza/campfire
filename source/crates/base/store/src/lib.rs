@@ -1,6 +1,6 @@
 //! How the engine writes files: durable and secret files, data directories and their locks, and
-//! the workers of `threads` that write them, each with its failure; and the signals that stop its
-//! process, the other promise of its platform layer. The bytes of each file are its caller's:
+//! the workers of `threads` that write them, each with its failure, on the OS's promises that
+//! `platform` keeps. The bytes of each file are its caller's:
 //! this crate depends on no engine crate, and decides no policy for a failure.
 
 #![expect(
@@ -21,7 +21,6 @@ mod output_file;
 mod path_error;
 #[cfg(feature = "internals")]
 mod pinned_file;
-mod platform;
 mod run_dir;
 mod secret_file;
 mod stream_writer;
@@ -45,9 +44,6 @@ pub use crate::input_file::{FileStamp, InputFile, InputRanges, InputStream, Stam
 pub use crate::latest_writer::LatestWriter;
 pub use crate::output_file::OutputFile;
 pub use crate::path_error::PathError;
-pub use crate::platform::shared_port::SharedPort;
-pub use crate::platform::stop_signals::StopSignals;
-pub use crate::platform::user_only::Exposure;
 pub use crate::run_dir::RunDir;
 pub use crate::run_dir::error::RunDirError;
 pub use crate::secret_file::SecretFile;
@@ -55,11 +51,10 @@ pub use crate::stream_writer::StreamWriter;
 pub use crate::stream_writer::error::StreamError;
 pub use crate::stream_writer::stream_sender::StreamSender;
 
-/// What the tests of the engine's crates use of files and threads: a test's own directory, the
-/// files it pins, a race of writers, a parallel run and a link.
+/// What the tests of the engine's crates use of files: a test's own directory and the files it
+/// pins.
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::pinned_file::PinnedFile;
-    pub use crate::platform::file_link::FileLink;
     pub use crate::test_dir::TestDir;
 }

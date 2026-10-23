@@ -12,16 +12,17 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
-use campfire_actions::ActionsSystems;
+use campfire_actions::{ActionSlots, ActionsSystems};
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    ByType, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, SetPlace,
+    ById, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, SetPlace,
 };
 use campfire_navigation::NavigationSystems;
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::{Capability, SimSystems};
 use campfire_stats::ModifierAppliers;
 use campfire_units::{BodyUnit, Due, UnitGrid};
+use campfire_values::UnitType;
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 use crate::ai::OnThink;
@@ -35,32 +36,29 @@ mod ai_data;
 mod attack_move;
 mod destinations;
 mod error;
-mod next_scan;
-mod next_think;
+mod next_turn;
 mod orders_api;
 mod orders_directive;
 mod orders_effect;
 mod resetting;
-mod stagger;
 mod thinking;
 mod unit_order;
 mod unit_orders;
 
-pub use crate::acquire::Acquire;
+pub use crate::acquire::{Acquire, NextScan};
 pub use crate::acquire_data::{AcquireData, AcquirePatch};
 pub use crate::acquiring::Acquiring;
-pub use crate::ai::Ai;
+pub use crate::ai::{Ai, NextThink};
 pub use crate::ai_data::AiData;
 pub use crate::attack_move::AttackMove;
 pub use crate::destinations::Destinations;
 pub use crate::error::{AcquireError, AiError, OrdersRefusal};
-pub use crate::next_scan::NextScan;
-pub use crate::next_think::NextThink;
+pub use crate::next_turn::{NextTurn, TurnSpec};
 pub use crate::orders_api::OrdersApi;
 pub use crate::orders_directive::OrdersDirective;
 pub use crate::resetting::Resetting;
 pub use crate::thinking::Thinking;
-pub use crate::unit_order::{UnitDues, UnitOrder};
+pub use crate::unit_order::{HeldOrder, UnitOrder};
 pub use crate::unit_orders::{OrderQueue, UnitOrders};
 
 /// The steps of `orders`.
@@ -110,17 +108,21 @@ impl Module for Orders {
         d.observer(NextScan::revived);
         d.part::<BodyUnit, NextScan>(|at| at.of_type::<Acquire>().map(|_| NextScan::FIRST));
         d.component::<AttackMove>();
+        d.timed::<AttackMove>();
         d.part::<BodyUnit, AttackMove>(|at| at.of_type::<Acquire>().map(|_| AttackMove::NONE));
-        d.book::<ByType<Acquire>>(Acquire::book);
+        d.book::<ById<UnitType, Acquire>>(Acquire::book);
         d.component::<NextThink>();
         d.timed::<NextThink>();
         d.observer(NextThink::revived);
         d.part::<BodyUnit, NextThink>(|at| at.of_type::<Ai>().map(|_| NextThink::FIRST));
+        d.component::<HeldOrder>();
+        d.require::<ActionSlots, HeldOrder>();
+        d.part_with::<ActionSlots, HeldOrder>();
         d.component::<Resetting>();
         d.state::<BodyUnit, Resetting>();
         d.scratch::<OrderQueue>();
         d.scratch::<Due<ThinkDue>>();
-        d.book::<ByType<Ai>>(Ai::book);
+        d.book::<ById<UnitType, Ai>>(Ai::book);
         d.rule(Ai::avatar_rule);
         d.extend::<ModifierAppliers>(Ai::applied_ways);
         d.extend::<NamedScripts>(Ai::named_scripts);
@@ -168,6 +170,7 @@ impl Orders {
     /// apply them.
     fn check_orders<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
         (
+            UnitOrders::release_held,
             UnitOrders::check_player_orders::<S>,
             UnitOrders::apply_player_orders,
         )
@@ -179,8 +182,8 @@ impl Orders {
 pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::{ActionProgress, InProgress, SlotTimes};
-    use campfire_common::{Seat, Tick};
-    use campfire_declarations::ByType;
+    use campfire_common::{PlayerSlot, Tick};
+    use campfire_declarations::ById;
     use campfire_declarations::internals::BookLoad;
     use campfire_script::{Filters, MatchNames, ScriptFailures, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
@@ -205,7 +208,7 @@ pub mod internals {
         ) -> Result<(), AiError> {
             let rate = *world.resource::<MatchRate>();
             let ai = Ai::of(data, script, world.resource::<ScriptBook>(), rate)?;
-            ByType::<Ai>::amend(world, |_, book| book.set(unit_type, ai));
+            ById::<UnitType, Ai>::amend(world, |_, book| book.set(unit_type, ai));
             Ok(())
         }
     }
@@ -229,7 +232,7 @@ pub mod internals {
                 period: rate.duration(scan_ms).expect("a test's period"),
                 targets: Filters::resolve(&targets, tags).expect("a test's tags"),
             };
-            ByType::<Acquire>::amend(world, |_, book| book.set(unit_type, acquire));
+            ById::<UnitType, Acquire>::amend(world, |_, book| book.set(unit_type, acquire));
         }
     }
 
@@ -256,7 +259,7 @@ pub mod internals {
         }
 
         /// Runs a tick, and checks that no script call failed in it.
-        pub fn think(world: &mut World, inputs: &[(Seat, &[u8])]) {
+        pub fn think(world: &mut World, inputs: &[(PlayerSlot, &[u8])]) {
             world.step_with(inputs);
             let failures = world.resource::<ScriptFailures>().calls();
             assert_eq!(failures, []);

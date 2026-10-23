@@ -1,6 +1,7 @@
 use bevy_app::App;
 use bevy_ecs::world::{EntityWorldMut, World};
 use campfire_math::TickRate;
+use campfire_net_frame_interpolation::FrameRegistryPlugin;
 use campfire_net_interpolation::internals::InterpolationStack;
 use campfire_net_stepper::Stack;
 
@@ -16,9 +17,10 @@ use crate::prediction_setup::PredictionSetup;
 pub struct PredictionStack;
 
 impl PredictionStack {
+    /// The markers and the frame registry on both sides, as `net-stack`'s groups add them.
     fn add_markers(app: &mut App) {
         if !app.is_plugin_added::<PredictionMarkerPlugin>() {
-            app.add_plugins(PredictionMarkerPlugin);
+            app.add_plugins((PredictionMarkerPlugin, FrameRegistryPlugin));
         }
     }
 }

@@ -11,6 +11,7 @@
 mod clock;
 mod clock_plugin;
 mod clock_source;
+mod local_instant;
 mod local_timeline;
 mod local_timeline_plugin;
 mod local_timeline_shift;
@@ -26,6 +27,7 @@ mod timeline_systems;
 pub use crate::clock::Clock;
 pub use crate::clock_plugin::ClockPlugin;
 pub use crate::clock_source::ClockSource;
+pub use crate::local_instant::LocalInstant;
 pub use crate::local_timeline::LocalTimeline;
 pub use crate::local_timeline_shift::LocalTimelineShift;
 pub use crate::network_timeline::NetworkTimeline;

@@ -4,7 +4,7 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::{DeferredWorld, World};
 use campfire_actions::{ActionBook, EffectListBook};
 use campfire_common::Tick;
-use campfire_declarations::ByType;
+use campfire_declarations::ById;
 use campfire_deliveries::Delivering;
 use campfire_sim::{DueIndex, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
 use campfire_states::{NotSent, Replication, SentOnce};
@@ -98,7 +98,7 @@ impl SimComponent for Area {
     // hooks; and one whose action does not give a param its inside modifiers read would fail as
     // a unit takes one; its action's start lies within the world's bound, as every place does.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let specs = world.resource::<ByType<AreaSpec>>();
+        let specs = world.resource::<ById<UnitType, AreaSpec>>();
         let spec = world
             .get::<UnitType>(entity)
             .and_then(|&unit_type| specs.get(unit_type));

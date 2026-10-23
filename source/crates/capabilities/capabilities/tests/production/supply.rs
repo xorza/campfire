@@ -26,7 +26,7 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
             (depot, supply(0, 4)),
         ],
     );
-    let player = Seat::new(0);
+    let player = PlayerSlot::new(0);
     Players::spawn(&mut game, 1, 0);
     let producer = Production::allocate_id(&mut game);
     shop.producer(
@@ -136,10 +136,10 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     game.insert_resource(requirements);
     // A match of production alone, whose players hold no modifiers until one is given them.
     Players::spawn(&mut game, 2, 0);
-    let entity = game.player_entity(Seat::new(0)).unwrap();
+    let entity = game.player_entity(PlayerSlot::new(0)).unwrap();
     let given = PlayerModifiers::default();
     game.entity_mut(entity).insert(given);
-    let player = Seat::new(0);
+    let player = PlayerSlot::new(0);
     let producer = Production::allocate_id(&mut game);
     shop.producer(
         &mut game,
@@ -161,7 +161,7 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     };
     // Neither: refused. Another player's forge, and a forge but no modifier: refused.
     step(&mut game, 0, 0);
-    Production::owned(&mut game, shop.forge, Seat::new(1));
+    Production::owned(&mut game, shop.forge, PlayerSlot::new(1));
     step(&mut game, 0, 1);
     let forge = Production::owned(&mut game, shop.forge, player);
     step(&mut game, 0, 2);
@@ -202,7 +202,7 @@ fn a_producer_may_start_a_train_only_as_its_order_would_start_it() {
                 (shop.barracks, supply(0, provides)),
             ],
         );
-        let player = Seat::new(0);
+        let player = PlayerSlot::new(0);
         Players::spawn(&mut game, 1, 1);
         let mut held = game.player_resources_mut(player).unwrap();
         held.add(shop.gold, gold).unwrap();

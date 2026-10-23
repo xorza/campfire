@@ -2,6 +2,7 @@ use campfire_harness::{FixedMatch, FixedSession};
 use campfire_package::{LoadProblem, ModePackages, ScriptProblem};
 use campfire_script::{ApiError, FailureKind};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
+use campfire_visibility::DataKind;
 
 use super::*;
 use crate::bot_script::BotScript;
@@ -19,7 +20,7 @@ fn proving(script: &str) -> PackageTree {
     tree
 }
 
-/// What one think of the bot `walker` of `packages`, for seat 0 of `fixed`, from a budget of
+/// What one think of the bot `walker` of `packages`, for player slot 0 of `fixed`, from a budget of
 /// `operations`, gave; or why it gave nothing.
 fn think(
     packages: &ModePackages,
@@ -28,12 +29,12 @@ fn think(
 ) -> Result<Heard, ThinkError> {
     let walker = DeclaredName::new("walker").unwrap();
     let bot = ThinkingBot::new(packages.bot(&walker).unwrap());
-    let books = packages.name_books();
-    let names = BotNames::new(&books);
+    let books = packages.load_books();
+    let names = BotNames::new(books);
     let mut view = HeldBotView::new(fixed.game_mut());
     let mut heard = Heard::default();
     let think = Think {
-        seat: Seat::new(0),
+        player_slot: PlayerSlot::new(0),
         now: Tick::new(1),
         budget: &mut Budget::new(operations),
         names: &names,
@@ -45,17 +46,17 @@ fn think(
     Ok(heard)
 }
 
-/// What the order script `text` gives in its tick 0 for seat 0 of `fixed`.
+/// What the order script `text` gives in its tick 0 for player slot 0 of `fixed`.
 fn scripted(packages: &ModePackages, fixed: &mut FixedMatch, text: &str) -> Heard {
-    let books = packages.name_books();
-    let names = BotNames::new(&books);
+    let books = packages.load_books();
+    let names = BotNames::new(books);
     let mut script = BotScript::new(&OrderScript::parse(text).unwrap(), &names).unwrap();
     let mut view = HeldBotView::new(fixed.game_mut());
     let view = view.get(fixed.game());
     let mut heard = Heard::default();
     script.step(
         Tick::new(0),
-        Seat::new(0),
+        PlayerSlot::new(0),
         &view,
         &mut BotBuffers::default(),
         &mut heard,
@@ -108,16 +109,18 @@ fn on_bot_think(ctx) {
 
 #[test]
 fn a_bots_think_fails_on_what_is_no_unit_no_directive_not_its_own_or_past_its_budget() {
-    // A list with a number in it, a table of no directive, and a read of the other player's
-    // units or gold, which its player does not see, each fail the think, which gives no order.
+    // A list with a number in it, a table of no directive, and a read of the other player's gold,
+    // which its player's client does not receive, each fail the think, which gives no order.
     for (body, error) in [
         ("ctx.order([1], #{ orders: \"stop\" });", ApiError::NotAUnit),
         (
             "ctx.order(ctx.own(\"hero-lancer\"), #{ orders: #{ fly: 1 } });",
             ApiError::NotADirective,
         ),
-        ("ctx.players[1].units;", ApiError::NotForRole),
-        ("ctx.players[1].resource(\"gold\");", ApiError::NotForRole),
+        (
+            "ctx.players[1].resource(\"gold\");",
+            ApiError::Unreceived(DataKind::Resources),
+        ),
     ] {
         let script = format!("fn on_bot_think(ctx) {{ {body} }}");
         let tree = proving(&script);
@@ -200,26 +203,30 @@ fn on_bot_think(ctx) {
 }
 
 #[test]
-fn bots_of_one_period_think_each_in_ticks_of_its_own_seat() {
-    // Every 3 ticks: seat 0 in ticks 0, 3 and 6, seat 1 a tick before each next, in 2, 5 and
-    // 8; every tick, each seat in every tick.
-    let thinks = |seat: u32, period: u64| {
+fn bots_of_one_period_think_each_in_ticks_of_its_own_player_slot() {
+    // Every 3 ticks: player slot 0 in ticks 0, 3 and 6, player slot 1 a tick after each, in 1, 4
+    // and 7, and player slot 4 a whole period after player slot 1, in its ticks from its own, 4 and
+    // 7; every tick, player slot 1 in every tick from its own.
+    let thinks = |player_slot: u32, period: u64| {
         let period = Ticks::new(period);
         (0..9)
-            .filter(|&tick| PacedBot::in_phase(Seat::new(seat), Tick::new(tick), period))
+            .filter(|&tick| {
+                PacedBot::in_phase(PlayerSlot::new(player_slot), Tick::new(tick), period)
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(thinks(0, 3), [0, 3, 6]);
-    assert_eq!(thinks(1, 3), [2, 5, 8]);
-    assert_eq!(thinks(1, 1), (0..9).collect::<Vec<_>>());
+    assert_eq!(thinks(1, 3), [1, 4, 7]);
+    assert_eq!(thinks(4, 3), [4, 7]);
+    assert_eq!(thinks(1, 1), (1..9).collect::<Vec<_>>());
 }
 
 #[test]
 fn a_paced_bot_thinks_in_its_phase_and_waits_out_a_spent_pool() {
-    // The walker thinks every 200 ms, 4 ticks of the proving mode's 20 Hz; seat 0 in ticks 0, 4
-    // and 8. Out of phase, tick 1 gives nothing. In tick 4 a budget of 10 operations is spent
-    // before its loop ends: no order, and the bot waits, so it thinks in tick 5, out of its
-    // phase, and gives its stop; in tick 6 it is out of phase again.
+    // The walker thinks every 200 ms, 4 ticks of the proving mode's 20 Hz; player slot 0 in ticks
+    // 0, 4 and 8. Out of phase, tick 1 gives nothing. In tick 4 a budget of 10 operations is spent
+    // before its loop ends: no order, and the bot waits, so it thinks in tick 5, out of its phase,
+    // and gives its stop; in tick 6 it is out of phase again.
     let script = "fn on_bot_think(ctx) { for i in 0..20 {} ctx.order(ctx.own(\"barracks\"), \
                   #{ orders: \"stop\" }); }";
     let tree = proving(script);
@@ -230,13 +237,13 @@ fn a_paced_bot_thinks_in_its_phase_and_waits_out_a_spent_pool() {
     let walker = DeclaredName::new("walker").unwrap();
     let rate = *fixed.game().resource::<MatchRate>();
     let mut bot = PacedBot::new(ThinkingBot::new(packages.bot(&walker).unwrap()), rate);
-    let books = packages.name_books();
-    let names = BotNames::new(&books);
+    let books = packages.load_books();
+    let names = BotNames::new(books);
     let mut view = HeldBotView::new(fixed.game_mut());
     let mut play = |fixed: &mut FixedMatch, tick: u64, operations: u64| {
         let mut heard = Heard::default();
         let think = Think {
-            seat: Seat::new(0),
+            player_slot: PlayerSlot::new(0),
             now: Tick::new(tick),
             budget: &mut Budget::new(operations),
             names: &names,

@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use campfire_capabilities::Release;
 use campfire_measure::{Kind, Scale};
 use campfire_mode::HostPicks;
+use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
 use campfire_runner::MatchBuild;
 use campfire_script::ScriptHost;
@@ -29,9 +30,7 @@ pub(crate) fn build(c: &mut Criterion) {
         let (dir, map) = (TestMode::Moba3v3.dir(), TestMode::Moba3v3.map());
         b.iter(|| {
             black_box(
-                PackageDir::new(dir.clone())
-                    .mode_packages(Some(&map))
-                    .expect("the 3v3 loads"),
+                ModePackages::at(&PackageDir::new(dir.clone()), Some(&map)).expect("the 3v3 loads"),
             )
         });
     });
@@ -40,8 +39,8 @@ pub(crate) fn build(c: &mut Criterion) {
     group.bench_function("3v3", |b| {
         let packages = moba.packages();
         let rate = MatchRate::new(packages.manifest().tick_hz.default());
-        let seats = usize::try_from(Moba3v3::PLAYERS).expect("a player count fits usize");
-        let picks = HostPicks::defaults(packages.data(), seats);
+        let player_slots = usize::try_from(Moba3v3::PLAYERS).expect("a player count fits usize");
+        let picks = HostPicks::defaults(packages.data(), player_slots);
         b.iter_custom(|builds| {
             let mut spent = Duration::ZERO;
             for _ in 0..builds {

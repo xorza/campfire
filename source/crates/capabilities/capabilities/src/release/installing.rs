@@ -13,12 +13,12 @@ pub(super) struct Installing<'a> {
     fields: SimFields<'a>,
     books: &'a mut BuiltBooks,
     facts: &'a InstallFacts<'a>,
-    walk: Walk,
+    walk: ModuleWalk,
 }
 
 /// Which modules of the list a walk installs, and what of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Walk {
+pub(super) enum ModuleWalk {
     /// The declarations of every module but the mode's scripted part, as the match is built.
     Declare,
     /// The systems of every module but the mode's scripted part, once every book is in place
@@ -35,7 +35,7 @@ impl<'a> Installing<'a> {
         fields: SimFields<'a>,
         books: &'a mut BuiltBooks,
         facts: &'a InstallFacts<'a>,
-        walk: Walk,
+        walk: ModuleWalk,
     ) -> Self {
         Installing {
             fields,
@@ -86,15 +86,15 @@ impl ModuleVisitor for Installing<'_> {
     fn module<M: Module>(&mut self) {
         if self.facts.facts.set.runs(M::CAPABILITY) {
             match self.walk {
-                Walk::Declare => self.declare::<M>(),
-                Walk::Install => self.install::<M>(),
-                Walk::Scripted => {}
+                ModuleWalk::Declare => self.declare::<M>(),
+                ModuleWalk::Install => self.install::<M>(),
+                ModuleWalk::Scripted => {}
             }
         }
     }
 
     fn scripted<M: Module>(&mut self) {
-        if self.walk == Walk::Scripted {
+        if self.walk == ModuleWalk::Scripted {
             self.declare::<M>();
             self.install::<M>();
         }

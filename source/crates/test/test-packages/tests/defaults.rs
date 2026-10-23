@@ -3,7 +3,8 @@
 use campfire_combat::{CombatData, OnDeath, TurretData};
 use campfire_common::DeclaredName;
 use campfire_math::Num;
-use campfire_package::{ContentError, DependentKind, LoadError, LoadProblem, ModePackages};
+use campfire_package::{DependentKind, LoadError, LoadProblem, ModePackages};
+use campfire_package_format::ContentError;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 
 /// The death of each of `types` of the mode, then of each avatar it depends on, in order.

@@ -1,102 +1,39 @@
-use campfire_declarations::PerType;
-use campfire_geometry::BodyBox;
+use campfire_declarations::PerId;
 use campfire_math::Num;
+use campfire_values::UnitType;
 
 use crate::body::Body;
+use crate::body_shape::BodyShape;
 use crate::layer::Layer;
 
-/// A unit type's body before a unit of it spawns: a circle, or a box of a size that the spawn's
-/// angle turns, on its layer, of its height.
+/// A unit type's body before a unit of it spawns: its shape, on its layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BodyForm {
-    form: Form,
+    shape: BodyShape,
     layer: Layer,
-    height: Num,
-}
-
-/// The shape of a `BodyForm`: a circle's radius, or a box's size, `[width, depth]`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Form {
-    Circle(Num),
-    Box([Num; 2]),
 }
 
 impl BodyForm {
-    /// A circle of `radius` on the first layer, as `Body::new` takes it.
-    pub fn circle(radius: Num) -> Option<Self> {
-        Body::new(radius).map(|_| Self {
-            form: Form::Circle(radius),
-            layer: Layer::FIRST,
-            height: Num::ZERO,
-        })
+    /// The form of `shape` on `layer`.
+    pub const fn new(shape: BodyShape, layer: Layer) -> Self {
+        Self { shape, layer }
     }
 
-    /// A box of `size`, `[width, depth]` in meters, on the first layer, when `BodyBox` takes
-    /// that size: at every angle, as the size alone decides.
-    pub fn box_sized(size: [Num; 2]) -> Option<Self> {
-        BodyBox::new(size, Num::ZERO).map(|_| Self {
-            form: Form::Box(size),
-            layer: Layer::FIRST,
-            height: Num::ZERO,
-        })
-    }
-
-    /// The form `height` meters tall, when `Body::raised` takes that height.
-    pub fn raised(self, height: Num) -> Option<Self> {
-        Body::holds_height(height).then_some(Self { height, ..self })
-    }
-
-    /// The form on `layer`.
-    #[must_use]
-    pub const fn on(self, layer: Layer) -> Self {
-        Self { layer, ..self }
+    pub const fn shape(self) -> BodyShape {
+        self.shape
     }
 
     pub const fn layer(self) -> Layer {
         self.layer
     }
 
-    /// Whether it is a box.
-    pub const fn is_box(self) -> bool {
-        matches!(self.form, Form::Box(_))
-    }
-
     /// The body a unit of it spawns with, turned by `angle` degrees: a box's turn, which a
     /// circle ignores.
     pub fn at(self, angle: Num) -> Body {
-        let body = match self.form {
-            Form::Circle(radius) => Body::new(radius).expect("a form's radius is one a body takes"),
-            Form::Box(size) => {
-                let body = BodyBox::new(size, angle);
-                Body::of_box(body.expect("a form's size is one a box takes at every angle"))
-            }
-        };
-        body.on(self.layer)
-            .raised(self.height)
-            .expect("a form's height is one a body takes")
-    }
-
-    /// The size of a box form, `[width, depth]`; `None` for a circle.
-    pub const fn box_size(self) -> Option<[Num; 2]> {
-        match self.form {
-            Form::Box(size) => Some(size),
-            Form::Circle(_) => None,
-        }
-    }
-
-    pub const fn height(self) -> Num {
-        self.height
-    }
-
-    /// The radius of a circle form, as a walker sees it; `None` for a box, which never walks.
-    pub const fn circle_radius(self) -> Option<Num> {
-        match self.form {
-            Form::Circle(radius) => Some(radius),
-            Form::Box(_) => None,
-        }
+        self.shape.body(self.layer, angle)
     }
 }
 
-impl PerType for BodyForm {
+impl PerId<UnitType> for BodyForm {
     const SCRIPTS_ONLY: bool = false;
 }
