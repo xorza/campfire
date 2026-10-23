@@ -19,10 +19,10 @@ use campfire_declarations::{
 };
 use campfire_players::Player;
 use campfire_script::{ApiVersion, EventPhase, Status};
-use campfire_sim::{Capability, SimSystems};
+use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
 use campfire_stats::StatsSystems;
 use campfire_units::{
-    BodyUnit, OpenCellRun, SpawnCallbacks, StatusTags, UnitGrid, UnitTypes, UnitsSystems,
+    AtWork, BodyUnit, OpenCellRun, SpawnCallbacks, StatusTags, UnitGrid, UnitTypes, UnitsSystems,
 };
 use campfire_values::{ActionId, Block, EngineTag, TagProperties, UnitType};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
@@ -95,6 +95,7 @@ pub use crate::error::{PointPastBound, ProductionDataError, ProductionRefusal};
 pub use crate::frame_point::FramePoint;
 pub use crate::gather_data::GatherData;
 pub use crate::gather_loop::GatherLoop;
+pub use crate::gather_loop::gather_view::GatherView;
 pub use crate::gather_spec::GatherSpec;
 pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 pub use crate::mode_supply_data::ModeSupplyData;
@@ -144,6 +145,9 @@ pub enum ProductionSystems {
     Finish,
     /// Each player's supply is counted again, and the emptied nodes go.
     Supply,
+    /// After the actions run and before units move: each builder shows whether it holds a build,
+    /// for what moves idle units aside as they move.
+    Work,
 }
 
 impl ModuleSystems for ProductionSystems {
@@ -161,6 +165,7 @@ impl ModuleSystems for ProductionSystems {
             Self::Start => SetPlace::stage(SimSystems::Act).after(ActionsSystems::Start),
             Self::Finish => SetPlace::stage(SimSystems::Mode),
             Self::Supply => SetPlace::at(UnitsSystems::End),
+            Self::Work => SetPlace::gap(SimEdgeSystems::After(SimSystems::Act)),
         }
     }
 }
@@ -197,6 +202,8 @@ impl Module for Production {
         d.component::<Rally>();
         d.component::<Builder>();
         d.timed::<Builder>();
+        d.derived::<AtWork>();
+        d.server_part::<Builder, AtWork>();
         d.component::<Site>();
         d.component::<SiteProgress>();
         d.component::<KeptSpawns>();
@@ -306,6 +313,7 @@ impl Module for Production {
                 .after(Trains::finish_trains),
         );
         cx.server(ProductionSystems::Supply, GatherLoop::despawn_empty_nodes);
+        cx.server(ProductionSystems::Work, Builder::show_work);
     }
 }
 

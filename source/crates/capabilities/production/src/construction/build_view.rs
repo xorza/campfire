@@ -128,7 +128,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             BuildTarget::Site(site) => {
                 let (&at, &body, &unit_type, site_owner, _) =
                     self.sites.get(self.index.get(site)?).ok()?;
-                let same = unit_type == building.spec.unit_type && site_owner == by.owner;
+                let same = building.spec.continues(unit_type, site_owner, by.owner);
                 same.then_some(BuildFootprint {
                     position: at.get(),
                     body,

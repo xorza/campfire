@@ -8,10 +8,10 @@ use bevy_ecs::world::World;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::Num;
 use campfire_script::UnknownName;
-use campfire_sim::SimComponent;
+use campfire_sim::{SimComponent, StableId};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
-use campfire_values::{ActionId, Named, Rank, Relation, TagSet, UnitType};
+use campfire_values::{ActionId, Named, Rank, Relation, TagSet, Team, UnitType};
 use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -23,9 +23,11 @@ use crate::action_range::ActionRange;
 use crate::action_slots::action_progress::ActionProgress;
 use crate::action_slots::action_progress::progress_dues::ProgressDues;
 use crate::action_slots::slot_times::SlotTimes;
+use crate::action_target::ActionTarget;
 use crate::rank_values::{ChargeRule, RankValues};
 use crate::slot_kind::SlotKind;
 use crate::slot_kind_book::SlotKindBook;
+use crate::targets::Targets;
 use crate::type_slots_data::TypeSlotsData;
 
 pub(crate) mod action_progress;
@@ -71,6 +73,15 @@ impl ActionSlot {
             .expect("a slot's action is in the book");
         action.values_at(self.rank?)?.charges
     }
+}
+
+/// What a unit's test of a target reads: the actions' book, the units that may be targets, and
+/// the unit's team.
+#[derive(Debug, Clone, Copy)]
+pub struct TargetTest<'a, 'w, 's> {
+    pub book: &'a ActionBook,
+    pub targets: &'a Targets<'w, 's>,
+    pub team: Team,
 }
 
 impl ActionSlots {
@@ -122,6 +133,44 @@ impl ActionSlots {
             })
         })?;
         Some(u8::try_from(at).expect("a unit's slots fit u8"))
+    }
+
+    /// Whether a unit of these slots, of `test`'s team, may attack `target`: a living enemy that
+    /// one of its weapons selects, ready or not. The one test of an attack order, which a search
+    /// for an attack's target runs too (04-capabilities/control.md, A bot's search runs its
+    /// order's own test).
+    pub fn may_attack(&self, test: &TargetTest<'_, '_, '_>, target: StableId) -> bool {
+        let TargetTest {
+            book,
+            targets,
+            team,
+        } = *test;
+        targets.enemy(team, target).is_some_and(|unit| {
+            let selected = (targets.relation(team, unit.team), unit.tags);
+            self.weapon_in(book, Some(selected)).is_some()
+        })
+    }
+
+    /// Whether the action in `slot`, learned or not, takes the unit `target` of a unit of these
+    /// slots on `test`'s team, by the start's rule of its target, `Action::start_target`; whether
+    /// the unit may start it then is the order's and the start's own test
+    /// (04-capabilities/control.md, A bot's search runs its order's own test).
+    pub fn may_aim(&self, test: &TargetTest<'_, '_, '_>, slot: u8, target: StableId) -> bool {
+        let TargetTest {
+            book,
+            targets,
+            team,
+        } = *test;
+        let action = self.slot(slot).and_then(|held| book.get(held.action?));
+        action.is_some_and(|action| {
+            let unit = |id| {
+                let unit = targets.target(id)?;
+                Some((targets.relation(team, unit.team), unit.tags))
+            };
+            action
+                .start_target(ActionTarget::Unit(target), unit)
+                .is_some()
+        })
     }
 
     /// The slot `slot`, when it holds an action it learned: an order of an action the unit has

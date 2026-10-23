@@ -4,7 +4,7 @@ drive_ticks = 1715
 
 [fingerprints]
 game = "2c0504131f560f65ac595b237b310e9db036ddf14c64e9f9e32d64a788b00dd6"
-rules = "8bb3faa5280573cf226db560f8504f785d954be64a796adf485d202603521b62"
+rules = "e98a921607dd058bfc04bfeb5f215541a8de96088b42c762b5c4b64156d04c64"
 
 [map]
 heights = [270, 340]
@@ -69,8 +69,8 @@ death = 1181
 
 [stinger]
 built = [452, 966]
-hit = 996
-death = 1230
+hit = 980
+death = 1213
 
 [missile]
 built = 718
@@ -84,9 +84,13 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
 
 [base]
-standing = [12, 2]
-think_ops = 15955
+standing = [12, 7]
+think_ops = 19745
 
 [attack]
-standing = [6, 1]
-think_ops = 9680
+ended = 17790
+standing = [4, 0]
+think_ops = 9101
+
+[attack.result]
+Won = 0

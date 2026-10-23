@@ -76,7 +76,25 @@ impl OrderRefs for Ids {
 pub trait RefMap<From: OrderRefs, To: OrderRefs> {
     type Error;
 
+    /// A unit its order takes when its team sees it, as a rally's.
     fn unit(&mut self, unit: From::Unit) -> Result<To::Unit, Self::Error>;
+
+    /// The unit an attack aims at. Each reference to a unit names what the unit is to its order,
+    /// so a reference that is a search finds one its order's own test takes
+    /// (04-capabilities/control.md, A bot's search runs its order's own test).
+    fn attack(&mut self, unit: From::Unit) -> Result<To::Unit, Self::Error>;
+
+    /// The unit the action in the order's slot aims at: a cast's target, or a gather's node.
+    fn aimed(&mut self, unit: From::Unit) -> Result<To::Unit, Self::Error>;
+
+    /// The object a use uses.
+    fn used(&mut self, unit: From::Unit) -> Result<To::Unit, Self::Error>;
+
+    /// The shop of a buy or a sale.
+    fn shop(&mut self, unit: From::Unit) -> Result<To::Unit, Self::Error>;
+
+    /// The site the build in the order's slot goes on with.
+    fn site(&mut self, unit: From::Unit) -> Result<To::Unit, Self::Error>;
 
     fn slot(&mut self, slot: From::Slot) -> Result<To::Slot, Self::Error>;
 

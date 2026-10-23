@@ -16,12 +16,10 @@ use campfire_values::{ActionId, Relation, Team};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::action::Aim;
 use crate::action_book::ActionBook;
 use crate::action_call::ResolvedCast;
 use crate::action_slots::caster::Caster;
 use crate::action_slots::{ActionSlot, ActionSlots};
-use crate::action_target::ActionTarget;
 use crate::checked_action::CheckedAction;
 use crate::purse::Purse;
 use crate::range_fit::RangeFit;
@@ -247,19 +245,9 @@ impl SlotTimes {
         if now < time.ready_at || !affords || !charged {
             return None;
         }
-        let target = match (action.aim, aim.target) {
-            (Aim::None, _) => ActionTarget::None,
-            (Aim::Point { .. } | Aim::Direction, ActionTarget::Point(at)) => {
-                ActionTarget::Point(at)
-            }
-            (Aim::Unit(filter), ActionTarget::Unit(target))
-                if living(target)
-                    .is_some_and(|unit| filter.selects(relation(unit.team), unit.tags)) =>
-            {
-                ActionTarget::Unit(target)
-            }
-            _ => return None,
-        };
+        let target = action.start_target(aim.target, |target| {
+            living(target).map(|unit| (relation(unit.team), unit.tags))
+        })?;
         Some(CheckedAction {
             id,
             target,

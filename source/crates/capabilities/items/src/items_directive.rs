@@ -30,11 +30,11 @@ impl<R: OrderRefs> ItemsDirective<R> {
         Ok(match self {
             Self::Buy { item, shop } => ItemsDirective::Buy {
                 item: refs.item(item)?,
-                shop: refs.unit(shop)?,
+                shop: refs.shop(shop)?,
             },
             Self::Sell { stack, shop } => ItemsDirective::Sell {
                 stack: refs.carried(stack)?,
-                shop: refs.unit(shop)?,
+                shop: refs.shop(shop)?,
             },
             Self::Swap { from, to } => ItemsDirective::Swap {
                 from: refs.carried(from)?,

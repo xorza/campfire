@@ -1,15 +1,16 @@
 use std::cmp::Ordering;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Allow, Without};
+use bevy_ecs::query::{Allow, Has, Or, With, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
+use campfire_declarations::ById;
 use campfire_geometry::{Metric, Placed, Volume};
 use campfire_math::{Num, Vec3};
 use campfire_players::OnMatch;
 use campfire_script::LivingUnit;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
-use campfire_units::{Body, Dead, Life, MapBook};
-use campfire_values::{Block, Distance, Relation, Relations, TagSet, Team, UnitTags};
+use campfire_units::{Body, BodyUnit, Dead, Life, MapBook, UnitLife};
+use campfire_values::{Block, Distance, Relation, Relations, TagSet, Team, UnitTags, UnitType};
 
 use crate::action_range::ActionRange;
 use crate::range_fit::RangeFit;
@@ -18,12 +19,13 @@ use crate::rank_values::RankValues;
 /// The units an attack may target: units with a life that live by `stats`' living test, whose
 /// tags let them be targets, those a client holds and does not predict among them, where the
 /// server last had them. Every capability that chooses or checks a target goes through it, so all
-/// agree on what a valid target is.
+/// agree on what a valid target is, a client that does not hold an enemy's life among them.
 #[derive(SystemParam, Debug)]
 pub struct Targets<'w, 's> {
     index: Res<'w, EntityIndex>,
     relations: OnMatch<'w, 's, Relations>,
     map: Res<'w, MapBook>,
+    lives: Option<Res<'w, ById<UnitType, Life>>>,
     units: Query<
         'w,
         's,
@@ -31,11 +33,21 @@ pub struct Targets<'w, 's> {
             &'static StableId,
             &'static Position,
             &'static Team,
-            &'static Life,
+            (
+                Has<BodyUnit>,
+                Option<&'static UnitType>,
+                Option<&'static Life>,
+            ),
             Option<&'static Body>,
             Option<&'static UnitTags>,
         ),
-        (Without<Dead>, Allow<Unpredicted>),
+        // A unit of a body whose life a client does not hold, or one of a life: never a delivery
+        // of no life, which a flight moves.
+        (
+            Or<(With<Life>, With<BodyUnit>)>,
+            Without<Dead>,
+            Allow<Unpredicted>,
+        ),
     >,
 }
 
@@ -44,7 +56,7 @@ type TargetRow<'a> = (
     &'a StableId,
     &'a Position,
     &'a Team,
-    &'a Life,
+    (bool, Option<&'a UnitType>, Option<&'a Life>),
     Option<&'a Body>,
     Option<&'a UnitTags>,
 );
@@ -139,13 +151,25 @@ impl Targets<'_, '_> {
         self.target_at(self.index.get(target)?)
     }
 
-    /// Whether a unit, `dead` or not, with `life` and `tags`, may be a target: it has a life, it
-    /// lives by `stats`' living test, so a life at 0 that has not died yet is none, and its tags
-    /// let it be one. This is the one rule of a target, which the script view reads too.
-    pub fn targetable(dead: bool, life: Option<&Life>, tags: Option<&UnitTags>) -> bool {
-        life.is_some()
-            && campfire_units::lives(dead, life)
-            && !tags.is_some_and(|tags| tags.properties.blocks(Block::Target))
+    /// Whether a unit, `dead` or not, of `life` and `tags`, may be a target: it has a life and
+    /// lives, as `UnitLife::lives` says, so a held life at 0 that has not died yet is none, and its
+    /// tags let it be one. This is the one rule of a target, which the script view reads too.
+    pub fn targetable(dead: bool, life: UnitLife<'_>, tags: Option<&UnitTags>) -> bool {
+        life.lives(dead) && !tags.is_some_and(|tags| tags.properties.blocks(Block::Target))
+    }
+
+    /// The life of a unit that holds `held`, or else is a `body` unit or not, of `unit_type`, as
+    /// the types' book of lives says.
+    fn life<'a>(
+        &self,
+        held: Option<&'a Life>,
+        body: bool,
+        unit_type: Option<&UnitType>,
+    ) -> UnitLife<'a> {
+        let lives = self.lives.as_deref();
+        let typed = unit_type
+            .is_some_and(|&unit_type| lives.is_some_and(|lives| lives.get(unit_type).is_some()));
+        UnitLife::of(held, body, typed)
     }
 
     /// `unit`, when a living unit with the life pool, whatever its tags let it be.
@@ -157,16 +181,19 @@ impl Targets<'_, '_> {
     /// target: one an area reaches.
     pub fn living_at(&self, entity: Entity) -> Option<LivingUnit> {
         let row = self.units.get(entity).ok()?;
-        let (_, _, _, life, _, _) = row;
-        campfire_units::lives(false, Some(life)).then(|| Targets::body(row))
+        let (_, _, _, (body, unit_type, held), _, _) = row;
+        // The query holds no unit that died.
+        let life = self.life(held, body, unit_type);
+        life.lives(false).then(|| Targets::body(row))
     }
 
     /// The unit of `entity`, when a living unit that may be a target.
     pub fn target_at(&self, entity: Entity) -> Option<LivingUnit> {
         let row = self.units.get(entity).ok()?;
-        let (_, _, _, life, _, tags) = row;
+        let (_, _, _, (body, unit_type, held), _, tags) = row;
         // The query holds no unit that died.
-        Targets::targetable(false, Some(life), tags).then(|| Targets::body(row))
+        let life = self.life(held, body, unit_type);
+        Targets::targetable(false, life, tags).then(|| Targets::body(row))
     }
 
     /// The volume of `target`, when it is a living unit that may be a target, as `Body::volume`

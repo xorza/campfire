@@ -5,7 +5,7 @@ use campfire_actions::{ActionBook, ActionSlots};
 use campfire_declarations::Book;
 use campfire_math::Num;
 use campfire_script::{Filter, MatchNames};
-use campfire_units::BodyForm;
+use campfire_units::{BodyForm, Owner};
 use campfire_values::{ActionId, Share, UnitType};
 
 use crate::build_start::BuildStart;
@@ -74,6 +74,19 @@ pub struct BuildSpec<'a> {
     pub(crate) refund: Share,
     pub(crate) near: &'a [PlacementCheck],
     pub(crate) away: &'a [PlacementCheck],
+}
+
+impl BuildSpec<'_> {
+    /// Whether a builder of `owner` continues a site of `site_type` and `site_owner` with it: a
+    /// site of its building and its player, as a build order at a site takes one.
+    pub(crate) fn continues(
+        &self,
+        site_type: UnitType,
+        site_owner: Option<&Owner>,
+        owner: Option<&Owner>,
+    ) -> bool {
+        site_type == self.unit_type && site_owner == owner
+    }
 }
 
 /// A builder's build of a slot: its spec, the building's type among it, and its range.

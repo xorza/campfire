@@ -196,7 +196,8 @@ impl RoutePlanner {
     /// Otherwise it ends on the center of the open cell nearest the goal, or of the cell nearest it
     /// the walker reaches, ties to the lower number, or on a short route to the cheaper, then to
     /// the lower number; with no open cell, it is empty. A start in a blocked cell may leave it for
-    /// an open one. A short route's goal is in its window. Its work counts against the tick's.
+    /// an open one beside it, and a long route's start with none beside it leaves from the open
+    /// cell nearest it. A short route's goal is in its window. Its work counts against the tick's.
     pub(crate) fn plan(
         &mut self,
         walkable: Walkable<'_>,
@@ -222,11 +223,21 @@ impl RoutePlanner {
         self.mark_blockers(walkable);
         let mut work = 1;
         let clear = !walkable.blocks_counting(Segment::new(goal, goal), &mut work);
-        let from = grid.nearest_cell(start);
+        let mut from = grid.nearest_cell(start);
         // A short route stays in its window, where the regions, made over the whole grid, do not
         // tell what it reaches; a start with no open cell beside it reaches nothing they hold.
         let regions = walkable.clearance.regions();
-        let leaves = regions.reach(from);
+        let mut leaves = regions.reach(from);
+        // A long route from deep in blocked cells, as a walker pushed into a gap narrower than its
+        // clearance stands, leaves from the open cell nearest it, as it does from one beside it
+        // (04-capabilities/navigation.md, A route leaves a blocked start).
+        if leaves.is_empty()
+            && walkable.short.is_none()
+            && let Some(open) = self.nearest_open(walkable, start, &mut work)
+        {
+            from = open;
+            leaves = regions.reach(open);
+        }
         let long = walkable.short.is_none() && !leaves.is_empty();
         let target = if clear {
             Some(grid.nearest_cell(goal))

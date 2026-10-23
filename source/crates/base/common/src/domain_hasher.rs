@@ -116,6 +116,15 @@ impl<T: HashOutput> DomainHasher<T> {
     pub fn finish(self) -> T {
         T::of_hash(*self.hasher.finalize().as_bytes())
     }
+
+    /// The hash of every part given, as `finish` gives it, and a start again in the same domain,
+    /// as BLAKE3's `reset` keeps the key its mode derived, so a hasher that makes many hashes
+    /// derives its domain's key once.
+    pub fn finish_reset(&mut self) -> T {
+        let hash = T::of_hash(*self.hasher.finalize().as_bytes());
+        self.hasher.reset();
+        hash
+    }
 }
 
 impl<T> Clone for DomainHasher<T> {

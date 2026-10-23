@@ -1,21 +1,27 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
-use bevy_ecs::system::{Commands, If, Local, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, If, Local, ParamSet, Query, Res, ResMut};
+use campfire_actions::ActionProgress;
+use campfire_declarations::RoleForm;
 use campfire_deliveries::DashDelivering;
-use campfire_sim::{Keyed, MatchRate, Ordered, Position, StableId, Unpredicted};
-use campfire_units::{Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep};
-use campfire_values::{Block, Motion, UnitTags};
+use campfire_sim::{
+    DueIndex, EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId, Unpredicted,
+};
+use campfire_units::{
+    AtWork, Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep,
+};
+use campfire_values::{Block, Motion, Team, UnitTags};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::broadphase::Broadphase;
 use crate::collider::Collider;
-use crate::collider::contact::Contact;
+use crate::collider::contact::{Contact, ContactBodies};
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::RouteMut;
-use crate::route_planner::RoutePlanner;
-use crate::steering::{Steered, Steering, TickBody};
+use crate::route::{Route, RouteAsk, RouteDues, RouteMut};
+use crate::route_planner::{RoutePlanner, Walkable};
+use crate::steering::{Aside, Steered, Steering, TickBody};
 use crate::walker::Walker;
 
 /// The living units that cannot walk, those a client only holds among them: the static bodies.
@@ -25,6 +31,48 @@ type StaticUnits = (
     Without<Dead>,
     Allow<Unpredicted>,
 );
+
+/// The bodies steering reads each tick: the living units that walk or may, a client's held ones
+/// among them, each with its team, its destination, its tags, and what it has under way.
+type SteerBodies<'w, 's> = Query<
+    'w,
+    's,
+    (
+        (
+            &'static StableId,
+            &'static Position,
+            &'static Body,
+            Option<&'static Team>,
+        ),
+        Option<&'static Destination>,
+        Option<&'static UnitTags>,
+        (Option<&'static ActionProgress>, Option<&'static AtWork>),
+    ),
+    (
+        With<MoveStep>,
+        Without<Dead>,
+        Without<ForcedMove>,
+        Allow<Unpredicted>,
+    ),
+>;
+
+/// The living walkers steering steers, and the friends that step aside among them.
+type Steerers<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        (&'static StableId, &'static Position, Option<&'static Team>),
+        &'static mut Destination,
+        &'static MoveStep,
+        &'static Body,
+        RouteMut,
+        &'static mut Progress,
+        Option<&'static UnitTags>,
+        Has<ForcedMove>,
+    ),
+    Without<Dead>,
+>;
 
 /// The walkers' moves: steered round each other, a step a tick along their routes, parted where
 /// their bodies overlap, and kept in the bounds.
@@ -39,86 +87,101 @@ impl Walking {
     /// route. A predicting client counts the units it holds that stand: one that stands has not
     /// moved since the server sent it. With no pathing grid no walker steers, and one that does not
     /// walk this tick, waits for its route, or has none ahead, does not either: none of them
-    /// takes a place in the order.
-    pub(super) fn steer(
-        rate: Res<'_, MatchRate>,
+    /// takes a place in the order. On a server, each unit of a stuck walker's team that stands
+    /// idle in its way steps aside, as `Steering::asides` says, to the nearest place it may stand
+    /// there.
+    pub(super) fn steer<F: RoleForm>(
+        (rate, index, tick): (Res<'_, MatchRate>, Res<'_, EntityIndex>, Res<'_, SimTick>),
+        mut asks: ResMut<'_, DueIndex<Route>>,
         If((grid, mut planner)): If<(Res<'_, PathingGrid>, ResMut<'_, RoutePlanner>)>,
         statics: Res<'_, BodyIndex>,
-        bodies: Query<
-            '_,
-            '_,
-            (
-                &StableId,
-                &Position,
-                &Body,
-                Option<&Destination>,
-                Option<&UnitTags>,
-            ),
-            (
-                With<MoveStep>,
-                Without<Dead>,
-                Without<ForcedMove>,
-                Allow<Unpredicted>,
-            ),
-        >,
-        mut walkers: Query<
-            '_,
-            '_,
-            (
-                Entity,
-                &StableId,
-                &Position,
-                &Destination,
-                &MoveStep,
-                &Body,
-                RouteMut,
-                &mut Progress,
-                Option<&UnitTags>,
-                Has<ForcedMove>,
-            ),
-            Without<Dead>,
-        >,
-        (mut steering, mut order): (Local<'_, Steering>, Local<'_, Ordered>),
+        mut units: ParamSet<'_, '_, (SteerBodies<'_, '_>, Steerers<'_, '_>)>,
+        (mut steering, mut order, mut asides): (
+            Local<'_, Steering>,
+            Local<'_, Ordered>,
+            Local<'_, Vec<Aside>>,
+        ),
     ) {
-        let read = bodies
-            .iter()
-            .map(|(&id, &at, body, destination, tags)| TickBody {
+        let bodies = units.p0();
+        let read = bodies.iter().map(
+            |((&id, &at, body, team), destination, tags, (progress, at_work))| TickBody {
                 body: IndexedBody::of(id, at.get(), body),
+                team: team.copied(),
                 walks: Self::walks(destination, tags, Motion::Own),
                 gathers: tags.is_some_and(|tags| tags.passes()),
-            });
+                idle: destination.is_some_and(|destination| destination.get().is_none())
+                    && progress.is_none_or(|progress| {
+                        progress.in_progress().is_none() && progress.attack_target().is_none()
+                    })
+                    && !at_work.is_some_and(|at_work| at_work.get()),
+            },
+        );
         steering.read(&statics, read);
+        let mut walkers = units.p1();
         let stuck_ticks = rate
             .ticks(Steering::STUCK_MS)
             .expect("a fixed time fits")
             .get();
         let ordered = walkers
             .iter()
-            .filter(
-                |&(_, _, _, destination, _, _, ref route, _, tags, forced)| {
-                    Self::walks(Some(destination), tags, Motion::of(forced))
-                        && route.asked().is_none()
-                        && !route.read().ahead().is_empty()
-                },
-            )
-            .map(|(entity, &id, ..)| Keyed { id, entity });
+            .filter(|(_, _, destination, _, _, route, _, tags, forced)| {
+                Self::walks(Some(destination), *tags, Motion::of(*forced))
+                    && route.asked().is_none()
+                    && !route.read().ahead().is_empty()
+            })
+            .map(|(entity, (&id, ..), ..)| Keyed { id, entity });
+        asides.clear();
         for &Keyed { entity, .. } in order.sort(ordered) {
-            let (_, &id, &at, _, step, body, mut route, mut progress, tags, _) =
+            let (_, (&id, &at, team), _, step, body, mut route, mut progress, tags, _) =
                 walkers.get_mut(entity).expect("a walker in the order");
             let steered = Steered {
                 id,
                 position: at.get(),
+                team: team.copied(),
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
                 stuck: u64::from(progress.track(at.get(), step.get())) >= stuck_ticks,
                 gathering: tags.is_some_and(|tags| tags.passes()),
             };
+            let ahead = route.read().ahead()[0];
+            if !F::PREDICTS && steered.stuck {
+                steering.asides(steered, ahead, &mut asides);
+            }
             if let Some(detour) =
                 steering.steer(&mut planner, &grid, &statics, steered, route.read().ahead())
             {
                 route.splice(at.get(), steering.short(), detour.skipped, detour.reached);
                 progress.reset();
             }
+        }
+        // Each friend steps aside once a tick, for the first walker by stable id that moves it;
+        // a predicting client moves none, as stepping aside is the server's.
+        asides.sort_by_key(|aside| aside.id);
+        asides.dedup_by_key(|aside| aside.id);
+        for &Aside { id, to } in &*asides {
+            let Some(entity) = index.get(id) else {
+                continue;
+            };
+            let (_, _, mut destination, _, body, mut route, mut progress, ..) = walkers
+                .get_mut(entity)
+                .expect("a friend that stands is a walker");
+            let walkable = Walkable::of(grid.clearance(Walker::walking(Some(body))), &statics);
+            let Some(to) = planner.stand_at(walkable, to) else {
+                continue;
+            };
+            // It asks its route as it takes its destination, as the routing does, so the moves
+            // of this tick do not drop the destination of a walker with no route yet.
+            Destination::route_to(&mut destination, Some(to));
+            let ask = RouteAsk {
+                goal: to,
+                tick: tick.start(),
+                party: None,
+            };
+            route.ask(
+                ask,
+                &mut progress,
+                &mut RouteDues::new(&mut asks, id, entity),
+            );
         }
     }
 
@@ -226,7 +289,8 @@ impl Walking {
     /// since, so the server alone parts the client's units from it. Every tick reads the bodies
     /// into `colliders`, finds their contacts with `broadphase`, and writes back the bodies a
     /// contact may have pushed, by their places in `pushed`, buffers it keeps: a body that may
-    /// not be pushed, or that no contact names, stays where it stood.
+    /// not be pushed, or that no contact names, stays where it stood. A walker the contacts leave
+    /// in a static body stands at the nearest place it may, as `stand_clear` says.
     pub(super) fn collide(
         mut units: Query<
             '_,
@@ -245,6 +309,7 @@ impl Walking {
         >,
         statics: Res<'_, BodyIndex>,
         standing: Query<'_, '_, Has<ForcedMove>, StaticUnits>,
+        routes: (Option<Res<'_, PathingGrid>>, Option<Res<'_, RoutePlanner>>),
         (mut colliders, mut broadphase, mut pushed): (
             Local<'_, Vec<Collider>>,
             Local<'_, Broadphase>,
@@ -277,6 +342,9 @@ impl Walking {
         );
         let contacts = broadphase.contacts(&colliders, &statics);
         Collider::resolve(&mut colliders, contacts);
+        if let (Some(grid), Some(planner)) = routes {
+            Self::stand_clear(&mut colliders, contacts, &statics, (&grid, &planner));
+        }
         pushed.clear();
         pushed.extend(contacts.iter().flat_map(Contact::walkers));
         pushed.sort_unstable();
@@ -288,6 +356,40 @@ impl Walking {
                 .expect("a body read this tick");
             let parted = collider.point;
             position.set_if_neq(Position::from(parted));
+        }
+    }
+
+    /// Puts each walker of a static contact that the contacts left overlapping a static body, as
+    /// one wedged between two closer than its body is wide, which each contact pushes into the
+    /// other, at the nearest place it may stand on `grid`, as a static body that spawns on a walker
+    /// moves it, so no walker stays in a static body (04-capabilities/navigation.md, A walker never
+    /// stays in a static body).
+    fn stand_clear(
+        colliders: &mut [Collider],
+        contacts: &[Contact],
+        statics: &BodyIndex,
+        (grid, planner): (&PathingGrid, &RoutePlanner),
+    ) {
+        for contact in contacts {
+            let ContactBodies::Static { walker, .. } = contact.bodies else {
+                continue;
+            };
+            let collider = &mut colliders[walker];
+            let radius = collider.radius();
+            let inside = statics.any_near(collider.layer, collider.point, radius, |body| {
+                collider.overlaps(&Collider::fixed(body))
+            });
+            if !inside {
+                continue;
+            }
+            let kind = Walker {
+                layer: collider.layer,
+                radius,
+            };
+            let walkable = Walkable::of(grid.clearance(kind), statics);
+            if let Some(place) = planner.stand_at(walkable, collider.point) {
+                collider.point = place;
+            }
         }
     }
 

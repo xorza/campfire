@@ -4,12 +4,13 @@
 // place round its start where the build passes, so the builder idles once its base is whole and
 // builds a building again once one falls. Each bot sends its idle gatherers to the nearest node,
 // and trains a gatherer while it holds fewer than `gatherers` for each drop-off. The attacker also
-// trains its faction's army at each producer, the type it holds fewest of first; while it holds
-// fewer than `army` of them and more are coming, its idle units go at an enemy seen within
-// `guard` of its start, and once it holds `army`, or no more are coming, at the nearest enemy it
-// sees within `sight`, or at the nearest enemy start: by attack-move, and within `reach` by an
-// attack (09-zero-hour.md, A builder and an attacker; 04-capabilities/control.md, A bot gathers;
-// 04-capabilities/control.md, An army attack-moves).
+// trains its faction's army at each producer, the type it holds fewest of first; its idle units
+// at home, within `guard` of its start, go at an enemy seen there while it holds fewer than `army`
+// of them and more are coming, and once it holds `army`, or no more are coming, at the nearest
+// enemy they see within `sight`, or at the nearest enemy start; its idle units out with the army
+// go on so whatever its count: by attack-move, and within `reach` by an attack (09-zero-hour.md,
+// A builder and an attacker; 04-capabilities/control.md, A bot gathers; 04-capabilities/control.md,
+// An army attack-moves).
 fn on_bot_think(ctx) {
     let me = ctx.player;
     let chosen = ctx.chosen(me, "faction");
@@ -123,41 +124,60 @@ fn train(ctx, faction) {
     coming
 }
 
-// Sends the army's idle units at a target: while it gathers, an enemy seen within `guard` of its
-// start; once it holds `army`, or as many as it gets, as no more is `coming`, the nearest enemy
-// its first unit sees within `sight`, or the nearest enemy start. Those within `reach` of the
-// target attack the nearest enemy, as the scan passes over a structure, and the others
-// attack-move there. A unit that walks or fights goes on as it is.
+// Sends the army's idle units at a target. A unit beyond `guard` of its start is out with the army
+// and goes on, as OpenRA's squad attacks on as it loses units: at the nearest hostile the first of
+// those sees within `sight`, or at the nearest enemy start. A unit at home waits for the army:
+// while the bot holds fewer than `army` of it and more are coming, it goes only at an enemy seen
+// within `guard` of its start; then it goes as those out do. A unit that walks or fights goes on
+// as it is.
 fn fight(ctx, me, faction, home, coming) {
     let army = [];
     for unit in ctx.params[`army_units_${faction}`] {
         army += ctx.own(unit);
     }
-    if army.is_empty() {
-        return;
-    }
-    let idle = [];
+    let at_home = [];
+    let out = [];
     for unit in army {
-        if ctx.idle(unit) {
-            idle.push(unit);
+        if !ctx.idle(unit) {
+            continue;
+        }
+        if unit.position.within(home, ctx.params.guard) {
+            at_home.push(unit);
+        } else {
+            out.push(unit);
         }
     }
-    if idle.is_empty() {
+    if !out.is_empty() {
+        attack(ctx, out, nearest_target(ctx, me, home, out[0]));
+    }
+    if at_home.is_empty() {
         return;
     }
-    let target = if army.len() < ctx.params.army && coming {
-        let seen = ctx.find_visible(army[0], home, ctx.params.guard, "hostiles");
-        if seen.is_empty() { () } else { seen[0].position }
+    if army.len() < ctx.params.army && coming {
+        let seen = ctx.find_visible(at_home[0], home, ctx.params.guard, "hostiles");
+        if !seen.is_empty() {
+            attack(ctx, at_home, seen[0].position);
+        }
     } else {
-        let seen = ctx.nearest_visible(army[0], ctx.params.sight, "hostiles");
-        if seen == () { nearest_enemy_start(ctx, me, home) } else { seen.position }
-    };
+        attack(ctx, at_home, nearest_target(ctx, me, home, at_home[0]));
+    }
+}
+
+// The nearest hostile `from` sees within `sight`, or else the nearest enemy start; `()` with none.
+fn nearest_target(ctx, me, home, from) {
+    let seen = ctx.nearest_visible(from, ctx.params.sight, "hostiles");
+    if seen == () { nearest_enemy_start(ctx, me, home) } else { seen.position }
+}
+
+// Sends `units` at `target`: those within `reach` of it attack the nearest enemy, as the scan
+// passes over a structure, and the others attack-move there. Nothing with no target.
+fn attack(ctx, units, target) {
     if target == () {
         return;
     }
     let close = [];
     let far = [];
-    for unit in idle {
+    for unit in units {
         if unit.position.within(target, ctx.params.reach) {
             close.push(unit);
         } else {

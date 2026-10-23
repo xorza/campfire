@@ -1,15 +1,16 @@
-use bevy_ecs::query::{Allow, Without};
+use bevy_ecs::query::{Allow, With, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::ActionSlots;
 use campfire_geometry::GridSearch;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
-use campfire_units::{Dead, GroundPoint};
-use campfire_values::Team;
+use campfire_units::{Dead, GroundPoint, Owner};
+use campfire_values::{Team, UnitType};
 use campfire_vision::TeamSight;
 
 use crate::build_book::BuildBook;
 use crate::placement::Placement;
+use crate::site::Site;
 
 /// What a search for a build's place reads: the builds, of a match with production, the builders,
 /// and the placement a build order tests, by `S` (04-capabilities/control.md, A bot finds a
@@ -21,8 +22,19 @@ pub struct BuildPlaces<'w, 's, S: TeamSight> {
     builders: Query<
         'w,
         's,
-        (&'static Position, &'static Team, &'static ActionSlots),
+        (
+            &'static Position,
+            &'static Team,
+            &'static ActionSlots,
+            Option<&'static Owner>,
+        ),
         (Without<Dead>, Allow<Unpredicted>),
+    >,
+    sites: Query<
+        'w,
+        's,
+        (&'static UnitType, Option<&'static Owner>),
+        (With<Site>, Without<Dead>, Allow<Unpredicted>),
     >,
     placement: Placement<'w, 's, S>,
 }
@@ -54,7 +66,7 @@ impl<S: TeamSight> BuildPlaces<'_, '_, S> {
             steps,
             angle,
         } = search;
-        let (from, &team, slots) = self.builders.get(self.index.get(builder)?).ok()?;
+        let (from, &team, slots, _) = self.builders.get(self.index.get(builder)?).ok()?;
         let spec = self.builds.as_deref()?.of(slots.slot(slot)?.action?)?;
         let body = spec.form.at(angle);
         let grid = GridSearch {
@@ -64,5 +76,24 @@ impl<S: TeamSight> BuildPlaces<'_, '_, S> {
         };
         let found = grid.nearest(|at| self.placement.passes(team, at, body, spec));
         found.map(GroundPoint::under)
+    }
+
+    /// Whether the build `builder` holds in `slot` continues the living site `site`: one of its
+    /// building and its player, as a build order at a site takes it (04-capabilities/control.md, A
+    /// bot's search runs its order's own test).
+    pub fn takes_site(&self, builder: StableId, slot: u8, site: StableId) -> bool {
+        let found = |id| self.index.get(id);
+        let Some((_, _, slots, owner)) = found(builder).and_then(|at| self.builders.get(at).ok())
+        else {
+            return false;
+        };
+        let spec = slots
+            .slot(slot)
+            .and_then(|held| self.builds.as_deref()?.of(held.action?));
+        let site = found(site).and_then(|at| self.sites.get(at).ok());
+        spec.zip(site)
+            .is_some_and(|(spec, (&site_type, site_owner))| {
+                spec.continues(site_type, site_owner, owner)
+            })
     }
 }

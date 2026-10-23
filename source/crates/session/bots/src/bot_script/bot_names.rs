@@ -94,11 +94,38 @@ impl<'b> BotNames<'b> {
     }
 }
 
+impl LoadRefs<'_, '_> {
+    /// The filter of `unit`, its names resolved, as every reference to a unit takes it.
+    fn filter(&self, unit: &FilterData) -> Result<Filter, BotScriptError> {
+        Ok(Filter::resolve(unit, self.names.types.tags())?)
+    }
+}
+
 impl RefMap<NamedRefs, Loaded> for LoadRefs<'_, '_> {
     type Error = BotScriptError;
 
     fn unit(&mut self, unit: FilterData) -> Result<Filter, BotScriptError> {
-        Ok(Filter::resolve(&unit, self.names.types.tags())?)
+        self.filter(&unit)
+    }
+
+    fn attack(&mut self, unit: FilterData) -> Result<Filter, BotScriptError> {
+        self.filter(&unit)
+    }
+
+    fn aimed(&mut self, unit: FilterData) -> Result<Filter, BotScriptError> {
+        self.filter(&unit)
+    }
+
+    fn used(&mut self, unit: FilterData) -> Result<Filter, BotScriptError> {
+        self.filter(&unit)
+    }
+
+    fn shop(&mut self, unit: FilterData) -> Result<Filter, BotScriptError> {
+        self.filter(&unit)
+    }
+
+    fn site(&mut self, unit: FilterData) -> Result<Filter, BotScriptError> {
+        self.filter(&unit)
     }
 
     /// The actions of the name in every package that names one so, as a unit's slots may hold an

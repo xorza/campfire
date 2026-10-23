@@ -11,10 +11,10 @@ use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{
-    ArrivedShort, Body, BodyForm, BodyShape, Dead, Destination, Facing, Layer, MapBook, TurnStep,
-    Units, Wall,
+    ArrivedShort, AtWork, Body, BodyForm, BodyShape, Dead, Destination, Facing, Layer, MapBook,
+    TurnStep, Units, Wall,
 };
-use campfire_values::{Block, PathId};
+use campfire_values::{Block, PathId, Team};
 
 const ONE: i64 = 1 << 24;
 
@@ -477,6 +477,59 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
             assert_eq!(arrived, None);
             assert_eq!(game.part::<Position>(walker).get(), Vec3::from((-1, 0, 0)));
         }
+    }
+}
+
+#[test]
+fn an_idle_friend_steps_aside_for_a_stuck_walker_and_an_enemy_or_a_busy_one_does_not() {
+    // Half-meter cells over ±12 m; walls of 10 by 4 m at (−5, ±3) leave a corridor 2 m wide, z
+    // −1 to 1, for x below 0. A unit of 0.5 m stands at (0.5, 0), at the corridor's mouth, and a
+    // walker of 0.5 m of team 0 walks from (−8, 0) to (6, 0), a quarter meter a tick: no way round
+    // the unit leaves the corridor, so the walker stops against it and is stuck. A friend of team
+    // 0 that stands idle steps off the way, to the walker's left, +z, until it is the two radii,
+    // 1 m, off the line, and the walker arrives; an enemy stays, and so does a friend at work,
+    // and the walker never arrives.
+    let half = Num::HALF;
+    let blocker_at = Vec3::new(half, Num::ZERO, Num::ZERO);
+    let goal = Vec3::from((6, 0, 0));
+    let run = |team: u8, at_work: bool| {
+        let mut game = walk_match();
+        Navigation::load_open_pathing(&mut game, half, [-12, -12], [12, 12], [ground(half)]);
+        let wall = BodyForm::new(
+            BodyShape::box_sized([Num::int(10), Num::int(4)]).unwrap(),
+            Layer::FIRST,
+        );
+        for z in [-3, 3] {
+            Navigation::walker_at(&mut game, (-5, 0, z))
+                .body(wall)
+                .place(&mut game);
+        }
+        game.step();
+        let blocker = Navigation::walker_at(&mut game, blocker_at)
+            .team(Team::new(team))
+            .circle(half)
+            .walks(Num::QUARTER, None)
+            .place(&mut game);
+        game.insert_parts(blocker, AtWork::new(at_work));
+        let walker = Navigation::walker_at(&mut game, (-8, 0, 0))
+            .team(Team::new(0))
+            .circle(half)
+            .walks(Num::QUARTER, Some(goal))
+            .place(&mut game);
+        for _ in 0..120 {
+            game.step();
+        }
+        [walker, blocker].map(|unit| game.part::<Position>(unit).get())
+    };
+    let [walker, friend] = run(0, false);
+    assert_eq!(walker, goal);
+    assert_eq!(friend, Vec3::new(half, Num::ZERO, Num::ONE));
+    for (team, at_work) in [(1, false), (0, true)] {
+        let [walker, blocker] = run(team, at_work);
+        assert_eq!(
+            (walker, blocker),
+            (Vec3::from((-1, 0, 0)) + blocker_at, blocker_at)
+        );
     }
 }
 

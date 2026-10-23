@@ -13,6 +13,7 @@ internals = [
     "campfire-capabilities/internals",
     "campfire-codec/internals",
     "campfire-geometry/internals",
+    "campfire-interaction/internals",
     "campfire-items/internals",
     "campfire-math/internals",
     "campfire-mode/internals",
@@ -32,6 +33,7 @@ campfire-capabilities.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-geometry.workspace = true
+campfire-interaction.workspace = true
 campfire-items.workspace = true
 campfire-math.workspace = true
 campfire-mode.workspace = true

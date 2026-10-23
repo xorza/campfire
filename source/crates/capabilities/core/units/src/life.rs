@@ -69,6 +69,37 @@ pub fn lives(dead: bool, life: Option<&Life>) -> bool {
     !dead && life.is_none_or(|life| !life.is_empty())
 }
 
+/// What a unit has of a life: none, as a delivery and a body of a type of no life have; one its
+/// body takes of its type that the world does not hold, as a mode's visibility keeps an enemy's
+/// life from a client; or the life it holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnitLife<'a> {
+    Lifeless,
+    Unheld,
+    Held(&'a Life),
+}
+
+impl<'a> UnitLife<'a> {
+    /// The life of a unit that holds `held`, or else is a `body` unit or not, of a type `typed`
+    /// with a life or not: a body unit takes its type's life as it spawns, and a delivery none.
+    pub const fn of(held: Option<&'a Life>, body: bool, typed: bool) -> Self {
+        match held {
+            Some(life) => Self::Held(life),
+            None if body && typed => Self::Unheld,
+            None => Self::Lifeless,
+        }
+    }
+
+    /// Whether the unit, `dead` or not, has a life and lives, as `lives` says of a held one.
+    pub fn lives(self, dead: bool) -> bool {
+        match self {
+            Self::Lifeless => false,
+            Self::Unheld => !dead,
+            Self::Held(life) => lives(dead, Some(life)),
+        }
+    }
+}
+
 impl SimComponent for Life {
     const NAME: &'static str = "stats.life";
     type Host = UnitEntity;
@@ -112,5 +143,32 @@ pub(crate) mod internals {
         pub const fn full(max: Num) -> Self {
             Self(Meter::new(max).expect("a positive maximum"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_unit_has_the_life_it_holds_or_its_body_takes_of_its_type() {
+        let full = Life::full(Num::int(10));
+        let empty = full.spent(Num::int(10));
+        // A held life counts whatever the kind and type; else a body of a type of a life has one
+        // unheld, and a delivery or a type of none has none.
+        assert_eq!(
+            UnitLife::of(Some(&full), false, false),
+            UnitLife::Held(&full)
+        );
+        assert_eq!(UnitLife::of(None, true, true), UnitLife::Unheld);
+        assert_eq!(UnitLife::of(None, false, true), UnitLife::Lifeless);
+        assert_eq!(UnitLife::of(None, true, false), UnitLife::Lifeless);
+        // Alive and dead: an unheld life lives until its death, a held one while it is above 0,
+        // and none never.
+        let lives = |life: UnitLife<'_>| [false, true].map(|dead| life.lives(dead));
+        assert_eq!(lives(UnitLife::Unheld), [true, false]);
+        assert_eq!(lives(UnitLife::Held(&full)), [true, false]);
+        assert_eq!(lives(UnitLife::Held(&empty)), [false, false]);
+        assert_eq!(lives(UnitLife::Lifeless), [false, false]);
     }
 }

@@ -3,12 +3,13 @@ use std::fmt;
 use bevy_ecs::query::{Allow, Has};
 use bevy_ecs::system::{Query, Res, SystemParam, SystemState};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionProgress, ActionSlots};
+use campfire_actions::{ActionBook, ActionKind, ActionProgress, ActionSlots, TargetTest, Targets};
 use campfire_capabilities::BotFacts;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_items::Inventory;
+use campfire_interaction::Using;
+use campfire_items::{Inventory, Shopping};
 use campfire_players::OnMatch;
-use campfire_production::{BuildPlaces, Builder, Gatherer, PlaceSearch, StartChecks};
+use campfire_production::{BuildPlaces, Builder, GatherView, Gatherer, PlaceSearch, StartChecks};
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_units::{Commanded, Dead, Destination, GroundPoint, MapBook, PlayerUnits};
@@ -22,7 +23,8 @@ use crate::loaded::ActionName;
 /// may aim at them, the teams' relations, the map's metric, the places a build passes, and the
 /// trains and builds each unit may start. A client may hold no unit's life,
 /// as a mode's visibility may keep it from all but its owner, so a living unit is one with no
-/// `Dead`.
+/// `Dead`; an attack's target is one the attack order's own test takes, which knows a life the
+/// client does not hold by the unit's type.
 #[derive(SystemParam, Debug)]
 pub struct BotView<'w, 's, S: TeamSight> {
     players: PlayerUnits<'w, 's>,
@@ -35,6 +37,26 @@ pub struct BotView<'w, 's, S: TeamSight> {
     starts: StartChecks<'w, 's>,
     orders: Query<'w, 's, UnitOrders, Allow<Unpredicted>>,
     inventories: Query<'w, 's, &'static Inventory, Allow<Unpredicted>>,
+    book: Res<'w, ActionBook>,
+    targets: Targets<'w, 's>,
+    gathers: Option<GatherView<'w, 's>>,
+    using: Option<Using<'w, 's>>,
+    shopping: Option<Shopping<'w, 's>>,
+}
+
+/// What a unit an order names is to the order, by which a search for it tests it as the order's
+/// own test does (04-capabilities/control.md, A bot's search runs its order's own test).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UnitRole {
+    /// Any unit the order's team sees, as a rally takes one.
+    Seen,
+    Attacked,
+    /// The target of the action in the order's slot: a cast's, or a gather's node.
+    Aimed(u8),
+    Used,
+    Shop,
+    /// The site the build in the order's slot goes on with.
+    Site(u8),
 }
 
 /// A bot's view of a client's world: the units its client holds are those its team sees.
@@ -175,11 +197,63 @@ impl<S: TeamSight> BotView<'_, '_, S> {
         Some(u8::try_from(place).expect("an inventory's places fit a slot's"))
     }
 
-    /// The nearest to the unit `from` of the living units `filter` selects for its team that its
-    /// team sees, as an order may aim only at those, and whose tags let them be targets: the
-    /// least distance between their points in the map's metric, exactly, and of those the least
-    /// stable id, so the query's order chooses nothing.
-    pub(crate) fn nearest(&self, from: StableId, filter: Filter) -> Option<StableId> {
+    /// The nearest to the first of `units` of the living units `filter` selects for its team that
+    /// its team sees, as an order may aim only at those, whose tags let them be targets, and that
+    /// the order of one of `units` takes as `role`, as Zero Hour's AI searches by its commands'
+    /// own tests and OpenRA's bot by its attacks' valid weapons: the least distance between their
+    /// points in the map's metric, exactly, and of those the least stable id, so the query's order
+    /// chooses nothing.
+    pub(crate) fn nearest(
+        &self,
+        units: &[StableId],
+        role: UnitRole,
+        filter: Filter,
+    ) -> Option<StableId> {
+        self.nearest_where(units[0], filter, |target| {
+            units.iter().any(|&unit| self.takes(unit, role, target))
+        })
+    }
+
+    /// Whether an order of the unit `unit` takes `target` as `role`, by the test of the order's
+    /// capability; none of a capability the match does not run.
+    fn takes(&self, unit: StableId, role: UnitRole, target: StableId) -> bool {
+        let Some(entity) = self.index.get(unit) else {
+            return false;
+        };
+        let Ok((_, _, &team, slots, ..)) = self.units.get(entity) else {
+            return false;
+        };
+        let test = TargetTest {
+            book: &self.book,
+            targets: &self.targets,
+            team,
+        };
+        match role {
+            UnitRole::Seen => true,
+            UnitRole::Attacked => slots.is_some_and(|slots| slots.may_attack(&test, target)),
+            UnitRole::Aimed(slot) => {
+                slots.is_some_and(|slots| match slots.kind_in(&self.book, slot) {
+                    Some(ActionKind::Gather) => (self.gathers.as_ref())
+                        .is_some_and(|gathers| gathers.gathers(unit, slot, target)),
+                    _ => slots.may_aim(&test, slot, target),
+                })
+            }
+            UnitRole::Used => {
+                (self.using.as_ref()).is_some_and(|using| using.of(entity, target).is_some())
+            }
+            UnitRole::Shop => (self.shopping.as_ref())
+                .is_some_and(|shopping| shopping.serving(target, unit).is_some()),
+            UnitRole::Site(slot) => self.places.takes_site(unit, slot, target),
+        }
+    }
+
+    /// The nearest to the unit `from` of the units `nearest` finds that `takes` takes.
+    fn nearest_where(
+        &self,
+        from: StableId,
+        filter: Filter,
+        takes: impl Fn(StableId) -> bool,
+    ) -> Option<StableId> {
         let (_, position, &team, ..) = self.units.get(self.index.get(from)?).ok()?;
         let (from, metric) = (position.get(), self.map.metric());
         let relations = self.relations.get();
@@ -192,6 +266,7 @@ impl<S: TeamSight> BotView<'_, '_, S> {
                     && !tags.properties.blocks(Block::Target)
                     && filter.selects(relations.between(team, other), tags.tags)
                     && self.seen.sees(team, id)
+                    && takes(id)
             });
         let nearest = targets.min_by_key(|&(&id, position, ..)| {
             (

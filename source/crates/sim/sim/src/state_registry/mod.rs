@@ -220,8 +220,8 @@ pub struct TypeHash {
     pub hash: StateTypeHash,
 }
 
-/// The BLAKE3 of one state type's encoding, a part the state hash folds after the type's name
-/// under the state's domain, which a part needs no domain of its own for.
+/// The hash of one state type's encoding in its own domain, a part the state hash folds after the
+/// type's name under the state's domain.
 pub type StateTypeHash = Value32<StateTypeHashMeaning>;
 
 /// The meaning of a `StateTypeHash`.

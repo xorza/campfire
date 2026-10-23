@@ -140,6 +140,58 @@ fn collision_pushes_a_walker_out_of_a_box_to_touch_it() {
 }
 
 #[test]
+fn a_walker_wedged_between_boxes_stands_clear_and_one_in_a_narrow_gap_walks_out() {
+    // Half-meter cells over ±12 m, for walkers of 1 m. Boxes of 4 by 2 m at the origin and at
+    // (5, 0) leave a gap of 1 m, x 2 to 3, and a walker of 1 m at (2.5, 0) overlaps both: the
+    // first box's contact pushes it out to x = 3, the second's back to x = 2, less the push's
+    // slack, so it stands at the cell nearest there whose center keeps 1 m off both boxes. The
+    // rows within 1 m of z ±1 are blocked, so the nearest open centers lie at z ±2.25, x 1.75 a
+    // quarter meter less the slack off, x 2.25 a quarter meter and the slack: in the lower row,
+    // (1.75, −2.25).
+    let mut game = walk_match();
+    Navigation::load_open_pathing(&mut game, HALF, [-12, -12], [12, 12], [ground(Num::ONE)]);
+    for x in [0, 5] {
+        Navigation::walker_at(&mut game, (x, 0, 0))
+            .body(boxed(4, 2))
+            .place(&mut game);
+    }
+    game.step();
+    let wedged = Navigation::walker_at(&mut game, quarters(10, 0))
+        .circle(Num::ONE)
+        .walks(QUARTER, None)
+        .place(&mut game);
+    game.step();
+    assert_eq!(game.part::<Position>(wedged).get(), quarters(7, -9));
+
+    // Boxes of 4 by 10 m at (0, 0) and (6, 0) leave a corridor 2 m wide, x 2 to 4, from z −5 to
+    // 5, where every cell's center comes closer than 1 m to a box. A walker of 1 m at (3, 0)
+    // touches both and overlaps neither: its route to (3, 10) leaves from the open cell nearest
+    // it, out of the corridor's end, and it arrives.
+    let mut game = walk_match();
+    Navigation::load_open_pathing(&mut game, HALF, [-12, -12], [12, 12], [ground(Num::ONE)]);
+    for x in [0, 6] {
+        Navigation::walker_at(&mut game, (x, 0, 0))
+            .body(boxed(4, 10))
+            .place(&mut game);
+    }
+    game.step();
+    let goal = Vec3::from((3, 0, 10));
+    let walker = Navigation::walker_at(&mut game, (3, 0, 0))
+        .circle(Num::ONE)
+        .walks(HALF, Some(goal))
+        .place(&mut game);
+    let arrived = (0..80).find(|_| {
+        game.step();
+        game.part::<Position>(walker).get() == goal
+    });
+    assert!(
+        arrived.is_some(),
+        "{:?}",
+        game.part::<Position>(walker).get()
+    );
+}
+
+#[test]
 fn a_box_that_spawns_over_a_walker_moves_it_to_the_nearest_open_cell() {
     // Half-meter cells over ±4 m and a walker of 0.25 m at (0.25, 0.25), as a box of 2 by 2 m
     // spawns at the origin. The cells whose centers come closer than 0.25 m to the box are

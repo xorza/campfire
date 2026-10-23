@@ -8,9 +8,10 @@ use campfire_items::{Inventory, ItemStack};
 use campfire_mode::InputType;
 use campfire_orders::OrdersDirective;
 use campfire_script::UnknownName;
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{IdAllocator, SimWorld};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{BuildTarget, MapPointError, UnitTypeBook};
+use campfire_units::{BuildTarget, Life, MapPointError, UnitTypeBook};
 use campfire_values::{ActionId, FilterData};
 
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
@@ -266,6 +267,11 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
     // ability in its slot 0. Then it orders the creeps' attack, which the walker does not hold;
     // attacks a stunned enemy hero, and none is; moves its tower bolts, of which it owns none;
     // and builds by its first ability near the origin, which builds nothing, so finds no place.
+    // In tick 2 it attacks the nearest enemy hero, the runner, which its attack selects, and
+    // uses none, as the lane holds no unit a hero may use, though it sees the runner. Then the
+    // runner's life falls to 0, before the deaths mark it dead: in tick 3 the cast still finds
+    // it, as its action aims at nothing and its start takes any unit, but the attack does not,
+    // as the attack takes only a living one: each search runs its order's own test.
     let session = FixedSession::new(TestMode::Lane.packages(), 2);
     let mut fixed = session.start();
     let units = MatchUnits::of(fixed.game());
@@ -277,7 +283,11 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
          [[order]]\ntick = 1\ndirective.orders.attack.target = \"enemies:avatar:stunned\"\n\
          [[order]]\ntick = 1\nunits = \"tower_bolt\"\ndirective.orders.move.to = [1, 1]\n\
          [[order]]\ntick = 1\ndirective.orders.build = {{ slot = \"first\", target.point = \
-         {{ at = {{ near = [0, 0], gap = 1, steps = 2 }}, angle = 0 }} }}\n"
+         {{ at = {{ near = [0, 0], gap = 1, steps = 2 }}, angle = 0 }} }}\n\
+         [[order]]\ntick = 2\ndirective.orders.attack.target = \"enemies:avatar\"\n\
+         [[order]]\ntick = 2\ndirective.orders.use.target = \"enemies:avatar\"\n\
+         [[order]]\ntick = 3\n{cast}\n\
+         [[order]]\ntick = 3\ndirective.orders.attack.target = \"enemies:avatar\"\n"
     );
     let books = session.packages().load_books();
     let names = BotNames::new(books);
@@ -308,9 +318,12 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
             target: ActionTarget::Unit(runner),
         },
     );
-    let mut payload = Vec::new();
-    cast.write_payload(&mut Vec::new(), &mut payload);
-    assert_eq!(second.sent, [payload]);
+    let payload = |order: Order| {
+        let mut payload = Vec::new();
+        order.write_payload(&mut Vec::new(), &mut payload);
+        payload
+    };
+    assert_eq!(second.sent, [payload(cast.clone())]);
     assert_eq!(
         second.unsent,
         [
@@ -320,6 +333,18 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
             OrderUnsent::NoPlace
         ]
     );
+    fixed.step();
+    let third = step(&fixed, 2);
+    let attack = Order::one(walker, OrdersDirective::Attack { target: runner });
+    assert_eq!(third.sent, [payload(attack)]);
+    assert_eq!(third.unsent, [OrderUnsent::NoTarget]);
+    let runner = fixed.game().unit_entity(runner);
+    let mut life = fixed.game_mut().get_mut::<Life>(runner).unwrap();
+    let full = life.max();
+    life.take(full);
+    let fourth = step(&fixed, 3);
+    assert_eq!(fourth.sent, [payload(cast)]);
+    assert_eq!(fourth.unsent, [OrderUnsent::NoTarget]);
 }
 
 #[test]

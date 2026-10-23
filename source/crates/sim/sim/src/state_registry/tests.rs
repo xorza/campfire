@@ -618,14 +618,11 @@ impl<R: SimResource> Register for R {
 }
 
 /// Whether a hash sink, fed `value`'s encoding in the gateway's batches, gives the hash of the
-/// encoding's bytes in one piece.
+/// encoding's bytes in one piece, as `HashSink::of` takes them.
 fn assert_hashed_as_encoded<T: Serialize>(value: &T) {
     let mut sink = HashSink::new();
     Binary::encode_to(value, &mut sink);
-    assert_eq!(
-        sink.finish(),
-        StateTypeHash::new(*blake3::hash(&Binary::encode(value)).as_bytes())
-    );
+    assert_eq!(sink.finish(), HashSink::of(&Binary::encode(value)));
 }
 
 #[test]

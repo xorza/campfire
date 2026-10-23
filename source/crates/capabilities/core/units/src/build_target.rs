@@ -25,7 +25,7 @@ impl<R: OrderRefs> BuildTarget<R> {
                 at: refs.place(at, angle)?,
                 angle,
             },
-            Self::Site(site) => BuildTarget::Site(refs.unit(site)?),
+            Self::Site(site) => BuildTarget::Site(refs.site(site)?),
         })
     }
 }

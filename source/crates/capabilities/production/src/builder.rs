@@ -1,11 +1,14 @@
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::Changed;
+use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_declarations::PerId;
 use campfire_sim::{SimComponent, TimedKept, TimedProcess, TimedRuns};
 use campfire_states::{Replication, SentPredicted};
-use campfire_units::{BuildTarget, UnitEntity};
+use campfire_units::{AtWork, BuildTarget, UnitEntity};
 use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
@@ -37,6 +40,15 @@ impl Builder {
     pub(crate) fn set(&mut self, order: Option<BuildOrder>, dues: &mut OrderDues<'_, Self>) {
         self.0 = order;
         dues.push(self);
+    }
+
+    /// Shows in each builder's `AtWork` whether it holds a build, once its order changed, so what
+    /// moves an idle unit aside leaves it (04-capabilities/navigation.md, An idle friend steps
+    /// aside).
+    pub(crate) fn show_work(mut builders: Query<'_, '_, (&Self, &mut AtWork), Changed<Self>>) {
+        for (builder, mut at_work) in &mut builders {
+            at_work.set_if_neq(AtWork::new(builder.0.is_some()));
+        }
     }
 
     /// Gives the builder of `entity` in `world` `order`, or none, as an exclusive system does.

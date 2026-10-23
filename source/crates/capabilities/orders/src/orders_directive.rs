@@ -48,7 +48,7 @@ impl<R: OrderRefs> OrdersDirective<R> {
                 to: refs.ground(to)?,
             },
             Self::Attack { target } => OrdersDirective::Attack {
-                target: refs.unit(target)?,
+                target: refs.attack(target)?,
             },
             Self::AttackMove { to } => OrdersDirective::AttackMove {
                 to: refs.ground(to)?,
@@ -63,7 +63,7 @@ impl<R: OrderRefs> OrdersDirective<R> {
             },
             Self::Stop => OrdersDirective::Stop,
             Self::Use { target } => OrdersDirective::Use {
-                target: refs.unit(target)?,
+                target: refs.used(target)?,
             },
         })
     }

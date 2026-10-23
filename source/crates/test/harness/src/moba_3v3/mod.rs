@@ -282,7 +282,7 @@ impl Moba3v3 {
             (4, Self::AttackHero { player_slot: 2 }),
             (3, cast(FIRST, hero(0))),
             (4, walk_to(ARENA[4])),
-            (0, cast(SECOND, at(4))),
+            (0, cast(SECOND, at(3))),
             (2, cast(THIRD, CastAim::Nothing)),
             (4, cast(SECOND, at(2))),
             (3, cast(SECOND, CastAim::Nothing)),

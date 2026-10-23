@@ -76,6 +76,7 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     let mut game = units_match();
     let creep = Units::tagged_type(&mut game, &["creep"], &[]);
     arm(&mut game, creep, Armed::sparring());
+    let stone = Units::tagged_type(&mut game, &["creep"], &[]);
     let of = melee(&mut game, (0, 0, 0), Team::new(1), ());
     // Up at y = 9, 3 m away on the ground plane: the nearest.
     let high = melee(&mut game, (0, 9, 3), Team::new(0), ());
@@ -159,6 +160,24 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
         game.despawn(entity);
     }
     assert_eq!(order, [high, east, west, edge, far]);
+
+    // A unit whose life the world does not hold, as a mode's visibility keeps it from a client
+    // that does not own it, is still a target, as its body takes its type's life; a body of a type
+    // of no life is none.
+    let veiled = melee(&mut game, (1, 0, 1), Team::new(0), ());
+    let stone = Spawn::of(stone, (0, 0, 2))
+        .team(Team::new(0))
+        .place(&mut game);
+    for unit in [veiled, stone] {
+        game.insert_parts(unit, SeenBy::new(TeamSet::ALL));
+    }
+    let entity = game.unit_entity(veiled);
+    game.entity_mut(entity).remove::<Life>();
+    assert_eq!(find(&mut game, "enemies"), [veiled]);
+    assert_eq!(
+        Unit::ids(Units::probe(&mut game, nearest, of).unwrap()),
+        [veiled]
+    );
 
     let refusals = [
         (

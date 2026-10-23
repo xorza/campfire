@@ -225,13 +225,22 @@ impl Module for Navigation {
             PathFollowing::follow_paths::<ServerForm>,
             PathFollowing::follow_paths::<ClientForm>,
         );
-        cx.add(
+        cx.by_role(
             NavigationSystems::Move,
             (
                 Walking::forget_dead,
                 Routing::route_units,
                 Routing::plan_routes,
-                Walking::steer,
+                Walking::steer::<ServerForm>,
+                Walking::move_units,
+                ForcedMoves::force_units,
+            )
+                .chain(),
+            (
+                Walking::forget_dead,
+                Routing::route_units,
+                Routing::plan_routes,
+                Walking::steer::<ClientForm>,
                 Walking::move_units,
                 ForcedMoves::force_units,
             )

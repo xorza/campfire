@@ -2078,6 +2078,7 @@ dependencies = [
  "campfire-common",
  "campfire-geometry",
  "campfire-harness",
+ "campfire-interaction",
  "campfire-items",
  "campfire-math",
  "campfire-mode",

@@ -4,6 +4,7 @@ use campfire_geometry::{BodyGrid, Indexed, Placed};
 use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 use campfire_units::Layer;
+use campfire_values::Team;
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::pathing_grid::PathingGrid;
@@ -22,6 +23,9 @@ pub(crate) struct Steering {
     still: Vec<IndexedBody>,
     /// The units in a gather loop, by stable id, which a walker in one passes through.
     gatherers: Vec<StableId>,
+    /// The units that stand idle, by stable id, with their teams: those a stuck walker of their
+    /// team moves aside.
+    idle: Vec<(StableId, Team)>,
     /// The index of the units that stand and do not gather, for a walker that gathers; none
     /// until a unit gathers.
     apart: Option<BodyIndex>,
@@ -36,25 +40,38 @@ pub(crate) struct Steering {
     short: Vec<Vec3>,
 }
 
-/// A walker that may steer this tick: its unit, where it stands, its step, its kind, whether
-/// walkers keep it back, and whether it gathers, which passes through the others that do.
+/// A walker that may steer this tick: its unit, where it stands, its team, if any, its step, its
+/// kind, whether walkers keep it back, and whether it gathers, which passes through the others
+/// that do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Steered {
     pub id: StableId,
     pub position: Vec3,
+    pub(crate) team: Option<Team>,
     pub(crate) step: Num,
     pub(crate) walker: Walker,
     pub(crate) stuck: bool,
     pub(crate) gathering: bool,
 }
 
-/// A body of this tick as steering reads it: the unit's body where it stands, whether the unit
-/// walks this tick, and whether it is in a gather loop.
+/// A body of this tick as steering reads it: the unit's body where it stands, its team, whether
+/// the unit walks this tick, whether it is in a gather loop, and whether it stands idle: a unit
+/// that walks by a destination, with none, nothing under way, no target and no work that holds
+/// it, which a destination may move aside.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TickBody {
     pub(crate) body: IndexedBody,
+    pub(crate) team: Option<Team>,
     pub(crate) walks: bool,
     pub(crate) gathers: bool,
+    pub(crate) idle: bool,
+}
+
+/// A unit that steps aside for a stuck walker, and the point it steps to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Aside {
+    pub(crate) id: StableId,
+    pub(crate) to: Vec3,
 }
 
 /// A short route a walker takes: in place of the next `skipped` waypoints of its route, and
@@ -80,10 +97,13 @@ impl Steering {
         self.still.clear();
         self.moving.clear();
         self.gatherers.clear();
+        self.idle.clear();
         for TickBody {
             body,
+            team,
             walks,
             gathers,
+            idle,
         } in bodies
         {
             if walks {
@@ -98,7 +118,11 @@ impl Steering {
             if gathers {
                 self.gatherers.push(body.id);
             }
+            if let Some(team) = team.filter(|_| idle && !walks && !gathers) {
+                self.idle.push((body.id, team));
+            }
         }
+        self.idle.sort_unstable_by_key(|&(id, _)| id);
         self.still.sort_unstable_by_key(|body| body.id);
         let standing = self.standing.get_or_insert_with(|| statics.sibling());
         standing.update(&self.still);
@@ -116,6 +140,58 @@ impl Steering {
         );
         let apart = self.apart.get_or_insert_with(|| statics.sibling());
         apart.update(&self.still_apart);
+    }
+
+    /// Puts in `asides` each unit of its team that stands idle ahead of `steered`, a stuck walker
+    /// toward `ahead`, and that it touches, with the point it steps to: off the walker's way, on the side it
+    /// stands on, or to the walker's left when it stands on the way, as walkers pass on the right,
+    /// until it clears the walker's body, as Zero Hour tells a unit in the way to move away and
+    /// OpenRA nudges an idle friend that blocks a move (04-capabilities/navigation.md, An idle
+    /// friend steps aside). One whose side clears the walker already stays.
+    pub(crate) fn asides(&self, steered: Steered, ahead: Vec3, asides: &mut Vec<Aside>) {
+        let Steered {
+            position: at,
+            team: Some(team),
+            step,
+            walker,
+            ..
+        } = steered
+        else {
+            return;
+        };
+        let Some(forward) = at.ground_offset(ahead).normalized() else {
+            return;
+        };
+        let left = Vec3::new(-forward.z, Num::ZERO, forward.x);
+        let standing = self.standing.as_ref().expect("steering read the bodies");
+        let idle = &self.idle;
+        standing.near(walker.layer, at, walker.radius + step, |body| {
+            let clear = walker.radius + body.shape.bound();
+            let friend = idle
+                .binary_search_by_key(&body.id, |&(id, _)| id)
+                .is_ok_and(|place| idle[place].1 == team);
+            if !friend || !body.position.within_ground(at, clear + step) {
+                return;
+            }
+            // One behind the walker, or beside it, is not in its way.
+            let off_walker = at.ground_offset(body.position);
+            if off_walker.dot(forward) <= Num::ZERO {
+                return;
+            }
+            let side = off_walker.dot(left);
+            let (toward, off) = if side < Num::ZERO {
+                (-left, -side)
+            } else {
+                (left, side)
+            };
+            if off >= clear {
+                return;
+            }
+            asides.push(Aside {
+                id: body.id,
+                to: body.position + toward * (clear - off),
+            });
+        });
     }
 
     /// Steers `steered` along `route`, which has a waypoint ahead, on `grid` round `statics`: the
@@ -140,6 +216,7 @@ impl Steering {
             walker,
             stuck,
             gathering,
+            ..
         } = steered;
         let standing = match (gathering && !self.gatherers.is_empty(), &self.apart) {
             (true, Some(apart)) => apart,
@@ -221,118 +298,4 @@ impl Steering {
 }
 
 #[cfg(test)]
-mod tests {
-    use campfire_geometry::{Bounds, Grid, Radius, Shape};
-    use campfire_sim::IdAllocator;
-
-    use super::*;
-    use crate::route::internals::PlannedRoute;
-    use crate::terrain::WallGrid;
-    use crate::walker_kinds::WalkerKinds;
-
-    /// The point `(x, z)` in eighths of a meter.
-    fn eighths(x: i64, z: i64) -> Vec3 {
-        let eighth = |value: i64| Num::from_bits(value << (Num::FRAC_BITS - 3));
-        Vec3::new(eighth(x), Num::ZERO, eighth(z))
-    }
-
-    #[test]
-    fn a_wide_walker_counts_every_unit_that_blocks_a_cell_of_its_window() {
-        // Cells of 0.25 m, so a window reaches 8 cells, 2 m, each way. A walker of 2.5 m at
-        // (0.875, 0), the center of its cell, bound for (8, 0), looks 2 m ahead, to (2.875, 0);
-        // a unit of 0.25 m that stands at (5.375, 0) comes 2.5 m from there, within the two
-        // radii, 2.75 m, so the walker steers, and the unit blocks the window's last centers. It
-        // is a blocker, which a search of twice the window, to x = 4.875, would miss: the index's
-        // buckets are 5 m, twice the walker, and the unit's box, from x = 5.125, is in the second.
-        let quarter = Num::QUARTER;
-        let wide = Num::from_int(10).unwrap() * quarter;
-        let walker = Walker {
-            layer: Layer::FIRST,
-            radius: wide,
-        };
-        let bounds = Bounds::new(
-            [Num::from_int(-8).unwrap(); 2],
-            [Num::from_int(8).unwrap(); 2],
-        );
-        let cells = Grid::new(quarter, bounds.unwrap()).unwrap();
-        let mut planner = RoutePlanner::new(&cells);
-        let grid = PathingGrid::new(cells, WalkerKinds::from([walker]), &WallGrid::default());
-        let statics = BodyIndex::new(wide);
-        let mut ids = IdAllocator::default();
-        let (id, blocker) = (ids.allocate(), ids.allocate());
-        let standing = IndexedBody {
-            id: blocker,
-            position: eighths(43, 0),
-            shape: Shape::Circle(Radius::new(quarter).unwrap()),
-            layer: Layer::FIRST,
-        };
-        let mut steering = Steering::default();
-        let still = TickBody {
-            body: standing,
-            walks: false,
-            gathers: false,
-        };
-        steering.read(&statics, [still]);
-        let goal = eighths(64, 0);
-        let route = PlannedRoute::new(goal, eighths(7, 0), &[goal]);
-        let steered = Steered {
-            id,
-            position: eighths(7, 0),
-            step: quarter,
-            walker,
-            stuck: false,
-            gathering: false,
-        };
-        steering.steer(&mut planner, &grid, &statics, steered, route.read().ahead());
-        assert_eq!(steering.blockers, [standing]);
-    }
-
-    #[test]
-    fn a_walker_that_gathers_steers_round_no_unit_that_gathers() {
-        // A unit of a quarter meter stands at (1, 0), in the way of a walker of a quarter meter
-        // at the origin bound for (6, 0), which looks 2 m ahead: a walker that gathers, past a
-        // unit that gathers too, sees no blocker and keeps its route; one that does not gather
-        // steers round it, by a short route to (2, 0).
-        let quarter = Num::QUARTER;
-        let walker = Walker {
-            layer: Layer::FIRST,
-            radius: quarter,
-        };
-        let bounds = Bounds::new([Num::int(-8); 2], [Num::int(8); 2]);
-        let cells = Grid::new(quarter, bounds.unwrap()).unwrap();
-        let grid = PathingGrid::new(cells, WalkerKinds::from([walker]), &WallGrid::default());
-        let statics = BodyIndex::new(quarter);
-        let mut ids = IdAllocator::default();
-        let (id, blocker) = (ids.allocate(), ids.allocate());
-        let standing = IndexedBody {
-            id: blocker,
-            position: eighths(8, 0),
-            shape: Shape::Circle(Radius::new(quarter).unwrap()),
-            layer: Layer::FIRST,
-        };
-        let goal = eighths(48, 0);
-        let route = PlannedRoute::new(goal, eighths(0, 0), &[goal]);
-        let detours = [true, false].map(|gathering| {
-            let mut planner = RoutePlanner::new(&cells);
-            let mut steering = Steering::default();
-            let gathering_still = TickBody {
-                body: standing,
-                walks: false,
-                gathers: true,
-            };
-            steering.read(&statics, [gathering_still]);
-            let steered = Steered {
-                id,
-                position: eighths(0, 0),
-                step: quarter,
-                walker,
-                stuck: false,
-                gathering,
-            };
-            steering
-                .steer(&mut planner, &grid, &statics, steered, route.read().ahead())
-                .is_some()
-        });
-        assert_eq!(detours, [false, true]);
-    }
-}
+mod tests;

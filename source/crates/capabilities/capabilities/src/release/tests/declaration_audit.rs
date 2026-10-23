@@ -24,7 +24,7 @@ use campfire_declarations::{
 use campfire_deliveries::Deliverers;
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_players::Player;
-use campfire_production::{Gatherer, PlayerSupply};
+use campfire_production::{Builder, Gatherer, PlayerSupply};
 use campfire_progression::Experience;
 use campfire_script::{
     ApiBuilder, CallExtension, CallParams, EventPhase, HookDecl, MatchNames, ModeEvents,
@@ -37,7 +37,7 @@ use campfire_sim::{
 use campfire_states::{NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
 use campfire_units::{
-    BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, TrackLevels, UnitEntity,
+    AtWork, BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, TrackLevels, UnitEntity,
 };
 use campfire_values::{EngineTag, MatchScope, NameId, Named as NamedId, Names, TagProperties};
 use campfire_visibility::DataKind;
@@ -573,6 +573,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             (type_name::<ActionSlots>(), type_name::<ShotStreak>()),
             (type_name::<UnitEntity>(), type_name::<SeenBy>()),
             (type_name::<Player>(), type_name::<PlayerSupply>()),
+            (type_name::<Builder>(), type_name::<AtWork>()),
         ]
     );
     // The engine tags keep their numbers while the module list keeps its order.

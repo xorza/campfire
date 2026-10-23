@@ -3,7 +3,8 @@ use bevy_ecs::query::{Changed, Has, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{
-    ActionBook, ActionKind, ActionProgress, ActionSlots, ActionTarget, ProgressIndexes, Targets,
+    ActionBook, ActionKind, ActionProgress, ActionSlots, ActionTarget, ProgressIndexes, TargetTest,
+    Targets,
 };
 use campfire_declarations::{Role, Scratch};
 use campfire_math::{Num, Vec3};
@@ -129,12 +130,13 @@ impl UnitOrders {
                 let sees = |target| team.is_some_and(|&team| visible.sees(team, target));
                 let unit_order = match order.directive {
                     OrdersDirective::Attack { target } => {
-                        let selected = team.and_then(|&team| {
-                            let unit = targets.enemy(team, target)?;
-                            Some((targets.relation(team, unit.team), unit.tags))
-                        });
-                        let armed = slots.is_some_and(|slots| {
-                            selected.is_some() && slots.weapon_in(&book, selected).is_some()
+                        let armed = team.zip(slots).is_some_and(|(&team, slots)| {
+                            let test = TargetTest {
+                                book: &book,
+                                targets: &targets,
+                                team,
+                            };
+                            slots.may_attack(&test, target)
                         });
                         (armed && sees(target)).then_some(UnitOrder::Attack { target })
                     }

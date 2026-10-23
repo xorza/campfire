@@ -110,7 +110,7 @@ pub use crate::action_slots::slot_times::{
 };
 pub use crate::action_slots::timed_slots::TimedSlots;
 pub use crate::action_slots::use_group::UseGroup;
-pub use crate::action_slots::{ActionSlot, ActionSlots, SlotsMut, SlotsMutItem};
+pub use crate::action_slots::{ActionSlot, ActionSlots, SlotsMut, SlotsMutItem, TargetTest};
 pub use crate::action_target::ActionTarget;
 pub use crate::actions_column::{ActionsColumn, SlotRow};
 pub use crate::actions_data::ActionsData;

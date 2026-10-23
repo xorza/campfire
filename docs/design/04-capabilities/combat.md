@@ -41,7 +41,7 @@
 ## Death and respawn
 
 - **A unit lives by one test.** `stats` decides whether a unit lives, not dead and its life above zero, and every pass reads that test: no heal or regen lifts a life at zero, only a respawn.
-- **A target lives.** A target is a unit that lives, has a life, and whose tags do not block `target`, so a unit at zero life that has not died yet is no target, as Zero Hour's `isEffectivelyDead` keeps such an object out of targeting; one predicate in `actions` decides it for every check.
+- **A target lives.** A target is a unit that lives, has a life, and whose tags do not block `target`, so a unit at zero life that has not died yet is no target, as Zero Hour's `isEffectivelyDead` keeps such an object out of targeting; one predicate in `actions` decides it for every check. A unit has a life when it holds one or is a body unit whose type has one, so a client that a mode keeps from an enemy's life still targets the enemy. Refused: a held life alone, which on such a client takes no enemy as a target, its checks of orders and its bots' searches among them ([Replication audiences](../10-replication-audiences.md)).
 - **Deaths at the end of Resolve.** A unit at zero life dies at the end of Resolve; one whose life reaches zero later in the tick, as `ctx.kill` in a mode's hook leaves it, dies at the next tick's.
 - **Kill credit.** The source whose damage took the life to zero is the killer; the units that damaged the victim within the mode's assist window assisted.
 - **A respawn is at least a tick later,** at its spawn place, its pools full.

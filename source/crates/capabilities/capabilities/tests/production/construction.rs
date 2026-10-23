@@ -485,6 +485,14 @@ fn an_order_build_pays_and_places_its_site_as_it_applies_and_its_builder_walks_t
         Some(BuildTarget::Site(depot))
     );
     assert_eq!(game.part::<Position>(builder).get(), halves(-20, 0));
+    // A build at a site, as a bot's search tests it: the builder's build goes on with the
+    // depot's site, of its building and its player; another player's builder's does not, nor
+    // does it with a unit that is no site.
+    let other = yard.builder(&mut game, halves(-20, -10), Team::new(1), 1);
+    let mut places = SystemState::<BuildPlaces<'_, '_, ByVision>>::new(&mut game);
+    let places = places.get(&game).unwrap();
+    assert!(places.takes_site(builder, 0, depot));
+    assert!(!places.takes_site(other, 0, depot) && !places.takes_site(builder, 0, builder));
     for tick in 1..10 {
         game.step();
         let progress = (tick >= 7).then(|| Num::int(tick - 6));

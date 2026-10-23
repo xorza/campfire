@@ -2,11 +2,14 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 use std::sync::Arc;
 
+use bevy_ecs::system::{Res, SystemState};
+
 use campfire_abilities::internals::MANA;
 use campfire_abilities::*;
 use campfire_actions::{
-    ActionBook, ActionData, ActionError, ActionField, ActionProblem, ActionTarget, Actions,
-    RangeField, SlotKindBook, SlotKindData, SlotKinds, SlotRanks, Targeting,
+    ActionBook, ActionData, ActionError, ActionField, ActionProblem, ActionSlots, ActionTarget,
+    Actions, RangeField, SlotKindBook, SlotKindData, SlotKinds, SlotRanks, TargetTest, Targeting,
+    Targets,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Directive, Match, Order};
@@ -179,6 +182,16 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     let enemy_hero = Spawn::of(hero, (4, 0, 0))
         .team(Team::new(1))
         .place(&mut game);
+    // The start's rule of a unit target, as a bot's search runs it: the hero, and not the creep.
+    let mut state = SystemState::<(Res<'_, ActionBook>, Targets<'_, '_>)>::new(&mut game);
+    let (book, targets) = state.get(&game).unwrap();
+    let test = TargetTest {
+        book: &book,
+        targets: &targets,
+        team: *game.part::<Team>(caster),
+    };
+    let slots = game.part::<ActionSlots>(caster);
+    assert!(slots.may_aim(&test, 0, enemy_hero) && !slots.may_aim(&test, 0, enemy_creep));
     // The creep is an enemy, but no hero: the cast goes nowhere. The hero takes 50.
     Abilities::cast(&mut game, caster, ActionTarget::Unit(enemy_creep));
     assert_eq!(Stats::health(&game, enemy_creep), 500);

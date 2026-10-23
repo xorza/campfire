@@ -134,8 +134,8 @@ fn item(moba: &ScriptedMode<Moba3v3>, name: &str) -> ItemId {
     items.named(name).unwrap()
 }
 
-/// The farm: every hero reaches level 6, Gale 8 and Cinder, Rime and Veil 7, and learns every
-/// ability, its ultimate, the fourth, at rank 1, so its points left are its level less its ranks.
+/// The farm: every hero reaches level 6, Gale 8 and Cinder, Husk, Kensho and Rime 7, and learns
+/// every ability, its ultimate, the fourth, at rank 1, so its points left are its level less its ranks.
 pub(crate) fn assert_farm(showcase: &Showcase) {
     let mut farmed = Vec::new();
     for player in 0..Moba3v3::PLAYERS {
@@ -154,10 +154,10 @@ pub(crate) fn assert_farm(showcase: &Showcase) {
         [
             learned(7, [2, 2, 2, 1]),
             learned(8, [3, 2, 2, 1]),
-            learned(6, [2, 2, 1, 1]),
-            learned(6, [2, 2, 1, 1]),
             learned(7, [2, 2, 2, 1]),
             learned(7, [2, 2, 2, 1]),
+            learned(7, [2, 2, 2, 1]),
+            learned(6, [2, 2, 1, 1]),
         ]
     );
 }
@@ -309,9 +309,9 @@ pub(crate) fn assert_casts(
     // hero walks into range first: the item actives in slot 7, and the abilities in slots 0 to 3.
     // Cyclone, Gale's first, charges as its first cast starts and starts its cooldown as the
     // second releases it; the toggles, Dread and Chill Arrows, start as they turn on; Night Step
-    // spends a charge. Kensho walks to Cinder for Flicker Strike, Cinder to Veil for Wildfire,
-    // and Rime from her post at (0, -20) toward (0, 15) for Snow Owl, whose second rank, which
-    // her farm takes it to, reaches 32.5 m of the 35, so she starts before Kensho's next cast.
+    // spends a charge. Kensho walks to Cinder for Flicker Strike and Cinder to Veil for
+    // Wildfire; Rime, on her way back to her post from her chase of Husk, stands within Snow
+    // Owl's reach of (0, 15) and starts it at once.
     let expected = [
         (0, 2, INVENTORY, false),
         (7, 5, 0, false),
@@ -333,7 +333,7 @@ pub(crate) fn assert_casts(
         (26, 3, 1, false),
         (27, 0, 2, true),
         (30, 2, 0, false),
-        (31, 4, 2, true),
+        (31, 4, 2, false),
         (32, 3, 2, false),
         (33, 2, 3, false),
         (34, 0, 3, false),

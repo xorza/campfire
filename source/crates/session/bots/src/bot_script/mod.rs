@@ -12,7 +12,7 @@ use campfire_vision::TeamSight;
 
 use crate::bot_script::bot_names::BotNames;
 use crate::bot_script::error::{BotScriptError, OrderUnsent, ThinkError};
-use crate::bot_view::BotView;
+use crate::bot_view::{BotView, UnitRole};
 use crate::loaded::{ActionName, Loaded, LoadedPlace};
 use crate::order_script::{OrderScript, ScriptedInput, ScriptedUnits};
 
@@ -98,11 +98,11 @@ pub enum BotUnits {
 }
 
 /// Gives each reference of a due order its id: the slot the order's units hold, and the nearest
-/// unit its filter selects from the first of them.
+/// unit its filter selects from the first of them, which one of them may attack for an attack.
 #[derive(Debug)]
 struct DueRefs<'v, 'w, 's, S: TeamSight> {
     view: &'v BotView<'w, 's, S>,
-    from: StableId,
+    units: &'v [StableId],
     slot: Option<u8>,
 }
 
@@ -297,11 +297,7 @@ impl BotOrder {
         view: &BotView<'_, '_, S>,
         out: &mut Vec<Order>,
     ) -> Result<(), OrderUnsent> {
-        let mut refs = DueRefs {
-            view,
-            from: units[0],
-            slot,
-        };
+        let mut refs = DueRefs { view, units, slot };
         let directive = self.directive.clone().map_refs(&mut refs)?;
         let units = OrderUnits::new(units).expect("an order commands a unit at least");
         out.push(Order { units, directive });
@@ -322,19 +318,50 @@ fn by_slot(
     slotted.len() < units.len()
 }
 
+impl<S: TeamSight> DueRefs<'_, '_, '_, S> {
+    /// The place among its units' slots of the action the order names.
+    const fn order_slot(&self) -> u8 {
+        self.slot
+            .expect("an order of a slot finds its units' place of it first")
+    }
+
+    /// The nearest unit `filter` selects that the order takes as `role`.
+    fn nearest(&self, role: UnitRole, filter: Filter) -> Result<StableId, OrderUnsent> {
+        self.view
+            .nearest(self.units, role, filter)
+            .ok_or(OrderUnsent::NoTarget)
+    }
+}
+
 impl<S: TeamSight> RefMap<Loaded, Ids> for DueRefs<'_, '_, '_, S> {
     type Error = OrderUnsent;
 
     fn unit(&mut self, unit: Filter) -> Result<StableId, OrderUnsent> {
-        self.view
-            .nearest(self.from, unit)
-            .ok_or(OrderUnsent::NoTarget)
+        self.nearest(UnitRole::Seen, unit)
+    }
+
+    fn attack(&mut self, unit: Filter) -> Result<StableId, OrderUnsent> {
+        self.nearest(UnitRole::Attacked, unit)
+    }
+
+    fn aimed(&mut self, unit: Filter) -> Result<StableId, OrderUnsent> {
+        self.nearest(UnitRole::Aimed(self.order_slot()), unit)
+    }
+
+    fn used(&mut self, unit: Filter) -> Result<StableId, OrderUnsent> {
+        self.nearest(UnitRole::Used, unit)
+    }
+
+    fn shop(&mut self, unit: Filter) -> Result<StableId, OrderUnsent> {
+        self.nearest(UnitRole::Shop, unit)
+    }
+
+    fn site(&mut self, unit: Filter) -> Result<StableId, OrderUnsent> {
+        self.nearest(UnitRole::Site(self.order_slot()), unit)
     }
 
     fn slot(&mut self, _: ActionName) -> Result<u8, OrderUnsent> {
-        Ok(self
-            .slot
-            .expect("an order of a slot finds its units' place of it first"))
+        Ok(self.order_slot())
     }
 
     fn ground(&mut self, ground: GroundPoint) -> Result<GroundPoint, OrderUnsent> {
@@ -349,10 +376,8 @@ impl<S: TeamSight> RefMap<Loaded, Ids> for DueRefs<'_, '_, '_, S> {
             LoadedPlace::Near { near, gap, steps } => (near, gap, steps),
         };
         let search = PlaceSearch {
-            builder: self.from,
-            slot: self
-                .slot
-                .expect("a build finds its units' place of it first"),
+            builder: self.units[0],
+            slot: self.order_slot(),
             near,
             gap,
             steps,
@@ -373,7 +398,7 @@ impl<S: TeamSight> RefMap<Loaded, Ids> for DueRefs<'_, '_, '_, S> {
     /// out.
     fn carried(&mut self, item: ItemId) -> Result<u8, OrderUnsent> {
         self.view
-            .carried(self.from, item)
+            .carried(self.units[0], item)
             .ok_or(OrderUnsent::NoStack)
     }
 }

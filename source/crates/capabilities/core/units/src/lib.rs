@@ -14,6 +14,7 @@
 )]
 
 mod arrived_short;
+mod at_work;
 mod avatar;
 mod body;
 mod body_form;
@@ -101,6 +102,7 @@ mod wall;
 mod wall_book;
 
 pub use crate::arrived_short::ArrivedShort;
+pub use crate::at_work::AtWork;
 pub use crate::avatar::Avatar;
 pub use crate::body::Body;
 pub use crate::body_form::BodyForm;
@@ -125,7 +127,7 @@ pub use crate::height_grid::HeightGrid;
 pub use crate::hit_handle::HitHandle;
 pub use crate::layer::Layer;
 pub use crate::level_raised::LevelRaised;
-pub use crate::life::{Life, lives};
+pub use crate::life::{Life, UnitLife, lives};
 pub use crate::lifespan::Lifespan;
 pub use crate::map_book::{BoundsData, MapBook, MetricData};
 pub use crate::map_point::MapPoint;

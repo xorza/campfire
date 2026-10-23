@@ -8,7 +8,7 @@ use campfire_script::{
     AnyKeptRows, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptList, ScriptValue,
     ScriptWindow, Unit, ViewColumn,
 };
-use campfire_units::{Dead, Life};
+use campfire_units::{BodyUnit, Dead, Life, UnitLife};
 use campfire_values::{Team, UnitTags, UnitType};
 use campfire_visibility::DataKind;
 
@@ -16,23 +16,27 @@ use crate::on_death::OnDeath;
 use crate::recent_attack::RecentAttack;
 use crate::recent_attackers::RecentAttackers;
 
-/// The parts of a unit combat reads into its row: whether it is dead, its life and tags, and who
-/// struck it recently.
+/// The parts of a unit combat reads into its row: whether it is dead, whether it is a body unit,
+/// its life and tags, and who struck it recently.
 pub(crate) type RowReads = (
     Has<Dead>,
+    Has<BodyUnit>,
     Option<&'static Life>,
     Option<&'static UnitTags>,
     Option<&'static RecentAttackers>,
 );
 
 /// What combat adds to the script view: the unit types whose units stay when they die, as each
-/// read takes them of the types' book, and the recent attacks on each unit, a run for each row,
-/// in one buffer.
+/// read takes them of the types' book, the types' lives, and the recent attacks on each unit, a
+/// run for each row, in one buffer.
 #[derive(Debug, Default)]
 pub struct CombatColumn {
     rows: KeptRows<CombatRows>,
     /// In the order of their ids.
     staying: Vec<UnitType>,
+    /// The types' book of lives, which each read shares, so a client that does not hold a unit's
+    /// life knows its body has one.
+    lives: Option<ById<UnitType, Life>>,
 }
 
 /// The rows of one read of the combat column.
@@ -58,6 +62,7 @@ impl ViewColumn for CombatColumn {
         let types = deaths.into_iter().flat_map(ById::iter);
         let staying = types.filter(|&(_, &on_death)| on_death == OnDeath::Stay);
         self.staying.extend(staying.map(|(unit_type, _)| unit_type));
+        self.lives = world.get_resource::<ById<UnitType, Life>>().cloned();
         false
     }
 
@@ -150,8 +155,11 @@ impl CombatColumn {
     /// Fills a row of the script view with what combat holds: whether the unit lives and whether it
     /// may be a target, in the core's row; who struck it recently, in combat's column.
     pub(super) fn fill_row(parts: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, Self>) {
-        let (dead, life, tags, recent) = parts;
+        let (dead, body, life, tags, recent) = parts;
         fill.row.alive = campfire_units::lives(dead, life);
+        let lives = fill.column.lives.as_ref();
+        let typed = lives.is_some_and(|lives| lives.get(fill.row.unit_type).is_some());
+        let life = UnitLife::of(life, body, typed);
         fill.row.targetable = Targets::targetable(dead, life, tags);
         fill.column
             .push(recent.into_iter().flat_map(RecentAttackers::iter));

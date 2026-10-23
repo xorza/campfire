@@ -1,15 +1,18 @@
 use arrayvec::ArrayVec;
-use blake3::Hasher;
 use campfire_codec::Sink;
+use campfire_common::{DomainHasher, HashDomain};
 
 use crate::state_registry::StateTypeHash;
 
-/// A BLAKE3 hasher fed through a buffer. Postcard writes a value at a time, and from small pieces
+/// The domain of a state type's hash, which the state hash folds after the type's name.
+const TYPE_DOMAIN: HashDomain<StateTypeHash> = HashDomain::new("campfire/state-type/v1");
+
+/// A BLAKE3 hasher of the state type domain fed through a buffer. Postcard writes a value at a time, and from small pieces
 /// BLAKE3 hashes one block at a time; from a piece of many chunks it hashes several at once with
 /// SIMD. The buffer is its own, so a hash allocates nothing.
 #[derive(Debug)]
 pub(crate) struct HashSink {
-    hasher: Hasher,
+    hasher: DomainHasher<StateTypeHash>,
     buffer: ArrayVec<u8, { Self::FLUSH }>,
 }
 
@@ -20,7 +23,7 @@ impl HashSink {
 
     pub(crate) fn new() -> Self {
         Self {
-            hasher: Hasher::new(),
+            hasher: DomainHasher::new(TYPE_DOMAIN),
             buffer: ArrayVec::new_const(),
         }
     }
@@ -28,16 +31,16 @@ impl HashSink {
     /// The hash of `bytes` taken whole, as a sink that took them in pieces gives it: in place, so
     /// a body already in one buffer is not copied through a sink's.
     pub(crate) fn of(bytes: &[u8]) -> StateTypeHash {
-        StateTypeHash::new(*blake3::hash(bytes).as_bytes())
+        let mut hasher = DomainHasher::new(TYPE_DOMAIN);
+        hasher.update(bytes);
+        hasher.finish()
     }
 
     /// The hash of the bytes it took since it was made or last finished, and a fresh start.
     pub(crate) fn finish(&mut self) -> StateTypeHash {
         self.hasher.update(&self.buffer);
         self.buffer.clear();
-        let hash = StateTypeHash::new(*self.hasher.finalize().as_bytes());
-        self.hasher.reset();
-        hash
+        self.hasher.finish_reset()
     }
 }
 
@@ -77,19 +80,16 @@ mod tests {
             (at, piece) = (end, piece * 31 % 997 + 1);
         }
         let pieces = sink.finish();
-        assert_eq!(pieces, StateTypeHash::new(*blake3::hash(&bytes).as_bytes()));
+        // BLAKE3 in key derivation mode, the domain's tag the context.
+        let hash =
+            |bytes: &[u8]| StateTypeHash::new(blake3::derive_key(TYPE_DOMAIN.as_str(), bytes));
+        assert_eq!(pieces, hash(&bytes));
         // The same bytes in one piece, past two buffers' worth, and taken whole in place.
         sink.put(&bytes);
         assert_eq!(sink.finish(), pieces);
         assert_eq!(HashSink::of(&bytes), pieces);
         sink.put(b"next");
-        assert_eq!(
-            sink.finish(),
-            StateTypeHash::new(*blake3::hash(b"next").as_bytes())
-        );
-        assert_eq!(
-            sink.finish(),
-            StateTypeHash::new(*blake3::hash(b"").as_bytes())
-        );
+        assert_eq!(sink.finish(), hash(b"next"));
+        assert_eq!(sink.finish(), hash(b""));
     }
 }

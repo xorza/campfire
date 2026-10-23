@@ -1,9 +1,11 @@
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_script::{Filter, Hook, HookSet, ScriptId};
+use campfire_sim::StableId;
 use campfire_values::{ModifierId, PackageIndex, Rank, Relation, TagSet};
 
 use crate::action_kind::ActionKind;
+use crate::action_target::ActionTarget;
 use crate::channel_pay::ChannelPay;
 use crate::delivery::Delivery;
 use crate::rank_toggle::TogglePer;
@@ -107,6 +109,29 @@ impl Action {
     /// Its cost at `rank`, one of its ranks, in its caster's player's resources.
     pub fn resource_cost(&self, rank: Rank) -> &[ResourceAmount] {
         &self.resource_costs[self.values(rank).resource_cost.range()]
+    }
+
+    /// The target a start of it takes of `target`, as `unit` reads a unit target: none for an
+    /// action that aims at nothing, whatever it is given; a point for one that aims at a point or
+    /// along a direction; a unit for one that aims at a unit, when `unit` gives it as living, with
+    /// how the caster regards it and its tags, and the action's filter selects it. `None` when
+    /// it takes no such target. The one rule of a start's target, which a search for one runs too
+    /// (04-capabilities/control.md, A bot's search runs its order's own test).
+    pub fn start_target(
+        &self,
+        target: ActionTarget,
+        unit: impl FnOnce(StableId) -> Option<(Relation, TagSet)>,
+    ) -> Option<ActionTarget> {
+        match (self.aim, target) {
+            (Aim::None, _) => Some(ActionTarget::None),
+            (Aim::Point { .. } | Aim::Direction, ActionTarget::Point(at)) => {
+                Some(ActionTarget::Point(at))
+            }
+            (Aim::Unit(filter), ActionTarget::Unit(id)) => unit(id)
+                .is_some_and(|(relation, tags)| filter.selects(relation, tags))
+                .then_some(ActionTarget::Unit(id)),
+            _ => None,
+        }
     }
 
     /// The filter of the units it may attack, for a weapon, which the load lets aim only at a

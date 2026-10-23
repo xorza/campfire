@@ -24,7 +24,7 @@ impl<R: OrderRefs> ActionTarget<R> {
     ) -> Result<ActionTarget<T>, M::Error> {
         Ok(match self {
             Self::None => ActionTarget::None,
-            Self::Unit(unit) => ActionTarget::Unit(refs.unit(unit)?),
+            Self::Unit(unit) => ActionTarget::Unit(refs.aimed(unit)?),
             Self::Point(point) => ActionTarget::Point(refs.point(point)?),
         })
     }

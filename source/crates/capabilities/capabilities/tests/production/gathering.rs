@@ -1,5 +1,7 @@
 use std::num::NonZeroU32;
 
+use bevy_ecs::system::SystemState;
+
 use campfire_capabilities::Order;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
@@ -184,6 +186,14 @@ fn a_worker_brings_its_loads_in_trip_by_trip_and_stops_as_its_node_runs_out() {
     assert_eq!([at(19), at(20)], [(10, None), (12, None)]);
     assert_eq!(Production::gather_step(&game, worker), None);
     assert_eq!(game.part::<Gatherer>(worker).load(), None);
+    // The loop's rule of a node, as a bot's search runs it: a worker's gather, learned or not,
+    // takes a mineral with gold left, and neither an empty one nor a unit that is no node.
+    let full = mine.mineral(&mut game, halves(10, 12), 12);
+    let empty = mine.mineral(&mut game, halves(-10, 12), 0);
+    let mut view = SystemState::<GatherView<'_, '_>>::new(&mut game);
+    let view = view.get(&game).unwrap();
+    assert!(view.gathers(worker, 0, full) && view.gathers(unlearned, 0, full));
+    assert!(!view.gathers(worker, 0, empty) && !view.gathers(worker, 0, worker));
 
     // On a predicting client, which holds the mineral as the server sent it: its worker takes the
     // mineral and carries 5 of it from tick 4 as the server's does, and the mineral keeps its 12

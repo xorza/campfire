@@ -9,6 +9,7 @@ use campfire_declarations::ById;
 use campfire_geometry::Placed;
 use campfire_math::Vec3;
 use campfire_players::{OnMatch, PlayerResources, PlayerRows, ResourceAmount};
+use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use campfire_units::{Body, Dead, MapBook, Owner, WalkReadOnlyItem};
 use campfire_values::{ActionId, Relations, ResourceId, Team, UnitTags, UnitType};
@@ -27,14 +28,14 @@ use crate::site::Site;
 /// What the gather loop reads of the match: the books, the workers, the nodes and the drop-offs.
 /// A client reads the nodes it holds as the server sent them, as it predicts none.
 #[derive(SystemParam, Debug)]
-pub(crate) struct GatherView<'w, 's> {
+pub struct GatherView<'w, 's> {
     pub(super) tick: Res<'w, SimTick>,
     pub(super) index: Res<'w, EntityIndex>,
     pub(super) book: Res<'w, ActionBook>,
     pub(super) gathers: Res<'w, ById<ActionId, GatherSpec>>,
     pub(super) nodes_book: Res<'w, NodeBook>,
     pub(super) map: Res<'w, MapBook>,
-    pub relations: OnMatch<'w, 's, Relations>,
+    pub(super) relations: OnMatch<'w, 's, Relations>,
     pub(super) resources: PlayerRows<'w, 's, PlayerResources>,
     pub(super) workers: Query<'w, 's, WorkerParts, Without<Dead>>,
     pub(super) nodes: Query<
@@ -88,6 +89,28 @@ struct Seeker<'a> {
     relations: &'a Relations,
 }
 
+/// What a worker's gather takes of a node: its resource and its filter, by how the worker's team
+/// regards the node's.
+#[derive(Debug, Clone, Copy)]
+struct NodeRule<'a> {
+    resource: ResourceId,
+    filter: Filter,
+    team: Team,
+    relations: &'a Relations,
+}
+
+impl<'a> Seeker<'a> {
+    /// The rule of the nodes its gather takes.
+    const fn rule(self) -> NodeRule<'a> {
+        NodeRule {
+            resource: self.gather.spec.resource,
+            filter: self.gather.filter,
+            team: self.team,
+            relations: self.relations,
+        }
+    }
+}
+
 /// A worker as it takes its load to a drop-off: where it stands, its owner, its loop, its load,
 /// its node while it stands, how it looks at nodes, and its walk.
 #[derive(Debug, Clone, Copy)]
@@ -136,20 +159,59 @@ impl GatherView<'_, '_> {
         })
     }
 
+    /// Whether the living worker `worker` gathers the living node `node` with the gather in
+    /// `slot`, learned or not, as its loop takes a node: of the gather's resource, with something
+    /// left, and one the gather's filter selects; whether it may gather then is its order's and its
+    /// loop's own test (04-capabilities/control.md, A bot's search runs its order's own test).
+    pub fn gathers(&self, worker: StableId, slot: u8, node: StableId) -> bool {
+        let found = self
+            .index
+            .get(worker)
+            .and_then(|at| self.workers.get(at).ok());
+        let Some((.., &team, _, slots, _, _, _)) = found else {
+            return false;
+        };
+        let Some(action) = slots.slot(slot).and_then(|held| held.action) else {
+            return false;
+        };
+        let (Some(spec), Some(Aim::Unit(filter))) = (
+            self.gathers.get(action),
+            self.book.get(action).map(|action| action.aim),
+        ) else {
+            return false;
+        };
+        let relations = self.relations.get();
+        let rule = NodeRule {
+            resource: spec.resource,
+            filter,
+            team,
+            relations: &relations,
+        };
+        let row = self.index.get(node).and_then(|at| self.nodes.get(at).ok());
+        row.is_some_and(|row| self.takes_node(&row, rule))
+    }
+
     /// The living node of id `node` that `seeker`'s gather gathers for it, with something left:
     /// one that ran out is gone to the loop, though it stands until the tick ends.
     fn node(&self, node: StableId, seeker: Seeker<'_>) -> Option<FoundNode> {
         self.found(self.nodes.get(self.index.get(node)?).ok()?, seeker)
     }
 
+    /// Whether `rule`'s gather takes the node of `row`: one of its resource, with something left,
+    /// that its filter selects.
+    fn takes_node(&self, row: &NodeRow<'_>, rule: NodeRule<'_>) -> bool {
+        let (_, _, _, _, &unit_type, node, &node_team, tags) = *row;
+        let relation = rule.relations.between(rule.team, node_team);
+        let tags = tags.map_or_default(|tags| tags.tags);
+        node.amount() > 0
+            && self.nodes_book.resource(unit_type) == Some(rule.resource)
+            && rule.filter.selects(relation, tags)
+    }
+
     /// The node of `row`, when `seeker`'s gather gathers it for it, as `node` finds one.
     fn found(&self, row: NodeRow<'_>, seeker: Seeker<'_>) -> Option<FoundNode> {
-        let (entity, _, &at, body, &unit_type, node, &node_team, tags) = row;
-        let relation = seeker.relations.between(seeker.team, node_team);
-        let tags = tags.map_or_default(|tags| tags.tags);
-        let ours = node.amount() > 0
-            && self.nodes_book.resource(unit_type) == Some(seeker.gather.spec.resource)
-            && seeker.gather.filter.selects(relation, tags);
+        let ours = self.takes_node(&row, seeker.rule());
+        let (entity, _, &at, body, ..) = row;
         ours.then_some(FoundNode {
             entity,
             location: LoopTarget {

@@ -23,7 +23,7 @@ use crate::session_log::{Bounds, LoggedResult, Past, SessionLog, len, offset, pu
 use crate::session_terms::SessionTerms;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
-pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v9";
+pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v10";
 /// The bytes that start a player's packet and a server input in the file.
 pub(super) const PACKET_ENTRY: u8 = 0;
 pub(super) const SERVER_ENTRY: u8 = 1;
