@@ -309,6 +309,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `projectile` | projectiles | since 1.0 |
 | `area` | areas | since 1.0 |
 | `production` | production | since 1.0 |
+| `spawns` | production | since 1.0 |
 | `supply` | production | since 1.0 |
 | `node` | production | since 1.0 |
 | `drop_off` | production | since 1.0 |
@@ -586,7 +587,6 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `rally` | production | since 1.0 |
 | `gathers` | production | since 1.0 |
 | `free` | production | since 1.0 |
-| `spawns` | production | since 1.0 |
 
 ### A unit type's `supply`
 

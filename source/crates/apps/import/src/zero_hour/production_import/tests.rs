@@ -193,8 +193,10 @@ const SUPPLY: &str = "Object Center\n\
     Object Wisp\n Locomotor = SET_NORMAL TankTreads\nEnd\n\
     Object Site\n Behavior = ProductionUpdate M1\n End\n\
      Behavior = SpawnBehavior M2\n  SpawnNumber = 3\n  SpawnReplaceDelay = 30000\n\
-       SpawnTemplateName = Guard\n End\n\
+       SpawnTemplateName = Guard\n  SpawnTemplateName = Watch\n End\n\
     End\n\
+    Object Watch\n Locomotor = SET_NORMAL TankTreads\n KindOf = INFANTRY\n\
+     Body = ActiveBody M1\n  MaxHealth = 50\n  InitialHealth = 50\n End\nEnd\n\
     Object Shelter\n Behavior = SpawnBehavior M1\n  SpawnNumber = 2\n\
        SpawnTemplateName = Guard\n End\n\
     End\n\
@@ -373,21 +375,25 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     let dropped: Vec<&Dropped<VariationDropCause>> =
         rules.objects.variations().dropped().into_iter().collect();
     assert_eq!(dropped, [&unalike]);
-    // The site of a production update keeps 3 guards, each back 30,000 ms, 900 frames, after
-    // it dies, and trains nothing (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns).
+    // The site of a production update keeps 3 spawns of a guard and a watch in turn, each back
+    // 30,000 ms, 900 frames, after it dies, and trains nothing, its production section of no
+    // spawn (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns; spawn-leaders.md,
+    // Spawns take their types in turn).
     let spawns = SpawnsData {
-        unit_type: declared("guard"),
+        unit_types: vec![declared("guard"), declared("watch")],
         count: NonZeroU8::new(3).unwrap(),
         replace_ms: 30_000,
     };
-    let site = &import.sections[&name("Site")];
-    assert_eq!((&site.spawns, &site.free), (&Some(spawns), &Vec::new()));
-    // The burrow, which trains nothing, frees its two guards by the production of its update.
-    let burrow = &import.sections[&name("Burrow")];
+    assert_eq!(import.supply.spawns.get(&name("Site")), Some(&spawns));
     assert_eq!(
-        (&burrow.spawns, &burrow.free),
-        (&None, &vec![declared("guard"), declared("guard")])
+        import.sections[&name("Site")].free,
+        Vec::<DeclaredName>::new()
     );
+    // The burrow, which trains nothing, frees its two guards by the production of its update,
+    // and keeps none.
+    let burrow = &import.sections[&name("Burrow")];
+    assert_eq!(burrow.free, [declared("guard"), declared("guard")]);
+    assert_eq!(import.supply.spawns.get(&name("Burrow")), None);
     // The drop zone, whose objects come over time, the dock of no box, the helicopter, which
     // flies, the guard of a tunnel and of a shelter, of no production, once for its cause, the
     // guard a crowd keeps none of, and the wisp a haunt keeps, of no life, are dropped, in the

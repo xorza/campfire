@@ -7,7 +7,7 @@ use campfire_actions::{
 use campfire_codec::TomlTable;
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::Num;
-use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnsData};
+use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnSpec, SpawnsData};
 use campfire_values::{Distance, Number, Ranked, Scalar};
 
 use crate::zero_hour::dropped::Losses;
@@ -33,6 +33,8 @@ pub(crate) struct SupplyImport {
     pub(crate) hacks: BTreeMap<DeclaredName, ActionKeys>,
     pub(crate) nodes: BTreeMap<TypeName, NodeData>,
     pub(crate) drop_offs: BTreeMap<TypeName, DropOffData>,
+    /// The spawns each building of a production section keeps, by its type's name.
+    pub(crate) spawns: BTreeMap<TypeName, SpawnsData>,
     pub(crate) dropped: Losses<SupplyDropCause>,
 }
 
@@ -42,13 +44,6 @@ pub(crate) struct SupplyImport {
 pub(crate) struct ImportedGather {
     keys: ActionKeys,
     gather: GatherData,
-}
-
-/// The spawns a building keeps: its producer's `spawns`, and its spawn's object.
-#[derive(Debug, Clone)]
-pub(crate) struct KeptUnits<'r> {
-    pub(crate) spawns: SpawnsData,
-    pub(crate) unit: NamedObject<'r>,
 }
 
 /// Why the import drops a supply module.
@@ -228,45 +223,63 @@ impl SupplyImport {
         freed
     }
 
-    /// The spawns `object`, a building that trains, keeps: its kept spawn's first template,
-    /// which walks, typed in `names`, its number and its replace delay as the import converts a
-    /// time (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns); none for no kept
-    /// spawn, and its spawn dropped for a number or a delay past what the engine holds, or for a
-    /// spawn of no life.
-    pub(crate) fn kept<'r>(
+    /// Keeps the spawns of `producer`, a building that trains: its kept spawn's templates in
+    /// turn, each a walker typed in `names`, its number and its replace delay as the import
+    /// converts a time (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns;
+    /// spawn-leaders.md, Spawns take their types in turn); the objects of its spawns' types, to
+    /// join the walk. None for no kept spawn, and its spawn dropped for a number or a delay past
+    /// what the engine holds, more templates than a spawner takes, or a spawn of no walk or no
+    /// life.
+    pub(crate) fn keep<'r>(
         &mut self,
         rules: &'r ZeroHourRules,
-        object: &'r IniObject,
+        producer: &NamedObject<'r>,
         names: &mut ProductionNames<'r>,
-    ) -> Option<KeptUnits<'r>> {
-        let kept = object.supply().kept()?;
-        let spawned = self.walker(rules, &kept.templates[0])?;
+    ) -> Vec<NamedObject<'r>> {
+        let Some(kept) = producer.object.supply().kept() else {
+            return Vec::new();
+        };
+        if kept.templates.len() > SpawnSpec::MOST_TYPES {
+            self.drop_named(&kept.templates[0], SupplyDropCause::BadNumber);
+            return Vec::new();
+        }
+        let mut walkers = Vec::with_capacity(kept.templates.len());
+        for template in &kept.templates {
+            let Some(spawned) = self.walker(rules, template) else {
+                return Vec::new();
+            };
+            walkers.push(spawned);
+        }
         let count = u8::try_from(kept.number).ok().and_then(NonZeroU8::new);
         let replace_ms = game_time::of_ms(kept.replace_ms).ok();
         let replace_ms = replace_ms.and_then(|ms| u32::try_from(ms).ok());
         let (Some(count), Some(replace_ms)) = (count, replace_ms) else {
-            self.drop(spawned, SupplyDropCause::BadNumber);
-            return None;
+            self.drop(walkers[0], SupplyDropCause::BadNumber);
+            return Vec::new();
         };
-        let Ok(typed) = names.unit_type(spawned, rules) else {
-            self.drop(spawned, SupplyDropCause::NoObject);
-            return None;
-        };
-        if typed.imported.life().is_none() {
-            self.drop(spawned, SupplyDropCause::Unliving);
-            return None;
-        }
-        Some(KeptUnits {
-            spawns: SpawnsData {
-                unit_type: typed.name.declared().clone(),
-                count,
-                replace_ms,
-            },
-            unit: NamedObject {
+        let mut units: Vec<NamedObject<'r>> = Vec::with_capacity(walkers.len());
+        for spawned in walkers {
+            let Ok(typed) = names.unit_type(spawned, rules) else {
+                self.drop(spawned, SupplyDropCause::NoObject);
+                return Vec::new();
+            };
+            if typed.imported.life().is_none() {
+                self.drop(spawned, SupplyDropCause::Unliving);
+                return Vec::new();
+            }
+            units.push(NamedObject {
                 name: typed.name,
                 object: typed.object,
-            },
-        })
+            });
+        }
+        let unit_types = units.iter().map(|unit| unit.name.declared().clone());
+        let spawns = SpawnsData {
+            unit_types: unit_types.collect(),
+            count,
+            replace_ms,
+        };
+        self.spawns.insert(producer.name.clone(), spawns);
+        units
     }
 
     /// Drops each spawn of `object`, a building of no production, so of no exit to send its

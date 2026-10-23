@@ -547,7 +547,6 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         rally,
         gathers: false,
         free: Vec::new(),
-        spawns: None,
     };
     let production = |name: &str| unit(name).section::<ProductionData>();
     assert_eq!(
@@ -708,6 +707,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         production: &production.sections,
         nodes: &production.supply.nodes,
         drop_offs: &production.supply.drop_offs,
+        spawns: &production.supply.spawns,
     };
     let units = types.units_file(additions, &rules.names);
     assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);

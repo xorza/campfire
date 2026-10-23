@@ -262,6 +262,7 @@ impl ZeroHour {
             production: &production.sections,
             nodes: &production.supply.nodes,
             drop_offs: &production.supply.drop_offs,
+            spawns: &production.supply.spawns,
         };
         let units = types.units_file(additions, &game.names);
         writer.write(UnitsFile::path(), units.text.as_bytes())?;

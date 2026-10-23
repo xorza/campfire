@@ -78,7 +78,6 @@ impl Shop {
             rally: None,
             gathers: false,
             free: Box::new([]),
-            spawns: None,
         };
         Self::give(game, barracks, production.clone());
         let frame = |x: i64| FramePoint::new([Num::int(x), Num::ZERO]);

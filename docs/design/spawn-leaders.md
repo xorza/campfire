@@ -1,0 +1,20 @@
+# Slice: Spawn leaders
+
+At its end, GLA's angry mob, which a player or a bot trains, is a crowd of members that walk, fight and die together: an order to the mob moves or sends every member, a member it loses comes back 30 s later while one stands, and the mob is gone when its last member falls, its killer the last one's. The user selects it by any member. The facts are in [Zero Hour's angry mob](../research/zero-hour-mobs.md).
+
+## Decisions
+
+- **A unit may lead its spawns.** A unit type whose `spawns` are led has no life, body or walk of its own: it stands each tick at the centre of its living spawns, lives while one lives, and dies as the last one falls, the last one's killer its killer, as OpenRA's port of the mob sets its nexus (`MobSpawnerMaster`) and Zero Hour's `SpawnBehavior` of `AggregateHealth` destroys it. Refused: Zero Hour's walking nexus of an immortal body that its members chase, which needs a walker that pushes no one, a body the pathing grid has not, and a catch-up rule that kills a member left behind; a life of the leader's own, which a fight would wear down beside its members.
+- **Spawns are a section of their own.** A unit type's `spawns` leave `production`, so a type that trains nothing keeps spawns, the mob as the Stinger site; a producer's exit still sends them. Refused: a production section for a unit that trains nothing, whose queue it never fills.
+- **Spawns take their types in turn,** a list in place of one type, as `SpawnBehavior` takes its `SpawnTemplateName`s in turn: the mob's members are seven types of three weapons, so no one type of variations holds them ([A variation varies the body and the look alone](09-zero-hour.md)).
+- **A later spawn buds from the nearest spawn.** A leader's first spawns leave from the free cells nearest its place, which a train gives as its producer's exit, and each later one from the living spawn nearest the leader's centre, as `ExitByBudding` gives both the game and the port. Refused: the leader's place alone, the centre of a mob that may stand round a building.
+- **An order to a leader is its spawns' order.** `orders` puts a leader's living spawns in its place among an order's units, in increasing stable id, so a move of the mob shares one route and an attack sends each member, as the port gives its members the nexus's move, attack, attack-move and stop, and Zero Hour's members take the nexus's victim; an idle member scans as its type declares, as the game's members acquire when idle. Refused: the nexus's harmless weapon, which the game's members follow; a member's own following loop; `Squirrelliness`, a draw for each member each half second, of which the idle scan keeps the effect.
+- **A member picks as its leader.** The client selects a leader when its pointer picks a member, and rings each member of a selected leader, as `SpawnBehavior` shares one selection; each spawn's leader is state every client receives once. Refused: members selected one by one, which `SlavesHaveFreeWill` No refuses.
+- **A leader of armed spawns is armed.** The import's army list and a bot's count take a leader whose spawns a weapon arms as armed, so an attacker trains and sends its mobs.
+- **The import converts a mob.** A walker's `SpawnBehavior` of `AggregateHealth` and `SlavesHaveFreeWill` No converts to led spawns of its templates in turn, its `ImmortalBody` and harmless weapon to none; the catch-up radii, the crisis bail, `Squirrelliness`, the pooled veterancy, the prone member and the upgrade `Arm the Mob` are written as losses.
+
+## Checks
+
+- **The mob in the Zero Hour check.** In the base play no unit of no life fights, GLA's mobs' members fight and die, and a mob goes as its last member falls; the check's golden is blessed once.
+- **A leader in a test.** A type of led spawns of two types spawns its count in turn round its place; an order to it moves and sends each member; it stands at their centre; a member it loses comes back from the nearest member after its delay; and it dies with the last, the last one's killer its killer.
+- **A member picks as its leader.** A client test's pick of a member selects its leader and rings its members.

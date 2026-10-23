@@ -797,16 +797,17 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
             rule_at(
                 problem,
                 &unit_type("yard"),
-                &ProductionDataError::FreeStands,
+                &ProductionDataError::LeaverStands,
             )
         },
     },
-    // A kept spawn's type lives, so its units die to come back.
+    // A kept spawn's type lives, so its units die to come back; a type that keeps spawns needs
+    // no production section, and takes one unit type or more.
     Flaw {
         file: UNITS,
         edit: Edit::Replace(
             "[units.tower]\n",
-            "[units.yard]\nproduction = { queue = 1, spawns = { unit_type = \"imp\", count = 2, replace_ms = 1000 } }\n\n[units.imp]\nstats = { move_speed = { base = \"3\" } }\n\n[units.tower]\n",
+            "[units.yard]\nspawns = { unit_types = [\"imp\"], count = 2, replace_ms = 1000 }\n\n[units.imp]\nstats = { move_speed = { base = \"3\" } }\n\n[units.tower]\n",
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
@@ -822,6 +823,22 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
         file: UNITS,
         edit: Edit::Replace(
             "[units.tower]\n",
+            "[units.yard]\nspawns = { unit_types = [], count = 2, replace_ms = 1000 }\n\n[units.tower]\n",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| {
+            rule_at(
+                problem,
+                &unit_type("yard"),
+                &ProductionDataError::SpawnTypes(0),
+            )
+        },
+    },
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            "[units.tower]\n",
             "[units.yard]\nproduction = { queue = 1, free = [\"caster_creep_bolt\"] }\n\n[units.tower]\n",
         ),
         also: &[(MANIFEST, PRODUCTION)],
@@ -830,7 +847,7 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
             rule_at(
                 problem,
                 &unit_type("yard"),
-                &ProductionDataError::FreeDelivered,
+                &ProductionDataError::LeaverDelivered,
             )
         },
     },

@@ -28,11 +28,13 @@ use crate::node::Node;
 use crate::node_book::{NodeBook, NodeSpec};
 use crate::node_data::NodeData;
 use crate::placement_data::{PlacementData, PlacementRule};
-use crate::producer_spec::{ProducerSpec, SpawnSpec};
+use crate::producer_spec::ProducerSpec;
 use crate::production_data::ProductionData;
 use crate::requirement_book::RequirementBook;
 use crate::requires_data::RequiredUnit;
 use crate::resource_set::ResourceSet;
+use crate::spawn_spec::SpawnSpec;
+use crate::spawns_data::SpawnsData;
 use crate::supply_book::SupplyBook;
 use crate::supply_cost_book::SupplyCostBook;
 use crate::supply_data::SupplyData;
@@ -383,57 +385,62 @@ impl SupplyBook {
 
 impl ProducerSpec {
     /// The production of each unit type that stands and produces; an error for a producer that
-    /// starts its gatherers in a match without navigation, which walks them, for a free or a kept
-    /// spawn's unit type its package does not have, or one that does not walk out of its exit,
-    /// for a kept spawn of no life, which would never die, and for a spawns' time too large to
-    /// count in ticks.
+    /// starts its gatherers in a match without navigation, which walks them, and for a free unit's
+    /// type as `leaving` refuses one.
     pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
             let Some(data) = unit.data.section::<ProductionData>() else {
                 continue;
             };
-            let at = || BookPlace::UnitType(unit.place());
             if data.gathers {
+                let at = || BookPlace::UnitType(unit.place());
                 cx.require(Capability::Navigation, unit.package, at)?;
             }
-            let broken = |problem| BookError::rule(unit.package, at(), problem);
-            let leaver = |name: &DeclaredName| {
-                let unknown = || {
-                    let name = UnknownName::new(UnitType::NAMES, name);
-                    BookError::unknown(unit.package, at(), name)
-                };
-                let scope = TypeScope::of_package(unit.package);
-                let freed = cx.unit_type(scope, name.as_str()).ok_or_else(unknown)?;
-                let data = cx.type_of(freed).data;
-                if data.delivers() {
-                    return Err(broken(ProductionDataError::FreeDelivered));
-                }
-                if !data.section::<StatsData>().is_some_and(StatsData::walks) {
-                    return Err(broken(ProductionDataError::FreeStands));
-                }
-                Ok(freed)
-            };
-            let spawns = data.spawns.as_ref().map(|spawns| {
-                let replace = cx.rate().ticks(spawns.replace_ms.into());
-                let spawned = leaver(&spawns.unit_type)?;
-                if !lives(cx, spawned)? {
-                    return Err(broken(ProductionDataError::SpawnUnliving));
-                }
-                Ok::<_, BookError>(SpawnSpec {
-                    unit_type: spawned,
-                    count: spawns.count,
-                    replace: replace
-                        .ok_or_else(|| BookError::rule(unit.package, at(), TimeTooLarge))?,
-                })
-            });
+            let free = data.free.iter().map(|name| leaving(cx, unit, name));
             let spec = Self {
                 queue: data.queue,
                 exit: data.exit,
                 rally: data.rally,
                 gathers: data.gathers,
-                free: data.free.iter().map(leaver).collect::<Result<_, _>>()?,
-                spawns: spawns.transpose()?,
+                free: free.collect::<Result<_, _>>()?,
+            };
+            book.set(unit.unit_type, spec);
+        }
+        Ok(book.build())
+    }
+}
+
+impl SpawnSpec {
+    /// The spawns of each unit type that stands and keeps them; an error for one of no unit type
+    /// or more than its turn counts, for a unit type as `leaving` refuses one, for one of no
+    /// life, which would never die to come back, and for a time too large to count in ticks.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
+        for unit in cx.standing() {
+            let Some(data) = unit.data.section::<SpawnsData>() else {
+                continue;
+            };
+            let at = || BookPlace::UnitType(unit.place());
+            let broken = |problem| BookError::rule(unit.package, at(), problem);
+            let count = data.unit_types.len();
+            if count == 0 || count > Self::MOST_TYPES {
+                return Err(broken(ProductionDataError::SpawnTypes(count)));
+            }
+            let mut unit_types = Vec::with_capacity(count);
+            for name in &data.unit_types {
+                let spawned = leaving(cx, unit, name)?;
+                if !lives(cx, spawned)? {
+                    return Err(broken(ProductionDataError::SpawnUnliving));
+                }
+                unit_types.push(spawned);
+            }
+            let replace = cx.rate().ticks(data.replace_ms.into());
+            let spec = Self {
+                unit_types: unit_types.into(),
+                count: data.count,
+                replace: replace
+                    .ok_or_else(|| BookError::rule(unit.package, at(), TimeTooLarge))?,
             };
             book.set(unit.unit_type, spec);
         }
@@ -478,6 +485,31 @@ impl Gatherer {
         }
         Ok(book.build())
     }
+}
+
+/// The unit type `name` of the package of `unit`, which leaves `unit` as a free unit or a spawn;
+/// an error for a type its package does not have, one of a projectile or an area, whose units
+/// only actions deliver, and one that does not walk out of its exit.
+fn leaving(
+    cx: &BookCx<'_>,
+    unit: &SourceType<'_>,
+    name: &DeclaredName,
+) -> Result<UnitType, BookError> {
+    let at = || BookPlace::UnitType(unit.place());
+    let scope = TypeScope::of_package(unit.package);
+    let Some(left) = cx.unit_type(scope, name.as_str()) else {
+        let name = UnknownName::new(UnitType::NAMES, name);
+        return Err(BookError::unknown(unit.package, at(), name));
+    };
+    let data = cx.type_of(left).data;
+    let broken = |problem| Err(BookError::rule(unit.package, at(), problem));
+    if data.delivers() {
+        return broken(ProductionDataError::LeaverDelivered);
+    }
+    if !data.section::<StatsData>().is_some_and(StatsData::walks) {
+        return broken(ProductionDataError::LeaverStands);
+    }
+    Ok(left)
 }
 
 /// Whether `unit_type` of the match `cx` loads has the life pool, so its units live and die.

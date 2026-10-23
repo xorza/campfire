@@ -7,6 +7,8 @@ use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 use thiserror::Error;
 
+use crate::spawn_spec::SpawnSpec;
+
 /// Why a unit type breaks a rule of production. Packages are untrusted, so each is an expected
 /// failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -35,15 +37,19 @@ pub enum ProductionDataError {
     /// A gather whose `unit` takes more than its whole trip's `take`.
     #[error("a gather's unit passes its take")]
     UnitPastTake,
-    /// A producer's free unit of a projectile or an area type, whose units only actions deliver.
-    #[error("a free unit is of a projectile or an area type")]
-    FreeDelivered,
-    /// A producer's free unit of a type that does not walk out of its exit.
-    #[error("a free unit's type does not walk")]
-    FreeStands,
-    /// A producer's kept spawn of a type of no life, which would never die to come back.
+    /// A free unit or a kept spawn of a projectile or an area type, whose units only actions
+    /// deliver.
+    #[error("a free unit or a kept spawn is of a projectile or an area type")]
+    LeaverDelivered,
+    /// A free unit or a kept spawn of a type that does not walk out of its exit.
+    #[error("a free unit's or a kept spawn's type does not walk")]
+    LeaverStands,
+    /// A kept spawn of a type of no life, which would never die to come back.
     #[error("a kept spawn's type has no life")]
     SpawnUnliving,
+    /// A type's `spawns` of no unit type, or of more than a spawner's turn counts.
+    #[error("a type's `spawns` take 1 to {most} unit types, not {0}", most = SpawnSpec::MOST_TYPES)]
+    SpawnTypes(usize),
     /// A build whose unit type has no body, or a circle of no radius.
     #[error("its building has no body")]
     NoBody,

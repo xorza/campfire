@@ -278,7 +278,6 @@ fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
             rally: None,
             gathers: false,
             free,
-            spawns: None,
         };
         Shop::give(&mut game, shop.depot, spec);
         let builder = yard.builder(&mut game, halves(-20, 0), Team::new(0), 0);
@@ -330,9 +329,11 @@ fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
 
 #[test]
 fn a_depot_spawned_whole_keeps_its_spawns_and_a_restore_sends_none_again() {
-    // A depot that keeps two grunts, spawned whole at (10, 0): both leave its exit at (13.5, 0.5)
-    // as it spawns; a restore of the next tick holds those two, and sends none again
-    // (04-capabilities/production.md, A building that spawns whole frees its units).
+    // A depot that keeps two spawns, a grunt and a forge in turn, spawned whole at (10, 0): both
+    // leave its exit at (13.5, 0.5) as it spawns; a restore of the next tick holds those two, and
+    // sends none again (04-capabilities/production.md, A building that spawns whole frees its
+    // units). The forge it loses comes back as the next in turn, a grunt
+    // (spawn-leaders.md, Spawns take their types in turn).
     let scene = || {
         let Building { mut game, shop, .. } = Building::new(Rules::of(Style::Alone));
         let spec = ProducerSpec {
@@ -341,25 +342,33 @@ fn a_depot_spawned_whole_keeps_its_spawns_and_a_restore_sends_none_again() {
             rally: None,
             gathers: false,
             free: Box::new([]),
-            spawns: Some(SpawnSpec {
-                unit_type: shop.grunt,
-                count: NonZeroU8::new(2).unwrap(),
-                replace: Ticks::new(5),
-            }),
         };
         Shop::give(&mut game, shop.depot, spec);
+        let spawns = SpawnSpec {
+            unit_types: [shop.grunt, shop.forge].into(),
+            count: NonZeroU8::new(2).unwrap(),
+            replace: Ticks::new(5),
+        };
+        Shop::give(&mut game, shop.depot, spawns);
+        Shop::give(&mut game, shop.forge, Life::full(Num::int(10)));
         (game, shop)
     };
     let (mut game, shop) = scene();
     shop.hall(&mut game, halves(20, 0));
     let at = |game: &mut Match| {
-        let grunts = Shop::spawned(game, shop.grunt);
-        grunts
+        let mut spawned = Shop::spawned(game, shop.grunt);
+        spawned.extend(Shop::spawned(game, shop.forge));
+        spawned
             .iter()
-            .map(|grunt| grunt.position)
+            .map(|spawn| spawn.position)
             .collect::<Vec<_>>()
     };
     assert_eq!(at(&mut game), [halves(27, 1); 2]);
+    let count = |game: &mut Match, unit_type| Shop::spawned(game, unit_type).len();
+    assert_eq!(
+        [count(&mut game, shop.grunt), count(&mut game, shop.forge)],
+        [1, 1]
+    );
     game.step();
     let (mut restored, _) = scene();
     let players: Vec<Entity> = restored
@@ -373,6 +382,16 @@ fn a_depot_spawned_whole_keeps_its_spawns_and_a_restore_sends_none_again() {
     assert_eq!(at(&mut restored).len(), 2);
     restored.step();
     assert_eq!(at(&mut restored).len(), 2);
+    let forge = Shop::spawned(&mut game, shop.forge)[0].id;
+    game.drain_life(forge);
+    for _ in 0..7 {
+        game.step();
+    }
+    let grunts = Shop::spawned(&mut game, shop.grunt);
+    let living = grunts
+        .iter()
+        .filter(|grunt| !game.entity(game.unit_entity(grunt.id)).contains::<Dead>());
+    assert_eq!(living.count(), 2);
 }
 
 #[test]
@@ -391,13 +410,14 @@ fn a_completed_site_keeps_its_spawns_brings_each_back_and_takes_them_as_it_dies(
             rally: None,
             gathers: false,
             free: Box::new([]),
-            spawns: Some(SpawnSpec {
-                unit_type: shop.grunt,
-                count: NonZeroU8::new(2).unwrap(),
-                replace: Ticks::new(5),
-            }),
         };
         Shop::give(&mut game, shop.depot, spec);
+        let spawns = SpawnSpec {
+            unit_types: [shop.grunt].into(),
+            count: NonZeroU8::new(2).unwrap(),
+            replace: Ticks::new(5),
+        };
+        Shop::give(&mut game, shop.depot, spawns);
         Shop::give(&mut game, shop.grunt, Life::full(Num::int(10)));
         Building {
             game,

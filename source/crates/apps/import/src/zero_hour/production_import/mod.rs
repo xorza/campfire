@@ -272,9 +272,11 @@ impl ProductionImport {
             .iter()
             .map(|unit| unit.name.declared().clone())
             .collect();
-        let kept = self.supply.kept(rules, producer, names);
-        section.spawns = kept.as_ref().map(|kept| kept.spawns.clone());
-        freed.extend(kept.map(|kept| kept.unit));
+        let named = NamedObject {
+            name: name.clone(),
+            object: producer,
+        };
+        freed.extend(self.supply.keep(rules, &named, names));
         freed
     }
 
@@ -450,7 +452,6 @@ impl ProductionImport {
             rally: exit.and_then(|exit| frame(exit.rally)),
             gathers: exit.is_some_and(|exit| exit.starts_gatherers),
             free: Vec::new(),
-            spawns: None,
         })
     }
 

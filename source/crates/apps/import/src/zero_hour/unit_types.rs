@@ -7,7 +7,7 @@ use campfire_declarations::SectionWriter;
 use campfire_math::Num;
 use campfire_orders::AcquireData;
 use campfire_package::UnitsFile;
-use campfire_production::{DropOffData, NodeData, ProductionData};
+use campfire_production::{DropOffData, NodeData, ProductionData, SpawnsData};
 
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::rules_names::RulesNames;
@@ -34,6 +34,7 @@ pub(crate) struct TypeAdditions<'a> {
     pub(crate) production: &'a BTreeMap<TypeName, ProductionData>,
     pub(crate) nodes: &'a BTreeMap<TypeName, NodeData>,
     pub(crate) drop_offs: &'a BTreeMap<TypeName, DropOffData>,
+    pub(crate) spawns: &'a BTreeMap<TypeName, SpawnsData>,
 }
 
 /// The package's `data/units.toml`, and the largest speed of its types, when one drives.
@@ -89,6 +90,9 @@ impl ImportedTypes {
                 if let Some(drop_off) = additions.drop_offs.get(name) {
                     writer.section(drop_off);
                 }
+                if let Some(spawns) = additions.spawns.get(name) {
+                    writer.section(spawns);
+                }
                 (name.declared().clone(), writer.into_table())
             })
             .collect();
@@ -120,6 +124,7 @@ pub(crate) mod reach_in {
                 production: &BTreeMap::new(),
                 nodes: &BTreeMap::new(),
                 drop_offs: &BTreeMap::new(),
+                spawns: &BTreeMap::new(),
             };
             self.units_file(additions, &RulesNames::default())
         }

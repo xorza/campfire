@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::HookContext;
@@ -15,22 +17,25 @@ use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-use crate::producer_spec::{ProducerSpec, SpawnSpec};
+use crate::spawn_spec::{SpawnSpec, SpawnTurn};
 use crate::trains::Trains;
 
-/// A building's kept spawns (04-capabilities/production.md, A building may keep spawns): the spawns
-/// that live, by stable id, and the tick each that died comes back at, earliest first. Its hook
-/// pushes its building into the index of the spawns due at each insert, a restore's too, and each
-/// change that leaves a return pushes it at its first. State of the server's.
+/// A unit's kept spawns (04-capabilities/production.md, A building may keep spawns): the spawns
+/// that live, by stable id, the tick each that died comes back at, earliest first, and the place
+/// among its spec's unit types of the next spawn's, as it takes them in turn
+/// (spawn-leaders.md, Spawns take their types in turn). Its hook pushes its unit into the index of
+/// the spawns due at each insert, a restore's too, and each change that leaves a return pushes it
+/// at its first. State of the server's.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_insert = KeptSpawns::pushed)]
 pub(crate) struct KeptSpawns {
     living: Vec<StableId>,
     returns: Vec<Tick>,
+    turn: u8,
 }
 
-/// A kept spawn's building, by stable id: the spawn comes back when it dies, and dies with the
-/// building. State of the server's.
+/// A kept spawn's spawner, by stable id: the spawn comes back when it dies, and dies with its
+/// spawner. State of the server's.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 #[serde(transparent)]
@@ -39,23 +44,29 @@ pub(crate) struct SpawnOf {
 }
 
 impl KeptSpawns {
-    /// Sends the spawns of the producer of `entity` out of its exit, each as a train leaves it,
-    /// and keeps them: the server's, as it stands whole.
+    /// Sends the spawns of the unit of `entity` out of its exit, each as a train leaves it, of its
+    /// spec's types in turn, and keeps them: the server's, as it stands whole.
     pub(crate) fn send(world: &mut World, entity: Entity) {
-        let spec = Self::spec(world, entity).expect("a producer that keeps spawns");
-        let spawner = *world.get::<StableId>(entity).expect("a producer has an id");
-        let living = (0..spec.count.get())
-            .map(|_| Self::leave(world, entity, spawner, spec.unit_type))
-            .collect();
-        let kept = Self {
-            living,
+        let count = Self::spec(world, entity)
+            .expect("a unit that keeps spawns")
+            .count;
+        let spawner = *world.get::<StableId>(entity).expect("a spawner has an id");
+        let mut kept = Self {
+            living: Vec::with_capacity(NonZeroUsize::from(count).get()),
             returns: Vec::new(),
+            turn: 0,
         };
+        for _ in 0..count.get() {
+            let turn = Self::next(world, entity, kept.turn);
+            kept.living
+                .push(Self::leave(world, entity, spawner, turn.unit_type));
+            kept.turn = turn.next;
+        }
         world.entity_mut(entity).insert(kept);
     }
 
     /// Follows the tick's deaths, in the order they came: a kept spawn's comes back its spec's
-    /// time later, while its building lives, and a building's takes the life of each of its
+    /// time later, while its spawner lives, and a spawner's takes the life of each of its
     /// spawns that lives, which dies as the next tick's deaths find it. Each death costs a look
     /// of its own, and no unit that lives is visited.
     pub(crate) fn follow_deaths(world: &mut World, mut fallen: Local<'_, Vec<StableId>>) {
@@ -83,8 +94,8 @@ impl KeptSpawns {
         }
     }
 
-    /// Sends each kept spawn whose return comes due this tick out of its building's exit, of the
-    /// buildings the index holds due, in a buffer it keeps.
+    /// Sends each kept spawn whose return comes due this tick out of its spawner's exit, of the
+    /// spawners the index holds due, in a buffer it keeps.
     pub(crate) fn bring_back(world: &mut World, mut due: Local<'_, Vec<DueUnit>>) {
         let now = world.resource::<SimTick>().start();
         due.clear();
@@ -99,27 +110,34 @@ impl KeptSpawns {
             if back == 0 || world.entity(entity).contains::<Dead>() {
                 continue;
             }
-            let spec = Self::spec(world, entity).expect("a producer that keeps spawns");
             for _ in 0..back {
-                let spawn = Self::leave(world, entity, id, spec.unit_type);
+                let turn = world.get::<Self>(entity).expect("its spawns").turn;
+                let turn = Self::next(world, entity, turn);
+                let spawn = Self::leave(world, entity, id, turn.unit_type);
                 let mut kept = world.get_mut::<Self>(entity).expect("its spawns");
                 let _ = kept.returns.remove(0);
                 kept.living.push(spawn);
+                kept.turn = turn.next;
             }
             Self::push_next(world, entity);
         }
     }
 
-    /// The spawns the producer of `entity` keeps.
-    fn spec(world: &World, entity: Entity) -> Option<SpawnSpec> {
+    /// The spawns the unit of `entity` keeps, of its type's spec.
+    fn spec(world: &World, entity: Entity) -> Option<&SpawnSpec> {
         let unit_type = world.get::<UnitType>(entity)?;
-        world
-            .resource::<ById<UnitType, ProducerSpec>>()
-            .get(*unit_type)?
-            .spawns
+        let book = world.get_resource::<ById<UnitType, SpawnSpec>>()?;
+        book.get(*unit_type)
     }
 
-    /// A spawn of `unit_type` out of the exit of the building of `entity`, `spawner`, whose spawn
+    /// The unit type of the next spawn of the unit of `entity`, of its turn, and the turn after.
+    fn next(world: &World, entity: Entity, turn: u8) -> SpawnTurn {
+        Self::spec(world, entity)
+            .expect("a unit that keeps spawns")
+            .turn(turn)
+    }
+
+    /// A spawn of `unit_type` out of the exit of the spawner of `entity`, `spawner`, whose spawn
     /// it is; its id.
     fn leave(
         world: &mut World,
@@ -134,7 +152,7 @@ impl KeptSpawns {
     }
 
     /// The spawn `id` of `spawner` died at `now`: it comes back its spec's time later, while its
-    /// building lives.
+    /// spawner lives.
     fn lost(world: &mut World, spawner: StableId, id: StableId, now: Tick) {
         let Some(entity) = world.resource::<EntityIndex>().get(spawner) else {
             return;
@@ -142,7 +160,7 @@ impl KeptSpawns {
         if world.entity(entity).contains::<Dead>() {
             return;
         }
-        let Some(spec) = Self::spec(world, entity) else {
+        let Some(replace) = Self::spec(world, entity).map(|spec| spec.replace) else {
             return;
         };
         let Some(mut kept) = world.get_mut::<Self>(entity) else {
@@ -152,13 +170,13 @@ impl KeptSpawns {
             return;
         };
         kept.living.remove(at);
-        kept.returns.push(now.after(spec.replace));
+        kept.returns.push(now.after(replace));
         Self::push_next(world, entity);
     }
 
-    /// Pushes the building of `entity` into the index of the spawns due, at its first return.
+    /// Pushes the spawner of `entity` into the index of the spawns due, at its first return.
     fn push_next(world: &mut World, entity: Entity) {
-        let id = *world.get::<StableId>(entity).expect("a producer has an id");
+        let id = *world.get::<StableId>(entity).expect("a spawner has an id");
         let first = world
             .get::<Self>(entity)
             .and_then(|kept| kept.returns.first().copied());
@@ -169,7 +187,7 @@ impl KeptSpawns {
         }
     }
 
-    /// Pushes the building of the spawns into the index of the spawns due, at their first return,
+    /// Pushes the spawner of the spawns into the index of the spawns due, at their first return,
     /// in a match that keeps spawns.
     fn pushed(mut world: DeferredWorld<'_>, context: HookContext) {
         let entity = context.entity;
@@ -202,12 +220,13 @@ impl SimComponent for KeptSpawns {
     const NAME: &'static str = "production.kept_spawns";
     type Host = UnitEntity;
 
-    // Its building's spec keeps spawns, of which it holds at most the count, its returns from
-    // the earliest.
+    // Its unit's spec keeps spawns, of which it holds at most the count, its returns from the
+    // earliest, and its turn one of the spec's types.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let spec = Self::spec(world, entity);
         spec.is_some_and(|spec| {
             self.living.len() + self.returns.len() <= usize::from(spec.count.get())
+                && usize::from(self.turn) < spec.unit_types.len()
         }) && self.returns.is_sorted()
     }
 }
@@ -221,7 +240,7 @@ impl SimComponent for SpawnOf {
     const NAME: &'static str = "production.spawn_of";
     type Host = UnitEntity;
 
-    // Its building may be gone, as a spawn outlives it until the next tick's deaths.
+    // Its spawner may be gone, as a spawn outlives it until the next tick's deaths.
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }

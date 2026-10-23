@@ -70,6 +70,8 @@ mod requirement_book;
 mod requires_data;
 mod resource_set;
 mod site;
+mod spawn_spec;
+mod spawns_data;
 mod start_checks;
 mod supply;
 mod supply_book;
@@ -105,10 +107,10 @@ pub use crate::node_data::{EmptyNode, NodeData};
 pub use crate::placement::Placement;
 pub use crate::placement_data::{PlacementData, PlacementRule};
 pub use crate::player_supply::PlayerSupply;
-pub use crate::producer_spec::{ProducerSpec, SpawnSpec};
+pub use crate::producer_spec::ProducerSpec;
 pub use crate::production_api::ProductionApi;
 pub use crate::production_column::ProductionColumn;
-pub use crate::production_data::{ProductionData, SpawnsData};
+pub use crate::production_data::ProductionData;
 pub use crate::production_directive::ProductionDirective;
 pub use crate::production_orders::ProductionOrders;
 pub use crate::rally::Rally;
@@ -117,6 +119,8 @@ pub use crate::requirement_book::{Required, RequirementBook};
 pub use crate::requires_data::{RequiredUnit, RequiresData};
 pub use crate::resource_set::ResourceSet;
 pub use crate::site::{Progressed, Site, SiteProgress, SiteStart};
+pub use crate::spawn_spec::SpawnSpec;
+pub use crate::spawns_data::SpawnsData;
 pub use crate::start_checks::StartChecks;
 pub use crate::supply_book::SupplyBook;
 pub use crate::supply_cost_book::{SupplyCostBook, SupplyUnit, UnitSupply};
@@ -178,6 +182,7 @@ impl Module for Production {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ProductionData>();
+        d.section::<SpawnsData>();
         d.observer(ProductionOrders::ordered);
         d.section::<SupplyData>();
         d.section::<NodeData>();
@@ -223,6 +228,7 @@ impl Module for Production {
         d.timed::<Gatherer>();
         d.extend::<UnitTypes>(Self::tag_types);
         d.book::<ById<UnitType, ProducerSpec>>(ProducerSpec::book);
+        d.book::<ById<UnitType, SpawnSpec>>(SpawnSpec::book);
         d.listed::<TrainData>();
         d.listed::<BuildData>();
         d.listed::<GatherData>();

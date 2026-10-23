@@ -31,6 +31,7 @@ use crate::kept_spawns::KeptSpawns;
 use crate::order_dues::{self, OrderDues};
 use crate::producer_spec::ProducerSpec;
 use crate::site::{Site, SiteProgress, SiteStart};
+use crate::spawn_spec::SpawnSpec;
 use crate::trains::Trains;
 
 pub(crate) mod build_view;
@@ -43,17 +44,16 @@ pub(crate) mod step;
 pub struct Construction;
 
 impl Construction {
-    /// Sends the free units and the kept spawns of the producer of `entity`, which stands whole:
-    /// the server's, as its site completes, or as the spawner spawns it whole.
+    /// Sends the free units of the producer of `entity` and the spawns its unit keeps, as it
+    /// stands whole: the server's, as its site completes, or as the spawner spawns it whole.
     fn send(world: &mut World, entity: Entity) {
-        let unit_type = *world
-            .get::<UnitType>(entity)
-            .expect("a producer has a type");
+        let unit_type = *world.get::<UnitType>(entity).expect("a unit has a type");
         let producers = world.resource::<ById<UnitType, ProducerSpec>>();
-        let Some(spec) = producers.get(unit_type) else {
-            return;
-        };
-        let (frees, keeps) = (!spec.free.is_empty(), spec.spawns.is_some());
+        let frees = producers
+            .get(unit_type)
+            .is_some_and(|spec| !spec.free.is_empty());
+        let spawns = world.get_resource::<ById<UnitType, SpawnSpec>>();
+        let keeps = spawns.is_some_and(|spawns| spawns.get(unit_type).is_some());
         if frees {
             Trains::free_units(world, entity);
         }
@@ -305,12 +305,11 @@ impl Construction {
     /// form `F` grows and completes sites alike, and leaves their life, the free units and the
     /// hook to the server.
     pub(crate) fn progress_sites<F: RoleForm>(
-        (index, book, builds, map, producers): (
+        (index, book, builds, map): (
             Res<'_, EntityIndex>,
             Res<'_, ActionBook>,
             Res<'_, BuildBook>,
             Res<'_, MapBook>,
-            Res<'_, ById<UnitType, ProducerSpec>>,
         ),
         mut sites: Query<
             '_,
@@ -323,7 +322,6 @@ impl Construction {
                 (&Site, &mut SiteProgress),
                 Option<&mut Life>,
                 &mut StatusTags,
-                &UnitType,
             ),
             Without<Dead>,
         >,
@@ -392,7 +390,7 @@ impl Construction {
         done.clear();
         let ordered = sites.iter().map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { entity, id } in order.sort(ordered) {
-            let (.., (site, mut progress), life, mut status, &unit_type) =
+            let (.., (site, mut progress), life, mut status) =
                 sites.get_mut(entity).expect("a site in the order");
             let spec = builds
                 .of(site.action())
@@ -426,7 +424,8 @@ impl Construction {
                     .remove::<(Site, SiteProgress, Unfinished)>();
                 *status = status.turned(Production::CONSTRUCTING, false);
                 done.push(id);
-                if producers.get(unit_type).is_some_and(ProducerSpec::sends) && !F::PREDICTS {
+                // A complete site sends what it frees and keeps, as `send` finds them.
+                if !F::PREDICTS {
                     commands.queue(move |world: &mut World| Self::send(world, entity));
                 }
             }
