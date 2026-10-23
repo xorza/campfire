@@ -47,6 +47,15 @@ pub enum ProductionDataError {
     /// A kept spawn of a type of no life, which would never die to come back.
     #[error("a kept spawn's type has no life")]
     SpawnUnliving,
+    /// A leader of a life of its own, which a fight would wear down beside its spawns.
+    #[error("a leader of its spawns has no life of its own")]
+    LeaderLives,
+    /// A leader of a body of its own, as it stands at its spawns' centre among them.
+    #[error("a leader of its spawns has no body of its own")]
+    LeaderBody,
+    /// A leader that walks, as it stands at its spawns' centre and they walk.
+    #[error("a leader of its spawns does not walk")]
+    LeaderWalks,
     /// A type's `spawns` of no unit type, or of more than a spawner's turn counts.
     #[error("a type's `spawns` take 1 to {most} unit types, not {0}", most = SpawnSpec::MOST_TYPES)]
     SpawnTypes(usize),

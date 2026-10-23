@@ -22,13 +22,15 @@ use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
 use campfire_stats::StatsSystems;
 use campfire_units::{
-    AtWork, BodyUnit, OpenCellRun, SpawnCallbacks, StatusTags, UnitGrid, UnitTypes, UnitsSystems,
+    AtWork, BodyUnit, Leader, LivingSpawns, OpenCellRun, SpawnCallbacks, SpawnOf, StatusTags,
+    UnitGrid, UnitTypes, UnitsSystems,
 };
 use campfire_values::{ActionId, Block, EngineTag, TagProperties, UnitType};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 use crate::holdings::Holdings;
-use crate::kept_spawns::{KeptSpawns, SpawnOf};
+use crate::kept_spawns::KeptSpawns;
+use crate::leaders::Leaders;
 use crate::production_column::RowReads;
 
 mod book_builders;
@@ -49,6 +51,7 @@ mod gather_spec;
 mod gatherer;
 mod holdings;
 mod kept_spawns;
+mod leaders;
 mod mode_supply_data;
 mod node;
 mod node_book;
@@ -152,6 +155,8 @@ pub enum ProductionSystems {
     /// After the actions run and before units move: each builder shows whether it holds a build,
     /// for what moves idle units aside as they move.
     Work,
+    /// After the Mode stage's spawns and before vision: each leader stands at its spawns' centre.
+    Lead,
 }
 
 impl ModuleSystems for ProductionSystems {
@@ -170,6 +175,7 @@ impl ModuleSystems for ProductionSystems {
             Self::Finish => SetPlace::stage(SimSystems::Mode),
             Self::Supply => SetPlace::at(UnitsSystems::End),
             Self::Work => SetPlace::gap(SimEdgeSystems::After(SimSystems::Act)),
+            Self::Lead => SetPlace::gap(SimEdgeSystems::After(SimSystems::Mode)),
         }
     }
 }
@@ -216,6 +222,9 @@ impl Module for Production {
         d.state::<BodyUnit, KeptSpawns>();
         d.component::<SpawnOf>();
         d.state::<BodyUnit, SpawnOf>();
+        d.component::<LivingSpawns>();
+        d.state::<BodyUnit, LivingSpawns>();
+        d.component::<Leader>();
         d.callback::<SpawnCallbacks>(Capability::Production, Construction::spawned);
         d.resource::<TrainedUnits>();
         d.resource::<CompletedSites>();
@@ -253,6 +262,11 @@ impl Module for Production {
         d.part::<BodyUnit, Builder>(|at| at.of_type::<Builder>().copied());
         d.part::<BodyUnit, Node>(|at| at.of_type::<Node>().copied());
         d.part::<BodyUnit, Gatherer>(|at| at.of_type::<Gatherer>().copied());
+        d.part::<BodyUnit, Leader>(|at| {
+            at.of_type::<SpawnSpec>()
+                .filter(|spec| spec.led)
+                .map(|_| Leader)
+        });
         // A gatherer shows its loop in its status tags; a site gets its own at its spawn.
         d.part::<BodyUnit, StatusTags>(|at| {
             at.of_type::<Gatherer>().map(|_| StatusTags::default())
@@ -266,12 +280,13 @@ impl Module for Production {
     /// box for room and walks a worker, construction and gathering too: in Inputs, the build and
     /// gather orders that changed are checked; in Act, after the trains, builds start and workers
     /// run their loops; in Mode, before the trains finish, sites grow; as the tick ends, the nodes
-    /// that ran out despawn. A player's supply, a node's end, and the units trains and builds spawn
-    /// are the server's: a predicting client derives none, as it holds only the units its team
-    /// sees, and its unit comes back by replication. A build's placement tests the units the
-    /// server's vision sees, or, on a predicting client, the units it holds. On the server, a
-    /// player spawns with its supply, which the refresh of a mode that counts supply writes in
-    /// place; a client receives its own player's.
+    /// that ran out despawn, and each leader stands at its spawns' centre, a predicting client's
+    /// too. A player's supply, a node's end, and the units trains and builds spawn are the
+    /// server's: a predicting client derives none, as it holds only the units its team sees, and
+    /// its unit comes back by replication. A build's placement tests the units the server's vision
+    /// sees, or, on a predicting client, the units it holds. On the server, a player spawns with
+    /// its supply, which the refresh of a mode that counts supply writes in place; a client
+    /// receives its own player's.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.by_role(
             ProductionSystems::Commands,
@@ -319,6 +334,7 @@ impl Module for Production {
                 .after(Trains::finish_trains),
         );
         cx.server(ProductionSystems::Supply, GatherLoop::despawn_empty_nodes);
+        cx.add(ProductionSystems::Lead, Leaders::centre);
         cx.server(ProductionSystems::Work, Builder::show_work);
     }
 }

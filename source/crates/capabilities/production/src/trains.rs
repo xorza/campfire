@@ -268,24 +268,45 @@ impl Trains {
     /// Where a unit of `unit_type` leaves the producer of `entity`: of its team and player, at
     /// its spawn point, with a new id, and the point it rallies to.
     pub(crate) fn exit_spawn(world: &mut World, entity: Entity, unit_type: UnitType) -> ExitSpawn {
+        let points = TrainPoints::of(world, entity);
+        let position = points.spawn_point(world, entity, unit_type);
+        ExitSpawn {
+            at: Self::spawn_at(world, entity, unit_type, position),
+            rally: points.rally,
+        }
+    }
+
+    /// Where a unit of `unit_type` buds for the spawner of `entity`, near `near`: of its team and
+    /// player, at the centre of the cell nearest `near` that its walker may stand in, as a
+    /// teleport finds its cell, or at `near` with no such cell, with a new id, rallying nowhere
+    /// (spawn-leaders.md, A later spawn buds from the nearest spawn).
+    pub(crate) fn bud_spawn(
+        world: &mut World,
+        entity: Entity,
+        unit_type: UnitType,
+        near: Vec3,
+    ) -> ExitSpawn {
+        let position = TrainPoints::open_cell(world, unit_type, near).unwrap_or(near);
+        ExitSpawn {
+            at: Self::spawn_at(world, entity, unit_type, position),
+            rally: None,
+        }
+    }
+
+    /// A unit of `unit_type` of the team and the player of the unit of `entity`, at `position`,
+    /// with a new id.
+    fn spawn_at(world: &mut World, entity: Entity, unit_type: UnitType, position: Vec3) -> SpawnAt {
         let producer = world.entity(entity);
         let team = *producer.get::<Team>().expect("a producer has a team");
         let owner = producer.get::<Owner>().map(|owner| owner.player_slot());
-        let points = TrainPoints::of(world, entity);
-        let position = points.spawn_point(world, entity, unit_type);
-        let id = world.resource_mut::<IdAllocator>().allocate();
-        let at = SpawnAt {
-            id,
+        SpawnAt {
+            id: world.resource_mut::<IdAllocator>().allocate(),
             unit_type,
             team,
             position,
             owner,
             angle: Num::ZERO,
             variation: None,
-        };
-        ExitSpawn {
-            at,
-            rally: points.rally,
         }
     }
 
@@ -405,12 +426,15 @@ impl TrainPoints {
             (None, None) => return position,
         };
         let fallback = self.exit.unwrap_or(position);
-        let Some(&OpenCellRun(run)) = world.get_resource::<OpenCellRun>() else {
-            return fallback;
-        };
+        Self::open_cell(world, unit_type, near).unwrap_or(fallback)
+    }
+
+    /// The centre of the cell nearest `near` that a walker of `unit_type` may stand in; none in a
+    /// match of no such search, or with no such cell.
+    fn open_cell(world: &mut World, unit_type: UnitType, near: Vec3) -> Option<Vec3> {
+        let &OpenCellRun(run) = world.get_resource::<OpenCellRun>()?;
         world
             .run_system_with(run, OpenCellAsk { unit_type, near })
             .expect("the open cell's search runs on any world")
-            .unwrap_or(fallback)
     }
 }

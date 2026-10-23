@@ -1,10 +1,14 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::EntityRef;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_declarations::{Report, Role};
 use campfire_sim::StableId;
-use campfire_values::{TagSet, Team};
+use campfire_values::{TagSet, Team, UnitTags};
+
+use crate::avatar::Avatar;
+use crate::owner::Owner;
 
 /// The units that died in the tick `tick`, in the order they died, each with its team, its owner,
 /// its killer and the units that assisted: what the mode receives in `on_unit_death`, and what the
@@ -39,6 +43,21 @@ pub struct Fallen {
     pub owner: Option<PlayerSlot>,
     pub avatar: bool,
     pub tags: TagSet,
+}
+
+impl Fallen {
+    /// `unit` as it is, which dies.
+    pub fn of(unit: EntityRef<'_>) -> Self {
+        Self {
+            id: *unit.get::<StableId>().expect("a unit has an id"),
+            team: unit.get::<Team>().copied(),
+            owner: unit.get::<Owner>().map(|owner| owner.player_slot()),
+            avatar: unit.contains::<Avatar>(),
+            tags: unit
+                .get::<UnitTags>()
+                .map_or(TagSet::NONE, |tags| tags.tags),
+        }
+    }
 }
 
 /// A death as `Deaths` gives it.

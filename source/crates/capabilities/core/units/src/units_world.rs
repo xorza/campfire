@@ -4,6 +4,8 @@ use campfire_sim::{SimWorld, StableId};
 use campfire_values::{Allegiance, Relations, Team};
 
 use crate::dead::Dead;
+use crate::deaths::{Deaths, Fallen};
+use crate::died::Died;
 use crate::life::{self, Life};
 use crate::owner::Owner;
 
@@ -25,6 +27,11 @@ pub trait UnitsWorld {
     /// tick's deaths find it, with no killer. A predicting client takes none of a unit it holds
     /// as the server sent it, which `Unpredicted` hides.
     fn drain_life(&mut self, unit: StableId);
+
+    /// Kills `unit`, a unit of no life that lives, as its last damage would kill one of life:
+    /// it is dead, its death in the tick's record with `killer` its killer, and `Died` triggers,
+    /// so its bounty, its hooks and its despawn follow as any death's.
+    fn kill(&mut self, unit: StableId, killer: Option<StableId>);
 }
 
 impl UnitsWorld for World {
@@ -68,6 +75,23 @@ impl UnitsWorld for World {
             let all = held.current();
             held.take(all);
         }
+    }
+
+    fn kill(&mut self, unit: StableId, killer: Option<StableId>) {
+        let Some(entity) = self.queried_entity_of(unit) else {
+            return;
+        };
+        debug_assert!(
+            self.get::<Life>(entity).is_none(),
+            "a unit of life dies by its damage"
+        );
+        if self.get::<Dead>(entity).is_some() {
+            return;
+        }
+        let fallen = Fallen::of(self.entity(entity));
+        self.resource_mut::<Deaths>().push(fallen, killer, []);
+        self.entity_mut(entity).insert(Dead);
+        self.trigger(Died { id: unit });
     }
 }
 

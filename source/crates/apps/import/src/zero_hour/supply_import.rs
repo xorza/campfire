@@ -277,6 +277,7 @@ impl SupplyImport {
             unit_types: unit_types.collect(),
             count,
             replace_ms,
+            led: false,
         };
         self.spawns.insert(producer.name.clone(), spawns);
         units

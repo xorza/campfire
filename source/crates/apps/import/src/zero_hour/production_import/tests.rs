@@ -383,6 +383,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         unit_types: vec![declared("guard"), declared("watch")],
         count: NonZeroU8::new(3).unwrap(),
         replace_ms: 30_000,
+        led: false,
     };
     assert_eq!(import.supply.spawns.get(&name("Site")), Some(&spawns));
     assert_eq!(

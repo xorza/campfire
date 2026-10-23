@@ -5,13 +5,17 @@ use bevy_ecs::system::SystemState;
 
 use crate::halves;
 use campfire_codec::Toml;
+use campfire_combat::{Combat, DamageCause};
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersDirective;
 use campfire_production::internals::TestBuild;
 use campfire_script::Filter;
-use campfire_sim::{EntityIndex, Position};
-use campfire_units::{BuildTarget, GroundPoint, Life, MapBook, SeenBy, UnitsWorld, Wall};
+use campfire_sim::{EntityIndex, Position, SnapshotError};
+use campfire_units::{
+    BuildTarget, Deaths, GroundPoint, Leader, Life, LivingSpawns, MapBook, SeenBy, SpawnOf,
+    UnitsWorld, Wall,
+};
 use campfire_values::{RelationSet, Share, TeamSet};
 use campfire_vision::{ByVision, Sight, Vision};
 use serde::Deserialize;
@@ -348,6 +352,7 @@ fn a_depot_spawned_whole_keeps_its_spawns_and_a_restore_sends_none_again() {
             unit_types: [shop.grunt, shop.forge].into(),
             count: NonZeroU8::new(2).unwrap(),
             replace: Ticks::new(5),
+            led: false,
         };
         Shop::give(&mut game, shop.depot, spawns);
         Shop::give(&mut game, shop.forge, Life::full(Num::int(10)));
@@ -392,6 +397,38 @@ fn a_depot_spawned_whole_keeps_its_spawns_and_a_restore_sends_none_again() {
         .iter()
         .filter(|grunt| !game.entity(game.unit_entity(grunt.id)).contains::<Dead>());
     assert_eq!(living.count(), 2);
+
+    // A snapshot of the depot marked a leader, which its spec does not make it, is refused at its
+    // kept spawns; one whose living spawns name a unit that is none of its spawns, at them.
+    let refusal = |game: &Match| {
+        let (mut fresh, _) = scene();
+        let players: Vec<Entity> = fresh
+            .query_filtered::<Entity, With<StableId>>()
+            .iter(&fresh)
+            .collect();
+        for player in players {
+            fresh.despawn(player);
+        }
+        Release::refusal_into(game, &mut fresh)
+    };
+    let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
+    let invalid = |ty| {
+        Some(SnapshotError::Invalid {
+            ty,
+            id: Some(depot),
+        })
+    };
+    let entity = game.unit_entity(depot);
+    game.entity_mut(entity).insert(Leader);
+    assert_eq!(refusal(&game), invalid("production.kept_spawns"));
+    game.entity_mut(entity).remove::<Leader>();
+    let mut living = game.part::<LivingSpawns>(depot).clone();
+    let stranger = Spawn::of(shop.grunt, halves(-30, 0)).place(&mut game);
+    let last = *living.iter().last().unwrap();
+    living.remove(last);
+    living.push(stranger);
+    game.insert_parts(depot, living);
+    assert_eq!(refusal(&game), invalid(LivingSpawns::NAME));
 }
 
 #[test]
@@ -416,6 +453,7 @@ fn a_completed_site_keeps_its_spawns_brings_each_back_and_takes_them_as_it_dies(
             unit_types: [shop.grunt].into(),
             count: NonZeroU8::new(2).unwrap(),
             replace: Ticks::new(5),
+            led: false,
         };
         Shop::give(&mut game, shop.depot, spawns);
         Shop::give(&mut game, shop.grunt, Life::full(Num::int(10)));
@@ -476,6 +514,106 @@ fn a_completed_site_keeps_its_spawns_brings_each_back_and_takes_them_as_it_dies(
         game.step();
     }
     assert_eq!(living(&mut game, shop), 0);
+}
+
+#[test]
+fn a_leader_stands_at_its_spawns_centre_passes_them_its_orders_and_dies_with_the_last() {
+    // A mob of no life, body or walk that leads three spawns of the grunt and the brute in turn,
+    // each of 10 life and coming back 5 ticks after it dies, spawned whole at (0, 0) for player 0
+    // (spawn-leaders.md, A unit may lead its spawns): they spawn round its place, grunt, brute,
+    // grunt, each its spawn, and it stands at their centre as each tick ends.
+    let Building { mut game, shop, .. } = Building::new(Rules::of(Style::Alone));
+    let core = UnitTypeCore::default();
+    let mob = Units::load_type(&mut game, TypeScope::Mode, "mob", &core);
+    let brute = Units::load_type(&mut game, TypeScope::Mode, "brute", &core);
+    let form = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST);
+    Shop::give(&mut game, brute, MoveStep::new(Num::ONE).unwrap());
+    Shop::give(&mut game, brute, form);
+    Shop::give(&mut game, brute, Walker::of_form(Some(form)).unwrap());
+    for unit_type in [shop.grunt, brute] {
+        Shop::give(&mut game, unit_type, Life::full(Num::int(10)));
+    }
+    let spawns = SpawnSpec {
+        unit_types: [shop.grunt, brute].into(),
+        count: NonZeroU8::new(3).unwrap(),
+        replace: Ticks::new(5),
+        led: true,
+    };
+    Shop::give(&mut game, mob, spawns);
+    let owner = Owner::new(PlayerSlot::new(0));
+    let leader = Spawn::of(mob, halves(0, 0))
+        .team(Team::new(0))
+        .parts(owner)
+        .place(&mut game);
+    assert!(game.try_part::<Leader>(leader).is_some());
+    let living = |game: &Match| -> Vec<StableId> {
+        game.part::<LivingSpawns>(leader).iter().copied().collect()
+    };
+    let first = living(&game);
+    let types: Vec<UnitType> = first.iter().map(|&id| *game.part::<UnitType>(id)).collect();
+    assert_eq!(types, [shop.grunt, brute, shop.grunt]);
+    assert!(
+        first
+            .iter()
+            .all(|&id| game.part::<SpawnOf>(id).spawner() == leader)
+    );
+    let centre = |game: &Match| {
+        let spawns = living(game);
+        let places = spawns.iter().map(|&id| game.part::<Position>(id).get());
+        places.fold(Vec3::ZERO, |sum, at| sum + at) / Num::int(i64::try_from(spawns.len()).unwrap())
+    };
+    game.step();
+    assert_eq!(game.part::<Position>(leader).get(), centre(&game));
+
+    // An order to the mob to move to (10, 0) is each spawn's, and it stays the centre as they walk.
+    let away = OrdersDirective::Move {
+        to: GroundPoint {
+            x: Num::int(10),
+            z: Num::ZERO,
+        },
+    };
+    let before = centre(&game);
+    Production::tick_ordering(&mut game, 0, leader, away);
+    assert!(
+        first
+            .iter()
+            .all(|&id| game.try_part::<Destination>(id).is_some())
+    );
+    for _ in 0..3 {
+        game.step();
+    }
+    assert!(centre(&game).x > before.x);
+    assert_eq!(game.part::<Position>(leader).get(), centre(&game));
+
+    // The brute it loses comes back 5 ticks later as the next in turn, the brute again, from the
+    // cell nearest a living spawn; then the last of the three a grunt of team 1 kills, after the
+    // others' life drains, kills the mob, by that grunt.
+    game.drain_life(first[1]);
+    game.step();
+    assert_eq!(living(&game), [first[0], first[2]]);
+    for _ in 0..5 {
+        game.step();
+    }
+    let back = living(&game);
+    assert_eq!(back.len(), 3);
+    let new = back[2];
+    assert_eq!(*game.part::<UnitType>(new), brute);
+    let born = game.part::<SpawnPoint>(new).get();
+    let near = [back[0], back[1]].map(|id| game.part::<Position>(id).get().distance(born));
+    assert!(near.iter().any(|&far| far <= Num::int(2)), "{near:?}");
+    let killer = Spawn::of(shop.grunt, halves(30, 30))
+        .team(Team::new(1))
+        .place(&mut game);
+    game.drain_life(back[0]);
+    game.drain_life(back[1]);
+    game.step();
+    assert_eq!(living(&game), [back[2]]);
+    Combat::damage(&mut game, Some(killer), back[2], 10, DamageCause::Effect);
+    game.step();
+    let deaths = game.resource::<Deaths>();
+    let mob_death = deaths.iter().find(|death| death.fallen.id == leader);
+    assert_eq!(mob_death.map(|death| death.killer), Some(Some(killer)));
+    assert!(game.entity(game.unit_entity(leader)).contains::<Dead>());
 }
 
 #[test]

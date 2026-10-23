@@ -5,13 +5,15 @@ use campfire_declarations::PerId;
 use campfire_values::UnitType;
 
 /// A unit type's spawns as a match runs them: `count` units of `unit_types`, taken in turn, each
-/// that dies coming back `replace` ticks later, rounded up (04-capabilities/production.md, A
-/// building may keep spawns).
+/// that dies coming back `replace` ticks later, rounded up, and whether the type leads them
+/// (04-capabilities/production.md, A building may keep spawns;
+/// spawn-leaders.md, A unit may lead its spawns).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpawnSpec {
     pub unit_types: Box<[UnitType]>,
     pub count: NonZeroU8,
     pub replace: Ticks,
+    pub led: bool,
 }
 
 impl SpawnSpec {

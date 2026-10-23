@@ -414,7 +414,9 @@ impl ProducerSpec {
 impl SpawnSpec {
     /// The spawns of each unit type that stands and keeps them; an error for one of no unit type
     /// or more than its turn counts, for a unit type as `leaving` refuses one, for one of no
-    /// life, which would never die to come back, and for a time too large to count in ticks.
+    /// life, which would never die to come back, for a time too large to count in ticks, and for
+    /// a leader of a life, a body or a walk of its own (spawn-leaders.md, A unit may lead its
+    /// spawns).
     pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
@@ -423,6 +425,22 @@ impl SpawnSpec {
             };
             let at = || BookPlace::UnitType(unit.place());
             let broken = |problem| BookError::rule(unit.package, at(), problem);
+            if data.led {
+                let bodies = cx.book::<ById<UnitType, BodyForm>>()?;
+                let walks = unit
+                    .data
+                    .section::<StatsData>()
+                    .is_some_and(StatsData::walks);
+                if lives(cx, unit.unit_type)? {
+                    return Err(broken(ProductionDataError::LeaderLives));
+                }
+                if bodies.get(unit.unit_type).is_some() {
+                    return Err(broken(ProductionDataError::LeaderBody));
+                }
+                if walks {
+                    return Err(broken(ProductionDataError::LeaderWalks));
+                }
+            }
             let count = data.unit_types.len();
             if count == 0 || count > Self::MOST_TYPES {
                 return Err(broken(ProductionDataError::SpawnTypes(count)));
@@ -441,6 +459,7 @@ impl SpawnSpec {
                 count: data.count,
                 replace: replace
                     .ok_or_else(|| BookError::rule(unit.package, at(), TimeTooLarge))?,
+                led: data.led,
             };
             book.set(unit.unit_type, spec);
         }

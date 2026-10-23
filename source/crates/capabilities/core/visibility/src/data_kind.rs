@@ -36,7 +36,7 @@ pub enum DataKind {
     /// The modifiers a player holds for its units, on its entity.
     PlayerModifiers,
     /// What only the owner's prediction reads: a unit's spawn point, route, progress,
-    /// modifiers' clocks and respawn.
+    /// modifiers' clocks and respawn, and a spawner's living spawns.
     Prediction,
     /// A unit's script state fields of `audience = "owner"`.
     UnitStateOwner,

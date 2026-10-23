@@ -835,6 +835,56 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
             )
         },
     },
+    // A leader of its spawns has no life, body or walk of its own (spawn-leaders.md, A unit may
+    // lead its spawns).
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            "[units.tower]\n",
+            "[units.yard]\npools = [\"health\"]\nstats = { health = { base = 10 } }\ncombat = {}\nspawns = { unit_types = [\"melee_creep\"], count = 2, replace_ms = 1000, led = true }\n\n[units.tower]\n",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| {
+            rule_at(
+                problem,
+                &unit_type("yard"),
+                &ProductionDataError::LeaderLives,
+            )
+        },
+    },
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            "[units.tower]\n",
+            "[units.yard]\ncollision = { radius = \"1\" }\nspawns = { unit_types = [\"melee_creep\"], count = 2, replace_ms = 1000, led = true }\n\n[units.tower]\n",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| {
+            rule_at(
+                problem,
+                &unit_type("yard"),
+                &ProductionDataError::LeaderBody,
+            )
+        },
+    },
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            "[units.tower]\n",
+            "[units.yard]\nstats = { move_speed = { base = \"3\" } }\nspawns = { unit_types = [\"melee_creep\"], count = 2, replace_ms = 1000, led = true }\n\n[units.tower]\n",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| {
+            rule_at(
+                problem,
+                &unit_type("yard"),
+                &ProductionDataError::LeaderWalks,
+            )
+        },
+    },
     Flaw {
         file: UNITS,
         edit: Edit::Replace(

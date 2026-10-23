@@ -1,4 +1,4 @@
-data_version 61
+data_version 62
 actions.progress 91dd90cbde2fd145
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
@@ -49,7 +49,9 @@ players.resources f26b1f61542b2e51
 production.builder 26e6fd92ccae1e7e
 production.completed_sites a418e571afbca2f9
 production.gatherer d610187bdebae0ad
-production.kept_spawns 0b13ece59a3b0b73
+production.kept_spawns a547cf3f5ad273a6
+production.leader 38f27f78ec03c9db
+production.living_spawns e605f0bdccbdac4b
 production.node 024f1723ff67fb73
 production.rally 3dfad42e3fcd1064
 production.site cdbba5f2eae6c68f

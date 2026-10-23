@@ -7,15 +7,18 @@ use serde::{Deserialize, Serialize};
 
 /// A unit type's `spawns`: `count` units of the unit types of its package, taken in turn, that
 /// leave its exit as it stands whole, or the free cell nearest its centre for a type of no exit,
-/// each that dies coming back `replace_ms` later, all dying with it
-/// (04-capabilities/production.md, A building may keep spawns;
-/// spawn-leaders.md, Spawns take their types in turn).
+/// each that dies coming back `replace_ms` later, all dying with it; when `led`, the type leads
+/// them (04-capabilities/production.md, A building may keep spawns;
+/// spawn-leaders.md, Spawns take their types in turn; spawn-leaders.md, A unit may lead its
+/// spawns).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SpawnsData {
     pub unit_types: Vec<DeclaredName>,
     pub count: NonZeroU8,
     pub replace_ms: u32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub led: bool,
 }
 
 impl DataSection for SpawnsData {

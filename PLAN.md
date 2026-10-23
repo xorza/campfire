@@ -16,26 +16,16 @@ The user. Last: it ends the slice. Its decisions are in [Game scripting](docs/de
 
 GLA's angry mob, trained, is a crowd of members that walk, fight and die together, selected by any member ([Spawn leaders](docs/design/spawn-leaders.md)). Each batch is one commit, ends with `cargo drive gate` passing, and stops for review.
 
-### 1. Led spawns in the sim (L)
+### 1. A member picks as its leader (M)
 
-`production`, `units`, `orders` and `combat`. First: the batches after it read its leaders.
+The client. First: it reads each spawn's `SpawnOf`, which every client receives once, and its leader's `Leader`.
 
-- **A leader of no life, body or walk,** its place the centre of its living spawns, written in place each tick its spawns move (A unit may lead its spawns).
-- **A spawn buds** from the free cells nearest its leader's place, the first ones, and from the living spawn nearest its centre, each later one (A later spawn buds from the nearest spawn).
-- **The leader dies with its last spawn,** the last one's killer its killer, its bounty and its death hooks as any unit's (A unit may lead its spawns).
-- **An order to a leader is its spawns'**, in increasing stable id, in the one command's units (An order to a leader is its spawns' order).
-- **Check:** a leader in a test, as the slice's checks say.
-
-### 2. A member picks as its leader (M)
-
-The client and the replication. After 1: it reads each spawn's leader.
-
-- **Each spawn's leader, state every client receives once;** the pointer's pick of a member selects its leader, and a selected leader rings its members (A member picks as its leader).
+- **The pointer's pick of a member selects its leader,** and a selected leader rings its members (A member picks as its leader).
 - **Check:** a member picks as its leader, as the slice's checks say.
 
-### 3. The import of the mob (M)
+### 2. The import of the mob (M)
 
-The import, the rules package's base lists and the Zero Hour check. After 2: the user plays it in the client.
+The import, the rules package's base lists and the Zero Hour check. After 1: the user plays it in the client.
 
 - **A walker's `SpawnBehavior` of `AggregateHealth`** converts to led spawns, its `ImmortalBody` and harmless weapon to none, its losses written (The import converts a mob).
 - **A leader of armed spawns is armed** in the army list (A leader of armed spawns is armed).
