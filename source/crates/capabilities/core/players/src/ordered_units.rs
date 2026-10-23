@@ -9,8 +9,8 @@ use crate::tick_commands::TickCommand;
 /// The units of an order that its player controls, which alone carry it out, with what a
 /// command system reads of each: `D` of the units `F` admits. A leader of spawns carries out no
 /// order of its own: its living spawns carry it out in its place
-/// (spawn-leaders.md, An order to a leader is its spawns' order). Every system that applies the
-/// tick's orders reaches their units through it, so none forgets whose they are.
+/// (04-capabilities/control.md, An order to a leader is its spawns' order). Every system that
+/// applies the tick's orders reaches their units through it, so none forgets whose they are.
 #[derive(SystemParam, Debug)]
 pub struct OrderedUnits<'w, 's, D: QueryData + 'static, F: QueryFilter + 'static = ()> {
     index: Res<'w, EntityIndex>,

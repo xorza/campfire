@@ -178,6 +178,11 @@ impl<'r> ProductionNames<'r> {
         Ok(named)
     }
 
+    /// The fields of the unit type `name`, which production typed or a map placed.
+    pub(crate) fn imported(&self, name: &TypeName) -> &ImportedType {
+        &self.names.placed[name]
+    }
+
     /// The objects typed since the last take, in the order they were.
     pub(crate) fn take_fresh(&mut self) -> std::vec::Drain<'_, NamedObject<'r>> {
         self.fresh.drain(..)

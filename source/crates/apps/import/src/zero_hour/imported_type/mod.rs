@@ -13,6 +13,7 @@ use campfire_values::{EngineStat, Stat};
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::object_ini::fight_data::BodyKind;
+use crate::zero_hour::format::ini::object_ini::ini_supply::IniSpawn;
 use crate::zero_hour::format::ini::object_ini::{GeometryShape, IniObject};
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
@@ -32,11 +33,12 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its
 /// `BuildCost` in money as the cost a kill's bounty takes its share of; and the money its
 /// `AutoDepositUpdate` pays over time, a capture's bonus among it (04-capabilities/games.md, Income
-/// over time). Every other object has none of these. What every type shares, a death that despawns and a turret's tolerance and slot kind,
-/// is Zero Hour's rules data, `[defaults]`, which lies under each type's own (03-game-scripting.md,
-/// Defaults under each unit type). A fired projectile's type is a projectile alone
-/// (09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and slow weapons;
-/// 09-zero-hour.md, A missile converts to a steered projectile).
+/// over time). Every other object has none of these. What every type shares, a death that despawns
+/// and a turret's tolerance and slot kind, is Zero Hour's rules data, `[defaults]`, which lies
+/// under each type's own (03-game-scripting.md, Defaults under each unit type). A fired
+/// projectile's type is a projectile alone (09-zero-hour.md, The import converts shells, splash,
+/// scatter, pitch, turrets and slow weapons; 09-zero-hour.md, A missile converts to a steered
+/// projectile).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedType {
     /// Its most life, of a type that lives, which its `stats` hold too.
@@ -56,6 +58,8 @@ pub(crate) struct ImportedType {
     bounty: Option<BountyData>,
     income: Option<IncomeData>,
     projectile: Option<ProjectileData>,
+    /// Whether it leads its spawns, so it has no weapon, body, walk or life of its own.
+    leads: bool,
     /// The period of its AI module's idle scan, and every hostile unit for one that attacks
     /// buildings, as the install gives them, completed from the rules data's defaults, for a type
     /// of a weapon (09-zero-hour.md, A scan follows `AutoAcquireEnemiesWhenIdle`).
@@ -116,6 +120,9 @@ impl ImportedType {
                 drive = Some(locomotor);
             }
         }
+        if drive.is_some() && object.supply().kept().is_some_and(IniSpawn::leads) {
+            return Ok(Self::leader(object, names));
+        }
         let geometry = object.geometry();
         let shape = match drive {
             Some(_) => Some(BodyShape::circle(num(geometry
@@ -166,18 +173,6 @@ impl ImportedType {
             armor,
             ..CombatPatch::default()
         });
-        let kinds = [
-            (object.counts_for_victory(), &names.counts_for_victory),
-            (object.is_structure(), &names.structure),
-            (object.is_wall(), &names.wall),
-            (object.is_base_defense(), &names.base_defense),
-            (object.is_infantry(), &names.infantry),
-        ];
-        let tags: Vec<DeclaredName> = kinds
-            .into_iter()
-            .filter(|&(holds, _)| holds)
-            .map(|(_, tag)| tag.clone())
-            .collect();
         // A turret that turns no weapon, or does not turn, aims nothing the engine's turret aims.
         let turret = fight
             .turret
@@ -214,7 +209,7 @@ impl ImportedType {
         Ok(Self {
             life,
             pools: life.map(|_| TypePoolsData(vec![names.life.clone()])),
-            tags: (!tags.is_empty()).then_some(TypeTagsData(tags)),
+            tags: Self::tags(object, names),
             stats: stats.into_iter().collect(),
             collision,
             variations: None,
@@ -224,7 +219,46 @@ impl ImportedType {
             income,
             projectile: None,
             acquire,
+            leads: false,
         })
+    }
+
+    /// The type of `object`, a walker that leads its spawns: its tags alone, as it has no life,
+    /// body, walk, turret or scan of its own, its health theirs (09-zero-hour.md, The import
+    /// converts a mob).
+    fn leader(object: &IniObject, names: &RulesNames) -> Self {
+        Self {
+            life: None,
+            pools: None,
+            tags: Self::tags(object, names),
+            stats: StatsData::default(),
+            collision: None,
+            variations: None,
+            combat: None,
+            turret: None,
+            bounty: None,
+            income: None,
+            projectile: None,
+            acquire: None,
+            leads: true,
+        }
+    }
+
+    /// The tags of `object`'s kinds that the rules data declares.
+    fn tags(object: &IniObject, names: &RulesNames) -> Option<TypeTagsData> {
+        let kinds = [
+            (object.counts_for_victory(), &names.counts_for_victory),
+            (object.is_structure(), &names.structure),
+            (object.is_wall(), &names.wall),
+            (object.is_base_defense(), &names.base_defense),
+            (object.is_infantry(), &names.infantry),
+        ];
+        let tags: Vec<DeclaredName> = kinds
+            .into_iter()
+            .filter(|&(holds, _)| holds)
+            .map(|(_, tag)| tag.clone())
+            .collect();
+        (!tags.is_empty()).then_some(TypeTagsData(tags))
     }
 
     /// The income of `object`'s `AutoDepositUpdate` in money: its amount each period of its
@@ -304,7 +338,13 @@ impl ImportedType {
             income: None,
             projectile: Some(projectile),
             acquire: None,
+            leads: false,
         }
+    }
+
+    /// Whether it leads its spawns, which carry out its orders and fight in its place.
+    pub(crate) const fn leads(&self) -> bool {
+        self.leads
     }
 
     /// Its most life, of a type that lives.

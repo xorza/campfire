@@ -22,7 +22,7 @@ impl Selection {
 
     /// Selects `units` alone, of any order, each spawn that `led_by` gives a leader of as that
     /// leader, as Zero Hour shares one selection between a mob and its members
-    /// (spawn-leaders.md, A member picks as its leader), a unit there more than once selected
+    /// (02-engine-core.md, A member picks as its leader), a unit there more than once selected
     /// once; none leaves the selection as it is. Whether it changed.
     pub(crate) fn pick(
         &mut self,

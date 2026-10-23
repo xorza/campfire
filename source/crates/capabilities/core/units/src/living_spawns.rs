@@ -13,8 +13,8 @@ use crate::unit_entity::UnitEntity;
 
 /// The spawns of a spawner that live, by stable id, in the order they spawned, so in increasing
 /// stable id: those a kept spawner's death takes, and a leader's order passes to and its place
-/// is the centre of (spawn-leaders.md, A unit may lead its spawns). State its owner's prediction
-/// reads, as it passes its orders.
+/// is the centre of (04-capabilities/production.md, A unit may lead its spawns). State its owner's
+/// prediction reads, as it passes its orders.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct LivingSpawns {

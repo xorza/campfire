@@ -79,6 +79,19 @@ pub enum SupplyDropCause {
     /// A hack's pack spread by its `PackUnpackVariationFactor`, as a channel's wind-down does not
     /// spread (04-capabilities/actions.md, A channel with no end).
     PackSpread,
+    /// A leader's spawns, which take its orders in place of their own `MobMemberSlavedUpdate`:
+    /// its catch-up, its crisis bail and its self-tasking go, and no spawn of a hurt leader goes
+    /// prone (09-zero-hour.md, The import converts a mob).
+    LedSpawns,
+}
+
+/// How a spawner sends its kept spawns: each out of its exit, or as their leader, which buds each
+/// later one from the nearest (04-capabilities/production.md, A later spawn buds from the nearest
+/// spawn).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Spawning {
+    ByExit,
+    Led,
 }
 
 /// How near a builder comes to its building's box, and a gatherer to its dock's, 10 m, the
@@ -223,17 +236,19 @@ impl SupplyImport {
         freed
     }
 
-    /// Keeps the spawns of `producer`, a building that trains: its kept spawn's templates in
-    /// turn, each a walker typed in `names`, its number and its replace delay as the import
-    /// converts a time (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns;
-    /// spawn-leaders.md, Spawns take their types in turn); the objects of its spawns' types, to
-    /// join the walk. None for no kept spawn, and its spawn dropped for a number or a delay past
-    /// what the engine holds, more templates than a spawner takes, or a spawn of no walk or no
-    /// life.
+    /// Keeps the spawns of `producer`, a building that trains or, by `spawning`, their leader:
+    /// its kept spawn's templates in turn, each a walker typed in `names`, its number and its
+    /// replace delay as the import converts a time (09-zero-hour.md, A kept `SpawnBehavior`
+    /// converts to spawns; 04-capabilities/production.md, Spawns take their types in turn), led
+    /// when it leads them (09-zero-hour.md, The import converts a mob); the objects of its spawns'
+    /// types, to join the walk. None for no kept spawn, and its spawn dropped for a number or a
+    /// delay past what the engine holds, more templates than a spawner takes, or a spawn of no walk
+    /// or no life.
     pub(crate) fn keep<'r>(
         &mut self,
         rules: &'r ZeroHourRules,
         producer: &NamedObject<'r>,
+        spawning: Spawning,
         names: &mut ProductionNames<'r>,
     ) -> Vec<NamedObject<'r>> {
         let Some(kept) = producer.object.supply().kept() else {
@@ -277,18 +292,24 @@ impl SupplyImport {
             unit_types: unit_types.collect(),
             count,
             replace_ms,
-            led: false,
+            led: spawning == Spawning::Led,
         };
+        if spawning == Spawning::Led {
+            self.drop(producer.object, SupplyDropCause::LedSpawns);
+        }
         self.spawns.insert(producer.name.clone(), spawns);
         units
     }
 
     /// Drops each spawn of `object`, a building of no production, so of no exit to send its
-    /// units by (09-zero-hour.md, A free unit needs an exit).
-    pub(crate) fn strand(&mut self, rules: &ZeroHourRules, object: &IniObject) {
+    /// units by (09-zero-hour.md, A free unit needs an exit), its kept spawn but a leader's, which
+    /// buds from its spawns (04-capabilities/production.md, A later spawn buds from the nearest
+    /// spawn).
+    pub(crate) fn strand(&mut self, rules: &ZeroHourRules, object: &IniObject, spawning: Spawning) {
         let kept = object
             .supply()
             .kept()
+            .filter(|_| spawning == Spawning::ByExit)
             .map(|kept| kept.templates[0].as_str());
         for template in object.supply().one_shots().chain(kept) {
             if let Some(spawned) = self.walker(rules, template) {

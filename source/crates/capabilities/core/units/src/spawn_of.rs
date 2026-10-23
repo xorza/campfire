@@ -10,8 +10,8 @@ use crate::unit_entity::UnitEntity;
 
 /// A spawn's spawner, by stable id: a kept spawn comes back when it dies and dies with its
 /// spawner, and a leader's spawn is its leader's (04-capabilities/production.md, A building may
-/// keep spawns; spawn-leaders.md, A unit may lead its spawns). State every client receives once,
-/// as a client picks a spawn as its leader.
+/// keep spawns; 04-capabilities/production.md, A unit may lead its spawns). State every client
+/// receives once, as a client picks a spawn as its leader.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 #[serde(transparent)]

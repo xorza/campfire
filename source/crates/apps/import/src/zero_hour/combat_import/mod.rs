@@ -173,10 +173,12 @@ impl CombatImport {
                 (Some(body), Some(_)) if body.initial < body.max => {
                     import.wounded.push(object.name.clone());
                 }
-                (Some(_), None) => import.unliving.push(object.name.clone()),
+                (Some(_), None) if !typed.leads() => import.unliving.push(object.name.clone()),
                 _ => {}
             }
-            let Some(set) = fight.starting_weapons() else {
+            // A leader of spawns fights by them: its own weapon, as a mob's harmless one, goes
+            // (09-zero-hour.md, The import converts a mob).
+            let Some(set) = fight.starting_weapons().filter(|_| !typed.leads()) else {
                 continue;
             };
             for weapon in set.weapons.iter().flatten() {

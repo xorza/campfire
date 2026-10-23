@@ -2,7 +2,7 @@ use crate::halves;
 use campfire_declarations::ByIdBuilder;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
-use campfire_units::{GroundPoint, MapBook, SeenBy};
+use campfire_units::{GroundPoint, LivingSpawns, MapBook, SeenBy};
 use campfire_values::TeamSet;
 use campfire_vision::Vision;
 
@@ -107,6 +107,16 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     walkers.set(shop.grunt, walker);
     walkers.build().load_into(&mut game);
     let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
+    // A mob that leads two grunts, for the last case.
+    let mob = Units::load_type(&mut game, TypeScope::Mode, "mob", &UnitTypeCore::default());
+    let spawns = SpawnSpec {
+        unit_types: [shop.grunt].into(),
+        count: NonZeroU8::new(2).unwrap(),
+        replace: Ticks::new(5),
+        led: true,
+    };
+    Shop::give(&mut game, mob, spawns);
+    let recruit = Production::add_train(&mut game, mob, Ticks::ZERO, None);
     let player = PlayerSlot::new(0);
     let producer = Production::allocate_id(&mut game);
     shop.producer(
@@ -236,6 +246,32 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         let destination = game.get::<Destination>(entity).unwrap().get();
         assert_eq!(destination, walks, "{target:?}");
     }
+
+    // A barracks of no body at (−6, 0) trains the mob and rallies to (−6, 8): each grunt walks
+    // there, and the mob, which walks by them, has no walk of its own
+    // (04-capabilities/production.md, A unit may lead its spawns).
+    let yard = Production::allocate_id(&mut game);
+    let queue = TrainQueue::default();
+    shop.producer(
+        &mut game,
+        yard,
+        -6,
+        Team::new(1),
+        Some(player),
+        recruit,
+        queue,
+    );
+    Production::tick_ordering(&mut game, 0, yard, rally(point(-6, 8)));
+    Production::order_train(&mut game, yard);
+    game.step();
+    let leader = Shop::spawned(&mut game, mob)[0].id;
+    let members: Vec<StableId> = game.part::<LivingSpawns>(leader).iter().copied().collect();
+    assert_eq!(members.len(), 2);
+    for member in members {
+        let destination = game.part::<Destination>(member).get();
+        assert_eq!(destination, Some(halves(-12, 16)), "{member:?}");
+    }
+    assert!(game.try_part::<Destination>(leader).is_none());
 }
 
 #[test]

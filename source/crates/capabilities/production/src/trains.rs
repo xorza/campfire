@@ -11,12 +11,13 @@ use campfire_declarations::{ById, RoleForm};
 use campfire_math::{Num, Vec3};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_sim::{
-    DueIndex, DueUnit, IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld, StableId,
+    DueIndex, DueUnit, EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld,
+    StableId,
 };
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
 use campfire_units::{
-    Body, Dead, Facing, GroundPoint, MapBook, OpenCellAsk, OpenCellRun, Owner, SpawnAt, Spawner,
-    Walk,
+    Body, Dead, Facing, GroundPoint, Leader, LivingSpawns, MapBook, OpenCellAsk, OpenCellRun,
+    Owner, SpawnAt, Spawner, Walk,
 };
 use campfire_values::{ActionId, Motion, Relation, Team, UnitTags, UnitType};
 
@@ -279,7 +280,7 @@ impl Trains {
     /// Where a unit of `unit_type` buds for the spawner of `entity`, near `near`: of its team and
     /// player, at the centre of the cell nearest `near` that its walker may stand in, as a
     /// teleport finds its cell, or at `near` with no such cell, with a new id, rallying nowhere
-    /// (spawn-leaders.md, A later spawn buds from the nearest spawn).
+    /// (04-capabilities/production.md, A later spawn buds from the nearest spawn).
     pub(crate) fn bud_spawn(
         world: &mut World,
         entity: Entity,
@@ -332,7 +333,19 @@ impl Trains {
             Gatherer::set_in(world, unit, Some(order));
         } else if let Some(to) = exit.rally {
             let to = Vec3::new(to.x, exit.at.position.y, to.z);
-            Walk::go_to(world, unit, Some(to));
+            // A leader walks by its spawns (04-capabilities/production.md, A unit may lead its
+            // spawns).
+            let led = world.entity(unit).contains::<Leader>();
+            let Some(spawns) = world.get::<LivingSpawns>(unit).filter(|_| led) else {
+                Walk::go_to(world, unit, Some(to));
+                return;
+            };
+            let spawns: Vec<StableId> = spawns.iter().copied().collect();
+            for spawn in spawns {
+                if let Some(entity) = world.resource::<EntityIndex>().get(spawn) {
+                    Walk::go_to(world, entity, Some(to));
+                }
+            }
         }
     }
 

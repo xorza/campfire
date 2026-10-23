@@ -91,8 +91,13 @@ impl Production {
                     if action.keys.targeting != Targeting::None {
                         return fail(ProductionDataError::TrainAims);
                     }
+                    // A leader walks by its spawns (04-capabilities/production.md, A unit may lead
+                    // its spawns).
                     let walks = |unit: &UnitTypeData| {
-                        unit.section::<StatsData>().is_some_and(StatsData::walks)
+                        let leads = unit
+                            .section::<SpawnsData>()
+                            .is_some_and(|spawns| spawns.led);
+                        leads || unit.section::<StatsData>().is_some_and(StatsData::walks)
                     };
                     if let Some(unit) = source.units.get(&train.unit_type) {
                         if unit.delivers() {
@@ -415,8 +420,8 @@ impl SpawnSpec {
     /// The spawns of each unit type that stands and keeps them; an error for one of no unit type
     /// or more than its turn counts, for a unit type as `leaving` refuses one, for one of no
     /// life, which would never die to come back, for a time too large to count in ticks, and for
-    /// a leader of a life, a body or a walk of its own (spawn-leaders.md, A unit may lead its
-    /// spawns).
+    /// a leader of a life, a body or a walk of its own (04-capabilities/production.md, A unit may
+    /// lead its spawns).
     pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let mut book = ByIdBuilder::default();
         for unit in cx.standing() {

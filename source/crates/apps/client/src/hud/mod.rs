@@ -769,7 +769,7 @@ impl HudPlugin {
     }
 
     /// Puts a ring under each unit the player selected, at its reach, under each living spawn of a
-    /// selected leader in its place (spawn-leaders.md, A member picks as its leader), and a wider
+    /// selected leader in its place (02-engine-core.md, A member picks as its leader), and a wider
     /// one under the unit the own avatar attacks, once each one's drawing has its shape, and again
     /// under a new drawing of it; takes each ring away as its unit leaves the selection or the
     /// attack.

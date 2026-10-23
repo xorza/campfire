@@ -201,7 +201,7 @@ fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selecti
     assert_eq!(rings(app.world(), hero), [Vec3::splat(0.5)]);
 
     // A leader of two living spawns selected: each spawn is ringed, at the tower's reach as each
-    // is a structure as it stands, and the leader not (spawn-leaders.md, A member picks as its
+    // is a structure as it stands, and the leader not (02-engine-core.md, A member picks as its
     // leader).
     let [leader_id, first_id, second_id] = [ids.allocate(), ids.allocate(), ids.allocate()];
     let mut living = LivingSpawns::with_capacity(2);

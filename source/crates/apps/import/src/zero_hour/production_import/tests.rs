@@ -17,13 +17,15 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
     // The dozer builds the center, which the start already holds, the barracks twice, by two
     // buttons, and gathers, which makes nothing; the worker the barracks again and the factory.
     // The center trains the dozer, the barracks the ranger, the dozer again and the mortar, the
-    // factory the tank, the truck, which gathers, the scout and the technical: the base is the
-    // barracks and the factory, and the dozer, the
-    // ranger, the mortar, the tank, the truck, the scout and the technical, in that order
-    // (09-zero-hour.md, A base start); its army the ranger, the tank and the technical, which
-    // neither build nor gather and a weapon arms, but the scout, of no weapon, and the mortar,
-    // whose weapon dropped; its gatherers the dozer and the truck; and its drop-offs the center
-    // and the factory, which take a load.
+    // factory the tank, the truck, which gathers, the scout, the technical, the mob, which leads
+    // rangers, and the rabble, whose rangers act on their own: the base is the barracks and the
+    // factory, and the dozer, the ranger, the mortar, the tank, the truck, the scout, the
+    // technical, the mob and the rabble, in that order (09-zero-hour.md, A base start); its army
+    // the ranger, the tank, the technical and the mob, which neither build nor gather and a
+    // weapon arms, the mob's by its rangers (09-zero-hour.md, A leader of armed spawns is
+    // armed), but the scout, of no weapon, the mortar, whose weapon dropped, and the rabble,
+    // whose rangers fight in no place of its; its gatherers the dozer and the truck; and its
+    // drop-offs the center and the factory, which take a load.
     let name = |text: &str| DeclaredName::new(text).unwrap();
     let train = |unit: &str| ImportedAction {
         keys: ActionKeys::new(Targeting::None),
@@ -57,6 +59,8 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         ("train_mortar", train("mortar")),
         ("train_scout", train("scout")),
         ("train_technical", train("technical")),
+        ("train_mob", train("mob")),
+        ("train_rabble", train("rabble")),
     ] {
         import.actions.insert(name(id), action);
     }
@@ -75,6 +79,8 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
                 "train_truck",
                 "train_scout",
                 "train_technical",
+                "train_mob",
+                "train_rabble",
             ],
         ),
         ("truck", &["gather"]),
@@ -94,6 +100,15 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
             .supply
             .drop_offs
             .insert(TypeName::named(drop_off), money.clone());
+    }
+    for (unit, led) in [("mob", true), ("rabble", false)] {
+        let spawns = SpawnsData {
+            unit_types: vec![name("ranger")],
+            count: NonZeroU8::new(10).unwrap(),
+            replace_ms: 30_000,
+            led,
+        };
+        import.supply.spawns.insert(TypeName::named(unit), spawns);
     }
     let mut combat = CombatImport::default();
     for (unit, weapon) in [
@@ -125,8 +140,10 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
                 "truck",
                 "scout",
                 "technical",
+                "mob",
+                "rabble",
             ]),
-            army: names(&["ranger", "tank", "technical"]),
+            army: names(&["ranger", "tank", "technical", "mob"]),
             gatherers: names(&["dozer", "truck"]),
             drop_offs: names(&["center", "factory"]),
         }
@@ -200,6 +217,10 @@ const SUPPLY: &str = "Object Center\n\
     Object Shelter\n Behavior = SpawnBehavior M1\n  SpawnNumber = 2\n\
        SpawnTemplateName = Guard\n End\n\
     End\n\
+    Object Mob\n Locomotor = SET_NORMAL TankTreads\n\
+     Behavior = SpawnBehavior M1\n  SpawnNumber = 3\n  SpawnReplaceDelay = 30000\n\
+       SpawnTemplateName = Guard\n  SpawnTemplateName = Watch\n  AggregateHealth = Yes\n End\n\
+    End\n\
     Object Jeep\n BuildCost = 500\n BuildTime = 5.0\n\
      BuildVariations = JeepOne JeepTwo\nEnd\n\
     Object JeepOne\n Locomotor = SET_NORMAL TankTreads\nEnd\n\
@@ -224,13 +245,14 @@ const SUPPLY: &str = "Object Center\n\
      End\nEnd\n";
 
 const SETS: &str = "CommandSet CenterSet\n 1 = Command_Truck\n 2 = Command_Jeep\n\
-                      3 = Command_Kite\nEnd\n\
+                      3 = Command_Kite\n 4 = Command_Mob\nEnd\n\
                     CommandSet HelipadSet\n 1 = Command_Heli\nEnd\n";
 
 const BUTTONS: &str = "CommandButton Command_Truck\n Command = UNIT_BUILD\n Object = Truck\nEnd\n\
                        CommandButton Command_Jeep\n Command = UNIT_BUILD\n Object = Jeep\nEnd\n\
                        CommandButton Command_Kite\n Command = UNIT_BUILD\n Object = Kite\nEnd\n\
-                       CommandButton Command_Heli\n Command = UNIT_BUILD\n Object = Heli\nEnd\n";
+                       CommandButton Command_Heli\n Command = UNIT_BUILD\n Object = Heli\nEnd\n\
+                       CommandButton Command_Mob\n Command = UNIT_BUILD\n Object = Mob\nEnd\n";
 
 #[test]
 fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of_money() {
@@ -377,8 +399,8 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     assert_eq!(dropped, [&unalike]);
     // The site of a production update keeps 3 spawns of a guard and a watch in turn, each back
     // 30,000 ms, 900 frames, after it dies, and trains nothing, its production section of no
-    // spawn (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns; spawn-leaders.md,
-    // Spawns take their types in turn).
+    // spawn (09-zero-hour.md, A kept `SpawnBehavior` converts to spawns;
+    // 04-capabilities/production.md, Spawns take their types in turn).
     let spawns = SpawnsData {
         unit_types: vec![declared("guard"), declared("watch")],
         count: NonZeroU8::new(3).unwrap(),
@@ -390,6 +412,19 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         import.sections[&name("Site")].free,
         Vec::<DeclaredName>::new()
     );
+    // The mob, which the center trains, walks and leads its 3 spawns of a guard and a watch in
+    // turn, of no production section, as they bud from each other, and its train converts, as
+    // it walks by them (09-zero-hour.md, The import converts a mob).
+    let led = SpawnsData {
+        led: true,
+        ..spawns
+    };
+    assert_eq!(import.supply.spawns.get(&name("Mob")), Some(&led));
+    assert!(!import.sections.contains_key(&name("Mob")));
+    let MadeSection::Train(made) = &import.actions[&declared("train_mob")].made else {
+        panic!("train_mob");
+    };
+    assert_eq!(made.unit_type, declared("mob"));
     // The burrow, which trains nothing, frees its two guards by the production of its update,
     // and keeps none.
     let burrow = &import.sections[&name("Burrow")];
@@ -401,7 +436,8 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     // order the types are visited; the Helix, of no box, is no gatherer, so nothing of it is
     // dropped. Of the hacker go its cash past regular, its experience, its delay in a building
     // and its pack's spread; the lamer, whose cash is 1 at each level, whose delays are one and
-    // who packs at once, loses nothing.
+    // who packs at once, loses nothing. The mob, which the walk visits last as the center trains
+    // it, loses its spawns' own catch-up.
     let dropped: Vec<(&str, SupplyDropCause)> = (&supply.dropped)
         .into_iter()
         .map(|dropped| (dropped.name.as_str(), dropped.cause))
@@ -419,6 +455,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
             ("Wisp", SupplyDropCause::Unliving),
             ("Heli", SupplyDropCause::NoWalker),
             ("Guard", SupplyDropCause::NoExit),
+            ("Mob", SupplyDropCause::LedSpawns),
         ]
     );
 }

@@ -23,7 +23,7 @@ use crate::zero_hour::game_time;
 use crate::zero_hour::import_names::{NamedObject, ProductionNames};
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::skirmish_start::FactionStart;
-use crate::zero_hour::supply_import::{DOCK_RANGE, SupplyImport};
+use crate::zero_hour::supply_import::{DOCK_RANGE, Spawning, SupplyImport};
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
@@ -91,7 +91,7 @@ impl FactionBase {
         }
         let army = units
             .iter()
-            .filter(|unit| production.fights(unit) && combat.arms(unit))
+            .filter(|unit| production.fights(unit) && production.armed(unit, combat))
             .cloned()
             .collect();
         let gatherers = units
@@ -179,6 +179,14 @@ impl ProductionImport {
             .any(|id| self.supply.gathers.contains_key(id))
     }
 
+    /// Whether a weapon of `combat` arms `unit`, or, for a leader, one of its spawns, which fight
+    /// in its place (09-zero-hour.md, A leader of armed spawns is armed).
+    fn armed(&self, unit: &DeclaredName, combat: &CombatImport) -> bool {
+        let led = self.supply.spawns.get(unit).filter(|spawns| spawns.led);
+        combat.arms(unit)
+            || led.is_some_and(|spawns| spawns.unit_types.iter().any(|spawn| combat.arms(spawn)))
+    }
+
     /// Whether `unit`'s command set holds trains alone: none of its actions builds or gathers.
     fn fights(&self, unit: &DeclaredName) -> bool {
         let commands = self.commands.get(unit);
@@ -235,48 +243,57 @@ impl ProductionImport {
     }
 
     /// Converts the supply of `producer`, a unit type of `names`, its buttons converted: its
-    /// node, its drop-off, its gather and its hack, the last of its command slots, and the units it frees and
-    /// keeps as its production's, a building that spawns and trains nothing taking the production
-    /// of its `ProductionUpdate` (09-zero-hour.md, A spawner takes its production update); the
-    /// names of the objects it frees and keeps.
+    /// node, its drop-off, its gather and its hack, the last of its command slots, and the units it
+    /// frees and keeps as its production's, a building that spawns and trains nothing taking the
+    /// production of its `ProductionUpdate` (09-zero-hour.md, A spawner takes its production
+    /// update); the names of the objects it frees and keeps.
     fn supply_of<'r>(
         &mut self,
         rules: &'r ZeroHourRules,
-        producer: &NamedObject<'r>,
+        named: &NamedObject<'r>,
         names: &mut ProductionNames<'r>,
     ) -> Vec<NamedObject<'r>> {
-        self.supply.dock(rules, producer);
+        self.supply.dock(rules, named);
         let NamedObject {
             name,
             object: producer,
-        } = producer;
+        } = named;
         let gather = self.supply.gather(rules, producer, names);
         let hack = self.supply.hack(rules, producer, names);
         for command in [gather, hack].into_iter().flatten() {
             self.commands.entry(name.clone()).or_default().push(command);
         }
+        // A leader keeps its spawns with no production section, as they bud from each other
+        // (04-capabilities/production.md, A later spawn buds from the nearest spawn).
+        let spawning = if names.imported(name).leads() {
+            Spawning::Led
+        } else {
+            Spawning::ByExit
+        };
         let supply = producer.supply();
-        let spawns = supply.kept().is_some() || supply.one_shots().next().is_some();
-        if spawns
+        let kept = supply.kept().is_some() && spawning == Spawning::ByExit;
+        if (kept || supply.one_shots().next().is_some())
             && !self.sections.contains_key(name)
             && let Some(section) = Self::section(producer.build())
         {
             self.sections.insert(name.clone(), section);
         }
-        let Some(section) = self.sections.get_mut(name) else {
-            self.supply.strand(rules, producer);
-            return Vec::new();
+        let section = self.sections.get_mut(name);
+        let exits = section.is_some();
+        let mut freed = if let Some(section) = section {
+            let freed = self.supply.free(rules, producer, names);
+            section.free = freed
+                .iter()
+                .map(|unit| unit.name.declared().clone())
+                .collect();
+            freed
+        } else {
+            self.supply.strand(rules, producer, spawning);
+            Vec::new()
         };
-        let mut freed = self.supply.free(rules, producer, names);
-        section.free = freed
-            .iter()
-            .map(|unit| unit.name.declared().clone())
-            .collect();
-        let named = NamedObject {
-            name: name.clone(),
-            object: producer,
-        };
-        freed.extend(self.supply.keep(rules, &named, names));
+        if exits || spawning == Spawning::Led {
+            freed.extend(self.supply.keep(rules, named, spawning, names));
+        }
         freed
     }
 
@@ -319,7 +336,11 @@ impl ProductionImport {
             return drop(ButtonDropCause::NoType);
         };
         match making {
-            Making::Train if !imported.walks() => return drop(ButtonDropCause::NoWalker),
+            // A leader walks by its spawns (04-capabilities/production.md, A unit may lead its
+            // spawns).
+            Making::Train if !imported.walks() && !imported.leads() => {
+                return drop(ButtonDropCause::NoWalker);
+            }
             Making::Build if !imported.has_body() => return drop(ButtonDropCause::NoBody),
             _ => {}
         }

@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 /// leave its exit as it stands whole, or the free cell nearest its centre for a type of no exit,
 /// each that dies coming back `replace_ms` later, all dying with it; when `led`, the type leads
 /// them (04-capabilities/production.md, A building may keep spawns;
-/// spawn-leaders.md, Spawns take their types in turn; spawn-leaders.md, A unit may lead its
-/// spawns).
+/// 04-capabilities/production.md, Spawns take their types in turn; 04-capabilities/production.md, A
+/// unit may lead its spawns).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SpawnsData {

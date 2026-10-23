@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "f7e5d01a39c1fbd11fa80383e15d1c72ec81038e440144f75de34d86f9b9457a"
+game = "a46464937eedd2c5c378f0cd82afc190c4aa8d670503ef6c8879e542b9a54e93"
 rules = "e98a921607dd058bfc04bfeb5f215541a8de96088b42c762b5c4b64156d04c64"
 
 [map]
@@ -36,14 +36,14 @@ nodes = 4
 drop_offs = 15
 gathers = 12
 hacks = 5
-dropped = [0, 0, 5, 6, 0, 0, 0, 5, 5, 5, 5, 5]
+dropped = [0, 0, 5, 6, 0, 0, 0, 5, 5, 5, 5, 5, 4]
 
 [fought]
 weapons = 67
 dropped = [0, 0, 8, 0, 2, 0, 1, 0, 8, 9, 0, 1, 2, 12, 1, 0, 0, 0, 4, 1, 6, 0, 2, 0]
 armors = 53
 kinds = 38
-unliving = 38
+unliving = 34
 wounded = 0
 
 [skirmish]
@@ -84,8 +84,12 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
 
 [base]
-standing = [10, 8]
-think_ops = 19637
+ended = 9149
+standing = [0, 8]
+think_ops = 20143
+
+[base.result]
+Won = 1
 
 [[base.drops]]
 untaken = 0
@@ -113,7 +117,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 0
+no_target = 5
 no_place = 0
 no_stack = 0
 

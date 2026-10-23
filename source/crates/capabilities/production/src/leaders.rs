@@ -10,9 +10,9 @@ pub(crate) struct Leaders;
 
 impl Leaders {
     /// Puts each leader at the centre of its living spawns, written in place, as OpenRA's port of
-    /// the mob sets its nexus (spawn-leaders.md, A unit may lead its spawns): only the leaders of
-    /// the spawns whose place changed, and those whose living spawns changed, in a buffer it
-    /// keeps; a leader of none stays where it stood.
+    /// the mob sets its nexus (04-capabilities/production.md, A unit may lead its spawns): only the
+    /// leaders of the spawns whose place changed, and those whose living spawns changed, in a
+    /// buffer it keeps; a leader of none stays where it stood.
     pub(crate) fn centre(
         mut units: ParamSet<
             '_,

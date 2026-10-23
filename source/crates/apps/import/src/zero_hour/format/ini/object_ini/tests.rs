@@ -3,7 +3,7 @@ use campfire_math::Num;
 use super::*;
 use crate::zero_hour::format::ini::object_ini::fight_data::{IniShell, IniTurret};
 use crate::zero_hour::format::ini::object_ini::ini_build::{Prerequisite, ProductionExit};
-use crate::zero_hour::format::ini::object_ini::ini_supply::{SupplyDock, SupplyGatherer};
+use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSpawn, SupplyDock, SupplyGatherer};
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
 
 /// Objects of each kind a placed object can be, their reskins, and lists of each form.
@@ -420,7 +420,13 @@ fn an_object_gives_supply_its_dock_center_gatherer_and_one_shot_spawns() {
                   SupplyWarehouseScanDistance = 700\n  Turret\n   TurretTurnRate = 60\n  End\n\
                  End\nEnd\n\
                 Object Worker\n Behavior = WorkerAIUpdate M1\n  MaxBoxes = 1\n End\nEnd\n\
-                Object Zone\n Behavior = OCLUpdate M1\n  OCL = OCL_CargoPlane\n End\nEnd\n";
+                Object Zone\n Behavior = OCLUpdate M1\n  OCL = OCL_CargoPlane\n End\nEnd\n\
+                Object Mob\n Behavior = SpawnBehavior M1\n  SpawnNumber = 10\n\
+                  SpawnReplaceDelay = 30000\n  SpawnTemplateName = Guard\n\
+                  AggregateHealth = Yes\n End\nEnd\n\
+                Object Rabble\n Behavior = SpawnBehavior M1\n  SpawnNumber = 10\n\
+                  SpawnTemplateName = Guard\n  AggregateHealth = Yes\n\
+                  SlavesHaveFreeWill = Yes\n End\nEnd\n";
     let mut ini = ObjectIni::default();
     ini.read(text.as_bytes()).unwrap();
     let supply = |name: &str| ini.named(name).unwrap().supply().clone();
@@ -442,6 +448,24 @@ fn an_object_gives_supply_its_dock_center_gatherer_and_one_shot_spawns() {
             starts_gatherers: true,
         })
     );
+    // The center's other spawn keeps 2 guards, and leads none: its health is its own, as
+    // `SpawnBehaviorModuleData` sets `AggregateHealth` and `SlavesHaveFreeWill` false. The mob's
+    // health is its 10 guards', and they act on its orders alone, so it leads them; the rabble's
+    // guards act on their own, so it leads none (09-zero-hour.md, The import converts a mob).
+    let kept = |name: &str| supply(name).kept().cloned().unwrap();
+    let guards = |number, replace_ms, aggregate_health, free_will| IniSpawn {
+        number,
+        one_shot: false,
+        replace_ms,
+        templates: vec!["Guard".to_owned()],
+        aggregate_health,
+        free_will,
+    };
+    assert_eq!(kept("Center"), guards(2, 0, false, false));
+    assert_eq!(kept("Mob"), guards(10, 30_000, true, false));
+    assert_eq!(kept("Rabble"), guards(10, 0, true, true));
+    let leads = ["Center", "Mob", "Rabble"].map(|name| kept(name).leads());
+    assert_eq!(leads, [false, true, false]);
     // A dock of its boxes, which goes when empty; one of no field holds 1 box and stays.
     let dock = |boxes, delete_when_empty| {
         Some(SupplyDock {

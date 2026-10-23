@@ -26,10 +26,10 @@ use crate::trains::Trains;
 
 /// A unit's kept spawns (04-capabilities/production.md, A building may keep spawns): the tick
 /// each that died comes back at, earliest first, and the place among its spec's unit types of the
-/// next spawn's, as it takes them in turn (spawn-leaders.md, Spawns take their types in turn);
-/// those that live are its `LivingSpawns`. Its hook pushes its unit into the index of the spawns
-/// due at each insert, a restore's too, and each change that leaves a return pushes it at its
-/// first. State of the server's.
+/// next spawn's, as it takes them in turn (04-capabilities/production.md, Spawns take their types
+/// in turn); those that live are its `LivingSpawns`. Its hook pushes its unit into the index of the
+/// spawns due at each insert, a restore's too, and each change that leaves a return pushes it at
+/// its first. State of the server's.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_insert = KeptSpawns::pushed)]
 pub(crate) struct KeptSpawns {
@@ -127,7 +127,8 @@ impl KeptSpawns {
     /// Sends the next spawn of the spawner of `entity`, `spawner`, of its turn, which it then
     /// takes past, as one of its living spawns: out of its exit, as a train leaves it, or of a
     /// leader, at the cell nearest the living spawn nearest its place, or nearest its place with
-    /// none, and rallying nowhere (spawn-leaders.md, A later spawn buds from the nearest spawn).
+    /// none, and rallying nowhere (04-capabilities/production.md, A later spawn buds from the
+    /// nearest spawn).
     fn bring_one(world: &mut World, entity: Entity, spawner: StableId) {
         let turn = world.get::<Self>(entity).expect("its spawns").turn;
         let next = Self::next(world, entity, turn);
@@ -164,7 +165,7 @@ impl KeptSpawns {
 
     /// The spawn `id` of `spawner` died at `now`, by `killer`: it comes back its spec's time
     /// later, while its spawner lives, and a leader that loses its last dies by its killer
-    /// (spawn-leaders.md, A unit may lead its spawns).
+    /// (04-capabilities/production.md, A unit may lead its spawns).
     fn lost(
         world: &mut World,
         spawner: StableId,

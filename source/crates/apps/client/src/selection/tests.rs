@@ -19,7 +19,7 @@ fn a_pick_selects_its_units_alone_and_none_leaves_the_selection() {
     assert!(selection.pick(&[b], |_| None));
     assert_eq!(selection.get(), [b]);
     // A pick of c, a spawn of the leader a, and of b selects a and b: the spawn as its leader
-    // (spawn-leaders.md, A member picks as its leader).
+    // (02-engine-core.md, A member picks as its leader).
     assert!(selection.pick(&[c, b], |unit| (unit == c).then_some(a)));
     assert_eq!(selection.get(), [a, b]);
 }

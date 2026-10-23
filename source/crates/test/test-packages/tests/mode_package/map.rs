@@ -835,8 +835,8 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
             )
         },
     },
-    // A leader of its spawns has no life, body or walk of its own (spawn-leaders.md, A unit may
-    // lead its spawns).
+    // A leader of its spawns has no life, body or walk of its own (04-capabilities/production.md, A
+    // unit may lead its spawns).
     Flaw {
         file: UNITS,
         edit: Edit::Replace(

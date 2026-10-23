@@ -337,7 +337,7 @@ fn a_depot_spawned_whole_keeps_its_spawns_and_a_restore_sends_none_again() {
     // leave its exit at (13.5, 0.5) as it spawns; a restore of the next tick holds those two, and
     // sends none again (04-capabilities/production.md, A building that spawns whole frees its
     // units). The forge it loses comes back as the next in turn, a grunt
-    // (spawn-leaders.md, Spawns take their types in turn).
+    // (04-capabilities/production.md, Spawns take their types in turn).
     let scene = || {
         let Building { mut game, shop, .. } = Building::new(Rules::of(Style::Alone));
         let spec = ProducerSpec {
@@ -520,8 +520,8 @@ fn a_completed_site_keeps_its_spawns_brings_each_back_and_takes_them_as_it_dies(
 fn a_leader_stands_at_its_spawns_centre_passes_them_its_orders_and_dies_with_the_last() {
     // A mob of no life, body or walk that leads three spawns of the grunt and the brute in turn,
     // each of 10 life and coming back 5 ticks after it dies, spawned whole at (0, 0) for player 0
-    // (spawn-leaders.md, A unit may lead its spawns): they spawn round its place, grunt, brute,
-    // grunt, each its spawn, and it stands at their centre as each tick ends.
+    // (04-capabilities/production.md, A unit may lead its spawns): they spawn round its place,
+    // grunt, brute, grunt, each its spawn, and it stands at their centre as each tick ends.
     let Building { mut game, shop, .. } = Building::new(Rules::of(Style::Alone));
     let core = UnitTypeCore::default();
     let mob = Units::load_type(&mut game, TypeScope::Mode, "mob", &core);

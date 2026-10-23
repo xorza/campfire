@@ -857,7 +857,9 @@ fn raised(map: &str) -> String {
 #[test]
 fn a_build_and_a_gather_with_their_nodes_and_drop_offs_load() {
     // A build of a yard, a box with no life pool, so no start life, at a builders' rate table,
-    // placed away from enemies; a gather of gold from a mine, which the yard takes back: the load
+    // placed away from enemies; a gather of gold from a mine, which the yard takes back; and a
+    // train of a mob, which stands but walks by the melee creeps it leads, as a train of a tower
+    // that stands is refused (04-capabilities/production.md, A unit may lead its spawns): the load
     // and its books take them all.
     let raise = "[actions.raise]\nname = \"action-raise\"\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = { builders = [\"1\", \"1.5\"] }\ncancel_refund = \"0.75\"\nplacement = { away = [{ filter = \"enemies\", distance = \"4\" }] }\n\n[actions.melee_creep_attack]";
     let edits = [
@@ -871,7 +873,7 @@ fn a_build_and_a_gather_with_their_nodes_and_drop_offs_load() {
             MODE_TEXT,
             Edit::Replace(
                 "mode-name = Three on Three\n",
-                "mode-name = Three on Three\naction-raise = Raise\n",
+                "mode-name = Three on Three\naction-raise = Raise\naction-recruit = Recruit\n",
             ),
         ),
         (
@@ -884,6 +886,20 @@ fn a_build_and_a_gather_with_their_nodes_and_drop_offs_load() {
             Edit::Replace(
                 "[units.yard]\n",
                 "[units.yard]\ndrop_off = { resources = [\"gold\"] }\n",
+            ),
+        ),
+        (
+            MODE_DATA,
+            Edit::Replace(
+                "[actions.melee_creep_attack]",
+                "[actions.recruit]\nname = \"action-recruit\"\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"mob\"\n\n[actions.melee_creep_attack]",
+            ),
+        ),
+        (
+            UNITS,
+            Edit::Replace(
+                "[units.tower]\n",
+                "[units.mob]\nspawns = { unit_types = [\"melee_creep\"], count = 2, replace_ms = 1000, led = true }\n\n[units.tower]\n",
             ),
         ),
     ];

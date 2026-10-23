@@ -89,6 +89,44 @@ End
 Object Rig
   BuildVariations = Tank WideTank
 End
+Object Mob
+  Locomotor = SET_NORMAL TankTreads
+  Geometry = CYLINDER
+  GeometryMajorRadius = 6.5
+  Body = ActiveBody ModuleTag_03
+    MaxHealth = 100
+  End
+  Behavior = AIUpdateInterface ModuleTag_01
+    Turret
+      TurretTurnRate = 60
+      ControlledWeaponSlots = PRIMARY
+    End
+    AutoAcquireEnemiesWhenIdle = Yes
+  End
+  Behavior = SpawnBehavior ModuleTag_02
+    SpawnNumber = 10
+    SpawnTemplateName = Tank
+    AggregateHealth = Yes
+  End
+End
+Object Rabble
+  Locomotor = SET_NORMAL TankTreads
+  Geometry = CYLINDER
+  GeometryMajorRadius = 6.5
+  Behavior = AIUpdateInterface ModuleTag_01
+    Turret
+      TurretTurnRate = 60
+      ControlledWeaponSlots = PRIMARY
+    End
+    AutoAcquireEnemiesWhenIdle = Yes
+  End
+  Behavior = SpawnBehavior ModuleTag_02
+    SpawnNumber = 10
+    SpawnTemplateName = Tank
+    AggregateHealth = Yes
+    SlavesHaveFreeWill = Yes
+  End
+End
 ";
 
 #[test]
@@ -124,6 +162,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         income: None,
         projectile: None,
         acquire: None,
+        leads: false,
     };
     let stands = |body| ImportedType {
         life: None,
@@ -138,6 +177,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         income: None,
         projectile: None,
         acquire: None,
+        leads: false,
     };
     // A structure stands of the tag of its kind.
     let structure = |body| ImportedType {
@@ -213,6 +253,20 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     let bodies = [tank.collision.clone(), wide.clone()].map(|collision| VariationData {
         collision: collision.unwrap(),
     });
+    // The mob leads its spawns: it has no life, walk, body, turret or scan of its own, its active
+    // body's 100 life among them, so it stands of none. The rabble's spawns act on their own, so it drives as the hover craft, of its
+    // turret and its scan (09-zero-hour.md, The import converts a mob).
+    let mob = of("Mob").unwrap();
+    let led = ImportedType {
+        leads: true,
+        ..stands(None)
+    };
+    assert_eq!(mob, led);
+    assert!(mob.leads() && !mob.walks() && !mob.has_body());
+    let rabble = of("Rabble").unwrap();
+    assert!(!rabble.leads() && rabble.walks());
+    assert!(rabble.turret.is_some() && rabble.acquire.is_some());
+    assert_eq!(rabble.collision, body(circle(half(13)), int(1)));
     let rig = of("Rig").unwrap();
     let varied = ImportedType {
         collision: None,
@@ -361,6 +415,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         income: None,
         projectile: None,
         acquire: None,
+        leads: false,
     };
     // The soldier lives by its active body, 180, in the armor of its set of no condition,
     // the second it gives, by the name the mode declares; a reskin keeps its base's body,

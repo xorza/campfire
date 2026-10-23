@@ -5,6 +5,7 @@ use campfire_values::FilterData;
 use super::*;
 use crate::zero_hour::error::{NameClash, NameError};
 use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
+use crate::zero_hour::format::ini::locomotor_ini::samples;
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
 use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
@@ -465,7 +466,8 @@ fn a_pitch_bound_reads_within_a_quarter_turn_and_a_radius_its_relations() {
 }
 
 /// Two soldiers, each of a gun whose name differs from the other's only in case; the second
-/// of an active body of no most life.
+/// of an active body of no most life; and a mob of an immortal body and the gun, which leads its
+/// spawns.
 const SOLDIERS: &str = "Object Gunner
   Body = ActiveBody ModuleTag_01
     MaxHealth = 10
@@ -483,6 +485,21 @@ Object Sniper
     Weapon = PRIMARY GUN
   End
 End
+Object Mob
+  Locomotor = SET_NORMAL TankTreads
+  Body = ImmortalBody ModuleTag_01
+    MaxHealth = 99999
+  End
+  WeaponSet
+    Conditions = None
+    Weapon = PRIMARY Gun
+  End
+  Behavior = SpawnBehavior ModuleTag_02
+    SpawnNumber = 10
+    SpawnTemplateName = Gunner
+    AggregateHealth = Yes
+  End
+End
 ";
 
 #[test]
@@ -490,9 +507,13 @@ fn weapons_of_one_name_but_case_share_an_action_only_of_the_same_numbers() {
     let import = |guns: &str| {
         let mut rules = ZeroHourRules::default();
         rules.objects.read(SOLDIERS.as_bytes()).unwrap();
+        rules
+            .locomotors
+            .read(samples::LOCOMOTORS.as_bytes())
+            .unwrap();
         rules.weapons.read(guns.as_bytes()).unwrap();
         let mut names = ImportNames::default();
-        for object in ["Gunner", "Sniper"] {
+        for object in ["Gunner", "Sniper", "Mob"] {
             let object = rules.objects.object(object.as_bytes()).unwrap();
             names.unit_type(object, &rules).unwrap();
         }
@@ -502,10 +523,13 @@ fn weapons_of_one_name_but_case_share_an_action_only_of_the_same_numbers() {
         format!("Weapon {name}\n  PrimaryDamage = {damage}\n  DelayBetweenShots = 100\nEnd\n")
     };
     // Of the same numbers, both soldiers take the one action; the sniper's body, of no most
-    // life, gives none.
+    // life, gives none. The mob, which fights and lives by its spawns, takes no weapon and is no
+    // unliving body (09-zero-hour.md, The import converts a mob).
     let same = import(&(gun("Gun", 5) + gun("GUN", 5).as_str())).unwrap();
     let ids: Vec<&str> = same.actions.keys().map(DeclaredName::as_str).collect();
     assert_eq!(ids, ["weapon_gun"]);
+    let armed: Vec<&str> = same.weapons.keys().map(TypeName::as_str).collect();
+    assert_eq!(armed, ["gunner", "sniper"]);
     assert_eq!(same.unliving, ["Sniper"]);
     // Of other numbers, the second, by the types' names, is refused.
     let other = import(&(gun("Gun", 5) + gun("GUN", 6).as_str()));

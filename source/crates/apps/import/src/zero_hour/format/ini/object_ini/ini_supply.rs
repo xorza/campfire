@@ -64,13 +64,25 @@ pub(crate) struct SupplyGatherer {
 }
 
 /// A `SpawnBehavior`: its `SpawnNumber`, whether it spawns once, its `OneShot`, its
-/// `SpawnReplaceDelay` in milliseconds, and its `SpawnTemplateName`s, in order.
+/// `SpawnReplaceDelay` in milliseconds, its `SpawnTemplateName`s, in order, whether its spawner's
+/// health is its spawns', its `AggregateHealth`, and whether they act on their own, its
+/// `SlavesHaveFreeWill`, each false by default, as `SpawnBehaviorModuleData` sets them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct IniSpawn {
     pub(crate) number: i32,
     pub(crate) one_shot: bool,
     pub(crate) replace_ms: i32,
     pub(crate) templates: Vec<String>,
+    pub(crate) aggregate_health: bool,
+    pub(crate) free_will: bool,
+}
+
+impl IniSpawn {
+    /// Whether its spawner leads its spawns, as a mob's nexus does: it lives by them, and they
+    /// take its orders (09-zero-hour.md, The import converts a mob).
+    pub(crate) const fn leads(&self) -> bool {
+        self.aggregate_health && !self.free_will
+    }
 }
 
 /// A behavior module whose fields supply reads.
@@ -192,6 +204,8 @@ impl IniSupply {
                     "spawnnumber" => spawn.number = at.int()?,
                     "oneshot" => spawn.one_shot = at.yes()?,
                     "spawnreplacedelay" => spawn.replace_ms = at.int()?,
+                    "aggregatehealth" => spawn.aggregate_health = at.yes()?,
+                    "slaveshavefreewill" => spawn.free_will = at.yes()?,
                     // `parseAsciiStringVectorAppend` adds each name of each line.
                     "spawntemplatename" => {
                         at.value()?;
