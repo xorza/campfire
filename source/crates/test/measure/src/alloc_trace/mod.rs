@@ -52,6 +52,13 @@ impl AllocTrace {
         Self(backtrace)
     }
 
+    /// Puts the addresses of its call stack's frames in `stack`, which name the stack with no
+    /// symbol resolved.
+    pub(crate) fn stack(&self, stack: &mut Vec<usize>) {
+        stack.clear();
+        stack.extend(self.0.frames().iter().map(|frame| frame.ip().addr()));
+    }
+
     /// Whether a frame of its call stack lies at `site`, its symbols resolved for it.
     pub(crate) fn passes(&mut self, site: CallSite) -> bool {
         self.0.resolve();

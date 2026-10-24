@@ -10,8 +10,10 @@
     reason = "an audit reports its frames, and a failing one each allocation's backtrace, to the terminal"
 )]
 
+use std::collections::BTreeMap;
 use std::panic::Location;
 
+use crate::alloc_trace::AllocTrace;
 use crate::call_site::CallSite;
 use crate::counting_allocator::{AllocWindow, CountingAllocator};
 
@@ -95,12 +97,13 @@ impl AllocAudit {
         }
         let mut counts = Vec::with_capacity(self.frames);
         let mut made = vec![false; self.budget.len()];
+        let mut stacks = StackFits::default();
         for index in 0..self.frames {
             let mut window = CountingAllocator::window(&mut frame);
             if window.allocs > self.allowed() {
                 self.fail(at, index, window, Breach::Count);
             }
-            if !self.match_sites(&mut window, &mut made) {
+            if !self.match_sites(&mut window, &mut stacks, &mut made) {
                 self.fail(at, index, window, Breach::Site);
             }
             counts.push(window.allocs);
@@ -140,13 +143,16 @@ impl AllocAudit {
     /// Whether each allocation of `window` can take an entry of its own whose site its call
     /// stack passes, as a match of the most allocations to the entries finds; marks in `made`
     /// each entry the match takes. A first fit would refuse a frame whose allocations all fit
-    /// when one site holds another.
-    fn match_sites(self, window: &mut AllocWindow, made: &mut [bool]) -> bool {
+    /// when one site holds another. `stacks` gives the entries of a stack an earlier frame met.
+    fn match_sites(
+        self,
+        window: &mut AllocWindow,
+        stacks: &mut StackFits,
+        made: &mut [bool],
+    ) -> bool {
         let mut fits = [0_u32; CountingAllocator::TRACE_CAP];
         for (fit, trace) in fits.iter_mut().zip(&mut window.traces) {
-            *fit = (self.budget.iter().enumerate())
-                .filter(|(_, allowed)| trace.passes(allowed.site))
-                .fold(0, |fit, (entry, _)| fit | (1 << entry));
+            *fit = stacks.fits(trace, self.budget);
         }
         let mut taker = [None; CountingAllocator::TRACE_CAP];
         let matched = (0..window.traces.len()).all(|trace| take(trace, &fits, &mut taker, &mut 0));
@@ -196,6 +202,40 @@ impl AllocAudit {
     }
 }
 
+/// The budget entries each call stack an audit met passes, one bit an entry, by the addresses of
+/// its frames, so each stack resolves its symbols once: the stacks of a frame's allocations are
+/// those of the frames before, and on Windows a resolution walks `dbghelp`, which took each net
+/// audit of 256 frames past 30 s (02-engine-core.md, Allocation audits).
+#[derive(Debug, Default)]
+struct StackFits {
+    fits: BTreeMap<Box<[usize]>, u32>,
+    /// The addresses of the stack it looks up, a buffer it keeps.
+    stack: Vec<usize>,
+    /// The stacks it resolved, which its test counts.
+    #[cfg(test)]
+    resolved: usize,
+}
+
+impl StackFits {
+    /// The entries of `budget` whose sites `trace`'s call stack passes, one bit an entry,
+    /// resolving its symbols only for a stack it has not met.
+    fn fits(&mut self, trace: &mut AllocTrace, budget: &[Allowed]) -> u32 {
+        trace.stack(&mut self.stack);
+        if let Some(&fits) = self.fits.get(self.stack.as_slice()) {
+            return fits;
+        }
+        let fits = (budget.iter().enumerate())
+            .filter(|(_, allowed)| trace.passes(allowed.site))
+            .fold(0, |fits, (entry, _)| fits | (1 << entry));
+        self.fits.insert(self.stack.as_slice().into(), fits);
+        #[cfg(test)]
+        {
+            self.resolved += 1;
+        }
+        fits
+    }
+}
+
 /// Whether allocation `trace` takes an entry it fits, `fits` each allocation's entries as bits,
 /// that no other allocation holds or whose holder takes another in its place, `seen` the entries
 /// this search has tried: Kuhn's augmenting path, writing each entry's allocation in `taker`.
@@ -217,4 +257,46 @@ fn take(
         }
         free
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use backtrace::Backtrace;
+
+    use super::*;
+
+    /// A site this test's own frames pass, and one no stack passes.
+    const BUDGET: [Allowed; 2] = [
+        Allowed {
+            site: CallSite::Function("a_stack_resolves_once_for_every_frame_that_meets_it"),
+            why: "this test's own frame",
+        },
+        Allowed {
+            site: CallSite::Function("no_frame_has_this_name"),
+            why: "a site no stack passes",
+        },
+    ];
+
+    fn captured() -> AllocTrace {
+        AllocTrace::new(Backtrace::new_unresolved())
+    }
+
+    #[inline(never)]
+    fn captured_elsewhere() -> AllocTrace {
+        captured()
+    }
+
+    #[test]
+    fn a_stack_resolves_once_for_every_frame_that_meets_it() {
+        // 256 traces taken at one call site share one stack: the first resolves it and finds that
+        // it passes the first entry, 0b01, and the rest take that from the stacks it met. A trace
+        // taken through one more frame is another stack, which resolves again, to the same entry.
+        let mut stacks = StackFits::default();
+        for _ in 0..256 {
+            assert_eq!(stacks.fits(&mut captured(), &BUDGET), 0b01);
+        }
+        assert_eq!(stacks.resolved, 1);
+        assert_eq!(stacks.fits(&mut captured_elsewhere(), &BUDGET), 0b01);
+        assert_eq!(stacks.resolved, 2);
+    }
 }
