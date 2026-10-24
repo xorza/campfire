@@ -1,4 +1,4 @@
-data_version 63
+data_version 64
 actions.progress 91dd90cbde2fd145
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
@@ -32,7 +32,7 @@ mode.victory_holders 0a042fbbe0f1bd88
 navigation.on_path daf5e41f0755038d
 navigation.path_arrivals b6628fe8a1512fc6
 navigation.path_walker 440ab6d72d060ef7
-navigation.progress 903ac74b8b88e934
+navigation.progress e63da7ac92930fc9
 navigation.route b5c9910f717355cc
 navigation.route_cursor 790c89e6fd464e20
 orders.attack_move fd181ae15e5479fa

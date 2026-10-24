@@ -2,8 +2,9 @@ use std::num::NonZeroU64;
 
 use campfire_common::Tick;
 use campfire_progression::LevelUps;
-use campfire_script::ModeEvents;
+use campfire_script::{CapabilityRefusal, ModeEvents};
 use campfire_units::AudienceOwner;
+use campfire_values::PackagePath;
 
 use super::*;
 
@@ -137,4 +138,38 @@ fn on_level_up(ctx, unit, track, level) {
     Mode::tick_inputs(&mut game, &[]);
     assert_eq!(state(&game), (StateValue::Int(1), StateValue::Int(1), 0));
     assert!(game.resource::<LevelUps>().is_empty());
+}
+
+#[test]
+fn a_rules_script_past_a_fault_of_the_load_is_refused_at_run_time() {
+    // The load refuses each route from a rules script to what the mode's own script alone does,
+    // so the test writes the rules script again past the load, as a fault of its check would
+    // let it pass; the match still refuses its end, its choice and its read of the mode's state
+    // (03-game-scripting.md, A rules script's refusals stay at run time).
+    let tree = packages(
+        &["fn on_match_start(ctx) {}", "fn on_match_start(ctx) {}"],
+        1,
+    );
+    let rules = PackagePath::parse("scripts/0.rhai").unwrap();
+    let refusal = |body: &str| {
+        let mut packages = tree.packages();
+        let source = format!("fn on_match_start(ctx) {{ {body} }}");
+        packages.write_unchecked(&rules, &source);
+        let mut game = MatchBuild::test_target(&packages, 3);
+        Mode::start_held(&mut game)
+            .err()
+            .map(|failed| failed.kind())
+    };
+    let rules_script = Some(FailureKind::Api(ModeRefusal::RulesScript.refused()));
+    assert_eq!(refusal("ctx.win(\"a\");"), rules_script);
+    assert_eq!(refusal("ctx.draw();"), rules_script);
+    assert_eq!(
+        refusal("ctx.choose(ctx.players[0], \"faction\", [\"america\"]);"),
+        rules_script
+    );
+    let unknown = Some(FailureKind::Api(ApiError::UnknownState));
+    assert_eq!(refusal("let read = ctx.state.phase;"), unknown);
+    assert_eq!(refusal("ctx.state.phase = \"now\";"), unknown);
+    // A body that calls none of them runs, so each refusal is its call's.
+    assert_eq!(refusal(""), None);
 }

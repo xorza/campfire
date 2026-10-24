@@ -554,10 +554,21 @@ fn maps_of(index: &FileIndex) -> Result<Vec<MapName>, LoadProblem> {
 pub(crate) mod internals {
     use campfire_capabilities::Release;
     use campfire_sim::MatchRate;
+    use campfire_values::PackagePath;
 
     use crate::mode_packages::ModePackages;
 
     impl ModePackages {
+        /// Writes the script at `path` of the mode's own package as `source`, past the load's
+        /// check of it, as a fault of that check would let it pass, so a test meets the guards a
+        /// match keeps at run time; `source` defines the hooks the load read of the script.
+        pub fn write_unchecked(&mut self, path: &PackagePath, source: &str) {
+            let script = (self.mode.scripts.iter_mut())
+                .find(|script| &script.path == path)
+                .expect("a script of the mode's own package");
+            source.clone_into(&mut script.source);
+        }
+
         /// Every tag its packages name but the engine's, in the order a match declares them,
         /// after the engine's.
         pub fn tag_names(&self) -> Vec<String> {

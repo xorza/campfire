@@ -123,6 +123,14 @@ impl Route {
         progress.restart();
     }
 
+    /// Asks in `tick` for a route to its goal again, alone, as its walker is stuck, and counts the
+    /// ask in `progress`.
+    const fn ask_stuck(&mut self, progress: &mut Progress, tick: Tick) {
+        let goal = self.goal.as_mut().expect("a stuck walker walks to a goal");
+        goal.asked = Some(Ask { tick, party: None });
+        progress.restart_stuck();
+    }
+
     /// Asks in `tick` for a route to `goal` again, if there is one, as `ask` does: a unit a forced
     /// move left elsewhere walks to it from there.
     fn ask_again(&mut self, goal: Option<Vec3>, progress: &mut Progress, tick: Tick) {
@@ -349,6 +357,26 @@ impl RouteMutItem<'_, '_> {
         dues: &mut UnitDues<'_, Route>,
     ) {
         self.route.ask_again(goal, progress, tick);
+        self.report();
+        dues.push(Route::due(&(), &self.route));
+    }
+
+    /// Asks its route again as its walker is stuck, as `Route::ask_stuck` does, or, once it asked
+    /// as many as it may so, forgets its goal and its route, so the walker stops where it stands
+    /// and drops its destination (04-capabilities/navigation.md, A stuck walker plans again, then
+    /// stops); the unit is due in `dues` while its ask waits.
+    pub(crate) fn ask_stuck(
+        &mut self,
+        progress: &mut Progress,
+        tick: Tick,
+        dues: &mut UnitDues<'_, Route>,
+    ) {
+        if progress.asked_out() {
+            self.clear();
+            progress.restart();
+            return;
+        }
+        self.route.ask_stuck(progress, tick);
         self.report();
         dues.push(Route::due(&(), &self.route));
     }

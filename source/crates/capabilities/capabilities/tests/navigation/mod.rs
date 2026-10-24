@@ -487,8 +487,14 @@ fn an_idle_friend_steps_aside_for_a_stuck_walker_and_an_enemy_or_a_busy_one_does
     // walker of 0.5 m of team 0 walks from (−8, 0) to (6, 0), a quarter meter a tick: no way round
     // the unit leaves the corridor, so the walker stops against it and is stuck. A friend of team
     // 0 that stands idle steps off the way, to the walker's left, +z, until it is the two radii,
-    // 1 m, off the line, and the walker arrives; an enemy stays, and so does a friend at work,
-    // and the walker never arrives.
+    // 1 m, off the line, and the walker arrives. The walker stands from tick 30, 7.5 m at a
+    // quarter meter a tick, and is stuck 5 ticks later, 150 ms at 30 Hz, in tick 35; the friend
+    // steps aside then, and from tick 37 the walker walks its last 6.5 m in 26 ticks, done in
+    // tick 63. An enemy stays, and so does a friend at work, and the walker never arrives: stuck
+    // 30 ticks, 1 s, with no detour, it asks its route again, answered the tick after, each 31
+    // ticks; the sixth time, past its 5 asks, it stops where it stands, in tick 30 + 6 · 31 =
+    // 216, with no destination and no goal to arrive short of
+    // (04-capabilities/navigation.md, A stuck walker plans again, then stops).
     let half = Num::HALF;
     let blocker_at = Vec3::new(half, Num::ZERO, Num::ZERO);
     let goal = Vec3::from((6, 0, 0));
@@ -516,20 +522,29 @@ fn an_idle_friend_steps_aside_for_a_stuck_walker_and_an_enemy_or_a_busy_one_does
             .circle(half)
             .walks(Num::QUARTER, Some(goal))
             .place(&mut game);
-        for _ in 0..120 {
+        let mut done = None;
+        for tick in 0..240 {
             game.step();
+            if done.is_none() && game.part::<Destination>(walker).get().is_none() {
+                done = Some(tick + 1);
+            }
         }
-        [walker, blocker].map(|unit| game.part::<Position>(unit).get())
+        let at = [walker, blocker].map(|unit| game.part::<Position>(unit).get());
+        (at, done, *game.part::<ArrivedShort>(walker))
     };
-    let [walker, friend] = run(0, false);
-    assert_eq!(walker, goal);
+    let ([walker, friend], done, short) = run(0, false);
+    assert_eq!(
+        (walker, done, short),
+        (goal, Some(63), ArrivedShort::of(None))
+    );
     assert_eq!(friend, Vec3::new(half, Num::ZERO, Num::ONE));
     for (team, at_work) in [(1, false), (0, true)] {
-        let [walker, blocker] = run(team, at_work);
+        let ([walker, blocker], done, short) = run(team, at_work);
         assert_eq!(
             (walker, blocker),
             (Vec3::from((-1, 0, 0)) + blocker_at, blocker_at)
         );
+        assert_eq!((done, short), (Some(216), ArrivedShort::of(None)));
     }
 }
 

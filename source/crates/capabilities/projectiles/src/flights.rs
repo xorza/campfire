@@ -1,5 +1,6 @@
 use std::ops::ControlFlow;
 
+use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
 use campfire_actions::{Reached, Targets};
 use campfire_common::{PlayerSlot, StableNumber};
@@ -17,12 +18,12 @@ use crate::projectile_spec::{ProjectileSpec, StraightSpec};
 use crate::struck_units::{Struck, StruckUnits};
 
 /// The flights of a tick: where their hits and ends go, the units each line struck while it
-/// flies, the bodies a line or a curve may meet, indexed as the stage began, and a scratch list
-/// of the units a line's step meets, by share of the step.
+/// flies, which a new hit alone marks changed, the bodies a line or a curve may meet, indexed as
+/// the stage began, and a scratch list of the units a line's step meets, by share of the step.
 #[derive(Debug)]
 pub(crate) struct TickFlights<'a> {
     pub(crate) deliveries: &'a mut DeliveryQueue,
-    pub(crate) struck: &'a mut StruckUnits,
+    pub(crate) struck: Mut<'a, StruckUnits>,
     /// The units near, when a line or a curve flies.
     pub(crate) grid: Option<&'a BodyGrid<Entity, StableId>>,
     pub(crate) met: &'a mut Vec<(Num, StableId)>,

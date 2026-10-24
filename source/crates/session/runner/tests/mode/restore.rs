@@ -536,10 +536,10 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
 
 #[test]
 fn a_quiet_tick_changes_no_state_but_the_tick() {
-    // A mode with a death hook and a timer each tick, on its map's tower alone: once its start
-    // settles, a tick with no input and no event writes no state but the tick, so its copy
-    // carries nothing more; the timer's call reads the mode's state and writes none, so only the
-    // timer, set again, changes besides.
+    // A mode with a death hook and a timer each tick, on its map's tower alone, and a projectile
+    // type none fires: once its start settles, a tick with no input and no event writes no state
+    // but the tick, so its copy carries nothing more; the timer's call reads the mode's state and
+    // writes none, so only the timer, set again, changes besides.
     let script = r#"
 fn on_match_start(ctx) {
     ctx.every("each", 100);
@@ -553,7 +553,16 @@ fn on_timer(ctx, name, data) {
 
 fn on_unit_death(ctx, unit, killer, assisters) {}
 "#;
-    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    let mut set = mode_packages(script);
+    set.edit(
+        UNITS,
+        Edit::Append("[units.bolt]\nprojectile = { speed = \"10\" }\n"),
+    );
+    set.edit(
+        MANIFEST,
+        Edit::Replace("\"abilities\", ", "\"abilities\", \"projectiles\", "),
+    );
+    let mut game = started(&set, ScriptLimits::ROOMY).unwrap();
     Mode::tick_inputs(&mut game, &[]);
     Mode::tick_inputs(&mut game, &[]);
     let mut delta = StateDelta::default();

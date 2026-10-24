@@ -90,7 +90,8 @@ impl Walking {
     /// one that does not walk this tick, waits for its route, or has none ahead, does not either:
     /// none of them takes a place in the order. On a server, each unit of a stuck walker's team
     /// that stands idle in its way steps aside, as `Steering::asides` says, to the nearest place it
-    /// may stand there.
+    /// may stand there. A walker stuck for `Progress::ask_after` that no detour frees asks its
+    /// route again, and stops past `Progress::MOST_STUCK_ASKS` such asks.
     pub(super) fn steer<F: RoleForm>(
         (rate, index, tick): (Res<'_, MatchRate>, Res<'_, EntityIndex>, Res<'_, SimTick>),
         mut asks: ResMut<'_, DueIndex<Route>>,
@@ -120,6 +121,7 @@ impl Walking {
         steering.read(&statics, read);
         let mut walkers = units.p1();
         let stuck_ticks = Progress::stuck_after(*rate);
+        let ask_ticks = Progress::ask_after(*rate);
         let ordered = walkers
             .iter()
             .filter(|(_, _, destination, _, _, route, _, tags, forced)| {
@@ -132,13 +134,14 @@ impl Walking {
         for &Keyed { entity, .. } in order.sort(ordered) {
             let (_, (&id, &at, team), _, step, body, mut route, mut progress, tags, _) =
                 walkers.get_mut(entity).expect("a walker in the order");
+            let stuck_for = progress.track(at.get(), step.get());
             let steered = Steered {
                 id,
                 position: at.get(),
                 team: team.copied(),
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
-                stuck: progress.track(at.get(), step.get()) >= stuck_ticks,
+                stuck: stuck_for >= stuck_ticks,
                 gathering: tags.is_some_and(|tags| tags.passes()),
             };
             let ahead = route.read().ahead()[0];
@@ -150,6 +153,9 @@ impl Walking {
             {
                 route.splice(at.get(), steering.short(), detour.skipped, detour.reached);
                 progress.reset();
+            } else if stuck_for >= ask_ticks {
+                let dues = &mut UnitDues::new(&mut asks, id, entity);
+                route.ask_stuck(&mut progress, tick.start(), dues);
             }
         }
         // Each friend steps aside once a tick, for the first walker by stable id that moves it;
@@ -271,6 +277,7 @@ impl Walking {
                 left -= at.distance(waypoint);
                 at = waypoint;
                 route.advance();
+                progress.passed_waypoint();
             }
             position.set_if_neq(Position::from(at));
         }

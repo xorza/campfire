@@ -1,3 +1,4 @@
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::Without;
@@ -87,7 +88,7 @@ impl Flying {
         let grid = meet.then(|| near.current());
         let mut flights = TickFlights {
             deliveries: &mut deliveries,
-            struck: &mut struck,
+            struck: struck.reborrow(),
             grid,
             met: &mut met,
         };
@@ -119,6 +120,9 @@ impl Flying {
         }
         flying.sort_unstable();
         flying.dedup();
-        flights.struck.keep(&flying);
+        // A tick that forgets no hit leaves the resource as it was, unchanged for the state copy.
+        if flights.struck.bypass_change_detection().keep(&flying) {
+            flights.struck.set_changed();
+        }
     }
 }

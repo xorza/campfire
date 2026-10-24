@@ -29,14 +29,16 @@ impl StruckUnits {
     }
 
     /// Forgets the hits of every projectile and cast but those in `flying`, sorted, in one pass
-    /// over both.
-    pub fn keep(&mut self, flying: &[StableId]) {
+    /// over both; whether it forgot any.
+    pub fn keep(&mut self, flying: &[StableId]) -> bool {
         debug_assert!(flying.is_sorted(), "the flying are sorted");
+        let held = self.0.len();
         let mut next = 0;
         self.0.retain(|struck| {
             next += flying[next..].partition_point(|&by| by < struck.by);
             flying.get(next) == Some(&struck.by)
         });
+        self.0.len() < held
     }
 }
 
@@ -77,11 +79,13 @@ mod tests {
         }
         assert!(struck.contains(Struck { by: a, id }));
         assert!(!struck.contains(Struck { by: id, id }));
-        // Of a, b and c, each struck once, a and c fly on.
-        struck.keep(&[a, c, id]);
+        // Of a, b and c, each struck once, a and c fly on: it forgets b's, and then none.
+        assert!(struck.keep(&[a, c, id]));
         let kept: Vec<_> = struck.0.iter().map(|struck| struck.by).collect();
         assert_eq!(kept, [a, c]);
-        struck.keep(&[]);
+        assert!(!struck.keep(&[a, c]));
+        assert!(struck.keep(&[]));
         assert_eq!(struck, StruckUnits::default());
+        assert!(!struck.keep(&[]));
     }
 }
