@@ -30,7 +30,7 @@ use crate::progress::Progress;
 use crate::route::{Route, RouteAsk, RouteMut};
 use crate::route_planner::{Passage, RoutePlanner, Short, Walkable, Window};
 use crate::stalled_walkers::StalledWalkers;
-use crate::steering::{Aside, Steered, Steering, TickBody};
+use crate::steering::{Aside, Friends, Steered, Steering, TickBody};
 use crate::unit_navigation_data::UnitNavigationData;
 use crate::unparted_pairs::UnpartedPairs;
 use crate::walker::Walker;
@@ -249,7 +249,7 @@ impl Walking {
             };
             let (
                 _,
-                (&id, position, _),
+                (&id, position, team),
                 mut destination,
                 _,
                 body,
@@ -270,19 +270,47 @@ impl Walking {
             }
             let clearance = grid.clearance(Walker::walking(Some(body)));
             let cells = clearance.grid();
-            steering.standing_near(&grid, friend, &mut near);
-            let short = Short {
-                window: Window::around(cells, cells.nearest_cell(position.get()), Steering::WINDOW),
-                blockers: &near,
+            let window = Window::around(
+                cells,
+                cells.nearest_cell(position.get()),
+                Steering::YIELD_WINDOW,
+            );
+            // A friend that steps ahead of the walker keeps the walker's depth, so a column chains
+            // as far as it reaches; one that steps aside goes a step deeper. Its search passes
+            // through the idle friends it may move only while its walk may clear them, and again
+            // past them as blockers when its place to a side takes it too deep to
+            // (walkers-get-through.md, A friend yields through the friends that yield).
+            let mut place = |friends| {
+                steering.standing_near(&grid, friend, friends, &mut near);
+                let short = Short {
+                    window,
+                    blockers: &near,
+                };
+                let walkable = Walkable {
+                    short: Some(short),
+                    ..Walkable::of(clearance, &statics)
+                };
+                planner.yield_place(walkable, friend, aside.to, passage)
             };
-            let walkable = Walkable {
-                short: Some(short),
-                ..Walkable::of(clearance, &statics)
+            let side = aside.depth.deeper();
+            let mut found = if aside.depth.clears() {
+                place(Friends::Pass {
+                    team: team.copied(),
+                    moves: crowd.moves,
+                })
+            } else {
+                place(Friends::Block)
             };
+            if aside.depth.clears()
+                && !side.clears()
+                && found.is_some_and(|to| !passage.leads_to(to))
+            {
+                found = place(Friends::Block);
+            }
             // One with no place clear of the walker's way stays, firm, and the walker's routes
             // go round it (04-capabilities/navigation.md, A friend that cannot yield is firm,
             // and a stuck walker's route walls it).
-            let Some(to) = planner.yield_place(walkable, friend, aside.to, passage) else {
+            let Some(to) = found else {
                 let mut hemmed = hemmed.expect("a walker carries whether it is hemmed in");
                 Hemmed::set(&mut hemmed, true);
                 continue;
@@ -291,7 +319,12 @@ impl Walking {
             // of this tick do not drop the destination of a walker with no route yet.
             Destination::route_to(&mut destination, Some(to));
             let mut walk = walk.expect("a walker carries how deep its walk is");
-            AsideDepth::set(&mut walk, aside.depth);
+            let depth = if passage.leads_to(to) {
+                aside.depth
+            } else {
+                side
+            };
+            AsideDepth::set(&mut walk, depth);
             let ask = RouteAsk {
                 goal: to,
                 tick: tick.start(),

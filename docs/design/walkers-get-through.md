@@ -56,15 +56,18 @@ walker either gets where it goes or stops within seconds. The facts are in
   check's bases play ends in tick 11,012 with 323 stalls with the line, against 11,801 and 360
   without.
 - **A friend yields through the friends that yield.** A friend's search for a place clear of the
-  walker's way passes through the idle friends the walker may move, as cells it may cross and not
-  as blockers, and may end on one; each it would pass or end on steps aside in turn for the
-  friend's own walk, one step deeper, 2 deep at most, so a column in a corridor drives ahead,
-  its front first, as Zero Hour's `moveAllies` moves the allies on an ally's way to its place and
-  OpenRA's nudge moves an idle neighbour when no cell is free. Refused: friends as blockers of
-  the search, under which a dozer column in a corridor was hemmed in and the dozer behind it
-  arrived short; a push of idle friends by the walker, as StarCraft II pushes idle units, which a
-  unit that drives does not take (04-capabilities/navigation.md, A unit that drives yields by
-  driving).
+  walker's way reaches as far as the walker's passage, never through the walker, and passes
+  through the idle friends the walker may move, which step aside in turn for the friend's walk:
+  one that steps ahead along the walker's way keeps the walker's depth, so a column chains as far
+  as it reaches, and one that steps to a side goes a step deeper, 2 deep at most, as Zero Hour's
+  `moveAllies` moves the allies on an ally's way, its search off the path bound by no window and
+  through units when none is free, and OpenRA's nudge moves an idle neighbour. Refused: friends as
+  blockers of the search, under which a dozer column was hemmed in and the dozer behind it arrived
+  short; a chain 2 deep ahead too, which stops that column; the short route's window, under which
+  a column in a corridor to open ground found no place; a search through the walker, under which
+  a friend took a place behind it and the two pressed on each other for 6 asks; a push of idle
+  friends by the walker, as StarCraft II pushes idle units, which a unit that drives does not take
+  (04-capabilities/navigation.md, A unit that drives yields by driving).
 
 ## Checks
 
@@ -76,7 +79,8 @@ walker either gets where it goes or stops within seconds. The facts are in
 - A stuck walker routes round a unit of another team that stands on its way.
 - A goal seen past two posts that meet at a corner is the line to it, which no step of cells
   passes.
-- A wide walker behind a column of two wide idle friends in a corridor with no side room arrives,
-  the column driving ahead of it.
+- A wide walker behind a column of two wide idle friends in a corridor with no side room arrives
+  when the corridor leads to open ground, the column driving ahead of it and out, and arrives
+  short when it is closed, once the column is hemmed in at its end.
 - The Zero Hour check's bases play has no walker that stands with a destination for 1,000 ticks,
   and its stalls and ends are named in each batch's commit.

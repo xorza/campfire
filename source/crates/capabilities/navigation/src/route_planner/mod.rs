@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declarations::Cache;
@@ -175,6 +177,16 @@ impl<'a> Walkable<'a> {
 }
 
 impl Passage<'_> {
+    /// Whether `place` lies past the passage's end, along the way from its first point to its
+    /// last: a unit that steps there yields ahead of the walker, not to its side
+    /// (walkers-get-through.md, A friend yields through the friends that yield).
+    pub(crate) fn leads_to(&self, place: Vec3) -> bool {
+        let [first, .., end] = self.points else {
+            return false;
+        };
+        end.ground_offset(place).dot(first.ground_offset(*end)) > Num::ZERO
+    }
+
     /// Whether `body` comes no closer to any leg of the passage than the walker's radius, so the
     /// walker passes it.
     pub(crate) fn clears(&self, body: IndexedBody) -> bool {
@@ -434,21 +446,25 @@ impl RoutePlanner {
         let radius = walkable.clearance.walker().radius;
         self.overlay.clear();
         self.overlay.resize(short.window.cells().div_ceil(64), 0);
-        let window = short.window;
-        let columns = grid.columns();
         for body in short.blockers {
             body.spans_closer(grid, radius, |cells| {
-                let row = cells.start / columns;
-                if row < window.low[1] || window.high[1] < row {
-                    return;
-                }
-                let first = (cells.start % columns).max(window.low[0]);
-                let end = ((cells.end - 1) % columns).min(window.high[0]);
-                for column in first..=end {
-                    let local = window.local(column, row);
-                    self.overlay[local / 64] |= 1 << (local % 64);
-                }
+                Self::mark(&mut self.overlay, grid, short.window, cells);
             });
+        }
+    }
+
+    /// Marks in `overlay` the cells of `cells`, a run of one row of `grid`, that `window` holds.
+    fn mark(overlay: &mut [u64], grid: &Grid, window: Window, cells: Range<usize>) {
+        let columns = grid.columns();
+        let row = cells.start / columns;
+        if row < window.low[1] || window.high[1] < row {
+            return;
+        }
+        let first = (cells.start % columns).max(window.low[0]);
+        let end = ((cells.end - 1) % columns).min(window.high[0]);
+        for column in first..=end {
+            let local = window.local(column, row);
+            overlay[local / 64] |= 1 << (local % 64);
         }
     }
 
@@ -557,9 +573,9 @@ impl RoutePlanner {
     /// way): `to`, its step off the walker's way, when no static body blocks it there and it
     /// clears the passage there, as the units it steps into step aside in turn; else the center
     /// of the cell of the short route's window nearest the unit by a route's steps that it may
-    /// stand in, past the short route's blockers, and clears the passage from, at its height,
-    /// ties to the lower total, then estimate, then number; `None` with no such cell. Its work
-    /// counts against the tick's.
+    /// stand in, past the short route's blockers and the walker, and clears the passage from, at
+    /// its height, ties to the lower total, then estimate, then number; `None` with no such cell.
+    /// Its work counts against the tick's.
     pub(crate) fn yield_place(
         &mut self,
         walkable: Walkable<'_>,
@@ -580,6 +596,17 @@ impl RoutePlanner {
         }
         self.mark_blockers(walkable);
         let grid = walkable.clearance.grid();
+        // A place past the walker is no place to yield to: the friend would drive through it.
+        if let [walker, ..] = passage.points {
+            let window = walkable
+                .short
+                .expect("a step aside stays in its window")
+                .window;
+            let reach = passage.radius + walkable.clearance.walker().radius;
+            grid.spans_closer(*walker, reach, |cells| {
+                Self::mark(&mut self.overlay, grid, window, cells);
+            });
+        }
         let from = grid.nearest_cell(body.position);
         self.routes += 1;
         let search = Search {

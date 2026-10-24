@@ -8,12 +8,9 @@ The slice of [Walkers get through](docs/design/walkers-get-through.md), in navig
 batch each; its checks are that document's. It stands first, as a walker that stands for good
 with a destination breaks every match that holds one.
 
-### W4. Friends that yield through friends (navigation's steering)
-
-- [ ] A friend's yield search takes the friends near it as blockers (`steering/mod.rs:405`,
-  `route_planner/mod.rs:543`) → it passes through the idle friends the walker may move, and each
-  it passes or ends on steps aside in turn for its walk, 2 deep at most
-  (walkers-get-through.md, A friend yields through the friends that yield).
+- [ ] The user plays the slice in the client → its decisions fold into
+  [Navigation](docs/design/04-capabilities/navigation.md) and
+  [Production](docs/design/04-capabilities/production.md), and its document goes.
 
 ## The driver keeps its signals
 

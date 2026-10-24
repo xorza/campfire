@@ -88,8 +88,8 @@ pub(crate) struct TickBody {
     pub(crate) arrived: Option<Vec3>,
 }
 
-/// A unit that steps aside for a walker, the point it steps to off the walker's way, how deep
-/// its step is, the points of the walker's passage in the tick's buffer of them, and the
+/// A unit that steps aside for a walker, the point it steps to off the walker's way, how deep the
+/// walker's walk is, the points of the walker's passage in the tick's buffer of them, and the
 /// walker's radius.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Aside {
@@ -98,6 +98,16 @@ pub(crate) struct Aside {
     pub(crate) depth: AsideDepth,
     pub(crate) passage: Range<u32>,
     pub(crate) radius: Num,
+}
+
+/// What a unit that steps aside makes of the idle friends near it: places it may pass through
+/// and end on, as each steps aside in turn for its walk, of `team`, which `moves` lets it move;
+/// or blockers, as its walk is too deep to move them (walkers-get-through.md, A friend yields
+/// through the friends that yield).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Friends {
+    Pass { team: Option<Team>, moves: Moves },
+    Block,
 }
 
 /// A short route a walker takes: in place of the next `skipped` waypoints of its route, and
@@ -112,6 +122,12 @@ impl Steering {
     /// The cells a short route's window reaches from the walker's along each axis: room to go
     /// round a unit some cells wide on either side, in a search of at most 17 × 17 cells.
     pub(crate) const WINDOW: usize = 8;
+
+    /// The cells a friend's search for a place to step aside to reaches from its cell along each
+    /// axis: as far as the passage of the walker it yields to, the walker's window and a reach
+    /// past it, so a friend in a corridor finds the room past the passage's end
+    /// (walkers-get-through.md, A friend yields through the friends that yield).
+    pub(crate) const YIELD_WINDOW: usize = 2 * Self::WINDOW;
 
     /// How far a short route's window reaches from the walker's cell along each axis on `grid`.
     pub(crate) fn reach(grid: &PathingGrid) -> Num {
@@ -208,8 +224,8 @@ impl Steering {
     /// steps to: off the walker's way, on the side it stands on, or to the walker's left when it
     /// stands on the way, as walkers pass on the right, until it clears the walker's body, as Zero
     /// Hour's pathfinder moves the allies off a new path and OpenRA nudges an idle friend that
-    /// blocks a move (04-capabilities/navigation.md, An idle friend steps aside), a step deeper
-    /// than the walker's walk, and `passage`, the walker's points in the tick's buffer, which its
+    /// blocks a move (04-capabilities/navigation.md, An idle friend steps aside), with how deep
+    /// the walker's walk is, and `passage`, the walker's points in the tick's buffer, which its
     /// place clears. One whose side clears the walker already stays, and a walk as deep as
     /// `AsideDepth::MOST` moves none (04-capabilities/navigation.md, An idle friend steps aside).
     pub(crate) fn asides(
@@ -270,7 +286,7 @@ impl Steering {
             asides.push(Aside {
                 id: body.id,
                 to: body.position + toward * (clear - off),
-                depth: depth.deeper(),
+                depth,
                 passage: passage.clone(),
                 radius: walker.radius,
             });
@@ -437,18 +453,28 @@ impl Steering {
     }
 
     /// Puts in `blockers` the units that stand near `body`, a unit that steps aside, as far as
-    /// its window and its body reach on `grid`, but `body` itself: the places it may not take.
+    /// its yield window and its body reach on `grid`, but `body` itself and, as `friends` says, the idle
+    /// friends it may pass through: the places it may not take.
     pub(crate) fn standing_near(
         &self,
         grid: &PathingGrid,
         body: IndexedBody,
+        friends: Friends,
         blockers: &mut Vec<IndexedBody>,
     ) {
         let standing = self.standing.as_ref().expect("steering read the bodies");
-        let near = Self::reach(grid) + grid.cell() / 2 + body.shape.bound();
+        let window = grid.cell() * i64::try_from(Self::YIELD_WINDOW).expect("a small window");
+        let near = window + grid.cell() / 2 + body.shape.bound();
+        let idle = &self.idle;
+        let passes = |other: &IndexedBody| match friends {
+            Friends::Pass { team, moves } => idle
+                .binary_search_by_key(&other.id, |idle| idle.id)
+                .is_ok_and(|place| moves.may_move(team, Some(idle[place].team))),
+            Friends::Block => false,
+        };
         blockers.clear();
         standing.near(body.layer, body.position, near, |other| {
-            if other.id != body.id {
+            if other.id != body.id && !passes(other) {
                 blockers.push(*other);
             }
         });

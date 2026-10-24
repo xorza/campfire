@@ -8,11 +8,12 @@ use campfire_units::UnitEntity;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-/// How deep a walker's walk is in a chain of steps aside: 0 for a walk of its own, one more than
-/// the walker's that it steps aside for; a walk `MOST` deep clears no way, as Zero Hour's
-/// `moveAllies` stops past a depth of 2 (04-capabilities/navigation.md, An idle friend steps
-/// aside). The chain runs over ticks here, each step aside a walk of its own tick, so its depth is
-/// a part.
+/// How deep a walker's walk is in a chain of steps aside: 0 for a walk of its own, the walker's
+/// that it steps ahead of, and one more than the walker's that it steps to a side for; a walk
+/// `MOST` deep clears no way, as Zero Hour's `moveAllies` stops past a depth of 2
+/// (04-capabilities/navigation.md, An idle friend steps aside; walkers-get-through.md, A friend
+/// yields through the friends that yield). The chain runs over ticks here, each step aside a walk
+/// of its own tick, so its depth is a part.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct AsideDepth(u8);
