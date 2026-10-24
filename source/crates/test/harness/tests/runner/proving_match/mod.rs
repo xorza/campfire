@@ -276,7 +276,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // As tick sums: of the projectiles in flight, the areas laid and the heroes modified.
     assert_eq!(
         [seen.projectiles, seen.areas, seen.modified_heroes],
-        [201, 76, 654]
+        [193, 76, 654]
     );
     // Progression: each hero gained a level from the kills near it, to 2.
     let levels: Vec<u32> = world

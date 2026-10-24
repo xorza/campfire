@@ -8,12 +8,6 @@ The slice of [Walkers get through](docs/design/walkers-get-through.md), in navig
 batch each; its checks are that document's. It stands first, as a walker that stands for good
 with a destination breaks every match that holds one.
 
-### W3. A route in sight (navigation's planner)
-
-- [ ] A route from a cell no open cell borders finds no way to a goal the walker sees
-  (`route_planner/mod.rs:243`) → a goal in sight is a line, before the search
-  (walkers-get-through.md, A route in sight is a line).
-
 ### W4. Friends that yield through friends (navigation's steering)
 
 - [ ] A friend's yield search takes the friends near it as blockers (`steering/mod.rs:405`,

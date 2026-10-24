@@ -981,19 +981,27 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
 
 #[test]
 fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
-    // A row of 16 cells of 1 m: a route along it tests its goal, expands each cell from the start
-    // to the goal once, and tests the line from the start to each cell but the two nearest it:
-    // 1 + 16 + 14 = 31 to the far end, 1 + 4 + 2 = 7 to x = 3.5, 1 + 15 + 13 = 29 to x = 14.5.
-    // A tick does up to the grid's 16.
+    // Two rows of 16 cells of 1 m, a post on cell (8, 0). A route along row 0 to x = 3.5 sees
+    // its goal, and is the line: the test of the goal and of the line, 2 (walkers-get-through.md,
+    // A route in sight is a line). One past the post searches round it, by (9.5, 1.5): to the
+    // far end, the goal's test, the line's, 17 cells expanded and the smoothing's 14 lines, 33;
+    // to x = 14.5, 1 + 1 + 16 + 13 = 31. A tick does up to the grid's 32.
     let mut game = walk_match();
     Navigation::load_open_pathing(
         &mut game,
         Num::ONE,
         [0, 0],
-        [16, 1],
+        [16, 2],
         vec![ground(Num::ZERO)],
     );
     let half = Num::HALF;
+    let post = BodyForm::new(
+        BodyShape::box_sized([Num::ONE, Num::ONE]).unwrap(),
+        Layer::FIRST,
+    );
+    Navigation::walker_at(&mut game, Vec3::new(Num::int(8) + half, Num::ZERO, half))
+        .body(post)
+        .place(&mut game);
     let place = |x: i64| Vec3::new(Num::int(x) + half, Num::ZERO, half);
     let (start, far, near) = (place(0), place(15), place(3));
     let units = [None, Some(far), Some(near), Some(far)]
@@ -1004,14 +1012,15 @@ fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
             game.get::<Route>(entity).unwrap().asked().is_some()
         })
     };
-    // The last three ask in tick 0; the second does 31 and meets the limit.
+    // The last three ask in tick 0; the second does 33 and meets the limit.
     game.step();
     assert_eq!(waiting(&game), [false, false, true, true]);
-    assert_eq!(Navigation::ahead(&game, units[1]), [far]);
+    let round = Vec3::new(Num::int(9) + half, Num::ZERO, Num::ONE + half);
+    assert_eq!(Navigation::ahead(&game, units[1]), [round, far]);
     // The first, of the lowest id, asks in tick 1, after the rest. The last asks again in tick
-    // 1, for x = 14.5, and keeps its place of tick 0. So the third and the last go first, 7 and
-    // 29, which meets the limit, and the first waits; had the last's ask moved to tick 1, the
-    // first and the third would go before it, 7 each, and none would wait.
+    // 1, for x = 14.5, and keeps its place of tick 0. So the third and the last go first, 2 and
+    // 31, which meets the limit, and the first waits; had the last's ask moved to tick 1, the
+    // first and the third would go before it, 2 each, and none would wait.
     let first = game.unit_entity(units[0]);
     let mut destination = game.get_mut::<Destination>(first).unwrap();
     *destination = Destination::to(Some(near));
@@ -1026,14 +1035,15 @@ fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
 
 #[test]
 fn a_walker_steers_with_the_work_the_routes_left() {
-    // A walker of 0.25 m from (0.5, 1.5) to (11.5, 1.5) on 12 by 3 cells of 1 m, a limit of 36:
-    // its route in tick 0 is the straight line, 1 + 12 + 10 = 23. After it, a unit of 0.25 m
-    // stands on the line at (3.5, 1.5), and walkers with no body ask for routes along z = 0.5.
-    // With a unit that stands, each line test visits the cells it touches, as it tests the
-    // crowd's with the walls': the goal's 1, and the smoothing's lines to the cells 2 to 11
-    // columns on, 3 + 4 + … + 12 = 75, so each asker's route costs 1 + 1 + 12 + 10 + 75 = 99,
-    // past the limit, and spends its tick. With none, the walker steers round the unit in tick 1;
-    // with one, in tick 2; with two, in tick 3. The mode moves no unit, so the unit stays.
+    // A walker of 0.25 m from (0.5, 1.5) to (11.5, 1.5) on 12 by 3 cells of 1 m, a limit of 36,
+    // and a post on cell (6, 0), 0.5 m off the walker's line: its route in tick 0 is the line it
+    // sees, 2 (walkers-get-through.md, A route in sight is a line). After it, a unit of 0.25 m
+    // stands on the line at (3.5, 1.5), and walkers with no body ask for routes along z = 0.5,
+    // which the post blocks: each searches round it, expanding 13 cells, and with a unit that
+    // stands each line test visits the cells it touches, as it tests the crowd's with the walls',
+    // so each asker's route costs 70, past the limit, and spends its tick. With none, the walker
+    // steers round the unit in tick 1; with one, in tick 2; with two, in tick 3. The mode moves no
+    // unit, so the unit stays.
     let quarter = Num::QUARTER;
     let half = Num::HALF;
     let place = |x: i64, z: i64| Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half);
@@ -1052,6 +1062,13 @@ fn a_walker_steers_with_the_work_the_routes_left() {
             [12, 3],
             vec![ground(Num::ZERO), ground(quarter)],
         );
+        let post = BodyForm::new(
+            BodyShape::box_sized([Num::ONE, Num::ONE]).unwrap(),
+            Layer::FIRST,
+        );
+        Navigation::walker_at(&mut game, place(6, 0))
+            .body(post)
+            .place(&mut game);
         let walker = Navigation::walker_at(&mut game, place(0, 1))
             .circle(quarter)
             .walks(quarter, Some(goal))

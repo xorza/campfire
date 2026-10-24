@@ -112,8 +112,9 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
     // A goal on the post at (3.5, 1.5): the nearest open centers, (2.5, 1.5) and (4.5, 1.5),
     // are a meter off, and (2, 1) has the lower number. The search expands (0, 2), then (1, 1)
     // of total 14 + 10, before (1, 2) of 10 + 14, then (2, 1) of 24 + 0. Its work: the test of
-    // the goal, the one region, through row 5, and its 48 cells scanned for the nearest, the
-    // 3 cells expanded, and one line tested, from the start straight to (2.5, 1.5): 54.
+    // the goal, which is blocked, so no line to it is tested, the one region, through row 5, and
+    // its 48 cells scanned for the nearest, the 3 cells expanded, and one line tested, from the
+    // start straight to (2.5, 1.5): 54.
     let blocked = planner.plan(walkable, start, quarters(14, 6), &mut waypoints);
     assert_eq!(
         blocked,
@@ -147,9 +148,9 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
     // (6.5, 1.5) is out of reach, and the route goes to the nearest cell it reaches, (3, 1), a
     // meter from the wall. The search expands (0, 1), (1, 1) and (2, 1), each of total 30, then
     // (3, 1): 4 cells, where a search with no regions spreads over all 12 open cells left of
-    // the wall to learn that it fails. Its work: the test of the goal, the 2 regions and the
-    // 12 cells of the start's scanned, the 4 cells expanded, and two lines tested, to (2.5,
-    // 1.5) and to (3.5, 1.5): 21.
+    // the wall to learn that it fails. Its work: the test of the goal, the line to it, which the
+    // wall blocks, the 2 regions and the 12 cells of the start's scanned, the 4 cells expanded,
+    // and two lines tested, to (2.5, 1.5) and to (3.5, 1.5): 22.
     let Walled {
         grid: closed,
         statics: closed_statics,
@@ -168,25 +169,60 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
         Planned {
             cost: 30,
             expanded: 4,
-            work: 21,
+            work: 22,
             reached: false,
         }
     );
     assert_eq!(waypoints, [quarters(14, 6)]);
 
-    // A goal in the start's cell: nothing to expand past it, and no line to test past the
-    // goal's.
+    // A goal in the start's cell is in sight: the line to it is the route, with no search, its
+    // work the test of the goal and the line's (walkers-get-through.md, A route in sight is a
+    // line).
     let here = planner.plan(walkable, start, quarters(3, 9), &mut waypoints);
     assert_eq!(
         here,
         Planned {
             cost: 0,
-            expanded: 1,
+            expanded: 0,
             work: 2,
             reached: true,
         }
     );
     assert_eq!(waypoints, [quarters(3, 9)]);
+}
+
+#[test]
+fn a_goal_seen_past_two_posts_that_meet_at_a_corner_is_the_line_the_cells_cannot_take() {
+    // Posts on cells (1, 0) and (0, 1) meet at the corner (1, 1): no step of cells passes from
+    // (0, 0) to (1, 1), as a diagonal past a blocked cell is none, so the regions part them. The
+    // line from (0.5, 0.5) to (1.5, 1.5) keeps |1.5 − 0.5| / √2 ≈ 0.71 m off each post, past the
+    // two radii, 0.5 m: the walker sees its goal, and its route is that line, reached, with no
+    // search and the work of the goal's test and the line's (walkers-get-through.md, A route in
+    // sight is a line).
+    let Walled { grid, statics } = walled(&[".#", "#."]);
+    let clearance = grid.clearance(walker());
+    let cells = clearance.grid();
+    let regions = clearance.regions();
+    assert!(!regions.reach(0).meets(regions.reach(3)));
+    let mut planner = RoutePlanner::new(cells);
+    let mut waypoints = Vec::new();
+    let (start, goal) = (quarters(2, 2), quarters(6, 6));
+    let planned = planner.plan(
+        Walkable::of(clearance, &statics),
+        start,
+        goal,
+        &mut waypoints,
+    );
+    assert_eq!(
+        planned,
+        Planned {
+            cost: 14,
+            expanded: 0,
+            work: 2,
+            reached: true,
+        }
+    );
+    assert_eq!(waypoints, [goal]);
 }
 
 /// Posts on a 9 by 7 grid, and windows of 2 cells each way around cells at its corners, edges
@@ -379,8 +415,10 @@ fn a_route_costs_what_a_search_of_every_cell_finds() {
     // Maps of 16 by 12 cells, a post on about one cell in 6, 4 and 3, routes between the centers
     // of open cells. A goal a route reaches costs the cheapest way there; one it does not ends on
     // the cell nearest it among those it reaches, ties to the lower number, at that cell's cost,
-    // and so the regions say. Every leg of a route is clear of every post, and a search expands
-    // no more cells than are open.
+    // and so the regions say; one the start sees is the line to it, with no search, which no way
+    // of cells is shorter than, and which may pass between posts no way of cells passes
+    // (walkers-get-through.md, A route in sight is a line). Every leg of
+    // a route is clear of every post, and a search expands no more cells than are open.
     let stream = RngStream::new("posts");
     let mut rng = Rng::new(&SegmentSeed::ZERO, stream, 7, Tick::ZERO);
     let mut draw = |bound: u64| rng.below(bound);
@@ -421,11 +459,16 @@ fn a_route_costs_what_a_search_of_every_cell_finds() {
                     },
                     |cost| (cost, true),
                 );
-                assert_eq!(
-                    (route.cost, route.reached),
-                    expected,
-                    "{rows:?} {from} {to}"
-                );
+                if route.expanded == 0 {
+                    assert_eq!(waypoints, [goal], "{rows:?} {from} {to}");
+                    assert!(route.reached, "{rows:?} {from} {to}");
+                } else {
+                    assert_eq!(
+                        (route.cost, route.reached),
+                        expected,
+                        "{rows:?} {from} {to}"
+                    );
+                }
                 assert!(route.expanded as usize <= open.len());
                 let mut at = start;
                 for &next in &waypoints {

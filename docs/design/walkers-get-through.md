@@ -48,11 +48,13 @@ walker either gets where it goes or stops within seconds. The facts are in
   goes round the units it should fight; neutrals alone, which leaves the same jam against an enemy
   that stands; friends that are busy walled, under which a 3v3 hero farmed below level 6; no
   walls, under which China's supply trucks planned through a civilian taxi for 16,890 ticks.
-- **A route in sight is a line.** A route whose goal the walker sees, by the exact test of the
-  static bodies, the walls and the priced cells a route's smoothing makes, is the straight line
-  to it, before any search of cells, as a route's smoothing keeps such a line. Refused: the cells
-  alone, under which a Red Guard in a gap that holds no cell open to its clearance took short
-  routes to its own cell's center, which it could not reach, though it saw its goal.
+- **A route in sight is a line.** A route whose goal the walker may stand on and sees, by the
+  exact test of the static bodies, the walls and the priced cells a route's smoothing makes, is
+  the straight line to it, before any search of cells, as a route's smoothing keeps such a line.
+  Refused: the cells alone, under which a goal seen past two posts that meet at a corner, which
+  no step of cells passes, is out of reach, and every route in sight pays a search; the Zero Hour
+  check's bases play ends in tick 11,012 with 323 stalls with the line, against 11,801 and 360
+  without.
 - **A friend yields through the friends that yield.** A friend's search for a place clear of the
   walker's way passes through the idle friends the walker may move, as cells it may cross and not
   as blockers, and may end on one; each it would pass or end on steps aside in turn for the
@@ -72,7 +74,8 @@ walker either gets where it goes or stops within seconds. The facts are in
 - A spawn of a producer with neither an exit nor a rally point stands outside the producer's
   body, at the open cell nearest it.
 - A stuck walker routes round a unit of another team that stands on its way.
-- A walker in a gap that holds no open cell walks to a goal it sees.
+- A goal seen past two posts that meet at a corner is the line to it, which no step of cells
+  passes.
 - A wide walker behind a column of two wide idle friends in a corridor with no side room arrives,
   the column driving ahead of it.
 - The Zero Hour check's bases play has no walker that stands with a destination for 1,000 ticks,

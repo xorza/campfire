@@ -254,6 +254,26 @@ impl RoutePlanner {
         let mut work = 1;
         let clear = !walkable.blocks_counting(Segment::new(goal, goal), &mut work);
         let mut from = grid.nearest_cell(start);
+        // A goal the walker sees, by the test a route's smoothing makes of a line, is the route,
+        // with no search of cells, so a walker in a gap no open cell holds walks to it
+        // (walkers-get-through.md, A route in sight is a line).
+        if clear && {
+            work += 1;
+            !walkable.blocks_counting(Segment::new(start, goal), &mut work)
+        } {
+            waypoints.push(goal);
+            return Planned {
+                #[cfg(test)]
+                cost: Self::estimate(
+                    Self::place(grid, from),
+                    Self::place(grid, grid.nearest_cell(goal)),
+                ),
+                #[cfg(test)]
+                expanded: 0,
+                work,
+                reached: true,
+            };
+        }
         // A short route stays in its window, where the regions, made over the whole grid, do not
         // tell what it reaches; a start with no open cell beside it reaches nothing they hold.
         let regions = walkable.clearance.regions();
