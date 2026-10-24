@@ -9,7 +9,7 @@ use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, OnDeath, Respawn};
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_math::{Num, Vec3};
-use campfire_measure::{AllocAudit, CountingAllocator};
+use campfire_measure::{AllocAudit, Allowed, CallSite, CountingAllocator};
 use campfire_orders::{Orders, OrdersDirective};
 use campfire_players::OrderUnits;
 use campfire_sim::internals::SimWorldInternals;
@@ -35,10 +35,14 @@ const WARMUP: usize = 600;
 /// The ticks the audit measures, several rounds of fights.
 const FRAMES: usize = 256;
 
-/// What a tick allocates: Bevy collects into a `Vec` the components a removal takes from an
-/// archetype that a `Remove` observer watches, as each unit's archetype is, and no two units of
-/// the battle respawn in one tick.
-const BEVY: [&str; 1] = ["the components a respawn's removal of `Dead` and `Respawn` takes"];
+/// What a tick allocates: Bevy's `BundleRemover::remove` collects into a `Vec` the components a
+/// removal takes from an archetype that a `Remove` observer watches, as each unit's archetype is,
+/// and no two units of the battle respawn in one tick. bevyengine/bevy#26301 removes it; the
+/// site names the version, so a new Bevy checks the budget again.
+const BEVY: [Allowed; 1] = [Allowed {
+    site: CallSite::File("bevy_ecs-0.20.0/src/bundle/remove.rs"),
+    why: "the components a respawn's removal of `Dead` and `Respawn` takes",
+}];
 
 /// Two sides of `SIDE` fighters each, 24 m apart, each a player's, and the order of each side to
 /// attack-move to the far side.

@@ -599,7 +599,7 @@ fn a_route_goes_round_a_block_of_idle_friends_and_through_it_when_walled_in() {
     // Boxes of 10 by 4 m at (0, ±4) wall the block in, from z = −2 to 2: the route goes through
     // it, row z = 0.25 a waypoint a cell, as a line across a priced cell is not smoothed, and the
     // friends step aside, 2 deep at most, and take its pushes, so the walker arrives in its tick
-    // 97 (04-capabilities/navigation.md, A route prices the units on it).
+    // 73 (04-capabilities/navigation.md, A route prices the units on it).
     let half = Num::HALF;
     let goal = Vec3::from((6, 0, 0));
     let run = |walled: bool| {
@@ -655,7 +655,7 @@ fn a_route_goes_round_a_block_of_idle_friends_and_through_it_when_walled_in() {
         .map(|column| quarters(2 * column - 7, 1))
         .chain([goal])
         .collect();
-    assert_eq!(run(true), (through, Some(97), goal));
+    assert_eq!(run(true), (through, Some(73), goal));
 }
 
 #[test]

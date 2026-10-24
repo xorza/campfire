@@ -6,6 +6,7 @@
 mod alloc_audit;
 mod alloc_trace;
 mod allocations;
+mod call_site;
 mod counting_allocator;
 mod kind;
 mod scale;
@@ -15,8 +16,9 @@ use criterion::measurement::Measurement;
 use tracing::subscriber::NoSubscriber;
 use tracing::{Dispatch, dispatcher};
 
-pub use crate::alloc_audit::{AllocAudit, AuditReport};
+pub use crate::alloc_audit::{AllocAudit, Allowed, AuditReport};
 pub use crate::allocations::Allocations;
+pub use crate::call_site::CallSite;
 pub use crate::counting_allocator::{AllocWindow, CountingAllocator};
 pub use crate::kind::Kind;
 pub use crate::scale::Scale;

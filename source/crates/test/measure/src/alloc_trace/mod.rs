@@ -2,10 +2,12 @@ use std::env;
 use std::fmt::Write as _;
 use std::path::{self, Path};
 
-use backtrace::{Backtrace, BacktraceFrame};
+use backtrace::{Backtrace, BacktraceFrame, BacktraceSymbol};
 
-/// The backtrace of one counted allocation, captured with no symbols, which only a failure
-/// resolves: a passing window allocates nothing, so it walks no stack.
+use crate::call_site::CallSite;
+
+/// The backtrace of one counted allocation, captured with no symbols, which only a failure or a
+/// budget's check of its site resolves: a window of no allocation walks no stack.
 #[derive(Debug)]
 pub(crate) struct AllocTrace(Backtrace);
 
@@ -48,6 +50,20 @@ const SCHEDULER: [&str; 3] = ["bevy_ecs::", "bevy_app::", "in_scope<"];
 impl AllocTrace {
     pub(crate) const fn new(backtrace: Backtrace) -> Self {
         Self(backtrace)
+    }
+
+    /// Whether a frame of its call stack lies at `site`, its symbols resolved for it.
+    pub(crate) fn passes(&mut self, site: CallSite) -> bool {
+        self.0.resolve();
+        let symbols = self.0.frames().iter().flat_map(BacktraceFrame::symbols);
+        match site {
+            CallSite::Function(part) => symbols
+                .filter_map(BacktraceSymbol::name)
+                .any(|name| format!("{name:#}").contains(part)),
+            CallSite::File(end) => symbols
+                .filter_map(BacktraceSymbol::filename)
+                .any(|file| file.ends_with(end)),
+        }
     }
 
     /// The call stack from the allocation to the fixture's call: the dependency frames that made

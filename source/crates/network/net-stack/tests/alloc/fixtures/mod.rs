@@ -7,7 +7,7 @@ mod replication;
 mod writer;
 
 use bevy::prelude::Entity;
-use campfire_measure::AllocAudit;
+use campfire_measure::{AllocAudit, Allowed, CallSite};
 use campfire_net_replication::internals::ClientCopies;
 use campfire_net_stack::internals::FullStack;
 use campfire_net_stepper::StepOrder;
@@ -27,19 +27,35 @@ const FRAMES: usize = 256;
 const AUDIT: AllocAudit = AllocAudit::new(WARMUP).frames(FRAMES);
 
 /// What each frame of a connected link allocates.
-const LINK: [&str; 3] = [
-    "bevy_replicon's server mutation message",
-    "the client's acknowledgement as a `Vec`",
-    "the client's acknowledgement as `Bytes`",
+const LINK: [Allowed; 3] = [
+    Allowed {
+        site: CallSite::Function(
+            "<bevy_replicon::server::replication_messages::mutations::Mutations>::send",
+        ),
+        why: "bevy_replicon's server mutation message",
+    },
+    Allowed {
+        site: CallSite::Function("bevy_replicon::client::receive_replication"),
+        why: "the client's acknowledgement as a `Vec`",
+    },
+    Allowed {
+        site: CallSite::Function(
+            "<bevy_replicon::shared::backend::client_messages::ClientMessages>::send",
+        ),
+        why: "the client's acknowledgement as `Bytes`",
+    },
 ];
 
 /// What each frame of a link allocates that changes one replicated component: the link's own,
 /// and bevy_replicon's growth of its mutation message for the change.
-const CHANGED: [&str; 4] = [
+const CHANGED: [Allowed; 4] = [
     LINK[0],
     LINK[1],
     LINK[2],
-    "the mutation message's growth for the change",
+    Allowed {
+        why: "the mutation message's growth for the change",
+        ..LINK[0]
+    },
 ];
 
 /// Steps the server first until `server_entity` reaches the client, and returns the client's

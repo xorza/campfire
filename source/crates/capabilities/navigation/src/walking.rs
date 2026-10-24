@@ -215,11 +215,27 @@ impl Walking {
             let Some(entity) = index.get(id) else {
                 continue;
             };
-            let (_, _, mut destination, _, body, mut route, (mut progress, .., walk), ..) = walkers
+            let (
+                _,
+                (_, position, _),
+                mut destination,
+                _,
+                body,
+                mut route,
+                (mut progress, .., walk),
+                ..,
+            ) = walkers
                 .get_mut(entity)
                 .expect("a friend that stands is a walker");
             let walkable = Walkable::of(grid.clearance(Walker::walking(Some(body))), &statics);
-            let Some(to) = planner.stand_at(walkable, to) else {
+            // A wide body that finds no room off the walker's way is sent to the cell it stands
+            // in, which moves it nowhere: it stays, and the walker goes round it as round any
+            // unit that stands.
+            let cells = walkable.clearance.grid();
+            let Some(to) = planner
+                .stand_at(walkable, to)
+                .filter(|&to| cells.nearest_cell(to) != cells.nearest_cell(position.get()))
+            else {
                 continue;
             };
             // It asks its route as it takes its destination, as the routing does, so the moves

@@ -93,9 +93,11 @@ How the stack is tested over an emulated network; the clocks are in [Time](time.
   held only while every task pool ran on one thread, which the workspace's Bevy does not keep;
   `stats_alloc`, whose counters give no trace.
 - **An audit holds each frame to a budget after a fixed warmup.** The budget defaults to zero and
-  names each allocation it allows. The warmup outlasts the last growth of the workload's buffers,
-  and a buffer bounded by time reserves its bound when it is made, so no warmup waits for it to
-  fill. Refused:
+  names the site of each allocation it allows, which each allocation's backtrace must pass, and
+  some frame must make each entry, so neither another allocation of the same count nor a fixed
+  one hides behind it. The warmup outlasts the last growth of the workload's buffers, and a buffer
+  bounded by time reserves its bound when it is made, so no warmup waits for it to fill. Refused:
+  a count with a text, which any allocation fills;
   palantir's probe for quiet frames, which stops inside the warmup of buffers that fill by time;
   medians and idle-to-active deltas, which hide an allocation paid on fewer than half the frames.
 - **The audit and the benches run with no subscriber.** A log line costs what the application's

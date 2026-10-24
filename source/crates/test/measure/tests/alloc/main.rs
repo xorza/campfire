@@ -8,7 +8,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use campfire_measure::{AllocAudit, CountingAllocator};
+use campfire_measure::{AllocAudit, Allowed, CallSite, CountingAllocator};
 use campfire_threads::{ThreadName, Worker};
 
 #[global_allocator]
@@ -16,6 +16,11 @@ static ALLOCATOR: CountingAllocator = CountingAllocator;
 
 /// One allocation of 8 bytes that the optimizer cannot remove.
 fn one_alloc() {
+    black_box(Box::new(black_box(0_u64)));
+}
+
+/// The same allocation, from a function of another name.
+fn another_alloc() {
     black_box(Box::new(black_box(0_u64)));
 }
 
@@ -136,7 +141,7 @@ fn an_audit_reports_its_worst_frame_and_fails_on_the_first_past_its_budget() {
     let mut frame = 0_usize;
     let report = AllocAudit::new(3)
         .frames(64)
-        .budget(&["the first", "the second"])
+        .budget(&[ONE_ALLOC, ONE_ALLOC])
         .run(|| {
             for _ in 0..frame % 3 {
                 one_alloc();
@@ -145,16 +150,28 @@ fn an_audit_reports_its_worst_frame_and_fails_on_the_first_past_its_budget() {
         });
     assert_eq!((report.worst, report.mode), (2, 0));
 
+    // Two allocations, of `one_alloc` and `another_alloc`, against a budget whose first site both
+    // pass and whose second only `one_alloc` passes: each takes an entry of its own, as
+    // `one_alloc` gives up the first entry for the second.
+    let report = AllocAudit::new(0)
+        .frames(1)
+        .budget(&[ANY_ALLOC, ONE_ALLOC])
+        .run(|| {
+            one_alloc();
+            another_alloc();
+        });
+    assert_eq!(report.worst, 2);
+
     // A budget of one: after a warmup of 3, measured frames 0 and 1 allocate 0 and 1, and frame 2,
     // the run's frame 5, allocates 2, so the audit stops there, 6 frames run. A warmup of 4 moves
     // the first frame of 2 to measured frame 1, 6 frames run all the same.
     for (warmup, failed) in [
-        (3, "on frame 2: 2 allocations, budget 1"),
-        (4, "on frame 1: 2 allocations, budget 1"),
+        (3, "on frame 2: 2 allocations, past the budget, budget 1"),
+        (4, "on frame 1: 2 allocations, past the budget, budget 1"),
     ] {
         let mut frame = 0_usize;
         let message = panic_of(|| {
-            AllocAudit::new(warmup).budget(&["the one"]).run(|| {
+            AllocAudit::new(warmup).budget(&[ONE_ALLOC]).run(|| {
                 for _ in 0..frame % 3 {
                     one_alloc();
                 }
@@ -164,4 +181,56 @@ fn an_audit_reports_its_worst_frame_and_fails_on_the_first_past_its_budget() {
         assert!(message.ends_with(failed), "{message}");
         assert_eq!(frame, 6);
     }
+
+    // A budget of three over the same frames, whose worst allocates 2: its third entry is
+    // stale, as an allocation a fix removed would leave it, and the audit fails once it has
+    // measured them all.
+    let mut frame = 0_usize;
+    let message = panic_of(|| {
+        AllocAudit::new(3)
+            .budget(&[ONE_ALLOC, ONE_ALLOC, ONE_ALLOC])
+            .run(|| {
+                for _ in 0..frame % 3 {
+                    one_alloc();
+                }
+                frame += 1;
+            });
+    });
+    assert!(message.contains("no frame of 64 made"), "{message}");
+    assert_eq!(frame, 67);
+
+    // A budget of one that names another site: the first frame that allocates, measured frame 0,
+    // the run's frame 3, fails, as its allocation is not the one the budget allows.
+    let mut frame = 0_usize;
+    let message = panic_of(|| {
+        AllocAudit::new(3).budget(&[ELSEWHERE]).run(|| {
+            for _ in 0..frame % 2 {
+                one_alloc();
+            }
+            frame += 1;
+        });
+    });
+    assert!(
+        message
+            .ends_with("on frame 0: 1 allocations, of a site the budget names none of, budget 1"),
+        "{message}"
+    );
 }
+
+/// The allocation `one_alloc` makes, as a budget names it.
+const ONE_ALLOC: Allowed = Allowed {
+    site: CallSite::Function("one_alloc"),
+    why: "the fixture's one allocation",
+};
+
+/// An allocation of either of the fixture's functions.
+const ANY_ALLOC: Allowed = Allowed {
+    site: CallSite::Function("_alloc"),
+    why: "either allocation of the fixture",
+};
+
+/// An allocation of a function the fixture has not.
+const ELSEWHERE: Allowed = Allowed {
+    site: CallSite::Function("no_such_function"),
+    why: "an allocation of another site",
+};
