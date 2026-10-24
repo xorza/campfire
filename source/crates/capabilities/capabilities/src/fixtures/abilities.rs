@@ -1,21 +1,34 @@
+use std::collections::BTreeMap;
+
 use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::world::World;
-use campfire_abilities::Abilities;
 use campfire_abilities::internals::{MANA, RAGE};
+use campfire_abilities::{Abilities, CastData};
 use campfire_actions::{
-    ActionData, ActionSlots, Actions, AttackTarget, ProgressDues, SlotKind, TimedSlots,
+    ActionData, ActionKeys, ActionRange, ActionSlots, Actions, AttackTarget, ProgressDues,
+    RangeField, SlotKind, Targeting, TimedSlots,
 };
 use campfire_combat::OnDeath;
-use campfire_common::PlayerSlot;
+use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_declarations::MatchFacts;
 use campfire_math::{Num, Vec3};
+use campfire_players::Players;
+use campfire_script::ScriptLimits;
 use campfire_sim::{Capability, StableId};
 use campfire_stats::Pools;
 use campfire_units::internals::Spawn;
 use campfire_units::{Life, MoveStep, Owner, UnitTypeCore, Units};
-use campfire_values::{ActionId, PackageIndex, Rank, Team, TypeScope, UnitType};
+use campfire_values::{
+    ActionId, FilterData, Number, PackageIndex, PackagePath, Param, Rank, Ranked, Scalar, Team,
+    TypeScope, UnitType,
+};
 
 use crate::fixtures::actions::ActionsFixtures;
+use crate::fixtures::units::UnitsFixtures;
+use crate::release::r#match::Match;
+
+/// The match's pools, by name in order: the life pool first, as it is until a mode binds one.
+const POOLS: [&str; 3] = ["health", "mana", "rage"];
 
 /// The test fixtures of `Abilities` that need a crate above its own.
 pub trait AbilitiesFixtures {
@@ -63,6 +76,9 @@ pub trait AbilitiesFixtures {
     /// `rank`.
     fn caster_of(world: &mut World, name: &str, action: ActionId, rank: u8) -> StableId;
 
+    /// Player 0's `caster` at `position`, on team 0, with `action` at `rank`.
+    fn caster_at(world: &mut World, position: Vec3, action: ActionId, rank: u8) -> StableId;
+
     /// A `fighter`, a combatant's type, of team 0 at the origin, with `slots`.
     fn fighter(world: &mut World, fighter: UnitType, slots: TimedSlots) -> StableId;
 
@@ -74,6 +90,15 @@ pub trait AbilitiesFixtures {
 
     /// Loads `data` as the weapon `name` of package 0, of one rank, with its effect lists.
     fn load_weapon(world: &mut World, name: &str, data: &ActionData) -> ActionId;
+
+    /// A match of two players of `declared`, whose scripts run within `limits`, and who hold
+    /// gold, as a mode would keep it, with the damage kinds and pools of the MOBA test content
+    /// and the types the tests spawn.
+    fn match_of(limits: ScriptLimits, declared: &[Capability]) -> Match;
+
+    /// A unit-targeted ability: `damage` true damage to an enemy within 5 m, every second, for 10
+    /// mana and 4 rage.
+    fn strike() -> ActionData;
 }
 
 impl AbilitiesFixtures for Abilities {
@@ -151,17 +176,11 @@ impl AbilitiesFixtures for Abilities {
     }
 
     fn caster_of(world: &mut World, name: &str, action: ActionId, rank: u8) -> StableId {
-        let parts = (
-            Owner::new(PlayerSlot::new(0)),
-            TimedSlots::new(ActionSlots::new([(
-                action,
-                SlotKind::new(0),
-                Rank::new(rank),
-            )])),
-        );
-        Spawn::named(world, name, Vec3::ZERO)
-            .parts(parts)
-            .place(world)
+        placed_caster(world, name, Vec3::ZERO, action, rank)
+    }
+
+    fn caster_at(world: &mut World, position: Vec3, action: ActionId, rank: u8) -> StableId {
+        placed_caster(world, "caster", position, action, rank)
     }
 
     fn fighter(world: &mut World, fighter: UnitType, slots: TimedSlots) -> StableId {
@@ -182,4 +201,58 @@ impl AbilitiesFixtures for Abilities {
         Actions::load_effect_lists(world, weapon, PackageIndex::MODE, data);
         weapon
     }
+
+    fn match_of(limits: ScriptLimits, declared: &[Capability]) -> Match {
+        let mut game = Match::builder(declared).players(2).limits(limits).build();
+        // The damage kinds a mode would declare: the MOBA test content's.
+        Units::name_kinds(&mut game, &["physical", "magic", "true"], &POOLS, &["gold"]);
+        Players::spawn(&mut game, 2, 1);
+        Self::load_types(&mut game);
+        game
+    }
+
+    fn strike() -> ActionData {
+        let targeting = || Targeting::Unit(FilterData::parse("enemies").unwrap());
+        let int = |value| Ranked::One(Number::Value(Scalar::Int(value)));
+        ActionData {
+            keys: ActionKeys {
+                script: Some(PackagePath::parse("strike.rhai").unwrap()),
+                range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
+                    Num::int(5),
+                )))),
+                cooldown_ms: Some(int(1001)),
+                cost: BTreeMap::from([
+                    (DeclaredName::new("mana").unwrap(), int(10)),
+                    (DeclaredName::new("rage").unwrap(), int(4)),
+                ]),
+                params: BTreeMap::from([(
+                    DeclaredName::new("damage").unwrap(),
+                    Param::Ranked(Ranked::One(Scalar::Int(50))),
+                )]),
+                ..ActionData::of(targeting(), CastData::default()).keys
+            },
+            ..ActionData::of(targeting(), CastData::default())
+        }
+    }
+}
+
+/// Player 0's unit of the caster type `name` at `position`, on team 0, with `action` at `rank`.
+fn placed_caster(
+    world: &mut World,
+    name: &str,
+    position: Vec3,
+    action: ActionId,
+    rank: u8,
+) -> StableId {
+    let parts = (
+        Owner::new(PlayerSlot::new(0)),
+        TimedSlots::new(ActionSlots::new([(
+            action,
+            SlotKind::new(0),
+            Rank::new(rank),
+        )])),
+    );
+    Spawn::named(world, name, position)
+        .parts(parts)
+        .place(world)
 }

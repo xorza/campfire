@@ -32,8 +32,7 @@ use campfire_values::{
 };
 
 use crate::abilities::{
-    LASH_OUT, STRIKE, abilities_match, abilities_match_with, cost, effect, half_meters, int,
-    lash_out, strike,
+    LASH_OUT, STRIKE, abilities_match, cost, effect, half_meters, int, lash_out,
 };
 
 #[test]
@@ -68,7 +67,7 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     Abilities::load_stats(&mut game);
     // Strike's one param name comes first in the frame, so Lash Out's three follow from the
     // second.
-    Abilities::load(&mut game, "strike", &strike(), STRIKE);
+    Abilities::load(&mut game, "strike", &Abilities::strike(), STRIKE);
     let lash_out = Abilities::load(&mut game, "lash_out", &lash_out(), LASH_OUT);
     let husk = Abilities::caster(&mut game, lash_out, 2);
     let near = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
@@ -121,7 +120,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
         Capability::Navigation,
         Capability::Abilities,
     ];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     // Aim winds up 300 ms, 9 ticks, within 10 m; Shove, at once, knocks its target 3 m away from
     // its caster over 100 ms, 3 ticks.
     let aim = ActionData {
@@ -130,9 +129,9 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
             range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
                 Num::int(10),
             )))),
-            ..strike().keys
+            ..Abilities::strike().keys
         },
-        ..strike()
+        ..Abilities::strike()
     };
     let aim = Abilities::load(&mut game, "aim", &aim, STRIKE);
     let shove = ActionData {
@@ -235,7 +234,7 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
         Capability::Navigation,
         Capability::Abilities,
     ];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     // Lunge knocks the unit it reaches 3 m away from its caster over 100 ms, 3 ticks, and dashes
     // its caster at it, 30 m a second, a meter a tick. It delivers at once, so the dash is its
     // delivery: as the dash ends, its `on_end` list deals its caster 1, and its hook deals the
@@ -371,7 +370,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         Capability::Abilities,
         Capability::Orders,
     ];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     // Eleven units whose AI spins, all due in every tick: ten calls fail at the 10 000 limit and
     // spend the 100 000 of the think pool, and the eleventh finds it spent. Their type loads
     // before any unit spawns, as a match's types do.
@@ -389,7 +388,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     let spin = "fn on_think(ctx, unit) { loop {} }";
     let spin = Units::compile_hooked(&mut game, spin).unwrap();
     Orders::load_ai(&mut game, spinner, &ai, spin).unwrap();
-    let strike = Abilities::load(&mut game, "strike", &strike(), STRIKE);
+    let strike = Abilities::load(&mut game, "strike", &Abilities::strike(), STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
     let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
     let spinners: Vec<_> = (0..11)
@@ -422,7 +421,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
 #[test]
 fn a_cast_passes_its_checks_or_does_nothing() {
     let mut game = abilities_match();
-    let strike = Abilities::load(&mut game, "strike", &strike(), STRIKE);
+    let strike = Abilities::load(&mut game, "strike", &Abilities::strike(), STRIKE);
     // Casters of 5 mana, of 3 rage, and of 10 mana and 4 rage, beside the 100 and 20 of the
     // match's own.
     let [poor, calm, exact] = [(5, 20), (100, 3), (10, 4)].map(|(mana, rage)| {
@@ -524,9 +523,9 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let data = ActionData {
         keys: ActionKeys {
             cost,
-            ..strike().keys
+            ..Abilities::strike().keys
         },
-        ..strike()
+        ..Abilities::strike()
     };
     let strike = Abilities::load(&mut game, "strike", &data, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
@@ -569,9 +568,9 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     let data = ActionData {
         keys: ActionKeys {
             windup_ms: Some(Ranked::One(int(100))),
-            ..strike().keys
+            ..Abilities::strike().keys
         },
-        ..strike()
+        ..Abilities::strike()
     };
     let strike = Abilities::load(&mut game, "strike", &data, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
@@ -709,9 +708,9 @@ fn a_cast_under_way_ends_when_its_caster_dies() {
     let windup = ActionData {
         keys: ActionKeys {
             windup_ms: Some(Ranked::One(int(200))),
-            ..strike().keys
+            ..Abilities::strike().keys
         },
-        ..strike()
+        ..Abilities::strike()
     };
     let strike = Abilities::load(&mut game, "strike", &windup, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);

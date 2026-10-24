@@ -18,7 +18,7 @@ use campfire_units::internals::Spawn;
 use campfire_units::{Owner, UnitTypeCore, Units};
 use campfire_values::{NameId, PackageIndex, Rank, Ranked, Stat, Team, TypeScope, UnitType};
 
-use crate::abilities::{abilities_match_with, changing, int, param, scaling, strike};
+use crate::abilities::{changing, int, param, scaling};
 
 fn decimal(text: &str) -> Num {
     text.parse().unwrap()
@@ -27,7 +27,7 @@ fn decimal(text: &str) -> Num {
 #[test]
 fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     // The caster's type gives attack damage 50 + 5 a level, so 60 at level 3; a modifier adds 20
     // more and 40 ability power.
     let caster_type = Units::load_type(
@@ -72,9 +72,9 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     let data = ActionData {
         keys: ActionKeys {
             params: [(DeclaredName::new("power").unwrap(), power)].into(),
-            ..strike().keys
+            ..Abilities::strike().keys
         },
-        ..strike()
+        ..Abilities::strike()
     };
     let script = r#"
 fn on_resolve(ctx, caster, target) {
@@ -189,7 +189,7 @@ impl Veil {
 
 #[test]
 fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &Veil::CAPABILITIES);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &Veil::CAPABILITIES);
     let veil = Veil::place(&mut game);
     let unit = veil.id;
     game.step();
@@ -219,7 +219,7 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
 
 #[test]
 fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_stack() {
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &Veil::CAPABILITIES);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &Veil::CAPABILITIES);
     let veil = Veil::place(&mut game);
     let source = veil.id;
     // Ward, of Veil's type, holds Dual Path from Veil, with Boost: 0.06 and 0.00167 of Veil's

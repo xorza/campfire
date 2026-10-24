@@ -33,9 +33,7 @@ use campfire_values::{
     Scalar, Team, TrackId,
 };
 
-use crate::abilities::{
-    LASH_OUT, STRIKE, abilities_match, abilities_match_with, cost, int, lash_out, strike,
-};
+use crate::abilities::{LASH_OUT, STRIKE, abilities_match, cost, int, lash_out};
 
 #[test]
 fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
@@ -49,7 +47,7 @@ fn charges_come_back(declared: &[Capability]) {
     // Step: 3 charges, one back each 1000 ms, 30 ticks at 30 a second, and a lockout of 100 ms,
     // 3 ticks, between two casts; 10 mana a cast. Refill gives Step a charge and takes 500 ms,
     // 15 ticks, off the time to its next; Dud has no charges to give.
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, declared);
     Abilities::load_stats(&mut game);
     let plain = ActionData {
         keys: ActionKeys {
@@ -528,13 +526,13 @@ fn on_resolve(ctx, caster, target) {
 "#;
     let mut game = abilities_match();
     Abilities::load_stats(&mut game);
-    let near = Abilities::load(&mut game, "strike", &strike(), script);
+    let near = Abilities::load(&mut game, "strike", &Abilities::strike(), script);
     let global = ActionData {
         keys: ActionKeys {
             range: Some(Ranked::One(RangeField::Range(ActionRange::Global))),
-            ..strike().keys
+            ..Abilities::strike().keys
         },
-        ..strike()
+        ..Abilities::strike()
     };
     let far = Abilities::load(&mut game, "far", &global, script);
     for (action, damage) in [(near, 50), (far, 1)] {
@@ -607,7 +605,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             ..ScriptLimits::ROOMY
         };
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-        let mut game = abilities_match_with(limits, &declared);
+        let mut game = Abilities::match_of(limits, &declared);
         let data = ActionData {
             keys: ActionKeys {
                 params: BTreeMap::new(),
@@ -621,7 +619,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             &data,
             "fn on_resolve(ctx, caster, target) { loop {} }",
         );
-        let strike = Abilities::load(&mut game, "strike", &strike(), STRIKE);
+        let strike = Abilities::load(&mut game, "strike", &Abilities::strike(), STRIKE);
         let spinner = Abilities::caster(&mut game, spin, 1);
         let striker = Abilities::spawn_caster(
             &mut game,
@@ -677,7 +675,7 @@ fn a_channel_with_no_end_pays_by_its_level_until_an_order_waits_out_its_wind_dow
         Capability::Orders,
         Capability::Progression,
     ];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     Navigation::load_paths(&mut game, Paths::default());
     let book = TrackBook::sample();
     book.clone().load_into(&mut game);

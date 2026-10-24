@@ -4,27 +4,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Benches cover the hot paths
 
-The audit in `.notes/review-benches.md`: every hot path has a case on a workload of its real size,
-and
-every case follows one scheme of names, sizes and throughput. Each batch ends with `cargo drive
-gate`,
-which builds every bench; no batch runs one.
-
-### B2. Navigation's tick (`navigation`)
-
-- [ ] `integration/walking/{mean,worst}_<scene>`: the Move stage of navigation (`Steering::read`,
-  `CrowdCosts::update`, `Walking::steer`, the yield search) on `KernelScene::UNITS` walkers in three
-  scenes: `open`, walkers that cross an open field; `crowd`, walkers through an idle crowd of their
-  team; `corridor`, a column of idle friends in walled lanes, as in the dozer case.
-- [ ] `integration/route_asks/<scene>`: the routes that a wave and a group of stuck walkers ask,
-  with crowd prices and with walls.
-- [ ] Atomics: `atomic/route_planner/{yield_place, nearest_open, line}`, `atomic/steering/steer`,
-  `atomic/crowd_costs/update_<n>_changes`.
-
-### B3. Capability atomics (`combat`, `stats`, `areas`, `orders`, `abilities`)
-
-- [ ] One atomic group in each owner crate, on `INPUTS` made inputs: combat's damage weigh, stats'
-  recompute of a unit's modifiers, areas' trigger test, orders' chase step, abilities' cast check.
+The audit in `.notes/review-benches.md`: every hot path has a case on a workload of its real
+size, and every case follows one scheme of names, sizes and throughput. Each batch ends with
+`cargo drive gate`, which builds every bench; no batch runs one.
 
 ### B4. The RTS workload (`zero-hour-check`)
 

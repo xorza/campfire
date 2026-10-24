@@ -30,9 +30,7 @@ use campfire_values::{
     TrackId, TypeScope,
 };
 
-use crate::abilities::{
-    LASH_OUT, STRIKE, abilities_match, abilities_match_with, cost, int, lash_out, param, strike,
-};
+use crate::abilities::{LASH_OUT, STRIKE, abilities_match, cost, int, lash_out, param};
 
 #[test]
 fn an_ability_loads_only_when_its_data_holds() {
@@ -113,7 +111,7 @@ fn an_ability_loads_only_when_its_data_holds() {
 fn a_capability_field_reads_its_param_at_each_rank() {
     // A cooldown of `{ param = "cd" }`, 1000 ms at rank 1 up to 3000 at rank 3: 30, 60 and 90
     // ticks at 30 a second, and a cost of `{ param = "price" }` mana, 7 at every rank.
-    let mut data = strike();
+    let mut data = Abilities::strike();
     data.keys.cooldown_ms = Some(Ranked::One(param("cd")));
     data.keys.cost = BTreeMap::from([(
         DeclaredName::new("mana").unwrap(),
@@ -172,7 +170,7 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     for unit_type in [hero, creep] {
         Abilities::give_combatant(&mut game, unit_type);
     }
-    let mut heroes_only = strike();
+    let mut heroes_only = Abilities::strike();
     heroes_only.keys.targeting = Targeting::Unit(FilterData::parse("enemies:avatar").unwrap());
     let strike = Abilities::load(&mut game, "strike", &heroes_only, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
@@ -209,7 +207,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
         Capability::Abilities,
         Capability::Orders,
     ];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     Abilities::load_stats(&mut game);
     // A guard whose shield is Lash Out's damage at its rank, which its passive holds: 75 at rank
     // 1, then 25 more a rank. Its 5 ranks need levels 1, 1, 3, 3 and 5.

@@ -26,7 +26,7 @@ use campfire_values::{
     Scalar, TagSet, Team, TypeScope, VisionShare,
 };
 
-use crate::abilities::{abilities_match_with, changing, half_meters, strike};
+use crate::abilities::{changing, half_meters};
 
 #[test]
 fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
@@ -257,7 +257,7 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
             Capability::Abilities,
             Capability::Areas,
         ];
-        let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+        let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
         let blast = Units::load_type(
             &mut game,
             TypeScope::Mode,
@@ -275,12 +275,12 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
         let shot = ActionData {
             keys: ActionKeys {
                 targeting: Targeting::Point,
-                ..strike().keys
+                ..Abilities::strike().keys
             },
             delivery: Some(Arc::new(AreaDeliveryData {
                 area: DeclaredName::new("blast").unwrap(),
             })),
-            ..strike()
+            ..Abilities::strike()
         };
         // Each hook deals damage only when it reads the area still there, no aimed unit, and no
         // direction, as an area flies none.
@@ -362,7 +362,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
         Capability::Abilities,
         Capability::Areas,
     ];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     let grunt = UnitTypeCore::tagged(&["grunt"]);
     let grunt = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt);
     Abilities::give_combatant(&mut game, grunt);
@@ -402,12 +402,12 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     let shot = ActionData {
         keys: ActionKeys {
             targeting: Targeting::Point,
-            ..strike().keys
+            ..Abilities::strike().keys
         },
         delivery: Some(Arc::new(AreaDeliveryData {
             area: DeclaredName::new("field").unwrap(),
         })),
-        ..strike()
+        ..Abilities::strike()
     };
     let source = r#"
         fn on_hit(ctx, caster, target, hit) {

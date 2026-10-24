@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 use std::slice;
-use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_capabilities::internals::StatsFixtures;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
 use campfire_common::{DeclaredName, Tick, Ticks};
@@ -34,35 +34,6 @@ const fn sixteenths(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 4))
 }
 
-/// The rules of the test: move speed at most 5, `armor` at least −30, a weapon's stats, and the
-/// pools' stats.
-fn rules() -> BTreeMap<Stat, StatRule> {
-    let free = StatRule::default();
-    let speed = StatRule {
-        min: None,
-        max: Some(Num::int(5)),
-    };
-    let armor = StatRule {
-        min: Some(Num::int(-30)),
-        max: None,
-    };
-    let named = [
-        "health",
-        "health_regen",
-        "mana",
-        "attack_speed",
-        "attack_damage",
-    ];
-    [
-        (Stat::Engine(EngineStat::MoveSpeed), speed),
-        (Stat::Engine(EngineStat::TurnRate), free),
-        (armor_stat(), armor),
-    ]
-    .into_iter()
-    .chain(named.map(|name| (stat(name), free)))
-    .collect()
-}
-
 fn stat(name: &str) -> Stat {
     Stat::named(name).unwrap()
 }
@@ -71,23 +42,9 @@ fn armor_stat() -> Stat {
     stat("armor")
 }
 
-/// The pools of the test, by pool id: `health`, which regenerates, then `mana`, which does not.
+/// The pools of `StatsFixtures::pools`, by pool id: `health`, then `mana`.
 const HEALTH: PoolId = PoolId::FIRST;
 const MANA: PoolId = PoolId::new(1).unwrap();
-
-fn pools() -> BTreeMap<DeclaredName, PoolData> {
-    let pool = |max: &str, regen: Option<&str>| PoolData {
-        max: stat(max),
-        regen: regen.map(stat),
-    };
-    BTreeMap::from([
-        (
-            DeclaredName::new("health").unwrap(),
-            pool("health", Some("health_regen")),
-        ),
-        (DeclaredName::new("mana").unwrap(), pool("mana", None)),
-    ])
-}
 
 /// A unit type's stats, each a base and a gain a level.
 fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
@@ -109,19 +66,7 @@ fn stat_match(types: &[StatsData]) -> Match {
     let mut game = Match::builder(&[Capability::Stats, Capability::Combat])
         .role(Role::Rules)
         .build();
-    let mut book = StatBook::new(&rules(), Num::int(6));
-    for data in types {
-        let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
-        book.add_type(unit_type, data).unwrap();
-    }
-    let pools = pools();
-    let names = Arc::new(pools.keys().map(DeclaredName::as_str).collect());
-    let pools = PoolBook::new(&pools, names, None, |_, stat| {
-        book.named(stat).ok_or_else(|| stat.clone())
-    });
-    let pools = pools.unwrap();
-    book.load_into(&mut game);
-    pools.load_into(&mut game);
+    Stats::load_typed_book(&mut game, types);
     game
 }
 
@@ -152,14 +97,6 @@ fn amounts(world: &World, entity: Entity, pool: PoolId) -> (Num, Num) {
     }
     let pools = world.get::<Pools>(entity).unwrap();
     (pools.current(pool).unwrap(), pools.max(pool).unwrap())
-}
-
-/// A modifier of no stats, tags, params or times that gives `aura`.
-fn modifier_data(aura: Option<AuraData>) -> ModifierData {
-    ModifierData {
-        aura,
-        ..ModifierData::default()
-    }
 }
 
 #[test]
@@ -488,7 +425,7 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
     let data = ModifierData {
         stats: BTreeMap::from([(Stat::Engine(EngineStat::MoveSpeed), cut)]),
         params: BTreeMap::from([(DeclaredName::new("slow").unwrap(), half)]),
-        ..modifier_data(None)
+        ..Stats::modifier_data(None)
     };
     Stats::load_modifier(&mut game, PackageIndex::MODE, "slow", &data, None);
     let slow = Stats::modifier(&game, PackageIndex::MODE, "slow").unwrap();
@@ -497,18 +434,6 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
     game.step();
     let step = game.get::<MoveStep>(unit).unwrap().get();
     assert_eq!(step, Num::from_bits(1_118_481));
-}
-
-/// An application of the aura `id` of `radius`, one stack with no end, carried by `carrier`.
-fn aura(id: ModifierId, carrier: StableId, radius: Num) -> Application {
-    Application {
-        instance: NewInstance {
-            aura_radius: Some(radius),
-            ..NewInstance::bare(id, Some(carrier))
-        },
-        reapply: Reapply::Refresh,
-        max_stacks: None,
-    }
 }
 
 /// A match of a unit type of armor 10, and the modifier `warding`, whose aura's radius and
@@ -527,7 +452,7 @@ fn warding_match() -> (Match, ModifierId) {
         &mut game,
         PackageIndex::MODE,
         "heartened",
-        &modifier_data(None),
+        &Stats::modifier_data(None),
         None,
     );
     let param = |name: &str| {
@@ -550,7 +475,7 @@ fn warding_match() -> (Match, ModifierId) {
             (DeclaredName::new("reach").unwrap(), against_armor(-1)),
             (DeclaredName::new("ward").unwrap(), against_armor(-2)),
         ]),
-        ..modifier_data(Some(AuraData {
+        ..Stats::modifier_data(Some(AuraData {
             radius: param("reach"),
             affects: FilterData::parse("allies").unwrap(),
             modifier: DeclaredName::new("heartened").unwrap(),
@@ -621,7 +546,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     // Before any system builds its queries, as a predicting client registers it, so that a unit
     // it holds can be marked below.
     Unpredicted::register(&mut game);
-    let book = StatBook::new(&rules(), Num::int(6));
+    let book = StatBook::new(&Stats::rules(), Num::int(6));
     book.load_into(&mut game);
     // A presence of 2 m on allies, holding `inspired`, which grants its carrier the engine's tag
     // 0, `avatar`.
@@ -634,12 +559,12 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         &mut game,
         PackageIndex::MODE,
         "inspired",
-        &modifier_data(None),
+        &Stats::modifier_data(None),
         None,
     );
     let presence = ModifierData {
         tags: vec![DeclaredName::new("avatar").unwrap()],
-        ..modifier_data(Some(presence))
+        ..Stats::modifier_data(Some(presence))
     };
     Stats::load_modifier(&mut game, PackageIndex::MODE, "presence", &presence, None);
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
@@ -653,7 +578,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     Units::seal_tags(&mut game, &BTreeMap::from([(warded.clone(), immune)]));
     let ward = ModifierData {
         tags: vec![warded],
-        ..modifier_data(None)
+        ..Stats::modifier_data(None)
     };
     Stats::load_modifier(&mut game, PackageIndex::MODE, "ward", &ward, None);
     let at = |x: i64| Vec3::new(Num::int(x), Num::ZERO, Num::ZERO);
@@ -673,7 +598,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
             .unwrap()
     });
     let holder = entity(&game, carrier);
-    let presence_aura = aura(presence, carrier, Num::int(2));
+    let presence_aura = Stats::aura(presence, carrier, Num::int(2));
     CarriedMut::with(&mut game, holder, |carried| carried.apply(presence_aura)).unwrap();
     let holds = |game: &Match, id: StableId| {
         let modifiers = game.get::<Modifiers>(entity(game, id)).unwrap();
@@ -713,7 +638,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
             .get(presence, Some(carrier))
             .is_none()
     );
-    let presence_aura = aura(presence, carrier, Num::int(2));
+    let presence_aura = Stats::aura(presence, carrier, Num::int(2));
     CarriedMut::with(&mut game, holder, |carried| carried.apply(presence_aura)).unwrap();
     game.step();
     assert!(holds(&game, far));
@@ -743,7 +668,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     .unwrap();
     game.step();
     assert!(!holds(&game, far));
-    let presence_aura = aura(presence, carrier, Num::int(2));
+    let presence_aura = Stats::aura(presence, carrier, Num::int(2));
     CarriedMut::with(&mut game, held, |carried| carried.apply(presence_aura)).unwrap();
     game.step();
     assert!(holds(&game, far));
@@ -757,13 +682,13 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
 #[test]
 fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let mut game = Match::builder(&[Capability::Stats]).build();
-    let book = StatBook::new(&rules(), Num::int(6));
+    let book = StatBook::new(&Stats::rules(), Num::int(6));
     book.load_into(&mut game);
     Stats::load_modifier(
         &mut game,
         PackageIndex::MODE,
         "inspired",
-        &modifier_data(None),
+        &Stats::modifier_data(None),
         None,
     );
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
@@ -798,13 +723,13 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
 #[test]
 fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
     let mut game = Match::builder(&[Capability::Stats]).build();
-    let book = StatBook::new(&rules(), Num::int(6));
+    let book = StatBook::new(&Stats::rules(), Num::int(6));
     book.load_into(&mut game);
     Stats::load_modifier(
         &mut game,
         PackageIndex::MODE,
         "inspired",
-        &modifier_data(None),
+        &Stats::modifier_data(None),
         None,
     );
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());

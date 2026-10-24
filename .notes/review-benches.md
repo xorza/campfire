@@ -12,10 +12,7 @@ The inventory on 2026-10-24: 18 bench targets, 31 `bench.rs` files, 111 calls th
 ### What it lacks
 
 - **The RTS workload.** Every integration scene is the MOBA 3v3, a synthetic kernel scene or a capability scene. No case runs a Zero Hour match: hundreds of units of two bases that build, train, gather and fight on an imported map. That is the target workload of the engine, and it is the workload where the navigation changes of this week (yields, crowd walls, route asks) cost the most.
-- **Navigation's per-tick stages past collision.** `Walking::steer` (progress, asides, the yield search, short routes), `CrowdCosts::update`, `Steering::read`, route asks with crowd prices and walls, and the room a spawn makes have no case. Only `collision`, `pathing_grid/enter` and `route_planner` exist, and the route planner's scenes have no crowd.
-- **Navigation atomics.** `RoutePlanner::yield_place`, `RoutePlanner::nearest_open`, the line test `Walkable::blocks_counting`, `Steering::steer` alone, and `CrowdCosts::update` alone have no case.
 - **Bots.** `session/bots` thinks for every bot each think period, a script call per bot, and has no case.
-- **Capabilities' own atomics.** Combat's damage weigh, stats' recompute of modifiers, areas' triggers, orders' chase and abilities' cast are only inside `battle` and `server_stage`. A change to one of them moves a whole-tick case by less than its noise.
 - **Client per-frame work.** Only unit picking has a case. The interpolation of the units that the client holds (`net-interpolation`, `net-frame-interpolation`) and the client's fog upload run each frame and have no case.
 - **Codec and packets.** `codec` (snapshot and payload encoding) and `net-packets` (packet build and parse) are only inside `net-replication` and `state_delta`.
 

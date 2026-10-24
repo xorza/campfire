@@ -4,6 +4,7 @@ pub(crate) mod areas;
 pub(crate) mod navigation;
 pub(crate) mod orders;
 pub(crate) mod production;
+pub(crate) mod stats;
 pub(crate) mod units;
 pub(crate) mod vision;
 pub(crate) mod walker_spawn;

@@ -25,11 +25,11 @@ use campfire_stats::{ModifierData, ModifierEffectData, Modifiers, RestoreEffectD
 use campfire_units::{AudienceNone, UnitState, UnitTypeCore, Units};
 use campfire_values::{PackageIndex, Param, Ranked, Scalar, Team, TypeScope, UnitType};
 
-use crate::abilities::{abilities_match_with, effect, half_meters, int, param, scripted, strike};
+use crate::abilities::{effect, half_meters, int, param, scripted};
 
 #[test]
 fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
-    let mut game = abilities_match_with(
+    let mut game = Abilities::match_of(
         ScriptLimits::ROOMY,
         &[
             Capability::Stats,
@@ -50,7 +50,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
             count: NonZeroU8::MIN,
             spread_deg: Num::ZERO,
         })),
-        ..strike()
+        ..Abilities::strike()
     };
     // Each hook deals damage only when it reads the bolt still there, and the hit's target is the
     // unit the cast aimed at.
@@ -136,7 +136,7 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
         (&curved, [(at_unit, true), (to_point, true)]),
     ] {
         for (call, launches) in launches {
-            let mut game = abilities_match_with(
+            let mut game = Abilities::match_of(
                 ScriptLimits::ROOMY,
                 &[
                     Capability::Stats,
@@ -148,7 +148,7 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             let bolt =
                 Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeCore::default());
             Projectiles::load_type(&mut game, bolt, data);
-            let mut shot = strike();
+            let mut shot = Abilities::strike();
             let bolt_name = DeclaredName::new("bolt").unwrap();
             shot.delivery = Some(Arc::new(ProjectileDeliveryData::one(bolt_name)));
             let source = format!("fn on_resolve(ctx, caster, target) {{ {call}; }}");
@@ -195,7 +195,7 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
                 Capability::Abilities,
                 delivery,
             ];
-            let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+            let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
             let field = |default| StateFieldDecl {
                 decl: StateDecl::new(StateType::Int, Some(StateDefault::Int(default))).unwrap(),
                 audience: Audience::None,
@@ -232,7 +232,7 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
             };
             let shot = ActionData {
                 delivery: Some(delivery),
-                ..strike()
+                ..Abilities::strike()
             };
             let source = format!(
                 r#"
@@ -286,7 +286,7 @@ fn fan_of_frost() -> ActionData {
                 DeclaredName::new("damage").unwrap(),
                 Param::Ranked(Ranked::One(Scalar::Int(30))),
             )]),
-            ..strike().keys
+            ..Abilities::strike().keys
         },
         delivery: Some(Arc::new(ProjectileDeliveryData {
             projectile: DeclaredName::new("frost_arrow").unwrap(),
@@ -316,7 +316,7 @@ fn fan_of_frost() -> ActionData {
                 EffectTo::Source,
             ),
         ],
-        ..strike()
+        ..Abilities::strike()
     }
 }
 
@@ -326,7 +326,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     // fanned over 30 degrees around the aim along +x, each for 6 m at half a meter a tick, whose
     // hits deal the `damage` param, 30, and apply `chilled`; and each hit restores 2 mana to the
     // caster.
-    let mut game = abilities_match_with(
+    let mut game = Abilities::match_of(
         ScriptLimits::ROOMY,
         &[
             Capability::Stats,

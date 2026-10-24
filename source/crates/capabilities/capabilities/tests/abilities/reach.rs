@@ -18,7 +18,7 @@ use campfire_stats::Stats;
 use campfire_units::{Body, Dead, Destination, GroundPoint, MoveStep, Units};
 use campfire_values::{ActionId, Block, FilterData, Number, PackagePath, Ranked, Scalar, Team};
 
-use crate::abilities::{abilities_match, abilities_match_with, half_meters};
+use crate::abilities::{abilities_match, half_meters};
 
 #[test]
 fn a_point_aim_beyond_the_range_clamps_in_to_it_when_the_action_says_so() {
@@ -167,7 +167,7 @@ fn walker(meters: Num) -> impl Bundle<Effect: NoBundleEffect> {
 
 #[test]
 fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &Reaching::CAPABILITIES);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &Reaching::CAPABILITIES);
     let reaching = Reaching::place(&mut game);
     // A hop at (10, 0) from the origin, a meter a tick: the Act stage of tick t finds the caster
     // at t, before that tick's step, and 10 − t m within 4 m first in tick 6, where it stops and
@@ -244,7 +244,7 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
 
 #[test]
 fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &Reaching::CAPABILITIES);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &Reaching::CAPABILITIES);
     let reaching = Reaching::place(&mut game);
     let mover = Abilities::walking_caster(&mut game, reaching.jab);
     let far = Abilities::spawn_combatant(&mut game, (0, 0, 30), Team::new(1), ());

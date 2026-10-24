@@ -12,7 +12,6 @@ use campfire_combat::internals::Armed;
 use campfire_combat::{AttackData, DamageEffectData, OnDeath, WeaponValue};
 use campfire_common::DeclaredName;
 use campfire_math::Num;
-use campfire_players::Players;
 use campfire_production::TrainData;
 use campfire_projectiles::ProjectileDeliveryData;
 use campfire_script::ScriptLimits;
@@ -58,9 +57,6 @@ fn striker(damage: i64) -> Armed {
     Armed::melee(Num::int(500), Num::int(2), 0, 5, Num::int(damage)).on_death(OnDeath::Stay)
 }
 
-/// The match's pools, by name in order: the life pool first, as it is until a mode binds one.
-const POOLS: [&str; 3] = ["health", "mana", "rage"];
-
 /// A cost of `amount` in pool `name`.
 fn cost(name: &str, amount: Number) -> BTreeMap<DeclaredName, Ranked<Number>> {
     BTreeMap::from([(DeclaredName::new(name).unwrap(), Ranked::One(amount))])
@@ -101,37 +97,6 @@ fn lash_out() -> ActionData {
     }
 }
 
-/// A unit-targeted ability: `damage` true damage to an enemy within 5 m, every second, for 10
-/// mana and 4 rage.
-pub(crate) fn strike() -> ActionData {
-    ActionData {
-        keys: ActionKeys {
-            script: Some(PackagePath::parse("strike.rhai").unwrap()),
-            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
-                Num::int(5),
-            )))),
-            cooldown_ms: Some(Ranked::One(int(1001))),
-            cost: BTreeMap::from([
-                (DeclaredName::new("mana").unwrap(), Ranked::One(int(10))),
-                (DeclaredName::new("rage").unwrap(), Ranked::One(int(4))),
-            ]),
-            params: BTreeMap::from([(
-                DeclaredName::new("damage").unwrap(),
-                Param::Ranked(Ranked::One(Scalar::Int(50))),
-            )]),
-            ..ActionData::of(
-                Targeting::Unit(FilterData::parse("enemies").unwrap()),
-                CastData::default(),
-            )
-            .keys
-        },
-        ..ActionData::of(
-            Targeting::Unit(FilterData::parse("enemies").unwrap()),
-            CastData::default(),
-        )
-    }
-}
-
 /// A weapon of the rate of its unit's armor stat, and of its stat `attack_damage`, of physical
 /// damage.
 fn stat_attack() -> AttackData {
@@ -154,7 +119,7 @@ fn stat_attack() -> AttackData {
 #[test]
 fn a_kinds_section_names_the_first_pipeline_field_it_misuses() {
     // Strike is a cast: its script, cooldown, cost and params are a cast's to take.
-    let mut action = strike();
+    let mut action = Abilities::strike();
     assert_eq!(action.misused(), None);
     let attack = stat_attack();
     let train = TrainData {
@@ -216,28 +181,17 @@ const STRIKE: &str =
     r#"fn on_resolve(ctx, caster, target) { ctx.damage(target, "true", ctx.params.damage); }"#;
 
 fn abilities_match() -> Match {
-    abilities_match_with(
+    Abilities::match_of(
         ScriptLimits::ROOMY,
         &[Capability::Stats, Capability::Combat, Capability::Abilities],
     )
-}
-
-/// A match of two players of `declared`, whose scripts run within `limits`, and who hold
-/// gold, as a mode would keep it, with the types the tests spawn.
-pub(crate) fn abilities_match_with(limits: ScriptLimits, declared: &[Capability]) -> Match {
-    let mut game = Match::builder(declared).players(2).limits(limits).build();
-    // The damage kinds a mode would declare: the MOBA test content's.
-    Units::name_kinds(&mut game, &["physical", "magic", "true"], &POOLS, &["gold"]);
-    Players::spawn(&mut game, 2, 1);
-    Abilities::load_types(&mut game);
-    game
 }
 
 /// A match of stats, combat and abilities whose modifiers, by name in package 0, run
 /// `source`, as `scripted` declares them.
 fn abilities_match_with_modifiers(source: &str, modifiers: &[(&str, ModifierData)]) -> Match {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     Abilities::load_stats(&mut game);
     let script = Units::compile_hooked(&mut game, source).unwrap();
     let mut sorted = modifiers.to_vec();

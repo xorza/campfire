@@ -37,14 +37,14 @@ use campfire_values::{
 };
 
 use crate::abilities::{
-    LASH_OUT, abilities_match, abilities_match_with, abilities_match_with_modifiers, effect,
-    half_meters, int, lash_out, param, scripted, stat_attack, strike, striker,
+    LASH_OUT, abilities_match, abilities_match_with_modifiers, effect, half_meters, int, lash_out,
+    param, scripted, stat_attack, striker,
 };
 
 #[test]
 fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     // Before any system builds its queries, as a predicting client registers it.
     Unpredicted::register(&mut game);
     Abilities::load_stats(&mut game);
@@ -107,7 +107,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
 
     // A weapon's passive holds as well, in a match with no abilities: a ward of 40 from its
     // first tick.
-    let mut game = abilities_match_with(
+    let mut game = Abilities::match_of(
         ScriptLimits::ROOMY,
         &[Capability::Stats, Capability::Combat],
     );
@@ -149,7 +149,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
 
     // Two passives that wait for their slots each come back at their own slot's tick: slot 0's
     // guard 10 ticks on, slot 1's ward 50 ticks on, though slot 1 comes later in the unit's slots.
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     Abilities::load_stats(&mut game);
     for (name, shield) in [("guard", 75), ("ward", 40)] {
         let shield = ModifierData {
@@ -206,7 +206,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
 #[test]
 fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     Abilities::load_stats(&mut game);
     let mark = ModifierData {
         duration_ms: Some(int(1000)),
@@ -295,7 +295,7 @@ fn on_resolve(ctx, caster, target) {
 /// tick's state hash, and whether the target's tags block its moving.
 fn stun_run() -> Vec<(StateHash, bool)> {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     Abilities::load_stats(&mut game);
     let stun = ModifierData {
         script: None,
@@ -318,7 +318,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
     let effects = BTreeMap::from([(DeclaredName::new("stunned").unwrap(), stunned)]);
     Units::seal_tags(&mut game, &effects);
     let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;
-    let strike = Abilities::load(&mut game, "strike", &strike(), script);
+    let strike = Abilities::load(&mut game, "strike", &Abilities::strike(), script);
     let caster = Abilities::caster(&mut game, strike, 1);
     let enemy = Spawn::of(target_type, (5, 0, 0))
         .team(Team::new(1))
@@ -361,7 +361,7 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     // renewed, and a stun from the second caster: the application ends, the hold keeps the first
     // stun, as its passive would apply it again, and the second ends.
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     Abilities::load_stats(&mut game);
     for (name, tag) in [("slow", "slowed"), ("stun", "stunned")] {
         let data = ModifierData {
@@ -390,10 +390,10 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     let data = ActionData {
         keys: ActionKeys {
             script: None,
-            ..strike().keys
+            ..Abilities::strike().keys
         },
         on_resolve: vec![effect(purge, EffectTo::Reached)],
-        ..strike()
+        ..Abilities::strike()
     };
     let action = Actions::load(&mut game, PackageIndex::MODE, "cleanse", &data, None, 1).unwrap();
     Actions::load_effect_lists(&mut game, action, PackageIndex::MODE, &data);
@@ -483,7 +483,7 @@ fn with_valor(more: &[Capability]) -> (Match, TrackId) {
         Capability::Progression,
     ];
     let declared: Vec<Capability> = declared.into_iter().chain(more.iter().copied()).collect();
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     Abilities::load_stats(&mut game);
     let valor = TrackData {
         levels: Thresholds::new([Num::int(50)]).unwrap(),
@@ -519,13 +519,13 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
     let data = ActionData {
         keys: ActionKeys {
             script: None,
-            ..strike().keys
+            ..Abilities::strike().keys
         },
         on_resolve: vec![
             effect(true_damage(), EffectTo::Reached),
             effect(valor_xp(), EffectTo::Reached),
         ],
-        ..strike()
+        ..Abilities::strike()
     };
     let action = Actions::load(&mut game, PackageIndex::MODE, "strike", &data, None, 1).unwrap();
     Actions::load_effect_lists(&mut game, action, PackageIndex::MODE, &data);
@@ -583,7 +583,7 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
             script: None,
             targeting: Targeting::Direction,
             range: None,
-            ..strike().keys
+            ..Abilities::strike().keys
         },
         delivery: Some(Arc::new(ProjectileDeliveryData {
             projectile: DeclaredName::new("bolt").unwrap(),
@@ -594,7 +594,7 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
             effect(true_damage(), EffectTo::Reached),
             effect(valor_xp(), EffectTo::Source),
         ],
-        ..strike()
+        ..Abilities::strike()
     };
     let action = Actions::load(&mut game, PackageIndex::MODE, "bolt", &data, None, 1).unwrap();
     Actions::load_effect_lists(&mut game, action, PackageIndex::MODE, &data);
@@ -726,7 +726,7 @@ fn an_interval_runs_nothing_while_its_carrier_is_dead_and_comes_back_by_its_poli
 
     // A match of stats alone, with no combat, runs its modifiers' intervals too: a pulse given
     // in tick 0 comes in ticks 3 and 6.
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &[Capability::Stats]);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &[Capability::Stats]);
     Abilities::load_stats(&mut game);
     let script = Units::compile_hooked(&mut game, log).unwrap();
     let pulse = scripted(Some(100), &[]);

@@ -43,6 +43,7 @@ pub mod internals {
     pub use crate::fixtures::navigation::NavigationFixtures;
     pub use crate::fixtures::orders::OrdersFixtures;
     pub use crate::fixtures::production::ProductionFixtures;
+    pub use crate::fixtures::stats::StatsFixtures;
     pub use crate::fixtures::units::{FilterFixtures, UnitsFixtures, ViewFixtures};
     pub use crate::fixtures::vision::VisionFixtures;
     pub use crate::fixtures::walker_spawn::WalkerSpawn;

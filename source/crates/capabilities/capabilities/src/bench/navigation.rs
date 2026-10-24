@@ -1,16 +1,14 @@
-use std::hint::black_box;
-use std::time::{Duration, Instant};
-
 use campfire_declarations::Role;
 use campfire_geometry::internals::KernelScene;
 use campfire_math::{Num, Vec3};
-use campfire_measure::{Kind, RunCost, Scale};
+use campfire_measure::{Kind, Scale};
 use campfire_navigation::{Gait, Navigation, UnitNavigationData, Walker};
-use campfire_sim::{Capability, SimWorld};
+use campfire_sim::Capability;
 use campfire_units::{BodyForm, BodyShape, Layer};
 use campfire_values::Team;
-use criterion::{Criterion, Throughput};
+use criterion::Criterion;
 
+use crate::bench::run_cases;
 use crate::fixtures::navigation::NavigationFixtures;
 use crate::release::r#match::Match;
 
@@ -143,35 +141,14 @@ impl Scene {
         }
         game
     }
-
-    /// The cost of a run of a new match of the scene.
-    fn run(self) -> RunCost {
-        let mut game = self.build();
-        RunCost::of(self.ticks(), || {
-            let start = Instant::now();
-            game.step();
-            let spent = start.elapsed();
-            black_box(&game);
-            spent
-        })
-    }
 }
 
-/// A run of each scene of navigation's crowds from its first tick, a new match each iteration: its
-/// worst tick, `worst_<scene>`, the first among them, as the walkers' first routes ask in it; and
-/// its mean tick, `mean_<scene>`, its throughput the ticks.
+/// A run of each scene of navigation's crowds from its first tick, as `run_cases` times it, the
+/// walkers' first routes asked in its first tick.
 pub(super) fn navigation(c: &mut Criterion) {
     let mut group = Kind::Integration.group(c, "navigation", Scale::Frame);
     for scene in Scene::ALL {
-        group.bench_function(format!("worst_{}", scene.name()), |bench| {
-            bench.iter_custom(|runs| (0..runs).map(|_| scene.run().worst_of_all()).sum());
-        });
-    }
-    for scene in Scene::ALL {
-        group.throughput(Throughput::Elements(scene.ticks()));
-        group.bench_function(format!("mean_{}", scene.name()), |bench| {
-            bench.iter_custom(|runs| (0..runs).map(|_| scene.run().total).sum::<Duration>());
-        });
+        run_cases(&mut group, scene.name(), scene.ticks(), || scene.build());
     }
     group.finish();
 }

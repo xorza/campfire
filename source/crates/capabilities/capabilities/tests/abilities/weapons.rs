@@ -26,7 +26,7 @@ use campfire_values::{
     UnitType,
 };
 
-use crate::abilities::{abilities_match_with, effect, int, param, sapper, scaling, strike};
+use crate::abilities::{effect, int, param, sapper, scaling};
 
 /// A match of stats, combat, abilities, projectiles and areas whose `fighter` type has 40 attack
 /// damage and 1 armor, which its weapons read as their damage and their rate, with a homing
@@ -41,7 +41,7 @@ fn weapon_match() -> (Match, UnitType) {
         Capability::Projectiles,
         Capability::Areas,
     ];
-    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     let fighter = Units::load_type(
         &mut game,
         TypeScope::Mode,
@@ -127,9 +127,9 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
                     range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
                         Num::int(5),
                     )))),
-                    ..strike().keys
+                    ..Abilities::strike().keys
                 },
-                ..strike()
+                ..Abilities::strike()
             };
             let cast = Abilities::load(&mut game, "swing", &data, extra);
             let weapons = for_allies.into_iter().chain([weapon]);
