@@ -11,8 +11,8 @@ mod counting_allocator;
 mod kind;
 mod scale;
 
-use criterion::Criterion;
 use criterion::measurement::Measurement;
+use criterion::{Criterion, Throughput};
 use tracing::subscriber::NoSubscriber;
 use tracing::{Dispatch, dispatcher};
 
@@ -32,8 +32,18 @@ pub fn without_logs<M: Measurement>(
     dispatcher::with_default(&Dispatch::new(NoSubscriber::default()), || cases(criterion));
 }
 
-/// `n` of `thing` as a part of a case's id: `1_client`, `4_clients`.
-pub fn count(n: usize, thing: &str) -> String {
+/// The inputs an atomic case runs its operation over (02-engine-core.md, Atomic and integration
+/// cases).
+pub const INPUTS: usize = 4096;
+
+/// The throughput of a case that runs over `n` items an iteration.
+pub fn elements(n: usize) -> Throughput {
+    Throughput::Elements(u64::try_from(n).expect("a case's items fit u64"))
+}
+
+/// The case of `operation` over `n` of `thing`, its id's last part: `send_insert_1_client`,
+/// `send_insert_4_clients` (02-engine-core.md, One scheme of case names).
+pub fn case(operation: &str, n: usize, thing: &str) -> String {
     let plural = if n == 1 { "" } else { "s" };
-    format!("{n}_{thing}{plural}")
+    format!("{operation}_{n}_{thing}{plural}")
 }

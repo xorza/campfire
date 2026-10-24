@@ -1,10 +1,9 @@
 use std::hint::black_box;
 
-use campfire_measure::{Kind, Scale};
-use criterion::{Criterion, Throughput};
+use campfire_measure::{INPUTS, Kind, Scale};
+use criterion::Criterion;
 
 use crate::num::Num;
-use crate::num::bench::COUNT;
 use crate::rng::split_mix64::SplitMix64;
 use crate::vec3::Vec3;
 
@@ -12,12 +11,12 @@ use crate::vec3::Vec3;
 fn points(seed: u64) -> Vec<Vec3> {
     let mut words = SplitMix64::new(seed);
     let mut coordinate = move || Num::from_bits(words.next_u64().cast_signed() % (1000 << 24));
-    (0..COUNT)
+    (0..INPUTS)
         .map(|_| Vec3::new(coordinate(), coordinate(), coordinate()))
         .collect()
 }
 
-/// `Vec3`'s operations, each over `COUNT` pairs of points within ±1000 m: the dot product, the
+/// `Vec3`'s operations, each over `INPUTS` pairs of points within ±1000 m: the dot product, the
 /// length, the distance, the range test, a step of a meter toward the other, as a unit moves,
 /// the unit vector and the turn about the vertical.
 pub(crate) fn vec3(c: &mut Criterion) {
@@ -27,7 +26,7 @@ pub(crate) fn vec3(c: &mut Criterion) {
     let turn = Num::from_int(1).unwrap().sin_cos();
 
     let mut group = Kind::Atomic.group(c, "vec3", Scale::Sample);
-    group.throughput(Throughput::Elements(COUNT as u64));
+    group.throughput(campfire_measure::elements(INPUTS));
     group.bench_function("dot", |bench| {
         bench.iter(|| {
             for (&p, &q) in a.iter().zip(&b) {

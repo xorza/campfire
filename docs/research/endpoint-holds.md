@@ -5,7 +5,7 @@ How long a UDP server's endpoint holds its lock, for which its frame or its IO t
 ## Machine and method
 
 - **Machine:** Intel Core i9-13980HX, Linux, x86-64-v3, a laptop on mains power.
-- **Build:** the bench profile, `cargo drive bench atomic/endpoint`, Criterion's 10 samples of each case.
+- **Build:** the bench profile, `cargo drive bench atomic/udp_server`, Criterion's 10 samples of each case.
 - **The server:** `net-udp`'s test server, a raw Ed25519 key, the default packet session setup (a keep-alive each 1 s), an admission that limits no address, on the emulated network's driven clock, each client a sealed packet session on a lossless link of its own.
 - **A case:** the longest hold of one step, timed around each lock and unlock by the plain host's `HoldClock`, with the IO's reads and sends outside it. The step's other work runs untimed.
   - `datagrams_<n>`: a pass over one 64-byte payload from each of 160 clients, or from each of `n` when fewer, a frame after the last batch, with the ACKs of the last batch due.

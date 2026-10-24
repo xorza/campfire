@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 
 use campfire_common::{MapName, PackageFingerprint, PlayerSlot, Tick, Version};
 use campfire_measure::{Kind, Scale};
-use criterion::{BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, Throughput};
 
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::delegation::{Delegation, DelegationTerms};
@@ -21,12 +21,16 @@ use crate::signature::Signature;
 
 /// One tick's packets as the server records them, each player's one input of 8 bytes signed over
 /// its chain head: the signature checks of a frame, one player slot after another, with 8 players
-/// and with 32. Each run records into a log fresh from its header, which the timing leaves out.
+/// and with 32, its throughput the packets. Each run records into a log fresh from its header,
+/// which the timing leaves out.
 pub(crate) fn record_tick(c: &mut Criterion) {
     let mut group = Kind::Integration.group(c, "session_log", Scale::Sample);
     for players in [8, 32] {
         let tick = TickPackets::new(players);
-        group.bench_function(format!("record_tick_{players}"), |b| {
+        group.throughput(Throughput::Elements(u64::from(players)));
+        let count = usize::try_from(players).expect("a session's players fit usize");
+        let case = campfire_measure::case("record_tick", count, "player");
+        group.bench_function(case, |b| {
             b.iter_batched(
                 || SessionLog::new(tick.header.clone()).expect("the bench's header holds"),
                 |mut log| {

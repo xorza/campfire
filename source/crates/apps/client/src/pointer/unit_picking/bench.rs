@@ -11,7 +11,7 @@ use campfire_math::SplitMix64;
 use campfire_measure::{Kind, Scale};
 use campfire_sim::IdAllocator;
 use campfire_values::Team;
-use criterion::{Criterion, Throughput};
+use criterion::Criterion;
 
 use crate::pointer::Pointed;
 use crate::pointer::unit_picking::UnitPicking;
@@ -98,7 +98,7 @@ fn scene(seed: u64, scale: &PixelScale) -> (PickScene, Assets<Mesh>) {
 /// ray through the center.
 pub(crate) fn picking(c: &mut Criterion) {
     let mut group = Kind::Integration.group(c, "picking", Scale::Sample);
-    group.throughput(Throughput::Elements(COUNT as u64));
+    group.throughput(campfire_measure::elements(COUNT));
     let eye = Transform::from_xyz(0.0, 40.0, 40.0).looking_at(Vec3::ZERO, Vec3::Y);
     let scale = PixelScale::of(eye, &Projection::default(), 1080.0);
     let (scene, meshes) = scene(1, &scale);

@@ -110,7 +110,7 @@ pub mod bench {
 
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
-        input_chain::bench::chain_head(c);
+        input_chain::bench::input_chain(c);
         server_seeds::bench::server_seeds(c);
         session_log::bench::record_tick(c);
     }

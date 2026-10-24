@@ -23,10 +23,10 @@ What the 3v3's load, match build and hot script calls cost, in time and in alloc
 
 | Case | Time a call | What it holds |
 | --- | ---: | --- |
-| `atomic/script/call` | 42.3 ns | An empty hook of two arguments |
-| `atomic/script/handle` | 47.8 ns | The same, given a handle of a unit's size that shares an `Rc` |
-| `atomic/script/native` | 227 ns | A hook that makes one call to a registered function |
-| `atomic/script/native_handle` | 229 ns | A hook whose one call returns a handle |
+| `atomic/script_host/call` | 42.3 ns | An empty hook of two arguments |
+| `atomic/script_host/handle` | 47.8 ns | The same, given a handle of a unit's size that shares an `Rc` |
+| `atomic/script_host/native` | 227 ns | A hook that makes one call to a registered function |
+| `atomic/script_host/native_handle` | 229 ns | A hook whose one call returns a handle |
 
 - A handle argument costs 5.5 ns a call, its box and its reference count together; a handle a call returns, 1.6 ns.
 - A call to a registered function costs about 185 ns, the most of each case.

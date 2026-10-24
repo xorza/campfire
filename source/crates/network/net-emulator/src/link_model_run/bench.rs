@@ -1,12 +1,11 @@
-//! `atomic/link/link_model_run/admit/…`: one packet through [`LinkModelRun::admit`] under each
-//! kind of model.
+//! `atomic/link_model_run/admit_…`: one packet through [`LinkModelRun::admit`] under each kind of
+//! model.
 
 use campfire_math::Num;
-use campfire_measure::Kind;
-use campfire_measure::Scale;
+use campfire_measure::{Kind, Scale};
 use campfire_net_core::Instant;
 use core::time::Duration;
-use criterion::{BenchmarkId, Criterion};
+use criterion::Criterion;
 use std::hint::black_box;
 
 use crate::link_model::{LinkModel, per_mille};
@@ -33,9 +32,9 @@ pub(crate) fn atomic(criterion: &mut Criterion) {
             LinkModel::perfect().with_rate(RateLimit::new(2_000_000, 64_000)),
         ),
     ];
-    let mut group = Kind::Atomic.group(criterion, "admit", Scale::Sample);
+    let mut group = Kind::Atomic.group(criterion, "link_model_run", Scale::Sample);
     for (name, model) in models {
-        group.bench_function(BenchmarkId::from_parameter(name), |bencher| {
+        group.bench_function(format!("admit_{name}"), |bencher| {
             let mut run = LinkModelRun::new(0);
             let mut now = Instant::ZERO;
             bencher.iter(|| {

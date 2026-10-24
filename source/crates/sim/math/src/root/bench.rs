@@ -1,14 +1,13 @@
 use std::hint::black_box;
 
-use campfire_measure::{Kind, Scale};
-use criterion::{Criterion, Throughput};
+use campfire_measure::{INPUTS, Kind, Scale};
+use criterion::Criterion;
 
-use crate::num::bench::COUNT;
 use crate::rng::split_mix64::SplitMix64;
 use crate::root::{FloorRoot, RoundedRoot};
 use crate::simd::u64x4::U64x4;
 
-/// The roots over `COUNT` values each, the throughput the roots: `floor_wide`, `nearest_wide` and
+/// The roots over `INPUTS` values each, the throughput the roots: `floor_wide`, `nearest_wide` and
 /// `ceil_wide` on values whose widths spread evenly from 1 to 126 bits, so each path counts: the
 /// `u64` path, the `u128` guess alone, and its Newton step above 2¹⁰⁴, the nearest and the
 /// ceiling root differing from the floor by their rounding alone; `nearest_cmp_wide`, the nearest
@@ -29,7 +28,7 @@ pub(crate) fn root(c: &mut Criterion) {
         .collect();
 
     let mut group = Kind::Atomic.group(c, "root", Scale::Sample);
-    group.throughput(Throughput::Elements(COUNT as u64));
+    group.throughput(campfire_measure::elements(INPUTS));
     group.bench_function("floor_wide", |b| {
         b.iter(|| {
             for &value in &wide {
@@ -75,10 +74,10 @@ pub(crate) fn root(c: &mut Criterion) {
     group.finish();
 }
 
-/// `COUNT` values from `seed`, whose widths spread evenly from 1 to `widest` bits.
+/// `INPUTS` values from `seed`, whose widths spread evenly from 1 to `widest` bits.
 pub(crate) fn values(seed: u64, widest: u32) -> Vec<u128> {
     let mut words = SplitMix64::new(seed);
-    (0..COUNT)
+    (0..INPUTS)
         .map(|at| {
             let width = u32::try_from(at).expect("a count below 2³²") % widest + 1;
             let bits = (u128::from(words.next_u64()) << 64) | u128::from(words.next_u64());
@@ -87,7 +86,7 @@ pub(crate) fn values(seed: u64, widest: u32) -> Vec<u128> {
         .collect()
 }
 
-/// `COUNT` values drawn from `seed`, whose widths spread evenly from 1 to `widest` bits, below
+/// `INPUTS` values drawn from `seed`, whose widths spread evenly from 1 to `widest` bits, below
 /// 128, every other one negative.
 pub(crate) fn signed(seed: u64, widest: u32) -> Vec<i128> {
     debug_assert!(widest < 128, "a signed value's magnitude fits 127 bits");

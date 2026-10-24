@@ -47,7 +47,7 @@ const ROUTES: usize = 100;
 /// from the same scene every run.
 fn collision(c: &mut Criterion) {
     let mut group = Kind::Integration.group(c, "collision", Scale::Sample);
-    group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
+    group.throughput(campfire_measure::elements(KernelScene::UNITS));
     let crowded = Density::Crowded.span();
     let cases = Density::ALL
         .map(|density| (density.name(), density.span(), false, false))
@@ -247,7 +247,7 @@ impl GroupScene<'_> {
         let walkable = Walkable::of(self.grid.clearance(self.walker), self.statics);
         let mut asks = RouteAsks::default();
         let mut waypoints = Vec::new();
-        group.throughput(Throughput::Elements(ROUTES as u64));
+        group.throughput(campfire_measure::elements(ROUTES));
         group.bench_function("group", |bench| {
             bench.iter(|| {
                 let mut left = members.as_slice();

@@ -1,4 +1,4 @@
-//! `atomic/endpoint/…`: the holds of a UDP server's endpoint lock, for which its frame or its IO
+//! `atomic/udp_server/…`: the holds of a UDP server's endpoint lock, for which its frame or its IO
 //! thread waits, each case the longest hold of one step: a pass over a full batch of its links'
 //! datagrams, a pass that sends each link its keep-alive, a frame's own steps over its links, and
 //! a pass over a full batch of handshakes' starts, and one over their ends.
@@ -12,7 +12,7 @@ use campfire_net_core::{Instant, LinkDirection};
 use campfire_net_emulator::{DirectionCounts, DuplexModel, EmulatedLinkId, EmulatedNetwork};
 use campfire_net_packets::EmulatedWires;
 use campfire_net_packets::internals::{CLIENT, HOLD_BATCH, HoldClock, PlainHost};
-use criterion::{BenchmarkId, Criterion, Throughput};
+use criterion::Criterion;
 
 use crate::secure_establishment::server_side::MAX_PENDING;
 use crate::test_link::TestLink;
@@ -33,37 +33,30 @@ const LINK_FRAMES: usize = 100;
 const ANSWER: Duration = Duration::from_millis(100);
 
 pub(crate) fn endpoint(c: &mut Criterion) {
-    let mut group = Kind::Atomic.group(c, "endpoint", Scale::Frame);
+    let mut group = Kind::Atomic.group(c, "udp_server", Scale::Frame);
     for links in LINKS {
         let mut load = ServerLoad::linked(links);
-        let name = campfire_measure::count(links, "link");
-        group.throughput(Throughput::Elements(u64::try_from(load.batch()).unwrap()));
-        group.bench_function(
-            BenchmarkId::from_parameter(format!("datagrams_{name}")),
-            |b| {
-                b.iter_custom(|iters| (0..iters).map(|_| load.datagrams()).sum());
-            },
-        );
-        group.throughput(Throughput::Elements(u64::try_from(links).unwrap()));
-        group.bench_function(
-            BenchmarkId::from_parameter(format!("keep_alives_{name}")),
-            |b| {
-                b.iter_custom(|iters| (0..iters).map(|_| load.keep_alives()).sum());
-            },
-        );
-        group.bench_function(BenchmarkId::from_parameter(format!("frame_{name}")), |b| {
+        group.throughput(campfire_measure::elements(load.batch()));
+        group.bench_function(campfire_measure::case("datagrams", links, "link"), |b| {
+            b.iter_custom(|iters| (0..iters).map(|_| load.datagrams()).sum());
+        });
+        group.throughput(campfire_measure::elements(links));
+        group.bench_function(campfire_measure::case("keep_alives", links, "link"), |b| {
+            b.iter_custom(|iters| (0..iters).map(|_| load.keep_alives()).sum());
+        });
+        group.bench_function(campfire_measure::case("frame", links, "link"), |b| {
             b.iter_custom(|iters| (0..iters).map(|_| load.frame()).sum());
         });
     }
-    group.throughput(Throughput::Elements(u64::try_from(HOLD_BATCH).unwrap()));
-    group.bench_function(BenchmarkId::from_parameter("handshakes"), |b| {
+    group.throughput(campfire_measure::elements(HOLD_BATCH));
+    group.bench_function("handshakes", |b| {
         b.iter_custom(|iters| {
             (0..iters)
                 .map(|_| ServerLoad::retried(HOLD_BATCH).handshakes())
                 .sum()
         });
     });
-    group.bench_function(BenchmarkId::from_parameter("handshake_ends"), |b| {
+    group.bench_function("handshake_ends", |b| {
         b.iter_custom(|iters| {
             (0..iters)
                 .map(|_| ServerLoad::flown(HOLD_BATCH).handshake_ends())

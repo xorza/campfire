@@ -3,7 +3,7 @@ use std::num::NonZeroU64;
 use std::rc::Rc;
 
 use campfire_measure::{Kind, Scale};
-use criterion::{Criterion, Throughput};
+use criterion::Criterion;
 use rhai::INT;
 
 use crate::script_host::ScriptHost;
@@ -53,8 +53,8 @@ pub(crate) fn script(c: &mut Criterion) {
     let mut budget = Budget::new(u64::MAX);
     let ctx: INT = 0;
 
-    let mut group = Kind::Atomic.group(c, "script", Scale::Sample);
-    group.throughput(Throughput::Elements(CALLS as u64));
+    let mut group = Kind::Atomic.group(c, "script_host", Scale::Sample);
+    group.throughput(campfire_measure::elements(CALLS));
     let cases = [
         ("call", "empty"),
         ("native", "native"),

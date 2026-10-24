@@ -60,7 +60,6 @@ pub mod bench {
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::approach::internals::path_comes_closer;
-    pub use crate::body_box::bench::COUNT;
     pub use crate::kernel_scene::{Density, KernelScene, SceneBody};
 }
 

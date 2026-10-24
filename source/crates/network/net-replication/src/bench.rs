@@ -1,17 +1,17 @@
 //! The crate's criterion cases, which `benches/net-replication.rs` runs.
 //!
-//! `integration/<send or receive>_<insert or update>/…`: the server's or the client's update for a
-//! frame that replicates `ENTITIES` entities, each timed alone.
+//! `integration/replication/<send or receive>_<insert or update>_…`: the server's or the client's
+//! update for a frame that replicates `ENTITIES` entities, each timed alone, their throughput the
+//! entities.
 
 use crate::fixtures::steps::PROPAGATION_FRAMES;
 use bevy_ecs::query::With;
-use campfire_measure::Kind;
-use campfire_measure::Scale;
+use campfire_measure::{Kind, Scale};
 use campfire_net_connection::NetworkTarget;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use core::time::Duration;
-use criterion::{BenchmarkId, Criterion};
+use criterion::Criterion;
 use std::time::Instant;
 
 use crate::fixtures::protocol::CompSimple;
@@ -51,7 +51,8 @@ pub fn run(criterion: &mut Criterion) {
 }
 
 fn updates(criterion: &mut Criterion) {
-    let mut group = Kind::Integration.group(criterion, "send_insert", Scale::Frame);
+    let mut group = Kind::Integration.group(criterion, "replication", Scale::Frame);
+    group.throughput(campfire_measure::elements(ENTITIES));
     for clients in CLIENTS {
         let case = Case {
             clients,
@@ -59,11 +60,10 @@ fn updates(criterion: &mut Criterion) {
             side: Side::Server,
         };
         group.bench_function(
-            BenchmarkId::from_parameter(campfire_measure::count(clients, "client")),
+            campfire_measure::case("send_insert", clients, "client"),
             |bencher| bencher.iter_custom(|iters| case.time(iters)),
         );
     }
-    group.finish();
     let cases = [
         ("send_update", Change::Update, Side::Server),
         ("receive_insert", Change::Insert, Side::Client),
@@ -75,13 +75,11 @@ fn updates(criterion: &mut Criterion) {
             change,
             side,
         };
-        let mut group = Kind::Integration.group(criterion, name, Scale::Frame);
-        group.bench_function(
-            BenchmarkId::from_parameter(campfire_measure::count(1, "client")),
-            |bencher| bencher.iter_custom(|iters| case.time(iters)),
-        );
-        group.finish();
+        group.bench_function(campfire_measure::case(name, 1, "client"), |bencher| {
+            bencher.iter_custom(|iters| case.time(iters));
+        });
     }
+    group.finish();
 }
 
 impl Case {

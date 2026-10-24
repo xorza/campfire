@@ -1,13 +1,12 @@
 use std::hint::black_box;
 
-use campfire_measure::{Kind, Scale};
-use criterion::{Criterion, Throughput};
+use campfire_measure::{INPUTS, Kind, Scale};
+use criterion::Criterion;
 
 use crate::direction::Direction;
-use crate::num::bench::COUNT;
 use crate::root::bench::{signed, values};
 
-/// `Direction`'s operations over `COUNT` inputs each, in three axes and, `_flat`, in two, as the
+/// `Direction`'s operations over `INPUTS` inputs each, in three axes and, `_flat`, in two, as the
 /// circles' queries and the boxes' take them, each axis of 1 to 46 bits, either sign, as offsets
 /// within the world's bound are: `of`, a direction from a vector; `along`, an offset's distance
 /// along one; `apart`, its distance from the line; and `scaled_away`, the vector along one of a
@@ -15,8 +14,8 @@ use crate::root::bench::{signed, values};
 pub(crate) fn direction(c: &mut Criterion) {
     let axes = |seed: u64| signed(seed, 46);
     let (x, y, z) = (axes(30), axes(31), axes(32));
-    let vectors: Vec<[i128; 3]> = (0..COUNT).map(|at| [x[at], y[at], z[at]]).collect();
-    let offs: Vec<[i128; 3]> = (0..COUNT).map(|at| [z[at], x[at], y[at]]).collect();
+    let vectors: Vec<[i128; 3]> = (0..INPUTS).map(|at| [x[at], y[at], z[at]]).collect();
+    let offs: Vec<[i128; 3]> = (0..INPUTS).map(|at| [z[at], x[at], y[at]]).collect();
     let flat_vectors: Vec<[i128; 2]> = vectors.iter().map(|&[x, _, z]| [x, z]).collect();
     let flat_offs: Vec<[i128; 2]> = offs.iter().map(|&[x, _, z]| [x, z]).collect();
     let lengths: Vec<i128> = values(33, 37)
@@ -33,7 +32,7 @@ pub(crate) fn direction(c: &mut Criterion) {
         .collect();
 
     let mut group = Kind::Atomic.group(c, "direction", Scale::Sample);
-    group.throughput(Throughput::Elements(COUNT as u64));
+    group.throughput(campfire_measure::elements(INPUTS));
     group.bench_function("of", |bench| {
         bench.iter(|| {
             for &vector in &vectors {

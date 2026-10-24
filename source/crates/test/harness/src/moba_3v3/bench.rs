@@ -9,7 +9,7 @@ use campfire_measure::{Kind, Scale};
 use campfire_script::internals::ScriptsWorldInternals;
 use campfire_sim::Position;
 use campfire_values::Team;
-use criterion::{Criterion, Throughput};
+use criterion::Criterion;
 
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::moba_3v3::Moba3v3;
@@ -47,7 +47,7 @@ impl ViewScene {
 pub(crate) fn script_view(c: &mut Criterion) {
     let mut scene = None;
     let mut group = Kind::Integration.group(c, "script_view", Scale::Sample);
-    group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
+    group.throughput(campfire_measure::elements(KernelScene::UNITS));
     for (case, every) in [("read", 1), ("reread", REREAD_CHANGED)] {
         let mut round = 0;
         group.bench_function(case, |b| {

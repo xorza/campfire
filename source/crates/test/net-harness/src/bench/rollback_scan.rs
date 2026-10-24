@@ -18,16 +18,16 @@ const SETTLE: usize = 64;
 /// A predicting client's rollback check over `UNITS` predicted units that stand still and one that
 /// moves, server and client alike, so a confirmed update reaches the client each tick and no
 /// prediction misses, as the scan of each confirmed tick visits every predicted unit: one frame
-/// of both ends, whose client checks each confirmed tick, `idle_400_check`, or never,
-/// `idle_400_disabled`, the two's difference the cost of the check.
+/// of both ends, whose client checks each confirmed tick, `idle_check_400_units`, or never,
+/// `idle_disabled_400_units`, the two's difference the cost of the check.
 pub(crate) fn rollback_scan(c: &mut Criterion) {
     let mut group = Kind::Integration.group(c, "rollback_scan", Scale::Frame);
     for (name, mode) in [
-        ("idle_400_check", RollbackMode::Check),
-        ("idle_400_disabled", RollbackMode::Disabled),
+        ("idle_check", RollbackMode::Check),
+        ("idle_disabled", RollbackMode::Disabled),
     ] {
         let mut stepper = None;
-        group.bench_function(name, |b| {
+        group.bench_function(campfire_measure::case(name, UNITS, "unit"), |b| {
             let stepper = stepper.get_or_insert_with(|| army(mode));
             b.iter(|| stepper.frame_step(1));
         });

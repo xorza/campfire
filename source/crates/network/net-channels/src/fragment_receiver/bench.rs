@@ -1,11 +1,10 @@
-//! `atomic/transport/fragment_receiver/reassemble/…`: a message's fragments, received in order
-//! by a fresh [`FragmentReceiver`] until it returns the message.
+//! `atomic/fragment_receiver/reassemble_…`: a message's fragments, received in order by a fresh
+//! [`FragmentReceiver`] until it returns the message, its throughput the fragments.
 
 use bytes::Bytes;
-use campfire_measure::Kind;
-use campfire_measure::Scale;
+use campfire_measure::{Kind, Scale};
 use campfire_net_core::NetTick;
-use criterion::{BatchSize, BenchmarkId, Criterion};
+use criterion::{BatchSize, Criterion};
 use std::hint::black_box;
 
 use crate::channel_setup::DEFAULT_MAX_MESSAGE_LEN;
@@ -25,7 +24,7 @@ const CX: FragmentCx = FragmentCx {
 const FRAGMENTS: [usize; 3] = [2, 16, 128];
 
 pub(crate) fn atomic(criterion: &mut Criterion) {
-    let mut group = Kind::Atomic.group(criterion, "reassemble", Scale::Sample);
+    let mut group = Kind::Atomic.group(criterion, "fragment_receiver", Scale::Sample);
     for fragments in FRAGMENTS {
         let message: Bytes = (0..fragments * FRAGMENT_LEN)
             .map(|i| (i % 251) as u8)
@@ -34,8 +33,9 @@ pub(crate) fn atomic(criterion: &mut Criterion) {
         let split = FragmentedMessage::split(MessageId(0), message.clone(), FRAGMENT_LEN);
         let built = split.fragment_body();
         assert_eq!(built.len(), fragments);
+        group.throughput(campfire_measure::elements(fragments));
         group.bench_function(
-            BenchmarkId::from_parameter(format!("{fragments}_fragments")),
+            campfire_measure::case("reassemble", fragments, "fragment"),
             |bencher| {
                 bencher.iter_batched(
                     || (FragmentReceiver::new(), built.clone()),

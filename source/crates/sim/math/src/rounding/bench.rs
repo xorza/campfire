@@ -1,16 +1,15 @@
 use std::hint::black_box;
 
-use campfire_measure::{Kind, Scale};
-use criterion::{Criterion, Throughput};
+use campfire_measure::{INPUTS, Kind, Scale};
+use criterion::Criterion;
 
-use crate::num::bench::COUNT;
 use crate::root::bench::values;
 use crate::rounding::Rounding;
 
 /// The modes the inputs take in turn.
 const MODES: [Rounding; 3] = [Rounding::NearestEven, Rounding::Floor, Rounding::Ceiling];
 
-/// `Rounding`'s operations over `COUNT` inputs each, the three modes in turn: `divide` of a
+/// `Rounding`'s operations over `INPUTS` inputs each, the three modes in turn: `divide` of a
 /// value of 1 to 120 bits, of either sign, by one of 1 to 64 bits, as `Num`'s division and its
 /// scaled products take it; and `shift_right` of such a value by 1 to 120 bits, as `Num`'s
 /// product takes it.
@@ -24,12 +23,12 @@ pub(crate) fn rounding(c: &mut Criterion) {
             .collect()
     };
     let (numerators, denominators) = (signed(14, 120), signed(15, 64));
-    let shifts: Vec<u32> = (0..COUNT)
+    let shifts: Vec<u32> = (0..INPUTS)
         .map(|at| u32::try_from(at % 120).expect("a shift below 120") + 1)
         .collect();
 
     let mut group = Kind::Atomic.group(c, "rounding", Scale::Sample);
-    group.throughput(Throughput::Elements(COUNT as u64));
+    group.throughput(campfire_measure::elements(INPUTS));
     group.bench_function("divide", |bench| {
         bench.iter(|| {
             for (at, (&numerator, &denominator)) in numerators.iter().zip(&denominators).enumerate()

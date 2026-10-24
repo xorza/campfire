@@ -1,24 +1,23 @@
 use std::hint::black_box;
 
 use campfire_common::{SegmentSeed, Tick};
-use campfire_measure::{Kind, Scale};
-use criterion::{Criterion, Throughput};
+use campfire_measure::{INPUTS, Kind, Scale};
+use criterion::Criterion;
 
 use crate::num::Num;
-use crate::num::bench::COUNT;
 use crate::rng::Rng;
 use crate::rng::rng_stream::RngStream;
 use crate::rng::split_mix64::SplitMix64;
 
-/// The sim's random sequences, each operation `COUNT` times: opening an entity's stream, and
+/// The sim's random sequences, each operation `INPUTS` times: opening an entity's stream, and
 /// drawing from an open one a word, a value below a bound within 1000, an index below such a
 /// length, a fraction, a chance, and a chance of a ratio below such a bound.
 pub(crate) fn rng(c: &mut Criterion) {
     let seed = SegmentSeed::new([7; 32]);
     let tick = Tick::new(1);
     let mut words = SplitMix64::new(6);
-    let bounds: Vec<u64> = (0..COUNT).map(|_| 1 + words.next_u64() % 1000).collect();
-    let chances: Vec<Num> = (0..COUNT)
+    let bounds: Vec<u64> = (0..INPUTS).map(|_| 1 + words.next_u64() % 1000).collect();
+    let chances: Vec<Num> = (0..INPUTS)
         .map(|_| {
             Num::from_bits(
                 words
@@ -36,10 +35,10 @@ pub(crate) fn rng(c: &mut Criterion) {
     let mut rng = Rng::new(&seed, RngStream::new("bench"), u64::MAX, tick);
 
     let mut group = Kind::Atomic.group(c, "rng", Scale::Sample);
-    group.throughput(Throughput::Elements(COUNT as u64));
+    group.throughput(campfire_measure::elements(INPUTS));
     group.bench_function("open", |b| {
         b.iter(|| {
-            for _ in 0..COUNT {
+            for _ in 0..INPUTS {
                 entity = entity.wrapping_add(1);
                 let stream = black_box(RngStream::new("ability.fire_lance"));
                 black_box(Rng::new(&seed, stream, entity, tick));
@@ -48,7 +47,7 @@ pub(crate) fn rng(c: &mut Criterion) {
     });
     group.bench_function("next_u64", |b| {
         b.iter(|| {
-            for _ in 0..COUNT {
+            for _ in 0..INPUTS {
                 black_box(rng.next_u64());
             }
         });
@@ -69,7 +68,7 @@ pub(crate) fn rng(c: &mut Criterion) {
     });
     group.bench_function("fraction", |b| {
         b.iter(|| {
-            for _ in 0..COUNT {
+            for _ in 0..INPUTS {
                 black_box(rng.fraction());
             }
         });

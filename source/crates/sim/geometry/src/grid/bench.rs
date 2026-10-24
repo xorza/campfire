@@ -1,16 +1,15 @@
 use std::hint::black_box;
 
 use campfire_math::{Num, Vec3};
-use campfire_measure::{Kind, Scale};
-use criterion::{Criterion, Throughput};
+use campfire_measure::{INPUTS, Kind, Scale};
+use criterion::Criterion;
 
 use crate::body_box::BodyBox;
-use crate::body_box::bench::COUNT;
 use crate::bounds::Bounds;
 use crate::grid::Grid;
 use crate::kernel_scene::KernelScene;
 
-/// `Grid`'s runs of the cells a body blocks, over `COUNT` bodies at whole centimeters within
+/// `Grid`'s runs of the cells a body blocks, over `INPUTS` bodies at whole centimeters within
 /// 20 m of the origin on a grid of half-meter cells over 48 m square, as the pathing grid marks a
 /// body's cells for a walker of 0.5 m: a circle of 0.2 to 5 m, `spans_closer`, and a box of sides
 /// 1 to 9 m at a whole degree, `box_spans_closer`. Each counts the cells of its runs. And the
@@ -18,7 +17,7 @@ use crate::kernel_scene::KernelScene;
 /// touches, as a route's way is tested: `touches`, which visits every cell.
 pub(crate) fn grid(c: &mut Criterion) {
     let mut scene = KernelScene::new(5);
-    let bodies: Vec<(Vec3, Num, BodyBox)> = (0..COUNT)
+    let bodies: Vec<(Vec3, Num, BodyBox)> = (0..INPUTS)
         .map(|_| {
             let mut length = |from: u64, to: u64| {
                 let cm = from + scene.below(to - from + 1);
@@ -31,7 +30,7 @@ pub(crate) fn grid(c: &mut Criterion) {
             (scene.point(20), radius, body)
         })
         .collect();
-    let segments: Vec<(Vec3, Vec3)> = (0..COUNT)
+    let segments: Vec<(Vec3, Vec3)> = (0..INPUTS)
         .map(|_| {
             let from = scene.point(20);
             let to = from + scene.point(5);
@@ -43,7 +42,7 @@ pub(crate) fn grid(c: &mut Criterion) {
     let reach = Num::HALF;
 
     let mut group = Kind::Atomic.group(c, "grid", Scale::Sample);
-    group.throughput(Throughput::Elements(COUNT as u64));
+    group.throughput(campfire_measure::elements(INPUTS));
     group.bench_function("spans_closer", |bench| {
         bench.iter(|| {
             let mut cells = 0;

@@ -2,15 +2,12 @@ use std::hint::black_box;
 
 use campfire_math::SplitMix64;
 use campfire_math::{Num, Vec3};
-use campfire_measure::{Kind, Scale};
-use criterion::{Criterion, Throughput};
+use campfire_measure::{INPUTS, Kind, Scale};
+use criterion::Criterion;
 
 use crate::body_box::BodyBox;
 
-/// The inputs of each case, each iteration's.
-pub const COUNT: usize = 4096;
-
-/// `COUNT` boxes of sides from 1 to 9 m at any angle, each at a point within 20 m of the
+/// `INPUTS` boxes of sides from 1 to 9 m at any angle, each at a point within 20 m of the
 /// origin, with a point within 20 m of the origin beside each.
 fn scene(seed: u64) -> Vec<(BodyBox, Vec3, Vec3)> {
     let mut words = SplitMix64::new(seed);
@@ -22,7 +19,7 @@ fn scene(seed: u64) -> Vec<(BodyBox, Vec3, Vec3)> {
         let (x, z) = (draw(-20 * one, 40 * one), draw(-20 * one, 40 * one));
         Vec3::new(x, Num::ZERO, z)
     };
-    (0..COUNT)
+    (0..INPUTS)
         .map(|_| {
             let size = [draw(one, 8 * one), draw(one, 8 * one)];
             let body = BodyBox::new(size, draw(0, 360 * one)).unwrap();
@@ -50,12 +47,12 @@ fn near(scene: &[(BodyBox, Vec3, Vec3)], radius: Num, seed: u64) -> Vec<(BodyBox
         .collect()
 }
 
-/// A box's primitives over `COUNT` inputs: a point's reach of 3 m to a box, two boxes' overlap,
+/// A box's primitives over `INPUTS` inputs: a point's reach of 3 m to a box, two boxes' overlap,
 /// two boxes' reach of 3 m, `reach_box`, as `Metric::reaches` takes it, and the push of a walker
 /// of 0.5 m out of a box it may overlap, `push_out`, as the collider pushes one.
 pub(crate) fn body_box(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "body_box", Scale::Sample);
-    group.throughput(Throughput::Elements(COUNT as u64));
+    group.throughput(campfire_measure::elements(INPUTS));
     let points = scene(1);
     let reach = Num::int(3);
     group.bench_function("reach", |bench| {

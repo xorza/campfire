@@ -1,24 +1,21 @@
 use std::hint::black_box;
 
-use campfire_measure::{Kind, Scale};
-use criterion::{Criterion, Throughput};
+use campfire_measure::{INPUTS, Kind, Scale};
+use criterion::Criterion;
 
 use crate::num::Num;
 use crate::rng::split_mix64::SplitMix64;
 use crate::rounding::Rounding;
 
-/// The inputs of each primitive case, each iteration's.
-pub(crate) const COUNT: usize = 4096;
-
 /// Deterministic inputs spread over `[−span, span)` in raw bits.
 fn spread(seed: u64, span: i64) -> Vec<Num> {
     let mut words = SplitMix64::new(seed);
-    (0..COUNT)
+    (0..INPUTS)
         .map(|_| Num::from_bits(words.next_u64().cast_signed() % span))
         .collect()
 }
 
-/// `Num`'s arithmetic and its functions, each over `COUNT` inputs: products and quotients of values
+/// `Num`'s arithmetic and its functions, each over `INPUTS` inputs: products and quotients of values
 /// within ±1000, the products also stopped at the range, `saturating_mul`, as a stat's steps take
 /// them, and their product over a third, `mul_div`, rounded once, roots, the sine and
 /// cosine of angles within ±8 and of huge ones, and `atan2`, also of points near an axis.
@@ -35,7 +32,7 @@ pub(crate) fn num(c: &mut Criterion) {
     let near_axis = spread(5, one / 1000);
 
     let mut group = Kind::Atomic.group(c, "num", Scale::Sample);
-    group.throughput(Throughput::Elements(COUNT as u64));
+    group.throughput(campfire_measure::elements(INPUTS));
     group.bench_function("mul", |b| {
         b.iter(|| {
             for (&x, &y) in small.iter().zip(&other) {
