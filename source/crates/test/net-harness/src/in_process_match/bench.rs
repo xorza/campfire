@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use campfire_bots::OrderScript;
 use campfire_math::{Num, Vec3};
+use campfire_measure::RunCost;
 use campfire_net_emulator::LinkModel;
 use campfire_net_prediction::RollbackMode;
 use campfire_orders::OrdersDirective;
@@ -15,8 +16,10 @@ use crate::in_process_match::{CONNECT_FRAMES, End, InProcessMatch, InProcessSetu
 /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new
 /// order every 40 frames keeps the avatar walking and the server sending updates.
 const LEG_FRAMES: u64 = 40;
-/// The ticks of the lane 1v1 a worst case plays.
-const MATCH_TICKS: u64 = 600;
+/// The ticks of the lane 1v1 a run plays.
+pub(crate) const MATCH_TICKS: u64 = 600;
+/// The frames of a run of a walk: 10 legs.
+pub(crate) const WALK_FRAMES: u64 = 10 * LEG_FRAMES;
 
 /// How each player's client of the walking 3v3 rolls back: only on a misprediction, on
 /// every confirmed update, and never.
@@ -45,33 +48,23 @@ static PICKS_3V3: [&str; 6] = [
 ];
 
 impl StepCost {
-    /// Adds each end's cost in `step` to its own.
-    fn add(&mut self, step: &Self) {
-        self.clients.resize(step.clients.len(), Duration::ZERO);
-        for (own, &spent) in self.clients.iter_mut().zip(&step.clients) {
-            *own += spent;
+    /// What the step cost `end`.
+    pub(crate) fn of(&self, end: End) -> Duration {
+        match end {
+            End::Server => self.server,
+            End::Client(client) => self.clients[client],
         }
-        self.server += step.server;
     }
 
-    /// Keeps each end's worse of its own and its cost in `step`.
-    fn keep_worst(&mut self, step: &Self) {
-        self.clients.resize(step.clients.len(), Duration::ZERO);
-        for (own, &spent) in self.clients.iter_mut().zip(&step.clients) {
-            *own = (*own).max(spent);
-        }
-        self.server = self.server.max(step.server);
-    }
-
-    /// The worst of the clients' costs.
-    pub(crate) fn worst_client(&self) -> Duration {
-        let worst = self.clients.iter().copied().max();
-        worst.expect("a cost of a match with clients")
+    /// What the step cost the slowest client.
+    pub(crate) fn slowest_client(&self) -> Duration {
+        let slowest = self.clients.iter().copied().max();
+        slowest.expect("a cost of a match with clients")
     }
 }
 
 impl InProcessMatch {
-    /// A solo match whose client rolls back as `rollback` says, started, for `walk_steps`.
+    /// A solo match whose client rolls back as `rollback` says, started, for `walk_run`.
     pub(crate) fn walking(rollback: RollbackMode) -> Self {
         let mut local = Self::new(InProcessSetup::solo(rollback, 1, Self::SEED_CHAIN));
         local.start_match();
@@ -81,7 +74,7 @@ impl InProcessMatch {
     /// The MOBA 3v3 at its default rate, a server frame a tick, with a player in each
     /// of the first slots, whose clients roll back as `ROLLBACKS_3V3` says, and the
     /// server's bots in the others, every slot picking as `PICKS_3V3` says; played to its
-    /// first wave, each client holding its hero, for `walk_steps`.
+    /// first wave, each client holding its hero, for `walk_run`.
     pub(crate) fn walking_3v3() -> Self {
         let players = ROLLBACKS_3V3.len();
         let mut rollbacks = [RollbackMode::Check; InProcessSetup::MAX_PLAYERS];
@@ -116,18 +109,18 @@ impl InProcessMatch {
         }
     }
 
-    /// `steps` frames of a walk from frame `*frame` on, which it advances: every
-    /// `LEG_FRAMES` frames, each client's avatar ordered to the target 5 m on the other side
-    /// of its point in `around`, along z; each end's frames' cost added to `spent`.
-    pub(crate) fn walk_steps(
+    /// The cost of a run of `WALK_FRAMES` frames of a walk from frame `*frame` on, which it
+    /// advances, each frame's what `cost` reads of its step's: every `LEG_FRAMES` frames, each
+    /// client's avatar ordered to the target 5 m on the other side of its point in `around`,
+    /// along z.
+    pub(crate) fn walk_run(
         &mut self,
         frame: &mut u64,
-        steps: u64,
         around: &[Vec3],
-        spent: &mut StepCost,
-    ) {
+        cost: impl Fn(&StepCost) -> Duration,
+    ) -> RunCost {
         debug_assert_eq!(around.len(), self.stepper.client_count());
-        for _ in 0..steps {
+        RunCost::of(WALK_FRAMES, || {
             if frame.is_multiple_of(LEG_FRAMES) {
                 let side = if frame.is_multiple_of(2 * LEG_FRAMES) {
                     5
@@ -146,28 +139,26 @@ impl InProcessMatch {
                 }
             }
             self.step();
-            spent.add(&self.step_cost);
             *frame += 1;
-        }
+            cost(&self.step_cost)
+        })
     }
 
-    /// Each end's worst step of `MATCH_TICKS` ticks of the lane 1v1, as the match scenario
-    /// plays it: the rollback of each avatar's death falls in the clients'. The server and
-    /// the clients keep their data, in a test directory of its own, so the journal and the
-    /// receipts write as a real match's do; it is removed after.
-    pub(crate) fn worst_1v1() -> StepCost {
+    /// The cost of `MATCH_TICKS` ticks of a new lane 1v1, each tick's what `cost` reads of its
+    /// step's, as the match scenario plays it: the rollback of each avatar's death falls in the
+    /// clients'. The server and the clients keep their data, in a test directory of its own, so
+    /// the journal and the receipts write as a real match's do; it is removed after, as the match
+    /// drops first.
+    pub(crate) fn lane_1v1(cost: impl Fn(&StepCost) -> Duration) -> RunCost {
         let test_dir = TestDir::new();
         let mut local = Self::new(InProcessSetup::duo(LinkModel::perfect(), Self::SEED_CHAIN));
         local.keep_data(test_dir.path("data"));
         local.start_match();
         local.play_by_team(Self::SCENARIO_SCRIPTS);
-        let mut worst = StepCost::default();
-        for _ in 0..MATCH_TICKS {
+        RunCost::of(MATCH_TICKS, || {
             local.step();
-            worst.keep_worst(&local.step_cost);
-        }
-        drop(local);
-        worst
+            cost(&local.step_cost)
+        })
     }
 }
 
@@ -176,25 +167,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_step_cost_adds_and_keeps_the_worst_of_each_end() {
+    fn a_step_cost_reads_each_end_and_the_slowest_client() {
+        // Client 0 took 3 µs, client 1 9 µs, and the server 5 µs: the slowest client is client 1.
         let micros = Duration::from_micros;
-        let step = |clients: &[u64], server: u64| StepCost {
-            clients: clients.iter().map(|&each| micros(each)).collect(),
-            server: micros(server),
+        let cost = StepCost {
+            clients: vec![micros(3), micros(9)],
+            server: micros(5),
         };
-        let steps = [step(&[3, 9], 5), step(&[7, 2], 4)];
-        let (mut total, mut worst) = (StepCost::default(), StepCost::default());
-        for each in &steps {
-            total.add(each);
-            worst.keep_worst(each);
-        }
-        // Each end on its own: client 0 took 3 and 7, client 1 9 and 2, the server 5 and 4.
-        assert_eq!(total.clients, [micros(10), micros(11)]);
-        assert_eq!(total.server, micros(9));
-        assert_eq!(worst.clients, [micros(7), micros(9)]);
-        assert_eq!(worst.server, micros(5));
-        assert_eq!(worst.worst_client(), micros(9));
-        total.clear();
-        assert_eq!((total.clients.len(), total.server), (0, Duration::ZERO));
+        let ends = [End::Server, End::Client(0), End::Client(1)];
+        assert_eq!(ends.map(|end| cost.of(end)), [5, 3, 9].map(micros));
+        assert_eq!(cost.slowest_client(), micros(9));
     }
 }

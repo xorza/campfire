@@ -37,13 +37,13 @@ impl RunCost {
     }
 
     /// Registers in `group` the worst step of a run of `steps` steps, `worst_<scene>`, the first
-    /// among them, and its mean step, `mean_<scene>`, each of a new run `run` gives the cost of,
-    /// each case's throughput the steps it times.
+    /// among them, and its mean step, `mean_<scene>`, each of the next run `run` gives the cost
+    /// of, each case's throughput the steps it times.
     pub fn cases(
         group: &mut BenchmarkGroup<'_, WallTime>,
         scene: &str,
         steps: u64,
-        run: impl Fn() -> Self,
+        mut run: impl FnMut() -> Self,
     ) {
         group.throughput(Throughput::Elements(1));
         group.bench_function(format!("worst_{scene}"), |bench| {

@@ -226,7 +226,7 @@ pub(crate) struct StepCost {
 }
 
 impl StepCost {
-    /// Clears it, for a step, or a bench's `add` and `keep_worst`, to fill.
+    /// Clears it, for a step to fill.
     pub(crate) fn clear(&mut self) {
         self.clients.clear();
         self.server = Duration::ZERO;

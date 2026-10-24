@@ -11,6 +11,8 @@
 )]
 
 mod app_interpolation_ext;
+#[cfg(feature = "internals")]
+pub mod bench;
 mod confirmed_history_fns;
 #[cfg(feature = "internals")]
 mod fixtures;
