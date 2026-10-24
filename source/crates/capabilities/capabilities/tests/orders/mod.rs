@@ -1560,17 +1560,19 @@ fn order_to(units: &[StableId], directive: OrdersDirective) -> Vec<u8> {
 #[test]
 fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_search() {
     // Player 0's walkers at (1, 2), (4, 6) and (2, 3), player 1's at (3, 3), and player 0's unit
-    // that does not walk at (0, 0), all named by one order, on a pathing grid with no wall. The
-    // box of player 0's walkers runs from (1, 2) to (4, 6), center (2.5, 4). A move to (20, 10)
-    // sends each to its offset from the center added to it: (18.5, 8), (21.5, 12) and (19.5, 9);
-    // a move to (3, 4), inside the box, sends each to (3, 4) itself. The others stay. The three
-    // plan one search, where three orders of one unit each plan three.
+    // that does not walk at (0, 0), all named by one order, on a pathing grid with a wall from
+    // x = 10 to 12 and z = −4 to 16. The box of player 0's walkers runs from (1, 2) to (4, 6),
+    // center (2.5, 4). A move to (20, 10) sends each to its offset from the center added to it:
+    // (18.5, 8), (21.5, 12) and (19.5, 9); a move to (3, 4), inside the box, sends each to (3, 4)
+    // itself. The others stay. Past the wall the three plan one search, where three orders of one
+    // unit each plan three; (3, 4) each sees, so its route is the line, with no search
+    // (04-capabilities/navigation.md, A route in sight is a line).
     let half = |x: i64, z: i64| Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z);
     let away = [half(37, 16), half(43, 24), half(39, 18)];
-    for (goal, goals, one_each) in [
-        ((20, 10), away, false),
-        ((3, 4), [Vec3::from((3, 0, 4)); 3], false),
-        ((20, 10), [Vec3::from((20, 0, 10)); 3], true),
+    for (goal, goals, one_each, searched) in [
+        ((20, 10), away, false, 1),
+        ((3, 4), [Vec3::from((3, 0, 4)); 3], false, 0),
+        ((20, 10), [Vec3::from((20, 0, 10)); 3], true, 3),
     ] {
         let mut game = orders_match();
         let bounds = Bounds::new([Num::int(-30); 2], [Num::int(30); 2]).unwrap();
@@ -1580,8 +1582,12 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
         };
         let grid = Grid::new(Num::ONE, bounds).unwrap();
         Navigation::load_pathing(&mut game, grid, [walker]);
+        let wall = Units::load_next_type(&mut game, &UnitTypeCore::default());
+        let body = BodyShape::box_sized([Num::int(2), Num::int(20)]).unwrap();
+        Units::give_type(&mut game, wall, BodyForm::new(body, Layer::FIRST));
         let hero = armed(&mut game, still_target(10), Some(meter()));
         let still = armed(&mut game, still_target(10), None);
+        Spawn::of(wall, Vec3::from((11, 0, 6))).place(&mut game);
         let walkers = [
             Vec3::from((1, 0, 2)),
             Vec3::from((4, 0, 6)),
@@ -1610,7 +1616,7 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
         );
         assert_eq!(game.part::<Destination>(other).get(), None);
         let searches = game.resource::<RoutePlanner>().searches();
-        assert_eq!(searches, if one_each { 3 } else { 1 }, "{goal:?}");
+        assert_eq!(searches, searched, "{goal:?}");
     }
 }
 

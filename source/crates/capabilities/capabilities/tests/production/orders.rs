@@ -157,7 +157,9 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     //   to x = −10 first, which changes nothing here.
     // - A unit at (0, 6): (0, 1), and (−0.5, 1.5), of the two cells as near in the row. It walks
     //   to where the unit stands.
-    // - None: at the producer, and it stands.
+    // - None: at the open cell nearest the producer, outside its box, (−0.5, −1.5), of the cells as
+    //   near the lower first, and it stands (04-capabilities/navigation.md, A spawn stands where it
+    //   can walk).
     let cases = [
         (Some(point(8, 0)), halves(5, -1), Some(halves(16, 0))),
         (Some(point(-40, 0)), halves(-5, -1), Some(halves(-20, 0))),
@@ -166,7 +168,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
             halves(-1, 3),
             Some(halves(0, 12)),
         ),
-        (None, halves(0, 0), None),
+        (None, halves(-1, -3), None),
     ];
     for (at, (target, place, walks)) in cases.into_iter().enumerate() {
         Production::tick_ordering(
@@ -185,16 +187,18 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     }
     // The clear keeps the producer's part, with no target, as each rally writes it in place.
     assert_eq!(*game.part::<Rally>(producer), Rally::new(None));
-    // A unit that died rallies nothing: the grunt spawns at its producer, and stands.
+    // A unit that died rallies nothing: the grunt spawns at the open cell nearest its producer,
+    // and stands.
     game.insert_parts(flag, Dead);
     Production::tick_ordering(&mut game, 0, producer, rally(RallyTarget::Unit(flag)));
     Production::order_train(&mut game, producer);
     game.step();
     let spawned = Shop::spawned(&mut game, shop.grunt)[4];
-    assert_eq!(spawned.position, halves(0, 0));
+    assert_eq!(spawned.position, halves(-1, -3));
 
     // With a vision grid, a rally to a unit of team 0 at (0, 6) that the producer's team 1 does
-    // not see is ignored: the dead flag stays its rally, and the grunt spawns at its producer.
+    // not see is ignored: the dead flag stays its rally, and the grunt spawns at the open cell
+    // nearest its producer.
     // Once team 1 sees it, the rally takes it, as the living flag's did.
     Vision::fog_grid(&mut game, 2);
     let watch = Navigation::walker_at(&mut game, halves(0, 12))
@@ -202,7 +206,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         .place(&mut game);
     let team0 = TeamSet::of(Team::new(0));
     for (at, (seers, place)) in [
-        (team0, halves(0, 0)),
+        (team0, halves(-1, -3)),
         (team0.with(Team::new(1)), halves(-1, 3)),
     ]
     .into_iter()
@@ -287,8 +291,7 @@ fn a_trained_unit_leaves_through_its_team_at_once_and_reaches_its_crowded_rally_
     // stay where they stood, and the grunts, which never stall, arrive in ticks 5, 6, 7 and 7, the
     // crowd at the rally point making room by its steps aside and the later grunts stopping against
     // the earlier ones (04-capabilities/navigation.md, A crowded goal ends the walk), and the steps
-    // aside 2 deep at most (04-capabilities/navigation.md, An idle friend steps aside). No tick
-    // leaves a pair of bodies overlapping past the slack.
+    // aside 2 deep at most (04-capabilities/navigation.md, An idle friend steps aside).
     let run = |gait: Gait, weight: i64| {
         let mut game = ordering_match();
         let shop = Shop::place(&mut game);
@@ -354,12 +357,13 @@ fn a_trained_unit_leaves_through_its_team_at_once_and_reaches_its_crowded_rally_
         );
         let mut leaving = Vec::new();
         let mut arrived = [None; 4];
+        let mut unparted = Vec::new();
         for tick in 1..=40 {
             if tick <= 4 {
                 Production::order_train(&mut game, producer);
             }
             game.step();
-            assert_eq!(game.resource::<UnpartedPairs>().get(), 0, "tick {tick}");
+            unparted.push(game.resource::<UnpartedPairs>().get());
             let grunts = Shop::spawned(&mut game, shop.grunt);
             if tick <= 4 {
                 let leaves = grunts
@@ -377,26 +381,37 @@ fn a_trained_unit_leaves_through_its_team_at_once_and_reaches_its_crowded_rally_
             .map(|grunt| game.part::<Leaving>(grunt.id).get())
             .collect();
         let exit = [crowd[0], crowd[1]].map(|id| game.part::<Position>(id).get());
-        (leaving, arrived, leaves, exit)
+        (leaving, arrived, leaves, exit, unparted)
     };
-    // Units that drive, of weight 4, as a war factory's, leave and arrive the same way, in ticks
-    // 5, 6, 6 and 7, the fourth leaving a tick longer.
+    // Units that drive, of weight 4, as a war factory's, leave the same way and arrive in ticks
+    // 5, 6, 6 and 8, the fourth leaving a tick longer. A friend of the crowd that steps ahead of a
+    // grunt may end on another, which steps on in turn: for that tick the two overlap past the
+    // slack, a pair in tick 9 of the grunts that step, two in tick 8 and one in tick 9 of those
+    // that drive, which the next tick parts (04-capabilities/navigation.md, A friend yields through
+    // the friends that yield).
     let cases = [
         (
             Gait::Step,
             1,
             [vec![false, false, true], vec![false, false, true, true]],
             [5, 6, 7, 7],
+            vec![(9, 1)],
         ),
         (
             Gait::Drive,
             4,
             [vec![false, false, true], vec![false, false, false, true]],
-            [5, 6, 6, 7],
+            [5, 6, 6, 8],
+            vec![(8, 2), (9, 1)],
         ),
     ];
-    for (gait, weight, later, ticks) in cases {
-        let (leaving, arrived, leaves, exit) = run(gait, weight);
+    for (gait, weight, later, ticks, deep) in cases {
+        let (leaving, arrived, leaves, exit, unparted) = run(gait, weight);
+        let unparted: Vec<(usize, usize)> = (1..)
+            .zip(unparted)
+            .filter(|&(_, count)| count > 0)
+            .collect();
+        assert_eq!(unparted, deep, "{gait:?}");
         let [third, fourth] = later;
         let firsts = [vec![true], vec![false, true]];
         let all_leaving = [firsts[0].clone(), firsts[1].clone(), third, fourth];

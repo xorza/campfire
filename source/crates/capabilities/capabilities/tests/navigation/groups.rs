@@ -244,10 +244,11 @@ fn a_member_that_sees_no_waypoint_plans_its_own_route() {
 }
 
 #[test]
-fn a_party_searches_once_for_each_layer_it_moves_on() {
+fn a_party_plans_once_for_each_layer_it_moves_on() {
     // Two walkers of no body on the ground at (2, 1) and (3, 1), two of a quarter meter in the
-    // air at (2, 1) and (2, 2); no wall blocks the air, so the air's route is the goal alone. The
-    // ground's is searched from (2, 1), the lower id of the two as near the center, (2.5, 1.5).
+    // air at (2, 1) and (2, 2); no wall blocks the air, so the air's route is the goal it sees,
+    // with no search (04-capabilities/navigation.md, A route in sight is a line). The ground's is
+    // searched from (2, 1), the lower id of the two as near the center, (2.5, 1.5): one search.
     let mut game = walled(&[]);
     let goal = Vec3::from((8, 0, 1));
     let party = ordered(goal);
@@ -270,7 +271,7 @@ fn a_party_searches_once_for_each_layer_it_moves_on() {
         id
     });
     game.step();
-    assert_eq!(route_searches(&game), 2);
+    assert_eq!(route_searches(&game), 1);
     for id in ground {
         assert_eq!(Navigation::ahead(&game, id), over_the_wall());
     }
@@ -281,14 +282,14 @@ fn a_party_searches_once_for_each_layer_it_moves_on() {
 
 #[test]
 fn a_party_whose_tests_pass_the_ticks_limit_finishes_in_the_next_tick() {
-    // Fifty walkers of no body at (2.5, 3.5), all to (8.5, 3.5), over 1 m cells from (0, 0) to
-    // (10, 6) with no wall, whose 60 cells limit a tick's work. A line test with no wall costs 1.
-    // The search costs 13: the test that the goal is clear, the 7 cells of row 3 from column 2
-    // to 8 expanded, and the smoothing's 5 tests, of the lines to the 5th cell back to the 1st.
-    // Its route is the goal alone, and each member's one test is the line to it. The first
-    // member's runs after the search, at 14; before member m, the work is 13 + m, which meets the
-    // limit at m = 47. So members 0 to 46 take their routes, and 47 to 49 wait for the next
-    // tick, which searches once more, for their own party.
+    // Thirty walkers of no body at (2.5, 3.5), all to (8.5, 3.5), over 1 m cells from (0, 0) to
+    // (10, 6), whose 60 cells limit a tick's work, and a post on cell (5, 3), on the line between.
+    // A line test with no wall costs 1. The search costs 15: the test that the goal is clear, the
+    // line to it, which the post blocks, the 8 cells it expands, and the smoothing's 5 tests. Its
+    // route goes round the post by one waypoint, and each member's tests are the lines of its two
+    // legs, 2. Before member m, the work is 15 + 2m, which meets the limit at m = 23. So members 0
+    // to 22 take their routes, and 23 to 29 wait for the next tick, which searches once more, for
+    // their own party.
     let mut game = walk_match();
     Navigation::load_open_pathing(
         &mut game,
@@ -297,9 +298,16 @@ fn a_party_whose_tests_pass_the_ticks_limit_finishes_in_the_next_tick() {
         [10, 6],
         vec![ground(Num::ZERO)],
     );
+    let post = BodyForm::new(
+        BodyShape::box_sized([Num::ONE, Num::ONE]).unwrap(),
+        Layer::FIRST,
+    );
+    Navigation::walker_at(&mut game, halves(11, 7))
+        .body(post)
+        .place(&mut game);
     let goal = halves(17, 7);
     let party = ordered(goal);
-    let members: Vec<StableId> = (0..50)
+    let members: Vec<StableId> = (0..30)
         .map(|_| member(&mut game, halves(5, 7), goal, party))
         .collect();
     let waiting = |game: &Match| -> Vec<usize> {
@@ -308,7 +316,7 @@ fn a_party_whose_tests_pass_the_ticks_limit_finishes_in_the_next_tick() {
             .collect()
     };
     game.step();
-    assert_eq!(waiting(&game), [47, 48, 49]);
+    assert_eq!(waiting(&game), (23..30).collect::<Vec<_>>());
     assert_eq!(route_searches(&game), 1);
     game.step();
     assert!(waiting(&game).is_empty());

@@ -430,17 +430,19 @@ impl TrainPoints {
 
     /// Where a unit of `unit_type` the producer of `entity` trains spawns: at the center of the
     /// cell nearest the exit point, or with none the point of the producer's body nearest the
-    /// rally point, among the cells its walker may stand in, as a teleport finds its cell; with
-    /// no such cell, or a unit that does not walk, at the exit point, or the producer's
-    /// position. With neither point, at the producer's position. A box's nearest point rounds to
-    /// the nearest bit; a circle's is a step of its radius toward the rally point, as a walker
-    /// steps.
+    /// rally point, or with neither the producer's position, among the cells its walker may stand
+    /// in, as a teleport finds its cell, so it stands outside the producer's body and every other
+    /// (04-capabilities/navigation.md, A spawn stands where it can walk); with no such cell, or a
+    /// unit that does not walk, at the exit point, or the producer's position. A producer with
+    /// neither point and no body spawns at its position. A box's nearest point rounds to the
+    /// nearest bit; a circle's is a step of its radius toward the rally point, as a walker steps.
     fn spawn_point(self, world: &mut World, entity: Entity, unit_type: UnitType) -> Vec3 {
         let producer = world.entity(entity);
         let position = producer.get::<Position>().expect("a producer stands").get();
         let near = match (self.exit, self.rally) {
             (Some(exit), _) => exit,
             (None, Some(to)) => Body::shape_of(producer.get::<Body>()).nearest_point(position, to),
+            (None, None) if producer.contains::<Body>() => position,
             (None, None) => return position,
         };
         let fallback = self.exit.unwrap_or(position);

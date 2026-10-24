@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declarations::Cache;
@@ -175,6 +177,16 @@ impl<'a> Walkable<'a> {
 }
 
 impl Passage<'_> {
+    /// Whether `place` lies past the passage's end, along the way from its first point to its
+    /// last: a unit that steps there yields ahead of the walker, not to its side
+    /// (04-capabilities/navigation.md, A friend yields through the friends that yield).
+    pub(crate) fn leads_to(&self, place: Vec3) -> bool {
+        let [first, .., end] = self.points else {
+            return false;
+        };
+        end.ground_offset(place).dot(first.ground_offset(*end)) > Num::ZERO
+    }
+
     /// Whether `body` comes no closer to any leg of the passage than the walker's radius, so the
     /// walker passes it.
     pub(crate) fn clears(&self, body: IndexedBody) -> bool {
@@ -254,6 +266,26 @@ impl RoutePlanner {
         let mut work = 1;
         let clear = !walkable.blocks_counting(Segment::new(goal, goal), &mut work);
         let mut from = grid.nearest_cell(start);
+        // A goal the walker sees, by the test a route's smoothing makes of a line, is the route,
+        // with no search of cells, so a walker in a gap no open cell holds walks to it
+        // (04-capabilities/navigation.md, A route in sight is a line).
+        if clear && {
+            work += 1;
+            !walkable.blocks_counting(Segment::new(start, goal), &mut work)
+        } {
+            waypoints.push(goal);
+            return Planned {
+                #[cfg(test)]
+                cost: Self::estimate(
+                    Self::place(grid, from),
+                    Self::place(grid, grid.nearest_cell(goal)),
+                ),
+                #[cfg(test)]
+                expanded: 0,
+                work,
+                reached: true,
+            };
+        }
         // A short route stays in its window, where the regions, made over the whole grid, do not
         // tell what it reaches; a start with no open cell beside it reaches nothing they hold.
         let regions = walkable.clearance.regions();
@@ -414,21 +446,25 @@ impl RoutePlanner {
         let radius = walkable.clearance.walker().radius;
         self.overlay.clear();
         self.overlay.resize(short.window.cells().div_ceil(64), 0);
-        let window = short.window;
-        let columns = grid.columns();
         for body in short.blockers {
             body.spans_closer(grid, radius, |cells| {
-                let row = cells.start / columns;
-                if row < window.low[1] || window.high[1] < row {
-                    return;
-                }
-                let first = (cells.start % columns).max(window.low[0]);
-                let end = ((cells.end - 1) % columns).min(window.high[0]);
-                for column in first..=end {
-                    let local = window.local(column, row);
-                    self.overlay[local / 64] |= 1 << (local % 64);
-                }
+                Self::mark(&mut self.overlay, grid, short.window, cells);
             });
+        }
+    }
+
+    /// Marks in `overlay` the cells of `cells`, a run of one row of `grid`, that `window` holds.
+    fn mark(overlay: &mut [u64], grid: &Grid, window: Window, cells: Range<usize>) {
+        let columns = grid.columns();
+        let row = cells.start / columns;
+        if row < window.low[1] || window.high[1] < row {
+            return;
+        }
+        let first = (cells.start % columns).max(window.low[0]);
+        let end = ((cells.end - 1) % columns).min(window.high[0]);
+        for column in first..=end {
+            let local = window.local(column, row);
+            overlay[local / 64] |= 1 << (local % 64);
         }
     }
 
@@ -537,9 +573,9 @@ impl RoutePlanner {
     /// way): `to`, its step off the walker's way, when no static body blocks it there and it
     /// clears the passage there, as the units it steps into step aside in turn; else the center
     /// of the cell of the short route's window nearest the unit by a route's steps that it may
-    /// stand in, past the short route's blockers, and clears the passage from, at its height,
-    /// ties to the lower total, then estimate, then number; `None` with no such cell. Its work
-    /// counts against the tick's.
+    /// stand in, past the short route's blockers and the walker, and clears the passage from, at
+    /// its height, ties to the lower total, then estimate, then number; `None` with no such cell.
+    /// Its work counts against the tick's.
     pub(crate) fn yield_place(
         &mut self,
         walkable: Walkable<'_>,
@@ -547,7 +583,10 @@ impl RoutePlanner {
         to: Vec3,
         passage: Passage<'_>,
     ) -> Option<Vec3> {
-        debug_assert!(walkable.short.is_some(), "a step aside stays in its window");
+        let window = walkable
+            .short
+            .expect("a step aside stays in its window")
+            .window;
         let mut work = 1;
         let at = |position| IndexedBody { position, ..body };
         let open = Walkable {
@@ -560,6 +599,13 @@ impl RoutePlanner {
         }
         self.mark_blockers(walkable);
         let grid = walkable.clearance.grid();
+        // The walker's own cells lead to no place: the friend would drive through it.
+        if let [walker, ..] = passage.points {
+            let reach = passage.radius + walkable.clearance.walker().radius;
+            grid.spans_closer(*walker, reach, |cells| {
+                Self::mark(&mut self.overlay, grid, window, cells);
+            });
+        }
         let from = grid.nearest_cell(body.position);
         self.routes += 1;
         let search = Search {

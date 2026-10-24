@@ -128,7 +128,7 @@ impl StaticTracking {
                             .legs()
                             .any(|leg| statics.added_blocks(leg, walker));
                     if blocked || (opened && !route.is_reached()) {
-                        route.ask(ask(goal), &mut progress, dues);
+                        route.ask_keeping(ask(goal), dues);
                     }
                 }
                 _ => {}

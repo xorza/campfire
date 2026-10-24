@@ -16,7 +16,7 @@ use crate::body_index::{self, BodyIndex, IndexedBody};
 use crate::broadphase::Broadphase;
 use crate::broadphase::internals::{scene, static_bodies, statics};
 use crate::collider::Collider;
-use crate::crowd_costs::HemmedUnits;
+use crate::crowd_costs::CrowdWalls;
 use crate::party::{Party, PartyKey};
 use crate::pathing_grid::PathingGrid;
 use crate::route_asks::{Ask, PlanWalker, RouteAsks, RouteSearch};
@@ -239,7 +239,7 @@ impl GroupScene<'_> {
                     position: at,
                     walker: self.walker,
                     team: None,
-                    hemmed: HemmedUnits::Priced,
+                    walls: CrowdWalls::Priced,
                     goal,
                 },
             })

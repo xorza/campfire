@@ -55,6 +55,13 @@ impl RoomMaking {
         }
         let position = *unit.get::<Position>().expect("a unit has a place");
         let now = world.resource::<SimTick>().start();
+        // The grid takes the body as it spawns, before a walker it overlaps finds its cell, and
+        // before a spawn its producer sends at once finds its own (04-capabilities/navigation.md, A
+        // spawn stands where it can walk).
+        let run = world.resource::<StaticTrackingRun>().0;
+        world
+            .run_system(run)
+            .expect("the static bodies' tracking runs on any world");
         inside.clear();
         inside.extend(
             walkers
@@ -70,12 +77,6 @@ impl RoomMaking {
             return;
         }
         inside.sort_unstable_by_key(|keyed| keyed.id);
-        // The grid takes the body before a walker it overlaps finds its cell; a body that moves
-        // no walker joins it from the next tick, as every static body does.
-        let run = world.resource::<StaticTrackingRun>().0;
-        world
-            .run_system(run)
-            .expect("the static bodies' tracking runs on any world");
         for &Keyed { entity: walker, .. } in &*inside {
             let unit = world.entity(walker);
             let walker_pos = *unit.get::<Position>().expect("a walker has a place");

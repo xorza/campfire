@@ -9,7 +9,7 @@ use campfire_values::Team;
 
 use crate::aside_depth::AsideDepth;
 use crate::body_index::BodyIndex;
-use crate::crowd_costs::{CrowdCosts, HemmedUnits};
+use crate::crowd_costs::{CrowdCosts, CrowdWalls};
 use crate::hemmed::Hemmed;
 use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
@@ -103,7 +103,7 @@ impl Routing {
                     let blocks = |from| {
                         grid.as_ref().is_some_and(|grid| {
                             let price = crowd.as_deref().and_then(|crowd| {
-                                crowd.price(walker, team.copied(), HemmedUnits::Priced)
+                                crowd.price(walker, team.copied(), CrowdWalls::Priced)
                             });
                             let walkable =
                                 Walkable::of(grid.clearance(walker), &statics).priced(price);
@@ -163,13 +163,15 @@ impl Routing {
         asks.read(held.iter().map(|&DueUnit { id, entity }| {
             let (_, _, &at, route, body, team, progress) =
                 units.get(entity).expect("a walker that asks");
-            // A stuck walker's route walls the units hemmed in, as one of them may be what holds
-            // it (04-capabilities/navigation.md, A friend that cannot yield is firm, and a stuck
-            // walker's route walls it).
-            let hemmed = if progress.asked_stuck() {
-                HemmedUnits::Walled
+            // A stuck walker's route walls the friends hemmed in and the units of other teams, as
+            // one of them may be what holds it (04-capabilities/navigation.md, A friend that
+            // cannot yield is firm, and a stuck walker's route walls it;
+            // 04-capabilities/navigation.md, A stuck walker's route walls the units of other teams
+            // that stand).
+            let walls = if progress.asked_stuck() {
+                CrowdWalls::Stuck
             } else {
-                HemmedUnits::Priced
+                CrowdWalls::Priced
             };
             Ask {
                 tick: route.asked().expect("a walker that asks"),
@@ -180,7 +182,7 @@ impl Routing {
                     position: at.get(),
                     walker: Walker::walking(body),
                     team: team.copied(),
-                    hemmed,
+                    walls,
                     goal: route.goal().expect("a unit that asked a route has a goal"),
                 },
             }

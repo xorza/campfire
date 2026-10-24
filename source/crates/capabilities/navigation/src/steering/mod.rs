@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::ops::{ControlFlow, Range};
 
 use campfire_geometry::{BodyGrid, Indexed, Placed};
@@ -8,6 +9,7 @@ use campfire_values::Team;
 
 use crate::aside_depth::AsideDepth;
 use crate::body_index::{BodyIndex, IndexedBody};
+use crate::collider::Collider;
 use crate::moves::Moves;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::{RoutePlanner, Short, Walkable, Window};
@@ -39,6 +41,9 @@ pub(crate) struct Steering {
     moving: Vec<Indexed<Layer, StableId>>,
     /// The units that block the walker that steers now.
     blockers: Vec<IndexedBody>,
+    /// The widest bound of a unit that stands, which a search for the personal spaces round a
+    /// point reaches past.
+    widest: Num,
     /// The short route of the walker that steers now.
     short: Vec<Vec3>,
 }
@@ -83,8 +88,8 @@ pub(crate) struct TickBody {
     pub(crate) arrived: Option<Vec3>,
 }
 
-/// A unit that steps aside for a walker, the point it steps to off the walker's way, how deep
-/// its step is, the points of the walker's passage in the tick's buffer of them, and the
+/// A unit that steps aside for a walker, the point it steps to off the walker's way, how deep the
+/// walker's walk is, the points of the walker's passage in the tick's buffer of them, and the
 /// walker's radius.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Aside {
@@ -93,6 +98,16 @@ pub(crate) struct Aside {
     pub(crate) depth: AsideDepth,
     pub(crate) passage: Range<u32>,
     pub(crate) radius: Num,
+}
+
+/// What a unit that steps aside makes of the idle friends near it: places it may pass through
+/// and end on, as each steps aside in turn for its walk, of `team`, which `moves` lets it move;
+/// or blockers, as its walk is too deep to move them (04-capabilities/navigation.md, A friend
+/// yields through the friends that yield).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Friends {
+    Pass { team: Option<Team>, moves: Moves },
+    Block,
 }
 
 /// A short route a walker takes: in place of the next `skipped` waypoints of its route, and
@@ -108,6 +123,13 @@ impl Steering {
     /// round a unit some cells wide on either side, in a search of at most 17 × 17 cells.
     pub(crate) const WINDOW: usize = 8;
 
+    /// The cells a friend's search for a place to step aside to reaches from its cell along each
+    /// axis: as many as the walker's passage reaches from the walker, its window and a reach past
+    /// it, so the search of a friend in a corridor reaches the room past the corridor's end that
+    /// the short route's window misses (04-capabilities/navigation.md, A friend yields through the
+    /// friends that yield).
+    pub(crate) const YIELD_WINDOW: usize = 2 * Self::WINDOW;
+
     /// How far a short route's window reaches from the walker's cell along each axis on `grid`.
     pub(crate) fn reach(grid: &PathingGrid) -> Num {
         grid.cell() * i64::try_from(Self::WINDOW).expect("a small window")
@@ -121,6 +143,7 @@ impl Steering {
         self.moving.clear();
         self.gatherers.clear();
         self.idle.clear();
+        self.widest = Num::ZERO;
         for TickBody {
             body,
             team,
@@ -137,6 +160,7 @@ impl Steering {
                     body: Placed::new(body.position, body.shape),
                 });
             } else {
+                self.widest = self.widest.max(body.shape.bound());
                 self.still.push(body);
             }
             if gathers {
@@ -201,8 +225,8 @@ impl Steering {
     /// steps to: off the walker's way, on the side it stands on, or to the walker's left when it
     /// stands on the way, as walkers pass on the right, until it clears the walker's body, as Zero
     /// Hour's pathfinder moves the allies off a new path and OpenRA nudges an idle friend that
-    /// blocks a move (04-capabilities/navigation.md, An idle friend steps aside), a step deeper
-    /// than the walker's walk, and `passage`, the walker's points in the tick's buffer, which its
+    /// blocks a move (04-capabilities/navigation.md, An idle friend steps aside), with how deep
+    /// the walker's walk is, and `passage`, the walker's points in the tick's buffer, which its
     /// place clears. One whose side clears the walker already stays, and a walk as deep as
     /// `AsideDepth::MOST` moves none (04-capabilities/navigation.md, An idle friend steps aside).
     pub(crate) fn asides(
@@ -263,7 +287,7 @@ impl Steering {
             asides.push(Aside {
                 id: body.id,
                 to: body.position + toward * (clear - off),
-                depth: depth.deeper(),
+                depth,
                 passage: passage.clone(),
                 radius: walker.radius,
             });
@@ -301,6 +325,35 @@ impl Steering {
                 crowd && touches && body.position.ground_offset(goal).length_squared_bits() < off;
         });
         packed
+    }
+
+    /// Whether `waypoint`, the last of `steered`'s route, lies within the personal space a unit
+    /// that stands shares with `steered`, which stands within it too: a goal the unit crowds, as
+    /// near as collision lets the walker come, so it has arrived, as the A* Pathfinding Project
+    /// stops a unit whose destination is crowded (04-capabilities/navigation.md, A walker stuck by
+    /// a crowded goal has arrived). Each space is collision's, `Collider::space_of`.
+    pub(crate) fn crowded(&self, steered: Steered, waypoint: Vec3) -> bool {
+        let Steered {
+            position: at,
+            walker,
+            ..
+        } = steered;
+        let standing = self.standing.as_ref().expect("steering read the bodies");
+        let own = Collider::space_of(walker.radius);
+        let mut crowded = false;
+        standing.near(
+            walker.layer,
+            at,
+            own + Collider::space_of(self.widest),
+            |body| {
+                let space = own + Collider::space_of(body.shape.bound());
+                let inside = |point: Vec3| {
+                    point.ground().distance_order(body.position.ground(), space) == Ordering::Less
+                };
+                crowded |= inside(at) && inside(waypoint);
+            },
+        );
+        crowded
     }
 
     /// Steers `steered` along `route`, which has a waypoint ahead, on `grid` round `statics`: the
@@ -401,18 +454,28 @@ impl Steering {
     }
 
     /// Puts in `blockers` the units that stand near `body`, a unit that steps aside, as far as
-    /// its window and its body reach on `grid`, but `body` itself: the places it may not take.
+    /// its yield window and its body reach on `grid`, but `body` itself and, as `friends` says, the
+    /// idle friends it may pass through: the places it may not take.
     pub(crate) fn standing_near(
         &self,
         grid: &PathingGrid,
         body: IndexedBody,
+        friends: Friends,
         blockers: &mut Vec<IndexedBody>,
     ) {
         let standing = self.standing.as_ref().expect("steering read the bodies");
-        let near = Self::reach(grid) + grid.cell() / 2 + body.shape.bound();
+        let window = grid.cell() * i64::try_from(Self::YIELD_WINDOW).expect("a small window");
+        let near = window + grid.cell() / 2 + body.shape.bound();
+        let idle = &self.idle;
+        let passes = |other: &IndexedBody| match friends {
+            Friends::Pass { team, moves } => idle
+                .binary_search_by_key(&other.id, |idle| idle.id)
+                .is_ok_and(|place| moves.may_move(team, Some(idle[place].team))),
+            Friends::Block => false,
+        };
         blockers.clear();
         standing.near(body.layer, body.position, near, |other| {
-            if other.id != body.id {
+            if other.id != body.id && !passes(other) {
                 blockers.push(*other);
             }
         });
