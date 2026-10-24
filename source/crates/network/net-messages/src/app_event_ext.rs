@@ -8,7 +8,6 @@ use crate::serialize_fns::CxSerializeFns;
 use crate::serialize_fns::SerializeFns;
 use bevy_app::App;
 use bevy_ecs::event::Event;
-use campfire_net_bytes::ToBytes;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -17,11 +16,6 @@ pub trait AppEventExt {
     fn register_event<M: Event + Serialize + DeserializeOwned>(
         &mut self,
     ) -> EventRegistration<'_, M>;
-
-    #[doc(hidden)]
-    /// Registers the trigger `M`, one of the stack's own types, which encodes as its `ToBytes`
-    /// does.
-    fn register_event_to_bytes<M: Event + ToBytes>(&mut self) -> EventRegistration<'_, M>;
 }
 
 impl AppEventExt for App {
@@ -29,10 +23,6 @@ impl AppEventExt for App {
         &mut self,
     ) -> EventRegistration<'_, M> {
         register_event_with(self, SerializeFns::<M>::default())
-    }
-
-    fn register_event_to_bytes<M: Event + ToBytes>(&mut self) -> EventRegistration<'_, M> {
-        register_event_with(self, SerializeFns::<M>::with_to_bytes())
     }
 }
 

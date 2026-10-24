@@ -42,12 +42,12 @@ pub mod internals {
     pub use crate::fixtures::areas::AreasFixtures;
     pub use crate::fixtures::navigation::NavigationFixtures;
     pub use crate::fixtures::orders::OrdersFixtures;
-    pub use crate::fixtures::package_set::{DependencyText, PackageSet};
     pub use crate::fixtures::production::ProductionFixtures;
     pub use crate::fixtures::units::{FilterFixtures, UnitsFixtures, ViewFixtures};
     pub use crate::fixtures::vision::VisionFixtures;
     pub use crate::fixtures::walker_spawn::WalkerSpawn;
-    pub use crate::release::r#match::internals::{MatchBuilder, PackageStart};
+    pub use crate::release::client_holds::{ClientHolding, ClientHolds};
+    pub use crate::release::r#match::internals::MatchBuilder;
 }
 
 #[cfg(feature = "internals")]

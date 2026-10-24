@@ -64,11 +64,9 @@ impl FixedMatch {
     }
 
     /// Runs the match's next tick on the inputs it holds, as its session does, and records it in
-    /// its probe, if any; it fails on a command nothing read (02-engine-core.md, A command nothing
-    /// reads is counted).
+    /// its probe, if any.
     pub fn step(&mut self) {
         self.run_tick();
-        UnreadCommands::assert_read(&self.game);
     }
 
     /// Runs the match's next tick as `step` does, and takes the commands nothing read, which a

@@ -8,9 +8,10 @@ use crate::tick_inputs::TickInputs;
 
 /// The commands of the last tick that nothing read: a payload that is no list of commands, a body
 /// its addressee cannot decode, and a command to an addressee no module of the match reads. A
-/// client may send any bytes, so a server plays on, and the harness fails a test on any it does not
-/// take, so a sender whose encoder its decoder disagrees with shows (02-engine-core.md, A command
-/// nothing reads is counted). Not state: the tick's start empties it.
+/// client may send any bytes, so a server plays on; a build of `internals` fails at the next tick's
+/// start on any nothing took, whatever drives the match, so a sender whose encoder its decoder
+/// disagrees with shows in every test (02-engine-core.md, A command nothing reads is counted). Not
+/// state: the tick's start empties it.
 #[derive(Resource, Debug, Default)]
 pub struct UnreadCommands {
     entries: Vec<UnreadCommand>,
@@ -37,6 +38,12 @@ pub enum UnreadCause {
 impl UnreadCommands {
     /// Starts the tick of `inputs` afresh: each payload with a flaw unread.
     pub fn begin(&mut self, inputs: &TickInputs) {
+        #[cfg(feature = "internals")]
+        assert!(
+            self.entries.is_empty(),
+            "commands nothing read in the last tick: {:?}; a test that sends them takes them",
+            self.entries
+        );
         self.entries.clear();
         let flawed = inputs.flawed().iter().map(|&player_slot| UnreadCommand {
             player_slot,
@@ -70,31 +77,46 @@ impl<'a> IntoIterator for &'a UnreadCommands {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use std::mem;
+    use std::{mem, thread};
 
     use bevy_ecs::world::World;
 
     use crate::unread_commands::{UnreadCommand, UnreadCommands};
 
     impl UnreadCommands {
-        /// Panics on a command of the last tick of `world` that nothing read: a test that sends
-        /// one takes it.
-        pub fn assert_read(world: &World) {
-            let Some(unread) = world.get_resource::<Self>() else {
-                return;
-            };
-            assert!(
-                unread.is_empty(),
-                "commands nothing read: {:?}; a test that sends them takes them",
-                unread.entries
-            );
-        }
-
         /// Takes the commands of the last tick of `world` that nothing read.
         pub fn take(world: &mut World) -> Vec<UnreadCommand> {
             world
                 .get_resource_mut::<Self>()
                 .map_or_else(Vec::new, |mut unread| mem::take(&mut unread.entries))
         }
+    }
+
+    /// A match dropped after a tick whose commands nothing read, and nothing took, fails its
+    /// test, as its next tick's start would.
+    impl Drop for UnreadCommands {
+        fn drop(&mut self) {
+            assert!(
+                self.entries.is_empty() || thread::panicking(),
+                "commands nothing read in the last tick: {:?}; a test that sends them takes them",
+                self.entries
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_common::PlayerSlot;
+
+    use crate::tick_inputs::TickInputs;
+    use crate::unread_commands::{UnreadCause, UnreadCommands};
+
+    #[test]
+    #[should_panic(expected = "commands nothing read in the last tick")]
+    fn a_tick_that_begins_over_a_command_nothing_took_fails_the_test() {
+        let mut unread = UnreadCommands::default();
+        unread.push(PlayerSlot::new(0), UnreadCause::Flawed);
+        unread.begin(&TickInputs::default());
     }
 }

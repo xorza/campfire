@@ -162,9 +162,7 @@ impl ClientRepliconPlugin {
         for (channel_idx, message) in client_messages.drain_sent() {
             let channel_id = channel_map.client_channels[channel_idx];
             for mut transport in &mut transports {
-                if let Err(error) = transport.send(channel_id, message.clone(), 1.0) {
-                    error!(?error, "could not send a replication message");
-                }
+                transport.send(channel_id, message.clone(), 1.0);
             }
         }
     }

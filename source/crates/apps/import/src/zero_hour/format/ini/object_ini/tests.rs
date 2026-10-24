@@ -68,7 +68,7 @@ End
 ";
 
 /// The draw modules of the object `name`, each of its default state alone.
-fn draws_of(ini: &ObjectIni, name: &str) -> Vec<DrawModule> {
+fn draws_of(ini: &ObjectFiles, name: &str) -> Vec<DrawModule> {
     let default = |draw: &DrawModule| DrawModule {
         model: draw.model.clone(),
         look: draw.look.clone(),
@@ -85,7 +85,7 @@ fn draws_of(ini: &ObjectIni, name: &str) -> Vec<DrawModule> {
 
 #[test]
 fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
-    let mut ini = ObjectIni::default();
+    let mut ini = ObjectFiles::default();
     ini.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
     ini.read(OBJECTS.as_bytes()).unwrap();
     let names: Vec<&str> = ini.objects().map(|object| object.name.as_str()).collect();
@@ -172,15 +172,15 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
         draws_of(&ini, "Rock"),
         [model("rock01", StateLook::default())]
     );
-    // A template finds its object of its case alone, as `findTemplate` does.
+    // A name finds its object of its case alone, as `findTemplate` does.
     assert_eq!(
-        ini.object(b"Tank").map(|tank| tank.name.as_str()),
+        ini.named("Tank").map(|tank| tank.name.as_str()),
         Some("Tank")
     );
-    assert!(ini.object(b"tank").is_none());
+    assert!(ini.named("tank").is_none());
     // A name read before, in this file or an earlier one, and a reskin whose base is not yet
     // read, are refused at their line.
-    let mut again = ObjectIni::default();
+    let mut again = ObjectFiles::default();
     again.read(b"Object Rock\nEnd\n").unwrap();
     assert_eq!(
         again.read(b"Object Sand\nEnd\nObjectReskin Rock Sand\nEnd\n"),
@@ -194,7 +194,7 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
 
 #[test]
 fn kinds_fences_and_scales_place_objects_as_a_multiplayer_game_does() {
-    let mut ini = ObjectIni::default();
+    let mut ini = ObjectFiles::default();
     ini.read(PLACED.as_bytes()).unwrap();
     let placed = |name: &str| ini.named(name).unwrap().placed_as();
     let scale = |name: &str| ini.named(name).unwrap().scale().get();
@@ -226,7 +226,7 @@ fn kinds_fences_and_scales_place_objects_as_a_multiplayer_game_does() {
     assert_eq!(placed("Wall"), PlacedAs::Bridge);
     assert_eq!(placed("Crossing"), PlacedAs::Unit);
     // A list mixes no forms, and `NONE` follows none; a scale is positive.
-    let read = |text: &str| ObjectIni::default().read(text.as_bytes());
+    let read = |text: &str| ObjectFiles::default().read(text.as_bytes());
     for kinds in [
         "PROP +SHRUBBERY",
         "+PROP SHRUBBERY",
@@ -252,7 +252,7 @@ fn kinds_fences_and_scales_place_objects_as_a_multiplayer_game_does() {
 
 #[test]
 fn a_file_the_game_cannot_read_is_refused_at_its_line() {
-    let read = |text: &str| ObjectIni::default().read(text.as_bytes());
+    let read = |text: &str| ObjectFiles::default().read(text.as_bytes());
     assert_eq!(
         read("Object A\n  Draw = W3DModelDraw M\n"),
         Err(IniError::Unclosed)
@@ -309,12 +309,13 @@ fn a_geometry_bounds_its_object_as_the_game_computes() {
     // √(144 + 81 + 400) = 25. A cylinder of radius 3 and height 10 reaches its half height, 5;
     // one of radius 6 its radius. A sphere, and an object of no geometry, the game's sphere of
     // radius 1, reach their radius.
-    let mut ini = ObjectIni::default();
+    let mut ini = ObjectFiles::default();
     let objects = "Object Box\n Geometry = BOX\n GeometryMajorRadius = 12\n GeometryMinorRadius = 9\n GeometryHeight = 40\nEnd\n\
         Object Tall\n Geometry = CYLINDER\n GeometryMajorRadius = 3\n GeometryHeight = 10\nEnd\n\
         Object Wide\n Geometry = CYLINDER\n GeometryMajorRadius = 6\n GeometryHeight = 10\nEnd\n\
         Object Ball\n Geometry = SPHERE\n GeometryMajorRadius = 7\nEnd\nObject Plain\nEnd\n";
     ini.read(objects.as_bytes()).unwrap();
+    let ini = ini.finish();
     let bounds = |name: &str| {
         let geometry = ini.object(name.as_bytes()).unwrap().geometry();
         [geometry.bounding_circle(), geometry.bounding_sphere()]
@@ -328,7 +329,7 @@ fn a_geometry_bounds_its_object_as_the_game_computes() {
 
 #[test]
 fn a_model_draws_the_state_that_best_matches_its_maps_conditions() {
-    let mut ini = ObjectIni::default();
+    let mut ini = ObjectFiles::default();
     let objects = "Object Barracks
   Draw = W3DModelDraw ModuleTag_01
     DefaultConditionState
@@ -366,7 +367,7 @@ End
     ini.read(objects.as_bytes()).unwrap();
     let at = |night, snow| LookConditions { night, snow };
     let drawn = |name: &str, conditions| {
-        let draw = &ini.object(name.as_bytes()).unwrap().draws()[0];
+        let draw = &ini.named(name).unwrap().draws()[0];
         let state = draw.drawn(conditions);
         (state.model.map(str::to_owned), state.look.clone())
     };
@@ -394,7 +395,7 @@ End
 
     // A later state of a module with no `DefaultConditionState` copies nothing, so it must name
     // its model; an alias needs a state before it.
-    let fails = |text: &str| ObjectIni::default().read(text.as_bytes()).unwrap_err();
+    let fails = |text: &str| ObjectFiles::default().read(text.as_bytes()).unwrap_err();
     let unnamed = "Object A\n Draw = W3DModelDraw M\n  ConditionState = NONE\n   Model = A\n  End\n  \
                    ConditionState = NIGHT\n  End\n End\nEnd\n";
     assert_eq!(fails(unnamed), IniError::NoModel { line: 7 });
@@ -427,7 +428,7 @@ fn an_object_gives_supply_its_dock_center_gatherer_and_one_shot_spawns() {
                 Object Rabble\n Behavior = SpawnBehavior M1\n  SpawnNumber = 10\n\
                   SpawnTemplateName = Guard\n  AggregateHealth = Yes\n\
                   SlavesHaveFreeWill = Yes\n End\nEnd\n";
-    let mut ini = ObjectIni::default();
+    let mut ini = ObjectFiles::default();
     ini.read(text.as_bytes()).unwrap();
     let supply = |name: &str| ini.named(name).unwrap().supply().clone();
     // The center takes boxes, and its exit starts its gatherers. Its one-shot spawn makes 4,
@@ -498,10 +499,10 @@ fn an_object_gives_supply_its_dock_center_gatherer_and_one_shot_spawns() {
 
 #[test]
 fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
-    fn build(ini: &ObjectIni, name: &str) -> IniBuild {
+    fn build(ini: &ObjectFiles, name: &str) -> IniBuild {
         ini.named(name).unwrap().build().clone()
     }
-    let mut ini = ObjectIni::default();
+    let mut ini = ObjectFiles::default();
     ini.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
     ini.read(OBJECTS.as_bytes()).unwrap();
     // The command center: its fields, a `ProductionUpdate` of the default queue of 9, its exit's
@@ -564,7 +565,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
     );
     assert_eq!(build(&ini, "Twice").prerequisites, [line(&["B"])]);
     // A cost past an unsigned short, and a point that lacks a label, are refused.
-    let fails = |text: &str| ObjectIni::default().read(text.as_bytes()).unwrap_err();
+    let fails = |text: &str| ObjectFiles::default().read(text.as_bytes()).unwrap_err();
     assert_eq!(
         fails("Object A\n PlacementViewAngle = 1e40\nEnd\n"),
         IniError::Range { line: 2 }
@@ -624,7 +625,7 @@ End
 
 #[test]
 fn an_object_gives_combat_its_shells_curve_and_its_first_turret() {
-    let mut ini = ObjectIni::default();
+    let mut ini = ObjectFiles::default();
     ini.read(FIGHTERS.as_bytes()).unwrap();
     let fight = |name: &str| ini.named(name).unwrap().fight().clone();
     // A percent is a fraction of 1: 50% is 0.5, and 90% is 90 ÷ 100 in the game's `f32`.
@@ -659,7 +660,7 @@ fn an_object_gives_combat_its_shells_curve_and_its_first_turret() {
     assert_eq!(turret.slots, [false; 3]);
     assert_eq!(turret.turn_rate.to_bits(), 0x4189_8286);
     // A slot the game does not name is refused at its line.
-    let mut bad = ObjectIni::default();
+    let mut bad = ObjectFiles::default();
     let text = "Object A\n Behavior = AIUpdateInterface M\n  Turret\n   ControlledWeaponSlots = \
                 FOURTH\n  End\n End\nEnd\n";
     assert_eq!(

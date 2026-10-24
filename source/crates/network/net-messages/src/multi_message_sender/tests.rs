@@ -37,7 +37,7 @@ fn a_message_reaches_each_listed_link() {
             .server_app_mut()
             .register_system(move |mut sender: MultiMessageSender<'_, '_>| {
                 let links = EntityIndexSet::from_iter(links);
-                sender.send::<_, Channel1>(&sent, &links).unwrap();
+                sender.send::<_, Channel1>(&sent, &links);
             });
     stepper.server_world_mut().run_system(system).unwrap();
     stepper.frame_step(2);
@@ -71,7 +71,7 @@ fn an_event_reaches_each_listed_link() {
             .server_app_mut()
             .register_system(move |mut sender: MultiMessageSender<'_, '_>| {
                 let links = EntityIndexSet::from_iter(links);
-                sender.send::<_, Channel1>(&sent, &links).unwrap();
+                sender.send::<_, Channel1>(&sent, &links);
             });
     stepper.server_world_mut().run_system(system).unwrap();
     stepper.frame_step(2);
@@ -103,7 +103,7 @@ fn all_reaches_only_connected_links() {
             .server_app_mut()
             .register_system(move |mut sender: MultiMessageSender<'_, '_>| {
                 let links = EntityIndexSet::from_iter(links);
-                sender.send::<_, Channel1>(&sent, &links).unwrap();
+                sender.send::<_, Channel1>(&sent, &links);
             });
     stepper.server_world_mut().run_system(system).unwrap();
     stepper.frame_step(2);
@@ -126,9 +126,7 @@ fn a_message_against_its_direction_is_a_bug() {
             .server_app_mut()
             .register_system(move |mut sender: MultiMessageSender<'_, '_>| {
                 let message = ClientMessage("Server".to_string());
-                sender
-                    .send::<_, Channel1>(&message, UniqueEntityArray::from([link]))
-                    .unwrap();
+                sender.send::<_, Channel1>(&message, UniqueEntityArray::from([link]));
             });
     stepper.server_world_mut().run_system(system).unwrap();
 }

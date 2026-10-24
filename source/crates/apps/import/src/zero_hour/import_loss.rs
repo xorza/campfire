@@ -1,4 +1,5 @@
 use campfire_common::MapName;
+use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
@@ -9,7 +10,7 @@ use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 
 /// What the import does not hold of the install as the original holds it, each with what it is
 /// and why (09-zero-hour.md, Losses).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImportLoss {
     /// A model the objects name that the package lacks.
     Model(SkippedModel),

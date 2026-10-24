@@ -1,6 +1,6 @@
-use std::cell::OnceCell;
 use std::ops::Range;
 use std::str::FromStr;
+use std::sync::OnceLock;
 
 use proc_macro2::{LineColumn, Span, TokenStream, TokenTree};
 use syn::visit::Visit;
@@ -55,7 +55,7 @@ pub(crate) struct SourceFile {
     /// code only tests, or tests and their helpers, build; none for code every build holds.
     pub(crate) gate: Option<Gate>,
     /// Its text as Rust reads it, once a rule asks for it.
-    analysis: OnceCell<Analysis>,
+    analysis: OnceLock<Analysis>,
 }
 
 /// What a file's text is as Rust reads it: its code with each comment blanked, and the bytes of
@@ -73,7 +73,7 @@ impl SourceFile {
             path: path.into(),
             text: text.into(),
             gate: None,
-            analysis: OnceCell::new(),
+            analysis: OnceLock::new(),
         }
     }
 
@@ -200,6 +200,11 @@ impl SourceFile {
         let mut names: Vec<&str> = self.path.split('/').collect();
         let name = names.pop().expect("a source has a name");
         (name, names)
+    }
+
+    /// Lexes and parses its text now, as a rule would at its first read of its code.
+    pub(crate) fn analyze(&self) {
+        self.analysis();
     }
 
     fn analysis(&self) -> &Analysis {

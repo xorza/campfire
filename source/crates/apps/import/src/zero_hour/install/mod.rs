@@ -6,6 +6,7 @@ use campfire_package_format::{ContentHash, ContentHashMeaning, ContentHasher};
 use campfire_store::{
     DirEntries, DirEntry, EntryKind, InputFile, InputRanges, PathError, ReadError,
 };
+use campfire_threads::{Job, Parallel};
 
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ZeroHourError;
@@ -181,8 +182,7 @@ impl Install {
     /// The maps the game lists, as `MapCache::loadMapsFromDisk` finds them: each `.map` under
     /// `Maps\` in a directory of its own name, in the order of their keys; one elsewhere is none.
     pub(crate) fn maps(&self) -> Vec<InstallMap> {
-        self.files
-            .keys()
+        self.under("maps\\")
             .filter_map(|path| {
                 let names: Vec<&str> = path.names().collect();
                 let ["maps", map_dir, file] = names[..] else {
@@ -196,6 +196,15 @@ impl Install {
             .collect()
     }
 
+    /// The keys of the files under `prefix`, a key's start that ends in `\\`, in their order: a
+    /// range of the keys, as their order is their text's.
+    fn under<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item = &'a ArchivePath> {
+        self.files
+            .range(ArchivePath::of(prefix)..)
+            .map(|(path, _)| path)
+            .take_while(move |path| path.as_str().starts_with(prefix))
+    }
+
     /// Whether the archives hold a file at `path`.
     pub(crate) fn contains(&self, path: &ArchivePath) -> bool {
         self.files.contains_key(path)
@@ -206,11 +215,11 @@ impl Install {
     /// tell which the player's game reads.
     pub(crate) fn language(&self) -> Result<Option<String>, ZeroHourError> {
         let mut languages: Vec<&str> = self
-            .files
-            .keys()
-            .filter_map(|path| match path.names().collect::<Vec<_>>()[..] {
-                ["data", language, "art", ..] => Some(language),
-                _ => None,
+            .under("data\\")
+            .filter_map(|path| {
+                let mut names = path.names().skip(1);
+                let language = names.next()?;
+                (names.next() == Some("art")).then_some(language)
             })
             .collect();
         languages.dedup();
@@ -243,11 +252,8 @@ impl Install {
             let depth = base.names().count();
             let base_dir = format!("{base}\\");
             let (direct, deeper): (Vec<&ArchivePath>, Vec<_>) = self
-                .files
-                .keys()
-                .filter(|path| {
-                    path.extension() == Some("ini") && path.as_str().starts_with(&base_dir)
-                })
+                .under(&base_dir)
+                .filter(|path| path.extension() == Some("ini"))
                 .partition(|path| path.names().count() == depth + 1);
             inis.extend(direct.into_iter().cloned());
             inis.extend(deeper.into_iter().cloned());
@@ -257,25 +263,14 @@ impl Install {
 
     /// Each archive's path and SHA-256, in the load order, each of the file of the stamp its
     /// entries were read with, so the bytes a version check knows are the bytes the import reads.
+    /// The archives hash on every core, each on one, as the install's gigabytes would take one
+    /// core most of a check's run.
     pub(crate) fn hashed(&self) -> Result<Vec<HashedArchive>, ZeroHourError> {
-        self.archives
-            .iter()
-            .map(|archive| {
-                let mut hasher = ContentHasher::<ContentHashMeaning>::new();
-                let mut at = 0;
-                while at < archive.file.len() {
-                    let len = (archive.file.len() - at).min(HASH_CHUNK);
-                    let chunk = usize::try_from(len).expect("a chunk fits usize");
-                    let bytes = archive.read_at(at, chunk)?;
-                    hasher.update(&bytes);
-                    at += len;
-                }
-                Ok(HashedArchive {
-                    name: archive.name.clone(),
-                    sha256: hasher.finish(),
-                })
-            })
-            .collect()
+        Parallel::map_job(Job::Import, self.archives.len(), |at| {
+            self.archives[at].hashed()
+        })
+        .into_iter()
+        .collect()
     }
 
     /// The archives under `root`, whose entries are `entries`: each file, or link to one, whose
@@ -311,6 +306,31 @@ impl Install {
 }
 
 impl Archive {
+    /// Its name and the SHA-256 of its file, read a chunk at a time into one buffer; then
+    /// `ArchiveChanged` when another program changed it since its entries were read.
+    fn hashed(&self) -> Result<HashedArchive, ZeroHourError> {
+        let mut hasher = ContentHasher::<ContentHashMeaning>::new();
+        let len = self.file.len();
+        let mut chunk = vec![0; usize::try_from(len.min(HASH_CHUNK)).expect("a chunk fits usize")];
+        let mut at = 0;
+        while at < len {
+            let read = (len - at).min(HASH_CHUNK);
+            let bytes = &mut chunk[..usize::try_from(read).expect("a chunk fits usize")];
+            self.file.read_at_into(at, bytes)?;
+            hasher.update(bytes);
+            at += read;
+        }
+        if !self.file.unchanged()? {
+            return Err(ZeroHourError::ArchiveChanged {
+                archive: self.file.path().to_owned(),
+            });
+        }
+        Ok(HashedArchive {
+            name: self.name.clone(),
+            sha256: hasher.finish(),
+        })
+    }
+
     /// The `len` bytes from `offset` of its file; `ArchiveChanged` when another program changed
     /// it since its entries were read.
     fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>, ZeroHourError> {

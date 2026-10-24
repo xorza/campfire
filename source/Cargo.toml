@@ -27,7 +27,6 @@ members = [
 
 default-members = [
     "checks/lan-check",
-    "checks/vocabulary",
     "crates/apps/client",
     "crates/apps/import",
     "crates/apps/server",
@@ -150,10 +149,13 @@ steps = [
 [workspace.metadata.drive.commands.zero-hour]
 steps = [{ cargo = "run --profile checks -p campfire-zero-hour-check", args = true }]
 
-# The repository's layout and the names its Rust files declare, in one text file for review: its
-# argument is the file it writes. It builds in `release-dev`.
-[workspace.metadata.drive.commands.vocabulary]
-steps = [{ cargo = "run --profile release-dev -p campfire-vocabulary", args = true }]
+# The client and the dedicated server, to play: each builds in `release-dev`, runs with its
+# arguments.
+[workspace.metadata.drive.commands.client]
+steps = [{ cargo = "run --profile release-dev -p campfire-client", args = true }]
+
+[workspace.metadata.drive.commands.server]
+steps = [{ cargo = "run --profile release-dev -p campfire-server", args = true }]
 
 [workspace.package]
 version = "0.1.0"

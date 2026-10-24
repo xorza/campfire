@@ -20,7 +20,6 @@ impl AckSender<'_, '_> {
     pub(crate) fn send(&mut self, link: Entity, first: u64, applied: &[Applied]) {
         self.ack.fill(first, applied);
         self.sender
-            .send::<InputAck, MatchChannel>(&self.ack, [link])
-            .expect("an ack is no longer than the input message it acknowledges");
+            .send::<InputAck, MatchChannel>(&self.ack, [link]);
     }
 }

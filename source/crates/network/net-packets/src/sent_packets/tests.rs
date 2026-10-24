@@ -21,11 +21,11 @@ fn sent(count: u64) -> (SentPackets, NewReno) {
     (packets, reno)
 }
 
-fn ack(largest: u64, bits: u32) -> Ack {
+fn ack(largest: u64, bits: u64) -> Ack {
     Ack {
         largest: PacketNumber(largest),
         bits,
-        delay: Duration::ZERO,
+        delay: Some(Duration::ZERO),
     }
 }
 
@@ -59,7 +59,7 @@ fn the_largest_newly_acknowledged_gives_the_rtt_sample() {
     let mut rtt = RttEstimator::default();
     let mut fates = Vec::new();
     let delayed = Ack {
-        delay: Duration::from_millis(10),
+        delay: Some(Duration::from_millis(10)),
         ..ack(4, 0)
     };
     let report = packets.on_ack(delayed, at(100), &mut rtt, &mut reno, &mut fates);
@@ -67,6 +67,17 @@ fn the_largest_newly_acknowledged_gives_the_rtt_sample() {
     assert_eq!(rtt.smoothed(), Duration::from_millis(60));
     let report = packets.on_ack(ack(4, 0b1), at(110), &mut rtt, &mut reno, &mut fates);
     assert_eq!(report.rtt_sample, None);
+    // A delay past what the header holds is not known: the largest is delivered, with no sample,
+    // as one would be the delay's own length.
+    let (mut packets, mut reno) = sent(5);
+    let mut fates = Vec::new();
+    let saturated = Ack {
+        delay: None,
+        ..ack(4, 0)
+    };
+    let report = packets.on_ack(saturated, at(100), &mut rtt, &mut reno, &mut fates);
+    assert_eq!(report.rtt_sample, None);
+    assert!(fates.contains(&PayloadFate::Delivered(PayloadToken(4))));
 }
 
 /// One below the largest is not lost by number, so it waits for the time threshold: with an RTT

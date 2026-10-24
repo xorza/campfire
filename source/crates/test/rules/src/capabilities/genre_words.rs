@@ -6,6 +6,7 @@ use std::str::FromStr;
 use proc_macro2::{TokenStream, TokenTree};
 
 use super::{NamedCode, capability_sources};
+use crate::workspace::Workspace;
 
 /// The words no identifier of a capability's production code holds, each as a whole word; test
 /// modules may hold them.
@@ -63,10 +64,9 @@ fn genre_words(code: &str) -> Vec<String> {
         .collect()
 }
 
-#[test]
-fn no_capability_names_a_genres_words() {
+pub(crate) fn no_capability_names_a_genres_words(workspace: &Workspace) {
     let mut named = Vec::new();
-    for NamedCode { path, code } in capability_sources() {
+    for NamedCode { path, code } in capability_sources(workspace) {
         for word in genre_words(&code) {
             named.push(format!("{path}: {word}"));
         }

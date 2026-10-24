@@ -18,12 +18,10 @@ const UNSAFE_FILES: [&str; 9] = [
 
 /// Whether the code of `text` writes `unsafe`, a comment's or a string's mention aside.
 fn writes_unsafe(text: &str) -> bool {
-    NamedPath::of(text).iter().any(|path| path.text == "unsafe")
+    text.contains("unsafe") && NamedPath::of(text).iter().any(|path| path.text == "unsafe")
 }
 
-#[test]
-fn only_the_listed_files_write_unsafe() {
-    let workspace = Workspace::read();
+pub(crate) fn only_the_listed_files_write_unsafe(workspace: &Workspace) {
     let listed = Allowlist::new(&UNSAFE_FILES);
     let unlisted: Vec<&str> = (workspace.sources().iter())
         .filter(|file| writes_unsafe(&file.text))

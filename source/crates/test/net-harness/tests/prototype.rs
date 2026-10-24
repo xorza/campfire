@@ -54,18 +54,9 @@ struct Hero {
     destination: Destination,
 }
 
-/// The one hero in `app`: the one unit under a player's control.
-fn hero_entity(app: &App) -> Entity {
-    let world = app.world();
-    let mut units = world.resource::<EntityIndex>().iter();
-    let (_, entity) = units
-        .find(|&(_, entity)| world.entity(entity).contains::<Owner>())
-        .unwrap();
-    entity
-}
-
-fn hero(app: &App) -> Hero {
-    let hero = app.world().entity(hero_entity(app));
+/// Where client 0's hero stands and walks to in `end`.
+fn hero(local: &InProcessMatch, end: End) -> Hero {
+    let hero = local.unit(end, local.avatar(0));
     Hero {
         position: hero.get::<Position>().unwrap().get(),
         destination: *hero.get::<Destination>().unwrap(),
@@ -122,10 +113,9 @@ fn server_and_replay_agree_on_every_tick() {
             position: Vec3::from((-2, 0, 5)),
             destination: Destination::default(),
         };
-        assert_eq!(hero(local.server()), arrived, "{case}");
-        assert_eq!(hero(local.client(0)), arrived, "{case}");
-        let client_world = local.client(0).world();
-        let client_hero = client_world.entity(hero_entity(local.client(0)));
+        assert_eq!(hero(&local, End::Server), arrived, "{case}");
+        assert_eq!(hero(&local, End::Client(0)), arrived, "{case}");
+        let client_hero = local.unit(End::Client(0), local.avatar(0));
         assert!(
             client_hero.contains::<Predicted>() && !client_hero.contains::<Unpredicted>(),
             "{case}"
@@ -170,9 +160,12 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     for _ in 0..=lead(&local) {
         local.step();
     }
-    assert_ne!(hero(local.server()).destination, Destination::default());
+    assert_ne!(
+        hero(&local, End::Server).destination,
+        Destination::default()
+    );
     let mut frames = 0;
-    while hero(local.server()).destination != Destination::default() {
+    while hero(&local, End::Server).destination != Destination::default() {
         assert!(frames < 80, "the hero arrives");
         local.step();
         frames += 1;
@@ -181,7 +174,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         position: Vec3::from((-2, 0, 5)),
         destination: Destination::default(),
     };
-    assert_eq!(hero(local.server()), arrived);
+    assert_eq!(hero(&local, End::Server), arrived);
     let link = local.link(0);
     let refused = |local: &InProcessMatch| {
         let world = local.server().world();
@@ -230,11 +223,11 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     // The hero walks to (4, 0), 4 m from the east tower at (8, 0), which reaches 6.25 m from its
     // edge and hits for 150 of its 600: the fourth hit kills it where it stands.
     local.order(0, move_to(4, 0));
-    let dead = |app: &App| app.world().entity(hero_entity(app)).contains::<Dead>();
+    let hero_id = local.avatar(0);
+    let dead = |local: &InProcessMatch, end| local.unit(end, hero_id).contains::<Dead>();
     let rollbacks = |local: &InProcessMatch| local.rollbacks(0);
     // While it attacks, the client holds the tower's target, the hero, and its projectiles in
     // flight, to draw them.
-    let hero_id = local.avatar(0);
     let client_sees = |local: &InProcessMatch| {
         let world = local.client(0).world();
         let units = || world.resource::<EntityIndex>().iter();
@@ -250,7 +243,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     };
     let mut seen = [false; 2];
     let mut frames = 0;
-    while !dead(local.server()) {
+    while !dead(&local, End::Server) {
         assert!(frames < 400, "the tower kills the hero");
         local.step();
         frames += 1;
@@ -272,11 +265,14 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
         position: Vec3::from((x, 0, z)),
         destination: Destination::default(),
     };
-    assert_eq!(hero(local.server()), at(4, 0));
-    assert_eq!(hero(local.client(0)), at(4, 0));
-    assert!(dead(local.client(0)));
-    let health = |app: &App| app.world().get::<Life>(hero_entity(app)).unwrap().current();
-    assert_eq!(health(local.client(0)), Num::ZERO);
+    assert_eq!(hero(&local, End::Server), at(4, 0));
+    assert_eq!(hero(&local, End::Client(0)), at(4, 0));
+    assert!(dead(&local, End::Client(0)));
+    let health = |local: &InProcessMatch| {
+        let hero = local.unit(End::Client(0), hero_id);
+        hero.get::<Life>().unwrap().current()
+    };
+    assert_eq!(health(&local), Num::ZERO);
     assert_eq!(rollbacks(&local), 1);
 
     // The lane mode respawns a hero 5000 ms later: 150 ticks at 30 a second, from the end of the
@@ -285,20 +281,19 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     let back = Respawn {
         at: Tick::new(died_in + 1 + 150),
     };
-    let client_hero = hero_entity(local.client(0));
     assert_eq!(
-        local.client(0).world().get::<Respawn>(client_hero),
+        local.unit(End::Client(0), hero_id).get::<Respawn>(),
         Some(&back)
     );
-    while dead(local.server()) {
+    while dead(&local, End::Server) {
         local.step();
     }
     let respawned_in = local.server().world().resource::<SimTick>().start().get() - 1;
     assert_eq!(respawned_in, back.at.get());
-    assert_eq!(hero(local.server()), at(0, -2));
-    assert_eq!(hero(local.client(0)), at(0, -2));
-    assert!(!dead(local.client(0)));
-    assert_eq!(health(local.client(0)), Num::int(600));
+    assert_eq!(hero(&local, End::Server), at(0, -2));
+    assert_eq!(hero(&local, End::Client(0)), at(0, -2));
+    assert!(!dead(&local, End::Client(0)));
+    assert_eq!(health(&local), Num::int(600));
     assert_eq!(rollbacks(&local), 1);
 }
 
@@ -339,16 +334,18 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
         .insert(frail);
     // The tower, at (8, -3), stands out of the walker's sight at (0, -2): an attack on it does
     // nothing, on the server and on the client, which does not hold it.
-    let slots = |app: &App| app.world().get::<ActionProgress>(hero_entity(app)).copied();
-    let attacking = |app: &App| slots(app)?.attacking();
-    let start = hero(local.server());
+    let hero_id = local.avatar(0);
+    let slots =
+        |local: &InProcessMatch, end| local.unit(end, hero_id).get::<ActionProgress>().copied();
+    let attacking = |local: &InProcessMatch, end| slots(local, end)?.attacking();
+    let start = hero(&local, End::Server);
     local.order(0, OrdersDirective::Attack { target: tower });
     for _ in 0..lead(&local) + 2 {
         local.step();
-        assert_eq!(attacking(local.server()), None);
-        assert_eq!(attacking(local.client(0)), None);
+        assert_eq!(attacking(&local, End::Server), None);
+        assert_eq!(attacking(&local, End::Client(0)), None);
     }
-    assert_eq!(hero(local.server()), start);
+    assert_eq!(hero(&local, End::Server), start);
     // Once the walker walks east until its client holds the tower, the same attack takes effect.
     local.order(0, move_to(4, -2));
     let held = |local: &InProcessMatch| {
@@ -370,9 +367,9 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
         assert!(frames < 400, "the walker fells the tower");
         local.step();
         frames += 1;
-        for (windup, app) in windups.iter_mut().zip([local.server(), local.client(0)]) {
+        for (windup, end) in windups.iter_mut().zip([End::Server, End::Client(0)]) {
             if windup.is_none() {
-                *windup = slots(app).filter(|slots| slots.attacking() == Some(tower));
+                *windup = slots(&local, end).filter(|slots| slots.attacking() == Some(tower));
             }
         }
     }
@@ -388,15 +385,15 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
     assert_eq!(local.client(spectator).world().match_end(), Some(end));
 
     // After the end neither end moves the hero, and the server's tick still counts on.
-    let still = hero(local.server());
+    let still = hero(&local, End::Server);
     let tick = local.server().world().resource::<SimTick>().start();
     local.order(0, move_to(-6, 0));
     let steps = lead(&local) + 1;
     for _ in 0..steps {
         local.step();
     }
-    assert_eq!(hero(local.server()), still);
-    assert_eq!(hero(local.client(0)).position, still.position);
+    assert_eq!(hero(&local, End::Server), still);
+    assert_eq!(hero(&local, End::Client(0)).position, still.position);
     // A step runs one tick of the server's.
     let after = local.server().world().resource::<SimTick>().start();
     assert_eq!(after, tick.after(Ticks::new(steps)));
@@ -437,19 +434,22 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
     for _ in 0..=lead(&local) {
         local.step();
     }
-    assert_ne!(hero(local.server()).destination, Destination::default());
+    assert_ne!(
+        hero(&local, End::Server).destination,
+        Destination::default()
+    );
     let rollbacks = |local: &InProcessMatch| local.rollbacks(0);
-    let carries = |app: &App| {
-        let modifiers = app.world().get::<Modifiers>(hero_entity(app));
+    let avatar = local.avatar(0);
+    let carries = |local: &InProcessMatch, end| {
+        let modifiers = local.unit(end, avatar).get::<Modifiers>();
         modifiers.is_some_and(|modifiers| *modifiers != Modifiers::default())
     };
-    let avatar = local.avatar(0);
     for name in ["slow", "stun"] {
         let world = local.server_mut().world_mut();
         let modifier = Stats::modifier(world, PackageIndex::MODE, name).unwrap();
         Stats::give_modifier(world, avatar, modifier, Applier::MODE);
         let mut frames = 0;
-        while !carries(local.client(0)) {
+        while !carries(&local, End::Client(0)) {
             local.step();
             frames += 1;
             assert!(frames < 30, "the client learns the {name}");
@@ -457,7 +457,7 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
         // Learning it may roll the client back; from then on it predicts the hero's walk with
         // the modifier, and without it once it ends, as the server runs it.
         let learned = rollbacks(&local);
-        while carries(local.server()) || carries(local.client(0)) {
+        while carries(&local, End::Server) || carries(&local, End::Client(0)) {
             local.step();
             frames += 1;
             assert!(frames < 60, "the {name} ends");
@@ -466,7 +466,10 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
             local.step();
         }
         assert_eq!(rollbacks(&local), learned, "{name}");
-        assert_ne!(hero(local.server()).destination, Destination::default());
+        assert_ne!(
+            hero(&local, End::Server).destination,
+            Destination::default()
+        );
     }
 }
 
@@ -483,8 +486,9 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
         local.step();
     }
     let rollbacks = |local: &InProcessMatch| local.rollbacks(0);
-    let dashing = |app: &App| app.world().get::<ForcedMove>(hero_entity(app)).is_some();
-    let entity = hero_entity(local.server());
+    let hero_id = local.avatar(0);
+    let dashing = |local: &InProcessMatch, end| local.unit(end, hero_id).contains::<ForcedMove>();
+    let entity = local.server().world().entity_of(hero_id).unwrap();
     let world = local.server_mut().world_mut();
     let position = world.get::<Position>(entity).unwrap().get();
     let to = Vec3::new(position.x - Num::int(6), position.y, position.z);
@@ -494,13 +498,13 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
         step,
     });
     let mut frames = 0;
-    while !dashing(local.client(0)) {
+    while !dashing(&local, End::Client(0)) {
         local.step();
         frames += 1;
         assert!(frames < 30, "the client learns the dash");
     }
     let learned = rollbacks(&local);
-    while dashing(local.server()) || dashing(local.client(0)) {
+    while dashing(&local, End::Server) || dashing(&local, End::Client(0)) {
         local.step();
         frames += 1;
         assert!(frames < 60, "the dash ends");
@@ -509,7 +513,10 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
         local.step();
     }
     assert_eq!(rollbacks(&local), learned);
-    assert_ne!(hero(local.server()).destination, Destination::default());
+    assert_ne!(
+        hero(&local, End::Server).destination,
+        Destination::default()
+    );
 }
 
 #[test]

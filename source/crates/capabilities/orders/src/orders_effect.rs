@@ -1,13 +1,13 @@
 use bevy_ecs::world::World;
 use campfire_actions::ProgressDues;
-use campfire_navigation::RouteDues;
+use campfire_navigation::Route;
 use campfire_script::{Effect, EffectKind, Frame};
-use campfire_sim::SimWorld;
+use campfire_sim::{SimWorld, UnitDues};
 use campfire_units::{MapBook, UnitOrdered};
 
-use crate::attack_move::GoalDues;
+use crate::attack_move::AttackMove;
 use crate::resetting::Resetting;
-use crate::unit_order::{OrderedUnit, UnitDues, UnitOrder};
+use crate::unit_order::{OrderDues, OrderedUnit, UnitOrder};
 
 /// An order an AI call queued for the unit that thinks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,13 +30,13 @@ impl Effect for OrdersEffect {
             return;
         }
         let order = ProgressDues::with(world, id, entity, |world, progress| {
-            RouteDues::with(world, id, entity, |world, routes| {
-                GoalDues::with(world, id, entity, |world, goals| {
+            UnitDues::<Route>::with(world, id, entity, |world, routes| {
+                UnitDues::<AttackMove>::with(world, id, entity, |world, goals| {
                     let mut unit = world.entity_mut(entity);
                     let parts = unit
                         .get_components_mut::<OrderedUnit>()
                         .expect("an ordered unit stands");
-                    let mut dues = UnitDues {
+                    let mut dues = OrderDues {
                         progress: progress.reborrow(),
                         routes: routes.reborrow(),
                         goals: goals.reborrow(),

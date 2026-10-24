@@ -1,4 +1,5 @@
 use super::{NamedCode, Naming, capability, named_code};
+use crate::workspace::Workspace;
 
 /// Every lookup by name that the production code of the capabilities and the network calls, by
 /// file: a method or function whose name ends in `named`, as each lookup of an id by its name is
@@ -90,10 +91,9 @@ const LOOKUPS: [(&str, &str); 75] = [
     ("values/name_table.rs", "named"),
 ];
 
-#[test]
-fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
+pub(crate) fn a_name_is_looked_up_only_by_a_script_call_or_the_load(workspace: &Workspace) {
     // The capability crates, and the bots' crate, whose scripts name unit types.
-    let sources = named_code(|krate| {
+    let sources = named_code(workspace, |krate| {
         let bots = krate.path == "crates/session/bots";
         capability(krate).or_else(|| bots.then(|| Naming::Under("bots".to_owned())))
     });

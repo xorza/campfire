@@ -232,8 +232,9 @@ pub mod internals {
                 .filter(|underway| matches!(underway, InProgress::Order { .. }))
         }
 
-        pub fn failed_calls(world: &World) -> Vec<FailedCall> {
-            world.resource::<ScriptFailures>().calls()
+        /// Takes the tick's failed calls, which a test that makes them expects.
+        pub fn failed_calls(world: &mut World) -> Vec<FailedCall> {
+            world.resource_mut::<ScriptFailures>().take_calls()
         }
 
         /// Gives `id` the modifier `name` from itself.
@@ -247,8 +248,8 @@ pub mod internals {
             Stats::give_modifier(world, id, modifier, Applier::from_unit(source));
         }
 
-        /// Each failed call of the tick: the unit it ran for and its hook.
-        pub fn calls(world: &World) -> Vec<(StableId, Hook)> {
+        /// Takes each failed call of the tick: the unit it ran for and its hook.
+        pub fn calls(world: &mut World) -> Vec<(StableId, Hook)> {
             let failures = Self::failed_calls(world).into_iter();
             failures
                 .map(|failure| (failure.id.unwrap(), failure.hook))

@@ -94,3 +94,7 @@ required-features = ["internals"]
 [[test]]
 name = "tests"
 path = "tests/mod.rs"
+
+[[test]]
+name = "alloc"
+path = "tests/alloc/main.rs"

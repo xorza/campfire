@@ -66,5 +66,5 @@ fn a_log_format_changes_only_with_its_tag() {
 #[test]
 fn a_pinned_file_is_named_by_its_tags_version() {
     assert_eq!(file_name(b"campfire/session-log/v3"), "v3.log");
-    assert_eq!(file_name(b"campfire/session-log/v12"), "v12.log");
+    assert_eq!(file_name(b"campfire/session-log/v13"), "v13.log");
 }

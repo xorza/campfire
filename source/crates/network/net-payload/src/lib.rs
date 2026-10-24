@@ -9,7 +9,7 @@ mod packet_session_queues;
 mod payload_fate;
 mod payload_kind;
 mod payload_token;
-mod receive_payload;
+mod send_payload;
 mod unlink_reason;
 
 pub use crate::app_code::AppCode;
@@ -19,5 +19,5 @@ pub use crate::packet_session_queues::{OpenedPayload, OutgoingPayload, PacketSes
 pub use crate::payload_fate::PayloadFate;
 pub use crate::payload_kind::PayloadKind;
 pub use crate::payload_token::PayloadToken;
-pub use crate::receive_payload::{ReceivePayload, SendPayload};
+pub use crate::send_payload::SendPayload;
 pub use crate::unlink_reason::UnlinkReason;

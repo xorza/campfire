@@ -208,11 +208,11 @@ impl WeaponIni {
     /// Reads one INI file, adding its weapons to those read before: one read again keeps its
     /// fields and takes the new ones.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        for block in IniText::of(bytes).blocks(BlockKinds::One("weapon")) {
+        for block in IniText::of(bytes).lines().blocks(BlockKinds::One("weapon")) {
             let block = block?;
             let weapon = self.weapons.entry(block.name()?.to_owned()).or_default();
             for line in &block.fields {
-                weapon.field(&line.word(), line)?;
+                weapon.field(line.word(), line)?;
             }
         }
         Ok(())

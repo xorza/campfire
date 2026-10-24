@@ -9,11 +9,10 @@ use Capability::{
 };
 use bevy_ecs::component::Component;
 use bevy_ecs::schedule::Schedules;
-use bevy_ecs::world::Mut;
 use campfire_actions::ActionBook;
 use campfire_codec::Toml;
 use campfire_common::SegmentSeed;
-use campfire_declarations::{ById, EntityParts, Module, Role};
+use campfire_declarations::{ById, EntityParts, Module};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
 use campfire_players::{Player, PlayerResources};
@@ -28,7 +27,6 @@ use serde::Deserialize;
 
 use super::*;
 use crate::release::r#match::Match;
-use crate::release::match_kind::MatchKind;
 
 #[test]
 fn a_set_holds_each_capability_once_with_what_it_builds_on() {
@@ -568,6 +566,4 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
 
 mod books;
 mod declaration_audit;
-mod feature_installs;
 mod patches;
-mod prediction_reads;

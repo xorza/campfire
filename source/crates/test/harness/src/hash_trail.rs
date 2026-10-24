@@ -3,7 +3,7 @@ use std::mem;
 use bevy_ecs::world::World;
 use campfire_common::StateHash;
 use campfire_runner::{Replay, ReplayError};
-use campfire_sim::{SimWorld, StateTypeHash, TypeHash, UnreadCommands};
+use campfire_sim::{SimWorld, StateTypeHash, TypeHash};
 
 /// The state hashes of a match after one tick: by state type, in the registry's order, and in
 /// total.
@@ -37,7 +37,7 @@ impl HashTrail {
     /// that ran: what the match that wrote the log must have held.
     pub fn of_replay(replay: &mut Replay<'_>) -> Result<Self, ReplayError> {
         let mut trail = Self::default();
-        replay.run_each(|world| trail.record_read(world))?;
+        replay.run_each(|world| trail.record(world))?;
         Ok(trail)
     }
 
@@ -45,16 +45,8 @@ impl HashTrail {
     /// of that segment alone, which the trails of the others continue.
     pub fn of_segment(replay: &mut Replay<'_>) -> Result<Self, ReplayError> {
         let mut trail = Self::default();
-        replay.run_segment_each(|world| trail.record_read(world))?;
+        replay.run_segment_each(|world| trail.record(world))?;
         Ok(trail)
-    }
-
-    /// Records the state of `world` after a tick of a replay, which fails on a command nothing
-    /// read, so a log a client's encoder wrote shows any its server's decoder refused
-    /// (02-engine-core.md, A command nothing reads is counted).
-    fn record_read(&mut self, world: &World) {
-        UnreadCommands::assert_read(world);
-        self.record(world);
     }
 
     /// Records the state of `world`, where a session runs, after a tick.

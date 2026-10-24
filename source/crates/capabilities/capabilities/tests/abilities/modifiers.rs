@@ -274,7 +274,7 @@ fn on_resolve(ctx, caster, target) {
     )]));
     game.entity_mut(entity).insert(slots);
     Abilities::cast(&mut game, caster, ActionTarget::None);
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     let book = game.resource::<ModifierBook>();
     let ids = [0, 1].map(|package| {
         book.names()
@@ -427,7 +427,7 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
             (second, ActionTarget::Unit(held)),
         ],
     );
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     assert_eq!(
         Stats::carried_modifiers(&game, freed),
         [(slow, Some(second))]
@@ -469,7 +469,7 @@ fn on_resolve(ctx, caster, target) {
         hook: Release::hook("on_resolve"),
         kind: FailureKind::Api(CombatRefusal::NegativeHeal.refused()),
     };
-    assert_eq!(Abilities::failed_calls(&game), [failed]);
+    assert_eq!(Abilities::failed_calls(&mut game), [failed]);
     assert_eq!(Abilities::pool(&game, caster), 100);
 }
 
@@ -538,7 +538,7 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
     let untracked = Abilities::spawn_combatant(&mut game, (-1, 0, 0), Team::new(1), ());
     let [first, second] = [(); 2].map(|()| Abilities::caster(&mut game, action, 1));
     Abilities::cast(&mut game, first, ActionTarget::Unit(tracked));
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     let xp = game.part::<Experience>(tracked).get(valor).unwrap().xp;
     assert_eq!(
         (
@@ -554,7 +554,7 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
         hook: Release::hook("on_resolve"),
         kind: FailureKind::Api(ProgressionRefusal::NoTrack.refused()),
     };
-    assert_eq!(Abilities::failed_calls(&game), [failed]);
+    assert_eq!(Abilities::failed_calls(&mut game), [failed]);
     assert_eq!(
         (
             Stats::health(&game, untracked),
@@ -611,7 +611,7 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
     let mut failed = Vec::new();
     while game.now() < Tick::new(16) {
         game.step();
-        failed.extend(Abilities::failed_calls(&game));
+        failed.extend(Abilities::failed_calls(&mut game));
     }
     let hit = FailedCall {
         id: Some(caster),
@@ -663,7 +663,7 @@ fn on_interval(ctx, m) { throw "interval"; }
     game.step();
     assert_eq!(Stats::health(&game, victim), 0);
     assert_eq!(
-        Abilities::calls(&game),
+        Abilities::calls(&mut game),
         [
             (attacker, Release::hook("on_attack")),
             (attacker, Release::hook("on_attack_hit")),
@@ -681,7 +681,7 @@ fn on_interval(ctx, m) { throw "interval"; }
         } else {
             Vec::new()
         };
-        assert_eq!(Abilities::calls(&game), expected, "tick {tick}");
+        assert_eq!(Abilities::calls(&mut game), expected, "tick {tick}");
     }
 }
 
@@ -717,7 +717,7 @@ fn an_interval_runs_nothing_while_its_carrier_is_dead_and_comes_back_by_its_poli
                 game.entity_mut(entity).remove::<Dead>();
             }
             game.step();
-            if Abilities::calls(&game).contains(&(caster, Release::hook("on_interval"))) {
+            if Abilities::calls(&mut game).contains(&(caster, Release::hook("on_interval"))) {
                 came.push(tick);
             }
         }
@@ -736,7 +736,7 @@ fn an_interval_runs_nothing_while_its_carrier_is_dead_and_comes_back_by_its_poli
     let came: Vec<u64> = (0..7)
         .filter(|_| {
             game.step();
-            Abilities::calls(&game).contains(&(unit, Release::hook("on_interval")))
+            Abilities::calls(&mut game).contains(&(unit, Release::hook("on_interval")))
         })
         .collect();
     assert_eq!(came, [3, 6]);
@@ -800,7 +800,7 @@ fn on_damage_taken(ctx, m, d) {
         hook: Release::hook("on_damage_taken"),
         kind: FailureKind::Api(ApiError::ChainTooDeep),
     };
-    assert_eq!(Abilities::failed_calls(&game), [failed]);
+    assert_eq!(Abilities::failed_calls(&mut game), [failed]);
 }
 
 #[test]
@@ -838,5 +838,5 @@ fn on_damage_taken(ctx, m, d) {
     // 50 + 30 + 30 − 100. Dealt at the end of the queue, they would come after the 100, which
     // kills.
     assert_eq!(Stats::health(&game, carrier), 10);
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }

@@ -198,15 +198,20 @@ impl FixedSession {
             .iter()
             .map(|keys| TestKey::signer(keys.session))
             .collect();
-        let source = SessionSource::check(UncheckedSource {
-            log: self.log(),
+        let game = Session::start_match(self.source(self.log())).unwrap();
+        FixedMatch::new(game, chains, signers, self.terms.clone(), log)
+    }
+
+    /// The server's source of a match of `log`, a log of this session: its seeds, its packages
+    /// and the server's signer, as a server starts or resumes the match.
+    pub fn source(&self, log: SessionLog) -> SessionSource<'_> {
+        SessionSource::check(UncheckedSource {
+            log,
             seeds: self.seeds(),
             packages: &self.packages,
             signer: Some(Arc::new(TestKey::server_signer())),
         })
-        .unwrap();
-        let game = Session::start_match(source).unwrap();
-        FixedMatch::new(game, chains, signers, self.terms.clone(), log)
+        .unwrap()
     }
 
     /// Player `player_slot`'s chain, as they start it in a session of `terms`, from its first

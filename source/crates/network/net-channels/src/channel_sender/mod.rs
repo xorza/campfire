@@ -155,6 +155,11 @@ impl ChannelSender {
         self.setup.max_message_len
     }
 
+    /// Whether the channel sends each message until a packet that carries it is delivered.
+    pub(crate) const fn is_reliable(&self) -> bool {
+        matches!(self.state, SendState::Reliable(_))
+    }
+
     /// The bytes of the messages the channel holds until it sends them, or on a reliable channel
     /// until they are acknowledged.
     pub(crate) const fn queued(&self) -> usize {

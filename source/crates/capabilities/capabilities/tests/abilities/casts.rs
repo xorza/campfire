@@ -59,7 +59,7 @@ fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
         hook: Release::hook("on_resolve"),
         kind: FailureKind::Api(ApiError::Unknown(DamageKind::NAMES)),
     };
-    assert_eq!(Abilities::failed_calls(&game), [failed]);
+    assert_eq!(Abilities::failed_calls(&mut game), [failed]);
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     assert_eq!(healths(&game), [400, 400, 500, 400, 500, 500]);
     assert_eq!(Abilities::pool(&game, husk), 65);
     assert_eq!(Abilities::time(&game, husk).ready_at, Tick::new(270));
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 
     // On cooldown until tick 270: a cast in tick 1 does nothing.
     Abilities::cast(&mut game, husk, ActionTarget::None);
@@ -184,7 +184,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     assert_eq!(Stats::health(&game, shover), 500);
     game.step();
     assert_eq!(Stats::health(&game, shover), 450);
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 
     // A forced move of a unit that does not walk, a dash of no step, a knock back of no
     // distance or of no time, fails.
@@ -319,12 +319,12 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
         healths,
         [(500, 500), (500, 500), (500, 500), (500, 500), (499, 445)]
     );
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     // A unit that does not walk takes no forced move: the list fails the cast.
     let still = Abilities::spawn_combatant(&mut game, (6, 0, 0), enemy, ());
     game.run_until(40);
     Abilities::cast(&mut game, caster, ActionTarget::Unit(still));
-    let failed = Abilities::failed_calls(&game);
+    let failed = Abilities::failed_calls(&mut game);
     assert_eq!(failed.len(), 1);
     assert_eq!(
         failed[0].kind,
@@ -357,7 +357,7 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
         (Stats::health(&game, caster), Stats::health(&game, far)),
         (499, 500)
     );
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }
 
 #[test]
@@ -414,7 +414,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
             kind: FailureKind::CallLimit,
         })
         .collect();
-    assert_eq!(Abilities::failed_calls(&game), expected);
+    assert_eq!(Abilities::failed_calls(&mut game), expected);
     let mut budgets = game.resource_mut::<ScriptBudgets>();
     assert_eq!(budgets.get_mut(Pool::Think).left(), 0);
 }
@@ -678,7 +678,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
                     hook: Release::hook("on_resolve"),
                     kind: expected,
                 };
-                assert_eq!(Abilities::failed_calls(&game), [failed], "{script}");
+                assert_eq!(Abilities::failed_calls(&mut game), [failed], "{script}");
                 let mut budgets = game.resource_mut::<ScriptBudgets>();
                 spent.push(
                     ScriptLimits::ROOMY.player

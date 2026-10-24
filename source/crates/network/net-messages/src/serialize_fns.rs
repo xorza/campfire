@@ -4,7 +4,6 @@ use crate::send_map_view::SendMapView;
 use bytes::Buf;
 use campfire_codec::{Binary, Sink};
 use campfire_net_bytes::Reader;
-use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::WriteInteger;
 use campfire_net_bytes::Writer;
 use serde::Serialize;
@@ -106,15 +105,6 @@ impl<M: Serialize + DeserializeOwned> Default for SerializeFns<M> {
         Self {
             serialize: default_serialize::<M>,
             deserialize: default_deserialize::<M>,
-        }
-    }
-}
-
-impl<M: ToBytes> SerializeFns<M> {
-    pub(crate) fn with_to_bytes() -> Self {
-        Self {
-            serialize: |message, writer| message.to_bytes(writer),
-            deserialize: |reader| Ok(M::from_bytes(reader)?),
         }
     }
 }

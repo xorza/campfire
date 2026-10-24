@@ -6,20 +6,20 @@ use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_declarations::PerId;
-use campfire_sim::{SimComponent, TimedKept, TimedProcess, TimedRuns};
+use campfire_sim::{DueIndex, SimComponent, TimedKept, TimedProcess, TimedRuns, UnitDues};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::{AtWork, BuildTarget, UnitEntity};
 use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-use crate::order_dues::{self, OrderDues, StandingOrder};
+use crate::order_dues::{self, StandingOrder};
 
 /// A unit that builds, as one whose slots hold a build: its build order, none while it has none.
 /// Any other order ends it. Its hook pushes its unit into the index of the builders at each
 /// insert, a spawn's and a restore's alike.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[component(on_insert = order_dues::pushed::<Builder>)]
+#[component(on_insert = DueIndex::<Self>::pushed)]
 #[serde(transparent)]
 pub struct Builder(Option<BuildOrder>);
 
@@ -37,9 +37,9 @@ impl Builder {
     }
 
     /// Gives it `order`, or none; with one, its unit is due at once in `dues`.
-    pub(crate) fn set(&mut self, order: Option<BuildOrder>, dues: &mut OrderDues<'_, Self>) {
+    pub(crate) fn set(&mut self, order: Option<BuildOrder>, dues: &mut UnitDues<'_, Self>) {
         self.0 = order;
-        dues.push(self);
+        dues.push(Self::due(&(), self));
     }
 
     /// Shows in each builder's `AtWork` whether it holds a build, once its order changed, so what

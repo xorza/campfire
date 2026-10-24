@@ -129,7 +129,7 @@ pub use crate::supply_book::SupplyBook;
 pub use crate::supply_cost_book::{SupplyCostBook, SupplyUnit, UnitSupply};
 pub use crate::supply_data::SupplyData;
 pub use crate::train_data::TrainData;
-pub use crate::train_queue::{QueueDues, Queued, TrainQueue};
+pub use crate::train_queue::{Queued, TrainQueue};
 pub use crate::train_spec::TrainSpec;
 pub use crate::trained_units::{OnUnitTrained, Trained, TrainedUnits};
 pub use crate::trains::Trains;

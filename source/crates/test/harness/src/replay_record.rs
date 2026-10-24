@@ -3,7 +3,7 @@ use campfire_common::StateHash;
 use campfire_package::ModePackages;
 use campfire_protocol::SessionLog;
 use campfire_runner::{Replay, ResumeAt};
-use campfire_threads::internals::Parallel;
+use campfire_threads::Parallel;
 
 use crate::copy_check::CopyCheck;
 use crate::hash_trail::HashTrail;

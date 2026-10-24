@@ -42,6 +42,8 @@ pub struct AppendWriter {
 struct AppendShared {
     pending: WorkerLock<Pending>,
     wake: Condvar,
+    /// Notified, under `pending`'s lock, as the writer syncs records or stops.
+    settled: Condvar,
     durable: AtomicU64,
     failure: Failure<AppendError>,
     bounds: AppendBounds,
@@ -144,6 +146,7 @@ impl AppendWriter {
         let shared = Arc::new(AppendShared {
             pending: WorkerLock::default(),
             wake: Condvar::new(),
+            settled: Condvar::new(),
             durable: AtomicU64::new(0),
             failure: Failure::new(),
             bounds,
@@ -222,7 +225,11 @@ impl AppendShared {
                 self.stop(&mut self.pending.lock(), error);
                 return;
             }
-            self.durable.store(records, Ordering::Release);
+            {
+                let _pending = self.pending.lock();
+                self.durable.store(records, Ordering::Release);
+            }
+            self.settled.notify_all();
             taken.clear();
         }
     }
@@ -237,6 +244,7 @@ impl AppendShared {
         pending.stopped = true;
         pending.bytes = Vec::new();
         self.failure.keep(error);
+        self.settled.notify_all();
     }
 
     /// Stops the writer when the write and the sync that run now run past `hung_after`.

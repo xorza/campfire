@@ -48,17 +48,81 @@ pub struct Session {
     saves: SavesData,
     /// The ticks between two autosaves, without which the mode makes none.
     autosave: Option<Ticks>,
-    /// The server's signer, which signs what the session logs; none on a verifier.
-    signer: Option<Arc<Signer>>,
-    /// The journal the server's log takes each record into, once the server keeps one; none on
-    /// a verifier (08-sessions.md, The journal belongs to the server's session).
-    journal: Option<Journal>,
+    /// A server's, with its signer and journal, or a verifier's.
+    role: SessionRole,
     /// The replay of the log's sealed ticks, while the session runs them again: a verifier's,
     /// a restore's or a load's; none once it reached the log's next tick
     /// (08-sessions.md, The replay is a cursor the session owns).
     replay: Option<LogReplay>,
     /// The log's terms as the mode's rules checked them, once for the session.
     checked: CheckedTerms,
+}
+
+/// What a session is to its host: a server's, which signs what it logs with its signer and keeps
+/// a journal of its log once its server keeps one (08-sessions.md, The journal belongs to the
+/// server's session); or a verifier's, which records a published log's inputs again and signs
+/// and journals nothing.
+#[derive(Debug)]
+enum SessionRole {
+    Server {
+        signer: Arc<Signer>,
+        journal: Option<Journal>,
+    },
+    Verifier,
+}
+
+impl SessionRole {
+    /// The server's of `signer`, or a verifier's.
+    fn of(signer: Option<Arc<Signer>>) -> Self {
+        match signer {
+            Some(signer) => Self::Server {
+                signer,
+                journal: None,
+            },
+            None => Self::Verifier,
+        }
+    }
+
+    const fn signer(&self) -> Option<&Arc<Signer>> {
+        match self {
+            Self::Server { signer, .. } => Some(signer),
+            Self::Verifier => None,
+        }
+    }
+
+    const fn journal(&self) -> Option<&Journal> {
+        match self {
+            Self::Server { journal, .. } => journal.as_ref(),
+            Self::Verifier => None,
+        }
+    }
+
+    const fn journal_mut(&mut self) -> Option<&mut Journal> {
+        match self {
+            Self::Server { journal, .. } => journal.as_mut(),
+            Self::Verifier => None,
+        }
+    }
+
+    /// The server's signer and journal, which only a server's session signs and keeps with: a
+    /// verifier's that serves or records is a logic error.
+    fn server(&mut self) -> (&Signer, Option<&mut Journal>) {
+        match self {
+            Self::Server { signer, journal } => (signer, journal.as_mut()),
+            Self::Verifier => panic!("only a server's session serves and records"),
+        }
+    }
+
+    /// The journal place of a server's session, which keeps one journal.
+    fn new_journal(&mut self) -> &mut Option<Journal> {
+        match self {
+            Self::Server { journal, .. } => {
+                assert!(journal.is_none(), "a session keeps one journal");
+                journal
+            }
+            Self::Verifier => panic!("a verifier's session keeps no journal"),
+        }
+    }
 }
 
 /// Where the player of a delegation sits as they join, as `Session::player_slot_for` finds it.
@@ -130,8 +194,7 @@ impl Session {
             rules,
             saves,
             autosave,
-            signer,
-            journal: None,
+            role: SessionRole::of(signer),
             replay: LogReplay::of(&log),
             log,
             checked,
@@ -198,7 +261,7 @@ impl Session {
         I: IntoIterator<Item = (Tick, &'a [u8])>,
         I::IntoIter: Clone,
     {
-        self.log.record(packet, applied, self.journal.as_mut())
+        self.log.record(packet, applied, self.role.journal_mut())
     }
 
     /// Where the player of `delegation` sits as they join: the player slot their main key holds;
@@ -260,9 +323,9 @@ impl Session {
         if let Some(change) = serving.change() {
             self.rules.check(change).map_err(ServerInputRefusal::Rule)?;
         }
-        let server = Self::server(self.signer.as_deref());
+        let (server, journal) = self.role.server();
         serving
-            .log(server, self.journal.as_mut())
+            .log(server, journal)
             .map_err(ServerInputRefusal::Log)
     }
 
@@ -288,20 +351,15 @@ impl Session {
         }
     }
 
-    /// The server's signer, which a server's session holds: only a server serves and records.
-    const fn server(signer: Option<&Signer>) -> &Signer {
-        signer.expect("a server's session holds its signer")
-    }
-
     /// The server's signer, which signs what the session logs; none on a verifier.
     pub const fn signer(&self) -> Option<&Arc<Signer>> {
-        self.signer.as_ref()
+        self.role.signer()
     }
 
     /// Goes back to the save that starts segment `segment`; see `SessionLog::load`. The match's
     /// world is then stale: a new one resumes from the save.
     pub fn load(&mut self, segment: u32) -> Result<(), LogLoadError> {
-        self.log.load(segment, self.journal.as_mut())
+        self.log.load(segment, self.role.journal_mut())
     }
 
     /// Who may ask for a save, and the mode's autosaves, as its `[saves]` says.
@@ -317,38 +375,38 @@ impl Session {
     /// Keeps `sink` as the journal of the session's log, a new one, given the records of what
     /// the log holds: see `Journal::start`.
     pub fn keep_journal(&mut self, sink: Box<dyn RecordSink>) {
-        assert!(self.journal.is_none(), "a session keeps one journal");
-        self.journal = Some(Journal::start(&self.log, sink));
+        *self.role.new_journal() = Some(Journal::start(&self.log, sink));
     }
 
     /// Keeps `sink` as the journal of the session's log, of `len` bytes, which holds every
     /// record of it; see `Journal::resume`.
     pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>, len: u64) {
-        assert!(self.journal.is_none(), "a session keeps one journal");
-        self.journal = Some(Journal::resume(&self.log, sink, len));
+        *self.role.new_journal() = Some(Journal::resume(&self.log, sink, len));
     }
 
     /// The journal of the session's log, once the server keeps one.
     pub const fn journal(&self) -> Option<&Journal> {
-        self.journal.as_ref()
+        self.role.journal()
     }
 
     /// The journal of the session's log, once the server keeps one.
     pub const fn journal_mut(&mut self) -> Option<&mut Journal> {
-        self.journal.as_mut()
+        self.role.journal_mut()
     }
 
     /// Closes the journal of the session's log, its drop handing its sink what it holds before
     /// the sink ends, as a session that ends does before its log is published: the session keeps
     /// no journal after.
     pub fn close_journal(&mut self) {
-        self.journal = None;
+        if let SessionRole::Server { journal, .. } = &mut self.role {
+            *journal = None;
+        }
     }
 
     /// Whether the log may refuse its next entry, its journal's room counted; see
     /// `SessionLog::full`.
     pub fn is_log_full(&self) -> bool {
-        self.log.is_full(self.journal.as_ref())
+        self.log.is_full(self.role.journal())
     }
 
     /// Begins a checkpoint at the boundary before the next tick, which starts the segment after
@@ -363,22 +421,21 @@ impl Session {
             return Err(CheckpointBeginError::PastSeeds);
         }
         self.log
-            .begin_checkpoint(self.journal.as_mut())
+            .begin_checkpoint(self.role.journal_mut())
             .map_err(CheckpointBeginError::Log)
     }
 
     /// Logs the record of the checkpoint begun, signed in the log by the server; see
     /// `SessionLog::serve_checkpoint`.
     pub fn record_checkpoint(&mut self, record: Checkpoint) -> Result<(), CheckpointError> {
-        let server = Self::server(self.signer.as_deref());
-        self.log
-            .serve_checkpoint(record, server, self.journal.as_mut())
+        let (server, journal) = self.role.server();
+        self.log.serve_checkpoint(record, server, journal)
     }
 
     /// Logs the result, signed in the log by the server; see `SessionLog::serve_result`.
     pub fn record_result(&mut self, result: SessionResult) -> Result<(), ResultError> {
-        let server = Self::server(self.signer.as_deref());
-        self.log.serve_result(result, server, self.journal.as_mut())
+        let (server, journal) = self.role.server();
+        self.log.serve_result(result, server, journal)
     }
 
     /// Publishes the log by adding the server seed of its last segment, which reveals every
@@ -505,10 +562,11 @@ pub(crate) mod internals {
             let Self {
                 mut log,
                 seeds,
-                signer,
+                role,
                 checked,
                 ..
             } = session;
+            let signer = role.signer().cloned();
             log.load(at.segment, None).map_err(ResumeError::Load)?;
             let source = SessionSource {
                 log,

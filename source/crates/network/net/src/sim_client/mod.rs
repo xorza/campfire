@@ -160,13 +160,14 @@ enum Pending {
 }
 
 /// What `PendingOrders::stamp` stamps its inputs into: the tick of their stamp, the seq of the
-/// first, the session's max inputs a tick and max payload length, the inputs sent, what their
-/// acks tell of the units the server commands, and the buffer an order's payloads are written in.
+/// first, the most inputs it may stamp, the session's max payload length, the inputs sent, what
+/// their acks tell of the units the server commands, and the buffer an order's payloads are
+/// written in.
 #[derive(Debug)]
 struct Stamping<'a> {
     stamp: Tick,
     next_seq: u64,
-    max_per_tick: u32,
+    room: u32,
     max_len: u32,
     sent: &'a mut SentInputs,
     known: &'a mut KnownCommanded,
@@ -186,7 +187,7 @@ impl PendingOrders {
         self.0.clear();
     }
 
-    /// Stamps its inputs into `stamping.sent`, in order, up to the session's max inputs a tick:
+    /// Stamps its inputs into `stamping.sent`, in order, up to `stamping.room`:
     /// an order to the units the server is known to command with no select, any other with its
     /// select, split past one payload, whose parts past the tick's inputs wait at its front for
     /// the next (04-capabilities/control.md, A select goes with each order until its sender knows
@@ -197,7 +198,7 @@ impl PendingOrders {
         let Stamping {
             stamp,
             next_seq,
-            max_per_tick,
+            room,
             max_len,
             sent,
             known,
@@ -206,7 +207,7 @@ impl PendingOrders {
         let first = sent.len();
         let seq =
             |sent: &SentInputs| next_seq + u64::try_from(sent.len() - first).expect("a count fits");
-        let mut left = usize::try_from(max_per_tick).expect("a u32 fits usize");
+        let mut left = usize::try_from(room).expect("a u32 fits usize");
         let mut done = 0;
         let mut carried = Vec::new();
         while left > 0 && done < self.0.len() {
@@ -802,11 +803,19 @@ fn send_orders(
         }
     }
     let session = playing.member.session;
+    // The server refuses a packet whose inputs would apply past the max lead, as the inputs
+    // before them fill each tick up to it, and ends the link: the inputs wait here while the
+    // server may hold that many (05-protocol-spec.md, A late input applies at the next tick).
+    let window = (lead.get() + 1) * u64::from(session.inputs.max_per_tick);
+    let held = u64::try_from(sent.pending(server.unwrap_or(Tick::ZERO))).expect("a count fits");
+    let room = window
+        .saturating_sub(held)
+        .min(u64::from(session.inputs.max_per_tick));
     let first = sent.len();
     pending.stamp(Stamping {
         stamp,
         next_seq: playing.chain.next_seq(),
-        max_per_tick: session.inputs.max_per_tick,
+        room: u32::try_from(room).expect("at most the max inputs a tick"),
         max_len: session.inputs.max_payload_len,
         sent: &mut sent,
         known: &mut known,

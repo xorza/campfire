@@ -6,7 +6,6 @@
 
 use std::iter;
 use std::num::NonZeroU32;
-use std::thread;
 use std::time::Duration;
 
 use bevy_ecs::entity::Entity;
@@ -73,9 +72,10 @@ fn log(local: &InProcessMatch) -> &SessionLog {
 /// thread, which writes in its own time, synced every record the log took.
 fn loads(test_dir: &TestDir, local: &InProcessMatch) -> usize {
     let watch = local.server().world().resource::<JournalWatch>().0.clone();
-    while !watch.is_settled() {
-        thread::sleep(Duration::from_millis(1));
-    }
+    assert!(
+        watch.wait_settled(Duration::from_secs(5)),
+        "the journal's writer syncs"
+    );
     let id = log(local).session_id().to_string();
     let journal = test_dir
         .path("data")

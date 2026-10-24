@@ -54,7 +54,7 @@ impl Module for MatchCore {
     }
 
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
-        cx.add(MatchCoreSystems::Unread, Self::count_unread);
+        cx.server(MatchCoreSystems::Unread, Self::count_unread);
     }
 }
 

@@ -86,6 +86,10 @@ fn world_first(text: &str) -> Vec<WorldFirst> {
             }
         }
     }
+    // A file that names no world takes none first, and its parse is skipped.
+    if !text.contains("World") {
+        return Vec::new();
+    }
     let file = syn::parse_file(text).expect("a workspace source parses");
     let mut functions = Functions(Vec::new());
     functions.visit_file(&file);
@@ -109,9 +113,7 @@ fn named_as_value(text: &str, name: &str) -> bool {
     })
 }
 
-#[test]
-fn a_free_function_that_takes_a_world_first_is_a_system() {
-    let workspace = Workspace::read();
+pub(crate) fn a_free_function_that_takes_a_world_first_is_a_system(workspace: &Workspace) {
     // The world rule (02-engine-core.md, Structural rules): what acts on the match's content is a
     // function of its module's type, and a value made from the world a constructor of its own. A
     // free function past its module that takes the world first is a system or a function a table
@@ -175,9 +177,9 @@ fn refused_traits(text: &str) -> Vec<(usize, &str)> {
     found
 }
 
-#[test]
-fn no_trait_is_a_test_trait_on_the_world_or_a_modules_trait_on_a_match() {
-    let workspace = Workspace::read();
+pub(crate) fn no_trait_is_a_test_trait_on_the_world_or_a_modules_trait_on_a_match(
+    workspace: &Workspace,
+) {
     // The world rule (02-engine-core.md, Structural rules): a world trait holds the whole match and
     // the fast access to a module's systems, for other crates, its own crate, or the tests and
     // benches of any crate; a test's verbs belong to its fixture or its capability's type, and a
@@ -262,9 +264,7 @@ fn foreign_crate_traits<'a>(
     found
 }
 
-#[test]
-fn no_crate_names_another_crates_own_world_trait() {
-    let workspace = Workspace::read();
+pub(crate) fn no_crate_names_another_crates_own_world_trait(workspace: &Workspace) {
     let own = "crates/test/rules/src/world.rs";
     let files: Vec<&SourceFile> = workspace
         .sources()

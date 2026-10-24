@@ -28,7 +28,7 @@ impl Plugin for HelloPlugin {
             ..Default::default()
         })
         .add_direction(LinkDirections::from(LinkDirection::ServerToClient));
-        app.register_event_to_bytes::<SenderHello>()
+        app.register_event::<SenderHello>()
             .add_direction(LinkDirections::from(LinkDirection::ServerToClient));
         app.add_observer(Self::send_sender_hello);
         app.add_observer(Self::receive_sender_hello);

@@ -35,11 +35,14 @@ impl CommandButtonIni {
     /// Reads one INI file, adding its buttons to those read before: a button read again keeps
     /// the fields it does not name and takes the new ones, as an override does.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        for block in IniText::of(bytes).blocks(BlockKinds::One("commandbutton")) {
+        for block in IniText::of(bytes)
+            .lines()
+            .blocks(BlockKinds::One("commandbutton"))
+        {
             let block = block?;
             let button = self.buttons.entry(block.name()?.to_owned()).or_default();
             for line in &block.fields {
-                match line.word().as_str() {
+                match line.word() {
                     "command" => {
                         button.command = match line.value()?.to_ascii_uppercase().as_str() {
                             "UNIT_BUILD" => ButtonCommand::UnitBuild,

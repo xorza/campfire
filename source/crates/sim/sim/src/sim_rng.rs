@@ -14,9 +14,11 @@ pub struct SimRng {
     tick: Tick,
     /// How many ticks it started, a tick run again counted again.
     starts: u64,
-    /// The pairs the running tick opened, so a second open of one panics.
+    /// The pairs the running tick opened, so a second open of one panics: a set that keeps its
+    /// capacity as each tick clears it, so a tick allocates nothing.
     #[cfg(debug_assertions)]
-    opened: std::sync::Mutex<std::collections::BTreeSet<(RngStream, u64)>>,
+    #[expect(clippy::absolute_paths, reason = "a field of debug builds alone")]
+    opened: std::sync::Mutex<bevy_platform::collections::HashSet<(RngStream, u64)>>,
 }
 
 /// Opens the sequences of one start of one tick away from the match, for a holder that keeps
@@ -32,13 +34,17 @@ pub struct RngOpener {
 }
 
 impl SimRng {
+    #[cfg_attr(
+        debug_assertions,
+        expect(clippy::absolute_paths, reason = "a field of debug builds alone")
+    )]
     pub const fn new(seed: SegmentSeed) -> Self {
         Self {
             seed,
             tick: Tick::ZERO,
             starts: 0,
             #[cfg(debug_assertions)]
-            opened: std::sync::Mutex::new(std::collections::BTreeSet::new()),
+            opened: std::sync::Mutex::new(bevy_platform::collections::HashSet::new()),
         }
     }
 

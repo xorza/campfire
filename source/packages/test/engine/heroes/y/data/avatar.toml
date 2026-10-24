@@ -1,0 +1,14 @@
+# Hero Y, on both tracks, with its own `blessing` as its passive, which lasts 200 ms and stacks
+# up to 4, with a count in its state.
+name = "hero-y"
+pools = ["health"]
+stats = { health = { base = 10 }, move_speed = { base = 10 } }
+combat = { on_death = "stay" }
+tracks = ["level", "valor"]
+passive = "blessing"
+
+[modifiers.blessing]
+duration_ms = 200
+reapply = "stack"
+max_stacks = 4
+state = { count = { type = "int" } }

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use campfire_common::PackageFingerprint;
@@ -10,7 +10,8 @@ use campfire_values::PackagePath;
 use crate::error::WriteError;
 
 /// A new package as its builder writes it, an importer or a packer: each file into a new
-/// directory, written once with no sync and its row kept, then the index of the rows, synced, so
+/// directory, written once with no sync, as the directories on its way are made with none, and
+/// its row kept, then the index of the rows, synced, so
 /// every file is checked against what was written whenever it is read, and a write a crash cut
 /// short is found then. A file whose SHA-256 an earlier file has is a hard link to that file, so
 /// the package keeps one copy of identical files on disk (05-protocol-spec.md, Packages).
@@ -20,6 +21,8 @@ pub struct PackageWriter {
     rows: PackageWalk,
     /// The first file written of each SHA-256.
     firsts: BTreeMap<ContentHash, PathBuf>,
+    /// The directories it made, which a file after needs no call to make again.
+    dirs: BTreeSet<PathBuf>,
 }
 
 impl PackageWriter {
@@ -30,6 +33,7 @@ impl PackageWriter {
             root: root.to_owned(),
             rows: PackageWalk::new(),
             firsts: BTreeMap::new(),
+            dirs: BTreeSet::new(),
         })
     }
 
@@ -41,8 +45,11 @@ impl PackageWriter {
             .as_str()
             .split('/')
             .fold(self.root.clone(), |at, name| at.join(name));
-        if let Some(dir) = at.parent() {
-            DurableDir::create_all(dir).map_err(WriteError::Directory)?;
+        if let Some(dir) = at.parent()
+            && !self.dirs.contains(dir)
+        {
+            OutputFile::create_dirs(dir).map_err(WriteError::Directory)?;
+            self.dirs.insert(dir.to_owned());
         }
         let hashed = self.rows.hash(bytes).expect("a slice reads");
         match self.firsts.get(&hashed.sha256()) {

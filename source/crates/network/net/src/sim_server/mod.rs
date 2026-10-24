@@ -25,7 +25,6 @@ use campfire_net_stack::ServerPlugins;
 use campfire_net_timeline::LocalTimeline;
 use campfire_protocol::{Applied, Controller, InputError, PlayerPacket};
 use campfire_runner::{Session, SessionWorld};
-use campfire_script::ScriptPrints;
 use campfire_sim::SimTick;
 use campfire_units::Deaths;
 use tracing::trace_span;
@@ -41,7 +40,6 @@ use campfire_host::LogFilled;
 use campfire_host::MatchClock;
 use campfire_host::MatchEnded;
 use campfire_host::SaveRefused;
-use campfire_host::ScriptPrinted;
 use campfire_host::ServerFrame;
 use campfire_host::TicksCaughtUp;
 use campfire_host::TimeDropped;
@@ -215,7 +213,6 @@ impl Plugin for SimServerPlugin {
                 // Right after the tick, before any entry of the next.
                 Self::at_boundary,
                 report_deaths,
-                report_prints,
                 report_end,
             )
                 .chain()
@@ -502,20 +499,6 @@ fn report_deaths(tick: Res<'_, SimTick>, deaths: Option<Res<'_, Deaths>>) {
     }
     for death in &deaths {
         UnitDied::of(ran, &death).log();
-    }
-}
-
-/// Logs what the scripts printed in the tick just run.
-fn report_prints(tick: Res<'_, SimTick>, prints: Option<Res<'_, ScriptPrints>>) {
-    let Some(prints) = prints else {
-        return;
-    };
-    let ran = Tick::new(tick.start().get() - 1);
-    if prints.tick() != ran {
-        return;
-    }
-    for print in prints.iter() {
-        ScriptPrinted::of(ran, print).log();
     }
 }
 

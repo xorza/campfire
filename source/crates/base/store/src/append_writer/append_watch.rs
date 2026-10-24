@@ -36,3 +36,24 @@ impl AppendWatch {
         self.0.slow.lock().take()
     }
 }
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+
+    use crate::append_writer::append_watch::AppendWatch;
+
+    impl AppendWatch {
+        /// Waits until the writer is settled, as `is_settled` says, or `timeout` passes; whether
+        /// it settled. A test that reads what the writer wrote waits here, not in a loop of sleeps.
+        pub fn wait_settled(&self, timeout: Duration) -> bool {
+            let shared = &self.0;
+            shared
+                .pending
+                .wait_for(&shared.settled, timeout, |pending| {
+                    pending.stopped || shared.durable.load(Ordering::Acquire) == pending.records
+                })
+        }
+    }
+}

@@ -18,7 +18,10 @@ impl TerrainIni {
     /// Reads one INI file, adding its types to those read before: a type read again keeps its
     /// fields and takes the new ones, and a new one starts with `DefaultTerrain`'s texture.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        for block in IniText::of(bytes).blocks(BlockKinds::One("terrain")) {
+        for block in IniText::of(bytes)
+            .lines()
+            .blocks(BlockKinds::One("terrain"))
+        {
             let block = block?;
             let name = block.name()?.to_owned();
             let texture = match self.textures.get(&name) {

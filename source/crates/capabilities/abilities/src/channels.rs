@@ -78,13 +78,13 @@ impl Channeling {
         mut due: ResMut<'_, Due<ChannelDue>>,
     ) {
         held.clear();
-        held.extend(indexes.channels(tick.start()));
+        indexes.channels(tick.start(), &mut held);
         held.retain(|unit| {
             let runs = units
                 .get(unit.entity)
                 .is_ok_and(ActionProgress::is_channel_due);
             if !runs {
-                indexes.forget_channel(unit.id);
+                indexes.forget_channel(unit.entity);
             }
             runs
         });
@@ -251,14 +251,14 @@ impl Channeling {
     ) {
         let now = tick.start();
         due.clear();
-        due.extend(indexes.channels(now));
+        indexes.channels(now, &mut due);
         for &DueUnit { id, entity } in &*due {
             let Ok((slots, mut progress, tags, forced, used)) = units.get_mut(entity) else {
-                indexes.forget_channel(id);
+                indexes.forget_channel(entity);
                 continue;
             };
             if !progress.is_channel_due() {
-                indexes.forget_channel(id);
+                indexes.forget_channel(entity);
                 continue;
             }
             let dues = &mut indexes.of(id, entity);
@@ -270,7 +270,7 @@ impl Channeling {
             }
             progress.step_channel(now, tick, dues);
             if !progress.is_channel_due() {
-                indexes.forget_channel(id);
+                indexes.forget_channel(entity);
             }
             if let Some(hold) = Self::channel_hold(&book, &progress, id) {
                 held.hold(hold);

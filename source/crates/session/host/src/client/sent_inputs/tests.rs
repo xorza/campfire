@@ -67,6 +67,8 @@ fn an_acknowledged_input_replays_where_the_server_applied_it() {
         });
     }
     let none: [[u8; 11]; 0] = [];
+    // The server may hold all 6 still to apply, as it acknowledged none.
+    assert_eq!(sent.pending(Tick::new(0)), 6);
     // The server applied 10 at its stamp, logged 11 early, and applied 12 in tick 3, a tick past
     // its stamp: 11 never replays, 12 replays in 3, and 13 to 15, not acknowledged yet, stay at
     // their stamps, behind it.
@@ -75,6 +77,9 @@ fn an_acknowledged_input_replays_where_the_server_applied_it() {
     assert_eq!(at(&sent, 2), none);
     assert_eq!(at(&sent, 3), [payload(2)]);
     assert_eq!(at(&sent, 4), [payload(3), payload(4)]);
+    // Of a server past tick 2, it may hold 13 to 15 and 12, of tick 3; past tick 4, not 12.
+    assert_eq!(sent.pending(Tick::new(2)), 4);
+    assert_eq!(sent.pending(Tick::new(4)), 3);
     // 13 applied in tick 6: 14 and 15, which the server applies after it in chain order, are
     // expected there too, past 15's stamp of 5.
     sent.acknowledge(13, &[Some(Tick::new(6))]);
@@ -88,6 +93,9 @@ fn an_acknowledged_input_replays_where_the_server_applied_it() {
     assert_eq!(at(&sent, 6), [payload(3)]);
     assert_eq!(at(&sent, 7), [payload(5)]);
     assert_eq!(at(&sent, 9), none);
+    // Every seq sent is acknowledged: the server holds 13, of tick 6, and 15, of tick 7.
+    assert_eq!(sent.pending(Tick::new(4)), 2);
+    assert_eq!(sent.pending(Tick::new(7)), 1);
     // Pruning goes by the tick each takes effect in: what takes effect before 6 goes.
     sent.prune(Tick::new(6));
     assert_eq!(sent.len(), 3);

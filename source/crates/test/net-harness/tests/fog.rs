@@ -3,18 +3,20 @@
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
+use bevy_ecs::world::EntityRef;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
 use campfire_common::Tick;
+use campfire_harness::MatchUnits;
 use campfire_host::internals::TickHashes;
 use campfire_host::{JoinError, JoinRefused, JoinState, MatchClock};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{Progress, Route};
 use campfire_net::{CloseCode, LinkLossCause, LinkLost};
 use campfire_net_emulator::LinkModel;
-use campfire_net_harness::{InProcessMatch, InProcessSetup};
+use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_replication::ConfirmedTickMap;
 use campfire_orders::OrdersDirective;
-use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
+use campfire_sim::{Position, SimTick, SimWorld, StableId, Unpredicted};
 use campfire_units::{GroundPoint, Owner, SeenBy, SpawnPoint, Units, UnitsWorld};
 use campfire_values::{Relation, Relations, Team};
 
@@ -30,10 +32,11 @@ const fn move_to(x: i64) -> OrdersDirective {
     }
 }
 
-/// The unit of `app` that `pick` finds first, in stable id order.
-fn unit(app: &App, pick: impl Fn(&App, Entity) -> bool) -> (StableId, Entity) {
-    let mut units = app.world().resource::<EntityIndex>().iter();
-    units.find(|&(_, entity)| pick(app, entity)).unwrap()
+/// The unit of `local`'s server that `pick` finds first, in stable id order.
+fn unit(local: &InProcessMatch, pick: impl Fn(EntityRef<'_>) -> bool) -> (StableId, Entity) {
+    let mut units = MatchUnits::of(local.server().world()).all();
+    let (id, unit) = units.find(|&(_, unit)| pick(unit)).unwrap();
+    (id, unit.id())
 }
 
 /// What the server's last tick left: the west team sees the east tower, and the hero's x.
@@ -55,15 +58,10 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         .remove_resource::<TickHashes>();
     assert!(hashes.is_some());
     let east_tower = Vec3::from((8, 0, -3));
-    let (tower, tower_entity) = unit(local.server(), |app, entity| {
-        app.world()
-            .get::<Position>(entity)
-            .map(|position| position.get())
-            == Some(east_tower)
+    let (tower, tower_entity) = unit(&local, |unit| {
+        unit.get::<Position>().map(|position| position.get()) == Some(east_tower)
     });
-    let (_, hero) = unit(local.server(), |app, entity| {
-        app.world().entity(entity).contains::<Owner>()
-    });
+    let hero = local.server().world().entity_of(local.avatar(0)).unwrap();
 
     // By sim tick, from 0; `None` for the ticks the lobby ran before the loop.
     let mut server: Vec<Option<Server>> = Vec::new();
@@ -129,27 +127,15 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
     // The state only an owner's prediction reads reaches the owner's link alone: the client's
     // hero, which walked, holds its route and its progress; a west creep, which the client sees
     // walk and no player owns, holds neither there, though the server's does.
-    let client = local.client(0).world();
-    let (hero_id, _) = unit(local.server(), |app, entity| {
-        app.world().get::<Owner>(entity).is_some()
-    });
-    let on_client = |id| client.entity_of(id).unwrap();
-    let hero_on_client = client.entity(on_client(hero_id));
+    let hero_on_client = local.unit(End::Client(0), local.avatar(0));
     assert!(hero_on_client.contains::<Route>() && hero_on_client.contains::<Progress>());
-    let (creep, creep_entity) = unit(local.server(), |app, entity| {
-        let unit = app.world().entity(entity);
+    let (creep, _) = unit(&local, |unit| {
         unit.contains::<Progress>()
             && !unit.contains::<Owner>()
             && unit.get::<Team>() == Some(&Team::new(0))
     });
-    assert!(
-        local
-            .server()
-            .world()
-            .entity(creep_entity)
-            .contains::<Route>()
-    );
-    let creep_on_client = client.entity(on_client(creep));
+    assert!(local.unit(End::Server, creep).contains::<Route>());
+    let creep_on_client = local.unit(End::Client(0), creep);
     assert!(creep_on_client.contains::<Position>());
     assert!(!creep_on_client.contains::<Route>() && !creep_on_client.contains::<Progress>());
 }
@@ -169,11 +155,8 @@ fn a_link_holds_only_what_its_held_team_sees_and_learns_the_relations_as_it_sits
     let mut local = InProcessMatch::new(InProcessSetup::SOLO);
     local.start_match();
     let east_tower = Vec3::from((8, 0, -3));
-    let (tower, tower_entity) = unit(local.server(), |app, entity| {
-        app.world()
-            .get::<Position>(entity)
-            .map(|position| position.get())
-            == Some(east_tower)
+    let (tower, tower_entity) = unit(&local, |unit| {
+        unit.get::<Position>().map(|position| position.get()) == Some(east_tower)
     });
     let hero = local.avatar(0);
     let (west, east) = (Team::new(0), Team::new(1));
@@ -274,7 +257,7 @@ struct Held {
 /// How `client` holds `id`; none when it holds no such unit.
 fn held_as(local: &InProcessMatch, client: usize, id: StableId) -> Option<Held> {
     let world = local.client(client).world();
-    let id = world.entity(world.resource::<EntityIndex>().get(id)?);
+    let id = world.entity_ref_of(id)?;
     Some(Held {
         owner: *id.get()?,
         team: *id.get()?,
@@ -301,8 +284,7 @@ fn a_new_owner_reaches_the_clients_and_takes_the_owners_kinds_to_its_own() {
     assert!(hashes.is_some());
     let (hero, other) = (local.avatar(0), local.avatar(1));
     let on_server = |local: &InProcessMatch, unit| {
-        let world = local.server().world();
-        let unit = world.entity(world.resource::<EntityIndex>().get(unit).unwrap());
+        let unit = local.unit(End::Server, unit);
         (*unit.get::<Owner>().unwrap(), *unit.get::<Team>().unwrap())
     };
     let (west_owner, west) = on_server(&local, hero);
@@ -319,12 +301,7 @@ fn a_new_owner_reaches_the_clients_and_takes_the_owners_kinds_to_its_own() {
     };
     assert_eq!(held_as(&local, 0, hero), Some(owned(west_owner, west)));
 
-    let entity = local
-        .server()
-        .world()
-        .resource::<EntityIndex>()
-        .get(hero)
-        .unwrap();
+    let entity = local.server().world().entity_of(hero).unwrap();
     local
         .server_mut()
         .world_mut()

@@ -1,37 +1,14 @@
-/*!
-Rollback idea:
-
- Key insight: the latest completed mutate tick T guarantees that for entities not updated at tick T,
-their value is equal to the last confirmed value.
-
-Proof:
-Let's say the latest completed mutate tick is T, and we only received a message for entity A. (there is another entity B).
-Does that mean that we fully know the state of entity B? How do we determine the confirmed value for B? We know that the value of B did not change on tick T-1.
-- either we received an update for B on tick T-1, then we know that at tick T the value of B is the same
-- either we know mutate tick T-1 is complete, then we know that B at tick T-1 is the same as the previous confirmed value
-- either we don't know mutate tick T-1 is complete. We could have:
-  - the server did not send any message with an update to B, so B is the same as the previous confirmed value
-  - the server sent a message with an update for B, but the message is lost or in-flight. But in that case the server would not have received an ack for that message, so on tick T it would have sent an update for B again! So that is not possible.
-    That means that we know for sure that B did not change compared to its last confirmed value.
-
-Then the question becomes, how does that affect how we rollback?
-We need:
-- when we receive an update, we add its authoritative value to confirmed history;
-- once a completed confirmed_tick advances, we compare every replicated predicted component at that
-  confirmed_tick. We cannot skip an entity just because it received an update: confirmation is tracked
-  per entity, and another predicted component on that entity may have been unchanged and mismatched;
-- To rollback we have 2 choices:
-  - rollback from the earliest confirmed tick across all predicted entities (predicted entities are a subset of all entities so it's possible that this is more recent than the latest completed mutate tick)
-  - rollback from the latest completed mutate tick
-    For simplicity we will do the second choice
-- One thing to be careful of is that we could have completed mutate tick T, but have received confirmed updates for ticks > T. In which case we don't want to overwrite them when we rollback, and instead use these confirmed values during the rollback!
-
-The replay rewinds `Time<Fixed>` and `Time<()>`, which the stack holds. Any other clock that
-`FixedMain` advances, as a physics engine's, rolls back as other state does:
-`register_component::<Time<C>>().local_rollback()` keeps its history, and its writer runs before
-[`PredictionSystems::UpdateHistory`](crate::prediction_systems::PredictionSystems), so the history
-holds the value of each tick.
- */
+//! Rollback from the latest tick whose mutations completed: an entity no update of that tick
+//! named holds its last confirmed value then, as a reliable update the server sent and the client
+//! lacks would come again in that tick's message. So at each completed tick every replicated
+//! predicted component is compared, an updated entity's other components among them, and a
+//! rollback starts there, using the confirmed values of later ticks that arrived before it.
+//!
+//! The replay rewinds `Time<Fixed>` and `Time<()>`, which the stack holds. Any other clock that
+//! `FixedMain` advances, as a physics engine's, rolls back as other state does:
+//! `register_component::<Time<C>>().local_rollback()` keeps its history, and its writer runs before
+//! [`PredictionSystems::UpdateHistory`](crate::prediction_systems::PredictionSystems), so the
+//! history holds the value of each tick.
 
 use campfire_net_despawns::DespawnReplicated;
 
@@ -256,8 +233,8 @@ impl RollbackPlugin {
             // sample. Clearing the whole buffer here would throw them away, so a
             // second rollback to an older tick would find no sample at-or-before
             // its target and fall through to seeding the history with the
-            // current-tick live value — injecting a future value into the past
-            // (permanent divergence, see the Some(stale) class in issue #1511).
+            // current-tick live value — injecting a future value into the past, a
+            // divergence that no later update mends.
             predicted_history.clear_after_tick(rollback_tick);
             if let Some(state) = restore_state.clone() {
                 predicted_history.add_state(rollback_tick, state);

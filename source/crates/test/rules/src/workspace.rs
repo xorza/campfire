@@ -1,8 +1,9 @@
-use std::cell::OnceCell;
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use campfire_store::{DirEntries, DirEntry, EntryKind, InputFile};
+use campfire_threads::Parallel;
 
 use crate::manifest::{CargoDependency, CargoManifest};
 use crate::source_file::SourceFile;
@@ -268,7 +269,7 @@ impl Crate {
 #[derive(Debug)]
 pub(crate) struct Workspace {
     crates: Vec<Crate>,
-    sources: OnceCell<Vec<SourceFile>>,
+    sources: OnceLock<Vec<SourceFile>>,
 }
 
 impl Workspace {
@@ -312,7 +313,7 @@ impl Workspace {
         found.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         Self {
             crates: found,
-            sources: OnceCell::new(),
+            sources: OnceLock::new(),
         }
     }
 
@@ -340,6 +341,8 @@ impl Workspace {
                     read.push(file);
                 }
             }
+            // Each file on every core, so the rules that share them wait for none.
+            Parallel::map(read.len(), |at| read[at].analyze());
             read
         })
     }

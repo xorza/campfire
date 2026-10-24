@@ -15,6 +15,7 @@ mod session;
 mod session_rules;
 
 pub use crate::events::script_call_failed::ScriptCallFailed;
+pub use crate::events::script_printed::ScriptPrinted;
 pub use crate::match_build::MatchBuild;
 pub use crate::player_slot_rules::error::PlayerSlotRuleError;
 pub use crate::replay::Replay;

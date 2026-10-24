@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::ops::Index;
-use std::sync::OnceLock;
 
 use campfire_client_files::ModelScale;
 
@@ -18,18 +17,23 @@ pub(crate) mod ini_build;
 pub(crate) mod ini_supply;
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
-/// draw modules show by default.
+/// draw modules show by default, and their build variations, resolved once every file is read, as
+/// a variation may name an object a later file defines.
 #[derive(Debug, Default)]
 pub(crate) struct ObjectIni {
+    files: ObjectFiles,
+    variations: BuildVariations,
+}
+
+/// The object INI files read so far, in their order: what `finish` makes the `ObjectIni` of.
+#[derive(Debug, Default)]
+pub(crate) struct ObjectFiles {
     /// Each object, in the order the files define them, at its id.
     objects: Vec<IniObject>,
     /// Each object's id by its name, of its case, as `ThingFactory::findTemplate` finds it.
     by_name: BTreeMap<String, ObjectId>,
     /// The files read so far.
     files: u32,
-    /// The objects' build variations, resolved from every file read so far at the first query
-    /// after a read, as a variation may name an object a later file defines.
-    variations: OnceLock<BuildVariations>,
 }
 
 /// An object INI file, by its place in the order the files are read.
@@ -304,16 +308,15 @@ struct OpenObject {
     copied_draws: bool,
 }
 
-impl ObjectIni {
+impl ObjectFiles {
     /// Reads one INI file, adding its objects to those read before. An object of a name read
     /// before, and a reskin of a base not yet read, are refused: no known install holds either,
     /// where the game's release build parses the second definition into the first, and refuses
     /// a reskin of no base.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        self.variations.take();
         let text = IniText::of(bytes);
         let mut reading = Reading::default();
-        for line in text.lines() {
+        for line in text.lines().iter() {
             let word = line.word();
             if word == "end" {
                 if let Some(done) = reading.end(line.number)? {
@@ -322,9 +325,9 @@ impl ObjectIni {
                     self.objects.push(done);
                 }
             } else if reading.stack.is_empty() {
-                reading.open(self.object_of(&word, &line)?);
+                reading.open(self.object_of(word, &line)?);
             } else {
-                reading.line(&word, &line)?;
+                reading.line(word, &line)?;
             }
         }
         self.files += 1;
@@ -335,39 +338,18 @@ impl ObjectIni {
         }
     }
 
+    /// The objects read, with their build variations resolved.
+    pub(crate) fn finish(self) -> ObjectIni {
+        let variations = BuildVariations::of(&self);
+        ObjectIni {
+            files: self,
+            variations,
+        }
+    }
+
     /// Every object, in the order of their names.
     pub(crate) fn objects(&self) -> impl Iterator<Item = &IniObject> {
         self.by_name.values().map(|&id| &self[id])
-    }
-
-    /// The object a map's template names, of its case, as `findTemplate` finds it; none for a
-    /// template no INI object names, which the game spawns nothing of.
-    pub(crate) fn object(&self, template: &[u8]) -> Option<&IniObject> {
-        let name: String = template.iter().map(|&byte| char::from(byte)).collect();
-        self.named(&name)
-    }
-
-    /// The objects' build variations, as the import converts them.
-    pub(crate) fn variations(&self) -> &BuildVariations {
-        self.variations.get_or_init(|| BuildVariations::of(self))
-    }
-
-    /// The build variations of `parent`, in its line's order; none for an object of none.
-    pub(crate) fn variations_of(
-        &self,
-        parent: &IniObject,
-    ) -> Option<impl ExactSizeIterator<Item = &IniObject>> {
-        let of_parent = self.variations().of_parent(parent)?;
-        Some(of_parent.iter().map(|&variation| &self[variation]))
-    }
-
-    /// The object whose fields `object`'s unit type takes but its body and look: a parent's
-    /// first build variation, else the object itself.
-    pub(crate) fn fielded<'a>(&'a self, object: &'a IniObject) -> &'a IniObject {
-        match self.variations().of_parent(object) {
-            Some(of_parent) => &self[of_parent[0]],
-            None => object,
-        }
     }
 
     /// The object of the name `name`, of its case; none for a name no object has.
@@ -440,11 +422,61 @@ impl ObjectIni {
     }
 }
 
-impl Index<ObjectId> for ObjectIni {
+impl Index<ObjectId> for ObjectFiles {
     type Output = IniObject;
 
     fn index(&self, id: ObjectId) -> &IniObject {
         &self.objects[usize::try_from(id.0).expect("a u32 fits usize")]
+    }
+}
+
+impl ObjectIni {
+    /// Every object, in the order of their names.
+    pub(crate) fn objects(&self) -> impl Iterator<Item = &IniObject> {
+        self.files.objects()
+    }
+
+    /// The object a map's template names, of its case, as `findTemplate` finds it; none for a
+    /// template no INI object names, which the game spawns nothing of.
+    pub(crate) fn object(&self, template: &[u8]) -> Option<&IniObject> {
+        let name: String = template.iter().map(|&byte| char::from(byte)).collect();
+        self.named(&name)
+    }
+
+    /// The object of the name `name`, of its case; none for a name no object has.
+    pub(crate) fn named(&self, name: &str) -> Option<&IniObject> {
+        self.files.named(name)
+    }
+
+    /// The objects' build variations, as the import converts them.
+    pub(crate) const fn variations(&self) -> &BuildVariations {
+        &self.variations
+    }
+
+    /// The build variations of `parent`, in its line's order; none for an object of none.
+    pub(crate) fn variations_of(
+        &self,
+        parent: &IniObject,
+    ) -> Option<impl ExactSizeIterator<Item = &IniObject>> {
+        let of_parent = self.variations.of_parent(parent)?;
+        Some(of_parent.iter().map(|&variation| &self[variation]))
+    }
+
+    /// The object whose fields `object`'s unit type takes but its body and look: a parent's
+    /// first build variation, else the object itself.
+    pub(crate) fn fielded<'a>(&'a self, object: &'a IniObject) -> &'a IniObject {
+        match self.variations.of_parent(object) {
+            Some(of_parent) => &self[of_parent[0]],
+            None => object,
+        }
+    }
+}
+
+impl Index<ObjectId> for ObjectIni {
+    type Output = IniObject;
+
+    fn index(&self, id: ObjectId) -> &IniObject {
+        &self.files[id]
     }
 }
 
@@ -656,7 +688,7 @@ fn state_field(
     line: usize,
 ) -> Result<(), IniError> {
     match word {
-        "model" => *model = ObjectIni::model(tokens),
+        "model" => *model = ObjectFiles::model(tokens),
         "hidesubobject" | "showsubobject" => {
             look.hide_show(&tokens[1..], word == "hidesubobject");
         }
@@ -846,7 +878,7 @@ impl Reading {
 
     /// A line other than `End`, of its first word in lowercase, `word`.
     fn line(&mut self, word: &str, at: &IniLine<'_>) -> Result<(), IniError> {
-        let (tokens, line) = (&*at.tokens, at.number);
+        let (tokens, line) = (at.tokens, at.number);
         let top = self
             .stack
             .last_mut()
@@ -905,9 +937,9 @@ impl Reading {
                         module.ignored = ConditionSet::of(at)?.conditions;
                     }
                     "modelname" if matches!(*kind, DrawKind::Tree | DrawKind::Prop) => {
-                        module.model = ObjectIni::model(tokens);
+                        module.model = ObjectFiles::model(tokens);
                     }
-                    _ if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
+                    _ if ObjectFiles::opens(word, tokens) => self.stack.push(Block::Other),
                     _ => {}
                 }
             }
@@ -916,7 +948,7 @@ impl Reading {
                 *named |= word == "model";
                 let state = module.last_state();
                 state_field(&mut state.model, &mut state.look, word, tokens, line)?;
-                if ObjectIni::opens(word, tokens) {
+                if ObjectFiles::opens(word, tokens) {
                     self.stack.push(Block::Other);
                 }
             }
@@ -924,7 +956,7 @@ impl Reading {
                 let module = self.draw.as_mut().expect("a state is in a draw");
                 *named |= word == "model";
                 module.default_field(word, tokens, line)?;
-                if ObjectIni::opens(word, tokens) {
+                if ObjectFiles::opens(word, tokens) {
                     self.stack.push(Block::Other);
                 }
             }
@@ -954,7 +986,7 @@ impl Reading {
                 let open = self.object.as_mut().expect("a combat block is an object's");
                 match open.object.fight.field(block, word, at)? {
                     Some(inner) => self.stack.push(Block::Fight(inner)),
-                    None if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
+                    None if ObjectFiles::opens(word, tokens) => self.stack.push(Block::Other),
                     None => {}
                 }
             }
@@ -962,7 +994,7 @@ impl Reading {
                 let module = *module;
                 let open = self.object.as_mut().expect("a module is an object's");
                 open.object.build.module_field(module, word, at)?;
-                if ObjectIni::opens(word, tokens) {
+                if ObjectFiles::opens(word, tokens) {
                     self.stack.push(Block::Other);
                 }
             }
@@ -979,7 +1011,7 @@ impl Reading {
                 };
                 match inner {
                     Some(inner) => self.stack.push(Block::Fight(inner)),
-                    None if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
+                    None if ObjectFiles::opens(word, tokens) => self.stack.push(Block::Other),
                     None => {}
                 }
             }
@@ -1021,7 +1053,7 @@ impl Reading {
                 self.object_field(word, at)?;
             }
             Block::Object => self.object_field(word, at)?,
-            Block::Other if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
+            Block::Other if ObjectFiles::opens(word, tokens) => self.stack.push(Block::Other),
             Block::Other => {}
         }
         Ok(())
@@ -1030,7 +1062,7 @@ impl Reading {
     /// A line of an object's own block: a field of its kinds, fence, scale, bridge, locomotors
     /// or geometry, or a line that opens a block.
     fn object_field(&mut self, word: &str, at: &IniLine<'_>) -> Result<(), IniError> {
-        let (tokens, line) = (&*at.tokens, at.number);
+        let (tokens, line) = (at.tokens, at.number);
         match word {
             _ if matches!(
                 word,
@@ -1070,7 +1102,7 @@ impl Reading {
                     _ => {}
                 }
             }
-            _ if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
+            _ if ObjectFiles::opens(word, tokens) => self.stack.push(Block::Other),
             _ => {}
         }
         Ok(())

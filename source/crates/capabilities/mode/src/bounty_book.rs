@@ -102,10 +102,10 @@ impl Book for BountyBook {
 impl Bounty {
     /// Pays the tick's deaths' bounties: of a victim of a type of a bounty whose tags at its death
     /// the mode's victim filter selects, and a killer that passes the mode's filter from the
-    /// victim's side, the killer's owner takes the type's amount,
-    /// or its share of the type's cost, rounded up, of the type's resource. A killer gone, or of
-    /// no owner, takes none, and a payment past what a resource holds is not made, as a script's
-    /// `add_resource` fails (04-capabilities/games.md, A kill's bounty).
+    /// victim's side, the killer's owner takes the type's amount, or its share of the type's cost,
+    /// rounded up, of the type's resource. A killer gone, or of no owner, takes none, and a payment
+    /// stops at the most a resource holds (04-capabilities/games.md, A kill's bounty;
+    /// 04-capabilities/games.md, A gain stops at the most an amount holds).
     pub(crate) fn pay(world: &mut World, mut payments: Local<'_, Vec<Payment>>) {
         payments.clear();
         Self::payments(world, &mut payments);

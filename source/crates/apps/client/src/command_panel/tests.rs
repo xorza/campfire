@@ -2,8 +2,8 @@ use campfire_actions::SlotKind;
 use campfire_capabilities::Match;
 use campfire_declarations::Role;
 use campfire_production::internals::TestBuild;
-use campfire_production::{BuildStart, NewBuild, Production, QueueDues, Queued, SiteStart, Style};
-use campfire_sim::{Capability, IdAllocator};
+use campfire_production::{BuildStart, NewBuild, Production, Queued, SiteStart, Style};
+use campfire_sim::{Capability, IdAllocator, UnitDues};
 use campfire_units::{BodyForm, BodyShape, Layer};
 use campfire_values::Rank;
 use campfire_values::Share;
@@ -52,8 +52,8 @@ fn the_panel_shows_a_producers_trains_and_builds_its_queue_and_a_site() {
         time,
         paid: 0,
     };
-    queue.push(queued, &[], Tick::new(0), &mut QueueDues::loose());
-    queue.push(queued, &[], Tick::new(0), &mut QueueDues::loose());
+    queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
+    queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
     let mut ids = IdAllocator::default();
     let (center, wall) = (ids.allocate(), ids.allocate());
     let mut shown = Shown::default();
@@ -130,7 +130,7 @@ fn progress_shows_in_whole_percent_rounded_down() {
     };
     let mut queue = TrainQueue::default();
     assert_eq!(head_percent(&queue, Tick::new(0)), None);
-    queue.push(queued, &[], Tick::new(0), &mut QueueDues::loose());
+    queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
     let at = |now| head_percent(&queue, Tick::new(now));
     assert_eq!(
         [at(0), at(60), at(149), at(150), at(400)],
@@ -138,7 +138,7 @@ fn progress_shows_in_whole_percent_rounded_down() {
     );
     // A head that reached the head at 100, after another: at 160, 60 of its 150 ticks.
     let mut queue = TrainQueue::default();
-    queue.push(queued, &[], Tick::new(100), &mut QueueDues::loose());
+    queue.push(queued, &[], Tick::new(100), &mut UnitDues::loose());
     assert_eq!(head_percent(&queue, Tick::new(160)), Some(40));
     // A site 0.7 of the way to 300 ticks: 210 / 300 = 70 % exactly; one 2⁻³² below it, 69.
     let time = Num::int(300);

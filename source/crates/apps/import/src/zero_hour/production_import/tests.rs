@@ -7,6 +7,7 @@ use campfire_values::{Distance, FilterData, Scalar};
 use super::*;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
+use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
@@ -261,8 +262,10 @@ const BUTTONS: &str = "CommandButton Command_Truck\n Command = UNIT_BUILD\n Obje
 #[test]
 fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of_money() {
     // The shipped box of 75; the placed objects, as a map places them.
-    let mut rules = ZeroHourRules::default();
-    rules.objects.read(SUPPLY.as_bytes()).unwrap();
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[SUPPLY]),
+        ..ZeroHourRules::default()
+    };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     rules.sets.read(SETS.as_bytes()).unwrap();
     rules.buttons.read(BUTTONS.as_bytes()).unwrap();
@@ -492,8 +495,10 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
         CommandButton Command_Rover\n Command = UNIT_BUILD\n Object = Rover\nEnd\n\
         CommandButton Command_Wisp\n Command = UNIT_BUILD\n Object = Wisp\nEnd\n\
         CommandButton Command_Ghost\n Command = UNIT_BUILD\n Object = Ghost\nEnd\n";
-    let mut rules = ZeroHourRules::default();
-    rules.objects.read(OBJECTS.as_bytes()).unwrap();
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[OBJECTS]),
+        ..ZeroHourRules::default()
+    };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     rules.sets.read(SETS.as_bytes()).unwrap();
     rules.buttons.read(BUTTONS.as_bytes()).unwrap();

@@ -20,6 +20,8 @@ mod dev_dependencies;
 #[cfg(test)]
 mod errors;
 #[cfg(test)]
+mod every_rule;
+#[cfg(test)]
 mod gated_items;
 #[cfg(test)]
 mod manifest;

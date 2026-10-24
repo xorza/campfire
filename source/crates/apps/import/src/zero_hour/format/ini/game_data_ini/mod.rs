@@ -65,9 +65,12 @@ impl GameDataIni {
 
     /// Reads one INI file of `GameData` blocks.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        for block in IniText::of(bytes).blocks(BlockKinds::One("gamedata")) {
+        for block in IniText::of(bytes)
+            .lines()
+            .blocks(BlockKinds::One("gamedata"))
+        {
             for line in &block?.fields {
-                match line.word().as_str() {
+                match line.word() {
                     "adjustclifftextures" => self.terrain.adjust_cliff_textures = line.yes()?,
                     // Any count but 0 draws the third blend, as the game tests it.
                     "use3wayterrainblends" => self.terrain.three_way_blends = line.int()? != 0,

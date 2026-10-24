@@ -25,7 +25,7 @@ use campfire_net_prediction::RollbackMode;
 use campfire_net_replication::Replicate;
 use campfire_package::ModePackages;
 use campfire_players::{HeldOut, Player, PlayerResources, PlayersWorld};
-use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
+use campfire_sim::{EntityIndex, SimResource, SimWorld, StableId, Unpredicted};
 use campfire_states::{Replication, StateTypes};
 use campfire_test_packages::Edit;
 use campfire_units::{Dead, Owner, SeenBy};
@@ -496,8 +496,8 @@ impl LeakCheck {
     /// Whether the server holds the south hero dead.
     fn is_south_hero_dead(&self) -> bool {
         let world = self.local.server().world();
-        let hero = world.resource::<EntityIndex>().get(self.local.avatar(3));
-        hero.is_some_and(|hero| world.entity(hero).contains::<Dead>())
+        let hero = world.entity_ref_of(self.local.avatar(3));
+        hero.is_some_and(|hero| hero.contains::<Dead>())
     }
 
     /// Whether `client` holds `PlayerResources` on the entity of player `player_slot`.

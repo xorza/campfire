@@ -18,7 +18,7 @@ use crate::detached_bit::DetachedBit;
 use crate::replication_sender::ReplicationSender;
 use crate::replicon_channel_map::RepliconChannelMap;
 use campfire_net_messages::MessageSystems;
-use tracing::{error, trace};
+use tracing::trace;
 
 /// Runs Replicon's server on the stack: its state follows `Started`, each connected link is a
 /// Replicon client, and its messages go through the transport.
@@ -250,9 +250,7 @@ impl ServerRepliconPlugin {
                 client
             );
             if let Ok(mut transport) = transports.get_mut(client) {
-                if let Err(error) = transport.send(channel_id, message, 1.0) {
-                    error!(?error, ?client, "could not send a replication message");
-                }
+                transport.send(channel_id, message, 1.0);
             } else {
                 trace!(
                     "ServerRepliconPlugin::send_server_packets: no transport for client {:?}",

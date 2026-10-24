@@ -74,17 +74,17 @@ impl PacketType {
 }
 
 /// The acknowledgements a header carries: the low 16 bits of the largest accepted packet, a bit
-/// for each of the 32 numbers below it, the nearest in the lowest bit, and how long the largest
+/// for each of the 64 numbers below it, the nearest in the lowest bit, and how long the largest
 /// waited for this acknowledgement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AckFields {
     pub(crate) largest: u16,
-    pub(crate) bits: u32,
+    pub(crate) bits: u64,
     delay: u8,
 }
 
 impl AckFields {
-    pub(crate) const fn new(largest: u16, bits: u32, delay: Duration) -> Self {
+    pub(crate) const fn new(largest: u16, bits: u64, delay: Duration) -> Self {
         let units = delay.as_micros() / ACK_DELAY_UNIT.as_micros();
         Self {
             largest,
@@ -97,9 +97,15 @@ impl AckFields {
         }
     }
 
-    /// The ACK delay, in whole units of 0.25 ms, at most 63.75 ms.
-    pub(crate) const fn delay(self) -> Duration {
-        Duration::from_micros(self.delay as u64 * ACK_DELAY_UNIT.as_micros() as u64)
+    /// The ACK delay, in whole units of 0.25 ms; none at the field's most, 63.75 ms, which a
+    /// longer delay also writes, so the delay is not known and no RTT sample is taken from it.
+    pub(crate) const fn delay(self) -> Option<Duration> {
+        if self.delay == u8::MAX {
+            return None;
+        }
+        Some(Duration::from_micros(
+            self.delay as u64 * ACK_DELAY_UNIT.as_micros() as u64,
+        ))
     }
 }
 
@@ -115,10 +121,10 @@ pub(crate) struct Header {
 
 impl Header {
     /// The longest header: flags, number and acknowledgements.
-    pub(crate) const MAX_LEN: usize = 1 + 2 + 7;
+    pub(crate) const MAX_LEN: usize = 1 + 2 + 11;
 
     pub(crate) const fn len(&self) -> usize {
-        if self.acks.is_some() { 10 } else { 3 }
+        if self.acks.is_some() { 14 } else { 3 }
     }
 
     /// Writes the header into `out`, exactly `len` bytes.
@@ -136,8 +142,8 @@ impl Header {
         out[1..3].copy_from_slice(&self.number.to_be_bytes());
         if let Some(acks) = self.acks {
             out[3..5].copy_from_slice(&acks.largest.to_be_bytes());
-            out[5..9].copy_from_slice(&acks.bits.to_be_bytes());
-            out[9] = acks.delay;
+            out[5..13].copy_from_slice(&acks.bits.to_be_bytes());
+            out[13] = acks.delay;
         }
     }
 
@@ -160,12 +166,12 @@ impl Header {
         let acks = if flags & ACKS_BIT == 0 {
             None
         } else {
-            let [l0, l1, b0, b1, b2, b3, delay, ..] = *rest else {
+            let [l0, l1, b0, b1, b2, b3, b4, b5, b6, b7, delay, ..] = *rest else {
                 return Err(PacketHeaderError::Truncated);
             };
             Some(AckFields {
                 largest: u16::from_be_bytes([l0, l1]),
-                bits: u32::from_be_bytes([b0, b1, b2, b3]),
+                bits: u64::from_be_bytes([b0, b1, b2, b3, b4, b5, b6, b7]),
                 delay,
             })
         };
@@ -198,12 +204,12 @@ mod tests {
     use super::*;
 
     fn acks() -> AckFields {
-        AckFields::new(0xbeef, 0x8000_0001, Duration::from_micros(1_250))
+        AckFields::new(0xbeef, 0x8000_0000_0000_0001, Duration::from_micros(1_250))
     }
 
-    /// Each well-formed header writes the bytes it reads back: 10 with acknowledgements, 3
-    /// without. A payload of kind 2 with acks of 0xbeef, bits 0x80000001 and 1.25 ms (5 units)
-    /// is `0b0000_1010`, the number, the largest, the bits and 5.
+    /// Each well-formed header writes the bytes it reads back: 14 with acknowledgements, 3
+    /// without. A payload of kind 2 with acks of 0xbeef, bits 0x8000000000000001 and 1.25 ms (5
+    /// units) is `0b0000_1010`, the number, the largest, the bits and 5.
     #[test]
     fn a_header_reads_what_it_writes() {
         let payload = Header {
@@ -225,6 +231,10 @@ mod tests {
                 0x80,
                 0x00,
                 0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
                 0x01,
                 5
             ]
@@ -240,18 +250,20 @@ mod tests {
             };
             let mut bytes = vec![0; header.len()];
             header.write(&mut bytes);
-            assert_eq!(bytes.len(), if acks.is_some() { 10 } else { 3 });
+            assert_eq!(bytes.len(), if acks.is_some() { 14 } else { 3 });
             assert_eq!(Header::read(&bytes), Ok(header), "{packet_type:?}");
         }
     }
 
-    /// The ACK delay counts whole units of 0.25 ms: 1.4 ms is 5 units, 1.25 ms; 64 ms is past
-    /// the 255 units of 63.75 ms the field holds.
+    /// The ACK delay counts whole units of 0.25 ms: 1.4 ms is 5 units, 1.25 ms; 63.5 ms is 254
+    /// units; 63.75 ms and 64 ms fill the byte's 255, past which the delay is not known.
     #[test]
     fn the_ack_delay_counts_quarter_milliseconds_up_to_its_byte() {
         let delay = |micros| AckFields::new(0, 0, Duration::from_micros(micros)).delay();
-        assert_eq!(delay(1_400), Duration::from_micros(1_250));
-        assert_eq!(delay(64_000), Duration::from_micros(63_750));
+        assert_eq!(delay(1_400), Some(Duration::from_micros(1_250)));
+        assert_eq!(delay(63_500), Some(Duration::from_micros(63_500)));
+        assert_eq!(delay(63_750), None);
+        assert_eq!(delay(64_000), None);
     }
 
     /// A datagram that is not a well-formed header is refused, each for its reason.
@@ -279,7 +291,7 @@ mod tests {
         // acknowledgements.
         for flags in [0x10, 0x20 | 0x04, 0x20 | ACKS_BIT] {
             assert_eq!(
-                Header::read(&[flags, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                Header::read(&[flags, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                 Err(PacketHeaderError::Shape),
                 "{flags:#x}"
             );

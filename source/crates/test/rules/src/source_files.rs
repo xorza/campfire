@@ -2,6 +2,7 @@ use std::path::Path;
 
 use campfire_store::internals::TestDir;
 use campfire_store::{DirEntries, EntryKind, InputFile};
+use campfire_threads::Parallel;
 
 use crate::source_file::{Gate, SourceFile};
 
@@ -19,7 +20,10 @@ impl SourceFiles {
     pub(crate) fn under(dir: &Path) -> Vec<SourceFile> {
         let mut found = Vec::new();
         Self::walk(dir, "", &mut found);
-        let gated: Vec<(String, Gate)> = found.iter().flat_map(SourceFile::gated_modules).collect();
+        let gated: Vec<(String, Gate)> = Parallel::map(found.len(), |at| found[at].gated_modules())
+            .into_iter()
+            .flatten()
+            .collect();
         for file in &mut found {
             let holds = |module: &str| {
                 file.path == format!("{module}.rs") || file.path.starts_with(&format!("{module}/"))

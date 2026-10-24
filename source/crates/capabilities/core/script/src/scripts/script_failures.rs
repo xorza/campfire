@@ -122,8 +122,20 @@ impl ScriptFailures {
         });
     }
 
-    /// Forgets the failures of the tick before, as a tick begins.
+    /// Forgets the failures of the tick before, as a tick begins. A build of `internals` fails
+    /// on any no host took, whatever drives the match, so no test passes with a failed call it
+    /// does not expect (02-engine-core.md, A test fails on a script failure it does not take).
     pub fn clear(&mut self) {
+        #[cfg(feature = "internals")]
+        assert!(
+            self.failures.is_empty(),
+            "script calls failed in the last tick: {self:?}; a test that makes them takes them"
+        );
+        self.forget();
+    }
+
+    /// Forgets the failures a host took, as one that logged them does, keeping the buffers.
+    pub fn forget(&mut self) {
         self.failures.clear();
         self.text.clear();
         self.ends.clear();
@@ -163,15 +175,28 @@ pub(crate) mod internals {
     }
 
     impl ScriptFailures {
-        pub fn calls(&self) -> Vec<FailedCall> {
-            self.failures
+        /// Takes the failures of the last tick, with their texts, as a test or a harness that
+        /// expects them does.
+        #[must_use]
+        pub fn take(&mut self) -> Self {
+            std::mem::take(self)
+        }
+
+        /// Takes the failed calls of the last tick, as a test that expects them does.
+        pub fn take_calls(&mut self) -> Vec<FailedCall> {
+            let calls = self
+                .failures
                 .iter()
                 .map(|failure| FailedCall {
                     id: failure.id,
                     hook: failure.hook,
                     kind: failure.kind,
                 })
-                .collect()
+                .collect();
+            self.failures.clear();
+            self.text.clear();
+            self.ends.clear();
+            calls
         }
     }
 }
@@ -218,5 +243,23 @@ mod tests {
         assert_eq!(texts, [report.clone(), report, pure]);
         failures.clear();
         assert!(failures.get().is_empty());
+        // A host that logged them forgets them, and the next tick begins clean.
+        failures.record(None, think, &error);
+        failures.forget();
+        failures.clear();
+    }
+
+    #[test]
+    #[should_panic(expected = "script calls failed in the last tick")]
+    fn a_tick_that_begins_over_a_failure_no_host_took_fails_the_test() {
+        let mut failures = ScriptFailures::default();
+        let think = Hook {
+            name: "on_think",
+            role: ScriptRole::Ai,
+            param_names: &["ctx", "unit"],
+            param_kinds: &[None, None],
+        };
+        failures.record(None, think, &CallError::Api(ApiError::PureCall));
+        failures.clear();
     }
 }

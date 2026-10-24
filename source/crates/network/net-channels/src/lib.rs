@@ -35,10 +35,10 @@ mod reliable_send_state;
 mod send_budget;
 mod send_candidate;
 mod send_message_key;
-mod sent_packets;
 mod single_body;
 mod tick_decoder;
 mod tick_encoder;
+mod unsettled_packets;
 
 mod channels;
 
@@ -50,7 +50,7 @@ pub use crate::channel_receiver::ChannelReceiver;
 pub use crate::channel_setup::ChannelSetup;
 pub use crate::channel_type_id::ChannelTypeId;
 pub use crate::channels::Channels;
-pub use crate::error::{ReceiveError, SendError};
+pub use crate::error::{ReceiveError, SendRefusal};
 pub use crate::message_id::MessageId;
 
 /// What the tests and benches of the layers above share: this layer's stack, test protocol,

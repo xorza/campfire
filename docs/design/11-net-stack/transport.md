@@ -76,10 +76,14 @@ send costs.
   under a rate limit, as the budget always holds.
 - **A link's queued bytes have a budget,** 1 MiB, twice the default largest message as the
   receive budget is: its staged messages and what its senders hold until they send them, or until
-  their acknowledgement on a reliable channel. A send past it is refused with
-  `SendError::Backlogged`, as a peer that stops acknowledging would grow them without bound.
-  Practice: GameNetworkingSockets' `SendBufferSize`, whose send returns `LimitExceeded`.
-  Refused: an unlink at the budget, which the packet session's idle timeout already makes.
+  their acknowledgement on a reliable channel. A send past it, or past its channel's largest
+  message, is dropped from an unreliable channel, whose messages may go missing, and on a reliable
+  one ends the link, `Backlogged` or `MessageTooLarge`, which sends nothing more: a dropped reliable
+  message would leave its peer a stream with a hole for good, and a slow peer that still
+  acknowledges never reaches the idle timeout. Practice: renet disconnects at
+  `ReliableChannelMaxMemoryReached`; GameNetworkingSockets' `SendBufferSize` returns
+  `LimitExceeded`. Refused: a refusal for each caller to answer, which every caller logged and
+  dropped.
 - **A sequenced unreliable channel sends its newest message,** and drops each older one no packet
   carried, as its receiver takes only the newest; a fragmented message that started keeps its
   fragments. Refused: a send of every queued version, which spends the budget on what the

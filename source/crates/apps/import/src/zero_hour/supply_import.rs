@@ -9,6 +9,7 @@ use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::Num;
 use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnSpec, SpawnsData};
 use campfire_values::{Distance, Number, Ranked, Scalar};
+use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::format::game_float;
@@ -47,7 +48,7 @@ pub(crate) struct ImportedGather {
 }
 
 /// Why the import drops a supply module.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 pub enum SupplyDropCause {
     /// A dock that holds no box.
     NoBoxes,

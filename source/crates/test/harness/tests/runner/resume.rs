@@ -2,17 +2,11 @@
 //! to the checkpoint's tick, plays each later tick to the hash of the run that made it: every
 //! value a tick reads is state, or derived data a restore builds again.
 
-use std::sync::Arc;
-
 use campfire_common::ErrorReport;
 use campfire_common::{StateHash, Tick};
 use campfire_harness::{CheckedMatch, FixedMatch, FixedSession, ProvingMatch};
-use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Checkpoint, SessionLog, SnapshotFingerprint};
-use campfire_runner::{
-    Replay, ResumeAt, ResumeError, Session, SessionSource, SessionWorld, SnapshotCheckError,
-    UncheckedSource,
-};
+use campfire_runner::{Replay, ResumeAt, ResumeError, Session, SessionWorld, SnapshotCheckError};
 use campfire_sim::{EntityIndex, SimWorld, SnapshotError, StableId};
 use campfire_test_packages::TestMode;
 use campfire_units::Dead;
@@ -98,13 +92,7 @@ impl Checkpointed {
         for (checkpoint, snapshot) in (0..).zip(&self.snapshots) {
             let log = SessionLog::decode(&self.log).unwrap();
             let segment = checkpoint + 1;
-            let source = SessionSource::check(UncheckedSource {
-                log,
-                seeds: session.seeds(),
-                packages: session.packages(),
-                signer: Some(Arc::new(TestKey::server_signer())),
-            })
-            .unwrap();
+            let source = session.source(log);
             let checkpoint_at = ResumeAt { segment, snapshot };
             let mut game = Session::resume_match(source, checkpoint_at)
                 .unwrap_or_else(|error| panic!("segment {segment}: {}", ErrorReport::of(&error)));
@@ -179,13 +167,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
     fixed.game().session().log().encode(&mut bytes);
     let resume = |segment, snapshot: &[u8]| {
         let log = SessionLog::decode(&bytes).unwrap();
-        let source = SessionSource::check(UncheckedSource {
-            log,
-            seeds: proving.session().seeds(),
-            packages: proving.packages(),
-            signer: Some(Arc::new(TestKey::server_signer())),
-        })
-        .unwrap();
+        let source = proving.session().source(log);
         Session::resume_match(source, ResumeAt { segment, snapshot }).err()
     };
     assert!(matches!(resume(3, &first), Some(ResumeError::NoCheckpoint)));

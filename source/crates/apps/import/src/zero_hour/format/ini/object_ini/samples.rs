@@ -1,3 +1,5 @@
+use crate::zero_hour::format::ini::object_ini::{ObjectFiles, ObjectIni};
+
 /// `Data\INI\Default\Object.ini` of the fixture install: a tank of two draw modules, one of
 /// which draws no model, and a tree.
 pub(crate) const DEFAULT_OBJECTS: &str = "; Objects the game loads first.\r
@@ -300,3 +302,14 @@ Object AmericaFireBase\r
   GeometryIsSmall = Yes\r
 End\r
 ";
+
+impl ObjectIni {
+    /// The objects of `files`, read in their order, as an install's: a test's.
+    pub(crate) fn of(files: &[&str]) -> Self {
+        let mut read = ObjectFiles::default();
+        for file in files {
+            read.read(file.as_bytes()).unwrap();
+        }
+        read.finish()
+    }
+}

@@ -155,9 +155,7 @@ fn misplaced_tests(
     found
 }
 
-#[test]
-fn a_test_lives_in_the_lowest_crate_that_can_hold_it() {
-    let workspace = Workspace::read();
+pub(crate) fn a_test_lives_in_the_lowest_crate_that_can_hold_it(workspace: &Workspace) {
     let kept = Allowlist::new(&KEPT_BY_DECISION);
     let misplaced = misplaced_tests(workspace.crates(), workspace.sources(), &kept);
     assert_eq!(misplaced, Vec::<String>::new());

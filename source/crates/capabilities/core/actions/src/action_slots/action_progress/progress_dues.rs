@@ -2,7 +2,7 @@ use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
-use bevy_ecs::system::{Query, ResMut, SystemParam};
+use bevy_ecs::system::{ResMut, SystemParam};
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_sim::{DueIndex, DueUnit, StableId, TimedKept, TimedProcess, TimedRuns};
@@ -99,11 +99,10 @@ impl OrderSteps {
     /// would stay held at once while no pass finds it.
     pub(crate) fn forget_gone(
         removed: On<'_, '_, Remove<ActionProgress>>,
-        ids: Query<'_, '_, &StableId>,
         index: Option<ResMut<'_, DueIndex<Self>>>,
     ) {
-        if let (Some(mut index), Ok(&id)) = (index, ids.get(removed.entity)) {
-            index.forget(id);
+        if let Some(mut index) = index {
+            index.forget(removed.entity);
         }
     }
 }
@@ -130,37 +129,39 @@ pub struct ProgressDues<'a> {
 }
 
 impl ProgressIndexes<'_> {
-    /// Each unit the index of the channels holds, its channel running or cut, by stable id.
-    pub fn channels(&self, now: Tick) -> impl Iterator<Item = DueUnit> + '_ {
-        self.channels.peek_due(now)
+    /// Appends to `due` each unit the index of the channels holds due at `now` or before, its
+    /// channel running or cut, by tick, then stable id.
+    pub fn channels(&self, now: Tick, due: &mut Vec<DueUnit>) {
+        self.channels.peek_due(now, due);
     }
 
-    /// Forgets the unit `id`, whose channel ended, in the index of the channels.
-    pub fn forget_channel(&mut self, id: StableId) {
-        self.channels.forget(id);
+    /// Forgets the unit of `entity`, whose channel ended, in the index of the channels.
+    pub fn forget_channel(&mut self, entity: Entity) {
+        self.channels.forget(entity);
     }
 
-    /// Each unit the index of the attack targets holds, by stable id, its target held or dropped
-    /// since.
-    pub fn attackers(&self) -> impl Iterator<Item = DueUnit> + '_ {
-        self.attackers.peek_due(Tick::ZERO)
+    /// Appends to `due` each unit the index of the attack targets holds, by stable id, its
+    /// target held or dropped since.
+    pub fn attackers(&self, due: &mut Vec<DueUnit>) {
+        self.attackers.peek_due(Tick::ZERO, due);
     }
 
-    /// Forgets the unit `id`, which has no attack target, or is gone, in the index of the attack
-    /// targets.
-    pub fn forget_attacker(&mut self, id: StableId) {
-        self.attackers.forget(id);
+    /// Forgets the unit of `entity`, which has no attack target, or is gone, in the index of the
+    /// attack targets.
+    pub fn forget_attacker(&mut self, entity: Entity) {
+        self.attackers.forget(entity);
     }
 
-    /// Each unit the index of the orders holds, by stable id, its order under way or ended since.
-    pub fn orders(&self) -> impl Iterator<Item = DueUnit> + '_ {
-        self.orders.peek_due(Tick::ZERO)
+    /// Appends to `due` each unit the index of the orders holds, by stable id, its order under
+    /// way or ended since.
+    pub fn orders(&self, due: &mut Vec<DueUnit>) {
+        self.orders.peek_due(Tick::ZERO, due);
     }
 
-    /// Forgets the unit `id`, which has no order under way, or is gone, in the index of the
-    /// orders.
-    pub fn forget_order(&mut self, id: StableId) {
-        self.orders.forget(id);
+    /// Forgets the unit of `entity`, which has no order under way, or is gone, in the index of
+    /// the orders.
+    pub fn forget_order(&mut self, entity: Entity) {
+        self.orders.forget(entity);
     }
 
     /// Moves each unit whose resolve of `kind` is due at `now` or before into `due`, out of the
@@ -231,7 +232,7 @@ impl ProgressDues<'_> {
         }
         match OrderSteps::due(&(), progress) {
             Some(at) => self.orders.push(at, self.id, self.entity),
-            None => self.orders.forget(self.id),
+            None => self.orders.forget(self.entity),
         }
     }
 
@@ -310,7 +311,8 @@ pub(crate) mod internals {
     }
 
     impl LooseDues {
-        /// The indexes, for a progress of no unit: what they hold is never read.
+        /// The indexes, for a progress of no unit: what they hold is never read, an entry for the
+        /// first entity alone, as an index keeps a place for each entity index below the largest.
         pub const fn dues(&mut self) -> ProgressDues<'_> {
             ProgressDues {
                 resolves: &mut self.resolves,
@@ -318,7 +320,7 @@ pub(crate) mod internals {
                 attackers: &mut self.attackers,
                 orders: &mut self.orders,
                 id: StableId::MATCH,
-                entity: Entity::PLACEHOLDER,
+                entity: Entity::from_raw_u32(0).unwrap(),
             }
         }
     }
@@ -339,7 +341,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use bevy_ecs::system::RunSystemOnce;
+    use bevy_ecs::system::{Query, RunSystemOnce};
     use campfire_math::Vec3;
     use campfire_sim::IdAllocator;
     use campfire_values::ActionStart;
@@ -414,11 +416,14 @@ mod tests {
         // `attack` to the volley, which takes it.
         assert_eq!(take(&mut world, ResolveKind::Cast), [cast]);
         let index = world.resource::<DueIndex<Resolves>>();
-        let held = [attack, moved, gone, ordered].map(|id| index.due_at(id));
+        let held = [0, 2, 3, 4].map(|at| index.due_at(entities[at]));
         assert_eq!(held, [Some(Tick::new(2)), Some(Tick::new(5)), None, None]);
         assert_eq!(take(&mut world, ResolveKind::Attack), [attack]);
         let index = world.resource::<DueIndex<Resolves>>();
-        assert_eq!((index.len(), index.due_at(moved)), (1, Some(Tick::new(5))));
+        assert_eq!(
+            (index.len(), index.due_at(entities[2])),
+            (1, Some(Tick::new(5)))
+        );
     }
 
     #[test]
@@ -433,7 +438,7 @@ mod tests {
         let entity = world.spawn(ActionProgress::default()).id();
         let change = |world: &mut World, change: fn(&mut ActionProgress, &mut ProgressDues<'_>)| {
             ProgressDues::change(world, id, entity, change).unwrap();
-            world.resource::<DueIndex<OrderSteps>>().due_at(id)
+            world.resource::<DueIndex<OrderSteps>>().due_at(entity)
         };
         // An attack target alone is no order; an order is held at once, through its windup, and
         // back to its order by an interrupt, until it ends.

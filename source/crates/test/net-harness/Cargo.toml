@@ -31,6 +31,7 @@ campfire-net-emulator = { workspace = true, features = ["internals"] }
 campfire-net-link.workspace = true
 campfire-net-payload = { workspace = true, features = ["internals"] }
 campfire-net-prediction = { workspace = true, features = ["internals"] }
+campfire-net-replication = { workspace = true, features = ["internals"] }
 campfire-net-stepper.workspace = true
 campfire-net-sync = { workspace = true, features = ["internals"] }
 campfire-net-udp.workspace = true
@@ -56,7 +57,6 @@ campfire-actions = { workspace = true, features = ["internals"] }
 campfire-combat = { workspace = true, features = ["internals"] }
 campfire-navigation = { workspace = true, features = ["internals"] }
 campfire-net-messages = { workspace = true, features = ["internals"] }
-campfire-net-replication = { workspace = true, features = ["internals"] }
 campfire-net-timeline = { workspace = true, features = ["internals"] }
 campfire-players = { workspace = true, features = ["internals"] }
 campfire-progression = { workspace = true, features = ["internals"] }

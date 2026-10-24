@@ -11,6 +11,7 @@ use campfire_math::Num;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
 use campfire_sim::{
     DueIndex, DueUnit, EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId,
+    UnitDues,
 };
 use campfire_stats::{StatsWorld, UnitPools};
 use campfire_units::{
@@ -28,7 +29,7 @@ use crate::construction::build_view::{BuildFootprint, BuildView};
 use crate::construction::building_at::BuildingAt;
 use crate::construction::step::{StartingBuild, Step};
 use crate::kept_spawns::KeptSpawns;
-use crate::order_dues::{self, OrderDues};
+use crate::order_dues;
 use crate::producer_spec::ProducerSpec;
 use crate::site::{Site, SiteProgress, SiteStart};
 use crate::spawn_spec::SpawnSpec;
@@ -101,7 +102,7 @@ impl Construction {
         let mut builders = parts.p1();
         for &entity in &*changed {
             let (&id, mut builder) = builders.get_mut(entity).expect("a builder read this tick");
-            builder.set(None, &mut OrderDues::new(&mut index, id, entity));
+            builder.set(None, &mut UnitDues::new(&mut index, id, entity));
         }
     }
 
@@ -113,7 +114,7 @@ impl Construction {
     ) {
         for (entity, &id, mut builder) in &mut builders {
             if builder.order().is_some() {
-                builder.set(None, &mut OrderDues::new(&mut index, id, entity));
+                builder.set(None, &mut UnitDues::new(&mut index, id, entity));
             }
         }
     }
@@ -348,7 +349,7 @@ impl Construction {
     ) {
         building.clear();
         held.clear();
-        held.extend(builder_index.peek_due(Tick::ZERO));
+        builder_index.peek_due(Tick::ZERO, &mut held);
         for &DueUnit {
             id: builder_id,
             entity,
@@ -451,7 +452,7 @@ impl Construction {
                 BuildTarget::Point { .. } => false,
             });
             if ends {
-                builder.set(None, &mut OrderDues::new(&mut builder_index, id, entity));
+                builder.set(None, &mut UnitDues::new(&mut builder_index, id, entity));
             }
         }
     }

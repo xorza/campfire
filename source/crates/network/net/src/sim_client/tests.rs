@@ -39,22 +39,21 @@ fn pending_orders_stamp_up_to_a_ticks_inputs_and_a_split_selects_parts_wait_in_t
     let mut sent = SentInputs::default();
     let mut known = KnownCommanded::default();
     let mut buffer = OrderPayloads::default();
-    let mut stamp =
-        |pending: &mut PendingOrders, known: &mut KnownCommanded, tick, max_per_tick| {
-            let next_seq = u64::try_from(sent.len()).unwrap();
-            pending.stamp(Stamping {
-                stamp: Tick::new(tick),
-                next_seq,
-                max_per_tick,
-                max_len: 10,
-                sent: &mut sent,
-                known,
-                payloads: &mut buffer,
-            });
-            sent.at(Tick::new(tick))
-                .map(<[u8]>::to_vec)
-                .collect::<Vec<_>>()
-        };
+    let mut stamp = |pending: &mut PendingOrders, known: &mut KnownCommanded, tick, room| {
+        let next_seq = u64::try_from(sent.len()).unwrap();
+        pending.stamp(Stamping {
+            stamp: Tick::new(tick),
+            next_seq,
+            room,
+            max_len: 10,
+            sent: &mut sent,
+            known,
+            payloads: &mut buffer,
+        });
+        sent.at(Tick::new(tick))
+            .map(<[u8]>::to_vec)
+            .collect::<Vec<_>>()
+    };
     // Tick 1 takes one input: the group's first part; its other two wait, before the stop to
     // unit 3.
     assert_eq!(stamp(&mut pending, &mut known, 1, 1), [parts[0].clone()]);

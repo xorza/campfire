@@ -147,9 +147,7 @@ fn sibling_imports(
     parents
 }
 
-#[test]
-fn no_crates_modules_import_each_other_in_a_cycle() {
-    let workspace = Workspace::read();
+pub(crate) fn no_crates_modules_import_each_other_in_a_cycle(workspace: &Workspace) {
     let sources = workspace.sources();
     let mut found = Vec::new();
     for krate in workspace.crates() {

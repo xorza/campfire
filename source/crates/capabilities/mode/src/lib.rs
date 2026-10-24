@@ -686,9 +686,9 @@ pub mod internals {
                 .collect()
         }
 
-        /// The kind of each of the tick's failed calls.
-        pub fn failures(world: &World) -> Vec<FailureKind> {
-            let failures = world.resource::<ScriptFailures>().calls();
+        /// Takes the kind of each of the tick's failed calls, which a test that makes them expects.
+        pub fn failures(world: &mut World) -> Vec<FailureKind> {
+            let failures = world.resource_mut::<ScriptFailures>().take_calls();
             failures.into_iter().map(|failure| failure.kind).collect()
         }
 

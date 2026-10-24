@@ -6,6 +6,7 @@ use super::*;
 use crate::zero_hour::error::{NameClash, NameError};
 use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
 use crate::zero_hour::format::ini::locomotor_ini::samples;
+use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
 use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
@@ -91,10 +92,10 @@ const MISSILE_WEAPONS: &str = "Weapon TankHunter\n  PrimaryDamage = 40\n  \
 fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_its_first_cause() {
     let mut ini = WeaponIni::default();
     ini.read(WEAPONS.as_bytes()).unwrap();
-    let mut rules = ZeroHourRules::default();
-    for objects in [DEFAULT_OBJECTS, OBJECTS, ROCKET] {
-        rules.objects.read(objects.as_bytes()).unwrap();
-    }
+    let rules = ZeroHourRules {
+        objects: ObjectIni::of(&[DEFAULT_OBJECTS, OBJECTS, ROCKET]),
+        ..ZeroHourRules::default()
+    };
     let of = |name: &str| {
         let id = DeclaredName::new(&format!("weapon_{}", name.to_lowercase())).unwrap();
         ImportedWeapon::of(ini.get(name).unwrap(), &rules, &id)
@@ -256,10 +257,10 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
 fn a_missile_converts_to_a_steered_projectile_with_its_rings_and_minimum_or_drops_by_its_cause() {
     let mut ini = WeaponIni::default();
     ini.read(MISSILE_WEAPONS.as_bytes()).unwrap();
-    let mut rules = ZeroHourRules::default();
-    for objects in [DEFAULT_OBJECTS, MISSILES] {
-        rules.objects.read(objects.as_bytes()).unwrap();
-    }
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[DEFAULT_OBJECTS, MISSILES]),
+        ..ZeroHourRules::default()
+    };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     let of = |name: &str| {
         let id = DeclaredName::new(&format!("weapon_{}", name.to_lowercase())).unwrap();
@@ -505,8 +506,10 @@ End
 #[test]
 fn weapons_of_one_name_but_case_share_an_action_only_of_the_same_numbers() {
     let import = |guns: &str| {
-        let mut rules = ZeroHourRules::default();
-        rules.objects.read(SOLDIERS.as_bytes()).unwrap();
+        let mut rules = ZeroHourRules {
+            objects: ObjectIni::of(&[SOLDIERS]),
+            ..ZeroHourRules::default()
+        };
         rules
             .locomotors
             .read(samples::LOCOMOTORS.as_bytes())
@@ -543,8 +546,10 @@ fn a_living_type_takes_its_armor_by_the_name_of_its_case() {
             "Object Guard\n  Body = ActiveBody ModuleTag_01\n    MaxHealth = 10\n  End\n  \
                  ArmorSet\n    Conditions = None\n    Armor = {armor}\n  End\nEnd\n"
         );
-        let mut rules = ZeroHourRules::default();
-        rules.objects.read(text.as_bytes()).unwrap();
+        let mut rules = ZeroHourRules {
+            objects: ObjectIni::of(&[&text]),
+            ..ZeroHourRules::default()
+        };
         rules.armors.read(ARMORS.as_bytes()).unwrap();
         let mut names = ImportNames::default();
         let object = rules.objects.object(b"Guard").unwrap();
@@ -577,13 +582,10 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
         )
     };
     let import = |second: &str, speeds: [u16; 2], extra: &str| {
-        let mut rules = ZeroHourRules::default();
-        rules.objects.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
-        rules.objects.read(OBJECTS.as_bytes()).unwrap();
-        rules
-            .objects
-            .read((tanks(second) + extra).as_bytes())
-            .unwrap();
+        let mut rules = ZeroHourRules {
+            objects: ObjectIni::of(&[DEFAULT_OBJECTS, OBJECTS, &(tanks(second) + extra)]),
+            ..ZeroHourRules::default()
+        };
         let text = gun("Cannon", speeds[0]) + gun("Howitzer", speeds[1]).as_str();
         rules.weapons.read(text.as_bytes()).unwrap();
         let mut names = ImportNames::default();

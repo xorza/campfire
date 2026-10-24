@@ -15,6 +15,13 @@ pub(crate) mod error;
 #[derive(Debug)]
 pub struct DurableDir;
 
+/// Whether a directory's make made it or found it there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Made {
+    New,
+    There,
+}
+
 /// What starts the name a removal gives a directory before it removes what the directory holds,
 /// so a crash leaves it whole or gone, as Kafka renames a log's directory before it deletes it.
 const TOMBSTONE: &str = ".campfire-removed.";
@@ -29,33 +36,60 @@ impl DurableDir {
 
     fn create_case(path: &Path) -> Result<(), DurableDirError> {
         let parent = path.parent().ok_or(DurableDirError::NoParent)?;
-        match UserOnly::create_dir(path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                return match fs::symlink_metadata(path) {
-                    Ok(named) if named.is_symlink() => Err(DurableDirError::Link),
-                    Ok(named) if named.is_dir() => Ok(()),
-                    _ => Err(DurableDirError::Create(error)),
-                };
-            }
-            Err(error) => return Err(DurableDirError::Create(error)),
+        if Self::make(path)? == Made::New {
+            DurableName::sync_dir(parent).map_err(DurableDirError::SyncParent)?;
         }
-        DurableName::sync_dir(parent).map_err(DurableDirError::SyncParent)
+        Ok(())
     }
 
-    /// Makes the directory `path` and each one above it that is missing; one already there stays
-    /// as it is. A directory above it may be a link, as a home is, and `path` itself is made as
-    /// `create` makes it.
-    pub fn create_all(path: &Path) -> Result<(), PathError<DurableDirError>> {
-        let missing: Vec<&Path> = path
-            .ancestors()
-            .skip(1)
-            .take_while(|dir| !dir.as_os_str().is_empty() && !dir.is_dir())
-            .collect();
-        for dir in missing.into_iter().rev() {
-            Self::create(dir)?;
+    /// Makes the directory `path`, its user's only, when it is missing, with no sync; a link
+    /// that holds the name is `Link`, not followed.
+    fn make(path: &Path) -> Result<Made, DurableDirError> {
+        match UserOnly::create_dir(path) {
+            Ok(()) => Ok(Made::New),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                match fs::symlink_metadata(path) {
+                    Ok(named) if named.is_symlink() => Err(DurableDirError::Link),
+                    Ok(named) if named.is_dir() => Ok(Made::There),
+                    _ => Err(DurableDirError::Create(error)),
+                }
+            }
+            Err(error) => Err(DurableDirError::Create(error)),
         }
-        Self::create(path)
+    }
+
+    /// Makes the directory `path` and each one above it that is missing, as `create` makes
+    /// each; one already there stays as it is.
+    pub fn create_all(path: &Path) -> Result<(), PathError<DurableDirError>> {
+        Self::make_all(path, &mut Self::create_case)
+    }
+
+    /// Makes `path` by `make`, and first, when its parent is missing, the parent the same way:
+    /// as std's `create_dir_all` tries the deepest first, so no directory there is asked whether
+    /// it is, and one above that is a link, as a home is, is passed through, never made.
+    pub(crate) fn make_all(
+        path: &Path,
+        make: &mut dyn FnMut(&Path) -> Result<(), DurableDirError>,
+    ) -> Result<(), PathError<DurableDirError>> {
+        match make(path) {
+            Err(DurableDirError::Create(error)) if error.kind() == io::ErrorKind::NotFound => {
+                let parent = path
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                    .ok_or(DurableDirError::NoParent)
+                    .map_err(PathError::at(path))?;
+                Self::make_all(parent, make)?;
+                make(path).map_err(PathError::at(path))
+            }
+            made => made.map_err(PathError::at(path)),
+        }
+    }
+
+    /// Makes the directory `path` and each one above it that is missing with no sync, for files
+    /// written with none, as `OutputFile::write_new` writes them: a crash may lose them, and the
+    /// read that checks the files finds it.
+    pub(crate) fn make_all_unsynced(path: &Path) -> Result<(), PathError<DurableDirError>> {
+        Self::make_all(path, &mut |dir| Self::make(dir).map(|_| ()))
     }
 
     /// Makes the directory `path` only when nothing holds its name: `Exists` otherwise, as a

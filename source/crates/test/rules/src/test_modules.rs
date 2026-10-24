@@ -53,6 +53,10 @@ fn fat_test_modules(text: &str) -> Vec<FatModule> {
             visit::visit_item_mod(self, item);
         }
     }
+    // A file that declares no module of the name holds none, and its parse is skipped.
+    if !text.contains("mod tests") {
+        return Vec::new();
+    }
     let parsed = syn::parse_file(text).expect("a workspace source parses");
     let mut modules = Modules {
         file: text.lines().count(),
@@ -62,9 +66,9 @@ fn fat_test_modules(text: &str) -> Vec<FatModule> {
     modules.fat
 }
 
-#[test]
-fn an_inline_test_module_holds_at_most_150_lines_and_40_percent_of_its_file() {
-    let workspace = Workspace::read();
+pub(crate) fn an_inline_test_module_holds_at_most_150_lines_and_40_percent_of_its_file(
+    workspace: &Workspace,
+) {
     let fat: Vec<String> = workspace
         .sources()
         .iter()

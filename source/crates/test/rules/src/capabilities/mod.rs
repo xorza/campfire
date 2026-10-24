@@ -3,10 +3,10 @@
 
 use crate::workspace::{Crate, Workspace};
 
-mod genre_words;
-mod lookups;
-mod roles;
-mod sets;
+pub(crate) mod genre_words;
+pub(crate) mod lookups;
+pub(crate) mod roles;
+pub(crate) mod sets;
 
 /// The capability crates' group under `source/`.
 const GROUP: &str = "crates/capabilities/";
@@ -38,14 +38,14 @@ fn capability(krate: &Crate) -> Option<Naming> {
     }
 }
 
-/// The production code of each capability crate's sources.
-fn capability_sources() -> Vec<NamedCode> {
-    named_code(capability)
+/// The production code of each capability crate's sources, of `workspace`.
+fn capability_sources(workspace: &Workspace) -> Vec<NamedCode> {
+    named_code(workspace, capability)
 }
 
-/// The production code of the sources of each crate that `naming` names, by the path it gives.
-fn named_code(naming: impl Fn(&Crate) -> Option<Naming>) -> Vec<NamedCode> {
-    let workspace = Workspace::read();
+/// The production code of the sources of each crate of `workspace` that `naming` names, by the
+/// path it gives.
+fn named_code(workspace: &Workspace, naming: impl Fn(&Crate) -> Option<Naming>) -> Vec<NamedCode> {
     let crates = workspace.crates();
     let mut found = Vec::new();
     for (krate, naming) in crates

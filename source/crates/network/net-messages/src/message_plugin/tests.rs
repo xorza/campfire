@@ -351,7 +351,7 @@ fn a_direction_adds_the_senders_and_not_the_receivers() {
 /// An event sent on a channel the transport lacks is a registration bug, which crashes instead of
 /// dropping the event.
 #[test]
-#[should_panic(expected = "a message is sent only on a channel its transport sends on")]
+#[should_panic(expected = "a message goes on a channel its transport sends on")]
 fn an_event_on_a_channel_the_transport_lacks_panics() {
     let mut app = message_test_app(true);
     let entity = app
@@ -506,9 +506,7 @@ fn messages_cross_both_ways_for_each_client_kind() {
         let message = world.clone();
         let system = stepper.server_app_mut().register_system(
             move |mut sender: MultiMessageSender<'_, '_>| {
-                sender
-                    .send::<_, Channel1>(&message, UniqueEntityArray::from([server]))
-                    .unwrap();
+                sender.send::<_, Channel1>(&message, UniqueEntityArray::from([server]));
             },
         );
         stepper.server_world_mut().run_system(system).unwrap();
@@ -579,12 +577,10 @@ fn only_a_client_maps_the_entities_a_message_names() {
         let system = stepper.server_app_mut().register_system(
             move |mut sender: MultiMessageSender<'_, '_>| {
                 for entity in server_sends {
-                    sender
-                        .send::<_, Channel1>(
-                            &EntityMessage(entity),
-                            UniqueEntityArray::from([server]),
-                        )
-                        .unwrap();
+                    sender.send::<_, Channel1>(
+                        &EntityMessage(entity),
+                        UniqueEntityArray::from([server]),
+                    );
                 }
             },
         );

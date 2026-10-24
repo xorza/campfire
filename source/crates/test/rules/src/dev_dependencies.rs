@@ -116,9 +116,7 @@ fn stale_past_entries(manifests: &[Crate]) -> Vec<String> {
         .collect()
 }
 
-#[test]
-fn a_dev_dependency_adds_only_test_support() {
-    let workspace = Workspace::read();
+pub(crate) fn a_dev_dependency_adds_only_test_support(workspace: &Workspace) {
     let manifests = workspace.crates();
     assert_eq!(dev_dependency_problems(manifests), Vec::<String>::new());
     assert_eq!(stale_past_entries(manifests), Vec::<String>::new());

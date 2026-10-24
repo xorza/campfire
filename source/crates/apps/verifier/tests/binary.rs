@@ -1,27 +1,23 @@
-//! The verifier's binary on the log and the snapshot a match of the test lane mode writes, which
-//! the harness's tests pin in `tests/fixtures`.
+//! The verifier's binary on the log and the snapshot a match of the test lane mode writes, made
+//! by the test itself, so no run of it reads a file another test of the run writes.
 
 use std::path::Path;
 use std::process::Command;
 
 use campfire_log::LogEvent;
 use campfire_package_disk::PackageDir;
-use campfire_protocol::{SessionLog, SnapshotFingerprint};
-use campfire_sim::StateRegistry;
-use campfire_store::InputFile;
+use campfire_protocol::SnapshotFingerprint;
+use campfire_runner::SessionWorld;
 use campfire_store::internals::TestDir;
 use campfire_verifier::{Verified, verify_file};
 
-/// The pinned file `name` of the fixtures, at most `max` bytes.
-fn fixture(name: &str, max: usize) -> Vec<u8> {
-    let path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures")).join(name);
-    InputFile::read(&path, max).unwrap()
-}
+use crate::session_logs::{Run, checkpointed, encoded};
 
 #[test]
 fn the_binary_logs_the_last_state_hash() {
-    let log = fixture("headless.campfire-log", SessionLog::MAX_FILE_LEN);
-    let mut snapshot = fixture("headless.snapshot", StateRegistry::MAX_SNAPSHOT_LEN);
+    let mut snapshot = Vec::new();
+    let Run { fixed, .. } = checkpointed(&mut snapshot, None, None);
+    let log = encoded(fixed.game().session().log());
     // A directory of this run's own, which goes when the test ends, passed or failed.
     let test_dir = TestDir::new();
     let dir = test_dir.root().to_str().unwrap();

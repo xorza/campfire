@@ -3,6 +3,7 @@ name = "campfire-runner"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+autotests = false
 
 [package.metadata.campfire]
 kind = "glue"
@@ -58,12 +59,17 @@ thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
+campfire-abilities = { workspace = true, features = ["internals"] }
 campfire-areas = { workspace = true, features = ["internals"] }
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-combat = { workspace = true, features = ["internals"] }
 campfire-deliveries = { workspace = true, features = ["internals"] }
+campfire-geometry = { workspace = true, features = ["internals"] }
 campfire-navigation = { workspace = true, features = ["internals"] }
 campfire-orders = { workspace = true, features = ["internals"] }
 campfire-package-format = { workspace = true, features = ["internals"] }
+campfire-production = { workspace = true, features = ["internals"] }
+campfire-progression = { workspace = true, features = ["internals"] }
 campfire-projectiles = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
 # Its tests read the workspace's test packages from disk.
@@ -71,3 +77,7 @@ campfire-test-packages.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "tests"
+path = "tests/mod.rs"

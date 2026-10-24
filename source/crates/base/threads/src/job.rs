@@ -21,6 +21,8 @@ pub enum Job {
     /// Maps a server's port at its router.
     #[name = "port-map"]
     PortMap,
+    /// Converts and hashes an import's files on one core of each.
+    Import,
 }
 
 impl Job {
@@ -38,7 +40,7 @@ mod tests {
     #[test]
     fn each_job_has_its_own_name_whole() {
         let names: Vec<&str> = Job::ALL.iter().map(|job| job.name()).collect();
-        assert_eq!(names.len(), 7);
+        assert_eq!(names.len(), 8);
         let long: Vec<&str> = (names.iter().copied())
             .filter(|name| name.len() > Job::MAX_NAME)
             .collect();

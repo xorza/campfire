@@ -227,9 +227,7 @@ fn document(document: &str) -> Option<Titles> {
     }
 }
 
-#[test]
-fn a_citation_names_a_decision_its_document_holds() {
-    let workspace = Workspace::read();
+pub(crate) fn a_citation_names_a_decision_its_document_holds(workspace: &Workspace) {
     // This file's own samples break the rule on purpose.
     let mut files: Vec<SourceFile> = workspace
         .sources()

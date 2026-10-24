@@ -15,6 +15,7 @@ use core::ops::Add;
 use core::ops::Neg;
 use core::ops::Sub;
 use core::time::Duration;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// The bits of the largest unsigned span and instant, 2^32 - 2^-24 ticks.
 const UNSIGNED_MAX: i64 = (1 << (32 + Num::FRAC_BITS)) - 1;
@@ -377,11 +378,33 @@ impl ToBytes for PositiveTickSpan {
     {
         let whole_ticks = buffer.read_u32()?;
         let overstep = Overstep::from_bytes(buffer)?;
-        Ok(Self {
+        Ok(Self::of_parts(whole_ticks, overstep))
+    }
+}
+
+impl PositiveTickSpan {
+    /// The span of `whole_ticks` and `overstep`, as the wire carries one.
+    fn of_parts(whole_ticks: u32, overstep: Overstep) -> Self {
+        Self {
             value: Num::from_bits(
                 (i64::from(whole_ticks) << Num::FRAC_BITS) | overstep.value().to_bits(),
             ),
-        })
+        }
+    }
+}
+
+/// Its whole ticks and its overstep's top 8 bits, as `ToBytes` writes them, so a span in a
+/// message the codec encodes reads back as one the wire carries.
+impl Serialize for PositiveTickSpan {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        (self.whole_ticks(), self.overstep().to_u8()).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for PositiveTickSpan {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let (whole_ticks, overstep) = <(u32, u8)>::deserialize(deserializer)?;
+        Ok(Self::of_parts(whole_ticks, Overstep::from_u8(overstep)))
     }
 }
 

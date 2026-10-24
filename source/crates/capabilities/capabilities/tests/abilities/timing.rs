@@ -126,12 +126,12 @@ fn charges_come_back(declared: &[Capability]) {
     assert_eq!(charges(&game), (3, 75));
     game.run_until(200);
     assert_eq!(charges(&game), (3, 75));
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     // Refill at full adds none; Dud names an ability with no charges, and fails.
     order(&mut game, 1);
     assert_eq!(charges(&game).0, 3);
     order(&mut game, 2);
-    let failed = Abilities::failed_calls(&game);
+    let failed = Abilities::failed_calls(&mut game);
     assert_eq!(failed.len(), 1);
     assert_eq!(
         failed[0].kind,
@@ -154,7 +154,7 @@ fn charges_come_back(declared: &[Capability]) {
     let unlearned = game.part::<ActionSlots>(learner).slot(0).unwrap();
     let time = game.part::<SlotTimes>(learner).slot(0).unwrap();
     assert_eq!((unlearned.rank, time.charges), (None, None));
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     // A slot gives its charges from the book, in a match with no progression: Step's 3 a rank,
     // back in 30 ticks; none for Refill, which has none, nor for Step unlearned.
     let book = game.resource::<ActionBook>();
@@ -469,7 +469,7 @@ fn on_resolve(ctx, caster, target) {
         assert_eq!(Stats::health(&game, target), life, "cut {cut}");
         assert_eq!(Abilities::pool(&game, cancelled), mana, "cut {cut}");
     }
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     // The same script in an action that does not charge fails its call.
     let position = Vec3::from((100, 0, 0));
     let slots = TimedSlots::new(ActionSlots::new([(plain, SlotKind::new(0), Rank::new(1))]));
@@ -481,7 +481,7 @@ fn on_resolve(ctx, caster, target) {
     );
     let target = Abilities::spawn_combatant(&mut game, (103, 0, 0), Team::new(1), ());
     Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
-    let failed = Abilities::failed_calls(&game);
+    let failed = Abilities::failed_calls(&mut game);
     assert_eq!(failed.len(), 1);
     assert_eq!(
         failed[0].kind,
@@ -543,7 +543,7 @@ fn on_resolve(ctx, caster, target) {
         Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
         assert_eq!(Stats::health(&game, target), 500 - damage);
     }
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }
 
 #[test]
@@ -576,7 +576,7 @@ fn on_resolve(ctx, caster, target) {
         &mut game,
         &[(first, ActionTarget::None), (second, ActionTarget::None)],
     );
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     // The sequence of `script.draw` for each caster in this tick, opened as the world opens it.
     let opener = game.resource::<SimRng>().opener();
     let sequence = |caster: StableId| opener.open(RngStream::new("script.draw"), caster);
@@ -644,7 +644,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             kind: FailureKind::CallLimit,
         };
         let expected: Vec<_> = spins.then_some(limited).into_iter().collect();
-        assert_eq!(Abilities::failed_calls(&game), expected);
+        assert_eq!(Abilities::failed_calls(&mut game), expected);
         // The strike's 50 true damage: 500 → 450, and its cost of 10: 100 → 90.
         assert_eq!(Stats::health(&game, enemy), 450);
         assert_eq!(Abilities::pool(&game, striker), 90);
@@ -801,5 +801,5 @@ fn a_channel_with_no_end_pays_by_its_level_until_an_order_waits_out_its_wind_dow
     game.run_until(later);
     assert_eq!(gold(&game), held);
     assert_eq!(game.part::<Position>(stopped).get(), Vec3::from((20, 0, 0)));
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }

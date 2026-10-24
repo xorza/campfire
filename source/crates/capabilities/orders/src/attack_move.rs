@@ -3,11 +3,11 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Has, With, Without};
 use bevy_ecs::system::{Local, Query, ResMut};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_actions::ActionProgress;
 use campfire_common::Tick;
 use campfire_math::Vec3;
-use campfire_sim::{DueIndex, DueUnit, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
+use campfire_sim::{DueIndex, DueUnit, SimComponent, TimedKept, TimedProcess, TimedRuns};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::{Dead, Destination, UnitEntity, Walk};
 use campfire_visibility::DataKind;
@@ -64,14 +64,14 @@ impl AttackMove {
             attack_move.set_if_neq(Self::NONE);
         }
         held.clear();
-        held.extend(index.peek_due(Tick::ZERO));
-        for &DueUnit { id, entity } in &*held {
+        index.peek_due(Tick::ZERO, &mut held);
+        for &DueUnit { entity, .. } in &*held {
             let Ok((mut attack_move, progress, mut walk)) = units.get_mut(entity) else {
-                index.forget(id);
+                index.forget(entity);
                 continue;
             };
             let Some(goal) = attack_move.goal else {
-                index.forget(id);
+                index.forget(entity);
                 continue;
             };
             let stands = walk.goal().is_none()
@@ -85,7 +85,7 @@ impl AttackMove {
                 walk.to(Some(goal));
             } else {
                 attack_move.set_if_neq(Self::NONE);
-                index.forget(id);
+                index.forget(entity);
             }
         }
     }
@@ -104,55 +104,6 @@ impl TimedProcess for AttackMove {
             .goal
             .filter(|_| walks && !dead)
             .map(|_| Tick::ZERO)
-    }
-}
-
-/// The index of the units that attack-move, for the unit `id`, of `entity`, which an order
-/// pushes it into as it gives a goal.
-#[derive(Debug)]
-pub(crate) struct GoalDues<'a> {
-    index: &'a mut DueIndex<AttackMove>,
-    id: StableId,
-    entity: Entity,
-}
-
-impl<'a> GoalDues<'a> {
-    pub(crate) const fn new(
-        index: &'a mut DueIndex<AttackMove>,
-        id: StableId,
-        entity: Entity,
-    ) -> Self {
-        Self { index, id, entity }
-    }
-
-    /// Runs `change` on `world`, with the index of the unit `id`, of `entity`, as an effect
-    /// changes the unit.
-    pub(crate) fn with<R>(
-        world: &mut World,
-        id: StableId,
-        entity: Entity,
-        change: impl FnOnce(&mut World, &mut GoalDues<'_>) -> R,
-    ) -> R {
-        world.resource_scope(|world, mut index: Mut<'_, DueIndex<AttackMove>>| {
-            change(world, &mut GoalDues::new(&mut index, id, entity))
-        })
-    }
-
-    /// The same index, for a shorter borrow.
-    pub(crate) const fn reborrow(&mut self) -> GoalDues<'_> {
-        GoalDues {
-            index: self.index,
-            id: self.id,
-            entity: self.entity,
-        }
-    }
-
-    /// Pushes the unit as `attack_move` makes it due: at once, while it has a goal. `walk_on`
-    /// forgets one that walks not.
-    pub(crate) fn push(&mut self, attack_move: AttackMove) {
-        if attack_move.goal.is_some() {
-            self.index.push(Tick::ZERO, self.id, self.entity);
-        }
     }
 }
 

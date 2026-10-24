@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 
 use campfire_common::EnumAll;
+use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::dropped::Losses;
-use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectId, ObjectIni};
+use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectFiles, ObjectId};
 
 /// The most variations a unit type holds, as a unit's place among them is a `u8`.
 const MOST: usize = 256;
@@ -12,7 +13,7 @@ const MOST: usize = 256;
 /// placement of a variation otherwise than to its parent
 /// (09-zero-hour.md, A variation varies the body and the look alone;
 /// 09-zero-hour.md, A chassis converts to the parent of its file).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 pub enum VariationDropCause {
     /// A variation names no object: the type holds the others.
     NoObject,
@@ -51,7 +52,7 @@ impl BuildVariations {
     /// The build variations of `objects`, every file read: of each parent, the objects its line names, of a
     /// variation unlike the first the first alone; of each variation, the parent its own file
     /// defines, else the one parent that names it.
-    pub(crate) fn of(objects: &ObjectIni) -> Self {
+    pub(crate) fn of(objects: &ObjectFiles) -> Self {
         let mut variations = Self::default();
         for parent in objects.objects() {
             let names = &parent.build().variations;
@@ -153,10 +154,11 @@ mod tests {
              Object FarTwo\n BuildVariations = Shared\nEnd\n",
             "Object Shared\nEnd\n",
         ];
-        let mut ini = ObjectIni::default();
+        let mut ini = ObjectFiles::default();
         for file in files {
             ini.read(file.as_bytes()).unwrap();
         }
+        let ini = ini.finish();
         let variations = ini.variations();
         let object = |name: &str| ini.named(name).unwrap();
         let of_parent = |name: &str| -> Option<Vec<&str>> {

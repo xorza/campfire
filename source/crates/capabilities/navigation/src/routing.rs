@@ -3,14 +3,14 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_common::Tick;
-use campfire_sim::{DueIndex, DueUnit, Position, Removals, SimTick, StableId};
+use campfire_sim::{DueIndex, DueUnit, Position, Removals, SimTick, StableId, UnitDues};
 use campfire_units::{Body, Dead, Destination};
 
 use crate::body_index::BodyIndex;
 use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::{Route, RouteAsk, RouteDues, RouteMut};
+use crate::route::{Route, RouteAsk, RouteMut};
 use crate::route_asks::{Ask, AskingUnits, PlanWalker, RouteAsks, RouteSearch};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::segment::Segment;
@@ -98,7 +98,7 @@ impl Routing {
                         route.ask(
                             ask,
                             &mut progress,
-                            &mut RouteDues::new(&mut asks, id, entity),
+                            &mut UnitDues::new(&mut asks, id, entity),
                         );
                     }
                 }
@@ -121,13 +121,13 @@ impl Routing {
         ),
     ) {
         held.clear();
-        held.extend(index.peek_due(Tick::ZERO));
+        index.peek_due(Tick::ZERO, &mut held);
         held.retain(|unit| {
             let asking = units
                 .get(unit.entity)
                 .is_ok_and(|(.., route, _)| route.asked().is_some());
             if !asking {
-                index.forget(unit.id);
+                index.forget(unit.entity);
             }
             asking
         });
@@ -157,7 +157,7 @@ impl Routing {
             let units = units.get_mut(member.entity);
             let (.., mut route, _) = units.expect("a unit read this tick");
             route.answer(member.position, waypoints, reached);
-            index.forget(member.id);
+            index.forget(member.entity);
         });
     }
 }

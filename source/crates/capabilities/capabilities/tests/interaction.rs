@@ -181,8 +181,8 @@ fn is_busy(game: &Match, user: StableId) -> bool {
     game.part::<ActionProgress>(user).in_progress().is_some()
 }
 
-fn failed(game: &Match) -> Vec<FailedCall> {
-    game.resource::<ScriptFailures>().calls()
+fn failed(game: &mut Match) -> Vec<FailedCall> {
+    game.resource_mut::<ScriptFailures>().take_calls()
 }
 
 #[test]
@@ -319,7 +319,7 @@ fn a_use_is_dropped_by_a_unit_with_no_use_slot_one_its_users_refuse_or_one_beyon
     assert_eq!(Stats::health(&game, shrine), 500);
     game.step();
     assert_eq!(Stats::health(&game, shrine), 499);
-    assert_eq!(failed(&game), []);
+    assert_eq!(failed(&mut game), []);
 
     // The match restores; one whose user of a type with a use slot holds none, or two, is
     // refused, where its use would fill a slot of no use.
@@ -375,5 +375,5 @@ fn a_second_use_of_one_object_keeps_its_slot_and_a_use_of_another_fills_it_afres
         [shrine, well].map(|id| Stats::health(&game, id)),
         [469, 499]
     );
-    assert_eq!(failed(&game), []);
+    assert_eq!(failed(&mut game), []);
 }

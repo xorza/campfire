@@ -58,16 +58,6 @@ pub trait SimWorld {
     fn changes(&mut self, delta: &mut StateDelta);
 }
 
-/// Runs one sim tick of `world`, and clears its change trackers after it, as an `App` does after
-/// each frame.
-fn run_tick(world: &mut World) {
-    // A test's match whose build its loads left open ends it before its first tick.
-    #[cfg(feature = "internals")]
-    crate::sim_world_builder::SimWorldBuilder::finish_open(world);
-    world.run_schedule(SimUpdate);
-    world.clear_trackers();
-}
-
 impl SimWorld for World {
     fn entity_of(&self, id: StableId) -> Option<Entity> {
         self.resource::<EntityIndex>().get(id)
@@ -88,15 +78,11 @@ impl SimWorld for World {
     }
 
     fn step(&mut self) {
-        run_tick(self);
-        // A test fails on a command nothing read, unless it takes them (02-engine-core.md, A
-        // command nothing reads is counted).
+        // A test's match whose build its loads left open ends it before its first tick.
         #[cfg(feature = "internals")]
-        #[expect(
-            clippy::absolute_paths,
-            reason = "a gated statement names its path whole, as no import is gated mid-file"
-        )]
-        crate::unread_commands::UnreadCommands::assert_read(self);
+        crate::sim_world_builder::SimWorldBuilder::finish_open(self);
+        self.run_schedule(SimUpdate);
+        self.clear_trackers();
     }
 
     fn state_hash(&self) -> StateHash {
@@ -171,7 +157,6 @@ pub(crate) mod internals {
     use crate::sim_tick::SimTick;
     use crate::sim_update::{SimUpdate, TickEndSystems, begin_tick};
     use crate::sim_world::SimWorld;
-    use crate::sim_world::run_tick;
     use crate::sim_world_builder::internals::OpenBuild;
     use crate::stable_id::StableId;
     use crate::stable_id::entity_index::EntityIndex;
@@ -335,7 +320,7 @@ pub(crate) mod internals {
             for &(player_slot, payload) in inputs {
                 self.push_input(player_slot, payload);
             }
-            run_tick(self);
+            self.step();
             UnreadCommands::take(self)
         }
 

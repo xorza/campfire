@@ -46,6 +46,10 @@ pub(crate) enum CheckError {
     GoldenParse(#[source] TomlError),
     #[error("the golden file does not write")]
     GoldenWrite(#[source] PathError<DurableError>),
+    #[error("the stamp of an earlier import does not read")]
+    StampRead(#[source] PathError<ReadError>),
+    #[error("the stamp of the import does not write")]
+    StampWrite(#[source] PathError<DurableError>),
 }
 
 /// Why a probe's argument does not read.

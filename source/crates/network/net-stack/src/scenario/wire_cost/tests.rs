@@ -1,7 +1,7 @@
 use super::*;
 use campfire_net_emulator::LinkModel;
 use campfire_net_emulator::internals::per_mille;
-use campfire_threads::internals::Parallel;
+use campfire_threads::Parallel;
 
 /// 20 ms each way, the same both ways.
 fn latency() -> LinkModel {
@@ -59,11 +59,11 @@ fn each_case_puts_exact_counts_on_the_wire() {
     let cases = [
         (
             unreliable("two-way at 60 Hz", TICK, Senders::Both),
-            [cost([60, 13413], [0, 0], 0), cost([60, 14040], [0, 0], 0)],
+            [cost([60, 13653], [0, 0], 0), cost([60, 14280], [0, 0], 0)],
         ),
         (
             unreliable("a client that sends nothing", TICK, Senders::Server),
-            [cost([60, 1200], [0, 0], 0), cost([60, 14040], [0, 0], 0)],
+            [cost([60, 1440], [0, 0], 0), cost([60, 14280], [0, 0], 0)],
         ),
         (
             unreliable(
@@ -71,29 +71,32 @@ fn each_case_puts_exact_counts_on_the_wire() {
                 Duration::from_nanos(6_944_444),
                 Senders::Both,
             ),
-            [cost([98, 13907], [0, 0], 0), cost([60, 14040], [0, 0], 0)],
+            [cost([98, 14299], [0, 0], 0), cost([60, 14280], [0, 0], 0)],
         ),
         (
             lossy,
-            [cost([60, 13863], [0, 0], 4), cost([60, 14367], [0, 0], 1)],
+            [cost([60, 14103], [0, 0], 4), cost([60, 14607], [0, 0], 1)],
         ),
         (
             sealed,
-            [cost([60, 14853], [0, 0], 0), cost([60, 15007], [0, 0], 0)],
+            [cost([60, 15093], [0, 0], 0), cost([60, 15247], [0, 0], 0)],
         ),
     ];
-    // The cases share no state, so they run in parallel.
+    // The cases share no state, so they run in parallel; one compare of them all shows every
+    // count a change moved.
     let measured = Parallel::map(cases.len(), |index| cases[index].0.measure());
-    for ((case, [client_to_server, server_to_client]), measured) in cases.into_iter().zip(measured)
-    {
-        assert_eq!(
-            measured,
-            WireCost {
+    let measured: Vec<_> = (cases.iter().map(|(case, _)| case.name))
+        .zip(measured)
+        .collect();
+    let expected: Vec<_> = cases
+        .iter()
+        .map(|&(ref case, [client_to_server, server_to_client])| {
+            let cost = WireCost {
                 client_to_server,
                 server_to_client,
-            },
-            "{}",
-            case.name
-        );
-    }
+            };
+            (case.name, cost)
+        })
+        .collect();
+    assert_eq!(measured, expected);
 }

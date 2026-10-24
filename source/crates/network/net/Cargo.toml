@@ -39,7 +39,6 @@ internals = [
     "campfire-protocol/internals",
     "campfire-runner/internals",
     "campfire-schedule/internals",
-    "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-states/internals",
     "campfire-store/internals",
@@ -82,7 +81,6 @@ campfire-net-transport.workspace = true
 campfire-net-udp.workspace = true
 campfire-runner.workspace = true
 campfire-schedule.workspace = true
-campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-states.workspace = true
 campfire-store.workspace = true

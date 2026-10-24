@@ -12,8 +12,8 @@ use crate::stamp_count::StampCount;
 /// A checkpoint's carry that holds a state a log holds at the checkpoint's boundary, the one shape
 /// a log takes a carry in: each player slot's chain is its own and counts its player's stamps, each
 /// count is within what the boundary's ticks hold, each player's main key controls one player slot,
-/// and each input still to apply is of a player slot, due from the boundary on, in the order it
-/// applies, and within the session's input rules.
+/// and each input still to apply is of a player slot, due from the boundary on and within the max
+/// input lead past it, in the order it applies, and within the session's input rules.
 #[derive(Debug)]
 pub(super) struct CheckedCarry(LogCarry);
 
@@ -33,16 +33,8 @@ impl CheckedCarry {
             return Err(CarryFlaw::PlayerSlots);
         }
         let rules = cx.terms.inputs;
-        // The most inputs a player sends by the boundary: its ticks to the max lead past it fill,
-        // as a packet's `AheadOfTime` bounds them.
-        let most = record
-            .tick
-            .after(rules.max_lead)
-            .after(Ticks::new(1))
-            .get()
-            .saturating_mul(u64::from(rules.max_per_tick));
         for (player_slot, carried) in (0..).map(PlayerSlot::new).zip(&carry.player_slots) {
-            Self::check_player_slot(player_slot, carried, &cx, most)?;
+            Self::check_player_slot(player_slot, carried, record, &cx)?;
             let held_twice = carry.player_slots[..player_slot.index()]
                 .iter()
                 .filter_map(|other| main_key(other))
@@ -68,12 +60,25 @@ impl CheckedCarry {
     fn check_player_slot(
         player_slot: PlayerSlot,
         carried: &CarriedPlayerSlot,
+        record: &Checkpoint,
         cx: &CarryCx<'_>,
-        most: u64,
     ) -> Result<(), CarryFlaw> {
         let rules = cx.terms.inputs;
         let stamps = carried.stamps;
-        if carried.spill.count > rules.max_per_tick {
+        // The most inputs a player sends by the boundary: its ticks to the max lead past it fill,
+        // as a packet's `AheadOfTime` bounds them.
+        let most = record
+            .tick
+            .after(rules.max_lead)
+            .after(Ticks::new(1))
+            .get()
+            .saturating_mul(u64::from(rules.max_per_tick));
+        let past = carried
+            .spill
+            .tick
+            .since(record.tick)
+            .is_some_and(|lead| lead > rules.max_lead);
+        if carried.spill.count > rules.max_per_tick || (carried.spill.count != 0 && past) {
             return Err(CarryFlaw::Spill(player_slot));
         }
         match &carried.control {
@@ -122,7 +127,11 @@ impl CheckedCarry {
         });
         let fits = u64::try_from(input.payload.len())
             .is_ok_and(|len| len <= u64::from(rules.max_payload_len));
-        applies && input.tick >= record.tick && in_order && fits
+        let within = input
+            .tick
+            .since(record.tick)
+            .is_some_and(|lead| lead <= rules.max_lead);
+        applies && within && in_order && fits
     }
 
     pub(super) fn into_inner(self) -> LogCarry {

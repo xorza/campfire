@@ -1071,7 +1071,8 @@ fn an_ai_needs_think_and_orders_its_unit_but_changes_nothing() {
     // It thinks in tick 0: the heal of its ally, a change, fails the call, as an AI reads, orders
     // and draws.
     game.step_with(&[]);
-    let failures = game.resource::<ScriptFailures>().get();
+    let failures = game.resource_mut::<ScriptFailures>().take();
+    let failures = failures.get();
     assert_eq!(failures.len(), 1);
     assert_eq!(
         (failures[0].id, failures[0].hook),
@@ -1110,7 +1111,8 @@ fn an_ai_needs_think_and_orders_its_unit_but_changes_nothing() {
     );
     assert!(game.resource::<ScriptFailures>().get().is_empty());
     game.step_with(&[]);
-    let failures = game.resource::<ScriptFailures>().get();
+    let failures = game.resource_mut::<ScriptFailures>().take();
+    let failures = failures.get();
     assert_eq!(failures.len(), 1);
     assert_eq!(
         (failures[0].id, failures[0].kind),
@@ -1158,8 +1160,11 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     let mut seen = Vec::new();
     for _ in 0..3 {
         game.step_with(&[]);
-        let failures = game.resource::<ScriptFailures>().get();
-        let failed: Vec<_> = failures.iter().map(|failure| failure.id).collect();
+        let failures = game.resource_mut::<ScriptFailures>().take();
+        let failed: Vec<_> = failures.get().iter().map(|failure| failure.id).collect();
+        for failure in failures.get() {
+            assert_eq!(failure.kind, FailureKind::CallLimit);
+        }
         seen.push((failed, next(&game, first), next(&game, second)));
     }
     assert_eq!(
@@ -1170,9 +1175,6 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
             (vec![Some(first)], Some(3), Some(2)),
         ]
     );
-    for failure in game.resource::<ScriptFailures>().get() {
-        assert_eq!(failure.kind, FailureKind::CallLimit);
-    }
     // A restored unit is due at most its period, here 1 tick, after the tick the match runs
     // next, as a think sets its next a period on; a later tick, which would keep its AI from
     // thinking, fails the check.

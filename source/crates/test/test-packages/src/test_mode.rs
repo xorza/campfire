@@ -17,6 +17,11 @@ pub enum TestMode {
     Ruled,
     /// `test-skirmish`, on `field`: a mode that runs Zero Hour's rules package's script.
     Skirmish,
+    /// `test-hooks`, on `arena`: the mode whose script each of the engine's tests of a mode's
+    /// script writes.
+    Hooks,
+    /// `test-features`, on `square`: a mode of each fact that decides what a match installs.
+    Features,
 }
 
 impl TestMode {
@@ -24,7 +29,9 @@ impl TestMode {
     /// it depends on.
     pub(crate) const fn tree(self) -> &'static str {
         match self {
-            Self::Lane | Self::Proving | Self::Ruled => "test/engine",
+            Self::Lane | Self::Proving | Self::Ruled | Self::Hooks | Self::Features => {
+                "test/engine"
+            }
             Self::Moba3v3 => "test/moba",
             Self::Skirmish => "",
         }
@@ -38,6 +45,8 @@ impl TestMode {
             Self::Moba3v3 => "modes/3v3",
             Self::Ruled => "modes/ruled",
             Self::Skirmish => "test/engine/modes/skirmish",
+            Self::Hooks => "modes/hooks",
+            Self::Features => "modes/features",
         }
     }
 
@@ -49,6 +58,8 @@ impl TestMode {
             Self::Moba3v3 => "two_lanes",
             Self::Ruled => "stand",
             Self::Skirmish => "field",
+            Self::Hooks => "arena",
+            Self::Features => "square",
         };
         MapName::parse(name).expect("a test map's name")
     }

@@ -15,7 +15,7 @@ use campfire_math::{Num, Vec3};
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, SimComponent, SimTick, SimWorld, StableId, Unpredicted};
+use campfire_sim::{Capability, SimComponent, SimTick, SimWorld, StableId, UnitDues, Unpredicted};
 use campfire_units::internals::Spawn;
 use campfire_units::{
     BodyForm, BodyShape, Dead, Destination, Layer, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner,
@@ -228,7 +228,7 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
             time: Ticks::new(time),
             paid: 0,
         };
-        queue.push(queued, &[], Tick::new(0), &mut QueueDues::loose());
+        queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
     }
     queue
 }
@@ -487,7 +487,7 @@ fn a_train_queue_is_state_and_restores() {
             time: Ticks::new(time),
             paid: 0,
         };
-        queue.push(queued, &[], Tick::new(pushed), &mut QueueDues::loose());
+        queue.push(queued, &[], Tick::new(pushed), &mut UnitDues::loose());
         Binary::decodes_again(&queue) && queue.check(&restored, entity)
     };
     assert!(check(0, Tick::LIMIT.get()));

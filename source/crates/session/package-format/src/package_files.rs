@@ -41,8 +41,17 @@ impl PackageFiles {
     /// an open package, so a read after the open takes the path as it is.
     pub fn read(source: Arc<dyn PackageSource>) -> Result<Self, ContentError> {
         let index = FileIndex::decode(&source.read_index()?)?;
+        Self::read_indexed(source, Arc::new(index))
+    }
+
+    /// The files of the package `source` holds, by its `index`, which a caller read from it
+    /// already, as `read` reads them.
+    pub fn read_indexed(
+        source: Arc<dyn PackageSource>,
+        index: Arc<FileIndex>,
+    ) -> Result<Self, ContentError> {
         source.check_names(&mut index.rows().map(|(path, _)| path))?;
-        let reader = PackageReader::new(Arc::new(index), source);
+        let reader = PackageReader::new(index, source);
         let mut files = BTreeMap::new();
         for (path, row) in reader.index().rows() {
             if Self::reads(path) {

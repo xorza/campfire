@@ -1,0 +1,7 @@
+# A turret of each action.
+[units.tank]
+pools = ["health"]
+slots = { basic = ["shell", "guard", "burn", "focus"] }
+turret = { turn_rate = "90", tolerance_deg = "5", slot = "basic" }
+stats = { health = { base = 10 } }
+combat = {}

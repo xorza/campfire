@@ -121,9 +121,12 @@ impl Dying {
         tick: Res<'_, SimTick>,
         index: Res<'_, DueIndex<Respawn>>,
         mut dead: Query<'_, '_, (&Respawn, &mut RecentAttackers), With<Dead>>,
+        mut due: Local<'_, Vec<DueUnit>>,
     ) {
         let now = tick.start();
-        for DueUnit { entity, .. } in index.peek_due(now) {
+        due.clear();
+        index.peek_due(now, &mut due);
+        for &DueUnit { entity, .. } in &*due {
             if let Ok((respawn, mut attackers)) = dead.get_mut(entity)
                 && respawn.at <= now
             {

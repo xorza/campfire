@@ -10,6 +10,7 @@ use campfire_production::{
     TrainData,
 };
 use campfire_values::{Number, Ranked, Share, TextId};
+use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::axes;
 use crate::zero_hour::combat_import::CombatImport;
@@ -141,7 +142,7 @@ impl ImportedAction {
 }
 
 /// Why the import drops a button.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 pub enum ButtonDropCause {
     /// No file defines the button, or its object, or an object its prerequisites name.
     NoObject,

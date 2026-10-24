@@ -6,12 +6,11 @@ use bevy_ecs::query::{Added, Changed, Or, QueryState, Without};
 use bevy_ecs::system::{Commands, In, Local, ParamSet, Query, Res, ResMut, SystemState};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::ActionSlots;
-use campfire_common::Tick;
 use campfire_declarations::{ById, RoleForm};
 use campfire_players::PlayersWorld;
 use campfire_sim::{
     DueIndex, DueUnit, EntityIndex, Keyed, Ordered, Position, Removals, SimTick, StableId,
-    Unpredicted,
+    UnitDues, Unpredicted,
 };
 use campfire_units::{Body, Dead, Owner, StatusTags, Walk, WalkReadOnly};
 use campfire_values::{ActionId, Team, UnitTags, UnitType};
@@ -24,7 +23,7 @@ use crate::gather_spec::GatherSpec;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 use crate::node::Node;
 use crate::node_book::NodeBook;
-use crate::order_dues::{self, OrderDues};
+use crate::order_dues;
 
 pub(crate) mod checked_gather;
 pub(crate) mod gather;
@@ -115,7 +114,7 @@ impl GatherLoop {
             let (&id, mut gatherer) = gatherers
                 .get_mut(entity)
                 .expect("a gatherer read this tick");
-            gatherer.set(order, &mut OrderDues::new(&mut index, id, entity));
+            gatherer.set(order, &mut UnitDues::new(&mut index, id, entity));
             gatherer.carry(load);
         }
     }
@@ -129,7 +128,7 @@ impl GatherLoop {
     ) {
         for (entity, &id, mut worker) in &mut workers {
             if worker.order().is_some() {
-                worker.set(None, &mut OrderDues::new(&mut index, id, entity));
+                worker.set(None, &mut UnitDues::new(&mut index, id, entity));
             }
         }
     }
@@ -194,6 +193,12 @@ impl GatherLoop {
                 step = read.step(entity, &read.relations.get());
             }
         }
+        // The loop's own steps changed the workers' loops after its change filter's last run, and
+        // freed what they left: the filter's next run starts past them, so it finds only another
+        // system's changes.
+        let _ = left
+            .get_mut(world)
+            .expect("the left workers are always valid");
     }
 
     /// Frees each node whose holder no longer gathers it: dead, gone, or of a loop that ended or
@@ -242,7 +247,7 @@ impl GatherLoop {
     /// to wait, then by stable id: it holds the node, and its gather's time runs from this tick.
     fn free(world: &mut World, workers: &mut Gatherers, entity: Entity, id: StableId) {
         let now = world.resource::<SimTick>().start();
-        let looping = world.resource::<DueIndex<Gatherer>>().peek_due(Tick::ZERO);
+        let looping = world.resource::<DueIndex<Gatherer>>().units();
         let first = looping
             .filter_map(|unit| {
                 let (worker, &worker_id, gatherer) = workers.get(world, unit.entity).ok()?;

@@ -111,13 +111,11 @@ fn production(file: &SourceFile) -> Option<String> {
     file.production()
 }
 
-#[test]
 #[expect(
     clippy::literal_string_with_formatting_args,
     reason = "the samples are lines of source the scan reads, not format strings"
 )]
-fn every_error_the_workspace_writes_goes_through_its_report() {
-    let workspace = Workspace::read();
+pub(crate) fn every_error_the_workspace_writes_goes_through_its_report(workspace: &Workspace) {
     let alone = Allowlist::new(&ALONE);
     let mut found = Vec::new();
     let mut files = 0;

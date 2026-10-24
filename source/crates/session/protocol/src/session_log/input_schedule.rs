@@ -61,7 +61,7 @@ impl InputSchedule {
 
     /// Queues the input `index` of `entries`, logged before `next`, for the tick it applies in, and
     /// says when that is: what `applied` says, or later, past the ticks its player slot's inputs
-    /// before it fill.
+    /// before it fill. The log took it only as `admits` its place.
     pub(super) fn schedule(&mut self, entries: &LogEntries, index: u32, next: Tick) -> Applied {
         let input = entries.input(index);
         let outcome = self.applied(input.stamp, next);
@@ -69,7 +69,11 @@ impl InputSchedule {
             return outcome;
         };
         let player_slot = input.player_slot;
-        let tick = self.spills[player_slot.index()].take(earliest, self.rules.max_per_tick);
+        let spill = &mut self.spills[player_slot.index()];
+        let place = spill
+            .admit(earliest, next, &self.rules)
+            .expect("a logged input's place is within the max lead");
+        let tick = spill.take(place);
         self.pending.push(Reverse(InputOrder {
             tick,
             player_slot,
@@ -78,9 +82,25 @@ impl InputSchedule {
         Applied::At(tick)
     }
 
-    /// The tick a next input of `player_slot` that may apply from `next` on would apply in.
-    pub(super) fn place(&self, player_slot: PlayerSlot, next: Tick) -> Tick {
-        self.spills[player_slot.index()].place(next, self.rules.max_per_tick)
+    /// Whether inputs of `player_slot` stamped `stamps`, in order, logged before `next`, each have
+    /// a place within the max lead past `next`, as the log takes an input only then, so a player
+    /// slot holds at most the max inputs per tick for each tick of the window.
+    pub(super) fn admits(
+        &self,
+        player_slot: PlayerSlot,
+        stamps: impl IntoIterator<Item = Tick>,
+        next: Tick,
+    ) -> bool {
+        let mut spill = self.spills[player_slot.index()];
+        stamps
+            .into_iter()
+            .all(|stamp| match self.applied(stamp, next) {
+                Applied::At(earliest) => spill
+                    .admit(earliest, next, &self.rules)
+                    .map(|place| spill.take(place))
+                    .is_some(),
+                Applied::Early => true,
+            })
     }
 
     /// The spill of `player_slot`.

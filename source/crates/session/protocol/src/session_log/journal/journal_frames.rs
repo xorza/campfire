@@ -1,6 +1,6 @@
 use campfire_common::{DomainHasher, HashDomain, Meaning, Value32};
 
-use std::io::{self, Read};
+use std::io::{self, BufReader, Read};
 
 use crate::session_log::journal::error::{JournalStreamError, NotJournal};
 
@@ -10,6 +10,9 @@ const FRAME_DOMAIN: HashDomain<FrameHash> = HashDomain::new("campfire/journal-fr
 pub(crate) const MAX_RECORD: usize = 16 << 20;
 const LEN_BYTES: usize = size_of::<u32>();
 const HASH_BYTES: usize = 32;
+/// The bytes a stream reads from its reader at once, so the frames of many ticks take one read
+/// and not two each.
+const READ_BUFFER: usize = 64 << 10;
 
 /// A frame's hash: the BLAKE3 of the frame domain and its record.
 pub(crate) type FrameHash = Value32<FrameHashMeaning>;
@@ -57,12 +60,14 @@ impl<'a> JournalFrames<'a> {
     /// Reads the whole frames of the journal `reader` gives, in order, one at a time, and gives
     /// each record to `visit`, as the iterator reads them from bytes in memory: the read stops at
     /// the first frame that is short, too long, or whose hash fails. The memory it takes is one
-    /// record's. An error for a reader that fails, and `NotJournal` for bytes that do not start
-    /// with the journal's tag.
+    /// record's and a buffer of `READ_BUFFER` bytes, so a frame's length and its record cost no
+    /// read of their own. An error for a reader that fails, and `NotJournal` for bytes that do not
+    /// start with the journal's tag.
     pub fn stream(
-        mut reader: impl Read,
+        reader: impl Read,
         visit: &mut dyn FnMut(&[u8]),
     ) -> Result<(), JournalStreamError> {
+        let mut reader = BufReader::with_capacity(READ_BUFFER, reader);
         let mut tag = [0; Self::TAG.len()];
         if !read_whole(&mut reader, &mut tag)? || tag != *Self::TAG {
             return Err(NotJournal.into());

@@ -33,8 +33,9 @@ pub enum InputError {
     /// An input is stamped before the input before it in the player's chain.
     #[error("input stamped before the input before it")]
     StampBack,
-    /// The player's inputs in all pass what its ticks so far hold: the max inputs per tick for
-    /// each tick up to the max input lead past the next.
+    /// The player's inputs in all pass what its ticks so far hold, the max inputs per tick for
+    /// each tick up to the max input lead past the next; or an input would apply past the max
+    /// input lead, as the inputs before it fill the ticks up to it.
     #[error("more inputs than the ticks up to the max input lead hold")]
     AheadOfTime,
     /// The log's file or its journal has no room for the packet and the session's end after it.
@@ -143,11 +144,13 @@ pub enum CarryFlaw {
     Chain(PlayerSlot),
     #[error("player slot {0:?}'s stamps count inputs no packet sends")]
     Stamps(PlayerSlot),
-    #[error("player slot {0:?}'s spill holds more inputs than a tick takes")]
+    #[error(
+        "player slot {0:?}'s spill holds more inputs than a tick takes, or passes the max lead"
+    )]
     Spill(PlayerSlot),
     #[error(
-        "input {0} is of no player slot that takes one, before the boundary, out of order, past the max \
-         inputs of its tick or the max payload length"
+        "input {0} is of no player slot that takes one, before the boundary or past its max lead, out \
+         of order, past the max inputs of its tick or the max payload length"
     )]
     Pending(usize),
 }

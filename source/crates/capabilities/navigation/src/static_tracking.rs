@@ -4,14 +4,14 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemId};
 use campfire_common::Tick;
 use campfire_declarations::OneShot;
-use campfire_sim::{DueIndex, SimTick, StableId};
+use campfire_sim::{DueIndex, SimTick, StableId, UnitDues};
 use campfire_units::{Body, Dead, Destination, Tracking};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::{Route, RouteAsk, RouteDues, RouteMut};
+use crate::route::{Route, RouteAsk, RouteMut};
 use crate::static_bodies::StaticBodies;
 use crate::walker::Walker;
 
@@ -108,7 +108,7 @@ impl StaticTracking {
         for ((entity, &id), mut destination, mut route, mut progress, body, path) in
             walkers.iter_mut()
         {
-            let dues = &mut RouteDues::new(asks, id, entity);
+            let dues = &mut UnitDues::new(asks, id, entity);
             let ask = |goal| RouteAsk {
                 goal,
                 tick: now,

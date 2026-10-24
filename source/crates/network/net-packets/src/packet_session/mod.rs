@@ -9,7 +9,7 @@ use campfire_net_bytes::ByteArena;
 use campfire_net_core::Instant;
 use campfire_net_payload::{
     AppCode, OpenedPayload, OutgoingPayload, PacketNumber, PacketSessionQueues, PayloadFate,
-    PayloadKind, ReceivePayload, UnlinkReason,
+    PayloadKind, UnlinkReason,
 };
 
 use crate::bandwidth_limiter::BandwidthLimiter;
@@ -204,14 +204,14 @@ impl PacketSession {
         self.reno.room().min(rate)
     }
 
-    /// Hands the frame what it reads at `now`: the opened payloads, which it accepts or refuses by
-    /// its next send, the fates, the RTT samples, and the room and the largest payload of a
-    /// datagram of `mtu` bytes.
     /// Whether it opened a payload its host has not taken yet.
     pub(crate) fn has_inbox(&self) -> bool {
         !self.inbox.is_empty()
     }
 
+    /// Hands the frame what it reads at `now`: the opened payloads, which it accepts or refuses by
+    /// its next send, the fates, the RTT samples, and the room and the largest payload of a
+    /// datagram of `mtu` bytes.
     pub(crate) fn hand_over(&mut self, queues: &mut PacketSessionQueues, mtu: usize, now: Instant) {
         for Inbound {
             payload,
@@ -261,6 +261,9 @@ impl PacketSession {
         }
         for payload in queues.take_sends() {
             self.send_payload(now, payload, out);
+        }
+        if self.received.acks_due_now() {
+            self.send_control(now, PacketType::AckOnly, &[], Path::Peer, out);
         }
     }
 
@@ -452,7 +455,7 @@ impl PacketSession {
                     payload: OpenedPayload {
                         number,
                         kind: header.kind,
-                        payload: ReceivePayload::Mutable(datagram),
+                        payload: datagram,
                     },
                     received_at: now,
                 });

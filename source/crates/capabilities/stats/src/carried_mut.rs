@@ -293,8 +293,8 @@ mod tests {
         let unit = world.spawn((id, Modifiers::bundle([application]))).id();
         // The insert pushes the unit at its interval, in tick 2, and at no end, as it never ends.
         let held = |world: &World| {
-            let ends = world.resource::<DueIndex<Modifiers>>().due_at(id);
-            let intervals = world.resource::<DueIndex<ModifierClocks>>().due_at(id);
+            let ends = world.resource::<DueIndex<Modifiers>>().due_at(unit);
+            let intervals = world.resource::<DueIndex<ModifierClocks>>().due_at(unit);
             [ends, intervals]
         };
         assert_eq!(held(&world), [None, Some(Tick::new(2))]);

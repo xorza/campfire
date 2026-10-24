@@ -39,7 +39,7 @@ impl Destinations {
         (mut indexes, mut held): (ProgressIndexes<'_>, Local<'_, Vec<DueUnit>>),
     ) {
         held.clear();
-        held.extend(indexes.attackers());
+        indexes.attackers(&mut held);
         for &DueUnit { id, entity } in &*held {
             let Ok((&position, &team, (slots, mut progress), mut walk, body)) =
                 chasers.get_mut(entity)
@@ -47,7 +47,7 @@ impl Destinations {
                 continue;
             };
             let Some(target) = progress.attack_target() else {
-                indexes.forget_attacker(id);
+                indexes.forget_attacker(entity);
                 continue;
             };
             if progress.attacking().is_some() || progress.is_approaching() {

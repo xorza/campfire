@@ -11,11 +11,11 @@ use campfire_net_emulator::internals::per_mille;
 use campfire_net_emulator::{Phase, RateLimit};
 use campfire_net_link::{Link, Server, Unlink};
 use campfire_net_payload::{
-    AppCode, OpenedPayload, PacketNumber, PayloadKind, ReceivePayload, SendPayload, UnlinkReason,
+    AppCode, OpenedPayload, PacketNumber, PayloadKind, SendPayload, UnlinkReason,
 };
 use core::time::Duration;
 
-use campfire_threads::internals::Parallel;
+use campfire_threads::Parallel;
 
 use crate::fixtures::full_stack::FullStack;
 use crate::scenario::Scenario;
@@ -224,7 +224,7 @@ fn a_protocol_violation_unlinks_the_peer() {
             .push_opened(OpenedPayload {
                 number: PacketNumber(u64::MAX),
                 kind: PayloadKind::new(3),
-                payload: ReceivePayload::Frozen(SendPayload::from_static(&[0xff; 32])),
+                payload: SendPayload::from_static(&[0xff; 32]).into(),
             });
         stepper.frame_step(1);
 

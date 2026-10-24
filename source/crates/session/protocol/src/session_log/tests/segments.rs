@@ -368,10 +368,25 @@ fn flawed_segments_in_a_log_file_are_refused() {
     // same tick; a payload past the max; three inputs of one player slot in one tick; and an input
     // of an open player slot.
     let player_slot = PlayerSlot::new;
-    let flaws: [(Forge, CarryFlaw); 10] = [
+    let flaws: [(Forge, CarryFlaw); 12] = [
         (
             |record| record.carry.pending[0].tick = Tick::new(1),
             CarryFlaw::Pending(0),
+        ),
+        (
+            |record| {
+                record.carry.pending[0].tick = record.tick.after(Ticks::new(MAX_LEAD + 1));
+            },
+            CarryFlaw::Pending(0),
+        ),
+        (
+            |record| {
+                record.carry.player_slots[1].spill = Spill {
+                    tick: record.tick.after(Ticks::new(MAX_LEAD + 1)),
+                    count: 1,
+                };
+            },
+            CarryFlaw::Spill(player_slot(1)),
         ),
         (
             |record| drop(record.carry.player_slots.pop()),

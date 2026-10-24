@@ -1,0 +1,25 @@
+# The test mode's unit types, `data/units.toml`, each of 10 health, the walkers a meter a tick
+# at its 10 ticks a second: its grunt, kept when it dies, of its script state `hits` of 2,
+# which only its owner receives, and `mark`, a text of none, which every client that sees it
+# receives; its tower, a circle of 1 m on the second layer, which despawns when it dies; its
+# crate, a box of 2 by 2 m; neither of these walks.
+[units.grunt]
+tags = ["grunt"]
+pools = ["health"]
+stats = { health = { base = 10 }, move_speed = { base = 10 } }
+combat = { on_death = "stay" }
+state = { hits = { type = "int", default = 2, audience = "owner" }, mark = { type = "string", audience = "all" } }
+
+[units.tower]
+tags = ["tower"]
+pools = ["health"]
+stats = { health = { base = 10 } }
+combat = {}
+collision = { radius = "1.0", layer = "air" }
+
+[units.crate]
+tags = ["crate"]
+pools = ["health"]
+stats = { health = { base = 10 } }
+combat = { on_death = "stay" }
+collision = { box = ["2.0", "2.0"] }

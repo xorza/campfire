@@ -223,14 +223,15 @@ mod tests {
     use campfire_common::DeclaredName;
 
     use super::*;
-    use crate::zero_hour::format::ini::object_ini::ObjectIni;
+    use crate::zero_hour::format::ini::object_ini::ObjectFiles;
 
     #[test]
     fn an_objects_name_is_its_own_unless_another_took_it() {
-        let mut ini = ObjectIni::default();
+        let mut ini = ObjectFiles::default();
         let objects =
             "Object Rocks1\nEnd\nObject AmericaTank\nEnd\nObject ROCKS1\nEnd\nObject Oak\nEnd\n";
         ini.read(objects.as_bytes()).unwrap();
+        let ini = ini.finish();
         let object = |name: &str| ini.object(name.as_bytes()).unwrap();
         let rules = ZeroHourRules::default();
         let mut names = ImportNames::default();

@@ -350,7 +350,7 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
         let healths = units.map(|id| Stats::health(&game, id));
         assert_eq!(healths, [450, 500, 450, 450, 500, 493], "{delay_ms}");
         assert_eq!(areas(&mut game), 0);
-        assert_eq!(Abilities::failed_calls(&game), []);
+        assert_eq!(Abilities::failed_calls(&mut game), []);
     }
 }
 
@@ -473,5 +473,5 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     assert_eq!(held(&game), inside);
     game.run_until(4);
     assert_eq!(held(&game), [const { Vec::new() }; 7]);
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }

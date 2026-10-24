@@ -43,12 +43,12 @@ impl<M: Message> MessageReceiver<M> {
         !self.ready().is_empty()
     }
 
-    /// Take all messages from the [`MessageReceiver<M>`], deserialize them, and return them
+    /// Takes every message it holds, each decoded as it arrived.
     pub fn receive(&mut self) -> impl Iterator<Item = M> {
         self.ready_mut().drain(..).map(|m| m.data)
     }
 
-    /// Take all messages from the [`MessageReceiver<M>`], deserialize them, and return them
+    /// Takes every message it holds, each decoded as it arrived, with the tick it was sent at.
     pub fn receive_with_tick(&mut self) -> impl Iterator<Item = ReceivedMessage<M>> {
         self.ready_mut().drain(..)
     }

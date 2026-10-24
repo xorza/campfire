@@ -104,7 +104,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     let passive = load(&mut game, "passive", &lash_out(), modifiers_only).unwrap();
     let caster = Abilities::caster(&mut game, passive, 1);
     Abilities::cast(&mut game, caster, ActionTarget::None);
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     assert_eq!(Abilities::pool(&game, caster), 65);
     assert_eq!(Abilities::time(&game, caster).ready_at, Tick::new(300));
 }
@@ -300,5 +300,5 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     *game.part_mut::<Level>(caster) = Level::new(5).unwrap();
     send(&mut game, 0, &[learn, learn, learn]);
     assert_eq!(progress(&game), (5, 1, Some(175)));
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }

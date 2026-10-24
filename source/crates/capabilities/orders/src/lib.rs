@@ -264,7 +264,7 @@ pub mod internals {
         /// Runs a tick, and checks that no script call failed in it.
         pub fn think(world: &mut World, inputs: &[(PlayerSlot, &[u8])]) {
             world.step_with(inputs);
-            let failures = world.resource::<ScriptFailures>().calls();
+            let failures = world.resource_mut::<ScriptFailures>().take_calls();
             assert_eq!(failures, []);
         }
 

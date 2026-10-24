@@ -1,11 +1,12 @@
 use campfire_common::EnumAll;
+use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::error::TimeError;
 
 /// Why the import drops a weapon (09-zero-hour.md, A weapon converts when it hits one target at
 /// once; 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets
 /// and slow weapons; 09-zero-hour.md, Missiles the steer cannot hold stay dropped).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 pub enum WeaponDropCause {
     /// No file defines it.
     NoWeapon,

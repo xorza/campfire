@@ -26,12 +26,11 @@ fn one_message_counts_on_both_sides() {
     let (client_before, server_before) = (read(&stepper, true), read(&stepper, false));
 
     let channel_id = channel_id::<Channel1>(stepper.client_app(0));
-    stepper
-        .client_mut(0)
-        .get_mut::<Transport>()
-        .unwrap()
-        .send(channel_id, Bytes::from_static(b"Hello"), 1.0)
-        .unwrap();
+    stepper.client_mut(0).get_mut::<Transport>().unwrap().send(
+        channel_id,
+        Bytes::from_static(b"Hello"),
+        1.0,
+    );
     stepper.frame_step(1);
 
     let sent = read(&stepper, true) - client_before;

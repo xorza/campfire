@@ -216,7 +216,7 @@ impl Attacks {
         let now = tick.start();
         let life = life.life();
         held.clear();
-        held.extend(indexes.attackers());
+        indexes.attackers(&mut held);
         for &DueUnit { id, entity } in &*held {
             let Ok((
                 (_, _, &position),
@@ -231,14 +231,14 @@ impl Attacks {
                 (&unit_type, facing, turret_angle, clips),
             )) = units.get_mut(entity).map_err(|error| {
                 if matches!(error, QueryEntityError::NotSpawned(_)) {
-                    indexes.forget_attacker(id);
+                    indexes.forget_attacker(entity);
                 }
             })
             else {
                 continue;
             };
             if progress.attack_target().is_none() {
-                indexes.forget_attacker(id);
+                indexes.forget_attacker(entity);
                 continue;
             }
             let blocked =

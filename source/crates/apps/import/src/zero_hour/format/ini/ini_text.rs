@@ -1,10 +1,31 @@
 use std::iter;
+use std::ops::Range;
 
 use crate::zero_hour::format::ini::error::IniError;
 
-/// An INI file's text, as the game reads it: bytes as Latin-1 chars, each kept as one.
+/// An INI file's text, as the game reads it: bytes as Latin-1 chars, each kept as one, and the
+/// same folded to ASCII lowercase, at the same offsets, as the game matches a keyword.
 #[derive(Debug)]
-pub(crate) struct IniText(String);
+pub(crate) struct IniText {
+    text: String,
+    lower: String,
+}
+
+/// An INI file's lines that hold a token, read once: every token in one list, and each line its
+/// run of them, so a line allocates nothing.
+#[derive(Debug)]
+pub(crate) struct IniLines<'a> {
+    tokens: Vec<&'a str>,
+    lines: Vec<LineTokens<'a>>,
+}
+
+/// A line's number, its run in its file's tokens, and its first token folded to lowercase.
+#[derive(Debug, Clone)]
+struct LineTokens<'a> {
+    number: usize,
+    tokens: Range<usize>,
+    word: &'a str,
+}
 
 /// A field's list of flags, as `INI::parseBitString32` and `KindOf` read it: `NONE`, which clears
 /// every flag and ends the list; names, which clear every flag and set those; or names of `+` and
@@ -50,29 +71,59 @@ pub(crate) enum BlockKinds<'k> {
 
 /// A line of an INI file that holds a token: its number, from 1, and its tokens, as the game's
 /// reader splits them: the text before a `;`, cut at every `=` and every char up to a space.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct IniLine<'a> {
     pub(crate) number: usize,
-    pub(crate) tokens: Vec<&'a str>,
+    pub(crate) tokens: &'a [&'a str],
+    word: &'a str,
 }
 
 impl IniText {
     pub(crate) fn of(bytes: &[u8]) -> Self {
-        Self(bytes.iter().map(|&byte| char::from(byte)).collect())
+        let text: String = bytes.iter().map(|&byte| char::from(byte)).collect();
+        let lower = text.to_ascii_lowercase();
+        Self { text, lower }
     }
 
-    /// Its lines that hold a token, in order.
-    pub(crate) fn lines(&self) -> impl Iterator<Item = IniLine<'_>> {
-        self.0.split('\n').enumerate().filter_map(|(at, raw)| {
+    /// Its lines that hold a token, in order. The lowercase text splits as the text does, as
+    /// folding changes no byte the split reads.
+    pub(crate) fn lines(&self) -> IniLines<'_> {
+        let mut tokens = Vec::new();
+        let mut lines = Vec::new();
+        let split = Self::split(&self.text).zip(Self::split(&self.lower));
+        for (at, (raw, lower)) in split.enumerate() {
+            let start = tokens.len();
+            tokens.extend(raw);
+            let mut lower = lower;
+            if let Some(word) = lower.next() {
+                lines.push(LineTokens {
+                    number: at + 1,
+                    tokens: start..tokens.len(),
+                    word,
+                });
+            }
+        }
+        IniLines { tokens, lines }
+    }
+
+    /// The tokens of each line of `text`, as the game's reader splits them.
+    fn split(text: &str) -> impl Iterator<Item = impl Iterator<Item = &str>> {
+        text.split('\n').map(|raw| {
             let content = raw.split(';').next().unwrap_or_default();
-            let tokens: Vec<&str> = content
+            content
                 .split(|c: char| c <= ' ' || c == '=')
                 .filter(|token| !token.is_empty())
-                .collect();
-            (!tokens.is_empty()).then_some(IniLine {
-                number: at + 1,
-                tokens,
-            })
+        })
+    }
+}
+
+impl IniLines<'_> {
+    /// Its lines, in order.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = IniLine<'_>> {
+        self.lines.iter().map(|line| IniLine {
+            number: line.number,
+            tokens: &self.tokens[line.tokens.clone()],
+            word: line.word,
         })
     }
 
@@ -83,7 +134,7 @@ impl IniText {
         &self,
         kinds: BlockKinds<'_>,
     ) -> impl Iterator<Item = Result<IniBlock<'_>, IniError>> {
-        let mut lines = self.lines();
+        let mut lines = self.iter();
         let mut failed = false;
         iter::from_fn(move || {
             if failed {
@@ -105,10 +156,10 @@ impl IniBlock<'_> {
     }
 }
 
-impl IniLine<'_> {
+impl<'a> IniLine<'a> {
     /// Its first token, folded to lowercase, as the game matches a keyword.
-    pub(crate) fn word(&self) -> String {
-        self.tokens[0].to_ascii_lowercase()
+    pub(crate) const fn word(&self) -> &'a str {
+        self.word
     }
 
     /// The value of a field of yes or no, of either case, as `INI::scanBool` reads it.
@@ -332,23 +383,24 @@ mod tests {
         let text = IniText::of(
             b"; a comment\r\nTerrain Sand\r\n  Texture=Sand.tga ; its file\r\n\tEnd\r\n\r\n=\n",
         );
-        let lines: Vec<(usize, Vec<&str>)> = text
-            .lines()
-            .map(|line| (line.number, line.tokens))
+        let lines = text.lines();
+        let lines: Vec<(usize, &[&str], &str)> = lines
+            .iter()
+            .map(|line| (line.number, line.tokens, line.word()))
             .collect();
         assert_eq!(
             lines,
             [
-                (2, vec!["Terrain", "Sand"]),
-                (3, vec!["Texture", "Sand.tga"]),
-                (4, vec!["End"]),
+                (2, &["Terrain", "Sand"][..], "terrain"),
+                (3, &["Texture", "Sand.tga"], "texture"),
+                (4, &["End"], "end"),
             ]
         );
         // A number's longest prefix, the rest ignored, as the game's scanners read it: Zero
         // Hour's own `GeometryHeight = 40v.0` is 40.
         let number = |token: &str| IniText::of(format!("Field = {token}\n").as_bytes());
-        let real = |token: &str| number(token).lines().next().unwrap().real().ok();
-        let int = |token: &str| number(token).lines().next().unwrap().int().ok();
+        let real = |token: &str| number(token).lines().iter().next().unwrap().real().ok();
+        let int = |token: &str| number(token).lines().iter().next().unwrap().int().ok();
         assert_eq!(real("40v.0"), Some(40.0));
         assert_eq!(real("-2.5e1x"), Some(-25.0));
         assert_eq!(real(".5."), Some(0.5));
@@ -363,7 +415,7 @@ mod tests {
         // A coordinate's labels and values, cut at `:` too, the labels of either case.
         let coord = |text: &str| {
             let text = IniText::of(format!("Point = {text}\n").as_bytes());
-            text.lines().next().unwrap().coord(["X", "Y", "Z"])
+            text.lines().iter().next().unwrap().coord(["X", "Y", "Z"])
         };
         assert_eq!(coord("X:-18.0  Y:  35.0   Z:0.0"), Ok([-18.0, 35.0, 0.0]));
         assert_eq!(coord("x: 60 y:35 z : 1.5"), Ok([60.0, 35.0, 1.5]));
@@ -372,7 +424,7 @@ mod tests {
         // A byte past ASCII is one char of Latin-1.
         let latin = IniText::of(b"Name = \xe9t\xe9");
         assert_eq!(
-            latin.lines().next().unwrap().tokens,
+            latin.lines().iter().next().unwrap().tokens,
             ["Name", "\u{e9}t\u{e9}"]
         );
     }
@@ -380,8 +432,10 @@ mod tests {
     #[test]
     fn a_files_blocks_end_at_their_end_and_hold_its_kinds_alone() {
         let text = IniText::of(b"Weapon Gun\n  Damage = 5\nEnd\nArmor Plate\nEnd\n");
+        let lines = text.lines();
         let kinds = |kinds| {
-            text.blocks(kinds)
+            lines
+                .blocks(kinds)
                 .map(|block| block.map(|block| (block.head.word(), block.fields.len())))
                 .collect::<Vec<_>>()
         };
@@ -389,18 +443,16 @@ mod tests {
         // armor's first line is an error.
         assert_eq!(
             kinds(BlockKinds::Any),
-            [Ok(("weapon".to_owned(), 1)), Ok(("armor".to_owned(), 0))]
+            [Ok(("weapon", 1)), Ok(("armor", 0))]
         );
         assert_eq!(
             kinds(BlockKinds::One("weapon")),
-            [
-                Ok(("weapon".to_owned(), 1)),
-                Err(IniError::NotBlock { line: 4 })
-            ]
+            [Ok(("weapon", 1)), Err(IniError::NotBlock { line: 4 })]
         );
         let name = |bytes: &[u8]| {
             let text = IniText::of(bytes);
-            let block = text.blocks(BlockKinds::Any).next().unwrap().unwrap();
+            let lines = text.lines();
+            let block = lines.blocks(BlockKinds::Any).next().unwrap().unwrap();
             block.name().map(str::to_owned)
         };
         assert_eq!(name(b"Weapon Gun\nEnd\n"), Ok("Gun".to_owned()));

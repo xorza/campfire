@@ -1,0 +1,165 @@
+# The mode's own keys, its content's modifiers and action, and the sections of the modules it
+# declares. Every stat its units carry, the 3v3's that `calc_damage` reads among
+# them; its pools, health its life, each of the stat of its name; its players' resources, its
+# layers, its slot kinds, `basic`, of 2 ranks, and `spell`, learned from the spawn; and its
+# tracks, `level`, its units' level, of levels 2 at 100 and 3 at 300, and `valor`, of level 2
+# at 50. Its one modifier, `blessing`, lasts 200 ms and stacks up to 4, with a count in its
+# state; `drill`, an upgrade a player holds for its grunts, has no end; `rally` shields by the
+# `ward` of the action that applies it, as `muster`, which no unit holds, gives one.
+name = "mode"
+
+scripts = ["scripts/mode.rhai"]
+timers = ["a", "b", "each", "every", "late", "later", "once"]
+resources = ["gold", "gems"]
+
+[teams.a]
+name = "team-a"
+
+[teams.b]
+name = "team-b"
+
+[teams.neutral]
+name = "team-neutral"
+
+[combat]
+damage_kinds = ["physical", "magic", "true"]
+life = "health"
+
+[stats]
+health = {}
+mana = {}
+move_speed = {}
+armor = {}
+armor_pen = {}
+armor_pen_pct = {}
+crit_chance = {}
+damage_dealt_pct = {}
+magic_pen = {}
+magic_pen_pct = {}
+magic_resist = {}
+physical_block = {}
+
+[pools.health]
+max = "health"
+
+[pools.mana]
+max = "mana"
+
+[navigation]
+layers = ["ground", "air"]
+
+[[slots]]
+name = "basic"
+ranks = 2
+
+[[slots]]
+name = "spell"
+
+[tracks.level]
+level = true
+levels = [100, 300]
+
+[tracks.valor]
+levels = [50]
+
+[tags.grunt]
+
+[tags.tower]
+
+[tags.crate]
+
+[choices.duo]
+name = "duo"
+offers = "avatars"
+unique = false
+count = 2
+
+[choices.faction]
+name = "faction"
+offers = "values"
+unique = false
+count = 1
+values = ["america", "china"]
+
+[choices.hero]
+name = "hero"
+offers = "avatars"
+unique = true
+count = 1
+
+[choices.spells]
+name = "spells"
+offers = "loadout"
+unique = false
+count = 1
+slot = "spell"
+
+[inputs]
+fail = "string"
+gold = "string"
+hero = "string"
+markers = "string"
+out = "string"
+phase = "string"
+probe = "string"
+rich = "string"
+spells = "string_list"
+track = "string"
+
+[state]
+count = { type = "int", audience = "all" }
+enemy = { type = "string", audience = "all" }
+grunts = { type = "int", audience = "all" }
+heroes = { type = "int", audience = "all" }
+inputs = { type = "int", audience = "all" }
+kind = { type = "string", audience = "none" }
+neutral = { type = "string", audience = "all" }
+owner = { type = "int", audience = "all" }
+path = { type = "string", audience = "all" }
+phase = { type = "string", default = "pick", audience = "all" }
+players = { type = "int", audience = "all" }
+seen = { type = "int", audience = "none" }
+team = { type = "string", audience = "all" }
+teams = { type = "int", audience = "all" }
+tower_path = { type = "string", audience = "all" }
+
+[player_state]
+kills = { type = "int", audience = "owner" }
+note = { type = "string", audience = "none" }
+title = { type = "enum", values = ["rookie", "veteran"], audience = "all" }
+
+[params]
+gold = 8
+group = ["grunt", "grunt"]
+hero_xp_base = 150
+hero_xp_per_level = 25
+respawn_base_ms = 1000
+respawn_per_level_ms = 500
+xp_radius = 16
+
+[options.bounty]
+values = [3, 40]
+default = 40
+
+[[relations]]
+teams = ["a", "neutral"]
+relation = "neutral"
+vision = true
+
+[modifiers.blessing]
+duration_ms = 200
+reapply = "stack"
+max_stacks = 4
+state = { count = { type = "int" } }
+
+[modifiers.drill]
+reapply = "refresh"
+affects = "allies:grunt"
+
+[modifiers.rally]
+shield = { param = "ward" }
+
+[actions.muster]
+script = "scripts/muster.rhai"
+targeting = "none"
+params = { ward = 5 }

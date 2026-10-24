@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
@@ -14,8 +15,15 @@ pub struct KnownCommanded {
     /// The units of the last whole select the server applied, when that is what it commands.
     applied: Vec<StableId>,
     known: bool,
-    /// The selects sent and not acknowledged yet, in the order of their seqs.
-    waiting: Vec<WaitingSelect>,
+    waiting: SelectQueue,
+}
+
+/// The selects sent and not acknowledged yet, in the order of their seqs, with their units end to
+/// end in one buffer that holds theirs alone, so a client that always has one in flight holds no
+/// more than those.
+#[derive(Debug, Default)]
+struct SelectQueue {
+    selects: VecDeque<WaitingSelect>,
     units: Vec<StableId>,
 }
 
@@ -31,62 +39,46 @@ impl KnownCommanded {
     /// Whether the server commands exactly `units` for the player, so an order to them needs no
     /// select.
     pub fn commands(&self, units: &[StableId]) -> bool {
-        self.known && self.waiting.is_empty() && self.applied == units
+        self.known && self.waiting.selects.is_empty() && self.applied == units
     }
 
     /// Keeps that the input of `seq` holds a whole select of `units`.
     pub fn sent(&mut self, seq: u64, units: &[StableId]) {
-        let start = self.units.len();
-        self.units.extend_from_slice(units);
-        self.wait(seq, Some(start..self.units.len()));
+        self.waiting.push(seq, Some(units));
     }
 
     /// Keeps that the input of `seq` holds a part of a select past one payload.
     pub fn sent_part(&mut self, seq: u64) {
-        self.wait(seq, None);
-    }
-
-    fn wait(&mut self, seq: u64, units: Option<Range<usize>>) {
-        debug_assert!(
-            self.waiting.last().is_none_or(|last| last.seq < seq),
-            "selects are sent in the order of their seqs"
-        );
-        self.waiting.push(WaitingSelect { seq, units });
+        self.waiting.push(seq, None);
     }
 
     /// Takes the server's word on the inputs from seq `first` on, each applied in the tick
     /// `applied` gives or never: a whole select applied leaves its units commanded, a part applied
-    /// leaves the client not knowing, and one never applied changes nothing.
+    /// leaves the client not knowing, and one never applied changes nothing. The server answers in
+    /// the order of the seqs, so a select before them that waits never applied.
     pub fn acknowledge(&mut self, first: u64, applied: &[Option<Tick>]) {
-        let acknowledged = |seq: u64| {
-            let at = usize::try_from(seq.checked_sub(first)?).ok()?;
-            applied.get(at).copied()
-        };
+        let end = first + u64::try_from(applied.len()).expect("a count fits u64");
         let Self {
             applied: held,
             known,
             waiting,
-            units,
         } = self;
-        waiting.retain(|select| {
-            let Some(tick) = acknowledged(select.seq) else {
-                return true;
-            };
-            if tick.is_some() {
-                match &select.units {
-                    Some(range) => {
-                        held.clear();
-                        held.extend_from_slice(&units[range.clone()]);
-                        *known = true;
-                    }
-                    None => *known = false,
-                }
+        waiting.pop_before(end, |seq, units| {
+            let at = seq
+                .checked_sub(first)
+                .and_then(|at| usize::try_from(at).ok());
+            if at.and_then(|at| applied[at]).is_none() {
+                return;
             }
-            false
+            match units {
+                Some(units) => {
+                    held.clear();
+                    held.extend_from_slice(units);
+                    *known = true;
+                }
+                None => *known = false,
+            }
         });
-        if waiting.is_empty() {
-            units.clear();
-        }
     }
 
     /// Forgets all it knew, as a client whose link failed does: the server's word on its inputs
@@ -94,8 +86,49 @@ impl KnownCommanded {
     pub fn clear(&mut self) {
         self.applied.clear();
         self.known = false;
-        self.waiting.clear();
-        self.units.clear();
+        self.waiting.selects.clear();
+        self.waiting.units.clear();
+    }
+}
+
+impl SelectQueue {
+    /// Keeps the select of `seq`, of `units` or of a part.
+    fn push(&mut self, seq: u64, units: Option<&[StableId]>) {
+        debug_assert!(
+            self.selects.back().is_none_or(|last| last.seq < seq),
+            "selects are sent in the order of their seqs"
+        );
+        let units = units.map(|units| {
+            let start = self.units.len();
+            self.units.extend_from_slice(units);
+            start..self.units.len()
+        });
+        self.selects.push_back(WaitingSelect { seq, units });
+    }
+
+    /// Takes out each select of a seq before `end`, first to last, with its units, and drops
+    /// their units.
+    fn pop_before(&mut self, end: u64, mut each: impl FnMut(u64, Option<&[StableId]>)) {
+        while let Some(select) = self.selects.front()
+            && select.seq < end
+        {
+            let units = select.units.clone().map(|range| &self.units[range]);
+            each(select.seq, units);
+            self.selects.pop_front();
+        }
+        let cut = self
+            .selects
+            .iter()
+            .find_map(|select| select.units.as_ref().map(|range| range.start))
+            .unwrap_or(self.units.len());
+        self.units.drain(..cut);
+        for range in self
+            .selects
+            .iter_mut()
+            .filter_map(|select| select.units.as_mut())
+        {
+            *range = range.start - cut..range.end - cut;
+        }
     }
 }
 

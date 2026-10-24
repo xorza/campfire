@@ -5,21 +5,23 @@ use campfire_common::Tick;
 use campfire_declarations::PerId;
 use campfire_math::Vec3;
 use campfire_players::PlayersWorld;
-use campfire_sim::{SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
+use campfire_sim::{
+    DueIndex, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns, UnitDues,
+};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{NameId, ResourceId, UnitType};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-use crate::order_dues::{self, OrderDues, StandingOrder};
+use crate::order_dues::{self, StandingOrder};
 
 /// A unit that gathers, as one whose slots hold a gather: its gather loop, none while it has
 /// none, the load it carries, which it keeps when its loop ends, and the node it gathered last,
 /// which it goes back to after a return of its load. Its hook pushes its unit into the index of
 /// the gatherers at each insert, a spawn's and a restore's alike.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[component(on_insert = order_dues::pushed::<Gatherer>)]
+#[component(on_insert = DueIndex::<Self>::pushed)]
 pub struct Gatherer {
     order: Option<GatherOrder>,
     load: Option<Load>,
@@ -83,14 +85,14 @@ impl Gatherer {
     /// Sets its loop, its unit due at once in `dues` with one. A checked loop's node becomes the
     /// last it chose; an order not checked yet names a unit that may be no node, such as a
     /// drop-off, so the last stays.
-    pub(crate) fn set(&mut self, order: Option<GatherOrder>, dues: &mut OrderDues<'_, Self>) {
+    pub(crate) fn set(&mut self, order: Option<GatherOrder>, dues: &mut UnitDues<'_, Self>) {
         if let Some(order) = order
             && !matches!(order.step, GatherStep::Ordered)
         {
             self.last = Some(order.node);
         }
         self.order = order;
-        dues.push(self);
+        dues.push(Self::due(&(), self));
     }
 
     /// Sets the loop of the gatherer of `entity` in `world`, as an exclusive system does.
@@ -156,21 +158,15 @@ impl PerId<UnitType> for Gatherer {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use bevy_ecs::entity::Entity;
-    use campfire_sim::{DueIndex, StableId};
+    use campfire_sim::UnitDues;
 
     use crate::gatherer::{GatherOrder, Gatherer, Load, NodeAt};
-    use crate::order_dues::OrderDues;
 
     impl Gatherer {
         /// Sets its loop as `set` does, with no index: for a gatherer a test or a bench makes,
         /// whose insert then pushes its unit, and for a loop a test ends, which pushes nothing.
         pub fn set_unindexed(&mut self, order: Option<GatherOrder>) {
-            let mut index = DueIndex::default();
-            self.set(
-                order,
-                &mut OrderDues::new(&mut index, StableId::MATCH, Entity::PLACEHOLDER),
-            );
+            self.set(order, &mut UnitDues::loose());
         }
 
         /// A gatherer of `order`, `load` and `last` as given, whether they keep the rules `set`

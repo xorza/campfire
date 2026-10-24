@@ -110,13 +110,20 @@ packet stream under the transport's messages. The sealed handshake is in [UDP](u
 - **The first bit of each datagram is the IO's,** for its handshake, Retry and reset packets.
 - **A packet number goes as its low 16 bits,** which the receiver makes whole against the largest
   it opened, as RFC 9000 §A.3 does; a sender sends nothing past the numbers its peer reads whole.
-- **One window of 32 accepted packets is both the ACK bits and the replay window.** A packet
-  older than the window is dropped, as its replay cannot be told; a replay of a packet that was
-  refused delivers genuine data late, as a network delay does. Source: RFC 4303 §3.4.3.
+- **One window of 64 packets is the ACK bits, the replay window and a frame's payloads.** An ACK
+  names its largest and the 64 below it, a frame holds the payloads of the 64 numbers at and below
+  the largest opened, so one ACK names every packet one frame accepts. A packet older than the
+  window is dropped, as its replay cannot be told; a replay of a packet that was refused delivers
+  genuine data late, as a network delay does. Refused: 32 bits, as Gaffer on Games' scheme for a
+  packet a frame each way, under which a burst of more than 33 packets in one receiver frame lost
+  its oldest for want of a bit, sent them again and halved the congestion window; ACK ranges, as
+  QUIC and GameNetworkingSockets send them, more code for bursts the frame already bounds at 64.
+  Source: RFC 4303 §3.4.3, which prefers a window of 64.
 - **The packet session carries 2 bits of its payload's kind, which it does not read,** as IP's
   protocol field names the layer above.
 - **Each ACK says how long its largest waited,** in a byte of quarter milliseconds, so each ACK
-  gives an exact RTT sample and no link needs pings.
+  gives an exact RTT sample and no link needs pings; a wait the byte cannot hold, 63.75 ms or more,
+  gives none, as the sample would be the wait's own length.
 
 ## Recovery and rate
 
@@ -127,7 +134,9 @@ packet stream under the transport's messages. The sealed handshake is in [UDP](u
   the timeout, which saves a round trip only when the lost packet was the last one sent. Source:
   RFC 9002 §6.
 - **An ACK-only packet goes when an accepted packet waited 25 ms and no packet carried its ACK.**
-  The delay is a protocol constant, so no link negotiates it. Source: RFC 9000 §13.2.1.
+  The delay is a protocol constant, so no link negotiates it; and one goes at the end of a frame
+  whose accepted packets no ACK named pass half the window, so a second such frame leaves none
+  unnamed, as QUIC acknowledges every second packet. Source: RFC 9000 §13.2.1, §13.2.2.
 - **Congestion control is NewReno, in the packet session.** The budget is the smaller of the
   window's room and the app's `BandwidthLimit`, so one budget exists; the initial window is 10
   packets, 12,000 bytes. Refused: Cubic or BBR, more code for app-limited traffic; pacing, which a

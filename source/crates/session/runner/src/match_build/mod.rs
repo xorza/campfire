@@ -98,10 +98,20 @@ pub(crate) mod internals {
         /// The restore target `restore_target` builds at the mode's default rate, of the options'
         /// defaults, which fails its test on any warning it logs.
         pub fn test_target(packages: &ModePackages, players: u32) -> Match {
-            let log = LogCheck::start();
             let player_slots = usize::try_from(players).expect("a player count fits usize");
             let picks = HostPicks::defaults(packages.data(), player_slots);
-            Self::restore_target(packages, Self::rate(packages), players, &picks).with_log(log)
+            Self::test_target_picked(packages, players, &picks)
+        }
+
+        /// The restore target `test_target` builds, of what the host picked, `picks`: the mode
+        /// installed and not started, as a session's build makes it.
+        pub fn test_target_picked(
+            packages: &ModePackages,
+            players: u32,
+            picks: &HostPicks,
+        ) -> Match {
+            let log = LogCheck::start();
+            Self::restore_target(packages, Self::rate(packages), players, picks).with_log(log)
         }
 
         /// The restore target `test_target` builds, its schedule built with no automatic sync

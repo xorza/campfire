@@ -6,13 +6,14 @@ use campfire_mode::{MatchEnd, MatchResult, ModeWorld};
 use campfire_protocol::{
     Checkpoint, LogLoadError, Outcome, PlayerSlotChangeKind, SessionResult, SnapshotFingerprint,
 };
-use campfire_script::ScriptFailures;
+use campfire_script::{ScriptFailures, ScriptPrints};
 use campfire_sim::{
     PlayerSlotEvent, PlayerSlotEventKind, SimRng, SimTick, SimUpdate, SimWorld, TickInput,
     TickInputs,
 };
 
 use crate::events::script_call_failed::ScriptCallFailed;
+use crate::events::script_printed::ScriptPrinted;
 use crate::session::Session;
 use crate::session::error::{ResultMismatch, SaveLoadError};
 use crate::session::session_source::ResumeAt;
@@ -119,7 +120,7 @@ impl SessionWorld for World {
                 }
                 replay.sealed_changes(&session.log)
             } else {
-                for input in session.log.seal_tick(session.journal.as_mut()) {
+                for input in session.log.seal_tick(session.role.journal_mut()) {
                     inputs.push(TickInput {
                         player_slot: input.player_slot,
                         payload: input.payload,
@@ -141,7 +142,7 @@ impl SessionWorld for World {
         });
         let tick = self.resource::<SimTick>().start();
         self.run_schedule(SimUpdate);
-        if let Some(failures) = self.get_resource::<ScriptFailures>() {
+        if let Some(mut failures) = self.get_resource_mut::<ScriptFailures>() {
             for failure in failures.get() {
                 ScriptCallFailed {
                     tick,
@@ -150,6 +151,15 @@ impl SessionWorld for World {
                     error: failures.text(failure).to_string(),
                 }
                 .log();
+            }
+            // The log holds them now, which a test takes as it takes any warning.
+            failures.forget();
+        }
+        if let Some(prints) = self.get_resource::<ScriptPrints>()
+            && prints.tick() == tick
+        {
+            for print in prints.iter() {
+                ScriptPrinted::of(tick, print).log();
             }
         }
     }

@@ -97,7 +97,7 @@ fn on_resolve(ctx, caster, target) {
 
     // At rank 2 and level 3: 200 + 10 × 2 + 0.5 × 40 + 1.5 × (80 − 60) = 270, which the script
     // deals, 500 → 230, and the shield of the caster's mark holds.
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     assert_eq!(Stats::health(&game, target), 230);
     let mark = Stats::modifier(&game, PackageIndex::MODE, "mark").unwrap();
     let entity = game.unit_entity(caster);

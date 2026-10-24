@@ -1,7 +1,6 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::HookContext;
-use bevy_ecs::world::{DeferredWorld, World};
+use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_script::{Audience, StateValue};
@@ -25,7 +24,7 @@ use crate::modifiers::Modifiers;
 /// instance. Its hook pushes its unit into the index of the intervals at each insert, a spawn's
 /// and a restore's alike.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
-#[component(on_insert = ModifierClocks::pushed)]
+#[component(on_insert = DueIndex::<Self>::pushed)]
 pub struct ModifierClocks {
     clocks: Vec<ModifierClock>,
     state: Vec<StateValue>,
@@ -53,21 +52,6 @@ impl ModifierClocks {
     pub(crate) fn next_interval(&self) -> Option<Tick> {
         let intervals = self.clocks.iter().filter_map(|clock| clock.interval);
         intervals.map(|interval| interval.next).min()
-    }
-
-    /// Pushes the unit whose clocks they are into the index of the intervals, at their first.
-    fn pushed(mut world: DeferredWorld<'_>, context: HookContext) {
-        let entity = context.entity;
-        let (Some(clocks), Some(&id)) = (world.get::<Self>(entity), world.get::<StableId>(entity))
-        else {
-            return;
-        };
-        let Some(at) = clocks.next_interval() else {
-            return;
-        };
-        if let Some(mut index) = world.get_resource_mut::<DueIndex<Self>>() {
-            index.push(at, id, entity);
-        }
     }
 
     pub const fn len(&self) -> usize {

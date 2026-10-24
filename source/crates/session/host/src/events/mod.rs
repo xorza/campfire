@@ -25,7 +25,6 @@ pub(crate) mod receipt_refused;
 pub(crate) mod receipt_unsaved;
 pub(crate) mod save_loaded;
 pub(crate) mod save_refused;
-pub(crate) mod script_printed;
 pub(crate) mod seeds_ran_out;
 pub(crate) mod server_frame;
 pub(crate) mod session_aborted;

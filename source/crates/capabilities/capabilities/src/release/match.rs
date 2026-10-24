@@ -79,17 +79,15 @@ pub(crate) mod internals {
     use campfire_declarations::internals::BookLoad;
     use campfire_declarations::{CapabilitySet, Role};
     use campfire_log::internals::LogCheck;
-    use campfire_mode::{HostPicks, ModeSetup};
     use campfire_players::Players;
-    use campfire_script::{ListPlace, ModeScripts, ScriptId, ScriptLimits, ScriptPools};
+    use campfire_script::{ScriptLimits, ScriptPools};
     use campfire_sim::{Capability, MatchRate};
     use campfire_units::PoolId;
 
-    use crate::fixtures::package_set::PackageSet;
     use crate::release::Release;
     use crate::release::client_holds::ClientHolds;
     use crate::release::r#match::Match;
-    use crate::release::match_kind::{MatchKind, ModeStart, PackageScript};
+    use crate::release::match_kind::MatchKind;
     use crate::release::match_setup::MatchSetup;
     use crate::release::predicted_parts::PredictedParts;
 
@@ -105,39 +103,6 @@ pub(crate) mod internals {
                 world,
                 _log: Some(log),
             }
-        }
-
-        /// The match of the mode of `set`, loaded and built as a session's load and build make
-        /// one, its books by `Release::books` and its scripts compiled, its mode installed and
-        /// not started, as `start` gives. It fails the test on any warning it logs.
-        pub fn of_package(set: &PackageSet, start: PackageStart) -> Self {
-            let log = LogCheck::start();
-            let PackageStart {
-                players,
-                limits,
-                picks,
-            } = start;
-            let loaded = set.load(limits);
-            let books = loaded.books(set);
-            let pools = ScriptPools { limits, players };
-            let setup = MatchSetup::new(SegmentSeed::ZERO, set.rate, Role::Server(pools));
-            let scripts: Vec<PackageScript<'_>> = (loaded.paths.iter())
-                .zip(&set.scripts)
-                .map(|(path, source)| PackageScript { path, source })
-                .collect();
-            let ids = (0..scripts.len()).map(ScriptId::nth);
-            let mode = ModeSetup {
-                scripts: ModeScripts::new(ids, ListPlace::new(set.own).unwrap()),
-                data: &loaded.data,
-                picks: &picks,
-                teams: &set.teams,
-                players,
-            };
-            let start = ModeStart {
-                scripts: &scripts,
-                setup: mode,
-            };
-            Self::new(setup, books, MatchKind::Mode(start)).with_log(log)
         }
 
         /// The MOBA's 30 ticks a second.
@@ -183,15 +148,6 @@ pub(crate) mod internals {
                 _log: Some(log),
             }
         }
-    }
-
-    /// How a test's match of a package set starts: its players, its scripts' limits, and what
-    /// the session's host picked of the mode's options and its player slots' choices.
-    #[derive(Debug)]
-    pub struct PackageStart {
-        pub players: u32,
-        pub limits: ScriptLimits,
-        pub picks: HostPicks,
     }
 
     /// How a test's match starts.

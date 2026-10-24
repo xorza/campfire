@@ -26,7 +26,10 @@ impl PlayerTemplateIni {
     /// Reads one INI file, adding its templates to those read before: one read again keeps its
     /// fields and takes the new ones, as a template found again is read into.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        for block in IniText::of(bytes).blocks(BlockKinds::One("playertemplate")) {
+        for block in IniText::of(bytes)
+            .lines()
+            .blocks(BlockKinds::One("playertemplate"))
+        {
             let block = block?;
             let name = block.name()?;
             if !self.templates.contains_key(name) {
@@ -34,7 +37,7 @@ impl PlayerTemplateIni {
             }
             let template = self.templates.entry(name.to_owned()).or_default();
             for line in &block.fields {
-                template.field(&line.word(), line)?;
+                template.field(line.word(), line)?;
             }
         }
         Ok(())

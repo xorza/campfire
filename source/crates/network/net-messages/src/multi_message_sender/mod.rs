@@ -1,6 +1,5 @@
 use crate::link_messages::LinkMessages;
 use crate::message::Message;
-use crate::message_error::MessageError;
 use crate::message_registry::MessageRegistry;
 use crate::message_type_id::MessageTypeId;
 use crate::replicon_map_param::RepliconMapParam;
@@ -15,11 +14,9 @@ use bytes::Bytes;
 use campfire_net_bytes::Writer;
 use campfire_net_channels::Channel;
 use campfire_net_channels::ChannelTypeId;
-use campfire_net_channels::SendError;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
 use campfire_net_core::LinkDirection;
-use campfire_net_core::NetId;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
 
@@ -61,12 +58,8 @@ impl<F: QueryFilter> core::fmt::Debug for MultiMessageSender<'_, '_, F> {
 
 impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
     /// Sends `message` to each of `links` that is connected.
-    pub fn send<M: Message, C: Channel>(
-        &mut self,
-        message: &M,
-        links: impl EntitySet,
-    ) -> Result<(), MessageError> {
-        self.send_with_priority::<M, C>(message, links, 1.0)
+    pub fn send<M: Message, C: Channel>(&mut self, message: &M, links: impl EntitySet) {
+        self.send_with_priority::<M, C>(message, links, 1.0);
     }
 
     /// Sends `message` to each of `links` that is connected, at a bandwidth `priority`.
@@ -75,7 +68,7 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
         message: &M,
         links: impl EntitySet,
         priority: Priority,
-    ) -> Result<(), MessageError> {
+    ) {
         let channel = self
             .channels
             .net_id(ChannelTypeId::of::<C>())
@@ -120,27 +113,7 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
                     .serialize::<M>(message, &mut self.writer, &SendMapView::AsIs);
                 as_is.insert(self.writer.take_written()).clone()
             };
-            send(&mut transport, channel, bytes, priority)?;
-        }
-        Ok(())
-    }
-}
-
-/// A message too large for its channel, or past its link's send budget, is the caller's to handle;
-/// a channel its transport does not send on is a logic error.
-fn send(
-    transport: &mut Transport,
-    channel: NetId,
-    bytes: Bytes,
-    priority: Priority,
-) -> Result<(), MessageError> {
-    match transport.send(channel, bytes, priority) {
-        Ok(()) => Ok(()),
-        Err(error @ (SendError::MessageTooLarge { .. } | SendError::Backlogged { .. })) => {
-            Err(error.into())
-        }
-        Err(SendError::ChannelNotFound(channel)) => {
-            panic!("a message is sent only on a channel its transport sends on, not {channel:?}")
+            transport.send(channel, bytes, priority);
         }
     }
 }

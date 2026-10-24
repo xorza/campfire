@@ -2,8 +2,7 @@ use std::ops::{Deref, Range};
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::HookContext;
-use bevy_ecs::world::{DeferredWorld, World};
+use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::StateValue;
@@ -35,7 +34,7 @@ pub(crate) mod modifier_clocks;
 /// hook pushes its unit into the index of the ends at each insert, a spawn's and a restore's
 /// alike.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
-#[component(on_insert = Modifiers::pushed)]
+#[component(on_insert = DueIndex::<Self>::pushed)]
 pub struct Modifiers {
     instances: Vec<Instance>,
     ends: Vec<StackEnd>,
@@ -95,23 +94,6 @@ impl Modifiers {
             applied.into_iter().chain(stack).min()
         });
         ends.min()
-    }
-
-    /// Pushes the unit that carries them into the index of the ends, at their first, in a match
-    /// that ends them.
-    fn pushed(mut world: DeferredWorld<'_>, context: HookContext) {
-        let entity = context.entity;
-        let (Some(modifiers), Some(&id)) =
-            (world.get::<Self>(entity), world.get::<StableId>(entity))
-        else {
-            return;
-        };
-        let Some(at) = modifiers.next_end() else {
-            return;
-        };
-        if let Some(mut index) = world.get_resource_mut::<DueIndex<Self>>() {
-            index.push(at, id, entity);
-        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Carried<'_>> + Clone {

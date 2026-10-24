@@ -100,8 +100,8 @@ pub use crate::paths::Paths;
 pub use crate::progress::Progress;
 pub use crate::room_making::{RoomMaking, RoomMakingRun};
 pub use crate::route::{
-    Route, RouteAsk, RouteCursor, RouteDues, RouteMut, RouteMutItem, RouteMutReadOnlyItem,
-    RouteRead, RouteReadItem, RouteRef,
+    Route, RouteAsk, RouteCursor, RouteMut, RouteMutItem, RouteMutReadOnlyItem, RouteRead,
+    RouteReadItem, RouteRef,
 };
 pub use crate::route_planner::RoutePlanner;
 pub use crate::routing::Routing;
@@ -341,9 +341,10 @@ pub mod internals {
     use crate::pathing_grid::PathingGrid;
     use crate::paths::Paths;
     use crate::progress::Progress;
-    use crate::route::{Route, RouteAsk, RouteCursor, RouteDues, RouteMut, RouteRef};
+    use crate::route::{Route, RouteAsk, RouteCursor, RouteMut, RouteRef};
     use crate::walker::Walker;
     use crate::walker_kinds::WalkerKinds;
+    use campfire_sim::UnitDues;
 
     impl Navigation {
         /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
@@ -368,7 +369,7 @@ pub mod internals {
         /// Asks the route `ask` names for the walker `id`, with its progress.
         pub fn ask_route(world: &mut World, id: StableId, ask: RouteAsk) {
             let entity = world.entity_of(id).expect("a walker of the match");
-            RouteDues::with(world, id, entity, |world, dues| {
+            UnitDues::<Route>::with(world, id, entity, |world, dues| {
                 let mut unit = world.entity_mut(entity);
                 let (mut route, mut progress) = unit
                     .get_components_mut::<(RouteMut, &mut Progress)>()

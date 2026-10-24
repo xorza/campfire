@@ -12,6 +12,7 @@ use campfire_net_timeline::LocalInstant;
 use tracing::{debug, trace_span};
 
 use crate::channel_registry::{ChannelGate, ChannelRegistry};
+use campfire_net_channels::SendRefusal;
 use campfire_net_connection::{Client, ClientOf};
 use core::any::TypeId;
 
@@ -43,14 +44,29 @@ impl TransportPlugin {
     }
 
     /// Packs each link's staged messages into packets for its packet session, while its budget
-    /// lasts, each stamped with the instant the timeline stands at as the frame ends.
+    /// lasts, each stamped with the instant the timeline stands at as the frame ends; and unlinks
+    /// a link whose reliable channel refused a message (11-net-stack/transport.md, A link's queued
+    /// bytes have a budget).
     fn buffer_send(
         clock: Res<'_, Clock>,
         instant: LocalInstant<'_>,
-        mut query: Query<'_, '_, (&mut Link, &mut Transport), With<Linked>>,
+        mut commands: Commands<'_, '_>,
+        mut query: Query<'_, '_, (Entity, &mut Link, &mut Transport), With<Linked>>,
     ) {
         let at = instant.now();
-        for (mut link, mut transport) in &mut query {
+        for (entity, mut link, mut transport) in &mut query {
+            if let Some(refusal) = transport.refused() {
+                debug!(
+                    ?refusal,
+                    "unlinking a link whose reliable channel refused a message"
+                );
+                let reason = match refusal {
+                    SendRefusal::Backlogged { .. } => UnlinkReason::Backlogged,
+                    SendRefusal::MessageTooLarge { .. } => UnlinkReason::MessageTooLarge,
+                };
+                commands.trigger(Unlink { entity, reason });
+                continue;
+            }
             transport.flush(&mut link.packet_session, at, clock.now());
         }
     }

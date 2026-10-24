@@ -100,7 +100,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
         (Stats::health(&game, target), Stats::health(&game, caster)),
         (450, 492)
     );
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             game.run_until(1);
             let mut projectiles = game.query::<&Projectile>();
             let launched = projectiles.iter(&game).count();
-            let failed: Vec<_> = Abilities::failed_calls(&game)
+            let failed: Vec<_> = Abilities::failed_calls(&mut game)
                 .into_iter()
                 .map(|failure| failure.kind)
                 .collect();
@@ -260,7 +260,7 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
                 .map(|(id, _, state)| (id.get(), state.values().to_vec()))
                 .collect();
             spawned.sort_unstable_by_key(|&(id, _)| id);
-            let failed = Abilities::failed_calls(&game).len();
+            let failed = Abilities::failed_calls(&mut game).len();
             if fails {
                 assert_eq!((spawned, failed), (vec![], 1), "{area}");
                 let next = Abilities::spawn_combatant(&mut game, (5, 0, 0), enemy, ());
@@ -409,5 +409,5 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     assert_eq!(struck(ally), (500, false));
     // The caster paid its 10 mana of 100, and two hits gave back 2 each.
     assert_eq!(Abilities::pool(&game, caster), 94);
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }

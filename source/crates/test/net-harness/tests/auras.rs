@@ -4,13 +4,12 @@
 //! predicts its unit inside it with no correction; an enemy's aura, whose modifiers a mode hides
 //! from it, comes from the server as a correction, once.
 
-use bevy_ecs::world::EntityRef;
 use campfire_bots::OrderScript;
 use campfire_math::Num;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_prediction::RollbackMode;
 use campfire_orders::OrdersDirective;
-use campfire_sim::{EntityIndex, StableId};
+use campfire_sim::StableId;
 use campfire_stats::Modifiers;
 use campfire_test_packages::Edit;
 use campfire_units::{GroundPoint, MoveStep};
@@ -49,16 +48,10 @@ const AURAS: [(&str, Edit<'_>); 3] = [
     ),
 ];
 
-/// The unit `id` in `local`'s `end`.
-fn unit(local: &InProcessMatch, end: End, id: StableId) -> EntityRef<'_> {
-    let world = local.app(end).world();
-    world.entity(world.resource::<EntityIndex>().get(id).unwrap())
-}
-
 /// Whether the unit `id` carries the same modifiers, and walks the same step, on `local`'s
 /// server and its client 0.
 fn alike(local: &InProcessMatch, id: StableId) -> bool {
-    let [server, client] = [End::Server, End::Client(0)].map(|end| unit(local, end, id));
+    let [server, client] = [End::Server, End::Client(0)].map(|end| local.unit(end, id));
     server.get::<Modifiers>() == client.get::<Modifiers>()
         && server.get::<MoveStep>() == client.get::<MoveStep>()
 }
@@ -116,7 +109,8 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
     assert!(alike(&local, cinder));
     assert_eq!(local.rollbacks(0), settled, "Gale's aura predicted");
     let step = |local: &InProcessMatch| {
-        unit(local, End::Server, cinder)
+        local
+            .unit(End::Server, cinder)
             .get::<MoveStep>()
             .unwrap()
             .get()

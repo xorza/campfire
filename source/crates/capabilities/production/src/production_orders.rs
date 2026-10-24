@@ -6,7 +6,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_players::{
     OrderedUnits, PlayerResources, PlayerRowsMut, ResourceAmount, TickCommands,
 };
-use campfire_sim::{DueIndex, SimTick, StableId, Unpredicted};
+use campfire_sim::{DueIndex, SimTick, StableId, UnitDues, Unpredicted};
 use campfire_units::{Dead, GroundPoint, MapBook, OrderKind, UnitOrdered};
 use campfire_values::Team;
 use campfire_vision::{ByVision, SeenTargets, TeamSight};
@@ -14,7 +14,6 @@ use campfire_vision::{ByVision, SeenTargets, TeamSight};
 use crate::build_book::BuildBook;
 use crate::builder::{BuildOrder, Builder};
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
-use crate::order_dues::OrderDues;
 use crate::production_directive::ProductionDirective;
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
@@ -64,12 +63,12 @@ impl ProductionOrders {
         if let Some(mut builder) = builder
             && (build.is_some() || builder.order().is_some())
         {
-            builder.set(build, &mut OrderDues::new(&mut builders, id, entity));
+            builder.set(build, &mut UnitDues::new(&mut builders, id, entity));
         }
         if let Some(mut gatherer) = gatherer
             && (gather.is_some() || gatherer.order().is_some())
         {
-            gatherer.set(gather, &mut OrderDues::new(&mut gatherers, id, entity));
+            gatherer.set(gather, &mut UnitDues::new(&mut gatherers, id, entity));
         }
     }
 

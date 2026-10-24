@@ -54,7 +54,7 @@ mod book_build;
 mod called_registries;
 mod capability_rows;
 #[cfg(feature = "internals")]
-mod client_holds;
+pub(crate) mod client_holds;
 mod declaring;
 mod engine_tag_list;
 pub(crate) mod error;

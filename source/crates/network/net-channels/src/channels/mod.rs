@@ -7,7 +7,7 @@ use crate::channel_sender::ChannelSender;
 use crate::channel_sender::SendFlushOutcome;
 use crate::channel_slots::ChannelSlots;
 use crate::channel_type_id::ChannelTypeId;
-use crate::error::{ReceiveError, SendError};
+use crate::error::{ReceiveError, SendRefusal};
 use crate::fragment_body::FragmentBody;
 use crate::message_id::MessageId;
 use crate::packet::{
@@ -29,13 +29,13 @@ use campfire_net_payload::{
     OpenedPayload, PacketSessionQueues, PayloadFate, PayloadKind, PayloadToken,
 };
 use core::time::Duration;
-use tracing::trace;
+use tracing::{debug, trace};
 
 use crate::channel::Channel;
 use campfire_net_payload::SendPayload;
 
 use crate::channel_setup::ChannelSetup;
-use crate::sent_packets::{SentMessage, UnsettledPackets};
+use crate::unsettled_packets::{SentMessage, UnsettledPackets};
 
 /// A message that [`Channels::send`] staged for the next send (11-net-stack/transport.md, A queued
 /// message keeps its channel's type until the flush).
@@ -185,6 +185,9 @@ pub struct Channels {
     pub(crate) staged: Vec<StagedMessage>,
     /// The bytes of the messages of `staged`.
     staged_len: usize,
+    /// Why a reliable channel refused a message, after which the link sends nothing more and its
+    /// transport ends it, as its peer would hold a stream with a hole.
+    refused: Option<SendRefusal>,
     /// Bytes of the packets given to the packet session.
     pub(crate) sent_bytes: BenchCounter,
     /// Packets given to the packet session.
@@ -212,6 +215,7 @@ impl Default for Channels {
             sent: UnsettledPackets::default(),
             staged: Vec::new(),
             staged_len: 0,
+            refused: None,
             sent_bytes: BenchCounter::default(),
             sent_packets: BenchCounter::default(),
             resent_messages: BenchCounter::default(),
@@ -372,40 +376,57 @@ impl Channels {
 
     /// Stages a message on the sending channel `channel_id` for the next send.
     ///
-    /// A message above the channel's `max_message_len` is refused with
-    /// [`SendError::MessageTooLarge`], and one that would pass the link's send budget with
-    /// [`SendError::Backlogged`]; nothing is staged then.
-    pub fn send(
-        &mut self,
-        channel_id: NetId,
-        bytes: SendPayload,
-        priority: f32,
-    ) -> Result<(), SendError> {
-        self.check_send(channel_id, bytes.len())?;
-        self.staged_len += bytes.len();
-        self.staged.push(StagedMessage {
-            channel_id,
-            bytes,
-            priority,
-        });
-        Ok(())
+    /// A message the channel cannot take, above its `max_message_len` or past the link's send
+    /// budget, is dropped from an unreliable channel, whose messages may go missing; on a reliable
+    /// channel it ends the link, which then sends nothing more, as its peer would hold a stream
+    /// with a hole: `refused` says why, and the transport unlinks
+    /// (11-net-stack/transport.md, A link's queued bytes have a budget). A channel the transport
+    /// does not send on is a logic error.
+    pub fn send(&mut self, channel_id: NetId, bytes: SendPayload, priority: f32) {
+        let reliable = self
+            .senders
+            .get(channel_id)
+            .unwrap_or_else(|| {
+                panic!("a message goes on a channel its transport sends on, not {channel_id:?}")
+            })
+            .is_reliable();
+        match self.check_send(channel_id, bytes.len()) {
+            Ok(()) => {
+                self.staged_len += bytes.len();
+                self.staged.push(StagedMessage {
+                    channel_id,
+                    bytes,
+                    priority,
+                });
+            }
+            Err(refusal) if reliable => {
+                self.refused.get_or_insert(refusal);
+            }
+            Err(refusal) => debug!(?refusal, ?channel_id, "dropped an unreliable message"),
+        }
     }
 
-    /// Whether a message of `len` bytes may go on the sending channel `channel_id`: within the
-    /// channel's bound and the link's send budget (11-net-stack/transport.md, A link's queued
-    /// bytes have a budget).
-    fn check_send(&self, channel_id: NetId, len: usize) -> Result<(), SendError> {
+    /// Why a reliable channel refused a message, which ends the link; none while each took its
+    /// messages.
+    pub const fn refused(&self) -> Option<SendRefusal> {
+        self.refused
+    }
+
+    /// Whether a message of `len` bytes may go on the sending channel `channel_id`, which the
+    /// transport sends on: within the channel's bound and the link's send budget
+    /// (11-net-stack/transport.md, A link's queued bytes have a budget).
+    fn check_send(&self, channel_id: NetId, len: usize) -> Result<(), SendRefusal> {
         let max_len = self
             .senders
             .get(channel_id)
-            .ok_or(SendError::ChannelNotFound(channel_id))?
+            .expect("the channel is one its transport sends on")
             .max_message_len();
         if len > max_len {
-            return Err(SendError::MessageTooLarge { len, max_len });
+            return Err(SendRefusal::MessageTooLarge { len, max_len });
         }
         let queued = self.queued();
         if queued + len > SEND_BUDGET {
-            return Err(SendError::Backlogged { len, queued });
+            return Err(SendRefusal::Backlogged { len, queued });
         }
         Ok(())
     }
@@ -538,8 +559,11 @@ impl Channels {
     /// The send step at `now`, at `at` on the sender's timeline: each staged message enters its
     /// channel, and packets go to the packet session while its budget lasts; a flush that sends
     /// nothing past the heartbeat sends the instant alone. A packet session that handed over
-    /// nothing yet takes nothing.
+    /// nothing yet takes nothing, nor does a link a reliable channel's refusal ends.
     pub fn flush(&mut self, queues: &mut PacketSessionQueues, at: TickInstant, now: Instant) {
+        if self.refused.is_some() {
+            return;
+        }
         let tick = at.tick();
         // A link whose packet session has not handed over yet takes nothing: the staged messages
         // wait for the next frame.
@@ -705,6 +729,7 @@ impl Channels {
         self.sent.clear();
         self.staged.clear();
         self.staged_len = 0;
+        self.refused = None;
     }
 }
 
@@ -714,7 +739,7 @@ pub(crate) mod internals {
     use crate::channel_sender::ChannelSender;
     use crate::channel_type_id::ChannelTypeId;
     use crate::channels::Channels;
-    use crate::error::SendError;
+    use crate::error::SendRefusal;
     use crate::message_id::MessageId;
     use campfire_net_core::NetId;
     use campfire_net_payload::SendPayload;
@@ -819,7 +844,7 @@ pub(crate) mod internals {
             channel_id: NetId,
             bytes: SendPayload,
             priority: f32,
-        ) -> Result<Option<MessageId>, SendError> {
+        ) -> Result<Option<MessageId>, SendRefusal> {
             self.check_send(channel_id, bytes.len())?;
             Ok(self.buffer_send(channel_id, bytes, priority))
         }

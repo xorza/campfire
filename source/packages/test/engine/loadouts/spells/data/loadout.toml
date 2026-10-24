@@ -1,0 +1,4 @@
+# The mode's one spell, `blink`, a cast of no target, cost, time or script.
+[actions.blink]
+name = "action-blink"
+targeting = "none"

@@ -1,4 +1,5 @@
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 /// The state a worker's holder and its thread share. A caller's code that panics as it holds the
 /// state, as a piece it writes into a buffer, poisons it: the next lock of the worker or of the
@@ -22,6 +23,21 @@ impl<S> WorkerLock<S> {
     /// Waits on `wake` with `held`, the guard of this lock, as `Condvar::wait` does.
     pub fn wait<'a>(&self, wake: &Condvar, held: MutexGuard<'a, S>) -> MutexGuard<'a, S> {
         wake.wait(held).expect(POISONED)
+    }
+
+    /// Waits on `wake` until `done` holds of the state or `timeout` passes, as
+    /// `Condvar::wait_timeout_while` does; whether `done` held.
+    pub fn wait_for(
+        &self,
+        wake: &Condvar,
+        timeout: Duration,
+        mut done: impl FnMut(&S) -> bool,
+    ) -> bool {
+        let held = self.lock();
+        let (held, _) = wake
+            .wait_timeout_while(held, timeout, |state| !done(state))
+            .expect(POISONED);
+        done(&held)
     }
 
     /// The state, poisoned or not, for the holder's drop to close.

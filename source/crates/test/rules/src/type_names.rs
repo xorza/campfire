@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use campfire_threads::Parallel;
 use syn::visit::{self, Visit};
 use syn::{
     Attribute, Ident, ItemEnum, ItemMod, ItemStruct, ItemTrait, ItemType, ItemUnion, Visibility,
@@ -92,9 +93,12 @@ fn tests_file(path: &str) -> bool {
 fn shared<'a>(
     files: impl IntoIterator<Item = (&'a str, &'a str)>,
 ) -> BTreeMap<String, BTreeSet<String>> {
+    let files: Vec<(&str, &str)> = files.into_iter().collect();
+    // Each file's parse on every core, as it reads every file of the workspace.
+    let declared = Parallel::map(files.len(), |at| declared(files[at].1));
     let mut by_name: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for (holder, text) in files {
-        for name in declared(text) {
+    for (&(holder, _), names) in files.iter().zip(declared) {
+        for name in names {
             by_name.entry(name).or_default().insert(holder.to_owned());
         }
     }
@@ -119,9 +123,7 @@ fn broken(shared: &BTreeMap<String, BTreeSet<String>>, one_meaning: &[&str]) -> 
 /// A name visible past its module that two crates declare means one thing, a shape `ONE_MEANING`
 /// lists, or the narrower use takes a qualified name (02-engine-core.md, A type name that both
 /// sides declare keeps one meaning).
-#[test]
-fn a_type_name_keeps_one_meaning() {
-    let workspace = Workspace::read();
+pub(crate) fn a_type_name_keeps_one_meaning(workspace: &Workspace) {
     let sources = workspace.sources();
     let files = sources
         .iter()
@@ -172,9 +174,7 @@ fn taken_features(crates: &[(&str, Vec<&str>)]) -> Vec<String> {
 
 /// No feature of the network stack's crates takes the name of a crate of Campfire's, as a word
 /// keeps Campfire's meaning (02-engine-core.md, The stack's crates are `net-<name>`).
-#[test]
-fn a_stack_feature_names_no_campfire_crate() {
-    let workspace = Workspace::read();
+pub(crate) fn a_stack_feature_names_no_campfire_crate(workspace: &Workspace) {
     let crates = workspace.crates();
     let named: Vec<(&str, Vec<&str>)> = crates
         .iter()

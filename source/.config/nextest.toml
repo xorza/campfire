@@ -44,6 +44,12 @@ threads-required = "num-cpus"
 filter = 'package(campfire-protocol) & test(=session_log::tests::every_truncation_and_every_flip_of_a_log_file_is_refused)'
 threads-required = "num-cpus"
 
+# The structural rules run as one test, each rule on a thread of its own over one parse of the
+# workspace's sources (02-engine-core.md, The rules are one test).
+[[profile.default.overrides]]
+filter = 'package(campfire-rules) & test(=every_rule::the_workspace_keeps_every_rule)'
+threads-required = "num-cpus"
+
 # The wire cost cases run in parallel, a thread for each of its five.
 [[profile.default.overrides]]
 filter = 'package(campfire-net-stack) & test(=scenario::wire_cost::tests::each_case_puts_exact_counts_on_the_wire)'

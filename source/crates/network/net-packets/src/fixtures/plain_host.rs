@@ -154,7 +154,7 @@ impl<Io: DatagramIo> PlainHost<Io> {
         }
         self.receive(timing);
         for link in self.links.values_mut() {
-            for opened in link.queues.opened().collect::<Vec<_>>() {
+            while let Some(opened) = link.queues.pop_opened() {
                 link.queues.accept(opened.number);
                 link.opened.push(opened.payload.freeze().to_vec());
             }

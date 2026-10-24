@@ -4,7 +4,7 @@ use blake3::Hasher;
 use campfire_common::{
     AfterLeave, MapName, PackageFingerprint, SegmentSeed, StateHash, Ticks, Version,
 };
-use campfire_threads::internals::Parallel;
+use campfire_threads::Parallel;
 use secp256k1::{Keypair, XOnlyPublicKey};
 
 use super::*;
@@ -547,6 +547,38 @@ fn sends_past_limits() -> [Tamper; 6] {
 }
 
 #[test]
+fn a_late_input_past_the_max_lead_refuses_its_packet() {
+    // Player 1 sends nothing for 1,000 ticks, then late inputs, two of each stamp. They spill two
+    // a tick from tick 1,000, and the max lead of 2 holds ticks 1,000 to 1,002: the fourth packet,
+    // whose inputs would apply in tick 1,003, is refused, however many its stamps allow.
+    let mut log = new_log();
+    for _ in 0..1000 {
+        seal(&mut log);
+    }
+    let sends: [&[(u64, &[u8])]; 4] = [
+        &[(0, b"a"), (0, b"b")],
+        &[(1, b"c"), (1, b"d")],
+        &[(2, b"e"), (2, b"f")],
+        &[(3, b"g"), (3, b"h")],
+    ];
+    let packets = resent(1, &sends, 1);
+    let mut applied = Vec::new();
+    let at = |tick| [Applied::At(Tick::new(tick)); 2];
+    for (packet, tick) in packets[..3].iter().zip(1000..) {
+        packet.submit(&mut log, &mut applied).unwrap();
+        assert_eq!(applied, at(tick));
+    }
+    assert_eq!(
+        packets[3].submit(&mut log, &mut applied),
+        Err(InputError::AheadOfTime)
+    );
+    // A tick later the window holds tick 1,003.
+    assert_eq!(seal(&mut log), [(1, b"a".to_vec()), (1, b"b".to_vec())]);
+    packets[3].submit(&mut log, &mut applied).unwrap();
+    assert_eq!(applied, at(1003));
+}
+
+#[test]
 fn a_tampered_packet_is_refused() {
     for case in broken_sends().into_iter().chain(sends_past_limits()) {
         let mut ticks = chained();
@@ -911,7 +943,7 @@ fn frame(
     tail: &[Sent<'_>],
     revealed: Option<&ServerSeed>,
 ) -> Vec<u8> {
-    let mut bytes = b"campfire/session-log/v12".to_vec();
+    let mut bytes = b"campfire/session-log/v13".to_vec();
     let terms = &header.terms;
     put(&mut bytes, &terms.server_key.serialize());
     put(&mut bytes, &terms.tick_hz);
@@ -1043,7 +1075,7 @@ fn a_log_file_has_its_layout() {
 
     let [first, second] = [0, 1].map(delegation);
     let expected = [
-        &b"campfire/session-log/v12"[..],
+        &b"campfire/session-log/v13"[..],
         // The terms, and no session id: it is their hash.
         &server_key().serialize(),
         // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input lead 2, payload length
@@ -1092,7 +1124,7 @@ fn a_log_file_has_its_layout() {
     assert_eq!(encoded(&log), expected);
 
     // A rate of 0 ticks a second does not decode.
-    let tick_at = b"campfire/session-log/v12".len() + 32;
+    let tick_at = b"campfire/session-log/v13".len() + 32;
     let zero_rate = [&expected[..tick_at], &[0], &expected[tick_at + 2..]].concat();
     assert!(matches!(
         SessionLog::decode(&zero_rate),
@@ -1174,7 +1206,7 @@ fn assert_truncations_and_flips_refused(bytes: &[u8]) {
         SessionLog::decode(bytes).map(|log| log.next_tick()),
         Ok(Tick::new(1))
     );
-    let tag = b"campfire/session-log/v12".len();
+    let tag = b"campfire/session-log/v13".len();
     // Each byte on a core of its own, as the sweep is long (02-engine-core.md, A sweep runs on
     // every core).
     Parallel::map_init(bytes.len(), Vec::new, |corrupt, at| {

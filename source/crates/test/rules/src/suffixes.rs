@@ -13,6 +13,12 @@ use crate::workspace::Workspace;
 /// `*TypeId` (02-engine-core.md, A system set is `*Systems`; 02-engine-core.md, A Bevy plugin is a
 /// `*Plugin`, a group `*Plugins`; 02-engine-core.md, A hook is a script's).
 fn misnamed(text: &str) -> Vec<String> {
+    // A file that names none of the words a misnamed declaration holds declares none, and its
+    // parse is skipped.
+    let words = ["SystemSet", "Manager", "TypeId", "Plugin", "_hook"];
+    if !words.iter().any(|word| text.contains(word)) {
+        return Vec::new();
+    }
     let file = syn::parse_file(text).expect("a workspace source parses");
     let mut names = Names::default();
     names.visit_file(&file);
@@ -141,9 +147,7 @@ fn derives(attributes: &[Attribute], name: &str) -> bool {
     })
 }
 
-#[test]
-fn a_declared_name_keeps_its_suffix() {
-    let workspace = Workspace::read();
+pub(crate) fn a_declared_name_keeps_its_suffix(workspace: &Workspace) {
     let mut found = Vec::new();
     let mut files = 0;
     for file in workspace.sources() {
@@ -252,13 +256,11 @@ fn open_data(code: &str) -> Vec<String> {
     open.0
 }
 
-#[test]
-fn a_package_data_struct_refuses_a_field_it_does_not_hold() {
-    let workspace = Workspace::read();
+pub(crate) fn a_package_data_struct_refuses_a_field_it_does_not_hold(workspace: &Workspace) {
     let found: Vec<String> = workspace
         .sources()
         .iter()
-        .filter(|file| file.production().is_some())
+        .filter(|file| file.text.contains("Deserialize") && file.production().is_some())
         .flat_map(|file| {
             open_data(&file.text)
                 .into_iter()

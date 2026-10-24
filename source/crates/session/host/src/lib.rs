@@ -57,7 +57,6 @@ pub use crate::events::receipt_refused::ReceiptRefused;
 pub use crate::events::receipt_unsaved::ReceiptUnsaved;
 pub use crate::events::save_loaded::SaveLoaded;
 pub use crate::events::save_refused::SaveRefused;
-pub use crate::events::script_printed::ScriptPrinted;
 pub use crate::events::seeds_ran_out::SeedsRanOut;
 pub use crate::events::server_frame::ServerFrame;
 pub use crate::events::session_refused::SessionRefused;

@@ -12,7 +12,7 @@ use campfire_math::{Num, Vec3};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_sim::{
     DueIndex, DueUnit, EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld,
-    StableId,
+    StableId, UnitDues,
 };
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
 use campfire_units::{
@@ -31,7 +31,7 @@ use crate::producer_spec::ProducerSpec;
 use crate::production_books::{ProductionBooks, TrainAdmission, TrainAsk};
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
-use crate::train_queue::{QueueDues, QueueIndex, Queued, TrainQueue};
+use crate::train_queue::{QueueIndex, Queued, TrainQueue};
 use crate::train_spec::TrainSpec;
 use crate::trained_units::{Trained, TrainedUnits};
 
@@ -91,28 +91,28 @@ impl Trains {
         life: Option<Res<'_, PoolBook>>,
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
         mut units: ParamSet<'_, '_, (OwnedUnits<'_, '_>, Query<'_, '_, Training, Without<Dead>>)>,
-        mut order: Local<'_, Ordered>,
+        mut held: Local<'_, Vec<DueUnit>>,
         mut holdings: ResMut<'_, Holdings>,
         (mut indexes, mut queues): (ProgressIndexes<'_>, QueueIndex<'_>),
     ) {
         let book = &books.actions;
         let now = tick.start();
         holdings.follow(&units.p0());
-        let trains = {
-            let training = units.p1();
-            let ordered = indexes.orders().filter_map(|DueUnit { id, entity }| {
-                let (_, _, _, (slots, progress), ..) = training.get(entity).ok()?;
-                progress
-                    .ordered(slots, book, ActionKind::Train)
-                    .map(|_| Keyed { id, entity })
-            });
-            order.sort(ordered)
-        };
-        if trains.is_empty() {
+        held.clear();
+        indexes.orders(&mut held);
+        let training = units.p1();
+        held.retain(|unit| {
+            training
+                .get(unit.entity)
+                .is_ok_and(|(_, _, _, (slots, progress), ..)| {
+                    progress.ordered(slots, book, ActionKind::Train).is_some()
+                })
+        });
+        if held.is_empty() {
             return;
         }
         let mut training = units.p1();
-        for &Keyed { id, entity } in trains {
+        for &DueUnit { id, entity } in &*held {
             let (
                 _,
                 _,
@@ -213,7 +213,7 @@ impl Trains {
                 if let Ok(queue) = producers.get(world, unit.entity)
                     && queue.done(now).is_none()
                 {
-                    QueueDues::new(Some(&mut index), unit.id, unit.entity).push(queue);
+                    UnitDues::new(&mut index, unit.id, unit.entity).push(queue.head_done());
                 }
             }
         });
@@ -235,7 +235,7 @@ impl Trains {
                 }]);
                 world.resource_scope(|world, mut index: Mut<'_, DueIndex<TrainQueue>>| {
                     let mut queue = world.get_mut::<TrainQueue>(entity).expect("a producer");
-                    let dues = &mut QueueDues::new(Some(&mut index), trainer, entity);
+                    let dues = &mut UnitDues::new(&mut index, trainer, entity);
                     queue.remove(0, now, dues);
                 });
             }

@@ -7,9 +7,12 @@ use crate::link_estimate::LinkEstimate;
 /// estimate it gives rounds to the nanosecond.
 const FRACTION_BITS: u32 = 32;
 
-/// The reciprocal of the smoothed RTT's gain, RFC 6298's alpha of 1/12.
+/// The reciprocal of the smoothed RTT's gain, 1/12: RFC 6298's estimate, whose own alpha is 1/8,
+/// with a gain tuned for one sample each 100 ms (11-net-stack/time.md, Two estimates of one link
+/// keep two promises).
 const RTT_GAIN_RECIPROCAL: i128 = 12;
-/// The reciprocal of the RTT's mean absolute deviation's gain, RFC 6298's beta of 1/6.
+/// The reciprocal of the RTT's mean absolute deviation's gain, 1/6, where RFC 6298's beta is 1/4,
+/// tuned as the RTT's gain is.
 const DEVIATION_GAIN_RECIPROCAL: i128 = 6;
 
 /// A sample above the smoothed RTT plus this many mean absolute deviations is an outlier, clamped

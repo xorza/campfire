@@ -1,17 +1,16 @@
 use std::ops::Deref;
 
-use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut, Mut};
+use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Allow, QueryData};
 use bevy_ecs::system::Query;
-use bevy_ecs::world::{DeferredWorld, World};
+use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Vec3;
 use campfire_sim::{
-    DueIndex, SimComponent, StableId, StateRewritten, TimedKept, TimedProcess, TimedRuns,
+    DueIndex, SimComponent, StateRewritten, TimedKept, TimedProcess, TimedRuns, UnitDues,
     Unpredicted,
 };
 use campfire_states::{Replication, SentPredicted};
@@ -33,7 +32,7 @@ use crate::walker::Walker;
 /// `StateRewritten`. Its hook pushes its unit into the index of the asks at each insert, a
 /// spawn's and a restore's alike.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[component(on_insert = Route::pushed)]
+#[component(on_insert = DueIndex::<Self>::pushed)]
 #[require(ArrivedShort, RouteCursor)]
 pub struct Route {
     goal: Option<Goal>,
@@ -97,21 +96,6 @@ impl Route {
 
     pub const fn is_reached(&self) -> bool {
         self.reached
-    }
-
-    /// Pushes the unit whose route comes into the index of the asks while its ask waits. It reads
-    /// no cursor, which a write of the state part by part may not have written yet.
-    fn pushed(mut world: DeferredWorld<'_>, context: HookContext) {
-        let entity = context.entity;
-        let Some(due) = world.get::<Self>(entity).map(|route| Self::due(&(), route)) else {
-            return;
-        };
-        let id = world.get::<StableId>(entity).copied();
-        if let (Some(at), Some(id), Some(mut index)) =
-            (due, id, world.get_resource_mut::<DueIndex<Self>>())
-        {
-            index.push(at, id, entity);
-        }
     }
 
     /// Sets each walker's `ArrivedShort` as its route stands, as the state was written from
@@ -281,50 +265,6 @@ impl Deref for RouteRef<'_> {
     }
 }
 
-/// The index of the asks that wait, for the route of the unit `id`, of `entity`, which an ask
-/// pushes it into.
-#[derive(Debug)]
-pub struct RouteDues<'a> {
-    index: &'a mut DueIndex<Route>,
-    id: StableId,
-    entity: Entity,
-}
-
-impl<'a> RouteDues<'a> {
-    pub const fn new(index: &'a mut DueIndex<Route>, id: StableId, entity: Entity) -> Self {
-        Self { index, id, entity }
-    }
-
-    /// Runs `change` on `world`, with the index the route of the unit `id`, of `entity`, pushes
-    /// it into, as an exclusive system or an effect changes the unit.
-    pub fn with<R>(
-        world: &mut World,
-        id: StableId,
-        entity: Entity,
-        change: impl FnOnce(&mut World, &mut RouteDues<'_>) -> R,
-    ) -> R {
-        world.resource_scope(|world, mut index: Mut<'_, DueIndex<Route>>| {
-            change(world, &mut RouteDues::new(&mut index, id, entity))
-        })
-    }
-
-    /// The same index, for a shorter borrow.
-    pub const fn reborrow(&mut self) -> RouteDues<'_> {
-        RouteDues {
-            index: self.index,
-            id: self.id,
-            entity: self.entity,
-        }
-    }
-
-    /// Pushes the unit as `route` makes it due: at once, while its ask waits.
-    fn push(&mut self, route: &Route) {
-        if let Some(at) = Route::due(&(), route) {
-            self.index.push(at, self.id, self.entity);
-        }
-    }
-}
-
 /// A walker's route, to change, with its report of the goal it arrived short of, which each
 /// change sets as the route then stands, so a reader of the report reads the route's last
 /// change.
@@ -394,10 +334,10 @@ impl RouteMutItem<'_, '_> {
     }
 
     /// See `Route::ask`; the unit is due in `dues` while its ask waits.
-    pub fn ask(&mut self, ask: RouteAsk, progress: &mut Progress, dues: &mut RouteDues<'_>) {
+    pub fn ask(&mut self, ask: RouteAsk, progress: &mut Progress, dues: &mut UnitDues<'_, Route>) {
         self.route.ask(ask, progress);
         self.report();
-        dues.push(&self.route);
+        dues.push(Route::due(&(), &self.route));
     }
 
     /// See `Route::ask_again`; the unit is due in `dues` while its ask waits.
@@ -406,11 +346,11 @@ impl RouteMutItem<'_, '_> {
         goal: Option<Vec3>,
         progress: &mut Progress,
         tick: Tick,
-        dues: &mut RouteDues<'_>,
+        dues: &mut UnitDues<'_, Route>,
     ) {
         self.route.ask_again(goal, progress, tick);
         self.report();
-        dues.push(&self.route);
+        dues.push(Route::due(&(), &self.route));
     }
 
     /// See `Route::answer`.

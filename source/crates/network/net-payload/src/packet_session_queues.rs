@@ -6,7 +6,6 @@ use crate::packet_number::PacketNumber;
 use crate::payload_fate::PayloadFate;
 use crate::payload_kind::PayloadKind;
 use crate::payload_token::PayloadToken;
-use crate::receive_payload::ReceivePayload;
 use bytes::BytesMut;
 
 /// What the frame and a link's packet session hand each other: the frame's payloads and the numbers
@@ -38,8 +37,8 @@ pub struct OutgoingPayload {
 }
 
 impl OutgoingPayload {
-    /// The bytes before the data: a connection ID of 8 and a header of at most 10.
-    pub const HEADROOM: usize = 18;
+    /// The bytes before the data: a connection ID of 8 and a header of at most 14.
+    pub const HEADROOM: usize = 22;
     /// The bytes past the data: the AEAD tag of 16.
     pub const TAILROOM: usize = 16;
 
@@ -60,7 +59,8 @@ impl OutgoingPayload {
 pub struct OpenedPayload {
     pub number: PacketNumber,
     pub kind: PayloadKind,
-    pub payload: ReceivePayload,
+    /// Its bytes, in the buffer the IO received into, which a layer may change in place.
+    pub payload: BytesMut,
 }
 
 impl PacketSessionQueues {
@@ -171,7 +171,6 @@ pub(crate) mod internals {
     use crate::mtu::DEFAULT_MTU;
     use crate::packet_number::PacketNumber;
     use crate::packet_session_queues::{OpenedPayload, OutgoingPayload, PacketSessionQueues};
-    use crate::receive_payload::ReceivePayload;
 
     impl OutgoingPayload {
         /// A payload's buffer of `data` after its headroom, as the frame writes one.
@@ -201,7 +200,7 @@ pub(crate) mod internals {
                 self.push_opened(OpenedPayload {
                     number: PacketNumber(number),
                     kind: send.kind,
-                    payload: ReceivePayload::Mutable(BytesMut::from(send.data())),
+                    payload: BytesMut::from(send.data()),
                 });
             }
             looped
@@ -250,7 +249,7 @@ mod tests {
         queues.push_opened(OpenedPayload {
             number: PacketNumber(4),
             kind: PayloadKind::new(0),
-            payload: ReceivePayload::Frozen(bytes::Bytes::new()),
+            payload: BytesMut::new(),
         });
         queues.push_fate(PayloadFate::Lost(PayloadToken(5)));
         queues.set_rtt_samples([Duration::from_millis(6)]);
@@ -271,7 +270,7 @@ mod tests {
             queues.push_opened(OpenedPayload {
                 number: PacketNumber(number),
                 kind: PayloadKind::new(0),
-                payload: ReceivePayload::Frozen(bytes::Bytes::new()),
+                payload: BytesMut::new(),
             });
         }
         let popped = core::iter::from_fn(|| queues.pop_opened())

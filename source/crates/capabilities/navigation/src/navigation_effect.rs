@@ -8,7 +8,7 @@ use campfire_math::{Num, Rounding, Vec3};
 use campfire_script::{
     ApiError, CapabilityRefusal, Effect, EffectKind, Frame, ScriptLasting, View,
 };
-use campfire_sim::{Position, SimWorld, StableId};
+use campfire_sim::{Position, SimWorld, StableId, UnitDues};
 use campfire_units::{Body, DashTo, Dead, Destination, ForcedMove, MapBook, Teleported};
 use campfire_values::DashDelivery;
 
@@ -17,7 +17,7 @@ use crate::error::NavigationRefusal;
 use crate::navigation_column::NavigationColumn;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::{RouteDues, RouteMut};
+use crate::route::{Route, RouteMut};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::walker::Walker;
 
@@ -110,7 +110,7 @@ impl NavigationEffect {
     /// route again from there, as a teleport and a box that spawns over it put a unit.
     pub(super) fn put(world: &mut World, entity: Entity, position: Vec3, now: Tick) {
         let id = *world.get::<StableId>(entity).expect("a unit has an id");
-        RouteDues::with(world, id, entity, |world, dues| {
+        UnitDues::<Route>::with(world, id, entity, |world, dues| {
             let mut moved = world.entity_mut(entity);
             *moved.get_mut::<Position>().expect("a unit has a place") = Position::from(position);
             moved.remove::<(ForcedMove, DashDelivering)>();

@@ -87,34 +87,47 @@ fn a_reset_drops_the_messages_and_keeps_each_channels_setup() {
 struct ResetChannel;
 impl Channel for ResetChannel {}
 
-/// A 10-byte limit admits 10 bytes and refuses 11, on both send paths, staging nothing.
+/// A 10-byte limit admits 10 bytes and refuses 11, on both send paths, staging nothing: an
+/// unreliable channel drops the message, and a reliable one ends the link with why.
 #[test]
 fn a_send_above_the_channel_limit_is_refused() {
-    let setup = ChannelSetup {
-        max_message_len: 10,
-        ..ChannelSetup::default()
-    };
-    let mut channels = Channels::default();
-    let id = NetId::new(0);
-    channels.add_channel_send::<ResetChannel>(setup, id);
-
-    let too_large = Err(SendError::MessageTooLarge {
+    let too_large = SendRefusal::MessageTooLarge {
         len: 11,
         max_len: 10,
-    });
-    assert_eq!(channels.send(id, Bytes::from(vec![0; 10]), 1.0), Ok(()));
-    assert_eq!(channels.send(id, Bytes::from(vec![0; 11]), 1.0), too_large);
-    assert_eq!(channels.staged.len(), 1);
-    assert!(channels.send_mut(id, Bytes::from(vec![0; 10]), 1.0).is_ok());
-    assert_eq!(
-        channels.send_mut(id, Bytes::from(vec![0; 11]), 1.0),
-        too_large.map(|()| None)
-    );
-    // A channel the transport does not send on is refused too.
-    assert_eq!(
-        channels.send(NetId::new(1), Bytes::from(vec![0; 1]), 1.0),
-        Err(SendError::ChannelNotFound(NetId::new(1)))
-    );
+    };
+    for (mode, reliable) in [
+        (ChannelMode::UnorderedUnreliable, false),
+        (ChannelMode::OrderedReliable, true),
+    ] {
+        let setup = ChannelSetup {
+            mode,
+            max_message_len: 10,
+            ..ChannelSetup::default()
+        };
+        let mut channels = Channels::default();
+        let id = NetId::new(0);
+        channels.add_channel_send::<ResetChannel>(setup, id);
+        channels.send(id, Bytes::from(vec![0; 10]), 1.0);
+        assert_eq!(channels.refused(), None);
+        channels.send(id, Bytes::from(vec![0; 11]), 1.0);
+        assert_eq!(channels.staged.len(), 1);
+        assert_eq!(
+            channels.refused(),
+            reliable.then_some(too_large),
+            "{mode:?}"
+        );
+        assert!(channels.send_mut(id, Bytes::from(vec![0; 10]), 1.0).is_ok());
+        assert_eq!(
+            channels.send_mut(id, Bytes::from(vec![0; 11]), 1.0),
+            Err(too_large)
+        );
+    }
+}
+
+#[test]
+#[should_panic(expected = "a message goes on a channel its transport sends on")]
+fn a_send_on_a_channel_the_transport_does_not_send_on_is_a_logic_error() {
+    Channels::default().send(NetId::new(1), Bytes::from(vec![0; 1]), 1.0);
 }
 
 /// The steps' tests: what a flush gives a packet session's queues, and what a receive takes from
@@ -128,7 +141,7 @@ mod steps {
     use crate::tick_encoder::LONG_TICK_MARK;
     use bytes::BytesMut;
     use campfire_net_bytes::SerializationError;
-    use campfire_net_payload::{PacketNumber, ReceivePayload};
+    use campfire_net_payload::PacketNumber;
 
     #[derive(Debug)]
     struct RetryChannel;
@@ -184,7 +197,7 @@ mod steps {
         OpenedPayload {
             number: PacketNumber(number),
             kind: kind.into(),
-            payload: ReceivePayload::Mutable(BytesMut::from(data)),
+            payload: BytesMut::from(data),
         }
     }
 
@@ -248,9 +261,7 @@ mod steps {
         };
         let mut channels = Channels::default();
         channels.add_channel_send::<FateChannel>(setup, NetId::new(0));
-        channels
-            .send(NetId::new(0), Bytes::from_static(b"m"), 1.0)
-            .unwrap();
+        channels.send(NetId::new(0), Bytes::from_static(b"m"), 1.0);
         let mut queues = queues(usize::MAX);
         let flush = |channels: &mut Channels, queues: &mut PacketSessionQueues| {
             channels.flush(queues, TickInstant::ZERO, Instant::ZERO);
@@ -284,8 +295,10 @@ mod steps {
     }
 
     /// A link queues 1 MiB at most: two messages of 512 KiB fill it, and one more byte is refused
-    /// with what is queued. An unreliable channel's flush sends them, and the link takes the
-    /// byte; a reliable channel holds its messages until each of their packets is delivered.
+    /// with what is queued, which an unreliable channel drops and which ends the link of a
+    /// reliable one, whose flush then sends nothing. An unreliable channel's flush sends them, and
+    /// the link takes the byte; a reliable channel holds its messages until each of their packets
+    /// is delivered.
     #[test]
     fn a_link_queues_its_send_budget_at_most() {
         for (mode, held) in [
@@ -296,19 +309,27 @@ mod steps {
                 mode,
                 ..Default::default()
             };
-            let mut channels = Channels::default();
-            channels.add_channel_send::<FateChannel>(setup, NetId::new(0));
-            let half = Bytes::from(vec![0; SEND_BUDGET / 2]);
-            for _ in 0..2 {
-                channels.send(NetId::new(0), half.clone(), 1.0).unwrap();
-            }
-            assert_eq!(
-                channels.send(NetId::new(0), Bytes::from_static(b"b"), 1.0),
-                Err(SendError::Backlogged {
-                    len: 1,
-                    queued: SEND_BUDGET,
-                })
-            );
+            let filled = || {
+                let mut channels = Channels::default();
+                channels.add_channel_send::<FateChannel>(setup, NetId::new(0));
+                let half = Bytes::from(vec![0; SEND_BUDGET / 2]);
+                for _ in 0..2 {
+                    channels.send(NetId::new(0), half.clone(), 1.0);
+                }
+                channels
+            };
+            let mut over = filled();
+            over.send(NetId::new(0), Bytes::from_static(b"b"), 1.0);
+            let refused = SendRefusal::Backlogged {
+                len: 1,
+                queued: SEND_BUDGET,
+            };
+            assert_eq!(over.staged.len(), 2);
+            assert_eq!(over.refused(), held.then_some(refused), "{mode:?}");
+            let mut over_queues = queues(usize::MAX);
+            over.flush(&mut over_queues, TickInstant::ZERO, Instant::ZERO);
+            assert_eq!(over_queues.take_sends().next().is_none(), held, "{mode:?}");
+            let mut channels = filled();
             let mut queues = queues(usize::MAX);
             channels.flush(&mut queues, TickInstant::ZERO, Instant::ZERO);
             let tokens = queues
@@ -325,10 +346,8 @@ mod steps {
             }
             receive(&mut channels, &mut queues).unwrap();
             assert_eq!(channels.queued(), 0, "{mode:?}");
-            assert_eq!(
-                channels.send(NetId::new(0), Bytes::from_static(b"b"), 1.0),
-                Ok(())
-            );
+            channels.send(NetId::new(0), Bytes::from_static(b"b"), 1.0);
+            assert_eq!((channels.staged.len(), channels.refused()), (1, None));
         }
     }
 
@@ -351,9 +370,7 @@ mod steps {
         assert_eq!(flush_at(&mut channels, 0), [6]);
         assert_eq!(flush_at(&mut channels, 99), Vec::<usize>::new());
         assert_eq!(flush_at(&mut channels, 100), [6]);
-        channels
-            .send(NetId::new(0), Bytes::from_static(b"m"), 1.0)
-            .unwrap();
+        channels.send(NetId::new(0), Bytes::from_static(b"m"), 1.0);
         assert_eq!(flush_at(&mut channels, 150), [10]);
         assert_eq!(flush_at(&mut channels, 249), Vec::<usize>::new());
         assert_eq!(flush_at(&mut channels, 250), [6]);
@@ -380,10 +397,10 @@ mod steps {
             receiver_queues.set_max_payload(receiver_payload);
 
             let expected = Bytes::from(vec![5; 3000]);
-            sender.send(channel_id, expected.clone(), 1.0).unwrap();
+            sender.send(channel_id, expected.clone(), 1.0);
             sender.flush(&mut sender_queues, TickInstant::ZERO, Instant::ZERO);
             let sends: Vec<_> = sender_queues.take_sends().collect();
-            // A payload of 1,166 bytes takes fragments of 1,148, so 3,000 = 2 · 1,148 + 704 go in
+            // A payload of 1,166 bytes takes fragments of 1,144, so 3,000 = 2 · 1,144 + 712 go in
             // 3; one of 256, of 238, so 3,000 = 12 · 238 + 144 go in 13.
             let fragment_len = fragment_len_for_max_payload(sender_payload).unwrap();
             assert_eq!(
@@ -391,7 +408,7 @@ mod steps {
                 if sender_payload == 256 {
                     (238, 13)
                 } else {
-                    (1148, 3)
+                    (1144, 3)
                 }
             );
             assert!(sends.iter().all(|send| send.data().len() <= sender_payload));
@@ -400,7 +417,7 @@ mod steps {
                 receiver_queues.push_opened(OpenedPayload {
                     number: PacketNumber(number),
                     kind: send.kind,
-                    payload: ReceivePayload::Mutable(BytesMut::from(send.data())),
+                    payload: BytesMut::from(send.data()),
                 });
             }
             receive(&mut receiver, &mut receiver_queues).unwrap();
@@ -556,7 +573,7 @@ mod steps {
             (ordered_id, vec![2; 40]),
             (ordered_id, vec![3; 2_500]),
         ] {
-            sender.send(channel_id, Bytes::from(bytes), 1.0).unwrap();
+            sender.send(channel_id, Bytes::from(bytes), 1.0);
         }
         let mut queues = queues(usize::MAX);
         sender.flush(&mut queues, TickInstant::ZERO, Instant::ZERO);
@@ -582,7 +599,7 @@ mod steps {
                 }
             }
         }
-        // Of the seed's 3 · 2,048 = 6,144 mutations, 2,989 read and 3,155 break.
-        assert_eq!([read, broken], [2989, 3155]);
+        // Of the seed's 3 · 2,048 = 6,144 mutations, 3,007 read and 3,137 break.
+        assert_eq!([read, broken], [3007, 3137]);
     }
 }

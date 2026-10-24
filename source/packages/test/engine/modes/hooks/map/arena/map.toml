@@ -1,0 +1,40 @@
+# Bounds from (−10, −5) to (10, 6) with a grid of 1 m cells; one path, `mid`, along x; team a's
+# spawn at z = −5 and b's at 5; a's tower 8 m down the path; and a camp of a grunt in the middle.
+[bounds]
+min = [-10, -5]
+max = [10, 6]
+
+[grid]
+cell = "1.0"
+
+[navigation]
+cell = "1.0"
+
+[[paths]]
+name = "mid"
+points = [[-10, 0], [0, 0], [10, 0]]
+walk = "once"
+
+[[units]]
+unit_type = "tower"
+team = "a"
+path = "mid"
+position = [-8, 0]
+
+[[markers]]
+name = "a_spawn"
+tags = ["spawn"]
+team = "a"
+position = [0, -5]
+
+[[markers]]
+name = "b_spawn"
+tags = ["spawn"]
+team = "b"
+position = [0, 5]
+
+[[markers]]
+name = "camp"
+tags = ["camp"]
+position = [0, 0]
+params = { unit_type = "grunt" }

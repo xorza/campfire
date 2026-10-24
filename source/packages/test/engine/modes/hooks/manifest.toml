@@ -1,0 +1,18 @@
+# The mode of the engine's tests of a mode's script: each test writes the script, which records
+# what its hooks see in its state and acts on its players' inputs. Three player slots, two of team
+# a and one of b, and the neutral team's none, at 10 ticks a second.
+name = "test-hooks"
+version = "0.1.0"
+api = "1.0"
+language = "en"
+kind = "mode"
+capabilities = ["stats", "combat", "navigation", "vision", "abilities", "progression", "production"]
+tick_hz = { min = 10, max = 10, default = 10 }
+teams = [{ name = "a", player_slots = 2 }, { name = "b", player_slots = 1 }, { name = "neutral", player_slots = 0 }]
+max_move_speed = "10"
+script_limits = { per_call = 10000, player = 100000, think = 100000, mode = 100000 }
+
+[dependencies]
+hero-x = { path = "../../heroes/x" }
+hero-y = { path = "../../heroes/y" }
+spells = { path = "../../loadouts/spells" }

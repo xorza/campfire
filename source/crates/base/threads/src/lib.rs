@@ -9,7 +9,6 @@
 
 mod failure;
 mod job;
-#[cfg(feature = "internals")]
 mod parallel;
 #[cfg(feature = "internals")]
 mod race;
@@ -19,6 +18,7 @@ mod worker_lock;
 
 pub use crate::failure::Failure;
 pub use crate::job::Job;
+pub use crate::parallel::Parallel;
 pub use crate::thread_name::ThreadName;
 pub use crate::worker::Worker;
 pub use crate::worker_lock::WorkerLock;
@@ -27,6 +27,5 @@ pub use crate::worker_lock::WorkerLock;
 /// once.
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::parallel::Parallel;
     pub use crate::race::Race;
 }

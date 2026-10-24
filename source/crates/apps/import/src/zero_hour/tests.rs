@@ -42,6 +42,7 @@ use crate::zero_hour::format::ini::command_button_ini::samples::COMMAND_BUTTONS;
 use crate::zero_hour::format::ini::command_set_ini::samples::COMMAND_SETS;
 use crate::zero_hour::format::ini::game_data_ini::TerrainDraw;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
+use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
 use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
@@ -643,10 +644,10 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         path: PackagePath::parse("client/textures/art/terrain/tsand.ktx2").unwrap(),
         size: UVec2::new(2, 1),
     });
-    let mut rules = ZeroHourRules::default();
-    for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
-        rules.objects.read(objects.as_bytes()).unwrap();
-    }
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS]),
+        ..ZeroHourRules::default()
+    };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     rules.templates.read(PLAYER_TEMPLATES.as_bytes()).unwrap();
     rules.sets.read(COMMAND_SETS.as_bytes()).unwrap();

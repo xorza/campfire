@@ -15,13 +15,13 @@ impl MouseIni {
     /// Reads one INI file, its `Mouse` block's fields replacing those read before; its other
     /// blocks, as each cursor's, it passes over.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        for block in IniText::of(bytes).blocks(BlockKinds::Any) {
+        for block in IniText::of(bytes).lines().blocks(BlockKinds::Any) {
             let block = block?;
             if block.head.word() != "mouse" {
                 continue;
             }
             for line in &block.fields {
-                let field = match line.word().as_str() {
+                let field = match line.word() {
                     "dragtolerance" => &mut self.drag_tolerance,
                     "dragtolerancems" => &mut self.drag_tolerance_ms,
                     _ => continue,

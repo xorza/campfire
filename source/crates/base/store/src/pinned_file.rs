@@ -1,5 +1,6 @@
 use std::env;
 use std::ffi::OsStr;
+use std::fmt;
 use std::path::Path;
 
 use crate::durable_file::DurableFile;
@@ -73,8 +74,10 @@ impl<'a> PinnedFile<'a> {
         });
         assert!(
             pinned == now,
-            "{} differs; {}=1 writes it again",
+            "{} differs from what the test made {}; {}=1 writes it again, and `git diff` shows the \
+             rest",
             self.path.display(),
+            Difference::of(&pinned, now),
             PinnedFile::BLESS
         );
     }
@@ -94,6 +97,67 @@ impl<'a> PinnedFile<'a> {
     fn holds(&self, now: &[u8]) -> bool {
         InputFile::read_if_present(self.path, now.len())
             .is_ok_and(|held| held.as_deref() == Some(now))
+    }
+}
+
+/// Where a pinned file and what a test made first differ, for the panic of a pin: the line, with
+/// both texts of it, of two texts; else the byte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Difference<'a> {
+    Line {
+        number: usize,
+        pinned: Option<&'a str>,
+        made: Option<&'a str>,
+    },
+    Byte {
+        offset: usize,
+    },
+}
+
+impl<'a> Difference<'a> {
+    /// The first difference of `pinned` and `made`, which differ.
+    fn of(pinned: &'a [u8], made: &'a [u8]) -> Self {
+        if let (Ok(pinned), Ok(made)) = (str::from_utf8(pinned), str::from_utf8(made)) {
+            let (mut pinned, mut made) = (pinned.lines(), made.lines());
+            for number in 1.. {
+                let (left, right) = (pinned.next(), made.next());
+                if left != right {
+                    return Self::Line {
+                        number,
+                        pinned: left,
+                        made: right,
+                    };
+                }
+            }
+        }
+        let offset = pinned
+            .iter()
+            .zip(made)
+            .position(|(left, right)| left != right)
+            .unwrap_or_else(|| pinned.len().min(made.len()));
+        Self::Byte { offset }
+    }
+}
+
+/// `at line 3: pinned "a", made "b"`, a side past its last line `no line`; or `at byte 7`.
+impl fmt::Display for Difference<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let side = |line: Option<&str>| {
+            line.map_or_else(|| "no line".to_owned(), |line| format!("{line:?}"))
+        };
+        match *self {
+            Self::Line {
+                number,
+                pinned,
+                made,
+            } => write!(
+                f,
+                "at line {number}: pinned {}, made {}",
+                side(pinned),
+                side(made)
+            ),
+            Self::Byte { offset } => write!(f, "at byte {offset}"),
+        }
     }
 }
 
@@ -158,5 +222,31 @@ mod tests {
         assert!(panic::catch_unwind(|| file.pin_if(false, b"made", 2)).is_err());
         file.pin_if(true, b"other", 16);
         file.pin_if(false, b"other", 16);
+    }
+
+    #[test]
+    fn a_difference_names_its_first_line_or_byte() {
+        let line = |number, pinned, made| Difference::Line {
+            number,
+            pinned,
+            made,
+        };
+        assert_eq!(
+            Difference::of(b"a\nb\nc", b"a\nx\nc"),
+            line(2, Some("b"), Some("x"))
+        );
+        assert_eq!(Difference::of(b"a\nb", b"a"), line(2, Some("b"), None));
+        assert_eq!(
+            Difference::of(&[0, 1, 0xff], &[0, 2]),
+            Difference::Byte { offset: 1 }
+        );
+        assert_eq!(
+            Difference::of(&[0xff, 1], &[0xff]),
+            Difference::Byte { offset: 1 }
+        );
+        assert_eq!(
+            line(2, Some("b"), None).to_string(),
+            "at line 2: pinned \"b\", made no line"
+        );
     }
 }

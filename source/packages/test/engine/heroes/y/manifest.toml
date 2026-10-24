@@ -1,0 +1,6 @@
+# A hero of the engine's tests of a mode's script.
+name = "hero-y"
+version = "0.1.0"
+api = "1.0"
+language = "en"
+kind = "avatar"

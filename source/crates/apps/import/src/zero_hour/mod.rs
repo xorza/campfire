@@ -15,6 +15,7 @@ use campfire_package_format::PackageFiles;
 use campfire_store::DurableDir;
 use campfire_units::HeightGrid;
 use campfire_values::{PackagePath, Speed};
+use serde::{Deserialize, Serialize};
 
 use crate::texture::dds_file::DdsFile;
 use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
@@ -77,7 +78,7 @@ pub(crate) mod zero_hour_rules;
 
 /// What an import wrote: the packages' fingerprints, each map, by name, which loads, and what
 /// it does not hold of the install, in the order the import met it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Imported {
     /// The imported package's.
     pub fingerprint: PackageFingerprint,
@@ -310,6 +311,11 @@ impl ZeroHour {
     /// The directory of the rules package, and of the install's, in an import's.
     pub const RULES: &'static str = rules_package::RULES;
     pub const GAME: &'static str = "game";
+
+    /// The version of what `write` writes from an install: raised with each change of its output,
+    /// as a check keeps an import of the same install and version and writes nothing
+    /// (09-zero-hour.md, A check keeps an unchanged import).
+    pub const OUTPUT_VERSION: u32 = 2;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint.
     fn write_rules(dir: &Path) -> Result<PackageFingerprint, ZeroHourError> {

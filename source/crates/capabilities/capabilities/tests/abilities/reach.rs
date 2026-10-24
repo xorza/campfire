@@ -94,7 +94,7 @@ fn on_resolve(ctx, caster, target) {
     let struck = Abilities::spawn_combatant(&mut game, near("3.34", "4.46"), Team::new(1), ());
     Abilities::cast(&mut game, caster, point(9, 12));
     assert_eq!(Stats::health(&game, struck), 490);
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }
 
 /// Hop, which deals 10 to each enemy within half a meter of its point, and Jab, which deals 10 to
@@ -239,7 +239,7 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
     assert_eq!(game.part::<ActionProgress>(standing).in_progress(), None);
     game.step();
     assert_eq!(Stats::health(&game, beside), 500);
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }
 
 #[test]
@@ -298,5 +298,5 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
     game.step();
     assert_eq!(game.part::<ActionProgress>(mover).in_progress(), None);
     assert_eq!(game.part::<Destination>(mover).get(), None);
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
 }

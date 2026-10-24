@@ -27,11 +27,11 @@ impl Report for ScriptPrints {
     }
 }
 
-/// The commands of the last tick nothing read, which every match holds, as every match reads
-/// inputs.
+/// The commands of the last tick nothing read, which a match that computes the whole state alone
+/// holds: a client predicts with what it holds, and its server counts what nothing read.
 impl Report for UnreadCommands {
-    fn installed(_: &Role) -> Option<Self> {
-        Some(Self::default())
+    fn installed(role: &Role) -> Option<Self> {
+        role.computes_state().then(Self::default)
     }
 }
 

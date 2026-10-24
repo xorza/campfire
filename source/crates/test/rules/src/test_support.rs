@@ -45,9 +45,9 @@ fn test_lines(file: &SourceFile) -> Vec<(usize, &str)> {
     }
 }
 
-#[test]
-fn a_crate_has_one_bench_target_and_its_cases_live_in_bench_files() {
-    let workspace = Workspace::read();
+pub(crate) fn a_crate_has_one_bench_target_and_its_cases_live_in_bench_files(
+    workspace: &Workspace,
+) {
     let more = Allowlist::new(&MORE_BENCH_TARGETS);
     let mut found = Vec::new();
     for krate in workspace.crates() {
@@ -71,9 +71,7 @@ fn a_crate_has_one_bench_target_and_its_cases_live_in_bench_files() {
     assert!(!is_bench("crates/a/src/benchmark.rs"));
 }
 
-#[test]
-fn a_test_takes_its_files_in_a_test_dir() {
-    let workspace = Workspace::read();
+pub(crate) fn a_test_takes_its_files_in_a_test_dir(workspace: &Workspace) {
     let read = concat!("env::", "temp_dir");
     let found: Vec<String> = workspace
         .sources()

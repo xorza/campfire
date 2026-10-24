@@ -111,12 +111,12 @@ impl Casts {
         let now = tick.start();
         let life = life.life();
         held.clear();
-        held.extend(indexes.orders());
+        indexes.orders(&mut held);
         for &DueUnit { id, entity } in &*held {
             // A dead unit keeps its order, for when it lives again.
             let Ok(unit) = units.get_mut(entity) else {
                 if !present.contains(entity) {
-                    indexes.forget_order(id);
+                    indexes.forget_order(entity);
                 }
                 continue;
             };
@@ -134,7 +134,7 @@ impl Casts {
                 used,
             ) = unit;
             let Some(underway) = progress.in_progress().filter(|_| progress.has_order()) else {
-                indexes.forget_order(id);
+                indexes.forget_order(entity);
                 continue;
             };
             let dues = &mut indexes.of(id, entity);

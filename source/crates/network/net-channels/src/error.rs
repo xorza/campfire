@@ -41,11 +41,10 @@ pub enum ReceiveError {
     InvalidFinalFragmentLen { actual: usize, max: usize },
 }
 
-/// Why a send was refused; nothing is staged then.
+/// Why a send was refused; nothing is staged then. A reliable channel's refusal ends its link
+/// (11-net-stack/transport.md, A link's queued bytes have a budget).
 #[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SendError {
-    #[error("this transport sends on no channel {0:?}")]
-    ChannelNotFound(NetId),
+pub enum SendRefusal {
     #[error("a message of {len} bytes is above its channel's {max_len}")]
     MessageTooLarge { len: usize, max_len: usize },
     /// The link's queued bytes would pass its send budget: its peer acknowledges less than it is

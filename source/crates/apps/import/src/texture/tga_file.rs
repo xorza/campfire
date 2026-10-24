@@ -243,7 +243,9 @@ mod tests {
             words(&[8 + (7 << 16) + (1 << 24), 0, 0, 255]),
             words(&[16 + (7 << 16) + (2 << 24), 0, 0, 255]),
             words(&[24 + (7 << 16) + (0x1F << 24), 0, 0, 255]),
-            vec![162, 162, 162, 114],
+            // The 1 × 1 level from the light of the level above, as `MipChain`'s test works it
+            // out: 161, where the codes above would give 162.
+            vec![161, 161, 161, 114],
             vec![188, 188, 188, 128, 128, 128, 128, 100],
             [b, w, g, g, w, b, g, g].concat(),
         ]

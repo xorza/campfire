@@ -19,7 +19,6 @@ internals = [
     "campfire-package/internals",
     "campfire-protocol/internals",
     "campfire-runner/internals",
-    "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-store/internals",
     "campfire-threads/internals",
@@ -40,7 +39,6 @@ campfire-net-core.workspace = true
 campfire-package.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true
-campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-store.workspace = true
 campfire-threads.workspace = true
@@ -59,6 +57,7 @@ tracing = { workspace = true, features = ["attributes", "std"] }
 campfire-host = { workspace = true, features = ["internals"] }
 campfire-orders = { workspace = true, features = ["internals"] }
 campfire-progression = { workspace = true, features = ["internals"] }
+campfire-script = { workspace = true, features = ["internals"] }
 # Its tests read the workspace's test packages from disk.
 campfire-test-packages.workspace = true
 campfire-visibility.workspace = true

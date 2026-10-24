@@ -5,11 +5,10 @@ use bevy_ecs::world::FilteredEntityMut;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::Writer;
 use campfire_net_channels::ChannelTypeId;
-use campfire_net_channels::SendError;
 use campfire_net_core::NetId;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
-use tracing::{error, trace};
+use tracing::trace;
 
 pub type Priority = f32;
 
@@ -126,28 +125,7 @@ impl<M: 'static> SendQueue<M> {
                 priority,
                 "serialized message for transport"
             );
-            match link.transport.send(channel_id, bytes, priority) {
-                Ok(()) => {}
-                Err(error @ SendError::MessageTooLarge { .. }) => {
-                    error!(
-                        ?error,
-                        message = core::any::type_name::<M>(),
-                        "dropped a message above its channel's size limit"
-                    );
-                }
-                Err(error @ SendError::Backlogged { .. }) => {
-                    error!(
-                        ?error,
-                        message = core::any::type_name::<M>(),
-                        "dropped a message past its link's send budget"
-                    );
-                }
-                Err(SendError::ChannelNotFound(channel)) => {
-                    panic!(
-                        "a message is sent only on a channel its transport sends on, not {channel:?}"
-                    )
-                }
-            }
+            link.transport.send(channel_id, bytes, priority);
         }
     }
 

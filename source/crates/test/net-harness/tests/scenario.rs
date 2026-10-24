@@ -663,6 +663,50 @@ fn a_client_frame_of_many_ticks_sends_its_inputs_in_time() {
 }
 
 #[test]
+fn a_client_whose_packets_stall_holds_its_inputs_so_none_is_refused() {
+    // Client 0's packets stall for 60 ticks while the server's still reach it, and its player
+    // gives 240 orders, which it stamps 4 a tick. Sent as they come, they would land late
+    // together and spill 4 a tick past the max lead of 30, which the server refuses with the
+    // link. The client holds them while the server may hold (30 + 1) × 4, so all 240 apply, in
+    // the order given (05-protocol-spec.md, A late input applies at the next tick).
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
+        LinkModel::perfect(),
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.start_match();
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
+    while local.next_tick(End::Server) < 70 {
+        local.step();
+    }
+    local.hold_client_packets(0);
+    for at in 0..240_i64 {
+        let to = GroundPoint {
+            x: Num::int(at % 5),
+            z: Num::int(-2),
+        };
+        local.order(0, OrdersDirective::Move { to });
+    }
+    for _ in 0..60 {
+        local.step();
+    }
+    local.pass_client_packets(0);
+    for _ in 0..90 {
+        local.step();
+    }
+    let applied: Vec<_> = local
+        .applied_inputs()
+        .into_iter()
+        .filter(|input| input.player_slot == PlayerSlot::new(0) && input.stamp.get() > 70)
+        .collect();
+    assert_eq!(applied.len(), 240);
+    assert!(
+        applied
+            .windows(2)
+            .all(|pair| (pair[0].stamp, pair[0].tick) <= (pair[1].stamp, pair[1].tick))
+    );
+}
+
+#[test]
 fn a_1v1_through_perfect_links() {
     // Each client corrects once, when it learns its own hero died.
     let setup = InProcessSetup::duo(LinkModel::perfect(), InProcessMatch::SEED_CHAIN);

@@ -2426,6 +2426,7 @@ dependencies = [
  "campfire-sim",
  "campfire-stats",
  "campfire-store",
+ "campfire-threads",
  "campfire-units",
  "campfire-values",
  "clap",
@@ -2433,6 +2434,7 @@ dependencies = [
  "fluent-syntax",
  "gltf-json",
  "miniz_oxide 0.9.1",
+ "serde",
  "thiserror 2.0.21",
  "tracing",
 ]
@@ -2651,7 +2653,6 @@ dependencies = [
  "campfire-protocol",
  "campfire-runner",
  "campfire-schedule",
- "campfire-script",
  "campfire-sim",
  "campfire-states",
  "campfire-store",
@@ -3001,7 +3002,6 @@ dependencies = [
  "campfire-log",
  "campfire-math",
  "campfire-measure",
- "campfire-net-bytes",
  "campfire-net-channels",
  "campfire-net-connection",
  "campfire-net-core",
@@ -3382,6 +3382,7 @@ version = "0.1.0"
 dependencies = [
  "campfire-codec",
  "campfire-store",
+ "campfire-threads",
  "proc-macro2",
  "serde",
  "syn 3.0.9",
@@ -3392,13 +3393,16 @@ name = "campfire-runner"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
+ "campfire-abilities",
  "campfire-actions",
  "campfire-areas",
  "campfire-capabilities",
+ "campfire-codec",
  "campfire-combat",
  "campfire-common",
  "campfire-declarations",
  "campfire-deliveries",
+ "campfire-geometry",
  "campfire-log",
  "campfire-math",
  "campfire-mode",
@@ -3407,6 +3411,8 @@ dependencies = [
  "campfire-package",
  "campfire-package-format",
  "campfire-players",
+ "campfire-production",
+ "campfire-progression",
  "campfire-projectiles",
  "campfire-protocol",
  "campfire-runner",
@@ -3488,6 +3494,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec",
  "bevy_ecs",
+ "bevy_platform",
  "blake3",
  "campfire-codec",
  "campfire-common",
@@ -3687,21 +3694,6 @@ dependencies = [
  "criterion",
  "serde",
  "thiserror 2.0.21",
-]
-
-[[package]]
-name = "campfire-vocabulary"
-version = "0.1.0"
-dependencies = [
- "campfire-common",
- "campfire-logging",
- "campfire-store",
- "clap",
- "proc-macro2",
- "quote",
- "syn 3.0.9",
- "thiserror 2.0.21",
- "tracing",
 ]
 
 [[package]]

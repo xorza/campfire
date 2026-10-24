@@ -2,9 +2,8 @@ use std::num::NonZeroUsize;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::system::Local;
-use bevy_ecs::world::{DeferredWorld, World};
+use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_declarations::ById;
 use campfire_math::Vec3;
@@ -31,7 +30,7 @@ use crate::trains::Trains;
 /// spawns due at each insert, a restore's too, and each change that leaves a return pushes it at
 /// its first. State of the server's.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[component(on_insert = KeptSpawns::pushed)]
+#[component(on_insert = DueIndex::<Self>::pushed)]
 pub(crate) struct KeptSpawns {
     returns: Vec<Tick>,
     turn: u8,
@@ -232,22 +231,6 @@ impl KeptSpawns {
             world
                 .resource_mut::<DueIndex<Self>>()
                 .push(first, id, entity);
-        }
-    }
-
-    /// Pushes the spawner of the spawns into the index of the spawns due, at their first return,
-    /// in a match that keeps spawns.
-    fn pushed(mut world: DeferredWorld<'_>, context: HookContext) {
-        let entity = context.entity;
-        let (Some(kept), Some(&id)) = (world.get::<Self>(entity), world.get::<StableId>(entity))
-        else {
-            return;
-        };
-        let Some(&first) = kept.returns.first() else {
-            return;
-        };
-        if let Some(mut index) = world.get_resource_mut::<DueIndex<Self>>() {
-            index.push(first, id, entity);
         }
     }
 }

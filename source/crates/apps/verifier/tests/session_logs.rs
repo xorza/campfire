@@ -120,9 +120,8 @@ struct Hero {
 
 /// Where player `player_slot`'s hero stands and walks to.
 fn hero(game: &Match, player_slot: u32) -> Hero {
-    let id = MatchUnits::of(game).hero(player_slot);
-    let entity = game.entity_of(id).unwrap();
-    let hero = game.entity(entity);
+    let units = MatchUnits::of(game);
+    let hero = units.unit(units.hero(player_slot));
     Hero {
         position: hero.get::<Position>().unwrap().get(),
         destination: *hero.get::<Destination>().unwrap(),
@@ -130,8 +129,8 @@ fn hero(game: &Match, player_slot: u32) -> Hero {
 }
 
 #[derive(Debug)]
-struct Run {
-    fixed: FixedMatch,
+pub(super) struct Run {
+    pub(super) fixed: FixedMatch,
     /// The state after each tick.
     trail: HashTrail,
 }
@@ -165,7 +164,11 @@ fn play(fixed: &mut FixedMatch, orders: &[&Sent], ticks: Range<u64>, trail: &mut
 /// The orders' match to tick 72, checkpointed with a full snapshot, written into `snapshot`,
 /// before tick 40, its record's state hash `hash` when given, and ended with `outcome`, as the
 /// mode ended it when none is given; the match, and its state after each tick.
-fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option<Outcome>) -> Run {
+pub(super) fn checkpointed(
+    snapshot: &mut Vec<u8>,
+    hash: Option<StateHash>,
+    outcome: Option<Outcome>,
+) -> Run {
     let mut fixed = session().start();
     let mut trail = HashTrail::default();
     let orders = ORDERS.each_ref();
@@ -694,7 +697,7 @@ fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
     assert_eq!(seen, expected);
 }
 
-fn encoded(log: &SessionLog) -> Vec<u8> {
+pub(super) fn encoded(log: &SessionLog) -> Vec<u8> {
     let mut bytes = Vec::new();
     log.encode(&mut bytes);
     bytes

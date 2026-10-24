@@ -1,0 +1,6 @@
+# A map of a vision grid and a pathing grid.
+bounds = { min = [-4, -4], max = [4, 4] }
+grid = { cell = "1.0" }
+
+[navigation]
+cell = "1.0"

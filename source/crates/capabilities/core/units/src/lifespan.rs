@@ -1,9 +1,8 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::HookContext;
-use bevy_ecs::world::{DeferredWorld, World};
+use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_sim::{DueIndex, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
+use campfire_sim::{DueIndex, SimComponent, TimedKept, TimedProcess, TimedRuns};
 use campfire_states::{NotSent, Replication};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
@@ -14,7 +13,7 @@ use crate::unit_entity::UnitEntity;
 /// before which it despawns. It never changes, and its hook pushes its unit into the index of the
 /// lives that end, at each insert, a spawn's and a restore's alike. State of the core.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[component(immutable, on_insert = Lifespan::pushed)]
+#[component(immutable, on_insert = DueIndex::<Self>::pushed)]
 #[serde(transparent)]
 pub struct Lifespan {
     ends: Tick,
@@ -37,19 +36,6 @@ impl Lifespan {
     /// The last tick in whose end its life ends: the one before `ends`.
     pub(crate) const fn last_tick(self) -> Tick {
         Tick::new(self.ends.get().saturating_sub(1))
-    }
-
-    /// Pushes the unit whose life it is into the index of the lives that end, at its last tick,
-    /// in a match that ends lives.
-    fn pushed(mut world: DeferredWorld<'_>, context: HookContext) {
-        let entity = context.entity;
-        let (Some(&life), Some(&id)) = (world.get::<Self>(entity), world.get::<StableId>(entity))
-        else {
-            return;
-        };
-        if let Some(mut index) = world.get_resource_mut::<DueIndex<Self>>() {
-            index.push(life.last_tick(), id, entity);
-        }
     }
 }
 

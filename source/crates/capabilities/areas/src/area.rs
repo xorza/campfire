@@ -1,7 +1,6 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::HookContext;
-use bevy_ecs::world::{DeferredWorld, World};
+use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, EffectListBook};
 use campfire_common::Tick;
 use campfire_declarations::ById;
@@ -21,7 +20,7 @@ use crate::area_spec::AreaSpec;
 /// it triggers, holds the tick it triggers. Its hook pushes it into the index of the areas at
 /// each insert, a spawn's and a restore's alike.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[component(immutable, on_insert = Area::pushed)]
+#[component(immutable, on_insert = DueIndex::<Self>::pushed)]
 #[require(DeliveryEntity)]
 pub struct Area {
     by: Delivering,
@@ -44,20 +43,6 @@ impl Area {
 
     pub(crate) const fn ends_at(&self) -> Tick {
         self.ends_at
-    }
-
-    /// Pushes the area into the index of the areas, at its trigger or its end, in a match that
-    /// runs them.
-    fn pushed(mut world: DeferredWorld<'_>, context: HookContext) {
-        let entity = context.entity;
-        let unit = world.entity(entity);
-        let (Some(area), Some(&id)) = (unit.get::<Self>(), unit.get::<StableId>()) else {
-            return;
-        };
-        let at = Self::due(&(), (area, unit.get::<AreaTrigger>()));
-        if let (Some(at), Some(mut index)) = (at, world.get_resource_mut::<DueIndex<Self>>()) {
-            index.push(at, id, entity);
-        }
     }
 }
 

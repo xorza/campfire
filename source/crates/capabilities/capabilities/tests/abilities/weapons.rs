@@ -151,7 +151,7 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
             attacker
         };
         if by_cast {
-            assert_eq!(Abilities::failed_calls(&game), [], "{row}");
+            assert_eq!(Abilities::failed_calls(&mut game), [], "{row}");
         }
         while game.now() < Tick::new(hits_in) {
             assert_eq!(
@@ -163,11 +163,11 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
                 "{row} before its hit"
             );
             game.step();
-            assert_eq!(Abilities::failed_calls(&game), [], "{row}");
+            assert_eq!(Abilities::failed_calls(&mut game), [], "{row}");
         }
         if !by_cast {
             game.step();
-            assert_eq!(Abilities::failed_calls(&game), [], "{row}");
+            assert_eq!(Abilities::failed_calls(&mut game), [], "{row}");
         }
         assert_eq!(
             (
@@ -251,7 +251,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
         game.step();
         lives.push([target, near, far].map(|id| Stats::health(&game, id)));
     }
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     assert_eq!(
         lives,
         [
@@ -289,7 +289,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
     }
     // The blast's splash of 0 + 0.5 × the attack damage of a source that is gone, which has no
     // stats, is 0: the target keeps the 460 the attack left it, in every tick, and no call fails.
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     assert_eq!(lives, [460, 460, 460]);
     let mut areas = game.query::<&Area>();
     assert_eq!(areas.iter(&game).count(), 0);
@@ -325,7 +325,7 @@ fn a_list_spawns_for_its_attacker_once_the_attacker_is_gone() {
     let entity = game.unit_entity(attacker);
     game.despawn(entity);
     game.step();
-    assert_eq!(Abilities::failed_calls(&game), []);
+    assert_eq!(Abilities::failed_calls(&mut game), []);
     let mut fighters = game.query::<(&StableId, &UnitType)>();
     let spawned = fighters
         .iter(&game)
@@ -397,5 +397,5 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
         hook: Release::hook("on_hit"),
         kind: FailureKind::Api(ApiError::ChainTooDeep),
     };
-    assert_eq!(Abilities::failed_calls(&game), [failed]);
+    assert_eq!(Abilities::failed_calls(&mut game), [failed]);
 }

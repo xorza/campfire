@@ -1,4 +1,5 @@
 use super::{NamedCode, capability_sources};
+use crate::workspace::Workspace;
 
 /// `code` with the body of each set's place left out, where a module names the steps of the
 /// modules it builds on.
@@ -15,14 +16,13 @@ fn outside_places(code: &str) -> String {
     out
 }
 
-#[test]
-fn a_module_names_another_modules_sets_only_where_its_sets_run() {
+pub(crate) fn a_module_names_another_modules_sets_only_where_its_sets_run(workspace: &Workspace) {
     // A set orders against the steps of the modules it builds on, which its place names; a module
     // puts its systems in its own sets alone, so no system orders against another module's but
     // through its set's place (02-engine-core.md, Sets order against the steps of the modules
     // they build on).
     let module_of = |path: &str| path.split('/').next().unwrap_or_default().to_owned();
-    let sources = capability_sources();
+    let sources = capability_sources(workspace);
     let mut sets = Vec::new();
     for NamedCode { path, code } in &sources {
         for (at, _) in code.match_indices("impl ModuleSystems for ") {

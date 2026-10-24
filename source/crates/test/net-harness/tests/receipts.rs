@@ -41,9 +41,10 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
         local.step();
     }
     let watch = local.server().world().resource::<JournalWatch>().0.clone();
-    while !watch.is_settled() {
-        thread::sleep(Duration::from_millis(1));
-    }
+    assert!(
+        watch.wait_settled(Duration::from_secs(5)),
+        "the journal's writer syncs"
+    );
     for _ in 0..60 {
         local.step();
     }
@@ -158,9 +159,10 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
         for _ in 0..30 {
             local.step();
         }
-        while !watch.is_settled() {
-            thread::sleep(Duration::from_millis(1));
-        }
+        assert!(
+            watch.wait_settled(Duration::from_secs(5)),
+            "the journal's writer syncs"
+        );
     };
     local.order(
         0,

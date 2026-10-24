@@ -33,16 +33,19 @@ pub fn check_layer() -> Option<Box<dyn Layer<Registry> + Send + Sync>> {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use std::env;
     use std::fmt::Debug;
     use std::io::{self, Write};
     use std::mem;
     use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
     use std::thread;
 
-    use tracing::Level;
     use tracing::subscriber;
-    use tracing_subscriber::filter::{self, FilterFn};
+    use tracing::{Level, Subscriber};
+    use tracing_subscriber::filter::{self, FilterFn, Targets};
+    use tracing_subscriber::fmt;
     use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::registry::LookupSpan;
     use tracing_subscriber::util::SubscriberInitExt;
     use tracing_subscriber::{Layer, Registry};
 
@@ -100,6 +103,7 @@ pub(crate) mod internals {
             if LINES.get().is_none() {
                 tracing_subscriber::registry()
                     .with(capture_layer())
+                    .with(shown_layer())
                     .try_init()
                     .expect("a process's subscriber is a check's alone");
             }
@@ -177,6 +181,17 @@ pub(crate) mod internals {
         Box::new(json_lines(writer).without_time().with_filter(warnings()))
     }
 
+    /// The events `RUST_LOG` names, by its targets' syntax, on standard error, which nextest shows
+    /// for a test that fails, so a failure's events below Warn read with no change of code; none
+    /// when it is not set, so a test pays nothing for it.
+    fn shown_layer<S: Subscriber + for<'a> LookupSpan<'a>>() -> Option<impl Layer<S>> {
+        let named = env::var("RUST_LOG").ok()?;
+        let targets: Targets = named
+            .parse()
+            .unwrap_or_else(|error| panic!("RUST_LOG={named:?} names no targets: {error}"));
+        Some(fmt::layer().with_writer(io::stderr).with_filter(targets))
+    }
+
     /// The events at Warn and Error, and no span: a check reads an event's own fields alone, and
     /// a span it enabled would format its fields at each entry, an allocation in every frame of
     /// an app that runs in one, as the stepper runs each app's frame.
@@ -234,7 +249,7 @@ mod tests {
     use serde::Deserialize;
     use tracing::{error, info, warn};
 
-    use campfire_threads::internals::Parallel;
+    use campfire_threads::Parallel;
 
     use crate::json_layer::internals::LogCheck;
     use crate::log_event::LogEvent;

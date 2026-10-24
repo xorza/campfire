@@ -8,7 +8,7 @@ use campfire_net_core::Instant;
 use campfire_net_payload::{PacketNumber, PayloadFate, PayloadToken};
 
 use crate::new_reno::NewReno;
-use crate::received_window::MAX_ACK_DELAY;
+use crate::received_window::{MAX_ACK_DELAY, WINDOW};
 use crate::rtt_estimator::{GRANULARITY, RttEstimator};
 
 /// A packet this many numbers below the largest acknowledged is lost (RFC 9002 §6.1.1,
@@ -21,7 +21,7 @@ const PACKET_THRESHOLD: u64 = 3;
 const PERSISTENT_CONGESTION_THRESHOLD: u32 = 3;
 
 /// The numbers below the largest acknowledged that an ACK's bits name.
-const ACK_BITS: u64 = 32;
+const ACK_BITS: u64 = WINDOW;
 
 /// A sent packet that needs an ACK, in 32 bytes: its payload's presence and its settlement share
 /// one byte of flags, as an `Option<PayloadToken>` alone would take 16.
@@ -123,9 +123,10 @@ impl SentPackets {
         reno.on_sent(bytes);
     }
 
-    /// Takes an acknowledgement of `largest`, the 32 numbers below it that `bits` names, and the
+    /// Takes an acknowledgement of `largest`, the 64 numbers below it that `bits` names, and the
     /// peer's `ack_delay`, at `now`: each newly acknowledged packet's payload is delivered, the
-    /// largest gives an RTT sample when newly acknowledged, and the thresholds find the losses.
+    /// largest gives an RTT sample when newly acknowledged and its delay is known, and the
+    /// thresholds find the losses.
     pub(crate) fn on_ack(
         &mut self,
         ack: Ack,
@@ -175,8 +176,10 @@ impl SentPackets {
         if newly_acked {
             self.probes = 0;
         }
+        // A delay past what the header holds would make the sample the delay's own length.
         let rtt_sample = largest_sent_at
-            .map(|sent_at| rtt.update(now.saturating_duration_since(sent_at), delay));
+            .zip(delay)
+            .map(|(sent_at, delay)| rtt.update(now.saturating_duration_since(sent_at), delay));
         self.detect_losses(now, rtt, reno, fates);
         AckReport { rtt_sample }
     }
@@ -276,8 +279,9 @@ impl SentPackets {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Ack {
     pub(crate) largest: PacketNumber,
-    pub(crate) bits: u32,
-    pub(crate) delay: Duration,
+    pub(crate) bits: u64,
+    /// The peer's ACK delay; none when it passed what the header holds.
+    pub(crate) delay: Option<Duration>,
 }
 
 /// The send times of the first and last packets one detection called lost, and whether no

@@ -33,9 +33,9 @@ impl MultiplayerIni {
     /// Reads one INI file, adding its choices of starting money and its colors to those read
     /// before; its other blocks, each of no inner block, it passes over.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        for block in IniText::of(bytes).blocks(BlockKinds::Any) {
+        for block in IniText::of(bytes).lines().blocks(BlockKinds::Any) {
             let block = block?;
-            match block.head.word().as_str() {
+            match block.head.word() {
                 "multiplayerstartingmoneychoice" => {}
                 "multiplayercolor" => {
                     self.colors.push(Self::color(&block.fields)?);
@@ -45,7 +45,7 @@ impl MultiplayerIni {
             }
             let mut choice = MoneyChoice::default();
             for line in &block.fields {
-                match line.word().as_str() {
+                match line.word() {
                     "value" => {
                         let value = line.int()?;
                         choice.value = u32::try_from(value)

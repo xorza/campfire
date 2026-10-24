@@ -434,6 +434,11 @@ fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
             }
         }
     }
+    // Each lint and group it reads is clippy's, so a file that names no lint of clippy's holds
+    // none, and its parse is skipped.
+    if !text.contains("clippy") {
+        return Vec::new();
+    }
     let paths = NamedPath::of(text);
     let thread_module = NamedPath::holds(&paths, "thread_local")
         && !TYPE_NAMES
@@ -492,9 +497,7 @@ pub(crate) fn foreign_names(proxy: &Proxy, text: &str) -> Vec<&'static str> {
     found
 }
 
-#[test]
-fn each_banned_call_goes_through_its_proxy_alone() {
-    let workspace = Workspace::read();
+pub(crate) fn each_banned_call_goes_through_its_proxy_alone(workspace: &Workspace) {
     let clippy = read(source().join("clippy.toml").to_str().unwrap());
     let sources = workspace.sources();
     for proxy in &PROXIES {
@@ -598,9 +601,7 @@ fn with_proxy_bans(workspace: &str, proxy: &Proxy, bans: &CrateBans) -> String {
     merged
 }
 
-#[test]
-fn a_crates_clippy_toml_is_the_workspaces_with_its_own_entries() {
-    let workspace = Workspace::read();
+pub(crate) fn a_crates_clippy_toml_is_the_workspaces_with_its_own_entries(workspace: &Workspace) {
     // Each crate's own `clippy.toml` is the workspace's with its proxy's bans, written again with
     // `CAMPFIRE_BLESS=1`, and a proxy owns every crate that has one.
     let shared = read(source().join("clippy.toml").to_str().unwrap());
@@ -820,9 +821,7 @@ fn app_removals(text: &str) -> Vec<usize> {
         .collect()
 }
 
-#[test]
-fn no_tick_reads_removals_that_age_with_the_app() {
-    let workspace = Workspace::read();
+pub(crate) fn no_tick_reads_removals_that_age_with_the_app(workspace: &Workspace) {
     let found: Vec<String> = workspace
         .sources()
         .iter()
@@ -850,9 +849,7 @@ fn no_tick_reads_removals_that_age_with_the_app() {
 /// in no group the workspace turns on (07-determinism-core.md, One step: an `i128`, rounded once).
 const FLOAT_BAN: &str = "#![warn(clippy::float_arithmetic)]";
 
-#[test]
-fn each_crate_a_match_runs_on_bans_floats() {
-    let workspace = Workspace::read();
+pub(crate) fn each_crate_a_match_runs_on_bans_floats(workspace: &Workspace) {
     // A proc-macro crate's code runs in the compiler, not in a match.
     let reached = sim_closure(workspace.crates());
     let mut checked = 0;
@@ -900,9 +897,7 @@ fn wall_clock_reads(code: &str) -> Vec<&'static str> {
         .collect()
 }
 
-#[test]
-fn no_crate_a_match_runs_on_reads_the_wall_clock() {
-    let workspace = Workspace::read();
+pub(crate) fn no_crate_a_match_runs_on_reads_the_wall_clock(workspace: &Workspace) {
     let reached = sim_closure(workspace.crates());
     let readers = Allowlist::new(&WALL_CLOCK_READERS);
     let mut found = Vec::new();

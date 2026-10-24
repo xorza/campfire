@@ -41,6 +41,11 @@ pub enum UnlinkReason {
     ProtocolViolation,
     /// The peer's channels, messages or components differ from this end's.
     ProtocolMismatch,
+    /// A reliable message passed the link's send budget, as its peer acknowledges less than it is
+    /// sent: one dropped would leave the peer a stream with a hole.
+    Backlogged,
+    /// A reliable message was larger than its channel's largest, which none dropped may be.
+    MessageTooLarge,
 }
 
 impl fmt::Display for UnlinkReason {
@@ -58,6 +63,10 @@ impl fmt::Display for UnlinkReason {
             Self::NotOpened => f.write_str("the connection could not open"),
             Self::SocketFailed => f.write_str("the socket failed"),
             Self::ProtocolViolation => f.write_str("the peer broke the protocol"),
+            Self::Backlogged => {
+                f.write_str("the peer acknowledged too little of a reliable stream")
+            }
+            Self::MessageTooLarge => f.write_str("a reliable message passed its channel's largest"),
             Self::ProtocolMismatch => f.write_str("the peer's protocol differs from this end's"),
         }
     }

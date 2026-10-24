@@ -1,8 +1,10 @@
 use std::collections::BTreeSet;
 
+use serde::{Deserialize, Serialize};
+
 /// A part of the install the import drops, by its name in the install, and why: a command
 /// button, by its own; a supply module, by its object's; a weapon, by its own.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Dropped<C> {
     pub name: String,
     pub cause: C,

@@ -31,7 +31,7 @@ impl ArmorIni {
     /// Reads one INI file, adding its armors to those read before: one read again keeps its
     /// shares and takes the new ones.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        for block in IniText::of(bytes).blocks(BlockKinds::One("armor")) {
+        for block in IniText::of(bytes).lines().blocks(BlockKinds::One("armor")) {
             let block = block?;
             let armor = self.armors.entry(block.name()?.to_owned()).or_default();
             for line in block.fields.iter().filter(|line| line.word() == "armor") {

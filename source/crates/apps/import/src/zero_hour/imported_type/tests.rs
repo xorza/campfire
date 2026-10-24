@@ -131,8 +131,10 @@ End
 
 #[test]
 fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height() {
-    let mut rules = ZeroHourRules::default();
-    rules.objects.read(BODIES.as_bytes()).unwrap();
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[BODIES]),
+        ..ZeroHourRules::default()
+    };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     let of = |name: &str| ImportedType::of(rules.objects.object(name.as_bytes()).unwrap(), &rules);
     let int = Num::int;
@@ -387,8 +389,7 @@ End
 
 #[test]
 fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_its_turret() {
-    let mut ini = ObjectIni::default();
-    ini.read(LIVING.as_bytes()).unwrap();
+    let ini = ObjectIni::of(&[LIVING]);
     let of = |name: &str| {
         ImportedType::of(
             ini.object(name.as_bytes()).unwrap(),

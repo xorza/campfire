@@ -65,19 +65,34 @@ impl FileIndex {
     pub(crate) fn encode(
         rows: BTreeMap<PackagePath, FileRow>,
     ) -> Result<EncodedIndex, ContentError> {
-        Self::check_paths(rows.keys())?;
-        if let Some((path, _)) = rows.iter().find(|(_, row)| row.size > Self::MAX_FILE_LEN) {
-            return Err(ContentError::IndexFileLen(path.clone()));
-        }
+        Self::check_rows(&rows)?;
         let bytes = Self::encode_rows(&rows);
+        let index = Self::of_encoding(rows, &bytes)?;
+        Ok(EncodedIndex { index, bytes })
+    }
+
+    /// The index of `rows`, whose encoding `bytes` are, refused past `MAX_LEN` bytes: its
+    /// fingerprint is of the bytes, so a package's fingerprint is that of the index it holds.
+    fn of_encoding(
+        rows: BTreeMap<PackagePath, FileRow>,
+        bytes: &[u8],
+    ) -> Result<Self, ContentError> {
         if u64::try_from(bytes.len()).expect("a length fits u64") > Self::MAX_LEN {
             return Err(ContentError::IndexLen);
         }
-        let fingerprint = PackageFingerprint::of(&bytes);
-        Ok(EncodedIndex {
-            index: Self { rows, fingerprint },
-            bytes,
-        })
+        let fingerprint = PackageFingerprint::of(bytes);
+        Ok(Self { rows, fingerprint })
+    }
+
+    /// Refuses `rows` unless every package reads them back: no row of the index's own path or
+    /// under it in any case, no two paths or directories on their way that differ only in case,
+    /// no path both a file and a directory, and no file larger than `MAX_FILE_LEN`.
+    fn check_rows(rows: &BTreeMap<PackagePath, FileRow>) -> Result<(), ContentError> {
+        Self::check_paths(rows.keys())?;
+        match rows.iter().find(|(_, row)| row.size > Self::MAX_FILE_LEN) {
+            Some((path, _)) => Err(ContentError::IndexFileLen(path.clone())),
+            None => Ok(()),
+        }
     }
 
     /// The index `bytes` hold, refused unless they are this version's tag and the one encoding of
@@ -110,12 +125,13 @@ impl FileIndex {
             previous = Some(path);
             rows.insert(parsed, FileRow { size, sha256 });
         }
-        let encoded = Self::encode(rows)?;
+        Self::check_rows(&rows)?;
         debug_assert_eq!(
-            encoded.bytes, bytes,
+            Self::encode_rows(&rows),
+            bytes,
             "an index reads from its one encoding alone"
         );
-        Ok(encoded.index)
+        Self::of_encoding(rows, bytes)
     }
 
     /// The size `digits` write in decimal, with no sign and no leading zero; none for any other

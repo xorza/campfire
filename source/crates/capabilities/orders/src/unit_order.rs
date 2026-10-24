@@ -7,14 +7,14 @@ use campfire_actions::{ActionProgress, ActionSlots, ActionTarget, AttackTarget, 
 use campfire_common::Tick;
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
-use campfire_navigation::{Party, PathWalker, Progress, RouteAsk, RouteDues, RouteMut};
-use campfire_sim::{Position, SimComponent, StableId};
+use campfire_navigation::{Party, PathWalker, Progress, Route, RouteAsk, RouteMut};
+use campfire_sim::{Position, SimComponent, StableId, UnitDues};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::{BuildTarget, Destination, GroundPoint, OrderKind, SpawnPoint, UnitEntity};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-use crate::attack_move::{AttackMove, GoalDues};
+use crate::attack_move::AttackMove;
 
 /// An order to one unit, as every source gives it once it checked it: a player's command, a
 /// bot's input, or an order an AI call queued for the unit that thinks.
@@ -75,10 +75,10 @@ pub(crate) struct OrderedUnit {
 /// The indexes an order pushes its unit into: of its actions' progress, of its route's ask, and
 /// of the units that attack-move.
 #[derive(Debug)]
-pub(crate) struct UnitDues<'a> {
+pub(crate) struct OrderDues<'a> {
     pub(crate) progress: ProgressDues<'a>,
-    pub(crate) routes: RouteDues<'a>,
-    pub(crate) goals: GoalDues<'a>,
+    pub(crate) routes: UnitDues<'a, Route>,
+    pub(crate) goals: UnitDues<'a, AttackMove>,
 }
 
 impl UnitOrder {
@@ -104,9 +104,9 @@ impl UnitOrder {
         unit: OrderedUnitItem<'_, '_>,
         bounds: &Bounds,
         now: Tick,
-        dues: &mut UnitDues<'_>,
+        dues: &mut OrderDues<'_>,
     ) -> Option<OrderKind> {
-        let UnitDues {
+        let OrderDues {
             progress: dues,
             routes,
             goals,
@@ -151,7 +151,8 @@ impl UnitOrder {
                 _ => None,
             };
             attack_move.set_if_neq(AttackMove::to(goal));
-            goals.push(*attack_move);
+            // Due at once while it has a goal; `walk_on` forgets one that walks not.
+            goals.push(attack_move.goal().map(|_| Tick::ZERO));
         }
         let to = match self {
             Self::Attack { target } => {

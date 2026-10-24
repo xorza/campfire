@@ -40,3 +40,20 @@ fn the_client_knows_the_units_of_the_last_whole_select_the_server_applied() {
     known.clear();
     assert!(!known.commands(&b));
 }
+
+#[test]
+fn a_client_that_always_has_a_select_in_flight_holds_only_the_waiting_ones() {
+    // 100 selects of 2 units, each acknowledged once the next is sent: the buffer holds the
+    // units of the one select that waits, never those of the selects answered.
+    let units = ids(&[1, 2]);
+    let mut known = KnownCommanded::default();
+    known.sent(0, &units);
+    for seq in 1..100 {
+        known.sent(seq, &units);
+        known.acknowledge(seq - 1, &[Some(Tick::new(seq))]);
+        assert_eq!(known.waiting.units.len(), 2);
+    }
+    known.acknowledge(99, &[Some(Tick::new(100))]);
+    assert!(known.commands(&units));
+    assert!(known.waiting.units.is_empty());
+}

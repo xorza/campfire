@@ -1,0 +1,12 @@
+# A mode of each fact that decides what a match installs, with every capability: the engine's
+# tests of the systems a match builds, and of what a client's prediction reads, take its books.
+name = "test-features"
+version = "0.1.0"
+api = "1.0"
+language = "en"
+kind = "mode"
+capabilities = ["combat", "stats", "abilities", "projectiles", "areas", "orders", "navigation", "vision", "progression", "production", "items", "interaction"]
+tick_hz = { min = 30, max = 30, default = 30 }
+teams = [{ name = "one", player_slots = 1 }]
+max_move_speed = "1"
+script_limits = { per_call = 10000, player = 100000, think = 100000, mode = 100000 }

@@ -6,12 +6,9 @@ use crate::zero_hour::object_flight::samples::shell_projectile;
 
 #[test]
 fn a_shell_flies_its_weapons_speed_on_its_curve_and_hits_what_its_mask_names() {
-    let mut ini = ObjectIni::default();
-    ini.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
-    ini.read(OBJECTS.as_bytes()).unwrap();
     let steep = "Object Steep\n  Behavior = DumbProjectileBehavior M\n    \
                      FirstPercentIndent = 150%\n  End\nEnd\n";
-    ini.read(steep.as_bytes()).unwrap();
+    let ini = ObjectIni::of(&[DEFAULT_OBJECTS, OBJECTS, steep]);
     let locomotors = LocomotorIni::default();
     let fired_by = |object: &str, lines: &str| {
         let mut weapons = WeaponIni::default();

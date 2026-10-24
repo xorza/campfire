@@ -18,7 +18,6 @@ internals = [
     "campfire-log/internals",
     "campfire-net-channels/internals",
     "campfire-net-timeline/internals",
-    "campfire-net-bytes/internals",
     "campfire-net-transport/internals",
     "dep:campfire-math",
     "campfire-math/internals",
@@ -31,7 +30,6 @@ campfire-codec.workspace = true
 campfire-log.workspace = true
 campfire-net-channels.workspace = true
 campfire-net-timeline.workspace = true
-campfire-net-bytes.workspace = true
 campfire-net-core.workspace = true
 campfire-net-despawns.workspace = true
 campfire-net-connection.workspace = true

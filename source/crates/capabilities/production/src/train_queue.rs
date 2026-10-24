@@ -2,16 +2,18 @@ use std::num::{NonZeroU8, NonZeroUsize};
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::{HookContext, Remove};
+use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Query, ResMut, SystemParam};
-use bevy_ecs::world::{DeferredWorld, World};
+use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionKind};
 use campfire_common::{Tick, Ticks};
 use campfire_declarations::ById;
 use campfire_players::{PlayersWorld, ResourceAmount};
-use campfire_sim::{DueIndex, SimComponent, SimTick, StableId, TimedKept, TimedProcess, TimedRuns};
+use campfire_sim::{
+    DueIndex, SimComponent, SimTick, StableId, TimedKept, TimedProcess, TimedRuns, UnitDues,
+};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::{Dead, UnitEntity};
 use campfire_values::{ActionId, NameId, Rank, UnitType};
@@ -27,7 +29,7 @@ use crate::producer_spec::ProducerSpec;
 /// head. Its hook pushes its unit into the index of the queues at each insert, a spawn's and a
 /// restore's alike.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
-#[component(on_insert = TrainQueue::pushed)]
+#[component(on_insert = DueIndex::<Self>::pushed)]
 pub struct TrainQueue {
     entries: Vec<Queued>,
     /// The tick the head's time ends; none for an empty queue.
@@ -50,59 +52,14 @@ pub struct Queued {
 #[derive(SystemParam, Debug)]
 pub(crate) struct QueueIndex<'w>(Option<ResMut<'w, DueIndex<TrainQueue>>>);
 
-/// The index of the queues, for the queue of the unit `id`, of `entity`, which each change of the
-/// queue pushes it into.
-#[derive(Debug)]
-pub struct QueueDues<'a> {
-    index: Option<&'a mut DueIndex<TrainQueue>>,
-    id: StableId,
-    entity: Entity,
-}
-
 impl QueueIndex<'_> {
     /// The index, for the queue of the unit `id`, of `entity`.
-    pub(crate) fn of(&mut self, id: StableId, entity: Entity) -> QueueDues<'_> {
-        QueueDues {
-            index: self.0.as_deref_mut(),
-            id,
-            entity,
-        }
-    }
-}
-
-impl<'a> QueueDues<'a> {
-    /// The index `index`, for the queue of the unit `id`, of `entity`.
-    pub(crate) const fn new(
-        index: Option<&'a mut DueIndex<TrainQueue>>,
-        id: StableId,
-        entity: Entity,
-    ) -> Self {
-        Self { index, id, entity }
-    }
-
-    /// Pushes the unit as `queue` makes it due: as its head's time ends.
-    pub(crate) fn push(&mut self, queue: &TrainQueue) {
-        if let (Some(index), Some(at)) = (self.index.as_deref_mut(), queue.head_done) {
-            index.push(at, self.id, self.entity);
-        }
+    pub(crate) fn of(&mut self, id: StableId, entity: Entity) -> UnitDues<'_, TrainQueue> {
+        UnitDues::of(self.0.as_deref_mut(), id, entity)
     }
 }
 
 impl TrainQueue {
-    /// Pushes the unit whose queue it is into the index of the queues, at its head's end, in a
-    /// match that finishes trains.
-    fn pushed(mut world: DeferredWorld<'_>, context: HookContext) {
-        let entity = context.entity;
-        let unit = world.entity(entity);
-        let (Some(queue), Some(&id)) = (unit.get::<Self>(), unit.get::<StableId>()) else {
-            return;
-        };
-        let at = Self::due(&(), (queue, unit.contains::<Dead>()));
-        if let (Some(at), Some(mut index)) = (at, world.get_resource_mut::<DueIndex<Self>>()) {
-            index.push(at, id, entity);
-        }
-    }
-
     /// Pushes the unit of `revived`, which lives again, into the index of the queues, as its
     /// queue, which waited while it was dead, is due again.
     pub(crate) fn revived(
@@ -112,7 +69,7 @@ impl TrainQueue {
     ) {
         let entity = revived.entity;
         if let (Ok((&id, queue)), Some(mut index)) = (units.get(entity), index) {
-            QueueDues::new(Some(&mut index), id, entity).push(queue);
+            UnitDues::new(&mut index, id, entity).push(queue.head_done);
         }
     }
 
@@ -137,7 +94,7 @@ impl TrainQueue {
         queued: Queued,
         paid: &[ResourceAmount],
         now: Tick,
-        dues: &mut QueueDues<'_>,
+        dues: &mut UnitDues<'_, Self>,
     ) {
         debug_assert_eq!(usize::from(queued.paid), paid.len());
         if self.entries.is_empty() {
@@ -145,7 +102,7 @@ impl TrainQueue {
         }
         self.entries.push(queued);
         self.paid.extend_from_slice(paid);
-        dues.push(self);
+        dues.push(self.head_done);
     }
 
     /// The head, when its time ended by `now`.
@@ -164,14 +121,14 @@ impl TrainQueue {
     /// Takes away the entry at `place`, one the queue holds, in `now`: the head made, or any
     /// entry cancelled. A head's leaving starts the next one's time at `now`, its unit due in
     /// `dues` as it ends.
-    pub fn remove(&mut self, place: usize, now: Tick, dues: &mut QueueDues<'_>) {
+    pub fn remove(&mut self, place: usize, now: Tick, dues: &mut UnitDues<'_, Self>) {
         let start = self.paid_before(place);
         let removed = self.entries.remove(place);
         self.paid.drain(start..start + usize::from(removed.paid));
         if place == 0 {
             self.head_done = self.entries.first().map(|next| now.after(next.time));
         }
-        dues.push(self);
+        dues.push(self.head_done);
     }
 
     /// The count of player resources the entries before `place` paid.
@@ -263,21 +220,6 @@ impl<'de> Deserialize<'de> for TrainQueue {
     }
 }
 
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use bevy_ecs::entity::Entity;
-    use campfire_sim::StableId;
-
-    use crate::train_queue::QueueDues;
-
-    impl QueueDues<'_> {
-        /// No index, for a queue a test makes outside a match, whose insert pushes its unit.
-        pub const fn loose() -> Self {
-            Self::new(None, StableId::MATCH, Entity::PLACEHOLDER)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use campfire_codec::{Binary, BinaryError};
@@ -315,7 +257,7 @@ mod tests {
         };
         // Pushed at tick 5, a train of 30 ticks, which paid 5 gold, is done at tick 35.
         let mut queue = TrainQueue::default();
-        queue.push(queued, &[five], Tick::new(5), &mut QueueDues::loose());
+        queue.push(queued, &[five], Tick::new(5), &mut UnitDues::loose());
         assert_eq!(decode(vec![queued], Some(35), vec![five]), Ok(queue));
         assert_eq!(decode(vec![], None, vec![]), Ok(TrainQueue::default()));
         assert_eq!(

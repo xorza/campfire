@@ -36,11 +36,14 @@ impl LocomotorIni {
     /// Reads one INI file, adding its locomotors to those read before: one read again keeps its
     /// fields and takes the new ones, as a template found again is read into.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        for block in IniText::of(bytes).blocks(BlockKinds::One("locomotor")) {
+        for block in IniText::of(bytes)
+            .lines()
+            .blocks(BlockKinds::One("locomotor"))
+        {
             let block = block?;
             let locomotor = self.locomotors.entry(block.name()?.to_owned()).or_default();
             for line in &block.fields {
-                locomotor.field(&line.word(), line)?;
+                locomotor.field(line.word(), line)?;
             }
         }
         Ok(())

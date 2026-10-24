@@ -22,7 +22,7 @@ use crate::release::Release;
 /// writes it on the units it predicts when `written`, as it predicts it, which a rollback
 /// compares, or derives it as the server does.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum ClientHolding {
+pub enum ClientHolding {
     Derived,
     Of { kind: DataKind, written: bool },
 }
@@ -33,7 +33,7 @@ impl ClientHolding {
     /// kind whose default audience holds every client that holds the unit, or one of its own
     /// player's, which it reads through the owner of a unit it predicts
     /// (10-replication-audiences.md, Prediction reads only what its client holds).
-    pub(crate) const fn reaches(self, predicted: bool) -> bool {
+    pub const fn reaches(self, predicted: bool) -> bool {
         match self {
             Self::Derived => true,
             Self::Of { kind, .. } if predicted => kind.is_sent(),
@@ -54,11 +54,11 @@ impl ClientHolding {
 /// Each state type of the lists of a match, by its id in that match's world, with its name and
 /// how a client holds it.
 #[derive(Debug, Default)]
-pub(crate) struct ClientHolds(BTreeMap<ComponentId, (&'static str, ClientHolding)>);
+pub struct ClientHolds(BTreeMap<ComponentId, (&'static str, ClientHolding)>);
 
 impl ClientHolds {
     /// The state types of a match of `set`, by their ids in `world`, which registers each.
-    pub(crate) fn of(world: &mut World, set: CapabilitySet) -> Self {
+    pub fn of(world: &mut World, set: CapabilitySet) -> Self {
         let mut classes = Classes {
             world,
             holds: Self::default(),
@@ -68,7 +68,7 @@ impl ClientHolds {
     }
 
     /// The name of the state type `id` and how a client holds it; none for a type of no list.
-    pub(crate) fn get(&self, id: ComponentId) -> Option<(&'static str, ClientHolding)> {
+    pub fn get(&self, id: ComponentId) -> Option<(&'static str, ClientHolding)> {
         self.0.get(&id).copied()
     }
 

@@ -618,7 +618,13 @@ impl SessionLog {
             .get()
             .saturating_add(terms.inputs.max_lead.get())
             .saturating_add(1);
-        if stamps.total > ticks.saturating_mul(u64::from(terms.inputs.max_per_tick)) {
+        if stamps.total > ticks.saturating_mul(u64::from(terms.inputs.max_per_tick))
+            || !self.schedule.admits(
+                player_slot,
+                inputs.clone().map(|(stamp, _)| stamp),
+                self.next_tick(),
+            )
+        {
             return Err(InputError::AheadOfTime);
         }
         self.record.clear();
@@ -712,11 +718,7 @@ impl SessionLog {
                     return Err(ServerInputError::PayloadTooLarge);
                 }
                 let next = self.next_tick();
-                let place = self.schedule.place(input.player_slot(), next);
-                if place
-                    .since(next)
-                    .is_some_and(|lead| lead > terms.inputs.max_lead)
-                {
+                if !self.schedule.admits(input.player_slot(), [next], next) {
                     return Err(ServerInputError::AheadOfTime);
                 }
                 Ok(None)

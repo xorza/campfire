@@ -40,8 +40,8 @@ impl Aiming {
         (mut turning, mut visits): (ResMut<'_, DueIndex<TurretAngle>>, Local<'_, Vec<DueUnit>>),
     ) {
         visits.clear();
-        visits.extend(attackers.peek_due(Tick::ZERO));
-        visits.extend(turning.peek_due(Tick::ZERO));
+        attackers.peek_due(Tick::ZERO, &mut visits);
+        turning.peek_due(Tick::ZERO, &mut visits);
         visits.sort_unstable_by_key(|unit| unit.id);
         visits.dedup_by_key(|unit| unit.id);
         for &DueUnit { id, entity } in &*visits {
@@ -49,7 +49,7 @@ impl Aiming {
             let Ok((&unit_type, position, &facing, progress, mut angle, dead)) =
                 units.get_mut(entity)
             else {
-                turning.forget(id);
+                turning.forget(entity);
                 continue;
             };
             if dead {
@@ -68,7 +68,7 @@ impl Aiming {
             };
             angle.set_if_neq(turned);
             if turned == TurretAngle::REST {
-                turning.forget(id);
+                turning.forget(entity);
             } else {
                 turning.push(Tick::ZERO, id, entity);
             }

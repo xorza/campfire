@@ -3,8 +3,10 @@ use std::io;
 
 use crate::os::Native;
 
-/// A read of a file's bytes at an offset that moves no cursor of the handle, so readers through
-/// one shared handle never race: `pread` on Unix, `ReadFile` with an offset on Windows.
+/// A read of a file's bytes at an offset, which no cursor of the handle decides, so readers through
+/// one shared handle never race: `pread` on Unix, which leaves the cursor, and `ReadFile` with an
+/// offset on Windows, which moves it past what it read; so a handle read this way is read no other
+/// way.
 #[derive(Debug)]
 pub struct PositionalRead;
 

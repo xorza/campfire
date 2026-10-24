@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use campfire_common::PackageFingerprint;
 use campfire_package_format::{
@@ -18,10 +19,10 @@ pub struct PackageStore {
     failures: Vec<StoreFailure>,
 }
 
-/// A package the store holds: its fingerprint, as its index gives it, and its directory.
+/// A package the store holds: its index, read once as the store scans, and its directory.
 #[derive(Debug)]
 struct StoredPackage {
-    fingerprint: PackageFingerprint,
+    index: Arc<FileIndex>,
     dir: PathBuf,
 }
 
@@ -43,15 +44,15 @@ impl PackageStore {
 
     /// Whether it holds a package of `fingerprint`.
     pub fn holds(&self, fingerprint: PackageFingerprint) -> bool {
-        self.dir(fingerprint).is_some()
+        self.package(fingerprint).is_some()
     }
 
-    fn dir(&self, fingerprint: PackageFingerprint) -> Option<&Path> {
+    fn package(&self, fingerprint: PackageFingerprint) -> Option<&StoredPackage> {
         let at = self
             .packages
-            .binary_search_by_key(&fingerprint, |package| package.fingerprint)
+            .binary_search_by_key(&fingerprint, |package| package.index.fingerprint())
             .ok()?;
-        Some(&self.packages[at].dir)
+        Some(&self.packages[at])
     }
 
     /// The packages under the root whose index does not read, in the order of their directories.
@@ -65,8 +66,8 @@ impl PackageStore {
         let index = PackageDir::new(dir)
             .read_index()
             .and_then(|bytes| FileIndex::decode(&bytes));
-        let fingerprint = match index {
-            Ok(index) => index.fingerprint(),
+        let index = match index {
+            Ok(index) => index,
             Err(error) => {
                 self.failures.push(StoreFailure {
                     dir: dir.to_owned(),
@@ -77,10 +78,13 @@ impl PackageStore {
         };
         if let Err(at) = self
             .packages
-            .binary_search_by_key(&fingerprint, |package| package.fingerprint)
+            .binary_search_by_key(&index.fingerprint(), |package| package.index.fingerprint())
         {
-            let dir = dir.to_owned();
-            self.packages.insert(at, StoredPackage { fingerprint, dir });
+            let package = StoredPackage {
+                index: Arc::new(index),
+                dir: dir.to_owned(),
+            };
+            self.packages.insert(at, package);
         }
     }
 
@@ -108,6 +112,11 @@ impl PackageStore {
 
 impl PackageFinder for PackageStore {
     fn find(&self, fingerprint: PackageFingerprint) -> Option<Result<PackageFiles, ContentError>> {
-        Some(PackageDir::new(self.dir(fingerprint)?).files())
+        let package = self.package(fingerprint)?;
+        let source = Arc::new(PackageDir::new(&package.dir));
+        Some(PackageFiles::read_indexed(
+            source,
+            Arc::clone(&package.index),
+        ))
     }
 }

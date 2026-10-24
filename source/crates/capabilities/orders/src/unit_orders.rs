@@ -8,18 +8,18 @@ use campfire_actions::{
 };
 use campfire_declarations::{Role, Scratch};
 use campfire_math::{Num, Vec3};
-use campfire_navigation::{GroupBox, Party, PartyKey, Route, RouteDues};
+use campfire_navigation::{GroupBox, Party, PartyKey, Route};
 use campfire_players::{OrderedUnits, TickCommands};
-use campfire_sim::{DueIndex, Position, SimTick};
+use campfire_sim::{DueIndex, Position, SimTick, UnitDues};
 use campfire_units::{BuildTarget, Dead, Destination, GroundPoint, MapBook, UnitOrdered};
 use campfire_values::Team;
 use campfire_vision::{SeenTargets, TeamSight};
 
-use crate::attack_move::{AttackMove, GoalDues};
+use crate::attack_move::AttackMove;
 use crate::dropped_orders::{DroppedOrders, OrderDropCause};
 use crate::orders_directive::OrdersDirective;
 use crate::resetting::Resetting;
-use crate::unit_order::{OrderedUnit, UnitDues, UnitOrder};
+use crate::unit_order::{OrderDues, OrderedUnit, UnitOrder};
 
 /// The orders the tick's inputs give, in input order, each checked as a player's order needs, for
 /// `apply_player_orders` to apply. Not state: it empties within the tick.
@@ -230,10 +230,10 @@ impl UnitOrders {
                 continue;
             }
             let (id, entity) = (*parts.id, parts.entity);
-            let mut dues = UnitDues {
+            let mut dues = OrderDues {
                 progress: indexes.of(id, entity),
-                routes: RouteDues::new(&mut asks, id, entity),
-                goals: GoalDues::new(&mut goals, id, entity),
+                routes: UnitDues::new(&mut asks, id, entity),
+                goals: UnitDues::new(&mut goals, id, entity),
             };
             if let Some(order) = order.give(parts, &map.bounds, now, &mut dues) {
                 commands.trigger(UnitOrdered { entity, order });
@@ -260,10 +260,10 @@ impl UnitOrders {
             debug_assert_ne!(order, UnitOrder::Reset, "a player orders no reset");
             let parts = units.get_mut(entity).expect("a checked order's unit");
             let id = *parts.id;
-            let mut dues = UnitDues {
+            let mut dues = OrderDues {
                 progress: indexes.of(id, entity),
-                routes: RouteDues::new(&mut asks, id, entity),
-                goals: GoalDues::new(&mut goals, id, entity),
+                routes: UnitDues::new(&mut asks, id, entity),
+                goals: UnitDues::new(&mut goals, id, entity),
             };
             if let Some(order) = order.give(parts, &map.bounds, now, &mut dues) {
                 commands.trigger(UnitOrdered { entity, order });

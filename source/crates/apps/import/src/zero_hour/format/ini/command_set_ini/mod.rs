@@ -17,7 +17,10 @@ impl CommandSetIni {
     /// Reads one INI file, adding its sets to those read before: a set read again keeps the
     /// places it does not name and takes the new ones, as an override does.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        for block in IniText::of(bytes).blocks(BlockKinds::One("commandset")) {
+        for block in IniText::of(bytes)
+            .lines()
+            .blocks(BlockKinds::One("commandset"))
+        {
             let block = block?;
             let set = self.sets.entry(block.name()?.to_owned()).or_default();
             for line in &block.fields {

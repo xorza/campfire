@@ -190,24 +190,31 @@ impl InputRanges {
     /// need no turn. A range past the length it opened with is `Short` before it reads, and so is
     /// one the file no longer holds as it reads, as when it shrank.
     pub fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>, PathError<ReadError>> {
+        let mut bytes = vec![0; len];
+        self.read_at_into(offset, &mut bytes)?;
+        Ok(bytes)
+    }
+
+    /// The bytes from `offset` that fill `bytes`, read as `read_at` reads them, into a buffer
+    /// its caller keeps, so a read of a file range by range allocates nothing.
+    pub fn read_at_into(&self, offset: u64, bytes: &mut [u8]) -> Result<(), PathError<ReadError>> {
+        let len = bytes.len();
         let short = || ReadError::Short { offset, len };
         let wanted = u64::try_from(len).expect("a length fits u64");
-        let read = || {
+        let mut read = || {
             if offset
                 .checked_add(wanted)
                 .is_none_or(|end| end > self.stamp.len)
             {
                 return Err(short());
             }
-            let mut bytes = vec![0; len];
-            PositionalRead::exact_at(&self.file, &mut bytes, offset).map_err(|error| {
+            PositionalRead::exact_at(&self.file, bytes, offset).map_err(|error| {
                 if error.kind() == io::ErrorKind::UnexpectedEof {
                     short()
                 } else {
                     ReadError::Read(error)
                 }
-            })?;
-            Ok(bytes)
+            })
         };
         read().map_err(PathError::at(&self.path))
     }

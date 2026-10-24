@@ -129,8 +129,10 @@ impl Pair {
     }
 
     /// End `end`'s frame takes what its packet session opened, and accepts each payload when
-    /// `accept` holds, by the packet session's next take: the data of each, in order.
+    /// `accept` holds, by the packet session's next take: the data of each, in order. An ACK
+    /// the take sends at once reaches the other end at `now`.
     fn take(&mut self, end: usize, accept: bool, now: Instant) -> Vec<Vec<u8>> {
+        let peer = 1 - end;
         let end = &mut self.ends[end];
         end.packet_session.hand_over(&mut end.queues, 1_200, now);
         let opened: Vec<_> = end.queues.opened().collect();
@@ -143,7 +145,16 @@ impl Pair {
         }
         let mut out = Vec::new();
         end.packet_session.take_over(&mut end.queues, now, &mut out);
-        assert!(out.is_empty(), "the frame queued no payload");
+        let sent: Vec<_> = out
+            .iter()
+            .map(|transmit| Header::read(&transmit.datagram).unwrap().packet_type)
+            .collect();
+        assert!(
+            sent.iter()
+                .all(|&packet_type| packet_type == PacketType::AckOnly),
+            "the frame queued no payload"
+        );
+        self.deliver(peer, out, now);
         data
     }
 
@@ -470,7 +481,7 @@ fn a_tampered_sealed_packet_is_unauthentic() {
 }
 
 /// A packet session with a prefix starts each datagram with it, and counts it in its overhead: 8 +
-/// 10 with no seal, 8 + 10 + 16 with one.
+/// 14 with no seal, 8 + 14 + 16 with one.
 #[test]
 fn a_prefix_starts_each_datagram_and_counts_in_the_overhead() {
     const PREFIX: ConnectionId = ConnectionId::from_random([0x12, 0x34, 0x56, 0x78, 0, 0, 0, 1]);
@@ -480,14 +491,14 @@ fn a_prefix_starts_each_datagram_and_counts_in_the_overhead() {
         PacketSessionSetup::default(),
         at(0),
     );
-    assert_eq!(packet_session.overhead(), 18);
+    assert_eq!(packet_session.overhead(), 22);
     let sealed = PacketSession::new(
         Protection::Sealed(Box::new(TestSeal)),
         Some(PREFIX),
         PacketSessionSetup::default(),
         at(0),
     );
-    assert_eq!(sealed.overhead(), 34);
+    assert_eq!(sealed.overhead(), 38);
     let mut queues = PacketSessionQueues::default();
     queues.send(PayloadToken(0), PayloadKind::new(3), outgoing(0, b"x"));
     let mut out = Vec::new();
@@ -629,4 +640,53 @@ fn a_mutated_datagram_is_refused_or_read() {
             "{name}: {read} read, {refused} refused"
         );
     }
+}
+
+/// A burst of 40 packets that reach the receiver before one of its frames, which accepts them all,
+/// is delivered whole: the reply after that frame names each, and none is lost for want of a bit.
+#[test]
+fn a_burst_one_frame_accepts_is_acknowledged_whole() {
+    let mut pair = Pair::plain();
+    for token in 0..40 {
+        pair.send(0, token, b"burst", at(1), Some(at(2)));
+    }
+    assert_eq!(pair.take(1, true, at(3)).len(), 40);
+    pair.send(1, 100, b"reply", at(4), Some(at(5)));
+    pair.take(0, true, at(5));
+    let fates = pair.fates(0);
+    let lost: Vec<_> = fates
+        .iter()
+        .filter(|fate| matches!(fate, PayloadFate::Lost(_)))
+        .collect();
+    assert_eq!(lost, Vec::<&PayloadFate>::new());
+    assert_eq!(fates.len(), 40);
+}
+
+/// Two frames of 40 packets each, with no packet of the receiver's own between them: the first
+/// leaves 40 unacknowledged, past half the window of 64, so an ACK-only packet goes at its end,
+/// and the second's 40 come in the next; none is lost for want of a bit.
+#[test]
+fn two_frames_of_a_burst_leave_no_packet_unnamed() {
+    let mut pair = Pair::plain();
+    for frame in 0..2 {
+        for token in 0..40 {
+            let at_ms = 1 + frame * 10;
+            pair.send(
+                0,
+                frame * 40 + token,
+                b"burst",
+                at(at_ms),
+                Some(at(at_ms + 1)),
+            );
+        }
+        assert_eq!(pair.take(1, true, at(3 + frame * 10)).len(), 40);
+    }
+    let fates = pair.fates(0);
+    assert!(
+        fates
+            .iter()
+            .all(|fate| matches!(fate, PayloadFate::Delivered(_))),
+        "{fates:?}"
+    );
+    assert_eq!(fates.len(), 80);
 }

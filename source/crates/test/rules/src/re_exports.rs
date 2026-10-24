@@ -58,6 +58,10 @@ fn pub_uses(text: &str) -> (Vec<PubUse>, Vec<String>) {
             }
         }
     }
+    // A file of no `pub use`, of any reach, holds none, and its parse is skipped.
+    if !text.contains("pub use") && !text.contains(") use ") {
+        return (Vec::new(), Vec::new());
+    }
     let file = syn::parse_file(text).expect("a workspace source parses");
     let mut uses = Uses::default();
     uses.visit_file(&file);
@@ -94,9 +98,7 @@ fn derives_of_common(path: &str, line: &str) -> bool {
     path == "crates/base/common/src/lib.rs" && line.trim_start().starts_with(&from)
 }
 
-#[test]
-fn no_crate_re_exports_another_crate() {
-    let workspace = Workspace::read();
+pub(crate) fn no_crate_re_exports_another_crate(workspace: &Workspace) {
     let found: Vec<String> = workspace
         .sources()
         .iter()
@@ -130,9 +132,7 @@ fn inner_re_exports(path: &str, text: &str) -> Vec<usize> {
         .collect()
 }
 
-#[test]
-fn no_module_re_exports_its_own_crates_item() {
-    let workspace = Workspace::read();
+pub(crate) fn no_module_re_exports_its_own_crates_item(workspace: &Workspace) {
     let found: Vec<String> = workspace
         .sources()
         .iter()

@@ -18,7 +18,7 @@ use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_prediction::RollbackMode;
 use campfire_net_replication::Replicate;
 use campfire_progression::Experience;
-use campfire_sim::{EntityIndex, StableId, Unpredicted};
+use campfire_sim::{SimWorld, StableId, Unpredicted};
 use campfire_store::internals::TestDir;
 use campfire_units::{Life, SpawnPoint, UnitsWorld};
 use campfire_values::{Relations, Team, TeamSet};
@@ -87,7 +87,7 @@ fn a_spectator_watches_every_unit_holds_what_spectators_may_and_only_one_finds_a
     // owner's alone; the teams' relations, on the match's entity.
     let hero = local.avatar(0);
     let world = local.client(spectator).world();
-    let hero = world.entity(world.resource::<EntityIndex>().get(hero).unwrap());
+    let hero = world.entity_ref_of(hero).unwrap();
     assert!(hero.contains::<Life>() && !hero.contains::<SpawnPoint>());
     let relations = world.match_entity().map(|entity| world.entity(entity));
     assert!(relations.is_some_and(|entity| entity.contains::<Relations>()));
@@ -264,19 +264,19 @@ const fn rated(bytes_per_second: u32) -> LinkModel {
 fn a_join_burst_fits_the_initial_window_and_a_megabit_link_delays_it_one_tick() {
     // At 10 Mbit/s each datagram arrives at the other end's next frame, as the link takes time to
     // carry it: the handshake's frames, the session's terms among them, whose max payload length
-    // of 1,024 takes a varint of 2 bytes, then the world's 58 entities in one frame of 4,565
+    // of 1,024 takes a varint of 2 bytes, then the world's 58 entities in one frame of 4,585
     // bytes, the largest, which takes 3.5 ms. It is below NewReno's initial window of 10 packets
     // of 1,200 bytes, so the packet session's budget sends it whole
     // (11-net-stack/packet-session.md, Congestion control is NewReno, in the packet session).
     let fast = JoinBurst::over(rated(1_250_000));
-    assert_eq!(fast.frames, [0, 43, 0, 431, 0, 601, 47, 4_565, 421]);
+    assert_eq!(fast.frames, [0, 43, 0, 431, 0, 605, 51, 4_585, 425]);
     assert_eq!(fast.entities, 58);
     assert!(fast.largest() < 10 * 1_200);
 
-    // At 1 Mbit/s the 4,565 bytes take 36,520 µs, past the tick of 33,333 µs: the spectator
+    // At 1 Mbit/s the 4,585 bytes take 36,680 µs, past the tick of 33,333 µs: the spectator
     // holds the world one frame later, in which the server sent one more frame's bytes.
     let slow = JoinBurst::over(rated(125_000));
-    assert_eq!(slow.frames, [0, 43, 0, 431, 0, 601, 47, 4_565, 421, 436]);
+    assert_eq!(slow.frames, [0, 43, 0, 431, 0, 605, 51, 4_585, 425, 440]);
     assert_eq!(slow.entities, 58);
-    assert_eq!(slow.largest() * 1_000_000 / 125_000, 36_520);
+    assert_eq!(slow.largest() * 1_000_000 / 125_000, 36_680);
 }

@@ -6,14 +6,14 @@ use campfire_deliveries::{DashDelivering, DashEnd, DeliveryQueue};
 use campfire_geometry::Shape;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{
-    DueIndex, EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted,
+    DueIndex, EntityIndex, Keyed, Ordered, Position, SimTick, StableId, UnitDues, Unpredicted,
 };
 use campfire_units::{Body, DashTo, Dead, Destination, ForcedMove, Goal, MapBook};
 
 use crate::body_index::BodyIndex;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::{Route, RouteDues, RouteMut};
+use crate::route::{Route, RouteMut};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::segment::Segment;
 use crate::walker::Walker;
@@ -155,7 +155,7 @@ impl ForcedMoves {
                     .entity(entity)
                     .remove::<(ForcedMove, DashDelivering)>();
                 if let Ok((&id, destination, mut route, mut progress)) = walkers.get_mut(entity) {
-                    let dues = &mut RouteDues::new(&mut asks, id, entity);
+                    let dues = &mut UnitDues::new(&mut asks, id, entity);
                     route.ask_again(destination.get(), &mut progress, now, dues);
                 }
             } else {

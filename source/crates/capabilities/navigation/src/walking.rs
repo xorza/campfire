@@ -6,7 +6,8 @@ use campfire_actions::ActionProgress;
 use campfire_declarations::RoleForm;
 use campfire_deliveries::DashDelivering;
 use campfire_sim::{
-    DueIndex, EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId, Unpredicted,
+    DueIndex, EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId, UnitDues,
+    Unpredicted,
 };
 use campfire_units::{
     AtWork, Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep,
@@ -19,7 +20,7 @@ use crate::collider::Collider;
 use crate::collider::contact::{Contact, ContactBodies};
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::{Route, RouteAsk, RouteDues, RouteMut};
+use crate::route::{Route, RouteAsk, RouteMut};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::steering::{Aside, Steered, Steering, TickBody};
 use crate::walker::Walker;
@@ -177,7 +178,7 @@ impl Walking {
             route.ask(
                 ask,
                 &mut progress,
-                &mut RouteDues::new(&mut asks, id, entity),
+                &mut UnitDues::new(&mut asks, id, entity),
             );
         }
     }

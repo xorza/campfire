@@ -3,6 +3,8 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Stdio;
 
+use crate::durable_dir::DurableDir;
+use crate::durable_dir::error::DurableDirError;
 use crate::path_error::PathError;
 use campfire_platform::UserOnly;
 
@@ -27,6 +29,13 @@ impl OutputFile {
     pub fn write_new(path: &Path, bytes: &[u8]) -> Result<(), PathError<io::Error>> {
         let write = || UserOnly::create_new(path)?.write_all(bytes);
         write().map_err(PathError::at(path))
+    }
+
+    /// Makes the directory `path`, each its user's only, and each one above it that is missing,
+    /// with no sync, as the files `write_new` writes take none: a crash may lose them, and the
+    /// read that checks the files finds it.
+    pub fn create_dirs(path: &Path) -> Result<(), PathError<DurableDirError>> {
+        DurableDir::make_all_unsynced(path)
     }
 
     /// A new file at `path` that is the file `same_as`, which holds `bytes`: a hard link to it,

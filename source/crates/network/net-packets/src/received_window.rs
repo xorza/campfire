@@ -1,6 +1,7 @@
-//! The packets of the peer's direction that this end opened and accepted. One window of 32
-//! accepted numbers below the largest is both the ACK bits the header carries and the replay
-//! window: a packet at or before the window's start is dropped, as its replay cannot be told
+//! The packets of the peer's direction that this end opened and accepted. One window of 64
+//! numbers is the ACK bits the header carries below the largest accepted, the replay window, and
+//! the payloads a frame holds below the largest opened, so one ACK names every packet one frame
+//! accepts: a packet at or before the window's start is dropped, as its replay cannot be told
 //! (RFC 4303 §3.4.3).
 
 use campfire_net_core::Instant;
@@ -10,14 +11,12 @@ use core::time::Duration;
 use crate::header::AckFields;
 use crate::packet_numbers;
 
-/// The numbers below the largest accepted that the ACK bits name (11-net-stack/packet-session.md,
-/// One window of 32 accepted packets is both the ACK bits and the replay window).
-const BITS: u64 = 32;
-
-/// The numbers at and below the largest opened that the pending bits name: a payload further below
-/// it is dropped, as is one that leaves them while it waits, so a packet session holds at most this
-/// many payloads for its frame.
-pub(crate) const PENDING: u64 = 64;
+/// The numbers below the largest accepted that the ACK bits name, and those at and below the
+/// largest opened that the pending bits name: a payload further below it is dropped, as is one
+/// that leaves them while it waits, so a packet session holds at most this many payloads for its
+/// frame, and every one an ACK names (11-net-stack/packet-session.md, One window of 64 packets is
+/// the ACK bits, the replay window and a frame's payloads).
+pub(crate) const WINDOW: u64 = 64;
 
 /// The largest time an accepted packet that needs an ACK waits for one, which every link's peer
 /// assumes, so no link negotiates it (RFC 9000 §13.2.1) (11-net-stack/packet-session.md, An
@@ -33,12 +32,14 @@ pub(crate) struct ReceivedWindow {
     /// The largest number accepted, and when it arrived.
     largest_accepted: Option<(PacketNumber, Instant)>,
     /// Bit `i` set: number `largest − 1 − i` was accepted.
-    bits: u32,
+    bits: u64,
     /// Bit `i` set: number `largest_opened − i` is a payload opened and not settled, which waits
     /// for its frame to accept or refuse it.
     pending: u64,
     /// When the oldest accepted packet that needs an ACK, and that no sent ACK named yet, arrived.
     ack_pending_since: Option<Instant>,
+    /// The accepted packets that need an ACK and that no sent ACK named yet.
+    unacknowledged: u64,
 }
 
 impl ReceivedWindow {
@@ -57,7 +58,7 @@ impl ReceivedWindow {
             return true;
         }
         let below = largest.0 - number.0;
-        below != 0 && below <= BITS && self.bits & (1 << (below - 1)) == 0
+        below != 0 && below <= WINDOW && self.bits & (1 << (below - 1)) == 0
     }
 
     /// Whether `number` is above every number opened so far.
@@ -72,7 +73,7 @@ impl ReceivedWindow {
             Some(largest) if number <= largest => {}
             Some(largest) => {
                 let shift = number.0 - largest.0;
-                self.pending = if shift >= PENDING {
+                self.pending = if shift >= WINDOW {
                     0
                 } else {
                     self.pending << shift
@@ -93,13 +94,13 @@ impl ReceivedWindow {
     /// nor its place in the frame's wait can be told.
     pub(crate) fn is_below_pending(&self, number: PacketNumber) -> bool {
         self.largest_opened
-            .is_some_and(|largest| largest.0.saturating_sub(number.0) >= PENDING)
+            .is_some_and(|largest| largest.0.saturating_sub(number.0) >= WINDOW)
     }
 
     /// The lowest number the pending bits hold, once a number was opened.
     pub(crate) fn pending_floor(&self) -> Option<PacketNumber> {
         self.largest_opened
-            .map(|largest| PacketNumber(largest.0.saturating_sub(PENDING - 1)))
+            .map(|largest| PacketNumber(largest.0.saturating_sub(WINDOW - 1)))
     }
 
     /// Notes that the payload `number`, opened, waits for its frame.
@@ -118,7 +119,7 @@ impl ReceivedWindow {
 
     fn pending_bit(&self, number: PacketNumber) -> Option<u64> {
         let below = self.largest_opened?.0.checked_sub(number.0)?;
-        (below < PENDING).then(|| 1 << below)
+        (below < WINDOW).then(|| 1 << below)
     }
 
     /// Accepts `number`, which arrived at `received_at`: the next ACK names it, and a packet that
@@ -136,15 +137,22 @@ impl ReceivedWindow {
             }
             Some((largest, _)) => {
                 let shift = number.0 - largest.0;
-                self.bits = if shift > BITS {
+                let moved = if shift >= WINDOW {
                     0
                 } else {
-                    let shifted = (u64::from(self.bits) << shift) | (1 << (shift - 1));
-                    shifted as u32
+                    self.bits << shift
+                };
+                self.bits = if shift > WINDOW {
+                    0
+                } else {
+                    moved | (1 << (shift - 1))
                 };
                 self.largest_accepted = Some((number, received_at));
             }
             None => self.largest_accepted = Some((number, received_at)),
+        }
+        if ack_eliciting {
+            self.unacknowledged += 1;
         }
         if ack_eliciting && self.ack_pending_since.is_none() {
             self.ack_pending_since = Some(received_at);
@@ -165,6 +173,14 @@ impl ReceivedWindow {
     /// A packet with this window's acknowledgements was sent.
     pub(crate) const fn acks_sent(&mut self) {
         self.ack_pending_since = None;
+        self.unacknowledged = 0;
+    }
+
+    /// Whether the packets no sent ACK named pass half the window, so an ACK goes at once, before
+    /// another frame's would leave the oldest unnamed, as QUIC acknowledges every second packet
+    /// (RFC 9000 §13.2.2).
+    pub(crate) const fn acks_due_now(&self) -> bool {
+        self.unacknowledged > WINDOW / 2
     }
 
     /// When an ACK-only packet is due, as an accepted packet that needs an ACK waits for one.
@@ -181,9 +197,9 @@ mod tests {
         Instant::from_elapsed(Duration::from_millis(millis))
     }
 
-    /// Accepting 5, then 7, then 6, then 40 leaves the largest 40 and the bits of 7 and 6, which
-    /// are 33 and 34 below 40, past the window: none. Before 40, the bits were 5 → bit 1 (7 − 5 −
-    /// 1) and 6 → bit 0.
+    /// Accepting 5, then 7, then 6, then 104 leaves the largest 104 and the bits of 7, 6 and 5,
+    /// which are 97 to 99 below 104, past the window: none. Before 104, the bits were 5 → bit 1
+    /// (7 − 5 − 1) and 6 → bit 0.
     #[test]
     fn the_bits_name_each_accepted_number_below_the_largest() {
         let mut window = ReceivedWindow::default();
@@ -194,25 +210,25 @@ mod tests {
         assert_eq!(acks.largest, 7);
         assert_eq!(acks.bits, 0b11);
         // 7 arrived at 7 ms, so it waited 3 ms by 10 ms.
-        assert_eq!(acks.delay(), Duration::from_millis(3));
-        window.accept(PacketNumber(40), at(40), true);
-        let acks = window.ack_fields(at(40)).unwrap();
-        assert_eq!([u32::from(acks.largest), acks.bits], [40, 0]);
-        // 39 is new; 8 is 32 below 40, the window's last bit, and new; 7 is 33 below, too old.
-        for (number, new) in [(39, true), (8, true), (7, false), (40, false)] {
+        assert_eq!(acks.delay(), Some(Duration::from_millis(3)));
+        window.accept(PacketNumber(104), at(104), true);
+        let acks = window.ack_fields(at(104)).unwrap();
+        assert_eq!([u64::from(acks.largest), acks.bits], [104, 0]);
+        // 103 is new; 40 is 64 below 104, the window's last bit, and new; 39 is 65 below, too old.
+        for (number, new) in [(103, true), (40, true), (39, false), (104, false)] {
             assert_eq!(window.is_new(PacketNumber(number)), new, "{number}");
         }
     }
 
-    /// A largest 32 above the last shifts the old largest into the top bit, and one 33 above
+    /// A largest 64 above the last shifts the old largest into the top bit, and one 65 above
     /// shifts it out.
     #[test]
-    fn a_jump_of_32_keeps_the_old_largest_and_33_drops_it() {
+    fn a_jump_of_64_keeps_the_old_largest_and_65_drops_it() {
         let mut window = ReceivedWindow::default();
         window.accept(PacketNumber(0), at(0), false);
-        window.accept(PacketNumber(32), at(1), false);
-        assert_eq!(window.ack_fields(at(1)).unwrap().bits, 1 << 31);
-        window.accept(PacketNumber(65), at(2), false);
+        window.accept(PacketNumber(64), at(1), false);
+        assert_eq!(window.ack_fields(at(1)).unwrap().bits, 1 << 63);
+        window.accept(PacketNumber(129), at(2), false);
         assert_eq!(window.ack_fields(at(2)).unwrap().bits, 0);
     }
 

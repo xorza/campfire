@@ -24,6 +24,7 @@ use crate::error::CheckError;
 use crate::failure::CheckFailure;
 use crate::golden::{Golden, Measured};
 use crate::import_check::ImportCheck;
+use crate::import_stamp::ImportStamp;
 use crate::pins::{Fingerprints, MAP};
 use crate::play_selection::PlaySelection;
 
@@ -35,6 +36,7 @@ mod error;
 mod failure;
 mod golden;
 mod import_check;
+mod import_stamp;
 mod match_play;
 mod missile_play;
 mod pins;
@@ -121,13 +123,23 @@ fn run(out: &Path, selection: &PlaySelection) -> Result<Vec<CheckFailure>, Check
 }
 
 /// Imports the install `GENERALSZH_DATA` names into a directory beside `out`, then puts it in
-/// the place of `out`; what the import wrote.
+/// the place of `out`, unless `out` holds an import of the same install and importer output,
+/// which it keeps; what the import gave.
 fn import(out: &Path) -> Result<Imported, CheckError> {
     let install = env::var_os("GENERALSZH_DATA")
         .filter(|install| !install.is_empty())
         .map(PathBuf::from)
         .ok_or(CheckError::NoInstall)?;
     let zero_hour = ZeroHour::open(&install).map_err(CheckError::Import)?;
+    if let Some(imported) = ImportStamp::kept(out, &zero_hour)? {
+        info!(
+            version = zero_hour.version().name(),
+            fingerprint = %imported.fingerprint,
+            packages = %out.display(),
+            "kept the import"
+        );
+        return Ok(imported);
+    }
     let name = out
         .file_name()
         .ok_or_else(|| CheckError::NoName(out.to_owned()))?;
@@ -138,6 +150,7 @@ fn import(out: &Path) -> Result<Imported, CheckError> {
     let imported = zero_hour.write(&stage).map_err(CheckError::Import)?;
     clear(out)?;
     DurableDir::rename(&stage, out).map_err(CheckError::Rename)?;
+    let imported = ImportStamp::write(out, &zero_hour, imported)?;
     info!(
         version = zero_hour.version().name(),
         fingerprint = %imported.fingerprint,
@@ -148,9 +161,9 @@ fn import(out: &Path) -> Result<Imported, CheckError> {
     Ok(imported)
 }
 
-/// Removes the packages an earlier run wrote to `out`, so the import writes it anew; nothing for
-/// no directory there, and an error for one that holds anything but the import's two packages,
-/// which no run removes.
+/// Removes the packages an earlier run wrote to `out`, and their stamp, so the import writes it
+/// anew; nothing for no directory there, and an error for one that holds anything but the
+/// import's two packages and its stamp, which no run removes.
 fn clear(out: &Path) -> Result<(), CheckError> {
     let entries = match DirEntries::read(out) {
         Ok(entries) => entries,
@@ -158,8 +171,12 @@ fn clear(out: &Path) -> Result<(), CheckError> {
         Err(error) => return Err(CheckError::List(error)),
     };
     let packages = entries.iter().all(|entry| {
-        entry.kind == EntryKind::Dir
-            && [ZeroHour::GAME, ZeroHour::RULES].contains(&entry.name.to_str().unwrap_or_default())
+        let name = entry.name.to_str().unwrap_or_default();
+        match entry.kind {
+            EntryKind::Dir => [ZeroHour::GAME, ZeroHour::RULES].contains(&name),
+            EntryKind::File => name == ImportStamp::NAME,
+            EntryKind::Link | EntryKind::Other => false,
+        }
     });
     if !packages {
         return Err(CheckError::NotPackages(out.to_owned()));

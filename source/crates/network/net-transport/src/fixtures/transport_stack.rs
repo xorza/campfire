@@ -71,8 +71,7 @@ mod tests {
             .client_of_mut(0)
             .get_mut::<Transport>()
             .unwrap()
-            .send(channel_id, Bytes::from_static(b"hello"), 1.0)
-            .unwrap();
+            .send(channel_id, Bytes::from_static(b"hello"), 1.0);
         stepper.frame_step(2);
         let mut client = stepper.client_mut(0);
         let mut transport = client.get_mut::<Transport>().unwrap();

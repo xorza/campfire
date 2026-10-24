@@ -1,15 +1,16 @@
 use super::*;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
+use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
 use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
 
 #[test]
 fn a_skirmish_starts_each_playable_faction_with_its_objects_and_offset() {
     let start = |templates: &str| {
-        let mut rules = ZeroHourRules::default();
-        for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
-            rules.objects.read(objects.as_bytes()).unwrap();
-        }
+        let mut rules = ZeroHourRules {
+            objects: ObjectIni::of(&[DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS]),
+            ..ZeroHourRules::default()
+        };
         rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
         rules.templates.read(templates.as_bytes()).unwrap();
         SkirmishStart::of(&rules, &mut ImportNames::default())

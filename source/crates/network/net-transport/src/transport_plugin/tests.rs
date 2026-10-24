@@ -6,7 +6,7 @@ use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::Channels;
 use campfire_net_channels::internals::whole_messages;
 use campfire_net_core::Instant;
-use campfire_net_payload::{OpenedPayload, PacketNumber, ReceivePayload};
+use campfire_net_payload::{OpenedPayload, PacketNumber};
 use core::time::Duration;
 
 #[derive(Resource, Default)]
@@ -38,7 +38,7 @@ fn a_protocol_violation_unlinks_the_link_once() {
     link.packet_session.push_opened(OpenedPayload {
         number: PacketNumber(0),
         kind: whole_messages(),
-        payload: ReceivePayload::Mutable(BytesMut::from(&[0_u8, 1][..])),
+        payload: BytesMut::from(&[0_u8, 1][..]),
     });
     world.spawn((link, Linked, Transport::from(Channels::default())));
     world
@@ -120,8 +120,8 @@ fn a_gated_channel_opens_to_a_link_once_admitted() {
         .is_some();
     assert!(early_receives);
     let mut client_transport = world.get_mut::<Transport>(client).unwrap();
-    let sent = client_transport.send(channel, bytes::Bytes::from_static(&[1]), 1.0);
-    assert!(sent.is_ok());
+    client_transport.send(channel, bytes::Bytes::from_static(&[1]), 1.0);
+    assert_eq!(client_transport.refused(), None);
 }
 
 /// An open channel's sender comes with a link's transport on the side that sends on it, and its
@@ -131,7 +131,7 @@ fn a_gated_channel_opens_to_a_link_once_admitted() {
 fn an_open_channel_comes_with_the_transport_and_keeps_its_state() {
     use crate::app_channel_ext::AppChannelExt;
     use crate::fixtures::protocol::ChannelOrderedReliable;
-    use campfire_net_channels::{ChannelMode, ChannelSetup, SendError};
+    use campfire_net_channels::{ChannelMode, ChannelSetup};
     use campfire_net_connection::{Client, ClientOf};
     use campfire_net_core::LinkDirection;
 
@@ -153,10 +153,6 @@ fn an_open_channel_comes_with_the_transport_and_keeps_its_state() {
     let link = world.spawn((ClientOf, Transport::default())).id();
     let mut server = world.get_mut::<Transport>(link).unwrap();
     assert!(server.channel_receiver_mut(channel).is_some());
-    assert_eq!(
-        server.send(channel, bytes::Bytes::new(), 1.0),
-        Err(SendError::ChannelNotFound(channel))
-    );
 
     let mut transport = world.get_mut::<Transport>(client).unwrap();
     assert!(transport.channel_receiver_mut(channel).is_none());
@@ -182,4 +178,47 @@ fn a_channel_of_two_gates_panics() {
     app.register_channel::<TestChannel>(ChannelSetup::default())
         .add_direction(LinkDirection::ServerToClient)
         .add_direction_after::<Admitted>(LinkDirection::ClientToServer);
+}
+
+/// A message a reliable channel cannot take unlinks its link with why, rather than leave its peer
+/// a stream with a hole: past the channel's largest, `MessageTooLarge`; past the link's send
+/// budget, `Backlogged`. An unreliable channel drops one and keeps its link.
+#[test]
+fn a_reliable_channel_that_refuses_a_message_unlinks_its_link() {
+    use crate::fixtures::protocol::{Channel1, ChannelOrderedReliable, channel_id};
+    use crate::fixtures::transport_stack::TransportStack;
+    use campfire_net_stepper::{StepOrder, Stepper, StepperSetup};
+
+    let sends = |reliable: bool, len: usize, count: usize| {
+        let mut stepper = Stepper::new(TransportStack, StepperSetup::single());
+        let world = stepper.server_world_mut();
+        world.init_resource::<Outcomes>();
+        world.add_observer(
+            |unlink: On<'_, '_, Unlink>, mut outcomes: ResMut<'_, Outcomes>| {
+                outcomes.unlinked.push(unlink.reason);
+            },
+        );
+        let channel = if reliable {
+            channel_id::<ChannelOrderedReliable>(stepper.server_app())
+        } else {
+            channel_id::<Channel1>(stepper.server_app())
+        };
+        let mut client = stepper.client_of_mut(0);
+        let mut transport = client.get_mut::<Transport>().unwrap();
+        for _ in 0..count {
+            transport.send(channel, bytes::Bytes::from(vec![0; len]), 1.0);
+        }
+        stepper.step(2, stepper.frame_interval(), StepOrder::ServerFirst);
+        stepper
+            .server_world()
+            .resource::<Outcomes>()
+            .unlinked
+            .clone()
+    };
+    // The send budget is twice the largest message, so two largest fill it and a third passes.
+    let largest = campfire_net_channels::ChannelSetup::default().max_message_len;
+    assert_eq!(sends(true, largest + 1, 1), [UnlinkReason::MessageTooLarge]);
+    assert_eq!(sends(true, largest, 3), [UnlinkReason::Backlogged]);
+    assert_eq!(sends(false, largest + 1, 1), []);
+    assert_eq!(sends(true, largest, 2), []);
 }

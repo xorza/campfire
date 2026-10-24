@@ -1,10 +1,8 @@
 use campfire_codec::BinaryError;
 use campfire_net_bytes::SerializationError;
-use campfire_net_channels::SendError;
 use campfire_net_core::NetId;
 
-/// Why a message could not be sent or received: bad data, a peer's protocol violation, or a
-/// message above its channel's size limit or past its link's send budget.
+/// Why a received message could not be read: bad data, or a peer's protocol violation.
 #[derive(thiserror::Error, Debug)]
 pub enum MessageError {
     #[error(transparent)]
@@ -16,6 +14,4 @@ pub enum MessageError {
     UnrecognizedNetId(NetId),
     #[error("the message net id {0:?} arrived against its registered direction")]
     WrongDirection(NetId),
-    #[error(transparent)]
-    Send(#[from] SendError),
 }

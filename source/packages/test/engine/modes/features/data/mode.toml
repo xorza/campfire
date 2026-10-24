@@ -1,0 +1,47 @@
+# Each fact that decides an install: a count of supply, a pool that regenerates, a modifier of an
+# interval, and the actions of a turret, a slow weapon, toggles that cost an attack and a second,
+# and a channel.
+name = "mode-name"
+
+scripts = ["scripts/mode.rhai"]
+supply = { max = 10 }
+combat = { damage_kinds = ["physical"], life = "health" }
+slots = [{ name = "basic" }]
+pools = { health = { max = "health", regen = "health_regen" } }
+
+[stats]
+health = {}
+health_regen = {}
+attack_speed = {}
+attack_damage = {}
+
+[actions.shell]
+name = "action-shell"
+kind = "attack"
+targeting = "enemies"
+range = "6.0"
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+speed = "20"
+
+[actions.guard]
+name = "action-guard"
+targeting = "none"
+toggle = { cost_per_attack = { health = 1 } }
+
+[actions.burn]
+name = "action-burn"
+targeting = "none"
+toggle = { cost_per_second = { health = 1 } }
+
+[actions.focus]
+name = "action-focus"
+targeting = "none"
+channel = { duration_ms = 1000, tick_ms = 500 }
+
+[modifiers.pulse]
+interval_ms = 1000
+
+[teams.one]
+name = "team-one"

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
+use bevy_ecs::world::{EntityRef, World};
 use bevy_time::{Time, Virtual};
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::{Directive, Order};
@@ -773,6 +773,27 @@ impl InProcessMatch {
             .add_phase(wire, LinkDirection::ServerToClient, phase);
     }
 
+    /// Holds every packet `client` sends from now on until `pass_client_packets`, as a link that
+    /// stalls one way does, though the server's packets arrive.
+    pub fn hold_client_packets(&mut self, client: usize) {
+        let phase = Phase::stall(self.stepper.now(), self.setup.link.clone());
+        self.client_packets(client, phase);
+    }
+
+    /// Passes the packets `client` sends again, those held first.
+    pub fn pass_client_packets(&mut self, client: usize) {
+        let phase = Phase::recovery(self.stepper.now(), self.setup.link.clone());
+        self.client_packets(client, phase);
+    }
+
+    /// Makes the packets `client` sends the server follow `phase`.
+    fn client_packets(&self, client: usize, phase: Phase) {
+        let wire = self.stepper.client_link(client);
+        self.stepper
+            .network()
+            .add_phase(wire, LinkDirection::ClientToServer, phase);
+    }
+
     /// Runs `run` on the server's world in its next fixed tick, before the tick's systems, as the
     /// sim changes its state; the steps that follow run it.
     pub fn server_fixed_update(&mut self, run: impl FnOnce(&mut World) + Send + 'static) {
@@ -925,6 +946,12 @@ impl InProcessMatch {
             End::Server => self.stepper.server_app(),
             End::Client(client) => self.stepper.client_app(client),
         }
+    }
+
+    /// The unit `id`, which `end` holds.
+    pub fn unit(&self, end: End, id: StableId) -> EntityRef<'_> {
+        let unit = self.app(end).world().entity_ref_of(id);
+        unit.unwrap_or_else(|| panic!("{end:?} holds the unit {id:?}"))
     }
 
     /// The sim tick `end` runs next.

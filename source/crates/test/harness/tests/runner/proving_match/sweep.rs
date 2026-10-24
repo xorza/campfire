@@ -11,9 +11,10 @@ use campfire_common::PlayerSlot;
 use campfire_harness::{FixedMatch, MatchUnits, ProvingMatch, ScriptedMode};
 use campfire_orders::OrdersDirective;
 use campfire_runner::MatchBuild;
+use campfire_script::ScriptFailures;
 use campfire_sim::internals::{Draws, Mutation, SimWorldInternals};
 use campfire_sim::{Position, SimWorld};
-use campfire_threads::internals::Parallel;
+use campfire_threads::Parallel;
 use campfire_units::{Dead, Owner};
 
 /// The draws of each state type: enough to reach each edge of its numbers, few enough to keep
@@ -130,7 +131,7 @@ fn a_snapshot_restores_and_a_flawed_one_never_panics() {
                 assert_eq!(again, flawed, "byte {at} flipped");
                 // A value its checks let through still plays: no system panics on it.
                 for _ in 0..WINDOW {
-                    target.step();
+                    play(target);
                 }
             }
         },
@@ -170,8 +171,9 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
                 .map(|(slot, payload)| (*slot, payload.as_slice()))
                 .collect();
             target.step_with(&inputs);
+            take_failures(target);
             for _ in 1..WINDOW {
-                target.step();
+                play(target);
             }
             Case::Restored
         },
@@ -246,7 +248,7 @@ fn a_snapshot_with_a_value_moved_or_an_option_dropped_restores_or_is_refused_and
                     if target.restore_in_place(flawed).is_ok() {
                         cases.push(Case::Restored);
                         for _ in 0..WINDOW {
-                            target.step();
+                            play(target);
                         }
                     } else {
                         cases.push(Case::Refused);
@@ -265,4 +267,18 @@ fn a_snapshot_with_a_value_moved_or_an_option_dropped_restores_or_is_refused_and
     // Each mutation reaches some state type of the match.
     assert!(made.iter().all(|&count| count > 0), "{made:?}");
     Cases::of(cases.into_iter().flat_map(|(_, cases)| cases)).assert_both();
+}
+
+/// Runs a tick of `target`, whose flawed values a script call may fail on: a failure is no panic,
+/// which is what a sweep looks for, so it takes them.
+fn play(target: &mut World) {
+    target.step();
+    take_failures(target);
+}
+
+/// Takes the script failures of `target`'s last tick.
+fn take_failures(target: &mut World) {
+    if let Some(mut failures) = target.get_resource_mut::<ScriptFailures>() {
+        failures.forget();
+    }
 }

@@ -3,7 +3,10 @@ use crate::texture::srgb;
 /// An 8-bit RGBA texture's full chain of levels, from its base down to 1 × 1: each level a box
 /// filter of the one above it, in linear light. A side of `n` texels halves to `max(1, n / 2)`,
 /// and each texel of the half covers an equal share, `n / (n / 2)`, of the side above, so an odd
-/// side's middle texels are shared by weight and none is dropped.
+/// side's middle texels are shared by weight and none is dropped. Each level is filtered from the
+/// linear values of the one above, kept at `srgb::light`'s scale, so a level's codes round once,
+/// not once for each level above it, as a chained box filter equals one over the base but for the
+/// rounding between levels.
 #[derive(Debug)]
 pub(crate) struct MipChain {
     pub(crate) levels: Vec<Vec<u8>>,
@@ -22,7 +25,18 @@ struct Weighted {
     weight: u64,
 }
 
+/// A level below: its codes, and its linear values that the level under it reads.
+#[derive(Debug)]
+struct Level {
+    codes: Vec<u8>,
+    linear: Vec<u32>,
+}
+
 impl MipChain {
+    /// The steps of a linear alpha in one of its codes: alpha is linear, so its codes keep 8 bits
+    /// more between levels, as color keeps `srgb::light`'s 16.
+    const ALPHA_STEPS: u32 = 256;
+
     /// The chain of `base`, `width` by `height` texels of red, green, blue and alpha, rows from
     /// the top.
     pub(crate) fn of(width: u32, height: u32, base: Vec<u8>) -> Self {
@@ -31,43 +45,64 @@ impl MipChain {
             usize::try_from(height).expect("a u32 fits usize"),
         );
         debug_assert_eq!(base.len(), width * height * 4);
+        let mut linear: Vec<u32> = base
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .flat_map(|&[r, g, b, a]| {
+                [
+                    srgb::light(r),
+                    srgb::light(g),
+                    srgb::light(b),
+                    u32::from(a) * Self::ALPHA_STEPS,
+                ]
+            })
+            .collect();
         let mut levels = vec![base];
         while width > 1 || height > 1 {
-            let next = Self::down(width, height, levels.last().expect("a base"));
-            levels.push(next);
+            let next = Self::down(width, height, &linear);
+            levels.push(next.codes);
+            linear = next.linear;
             (width, height) = ((width / 2).max(1), (height / 2).max(1));
         }
         Self { levels }
     }
 
-    /// The level below one of `width` by `height`: each texel the weighted mean of the texels it
-    /// covers, its color in linear light encoded back to the nearest code, its alpha rounded half
-    /// up.
-    fn down(width: usize, height: usize, above: &[u8]) -> Vec<u8> {
+    /// The level below one of `width` by `height` texels of linear values: each texel the weighted
+    /// mean of the texels it covers, its color encoded to the nearest code and its alpha rounded
+    /// half up, and kept linear, rounded half up, for the level below.
+    fn down(width: usize, height: usize, above: &[u32]) -> Level {
         let columns = Self::shares(width);
         let rows = Self::shares(height);
         // Each side's weights sum to its count of texels above.
         let total = u64::try_from(width * height).expect("a usize fits u64");
-        let mut below = Vec::with_capacity(columns.len() * rows.len() * 4);
+        let texels = columns.len() * rows.len();
+        let mut codes = Vec::with_capacity(texels * 4);
+        let mut linear = Vec::with_capacity(texels * 4);
         for row in &rows {
             for column in &columns {
-                let mut light = [0_u64; 3];
-                let mut alpha = 0_u64;
+                let mut sums = [0_u64; 4];
                 for y in &row.texels {
                     for x in &column.texels {
                         let weight = y.weight * x.weight;
                         let texel = &above[(y.at * width + x.at) * 4..][..4];
-                        for (sum, &code) in light.iter_mut().zip(&texel[..3]) {
-                            *sum += weight * u64::from(srgb::light(code));
+                        for (sum, &value) in sums.iter_mut().zip(texel) {
+                            *sum += weight * u64::from(value);
                         }
-                        alpha += weight * u64::from(texel[3]);
                     }
                 }
-                below.extend(light.map(|sum| srgb::encode(sum, total)));
-                below.push(u8::try_from((alpha + total / 2) / total).expect("a mean of bytes"));
+                let [r, g, b, a] = sums;
+                codes.extend([r, g, b].map(|sum| srgb::encode(sum, total)));
+                let alpha_total = total * u64::from(Self::ALPHA_STEPS);
+                codes.push(
+                    u8::try_from((a + alpha_total / 2) / alpha_total).expect("a mean of bytes"),
+                );
+                linear.extend(sums.map(|sum| {
+                    u32::try_from((sum + total / 2) / total).expect("a mean of linear values")
+                }));
             }
         }
-        below
+        Level { codes, linear }
     }
 
     /// The shares of a side of `above` texels: texel `i` below covers `[i · above, (i + 1) ·
@@ -117,16 +152,18 @@ mod tests {
     #[test]
     fn a_chain_averages_light_down_to_one_texel() {
         // 4 × 2 texels: a black and white checker on the left, with alpha 0 and 255, and grey
-        // 128 on the right, alpha 100. Below, 2 × 1: the left in equal parts black and white,
-        // light ½, code 188, alpha 127.5 rounded half up, 128; the right grey and alpha 100.
-        // Then 1 × 1: codes 188 and 128 are light 0.50288 and 0.21587, their mean 0.35938, which
-        // encodes as 161.61, so 162; alpha (128 + 100) / 2 = 114.
-        let (b, w, g) = ([0, 0, 0, 0], [255, 255, 255, 255], [128, 128, 128, 100]);
+        // 128 on the right, alpha 101. Below, 2 × 1: the left in equal parts black and white,
+        // light ½, code 188, alpha 127.5 rounded half up, 128; the right grey and alpha 101.
+        // Then 1 × 1, from the light above, not its codes: ½ = 32768 and code 128's 14147 in
+        // steps of 2⁻¹⁶, their mean 0.35793, which encodes as 161.32, so 161, where code 188's
+        // light, 0.50288, would give 162; alpha (127.5 + 101) / 2 = 114.25, so 114, where code
+        // 128's would give 114.5, so 115.
+        let (b, w, g) = ([0, 0, 0, 0], [255, 255, 255, 255], [128, 128, 128, 101]);
         let base = [b, w, g, g, w, b, g, g].concat();
         let chain = MipChain::of(4, 2, base.clone());
         assert_eq!(chain.levels.len(), 3);
         assert_eq!(chain.levels[0], base);
-        assert_eq!(chain.levels[1], [188, 188, 188, 128, 128, 128, 128, 100]);
-        assert_eq!(chain.levels[2], [162, 162, 162, 114]);
+        assert_eq!(chain.levels[1], [188, 188, 188, 128, 128, 128, 128, 101]);
+        assert_eq!(chain.levels[2], [161, 161, 161, 114]);
     }
 }

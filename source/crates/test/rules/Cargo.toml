@@ -16,6 +16,7 @@ kind = "test"
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
+campfire-threads = { workspace = true, features = ["internals"] }
 
 # A span's line and column, which a gated item's blanking reads.
 proc-macro2 = { workspace = true, features = ["span-locations"] }

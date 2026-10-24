@@ -13,6 +13,9 @@ pub struct SentInputs {
     payloads: Vec<u8>,
     /// The body of the order being written, kept so no order allocates.
     body: Vec<u8>,
+    /// The seqs sent that the server has not acknowledged, which it may hold still to apply
+    /// whether or not the client still keeps them.
+    unacknowledged: Range<u64>,
 }
 
 #[derive(Debug)]
@@ -46,6 +49,19 @@ impl SentInputs {
     /// How many inputs it holds.
     pub const fn len(&self) -> usize {
         self.inputs.len()
+    }
+
+    /// How many of the inputs sent the server may hold still to apply, of a server whose last tick
+    /// the client knows is `server`: those it has not acknowledged, and those it applies in
+    /// `server` or later. The server's next tick is past `server`, so it holds no more.
+    pub fn pending(&self, server: Tick) -> usize {
+        let unacknowledged = self.unacknowledged.end - self.unacknowledged.start;
+        let ahead = self.inputs.partition_point(|input| input.tick < server);
+        let applied = self.inputs[ahead..]
+            .iter()
+            .filter(|input| input.landing == Landing::Applied)
+            .count();
+        usize::try_from(unacknowledged).expect("a count fits usize") + applied
     }
 
     /// The payloads that take effect in `tick`.
@@ -82,6 +98,11 @@ impl SentInputs {
             "seqs follow each other, and stamps never decrease"
         );
         let tick = last.map_or(stamp, |last| last.tick.max(stamp));
+        if self.unacknowledged.is_empty() {
+            self.unacknowledged = seq..seq;
+        }
+        debug_assert_eq!(self.unacknowledged.end, seq, "seqs follow each other");
+        self.unacknowledged.end = seq + 1;
         let start = self.payloads.len();
         write(&mut self.body, &mut self.payloads);
         let len = self.payloads.len() - start;
@@ -102,6 +123,9 @@ impl SentInputs {
     /// tick `applied` gives, or never; and expects each input it has not acknowledged yet behind
     /// them. An input the client no longer keeps, or never sent, is passed over.
     pub fn acknowledge(&mut self, first: u64, applied: &[Option<Tick>]) {
+        let acknowledged = first + u64::try_from(applied.len()).expect("a count fits u64");
+        self.unacknowledged.start =
+            acknowledged.clamp(self.unacknowledged.start, self.unacknowledged.end);
         let Some(oldest) = self.inputs.first().map(|input| input.seq) else {
             return;
         };
@@ -144,6 +168,7 @@ impl SentInputs {
     pub fn clear(&mut self) {
         self.inputs.clear();
         self.payloads.clear();
+        self.unacknowledged = 0..0;
     }
 
     /// Drops the inputs that take effect before `oldest`, which no rollback replays.

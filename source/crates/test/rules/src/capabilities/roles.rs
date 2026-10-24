@@ -1,5 +1,6 @@
 use super::{NamedCode, capability_sources};
 use crate::allowlist::Allowlist;
+use crate::workspace::Workspace;
 
 /// Each role a module's type may hold, by the trait it implements or, for a script API, by the
 /// `*Api` type that registers members: the suffix of the type's name, and of its file's.
@@ -54,12 +55,11 @@ fn misnamed_roles(
     misnamed
 }
 
-#[test]
-fn each_role_of_a_module_takes_the_modules_name() {
+pub(crate) fn each_role_of_a_module_takes_the_modules_name(workspace: &Workspace) {
     let exceptions = Allowlist::new(&ROLE_EXCEPTIONS);
     let mut misnamed = Vec::new();
     let mut held = [0; ROLES.len()];
-    for NamedCode { path, code } in capability_sources() {
+    for NamedCode { path, code } in capability_sources(workspace) {
         let parts: Vec<&str> = path.split('/').collect();
         let [module, .., last] = parts[..] else {
             continue;
@@ -203,11 +203,10 @@ fn suffixed<'c>(code: &'c str, suffix: &str) -> Vec<&'c str> {
     found
 }
 
-#[test]
-fn a_book_and_a_data_table_take_their_suffix() {
+pub(crate) fn a_book_and_a_data_table_take_their_suffix(workspace: &Workspace) {
     let mut holders: [Vec<String>; SUFFIX_ROLES.len()] = Default::default();
     let mut books = Vec::new();
-    for NamedCode { code, .. } in capability_sources() {
+    for NamedCode { code, .. } in capability_sources(workspace) {
         for (holders, (role, _)) in holders.iter_mut().zip(SUFFIX_ROLES) {
             holders.extend(implementers(&code, role).into_iter().map(str::to_owned));
         }

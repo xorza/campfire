@@ -7,6 +7,7 @@ use campfire_client_files::{
 };
 use campfire_common::DeclaredName;
 use campfire_package_disk::PackageWriter;
+use serde::{Deserialize, Serialize};
 
 use crate::gltf::model_bounds::ModelBounds;
 use crate::zero_hour::archive_path::ArchivePath;
@@ -23,13 +24,13 @@ use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_nodes::ModelNodes;
 
 /// A model the objects name that the package lacks, and why.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkippedModel {
     pub name: String,
     pub reason: SkipReason,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SkipReason {
     /// No file of the install holds it.
     Missing,

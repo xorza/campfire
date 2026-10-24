@@ -24,6 +24,12 @@ const OS_MODULES: [&str; 6] = ["unix", "windows", "fd", "linux", "macos", "wasi"
 /// through `os` and one of its `OS_MODULES`. A module of the workspace that is named `os` is no
 /// OS's.
 fn os_names(text: &str) -> Vec<usize> {
+    // A file of no path through `os` and of no word of an OS names none, and its parse is
+    // skipped.
+    let os = text.contains("os::") || text.contains("::os");
+    if !os && !OS_WORDS.iter().any(|word| text.contains(word)) {
+        return Vec::new();
+    }
     let mut lines: Vec<usize> = NamedPath::of(text)
         .into_iter()
         .filter_map(|path| {
@@ -44,9 +50,7 @@ fn os_names(text: &str) -> Vec<usize> {
     lines
 }
 
-#[test]
-fn only_the_platform_module_names_an_os() {
-    let workspace = Workspace::read();
+pub(crate) fn only_the_platform_module_names_an_os(workspace: &Workspace) {
     let sources = workspace.sources();
     let named: Vec<String> = sources
         .iter()

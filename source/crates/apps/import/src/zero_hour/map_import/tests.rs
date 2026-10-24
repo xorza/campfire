@@ -58,11 +58,7 @@ tags = ["wall"]
 
 /// The fixture install's objects.
 fn objects() -> ObjectIni {
-    let mut ini = ObjectIni::default();
-    for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
-        ini.read(objects.as_bytes()).unwrap();
-    }
-    ini
+    ObjectIni::of(&[DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS])
 }
 
 /// The fixture install's objects and locomotors, and the looks of its client objects but the
@@ -154,7 +150,7 @@ fn a_placed_variation_stands_as_its_parents_type_of_its_place_and_its_own_body()
     let mut fixture = MapFixture::new();
     let jeep = "Object Jeep\n BuildVariations = Wide AmericaTankCrusader\nEnd\n\
                 ObjectReskin Wide AmericaTankCrusader\n GeometryMajorRadius = 30.0\nEnd\n";
-    fixture.rules.objects.read(jeep.as_bytes()).unwrap();
+    fixture.rules.objects = ObjectIni::of(&[DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS, jeep]);
     let file = ZeroHourMap::read(&map(8)).unwrap();
     let mut names = ImportNames::default();
     let map = read_map(&fixture.import(&file, &mut names, 3).unwrap().map);

@@ -26,11 +26,11 @@ pub struct ChannelSetup {
     pub retry_unsent_messages: bool,
     /// The largest message this channel carries.
     ///
-    /// A larger send is refused with [`SendError::MessageTooLarge`]; a peer whose fragments
+    /// A larger send is refused with [`SendRefusal::MessageTooLarge`]; a peer whose fragments
     /// claim a larger message breaks the protocol. It bounds what one partial message makes the
     /// receiver allocate.
     ///
-    /// [`SendError::MessageTooLarge`]: crate::error::SendError::MessageTooLarge
+    /// [`SendRefusal::MessageTooLarge`]: crate::error::SendRefusal::MessageTooLarge
     pub max_message_len: usize,
 }
 
