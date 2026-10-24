@@ -11,4 +11,3 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
-- **Allocation audits.** The budget of `capabilities/tests/alloc` names an allocation of Bevy's, so the battle's ticks do not run allocation-free: `BundleRemover::remove` (`bevy_ecs` 0.20) collects into a `Vec` the components that a removal takes from an archetype with a `Discard` or a `Remove` observer, as each unit's archetype is, once for each respawn.
