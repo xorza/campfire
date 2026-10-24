@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::ops::{ControlFlow, Range};
 
 use campfire_geometry::{BodyGrid, Indexed, Placed};
@@ -8,6 +9,7 @@ use campfire_values::Team;
 
 use crate::aside_depth::AsideDepth;
 use crate::body_index::{BodyIndex, IndexedBody};
+use crate::collider::Collider;
 use crate::moves::Moves;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::{RoutePlanner, Short, Walkable, Window};
@@ -39,6 +41,9 @@ pub(crate) struct Steering {
     moving: Vec<Indexed<Layer, StableId>>,
     /// The units that block the walker that steers now.
     blockers: Vec<IndexedBody>,
+    /// The widest bound of a unit that stands, which a search for the personal spaces round a
+    /// point reaches past.
+    widest: Num,
     /// The short route of the walker that steers now.
     short: Vec<Vec3>,
 }
@@ -121,6 +126,7 @@ impl Steering {
         self.moving.clear();
         self.gatherers.clear();
         self.idle.clear();
+        self.widest = Num::ZERO;
         for TickBody {
             body,
             team,
@@ -137,6 +143,7 @@ impl Steering {
                     body: Placed::new(body.position, body.shape),
                 });
             } else {
+                self.widest = self.widest.max(body.shape.bound());
                 self.still.push(body);
             }
             if gathers {
@@ -301,6 +308,35 @@ impl Steering {
                 crowd && touches && body.position.ground_offset(goal).length_squared_bits() < off;
         });
         packed
+    }
+
+    /// Whether `waypoint`, the last of `steered`'s route, lies within the personal space a unit
+    /// that stands shares with `steered`, which stands within it too: a goal the unit crowds, as
+    /// near as collision lets the walker come, so it has arrived, as the A* Pathfinding Project
+    /// stops a unit whose destination is crowded (walkers-get-through.md, A walker stuck by a
+    /// crowded goal has arrived). Each space is collision's, `Collider::space_of`.
+    pub(crate) fn crowded(&self, steered: Steered, waypoint: Vec3) -> bool {
+        let Steered {
+            position: at,
+            walker,
+            ..
+        } = steered;
+        let standing = self.standing.as_ref().expect("steering read the bodies");
+        let own = Collider::space_of(walker.radius);
+        let mut crowded = false;
+        standing.near(
+            walker.layer,
+            at,
+            own + Collider::space_of(self.widest),
+            |body| {
+                let space = own + Collider::space_of(body.shape.bound());
+                let inside = |point: Vec3| {
+                    point.ground().distance_order(body.position.ground(), space) == Ordering::Less
+                };
+                crowded |= inside(at) && inside(waypoint);
+            },
+        );
+        crowded
     }
 
     /// Steers `steered` along `route`, which has a waypoint ahead, on `grid` round `statics`: the

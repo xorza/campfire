@@ -114,13 +114,20 @@ impl Route {
     /// waits changes the goal and the party and keeps the first tick, so a walker whose goal moves
     /// each tick keeps its place among the routes that wait.
     fn ask(&mut self, ask: RouteAsk, progress: &mut Progress) {
+        self.ask_keeping(ask);
+        progress.restart();
+    }
+
+    /// Asks for the route `ask` names as `ask` does, and keeps the walker's progress, as one asked
+    /// again for the same goal is the same walk (walkers-get-through.md, A walker progresses only
+    /// when it comes nearer its waypoint).
+    fn ask_keeping(&mut self, ask: RouteAsk) {
         let RouteAsk { goal, tick, party } = ask;
         let tick = self.asked().unwrap_or(tick);
         self.goal = Some(Goal {
             position: goal,
             asked: Some(Ask { tick, party }),
         });
-        progress.restart();
     }
 
     /// Asks in `tick` for a route to its goal again, alone, as its walker is stuck, and counts the
@@ -344,6 +351,13 @@ impl RouteMutItem<'_, '_> {
     /// See `Route::ask`; the unit is due in `dues` while its ask waits.
     pub fn ask(&mut self, ask: RouteAsk, progress: &mut Progress, dues: &mut UnitDues<'_, Route>) {
         self.route.ask(ask, progress);
+        self.report();
+        dues.push(Route::due(&(), &self.route));
+    }
+
+    /// See `Route::ask_keeping`; the unit is due in `dues` while its ask waits.
+    pub(crate) fn ask_keeping(&mut self, ask: RouteAsk, dues: &mut UnitDues<'_, Route>) {
+        self.route.ask_keeping(ask);
         self.report();
         dues.push(Route::due(&(), &self.route));
     }

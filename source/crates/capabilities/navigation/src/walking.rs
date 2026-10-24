@@ -104,19 +104,21 @@ pub struct Walking;
 impl Walking {
     /// Steers each walker round the units in their way, as `Steering::steer` says, in stable-id
     /// order, with the work the planner has left this tick; once it has none, the rest keep their
-    /// routes, and steer again in a later tick. A walker is stuck once it has moved less than half
-    /// a step a tick for the ticks of `Progress::stuck_after`, and its progress starts again when
-    /// it takes a short route. A predicting client counts the units it holds that stand: one that
-    /// stands has not moved since the server sent it. With no pathing grid no walker steers, and
-    /// one that does not walk this tick, waits for its route, or has none ahead, does not either:
-    /// none of them takes a place in the order. On a server, each unit that stands idle on the
-    /// next stretch of a walker's way, as far as its window reaches, and that the mode's
-    /// `CrowdBook` lets it move, steps aside, as `Steering::asides` says, to the place
-    /// `RoutePlanner::yield_place` finds clear of the walker's passage, which `Steering::passage`
-    /// reads; one that finds none is hemmed in. A walker stuck for `Progress::ask_after` that no
-    /// detour frees asks its route again, and stops past `Progress::MOST_STUCK_ASKS` such asks. A walker that touches
-    /// the crowd that arrived at its goal arrives, as `Steering::packed` says; one that leaves its
-    /// producer takes no short route round its team's units.
+    /// routes, and steer again in a later tick. A walker is stuck once it has come no half a step
+    /// nearer its waypoint than ever for the ticks of `Progress::stuck_after`, and only coming so
+    /// near starts its count again, not a detour. A predicting client counts the units it holds
+    /// that stand: one that stands has not moved since the server sent it. With no pathing grid
+    /// no walker steers, and one that does not walk this tick, waits for its route, or has none
+    /// ahead, does not either: none of them takes a place in the order. On a server, each unit
+    /// that stands idle on the next stretch of a walker's way, as far as its window reaches, and
+    /// that the mode's `CrowdBook` lets it move, steps aside, as `Steering::asides` says, to the
+    /// place `RoutePlanner::yield_place` finds clear of the walker's passage, which
+    /// `Steering::passage` reads; one that finds none is hemmed in. A walker stuck for
+    /// `Progress::ask_after` asks its route again, and stops past `Progress::MOST_STUCK_ASKS`
+    /// such asks; one stuck by its route's last waypoint where a unit that stands crowds it, as
+    /// `Steering::crowded` says, passes it, and arrives. A walker that touches the crowd that
+    /// arrived at its goal arrives, as `Steering::packed` says; one that leaves its producer takes
+    /// no short route round its team's units.
     pub(super) fn steer<F: RoleForm>(
         (rate, index, tick): (Res<'_, MatchRate>, Res<'_, EntityIndex>, Res<'_, SimTick>),
         mut asks: ResMut<'_, DueIndex<Route>>,
@@ -173,7 +175,7 @@ impl Walking {
             let mut walk = walk.expect("a walker carries how deep its walk is");
             let depth = *walk;
             let goal = route.goal().expect("a walker with a way ahead has a goal");
-            let stuck_for = progress.track(at.get(), step.get());
+            let stuck_for = progress.track(at.get(), route.read().ahead()[0], step.get());
             let steered = Steered {
                 id,
                 position: at.get(),
@@ -192,6 +194,16 @@ impl Walking {
                 AsideDepth::set(&mut walk, AsideDepth::default());
                 route.clear();
                 progress.restart();
+                continue;
+            }
+            // One stuck by the last waypoint of its route where a unit that stands crowds it is as
+            // near as it gets: it passes it, and the move arrives (walkers-get-through.md, A walker
+            // stuck by a crowded goal has arrived).
+            if let ([last], true) = (route.read().ahead(), steered.stuck)
+                && steering.crowded(steered, *last)
+            {
+                route.advance();
+                progress.passed_waypoint();
                 continue;
             }
             if !F::PREDICTS {
@@ -216,8 +228,11 @@ impl Walking {
                 .flatten()
             {
                 route.splice(at.get(), steering.short(), detour.skipped, detour.reached);
-                progress.reset();
-            } else if stuck_for >= ask_ticks {
+            }
+            // A detour frees a walker only as it walks it, so one that stays stuck asks its route
+            // again, detour or none (walkers-get-through.md, A walker progresses only when it
+            // comes nearer its waypoint).
+            if stuck_for >= ask_ticks {
                 let dues = &mut UnitDues::new(&mut asks, id, entity);
                 route.ask_stuck(&mut progress, tick.start(), dues);
                 stalls += 1;

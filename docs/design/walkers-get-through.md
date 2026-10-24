@@ -10,20 +10,25 @@ walker either gets where it goes or stops within seconds. The facts are in
 
 ## Decisions
 
-- **A walker progresses only when it moves along its way.** A tick counts toward being stuck
-  unless the walker's place moved at least half its step along the leg it walks, its net move
-  projected on the leg's way; a detour, a short route or a new route keeps the count, and only such a
-  move resets it. As 0 A.D.'s `CCmpUnitMotion` counts a failed movement each turn its move is
-  obstructed or a push takes it away from where it moves, and resets the count only on an
-  unobstructed move. Refused: a move of half a step in any way, under which a hacker pushed back
-  each tick by a crawler's personal space stood 0.77 m short of its goal for 6,240 ticks; a
-  count a detour resets, under which a Red Guard took a detour it could not walk every 5 ticks
-  and never asked a new route.
-- **A walker stuck by its goal has arrived.** A walker stuck within its own radius of its route's
-  last waypoint has arrived there, not short, as the A* Pathfinding Project's agents reach their
-  end within `endReachedDistance`. Refused: 5 asks of 1 s each, which leave it jittering at its
-  goal for 5 s; no tolerance, under which a goal within another unit's personal space is never
-  reached.
+- **A walker progresses only when it comes nearer its waypoint.** A tick counts toward being
+  stuck unless the walker stands at least half its step nearer its waypoint than it ever stood,
+  or passed a waypoint; a waypoint taken fresh, as a walk starts or past a waypoint, counts
+  nothing, and a detour, a short route or a new route to a waypoint of their own in place of one
+  not passed counts on. As 0 A.D.'s `CCmpUnitMotion` counts a failed movement each turn its move
+  is obstructed or a push takes it away from where it moves, never escalates one that moves a
+  little, and keeps the count across new paths. Refused: a move of half a step in any way, under
+  which a hacker pushed back each tick by a crawler's personal space stood 0.77 m short of its
+  goal for 6,240 ticks; a count a detour resets, under which a Red Guard took a detour it could
+  not walk every 5 ticks and never asked a new route; a move of half a step along its leg each
+  tick, under which a walker slowed in a crowd counted as stuck and the bases play's stalls rose
+  from 332 to 1,065.
+- **A walker stuck by a crowded goal has arrived.** A walker stuck where its route's last
+  waypoint and itself lie within the personal space a unit that stands shares with it, as
+  collision measures it, has arrived there, not short, as near as collision lets it come, as the
+  A* Pathfinding Project stops a unit at a crowded destination and Zero Hour's locomotor ends a
+  move within its close-enough distance. Refused: arrival within its radius of the waypoint,
+  under which a dozer stopped 41 m short of its building site and the attack play never ended;
+  5 asks of 1 s each, which leave it jittering by its goal for 5 s.
 - **A unit spawns only where it can walk out.** `room_near` takes, for a unit that walks, only a
   place whose cell its clearance holds open, in the region of the open cell nearest the search's
   point, as Zero Hour's `adjustToPossibleDestination` keeps a goal in the unit's own zone and its
@@ -48,8 +53,8 @@ walker either gets where it goes or stops within seconds. The facts are in
 
 ## Checks
 
-- A walker bound for a goal within an idle unit's personal space arrives once it is stuck within
-  its radius of the goal, and one whose goal a stuck unit holds stops after its 5 asks.
+- A walker bound for a goal within a standing unit's personal space arrives once it is stuck
+  there, and one whose goal a stuck unit holds stops after its 5 asks.
 - A walker that takes detours it cannot walk asks its route again after 1 s.
 - `room_near` refuses a pocket whose ways out are narrower than the unit's body, and takes the
   place nearest outside it.

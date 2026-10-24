@@ -173,8 +173,13 @@ impl Collider {
         if !self.movable {
             return self.shape.bound();
         }
+        Self::space_of(self.radius())
+    }
+
+    /// The radius of the personal space of a body that may be pushed, of `radius`.
+    pub(crate) const fn space_of(radius: Num) -> Num {
         let [times, per] = Self::SPACE;
-        Num::from_bits(self.radius().to_bits() * times / per)
+        Num::from_bits(radius.to_bits() * times / per)
     }
 
     /// Whether it and `other` may part and lie within each other's personal space: for a box, the

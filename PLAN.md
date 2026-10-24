@@ -8,19 +8,6 @@ The slice of [Walkers get through](docs/design/walkers-get-through.md), in navig
 batch each; its checks are that document's. It stands first, as a walker that stands for good
 with a destination breaks every match that holds one.
 
-### W1. A walker's progress (navigation's walking)
-
-First, as the next batches measure stalls by it, and it alone ends the livelocks of a detour.
-
-- [ ] A tick counts as progress when the walker moved half a step in any way, and a detour resets
-  the count (`progress.rs:62`, `walking.rs:219`) → progress is a move of half a step along the
-  leg it walks, and only progress resets the count (walkers-get-through.md, A walker progresses
-  only when it moves along its way). Builds: what can be forgotten is a type, the move along the
-  leg a method of `Progress`.
-- [ ] A walker stuck at its goal asks its route 5 times and arrives short (`walking.rs:219`,
-  `route.rs:368`) → one stuck within its radius of its last waypoint has arrived
-  (walkers-get-through.md, A walker stuck by its goal has arrived).
-
 ### W2. A spawn that can walk out (navigation's room)
 
 - [ ] `room_near` tests a walker's place for its body alone (`navigation_column.rs:130`,

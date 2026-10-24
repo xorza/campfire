@@ -499,9 +499,12 @@ fn an_idle_friend_on_a_walkers_way_steps_aside_before_it_stalls_and_an_enemy_or_
     // (04-capabilities/navigation.md, An idle friend steps aside). Units that drive do the same,
     // and take no push: the walker is done in tick 59 (04-capabilities/navigation.md, A unit that
     // drives yields by driving). An enemy stays, and so does a friend at work, and the walker never
-    // arrives: stuck 30 ticks, 1 s, with no detour, it asks its route again, answered the tick
-    // after, each 31 ticks; the sixth time, past its 5 asks, it stops where it stands, in tick 30 +
-    // 6 · 31 = 216, with no destination and no goal to arrive short of
+    // arrives: it comes no nearer its waypoint from tick 31, and, stuck 30 ticks, 1 s, it asks its
+    // route again in tick 61, answered as the next tick starts, whose waypoint it takes fresh, and
+    // again each 31 ticks, whatever detour it takes (walkers-get-through.md, A walker progresses
+    // only when it comes nearer its waypoint); the sixth time, past its 5 asks, it stops where it
+    // stands, in tick 61 + 5 · 31 = 216, and the one the friend at work holds, whose route goes
+    // round the friend's cells, in tick 218, with no destination and no goal to arrive short of
     // (04-capabilities/navigation.md, A stuck walker plans again, then stops): 6 stalls, which
     // navigation's report counts, against none of a walker the friend steps aside for.
     let half = Num::HALF;
@@ -575,17 +578,65 @@ fn an_idle_friend_on_a_walkers_way_steps_aside_before_it_stalls_and_an_enemy_or_
     // bits of 0.5 − √3/2; once stopped, pinned by the wall, it leaves the few bits of overlap the
     // rounding left to the friend.
     let pressed = [
-        (1, false, [[-8388608, 0, 0], [8388608, 0, 0]]),
-        (0, true, [[-6140873, 0, 8388607], [8388620, 0, -7]]),
+        (1, false, [[-8388608, 0, 0], [8388608, 0, 0]], 216),
+        (0, true, [[-6140873, 0, 8388607], [8388620, 0, -7]], 218),
     ];
-    for (team, at_work, at) in pressed {
+    for (team, at_work, at, stopped) in pressed {
         let ([walker, blocker], (done, aside, stalls), short) = run(team, at_work, Gait::Step);
         assert_eq!([walker, blocker].map(Vec3::to_bits), at, "{team}");
         assert_eq!(
             (done, aside, stalls, short),
-            (Some(216), None, 6, ArrivedShort::of(None))
+            (Some(stopped), None, 6, ArrivedShort::of(None)),
+            "{team}"
         );
     }
+}
+
+#[test]
+fn a_walker_whose_goal_a_standing_unit_crowds_arrives_once_stuck_there() {
+    // A walker of 0.5 m of team 0 walks from (−4, 0) to (0.4, 0), a quarter meter a tick, and a
+    // friend of 4 m at work, which takes no push, stands at (5, 0): the goal lies 4.6 m off it,
+    // past their two radii, 4.5 m, but within their personal space of 5/4 of those, 5.625 m, and
+    // a push of a quarter of the walker's way into that space, more than its step there, takes
+    // it back each tick it steps nearer. It stands at x = 0.0973, in bits 1,632,142, 0.30 m short
+    // of the goal, within the friend's personal space as the goal is, and, stuck there 5 ticks,
+    // 150 ms, it has arrived at the goal in tick 26, with no stall and not short
+    // (walkers-get-through.md, A walker stuck by a crowded goal has arrived).
+    let half = Num::HALF;
+    let goal = Vec3::new(Num::int(2) / 5, Num::ZERO, Num::ZERO);
+    let mut game = walk_match();
+    Navigation::load_open_pathing(&mut game, half, [-12, -12], [12, 12], [ground(half)]);
+    let friend = Navigation::walker_at(&mut game, (5, 0, 0))
+        .team(Team::new(0))
+        .circle(Num::int(4))
+        .walks(Num::QUARTER, None)
+        .place(&mut game);
+    game.insert_parts(friend, AtWork::new(true));
+    game.step();
+    let walker = Navigation::walker_at(&mut game, (-4, 0, 0))
+        .team(Team::new(0))
+        .circle(half)
+        .walks(Num::QUARTER, Some(goal))
+        .place(&mut game);
+    let (mut done, mut stalls) = (None, 0);
+    for tick in 1..=120 {
+        game.step();
+        stalls += game.resource::<StalledWalkers>().get();
+        if done.is_none() && game.part::<Destination>(walker).get().is_none() {
+            done = Some(tick);
+        }
+    }
+    let at = game.part::<Position>(walker).get();
+    assert_eq!(
+        (
+            done,
+            stalls,
+            game.part::<ArrivedAt>(walker).get(),
+            *game.part::<ArrivedShort>(walker)
+        ),
+        (Some(26), 0, Some(goal), ArrivedShort::of(None))
+    );
+    assert_eq!(at.to_bits(), [1632142, 0, 0]);
 }
 
 #[test]
@@ -751,7 +802,7 @@ fn a_wide_walker_passes_wide_idle_friends_that_yield_to_free_room_and_stops_at_h
     assert_eq!(
         run(false),
         (
-            Some(51),
+            Some(53),
             quarters(-15, 1),
             ArrivedShort::of(Some(goal)),
             [true, false],
@@ -851,13 +902,12 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
             assert_eq!(arrived, [Some(38); 2]);
             assert_eq!(game.part::<Position>(east).get(), Vec3::from((4, 0, 0)));
             assert_eq!(game.part::<Position>(west).get(), Vec3::from((-4, 0, 0)));
-            // As they pass, each keeps the other's center two radii, 1 m, off: alike, each goes
-            // half of it off the line, on its own side. The route goes through the centers of the
-            // half-meter cells, the first clear one 0.75 m off the line, which each turns back
-            // from before it reaches it.
-            assert_eq!(sides[1], -sides[0], "{sides:?}");
-            let most = Num::int(3) / Num::int(4);
-            assert!(sides[1] >= half && sides[1] <= most, "{sides:?}");
+            // As they pass, each goes about half of the two radii, 1 m, off the line, on its own
+            // side: in bits, 0.49263 m on −z and 0.49643 m on +z, as each counts stuck by the
+            // waypoints of its own route, which the cells' order of search makes no mirror of the
+            // other's (walkers-get-through.md, A walker progresses only when it comes nearer its
+            // waypoint).
+            assert_eq!(sides.map(Num::to_bits), [-8264983, 8328618]);
         } else {
             // Pressed together, each half a metre from where they met, at x = 0.
             assert_eq!(arrived, [None; 2]);

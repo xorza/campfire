@@ -28,10 +28,10 @@ tick 300
 #12 guard team 0 slot 0 at -13.8039057, 0, -6.9032607 pool0=300
 #13 guard team 1 slot 1 at 15.2, 0, 7 pool0=300
 #25 guard team 0 slot 0 at -13.1454672, 0, -7.357638 pool0=300
-#26 creep team 0 at -1.6865422, 0, -0.30791205 pool0=200
-#27 creep team 0 at -1.7200767, 0, 0.39846027 pool0=200
+#26 creep team 0 at -1.7053739, 0, -0.3334324 pool0=200
+#27 creep team 0 at -1.7168727, 0, 0.36647326 pool0=200
 #28 creep team 1 at 1.3480805, 0, -1.82076025 pool0=140
-#29 creep team 1 at 1.0695505, 0, -2.5695505 pool0=200
+#29 creep team 1 at 1.0370636, 0, -2.7013124 pool0=200
 #43 ward team 0 slot 0 at 12, 0, 9
 slot 0: 200
 slot 1: 300
