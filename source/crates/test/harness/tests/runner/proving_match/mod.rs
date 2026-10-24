@@ -276,9 +276,10 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // As tick sums: of the projectiles in flight, the areas laid and the heroes modified.
     assert_eq!(
         [seen.projectiles, seen.areas, seen.modified_heroes],
-        [193, 76, 654]
+        [188, 76, 654]
     );
-    // Progression: each hero gained a level from the kills near it, to 2.
+    // Progression: each hero gained levels from the kills near it: the first by stable id to 3,
+    // the second to 2.
     let levels: Vec<u32> = world
         .resource::<EntityIndex>()
         .iter()
@@ -288,7 +289,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
                 .then(|| unit.get::<Level>().unwrap().get())
         })
         .collect();
-    assert_eq!(levels, [2, 2]);
+    assert_eq!(levels, [3, 2]);
     // Navigation: the boulder, a static body, fell.
     let boulder = world
         .resource::<EntityIndex>()

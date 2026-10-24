@@ -46,6 +46,8 @@ pub(crate) struct Steering {
     widest: Num,
     /// The short route of the walker that steers now.
     short: Vec<Vec3>,
+    /// Which units a walker of a team may move, the mode's as the tick read it.
+    moves: Moves,
 }
 
 /// A walker that may steer this tick: its unit, where it stands, its team, if any, its step, its
@@ -101,12 +103,12 @@ pub(crate) struct Aside {
 }
 
 /// What a unit that steps aside makes of the idle friends near it: places it may pass through
-/// and end on, as each steps aside in turn for its walk, of `team`, which `moves` lets it move;
+/// and end on, as each steps aside in turn for its walk, of `team`, which the mode lets it move;
 /// or blockers, as its walk is too deep to move them (04-capabilities/navigation.md, A friend
 /// yields through the friends that yield).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Friends {
-    Pass { team: Option<Team>, moves: Moves },
+    Pass { team: Option<Team> },
     Block,
 }
 
@@ -138,7 +140,13 @@ impl Steering {
     /// Reads this tick's `bodies`, in one pass: those of the units that stand into an index with
     /// the buckets of `statics`, and those of the units that walk into a grid; the units in a
     /// gather loop, whose standing bodies a second index leaves out.
-    pub(crate) fn read(&mut self, statics: &BodyIndex, bodies: impl IntoIterator<Item = TickBody>) {
+    pub(crate) fn read(
+        &mut self,
+        statics: &BodyIndex,
+        moves: Moves,
+        bodies: impl IntoIterator<Item = TickBody>,
+    ) {
+        self.moves = moves;
         self.still.clear();
         self.moving.clear();
         self.gatherers.clear();
@@ -221,7 +229,7 @@ impl Steering {
     }
 
     /// Puts in `asides` each unit that stands idle on the next stretch of `steered`'s way, toward
-    /// `ahead` and at most `reach` long, and that `moves` lets the walker move, with the point it
+    /// `ahead` and at most `reach` long, and that the mode lets the walker move, with the point it
     /// steps to: off the walker's way, on the side it stands on, or to the walker's left when it
     /// stands on the way, as walkers pass on the right, until it clears the walker's body, as Zero
     /// Hour's pathfinder moves the allies off a new path and OpenRA nudges an idle friend that
@@ -233,15 +241,12 @@ impl Steering {
         &self,
         steered: Steered,
         (ahead, reach): (Vec3, Num),
-        moves: Moves,
         passage: &Range<u32>,
         asides: &mut Vec<Aside>,
     ) {
         let Steered {
             position: at,
-            team,
             walker,
-            goal,
             depth,
             ..
         } = steered;
@@ -260,13 +265,9 @@ impl Steering {
             let clear = walker.radius + body.shape.bound();
             // One that arrived at the walker's goal is of the crowd there, which the walker
             // stops against (04-capabilities/navigation.md, A crowded goal ends the walk).
-            let movable = idle
-                .binary_search_by_key(&body.id, |idle| idle.id)
-                .is_ok_and(|place| {
-                    let idle = idle[place];
-                    moves.may_move(team, Some(idle.team)) && idle.arrived != Some(goal)
-                });
-            if !movable {
+            let moved = movable(idle, self.moves, steered.team, body.id)
+                .is_some_and(|idle| idle.arrived != Some(steered.goal));
+            if !moved {
                 return;
             }
             // One behind the walker, beside it, or past the stretch is not in its way.
@@ -384,9 +385,18 @@ impl Steering {
             (true, Some(apart)) => apart,
             _ => self.standing.as_ref().expect("steering read the bodies"),
         };
+        // A walk that may move the idle friends on its way walks through them, as each steps
+        // aside for it, as Zero Hour's pathfinder moves the allies off a path that goes through
+        // them, and into the crowd at its goal, which it stops against as it touches one
+        // (04-capabilities/navigation.md, A walker walks through the friends it moves aside).
+        let passes = steered.depth.clears();
+        let (idle, moves) = (&self.idle, self.moves);
+        let blocks =
+            |body: &IndexedBody| !(passes && movable(idle, moves, steered.team, body.id).is_some());
         let reach = Self::reach(grid);
         let look = at.step_toward(ahead[0], reach);
-        if (!stuck && !standing.blocks(Segment::new(at, look), walker)) || planner.is_spent() {
+        let blocked = standing.blocks_where(Segment::new(at, look), walker, blocks);
+        if (!stuck && !blocked) || planner.is_spent() {
             return None;
         }
         let clearance = grid.clearance(walker);
@@ -408,7 +418,9 @@ impl Steering {
         let half_cell = grid.cell() / 2;
         let near = reach + half_cell + walker.radius;
         standing.near(walker.layer, at, near, |body| {
-            self.blockers.push(*body);
+            if blocks(body) {
+                self.blockers.push(*body);
+            }
         });
         let way = at.ground_offset(goal);
         let left = Vec3::new(-way.z, Num::ZERO, way.x).normalized();
@@ -466,11 +478,8 @@ impl Steering {
         let standing = self.standing.as_ref().expect("steering read the bodies");
         let window = grid.cell() * i64::try_from(Self::YIELD_WINDOW).expect("a small window");
         let near = window + grid.cell() / 2 + body.shape.bound();
-        let idle = &self.idle;
         let passes = |other: &IndexedBody| match friends {
-            Friends::Pass { team, moves } => idle
-                .binary_search_by_key(&other.id, |idle| idle.id)
-                .is_ok_and(|place| moves.may_move(team, Some(idle[place].team))),
+            Friends::Pass { team } => movable(&self.idle, self.moves, team, other.id).is_some(),
             Friends::Block => false,
         };
         blockers.clear();
@@ -485,6 +494,12 @@ impl Steering {
     pub(crate) fn short(&self) -> &[Vec3] {
         &self.short
     }
+}
+
+/// The idle unit `id` of `idle`, if a walker of `team` may move it, as `moves` says.
+fn movable(idle: &[Idle], moves: Moves, team: Option<Team>, id: StableId) -> Option<Idle> {
+    let at = idle.binary_search_by_key(&id, |idle| idle.id).ok()?;
+    Some(idle[at]).filter(|idle| moves.may_move(team, Some(idle.team)))
 }
 
 #[cfg(feature = "internals")]

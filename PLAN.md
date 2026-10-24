@@ -2,36 +2,6 @@
 
 The open steps, in the order they are done, and the foundations. The rules are in [AGENTS.md](AGENTS.md#workflow).
 
-## Yields that end
-
-A friend that steps aside reaches its place or is firm, never asked again and again; a batch, in
-navigation alone.
-
-### Y1. A yield's walk agrees with its search (navigation's steering and walking)
-
-- [ ] A friend's yield search passes through the idle friends its walk may move, but its walk's
-  steering takes them as blockers (`steering/mod.rs:410`), so a place on one is out of its
-  detour's reach: its detour ends short in its own cell, it arrives short at once, and the walker
-  asks it again every 4 ticks, as unit #366 of `integration/navigation/*_crowd` does from tick
-  1,283 → a walk deeper than the walker's own (`AsideDepth` past 0) steers through the idle
-  friends it may move, as its search does, and they step aside in turn
-  (04-capabilities/navigation.md, A friend yields through the friends that yield). Builds: one
-  word, one meaning, an idle friend the same to a yield's search and to its walk.
-- [ ] A yield whose walk still ends short, as one a static body or a unit of another team holds,
-  leaves its friend idle and not firm, so the walker asks it again (`route.rs:433` reports the
-  end) → a walk deeper than the walker's own that ends short marks its unit hemmed in, as a search
-  that finds no place does (04-capabilities/navigation.md, A friend that cannot yield is firm,
-  and a stuck walker's route walls it). Builds: what can be forgotten is a type, the end of a
-  yield one rule.
-- [ ] `navigation.md`'s "A friend yields through the friends that yield" says that the friend's
-  walk steers through them too, and "A friend that cannot yield is firm, and a stuck walker's
-  route walls it" that a yield whose walk ends short is no place found, with the crowd scene's
-  loop as the refused case.
-- Checks: a walker behind an idle friend whose place lies on a second idle friend passes, the
-  second stepping aside; a friend whose place a static body makes unreachable is hemmed in once,
-  not asked again; the crowd scene's units all arrive, with no unit asked to step aside more than
-  once for one walker.
-
 ## The audit resolves a stack once
 
 `measure` alone, a batch: the Windows gate passes.

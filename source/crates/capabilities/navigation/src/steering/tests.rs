@@ -51,7 +51,7 @@ fn a_wide_walker_counts_every_unit_that_blocks_a_cell_of_its_window() {
         idle: true,
         arrived: None,
     };
-    steering.read(&statics, [still]);
+    steering.read(&statics, Moves::Team, [still]);
     let goal = eighths(64, 0);
     let route = PlannedRoute::new(goal, eighths(7, 0), &[goal]);
     let steered = Steered {
@@ -105,7 +105,7 @@ fn a_walker_that_gathers_steers_round_no_unit_that_gathers() {
             idle: false,
             arrived: None,
         };
-        steering.read(&statics, [gathering_still]);
+        steering.read(&statics, Moves::Team, [gathering_still]);
         let steered = Steered {
             id,
             position: eighths(0, 0),
@@ -122,6 +122,63 @@ fn a_walker_that_gathers_steers_round_no_unit_that_gathers() {
             .is_some()
     });
     assert_eq!(detours, [false, true]);
+}
+
+#[test]
+fn a_walk_that_may_move_an_idle_friend_walks_through_it_and_one_too_deep_goes_round() {
+    // A walker of a quarter meter of team 0 at the origin, bound for (2, 0), where an idle friend
+    // of a quarter meter stands: a walk of its own and a step aside, each of which moves the friend
+    // aside, walk straight to it, with no detour; a step aside as deep as `AsideDepth::MOST`, which
+    // moves no friend, steers round it, by a short route that cannot end on it
+    // (04-capabilities/navigation.md, A walker walks through the friends it moves aside).
+    let quarter = Num::QUARTER;
+    let walker = Walker {
+        layer: Layer::FIRST,
+        radius: quarter,
+    };
+    let bounds = Bounds::new([Num::int(-8); 2], [Num::int(8); 2]);
+    let cells = Grid::new(quarter, bounds.unwrap()).unwrap();
+    let grid = PathingGrid::new(cells, WalkerKinds::from([walker]), &WallGrid::default());
+    let statics = BodyIndex::new(quarter);
+    let mut ids = IdAllocator::default();
+    let (id, friend) = (ids.allocate(), ids.allocate());
+    let goal = eighths(16, 0);
+    let idle = TickBody {
+        body: IndexedBody {
+            id: friend,
+            position: goal,
+            shape: Shape::Circle(Radius::new(quarter).unwrap()),
+            layer: Layer::FIRST,
+        },
+        team: Some(Team::new(0)),
+        walks: false,
+        gathers: false,
+        idle: true,
+        arrived: None,
+    };
+    let route = PlannedRoute::new(goal, eighths(0, 0), &[goal]);
+    let own = AsideDepth::default();
+    let deepest = own.deeper(Vec3::ZERO).deeper(Vec3::ZERO);
+    let detours = [own, own.ahead(Vec3::ZERO), deepest].map(|depth| {
+        let mut planner = RoutePlanner::new(&cells);
+        let mut steering = Steering::default();
+        steering.read(&statics, Moves::Team, [idle]);
+        let steered = Steered {
+            id,
+            position: eighths(0, 0),
+            team: Some(Team::new(0)),
+            step: quarter,
+            walker,
+            stuck: false,
+            gathering: false,
+            goal,
+            depth,
+        };
+        steering
+            .steer(&mut planner, &grid, &statics, steered, route.read().ahead())
+            .is_some()
+    });
+    assert_eq!(detours, [false, false, true]);
 }
 
 #[test]
@@ -162,7 +219,6 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
         stands(eighths(2, -7), 0, false),
     ];
     let mut steering = Steering::default();
-    steering.read(&statics, bodies);
     let steered = Steered {
         id: walker,
         position: eighths(0, 0),
@@ -178,16 +234,11 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
         depth: AsideDepth::default(),
     };
     let stretch = (eighths(64, 0), Num::int(4));
-    let asides = |moves, depth| {
+    let mut asides = |moves, depth| {
+        steering.read(&statics, moves, bodies);
         let mut asides = Vec::new();
         let passage = 3..5;
-        steering.asides(
-            Steered { depth, ..steered },
-            stretch,
-            moves,
-            &passage,
-            &mut asides,
-        );
+        steering.asides(Steered { depth, ..steered }, stretch, &passage, &mut asides);
         asides.sort_by_key(|aside| aside.id);
         asides
     };
@@ -202,8 +253,8 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
     // which the friend's own walk keeps ahead of the walker and takes a step deeper to a side;
     // one 2 deep moves none (04-capabilities/navigation.md, An idle friend steps aside;
     // 04-capabilities/navigation.md, A friend yields through the friends that yield).
-    let [own, once, twice] =
-        [0, 1, 2].map(|deep| (0..deep).fold(AsideDepth::default(), |depth, _| depth.deeper()));
+    let [own, once, twice] = [0, 1, 2]
+        .map(|deep| (0..deep).fold(AsideDepth::default(), |depth, _| depth.deeper(Vec3::ZERO)));
     for walk in [own, once] {
         assert_eq!(
             asides(Moves::Team, walk),

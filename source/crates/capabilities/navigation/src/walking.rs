@@ -153,7 +153,7 @@ impl Walking {
                 }
             },
         );
-        steering.read(&statics, read);
+        steering.read(&statics, crowd.moves, read);
         let mut walkers = units.p1();
         let stuck_ticks = Progress::stuck_after(*rate);
         let ask_ticks = Progress::ask_after(*rate);
@@ -213,7 +213,7 @@ impl Walking {
                 let passage = number(start)..number(passages.len());
                 let before = asides.len();
                 let stretch = (route.read().ahead()[0], Steering::reach(&grid));
-                steering.asides(steered, stretch, crowd.moves, &passage, &mut asides);
+                steering.asides(steered, stretch, &passage, &mut asides);
                 if asides.len() == before {
                     passages.truncate(start);
                 }
@@ -293,10 +293,10 @@ impl Walking {
                 planner.yield_place(walkable, friend, aside.to, passage)
             };
             debug_assert!(aside.depth.clears(), "a walk too deep moves no friend");
-            let side = aside.depth.deeper();
+            let from = position.get();
+            let side = aside.depth.deeper(from);
             let mut found = place(Friends::Pass {
                 team: team.copied(),
-                moves: crowd.moves,
             });
             if !side.clears() && found.is_some_and(|to| !passage.leads_to(to)) {
                 found = place(Friends::Block);
@@ -314,7 +314,7 @@ impl Walking {
             Destination::route_to(&mut destination, Some(to));
             let mut walk = walk.expect("a walker carries how deep its walk is");
             let depth = if passage.leads_to(to) {
-                aside.depth
+                aside.depth.ahead(from)
             } else {
                 side
             };
@@ -404,8 +404,9 @@ impl Walking {
     /// the next with the rest of its step. Past the last it has arrived, and drops its destination,
     /// notes its goal as the one it arrived at, and drops its route when the route reached the
     /// goal: one that ends short stays, arrived short, so an order that sends the unit there again
-    /// plans nothing. A unit that walks has arrived at no goal. A unit whose route waits for the
-    /// planner walks the one it has, if any. One its tags or a forced move stop keeps both.
+    /// plans nothing, and a step aside that ends short where it began leaves its unit hemmed in. A
+    /// unit that walks has arrived at no goal. A unit whose route waits for the planner walks the
+    /// one it has, if any. One its tags or a forced move stop keeps both.
     ///
     /// First it turns toward its leg's way, at its turn step, or at once with none, and it stands
     /// this tick unless it then faces within `Facing::WITHIN` of the way
@@ -422,6 +423,7 @@ impl Walking {
                     &mut Progress,
                     Option<&mut ArrivedAt>,
                     Option<&mut AsideDepth>,
+                    Option<&mut Hemmed>,
                 ),
                 (&MoveStep, Option<&TurnStep>),
                 Option<&UnitTags>,
@@ -434,7 +436,7 @@ impl Walking {
             (mut position, mut facing),
             mut destination,
             mut route,
-            (mut progress, arrived, depth),
+            (mut progress, arrived, depth, hemmed),
             (step, turn),
             tags,
             forced,
@@ -460,6 +462,16 @@ impl Walking {
                         Destination::route_to(&mut destination, None);
                         ArrivedAt::set(&mut arrived, route.goal());
                         let mut depth = depth.expect("a walker carries how deep its walk is");
+                        // A step aside that ends short of its place where it began found no place
+                        // it reaches, so its unit is firm, as one whose search found none, and the
+                        // walker that moved it asks it no more; one that went on its way and
+                        // ends short is asked again from there (04-capabilities/navigation.md, A
+                        // friend that cannot yield is firm, and a stuck walker's route walls it).
+                        if !route.is_reached() && depth.went_nowhere(at, step.get()) {
+                            let mut hemmed =
+                                hemmed.expect("a walker carries whether it is hemmed in");
+                            Hemmed::set(&mut hemmed, true);
+                        }
                         AsideDepth::set(&mut depth, AsideDepth::default());
                         if route.is_reached() {
                             route.clear();

@@ -357,6 +357,17 @@ impl BodyIndex {
     /// Whether a body of `walker`'s layer comes closer to `segment` than the walker's radius,
     /// exactly: whether the walker along it would overlap one.
     pub fn blocks(&self, segment: Segment, walker: Walker) -> bool {
+        self.blocks_where(segment, walker, |_| true)
+    }
+
+    /// Whether a body that `counts` blocks `walker` along `segment`, as `blocks` says of every
+    /// body.
+    pub(crate) fn blocks_where(
+        &self,
+        segment: Segment,
+        walker: Walker,
+        counts: impl Fn(&IndexedBody) -> bool,
+    ) -> bool {
         let radius = walker.radius;
         let (from, to) = (segment.start(), segment.end());
         let span = |a: Num, b: Num| [(a.min(b) - radius).to_bits(), (a.max(b) + radius).to_bits()];
@@ -366,7 +377,7 @@ impl BodyIndex {
             high: [high_x, high_z],
         };
         let met = self.meeting(walker.layer, square, |body| {
-            if body.comes_closer(segment, radius) {
+            if counts(body) && body.comes_closer(segment, radius) {
                 ControlFlow::Break(())
             } else {
                 ControlFlow::Continue(())

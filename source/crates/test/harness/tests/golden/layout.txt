@@ -1,4 +1,4 @@
-data_version 68
+data_version 69
 actions.progress 91dd90cbde2fd145
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
@@ -30,7 +30,7 @@ mode.unanswered_deaths c5f0a062cde4b924
 mode.unanswered_player_slot_events a62aa5e9b4a021fa
 mode.victory_holders 0a042fbbe0f1bd88
 navigation.arrived_at bfab885d353d14c5
-navigation.aside_depth c33609cf4970f60e
+navigation.aside_depth cf0ec24e2894148c
 navigation.hemmed bf9a630f236a8e4f
 navigation.on_path daf5e41f0755038d
 navigation.path_arrivals b6628fe8a1512fc6

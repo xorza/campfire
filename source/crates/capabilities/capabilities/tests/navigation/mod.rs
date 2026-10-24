@@ -654,10 +654,11 @@ fn a_route_goes_round_a_block_of_idle_friends_and_through_it_when_walled_in() {
     // Boxes of 10 by 4 m at (0, ±4) wall the block in, from z = −2 to 2: the route goes through
     // it, row z = 0.25 a waypoint a cell, as a line across a priced cell is not smoothed, and the
     // friends step aside, each to a place clear of the walker's way that it reaches without
-    // passing the walker, and take its pushes; the walker goes round the last of them below its
-    // row, and arrives in its tick 72 (04-capabilities/navigation.md, A route prices the units on
-    // it; 04-capabilities/navigation.md, A friend yields to the nearest place clear of the way;
-    // 04-capabilities/navigation.md, A friend yields through the friends that yield).
+    // passing the walker, and take its pushes; the walker and each friend that steps aside walk
+    // through the idle friends they move aside, which step aside in turn, and the walker arrives
+    // in its tick 63 (04-capabilities/navigation.md, A route prices the units on it;
+    // 04-capabilities/navigation.md, A friend yields to the nearest place clear of the way;
+    // 04-capabilities/navigation.md, A walker walks through the friends it moves aside).
     let half = Num::HALF;
     let goal = Vec3::from((6, 0, 0));
     let run = |walled: bool| {
@@ -713,7 +714,7 @@ fn a_route_goes_round_a_block_of_idle_friends_and_through_it_when_walled_in() {
         .map(|column| quarters(2 * column - 7, 1))
         .chain([goal])
         .collect();
-    assert_eq!(run(true), (through, Some(72), goal));
+    assert_eq!(run(true), (through, Some(63), goal));
 }
 
 /// The walls of the lane a wide walker passes its wide friends in: dead ends above it, none, or
@@ -739,12 +740,13 @@ fn a_wide_walker_passes_wide_idle_friends_that_yield_to_free_room_and_stops_at_h
     // With none, a friend's search passes through the other to a place ahead, past the walker's
     // way, and the other steps ahead in turn (04-capabilities/navigation.md, A friend yields
     // through the friends that yield). With the lane open past x = 6, they leave it, the first to
-    // (7.25, 2.75), the second, pushed, to (7.74, −1.91), and the walker arrives in tick 75 too.
+    // (7.25, 2.25), the second, pushed, to (7.24, −1.87), and the walker arrives in tick 75 too.
     // With it closed, they drive on until the lane's end holds no place clear of the walker's way,
-    // at x 7.25 and 9.25, each hemmed in, firm; the walker's route walls them, and it arrives
-    // short of its goal in tick 60, at (5.25, −0.25), the reached cell nearest the goal; an order
-    // of its own frees the first, which then walks (04-capabilities/navigation.md, A friend that
-    // cannot yield is firm, and a stuck walker's route walls it).
+    // at x 7.25 and 9.25, each hemmed in, firm, the first as its step aside ends short where it
+    // began; the walker's route walls them, and it arrives short of its goal in tick 61, at
+    // (5.25, −0.25), the reached cell nearest the goal; an order of its own frees the first, which
+    // then walks (04-capabilities/navigation.md, A friend that cannot yield is firm, and a stuck
+    // walker's route walls it).
     let one = Num::ONE;
     let goal = Vec3::from((9, 0, 0));
     let run = |lane: Lane| {
@@ -820,7 +822,7 @@ fn a_wide_walker_passes_wide_idle_friends_that_yield_to_free_room_and_stops_at_h
     assert_eq!(
         run(Lane::Closed),
         (
-            Some(60),
+            Some(61),
             quarters(21, -1),
             ArrivedShort::of(Some(goal)),
             [true; 2],
@@ -835,7 +837,7 @@ fn a_wide_walker_passes_wide_idle_friends_that_yield_to_free_room_and_stops_at_h
             goal,
             ArrivedShort::of(None),
             [false; 2],
-            [bits(29, 11), [129819151, 0, -32032361]],
+            [bits(29, 9), [121479130, 0, -31438780]],
             true
         )
     );
@@ -875,16 +877,17 @@ fn walkers_sent_to_one_point_pack_round_it_and_stop() {
         [Some(goal); 5]
     );
     // In bits of 2⁻²⁴: the first at (4.033, 0.002), pushed a little past the goal by the others'
-    // last pushes, the next two either side behind it at x 3.03 and 3.05, the last two behind
-    // those at x 2.20 and 2.10.
+    // last pushes, the next two either side behind it at x 3.04 and 3.05, the last two behind
+    // those at x 2.15 and 2.16, each walking into the crowd at the goal until it touches one
+    // (04-capabilities/navigation.md, A walker walks through the friends it moves aside).
     assert_eq!(
         walkers.map(|id| game.part::<Position>(id).get().to_bits()),
         [
-            [36834922, 0, -17461159],
-            [50918212, 0, -8343268],
+            [36119683, 0, -16224683],
+            [50993640, 0, -8463214],
             [67666917, 0, 38777],
-            [51196187, 0, 8431646],
-            [35301607, 0, 13801685],
+            [51200800, 0, 8312723],
+            [36320996, 0, 16062977],
         ]
     );
 }

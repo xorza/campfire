@@ -51,7 +51,7 @@ impl Scene {
         match self {
             Self::Open => 320,
             Self::Crowd => 1280,
-            Self::Corridor => 1440,
+            Self::Corridor => 1680,
         }
     }
 

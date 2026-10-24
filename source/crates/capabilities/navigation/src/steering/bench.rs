@@ -10,6 +10,7 @@ use criterion::Criterion;
 use crate::aside_depth::AsideDepth;
 use crate::bench::scene_cells;
 use crate::broadphase::internals::{indexed, scene, statics};
+use crate::moves::Moves;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::RoutePlanner;
 use crate::steering::{Steered, Steering, TickBody};
@@ -61,7 +62,7 @@ pub(crate) fn steering(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "steering", Scale::Sample);
     group.throughput(campfire_measure::elements(bodies.len()));
     group.bench_function("read", |bench| {
-        bench.iter(|| steering.read(&index, black_box(bodies.iter().copied())));
+        bench.iter(|| steering.read(&index, Moves::Team, black_box(bodies.iter().copied())));
     });
     group.throughput(campfire_measure::elements(INPUTS));
     group.bench_function("steer", |bench| {

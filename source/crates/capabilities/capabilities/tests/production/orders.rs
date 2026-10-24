@@ -384,25 +384,25 @@ fn a_trained_unit_leaves_through_its_team_at_once_and_reaches_its_crowded_rally_
         (leaving, arrived, leaves, exit, unparted)
     };
     // Units that drive, of weight 4, as a war factory's, leave the same way and arrive in ticks
-    // 5, 6, 6 and 8, the fourth leaving a tick longer. A friend of the crowd that steps ahead of a
-    // grunt may end on another, which steps on in turn: for that tick the two overlap past the
-    // slack, a pair in tick 9 of the grunts that step, two in tick 8 and one in tick 9 of those
-    // that drive, which the next tick parts (04-capabilities/navigation.md, A friend yields through
-    // the friends that yield).
+    // 5, 6, 6 and 8, the fourth leaving a tick longer. A friend of the crowd that steps aside may
+    // walk into another, which steps on in turn: a unit that steps takes the walker's push and
+    // leaves no overlap, but one that drives takes none, and for that tick the two overlap past
+    // the slack, two pairs in tick 8 and one each in ticks 9 and 11, which the next tick parts
+    // (04-capabilities/navigation.md, A walker walks through the friends it moves aside).
     let cases = [
         (
             Gait::Step,
             1,
             [vec![false, false, true], vec![false, false, true, true]],
             [5, 6, 7, 7],
-            vec![(9, 1)],
+            vec![],
         ),
         (
             Gait::Drive,
             4,
             [vec![false, false, true], vec![false, false, false, true]],
             [5, 6, 6, 8],
-            vec![(8, 2), (9, 1)],
+            vec![(8, 2), (9, 1), (11, 1)],
         ),
     ];
     for (gait, weight, later, ticks, deep) in cases {

@@ -84,17 +84,17 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
 
 [base]
-ended = 14260
+ended = 12082
 standing = [0, 8]
-think_ops = 17033
-stalls = 313
+think_ops = 19927
+stalls = 371
 
 [base.result]
 Won = 1
 
 [[base.drops]]
 unread = 0
-untaken = 0
+untaken = 1
 
 [base.drops.unsent]
 no_avatar = 0
@@ -111,7 +111,7 @@ log_full = 0
 [base.drops.dropped]
 no_unit = 0
 no_walker = 0
-no_weapon = 0
+no_weapon = 3
 hidden = 0
 slot_kind = 0
 no_build = 0
@@ -124,7 +124,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 7
+no_target = 6
 no_place = 0
 no_stack = 0
 
@@ -141,10 +141,10 @@ slot_kind = 0
 no_build = 0
 
 [attack]
-ended = 24017
+ended = 18630
 standing = [4, 0]
 think_ops = 9101
-stalls = 421
+stalls = 259
 
 [attack.result]
 Won = 0
