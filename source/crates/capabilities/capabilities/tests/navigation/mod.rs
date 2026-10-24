@@ -500,14 +500,16 @@ fn an_idle_friend_on_a_walkers_way_steps_aside_before_it_stalls_and_an_enemy_or_
     // stands on from that stretch, and the walker, which never stops, is done in tick 58
     // (04-capabilities/navigation.md, An idle friend steps aside). Units that drive do the same,
     // and take no push: the walker is done in tick 59 (04-capabilities/navigation.md, A unit that
-    // drives yields by driving). An enemy stays, and so does a friend at work, and the walker never
-    // arrives: it comes no nearer its waypoint from tick 31, and, stuck 30 ticks, 1 s, it asks its
-    // route again in tick 61, answered as the next tick starts, whose waypoint it takes fresh, and
-    // again each 31 ticks, whatever detour it takes (walkers-get-through.md, A walker progresses
-    // only when it comes nearer its waypoint); the sixth time, past its 5 asks, it stops where it
-    // stands, in tick 61 + 5 · 31 = 216, and the one the friend at work holds, whose route goes
-    // round the friend's cells, in tick 218, with no destination and no goal to arrive short of
-    // (04-capabilities/navigation.md, A stuck walker plans again, then stops): 6 stalls, which
+    // drives yields by driving). An enemy stays, and so does a friend at work. The walker the
+    // enemy holds is stuck once, and the route it asks walls the enemy's cells and goes round the
+    // corridor's walls: one stall, and it arrives in tick 202 (walkers-get-through.md, A stuck
+    // walker's route walls the units of other teams that stand). The one the friend at work holds
+    // never arrives: it comes no nearer its waypoint from tick 33, and, stuck 30 ticks, 1 s, it
+    // asks its route again in tick 63, answered as the next tick starts, whose waypoint it takes
+    // fresh, and again each 31 ticks, whatever detour it takes (walkers-get-through.md, A walker
+    // progresses only when it comes nearer its waypoint); the sixth time, past its 5 asks, it stops
+    // where it stands, in tick 63 + 5 · 31 = 218, with no destination and no goal to arrive short
+    // of (04-capabilities/navigation.md, A stuck walker plans again, then stops): 6 stalls, which
     // navigation's report counts, against none of a walker the friend steps aside for.
     let half = Num::HALF;
     let blocker_at = Vec3::new(half, Num::ZERO, Num::ZERO);
@@ -573,24 +575,23 @@ fn an_idle_friend_on_a_walkers_way_steps_aside_before_it_stalls_and_an_enemy_or_
         );
         assert_eq!(friend.to_bits(), at, "{gait:?}");
     }
-    // The enemy costs the walker's route nothing, so the walker walks into it on the line, and
-    // stops touching it, the two radii off. The friend at work costs it more, so its route goes
-    // round the friend's cells, and the walker presses at the mouth's corner, against the
+    // The walker round the enemy ends on its goal. The friend at work costs it more, so its route
+    // goes round the friend's cells, and the walker presses at the mouth's corner, against the
     // corridor's wall a bit short of z = 0.5, touching the friend 30° off the line, at x within
     // bits of 0.5 − √3/2; once stopped, pinned by the wall, it leaves the few bits of overlap the
     // rounding left to the friend.
-    let pressed = [
-        (1, false, [[-8388608, 0, 0], [8388608, 0, 0]], 216),
-        (0, true, [[-6140873, 0, 8388607], [8388620, 0, -7]], 218),
+    let held = [
+        (1, false, [[100663296, 0, 0], [8388608, 0, 0]], 202, 1),
+        (0, true, [[-6140873, 0, 8388607], [8388620, 0, -7]], 218, 6),
     ];
-    for (team, at_work, at, stopped) in pressed {
+    for (team, at_work, at, ended, asked) in held {
         let ([walker, blocker], (done, aside, stalls), short) = run(team, at_work, Gait::Step);
-        assert_eq!([walker, blocker].map(Vec3::to_bits), at, "{team}");
         assert_eq!(
             (done, aside, stalls, short),
-            (Some(stopped), None, 6, ArrivedShort::of(None)),
+            (Some(ended), None, asked, ArrivedShort::of(None)),
             "{team}"
         );
+        assert_eq!([walker, blocker].map(Vec3::to_bits), at, "{team}");
     }
 }
 

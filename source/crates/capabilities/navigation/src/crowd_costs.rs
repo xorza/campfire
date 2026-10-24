@@ -13,11 +13,13 @@ use crate::walker_kinds::WalkerKinds;
 /// The units of each team that stand, as a long route prices the cells they hold for a walker of
 /// their team (04-capabilities/navigation.md, A route prices the units on it): for each kind of
 /// walker of the pathing grid and each team, how many units' bodies come closer to each cell's
-/// center than the two radii, of those a walker of the team may move and of those it may not. A
-/// walker pays nothing for an enemy, which it fights or meets, as Zero Hour's pathfinder prices
-/// only allies. Each tick counts again only the units whose body, place, team or standing changed
-/// since the last, against the stamps it keeps, so a crowd at rest costs a pass over the units and
-/// no write.
+/// center than the two radii, of those a walker of the team may move and of those it may not; and
+/// for each kind, how many units of any team or none. A walker pays nothing for an enemy, which it
+/// fights or meets, as Zero Hour's pathfinder prices only allies, but a stuck walker's route walls
+/// the units of other teams (walkers-get-through.md, A stuck walker's route walls the units of
+/// other teams that stand). Each tick counts again only the units whose body, place, team or
+/// standing changed since the last, against the stamps it keeps, so a crowd at rest costs a pass
+/// over the units and no write.
 #[derive(Resource, Debug)]
 pub(crate) struct CrowdCosts {
     grid: Grid,
@@ -28,11 +30,16 @@ pub(crate) struct CrowdCosts {
     fresh: Vec<Stamp>,
 }
 
-/// One kind of walker's counts, a team's at a time, by team.
+/// One kind of walker's counts, a team's at a time, by team, and of every unit that stands, of
+/// any team or none: how many, by cell, and the cells some unit holds, one bit a cell, column by
+/// column.
 #[derive(Debug)]
 struct KindCosts {
     walker: Walker,
     teams: Vec<TeamCosts>,
+    units: u32,
+    standing: Vec<u16>,
+    stood: Vec<u64>,
 }
 
 /// One team's units, as a walker of one kind counts them, by cell: those it may move, those it
@@ -50,12 +57,12 @@ struct TeamCosts {
     stood: Vec<u64>,
 }
 
-/// A unit of a team that stands, as the costs count it: its body, its team, and how a walker of
-/// its team takes it.
+/// A unit that stands, as the costs count it: its body, its team, if any, and how a walker of its
+/// team takes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Stamp {
     pub(crate) body: IndexedBody,
-    pub(crate) team: Team,
+    pub(crate) team: Option<Team>,
     pub(crate) standing: Standing,
 }
 
@@ -70,15 +77,17 @@ pub(crate) enum Standing {
     Hemmed,
 }
 
-/// What a walker's route makes of the cells a unit hemmed in holds.
+/// What a walker's route makes of the units that stand that it may not pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HemmedUnits {
-    /// It pays for them as for any unit it may not move.
+pub(crate) enum CrowdWalls {
+    /// It pays for a friend hemmed in as for any it may not move, and nothing for a unit of
+    /// another team.
     Priced,
-    /// It may not enter them, as a stuck walker's route
-    /// (04-capabilities/navigation.md, A friend that cannot yield is firm, and a stuck walker's
-    /// route walls it).
-    Walled,
+    /// It may not enter the cells a friend hemmed in or a unit of another team holds, as a stuck
+    /// walker's route (04-capabilities/navigation.md, A friend that cannot yield is firm, and a
+    /// stuck walker's route walls it; walkers-get-through.md, A stuck walker's route walls the
+    /// units of other teams that stand).
+    Stuck,
 }
 
 /// Whether a unit's stamp adds to the counts or takes from them.
@@ -88,12 +97,13 @@ enum Change {
     Take,
 }
 
-/// What a walker of one kind and team pays to enter a cell of the grid, past the step, and
-/// whether it may enter the cells a unit hemmed in holds.
+/// What a walker of one kind and team pays to enter a cell of the grid, past the step, by its
+/// team's counts, if any stands, and which cells it may not enter, by its kind's and `walls`.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CrowdPrice<'a> {
-    costs: &'a TeamCosts,
-    hemmed: HemmedUnits,
+    team: Option<&'a TeamCosts>,
+    kind: &'a KindCosts,
+    walls: CrowdWalls,
 }
 
 impl CrowdCosts {
@@ -107,11 +117,15 @@ impl CrowdCosts {
 
     /// Counts of no unit, on `grid`, for each of `walkers`.
     pub(crate) fn new(grid: Grid, walkers: &WalkerKinds) -> Self {
+        let cells = grid.cells();
         let kinds = walkers
             .iter()
             .map(|&walker| KindCosts {
                 walker,
                 teams: Vec::new(),
+                units: 0,
+                standing: vec![0; cells],
+                stood: vec![0; cells.div_ceil(64)],
             })
             .collect();
         Self {
@@ -161,24 +175,30 @@ impl CrowdCosts {
         self.stamps = fresh;
     }
 
-    /// What `walker` of `team` pays for its team's units, making of those hemmed in what
-    /// `hemmed` says; none for a kind the grid has not, a walker of no team, or a team no unit of
-    /// stands for.
+    /// What `walker` of `team` pays for its team's units and which cells it may not enter, as
+    /// `walls` says; none for a kind the grid has not, and, for a route that walls nothing, for a
+    /// walker of no team or a team no unit of stands for, or, for a stuck walker's, with no unit
+    /// that stands: a price that changes nothing costs no test.
     pub(crate) fn price(
         &self,
         walker: Walker,
         team: Option<Team>,
-        hemmed: HemmedUnits,
+        walls: CrowdWalls,
     ) -> Option<CrowdPrice<'_>> {
-        let team = team?;
         let kind = self.kinds.iter().find(|kind| kind.walker == walker)?;
-        let at = kind.teams.binary_search_by_key(&team, |costs| costs.team);
-        let costs = &kind.teams[at.ok()?];
-        (costs.units > 0).then_some(CrowdPrice { costs, hemmed })
+        let team = team.and_then(|team| {
+            let at = kind.teams.binary_search_by_key(&team, |costs| costs.team);
+            Some(&kind.teams[at.ok()?]).filter(|costs| costs.units > 0)
+        });
+        let prices = match walls {
+            CrowdWalls::Priced => team.is_some(),
+            CrowdWalls::Stuck => kind.units > 0,
+        };
+        prices.then_some(CrowdPrice { team, kind, walls })
     }
 
-    /// Adds `stamp`'s unit to the counts of its team for each kind of its layer, or takes it
-    /// away, as `change` says.
+    /// Adds `stamp`'s unit to the counts of each kind of its layer, and of its team in each, or
+    /// takes it away, as `change` says.
     fn count(&mut self, stamp: Stamp, change: Change) {
         let Stamp {
             body,
@@ -193,11 +213,33 @@ impl CrowdCosts {
                 Change::Take => *count - 1,
             }
         };
+        let mark = |stood: &mut [u64], cell: usize, set: bool| {
+            let bit = cell % columns * rows + cell / columns;
+            if set {
+                stood[bit / 64] |= 1 << (bit % 64);
+            } else {
+                stood[bit / 64] &= !(1 << (bit % 64));
+            }
+        };
+        let units = |units: u32| match change {
+            Change::Add => units + 1,
+            Change::Take => units - 1,
+        };
         for kind in self
             .kinds
             .iter_mut()
             .filter(|kind| kind.walker.layer == body.layer)
         {
+            kind.units = units(kind.units);
+            body.spans_closer(&self.grid, kind.walker.radius, |run| {
+                for cell in run {
+                    step(&mut kind.standing[cell]);
+                    mark(&mut kind.stood, cell, kind.standing[cell] > 0);
+                }
+            });
+            let Some(team) = team else {
+                continue;
+            };
             let at = match kind.teams.binary_search_by_key(&team, |costs| costs.team) {
                 Ok(at) => at,
                 Err(at) => {
@@ -214,10 +256,7 @@ impl CrowdCosts {
                 }
             };
             let costs = &mut kind.teams[at];
-            costs.units = match change {
-                Change::Add => costs.units + 1,
-                Change::Take => costs.units - 1,
-            };
+            costs.units = units(costs.units);
             body.spans_closer(&self.grid, kind.walker.radius, |run| {
                 for cell in run {
                     match standing {
@@ -228,12 +267,11 @@ impl CrowdCosts {
                             step(&mut costs.hemmed[cell]);
                         }
                     }
-                    let bit = cell % columns * rows + cell / columns;
-                    if costs.movable[cell] + costs.held[cell] > 0 {
-                        costs.stood[bit / 64] |= 1 << (bit % 64);
-                    } else {
-                        costs.stood[bit / 64] &= !(1 << (bit % 64));
-                    }
+                    mark(
+                        &mut costs.stood,
+                        cell,
+                        costs.movable[cell] + costs.held[cell] > 0,
+                    );
                 }
             });
         }
@@ -244,24 +282,40 @@ impl<'a> CrowdPrice<'a> {
     /// What entering `cell` costs past the step: `HELD` where a unit the walker may not move
     /// stands, else `MOVABLE` where one it may stands, else nothing.
     pub(crate) fn of(self, cell: usize) -> u32 {
-        if self.costs.held[cell] > 0 {
+        let Some(costs) = self.team else {
+            return 0;
+        };
+        if costs.held[cell] > 0 {
             CrowdCosts::HELD
-        } else if self.costs.movable[cell] > 0 {
+        } else if costs.movable[cell] > 0 {
             CrowdCosts::MOVABLE
         } else {
             0
         }
     }
 
-    /// Whether the walker may not enter `cell`, as a unit hemmed in holds it and the price
-    /// walls such units.
+    /// Whether the walker may not enter `cell`: on a stuck walker's route, as a friend hemmed in
+    /// holds it, or more units than its team's do, so one of another team or none.
     pub(crate) fn walls(self, cell: usize) -> bool {
-        self.hemmed == HemmedUnits::Walled && self.costs.hemmed[cell] > 0
+        if self.walls == CrowdWalls::Priced {
+            return false;
+        }
+        let (own, hemmed) = self.team.map_or((0, false), |costs| {
+            (
+                costs.movable[cell] + costs.held[cell],
+                costs.hemmed[cell] > 0,
+            )
+        });
+        hemmed || self.kind.standing[cell] > own
     }
 
-    /// The cells some unit holds, one bit a cell, column by column.
+    /// The cells some unit holds, one bit a cell, column by column: its team's on a route that
+    /// walls nothing, every unit's on a stuck walker's, so no line crosses a walled cell.
     pub(crate) fn stood(self) -> &'a [u64] {
-        &self.costs.stood
+        match (self.walls, self.team) {
+            (CrowdWalls::Priced, Some(costs)) => &costs.stood,
+            _ => &self.kind.stood,
+        }
     }
 }
 
@@ -274,6 +328,9 @@ impl Cache for CrowdCosts {
     fn clear(&mut self) {
         for kind in &mut self.kinds {
             kind.teams.clear();
+            kind.units = 0;
+            kind.standing.fill(0);
+            kind.stood.fill(0);
         }
         self.stamps.clear();
     }
@@ -313,57 +370,69 @@ mod tests {
             standing,
         };
         let [red, blue] = [0, 1].map(Team::new);
-        let [idle, penned, kept] = [(); 3].map(|()| ids.allocate());
+        let [idle, penned, kept, foe, stray] = [(); 5].map(|()| ids.allocate());
         let cell = |x: usize, z: usize| z * 4 + x;
-        let cells = [cell(1, 1), cell(2, 2), cell(3, 3), cell(0, 3)];
+        let cells = [
+            cell(1, 1),
+            cell(2, 2),
+            cell(3, 3),
+            cell(0, 3),
+            cell(3, 0),
+            cell(0, 0),
+        ];
         let prices = |costs: &CrowdCosts, team| {
-            let price = costs.price(walker, Some(team), HemmedUnits::Priced);
+            let price = costs.price(walker, Some(team), CrowdWalls::Priced);
             cells.map(|cell| price.map_or(0, |price| price.of(cell)))
         };
-        let walls = |costs: &CrowdCosts, hemmed| {
-            let price = costs.price(walker, Some(red), hemmed);
+        let walls = |costs: &CrowdCosts, walls| {
+            let price = costs.price(walker, Some(red), walls);
             cells.map(|cell| price.is_some_and(|price| price.walls(cell)))
         };
         // No unit stands: no price, and no test of the crowd's cells.
-        assert!(
-            costs
-                .price(walker, Some(red), HemmedUnits::Priced)
-                .is_none()
-        );
-        // A red unit a red walker may move at (1, 1), one hemmed in at (2, 2), and one the mode
-        // holds at (0, 3): the first costs a red walker 42, the others 84 each; a blue walker pays
-        // for none, and a walker of no team has no price. Only a price that walls the hemmed in
-        // walls a cell, the hemmed unit's alone.
+        assert!(costs.price(walker, Some(red), CrowdWalls::Priced).is_none());
+        assert!(costs.price(walker, Some(red), CrowdWalls::Stuck).is_none());
+        // A red unit a red walker may move at (1, 1), one hemmed in at (2, 2), one the mode holds
+        // at (0, 3), a blue one at (3, 0) and one of no team at (0, 0): the first costs a red
+        // walker 42, the next two 84 each, and the others nothing; a blue walker pays for none of
+        // the red, and a walker of no team has no price. Only a stuck walker's route walls cells:
+        // the hemmed unit's, the blue unit's and the one of no team's
+        // (walkers-get-through.md, A stuck walker's route walls the units of other teams that
+        // stand).
         costs.update([
-            stamp(idle, at(1, 1), red, Standing::Movable),
-            stamp(penned, at(2, 2), red, Standing::Hemmed),
-            stamp(kept, at(0, 3), red, Standing::Held),
+            stamp(idle, at(1, 1), Some(red), Standing::Movable),
+            stamp(penned, at(2, 2), Some(red), Standing::Hemmed),
+            stamp(kept, at(0, 3), Some(red), Standing::Held),
+            stamp(foe, at(3, 0), Some(blue), Standing::Movable),
+            stamp(stray, at(0, 0), None, Standing::Held),
         ]);
-        assert_eq!(prices(&costs, red), [42, 84, 0, 84]);
-        assert_eq!(prices(&costs, blue), [0; 4]);
-        assert!(costs.price(walker, None, HemmedUnits::Priced).is_none());
-        assert_eq!(walls(&costs, HemmedUnits::Priced), [false; 4]);
+        assert_eq!(prices(&costs, red), [42, 84, 0, 84, 0, 0]);
+        assert_eq!(prices(&costs, blue), [0, 0, 0, 0, 42, 0]);
+        assert!(costs.price(walker, None, CrowdWalls::Priced).is_none());
+        assert_eq!(walls(&costs, CrowdWalls::Priced), [false; 6]);
         assert_eq!(
-            walls(&costs, HemmedUnits::Walled),
-            [false, true, false, false]
+            walls(&costs, CrowdWalls::Stuck),
+            [false, true, false, false, true, true]
         );
-        // The movable unit moves to (3, 3), and the hemmed one walks: their old cells cost
-        // nothing again, and no cell is walled.
+        // The movable unit moves to (3, 3), and the hemmed one, the blue one and the one of no
+        // team go: their old cells cost nothing again, and no cell is walled.
         costs.update([
-            stamp(idle, at(3, 3), red, Standing::Movable),
-            stamp(kept, at(0, 3), red, Standing::Held),
+            stamp(idle, at(3, 3), Some(red), Standing::Movable),
+            stamp(kept, at(0, 3), Some(red), Standing::Held),
         ]);
-        assert_eq!(prices(&costs, red), [0, 0, 42, 84]);
-        assert_eq!(walls(&costs, HemmedUnits::Walled), [false; 4]);
+        assert_eq!(prices(&costs, red), [0, 0, 42, 84, 0, 0]);
+        assert_eq!(walls(&costs, CrowdWalls::Stuck), [false; 6]);
         // All go, and the costs price nothing again.
         costs.update([]);
+        assert!(costs.price(walker, Some(red), CrowdWalls::Priced).is_none());
+        assert!(costs.price(walker, Some(red), CrowdWalls::Stuck).is_none());
+        let kind = &costs.kinds[0];
+        let team = &kind.teams[0];
+        assert!(team.stood.iter().chain(&kind.stood).all(|&word| word == 0));
         assert!(
-            costs
-                .price(walker, Some(red), HemmedUnits::Priced)
-                .is_none()
+            team.hemmed
+                .iter()
+                .chain(&kind.standing)
+                .all(|&count| count == 0)
         );
-        let team = &costs.kinds[0].teams[0];
-        assert!(team.stood.iter().all(|&word| word == 0));
-        assert!(team.hemmed.iter().all(|&count| count == 0));
     }
 }

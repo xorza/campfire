@@ -305,8 +305,8 @@ impl Walking {
         }
     }
 
-    /// Counts the units of a team that stand this tick in the crowd's costs, before the routes are
-    /// planned: each hemmed in as such, each other that is not firm and that the mode's
+    /// Counts the units that stand this tick in the crowd's costs, of any team or none, before the
+    /// routes are planned: each hemmed in as such, each other that is not firm and that the mode's
     /// `CrowdBook` lets a walker of its team move as one its team's walkers may move, and every
     /// other as one they may not (04-capabilities/navigation.md, A route prices the units on it;
     /// 04-capabilities/navigation.md, A friend that cannot yield is firm, and a stuck walker's
@@ -321,14 +321,14 @@ impl Walking {
         };
         let standing = bodies.iter().filter_map(
             |((&id, &at, body, team), destination, tags, (progress, at_work, _, hemmed))| {
-                let &team = team?;
                 if Self::walks(destination, tags, Motion::Own) {
                     return None;
                 }
+                let team = team.copied();
                 let standing = if hemmed.is_some_and(|hemmed| hemmed.get()) {
                     Standing::Hemmed
                 } else if !Self::firm(progress, at_work, tags, hemmed)
-                    && crowd.moves.may_move(Some(team), Some(team))
+                    && crowd.moves.may_move(team, team)
                 {
                     Standing::Movable
                 } else {

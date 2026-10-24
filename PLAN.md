@@ -8,14 +8,6 @@ The slice of [Walkers get through](docs/design/walkers-get-through.md), in navig
 batch each; its checks are that document's. It stands first, as a walker that stands for good
 with a destination breaks every match that holds one.
 
-### W5. Other teams wall a stuck route (navigation's crowd costs)
-
-After W2, as the slice's last check waits on it.
-
-- [ ] A stuck walker's route walls only friends hemmed in (`crowd_costs.rs`, `routing.rs:169`) →
-  also every unit of another team that stands (walkers-get-through.md, A stuck walker's route walls
-  the units of other teams that stand).
-
 ### W3. A route in sight (navigation's planner)
 
 - [ ] A route from a cell no open cell borders finds no way to a goal the walker sees
