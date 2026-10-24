@@ -47,6 +47,7 @@ mod error;
 mod forced_moves;
 mod gait;
 mod group_box;
+mod hemmed;
 mod map_navigation_data;
 mod map_paths_data;
 mod mode_navigation_data;
@@ -96,6 +97,7 @@ pub use crate::error::{MapProblem, NavigationDataError, NavigationRefusal};
 pub use crate::forced_moves::ForcedMoves;
 pub use crate::gait::Gait;
 pub use crate::group_box::GroupBox;
+pub use crate::hemmed::Hemmed;
 pub use crate::map_navigation_data::{MapNavigationData, WallData};
 pub use crate::map_paths_data::{MapPathsData, PathData};
 pub use crate::mode_navigation_data::ModeNavigationData;
@@ -204,6 +206,8 @@ impl Module for Navigation {
         d.require::<MoveStep, ArrivedAt>();
         d.component::<AsideDepth>();
         d.require::<MoveStep, AsideDepth>();
+        d.component::<Hemmed>();
+        d.require::<MoveStep, Hemmed>();
         d.report::<UnpartedPairs>();
         d.report::<StalledWalkers>();
         d.cache::<UnitTracker<StaticBodies>>();
@@ -239,6 +243,7 @@ impl Module for Navigation {
         d.part::<BodyUnit, AsideDepth>(|at| {
             at.of_type::<MoveStep>().map(|_| AsideDepth::default())
         });
+        d.part::<BodyUnit, Hemmed>(|at| at.of_type::<MoveStep>().map(|_| Hemmed::default()));
     }
 
     /// Adds navigation to a match, with no paths, the world for bounds, and a static index for
@@ -377,6 +382,7 @@ pub mod internals {
     use crate::aside_depth::AsideDepth;
     pub use crate::broadphase::internals::scene;
     use crate::crowd_book::CrowdBook;
+    use crate::hemmed::Hemmed;
     use crate::moves::Moves;
     use crate::navigation_book::NavigationBook;
     use crate::pathing_grid::PathingGrid;
@@ -399,6 +405,7 @@ pub mod internals {
                 Progress::default(),
                 ArrivedAt::default(),
                 AsideDepth::default(),
+                Hemmed::default(),
             )
         }
 

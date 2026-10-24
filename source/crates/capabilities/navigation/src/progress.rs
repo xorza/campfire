@@ -74,6 +74,12 @@ impl Progress {
         self.stuck = 0;
     }
 
+    /// Whether the route the walker asks is one it asked as it was stuck, and since passed no
+    /// waypoint.
+    pub(crate) const fn asked_stuck(&self) -> bool {
+        self.stuck_asks > 0
+    }
+
     /// Whether the walker asked as many routes as it may as it was stuck.
     pub(crate) const fn asked_out(&self) -> bool {
         self.stuck_asks >= Self::MOST_STUCK_ASKS

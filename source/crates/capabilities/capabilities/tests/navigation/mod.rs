@@ -554,10 +554,10 @@ fn an_idle_friend_on_a_walkers_way_steps_aside_before_it_stalls_and_an_enemy_or_
     };
     // Where the friend ends, in bits of 2⁻²⁴: the one that steps, also pushed on by the walker
     // as it passes within their personal spaces, at (0.50923, −0.83157); the one that drives, on
-    // its place aside, at (0.49999, −0.75053).
+    // its place aside, the two radii off the walker's way, at (0.5, −0.75).
     let ends = [
         (Gait::Step, 58, [8543407, 0, -13951395]),
-        (Gait::Drive, 59, [8388590, 0, -12591735]),
+        (Gait::Drive, 59, [8388608, 0, -12582912]),
     ];
     for (gait, ended, at) in ends {
         let ([walker, friend], (done, aside, stalls), short) = run(0, false, gait);
@@ -598,8 +598,10 @@ fn a_route_goes_round_a_block_of_idle_friends_and_through_it_when_walled_in() {
     // round, and the walker arrives in its tick 54, 6 past the 48 the straight line takes.
     // Boxes of 10 by 4 m at (0, ±4) wall the block in, from z = −2 to 2: the route goes through
     // it, row z = 0.25 a waypoint a cell, as a line across a priced cell is not smoothed, and the
-    // friends step aside, 2 deep at most, and take its pushes, so the walker arrives in its tick
-    // 73 (04-capabilities/navigation.md, A route prices the units on it).
+    // friends step aside, 2 deep at most, each to a place clear of the walker's way as far as
+    // its window reaches, and take its pushes, so the walker arrives in its tick 58
+    // (04-capabilities/navigation.md, A route prices the units on it;
+    // 04-capabilities/navigation.md, A friend yields to the nearest place clear of the way).
     let half = Num::HALF;
     let goal = Vec3::from((6, 0, 0));
     let run = |walled: bool| {
@@ -655,7 +657,108 @@ fn a_route_goes_round_a_block_of_idle_friends_and_through_it_when_walled_in() {
         .map(|column| quarters(2 * column - 7, 1))
         .chain([goal])
         .collect();
-    assert_eq!(run(true), (through, Some(73), goal));
+    assert_eq!(run(true), (through, Some(58), goal));
+}
+
+#[test]
+fn a_wide_walker_passes_wide_idle_friends_that_yield_to_free_room_and_stops_at_hemmed_ones() {
+    // Half-meter cells over ±12 m. A lane along x, z −1.5 to 1.5, walled below by a box from
+    // z = −5.5 and above by boxes to z = 5.5, closed behind by one from 5.5 to 7.5; with
+    // alcoves, the boxes above leave two dead ends 3 m wide, x −3 to 0 and 2 to 5. Two idle
+    // friends of 1 m that drive stand in the lane at (−1.5, 0) and (3.5, 0), and a walker of 1 m
+    // that drives goes from (−8, 0) to (9, 0), a quarter meter a tick, its route through them, as
+    // the lane is the only way. With alcoves, each friend steps to the nearest cell whose center
+    // lies the two radii, 2 m, off the walker's way, up its alcove, at (−1.25, 2.25) and
+    // (3.75, 2.25), and the walker arrives in tick 75, 7 past the 68 its 17 m take
+    // (04-capabilities/navigation.md, A friend yields to the nearest place clear of the way).
+    // With none, the first friend finds no such place and is hemmed in, firm; the walker, stuck
+    // against it, asks its route again, which walls the friend's cells and so reaches no
+    // farther, and it arrives short of its goal in tick 51, at the reached cell nearest the goal;
+    // the second friend is never asked; an order of its own frees the first, which then walks
+    // (04-capabilities/navigation.md, A friend that cannot yield is firm, and a stuck walker's
+    // route walls it).
+    let one = Num::ONE;
+    let goal = Vec3::from((9, 0, 0));
+    let run = |alcoves: bool| {
+        let mut game = walk_match();
+        Navigation::load_open_pathing(&mut game, Num::HALF, [-12, -12], [12, 12], [ground(one)]);
+        let unit_type = Navigation::walker_type(&mut game);
+        let navigation = UnitNavigationData::new(Gait::Drive, Num::ONE).unwrap();
+        Navigation::load_unit_navigation(&mut game, unit_type, navigation);
+        let box_at = |game: &mut Match, [x0, x1, z0, z1]: [i64; 4]| {
+            let size = [Num::int(x1 - x0) / 2, Num::int(z1 - z0) / 2];
+            let at = Vec3::new(Num::int(x0 + x1) / 4, Num::ZERO, Num::int(z0 + z1) / 4);
+            Navigation::walker_at(game, at)
+                .body(BodyForm::new(
+                    BodyShape::box_sized(size).unwrap(),
+                    Layer::FIRST,
+                ))
+                .place(game);
+        };
+        // Each box by its edges in half meters: x from, x to, z from, z to.
+        box_at(&mut game, [-24, 24, -11, -3]);
+        box_at(&mut game, [-24, 24, 11, 15]);
+        if alcoves {
+            for [x0, x1] in [[-24, -6], [0, 4], [10, 24]] {
+                box_at(&mut game, [x0, x1, 3, 11]);
+            }
+        } else {
+            box_at(&mut game, [-24, 24, 3, 11]);
+        }
+        let friends = [-3, 7].map(|x| {
+            Navigation::walker_at(&mut game, Vec3::new(Num::int(x) / 2, Num::ZERO, Num::ZERO))
+                .team(Team::new(0))
+                .circle(one)
+                .walks(Num::QUARTER, None)
+                .place(&mut game)
+        });
+        game.step();
+        let walker = Navigation::walker_at(&mut game, (-8, 0, 0))
+            .team(Team::new(0))
+            .circle(one)
+            .walks(Num::QUARTER, Some(goal))
+            .place(&mut game);
+        let mut done = None;
+        for tick in 1..=300 {
+            game.step();
+            if done.is_none() && game.part::<Destination>(walker).get().is_none() {
+                done = Some(tick);
+            }
+        }
+        let hemmed = friends.map(|friend| game.part::<Hemmed>(friend).get());
+        let at = friends.map(|friend| game.part::<Position>(friend).get());
+        let short = *game.part::<ArrivedShort>(walker);
+        let walker_at = game.part::<Position>(walker).get();
+        // An order of its own makes the first friend walk, and frees it.
+        *game.part_mut::<Destination>(friends[0]) = Destination::to(Some(Vec3::from((-10, 0, 0))));
+        game.step();
+        let freed = !game.part::<Hemmed>(friends[0]).get();
+        (done, walker_at, short, hemmed, at, freed)
+    };
+    let quarters = |x: i64, z: i64| Vec3::new(Num::int(x) / 4, Num::ZERO, Num::int(z) / 4);
+    assert_eq!(
+        run(true),
+        (
+            Some(75),
+            goal,
+            ArrivedShort::of(None),
+            [false; 2],
+            [quarters(-5, 9), quarters(15, 9)],
+            true
+        )
+    );
+    let friends = [quarters(-6, 0), quarters(14, 0)];
+    assert_eq!(
+        run(false),
+        (
+            Some(51),
+            quarters(-15, 1),
+            ArrivedShort::of(Some(goal)),
+            [true, false],
+            friends,
+            true
+        )
+    );
 }
 
 #[test]

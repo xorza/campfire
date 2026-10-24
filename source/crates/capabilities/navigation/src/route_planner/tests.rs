@@ -3,7 +3,7 @@ use std::collections::BinaryHeap;
 
 use campfire_common::{SegmentSeed, Tick};
 use campfire_geometry::{Bounds, Radius, Shape};
-use campfire_math::{Num, Rng, RngStream};
+use campfire_math::{Rng, RngStream};
 use campfire_sim::IdAllocator;
 use campfire_units::Layer;
 

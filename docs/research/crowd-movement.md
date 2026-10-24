@@ -26,6 +26,67 @@ decides from them.
 - **No kind of motion.** A unit type has a `MoveStep` and a `TurnStep`; nothing says whether a
   unit may be moved sideways.
 
+## A friend with no room to yield, 2026-10-24
+
+A replay of a client match on `tournament_desert`, China's dozer #143 sent north behind two idle
+dozers, each of radius 19.72 m, the circle round its 34 × 20 m box.
+
+- **The route goes through the friends.** The long route runs along x = 1015 through the idle
+  dozers #155 and #156, each priced as a friend the walker may move.
+- **The first step aside is measured against the first stretch.** At tick 1,242, #155 steps
+  10 m off the walker's diagonal first stretch, to (996.4, −433.2); the route then turns north
+  and #155 is on it again.
+- **No room at the side.** Its next step aside, to (975.6, −435.0), has no place it may stand:
+  the nearest is where it stands, (995, −435), so it stays.
+- **The detour aims inside a unit.** The short route's target, the last waypoint in its window,
+  (1015, −405) or (1025, −395), lies within the reach of #156 or of the Tank Hunter #159, so no
+  short route reaches it, and 311 of the walker's 313 short routes are dropped.
+- **The new route is the old one.** Each new route the stuck walker asks prices #155 as before
+  and runs through it again, until the player orders another goal.
+- **No place clear of the way.** With friends that search outward for a place clear of the
+  walker's route ahead within their window of ±8 cells, #155 finds none: of the 289 cells of its
+  window, 81 can hold its body past the base's buildings, 23 of those can be reached from it past
+  the units that stand, and no center of those is 39.4 m off #143's route; a window three times
+  as wide finds none either. #155 is hemmed in, #143's new route walls it, and #143 arrives short
+  at (1015, −485).
+
+## Friends that yield, measured, 2026-10-24
+
+- **The Zero Hour check.** With friends that yield to a place clear of the walker's route and
+  routes of stuck walkers that wall those that cannot, the bases play ends in tick 9,096 with 332
+  stalls, against 10,839 and 445 before; the attack play in tick 22,650 with 121 stalls, against
+  25,163 and 163 with the step aside to a unit's own place refused alone.
+- **A detour as near as it can.** A short route that cannot reach its waypoint, taken when it ends
+  nearer the waypoint than the walker, held a walker pressed against a busy friend at a
+  corridor's mouth moving back and forth each tick: never stuck, it never planned again nor
+  stopped in 240 ticks; refused to a stuck walker, the waypoints it passed cleared its count of
+  stuck asks, so it never stopped either.
+- **Walls for every firm unit.** A stuck walker's route that walls every firm friend, not those
+  hemmed in alone, left a hero of the 3v3 match at level 5, below the 6 every hero reaches.
+- **A search over the cells of other units.** A search that took cells other standing units hold
+  sent a trained unit 1 m through its rally's crowd onto a member's place, and left a pair of
+  bodies overlapping past the slack.
+
+## Walkers that stand with a destination, 2026-10-24
+
+The Zero Hour check's bases play, traced each tick.
+
+- **A truck shut in by its base.** China's supply truck #225, of radius 18.38 m, spawns by
+  `room_near` at (1131.45, −529.02) in a pocket of the base's buildings 39 m deep, whose ways out
+  are 10, 13 and 18 m wide: it never moves. No cell of the pocket is open to its clearance, so
+  its route leaves from the open cell nearest it, (1175, −495), past a building's corner; it
+  asks its route 5 times, stops, and is sent to the same goal again at once, each 186 ticks.
+- **A goal another unit holds.** Red Guard #158, of radius 7 m, is bound for (1138.85, −541.45),
+  12.5 m from the truck, within their two radii. It stands in an 18 m gap between two
+  buildings that holds no cell open to its clearance; each 5 ticks it is stuck, its short route
+  ends on its own cell's center, which it cannot reach, and the detour starts its stuck count
+  again, so it never asks a new route.
+- **A goal within another's personal space.** Hacker #162, of radius 10 m, is bound for
+  (1115, −395), 39.43 m from the idle troop crawler #172, of radius 23.77 m, within their
+  personal space of 5/4 of their radii, 42.21 m. Each tick it steps 0.67 m toward the goal and
+  the crawler's push takes it back; it stands 0.77 m short for 6,240 ticks, never stuck by the
+  count, as each detour it takes once stuck starts the count again.
+
 ## Command & Conquer: Generals Zero Hour
 
 From the released source, as [GeneralsX](https://github.com/fbraz3/GeneralsX) builds it.
@@ -50,6 +111,10 @@ From the released source, as [GeneralsX](https://github.com/fbraz3/GeneralsX) bu
   `moveAlliesAwayFromDestination`, which walks the cells on the line to the destination
   (`AIUpdate.cpp:1693-1700`, `AIPathfind.cpp:6962-7008`).
 - **A blocked and stuck unit plans again** (`AIUpdate.cpp:430, 509-513`).
+- **An ally moves away anywhere clear of the path.** `Pathfinder::getMoveAwayFromPath` searches
+  outward from the ally's cell over the cells it may stand in, and takes the first whose box,
+  the ally's radius plus the mover's, crosses no segment of the mover's path nor of the last
+  pusher's (`AIPathfind.cpp:10318-10490`).
 
 ## 0 A.D.
 
@@ -76,6 +141,34 @@ From `CCmpUnitMotion_System.cpp` of [0 A.D.](https://github.com/0ad/0ad), and
   ([UnitMotion](https://docs.wildfiregames.com/pyrogenesis/namespaceanonymous__namespace_02CCmpUnitMotion_8h_03.html)).
 
 ## Others
+
+- **0 A.D.'s failed moves.** `CCmpUnitMotion` counts a failed movement each turn its move is
+  obstructed, and only an unobstructed move resets the count; a new path keeps it. It backs up
+  on the 10th, informs at the 35th that the move failed, and switches between its short and long
+  pathfinders on the way. A unit a push takes away from where it moves, by the dot product of
+  its intended and its net move, counts as obstructed; moving units push only moving ones, and
+  stopped units only stopped ones ([CCmpUnitMotion.h](https://github.com/0ad/0ad/blob/main/source/simulation2/components/CCmpUnitMotion.h),
+  [CCmpUnitMotion_System.cpp](https://github.com/0ad/0ad/blob/main/source/simulation2/components/CCmpUnitMotion_System.cpp)).
+- **An end close enough.** The A* Pathfinding Project's agents reach the end of their path
+  within `endReachedDistance`, and get as close as they can to a destination they cannot reach
+  ([AIPath](https://arongranberg.com/astar/documentation/stable/aipath.html)).
+- **Zero Hour keeps a destination in reach.** `Pathfinder::adjustToPossibleDestination` takes a
+  goal cell in the unit's own zone, its connected region, that `checkDestination` passes, else
+  the nearest such cell (`AIPathfind.cpp:5655`); a spawn spread takes only clear cells
+  ([GeneralsGameCode #1882](https://github.com/TheSuperHackers/GeneralsGameCode/pull/1882)).
+
+- **OpenRA.** A blocked move waits `WaitAverage` ticks, tells the blocker, then plans again with
+  `BlockedByActor.All`, under which every actor blocks; with no route it ends the move with
+  `CompleteDestinationBlocked` ([Move.cs](https://github.com/OpenRA/OpenRA/blob/bleed/OpenRA.Mods.Common/Activities/Move/Move.cs)).
+  An idle friendly actor told it blocks queues a `Nudge` to a random free adjacent cell, and with
+  none moves an idle neighbour; a busy one only marks itself blocking
+  ([Mobile.cs](https://github.com/OpenRA/OpenRA/blob/bleed/OpenRA.Mods.Common/Traits/Mobile.cs)).
+- **Ask, then plan again.** Practitioners ask a blocking idle unit to move and plan a new route
+  only when it cannot, and price standing units, busy ones more, so a route goes round them
+  first ([GameDev.net](https://gamedev.net/forums/topic/567708-practical-path-finding-for-rts/),
+  [The Fertile Crescent](https://lincread.itch.io/the-fertile-crescent/devlog/53276/improving-pathfinding)).
+- **0 A.D.'s short routes reach only so far.** Units fail to go round large obstacles, as the
+  short pathfinder's range is the limit ([ticket 5624](https://trac.wildfiregames.com/ticket/5624)).
 
 - **ORCA.** Each neighbour gives a half-plane of safe velocities, and the agent takes the
   velocity nearest the one it wants, by a small linear program; motion stays smooth, thousands of

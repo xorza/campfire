@@ -403,15 +403,7 @@ fn a_trained_unit_leaves_through_its_team_at_once_and_reaches_its_crowded_rally_
         assert_eq!(leaving, all_leaving, "{gait:?}");
         assert_eq!(arrived, ticks.map(Some), "{gait:?}");
         assert_eq!(leaves, [false; 4], "{gait:?}");
-        // Grunts that step push the two at the exit a 64th of a meter along +z as they pass; units
-        // that drive push no unit.
-        let pushed = match gait {
-            Gait::Step => Num::ONE / 64,
-            Gait::Drive => Num::ZERO,
-        };
-        let exit_at =
-            [halves(5, -1), halves(5, 1)].map(|at| at + Vec3::new(Num::ZERO, Num::ZERO, pushed));
-        assert_eq!(exit, exit_at, "{gait:?}");
+        assert_eq!(exit, [halves(5, -1), halves(5, 1)], "{gait:?}");
     }
 }
 

@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declarations::Cache;
 use campfire_geometry::Grid;
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::crowd_costs::CrowdPrice;
@@ -74,11 +74,20 @@ pub(crate) struct Window {
     high: [usize; 2],
 }
 
-/// One search's target, its column and row, and its marks.
+/// The way a walker passes, which a friend that steps aside clears: the walker's place, then the
+/// points of its route ahead, and the walker's radius.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Passage<'a> {
+    pub(crate) points: &'a [Vec3],
+    pub(crate) radius: Num,
+}
+
+/// One search's target, its column and row, none for a search that floods its window, and its
+/// marks.
 #[derive(Debug, Clone, Copy)]
 struct Search {
-    to: usize,
-    at: [usize; 2],
+    to: Option<usize>,
+    at: Option<[usize; 2]>,
     seen: u64,
     done: u64,
 }
@@ -162,6 +171,16 @@ impl<'a> Walkable<'a> {
                     .iter()
                     .any(|body| body.comes_closer(segment, radius))
             })
+    }
+}
+
+impl Passage<'_> {
+    /// Whether `body` comes no closer to any leg of the passage than the walker's radius, so the
+    /// walker passes it.
+    pub(crate) fn clears(&self, body: IndexedBody) -> bool {
+        self.points
+            .windows(2)
+            .all(|leg| !body.comes_closer(Segment::new(leg[0], leg[1]), self.radius))
     }
 }
 
@@ -275,8 +294,8 @@ impl RoutePlanner {
         }
         self.routes += 1;
         let search = Search {
-            to: target,
-            at: Self::place(grid, target),
+            to: Some(target),
+            at: Some(Self::place(grid, target)),
             seen: 2 * self.routes,
             done: 2 * self.routes + 1,
         };
@@ -284,7 +303,7 @@ impl RoutePlanner {
         self.marks[from] = search.seen;
         self.costs[from] = 0;
         self.came_from[from] = Self::number(from);
-        let estimate = Self::estimate(Self::place(grid, from), search.at);
+        let estimate = Self::estimate(Self::place(grid, from), Self::place(grid, target));
         self.open.push(estimate, estimate, Self::number(from));
         self.expanded.clear();
         let mut found = false;
@@ -414,8 +433,9 @@ impl RoutePlanner {
     }
 
     /// Whether a walker on `walkable` may stand in the cell at `column` and `row`: one of the grid,
-    /// and of a short route's window, that neither a static body nor a blocker blocks.
-    const fn passable(overlay: &[u64], walkable: Walkable<'_>, column: usize, row: usize) -> bool {
+    /// and of a short route's window, that neither a static body, a blocker nor a unit hemmed in
+    /// its price walls blocks.
+    fn passable(overlay: &[u64], walkable: Walkable<'_>, column: usize, row: usize) -> bool {
         let grid = walkable.clearance.grid();
         if column >= grid.columns() || row >= grid.rows() {
             return false;
@@ -429,7 +449,8 @@ impl RoutePlanner {
                 return false;
             }
         }
-        walkable.clearance.open(row * grid.columns() + column)
+        let cell = row * grid.columns() + column;
+        walkable.clearance.open(cell) && !walkable.crowd.is_some_and(|crowd| crowd.walls(cell))
     }
 
     /// The cell a walker on `walkable` may stand in whose center is nearest `goal`, ties to the
@@ -510,6 +531,67 @@ impl RoutePlanner {
         Some(walkable.clearance.grid().center(cell, position.y))
     }
 
+    /// Where `body`, a unit of `walkable`, steps aside to so that it clears `passage`, as Zero
+    /// Hour's `getMoveAwayFromPath` floods outward from the ally for the first free cell off the
+    /// path (04-capabilities/navigation.md, A friend yields to the nearest place clear of the
+    /// way): `to`, its step off the walker's way, when no static body blocks it there and it
+    /// clears the passage there, as the units it steps into step aside in turn; else the center
+    /// of the cell of the short route's window nearest the unit by a route's steps that it may
+    /// stand in, past the short route's blockers, and clears the passage from, at its height,
+    /// ties to the lower total, then estimate, then number; `None` with no such cell. Its work
+    /// counts against the tick's.
+    pub(crate) fn yield_place(
+        &mut self,
+        walkable: Walkable<'_>,
+        body: IndexedBody,
+        to: Vec3,
+        passage: Passage<'_>,
+    ) -> Option<Vec3> {
+        debug_assert!(walkable.short.is_some(), "a step aside stays in its window");
+        let mut work = 1;
+        let at = |position| IndexedBody { position, ..body };
+        let open = Walkable {
+            short: None,
+            ..walkable
+        };
+        if !open.blocks_counting(Segment::new(to, to), &mut work) && passage.clears(at(to)) {
+            self.spent += u64::from(work);
+            return Some(to);
+        }
+        self.mark_blockers(walkable);
+        let grid = walkable.clearance.grid();
+        let from = grid.nearest_cell(body.position);
+        self.routes += 1;
+        let search = Search {
+            to: None,
+            at: None,
+            seen: 2 * self.routes,
+            done: 2 * self.routes + 1,
+        };
+        self.open.clear();
+        self.marks[from] = search.seen;
+        self.costs[from] = 0;
+        self.open.push(0, 0, Self::number(from));
+        let mut place = None;
+        while let Some(cell) = self.open.pop() {
+            let cell = cell as usize;
+            if self.marks[cell] == search.done {
+                continue;
+            }
+            self.marks[cell] = search.done;
+            work += 1;
+            let center = grid.center(cell, body.position.y);
+            let [column, row] = Self::place(grid, cell);
+            if Self::passable(&self.overlay, walkable, column, row) && passage.clears(at(center)) {
+                place = Some(center);
+                break;
+            }
+            self.expand(walkable, cell, search);
+        }
+        self.spent += u64::from(work);
+        place
+    }
+
     /// Reaches the cells around `at` a walker may stand in, and the search's target whether it
     /// may or not, more cheaply than before, in a fixed order.
     fn expand(&mut self, walkable: Walkable<'_>, at: usize, search: Search) {
@@ -532,7 +614,7 @@ impl RoutePlanner {
         .enumerate()
         {
             let (x, z) = (column.wrapping_add_signed(dx), row.wrapping_add_signed(dz));
-            let entered = x < columns && z < grid.rows() && z * columns + x == search.to;
+            let entered = x < columns && z < grid.rows() && Some(z * columns + x) == search.to;
             if !entered && !open(x, z) {
                 continue;
             }
@@ -556,7 +638,7 @@ impl RoutePlanner {
             self.marks[next] = search.seen;
             self.costs[next] = cost;
             self.came_from[next] = Self::number(at);
-            let estimate = Self::estimate(place, search.at);
+            let estimate = search.at.map_or(0, |at| Self::estimate(place, at));
             self.open
                 .push(cost + estimate, estimate, Self::number(next));
         }

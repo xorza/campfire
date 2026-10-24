@@ -2,6 +2,46 @@
 
 The open steps, in the order they are done, and the foundations. The rules are in [AGENTS.md](AGENTS.md#workflow).
 
+## Walkers get through
+
+The slice of [Walkers get through](docs/design/walkers-get-through.md), in navigation alone, a
+batch each; its checks are that document's. It stands first, as a walker that stands for good
+with a destination breaks every match that holds one.
+
+### W1. A walker's progress (navigation's walking)
+
+First, as the next batches measure stalls by it, and it alone ends the livelocks of a detour.
+
+- [ ] A tick counts as progress when the walker moved half a step in any way, and a detour resets
+  the count (`progress.rs:62`, `walking.rs:219`) → progress is a move of half a step along the
+  leg it walks, and only progress resets the count (walkers-get-through.md, A walker progresses
+  only when it moves along its way). Builds: what can be forgotten is a type, the move along the
+  leg a method of `Progress`.
+- [ ] A walker stuck at its goal asks its route 5 times and arrives short (`walking.rs:219`,
+  `route.rs:368`) → one stuck within its radius of its last waypoint has arrived
+  (walkers-get-through.md, A walker stuck by its goal has arrived).
+
+### W2. A spawn that can walk out (navigation's room)
+
+- [ ] `room_near` tests a walker's place for its body alone (`navigation_column.rs:130`,
+  `navigation_column.rs:177`) → for a unit that walks, also its clearance's open cell in the
+  region of the open cell nearest the search's point (walkers-get-through.md, A unit spawns only
+  where it can walk out). Builds: a name is resolved once, the region of the point found once
+  for a search.
+
+### W3. A route in sight (navigation's planner)
+
+- [ ] A route from a cell no open cell borders finds no way to a goal the walker sees
+  (`route_planner/mod.rs:243`) → a goal in sight is a line, before the search
+  (walkers-get-through.md, A route in sight is a line).
+
+### W4. Friends that yield through friends (navigation's steering)
+
+- [ ] A friend's yield search takes the friends near it as blockers (`steering/mod.rs:405`,
+  `route_planner/mod.rs:543`) → it passes through the idle friends the walker may move, and each
+  it passes or ends on steps aside in turn for its walk, 2 deep at most
+  (walkers-get-through.md, A friend yields through the friends that yield).
+
 ## The driver keeps its signals
 
 These items change the `drive` repository and wait for the driver's own work; then the drive table

@@ -84,10 +84,10 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
 
 [base]
-ended = 10839
+ended = 9096
 standing = [0, 8]
-think_ops = 20554
-stalls = 445
+think_ops = 17538
+stalls = 332
 
 [base.result]
 Won = 1
@@ -124,7 +124,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 2
+no_target = 1
 no_place = 0
 no_stack = 0
 
@@ -141,9 +141,13 @@ slot_kind = 0
 no_build = 0
 
 [attack]
-standing = [6, 6]
+ended = 22650
+standing = [4, 0]
 think_ops = 9101
-stalls = 1333
+stalls = 121
+
+[attack.result]
+Won = 0
 
 [[attack.drops]]
 unread = 0

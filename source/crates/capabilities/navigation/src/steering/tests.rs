@@ -180,7 +180,14 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
     let stretch = (eighths(64, 0), Num::int(4));
     let asides = |moves, depth| {
         let mut asides = Vec::new();
-        steering.asides(Steered { depth, ..steered }, stretch, moves, &mut asides);
+        let passage = 3..5;
+        steering.asides(
+            Steered { depth, ..steered },
+            stretch,
+            moves,
+            &passage,
+            &mut asides,
+        );
         asides.sort_by_key(|aside| aside.id);
         asides
     };
@@ -188,6 +195,8 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
         id: bodies[at].body.id,
         to,
         depth,
+        passage: 3..5,
+        radius: half,
     };
     // A walk of its own moves them a step aside 1 deep, a step aside 1 deep moves them 2 deep,
     // and one 2 deep moves none (04-capabilities/navigation.md, An idle friend steps aside).

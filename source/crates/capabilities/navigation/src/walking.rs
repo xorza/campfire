@@ -5,7 +5,7 @@ use bevy_ecs::system::{Commands, If, Local, ParamSet, Query, Res, ResMut};
 use campfire_actions::ActionProgress;
 use campfire_declarations::{ById, RoleForm};
 use campfire_deliveries::DashDelivering;
-use campfire_math::{Direction, SinCos};
+use campfire_math::{Direction, SinCos, Vec3};
 use campfire_sim::{
     DueIndex, EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId, UnitDues,
     Unpredicted,
@@ -22,12 +22,13 @@ use crate::broadphase::Broadphase;
 use crate::collider::contact::{Contact, ContactBodies};
 use crate::collider::{Collider, Pushes};
 use crate::crowd_book::CrowdBook;
-use crate::crowd_costs::{CrowdCosts, Stamp};
+use crate::crowd_costs::{CrowdCosts, Stamp, Standing};
 use crate::gait::Gait;
+use crate::hemmed::Hemmed;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 use crate::route::{Route, RouteAsk, RouteMut};
-use crate::route_planner::{RoutePlanner, Walkable};
+use crate::route_planner::{Passage, RoutePlanner, Short, Walkable, Window};
 use crate::stalled_walkers::StalledWalkers;
 use crate::steering::{Aside, Steered, Steering, TickBody};
 use crate::unit_navigation_data::UnitNavigationData;
@@ -60,6 +61,7 @@ type SteerBodies<'w, 's> = Query<
             Option<&'static ActionProgress>,
             Option<&'static AtWork>,
             Option<&'static ArrivedAt>,
+            Option<&'static Hemmed>,
         ),
     ),
     (
@@ -86,6 +88,7 @@ type Steerers<'w, 's> = Query<
             Option<&'static mut ArrivedAt>,
             Option<&'static Leaving>,
             Option<&'static mut AsideDepth>,
+            Option<&'static mut Hemmed>,
         ),
         Option<&'static UnitTags>,
         Has<ForcedMove>,
@@ -108,9 +111,10 @@ impl Walking {
     /// one that does not walk this tick, waits for its route, or has none ahead, does not either:
     /// none of them takes a place in the order. On a server, each unit that stands idle on the
     /// next stretch of a walker's way, as far as its window reaches, and that the mode's
-    /// `CrowdBook` lets it move, steps aside, as `Steering::asides` says, to the nearest place it
-    /// may stand there. A walker stuck for `Progress::ask_after` that no detour frees asks its
-    /// route again, and stops past `Progress::MOST_STUCK_ASKS` such asks. A walker that touches
+    /// `CrowdBook` lets it move, steps aside, as `Steering::asides` says, to the place
+    /// `RoutePlanner::yield_place` finds clear of the walker's passage, which `Steering::passage`
+    /// reads; one that finds none is hemmed in. A walker stuck for `Progress::ask_after` that no
+    /// detour frees asks its route again, and stops past `Progress::MOST_STUCK_ASKS` such asks. A walker that touches
     /// the crowd that arrived at its goal arrives, as `Steering::packed` says; one that leaves its
     /// producer takes no short route round its team's units.
     pub(super) fn steer<F: RoleForm>(
@@ -123,24 +127,28 @@ impl Walking {
             ResMut<'_, StalledWalkers>,
         ),
         mut units: ParamSet<'_, '_, (SteerBodies<'_, '_>, Steerers<'_, '_>)>,
-        (mut steering, mut order, mut asides): (
+        (mut steering, mut order, mut asides, mut passages, mut near): (
             Local<'_, Steering>,
             Local<'_, Ordered>,
             Local<'_, Vec<Aside>>,
+            Local<'_, Vec<Vec3>>,
+            Local<'_, Vec<IndexedBody>>,
         ),
     ) {
         let bodies = units.p0();
         let read = bodies.iter().map(
-            |((&id, &at, body, team), destination, tags, (progress, at_work, arrived))| TickBody {
-                body: IndexedBody::of(id, at.get(), body),
-                team: team.copied(),
-                walks: Self::walks(destination, tags, Motion::Own),
-                gathers: tags.is_some_and(|tags| tags.passes()),
-                idle: destination.is_some_and(|destination| destination.get().is_none())
-                    && !Self::firm(progress, at_work, tags),
-                arrived: arrived
-                    .expect("a walker carries the goal it arrived at")
-                    .get(),
+            |((&id, &at, body, team), destination, tags, (progress, at_work, arrived, hemmed))| {
+                TickBody {
+                    body: IndexedBody::of(id, at.get(), body),
+                    team: team.copied(),
+                    walks: Self::walks(destination, tags, Motion::Own),
+                    gathers: tags.is_some_and(|tags| tags.passes()),
+                    idle: destination.is_some_and(|destination| destination.get().is_none())
+                        && !Self::firm(progress, at_work, tags, hemmed),
+                    arrived: arrived
+                        .expect("a walker carries the goal it arrived at")
+                        .get(),
+                }
             },
         );
         steering.read(&statics, read);
@@ -156,11 +164,12 @@ impl Walking {
             })
             .map(|(entity, (&id, ..), ..)| Keyed { id, entity });
         asides.clear();
+        passages.clear();
         let mut stalls = 0;
         for &Keyed { entity, .. } in order.sort(ordered) {
             let (_, (&id, &at, team), mut destination, step, body, mut route, progress, tags, _) =
                 walkers.get_mut(entity).expect("a walker in the order");
-            let (mut progress, arrived, leaving, walk) = progress;
+            let (mut progress, arrived, leaving, walk, _) = progress;
             let mut walk = walk.expect("a walker carries how deep its walk is");
             let depth = *walk;
             let goal = route.goal().expect("a walker with a way ahead has a goal");
@@ -186,8 +195,16 @@ impl Walking {
                 continue;
             }
             if !F::PREDICTS {
+                let start = passages.len();
+                Steering::passage(&grid, steered, route.read().ahead(), &mut passages);
+                let number = |at: usize| u32::try_from(at).expect("a tick's passages fit a u32");
+                let passage = number(start)..number(passages.len());
+                let before = asides.len();
                 let stretch = (route.read().ahead()[0], Steering::reach(&grid));
-                steering.asides(steered, stretch, crowd.moves, &mut asides);
+                steering.asides(steered, stretch, crowd.moves, &passage, &mut asides);
+                if asides.len() == before {
+                    passages.truncate(start);
+                }
             }
             // A walker that leaves its producer passes through its team's units, so it steers
             // round none of them (04-capabilities/navigation.md, A new unit leaves its exit).
@@ -211,38 +228,55 @@ impl Walking {
         // a predicting client moves none, as stepping aside is the server's.
         asides.sort_by_key(|aside| aside.id);
         asides.dedup_by_key(|aside| aside.id);
-        for &Aside { id, to, depth } in &*asides {
-            let Some(entity) = index.get(id) else {
+        for aside in &*asides {
+            let Some(entity) = index.get(aside.id) else {
                 continue;
             };
             let (
                 _,
-                (_, position, _),
+                (&id, position, _),
                 mut destination,
                 _,
                 body,
                 mut route,
-                (mut progress, .., walk),
+                (mut progress, .., walk, hemmed),
                 ..,
             ) = walkers
                 .get_mut(entity)
                 .expect("a friend that stands is a walker");
-            let walkable = Walkable::of(grid.clearance(Walker::walking(Some(body))), &statics);
-            // A wide body that finds no room off the walker's way is sent to the cell it stands
-            // in, which moves it nowhere: it stays, and the walker goes round it as round any
-            // unit that stands.
-            let cells = walkable.clearance.grid();
-            let Some(to) = planner
-                .stand_at(walkable, to)
-                .filter(|&to| cells.nearest_cell(to) != cells.nearest_cell(position.get()))
-            else {
+            let passage = Passage {
+                points: &passages[aside.passage.start as usize..aside.passage.end as usize],
+                radius: aside.radius,
+            };
+            let friend = IndexedBody::of(id, position.get(), body);
+            // One that its stretch put on the way, but that the walker's route ahead passes, stays.
+            if passage.clears(friend) {
+                continue;
+            }
+            let clearance = grid.clearance(Walker::walking(Some(body)));
+            let cells = clearance.grid();
+            steering.standing_near(&grid, friend, &mut near);
+            let short = Short {
+                window: Window::around(cells, cells.nearest_cell(position.get()), Steering::WINDOW),
+                blockers: &near,
+            };
+            let walkable = Walkable {
+                short: Some(short),
+                ..Walkable::of(clearance, &statics)
+            };
+            // One with no place clear of the walker's way stays, firm, and the walker's routes
+            // go round it (04-capabilities/navigation.md, A friend that cannot yield is firm,
+            // and a stuck walker's route walls it).
+            let Some(to) = planner.yield_place(walkable, friend, aside.to, passage) else {
+                let mut hemmed = hemmed.expect("a walker carries whether it is hemmed in");
+                Hemmed::set(&mut hemmed, true);
                 continue;
             };
             // It asks its route as it takes its destination, as the routing does, so the moves
             // of this tick do not drop the destination of a walker with no route yet.
             Destination::route_to(&mut destination, Some(to));
             let mut walk = walk.expect("a walker carries how deep its walk is");
-            AsideDepth::set(&mut walk, depth);
+            AsideDepth::set(&mut walk, aside.depth);
             let ask = RouteAsk {
                 goal: to,
                 tick: tick.start(),
@@ -257,9 +291,11 @@ impl Walking {
     }
 
     /// Counts the units of a team that stand this tick in the crowd's costs, before the routes are
-    /// planned: each that is not firm and that the mode's `CrowdBook` lets a walker of its team
-    /// move, as one its team's walkers may move, and every other as one they may not
-    /// (04-capabilities/navigation.md, A route prices the units on it).
+    /// planned: each hemmed in as such, each other that is not firm and that the mode's
+    /// `CrowdBook` lets a walker of its team move as one its team's walkers may move, and every
+    /// other as one they may not (04-capabilities/navigation.md, A route prices the units on it;
+    /// 04-capabilities/navigation.md, A friend that cannot yield is firm, and a stuck walker's
+    /// route walls it).
     pub(super) fn price_crowds(
         bodies: SteerBodies<'_, '_>,
         crowd: Res<'_, CrowdBook>,
@@ -269,16 +305,24 @@ impl Walking {
             return;
         };
         let standing = bodies.iter().filter_map(
-            |((&id, &at, body, team), destination, tags, (progress, at_work, _))| {
+            |((&id, &at, body, team), destination, tags, (progress, at_work, _, hemmed))| {
                 let &team = team?;
                 if Self::walks(destination, tags, Motion::Own) {
                     return None;
                 }
+                let standing = if hemmed.is_some_and(|hemmed| hemmed.get()) {
+                    Standing::Hemmed
+                } else if !Self::firm(progress, at_work, tags, hemmed)
+                    && crowd.moves.may_move(Some(team), Some(team))
+                {
+                    Standing::Movable
+                } else {
+                    Standing::Held
+                };
                 Some(Stamp {
                     body: IndexedBody::of(id, at.get(), body),
                     team,
-                    movable: !Self::firm(progress, at_work, tags)
-                        && crowd.moves.may_move(Some(team), Some(team)),
+                    standing,
                 })
             },
         );
@@ -289,7 +333,12 @@ impl Walking {
     /// forced move. No order reaches a dead unit, so it walks nowhere until it lives again.
     pub(super) fn forget_dead(
         mut forced: Query<'_, '_, Entity, (Added<Dead>, With<ForcedMove>)>,
-        mut units: Query<'_, '_, (&mut Destination, RouteMut, &mut Progress), Added<Dead>>,
+        mut units: Query<
+            '_,
+            '_,
+            (&mut Destination, RouteMut, &mut Progress, &mut Hemmed),
+            Added<Dead>,
+        >,
         mut commands: Commands<'_, '_>,
     ) {
         for entity in &mut forced {
@@ -297,7 +346,8 @@ impl Walking {
                 .entity(entity)
                 .remove::<(ForcedMove, DashDelivering)>();
         }
-        for (mut destination, mut route, mut progress) in &mut units {
+        for (mut destination, mut route, mut progress, mut hemmed) in &mut units {
+            Hemmed::set(&mut hemmed, false);
             if destination.get().is_some() {
                 Destination::route_to(&mut destination, None);
             }
@@ -420,7 +470,7 @@ impl Walking {
                 ),
                 Option<&Destination>,
                 Option<&UnitTags>,
-                (Option<&ActionProgress>, Option<&AtWork>),
+                (Option<&ActionProgress>, Option<&AtWork>, Option<&Hemmed>),
                 Has<Unpredicted>,
                 Has<ForcedMove>,
             ),
@@ -455,7 +505,7 @@ impl Walking {
                         (&unit_type, facing, team, leaving),
                         destination,
                         tags,
-                        (progress, at_work),
+                        (progress, at_work, hemmed),
                         ..,
                     )| {
                         let UnitNavigationData { gait, weight } =
@@ -474,7 +524,7 @@ impl Walking {
                                 .filter(|_| gait == Gait::Drive)
                                 .and_then(|&facing| Self::way(facing)),
                             team: team.copied(),
-                            firm: Self::firm(progress, at_work, tags),
+                            firm: Self::firm(progress, at_work, tags, hemmed),
                             leaving: leaving.expect("a walker carries whether it leaves").get(),
                             pinned: false,
                         }
@@ -564,19 +614,23 @@ impl Walking {
         }
     }
 
-    /// Whether a unit is firm, with `progress`, `at_work` and `tags`: it has an action under way
-    /// or a target to attack, it works, or its tags root it, as no push or step aside moves such a
-    /// unit, as Zero Hour's `moveAllies` leaves a busy ally and StarCraft II's hold position
-    /// stays (04-capabilities/navigation.md, Who may move whom is the game's).
+    /// Whether a unit is firm, with `progress`, `at_work`, `tags` and `hemmed`: it has an action
+    /// under way or a target to attack, it works, its tags root it, or it found no place to step
+    /// aside to, as no push or step aside moves such a unit, as Zero Hour's `moveAllies` leaves a
+    /// busy ally and StarCraft II's hold position stays (04-capabilities/navigation.md, Who may
+    /// move whom is the game's; 04-capabilities/navigation.md, A friend that cannot yield is
+    /// firm, and a stuck walker's route walls it).
     fn firm(
         progress: Option<&ActionProgress>,
         at_work: Option<&AtWork>,
         tags: Option<&UnitTags>,
+        hemmed: Option<&Hemmed>,
     ) -> bool {
         progress.is_some_and(|progress| {
             progress.in_progress().is_some() || progress.attack_target().is_some()
         }) || at_work.is_some_and(|at_work| at_work.get())
             || tags.is_some_and(|tags| tags.blocks(Motion::Own, Block::Move))
+            || hemmed.is_some_and(|hemmed| hemmed.get())
     }
 
     /// The way `facing` points on the ground plane, in bits along x and z.

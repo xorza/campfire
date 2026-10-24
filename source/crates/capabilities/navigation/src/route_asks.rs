@@ -10,10 +10,11 @@ use campfire_units::{Body, Dead, Layer};
 use campfire_values::Team;
 
 use crate::body_index::BodyIndex;
-use crate::crowd_costs::CrowdCosts;
+use crate::crowd_costs::{CrowdCosts, HemmedUnits};
 use crate::group_box::GroupBox;
 use crate::party::Party;
 use crate::pathing_grid::PathingGrid;
+use crate::progress::Progress;
 use crate::route::RouteMut;
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::segment::Segment;
@@ -27,6 +28,7 @@ pub(crate) type Asking = (
     RouteMut,
     Option<&'static Body>,
     Option<&'static Team>,
+    &'static Progress,
 );
 
 /// The units whose routes the Move stage plans.
@@ -65,8 +67,8 @@ struct Waiting {
     answered: bool,
 }
 
-/// A walker a plan answers: its unit, where it stands, its kind of walker, its team, which the
-/// crowd's price reads, and its own goal.
+/// A walker a plan answers: its unit, where it stands, its kind of walker, its team and what
+/// its route makes of units hemmed in, which the crowd's price reads, and its own goal.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PlanWalker {
     pub id: StableId,
@@ -74,6 +76,7 @@ pub(crate) struct PlanWalker {
     pub position: Vec3,
     pub(crate) walker: Walker,
     pub(crate) team: Option<Team>,
+    pub(crate) hemmed: HemmedUnits,
     pub(crate) goal: Vec3,
 }
 
@@ -103,9 +106,12 @@ struct PartySearch<'s, 'a> {
 }
 
 impl<'a> RouteSearch<'a> {
-    /// What `walker` of `team` may walk, priced by the crowd.
-    fn walkable(&self, walker: Walker, team: Option<Team>) -> Walkable<'a> {
-        let crowd = self.crowd.and_then(|crowd| crowd.price(walker, team));
+    /// What `walker` of `team` may walk, priced by the crowd, making of units hemmed in what
+    /// `hemmed` says.
+    fn walkable(&self, walker: Walker, team: Option<Team>, hemmed: HemmedUnits) -> Walkable<'a> {
+        let crowd = self
+            .crowd
+            .and_then(|crowd| crowd.price(walker, team, hemmed));
         Walkable::of(self.grid.clearance(walker), self.statics).priced(crowd)
     }
 }
@@ -148,7 +154,7 @@ impl RouteAsks {
             let run = next.ask.party.map_or(0..0, |party| self.party_run(party));
             if run.len() < 2 {
                 let member = next.ask.member;
-                let walkable = search.walkable(member.walker, member.team);
+                let walkable = search.walkable(member.walker, member.team, member.hemmed);
                 let outcome = search.planner.plan(
                     walkable,
                     member.position,
@@ -281,7 +287,7 @@ impl RouteAsks {
             .min_by_key(|member| (distance(member.position), member.id))
             .expect("the widest walker is a member's");
         let goal = search.party.goal;
-        let walkable = search.search.walkable(widest, leader.team);
+        let walkable = search.search.walkable(widest, leader.team, leader.hemmed);
         let outcome =
             search
                 .search
@@ -317,7 +323,7 @@ impl RouteAsks {
             .expect("its layer's route was searched")
             .clone();
         let route = &self.shared[shared.waypoints];
-        let walkable = search.walkable(member.walker, member.team);
+        let walkable = search.walkable(member.walker, member.team, member.hemmed);
         let planner = &mut *search.planner;
         let shares =
             shared.reached || (member.walker == shared.walker && member.goal == party.goal);

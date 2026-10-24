@@ -1,4 +1,4 @@
-use std::ops::ControlFlow;
+use std::ops::{ControlFlow, Range};
 
 use campfire_geometry::{BodyGrid, Indexed, Placed};
 use campfire_math::{Num, Vec3};
@@ -83,12 +83,16 @@ pub(crate) struct TickBody {
     pub(crate) arrived: Option<Vec3>,
 }
 
-/// A unit that steps aside for a walker, the point it steps to, and how deep its step is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A unit that steps aside for a walker, the point it steps to off the walker's way, how deep
+/// its step is, the points of the walker's passage in the tick's buffer of them, and the
+/// walker's radius.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Aside {
     pub(crate) id: StableId,
     pub(crate) to: Vec3,
     pub(crate) depth: AsideDepth,
+    pub(crate) passage: Range<u32>,
+    pub(crate) radius: Num,
 }
 
 /// A short route a walker takes: in place of the next `skipped` waypoints of its route, and
@@ -166,20 +170,47 @@ impl Steering {
         apart.update(&self.still_apart);
     }
 
+    /// Puts in `passages` the points of the way `steered` passes, which a friend that steps aside
+    /// clears: where it stands, then the waypoints of `ahead` its window round it holds, then,
+    /// past them, the point `reach` along the leg that leaves the window.
+    pub(crate) fn passage(
+        grid: &PathingGrid,
+        steered: Steered,
+        ahead: &[Vec3],
+        passages: &mut Vec<Vec3>,
+    ) {
+        let at = steered.position;
+        let clearance = grid.clearance(steered.walker);
+        let cells = clearance.grid();
+        let window = Window::around(cells, cells.nearest_cell(at), Self::WINDOW);
+        passages.push(at);
+        let mut from = at;
+        for &point in ahead {
+            let cell = cells.nearest_cell(point);
+            if !window.contains(cell % cells.columns(), cell / cells.columns()) {
+                passages.push(from.step_toward(point, Self::reach(grid)));
+                return;
+            }
+            passages.push(point);
+            from = point;
+        }
+    }
+
     /// Puts in `asides` each unit that stands idle on the next stretch of `steered`'s way, toward
     /// `ahead` and at most `reach` long, and that `moves` lets the walker move, with the point it
     /// steps to: off the walker's way, on the side it stands on, or to the walker's left when it
     /// stands on the way, as walkers pass on the right, until it clears the walker's body, as Zero
     /// Hour's pathfinder moves the allies off a new path and OpenRA nudges an idle friend that
     /// blocks a move (04-capabilities/navigation.md, An idle friend steps aside), a step deeper
-    /// than the walker's walk. One whose side clears the walker already stays, and a walk as deep
-    /// as `AsideDepth::MOST` moves none (04-capabilities/navigation.md, An idle friend steps
-    /// aside).
+    /// than the walker's walk, and `passage`, the walker's points in the tick's buffer, which its
+    /// place clears. One whose side clears the walker already stays, and a walk as deep as
+    /// `AsideDepth::MOST` moves none (04-capabilities/navigation.md, An idle friend steps aside).
     pub(crate) fn asides(
         &self,
         steered: Steered,
         (ahead, reach): (Vec3, Num),
         moves: Moves,
+        passage: &Range<u32>,
         asides: &mut Vec<Aside>,
     ) {
         let Steered {
@@ -233,6 +264,8 @@ impl Steering {
                 id: body.id,
                 to: body.position + toward * (clear - off),
                 depth: depth.deeper(),
+                passage: passage.clone(),
+                radius: walker.radius,
             });
         });
     }
@@ -365,6 +398,24 @@ impl Steering {
             reached: outcome.reached,
         };
         (!self.short.is_empty() && (outcome.reached || last)).then_some(detour)
+    }
+
+    /// Puts in `blockers` the units that stand near `body`, a unit that steps aside, as far as
+    /// its window and its body reach on `grid`, but `body` itself: the places it may not take.
+    pub(crate) fn standing_near(
+        &self,
+        grid: &PathingGrid,
+        body: IndexedBody,
+        blockers: &mut Vec<IndexedBody>,
+    ) {
+        let standing = self.standing.as_ref().expect("steering read the bodies");
+        let near = Self::reach(grid) + grid.cell() / 2 + body.shape.bound();
+        blockers.clear();
+        standing.near(body.layer, body.position, near, |other| {
+            if other.id != body.id {
+                blockers.push(*other);
+            }
+        });
     }
 
     /// The short route of the last detour.
