@@ -157,7 +157,9 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     //   to x = −10 first, which changes nothing here.
     // - A unit at (0, 6): (0, 1), and (−0.5, 1.5), of the two cells as near in the row. It walks
     //   to where the unit stands.
-    // - None: at the producer, and it stands.
+    // - None: at the open cell nearest the producer, outside its box, (−0.5, −1.5), of the cells as
+    //   near the lower first, and it stands (walkers-get-through.md, A spawn stands where it can
+    //   walk).
     let cases = [
         (Some(point(8, 0)), halves(5, -1), Some(halves(16, 0))),
         (Some(point(-40, 0)), halves(-5, -1), Some(halves(-20, 0))),
@@ -166,7 +168,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
             halves(-1, 3),
             Some(halves(0, 12)),
         ),
-        (None, halves(0, 0), None),
+        (None, halves(-1, -3), None),
     ];
     for (at, (target, place, walks)) in cases.into_iter().enumerate() {
         Production::tick_ordering(
@@ -185,16 +187,18 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     }
     // The clear keeps the producer's part, with no target, as each rally writes it in place.
     assert_eq!(*game.part::<Rally>(producer), Rally::new(None));
-    // A unit that died rallies nothing: the grunt spawns at its producer, and stands.
+    // A unit that died rallies nothing: the grunt spawns at the open cell nearest its producer,
+    // and stands.
     game.insert_parts(flag, Dead);
     Production::tick_ordering(&mut game, 0, producer, rally(RallyTarget::Unit(flag)));
     Production::order_train(&mut game, producer);
     game.step();
     let spawned = Shop::spawned(&mut game, shop.grunt)[4];
-    assert_eq!(spawned.position, halves(0, 0));
+    assert_eq!(spawned.position, halves(-1, -3));
 
     // With a vision grid, a rally to a unit of team 0 at (0, 6) that the producer's team 1 does
-    // not see is ignored: the dead flag stays its rally, and the grunt spawns at its producer.
+    // not see is ignored: the dead flag stays its rally, and the grunt spawns at the open cell
+    // nearest its producer.
     // Once team 1 sees it, the rally takes it, as the living flag's did.
     Vision::fog_grid(&mut game, 2);
     let watch = Navigation::walker_at(&mut game, halves(0, 12))
@@ -202,7 +206,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         .place(&mut game);
     let team0 = TeamSet::of(Team::new(0));
     for (at, (seers, place)) in [
-        (team0, halves(0, 0)),
+        (team0, halves(-1, -3)),
         (team0.with(Team::new(1)), halves(-1, 3)),
     ]
     .into_iter()

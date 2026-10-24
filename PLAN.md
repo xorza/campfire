@@ -8,13 +8,13 @@ The slice of [Walkers get through](docs/design/walkers-get-through.md), in navig
 batch each; its checks are that document's. It stands first, as a walker that stands for good
 with a destination breaks every match that holds one.
 
-### W2. A spawn that can walk out (navigation's room)
+### W5. Other teams wall a stuck route (navigation's crowd costs)
 
-- [ ] `room_near` tests a walker's place for its body alone (`navigation_column.rs:130`,
-  `navigation_column.rs:177`) → for a unit that walks, also its clearance's open cell in the
-  region of the open cell nearest the search's point (walkers-get-through.md, A unit spawns only
-  where it can walk out). Builds: a name is resolved once, the region of the point found once
-  for a search.
+After W2, as the slice's last check waits on it.
+
+- [ ] A stuck walker's route walls only friends hemmed in (`crowd_costs.rs`, `routing.rs:169`) →
+  also every unit of another team that stands (walkers-get-through.md, A stuck walker's route walls
+  the units of other teams that stand).
 
 ### W3. A route in sight (navigation's planner)
 

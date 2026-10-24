@@ -331,8 +331,9 @@ impl Navigation {
     /// spawned, when it stands, a box or a circle: each walker of its layer whose body it overlaps
     /// goes at once to the nearest cell its walker may stand in, by stable id, as a teleport
     /// places a unit but with no disjoint. The static index and the pathing grid take the body
-    /// first, so the cell is clear of every static body, and no push of collision can hold the
-    /// walker between two. With no pathing grid, the body pushes it out as collision would.
+    /// first, whether it overlaps a walker or not, so the cell is clear of every static body, no
+    /// push of collision can hold the walker between two, and a spawn its producer sends at once
+    /// stands clear of it. With no pathing grid, the body pushes it out as collision would.
     fn make_room(world: &mut World, entity: Entity) {
         let run = world.resource::<RoomMakingRun>().0;
         world

@@ -69,8 +69,8 @@ death = 1181
 
 [stinger]
 built = [452, 966]
-hit = 996
-death = 1230
+hit = 948
+death = 1179
 
 [missile]
 built = 718
@@ -84,10 +84,10 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
 
 [base]
-ended = 10549
+ended = 11167
 standing = [0, 8]
-think_ops = 17076
-stalls = 581
+think_ops = 19342
+stalls = 366
 
 [base.result]
 Won = 1
@@ -124,7 +124,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 4
+no_target = 2
 no_place = 0
 no_stack = 0
 
@@ -141,10 +141,10 @@ slot_kind = 0
 no_build = 0
 
 [attack]
-ended = 35204
+ended = 18608
 standing = [4, 0]
 think_ops = 9101
-stalls = 1450
+stalls = 262
 
 [attack.result]
 Won = 0

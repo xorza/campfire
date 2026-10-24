@@ -263,10 +263,12 @@ fn a_client_parts_its_units_only_from_held_units_that_cannot_walk() {
 }
 
 #[test]
-fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
+fn the_pathing_grid_takes_a_body_as_it_spawns_and_its_changes_from_the_next_tick() {
     // 1 m cells over (−2, −2) to (2, 2), for walkers of 0.5 m: a tower of 0.5 m at (−1.5, −1.5)
     // blocks its own cell, 0, whose center is on it; one the client only holds, at (1.5, 1.5),
-    // blocks cell 15. A walker never marks the grid.
+    // blocks cell 15. Each blocks as it spawns, as navigation's spawn callback gives the grid
+    // the body (walkers-get-through.md, A spawn stands where it can walk). A walker never marks
+    // the grid.
     let half = Num::HALF;
     let mut game = walk_match();
     Navigation::load_open_pathing(&mut game, Num::ONE, [-2, -2], [2, 2], [ground(half)]);
@@ -289,7 +291,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
         .place(&mut game);
     Unpredicted::register(&mut game);
     game.insert_parts(held, Unpredicted);
-    assert_eq!(blocked(&game), Vec::<usize>::new());
+    assert_eq!(blocked(&game), [0, 15]);
     game.step();
     assert_eq!(blocked(&game), [0, 15]);
     // A tower that died stands no more in the way, from the next tick.

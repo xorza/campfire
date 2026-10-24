@@ -29,12 +29,25 @@ walker either gets where it goes or stops within seconds. The facts are in
   move within its close-enough distance. Refused: arrival within its radius of the waypoint,
   under which a dozer stopped 41 m short of its building site and the attack play never ended;
   5 asks of 1 s each, which leave it jittering by its goal for 5 s.
-- **A unit spawns only where it can walk out.** `room_near` takes, for a unit that walks, only a
-  place whose cell its clearance holds open, in the region of the open cell nearest the search's
-  point, as Zero Hour's `adjustToPossibleDestination` keeps a goal in the unit's own zone and its
-  spawn spread takes only clear cells. A unit that cannot walk keeps the room test alone.
-  Refused: room for the body alone, under which a supply truck spawned in a pocket of its base
-  whose ways out are narrower than its body and never moved.
+- **A spawn stands where it can walk.** The pathing grid takes a box's body as the box spawns,
+  whether it overlaps a walker or not, and a unit a producer with neither an exit nor a rally
+  point spawns stands at the center of the open cell nearest the producer, as a trained unit
+  stands at the free cell nearest its exit and a teleport finds its cell
+  (04-capabilities/production.md, A producer may name its exit and rally). Refused: a box that
+  joins the grid from the next tick, under which a supply center's truck, sent as the center
+  spawned, took the cell under the center as open, and collision pushed it out into a pocket of
+  its base whose ways out are narrower than its body, which it never left; the producer's own
+  place; a test of `room_near`'s places against the grid, as the truck was a spawn of
+  production, and `room_near` keeps a gap clear of each body.
+- **A stuck walker's route walls the units of other teams that stand.** The route a stuck walker
+  asks treats the cells a unit of another team that stands holds as walls, as it does those a
+  friend hemmed in holds, as OpenRA plans a blocked move again with every actor blocking and Zero
+  Hour's pathfinder blocks a non-ally that stands and cannot be crushed (`enemyFixed`); its first
+  route still prices them at nothing, so an attack goes to the units it fights. Refused: units of
+  other teams priced on every route, which the design refused before, as an attack's route then
+  goes round the units it should fight; neutrals alone, which leaves the same jam against an enemy
+  that stands; friends that are busy walled, under which a 3v3 hero farmed below level 6; no
+  walls, under which China's supply trucks planned through a civilian taxi for 16,890 ticks.
 - **A route in sight is a line.** A route whose goal the walker sees, by the exact test of the
   static bodies, the walls and the priced cells a route's smoothing makes, is the straight line
   to it, before any search of cells, as a route's smoothing keeps such a line. Refused: the cells
@@ -56,8 +69,9 @@ walker either gets where it goes or stops within seconds. The facts are in
 - A walker bound for a goal within a standing unit's personal space arrives once it is stuck
   there, and one whose goal a stuck unit holds stops after its 5 asks.
 - A walker that takes detours it cannot walk asks its route again after 1 s.
-- `room_near` refuses a pocket whose ways out are narrower than the unit's body, and takes the
-  place nearest outside it.
+- A spawn of a producer with neither an exit nor a rally point stands outside the producer's
+  body, at the open cell nearest it.
+- A stuck walker routes round a unit of another team that stands on its way.
 - A walker in a gap that holds no open cell walks to a goal it sees.
 - A wide walker behind a column of two wide idle friends in a corridor with no side room arrives,
   the column driving ahead of it.
