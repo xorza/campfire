@@ -18,7 +18,6 @@ The inventory on 2026-10-24: 18 bench targets, 31 `bench.rs` files, 111 calls th
 - **Capabilities' own atomics.** Combat's damage weigh, stats' recompute of modifiers, areas' triggers, orders' chase and abilities' cast are only inside `battle` and `server_stage`. A change to one of them moves a whole-tick case by less than its noise.
 - **Client per-frame work.** Only unit picking has a case. The interpolation of the units that the client holds (`net-interpolation`, `net-frame-interpolation`) and the client's fog upload run each frame and have no case.
 - **Codec and packets.** `codec` (snapshot and payload encoding) and `net-packets` (packet build and parse) are only inside `net-replication` and `state_delta`.
-- **Protocol reads.** A session log's decode, which the verifier and each replay run, has no case. Only its record has one.
 
 ### What is inconsistent
 

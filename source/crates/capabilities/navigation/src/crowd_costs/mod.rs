@@ -336,6 +336,9 @@ impl Cache for CrowdCosts {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+
 #[cfg(test)]
 mod tests {
     use campfire_geometry::{Bounds, Radius, Shape};

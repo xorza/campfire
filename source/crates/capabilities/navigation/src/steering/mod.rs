@@ -487,5 +487,8 @@ impl Steering {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+
 #[cfg(test)]
 mod tests;

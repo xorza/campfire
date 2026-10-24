@@ -1,7 +1,7 @@
 //! What the workspace's tests and benches measure with: the counting allocator and the audit of
-//! the allocations of a hot path's frames, criterion's measure of allocations, and the one policy
-//! of every bench's ids and sampling (02-engine-core.md, Allocation audits; 02-engine-core.md,
-//! One sampling policy). Test support, never shipped.
+//! the allocations of a hot path's frames, criterion's measure of allocations, the cost of a run's
+//! steps, and the one policy of every bench's ids and sampling (02-engine-core.md, Allocation
+//! audits; 02-engine-core.md, One sampling policy). Test support, never shipped.
 
 mod alloc_audit;
 mod alloc_trace;
@@ -9,6 +9,7 @@ mod allocations;
 mod call_site;
 mod counting_allocator;
 mod kind;
+mod run_cost;
 mod scale;
 
 use criterion::measurement::Measurement;
@@ -21,6 +22,7 @@ pub use crate::allocations::Allocations;
 pub use crate::call_site::CallSite;
 pub use crate::counting_allocator::{AllocWindow, CountingAllocator};
 pub use crate::kind::Kind;
+pub use crate::run_cost::RunCost;
 pub use crate::scale::Scale;
 
 /// Runs `cases` under a dispatcher with no subscriber: a case times its code, not the logs a

@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use bevy_ecs::world::World;
 use campfire_capabilities::Match;
-use campfire_measure::{Kind, Scale};
+use campfire_measure::{Kind, RunCost, Scale};
 use campfire_protocol::SessionLog;
 use campfire_runner::SessionWorld;
 use campfire_sim::internals::StageClock;
@@ -51,7 +51,7 @@ fn server_tick(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
     group.bench_function("worst_3v3", |b| {
         b.iter_custom(|matches| {
             (0..matches)
-                .map(|_| MatchCost::of_match(&mut moba.start(), timed_tick).worst)
+                .map(|_| played(&mut moba.start(), timed_tick).worst)
                 .sum()
         });
     });
@@ -62,7 +62,7 @@ fn server_tick(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
             for _ in 0..matches {
                 let mut fixed = moba.start();
                 fixed.game_mut().track(&mut delta);
-                let cost = MatchCost::of_match(&mut fixed, |game| {
+                let cost = played(&mut fixed, |game| {
                     let start = Instant::now();
                     game.run_tick_alone();
                     game.changes(&mut delta);
@@ -79,7 +79,7 @@ fn server_tick(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
     group.bench_function("mean_3v3", |b| {
         b.iter_custom(|matches| {
             (0..matches)
-                .map(|_| MatchCost::of_match(&mut moba.start(), timed_tick).total)
+                .map(|_| played(&mut moba.start(), timed_tick).total)
                 .sum()
         });
     });
@@ -97,7 +97,7 @@ fn server_stage(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
     };
     let mut group = Kind::Integration.group(c, "server_stage", Scale::Frame);
     let stage_match =
-        |stage: SimSystems| MatchCost::of_match(&mut clocked(moba), |game| stage_tick(game, stage));
+        |stage: SimSystems| played(&mut clocked(moba), |game| stage_tick(game, stage));
     for stage in SimSystems::ALL {
         group.bench_function(id("worst", stage), |b| {
             b.iter_custom(|matches| {
@@ -201,41 +201,9 @@ fn is_hurt(world: &mut World) -> bool {
         })
 }
 
-/// What a match of `TICKS` ticks cost, by the time `tick` gives for each of its ticks: in all,
-/// its first tick, and the worst of the others.
-#[derive(Debug, Clone, Copy)]
-struct MatchCost {
-    total: Duration,
-    first: Duration,
-    worst: Duration,
-}
-
-impl MatchCost {
-    /// Plays `fixed` for `TICKS` ticks, each by `tick`, which runs it and gives its time.
-    fn of_match(fixed: &mut FixedMatch, mut tick: impl FnMut(&mut Match) -> Duration) -> Self {
-        Self::of(|| tick(fixed.game_mut()))
-    }
-
-    /// The cost of `TICKS` ticks, each the time `tick` gives.
-    fn of(mut tick: impl FnMut() -> Duration) -> Self {
-        let first = tick();
-        let mut cost = Self {
-            total: first,
-            first,
-            worst: Duration::ZERO,
-        };
-        for _ in 1..TICKS {
-            let spent = tick();
-            cost.total += spent;
-            cost.worst = cost.worst.max(spent);
-        }
-        cost
-    }
-
-    /// The worst of all its ticks, the first among them.
-    fn worst_of_all(self) -> Duration {
-        self.first.max(self.worst)
-    }
+/// What a match of `TICKS` ticks of `fixed` cost, each tick run and timed by `tick`.
+fn played(fixed: &mut FixedMatch, mut tick: impl FnMut(&mut Match) -> Duration) -> RunCost {
+    RunCost::of(TICKS, || tick(fixed.game_mut()))
 }
 
 /// A new match of `moba`, with `StageClock`'s probes in its schedule.
@@ -260,27 +228,4 @@ fn timed_tick(game: &mut Match) -> Duration {
     let spent = start.elapsed();
     black_box(&game);
     spent
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_match_cost_splits_the_first_tick_from_the_worst_of_the_rest() {
-        // Tick 0 takes 9 µs and tick n after it n % 7 µs: the 5,999 ticks after the first are
-        // 857 whole rounds of 1 to 6 and 0, 21 µs each, so 17,997 µs, and 18,006 µs with the
-        // first. The worst after the first is 6 µs; of all, the first's 9 µs.
-        let mut n = 0;
-        let cost = MatchCost::of(|| {
-            let micros = if n == 0 { 9 } else { n % 7 };
-            n += 1;
-            Duration::from_micros(micros)
-        });
-        assert_eq!(n, TICKS);
-        assert_eq!(cost.first, Duration::from_micros(9));
-        assert_eq!(cost.worst, Duration::from_micros(6));
-        assert_eq!(cost.total, Duration::from_micros(18_006));
-        assert_eq!(cost.worst_of_all(), Duration::from_micros(9));
-    }
 }

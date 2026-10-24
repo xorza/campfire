@@ -33,25 +33,13 @@ which builds every bench; no batch runs one.
   cases skip when the package is missing, so no fresh clone and no CI runs them.
 - [ ] `integration/bots/think_<n>_bots`: a think period of those plays' bots.
 
-### B5. Client, codec and protocol reads (`client`, `net-interpolation`, `codec`, `net-packets`, `protocol`)
+### B5. Client, codec and frames (`client`, `net-interpolation`, `codec`, `net-packets`, `net-harness`)
 
 - [ ] `integration/client_frame/interpolate_<n>_units`: the interpolation of the units that
   the client holds, on 1,000 units.
 - [ ] `atomic/codec/{encode,decode}` on a snapshot of `KernelScene::UNITS` units, and
   `atomic/packets/{build,parse}`.
-- [ ] `integration/session_log/decode_<n>_players`, beside `record_tick`.
 - [ ] `integration/server_frame` and `integration/client_frame`: a `mean_<scene>` and a `worst_<scene>`
   case of each scene, where now `walk` has no worst and the 1v1 no mean.
-
-## The driver keeps its signals
-
-These items change the `drive` repository and wait for the driver's own work; then the drive table
-requires the release that holds them.
-
-- [ ] A command's first error is its log's first line → an `error` pattern per command in its
-  table; the Zero Hour check's is `ERROR|panicked at|error\[`.
-- [ ] A timeout reads as a FAIL → a TIMEOUT of its own in the verdict.
-- [ ] A compile error of the test binaries shows as `FAIL index`, as the `index` step runs
-  `test(=index)` → the build is a step of its own.
 
 ## Foundations

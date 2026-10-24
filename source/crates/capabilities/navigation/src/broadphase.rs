@@ -268,13 +268,18 @@ pub(crate) mod internals {
         colliders
             .iter()
             .filter(|collider| !collider.movable)
-            .map(|collider| IndexedBody {
-                id: collider.id,
-                position: collider.point,
-                shape: collider.shape,
-                layer: collider.layer,
-            })
+            .map(indexed)
             .collect()
+    }
+
+    /// The body of `collider` as an index holds it.
+    pub(crate) const fn indexed(collider: &Collider) -> IndexedBody {
+        IndexedBody {
+            id: collider.id,
+            position: collider.point,
+            shape: collider.shape,
+            layer: collider.layer,
+        }
     }
 }
 

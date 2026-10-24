@@ -105,7 +105,7 @@ default-members = [
 # The driver's lanes and the workspace's own commands, which `cargo drive` runs; `version` names
 # the driver the workspace needs, and a driver it does not name refuses to run.
 [workspace.metadata.drive]
-version = "0.2"
+version = "0.2.5"
 # Every bench built, so a bench that no longer builds fails the gate (02-engine-core.md, The gate
 # builds every bench).
 gate-benches = true
@@ -145,8 +145,10 @@ steps = [
 ]
 
 # The Zero Hour check, which needs `GENERALSZH_DATA`: its arguments are the check's own; its
-# plays run the crates' asserts.
+# plays run the crates' asserts. A failure shows its errors, a panic and the build's, not the
+# check's first lines, which report the import.
 [workspace.metadata.drive.commands.zero-hour]
+errors = ["ERROR", "panicked at", "error["]
 steps = [{ cargo = "run --profile checks -p campfire-zero-hour-check", args = true }]
 
 # The client and the dedicated server, to play: each builds in `release-dev`, runs with its

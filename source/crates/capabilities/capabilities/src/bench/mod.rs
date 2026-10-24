@@ -1,5 +1,7 @@
 //! The benches of a whole match, which only the top crate builds.
 
+mod navigation;
+
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
@@ -355,4 +357,5 @@ pub fn run(c: &mut Criterion) {
     gather(c);
     acquire(c);
     steered(c);
+    navigation::navigation(c);
 }

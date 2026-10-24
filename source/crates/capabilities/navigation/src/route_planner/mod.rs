@@ -13,6 +13,8 @@ use crate::regions::Candidate;
 use crate::route_planner::open_cells::OpenCells;
 use crate::segment::Segment;
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 pub(crate) mod open_cells;
 
 /// Plans routes by A* on a clearance of the pathing grid: eight neighbors, a straight step costing
