@@ -49,6 +49,7 @@ fn a_wide_walker_counts_every_unit_that_blocks_a_cell_of_its_window() {
         walks: false,
         gathers: false,
         idle: true,
+        arrived: None,
     };
     steering.read(&statics, [still]);
     let goal = eighths(64, 0);
@@ -61,6 +62,8 @@ fn a_wide_walker_counts_every_unit_that_blocks_a_cell_of_its_window() {
         walker,
         stuck: false,
         gathering: false,
+        goal,
+        depth: AsideDepth::default(),
     };
     steering.steer(&mut planner, &grid, &statics, steered, route.read().ahead());
     assert_eq!(steering.blockers, [standing]);
@@ -100,6 +103,7 @@ fn a_walker_that_gathers_steers_round_no_unit_that_gathers() {
             walks: false,
             gathers: true,
             idle: false,
+            arrived: None,
         };
         steering.read(&statics, [gathering_still]);
         let steered = Steered {
@@ -110,6 +114,8 @@ fn a_walker_that_gathers_steers_round_no_unit_that_gathers() {
             walker,
             stuck: false,
             gathering,
+            goal,
+            depth: AsideDepth::default(),
         };
         steering
             .steer(&mut planner, &grid, &statics, steered, route.read().ahead())
@@ -119,13 +125,13 @@ fn a_walker_that_gathers_steers_round_no_unit_that_gathers() {
 }
 
 #[test]
-fn a_stuck_walker_moves_aside_only_an_idle_friend_ahead_of_it() {
-    // A walker of 0.5 m of team 0 at the origin, bound for (8, 0), a quarter meter a step, and
-    // four units of 0.5 m that stand within the two radii and its step, 1.25 m, of it: an idle
-    // friend ahead at (0.875, 0.25), 0.25 m to its left, steps on to the left until it is the
-    // two radii, 1 m, off its way, to (0.875, 1); an idle friend behind it at (−0.875, 0), an
-    // idle enemy ahead at (0.875, −0.25) and a friend ahead with something under way at
-    // (0.25, −0.875) stay.
+fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
+    // A walker of 0.5 m of team 0 at the origin, bound for (8, 0), with a stretch of 4 m: units of
+    // 0.5 m stand round it. An idle friend ahead at (0.875, 0.25), 0.25 m to its left, steps on to
+    // the left until it is the two radii, 1 m, off its way, to (0.875, 1); one on the way at
+    // (3, 0) steps to its left, to (3, 1). An idle friend behind it at (−0.875, 0), one past the
+    // stretch and the two radii at (5, 0), an idle enemy ahead at (0.875, −0.25), and a friend
+    // ahead with something under way at (0.25, −0.875) stay; a mode that moves no unit moves none.
     let half = Num::HALF;
     let statics = BodyIndex::new(Num::int(4));
     let mut ids = IdAllocator::default();
@@ -144,11 +150,14 @@ fn a_stuck_walker_moves_aside_only_an_idle_friend_ahead_of_it() {
             walks: false,
             gathers: false,
             idle,
+            arrived: None,
         }
     };
     let bodies = [
         stands(eighths(7, 2), 0, true),
+        stands(eighths(24, 0), 0, true),
         stands(eighths(-7, 0), 0, true),
+        stands(eighths(40, 0), 0, true),
         stands(eighths(7, -2), 1, true),
         stands(eighths(2, -7), 0, false),
     ];
@@ -163,17 +172,36 @@ fn a_stuck_walker_moves_aside_only_an_idle_friend_ahead_of_it() {
             layer: Layer::FIRST,
             radius: half,
         },
-        stuck: true,
+        stuck: false,
         gathering: false,
+        goal: eighths(64, 0),
+        depth: AsideDepth::default(),
     };
-    let mut asides = Vec::new();
-    steering.asides(steered, eighths(64, 0), &mut asides);
-    let ahead = bodies[0].body.id;
-    assert_eq!(
-        asides,
-        [Aside {
-            id: ahead,
-            to: eighths(7, 8)
-        }]
-    );
+    let stretch = (eighths(64, 0), Num::int(4));
+    let asides = |moves, depth| {
+        let mut asides = Vec::new();
+        steering.asides(Steered { depth, ..steered }, stretch, moves, &mut asides);
+        asides.sort_by_key(|aside| aside.id);
+        asides
+    };
+    let aside = |at: usize, to, depth| Aside {
+        id: bodies[at].body.id,
+        to,
+        depth,
+    };
+    // A walk of its own moves them a step aside 1 deep, a step aside 1 deep moves them 2 deep,
+    // and one 2 deep moves none (04-capabilities/navigation.md, An idle friend steps aside).
+    let [own, once, twice] =
+        [0, 1, 2].map(|deep| (0..deep).fold(AsideDepth::default(), |depth, _| depth.deeper()));
+    for (walk, step) in [(own, once), (once, twice)] {
+        assert_eq!(
+            asides(Moves::Team, walk),
+            [
+                aside(0, eighths(7, 8), step),
+                aside(1, eighths(24, 8), step)
+            ]
+        );
+    }
+    assert_eq!(asides(Moves::Team, twice), []);
+    assert_eq!(asides(Moves::None, own), []);
 }

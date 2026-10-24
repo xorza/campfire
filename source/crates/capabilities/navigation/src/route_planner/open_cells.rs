@@ -1,12 +1,15 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
+use crate::crowd_costs::CrowdCosts;
+use crate::route_planner::RoutePlanner;
+
 /// The cells A* may expand next, in the order it takes them: by total, cost plus estimate, then
 /// by estimate, then by number. The octile estimate is consistent, so the least total never
-/// falls, and a step adds to a total at most a diagonal to the cost and a diagonal to the
-/// estimate: every waiting total lies within `SPREAD` of the least. So the cells wait in a ring of
-/// buckets by total, each a heap by estimate and number, smaller than one heap of all of them and
-/// ordered by one number.
+/// falls, and a step adds to a total at most a diagonal and the crowd's price to the cost and a
+/// diagonal to the estimate: every waiting total lies within `SPREAD` of the least. So the cells
+/// wait in a ring of buckets by total, each a heap by estimate and number, smaller than one heap
+/// of all of them and ordered by one number.
 #[derive(Debug)]
 pub(crate) struct OpenCells {
     buckets: Vec<BinaryHeap<Reverse<u64>>>,
@@ -17,11 +20,11 @@ pub(crate) struct OpenCells {
 }
 
 impl OpenCells {
-    /// How far past the least total a waiting total may lie: a diagonal step's cost, 14, and as
-    /// much again of estimate.
-    const SPREAD: u32 = 28;
+    /// How far past the least total a waiting total may lie: a diagonal step's cost and the
+    /// highest price of a crowd, and a diagonal again of estimate.
+    const SPREAD: u32 = RoutePlanner::DIAGONAL + CrowdCosts::HELD + RoutePlanner::DIAGONAL;
     /// The buckets of the ring, more than the totals from the least to `SPREAD` past it.
-    const RING: u32 = 32;
+    const RING: u32 = (Self::SPREAD + 1).next_power_of_two();
 
     pub(crate) fn new() -> Self {
         Self {

@@ -13,6 +13,7 @@ use campfire_declarations::{CapabilitySet, MatchFacts, Role};
 use campfire_harness::{ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
 use campfire_math::{Num, Vec3};
 use campfire_mode::internals::ModeWorldInternals;
+use campfire_navigation::UnpartedPairs;
 use campfire_production::TrainQueue;
 use campfire_progression::Experience;
 use campfire_projectiles::Projectile;
@@ -99,6 +100,12 @@ fn assert_sound(fixed: &FixedMatch, tick: u64, set: CapabilitySet) {
     assert!(unlisted.is_empty(), "tick {tick}: {unlisted:?}");
     let kindless = Release::entities_of_no_kind(world);
     assert!(kindless.is_empty(), "tick {tick}: {kindless:?}");
+    // Collision parted every pair it met (04-capabilities/navigation.md, Collision leaves no
+    // overlap).
+    let unparted = world
+        .get_resource::<UnpartedPairs>()
+        .map(|pairs| pairs.get());
+    assert_eq!(unparted, Some(0), "tick {tick}");
 }
 
 fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
@@ -269,9 +276,9 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // As tick sums: of the projectiles in flight, the areas laid and the heroes modified.
     assert_eq!(
         [seen.projectiles, seen.areas, seen.modified_heroes],
-        [210, 76, 654]
+        [246, 76, 654]
     );
-    // Progression: each hero gained levels from the kills near it, to 3 and 2.
+    // Progression: each hero gained a level from the kills near it, to 2.
     let levels: Vec<u32> = world
         .resource::<EntityIndex>()
         .iter()
@@ -281,7 +288,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
                 .then(|| unit.get::<Level>().unwrap().get())
         })
         .collect();
-    assert_eq!(levels, [3, 2]);
+    assert_eq!(levels, [2, 2]);
     // Navigation: the boulder, a static body, fell.
     let boulder = world
         .resource::<EntityIndex>()
@@ -321,9 +328,9 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     assert_eq!(seen.saves, [1, 240, 480]);
     // The boulder is a box: the lancer, sent off its long side to (-3, 4) and back at it in tick
     // 150, walked 0.25 m a tick into reach. The least circle that holds the box, 1.34 m round its
-    // center, came into its weapon's 4 m after tick 157; the long side, 0.6 m from the center,
-    // 0.74 m nearer, three steps later, after tick 160; and the lancer stopped there and wound up
-    // in tick 161. So the reach measured the box, not its bound. No walker stood inside the box
+    // center, came into its weapon's 4 m after tick 156; the long side, 0.6 m from the center,
+    // 0.74 m nearer, three steps later, after tick 159; and the lancer stopped there and wound up
+    // in tick 160. So the reach measured the box, not its bound. No walker stood inside the box
     // after any tick.
     let reach_from = |pick: fn(&(u64, bool, bool)) -> bool| {
         let after_order = seen.lancer_reach.iter().filter(|&&(tick, ..)| tick >= 150);
@@ -332,9 +339,9 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
             .map(|&(tick, ..)| tick)
             .next()
     };
-    assert_eq!(reach_from(|&(_, _, bound)| bound), Some(157));
-    assert_eq!(reach_from(|&(_, boxed, _)| boxed), Some(160));
-    assert_eq!(seen.first_strike, Some(161));
+    assert_eq!(reach_from(|&(_, _, bound)| bound), Some(156));
+    assert_eq!(reach_from(|&(_, boxed, _)| boxed), Some(159));
+    assert_eq!(seen.first_strike, Some(160));
     assert_eq!(seen.sunk, []);
 }
 

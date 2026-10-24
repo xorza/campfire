@@ -27,6 +27,7 @@ fn apply(game: &mut Match, effect: NavigationEffect) {
 #[test]
 fn a_dash_moves_its_unit_exactly_to_a_point_or_to_the_unit_it_follows() {
     let mut game = walk_match();
+    Navigation::load_moves(&mut game, Moves::None);
     // A dash of 2 m a tick to (5, 9, 0) goes on the ground plane, at its own height: 2 m, 4 m,
     // then the last meter in tick 2, where it ends. Its unit keeps its destination, (0, 0, 9),
     // and takes no step of its own, so it stays on z = 0; once the dash ends it asks its route
@@ -43,7 +44,7 @@ fn a_dash_moves_its_unit_exactly_to_a_point_or_to_the_unit_it_follows() {
     // A walker of 0.5 m walks a meter a tick along x from (10, 0, 20); a chaser of 0.5 m dashes 3
     // m a tick at it from (0, 0, 20). The walker steps first each tick: 11, 12, 13, 14, 15; the
     // chaser 3, 6, 9, 12, and in tick 4, 3 m off, within its step and the bodies' 1 m, it comes
-    // to 14, where their bodies touch, and ends.
+    // to 14, where their bodies touch, and ends. The mode moves no unit, so no push parts them.
     let walker = Navigation::walker_at(&mut game, (10, 0, 20))
         .circle(HALF)
         .walks(Num::ONE, Some(Vec3::from((30, 0, 20))))

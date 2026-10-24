@@ -4,6 +4,7 @@ use campfire_declarations::SectionWriter;
 use campfire_geometry::BodyBox;
 use campfire_math::Num;
 use campfire_mode::{BountyData, IncomeData, IncomePays, Pays};
+use campfire_navigation::{Gait, UnitNavigationData};
 use campfire_orders::AcquirePatch;
 use campfire_projectiles::ProjectileData;
 use campfire_stats::{StatValue, StatsData, TypePoolsData};
@@ -33,12 +34,15 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its
 /// `BuildCost` in money as the cost a kill's bounty takes its share of; and the money its
 /// `AutoDepositUpdate` pays over time, a capture's bonus among it (04-capabilities/games.md, Income
-/// over time). Every other object has none of these. What every type shares, a death that despawns
-/// and a turret's tolerance and slot kind, is Zero Hour's rules data, `[defaults]`, which lies
-/// under each type's own (03-game-scripting.md, Defaults under each unit type). A fired
-/// projectile's type is a projectile alone (09-zero-hour.md, The import converts shells, splash,
-/// scatter, pitch, turrets and slow weapons; 09-zero-hour.md, A missile converts to a steered
-/// projectile).
+/// over time); and of one that drives, its `navigation`: it drives as a vehicle of `KindOf` and
+/// steps as any other, at a weight of its circle's radius squared, as a body's area weighs it
+/// (04-capabilities/navigation.md, A unit moves by its kind of motion;
+/// 04-capabilities/navigation.md, A unit has a weight). Every other object has none of these. What
+/// every type shares, a death that despawns and a turret's tolerance and slot kind, is Zero Hour's
+/// rules data, `[defaults]`, which lies under each type's own (03-game-scripting.md, Defaults under
+/// each unit type). A fired projectile's type is a projectile alone (09-zero-hour.md, The import
+/// converts shells, splash, scatter, pitch, turrets and slow weapons; 09-zero-hour.md, A missile
+/// converts to a steered projectile).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedType {
     /// Its most life, of a type that lives, which its `stats` hold too.
@@ -58,6 +62,7 @@ pub(crate) struct ImportedType {
     bounty: Option<BountyData>,
     income: Option<IncomeData>,
     projectile: Option<ProjectileData>,
+    navigation: Option<UnitNavigationData>,
     /// Whether it leads its spawns, so it has no weapon, body, walk or life of its own.
     leads: bool,
     /// The period of its AI module's idle scan, and every hostile unit for one that attacks
@@ -124,10 +129,21 @@ impl ImportedType {
             return Ok(Self::leader(object, names));
         }
         let geometry = object.geometry();
-        let shape = match drive {
-            Some(_) => Some(BodyShape::circle(num(geometry
-                .bounding_circle()
-                .min(MAX_WALKER))?)),
+        let walker = drive
+            .map(|_| num(geometry.bounding_circle().min(MAX_WALKER)))
+            .transpose()?;
+        let navigation = walker
+            .map(|radius| {
+                let gait = if object.is_vehicle() {
+                    Gait::Drive
+                } else {
+                    Gait::Step
+                };
+                UnitNavigationData::new(gait, radius * radius).ok_or(TypeError::Body)
+            })
+            .transpose()?;
+        let shape = match walker {
+            Some(radius) => Some(BodyShape::circle(radius)),
             None if object.is_structure() && !geometry.small => Some(match geometry.shape {
                 GeometryShape::Box => {
                     BodyShape::box_sized([num(2.0 * geometry.major)?, num(2.0 * geometry.minor)?])
@@ -218,6 +234,7 @@ impl ImportedType {
             bounty,
             income,
             projectile: None,
+            navigation,
             acquire,
             leads: false,
         })
@@ -239,6 +256,7 @@ impl ImportedType {
             bounty: None,
             income: None,
             projectile: None,
+            navigation: None,
             acquire: None,
             leads: true,
         }
@@ -321,6 +339,9 @@ impl ImportedType {
         if let Some(projectile) = &self.projectile {
             writer.section(projectile);
         }
+        if let Some(navigation) = &self.navigation {
+            writer.section(navigation);
+        }
     }
 
     /// The type of a projectile, of `projectile` alone: it has no life, no body and no tag.
@@ -337,6 +358,7 @@ impl ImportedType {
             bounty: None,
             income: None,
             projectile: Some(projectile),
+            navigation: None,
             acquire: None,
             leads: false,
         }

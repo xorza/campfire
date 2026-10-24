@@ -16,8 +16,8 @@ use campfire_sim::{
 };
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
 use campfire_units::{
-    Body, Dead, Facing, GroundPoint, Leader, LivingSpawns, MapBook, OpenCellAsk, OpenCellRun,
-    Owner, SpawnAt, Spawner, Walk,
+    Body, Dead, Facing, GroundPoint, Leader, Leaving, LivingSpawns, MapBook, OpenCellAsk,
+    OpenCellRun, Owner, SpawnAt, Spawner, Walk,
 };
 use campfire_values::{ActionId, Motion, Relation, Team, UnitTags, UnitType};
 
@@ -311,11 +311,16 @@ impl Trains {
         }
     }
 
-    /// Sends `unit`, which left the producer of `entity` by `exit`, on: a gatherer to the node
-    /// the producer rallies to, by its first gather of the node's resource, else, of a producer
-    /// that starts its gatherers, to the free node its first gather finds, either to be checked
-    /// as the next tick's orders are; any other to the producer's rally point.
+    /// Sends `unit`, which left the producer of `entity` by `exit`, on: a gatherer to the node the
+    /// producer rallies to, by its first gather of the node's resource, else, of a producer that
+    /// starts its gatherers, to the free node its first gather finds, either to be checked as the
+    /// next tick's orders are; any other to the producer's rally point. A unit that walks leaves,
+    /// passing through its team's units until it clears them (04-capabilities/navigation.md, A new
+    /// unit leaves its exit).
     pub(crate) fn send_on(world: &mut World, entity: Entity, unit: Entity, exit: ExitSpawn) {
+        if let Some(mut leaving) = world.get_mut::<Leaving>(unit) {
+            Leaving::set(&mut leaving, true);
+        }
         let gathers = world.get::<UnitType>(entity).is_some_and(|&producer_type| {
             let producers = world.resource::<ById<UnitType, ProducerSpec>>();
             producers

@@ -22,21 +22,45 @@ fn row(at: &[(Num, Num, bool)]) -> Vec<Collider> {
             movable,
             walking: movable,
             gathering: false,
+            weight: Num::ONE,
+            way: None,
+            team: None,
+            firm: false,
+            leaving: false,
+            pinned: false,
         })
         .collect()
 }
 
-/// Parts the bodies of `colliders` that overlap, as the Collide stage does: the walkers among
-/// the colliders, the others in the static index.
-fn resolve(colliders: &mut [Collider]) {
+/// Runs `stage` as the Collide stage does: on the walkers among `colliders`, with their contacts
+/// and the static index of the others; then writes the walkers back.
+fn staged<T>(
+    colliders: &mut [Collider],
+    stage: impl FnOnce(&mut [Collider], &[Contact], &BodyIndex) -> T,
+) -> T {
     let index = statics(colliders);
     let mut walkers: Vec<Collider> = colliders.iter().filter(|c| c.movable).copied().collect();
     let contacts = Broadphase::default().contacts(&walkers, &index).to_vec();
-    Collider::resolve(&mut walkers, &contacts);
-    let mut parted = walkers.into_iter();
+    let result = stage(&mut walkers, &contacts, &index);
+    let mut moved = walkers.into_iter();
     for collider in colliders.iter_mut().filter(|c| c.movable) {
-        *collider = parted.next().unwrap();
+        *collider = moved.next().unwrap();
     }
+    result
+}
+
+/// Parts the bodies of `colliders` that overlap; the pairs it left deep.
+fn resolve(colliders: &mut [Collider]) -> usize {
+    staged(colliders, |walkers, contacts, _| {
+        Collider::resolve(walkers, contacts)
+    })
+}
+
+/// Pushes apart the bodies of `colliders` within their personal space, by `moves`.
+fn push(colliders: &mut [Collider], moves: Moves) {
+    staged(colliders, |walkers, contacts, statics| {
+        Collider::push(walkers, contacts, Pushes { moves, statics });
+    });
 }
 
 fn places(colliders: &[Collider]) -> Vec<(Num, Num)> {
@@ -241,4 +265,130 @@ fn two_gatherers_pass_through_each_other_and_part_from_any_other() {
             (Num::int(3) + quarter, Num::ZERO),
         ]
     );
+}
+
+#[test]
+fn a_heavier_body_moves_less_and_one_that_drives_moves_only_along_its_facing() {
+    // 1.5 m apart along x, radii 1: an overlap of 0.5 m. Of weights 1 and 3, the lighter takes
+    // 3/4 of it, 0.375 m, and the heavier 1/4, 0.125 m.
+    let x = |eighths: i64| Num::from_bits(eighths << (Num::FRAC_BITS - 3));
+    let pair = || row(&[(x(0), x(0), true), (x(12), x(0), true)]);
+    let mut weighed = pair();
+    weighed[1].weight = Num::int(3);
+    assert_eq!(resolve(&mut weighed), 0);
+    assert_eq!(places(&weighed), [(x(-3), x(0)), (x(13), x(0))]);
+    // The first drives. Facing +x, along the line between them, it moves as one that steps, a
+    // quarter meter; facing +z, across it, it moves none, and the other takes the half meter.
+    let way = |x: i128, z: i128| Direction::of([x, z]);
+    let mut along = pair();
+    along[0].way = way(1, 0);
+    assert_eq!(resolve(&mut along), 0);
+    assert_eq!(places(&along), [(x(-2), x(0)), (x(14), x(0))]);
+    let mut across = pair();
+    across[0].way = way(0, 1);
+    assert_eq!(resolve(&mut across), 0);
+    assert_eq!(places(&across), [(x(0), x(0)), (x(16), x(0))]);
+    // Both drive, side by side, facing +z: no pass parts them along their facings, and the last
+    // pushes them off them, a quarter meter each.
+    let mut side = pair();
+    for collider in &mut side {
+        collider.way = way(0, 1);
+    }
+    assert_eq!(resolve(&mut side), 0);
+    assert_eq!(places(&side), [(x(-2), x(0)), (x(14), x(0))]);
+}
+
+#[test]
+fn passes_part_a_chain_within_its_slack_and_a_static_body_pins_a_walker() {
+    // Three in a row 1.5 m apart, radii 1. The first pass parts the first pair, a quarter meter
+    // each, to −0.25 and 1.75, which pushes the middle 0.75 m into the third, then that pair, to
+    // 1.375 and 3.375: the first pair is 0.375 m deep. Each pass after quarters it, 0.375 to
+    // 0.09375 in the second, so 8 passes leave 0.375 · 4⁻⁷ = 3 · 2⁻¹⁷ m, the first at
+    // −0.5 + 2 · 2⁻¹⁷, the others 2⁻¹⁷ short of 1.5 and 3.5, 2 m apart: within a 64th of the
+    // reach, 0.03125 m.
+    let x = |bits: i64| Num::from_bits(bits << (Num::FRAC_BITS - 17));
+    let meters = |meters: i64| meters << 17;
+    let chain = || {
+        row(&[
+            (x(0), x(0), true),
+            (x(meters(3) / 2), x(0), true),
+            (x(meters(3)), x(0), true),
+        ])
+    };
+    let mut parted = chain();
+    assert_eq!(resolve(&mut parted), 0);
+    assert_eq!(
+        places(&parted),
+        [
+            (x(-meters(1) / 2 + 2), x(0)),
+            (x(meters(3) / 2 - 1), x(0)),
+            (x(meters(7) / 2 - 1), x(0)),
+        ]
+    );
+    // A pair beside a static body, all radii 1: the first walker at 0, 0.25 m into the static
+    // body at −1.75 and 0.5 m into the second walker at 1.5. The first pass parts the pair, a
+    // quarter meter each, to −0.25 and 1.75, then the first from the static body, 0.5 m, to 0.25,
+    // which pins it; the second pass leaves the second the whole 0.5 m, to 2.25, and the third
+    // parts none.
+    let mut walled = row(&[
+        (x(0), x(0), true),
+        (x(meters(3) / 2), x(0), true),
+        (x(-meters(7) / 4), x(0), false),
+    ]);
+    assert_eq!(resolve(&mut walled), 0);
+    assert_eq!(
+        places(&walled)[..2],
+        [(x(meters(1) / 4), x(0)), (x(meters(9) / 4), x(0))]
+    );
+}
+
+#[test]
+fn a_push_parts_a_pair_within_its_space_by_weight_and_moves_no_unit_it_may_not() {
+    // Radii 1, so a space of 1.25 each, and a pair 2.25 m apart along x: 0.25 m into their 2.5 m,
+    // which a push undoes a quarter of, 1/16 m, in 64ths of a meter 4, split by weight. The
+    // first walks, the second stands, both of team 0.
+    let x = |sixty_fourths: i64| Num::from_bits(sixty_fourths << (Num::FRAC_BITS - 6));
+    let team = |team| Some(Team::new(team));
+    let pair = |second: fn(&mut Collider)| {
+        let mut pair = row(&[(x(0), x(0), true), (x(144), x(0), true)]);
+        pair[1].walking = false;
+        for collider in &mut pair {
+            collider.team = team(0);
+        }
+        second(&mut pair[1]);
+        pair
+    };
+    let pushed = |mut pair: Vec<Collider>, moves| {
+        push(&mut pair, moves);
+        places(&pair)
+            .into_iter()
+            .map(|(x, _)| x)
+            .collect::<Vec<_>>()
+    };
+    // Equal weights, 2 each; the second of weight 3 takes 1, the first 3.
+    assert_eq!(pushed(pair(|_| {}), Moves::Team), [x(-2), x(146)]);
+    let heavy = pair(|second| second.weight = Num::int(3));
+    assert_eq!(pushed(heavy, Moves::Team), [x(-3), x(145)]);
+    // The second firm, or one that drives: the first takes all 4.
+    let firm = pair(|second| second.firm = true);
+    assert_eq!(pushed(firm, Moves::Team), [x(-4), x(144)]);
+    let drives = pair(|second| second.way = Direction::of([0, 1]));
+    assert_eq!(pushed(drives, Moves::Team), [x(-4), x(144)]);
+    // Of another team, under a mode that moves no unit, or both standing: neither moves.
+    let enemy = pair(|second| second.team = Some(Team::new(1)));
+    assert_eq!(pushed(enemy, Moves::Team), [x(0), x(144)]);
+    assert_eq!(pushed(pair(|_| {}), Moves::None), [x(0), x(144)]);
+    let mut standing = pair(|_| {});
+    standing[0].walking = false;
+    assert_eq!(pushed(standing, Moves::Team), [x(0), x(144)]);
+    // A static body of radius 1 at x = −130, 2 m and a 64th off the first: 2 of the push leaves
+    // the first touching it, 4 would put it in, so with the second firm it takes none.
+    let walled = |second: fn(&mut Collider)| {
+        let mut bodies = pair(second);
+        bodies.extend(row(&[(x(-130), x(0), false)]));
+        bodies
+    };
+    let moved = |bodies: Vec<Collider>| pushed(bodies, Moves::Team)[..2].to_vec();
+    assert_eq!(moved(walled(|_| {})), [x(-2), x(146)]);
+    assert_eq!(moved(walled(|second| second.firm = true)), [x(0), x(144)]);
 }

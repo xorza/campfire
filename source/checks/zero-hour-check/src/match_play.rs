@@ -13,6 +13,7 @@ use campfire_harness::{FixedMatch, FixedSession, MatchUnits, ProbeFile, ReplayRe
 use campfire_math::{Num, Vec3};
 use campfire_mode::internals::MarkerOf;
 use campfire_mode::{MatchEnd, Mode, OptionPicks, OptionValue, PlayerSlotPick};
+use campfire_navigation::StalledWalkers;
 use campfire_orders::{DroppedOrders, OrdersDirective};
 use campfire_package::ModePackages;
 use campfire_production::Site;
@@ -73,6 +74,9 @@ pub(crate) struct MatchPlay<'p> {
     homes: Vec<BotHome>,
     /// The most operations one think of its bots ran so far.
     think_ops: u64,
+    /// The times a walker stood stuck 1 s so far, as navigation's report of each tick counts
+    /// them.
+    stalls: u64,
     books: Arc<Books>,
     due: DuePayloads,
     /// The record of each tick, when the play keeps one: its copy checked, and its log replayed
@@ -223,6 +227,7 @@ impl<'p> MatchPlay<'p> {
             bots,
             homes: Vec::new(),
             think_ops: 0,
+            stalls: 0,
             books,
             due,
             record,
@@ -345,6 +350,7 @@ impl<'p> MatchPlay<'p> {
             result: end.map(MatchEnd::result),
             standing,
             think_ops: self.think_ops,
+            stalls: self.stalls,
             drops,
         }
     }
@@ -399,6 +405,9 @@ impl<'p> MatchPlay<'p> {
             }
         }
         let units = MatchUnits::of(self.fixed.game());
+        let stalled = self.fixed.game().get_resource::<StalledWalkers>();
+        let stalls = stalled.map_or(0, |stalled| stalled.get());
+        self.stalls += u64::try_from(stalls).expect("a count of units fits u64");
         for BotHome {
             player_slot,
             home,

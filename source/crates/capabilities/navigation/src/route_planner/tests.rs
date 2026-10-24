@@ -227,6 +227,7 @@ fn the_nearest_open_cell_is_the_nearest_of_the_grid_or_the_window_by_every_cell(
                 window,
                 blockers: &[],
             }),
+            crowd: None,
         };
         planner.mark_blockers(walkable);
         let open = |at: usize| {
@@ -264,6 +265,7 @@ fn the_nearest_open_cell_is_the_nearest_of_the_grid_or_the_window_by_every_cell(
             window: Window::around(clearance.grid(), 12, 1),
             blockers: &[],
         }),
+        crowd: None,
     };
     let mut planner = RoutePlanner::new(clearance.grid());
     let mut waypoints = vec![quarters(0, 0)];
@@ -310,6 +312,7 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
                 window,
                 blockers: &blockers,
             }),
+            crowd: None,
         };
         planner.mark_blockers(walkable);
         let mut spanned = vec![false; window.cells()];

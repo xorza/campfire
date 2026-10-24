@@ -279,7 +279,7 @@ fn the_walls_test_visits_and_finds_what_a_walk_cell_by_cell_does() {
             });
         let mut work = 0;
         assert_eq!(
-            clearance.is_walled(segment, &mut work),
+            clearance.is_walled(segment, None, &mut work),
             expected,
             "{segment:?}"
         );

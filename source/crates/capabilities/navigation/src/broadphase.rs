@@ -4,13 +4,14 @@ use crate::body_index::BodyIndex;
 use crate::collider::Collider;
 use crate::collider::contact::{Contact, ContactBodies};
 
-/// Finds the pairs of bodies of one layer that overlap. Two walkers come from a sort of the walkers
-/// by layer, level and cell, in levels by size from a base cell twice the narrowest walker's
-/// radius: a walker goes into the least level whose cell is twice its radius, so two of one level
-/// that overlap sit in the same cell or in cells side by side, and each occupied cell pairs its own
+/// Finds the pairs of bodies of one layer within each other's personal space, `Collider::near`'s.
+/// Two walkers come from a sort of the walkers by layer, level and cell, in levels by size from a
+/// base cell twice the narrowest walker's space: a walker goes into the least level whose cell is
+/// twice its space, so two of one level that are near sit in the same cell or in cells side by
+/// side, and each occupied cell pairs its own
 /// walkers, and those of the cell to its right and of the three below it, so each pair of cells is
 /// visited once; cursors that only move forward find those cells. A walker and one of a coarser
-/// level that overlap lie less than the coarser cell apart, so each occupied cell pairs its walkers
+/// level that are near lie less than the coarser cell apart, so each occupied cell pairs its walkers
 /// with those of the nine cells around its own at each coarser level of its layer; a wide walker so
 /// costs its own level's few cells, not every walker's. A sort, not a grid over the map, as a map
 /// may be wide and its bodies few; each walker's cell is one `CellKey` above its index, so the sort
@@ -58,7 +59,7 @@ impl Entry {
 
 impl Broadphase {
     /// The pairs of the walkers `colliders`, sorted by stable id, and of a walker and a static body
-    /// of `statics`, that overlap as they stand now, by the stable ids of the two, the lower
+    /// of `statics`, that are near as they stand now, by the stable ids of the two, the lower
     /// first: the pairs a check of every pair finds, in its order.
     pub(crate) fn contacts(&mut self, colliders: &[Collider], statics: &BodyIndex) -> &[Contact] {
         debug_assert!(colliders.iter().all(|collider| collider.movable));
@@ -71,7 +72,7 @@ impl Broadphase {
         let walkers = colliders.iter().enumerate();
         self.entries
             .extend(walkers.clone().map(|(index, collider)| {
-                let level = levels.level(collider.radius());
+                let level = levels.level(collider.space());
                 let cell = CellKey::new(
                     collider.layer.get(),
                     level,
@@ -126,8 +127,8 @@ impl Broadphase {
             Self::across(colliders, coarser, &self.entries, cell, &mut self.contacts);
         }
         for (walker, collider) in walkers {
-            statics.near(collider.layer, collider.point, collider.radius(), |&body| {
-                if collider.overlaps(&Collider::fixed(&body)) {
+            statics.near(collider.layer, collider.point, collider.space(), |&body| {
+                if collider.near(&Collider::fixed(&body)) {
                     let (first, second) = if collider.id < body.id {
                         (collider.id, body.id)
                     } else {
@@ -146,10 +147,10 @@ impl Broadphase {
         &self.contacts
     }
 
-    /// The levels of the cells: from a base twice the narrowest radius of the walkers; `None` with
+    /// The levels of the cells: from a base twice the narrowest space of the walkers; `None` with
     /// none, as no two static bodies part.
     fn levels(colliders: &[Collider]) -> Option<CellLevels> {
-        let narrowest = colliders.iter().map(Collider::radius).min()?;
+        let narrowest = colliders.iter().map(Collider::space).min()?;
         Some(CellLevels::new(narrowest + narrowest))
     }
 
@@ -197,9 +198,9 @@ impl Broadphase {
         }
     }
 
-    /// Records the contact of the walkers `a` and `b` when they overlap.
+    /// Records the contact of the walkers `a` and `b` when they are near.
     fn check(colliders: &[Collider], a: usize, b: usize, contacts: &mut Vec<Contact>) {
-        if colliders[a].overlaps(&colliders[b]) {
+        if colliders[a].near(&colliders[b]) {
             let (first, second) = (a.min(b), a.max(b));
             contacts.push(Contact {
                 first: colliders[first].id,
@@ -240,6 +241,12 @@ pub(crate) mod internals {
                 movable: body.movable,
                 walking: body.walking,
                 gathering: false,
+                weight: Num::ONE,
+                way: None,
+                team: None,
+                firm: false,
+                leaving: false,
+                pinned: false,
             })
             .collect()
     }
@@ -287,12 +294,17 @@ mod tests {
         let mut contacts = Vec::new();
         for first in 0..bodies.len() {
             for second in first + 1..bodies.len() {
-                if bodies[first].overlaps(&bodies[second]) {
+                if bodies[first].near(&bodies[second]) {
                     contacts.push([bodies[first].id, bodies[second].id]);
                 }
             }
         }
         contacts
+    }
+
+    /// The radius of the personal space of a walker of `radius`, 5/4 of it.
+    fn space(radius: Num) -> Num {
+        Num::from_bits(radius.to_bits() * 5 / 4)
     }
 
     /// The contacts the broadphase finds among `bodies`, its walkers among the colliders and the
@@ -308,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    fn the_cells_find_every_overlap_a_check_of_every_pair_finds() {
+    fn the_cells_find_every_near_pair_a_check_of_every_pair_finds() {
         let mut broadphase = Broadphase::default();
         // Crowded, sparse, and spread across cells on both sides of the origin, from several
         // seeds, each with the buffers the scene before left; the last two over two and three
@@ -343,8 +355,9 @@ mod tests {
         );
         assert_eq!(found(&mut broadphase, &[]), Vec::<[StableId; 2]>::new());
 
-        // Walkers of 0.35 m to 2,048 m mixed, over two layers, from a base of 0.7 m: each size
-        // takes its own level, twice its radius over the base rounded up to a power of two, 0.8 m
+        // Walkers of 0.35 m to 2,048 m mixed, over two layers, from a base of twice the narrowest
+        // space, 5/4 of 0.35 m, 0.875 m: each size takes its own level, twice its space over the
+        // base rounded up to a power of two, the same as twice its radius over 0.7 m, 0.8 m
         // 2.3 to 4, level 2, 3 m 8.6 to 16, level 4, 17 m 48.6 to 64, level 6, 120 m 343 to 512,
         // level 9, and 2,048 m 5,851 to 8,192, level 13; and the pairs within a level and across
         // levels are a check of every pair's.
@@ -369,8 +382,11 @@ mod tests {
             );
             let walkers: Vec<Collider> = colliders.iter().filter(|c| c.movable).copied().collect();
             let levels = Broadphase::levels(&walkers).unwrap();
-            assert_eq!(levels, CellLevels::new(sizes[0] + sizes[0]));
-            assert_eq!(sizes.map(|size| levels.level(size)), [0, 2, 4, 6, 9, 13]);
+            assert_eq!(levels, CellLevels::new(space(sizes[0]) * 2));
+            assert_eq!(
+                sizes.map(|size| levels.level(space(size))),
+                [0, 2, 4, 6, 9, 13]
+            );
             let mut held: Vec<u8> = broadphase
                 .cells
                 .iter()
@@ -382,7 +398,7 @@ mod tests {
         }
 
         // Walkers of 0.35 m over 160 m square, the first body a static one of 64 m at the origin,
-        // which about half of them overlap: the cells stay 0.7 m wide.
+        // which about half of them come near: the cells stay twice a walker's space wide.
         let walker = Num::from_bits((35 << Num::FRAC_BITS) / 100);
         for seed in [6, 7] {
             let mut colliders = scene(seed, 400, 80, 1, false);
@@ -403,7 +419,7 @@ mod tests {
             let walkers: Vec<Collider> = colliders.iter().filter(|c| c.movable).copied().collect();
             assert_eq!(
                 Broadphase::levels(&walkers),
-                Some(CellLevels::new(walker + walker))
+                Some(CellLevels::new(space(walker) * 2))
             );
         }
     }

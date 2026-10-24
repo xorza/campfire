@@ -243,7 +243,7 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
     let air = DeclaredName::new("air").unwrap();
     let layered = ModeNavigationData {
         layers: vec![DeclaredName::new("ground").unwrap(), air.clone()],
-        spawn_tags: Vec::new(),
+        ..ModeNavigationData::default()
     };
     let refused = [
         (

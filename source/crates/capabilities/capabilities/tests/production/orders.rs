@@ -1,8 +1,9 @@
 use crate::halves;
 use campfire_declarations::ByIdBuilder;
 use campfire_geometry::{Bounds, Grid};
-use campfire_navigation::{Navigation, Walker};
-use campfire_units::{GroundPoint, LivingSpawns, MapBook, SeenBy};
+use campfire_navigation::{Gait, Navigation, UnitNavigationData, UnpartedPairs, Walker};
+use campfire_sim::Position;
+use campfire_units::{GroundPoint, Leaving, LivingSpawns, MapBook, SeenBy};
 use campfire_values::TeamSet;
 use campfire_vision::Vision;
 
@@ -272,6 +273,138 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         assert_eq!(destination, Some(halves(-12, 16)), "{member:?}");
     }
     assert!(game.try_part::<Destination>(leader).is_none());
+}
+
+#[test]
+fn a_trained_unit_leaves_through_its_team_at_once_and_reaches_its_crowded_rally_point() {
+    // Over 1 m cells from (−12, −12) to (12, 12), a barracks of a box 4 by 2 m at the origin trains
+    // grunts of a half meter, a meter a tick, one a tick from tick 1, rallying to (7, 0). Each
+    // spawns at (2.5, −0.5), the open cell nearest the box's point nearest the rally point, where
+    // an idle friend stands, and another beside it at (2.5, 0.5); six more stand round the rally
+    // point. Each grunt leaves through its team's units, no push between them, until it overlaps
+    // none or stands (04-capabilities/navigation.md, A new unit leaves its exit): the third and the
+    // fourth, which spawn into the grunts before them, leave a tick longer. The friends at the exit
+    // stay where they stood, and the grunts, which never stall, arrive in ticks 5, 6, 7 and 7, the
+    // crowd at the rally point making room by its steps aside and the later grunts stopping against
+    // the earlier ones (04-capabilities/navigation.md, A crowded goal ends the walk), and the steps
+    // aside 2 deep at most (04-capabilities/navigation.md, An idle friend steps aside). No tick
+    // leaves a pair of bodies overlapping past the slack.
+    let run = |gait: Gait, weight: i64| {
+        let mut game = ordering_match();
+        let shop = Shop::place(&mut game);
+        let bounds = Bounds::new([Num::int(-12); 2], [Num::int(12); 2]).unwrap();
+        let walker = Walker {
+            layer: Layer::FIRST,
+            radius: Num::HALF,
+        };
+        MapBook::amend(&mut game, |_, map| map.bounds = bounds);
+        Navigation::load_pathing(&mut game, Grid::new(Num::ONE, bounds).unwrap(), [walker]);
+        let mut walkers = ByIdBuilder::default();
+        walkers.set(shop.grunt, walker);
+        walkers.build().load_into(&mut game);
+        let navigation = UnitNavigationData::new(gait, Num::int(weight)).unwrap();
+        Navigation::load_unit_navigation(&mut game, shop.grunt, navigation);
+        let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
+        let producer = Production::allocate_id(&mut game);
+        let team = Team::new(1);
+        let queue = TrainQueue::default();
+        shop.producer(
+            &mut game,
+            producer,
+            0,
+            team,
+            Some(PlayerSlot::new(0)),
+            train,
+            queue,
+        );
+        let body = BodyForm::new(
+            BodyShape::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+            Layer::FIRST,
+        )
+        .at(Num::ZERO);
+        game.insert_parts(producer, body);
+        let half = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST);
+        let crowd = [
+            (5, -1),
+            (5, 1),
+            (13, -1),
+            (13, 1),
+            (15, -1),
+            (15, 1),
+            (17, -1),
+            (17, 1),
+        ];
+        let crowd = crowd.map(|(x, z)| {
+            Navigation::walker_at(&mut game, halves(x, z))
+                .team(team)
+                .body(half)
+                .walks(Num::ONE, None)
+                .place(&mut game)
+        });
+        let rally = RallyTarget::Point(GroundPoint {
+            x: Num::int(7),
+            z: Num::ZERO,
+        });
+        let target = Some(rally);
+        Production::tick_ordering(
+            &mut game,
+            0,
+            producer,
+            ProductionDirective::Rally { target },
+        );
+        let mut leaving = Vec::new();
+        let mut arrived = [None; 4];
+        for tick in 1..=40 {
+            if tick <= 4 {
+                Production::order_train(&mut game, producer);
+            }
+            game.step();
+            assert_eq!(game.resource::<UnpartedPairs>().get(), 0, "tick {tick}");
+            let grunts = Shop::spawned(&mut game, shop.grunt);
+            if tick <= 4 {
+                let leaves = grunts
+                    .iter()
+                    .map(|grunt| game.part::<Leaving>(grunt.id).get());
+                leaving.push(leaves.collect::<Vec<_>>());
+            }
+            for (at, grunt) in grunts.iter().enumerate() {
+                if arrived[at].is_none() && game.part::<Destination>(grunt.id).get().is_none() {
+                    arrived[at] = Some(tick);
+                }
+            }
+        }
+        let leaves: Vec<bool> = (Shop::spawned(&mut game, shop.grunt).iter())
+            .map(|grunt| game.part::<Leaving>(grunt.id).get())
+            .collect();
+        let exit = [crowd[0], crowd[1]].map(|id| game.part::<Position>(id).get());
+        (leaving, arrived, leaves, exit)
+    };
+    // Units that drive, of weight 4, as a war factory's, leave and arrive the same way, in ticks
+    // 5, 6, 6 and 7, the fourth leaving a tick longer.
+    let cases = [
+        (
+            Gait::Step,
+            1,
+            [vec![false, false, true], vec![false, false, true, true]],
+            [5, 6, 7, 7],
+        ),
+        (
+            Gait::Drive,
+            4,
+            [vec![false, false, true], vec![false, false, false, true]],
+            [5, 6, 6, 7],
+        ),
+    ];
+    for (gait, weight, later, ticks) in cases {
+        let (leaving, arrived, leaves, exit) = run(gait, weight);
+        let [third, fourth] = later;
+        let firsts = [vec![true], vec![false, true]];
+        let all_leaving = [firsts[0].clone(), firsts[1].clone(), third, fourth];
+        assert_eq!(leaving, all_leaving, "{gait:?}");
+        assert_eq!(arrived, ticks.map(Some), "{gait:?}");
+        assert_eq!(leaves, [false; 4], "{gait:?}");
+        assert_eq!(exit, [halves(5, -1), halves(5, 1)], "{gait:?}");
+    }
 }
 
 #[test]

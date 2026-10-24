@@ -5,8 +5,11 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_common::Tick;
 use campfire_sim::{DueIndex, DueUnit, Position, Removals, SimTick, StableId, UnitDues};
 use campfire_units::{Body, Dead, Destination};
+use campfire_values::Team;
 
+use crate::aside_depth::AsideDepth;
 use crate::body_index::BodyIndex;
+use crate::crowd_costs::CrowdCosts;
 use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
@@ -23,8 +26,10 @@ pub struct Routing;
 impl Routing {
     /// Keeps each walker's route on its destination. A walker with a new destination asks for a
     /// route there, unless its route reaches its goal and the walker may go straight on from the
-    /// waypoint before the last to the new one, past every static body and every cell the walls
-    /// block it from, as a chaser after a target that moved: then only the last waypoint moves.
+    /// waypoint before the last to the new one, past every static body, every cell the walls
+    /// block it from and every cell its team's crowd prices, as a chaser after a target that moved:
+    /// then only the last waypoint moves (04-capabilities/navigation.md, A route prices the units
+    /// on it).
     /// A walker with no destination forgets its route, unless it arrived short. A change of the
     /// static bodies asks the routes it changes as it is tracked, as `StaticTracking` says. A
     /// walker that asks or forgets its route forgets its progress. One on its path asks as one
@@ -35,7 +40,7 @@ impl Routing {
     pub(super) fn route_units(
         tick: Res<'_, SimTick>,
         statics: Res<'_, BodyIndex>,
-        grid: Option<Res<'_, PathingGrid>>,
+        (grid, crowd): (Option<Res<'_, PathingGrid>>, Option<Res<'_, CrowdCosts>>),
         mut units: Query<
             '_,
             '_,
@@ -44,8 +49,8 @@ impl Routing {
                 &Position,
                 Ref<'_, Destination>,
                 RouteMut,
-                &mut Progress,
-                Option<&Body>,
+                (&mut Progress, Option<&mut AsideDepth>),
+                (Option<&Body>, Option<&Team>),
                 Option<&PathWalker>,
             ),
             Without<Dead>,
@@ -57,7 +62,16 @@ impl Routing {
         returned.clear();
         returned.extend(lived.read());
         returned.sort_unstable();
-        for ((entity, &id), &at, destination, mut route, mut progress, body, path) in &mut units {
+        for (
+            (entity, &id),
+            &at,
+            destination,
+            mut route,
+            (mut progress, depth),
+            (body, team),
+            path,
+        ) in &mut units
+        {
             let changed = destination.is_changed() || route.is_changed();
             if !(changed || returned.binary_search(&entity).is_ok()) {
                 continue;
@@ -73,6 +87,10 @@ impl Routing {
                 }
                 Some(goal) if route.goal() == Some(goal) => {}
                 Some(goal) => {
+                    // A destination a step aside did not give, as it gives its route's goal with
+                    // it, is a walk of the unit's own.
+                    let mut depth = depth.expect("a walker carries how deep its walk is");
+                    AsideDepth::set(&mut depth, AsideDepth::default());
                     let from = match route.read().ahead() {
                         [.., before, _] => Some(*before),
                         [_] => Some(at.get()),
@@ -81,7 +99,11 @@ impl Routing {
                     let straight = from.filter(|_| route.is_reached() && route.asked().is_none());
                     let blocks = |from| {
                         grid.as_ref().is_some_and(|grid| {
-                            let walkable = Walkable::of(grid.clearance(walker), &statics);
+                            let price = crowd
+                                .as_deref()
+                                .and_then(|crowd| crowd.price(walker, team.copied()));
+                            let walkable =
+                                Walkable::of(grid.clearance(walker), &statics).priced(price);
                             walkable.blocks(Segment::new(from, goal))
                         })
                     };
@@ -111,7 +133,11 @@ impl Routing {
     /// the asks holds into `asks`, buffers it keeps, and forgets each answered, or whose ask
     /// ended or that is gone.
     pub(super) fn plan_routes(
-        (grid, statics): (Option<Res<'_, PathingGrid>>, Res<'_, BodyIndex>),
+        (grid, statics, crowd): (
+            Option<Res<'_, PathingGrid>>,
+            Res<'_, BodyIndex>,
+            Option<Res<'_, CrowdCosts>>,
+        ),
         mut planner: Option<ResMut<'_, RoutePlanner>>,
         mut units: AskingUnits<'_, '_>,
         (mut asks, mut index, mut held): (
@@ -125,14 +151,14 @@ impl Routing {
         held.retain(|unit| {
             let asking = units
                 .get(unit.entity)
-                .is_ok_and(|(.., route, _)| route.asked().is_some());
+                .is_ok_and(|(.., route, _, _)| route.asked().is_some());
             if !asking {
                 index.forget(unit.entity);
             }
             asking
         });
         asks.read(held.iter().map(|&DueUnit { id, entity }| {
-            let (_, _, &at, route, body) = units.get(entity).expect("a walker that asks");
+            let (_, _, &at, route, body, team) = units.get(entity).expect("a walker that asks");
             Ask {
                 tick: route.asked().expect("a walker that asks"),
                 party: route.party(),
@@ -141,6 +167,7 @@ impl Routing {
                     entity,
                     position: at.get(),
                     walker: Walker::walking(body),
+                    team: team.copied(),
                     goal: route.goal().expect("a unit that asked a route has a goal"),
                 },
             }
@@ -151,11 +178,12 @@ impl Routing {
             .map(|(grid, planner)| RouteSearch {
                 grid,
                 statics: &statics,
+                crowd: crowd.as_deref(),
                 planner,
             });
         asks.plan(search, &mut |member, waypoints, reached| {
             let units = units.get_mut(member.entity);
-            let (.., mut route, _) = units.expect("a unit read this tick");
+            let (.., mut route, _, _) = units.expect("a unit read this tick");
             route.answer(member.position, waypoints, reached);
             index.forget(member.entity);
         });

@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "b3436c58032c55b299a7f1ed8c06ba79935e874901c51dba19820aa4de80952c"
+game = "8f6a9b0e1126db65b360b61cd98bd7810b8bbf1f8780aa66472cc6188c21394a"
 rules = "e98a921607dd058bfc04bfeb5f215541a8de96088b42c762b5c4b64156d04c64"
 
 [map]
@@ -51,7 +51,7 @@ barracks = 698
 factory = [482, 682, 1091]
 shot = 816
 hit = 827
-fight = 2567
+fight = 2583
 
 [supply]
 built = [482, 437]
@@ -69,8 +69,8 @@ death = 1181
 
 [stinger]
 built = [452, 966]
-hit = 980
-death = 1213
+hit = 996
+death = 1230
 
 [missile]
 built = 718
@@ -84,9 +84,10 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 310
 
 [base]
-ended = 9740
+ended = 10839
 standing = [0, 8]
-think_ops = 16790
+think_ops = 20554
+stalls = 445
 
 [base.result]
 Won = 1
@@ -123,7 +124,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 3
+no_target = 2
 no_place = 0
 no_stack = 0
 
@@ -140,12 +141,9 @@ slot_kind = 0
 no_build = 0
 
 [attack]
-ended = 17872
-standing = [4, 0]
+standing = [6, 6]
 think_ops = 9101
-
-[attack.result]
-Won = 0
+stalls = 1333
 
 [[attack.drops]]
 unread = 0

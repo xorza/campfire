@@ -109,9 +109,10 @@ pub(crate) struct BotBase {
 }
 
 /// How a play's match of two bots stood as it ended or its limit passed: the tick it ended and its
-/// result, if it did, the buildings each player slot held, each whole and alive, and the most
-/// operations one think of its bots ran, which the mode's call limit bounds (09-zero-hour.md, A
-/// bots' match that ends; 09-zero-hour.md, The bots' limits are measured).
+/// result, if it did, the buildings each player slot held, each whole and alive, the most
+/// operations one think of its bots ran, which the mode's call limit bounds, and the times a walker
+/// stood stuck 1 s, which crowds that yield keep few (09-zero-hour.md, A bots' match that ends;
+/// 09-zero-hour.md, The bots' limits are measured).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BotMatchEnd {
@@ -119,6 +120,7 @@ pub(crate) struct BotMatchEnd {
     pub(crate) result: Option<MatchResult>,
     pub(crate) standing: [usize; 2],
     pub(crate) think_ops: u64,
+    pub(crate) stalls: u64,
     pub(crate) drops: [BotDrops; 2],
 }
 

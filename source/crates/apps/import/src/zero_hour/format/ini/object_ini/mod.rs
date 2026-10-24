@@ -75,8 +75,9 @@ pub(crate) struct IniObject {
 /// walks on top of, which the game spawns with the bridges; a structure, which routes block when it
 /// is not small; an object that counts for a multiplayer victory, which a structure of it keeps
 /// its player in the match by (09-zero-hour.md, Defeat by the last building that counts); a base
-/// defense, which a human player's idle unit takes as a target among structures; and infantry,
-/// which a weapon may scatter more at.
+/// defense, which a human player's idle unit takes as a target among structures; infantry,
+/// which a weapon may scatter more at; and a vehicle, which drives through a crowd as one that
+/// turns, not one that steps (04-capabilities/navigation.md, A unit moves by its kind of motion).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ObjectKinds {
     optimized_tree: bool,
@@ -87,6 +88,7 @@ pub(crate) struct ObjectKinds {
     mp_count_for_victory: bool,
     fs_base_defense: bool,
     infantry: bool,
+    vehicle: bool,
 }
 
 /// An object's geometry as the game reads it (`GeometryInfo`): its shape, its radii and its
@@ -210,6 +212,7 @@ const STRUCTURE: &str = "structure";
 const MP_COUNT_FOR_VICTORY: &str = "mp_count_for_victory";
 const FS_BASE_DEFENSE: &str = "fs_base_defense";
 const INFANTRY: &str = "infantry";
+const VEHICLE: &str = "vehicle";
 
 /// The locomotor set an object moves by, of `TheLocomotorSetNames`.
 const SET_NORMAL: &str = "set_normal";
@@ -498,6 +501,7 @@ impl ObjectKinds {
             MP_COUNT_FOR_VICTORY => &mut self.mp_count_for_victory,
             FS_BASE_DEFENSE => &mut self.fs_base_defense,
             INFANTRY => &mut self.infantry,
+            VEHICLE => &mut self.vehicle,
             _ => return,
         };
         *kind = set;
@@ -823,6 +827,11 @@ impl IniObject {
     /// Whether it is infantry, of `KindOf`.
     pub(crate) const fn is_infantry(&self) -> bool {
         self.kinds.infantry
+    }
+
+    /// Whether it is a vehicle, of `KindOf`.
+    pub(crate) const fn is_vehicle(&self) -> bool {
+        self.kinds.vehicle
     }
 
     /// Whether it is a wall, which a projectile of `WALLS` detonates on: a fence, of a

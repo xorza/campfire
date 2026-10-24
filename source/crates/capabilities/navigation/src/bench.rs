@@ -237,6 +237,7 @@ impl GroupScene<'_> {
                     entity: Entity::PLACEHOLDER,
                     position: at,
                     walker: self.walker,
+                    team: None,
                     goal,
                 },
             })
@@ -258,6 +259,7 @@ impl GroupScene<'_> {
                     let search = RouteSearch {
                         grid: self.grid,
                         statics: self.statics,
+                        crowd: None,
                         planner,
                     };
                     asks.plan(Some(search), &mut answer);

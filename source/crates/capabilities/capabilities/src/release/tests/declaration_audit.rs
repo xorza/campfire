@@ -498,16 +498,17 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats', the players' and the mode's
-    // six parts of a player, its bounty share and its commanded units among them, the mode's three of the match, the 35 of
-    // a unit, the core's `Variation`, production's `Leader`, items' `UseGroup`, orders'
-    // `NextThink`, `NextScan` and `AttackMove`, production's `StatusTags`, combat's `TurretAngle`
-    // and the mode's `IncomeClock` among them, and the 63 books, 15 of the core's, its variations
-    // among them, interaction's two, combat's armors, turrets and weapons, navigation's walkers,
-    // orders' scans, production's trains, gathers and spawns, the mode's victory, bounty, incomes
-    // and inputs, and progression's experience among them.
+    // six parts of a player, its bounty share and its commanded units among them, the mode's
+    // three of the match, the 38 of a unit, the core's `Variation` and `Leaving`, production's
+    // `Leader`, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
+    // production's `StatusTags`, combat's `TurretAngle`, navigation's `ArrivedAt` and
+    // `AsideDepth`, and the mode's `IncomeClock` among them, and the 65 books, 15 of the core's,
+    // its variations among them, interaction's two, combat's armors, turrets and weapons, navigation's walkers, unit types'
+    // navigation and crowd rule, orders' scans, production's trains, gathers and spawns, the
+    // mode's victory, bounty, incomes and inputs, and progression's experience among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 46);
-    assert_eq!(audit.books.len(), 63);
+    assert_eq!(audit.parts.len(), 49);
+    assert_eq!(audit.books.len(), 65);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 15);
     // The observers, the runs out of the schedule and the parts a server derives, which the

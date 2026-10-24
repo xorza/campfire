@@ -4,3 +4,4 @@ why network depends on script, rhai dependency
 coverage
 migrate to stable rustc
 anti-dos
+miri

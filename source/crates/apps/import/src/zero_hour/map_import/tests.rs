@@ -33,6 +33,10 @@ radius = "5"
 
 [units.americatankcrusader.combat]
 
+[units.americatankcrusader.navigation]
+gait = "drive"
+weight = "25"
+
 [units.americatankcrusader.stats.life]
 base = "400"
 

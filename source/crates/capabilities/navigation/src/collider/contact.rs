@@ -2,8 +2,8 @@ use campfire_sim::StableId;
 
 use crate::body_index::IndexedBody;
 
-/// Two bodies whose shapes overlap, by stable id, the first the lower, which orders the contacts
-/// a stage resolves: two walkers, or a walker and a static body.
+/// Two bodies within each other's personal space, by stable id, the first the lower, which orders
+/// the contacts a stage pushes and resolves: two walkers, or a walker and a static body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Contact {
     pub(crate) first: StableId,

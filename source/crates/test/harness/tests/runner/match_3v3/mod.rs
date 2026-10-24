@@ -41,12 +41,12 @@ use crate::runner::moba::{gold, level_xp};
 const SKIRMISH: u64 = 3200;
 /// The ticks the match plays: the skirmish and the farm.
 const TICKS: u64 = Moba3v3::FARM_END;
-/// The ticks between two checkpoints, which the match takes before each multiple of it: 13 in
-/// its 13,200 ticks.
+/// The ticks between two checkpoints, which the match takes before each multiple of it: 15 in
+/// its 15,200 ticks.
 const CHECKPOINT_EVERY: u64 = 1000;
 /// The segments the match's seed chain holds: one before its first checkpoint and one after
 /// each.
-const SEGMENTS: NonZeroU32 = NonZeroU32::new(14).unwrap();
+const SEGMENTS: NonZeroU32 = NonZeroU32::new(16).unwrap();
 
 #[derive(Debug)]
 struct Run<'p> {
@@ -313,7 +313,7 @@ mod scripted_match {
         assert_learning(&run);
         showcase::assert_farm(run.fixed.game());
         let log = run.fixed.game().session().log();
-        assert_eq!(log.segment(), 13);
+        assert_eq!(log.segment(), 15);
         run.record.assert_segments_replay(log, &run.snapshots);
     }
 }
@@ -509,8 +509,8 @@ fn assert_camp(run: &Run<'_>) {
 /// caster's.
 fn assert_gold(run: &Run<'_>, melee: UnitType) {
     // A creep a hero fells pays its player 20 for a melee creep, the first three of a group, and
-    // 15 for a caster: Cinder fells a caster of the south's west group, 15, and Veil a caster of
-    // the north's east group, 15.
+    // 15 for a caster: Cinder fells a caster of the south's west group, 15, and Veil a melee creep
+    // and a caster of the north's east group, 20 + 15 = 35.
     let [cinder, veil] = [0, 5].map(|slot| hero_of(run, slot));
     let bounty = |killer| -> i64 {
         let felled = run
@@ -527,14 +527,14 @@ fn assert_gold(run: &Run<'_>, melee: UnitType) {
             })
             .sum()
     };
-    assert_eq!([bounty(cinder), bounty(veil)], [15, 15]);
+    assert_eq!([bounty(cinder), bounty(veil)], [15, 35]);
 
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 3199: 20 times,
     // 160. Cinder's player takes first blood, 300 + 100, and the creep's 15; Gale's the assist's
-    // 150, split among one assister; Kensho's the wolf's 30; Veil's the creep's 15.
+    // 150, split among one assister; Kensho's the wolf's 30; Veil's the creeps' 35.
     assert_eq!(
         run.seen.gold,
-        [160 + 415, 160 + 150, 160, 160 + 30, 160, 160 + 15]
+        [160 + 415, 160 + 150, 160, 160 + 30, 160, 160 + 35]
     );
 }
 

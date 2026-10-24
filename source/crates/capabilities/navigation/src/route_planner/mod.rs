@@ -5,6 +5,7 @@ use campfire_geometry::Grid;
 use campfire_math::Vec3;
 
 use crate::body_index::{BodyIndex, IndexedBody};
+use crate::crowd_costs::CrowdPrice;
 use crate::pathing_grid::Clearance;
 use crate::regions::Candidate;
 use crate::route_planner::open_cells::OpenCells;
@@ -13,15 +14,15 @@ use crate::segment::Segment;
 pub(crate) mod open_cells;
 
 /// Plans routes by A* on a clearance of the pathing grid: eight neighbors, a straight step costing
-/// 10 and a diagonal 14, and no diagonal past a blocked cell, so a route never cuts a blocked
-/// corner. The estimate is the octile distance, which never overestimates those costs, so the route
+/// 10 and a diagonal 14, a long route's step into a cell a unit stands in more by the crowd's
+/// price, and no diagonal past a blocked cell, so a route never cuts a blocked corner. The estimate is the octile distance, which never overestimates those costs, so the route
 /// is a cheapest one; among equal totals the cell with the lower estimate goes first, then the
 /// lower cell number, so every run plans the same route. A goal a walker cannot stand on gives way
 /// to the open cell nearest it, and a goal no route reaches to the nearest cell the walker reaches,
 /// which the clearance's regions find before the search; a short route, which they do not serve,
 /// ends on the reached cell nearest it. The route then keeps only the cells where the straight line
-/// from the waypoint before would overlap a body or touch a cell the walls block, each tested
-/// exactly. The buffers stay between routes, and a route touches only the cells it reaches. Its
+/// from the waypoint before would overlap a body, touch a cell the walls block or a priced one,
+/// each tested exactly, so a route that goes round a crowd stays round it. The buffers stay between routes, and a route touches only the cells it reaches. Its
 /// work, long routes and short, counts against one limit a tick, as many units as the grid has
 /// cells: a cell expanded, a cell scanned for the nearest one, a line tested against the bodies,
 /// and a cell a line's test against the walls visits.
@@ -48,13 +49,15 @@ pub struct RoutePlanner {
     spent: u64,
 }
 
-/// Where a route may go: the clearance of its walker with the static bodies it was marked from,
-/// and on a short route, its window and blockers, all of the walker's layer.
+/// Where a route may go: the clearance of its walker with the static bodies it was marked from;
+/// on a short route, its window and blockers, all of the walker's layer; and on a long route, what
+/// the units that stand cost it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Walkable<'a> {
     pub(crate) clearance: Clearance<'a>,
     pub(crate) statics: &'a BodyIndex,
     pub(crate) short: Option<Short<'a>>,
+    pub(crate) crowd: Option<CrowdPrice<'a>>,
 }
 
 /// A short route's window of cells, which it stays in, and the units that block it there.
@@ -129,11 +132,18 @@ impl<'a> Walkable<'a> {
             clearance,
             statics,
             short: None,
+            crowd: None,
         }
     }
 
+    /// It, priced by `crowd`, as a long route is (04-capabilities/navigation.md, A route prices the
+    /// units on it).
+    pub(crate) const fn priced(self, crowd: Option<CrowdPrice<'a>>) -> Self {
+        Self { crowd, ..self }
+    }
+
     /// Whether something blocks a walker along `segment`: a static body, a cell the walls block it
-    /// from, or a short route's blocker.
+    /// from, a short route's blocker, or a cell the crowd prices.
     pub(crate) fn blocks(&self, segment: Segment) -> bool {
         self.blocks_counting(segment, &mut 0)
     }
@@ -143,8 +153,9 @@ impl<'a> Walkable<'a> {
     fn blocks_counting(&self, segment: Segment, work: &mut u32) -> bool {
         let walker = self.clearance.walker();
         let radius = walker.radius;
+        let stood = self.crowd.map(CrowdPrice::stood);
         self.statics.blocks(segment, walker)
-            || self.clearance.is_walled(segment, work)
+            || self.clearance.is_walled(segment, stood, work)
             || self.short.is_some_and(|short| {
                 short
                     .blockers
@@ -536,7 +547,8 @@ impl RoutePlanner {
             reached[slot] = Some((z * columns + x, [x, z], step));
         }
         for (next, place, step) in reached.into_iter().flatten() {
-            let cost = self.costs[at] + step;
+            let price = walkable.crowd.map_or(0, |crowd| crowd.of(next));
+            let cost = self.costs[at] + step + price;
             let mark = self.marks[next];
             if mark == search.done || (mark == search.seen && self.costs[next] <= cost) {
                 continue;

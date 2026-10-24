@@ -305,6 +305,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `experience` | progression | since 1.0 |
 | `combat` | combat | since 1.0 |
 | `turret` | combat | since 1.0 |
+| `navigation` | navigation | since 1.0 |
 | `vision` | vision | since 1.0 |
 | `projectile` | projectiles | since 1.0 |
 | `area` | areas | since 1.0 |
@@ -529,6 +530,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | --- | --- | --- |
 | `layers` | navigation | since 1.0 |
 | `spawn_tags` | navigation | since 1.0 |
+| `moves` | navigation | since 1.0 |
 
 ### A unit type's `vision`
 

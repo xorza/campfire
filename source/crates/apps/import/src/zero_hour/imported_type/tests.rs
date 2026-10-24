@@ -145,7 +145,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     };
     let circle = BodyShape::circle;
     let boxed = BodyShape::box_sized;
-    let drives = |speed, turn_rate, radius, height| ImportedType {
+    let drives = |speed, turn_rate, radius: Num, height, gait| ImportedType {
         life: None,
         pools: None,
         tags: None,
@@ -163,6 +163,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         bounty: None,
         income: None,
         projectile: None,
+        navigation: UnitNavigationData::new(gait, radius * radius),
         acquire: None,
         leads: false,
     };
@@ -178,6 +179,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         bounty: None,
         income: None,
         projectile: None,
+        navigation: None,
         acquire: None,
         leads: false,
     };
@@ -189,10 +191,12 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     // The tank drives on its treads, 30.5 m and 90° a second; a box of half extents 15 and
     // 10 bounds a circle of √(15² + 10²) = √325 = 18.02775637…, in `f32` the nearest of
     // 19 bits past the point, 9,451,736 · 2⁻¹⁹ = 18.0277557373…, exactly 302,455,552 · 2⁻²⁴
-    // as a `Num`. Its geometry names no height, so it has the game's default, 1 m.
+    // as a `Num`. Its geometry names no height, so it has the game's default, 1 m. A `VEHICLE`,
+    // it drives through a crowd, of a weight of its radius squared, as every type that drives
+    // weighs (04-capabilities/navigation.md, A unit has a weight).
     let tank = of("Tank").unwrap();
     let radius = Num::from_bits(302_455_552);
-    assert_eq!(tank, drives(half(61), int(90), radius, int(1)));
+    assert_eq!(tank, drives(half(61), int(90), radius, int(1), Gait::Drive));
     assert_eq!(tank.move_speed(), Some(half(61)));
     // The jet only flies: no stats, and no body. The hover craft's first normal locomotor
     // flies, and its second drives, a cylinder's major radius 6.5, 20 m tall.
@@ -200,13 +204,13 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     assert_eq!(of("Jet").unwrap().move_speed(), None);
     assert_eq!(
         of("Hover").unwrap(),
-        drives(half(61), int(90), half(13), int(20))
+        drives(half(61), int(90), half(13), int(20), Gait::Step)
     );
     // A train's box bounds a circle of √(112² + 10²) ≈ 112.4 m, past the original's widest
     // pathfinding footprint: its circle is that footprint's 25 m.
     assert_eq!(
         of("Train").unwrap(),
-        drives(half(61), int(90), int(25), int(1))
+        drives(half(61), int(90), int(25), int(1), Gait::Step)
     );
     // A structure that is not small: a box of twice its radii, 120 × 140, 49 m tall; a
     // cylinder's circle of its radius 8.5; one of no geometry the game's sphere of radius 1,
@@ -415,6 +419,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         bounty: None,
         income: None,
         projectile: None,
+        navigation: None,
         acquire: None,
         leads: false,
     };

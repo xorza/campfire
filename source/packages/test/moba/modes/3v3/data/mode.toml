@@ -360,9 +360,10 @@ name = "team-south"
 name = "team-camps"
 
 # The tags of the markers the mode spawns units at, which the map load checks a walker can
-# stand on.
+# stand on; and no walker moves another out of its way, as a MOBA's units block one another.
 [navigation]
 spawn_tags = ["camp", "spawn"]
+moves = "none"
 
 # A creep's, a tower's or a camp's death pays its gold to the hero that killed it.
 [bounty]

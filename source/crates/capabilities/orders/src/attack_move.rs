@@ -111,9 +111,10 @@ impl SimComponent for AttackMove {
     const NAME: &'static str = "orders.attack_move";
     type Host = UnitEntity;
 
-    // Any goal a unit walks to is one its order gave.
+    // Its goal lies within the world's bound, as every place does, so the unit's walk to it is
+    // one a route plans.
     fn check(&self, _: &World, _: Entity) -> bool {
-        true
+        self.goal.is_none_or(Vec3::within_bound)
     }
 }
 

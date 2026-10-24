@@ -27,6 +27,7 @@ use crate::destination::Destination;
 use crate::facing::Facing;
 use crate::forced_move::ForcedMove;
 use crate::ground_data::GroundData;
+use crate::leaving::Leaving;
 use crate::lifespan::Lifespan;
 use crate::map_book::{BoundsData, MapBook, MetricData};
 use crate::move_step::MoveStep;
@@ -120,6 +121,7 @@ impl Module for Units {
         d.component::<BodyUnit>();
         d.component::<Dead>();
         d.component::<Destination>();
+        d.component::<Leaving>();
         d.component::<Facing>();
         d.component::<ForcedMove>();
         d.component::<Lifespan>();
@@ -162,6 +164,7 @@ impl Module for Units {
         d.require::<UnitEntity, Team>();
         // A forced move moves a unit that walks, in place of its step.
         d.require::<ForcedMove, MoveStep>();
+        d.require::<MoveStep, Leaving>();
         d.fact::<DeclaredTags>(DeclaredTags::build);
         d.fact::<UnitTypes>(UnitTypes::build);
         d.names::<UnitType>(UnitTypes::type_names);
@@ -204,6 +207,7 @@ impl Module for Units {
         d.part::<BodyUnit, Destination>(|at| {
             at.of_type::<MoveStep>().map(|_| Destination::default())
         });
+        d.part::<BodyUnit, Leaving>(|at| at.of_type::<MoveStep>().map(|_| Leaving::default()));
     }
 
     /// Adds the core to a match: the grid of its body units, empty, which its readers build. With

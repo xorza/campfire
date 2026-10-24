@@ -1,6 +1,8 @@
-# Perf journal: change-driven passes
+# Perf journal
 
-The journal of the optimization session on branch `perf-change-driven-passes`. Host: `local`, an AMD Ryzen 7 6800U (Zen 3+, 8 cores, SMT), governor `performance`. Runs are pinned with `taskset -c 12` on the bench binary; base and candidate interleave.
+The journal of the optimization session on branch `perf-change-driven-passes`, and of the
+measurements after it, to 2026-10-24: facts only; [Benches](../design/02-engine-core.md#benches)
+decides from them. Host: `local`, an AMD Ryzen 7 6800U (Zen 3+, 8 cores, SMT), governor `performance`. Runs are pinned with `taskset -c 12` on the bench binary; base and candidate interleave.
 
 ## Method on this host
 

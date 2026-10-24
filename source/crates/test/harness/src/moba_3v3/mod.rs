@@ -185,9 +185,11 @@ const fn cast(slot: u8, aim: CastAim) -> Moba3v3 {
 
 impl Moba3v3 {
     pub const PLAYERS: u32 = 6;
-    /// The ticks the match plays: the skirmish, then the farm to its end, in tick 13,199, after
-    /// the learn of tick 13,020, the first after the last hero reaches level 6, in tick 12,888.
-    pub const FARM_END: u64 = 13_200;
+    /// The ticks the match plays: the skirmish, then the farm to its end, in tick 15,199, 1,780
+    /// ticks past the learn of tick 13,420, the first after the last hero reaches level 6, in
+    /// tick 13,284: a margin, as the last hero's farm moves with each change of movement or of
+    /// the seed chain, whose segments the match's length sets.
+    pub const FARM_END: u64 = 15_200;
     /// In the showcase's match, whose heroes spawn in tick 19, at the end of its pick of 1 s: the
     /// tick they shop in, at their fountain, behind their spawn; the tick the first cast is sent
     /// in, as they stand in the arena, each later one `CAST_EVERY` ticks after the one before;

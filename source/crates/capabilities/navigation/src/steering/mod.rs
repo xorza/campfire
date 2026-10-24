@@ -6,7 +6,9 @@ use campfire_sim::StableId;
 use campfire_units::Layer;
 use campfire_values::Team;
 
+use crate::aside_depth::AsideDepth;
 use crate::body_index::{BodyIndex, IndexedBody};
+use crate::moves::Moves;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::{RoutePlanner, Short, Walkable, Window};
 use crate::segment::Segment;
@@ -23,9 +25,10 @@ pub(crate) struct Steering {
     still: Vec<IndexedBody>,
     /// The units in a gather loop, by stable id, which a walker in one passes through.
     gatherers: Vec<StableId>,
-    /// The units that stand idle, by stable id, with their teams: those a stuck walker of their
-    /// team moves aside.
-    idle: Vec<(StableId, Team)>,
+    /// The units that stand idle, by stable id, with their teams and the goals they arrived at:
+    /// those a walker that may move them moves aside, and those a walker bound for the same goal
+    /// stops against.
+    idle: Vec<Idle>,
     /// The index of the units that stand and do not gather, for a walker that gathers; none
     /// until a unit gathers.
     apart: Option<BodyIndex>,
@@ -41,8 +44,8 @@ pub(crate) struct Steering {
 }
 
 /// A walker that may steer this tick: its unit, where it stands, its team, if any, its step, its
-/// kind, whether walkers keep it back, and whether it gathers, which passes through the others
-/// that do.
+/// kind, whether walkers keep it back, whether it gathers, which passes through the others that
+/// do, its route's goal, and how deep its walk is in a chain of steps aside.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Steered {
     pub id: StableId,
@@ -52,11 +55,23 @@ pub(crate) struct Steered {
     pub(crate) walker: Walker,
     pub(crate) stuck: bool,
     pub(crate) gathering: bool,
+    pub(crate) goal: Vec3,
+    pub(crate) depth: AsideDepth,
+}
+
+/// A unit that stands idle, of a team: its stable id, its team and the goal it arrived at, if
+/// any.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Idle {
+    id: StableId,
+    team: Team,
+    arrived: Option<Vec3>,
 }
 
 /// A body of this tick as steering reads it: the unit's body where it stands, its team, whether
-/// the unit walks this tick, whether it is in a gather loop, and whether it stands idle: a unit
-/// that walks by a destination, with none, nothing under way, no target and no work that holds
+/// the unit walks this tick, whether it is in a gather loop, the goal it arrived at, and whether
+/// it stands idle: a unit that walks by a destination, with none, nothing under way, no target
+/// and no work that holds
 /// it, which a destination may move aside.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TickBody {
@@ -65,13 +80,15 @@ pub(crate) struct TickBody {
     pub(crate) walks: bool,
     pub(crate) gathers: bool,
     pub(crate) idle: bool,
+    pub(crate) arrived: Option<Vec3>,
 }
 
-/// A unit that steps aside for a stuck walker, and the point it steps to.
+/// A unit that steps aside for a walker, the point it steps to, and how deep its step is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Aside {
     pub(crate) id: StableId,
     pub(crate) to: Vec3,
+    pub(crate) depth: AsideDepth,
 }
 
 /// A short route a walker takes: in place of the next `skipped` waypoints of its route, and
@@ -87,6 +104,11 @@ impl Steering {
     /// round a unit some cells wide on either side, in a search of at most 17 × 17 cells.
     pub(crate) const WINDOW: usize = 8;
 
+    /// How far a short route's window reaches from the walker's cell along each axis on `grid`.
+    pub(crate) fn reach(grid: &PathingGrid) -> Num {
+        grid.cell() * i64::try_from(Self::WINDOW).expect("a small window")
+    }
+
     /// Reads this tick's `bodies`, in one pass: those of the units that stand into an index with
     /// the buckets of `statics`, and those of the units that walk into a grid; the units in a
     /// gather loop, whose standing bodies a second index leaves out.
@@ -101,6 +123,7 @@ impl Steering {
             walks,
             gathers,
             idle,
+            arrived,
         } in bodies
         {
             if walks {
@@ -116,10 +139,14 @@ impl Steering {
                 self.gatherers.push(body.id);
             }
             if let Some(team) = team.filter(|_| idle && !walks && !gathers) {
-                self.idle.push((body.id, team));
+                self.idle.push(Idle {
+                    id: body.id,
+                    team,
+                    arrived,
+                });
             }
         }
-        self.idle.sort_unstable_by_key(|&(id, _)| id);
+        self.idle.sort_unstable_by_key(|idle| idle.id);
         self.still.sort_unstable_by_key(|body| body.id);
         let standing = self.standing.get_or_insert_with(|| statics.sibling());
         standing.update(&self.still);
@@ -139,40 +166,58 @@ impl Steering {
         apart.update(&self.still_apart);
     }
 
-    /// Puts in `asides` each unit of its team that stands idle ahead of `steered`, a stuck walker
-    /// toward `ahead`, and that it touches, with the point it steps to: off the walker's way, on the side it
-    /// stands on, or to the walker's left when it stands on the way, as walkers pass on the right,
-    /// until it clears the walker's body, as Zero Hour tells a unit in the way to move away and
-    /// OpenRA nudges an idle friend that blocks a move (04-capabilities/navigation.md, An idle
-    /// friend steps aside). One whose side clears the walker already stays.
-    pub(crate) fn asides(&self, steered: Steered, ahead: Vec3, asides: &mut Vec<Aside>) {
+    /// Puts in `asides` each unit that stands idle on the next stretch of `steered`'s way, toward
+    /// `ahead` and at most `reach` long, and that `moves` lets the walker move, with the point it
+    /// steps to: off the walker's way, on the side it stands on, or to the walker's left when it
+    /// stands on the way, as walkers pass on the right, until it clears the walker's body, as Zero
+    /// Hour's pathfinder moves the allies off a new path and OpenRA nudges an idle friend that
+    /// blocks a move (04-capabilities/navigation.md, An idle friend steps aside), a step deeper
+    /// than the walker's walk. One whose side clears the walker already stays, and a walk as deep
+    /// as `AsideDepth::MOST` moves none (04-capabilities/navigation.md, An idle friend steps
+    /// aside).
+    pub(crate) fn asides(
+        &self,
+        steered: Steered,
+        (ahead, reach): (Vec3, Num),
+        moves: Moves,
+        asides: &mut Vec<Aside>,
+    ) {
         let Steered {
             position: at,
-            team: Some(team),
-            step,
+            team,
             walker,
+            goal,
+            depth,
             ..
-        } = steered
-        else {
+        } = steered;
+        if !depth.clears() {
+            return;
+        }
+        let way = at.ground_offset(ahead);
+        let Some(forward) = way.normalized() else {
             return;
         };
-        let Some(forward) = at.ground_offset(ahead).normalized() else {
-            return;
-        };
+        let stretch = way.length().min(reach);
         let left = Vec3::new(-forward.z, Num::ZERO, forward.x);
         let standing = self.standing.as_ref().expect("steering read the bodies");
         let idle = &self.idle;
-        standing.near(walker.layer, at, walker.radius + step, |body| {
+        standing.near(walker.layer, at, stretch + walker.radius, |body| {
             let clear = walker.radius + body.shape.bound();
-            let friend = idle
-                .binary_search_by_key(&body.id, |&(id, _)| id)
-                .is_ok_and(|place| idle[place].1 == team);
-            if !friend || !body.position.within_ground(at, clear + step) {
+            // One that arrived at the walker's goal is of the crowd there, which the walker
+            // stops against (04-capabilities/navigation.md, A crowded goal ends the walk).
+            let movable = idle
+                .binary_search_by_key(&body.id, |idle| idle.id)
+                .is_ok_and(|place| {
+                    let idle = idle[place];
+                    moves.may_move(team, Some(idle.team)) && idle.arrived != Some(goal)
+                });
+            if !movable {
                 return;
             }
-            // One behind the walker, or beside it, is not in its way.
+            // One behind the walker, beside it, or past the stretch is not in its way.
             let off_walker = at.ground_offset(body.position);
-            if off_walker.dot(forward) <= Num::ZERO {
+            let along = off_walker.dot(forward);
+            if along <= Num::ZERO || along >= stretch + clear {
                 return;
             }
             let side = off_walker.dot(left);
@@ -187,8 +232,42 @@ impl Steering {
             asides.push(Aside {
                 id: body.id,
                 to: body.position + toward * (clear - off),
+                depth: depth.deeper(),
             });
         });
+    }
+
+    /// Whether `steered` touches a unit of its team that stands idle, arrived at its goal, nearer
+    /// the goal than it: one of the crowd there, so it has arrived too, as the A* Pathfinding
+    /// Project stops a unit whose crowded goal it cannot reach (04-capabilities/navigation.md, A
+    /// crowded goal ends the walk).
+    pub(crate) fn packed(&self, steered: Steered) -> bool {
+        let Steered {
+            position: at,
+            team: Some(team),
+            step,
+            walker,
+            goal,
+            ..
+        } = steered
+        else {
+            return false;
+        };
+        let standing = self.standing.as_ref().expect("steering read the bodies");
+        let idle = &self.idle;
+        let off = at.ground_offset(goal).length_squared_bits();
+        let mut packed = false;
+        standing.near(walker.layer, at, walker.radius + step, |body| {
+            let crowd = idle
+                .binary_search_by_key(&body.id, |idle| idle.id)
+                .is_ok_and(|place| idle[place].team == team && idle[place].arrived == Some(goal));
+            let touches = body
+                .position
+                .within_ground(at, walker.radius + body.shape.bound() + step);
+            packed |=
+                crowd && touches && body.position.ground_offset(goal).length_squared_bits() < off;
+        });
+        packed
     }
 
     /// Steers `steered` along `route`, which has a waypoint ahead, on `grid` round `statics`: the
@@ -219,8 +298,7 @@ impl Steering {
             (true, Some(apart)) => apart,
             _ => self.standing.as_ref().expect("steering read the bodies"),
         };
-        let window_cells = i64::try_from(Self::WINDOW).expect("a small window");
-        let reach = grid.cell() * window_cells;
+        let reach = Self::reach(grid);
         let look = at.step_toward(ahead[0], reach);
         if (!stuck && !standing.blocks(Segment::new(at, look), walker)) || planner.is_spent() {
             return None;
@@ -277,6 +355,7 @@ impl Steering {
                 window,
                 blockers: &self.blockers,
             }),
+            crowd: None,
         };
         let outcome = planner.plan(walkable, at, goal, &mut self.short);
         // A plan with no cell to stand in would splice nothing in, and the walker would drop its

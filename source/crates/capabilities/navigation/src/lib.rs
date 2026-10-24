@@ -28,23 +28,30 @@ use campfire_units::{
 };
 use campfire_values::{PathId, UnitType};
 
+use crate::crowd_costs::CrowdCosts;
 use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::Walkable;
 use crate::terrain::WallGrid;
 
+mod arrived_at;
+mod aside_depth;
 #[cfg(feature = "internals")]
 pub mod bench;
 mod body_index;
 mod broadphase;
 mod collider;
+mod crowd_book;
+mod crowd_costs;
 mod error;
 mod forced_moves;
+mod gait;
 mod group_box;
 mod map_navigation_data;
 mod map_paths_data;
 mod mode_navigation_data;
 mod move_effect_data;
+mod moves;
 mod navigation_api;
 mod navigation_book;
 mod navigation_books;
@@ -66,10 +73,13 @@ mod route_asks;
 mod route_planner;
 mod routing;
 mod segment;
+mod stalled_walkers;
 mod static_bodies;
 mod static_tracking;
 mod steering;
 mod terrain;
+mod unit_navigation_data;
+mod unparted_pairs;
 mod walk_check;
 mod walker;
 mod walker_book;
@@ -77,15 +87,20 @@ mod walker_kinds;
 mod walker_on_path;
 mod walking;
 
+pub use crate::arrived_at::ArrivedAt;
+pub use crate::aside_depth::AsideDepth;
 pub use crate::body_index::{BodyIndex, IndexedBody};
 pub use crate::collider::Collider;
+pub use crate::crowd_book::CrowdBook;
 pub use crate::error::{MapProblem, NavigationDataError, NavigationRefusal};
 pub use crate::forced_moves::ForcedMoves;
+pub use crate::gait::Gait;
 pub use crate::group_box::GroupBox;
 pub use crate::map_navigation_data::{MapNavigationData, WallData};
 pub use crate::map_paths_data::{MapPathsData, PathData};
 pub use crate::mode_navigation_data::ModeNavigationData;
 pub use crate::move_effect_data::MoveEffectData;
+pub use crate::moves::Moves;
 pub use crate::navigation_api::NavigationApi;
 pub use crate::navigation_book::NavigationBook;
 pub use crate::navigation_column::{NavigationColumn, RoomAsk, RoomSearch};
@@ -106,8 +121,11 @@ pub use crate::route::{
 pub use crate::route_planner::RoutePlanner;
 pub use crate::routing::Routing;
 pub use crate::segment::Segment;
+pub use crate::stalled_walkers::StalledWalkers;
 pub use crate::static_bodies::StaticBodies;
 pub use crate::static_tracking::{StaticTracking, StaticTrackingRun};
+pub use crate::unit_navigation_data::{UnitNavigationData, UnitNavigationPatch};
+pub use crate::unparted_pairs::UnpartedPairs;
 pub use crate::walk_check::{MarkerPoint, PlacedBody, WalkCheck};
 pub use crate::walker::Walker;
 pub use crate::walker_book::WalkerBook;
@@ -170,6 +188,7 @@ impl Module for Navigation {
         d.section::<ModeNavigationData>();
         d.section::<MapNavigationData>();
         d.section::<MapPathsData>();
+        d.section::<UnitNavigationData>();
         d.removals::<Dead>();
         d.callback::<SpawnCallbacks>(Capability::Navigation, Self::make_room);
         d.component::<PathWalker>();
@@ -181,10 +200,17 @@ impl Module for Navigation {
         d.component::<RouteCursor>();
         d.timed::<Route>();
         d.component::<Progress>();
+        d.component::<ArrivedAt>();
+        d.require::<MoveStep, ArrivedAt>();
+        d.component::<AsideDepth>();
+        d.require::<MoveStep, AsideDepth>();
+        d.report::<UnpartedPairs>();
+        d.report::<StalledWalkers>();
         d.cache::<UnitTracker<StaticBodies>>();
         d.cache::<BodyIndex>();
         d.cache::<PathingGrid>();
         d.cache::<RoutePlanner>();
+        d.cache::<CrowdCosts>();
         d.observer(UnitTracker::<StaticBodies>::aged);
         d.observer(StaticBodies::part_removed);
         d.observer(StaticBodies::state_inserted);
@@ -196,6 +222,8 @@ impl Module for Navigation {
         d.listed::<MoveEffectData>();
         d.book::<ById<UnitType, Walker>>(Walker::book);
         d.book::<WalkerBook>(WalkerBook::build);
+        d.book::<ById<UnitType, UnitNavigationData>>(UnitNavigationData::book);
+        d.book::<CrowdBook>(CrowdBook::build);
         d.names::<Layer>(Self::layer_names);
         d.extend::<DeclaredTags>(Self::layer_tags);
         d.book::<NavigationBook>(NavigationBook::build);
@@ -207,6 +235,10 @@ impl Module for Navigation {
         // A unit that walks, which its move step tells, takes a route and a progress.
         d.part::<BodyUnit, Route>(|at| at.of_type::<MoveStep>().map(|_| Route::default()));
         d.part::<BodyUnit, Progress>(|at| at.of_type::<MoveStep>().map(|_| Progress::default()));
+        d.part::<BodyUnit, ArrivedAt>(|at| at.of_type::<MoveStep>().map(|_| ArrivedAt::default()));
+        d.part::<BodyUnit, AsideDepth>(|at| {
+            at.of_type::<MoveStep>().map(|_| AsideDepth::default())
+        });
     }
 
     /// Adds navigation to a match, with no paths, the world for bounds, and a static index for
@@ -229,6 +261,7 @@ impl Module for Navigation {
             NavigationSystems::Move,
             (
                 Walking::forget_dead,
+                Walking::price_crowds,
                 Routing::route_units,
                 Routing::plan_routes,
                 Walking::steer::<ServerForm>,
@@ -238,6 +271,7 @@ impl Module for Navigation {
                 .chain(),
             (
                 Walking::forget_dead,
+                Walking::price_crowds,
                 Routing::route_units,
                 Routing::plan_routes,
                 Walking::steer::<ClientForm>,
@@ -283,6 +317,7 @@ impl Navigation {
         let widest = walkers.iter().map(|walker| walker.radius).max();
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&grid));
+        world.insert_resource(CrowdCosts::new(grid, &walkers));
         world.insert_resource(PathingGrid::new(grid, walkers, &terrain));
         world.resource_mut::<UnitTracker<StaticBodies>>().mark();
     }
@@ -329,19 +364,26 @@ pub mod internals {
     use bevy_ecs::bundle::{Bundle, NoBundleEffect};
     use bevy_ecs::world::World;
 
+    use campfire_declarations::ById;
     use campfire_declarations::internals::BookLoad;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::{Num, Vec3};
     use campfire_sim::{SimWorld, StableId};
-    use campfire_units::{Destination, MoveStep, Wall, WallBook};
+    use campfire_units::{Destination, Leaving, MoveStep, Wall, WallBook};
+    use campfire_values::UnitType;
 
     use crate::Navigation;
+    use crate::arrived_at::ArrivedAt;
+    use crate::aside_depth::AsideDepth;
     pub use crate::broadphase::internals::scene;
+    use crate::crowd_book::CrowdBook;
+    use crate::moves::Moves;
     use crate::navigation_book::NavigationBook;
     use crate::pathing_grid::PathingGrid;
     use crate::paths::Paths;
     use crate::progress::Progress;
     use crate::route::{Route, RouteAsk, RouteCursor, RouteMut, RouteRef};
+    use crate::unit_navigation_data::UnitNavigationData;
     use crate::walker::Walker;
     use crate::walker_kinds::WalkerKinds;
     use campfire_sim::UnitDues;
@@ -352,8 +394,11 @@ pub mod internals {
             (
                 step,
                 Destination::default(),
+                Leaving::default(),
                 Route::default(),
                 Progress::default(),
+                ArrivedAt::default(),
+                AsideDepth::default(),
             )
         }
 
@@ -423,6 +468,23 @@ pub mod internals {
                 ..world.resource::<NavigationBook>().clone()
             };
             book.load_into(world);
+        }
+
+        /// Gives the match the rule that a walker moves the units `moves` names, as its mode's
+        /// navigation would.
+        pub fn load_moves(world: &mut World, moves: Moves) {
+            CrowdBook { moves }.load_into(world);
+        }
+
+        /// Gives the units of `unit_type` `navigation`, as their type's section would.
+        pub fn load_unit_navigation(
+            world: &mut World,
+            unit_type: UnitType,
+            navigation: UnitNavigationData,
+        ) {
+            ById::<UnitType, UnitNavigationData>::amend(world, |_, book| {
+                book.set(unit_type, navigation);
+            });
         }
     }
 }

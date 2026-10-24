@@ -398,6 +398,7 @@ Each rule has a check that fails when it breaks, as a rule only review holds dri
 - **The worst tick is the budget.** An end has a `mean` and a `worst` case, as the worst tick sets the budget ([Tick rate](04-capabilities/00-overview.md#tick-rate)).
 - **Stage probes keep the hashes.** `StageClock` times each stage of the real tick from outside the state.
 - **Frame pointers for profiling.** Profiling builds with frame pointers in its own target directory, as DWARF unwinding loses the optimized stacks and AMD has no LBR.
+- **A verdict is the median of interleaved pairs.** A change of speed is read from base and candidate run back to back in separate processes, each scaled by its process's mean clock, against the case's noise floor from an A/A of two builds of one tree, as the spread between runs of one binary is far larger than criterion's interval within one ([Perf journal](../research/perf-journal.md)). Refused: criterion's comparison with its saved baseline alone, whose run on a laptop at its power limit moved by several percent with no change.
 - **Code placement moves a case.** The same machine code at another cache-line offset runs at another speed, so a change of a few percent is read against the machine code, not the time alone ([Math performance](../research/math-performance.md)).
 
 ## The driver

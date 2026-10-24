@@ -3,26 +3,35 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, If, Local, ParamSet, Query, Res, ResMut};
 use campfire_actions::ActionProgress;
-use campfire_declarations::RoleForm;
+use campfire_declarations::{ById, RoleForm};
 use campfire_deliveries::DashDelivering;
+use campfire_math::{Direction, SinCos};
 use campfire_sim::{
     DueIndex, EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId, UnitDues,
     Unpredicted,
 };
 use campfire_units::{
-    AtWork, Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep,
+    AtWork, Body, Dead, Destination, Facing, ForcedMove, Leaving, MapBook, MoveStep, TurnStep,
 };
-use campfire_values::{Block, Motion, Team, UnitTags};
+use campfire_values::{Block, Motion, Team, UnitTags, UnitType};
 
+use crate::arrived_at::ArrivedAt;
+use crate::aside_depth::AsideDepth;
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::broadphase::Broadphase;
-use crate::collider::Collider;
 use crate::collider::contact::{Contact, ContactBodies};
+use crate::collider::{Collider, Pushes};
+use crate::crowd_book::CrowdBook;
+use crate::crowd_costs::{CrowdCosts, Stamp};
+use crate::gait::Gait;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 use crate::route::{Route, RouteAsk, RouteMut};
 use crate::route_planner::{RoutePlanner, Walkable};
+use crate::stalled_walkers::StalledWalkers;
 use crate::steering::{Aside, Steered, Steering, TickBody};
+use crate::unit_navigation_data::UnitNavigationData;
+use crate::unparted_pairs::UnpartedPairs;
 use crate::walker::Walker;
 
 /// The living units that cannot walk, those a client only holds among them: the static bodies.
@@ -47,7 +56,11 @@ type SteerBodies<'w, 's> = Query<
         ),
         Option<&'static Destination>,
         Option<&'static UnitTags>,
-        (Option<&'static ActionProgress>, Option<&'static AtWork>),
+        (
+            Option<&'static ActionProgress>,
+            Option<&'static AtWork>,
+            Option<&'static ArrivedAt>,
+        ),
     ),
     (
         With<MoveStep>,
@@ -68,7 +81,12 @@ type Steerers<'w, 's> = Query<
         &'static MoveStep,
         &'static Body,
         RouteMut,
-        &'static mut Progress,
+        (
+            &'static mut Progress,
+            Option<&'static mut ArrivedAt>,
+            Option<&'static Leaving>,
+            Option<&'static mut AsideDepth>,
+        ),
         Option<&'static UnitTags>,
         Has<ForcedMove>,
     ),
@@ -88,15 +106,22 @@ impl Walking {
     /// it takes a short route. A predicting client counts the units it holds that stand: one that
     /// stands has not moved since the server sent it. With no pathing grid no walker steers, and
     /// one that does not walk this tick, waits for its route, or has none ahead, does not either:
-    /// none of them takes a place in the order. On a server, each unit of a stuck walker's team
-    /// that stands idle in its way steps aside, as `Steering::asides` says, to the nearest place it
+    /// none of them takes a place in the order. On a server, each unit that stands idle on the
+    /// next stretch of a walker's way, as far as its window reaches, and that the mode's
+    /// `CrowdBook` lets it move, steps aside, as `Steering::asides` says, to the nearest place it
     /// may stand there. A walker stuck for `Progress::ask_after` that no detour frees asks its
-    /// route again, and stops past `Progress::MOST_STUCK_ASKS` such asks.
+    /// route again, and stops past `Progress::MOST_STUCK_ASKS` such asks. A walker that touches
+    /// the crowd that arrived at its goal arrives, as `Steering::packed` says; one that leaves its
+    /// producer takes no short route round its team's units.
     pub(super) fn steer<F: RoleForm>(
         (rate, index, tick): (Res<'_, MatchRate>, Res<'_, EntityIndex>, Res<'_, SimTick>),
         mut asks: ResMut<'_, DueIndex<Route>>,
         If((grid, mut planner)): If<(Res<'_, PathingGrid>, ResMut<'_, RoutePlanner>)>,
-        statics: Res<'_, BodyIndex>,
+        (statics, crowd, mut stalled): (
+            Res<'_, BodyIndex>,
+            Res<'_, CrowdBook>,
+            ResMut<'_, StalledWalkers>,
+        ),
         mut units: ParamSet<'_, '_, (SteerBodies<'_, '_>, Steerers<'_, '_>)>,
         (mut steering, mut order, mut asides): (
             Local<'_, Steering>,
@@ -106,16 +131,16 @@ impl Walking {
     ) {
         let bodies = units.p0();
         let read = bodies.iter().map(
-            |((&id, &at, body, team), destination, tags, (progress, at_work))| TickBody {
+            |((&id, &at, body, team), destination, tags, (progress, at_work, arrived))| TickBody {
                 body: IndexedBody::of(id, at.get(), body),
                 team: team.copied(),
                 walks: Self::walks(destination, tags, Motion::Own),
                 gathers: tags.is_some_and(|tags| tags.passes()),
                 idle: destination.is_some_and(|destination| destination.get().is_none())
-                    && progress.is_none_or(|progress| {
-                        progress.in_progress().is_none() && progress.attack_target().is_none()
-                    })
-                    && !at_work.is_some_and(|at_work| at_work.get()),
+                    && !Self::firm(progress, at_work, tags),
+                arrived: arrived
+                    .expect("a walker carries the goal it arrived at")
+                    .get(),
             },
         );
         steering.read(&statics, read);
@@ -131,9 +156,14 @@ impl Walking {
             })
             .map(|(entity, (&id, ..), ..)| Keyed { id, entity });
         asides.clear();
+        let mut stalls = 0;
         for &Keyed { entity, .. } in order.sort(ordered) {
-            let (_, (&id, &at, team), _, step, body, mut route, mut progress, tags, _) =
+            let (_, (&id, &at, team), mut destination, step, body, mut route, progress, tags, _) =
                 walkers.get_mut(entity).expect("a walker in the order");
+            let (mut progress, arrived, leaving, walk) = progress;
+            let mut walk = walk.expect("a walker carries how deep its walk is");
+            let depth = *walk;
+            let goal = route.goal().expect("a walker with a way ahead has a goal");
             let stuck_for = progress.track(at.get(), step.get());
             let steered = Steered {
                 id,
@@ -143,30 +173,49 @@ impl Walking {
                 walker: Walker::walking(Some(body)),
                 stuck: stuck_for >= stuck_ticks,
                 gathering: tags.is_some_and(|tags| tags.passes()),
+                goal,
+                depth,
             };
-            let ahead = route.read().ahead()[0];
-            if !F::PREDICTS && steered.stuck {
-                steering.asides(steered, ahead, &mut asides);
+            if steering.packed(steered) {
+                let mut arrived = arrived.expect("a walker carries the goal it arrived at");
+                Destination::route_to(&mut destination, None);
+                ArrivedAt::set(&mut arrived, Some(goal));
+                AsideDepth::set(&mut walk, AsideDepth::default());
+                route.clear();
+                progress.restart();
+                continue;
             }
-            if let Some(detour) =
-                steering.steer(&mut planner, &grid, &statics, steered, route.read().ahead())
+            if !F::PREDICTS {
+                let stretch = (route.read().ahead()[0], Steering::reach(&grid));
+                steering.asides(steered, stretch, crowd.moves, &mut asides);
+            }
+            // A walker that leaves its producer passes through its team's units, so it steers
+            // round none of them (04-capabilities/navigation.md, A new unit leaves its exit).
+            let leaves = leaving.is_some_and(|leaving| leaving.get());
+            if let Some(detour) = (!leaves)
+                .then(|| {
+                    steering.steer(&mut planner, &grid, &statics, steered, route.read().ahead())
+                })
+                .flatten()
             {
                 route.splice(at.get(), steering.short(), detour.skipped, detour.reached);
                 progress.reset();
             } else if stuck_for >= ask_ticks {
                 let dues = &mut UnitDues::new(&mut asks, id, entity);
                 route.ask_stuck(&mut progress, tick.start(), dues);
+                stalls += 1;
             }
         }
+        stalled.set(stalls);
         // Each friend steps aside once a tick, for the first walker by stable id that moves it;
         // a predicting client moves none, as stepping aside is the server's.
         asides.sort_by_key(|aside| aside.id);
         asides.dedup_by_key(|aside| aside.id);
-        for &Aside { id, to } in &*asides {
+        for &Aside { id, to, depth } in &*asides {
             let Some(entity) = index.get(id) else {
                 continue;
             };
-            let (_, _, mut destination, _, body, mut route, mut progress, ..) = walkers
+            let (_, _, mut destination, _, body, mut route, (mut progress, .., walk), ..) = walkers
                 .get_mut(entity)
                 .expect("a friend that stands is a walker");
             let walkable = Walkable::of(grid.clearance(Walker::walking(Some(body))), &statics);
@@ -176,6 +225,8 @@ impl Walking {
             // It asks its route as it takes its destination, as the routing does, so the moves
             // of this tick do not drop the destination of a walker with no route yet.
             Destination::route_to(&mut destination, Some(to));
+            let mut walk = walk.expect("a walker carries how deep its walk is");
+            AsideDepth::set(&mut walk, depth);
             let ask = RouteAsk {
                 goal: to,
                 tick: tick.start(),
@@ -187,6 +238,35 @@ impl Walking {
                 &mut UnitDues::new(&mut asks, id, entity),
             );
         }
+    }
+
+    /// Counts the units of a team that stand this tick in the crowd's costs, before the routes are
+    /// planned: each that is not firm and that the mode's `CrowdBook` lets a walker of its team
+    /// move, as one its team's walkers may move, and every other as one they may not
+    /// (04-capabilities/navigation.md, A route prices the units on it).
+    pub(super) fn price_crowds(
+        bodies: SteerBodies<'_, '_>,
+        crowd: Res<'_, CrowdBook>,
+        costs: Option<ResMut<'_, CrowdCosts>>,
+    ) {
+        let Some(mut costs) = costs else {
+            return;
+        };
+        let standing = bodies.iter().filter_map(
+            |((&id, &at, body, team), destination, tags, (progress, at_work, _))| {
+                let &team = team?;
+                if Self::walks(destination, tags, Motion::Own) {
+                    return None;
+                }
+                Some(Stamp {
+                    body: IndexedBody::of(id, at.get(), body),
+                    team,
+                    movable: !Self::firm(progress, at_work, tags)
+                        && crowd.moves.may_move(Some(team), Some(team)),
+                })
+            },
+        );
+        costs.update(standing);
     }
 
     /// Makes each unit that died since the last Move stage forget where it walked to, and ends its
@@ -214,8 +294,9 @@ impl Walking {
 
     /// Walks each living unit along its route, a step a tick: past each waypoint it reaches, on to
     /// the next with the rest of its step. Past the last it has arrived, and drops its destination,
-    /// and its route when the route reached the goal: one that ends short stays, arrived short, so
-    /// an order that sends the unit there again plans nothing. A unit whose route waits for the
+    /// notes its goal as the one it arrived at, and drops its route when the route reached the
+    /// goal: one that ends short stays, arrived short, so an order that sends the unit there again
+    /// plans nothing. A unit that walks has arrived at no goal. A unit whose route waits for the
     /// planner walks the one it has, if any. One its tags or a forced move stop keeps both.
     ///
     /// First it turns toward its leg's way, at its turn step, or at once with none, and it stands
@@ -229,7 +310,11 @@ impl Walking {
                 (&mut Position, &mut Facing),
                 &mut Destination,
                 RouteMut,
-                &mut Progress,
+                (
+                    &mut Progress,
+                    Option<&mut ArrivedAt>,
+                    Option<&mut AsideDepth>,
+                ),
                 (&MoveStep, Option<&TurnStep>),
                 Option<&UnitTags>,
                 Has<ForcedMove>,
@@ -241,7 +326,7 @@ impl Walking {
             (mut position, mut facing),
             mut destination,
             mut route,
-            mut progress,
+            (mut progress, arrived, depth),
             (step, turn),
             tags,
             forced,
@@ -250,6 +335,8 @@ impl Walking {
             if !Self::walks(Some(&destination), tags, Motion::of(forced)) {
                 continue;
             }
+            let mut arrived = arrived.expect("a walker carries the goal it arrived at");
+            ArrivedAt::set(&mut arrived, None);
             let mut at = position.get();
             if let Some(way) = route.read().way() {
                 let turned = facing.toward(way, turn.copied());
@@ -263,6 +350,9 @@ impl Walking {
                 let Some(&waypoint) = route.read().ahead().first() else {
                     if route.asked().is_none() {
                         Destination::route_to(&mut destination, None);
+                        ArrivedAt::set(&mut arrived, route.goal());
+                        let mut depth = depth.expect("a walker carries how deep its walk is");
+                        AsideDepth::set(&mut depth, AsideDepth::default());
                         if route.is_reached() {
                             route.clear();
                             progress.restart();
@@ -283,11 +373,12 @@ impl Walking {
         }
     }
 
-    /// Parts the living bodies of one layer that overlap as the stage starts, pair by pair in
-    /// stable-id order; a pair that only overlaps after this tick's pushes parts in the next. A
-    /// body a forced move moves passes through the others, and parts from them once the move ends.
-    /// Only a unit that can walk is pushed, and one walking to a destination yields to one that
-    /// stands. The static bodies' contacts come from `statics`, which holds them as the stage
+    /// Pushes apart the living bodies of one layer within each other's personal space as the stage
+    /// starts, as `Collider::push` says, by the mode's `CrowdBook`, then parts those that overlap,
+    /// as `Collider::resolve` says; a pair that comes near only after this tick's pushes parts in
+    /// the next. A body a forced move moves passes through the others, and parts from them once
+    /// the move ends. Only a unit that can walk is pushed, and one walking to a destination yields
+    /// to one that stands. The static bodies' contacts come from `statics`, which holds them as the stage
     /// starts. A predicting client also parts its own units from the units it holds as the server
     /// sent them that cannot walk, such as towers, which never move. Every other held unit is where
     /// the server last had it, behind the client's ticks, and may have started or stopped walking
@@ -305,20 +396,33 @@ impl Walking {
                 &StableId,
                 &Body,
                 &mut Position,
+                (
+                    &UnitType,
+                    Option<&Facing>,
+                    Option<&Team>,
+                    Option<&mut Leaving>,
+                ),
                 Option<&Destination>,
                 Option<&UnitTags>,
+                (Option<&ActionProgress>, Option<&AtWork>),
                 Has<Unpredicted>,
                 Has<ForcedMove>,
             ),
             (With<MoveStep>, Without<Dead>, Allow<Unpredicted>),
         >,
-        statics: Res<'_, BodyIndex>,
+        (statics, navigation, crowd, mut unparted): (
+            Res<'_, BodyIndex>,
+            Res<'_, ById<UnitType, UnitNavigationData>>,
+            Res<'_, CrowdBook>,
+            ResMut<'_, UnpartedPairs>,
+        ),
         standing: Query<'_, '_, Has<ForcedMove>, StaticUnits>,
         routes: (Option<Res<'_, PathingGrid>>, Option<Res<'_, RoutePlanner>>),
-        (mut colliders, mut broadphase, mut pushed): (
+        (mut colliders, mut broadphase, mut pushed, mut among): (
             Local<'_, Vec<Collider>>,
             Local<'_, Broadphase>,
             Local<'_, Vec<usize>>,
+            Local<'_, Vec<bool>>,
         ),
     ) {
         colliders.clear();
@@ -327,15 +431,37 @@ impl Walking {
                 .iter()
                 .filter(|&(.., held, forced)| !(forced || held))
                 .map(
-                    |(entity, &id, body, position, destination, tags, ..)| Collider {
-                        id,
+                    |(
                         entity,
-                        point: position.get(),
-                        shape: body.shape(),
-                        layer: body.layer(),
-                        movable: true,
-                        walking: Self::walks(destination, tags, Motion::Own),
-                        gathering: tags.is_some_and(|tags| tags.passes()),
+                        &id,
+                        body,
+                        position,
+                        (&unit_type, facing, team, leaving),
+                        destination,
+                        tags,
+                        (progress, at_work),
+                        ..,
+                    )| {
+                        let UnitNavigationData { gait, weight } =
+                            UnitNavigationData::of(&navigation, unit_type);
+                        Collider {
+                            id,
+                            entity,
+                            point: position.get(),
+                            shape: body.shape(),
+                            layer: body.layer(),
+                            movable: true,
+                            walking: Self::walks(destination, tags, Motion::Own),
+                            gathering: tags.is_some_and(|tags| tags.passes()),
+                            weight,
+                            way: facing
+                                .filter(|_| gait == Gait::Drive)
+                                .and_then(|&facing| Self::way(facing)),
+                            team: team.copied(),
+                            firm: Self::firm(progress, at_work, tags),
+                            leaving: leaving.expect("a walker carries whether it leaves").get(),
+                            pinned: false,
+                        }
                     },
                 ),
         );
@@ -346,7 +472,12 @@ impl Walking {
             "the static index holds the static bodies as the stage starts"
         );
         let contacts = broadphase.contacts(&colliders, &statics);
-        Collider::resolve(&mut colliders, contacts);
+        let pushes = Pushes {
+            moves: crowd.moves,
+            statics: &statics,
+        };
+        Collider::push(&mut colliders, contacts, pushes);
+        unparted.set(Collider::resolve(&mut colliders, contacts));
         if let (Some(grid), Some(planner)) = routes {
             Self::stand_clear(&mut colliders, contacts, &statics, (&grid, &planner));
         }
@@ -361,6 +492,23 @@ impl Walking {
                 .expect("a body read this tick");
             let parted = collider.point;
             position.set_if_neq(Position::from(parted));
+        }
+        // A walker that leaves its producer and overlaps none of its team has cleared them, and one
+        // that stands has left, so collision parts it from them from the next tick
+        // (04-capabilities/navigation.md, A new unit leaves its exit).
+        Collider::passing_through(&colliders, contacts, &mut among);
+        for (collider, _) in colliders
+            .iter()
+            .zip(&*among)
+            .filter(|&(collider, &among)| collider.leaving && !(among && collider.walking))
+        {
+            let (_, _, _, _, (.., leaving), ..) = units
+                .get_mut(collider.entity)
+                .expect("a body read this tick");
+            Leaving::set(
+                &mut leaving.expect("a walker carries whether it leaves"),
+                false,
+            );
         }
     }
 
@@ -380,7 +528,7 @@ impl Walking {
                 continue;
             };
             let collider = &mut colliders[walker];
-            if !Self::in_static(collider, statics) {
+            if !collider.in_static(statics) {
                 continue;
             }
             let kind = Walker {
@@ -392,7 +540,7 @@ impl Walking {
                 collider.point = place;
             }
             debug_assert!(
-                !Self::in_static(collider, statics),
+                !collider.in_static(statics),
                 "the walker {:?} stays in a static body at {:?}",
                 collider.id,
                 collider.point,
@@ -400,11 +548,25 @@ impl Walking {
         }
     }
 
-    /// Whether `collider` overlaps a body of `statics`.
-    fn in_static(collider: &Collider, statics: &BodyIndex) -> bool {
-        statics.any_near(collider.layer, collider.point, collider.radius(), |body| {
-            collider.overlaps(&Collider::fixed(body))
-        })
+    /// Whether a unit is firm, with `progress`, `at_work` and `tags`: it has an action under way
+    /// or a target to attack, it works, or its tags root it, as no push or step aside moves such a
+    /// unit, as Zero Hour's `moveAllies` leaves a busy ally and StarCraft II's hold position
+    /// stays (04-capabilities/navigation.md, Who may move whom is the game's).
+    fn firm(
+        progress: Option<&ActionProgress>,
+        at_work: Option<&AtWork>,
+        tags: Option<&UnitTags>,
+    ) -> bool {
+        progress.is_some_and(|progress| {
+            progress.in_progress().is_some() || progress.attack_target().is_some()
+        }) || at_work.is_some_and(|at_work| at_work.get())
+            || tags.is_some_and(|tags| tags.blocks(Motion::Own, Block::Move))
+    }
+
+    /// The way `facing` points on the ground plane, in bits along x and z.
+    fn way(facing: Facing) -> Option<Direction<2>> {
+        let SinCos { sin, cos } = SinCos::of_degrees(facing.degrees());
+        Direction::of([i128::from(cos.to_bits()), -i128::from(sin.to_bits())])
     }
 
     /// Whether a unit walks this tick: it has a destination, and neither its tags nor its
@@ -426,6 +588,25 @@ impl Walking {
     ) {
         for mut position in &mut units {
             position.set_if_neq(Position::from(map.bounds.clamp(position.get())));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_math::Num;
+    use campfire_units::Facing;
+
+    use crate::walking::Walking;
+
+    #[test]
+    fn a_facing_points_from_x_towards_minus_z() {
+        // A meter along the way a unit faces lies a meter along its way, as `Facing::along`
+        // reads the way back: 0° along +x, 90° along −z, 180° along −x.
+        let meter = i128::from(Num::ONE.to_bits());
+        for (degrees, off) in [(0, [meter, 0]), (90, [0, -meter]), (180, [-meter, 0])] {
+            let way = Walking::way(Facing::of(Num::int(degrees))).unwrap();
+            assert_eq!(way.along(off), meter, "{degrees}");
         }
     }
 }
