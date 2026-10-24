@@ -240,6 +240,7 @@ campfire-store = { path = "crates/base/store" }
 campfire-threads = { path = "crates/base/threads" }
 campfire-test-packages = { path = "crates/test/test-packages" }
 campfire-verifier = { path = "crates/apps/verifier" }
+campfire-zero-hour-check = { path = "checks/zero-hour-check" }
 
 arrayvec = { version = "=0.7.8", default-features = false }
 async-lock = { version = "=3.4.2", default-features = false }

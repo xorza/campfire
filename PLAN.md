@@ -8,13 +8,6 @@ The audit in `.notes/review-benches.md`: every hot path has a case on a workload
 size, and every case follows one scheme of names, sizes and throughput. Each batch ends with
 `cargo drive gate`, which builds every bench; no batch runs one.
 
-### B4. The RTS workload (`zero-hour-check`)
-
-- [ ] `integration/rts_tick/{mean,worst}_<play>` and `integration/rts_stage/...`: a tick of the Zero
-  Hour check's plays on the imported package, two bases that build, train, gather and fight. The
-  cases skip when the package is missing, so no fresh clone and no CI runs them.
-- [ ] `integration/bots/think_<n>_bots`: a think period of those plays' bots.
-
 ### B5. Client, codec and frames (`client`, `net-interpolation`, `codec`, `net-packets`, `net-harness`)
 
 - [ ] `integration/client_frame/interpolate_<n>_units`: the interpolation of the units that

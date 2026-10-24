@@ -69,14 +69,27 @@ impl BasePlay {
         tools: PlayTools,
         failures: &mut Vec<CheckFailure>,
     ) -> Option<BotMatchEnd> {
-        let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
-        let picks = match OptionPicks::named(&packages.data().options, &[start_money]) {
-            Ok(picks) => picks,
-            Err(error) => {
-                failures.push(CheckFailure::Options(error));
-                return None;
+        let played = Self::session(packages, rate).and_then(|session| {
+            Self::with_play(&session, tools, failures, |play| play.fight(BASE_LIMIT))
+        });
+        match played {
+            Ok(ended) => Some(ended),
+            Err(failure) => {
+                failures.push(failure);
+                None
             }
-        };
+        }
+    }
+
+    /// The session of the bases play of `packages` at `rate` ticks a second, which starts each of
+    /// its matches.
+    pub(crate) fn session(
+        packages: ModePackages,
+        rate: NonZeroU32,
+    ) -> Result<FixedSession, CheckFailure> {
+        let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
+        let picks = OptionPicks::named(&packages.data().options, &[start_money])
+            .map_err(CheckFailure::Options)?;
         let player_slot_picks: Vec<PlayerSlotPick> = BOTS
             .iter()
             .flat_map(|bot| {
@@ -91,24 +104,34 @@ impl BasePlay {
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&player_slot_picks);
-        let mut play = MatchPlay::new(session.start(), session.packages(), tools);
-        let ended = Self::play(&mut play, session.packages(), failures);
-        let closed = play.end();
-        match ended.and_then(|ended| closed.map(|()| ended)) {
-            Ok(ended) => Some(ended),
-            Err(failure) => {
-                failures.push(failure);
-                None
-            }
-        }
+        Ok(session)
     }
 
-    /// The bases in `play`, of `packages`, after its start's tick, then the bots' match.
-    fn play(
+    /// Starts the bases in a match of `session`, its bots driven, runs `steps` on it, and ends
+    /// it: what `steps` gave, or the play's failure, with each failure of the bases in
+    /// `failures`.
+    pub(crate) fn with_play<T>(
+        session: &FixedSession,
+        tools: PlayTools,
+        failures: &mut Vec<CheckFailure>,
+        steps: impl FnOnce(&mut MatchPlay<'_>) -> T,
+    ) -> Result<T, CheckFailure> {
+        let mut play = MatchPlay::new(session.start(), session.packages(), tools);
+        let stepped =
+            Self::start(&mut play, session.packages(), failures).map(|()| steps(&mut play));
+        let closed = play.end();
+        let stepped = stepped?;
+        closed?;
+        Ok(stepped)
+    }
+
+    /// The bases in `play`, of `packages`, after its start's tick, each checked and driven by the
+    /// mode's attacker.
+    fn start(
         play: &mut MatchPlay<'_>,
         packages: &ModePackages,
         failures: &mut Vec<CheckFailure>,
-    ) -> Result<BotMatchEnd, CheckFailure> {
+    ) -> Result<(), CheckFailure> {
         for bot in BOTS {
             let base = Base::of(packages, bot.faction)?;
             base.check(play.game(), bot.player_slot, failures)?;
@@ -119,7 +142,7 @@ impl BasePlay {
         if overlaps > 0 {
             failures.push(CheckFailure::BaseOverlaps(overlaps));
         }
-        Ok(play.fight(BASE_LIMIT))
+        Ok(())
     }
 }
 

@@ -8,6 +8,35 @@ publish = false
 [package.metadata.campfire]
 kind = "check"
 
+[features]
+# The bench of the plays' ticks, on the import of the player's own copy.
+internals = [
+    "campfire-actions/internals",
+    "campfire-bots/internals",
+    "campfire-client-files/internals",
+    "campfire-codec/internals",
+    "campfire-combat/internals",
+    "campfire-declarations/internals",
+    "campfire-geometry/internals",
+    "campfire-import/internals",
+    "campfire-logging/internals",
+    "campfire-math/internals",
+    "campfire-navigation/internals",
+    "campfire-orders/internals",
+    "campfire-package/internals",
+    "campfire-package-disk/internals",
+    "campfire-package-format/internals",
+    "campfire-players/internals",
+    "campfire-production/internals",
+    "campfire-projectiles/internals",
+    "campfire-protocol/internals",
+    "campfire-runner/internals",
+    "campfire-sim/internals",
+    "campfire-values/internals",
+    "dep:campfire-measure",
+    "dep:criterion",
+]
+
 [dependencies]
 campfire-actions.workspace = true
 campfire-bots.workspace = true
@@ -22,6 +51,7 @@ campfire-harness.workspace = true
 campfire-import.workspace = true
 campfire-logging.workspace = true
 campfire-math.workspace = true
+campfire-measure = { workspace = true, optional = true }
 campfire-mode = { workspace = true, features = ["internals"] }
 campfire-navigation.workspace = true
 campfire-orders.workspace = true
@@ -46,10 +76,19 @@ clap = { workspace = true, features = [
     "suggestions",
     "usage",
 ] }
+criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
 derive_more = { workspace = true, features = ["display"] }
 serde = { workspace = true, features = ["derive", "rc", "std"] }
 thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
+
+[dev-dependencies]
+campfire-zero-hour-check = { workspace = true, features = ["internals"] }
+
+[[bench]]
+name = "zero-hour-check"
+harness = false
+required-features = ["internals"]
 
 [lints]
 workspace = true

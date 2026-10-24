@@ -370,14 +370,28 @@ impl<'p> MatchPlay<'p> {
         self.fixed.game()
     }
 
-    /// Logs what each bot has due by the tick it runs next, as the server's bot driver gives it,
-    /// then runs the tick, and moves on to the next.
+    /// Runs the match's next tick as a server runs it with its bots: their think, the serve of
+    /// what they gave, the tick, and then what the play notes of it.
     pub(crate) fn step(&mut self) {
+        let tick = self.fixed.next_tick();
+        self.think();
+        self.serve();
+        self.run_tick();
+        self.observe(tick);
+    }
+
+    /// The bots' think for the tick the match runs next, as a server's bot driver runs it, which
+    /// leaves their payloads due.
+    fn think(&mut self) {
         let names = BotNames::new(&self.books);
         let tick = self.fixed.next_tick();
         let world = self.fixed.game_mut();
         let thinks = self.bots.play(world, tick, &names, &mut self.due);
         self.think_ops = self.think_ops.max(thinks.most);
+    }
+
+    /// Serves the bots' due payloads to the match, counting those it refuses.
+    fn serve(&mut self) {
         for at in 0..self.due.payloads.len() {
             let (player_slot, payload) = &self.due.payloads[at];
             let player_slot = *player_slot;
@@ -386,9 +400,18 @@ impl<'p> MatchPlay<'p> {
             }
         }
         self.due.payloads.clear();
+    }
+
+    /// Runs the match's tick, as a server runs it, counting the inputs it left unread.
+    fn run_tick(&mut self) {
         for unread in self.fixed.step_unread() {
             self.due.drops_of(unread.player_slot).unread += 1;
         }
+    }
+
+    /// Notes what the match's tick `tick` did that the play checks: its record, the orders it
+    /// dropped, its stalls, and how far each bot's units stood from its home.
+    fn observe(&mut self, tick: Tick) {
         if let Some(record) = &mut self.record {
             record.tick(self.fixed.game_mut());
         }
@@ -544,4 +567,42 @@ pub(crate) fn slot(
         .and_then(|slots| slots.iter().position(|held| held.as_str() == action))
         .ok_or(CheckFailure::NoAction { unit, action })?;
     Ok(u8::try_from(at).expect("a unit's slots fit a u8"))
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::time::{Duration, Instant};
+
+    use campfire_capabilities::Match;
+
+    use crate::match_play::MatchPlay;
+
+    /// What a tick of a play took: its bots' think, and the match's tick as a server runs it.
+    #[derive(Debug, Clone, Copy)]
+    pub(crate) struct TickTimes {
+        pub(crate) think: Duration,
+        pub(crate) tick: Duration,
+    }
+
+    impl MatchPlay<'_> {
+        /// Runs the match's next tick as `step` does, past what the play notes of it, timing its
+        /// bots' think and its tick.
+        pub(crate) fn timed_tick(&mut self) -> TickTimes {
+            let start = Instant::now();
+            self.think();
+            let think = start.elapsed();
+            self.serve();
+            let start = Instant::now();
+            self.run_tick();
+            TickTimes {
+                think,
+                tick: start.elapsed(),
+            }
+        }
+
+        /// The match it plays, to change outside its ticks, as a bench installs its probes.
+        pub(crate) const fn game_mut(&mut self) -> &mut Match {
+            self.fixed.game_mut()
+        }
+    }
 }

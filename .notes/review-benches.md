@@ -11,8 +11,6 @@ The inventory on 2026-10-24: 18 bench targets, 31 `bench.rs` files, 111 calls th
 
 ### What it lacks
 
-- **The RTS workload.** Every integration scene is the MOBA 3v3, a synthetic kernel scene or a capability scene. No case runs a Zero Hour match: hundreds of units of two bases that build, train, gather and fight on an imported map. That is the target workload of the engine, and it is the workload where the navigation changes of this week (yields, crowd walls, route asks) cost the most.
-- **Bots.** `session/bots` thinks for every bot each think period, a script call per bot, and has no case.
 - **Client per-frame work.** Only unit picking has a case. The interpolation of the units that the client holds (`net-interpolation`, `net-frame-interpolation`) and the client's fog upload run each frame and have no case.
 - **Codec and packets.** `codec` (snapshot and payload encoding) and `net-packets` (packet build and parse) are only inside `net-replication` and `state_delta`.
 

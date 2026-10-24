@@ -15,7 +15,7 @@ use std::time::Instant;
 use campfire_measure::RunCost;
 use campfire_sim::SimWorld;
 use criterion::measurement::WallTime;
-use criterion::{BenchmarkGroup, Criterion, Throughput};
+use criterion::{BenchmarkGroup, Criterion};
 
 use crate::release::r#match::Match;
 
@@ -43,9 +43,8 @@ impl Ticked for Match {
 }
 
 /// Registers in `group` a run of `ticks` ticks of a new scene that `build` makes each iteration,
-/// from its first tick: its worst tick, `worst_<scene>`, the first among them, and its mean tick,
-/// `mean_<scene>`, each case's throughput the ticks it times (02-engine-core.md, The worst tick is
-/// the budget).
+/// from its first tick, as `RunCost::cases` times it (02-engine-core.md, The worst tick is the
+/// budget).
 fn run_cases<S: Ticked>(
     group: &mut BenchmarkGroup<'_, WallTime>,
     scene: &str,
@@ -64,12 +63,5 @@ fn run_cases<S: Ticked>(
             spent
         })
     };
-    group.throughput(Throughput::Elements(1));
-    group.bench_function(format!("worst_{scene}"), |bench| {
-        bench.iter_custom(|runs| (0..runs).map(|_| run().worst_of_all()).sum());
-    });
-    group.throughput(Throughput::Elements(ticks));
-    group.bench_function(format!("mean_{scene}"), |bench| {
-        bench.iter_custom(|runs| (0..runs).map(|_| run().total).sum());
-    });
+    RunCost::cases(group, scene, ticks, run);
 }

@@ -34,11 +34,14 @@ pub(crate) struct CommandLine {
 }
 
 impl CommandLine {
-    /// The directory the packages go to: the one given, or `zh-package` in `home`; none when
+    /// The directory in the home that the packages go to when the line names none.
+    pub(crate) const HOME_PACKAGES: &str = "zh-package";
+
+    /// The directory the packages go to: the one given, or `HOME_PACKAGES` in `home`; none when
     /// neither names one.
     pub(crate) fn out_dir(&self, home: Option<PathBuf>) -> Option<PathBuf> {
         let out = self.out.clone();
-        out.or_else(|| home.map(|home| home.join("zh-package")))
+        out.or_else(|| home.map(|home| home.join(Self::HOME_PACKAGES)))
     }
 
     /// The plays it names and their probes; an error when two probes name one play, or a probe

@@ -10,8 +10,11 @@ use crate::workspace::Workspace;
 const MORE_BENCH_TARGETS: [(&str, &str); 1] = [("crates/test/harness", "allocations")];
 
 /// The files past a `bench.rs` that define bench cases: the measure crate's kinds, which run each
-/// case of a kind as the benches' tool.
-const CASES_ELSEWHERE: [&str; 1] = ["crates/test/measure/src/kind.rs"];
+/// case of a kind, and its run costs, which register a run's worst and mean, as the benches' tool.
+const CASES_ELSEWHERE: [&str; 2] = [
+    "crates/test/measure/src/kind.rs",
+    "crates/test/measure/src/run_cost.rs",
+];
 
 /// The calls that define a bench case.
 /// Spelled in parts, so that this file's own list holds none of them.

@@ -1,5 +1,8 @@
 use std::time::Duration;
 
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Throughput};
+
 /// What a run of a system's steps cost, ticks of a match or frames of a stepper, by the time each
 /// step took: in all, its first, and the worst of the others, as the worst step is the budget
 /// (02-engine-core.md, The worst tick is the budget).
@@ -31,6 +34,25 @@ impl RunCost {
     /// The worst of all its steps, the first among them.
     pub fn worst_of_all(self) -> Duration {
         self.first.max(self.worst)
+    }
+
+    /// Registers in `group` the worst step of a run of `steps` steps, `worst_<scene>`, the first
+    /// among them, and its mean step, `mean_<scene>`, each of a new run `run` gives the cost of,
+    /// each case's throughput the steps it times.
+    pub fn cases(
+        group: &mut BenchmarkGroup<'_, WallTime>,
+        scene: &str,
+        steps: u64,
+        run: impl Fn() -> Self,
+    ) {
+        group.throughput(Throughput::Elements(1));
+        group.bench_function(format!("worst_{scene}"), |bench| {
+            bench.iter_custom(|runs| (0..runs).map(|_| run().worst_of_all()).sum());
+        });
+        group.throughput(Throughput::Elements(steps));
+        group.bench_function(format!("mean_{scene}"), |bench| {
+            bench.iter_custom(|runs| (0..runs).map(|_| run().total).sum());
+        });
     }
 }
 
