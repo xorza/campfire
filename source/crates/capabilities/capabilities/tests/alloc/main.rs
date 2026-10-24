@@ -38,9 +38,11 @@ const FRAMES: usize = 256;
 /// What a tick allocates: Bevy's `BundleRemover::remove` collects into a `Vec` the components a
 /// removal takes from an archetype that a `Remove` observer watches, as each unit's archetype is,
 /// and no two units of the battle respawn in one tick. bevyengine/bevy#26301 removes it; the
-/// site names the version, so a new Bevy checks the budget again.
+/// site names the version, so a new Bevy checks the budget again. It is the file of the
+/// remover's caller, `EntityWorldMut::remove_with_caller`, as a macOS build keeps the remover's
+/// own frame with no file.
 const BEVY: [Allowed; 1] = [Allowed {
-    site: CallSite::File("bevy_ecs-0.20.0/src/bundle/remove.rs"),
+    site: CallSite::File("bevy_ecs-0.20.0/src/world/entity_access/world_mut.rs"),
     why: "the components a respawn's removal of `Dead` and `Respawn` takes",
 }];
 
