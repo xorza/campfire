@@ -56,8 +56,8 @@ impl RoomMaking {
         let position = *unit.get::<Position>().expect("a unit has a place");
         let now = world.resource::<SimTick>().start();
         // The grid takes the body as it spawns, before a walker it overlaps finds its cell, and
-        // before a spawn its producer sends at once finds its own (walkers-get-through.md, A spawn
-        // stands where it can walk).
+        // before a spawn its producer sends at once finds its own (04-capabilities/navigation.md, A
+        // spawn stands where it can walk).
         let run = world.resource::<StaticTrackingRun>().0;
         world
             .run_system(run)

@@ -16,8 +16,8 @@ use crate::walker_kinds::WalkerKinds;
 /// center than the two radii, of those a walker of the team may move and of those it may not; and
 /// for each kind, how many units of any team or none. A walker pays nothing for an enemy, which it
 /// fights or meets, as Zero Hour's pathfinder prices only allies, but a stuck walker's route walls
-/// the units of other teams (walkers-get-through.md, A stuck walker's route walls the units of
-/// other teams that stand). Each tick counts again only the units whose body, place, team or
+/// the units of other teams (04-capabilities/navigation.md, A stuck walker's route walls the units
+/// of other teams that stand). Each tick counts again only the units whose body, place, team or
 /// standing changed since the last, against the stamps it keeps, so a crowd at rest costs a pass
 /// over the units and no write.
 #[derive(Resource, Debug)]
@@ -85,8 +85,8 @@ pub(crate) enum CrowdWalls {
     Priced,
     /// It may not enter the cells a friend hemmed in or a unit of another team holds, as a stuck
     /// walker's route (04-capabilities/navigation.md, A friend that cannot yield is firm, and a
-    /// stuck walker's route walls it; walkers-get-through.md, A stuck walker's route walls the
-    /// units of other teams that stand).
+    /// stuck walker's route walls it; 04-capabilities/navigation.md, A stuck walker's route walls
+    /// the units of other teams that stand).
     Stuck,
 }
 
@@ -396,8 +396,8 @@ mod tests {
         // walker 42, the next two 84 each, and the others nothing; a blue walker pays for none of
         // the red, and a walker of no team has no price. Only a stuck walker's route walls cells:
         // the hemmed unit's, the blue unit's and the one of no team's
-        // (walkers-get-through.md, A stuck walker's route walls the units of other teams that
-        // stand).
+        // (04-capabilities/navigation.md, A stuck walker's route walls the units of other teams
+        // that stand).
         costs.update([
             stamp(idle, at(1, 1), Some(red), Standing::Movable),
             stamp(penned, at(2, 2), Some(red), Standing::Hemmed),

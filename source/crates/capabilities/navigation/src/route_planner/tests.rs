@@ -176,8 +176,8 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
     assert_eq!(waypoints, [quarters(14, 6)]);
 
     // A goal in the start's cell is in sight: the line to it is the route, with no search, its
-    // work the test of the goal and the line's (walkers-get-through.md, A route in sight is a
-    // line).
+    // work the test of the goal and the line's (04-capabilities/navigation.md, A route in sight is
+    // a line).
     let here = planner.plan(walkable, start, quarters(3, 9), &mut waypoints);
     assert_eq!(
         here,
@@ -197,8 +197,8 @@ fn a_goal_seen_past_two_posts_that_meet_at_a_corner_is_the_line_the_cells_cannot
     // (0, 0) to (1, 1), as a diagonal past a blocked cell is none, so the regions part them. The
     // line from (0.5, 0.5) to (1.5, 1.5) keeps |1.5 − 0.5| / √2 ≈ 0.71 m off each post, past the
     // two radii, 0.5 m: the walker sees its goal, and its route is that line, reached, with no
-    // search and the work of the goal's test and the line's (walkers-get-through.md, A route in
-    // sight is a line).
+    // search and the work of the goal's test and the line's (04-capabilities/navigation.md, A route
+    // in sight is a line).
     let Walled { grid, statics } = walled(&[".#", "#."]);
     let clearance = grid.clearance(walker());
     let cells = clearance.grid();
@@ -417,7 +417,7 @@ fn a_route_costs_what_a_search_of_every_cell_finds() {
     // the cell nearest it among those it reaches, ties to the lower number, at that cell's cost,
     // and so the regions say; one the start sees is the line to it, with no search, which no way
     // of cells is shorter than, and which may pass between posts no way of cells passes
-    // (walkers-get-through.md, A route in sight is a line). Every leg of
+    // (04-capabilities/navigation.md, A route in sight is a line). Every leg of
     // a route is clear of every post, and a search expands no more cells than are open.
     let stream = RngStream::new("posts");
     let mut rng = Rng::new(&SegmentSeed::ZERO, stream, 7, Tick::ZERO);

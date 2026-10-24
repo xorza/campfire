@@ -102,8 +102,8 @@ pub(crate) struct Aside {
 
 /// What a unit that steps aside makes of the idle friends near it: places it may pass through
 /// and end on, as each steps aside in turn for its walk, of `team`, which `moves` lets it move;
-/// or blockers, as its walk is too deep to move them (walkers-get-through.md, A friend yields
-/// through the friends that yield).
+/// or blockers, as its walk is too deep to move them (04-capabilities/navigation.md, A friend
+/// yields through the friends that yield).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Friends {
     Pass { team: Option<Team>, moves: Moves },
@@ -126,7 +126,7 @@ impl Steering {
     /// The cells a friend's search for a place to step aside to reaches from its cell along each
     /// axis: as far as the passage of the walker it yields to, the walker's window and a reach
     /// past it, so a friend in a corridor finds the room past the passage's end
-    /// (walkers-get-through.md, A friend yields through the friends that yield).
+    /// (04-capabilities/navigation.md, A friend yields through the friends that yield).
     pub(crate) const YIELD_WINDOW: usize = 2 * Self::WINDOW;
 
     /// How far a short route's window reaches from the walker's cell along each axis on `grid`.
@@ -329,8 +329,8 @@ impl Steering {
     /// Whether `waypoint`, the last of `steered`'s route, lies within the personal space a unit
     /// that stands shares with `steered`, which stands within it too: a goal the unit crowds, as
     /// near as collision lets the walker come, so it has arrived, as the A* Pathfinding Project
-    /// stops a unit whose destination is crowded (walkers-get-through.md, A walker stuck by a
-    /// crowded goal has arrived). Each space is collision's, `Collider::space_of`.
+    /// stops a unit whose destination is crowded (04-capabilities/navigation.md, A walker stuck by
+    /// a crowded goal has arrived). Each space is collision's, `Collider::space_of`.
     pub(crate) fn crowded(&self, steered: Steered, waypoint: Vec3) -> bool {
         let Steered {
             position: at,
@@ -453,8 +453,8 @@ impl Steering {
     }
 
     /// Puts in `blockers` the units that stand near `body`, a unit that steps aside, as far as
-    /// its yield window and its body reach on `grid`, but `body` itself and, as `friends` says, the idle
-    /// friends it may pass through: the places it may not take.
+    /// its yield window and its body reach on `grid`, but `body` itself and, as `friends` says, the
+    /// idle friends it may pass through: the places it may not take.
     pub(crate) fn standing_near(
         &self,
         grid: &PathingGrid,

@@ -247,7 +247,7 @@ fn a_member_that_sees_no_waypoint_plans_its_own_route() {
 fn a_party_plans_once_for_each_layer_it_moves_on() {
     // Two walkers of no body on the ground at (2, 1) and (3, 1), two of a quarter meter in the
     // air at (2, 1) and (2, 2); no wall blocks the air, so the air's route is the goal it sees,
-    // with no search (walkers-get-through.md, A route in sight is a line). The ground's is
+    // with no search (04-capabilities/navigation.md, A route in sight is a line). The ground's is
     // searched from (2, 1), the lower id of the two as near the center, (2.5, 1.5): one search.
     let mut game = walled(&[]);
     let goal = Vec3::from((8, 0, 1));

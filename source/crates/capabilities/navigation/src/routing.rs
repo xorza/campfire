@@ -165,8 +165,9 @@ impl Routing {
                 units.get(entity).expect("a walker that asks");
             // A stuck walker's route walls the friends hemmed in and the units of other teams, as
             // one of them may be what holds it (04-capabilities/navigation.md, A friend that
-            // cannot yield is firm, and a stuck walker's route walls it; walkers-get-through.md, A
-            // stuck walker's route walls the units of other teams that stand).
+            // cannot yield is firm, and a stuck walker's route walls it;
+            // 04-capabilities/navigation.md, A stuck walker's route walls the units of other teams
+            // that stand).
             let walls = if progress.asked_stuck() {
                 CrowdWalls::Stuck
             } else {

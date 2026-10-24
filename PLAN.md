@@ -2,16 +2,6 @@
 
 The open steps, in the order they are done, and the foundations. The rules are in [AGENTS.md](AGENTS.md#workflow).
 
-## Walkers get through
-
-The slice of [Walkers get through](docs/design/walkers-get-through.md), in navigation alone, a
-batch each; its checks are that document's. It stands first, as a walker that stands for good
-with a destination breaks every match that holds one.
-
-- [ ] The user plays the slice in the client → its decisions fold into
-  [Navigation](docs/design/04-capabilities/navigation.md) and
-  [Production](docs/design/04-capabilities/production.md), and its document goes.
-
 ## The driver keeps its signals
 
 These items change the `drive` repository and wait for the driver's own work; then the drive table

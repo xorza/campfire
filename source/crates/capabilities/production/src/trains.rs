@@ -432,10 +432,10 @@ impl TrainPoints {
     /// cell nearest the exit point, or with none the point of the producer's body nearest the
     /// rally point, or with neither the producer's position, among the cells its walker may stand
     /// in, as a teleport finds its cell, so it stands outside the producer's body and every other
-    /// (walkers-get-through.md, A spawn stands where it can walk); with no such cell, or a unit
-    /// that does not walk, at the exit point, or the producer's position. A producer with neither
-    /// point and no body spawns at its position. A box's nearest point rounds to the nearest bit;
-    /// a circle's is a step of its radius toward the rally point, as a walker steps.
+    /// (04-capabilities/navigation.md, A spawn stands where it can walk); with no such cell, or a
+    /// unit that does not walk, at the exit point, or the producer's position. A producer with
+    /// neither point and no body spawns at its position. A box's nearest point rounds to the
+    /// nearest bit; a circle's is a step of its radius toward the rally point, as a walker steps.
     fn spawn_point(self, world: &mut World, entity: Entity, unit_type: UnitType) -> Vec3 {
         let producer = world.entity(entity);
         let position = producer.get::<Position>().expect("a producer stands").get();

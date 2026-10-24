@@ -267,8 +267,8 @@ fn the_pathing_grid_takes_a_body_as_it_spawns_and_its_changes_from_the_next_tick
     // 1 m cells over (−2, −2) to (2, 2), for walkers of 0.5 m: a tower of 0.5 m at (−1.5, −1.5)
     // blocks its own cell, 0, whose center is on it; one the client only holds, at (1.5, 1.5),
     // blocks cell 15. Each blocks as it spawns, as navigation's spawn callback gives the grid
-    // the body (walkers-get-through.md, A spawn stands where it can walk). A walker never marks
-    // the grid.
+    // the body (04-capabilities/navigation.md, A spawn stands where it can walk). A walker never
+    // marks the grid.
     let half = Num::HALF;
     let mut game = walk_match();
     Navigation::load_open_pathing(&mut game, Num::ONE, [-2, -2], [2, 2], [ground(half)]);
@@ -502,15 +502,16 @@ fn an_idle_friend_on_a_walkers_way_steps_aside_before_it_stalls_and_an_enemy_or_
     // and take no push: the walker is done in tick 59 (04-capabilities/navigation.md, A unit that
     // drives yields by driving). An enemy stays, and so does a friend at work. The walker the
     // enemy holds is stuck once, and the route it asks walls the enemy's cells and goes round the
-    // corridor's walls: one stall, and it arrives in tick 202 (walkers-get-through.md, A stuck
-    // walker's route walls the units of other teams that stand). The one the friend at work holds
-    // never arrives: it comes no nearer its waypoint from tick 33, and, stuck 30 ticks, 1 s, it
-    // asks its route again in tick 63, answered as the next tick starts, whose waypoint it takes
-    // fresh, and again each 31 ticks, whatever detour it takes (walkers-get-through.md, A walker
-    // progresses only when it comes nearer its waypoint); the sixth time, past its 5 asks, it stops
-    // where it stands, in tick 63 + 5 · 31 = 218, with no destination and no goal to arrive short
-    // of (04-capabilities/navigation.md, A stuck walker plans again, then stops): 6 stalls, which
-    // navigation's report counts, against none of a walker the friend steps aside for.
+    // corridor's walls: one stall, and it arrives in tick 202 (04-capabilities/navigation.md, A
+    // stuck walker's route walls the units of other teams that stand). The one the friend at work
+    // holds never arrives: it comes no nearer its waypoint from tick 33, and, stuck 30 ticks, 1 s,
+    // it asks its route again in tick 63, answered as the next tick starts, whose waypoint it takes
+    // fresh, and again each 31 ticks, whatever detour it takes (04-capabilities/navigation.md, A
+    // walker progresses only when it comes nearer its waypoint); the sixth time, past its 5 asks,
+    // it stops where it stands, in tick 63 + 5 · 31 = 218, with no destination and no goal to
+    // arrive short of (04-capabilities/navigation.md, A stuck walker plans again, then stops): 6
+    // stalls, which navigation's report counts, against none of a walker the friend steps aside
+    // for.
     let half = Num::HALF;
     let blocker_at = Vec3::new(half, Num::ZERO, Num::ZERO);
     let goal = Vec3::from((6, 0, 0));
@@ -604,7 +605,7 @@ fn a_walker_whose_goal_a_standing_unit_crowds_arrives_once_stuck_there() {
     // it back each tick it steps nearer. It stands at x = 0.0973, in bits 1,632,142, 0.30 m short
     // of the goal, within the friend's personal space as the goal is, and, stuck there 5 ticks,
     // 150 ms, it has arrived at the goal in tick 26, with no stall and not short
-    // (walkers-get-through.md, A walker stuck by a crowded goal has arrived).
+    // (04-capabilities/navigation.md, A walker stuck by a crowded goal has arrived).
     let half = Num::HALF;
     let goal = Vec3::new(Num::int(2) / 5, Num::ZERO, Num::ZERO);
     let mut game = walk_match();
@@ -656,7 +657,7 @@ fn a_route_goes_round_a_block_of_idle_friends_and_through_it_when_walled_in() {
     // passing the walker, and take its pushes; the walker goes round the last of them below its
     // row, and arrives in its tick 72 (04-capabilities/navigation.md, A route prices the units on
     // it; 04-capabilities/navigation.md, A friend yields to the nearest place clear of the way;
-    // walkers-get-through.md, A friend yields through the friends that yield).
+    // 04-capabilities/navigation.md, A friend yields through the friends that yield).
     let half = Num::HALF;
     let goal = Vec3::from((6, 0, 0));
     let run = |walled: bool| {
@@ -736,8 +737,8 @@ fn a_wide_walker_passes_wide_idle_friends_that_yield_to_free_room_and_stops_at_h
     // (3.75, 2.25), and the walker arrives in tick 75, 7 past the 68 its 17 m take
     // (04-capabilities/navigation.md, A friend yields to the nearest place clear of the way).
     // With none, a friend's search passes through the other to a place ahead, past the walker's
-    // way, and the other steps ahead in turn (walkers-get-through.md, A friend yields through the
-    // friends that yield). With the lane open past x = 6, they leave it, the first to
+    // way, and the other steps ahead in turn (04-capabilities/navigation.md, A friend yields
+    // through the friends that yield). With the lane open past x = 6, they leave it, the first to
     // (7.25, 2.75), the second, pushed, to (7.74, −1.91), and the walker arrives in tick 75 too.
     // With it closed, they drive on until the lane's end holds no place clear of the walker's way,
     // at x 7.25 and 9.25, each hemmed in, firm; the walker's route walls them, and it arrives
@@ -933,8 +934,8 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
             // As they pass, each goes about half of the two radii, 1 m, off the line, on its own
             // side: in bits, 0.49263 m on −z and 0.49643 m on +z, as each counts stuck by the
             // waypoints of its own route, which the cells' order of search makes no mirror of the
-            // other's (walkers-get-through.md, A walker progresses only when it comes nearer its
-            // waypoint).
+            // other's (04-capabilities/navigation.md, A walker progresses only when it comes nearer
+            // its waypoint).
             assert_eq!(sides.map(Num::to_bits), [-8264983, 8328618]);
         } else {
             // Pressed together, each half a metre from where they met, at x = 0.
@@ -1007,10 +1008,10 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
 #[test]
 fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
     // Two rows of 16 cells of 1 m, a post on cell (8, 0). A route along row 0 to x = 3.5 sees
-    // its goal, and is the line: the test of the goal and of the line, 2 (walkers-get-through.md,
-    // A route in sight is a line). One past the post searches round it, by (9.5, 1.5): to the
-    // far end, the goal's test, the line's, 17 cells expanded and the smoothing's 14 lines, 33;
-    // to x = 14.5, 1 + 1 + 16 + 13 = 31. A tick does up to the grid's 32.
+    // its goal, and is the line: the test of the goal and of the line, 2
+    // (04-capabilities/navigation.md, A route in sight is a line). One past the post searches round
+    // it, by (9.5, 1.5): to the far end, the goal's test, the line's, 17 cells expanded and the
+    // smoothing's 14 lines, 33; to x = 14.5, 1 + 1 + 16 + 13 = 31. A tick does up to the grid's 32.
     let mut game = walk_match();
     Navigation::load_open_pathing(
         &mut game,
@@ -1062,13 +1063,13 @@ fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
 fn a_walker_steers_with_the_work_the_routes_left() {
     // A walker of 0.25 m from (0.5, 1.5) to (11.5, 1.5) on 12 by 3 cells of 1 m, a limit of 36,
     // and a post on cell (6, 0), 0.5 m off the walker's line: its route in tick 0 is the line it
-    // sees, 2 (walkers-get-through.md, A route in sight is a line). After it, a unit of 0.25 m
-    // stands on the line at (3.5, 1.5), and walkers with no body ask for routes along z = 0.5,
-    // which the post blocks: each searches round it, expanding 13 cells, and with a unit that
-    // stands each line test visits the cells it touches, as it tests the crowd's with the walls',
-    // so each asker's route costs 70, past the limit, and spends its tick. With none, the walker
-    // steers round the unit in tick 1; with one, in tick 2; with two, in tick 3. The mode moves no
-    // unit, so the unit stays.
+    // sees, 2 (04-capabilities/navigation.md, A route in sight is a line). After it, a unit of
+    // 0.25 m stands on the line at (3.5, 1.5), and walkers with no body ask for routes along
+    // z = 0.5, which the post blocks: each searches round it, expanding 13 cells, and with a unit
+    // that stands each line test visits the cells it touches, as it tests the crowd's with the
+    // walls', so each asker's route costs 70, past the limit, and spends its tick. With none, the
+    // walker steers round the unit in tick 1; with one, in tick 2; with two, in tick 3. The mode
+    // moves no unit, so the unit stays.
     let quarter = Num::QUARTER;
     let half = Num::HALF;
     let place = |x: i64, z: i64| Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half);

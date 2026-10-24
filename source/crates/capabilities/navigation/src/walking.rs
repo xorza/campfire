@@ -197,8 +197,8 @@ impl Walking {
                 continue;
             }
             // One stuck by the last waypoint of its route where a unit that stands crowds it is as
-            // near as it gets: it passes it, and the move arrives (walkers-get-through.md, A walker
-            // stuck by a crowded goal has arrived).
+            // near as it gets: it passes it, and the move arrives (04-capabilities/navigation.md, A
+            // walker stuck by a crowded goal has arrived).
             if let ([last], true) = (route.read().ahead(), steered.stuck)
                 && steering.crowded(steered, *last)
             {
@@ -230,8 +230,8 @@ impl Walking {
                 route.splice(at.get(), steering.short(), detour.skipped, detour.reached);
             }
             // A detour frees a walker only as it walks it, so one that stays stuck asks its route
-            // again, detour or none (walkers-get-through.md, A walker progresses only when it
-            // comes nearer its waypoint).
+            // again, detour or none (04-capabilities/navigation.md, A walker progresses only when
+            // it comes nearer its waypoint).
             if stuck_for >= ask_ticks {
                 let dues = &mut UnitDues::new(&mut asks, id, entity);
                 route.ask_stuck(&mut progress, tick.start(), dues);
@@ -279,7 +279,7 @@ impl Walking {
             // as far as it reaches; one that steps aside goes a step deeper. Its search passes
             // through the idle friends it may move only while its walk may clear them, and again
             // past them as blockers when its place to a side takes it too deep to
-            // (walkers-get-through.md, A friend yields through the friends that yield).
+            // (04-capabilities/navigation.md, A friend yields through the friends that yield).
             let mut place = |friends| {
                 steering.standing_near(&grid, friend, friends, &mut near);
                 let short = Short {
@@ -492,13 +492,13 @@ impl Walking {
     /// as `Collider::resolve` says; a pair that comes near only after this tick's pushes parts in
     /// the next. A body a forced move moves passes through the others, and parts from them once
     /// the move ends. Only a unit that can walk is pushed, and one walking to a destination yields
-    /// to one that stands. The static bodies' contacts come from `statics`, which holds them as the stage
-    /// starts. A predicting client also parts its own units from the units it holds as the server
-    /// sent them that cannot walk, such as towers, which never move. Every other held unit is where
-    /// the server last had it, behind the client's ticks, and may have started or stopped walking
-    /// since, so the server alone parts the client's units from it. Every tick reads the bodies
-    /// into `colliders`, finds their contacts with `broadphase`, and writes back the bodies a
-    /// contact may have pushed, by their places in `pushed`, buffers it keeps: a body that may
+    /// to one that stands. The static bodies' contacts come from `statics`, which holds them as the
+    /// stage starts. A predicting client also parts its own units from the units it holds as the
+    /// server sent them that cannot walk, such as towers, which never move. Every other held unit
+    /// is where the server last had it, behind the client's ticks, and may have started or stopped
+    /// walking since, so the server alone parts the client's units from it. Every tick reads the
+    /// bodies into `colliders`, finds their contacts with `broadphase`, and writes back the bodies
+    /// a contact may have pushed, by their places in `pushed`, buffers it keeps: a body that may
     /// not be pushed, or that no contact names, stays where it stood. A walker the contacts leave
     /// in a static body stands at the nearest place it may, as `stand_clear` says.
     pub(super) fn collide(

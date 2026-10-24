@@ -158,8 +158,8 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     // - A unit at (0, 6): (0, 1), and (−0.5, 1.5), of the two cells as near in the row. It walks
     //   to where the unit stands.
     // - None: at the open cell nearest the producer, outside its box, (−0.5, −1.5), of the cells as
-    //   near the lower first, and it stands (walkers-get-through.md, A spawn stands where it can
-    //   walk).
+    //   near the lower first, and it stands (04-capabilities/navigation.md, A spawn stands where it
+    //   can walk).
     let cases = [
         (Some(point(8, 0)), halves(5, -1), Some(halves(16, 0))),
         (Some(point(-40, 0)), halves(-5, -1), Some(halves(-20, 0))),
@@ -387,8 +387,8 @@ fn a_trained_unit_leaves_through_its_team_at_once_and_reaches_its_crowded_rally_
     // 5, 6, 6 and 8, the fourth leaving a tick longer. A friend of the crowd that steps ahead of a
     // grunt may end on another, which steps on in turn: for that tick the two overlap past the
     // slack, a pair in tick 9 of the grunts that step, two in tick 8 and one in tick 9 of those
-    // that drive, which the next tick parts (walkers-get-through.md, A friend yields through the
-    // friends that yield).
+    // that drive, which the next tick parts (04-capabilities/navigation.md, A friend yields through
+    // the friends that yield).
     let cases = [
         (
             Gait::Step,

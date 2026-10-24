@@ -1566,7 +1566,7 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
     // (18.5, 8), (21.5, 12) and (19.5, 9); a move to (3, 4), inside the box, sends each to (3, 4)
     // itself. The others stay. Past the wall the three plan one search, where three orders of one
     // unit each plan three; (3, 4) each sees, so its route is the line, with no search
-    // (walkers-get-through.md, A route in sight is a line).
+    // (04-capabilities/navigation.md, A route in sight is a line).
     let half = |x: i64, z: i64| Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z);
     let away = [half(37, 16), half(43, 24), half(39, 18)];
     for (goal, goals, one_each, searched) in [

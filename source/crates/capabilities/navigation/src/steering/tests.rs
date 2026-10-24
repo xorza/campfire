@@ -201,7 +201,7 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
     // A walk of its own and a step aside 1 deep move them, each aside with the walker's depth,
     // which the friend's own walk keeps ahead of the walker and takes a step deeper to a side;
     // one 2 deep moves none (04-capabilities/navigation.md, An idle friend steps aside;
-    // walkers-get-through.md, A friend yields through the friends that yield).
+    // 04-capabilities/navigation.md, A friend yields through the friends that yield).
     let [own, once, twice] =
         [0, 1, 2].map(|deep| (0..deep).fold(AsideDepth::default(), |depth, _| depth.deeper()));
     for walk in [own, once] {

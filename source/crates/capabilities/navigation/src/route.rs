@@ -119,8 +119,8 @@ impl Route {
     }
 
     /// Asks for the route `ask` names as `ask` does, and keeps the walker's progress, as one asked
-    /// again for the same goal is the same walk (walkers-get-through.md, A walker progresses only
-    /// when it comes nearer its waypoint).
+    /// again for the same goal is the same walk (04-capabilities/navigation.md, A walker progresses
+    /// only when it comes nearer its waypoint).
     fn ask_keeping(&mut self, ask: RouteAsk) {
         let RouteAsk { goal, tick, party } = ask;
         let tick = self.asked().unwrap_or(tick);

@@ -69,7 +69,7 @@ impl Progress {
     /// which only coming so near starts again, or passing a waypoint, not a detour nor a new route
     /// to a waypoint of their own in place of one not passed, whose first tick counts on; a
     /// waypoint taken fresh, as the walk starts or past a waypoint, counts nothing
-    /// (walkers-get-through.md, A walker progresses only when it comes nearer its waypoint).
+    /// (04-capabilities/navigation.md, A walker progresses only when it comes nearer its waypoint).
     pub(crate) fn track(&mut self, position: Vec3, waypoint: Vec3, step: Num) -> u32 {
         let distance = position.ground_offset(waypoint).length();
         let fresh = Nearest { waypoint, distance };
@@ -111,8 +111,8 @@ impl Progress {
         };
     }
 
-    /// Forgets the routes it asked as it was stuck and its stuck ticks, as it passed a waypoint, the
-    /// way on that a stuck walker lacks, and takes its next waypoint fresh.
+    /// Forgets the routes it asked as it was stuck and its stuck ticks, as it passed a waypoint,
+    /// the way on that a stuck walker lacks, and takes its next waypoint fresh.
     pub(crate) const fn passed_waypoint(&mut self) {
         self.toward = None;
         self.stuck = 0;

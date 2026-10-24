@@ -179,7 +179,7 @@ impl<'a> Walkable<'a> {
 impl Passage<'_> {
     /// Whether `place` lies past the passage's end, along the way from its first point to its
     /// last: a unit that steps there yields ahead of the walker, not to its side
-    /// (walkers-get-through.md, A friend yields through the friends that yield).
+    /// (04-capabilities/navigation.md, A friend yields through the friends that yield).
     pub(crate) fn leads_to(&self, place: Vec3) -> bool {
         let [first, .., end] = self.points else {
             return false;
@@ -268,7 +268,7 @@ impl RoutePlanner {
         let mut from = grid.nearest_cell(start);
         // A goal the walker sees, by the test a route's smoothing makes of a line, is the route,
         // with no search of cells, so a walker in a gap no open cell holds walks to it
-        // (walkers-get-through.md, A route in sight is a line).
+        // (04-capabilities/navigation.md, A route in sight is a line).
         if clear && {
             work += 1;
             !walkable.blocks_counting(Segment::new(start, goal), &mut work)
