@@ -1,4 +1,6 @@
-use campfire_combat::{CombatData, CombatPatch, TaggedArmorData, TurretData, TurretPatch};
+use std::num::NonZeroU32;
+
+use campfire_combat::{CombatData, CombatPatch, OnDeath, TaggedArmorData, TurretData, TurretPatch};
 use campfire_common::DeclaredName;
 use campfire_declarations::SectionWriter;
 use campfire_geometry::BodyBox;
@@ -198,10 +200,20 @@ impl ImportedType {
                 armor,
             }]
         });
+        // A death keeps the object for the delay of the slow death a normal death of it most
+        // likely takes (animated-looks.md, A death keeps its unit for its animation).
+        let kept = object.slow_death().map(|death| {
+            let ms = game_time::of_duration(death.delay_ms).map_err(|_| TypeError::DeathDelay)?;
+            u32::try_from(ms).map_err(|_| TypeError::DeathDelay)
+        });
+        let on_death = kept
+            .transpose()?
+            .and_then(NonZeroU32::new)
+            .map(|ms| OnDeath::Keep { ms });
         let combat = life.map(|_| CombatPatch {
+            on_death,
             armor,
             armors,
-            ..CombatPatch::default()
         });
         // A turret that turns no weapon, or does not turn, aims nothing the engine's turret aims.
         let turret = fight

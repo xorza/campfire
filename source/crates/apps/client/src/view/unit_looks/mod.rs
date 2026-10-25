@@ -164,6 +164,7 @@ enum UnitTest {
     Moving(Duration),
     Life(LifeShare),
     Site(SiteStage),
+    Dying,
     /// A weapon of its look's group at a place is at a phase, or at any, by their bits in
     /// `UnitFacts::attacks`.
     Attack(u64),
@@ -187,7 +188,7 @@ enum Known {
 
 /// What a unit holds that its look's tests read: its tags, whether it walks to a destination, how
 /// long since it last moved, its life and its most life, none for a unit of no life, its site's
-/// stage, none for a unit that is no site, and the phases of its look's weapon groups, by their
+/// stage, none for a unit that is no site, whether it is dead, and the phases of its look's weapon groups, by their
 /// bits, as `attack_bit` places them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct UnitFacts {
@@ -196,6 +197,7 @@ pub(crate) struct UnitFacts {
     pub(crate) still_for: Duration,
     pub(crate) life: Option<[Num; 2]>,
     pub(crate) site: Option<SiteStage>,
+    pub(crate) dead: bool,
     pub(crate) attacks: u64,
 }
 
@@ -603,6 +605,7 @@ impl UnitTests {
                 )),
                 ConditionTest::Life(share) => Some(UnitTest::Life(*share)),
                 ConditionTest::Site { stage } => Some(UnitTest::Site(*stage)),
+                ConditionTest::Dying => Some(UnitTest::Dying),
                 ConditionTest::Attack { group, phase } => {
                     let bits = match phase {
                         Some(phase) => UnitFacts::attack_bit(*group, *phase),
@@ -645,6 +648,7 @@ impl UnitTests {
                     .life
                     .is_some_and(|[current, max]| share.holds(current, max)),
                 UnitTest::Site(stage) => facts.site == Some(stage),
+                UnitTest::Dying => facts.dead,
                 UnitTest::Attack(bit) => facts.attacks & bit != 0,
             };
             if holds {

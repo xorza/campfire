@@ -9,18 +9,32 @@ pub(crate) const FRAMES_PER_SECOND: f32 = 30.0;
 /// The game's logic frames a millisecond, `LOGICFRAMES_PER_MSEC_REAL`, in the game's `f32`.
 const FRAMES_PER_MS: f32 = FRAMES_PER_SECOND / 1000.0;
 
-/// The milliseconds of the frames the game turns `ms` into: its `ceil(ms × 0.03)` in its
-/// `f32` (`INI::parseDurationUnsignedInt`, `parseShotDelay`); `Negative` for a time below 0.
+/// The milliseconds of the frames the game turns `ms`, a whole time, into, as `of_duration`
+/// turns a real one (`parseShotDelay`); `Negative` for a time below 0.
 pub(crate) fn of_ms(ms: i32) -> Result<u64, TimeError> {
-    if ms < 0 {
+    of_duration(ms as f32)
+}
+
+/// The milliseconds of the frames the game turns `ms` into: its `ceil(ms × 0.03)` in its `f32`
+/// (`INI::parseDurationUnsignedInt`); `Negative` for a time below 0, and `PastInt` for one not
+/// finite or of more frames than the game's `Int` holds.
+pub(crate) fn of_duration(ms: f32) -> Result<u64, TimeError> {
+    /// 2³¹, the least count of frames past an `Int`.
+    const PAST_INT: f64 = 2_147_483_648.0;
+    if ms < 0.0 {
         return Err(TimeError::Negative);
+    }
+    let frames = (ms * FRAMES_PER_MS).ceil();
+    // Not a number and infinity are out of the range too.
+    if !(0.0..PAST_INT).contains(&f64::from(frames)) {
+        return Err(TimeError::PastInt);
     }
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "the game's frames, a whole count at least 0 the `f32` holds exactly"
+        reason = "a whole count of frames at least 0 and below 2³¹"
     )]
-    let frames = (ms as f32 * FRAMES_PER_MS).ceil() as u64;
+    let frames = frames as u64;
     Ok(frames_ms(frames))
 }
 
@@ -61,6 +75,15 @@ mod tests {
         assert_eq!(of_ms(1), Ok(33));
         assert_eq!(of_ms(2000), Ok(2000));
         assert_eq!(of_ms(-1), Err(TimeError::Negative));
+        // A real time rounds the same: 1 ms and 0.5 ms are 1 frame, 33 ms; 1,001 ms are
+        // ⌈30.03⌉ = 31 frames, 1,033 ms. Below 0 is refused; a time not finite, or of 2³¹ frames
+        // and past, holds no `Int` of frames.
+        assert_eq!([of_duration(1.0), of_duration(0.5)], [Ok(33), Ok(33)]);
+        assert_eq!(of_duration(1001.0), Ok(1033));
+        assert_eq!(of_duration(-0.5), Err(TimeError::Negative));
+        for past in [f32::NAN, f32::INFINITY, 1e11] {
+            assert_eq!(of_duration(past), Err(TimeError::PastInt), "{past}");
+        }
     }
 
     #[test]

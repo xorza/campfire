@@ -5,7 +5,7 @@ use campfire_units::internals::Spawn;
 use campfire_units::{BodyForm, BodyShape, Died, Layer, MapSpace, Teleported};
 use campfire_values::TagSet;
 use std::collections::BTreeMap;
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroU32};
 
 use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::change_detection::DetectChanges;
@@ -1082,6 +1082,44 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
         game.resource::<Heard>().0,
         [("died", hero), ("teleported", hero)]
     );
+}
+
+#[test]
+fn a_kept_dead_unit_stays_its_time_of_no_target_or_order_and_then_despawns() {
+    // A victim of 30 life kept 100 ms, 3 ticks at 30 a second, ⌈100 · 30 / 1000⌉.
+    let mut game = fight_match();
+    let ms = NonZeroU32::new(100).unwrap();
+    let kept = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Keep { ms });
+    let [fighter, kept] = load_types(&mut game, [fighter(), kept]);
+    let attacker = Spawn::of(fighter, (4, 0, 0)).place(&mut game);
+    let victim = Spawn::of(kept, (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
+    Combat::attack(&mut game, attacker, victim);
+    while game.try_part::<Dead>(victim).is_none() {
+        game.step();
+    }
+    // It died in the tick that just ran; it decays at the end of the third after.
+    let died = game.now().get() - 1;
+    assert_eq!(
+        game.try_part::<Decay>(victim),
+        Some(&Decay {
+            at: Tick::new(died + 3)
+        })
+    );
+    // Its attacker drops it in the next tick's attack step, and an order to attack it again
+    // takes no target; it stays through the tick before its decay's.
+    game.step();
+    assert_eq!(Attack::of(&game, attacker).target(), None);
+    Combat::attack(&mut game, attacker, victim);
+    game.step();
+    assert_eq!(game.now().get(), died + 3);
+    assert!(game.try_part::<Dead>(victim).is_some());
+    assert_eq!(Attack::of(&game, attacker).target(), None);
+    // The tick of its decay ends with it gone.
+    game.step();
+    assert!(game.try_part::<Dead>(victim).is_none());
+    assert!(game.try_part::<Position>(victim).is_none());
 }
 
 /// The units each event of a death or a teleport named, in the order heard.

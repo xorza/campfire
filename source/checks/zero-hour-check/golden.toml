@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "88a5e6fc8363092407757e8050098a209da12825d0e383d81c3229f14497316a"
+game = "0406b3e76f00361be4b32e369da35c04184e00b78eae8090805da813eaef0c26"
 rules = "577d8681cbd157efacd5eef0dd50182e3d86eca380d346aabccb189f47e73e1f"
 
 [map]
@@ -24,7 +24,7 @@ wraps = 19
 varied = 1324
 empty = 272
 states = 23402
-never = 78
+never = 77
 night = 15
 snowy = 17
 animations = 3091

@@ -1,3 +1,6 @@
+use std::num::NonZeroU64;
+
+use crate::decay::Decay;
 use crate::kept::Kept;
 use crate::on_death::OnDeath;
 use crate::recent_attackers::RecentAttackers;
@@ -6,8 +9,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{ActionProgress, ProgressIndexes};
+use campfire_common::Ticks;
 use campfire_declarations::ById;
-use campfire_sim::{DueIndex, DueUnit, Keyed, Ordered, Position, SimTick, StableId};
+use campfire_sim::{DueIndex, DueUnit, Keyed, MatchRate, Ordered, Position, SimTick, StableId};
 use campfire_stats::UnitPools;
 use campfire_units::{Avatar, Dead, Died, Life, Owner, SpawnPoint, Teleported};
 use campfire_units::{Deaths, Fallen};
@@ -22,11 +26,17 @@ pub struct Dying;
 impl Dying {
     /// A unit at zero life dies: its attack target, and the action it ordered or has under way,
     /// end, so nothing it began goes on after a respawn, and the Mode stage learns of it; one no
-    /// strike took there died with no killer. They die in stable-id order, which the record of
-    /// deaths keeps for the hooks the mode runs and the deaths it carries to the next tick.
+    /// strike took there died with no killer; one whose type keeps it decays when its time ends.
+    /// They die in stable-id order, which the record of deaths keeps for the hooks the mode runs
+    /// and the deaths it carries to the next tick.
     pub(super) fn die(
         mut commands: Commands<'_, '_>,
-        mut deaths: ResMut<'_, Deaths>,
+        (mut deaths, on_death, tick, rate): (
+            ResMut<'_, Deaths>,
+            Res<'_, ById<UnitType, OnDeath>>,
+            Res<'_, SimTick>,
+            Res<'_, MatchRate>,
+        ),
         mut units: Query<
             '_,
             '_,
@@ -39,6 +49,7 @@ impl Dying {
                 Option<&Owner>,
                 Has<Avatar>,
                 Option<&UnitTags>,
+                Option<&UnitType>,
             ),
             (Without<Dead>, Changed<Life>),
         >,
@@ -51,14 +62,26 @@ impl Dying {
             .filter(|(_, _, life, ..)| life.is_empty())
             .map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { entity, id } in order.sort(dying) {
-            let (_, _, _, progress, team, owner, avatar, tags) =
+            let (_, _, _, progress, team, owner, avatar, tags, unit_type) =
                 units.get_mut(entity).expect("a dying unit of the order");
             if let Some(mut progress) = progress {
                 let dues = &mut indexes.of(id, entity);
                 progress.set_attack_target(None, dues);
                 progress.end(dues);
             }
-            commands.entity(entity).insert(Dead);
+            let kept = unit_type.and_then(|&unit_type| match on_death.get(unit_type) {
+                Some(&OnDeath::Keep { ms }) => Some(
+                    rate.duration(NonZeroU64::from(ms).get())
+                        .expect("a u32 of milliseconds at a u32 rate counts in a u64 of ticks"),
+                ),
+                _ => None,
+            });
+            if let Some(ticks) = kept {
+                let at = tick.start().after(ticks);
+                commands.entity(entity).insert((Dead, Decay { at }));
+            } else {
+                commands.entity(entity).insert(Dead);
+            }
             commands.trigger(Died { id });
             if !deaths.killed(id) {
                 let fallen = Fallen {
@@ -87,6 +110,33 @@ impl Dying {
         }
     }
 
+    /// Despawns each dead unit whose decay is due, at the end of its tick, but one a later stage
+    /// keeps, which waits a tick more; it visits only the units the index of the decays due
+    /// holds, by tick, then stable id, in a buffer it keeps.
+    pub(super) fn decay(
+        tick: Res<'_, SimTick>,
+        mut commands: Commands<'_, '_>,
+        mut index: ResMut<'_, DueIndex<Decay>>,
+        dead: Query<'_, '_, (&Decay, Has<Kept>), With<Dead>>,
+        mut due: Local<'_, Vec<DueUnit>>,
+    ) {
+        let now = tick.start();
+        due.clear();
+        index.take_due(now, &mut due);
+        for &DueUnit { id, entity } in &*due {
+            let Ok((decay, kept)) = dead.get(entity) else {
+                continue;
+            };
+            if decay.at > now {
+                index.push(decay.at, id, entity);
+            } else if kept {
+                index.push(now.after(Ticks::ONE), id, entity);
+            } else {
+                commands.entity(entity).despawn();
+            }
+        }
+    }
+
     /// Brings back each dead unit whose respawn is due, at its spawn point with full pools: put
     /// there at once, as what homes on it learns. It visits only the units the index of the
     /// respawns due holds, by tick, then stable id, in a buffer it keeps.
@@ -110,7 +160,7 @@ impl Dying {
             }
             pools.fill();
             *position = Position::from(spawn.get());
-            commands.entity(entity).remove::<(Dead, Respawn)>();
+            commands.entity(entity).remove::<(Dead, Respawn, Decay)>();
             commands.trigger(Teleported { id });
         }
     }

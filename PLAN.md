@@ -4,12 +4,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Animated looks
 
-The slice of [Animated looks](docs/design/animated-looks.md): a player of a Zero Hour skirmish sees infantry stand, walk, fire and die with the original's animations, a building rise as it is built and show its damage, and an upgrade change what its units show. Two batches, each one commit; its checks are that document's.
-
-### A5. Deaths (combat, import, client)
-
-- [ ] A dead unit despawns at the end of its tick (`combat/src/dying.rs:76`) → a type's death may keep it for a time, of no collision, target or order, and the import keeps each object for its `SlowDeathBehavior`'s `DestructionDelay` (animated-looks.md, A death keeps its unit for its animation).
-- Checks: a scripted match keeps a dead unit its time and despawns it after, every other pass passing over it; the Zero Hour check's golden is written again; in the client, a Ranger dies with its animation.
+The slice of [Animated looks](docs/design/animated-looks.md): a player of a Zero Hour skirmish sees infantry stand, walk, fire and die with the original's animations, a building rise as it is built and show its damage, and an upgrade change what its units show. One batch, one commit; its checks are that document's.
 
 ### A6. The check and the fold (the Zero Hour check, documents)
 

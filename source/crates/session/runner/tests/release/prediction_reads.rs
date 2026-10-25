@@ -182,6 +182,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_combat::attacks::Attacks::pay_attack_toggles",
         "campfire_combat::attacks::Attacks::take_hits",
         "campfire_combat::damage_pass::DamagePass::run",
+        "campfire_combat::dying::Dying::decay",
         "campfire_combat::dying::Dying::despawn_dead",
         "campfire_combat::dying::Dying::die",
         "campfire_combat::dying::Dying::forget_attackers",

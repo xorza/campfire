@@ -1,4 +1,4 @@
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroU32};
 use std::sync::Arc;
 
 use campfire_actions::{
@@ -521,13 +521,16 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         armors: Vec::new(),
     };
     let lives = Some(all_declared(&["life"]));
+    // The ranger's slow death keeps it 1001 ms, ⌈1001 · 0.03⌉ = 31 of the game's frames, 1033 ms.
+    let kept = CombatData {
+        on_death: OnDeath::Keep {
+            ms: NonZeroU32::new(1033).unwrap(),
+        },
+        ..combat(Some("humanarmor"))
+    };
     assert_eq!(
         life("americainfantryranger"),
-        (
-            lives.clone(),
-            Some(Num::int(180)),
-            Some(&combat(Some("humanarmor")))
-        )
+        (lives.clone(), Some(Num::int(180)), Some(&kept))
     );
     assert_eq!(
         life("americacommandcenter"),

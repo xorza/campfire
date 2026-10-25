@@ -238,6 +238,7 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         wip = { test = "site", stage = "started" }
         zap = { test = "attack", group = 1, phase = "reloading" }
         zing = { test = "attack", group = 1 }
+        zombie = { test = "dying" }
     "#;
     let mut tags = TagNames::default();
     let upgrade = tags.names_mut().add("weapon_upgrade");
@@ -264,8 +265,9 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         UnitLooks::of(types, &data)
     };
     // The tested conditions' bits, by name: damaged 0, moving 1, upgraded 2, waiting 3, wip 4,
-    // zap 5, zing 6; the map's and the one of no test are none.
-    let [damaged, moving, upgraded, waiting, wip, zap, zing] = [1, 2, 4, 8, 16, 32, 64];
+    // zap 5, zing 6, zombie 7; the map's and the one of no test are none.
+    let [damaged, moving, upgraded, waiting, wip, zap, zing, zombie] =
+        [1, 2, 4, 8, 16, 32, 64, 128];
     let drawn = |looks: &UnitLooks, held: u64| {
         let draw = &looks.draws(barracks, None).unwrap().draws()[0];
         let model = &draw.states()[draw.best(held)].shown.models[0];
@@ -302,9 +304,16 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         still_for: Duration::ZERO,
         life: Some([Num::int(8), Num::int(8)]),
         site: None,
+        dead: false,
         attacks: 0,
     };
     assert_eq!(tests.held(still), 0);
+    // Dead: zombie.
+    let dead = UnitFacts {
+        dead: true,
+        ..still
+    };
+    assert_eq!(tests.held(dead), zombie);
     // A weapon of the second group reloads: zap, and zing, of any phase; one of the second
     // between shots, zing alone; one of the first, none.
     let attacking = |group, phase| UnitFacts {

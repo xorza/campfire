@@ -9,6 +9,7 @@ use crate::zero_hour::format::ini::object_ini::build_variations::BuildVariations
 use crate::zero_hour::format::ini::object_ini::fight_data::{FightBlock, FightData};
 use crate::zero_hour::format::ini::object_ini::ini_animation::IniAnimation;
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, ProductionModule};
+use crate::zero_hour::format::ini::object_ini::ini_death::IniDeath;
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::IniUpgradeModule;
 use crate::zero_hour::format::look_conditions::LookConditions;
@@ -17,6 +18,7 @@ pub(crate) mod build_variations;
 pub(crate) mod fight_data;
 pub(crate) mod ini_animation;
 pub(crate) mod ini_build;
+pub(crate) mod ini_death;
 pub(crate) mod ini_supply;
 pub(crate) mod ini_upgrade_module;
 
@@ -72,6 +74,7 @@ pub(crate) struct IniObject {
     supply: IniSupply,
     fight: FightData,
     upgrades: Vec<IniUpgradeModule>,
+    deaths: Vec<IniDeath>,
 }
 
 /// The kinds of an object's `KindOf` that the import reads: those that decide who draws its placed
@@ -324,6 +327,8 @@ enum Block {
     Supply(SupplyModule),
     /// An upgrade module, the object's last.
     Upgrade,
+    /// A slow death module, the object's last.
+    Death,
     Other,
 }
 
@@ -429,6 +434,7 @@ impl ObjectFiles {
                 supply: IniSupply::default(),
                 fight: FightData::default(),
                 upgrades: Vec::new(),
+                deaths: Vec::new(),
             },
             Some(base) => IniObject {
                 id,
@@ -870,6 +876,14 @@ impl IniObject {
     }
 
     /// Its upgrade modules, in the order it gives them.
+    /// The slow death a normal death of it most likely takes, as `SlowDeathBehavior::onDie` draws
+    /// one by weight among those that apply: of the most weight, the first of a tie; none when
+    /// none applies, as it is then destroyed at once.
+    pub(crate) fn slow_death(&self) -> Option<&IniDeath> {
+        let applies = self.deaths.iter().filter(|death| death.applies());
+        applies.rev().max_by_key(|death| death.weight)
+    }
+
     pub(crate) fn upgrades(&self) -> &[IniUpgradeModule] {
         &self.upgrades
     }
@@ -969,6 +983,7 @@ impl Reading {
             | Block::Production(_)
             | Block::Supply(_)
             | Block::Upgrade
+            | Block::Death
             | Block::Other => Ok(None),
         }
     }
@@ -1158,6 +1173,16 @@ impl Reading {
                     self.stack.push(Block::Other);
                 }
             }
+            Block::Death => {
+                let open = self.object.as_mut().expect("a module is an object's");
+                let module = open.object.deaths.last_mut();
+                module
+                    .expect("a death block opened its module")
+                    .field(word, at)?;
+                if ObjectFiles::opens(word, tokens) {
+                    self.stack.push(Block::Other);
+                }
+            }
             Block::Supply(module) => {
                 let module = *module;
                 let open = self.object.as_mut().expect("a module is an object's");
@@ -1201,6 +1226,13 @@ impl Reading {
                 {
                     open.object.upgrades.push(module);
                     self.stack.push(Block::Upgrade);
+                    return Ok(());
+                }
+                if word == "behavior"
+                    && let Some(module) = tokens.get(1).and_then(|class| IniDeath::module(class))
+                {
+                    open.object.deaths.push(module);
+                    self.stack.push(Block::Death);
                     return Ok(());
                 }
                 if let Some(block) = open.object.fight.open(word, tokens) {

@@ -8,7 +8,8 @@ use bevy::camera::visibility::Visibility;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::query::{Added, Allow, Changed, Or};
+use bevy::ecs::lifecycle::RemovedComponents;
+use bevy::ecs::query::{Added, Allow, Changed, Has, Or};
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use bevy::time::{Fixed, Time};
@@ -20,7 +21,7 @@ use campfire_declarations::ById;
 use campfire_math::Num;
 use campfire_production::{Site, SiteProgress};
 use campfire_sim::{Position, SimTick, Unpredicted};
-use campfire_units::{Destination, Life, Variation};
+use campfire_units::{Dead, Destination, Life, Variation};
 use campfire_values::{ActionId, Team, UnitTags, UnitType};
 
 use crate::view::drawing::{Drawing, DrawingOf};
@@ -81,6 +82,7 @@ type Retested<'w, 's> = Query<
             Changed<ActionProgress>,
             Changed<SlotTimes>,
             Changed<ClipShots>,
+            Added<Dead>,
         )>,
         Allow<Unpredicted>,
     ),
@@ -109,6 +111,7 @@ type UnitParts<'w, 's> = Query<
         &'static UnitTags,
         Option<&'static Destination>,
         Option<(&'static Site, &'static SiteProgress)>,
+        Has<Dead>,
         &'static Team,
     ),
     Allow<Unpredicted>,
@@ -229,13 +232,18 @@ impl LookDice {
 }
 
 impl LookStatesPlugin {
-    /// Picks the states of each new drawing, of each unit whose conditions' parts changed or
-    /// that moved, and of each that held a condition time ends, of its walk or its attack, as it
+    /// Picks the states of each new drawing, of each unit whose conditions' parts changed, that
+    /// moved, or that came back from its death, and of each that held a condition time ends, of its walk or its attack, as it
     /// may hold another now; and asks each draw to show its state anew.
     fn pick(
         (time, looks, tick, weapons): PickReads<'_>,
         (mut scenes, mut clips, timings, mut graphs, assets): ShowAssets<'_>,
-        (retested, moved): (Retested<'_, '_>, Moved<'_, '_>),
+        (retested, moved, mut revived, drawn): (
+            Retested<'_, '_>,
+            Moved<'_, '_>,
+            RemovedComponents<'_, '_, Dead>,
+            Query<'_, '_, &'static Drawing, Allow<Unpredicted>>,
+        ),
         (units, armed): (UnitParts<'_, '_>, AttackQuery<'_, '_>),
         (replacing, mut roots): (Query<'_, '_, &'static Replaces>, Roots<'_, '_>),
         (mut timed, mut visits): (Local<'_, Vec<Entity>>, Local<'_, Vec<Entity>>),
@@ -245,6 +253,8 @@ impl LookStatesPlugin {
         visits.clear();
         visits.extend(roots.p0().iter());
         visits.extend(retested.iter().map(Drawing::root));
+        let revived = revived.read().filter_map(|unit| drawn.get(unit).ok());
+        visits.extend(revived.map(Drawing::root));
         let mut roots = roots.p1();
         for drawing in &moved {
             if let Ok((_, mut states)) = roots.get_mut(drawing.root()) {
@@ -259,7 +269,7 @@ impl LookStatesPlugin {
             let Ok((&DrawingOf(unit), mut states)) = roots.get_mut(root) else {
                 continue;
             };
-            let (Ok((life, &tags, destination, site, &team)), Some(draws), Some(tests)) = (
+            let (Ok((life, &tags, destination, site, dead, &team)), Some(draws), Some(tests)) = (
                 units.get(unit),
                 looks.draws(states.unit_type, states.variation),
                 looks.tests(states.unit_type),
@@ -298,6 +308,7 @@ impl LookStatesPlugin {
                         SiteStage::Started
                     }
                 }),
+                dead,
                 attacks,
             };
             let held = tests.held(facts);
@@ -379,7 +390,7 @@ impl LookStatesPlugin {
             fraction: fixed.overstep_fraction(),
         };
         for (root, &DrawingOf(unit), glide, mut states) in &mut roots {
-            let Ok((_, _, _, site, &team)) = units.get(unit) else {
+            let Ok((_, _, _, site, _, &team)) = units.get(unit) else {
                 continue;
             };
             let unbuilt = site.map_or(0.0, |(site, progress)| {

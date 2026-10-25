@@ -17,7 +17,8 @@ use crate::zero_hour::upgrade_import;
 /// name them (animated-looks.md, A condition is the game's name for a test): `NIGHT` and `SNOW` the
 /// map's; `DAMAGED` and `REALLYDAMAGED` its life above and at most the shares of
 /// `UnitDamagedThreshold` and `UnitReallyDamagedThreshold`, each apart from the other, as
-/// `calcDamageState` sets one damage state; `MOVING` its walk; `AWAITING_CONSTRUCTION` and
+/// `calcDamageState` sets one damage state; `MOVING` its walk; `DYING` its death, which a slow
+/// death keeps it for; `AWAITING_CONSTRUCTION` and
 /// `PARTIALLY_CONSTRUCTED` a site before and after a builder first built it, and
 /// `ACTIVELY_BEING_CONSTRUCTED` the engine's tag of a site that grew in the tick, as a dozer's
 /// `DozerAIUpdate` sets them; `PREATTACK_<slot>`, `FIRING_<slot>`, `BETWEEN_FIRING_SHOTS_<slot>`
@@ -111,6 +112,7 @@ impl LookFlags {
             "night" | "snow" => ConditionTest::Map,
             "damaged" => ConditionTest::Life(self.damaged),
             "reallydamaged" => ConditionTest::Life(self.really_damaged),
+            "dying" => ConditionTest::Dying,
             "moving" => ConditionTest::Moving {
                 still_ms: Self::STILL_MS,
             },

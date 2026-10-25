@@ -209,6 +209,9 @@ pub enum TypeError {
     /// Its turret turns at a rate no unit type of the engine may have.
     #[error("its turret is none the engine holds")]
     Turret,
+    /// Its slow death keeps it for no time the game or the engine holds.
+    #[error("its slow death's delay is no time the engine holds")]
+    DeathDelay,
 }
 
 /// How an install's archive differs from a version's.

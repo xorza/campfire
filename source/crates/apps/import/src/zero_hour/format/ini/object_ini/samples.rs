@@ -315,6 +315,9 @@ Weapon = TERTIARY Flamer\r
   Behavior = WeaponSetUpgrade ModuleTag_20\r
 TriggeredBy = Upgrade_AmericaRangerFlashBang\r
   End\r
+  Behavior = SlowDeathBehavior ModuleTag_30\r
+DestructionDelay = 1001\r
+  End\r
   Behavior = WeaponBonusUpgrade ModuleTag_21\r
 TriggeredBy = Upgrade_AmericaRangerFlashBang Upgrade_AmericaCompositeArmor\r
 RequiresAllTriggers = Yes\r

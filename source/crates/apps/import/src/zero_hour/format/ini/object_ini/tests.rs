@@ -906,3 +906,43 @@ End
         Err(IniError::NotListed { line: 3 })
     );
 }
+
+#[test]
+fn an_object_keeps_the_slow_death_a_normal_death_most_likely_takes() {
+    // A crush's death, one of a status, one of 20 kept 1500 ms and one of 20 kept 3000 ms: the
+    // two of 20 apply, the first of the tie; the veteran's alone applies to no regular unit.
+    let deaths = |modules: &str| {
+        let text = format!("Object A\n{modules}End\n");
+        let mut files = ObjectFiles::default();
+        files.read(text.as_bytes()).map(|()| {
+            let object = files.objects().next().unwrap();
+            object
+                .slow_death()
+                .map(|death| (death.delay_ms, death.weight))
+        })
+    };
+    let module = |fields: &str| format!("  Behavior = SlowDeathBehavior M\n{fields}  End\n");
+    let crushed = module("    DeathTypes = NONE +CRUSHED\n    DestructionDelay = 9000\n");
+    let held = module("    RequiredStatus = SOLD\n    DestructionDelay = 8000\n");
+    let first = module("    ProbabilityModifier = 20\n    DestructionDelay = 1500\n");
+    let second = module("    ProbabilityModifier = 20\n    DestructionDelay = 3000\n");
+    let modules = [crushed, held, first, second].concat();
+    assert_eq!(deaths(&modules), Ok(Some((1500.0, 20))));
+    // Of the default weight, 10, every death; a later line of death types replaces the one
+    // before; none of a veteran's alone.
+    assert_eq!(deaths(&module("")), Ok(Some((0.0, 10))));
+    let again = module("    DeathTypes = NONE\n    DeathTypes = ALL -LASERED\n");
+    assert_eq!(deaths(&again), Ok(Some((0.0, 10))));
+    let veteran = module("    VeterancyLevels = NONE +VETERAN\n");
+    assert_eq!(deaths(&veteran), Ok(None));
+    assert_eq!(deaths(""), Ok(None));
+    // A death of no name, or a name with no sign, fails at its line.
+    for wrong in ["DeathTypes = ALL -MELTED", "DeathTypes = NORMAL"] {
+        let text = module(&format!("    {wrong}\n"));
+        assert_eq!(
+            deaths(&text),
+            Err(IniError::NotListed { line: 3 }),
+            "{wrong}"
+        );
+    }
+}

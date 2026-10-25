@@ -48,6 +48,7 @@ mod damage_effect_data;
 mod damage_handle;
 mod damage_kind_book;
 mod damage_pass;
+mod decay;
 mod dying;
 mod error;
 mod heal;
@@ -88,6 +89,7 @@ pub use crate::damage::{Damage, DamageCause};
 pub use crate::damage_effect_data::DamageEffectData;
 pub use crate::damage_handle::DamageHandle;
 pub use crate::damage_pass::{CalcDamage, CalcHeal, DamagePass};
+pub use crate::decay::Decay;
 pub use crate::dying::Dying;
 pub use crate::error::{CombatDataError, CombatRefusal};
 pub use crate::heal::{Heal, HealCause};
@@ -147,7 +149,8 @@ pub enum CombatSystems {
     StreakAtResolve,
     /// Units at zero life die.
     Die,
-    /// The dead whose type despawns go, after the Mode stage saw them.
+    /// The dead whose type despawns go, after the Mode stage saw them, and those whose type kept
+    /// them go as their time ends.
     Despawn,
 }
 
@@ -204,6 +207,9 @@ impl Module for Combat {
         d.component::<Respawn>();
         d.timed::<Respawn>();
         d.state::<BodyUnit, Respawn>();
+        d.component::<Decay>();
+        d.timed::<Decay>();
+        d.state::<BodyUnit, Decay>();
         d.scratch::<PassQueue>();
         d.scratch::<Volley>();
         d.resource::<NextDamage>();
@@ -225,6 +231,7 @@ impl Module for Combat {
         d.listed::<DamageEffectData>();
         d.listed::<HealEffectData>();
         d.require::<Respawn, Dead>();
+        d.require::<Decay, Dead>();
         d.require::<Respawn, SpawnPoint>();
         d.column::<CombatColumn, RowReads>(CombatColumn::fill_row);
         d.api(CombatApi::register);
@@ -309,7 +316,7 @@ impl Module for Combat {
             CombatSystems::Respawn,
             Dying::forget_attackers.before(Dying::respawn),
         );
-        cx.server(CombatSystems::Despawn, Dying::despawn_dead);
+        cx.server(CombatSystems::Despawn, (Dying::despawn_dead, Dying::decay));
         if slow {
             cx.server(
                 CombatSystems::Hits,
