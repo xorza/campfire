@@ -121,7 +121,9 @@ fn a_query_finds_what_a_walk_of_every_row_finds_and_charges_the_classes_it_selec
         unit
     };
     let mut ids = IdAllocator::default();
-    let mut units: Vec<UnitRow> = (0..60).map(|_| drawn(&mut random, ids.allocate())).collect();
+    let mut units: Vec<UnitRow> = (0..60)
+        .map(|_| drawn(&mut random, ids.allocate()))
+        .collect();
     let mut index = TargetIndex::default();
     let charge = CallCharge::default();
     for read in 0..6 {
