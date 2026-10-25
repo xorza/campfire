@@ -1,5 +1,5 @@
 use bevy::app::{App, Plugin, Startup, Update};
-use bevy::asset::{Assets, Handle};
+use bevy::asset::{AssetServer, Assets, Handle};
 use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChangesMut;
@@ -41,6 +41,7 @@ use crate::selection::SelectionSystems;
 use crate::view::drawing::DrawingOf;
 use crate::view::float_num::{self, FloatNum};
 use crate::view::match_colors::{Paint, Tint};
+use crate::view::model_scenes::ModelScenes;
 use crate::view::unit_looks::UnitLooks;
 
 /// The build preview (02-engine-core.md, A command panel from the actions): while the player places
@@ -154,6 +155,7 @@ impl BuildPreviewPlugin {
         placing: Option<Res<'_, Placing>>,
         ghost: Option<Single<'_, '_, (Entity, &Ghost)>>,
         (builds, looks): (Res<'_, BuildBook>, Res<'_, UnitLooks>),
+        (assets, mut scenes): (Res<'_, AssetServer>, ResMut<'_, ModelScenes>),
         tints: Res<'_, Tints>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
         mut commands: Commands<'_, '_>,
@@ -206,7 +208,8 @@ impl BuildPreviewPlugin {
             .add_child(footprint)
             .id();
         for model in looks.look(placing.building, None).unwrap_or_default() {
-            commands.spawn((model.bundle(Paint::default()), ChildOf(root)));
+            let bundle = model.bundle(&mut scenes, &assets, Paint::default());
+            commands.spawn((bundle, ChildOf(root)));
         }
     }
 

@@ -2,7 +2,6 @@ use campfire_common::DeclaredName;
 use serde::{Deserialize, Serialize};
 
 use crate::client_model::ClientModel;
-use crate::client_unit::{DrawnLook, LookVariant};
 
 /// The look of a map's client object: the models drawn at its place, all of them, and its
 /// variants, the models it draws in their stead on a map of their conditions; no client object is
@@ -16,6 +15,15 @@ pub struct ObjectLook {
     pub variants: Vec<LookVariant>,
 }
 
+/// An object look's models on a map of some conditions, as a night or snowy weather, by name:
+/// any game names its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LookVariant {
+    pub conditions: Vec<DeclaredName>,
+    pub models: Vec<ClientModel>,
+}
+
 impl ObjectLook {
     /// The look of `models`, of no variant.
     pub const fn new(models: Vec<ClientModel>) -> Self {
@@ -25,17 +33,27 @@ impl ObjectLook {
         }
     }
 
-    /// What its object draws.
-    pub fn drawn(&self) -> DrawnLook<'_> {
-        DrawnLook {
-            models: &self.models,
-            turret: None,
-        }
-    }
-
-    /// Draws, on a map of `conditions`, its models as `ClientUnit::settle` picks a look's own;
-    /// and holds no variant after.
+    /// Puts in its models, on a map of `conditions`, the models of its variant whose conditions
+    /// have the most in common with the map's, of a tie the one of the fewest the map lacks, of a
+    /// tie the first, its own models counted first as of no condition; and holds no variant
+    /// after.
     pub fn settle(&mut self, conditions: &[DeclaredName]) {
-        LookVariant::settle(&mut self.models, &mut self.variants, conditions);
+        let mut best = None;
+        let (mut most, mut fewest) = (0, 0);
+        for (at, variant) in self.variants.iter().enumerate() {
+            let common = variant
+                .conditions
+                .iter()
+                .filter(|condition| conditions.contains(condition))
+                .count();
+            let lacked = variant.conditions.len() - common;
+            if common > most || (common >= most && lacked < fewest) {
+                (best, most, fewest) = (Some(at), common, lacked);
+            }
+        }
+        let mut variants = std::mem::take(&mut self.variants);
+        if let Some(at) = best {
+            self.models = variants.swap_remove(at).models;
+        }
     }
 }

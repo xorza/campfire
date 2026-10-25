@@ -3,7 +3,7 @@ use campfire_geometry::{Bounds, Metric};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 use std::time::Duration;
 
-use bevy::asset::{AssetApp, AssetServer};
+use bevy::asset::AssetApp;
 use bevy::camera::primitives::MeshAabb;
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::world::World;
@@ -15,7 +15,7 @@ use campfire_actions::ShotDamage;
 use campfire_areas::{AreaSpec, Areas};
 use campfire_capabilities::internals::AreasFixtures;
 use campfire_client_files::{
-    ClientModel, ClientUnit, ClientUnits, LookVariation, ModelScale, ModelTop,
+    ClientModel, ClientUnit, ClientUnits, LookDraw, LookVariation, ModelScale, ModelTop,
 };
 use campfire_declarations::{ById, ByIdBuilder};
 use campfire_math::Num;
@@ -30,6 +30,7 @@ use campfire_values::{ActionId, DamageKind, PackageIndex, PackagePath, Rank};
 use super::*;
 use crate::test_app;
 use crate::view::area_view::{AREA_LIFT, AreaViewPlugin};
+use crate::view::look_states::LookStatesPlugin;
 use crate::view::map_metric::MapMetric;
 use crate::view::unit_looks::{LookNodes, LookTypes};
 
@@ -322,6 +323,7 @@ fn a_position_stands_on_the_drawn_ground_of_a_planar_map_and_is_its_own_point_on
 fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() {
     IoTaskPool::get_or_init(TaskPool::new);
     let mut app = view();
+    app.add_plugins(LookStatesPlugin);
     app.init_asset::<WorldAsset>();
     // Ground 8 samples high everywhere, a step of 0.5 m: 4 m under every point.
     let grid = HeightGrid::new(
@@ -350,15 +352,14 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     ];
     // The technical's two variations, the second's model 1.5 m tall.
     let variation = |name: &str, top: f32| LookVariation {
-        models: vec![model(name, &[], Some(top))],
-        variants: Vec::new(),
+        draws: vec![LookDraw::still(vec![model(name, &[], Some(top))])],
         turret: None,
     };
     let mut looks = ClientUnits {
         units: names
             .into_iter()
             .zip(models)
-            .map(|(name, models)| (DeclaredName::new(name).unwrap(), ClientUnit::new(models)))
+            .map(|(name, models)| (DeclaredName::new(name).unwrap(), ClientUnit::still(models)))
             .collect(),
         ..ClientUnits::default()
     };
@@ -378,11 +379,13 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let mut variations = ByIdBuilder::default();
     variations.set(technical_type, Variations::from([form, form]));
     let variations = variations.build();
+    let names = MatchNames::default();
     let types = LookTypes {
         origins: &origins,
         variations: Some(&variations),
+        names: &names,
     };
-    let looks = UnitLooks::of(types, &data, app.world().resource::<AssetServer>());
+    let looks = UnitLooks::of(types, &data);
     app.insert_resource(looks);
     app.insert_resource(data);
     let [unit_type, sound_type, pit_type, shed_type] =
@@ -482,7 +485,7 @@ fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as
     IoTaskPool::get_or_init(TaskPool::new);
     let mut app = view();
     app.init_asset::<WorldAsset>();
-    let shell = ClientUnit::new(vec![ClientModel {
+    let shell = ClientUnit::still(vec![ClientModel {
         model: PackagePath::parse("client/models/shell.glb").unwrap(),
         scale: ModelScale::new(2.0).unwrap(),
         hide: Vec::new(),
@@ -501,11 +504,13 @@ fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as
         })
         .into_iter()
         .collect();
+    let names = MatchNames::default();
     let types = LookTypes {
         origins: &origins,
         variations: None,
+        names: &names,
     };
-    let looks = UnitLooks::of(types, &data, app.world().resource::<AssetServer>());
+    let looks = UnitLooks::of(types, &data);
     app.insert_resource(looks);
     app.insert_resource(data);
     let [(shell_type, _), (bolt_type, _)] = [0, 1].map(|at| origins.iter().nth(at).unwrap());

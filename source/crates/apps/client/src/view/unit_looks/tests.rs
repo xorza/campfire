@@ -1,15 +1,14 @@
-use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, LookVariation, ModelScale};
-use campfire_common::DeclaredName;
+use campfire_client_files::{ClientUnit, ClientUnits, LookVariation, ModelScale};
+use campfire_codec::Toml;
 use campfire_declarations::ByIdBuilder;
+use campfire_script::TagNames;
 use campfire_units::{BodyForm, BodyShape, Layer, TypeOrigin};
 use campfire_values::PackagePath;
 
 use super::*;
-use crate::test_app;
 
 #[test]
 fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
-    let app = test_app::assets();
     let model = |path: &str, hide: &[&str]| ClientModel {
         model: PackagePath::parse(path).unwrap(),
         scale: ModelScale::ONE,
@@ -23,7 +22,7 @@ fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
     let units = |entries: Vec<(&str, Vec<ClientModel>)>| ClientUnits {
         units: entries
             .into_iter()
-            .map(|(name, models)| (DeclaredName::new(name).unwrap(), ClientUnit::new(models)))
+            .map(|(name, models)| (DeclaredName::new(name).unwrap(), ClientUnit::still(models)))
             .collect(),
         ..ClientUnits::default()
     };
@@ -62,14 +61,16 @@ fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
     ]
     .into_iter()
     .collect();
+    let names = MatchNames::default();
     let types = LookTypes {
         origins: &origins,
         variations: None,
+        names: &names,
     };
-    let looks = UnitLooks::of(types, &data, app.world().resource::<AssetServer>());
+    let looks = UnitLooks::of(types, &data);
     let paths = |unit_type: UnitType| -> Option<Vec<(String, LookNodes)>> {
         let models = looks.look(unit_type, None)?;
-        let path = |model: &LookModel| model.scene.path().unwrap().to_string();
+        let path = |model: &LookModel| model.scene.to_string();
         Some(
             models
                 .iter()
@@ -114,13 +115,12 @@ fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
     assert_eq!(angles, [-135, 0, 0, 0].map(Num::int));
     // The mode's tank's top, its tread's 1.5 m, of a hull whose file gives none; none for
     // package 1's tank, whose file gives none, the type of no look, and the look of no models.
-    let tops = types.map(|unit_type| looks.top(unit_type, None));
+    let tops = types.map(|unit_type| looks.draws(unit_type, None).and_then(LookDraws::top));
     assert_eq!(tops, [Some(1.5), None, None, None]);
 }
 
 #[test]
 fn a_unit_of_a_type_of_variations_draws_its_variations_look_when_the_look_has_as_many() {
-    let app = test_app::assets();
     let model = |name: &str, top: f32| ClientModel {
         model: PackagePath::parse(&format!("client/models/{name}.glb")).unwrap(),
         scale: ModelScale::ONE,
@@ -128,13 +128,12 @@ fn a_unit_of_a_type_of_variations_draws_its_variations_look_when_the_look_has_as
         top: ModelTop::new(top),
     };
     let variation = |name: &str, top: f32, turret: Option<&str>| LookVariation {
-        models: vec![model(name, top)],
-        variants: Vec::new(),
+        draws: vec![LookDraw::still(vec![model(name, top)])],
         turret: turret.map(str::to_owned),
     };
     let varied = |own: &str, variations: Vec<LookVariation>| ClientUnit {
         variations,
-        ..ClientUnit::new(vec![model(own, 0.5)])
+        ..ClientUnit::still(vec![model(own, 0.5)])
     };
     // The technical's look of two variations, of its type's two; the jeep's of three, of its
     // type's two; the truck's of two, of a type of none; the tank's of none, of a type of two.
@@ -174,18 +173,21 @@ fn a_unit_of_a_type_of_variations_draws_its_variations_look_when_the_look_has_as
         variations.set(unit_type, Variations::from([form, form]));
     }
     let variations = variations.build();
+    let names = MatchNames::default();
     let types = LookTypes {
         origins: &origins,
         variations: Some(&variations),
+        names: &names,
     };
-    let looks = UnitLooks::of(types, &data, app.world().resource::<AssetServer>());
+    let looks = UnitLooks::of(types, &data);
     let drawn = |unit_type, variation: Option<u8>| {
         let variation = variation.map(Variation::new);
         let models = looks.look(unit_type, variation).unwrap();
-        let path = models[0].scene.path().unwrap().to_string();
+        let path = models[0].scene.to_string();
         let name = path.trim_start_matches("package://0/client/models/");
         let name = name.trim_end_matches(".glb#Scene0");
-        (name.to_owned(), looks.top(unit_type, variation))
+        let top = looks.draws(unit_type, variation).and_then(LookDraws::top);
+        (name.to_owned(), top)
     };
     let drawn_as = |name: &str, top: f32| (name.to_owned(), Some(top));
     // The technical's units draw their variations' models and tops, a unit of none, as a build
@@ -206,4 +208,120 @@ fn a_unit_of_a_type_of_variations_draws_its_variations_look_when_the_look_has_as
     assert_eq!(drawn(jeep, Some(1)), drawn_as("jeep", 0.5));
     assert_eq!(drawn(truck, Some(0)), drawn_as("truck", 0.5));
     assert_eq!(drawn(tank, Some(1)), drawn_as("tank", 0.5));
+}
+
+#[test]
+fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
+    let text = r#"
+        [units.barracks]
+        draws = [{ states = [
+            { sets = [[]], models = [{ model = "day.glb" }] },
+            { sets = [["night"]], models = [{ model = "night.glb" }] },
+            { sets = [["snow"]], models = [{ model = "snow.glb" }] },
+            { sets = [["damaged"], ["damaged", "night"]], models = [{ model = "hurt.glb" }] },
+            { sets = [["moving", "rubble"]], models = [{ model = "walk.glb" }] },
+            { sets = [["upgraded"]], models = [{ model = "upgraded.glb" }] },
+        ], ignore = ["snow"] }]
+
+        [conditions]
+        damaged = { test = "life", above = "0.25", at_most = "0.5" }
+        moving = { test = "moving", still_ms = 250 }
+        night = { test = "map" }
+        rubble = { test = "never" }
+        snow = { test = "map" }
+        upgraded = { test = "tag", tag = "weapon_upgrade" }
+    "#;
+    let mut tags = TagNames::default();
+    let upgrade = tags.names_mut().add("weapon_upgrade");
+    let mut names = MatchNames::default();
+    names.set_tags(tags);
+    let origins: TypeOriginBook = [TypeOrigin {
+        package: PackageIndex::MODE,
+        name: "barracks".into(),
+    }]
+    .into_iter()
+    .collect();
+    let barracks = origins.iter().next().unwrap().0;
+    let looks_on = |map: &[&str]| {
+        let mut data = ClientLoad::of_looks([Toml::parse::<ClientUnits>(text).unwrap()]);
+        data.map_conditions = map
+            .iter()
+            .map(|name| DeclaredName::new(name).unwrap())
+            .collect();
+        let types = LookTypes {
+            origins: &origins,
+            variations: None,
+            names: &names,
+        };
+        UnitLooks::of(types, &data)
+    };
+    // The tested conditions' bits, by name: damaged 0, moving 1, upgraded 2; the map's and the
+    // one of no test are none.
+    let [damaged, moving, upgraded] = [1, 2, 4];
+    let drawn = |looks: &UnitLooks, held: u64| {
+        let draw = &looks.draws(barracks, None).unwrap().draws()[0];
+        let model = &draw.states()[draw.best(held)].models[0];
+        let path = model.scene.to_string();
+        path.trim_start_matches("package://0/")
+            .trim_end_matches(".glb#Scene0")
+            .to_owned()
+    };
+    // On a night map of snow, whose snow the draw ignores: at rest the night state, of 1 in
+    // common, past the default's none and the snow's, which lacks its ignored snow. Damaged:
+    // the damaged night, of 2. Moving: the night still, of 1 and none lacked, past the walk's 1
+    // and its condition of no test lacked. Upgraded: the night, first of a tie of 1 and none.
+    let night = looks_on(&["night", "snow"]);
+    let rest = &night.draws(barracks, None).unwrap().draws()[0];
+    assert_eq!(rest.rest, 1);
+    assert_eq!(drawn(&night, 0), "night");
+    assert_eq!(drawn(&night, damaged), "hurt");
+    assert_eq!(drawn(&night, moving), "night");
+    assert_eq!(drawn(&night, upgraded), "night");
+    // On a day map: the default at rest, the damaged state of 1, and the upgraded of 1.
+    let day = looks_on(&[]);
+    assert_eq!(day.draws(barracks, None).unwrap().draws()[0].rest, 0);
+    assert_eq!(drawn(&day, 0), "day");
+    assert_eq!(drawn(&day, damaged | moving), "hurt");
+    assert_eq!(drawn(&day, upgraded), "upgraded");
+
+    // What a unit holds: its tag; its walk while it moved within 250 ms; its life above a
+    // quarter and at most half of its most, 3 of 8.
+    let tests = day.tests(barracks).unwrap();
+    let still = UnitFacts {
+        tags: TagSet::default(),
+        walks: false,
+        still_for: Duration::ZERO,
+        life: Some([Num::int(8), Num::int(8)]),
+    };
+    assert_eq!(tests.held(still), 0);
+    let tagged = UnitFacts {
+        tags: [upgrade].into_iter().collect(),
+        ..still
+    };
+    assert_eq!(tests.held(tagged), upgraded);
+    let walking = |ms| UnitFacts {
+        walks: true,
+        still_for: Duration::from_millis(ms),
+        ..still
+    };
+    assert_eq!(
+        [0, 250, 251].map(|ms| tests.held(walking(ms))),
+        [moving, moving, 0]
+    );
+    let alive = |current| UnitFacts {
+        life: Some([Num::int(current), Num::int(8)]),
+        ..still
+    };
+    assert_eq!(
+        [2, 3, 4, 5].map(|current| tests.held(alive(current))),
+        [0, damaged, damaged, 0]
+    );
+    assert_eq!(
+        tests.held(UnitFacts {
+            life: None,
+            ..still
+        }),
+        0
+    );
+    assert_eq!(tests.moving(), moving);
 }

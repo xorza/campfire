@@ -8,7 +8,7 @@ use campfire_client_files::{
     CameraFile, ClientFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions,
     MapLights, PickingFile, TeamColors, TerrainFile,
 };
-use campfire_common::{ErrorReport, MapName};
+use campfire_common::{DeclaredName, ErrorReport, MapName};
 use campfire_package::ModePackages;
 use campfire_package_format::{ContentError, PackageReader};
 use campfire_units::HeightGrid;
@@ -42,6 +42,9 @@ pub(crate) struct ClientLoad {
     pub(crate) lights: Option<MapLights>,
     /// The map's client objects, none when it has no file of them.
     pub(crate) objects: ClientObjects,
+    /// The map's conditions, which every unit's look holds for the whole match, none for a map of
+    /// no file of them.
+    pub(crate) map_conditions: Vec<DeclaredName>,
 }
 
 /// The client data of the mode's packages as the client reads it: what its start reads, and the
@@ -148,24 +151,23 @@ impl ClientLoad {
     }
 
     /// Reads the mode's own package's files of `map` that the start reads: the camera, the map's
-    /// lights and its client objects; and its conditions, by which each look takes its variant.
+    /// lights and its client objects; and its conditions, which each unit's look holds and by
+    /// which each client object's look takes its variant.
     fn read_map(&mut self, mode: &PackageReader, map: &MapName) {
         self.camera = Self::file(mode, &CameraFile::path());
         self.lights = Self::file(mode, &MapLights::path(map));
         self.objects = Self::file(mode, &ClientObjects::path(map)).unwrap_or_default();
-        // The map's conditions are fixed for the match, so each look takes its variant once.
+        // The map's conditions are fixed for the match, so each object's look takes its variant
+        // once.
         let conditions = Self::file::<MapConditions>(mode, &MapConditions::path(map))
             .unwrap_or_default()
             .conditions;
         for package in &mut self.packages {
-            let units = &mut package.units;
-            for look in units.units.values_mut() {
-                look.settle(&conditions);
-            }
-            for look in units.objects.values_mut() {
+            for look in package.units.objects.values_mut() {
                 look.settle(&conditions);
             }
         }
+        self.map_conditions = conditions;
     }
 
     fn read_package(&mut self, place: PackageIndex, files: &PackageReader) {

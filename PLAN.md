@@ -4,17 +4,11 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Animated looks
 
-The slice of [Animated looks](docs/design/animated-looks.md): a player of a Zero Hour skirmish sees infantry stand, walk, fire and die with the original's animations, a building rise as it is built and show its damage, and an upgrade change what its units show. Five batches, each one commit; its checks are that document's.
-
-### A2. Look states (client-files, client, import)
-
-- [ ] A look holds models, map variants and variations (`client-files/src/client_unit.rs`) → it holds states of condition names, each its models, its shown and hidden nodes and its animation, and the tests of its conditions; the import converts each draw module's condition states and flags into them, the map's flags to map conditions, `DAMAGED` and `REALLYDAMAGED` to life below the shares of `GameData.ini`, `MOVING`, and the flags of tags (animated-looks.md, A look is states of conditions; animated-looks.md, A condition is the game's name for a test).
-- [ ] A unit's model is chosen once, by the map (`client/src/view/unit_looks/mod.rs`) → each frame its conditions are computed from what the client holds, and it draws its best state's models and nodes, the map variants settled into states (animated-looks.md, A look is states of conditions).
-- Checks: the client's tests pick each state and compute each condition by hand; the importer's tests convert a hand-written draw module; in the client, a barracks shows its damage.
+The slice of [Animated looks](docs/design/animated-looks.md): a player of a Zero Hour skirmish sees infantry stand, walk, fire and die with the original's animations, a building rise as it is built and show its damage, and an upgrade change what its units show. Four batches, each one commit; its checks are that document's.
 
 ### A3. Playing an animation (client)
 
-- [ ] The client plays no animation → with Bevy's `bevy_animation` feature, each unit's state plays its animation by its mode, start and speed, its idle animations as a loop ends, and a transition's animation between two states of its keys; a clip's tracks bind to each model of its hierarchy by its nodes' names (animated-looks.md, A state plays its animation by its mode).
+- [ ] A look's state names no animation (`client-files/src/client_unit.rs`), and the client plays none → each state names its draw module's animations, and with Bevy's `bevy_animation` feature each unit's state plays its animation by its mode, start and speed, its idle animations as a loop ends, and a transition's animation between two states of its keys; a clip's tracks bind to each model of its hierarchy by its nodes' names (animated-looks.md, A state plays its animation by its mode).
 - Checks: the client's tests give each mode's frame at a given time and choose the transition between two keys; in the client, a Ranger idles and walks.
 
 ### A4. Attacks, sites and upgrades (production, import, client)

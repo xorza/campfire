@@ -13,7 +13,7 @@ use crate::view::package_source::samples::package;
 fn a_package_gives_its_units_and_skips_a_file_that_does_not_read() {
     let test_dir = TestDir::new();
     let units = br#"[units.tank]
-models = [{ model = "client/models/tank.glb", hide = ["tank.flash"] }]
+draws = [{ states = [{ sets = [[]], models = [{ model = "client/models/tank.glb", hide = ["tank.flash"] }] }] }]
 "#;
     let files = package(&test_dir, "mode", &[("client/units.toml", units)]);
     let none = package(&test_dir, "bare", &[("data/units.toml", b"")]);
@@ -24,7 +24,7 @@ models = [{ model = "client/models/tank.glb", hide = ["tank.flash"] }]
     data.read_package(PackageIndex::new(2), &broken);
     // The tank's model, with the node it hides; a package with no units has none, as one whose
     // units do not read.
-    let tank = &data.of(PackageIndex::MODE).units.units["tank"].models[0];
+    let tank = &data.of(PackageIndex::MODE).units.units["tank"].draws[0].states()[0].models[0];
     assert_eq!(
         (tank.model.as_str(), tank.hide.as_slice()),
         ("client/models/tank.glb", &["tank.flash".to_owned()][..])
@@ -46,7 +46,8 @@ height = 1
 angle = 90
 "#;
     let looks = Toml::parse::<ClientUnits>(
-        r#"[units.lamp]
+        r#"[units]
+[objects.lamp]
 models = [{ model = "client/models/lamp.glb" }]
 variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb" }] }]
 "#,
@@ -73,18 +74,21 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
     };
     data.read_map(&mode, &map);
     // The map's lights, and its one oak at (3, −2.5), 1 m up, turned 90°. A night map: the lamp
-    // draws its night models, and keeps no variant.
+    // draws its night models, and keeps no variant; the map's conditions are kept, which each
+    // unit's look holds.
     assert_eq!(data.lights.as_ref().unwrap().lights.len(), 1);
-    let lamp = &data.of(PackageIndex::MODE).units.units["lamp"];
+    let lamp = &data.of(PackageIndex::MODE).units.objects["lamp"];
     assert_eq!(lamp.models[0].model.as_str(), "client/models/lit.glb");
     assert!(lamp.variants.is_empty());
+    assert_eq!(data.map_conditions, [DeclaredName::new("night").unwrap()]);
     let oak = &data.objects.objects[0];
     assert_eq!(data.objects.objects.len(), 1);
     assert_eq!(oak.look.as_str(), "oak");
     assert_eq!(oak.position, [Num::int(3), Num::int(-5) / Num::int(2)]);
     assert_eq!((oak.height, oak.angle), (Num::ONE, Num::int(90)));
     // A map of no objects file has none, as one whose file does not read; no lights or
-    // camera file gives none either. No conditions file: the lamp draws its own models.
+    // camera file gives none either. No conditions file: the lamp draws its own models, and the
+    // map holds no condition.
     let broken = package(
         &test_dir,
         "broken",
@@ -101,8 +105,9 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
             ..ClientLoad::default()
         };
         data.read_map(&files, &map);
-        let lamp = &data.of(PackageIndex::MODE).units.units["lamp"];
+        let lamp = &data.of(PackageIndex::MODE).units.objects["lamp"];
         assert_eq!(lamp.models[0].model.as_str(), "client/models/lamp.glb");
+        assert!(data.map_conditions.is_empty());
         assert!(data.objects.objects.is_empty());
         assert!(data.lights.is_none() && data.camera.is_none());
     }

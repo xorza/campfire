@@ -25,6 +25,10 @@ pub(crate) struct GameDataIni {
     global_lights: usize,
     /// `ValuePerSupplyBox`: the money a supply box pays.
     pub(crate) box_value: NonZeroU32,
+    /// `UnitDamagedThreshold` and `UnitReallyDamagedThreshold`: the shares of its most life at or
+    /// below which an object is damaged and really damaged (`calcDamageState`).
+    pub(crate) damaged_threshold: f32,
+    pub(crate) really_damaged_threshold: f32,
 }
 
 /// What the terrain's conversion reads of `GameData.ini`.
@@ -55,6 +59,8 @@ impl Default for GameDataIni {
             rotate_speed: 0.1,
             global_lights: 3,
             box_value: NonZeroU32::new(100).expect("100 is no zero"),
+            damaged_threshold: 0.5,
+            really_damaged_threshold: 0.1,
         }
     }
 }
@@ -98,6 +104,8 @@ impl GameDataIni {
                             "verticalscrollspeedfactor" => &mut self.vertical_scroll,
                             "keyboarddefaultscrollspeedfactor" => &mut self.default_scroll,
                             "keyboardcamerarotatespeed" => &mut self.rotate_speed,
+                            "unitdamagedthreshold" => &mut self.damaged_threshold,
+                            "unitreallydamagedthreshold" => &mut self.really_damaged_threshold,
                             _ => continue,
                         };
                         *field = line.real()?;

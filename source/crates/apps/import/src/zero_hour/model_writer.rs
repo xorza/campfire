@@ -2,8 +2,8 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_client_files::{
-    ClientModel, ClientUnit, ClientUnits, LookVariant, LookVariation, ModelScale, ModelTop,
-    ObjectLook,
+    ClientModel, ClientUnit, ClientUnits, ConditionTest, LookDraw, LookState, LookVariant,
+    LookVariation, ModelScale, ModelTop, ObjectLook,
 };
 use campfire_common::DeclaredName;
 use campfire_package_disk::PackageWriter;
@@ -20,6 +20,7 @@ use crate::zero_hour::format::ini::object_ini::{
 use crate::zero_hour::format::look_conditions::LookConditions;
 use crate::zero_hour::game_path;
 use crate::zero_hour::import_names::ImportNames;
+use crate::zero_hour::look_flags::{FlagCondition, LookFlags};
 use crate::zero_hour::map_import;
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_import::{Converted, ModelImport};
@@ -53,6 +54,7 @@ pub(crate) struct ModelWriter<'i, 'w> {
     converter: Converter<'i, 'w>,
     written: BTreeMap<String, WrittenModel>,
     animations: BTreeSet<String>,
+    conditions: BTreeMap<DeclaredName, ConditionTest>,
 }
 
 /// What a model the objects name gives their looks: the nodes its looks read and the bounds its
@@ -104,6 +106,7 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
             },
             written: BTreeMap::new(),
             animations: BTreeSet::new(),
+            conditions: BTreeMap::new(),
         }
     }
 
@@ -161,25 +164,25 @@ impl ModelWriter<'_, '_> {
         &mut self,
         ini: &'r ObjectIni,
         names: &mut ImportNames<'r>,
+        flags: &LookFlags,
     ) -> Result<ClientUnits, ZeroHourError> {
         let mut units = ClientUnits::default();
         let shown = StateLook::default();
         for object in ini.objects() {
             let scale = object.scale();
             let draws = object.draws();
-            // A unit draws each module's best state, as its drawable does.
-            let unit = |conditions| draws.iter().map(move |draw| draw.drawn(conditions));
-            let Some(mut unit_look) = self.look(unit, scale)? else {
+            let Some(own) = self.unit_draws(draws, scale, flags)? else {
                 continue;
             };
             self.animations(draws)?;
+            let mut unit_look = ClientUnit::new(own);
             // A preview of its build stands at the angle the original's cursor shows it at.
             unit_look.placement_angle = object.build().placement_angle;
             unit_look.turret = self.turret(draws)?;
             if let Some(of_parent) = ini.variations_of(object) {
                 let mut looks = Vec::with_capacity(of_parent.len());
                 for variation in of_parent {
-                    looks.push(self.variation_look(variation, &unit_look)?);
+                    looks.push(self.variation_look(variation, &unit_look, flags)?);
                 }
                 unit_look.variations = looks;
             }
@@ -204,45 +207,100 @@ impl ModelWriter<'_, '_> {
                     .into_iter()
                     .collect(),
             };
-            if let Some(object_look) = self.look(drawn, scale)?
+            if let Some(object_look) = self.object_look(drawn, scale)?
                 && !object_look.models.is_empty()
             {
-                let object_look = ObjectLook {
-                    models: object_look.models,
-                    variants: object_look.variants,
-                };
                 units.objects.insert(declared.clone(), object_look);
             }
             units.units.insert(declared, unit_look);
         }
+        units.conditions = std::mem::take(&mut self.conditions);
         Ok(units)
     }
 
-    /// The look of `variation`, a build variation of the object of `parent`: its models, their
-    /// variants and its turret's node, or `parent`'s own for one whose models the package lacks.
+    /// The look of `variation`, a build variation of the object of `parent`: its draws and its
+    /// turret's node, or `parent`'s own for one whose models the package lacks.
     fn variation_look(
         &mut self,
         variation: &IniObject,
         parent: &ClientUnit,
+        flags: &LookFlags,
     ) -> Result<LookVariation, ZeroHourError> {
         let draws = variation.draws();
-        let drawn = |conditions| draws.iter().map(move |draw| draw.drawn(conditions));
-        let look = match self.look(drawn, variation.scale())? {
-            Some(look) => {
+        let look = match self.unit_draws(draws, variation.scale(), flags)? {
+            Some(own) => {
                 self.animations(draws)?;
                 LookVariation {
-                    models: look.models,
-                    variants: look.variants,
+                    draws: own,
                     turret: self.turret(draws)?,
                 }
             }
             None => LookVariation {
-                models: parent.models.clone(),
-                variants: parent.variants.clone(),
+                draws: parent.draws.clone(),
                 turret: parent.turret.clone(),
             },
         };
         Ok(look)
+    }
+
+    /// The draws of a unit of `draws` at `scale`, each module's states, its default first, and
+    /// the flags it ignores, as each draw module of a drawable picks its best state, a map's
+    /// conditions among the unit's (animated-looks.md, A look is states of conditions): each
+    /// state's sets of flags its conditions, whose tests `flags` gives, and its models of those
+    /// the package holds. A module none of whose states draws a model is dropped. Draws of no
+    /// model are empty when no model they name draws anything, and none when the package lacks
+    /// one a default names, so the client shows its loss.
+    fn unit_draws(
+        &mut self,
+        draws: &[DrawModule],
+        scale: ModelScale,
+        flags: &LookFlags,
+    ) -> Result<Option<Vec<LookDraw>>, ZeroHourError> {
+        let mut look_draws = Vec::new();
+        let mut skipped = false;
+        let mut drawn = false;
+        for draw in draws {
+            let mut states = Vec::new();
+            for (at, state) in draw.states().enumerate() {
+                let looked = self.look_models([state.drawn], scale)?;
+                if at == 0 {
+                    skipped |= looked.skipped;
+                    drawn |= !looked.models.is_empty();
+                }
+                let mut sets = Vec::with_capacity(state.sets.len());
+                for set in state.sets {
+                    let mut names = Vec::with_capacity(set.flags().len());
+                    for flag in set.flags() {
+                        names.push(self.condition(flag, flags)?);
+                    }
+                    sets.push(names);
+                }
+                states.push(LookState {
+                    sets,
+                    models: looked.models,
+                });
+            }
+            if states.iter().all(|state| state.models.is_empty()) {
+                continue;
+            }
+            let mut ignore = Vec::with_capacity(draw.ignored().len());
+            for flag in draw.ignored() {
+                ignore.push(self.condition(flag, flags)?);
+            }
+            look_draws
+                .push(LookDraw::new(states, ignore).expect("a module's states each of a set"));
+        }
+        if skipped && !drawn {
+            return Ok(None);
+        }
+        Ok(Some(look_draws))
+    }
+
+    /// The condition of `flag`, whose test `flags` gives, written to the conditions once.
+    fn condition(&mut self, flag: &str, flags: &LookFlags) -> Result<DeclaredName, ZeroHourError> {
+        let FlagCondition { name, test } = flags.condition(flag)?;
+        self.conditions.entry(name.clone()).or_insert(test);
+        Ok(name)
     }
 
     /// The node the turret of `draws` turns: the pivot of the first module's model that its
@@ -262,16 +320,16 @@ impl ModelWriter<'_, '_> {
         Ok(None)
     }
 
-    /// The look of what `drawn` draws on a map of each conditions, at `scale`: its models on a
-    /// map of none, and, when a night map, a snowy map or both draw other models, a variant for
-    /// each of the three, so the client's best match finds each one's own. A look that draws
-    /// nothing is empty when no model it names draws anything, and none when the package lacks
-    /// one, so the client shows its loss.
-    fn look<'d, I>(
+    /// The look of a client object of what `drawn` draws on a map of each conditions, at `scale`:
+    /// its models on a map of none, and, when a night map, a snowy map or both draw other models,
+    /// a variant for each of the three, so the client's best match finds each one's own. A look
+    /// that draws nothing is empty when no model it names draws anything, and none when the
+    /// package lacks one.
+    fn object_look<'d, I>(
         &mut self,
         drawn: impl Fn(LookConditions) -> I,
         scale: ModelScale,
-    ) -> Result<Option<ClientUnit>, ZeroHourError>
+    ) -> Result<Option<ObjectLook>, ZeroHourError>
     where
         I: IntoIterator<Item = DrawnState<'d>>,
     {
@@ -292,9 +350,9 @@ impl ModelWriter<'_, '_> {
         if skipped && own.models.is_empty() && variants.is_empty() {
             return Ok(None);
         }
-        Ok(Some(ClientUnit {
+        Ok(Some(ObjectLook {
             variants,
-            ..ClientUnit::new(own.models)
+            ..ObjectLook::new(own.models)
         }))
     }
 

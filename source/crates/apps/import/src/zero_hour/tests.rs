@@ -6,7 +6,8 @@ use campfire_actions::{
     TypeSlotsData,
 };
 use campfire_client_files::{
-    ClientModel, ClientUnit, LookVariant, LookVariation, ModelScale, ModelTop, ObjectLook, Press,
+    ClientModel, ClientUnit, LookDraw, LookState, LookVariation, ModelScale, ModelTop, ObjectLook,
+    Press,
 };
 use campfire_combat::{
     ArmorShare, AttackData, ClipData, CombatData, ModeCombatData, OnDeath, PitchData, ScatterData,
@@ -44,6 +45,7 @@ use crate::zero_hour::format::csf::string_table::samples::strings;
 use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
 use crate::zero_hour::format::ini::command_button_ini::samples::COMMAND_BUTTONS;
 use crate::zero_hour::format::ini::command_set_ini::samples::COMMAND_SETS;
+use crate::zero_hour::format::ini::game_data_ini::GameDataIni;
 use crate::zero_hour::format::ini::game_data_ini::TerrainDraw;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
@@ -53,6 +55,7 @@ use crate::zero_hour::format::ini::upgrade_ini::samples::UPGRADES;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::format::map::map_file::samples::map;
 use crate::zero_hour::install::samples::{fixture, packed_map};
+use crate::zero_hour::look_flags::FlagCondition;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_writer::{SkipReason, SkippedModel};
 use crate::zero_hour::object_flight::samples::shell_projectile;
@@ -1019,8 +1022,8 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     // each object's models with the nodes its default look hides. The tank's turret is hidden
     // with the flash on the bone below it, which its muzzle flash hides as well; the crate's
     // box and the marker's `NULL` draw nothing; the tank's aggregate, the emitter, the absent
-    // model and the tree's, which the fixture install lacks, are skipped, in the order of their
-    // objects' names.
+    // model, the tank's really damaged model and the tree's, which the fixture install lacks,
+    // are skipped, in the order of their objects' names.
     let skipped: Vec<SkippedModel> = imported
         .losses
         .iter()
@@ -1043,6 +1046,10 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             SkippedModel {
                 name: "spray".to_owned(),
                 reason: SkipReason::Emitter,
+            },
+            SkippedModel {
+                name: "tank_d".to_owned(),
+                reason: SkipReason::Missing,
             },
             SkippedModel {
                 name: "ptoak01".to_owned(),
@@ -1118,34 +1125,43 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         }),
     };
     let model = |name: &str, hide: &[&str]| scaled(name, 1.0, hide);
-    let unit = ClientUnit::new;
+    let unit = ClientUnit::still;
     let looks = |looks: Vec<(&str, ClientUnit)>| {
         looks
             .into_iter()
             .map(|(name, unit)| (DeclaredName::new(name).unwrap(), unit))
             .collect()
     };
-    // The tank's night state shows its turret, and with it the flash below: a night map, and a
-    // night of snow, draw it whole; a snowy map its default, which the variant names too, so
-    // the client's best match finds each. Its turret turns the node of its bone `Turret`, the
-    // model's pivot `TURRET`, as the converted model names it; its red reskin's own draw module
-    // names no turret.
+    // The tank's states: its default, of its turret hidden, and with it the flash below; its
+    // really damaged state, of a model the package lacks, so of none; and its night state, which
+    // shows its turret. Its debris module draws no model, so its look has no draw of it. Its
+    // turret turns the node of its bone `Turret`, the model's pivot `TURRET`, as the converted
+    // model names it; its red reskin's own draw module names no turret.
     let hidden = || vec![model("tank", &["tank.turret", "tank.flash"])];
-    let variant = |conditions: &[&str], models| LookVariant {
-        conditions: conditions
+    let state = |sets: &[&[&str]], models| LookState {
+        sets: sets
             .iter()
-            .map(|condition| DeclaredName::new(condition).unwrap())
+            .map(|set| {
+                set.iter()
+                    .map(|name| DeclaredName::new(name).unwrap())
+                    .collect()
+            })
             .collect(),
         models,
     };
     let tank = || ClientUnit {
-        variants: vec![
-            variant(&["night"], vec![model("tank", &[])]),
-            variant(&["snow"], hidden()),
-            variant(&["night", "snow"], vec![model("tank", &[])]),
-        ],
         turret: Some("turret".to_owned()),
-        ..unit(hidden())
+        ..ClientUnit::new(vec![
+            LookDraw::new(
+                vec![
+                    state(&[&[]], hidden()),
+                    state(&[&["reallydamaged"]], Vec::new()),
+                    state(&[&["night"]], vec![model("tank", &[])]),
+                ],
+                Vec::new(),
+            )
+            .unwrap(),
+        ])
     };
     // The rock and its reskin at the rock's scale, which the reskin cannot set; the tree's
     // look as a unit of both its models, and as the client's of its tree draw module's; the
@@ -1154,7 +1170,12 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     // nothing, so its look is empty; one of a model the package lacks has none. The command
     // center's look keeps the angle its build's preview places it at.
     let rock = || unit(vec![scaled("rock01", 1.5, &[])]);
-    let empty = || unit(Vec::new());
+    let empty = || ClientUnit::new(Vec::new());
+    let flags = LookFlags::of(&GameDataIni::default(), &RulesNames::default()).unwrap();
+    let test = |flag: &str| {
+        let FlagCondition { name, test } = flags.condition(flag).unwrap();
+        (name, test)
+    };
     let expected = ClientUnits {
         units: looks(vec![
             ("americabarracks", empty()),
@@ -1176,7 +1197,13 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             ("crate", empty()),
             ("fortresswall", empty()),
             ("marker", empty()),
-            ("oak", unit(vec![model("tank", &[]), model("rock01", &[])])),
+            (
+                "oak",
+                ClientUnit::new(vec![
+                    LookDraw::still(vec![model("tank", &[])]),
+                    LookDraw::still(vec![model("rock01", &[])]),
+                ]),
+            ),
             ("rock", rock()),
             ("rockred", rock()),
             ("rocks1", empty()),
@@ -1191,27 +1218,26 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                 ClientUnit {
                     variations: vec![
                         LookVariation {
-                            models: tank().models,
-                            variants: tank().variants,
+                            draws: tank().draws,
                             turret: tank().turret,
                         },
                         LookVariation {
-                            models: vec![model("tank", &[])],
-                            variants: Vec::new(),
+                            draws: unit(vec![model("tank", &[])]).draws,
                             turret: None,
                         },
                     ],
-                    ..unit(Vec::new())
+                    ..empty()
                 },
             ),
             ("tankred", unit(vec![model("tank", &[])])),
             ("tankshell", empty()),
         ]),
+        conditions: ["night", "reallydamaged"].map(test).into_iter().collect(),
         objects: [
             ("bush", ObjectLook::new(vec![model("tank", &[])])),
             ("oak", ObjectLook::new(vec![model("rock01", &[])])),
-            ("rock", ObjectLook::new(rock().models)),
-            ("rockred", ObjectLook::new(rock().models)),
+            ("rock", ObjectLook::new(vec![scaled("rock01", 1.5, &[])])),
+            ("rockred", ObjectLook::new(vec![scaled("rock01", 1.5, &[])])),
         ]
         .into_iter()
         .map(|(name, look)| (DeclaredName::new(name).unwrap(), look))

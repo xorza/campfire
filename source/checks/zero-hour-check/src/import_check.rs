@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use campfire_actions::ActionKind;
-use campfire_client_files::{ClientObjects, ClientUnits, MapConditions, TerrainFile};
+use campfire_client_files::{
+    ClientObjects, ClientUnit, ClientUnits, ConditionTest, MapConditions, TerrainFile,
+};
 use campfire_codec::Binary;
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
@@ -135,22 +137,37 @@ impl ImportCheck<'_> {
         Ok(())
     }
 
-    /// The looks that draw other models on a night or snowy map, those that draw nothing, the
-    /// maps of night and of snow among those the import wrote, and the animations the looks name
-    /// converted and dropped, by cause.
+    /// The looks of more than one state, and the client objects' of variants, the unit looks that
+    /// draw nothing, the states of every unit look, the conditions of no test, the maps of night
+    /// and of snow among those the import wrote, and the animations the looks name converted and
+    /// dropped, by cause.
     pub(crate) fn looks(&mut self) -> Result<(), CheckError> {
         let files = &self.packages.mode().package.files;
         let unit_looks: ClientUnits = files.read_data(&ClientUnits::path())?;
-        let units = unit_looks.units.values().map(|look| &look.variants);
-        let objects = unit_looks.objects.values().map(|look| &look.variants);
-        let varied = units
-            .chain(objects)
-            .filter(|variants| !variants.is_empty())
+        let states_of = |look: &ClientUnit| {
+            let draws = look.every_draw();
+            draws.map(|draw| draw.states().len()).sum::<usize>()
+        };
+        let varied_units = unit_looks
+            .units
+            .values()
+            .filter(|look| look.every_draw().any(|draw| draw.states().len() > 1))
             .count();
+        let varied_objects = unit_looks.objects.values();
+        let varied = varied_units
+            + varied_objects
+                .filter(|look| !look.variants.is_empty())
+                .count();
         let empty = unit_looks
             .units
             .values()
-            .filter(|look| look.models.is_empty() && look.variants.is_empty())
+            .filter(|look| look.draws.is_empty())
+            .count();
+        let states = unit_looks.units.values().map(states_of).sum();
+        let never = unit_looks
+            .conditions
+            .values()
+            .filter(|test| **test == ConditionTest::Never)
             .count();
         let [night, snow] = ["night", "snow"].map(|name| DeclaredName::new(name).expect("a name"));
         let dropped: Vec<&Dropped<AnimationDropCause>> = self
@@ -165,6 +182,8 @@ impl ImportCheck<'_> {
         let mut drawn = LookCounts {
             varied,
             empty,
+            states,
+            never,
             night: 0,
             snowy: 0,
             animations: files.files_under("client/animations").count(),

@@ -73,10 +73,11 @@ fn a_model_s_meshes_take_its_paint_s_tag_and_follow_its_unit_s_team() {
     );
 }
 
-#[test]
-fn the_imports_materials_load_rough_of_no_reflectance_unlit_and_of_extras_where_they_say() {
+/// An app of Bevy's glTF loader and the import's extras that loaded `text` as `model.gltf`, and
+/// the handle of its glTF.
+fn loaded(text: &str) -> (App, Handle<Gltf>) {
     let dir = Dir::default();
-    dir.insert_asset_text(Path::new("model.gltf"), MATERIALS);
+    dir.insert_asset_text(Path::new("model.gltf"), text);
     let mut app = App::new();
     let reader = MemoryAssetReader { root: dir };
     app.register_asset_source(
@@ -108,6 +109,91 @@ fn the_imports_materials_load_rough_of_no_reflectance_unlit_and_of_extras_where_
             _ => {}
         }
     }
+    (app, model)
+}
+
+#[test]
+fn a_model_that_replaces_another_shows_as_it_is_dressed_and_a_new_state_hides_again() {
+    // A model of a hull and a flag, of no mesh, its flag hidden.
+    let named = MATERIALS.replace(
+        r#""scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"#,
+        r#""scenes":[{"nodes":[0,1]}],"nodes":[{"name":"hull","mesh":0},{"name":"flag"}],"#,
+    );
+    let (mut app, model) = loaded(&named);
+    let teams = TeamColors::new(vec![[255, 0, 0]]).unwrap();
+    app.insert_resource(MatchColors::new(teams));
+    app.add_observer(UnitModelsPlugin::dress);
+    app.add_systems(Update, UnitModelsPlugin::redress);
+    app.register_type::<MeshMaterial3d<FileMaterial>>();
+    let scene = app
+        .world()
+        .resource::<Assets<Gltf>>()
+        .get(&model)
+        .unwrap()
+        .scenes[0]
+        .clone();
+    let nodes = |hide: &[&str]| LookNodes {
+        hide: hide.iter().map(|&name| name.to_owned()).collect(),
+        turret: None,
+    };
+    // A model of the state before, shown, and the one of the new state, hidden as it loads.
+    let world = app.world_mut();
+    let root = world.spawn(Visibility::default()).id();
+    let before = world.spawn(ChildOf(root)).id();
+    let after = world
+        .spawn((
+            WorldAssetRoot(scene),
+            nodes(&["flag"]),
+            Paint::default(),
+            Visibility::Hidden,
+            Replaces(before),
+            ChildOf(root),
+        ))
+        .id();
+    let node = |app: &App, name: &str| {
+        let world = app.world();
+        let mut below = vec![after];
+        while let Some(node) = below.pop() {
+            if world
+                .get::<Name>(node)
+                .is_some_and(|named| named.as_str() == name)
+            {
+                return Some(node);
+            }
+            below.extend(world.get::<Children>(node).into_iter().flatten());
+        }
+        None
+    };
+    for _ in 0..100 {
+        app.update();
+        if node(&app, "flag").is_some() {
+            break;
+        }
+    }
+    app.update();
+    // Dressed, it shows, and the one before goes; its flag is hidden.
+    let world = app.world();
+    assert!(world.get_entity(before).is_err());
+    assert_eq!(world.get::<Visibility>(after), Some(&Visibility::Inherited));
+    assert!(world.get::<Replaces>(after).is_none());
+    let [hull, flag] = ["hull", "flag"].map(|name| node(&app, name).unwrap());
+    let visibility = |app: &App, node| app.world().get::<Visibility>(node).copied();
+    assert_eq!(visibility(&app, flag), Some(Visibility::Hidden));
+    // A new state of the same model hides its hull and shows its flag.
+    app.world_mut()
+        .entity_mut(after)
+        .insert((nodes(&["hull"]), Redress));
+    app.update();
+    app.update();
+    assert_eq!(visibility(&app, flag), Some(Visibility::Inherited));
+    assert_eq!(visibility(&app, hull), Some(Visibility::Hidden));
+    assert!(app.world().get::<Redress>(after).is_none());
+}
+
+#[test]
+fn the_imports_materials_load_rough_of_no_reflectance_unlit_and_of_extras_where_they_say() {
+    let (app, model) = loaded(MATERIALS);
+    let server = app.world().resource::<AssetServer>().clone();
     let world = app.world();
     let gltf = world.resource::<Assets<Gltf>>().get(&model).unwrap();
     let materials = world.resource::<Assets<GltfMaterial>>();
@@ -201,6 +287,7 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
         ..ClientLoad::of_looks([looks])
     };
     app.insert_resource(data);
+    app.init_resource::<ModelScenes>();
     app.add_systems(Startup, UnitModelsPlugin::place_objects);
     app.update();
     let world = app.world_mut();

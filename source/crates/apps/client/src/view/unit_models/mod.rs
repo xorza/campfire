@@ -12,7 +12,7 @@ use bevy::ecs::name::Name;
 use bevy::ecs::observer::On;
 use bevy::ecs::query::{Added, Allow, Changed, With};
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Commands, Query, Res};
+use bevy::ecs::system::{Commands, Query, Res, ResMut};
 use bevy::ecs::world::EntityWorldMut;
 use bevy::gltf::GltfMaterial;
 use bevy::gltf::extensions::{
@@ -28,6 +28,7 @@ use campfire_client_files::{ClientObject, MaterialExtras};
 use campfire_combat::TurretAngle;
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
+use campfire_script::MatchNames;
 use campfire_sim::Unpredicted;
 use campfire_units::{TypeOriginBook, Variations};
 use campfire_values::{PackageIndex, Team, UnitType};
@@ -39,7 +40,9 @@ use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::file_material::{FileBlend, FileMaterial, FileMaterialPlugin};
 use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
+use crate::view::look_states::{LookStatesPlugin, Redress, Replaces};
 use crate::view::match_colors::{MatchColors, Paint};
+use crate::view::model_scenes::ModelScenes;
 use crate::view::unit_looks::{LookModel, LookNodes, LookTypes, UnitLooks};
 
 /// Draws units and the map's client objects with their packages' models: loads each unit type's
@@ -63,7 +66,8 @@ struct ExtrasHandler;
 
 impl Plugin for UnitModelsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(FileMaterialPlugin);
+        app.add_plugins((FileMaterialPlugin, LookStatesPlugin));
+        app.init_resource::<ModelScenes>();
         // The glTF loader takes its handlers as it is finished, after every plugin's build.
         app.world_mut()
             .resource_mut::<GltfExtensionHandlers>()
@@ -79,6 +83,7 @@ impl Plugin for UnitModelsPlugin {
             Update,
             (
                 Self::turn_turrets,
+                Self::redress,
                 (Self::follow_teams, Self::repaint).chain(),
             ),
         );
@@ -92,15 +97,21 @@ impl UnitModelsPlugin {
             Res<'_, TypeOriginBook>,
             Option<Res<'_, ById<UnitType, Variations>>>,
         ),
+        names: Res<'_, MatchNames>,
         load: Res<'_, ClientLoad>,
-        assets: Res<'_, AssetServer>,
+        (assets, mut scenes): (Res<'_, AssetServer>, ResMut<'_, ModelScenes>),
         mut commands: Commands<'_, '_>,
     ) {
         let types = LookTypes {
             origins: &origins,
             variations: variations.as_deref(),
+            names: &names,
         };
-        commands.insert_resource(UnitLooks::of(types, &load, &assets));
+        let looks = UnitLooks::of(types, &load);
+        for model in looks.rest_models() {
+            scenes.scene(&model.scene, &assets);
+        }
+        commands.insert_resource(looks);
     }
 
     /// Places each of the map's client objects (09-zero-hour.md, The multiplayer rule for client
@@ -109,7 +120,7 @@ impl UnitModelsPlugin {
     /// mode's package lacks is logged, and its object not drawn.
     fn place_objects(
         (load, heights): (Res<'_, ClientLoad>, Option<Res<'_, GroundHeights>>),
-        assets: Res<'_, AssetServer>,
+        (assets, mut scenes): (Res<'_, AssetServer>, ResMut<'_, ModelScenes>),
         mut commands: Commands<'_, '_>,
     ) {
         let Some(looks) = load.packages.first().map(|package| &package.units) else {
@@ -127,7 +138,7 @@ impl UnitModelsPlugin {
                         error!(look, "a client object's look is none of its package's");
                         continue;
                     };
-                    new.insert(LookModel::all(PackageIndex::MODE, look.drawn(), &assets))
+                    new.insert(LookModel::all(PackageIndex::MODE, &look.models, None))
                 }
             };
             let root = commands
@@ -138,7 +149,8 @@ impl UnitModelsPlugin {
                 ))
                 .id();
             for model in &*models {
-                commands.spawn((model.bundle(Paint::default()), ChildOf(root)));
+                let bundle = model.bundle(&mut scenes, &assets, Paint::default());
+                commands.spawn((bundle, ChildOf(root)));
             }
         }
     }
@@ -222,10 +234,11 @@ impl UnitModelsPlugin {
     }
 
     /// Dresses the model whose scene spawned, as its dressing says, and tags its meshes with its
-    /// paint.
+    /// paint; a model that replaces the one of its draw's state before is shown, and that one
+    /// goes.
     fn dress(
         ready: On<'_, '_, WorldInstanceReady>,
-        models: Query<'_, '_, (&LookNodes, &Paint)>,
+        models: Query<'_, '_, (&LookNodes, &Paint, Option<&Replaces>)>,
         (children, names, meshes): (
             Query<'_, '_, &Children>,
             Query<'_, '_, &Name>,
@@ -235,9 +248,16 @@ impl UnitModelsPlugin {
         colors: Res<'_, MatchColors>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Ok((look_nodes, &paint)) = models.get(ready.entity) else {
+        let Ok((look_nodes, &paint, replaces)) = models.get(ready.entity) else {
             return;
         };
+        if let Some(&Replaces(before)) = replaces {
+            commands.entity(before).despawn();
+            commands
+                .entity(ready.entity)
+                .remove::<Replaces>()
+                .insert(Visibility::Inherited);
+        }
         let tag = colors.tag(paint);
         for node in children.iter_descendants(ready.entity) {
             if meshes.contains(node) {
@@ -249,9 +269,13 @@ impl UnitModelsPlugin {
             name: names.get(node).ok().map(Name::as_str),
         });
         let Dressing { hidden, turret } = Dressing::of(look_nodes, spawned);
-        for node in hidden {
+        for &node in &hidden {
             commands.entity(node).insert(Visibility::Hidden);
         }
+        commands
+            .entity(ready.entity)
+            .remove::<Redress>()
+            .insert(Dressed { hidden });
         // A model is a child of its unit's drawing, which the turret's node turns with.
         if let Some(node) = turret
             && let (Ok(root), Ok(rest)) = (parents.get(ready.entity), transforms.get(node))
@@ -260,6 +284,31 @@ impl UnitModelsPlugin {
                 node,
                 rest: rest.rotation,
             });
+        }
+    }
+
+    /// Hides again the nodes of each dressed model whose state's hidden nodes changed, as a new
+    /// state of the same model gives them: those it hid shown, and those its nodes now hide
+    /// hidden.
+    fn redress(
+        mut models: Query<'_, '_, (Entity, &LookNodes, &mut Dressed), With<Redress>>,
+        (children, names): (Query<'_, '_, &Children>, Query<'_, '_, &Name>),
+        mut commands: Commands<'_, '_>,
+    ) {
+        for (model, look_nodes, mut dressed) in &mut models {
+            for &node in &dressed.hidden {
+                commands.entity(node).insert(Visibility::Inherited);
+            }
+            let spawned = children.iter_descendants(model).map(|node| Node {
+                entity: node,
+                name: names.get(node).ok().map(Name::as_str),
+            });
+            let Dressing { hidden, .. } = Dressing::of(look_nodes, spawned);
+            for &node in &hidden {
+                commands.entity(node).insert(Visibility::Hidden);
+            }
+            dressed.hidden = hidden;
+            commands.entity(model).remove::<Redress>();
         }
     }
 }
@@ -338,6 +387,12 @@ type TurnedTurrets<'w, 's> = Query<
 struct Node<'a> {
     entity: Entity,
     name: Option<&'a str>,
+}
+
+/// On a dressed model: the nodes its dressing hid.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+struct Dressed {
+    hidden: Vec<Entity>,
 }
 
 /// What a spawned model's dressing does: the nodes it hides, and the node its unit's turret angle

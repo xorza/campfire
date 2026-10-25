@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use bevy::app::{App, FixedPostUpdate, Plugin, Startup, Update};
-use bevy::asset::{Assets, Handle};
+use bevy::asset::{AssetServer, Assets, Handle};
 use bevy::camera::ClearColor;
 use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
@@ -38,8 +38,10 @@ use crate::view::footing::Footing;
 use crate::view::glide::{Follows, FrameClock, Glide, Spot};
 use crate::view::ground_heights::GroundHeights;
 use crate::view::look::{Condition, Look, Pose, ShapeKind, UnitShape};
+use crate::view::look_states::LookStates;
 use crate::view::map_metric::Lifts;
 use crate::view::match_colors::{MatchColors, Paint};
+use crate::view::model_scenes::ModelScenes;
 use crate::view::scene_lights::{SceneLights, Sun};
 use crate::view::unit_looks::UnitLooks;
 
@@ -53,10 +55,12 @@ pub(crate) mod footing;
 pub(crate) mod glide;
 pub(crate) mod ground_heights;
 pub(crate) mod look;
+pub(crate) mod look_states;
 pub(crate) mod map_metric;
 pub(crate) mod match_colors;
 pub(crate) mod match_hud;
 pub(crate) mod match_picking;
+pub(crate) mod model_scenes;
 pub(crate) mod package_source;
 pub(crate) mod pixel_scale;
 pub(crate) mod player_camera;
@@ -199,6 +203,7 @@ type MovedShots<'w, 's> = Query<
 impl Plugin for ViewPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(EngineText::english());
+        app.init_resource::<ModelScenes>();
         app.add_systems(Startup, Self::set_scene);
         app.add_systems(FixedPostUpdate, Self::step);
         app.configure_sets(Update, DrawSystems.in_set(ViewSystems));
@@ -312,10 +317,10 @@ impl ViewPlugin {
         {
             let at = ground(position, heights);
             let variation = variation.copied();
-            match looks.look(unit_type, variation) {
-                // A look of no models draws nothing: its drawing has no shape to point at, ring
-                // or gauge, only the place its unit stands.
-                Some([]) => {
+            match looks.draws(unit_type, variation) {
+                // A look of no draws draws nothing: its drawing has no shape to point at, ring or
+                // gauge, only the place its unit stands.
+                Some(draws) if draws.is_empty() => {
                     let spot = Spot {
                         point: at,
                         yaw: 0.0,
@@ -328,30 +333,23 @@ impl ViewPlugin {
                     ));
                     continue;
                 }
-                Some(models) => {
+                // Its states pick and spawn its models.
+                Some(draws) => {
                     let spot = Spot {
                         point: at,
                         yaw: yaw(facing),
                     };
-                    let shape = UnitShape::of(
-                        ShapeKind::of(avatar, walks),
-                        body,
-                        looks.top(unit_type, variation),
-                    );
-                    let root = commands
-                        .spawn((
-                            DrawingOf(unit),
-                            Turns,
-                            Transform::from_translation(at)
-                                .with_rotation(Quat::from_rotation_y(spot.yaw)),
-                            Visibility::default(),
-                            Glide::rest(spot, Follows::of(received), time.elapsed()),
-                            shape,
-                        ))
-                        .id();
-                    for model in models {
-                        commands.spawn((model.bundle(Paint::of(*team)), Drawn, ChildOf(root)));
-                    }
+                    let shape = UnitShape::of(ShapeKind::of(avatar, walks), body, draws.top());
+                    commands.spawn((
+                        DrawingOf(unit),
+                        Turns,
+                        Transform::from_translation(at)
+                            .with_rotation(Quat::from_rotation_y(spot.yaw)),
+                        Visibility::default(),
+                        Glide::rest(spot, Follows::of(received), time.elapsed()),
+                        shape,
+                        LookStates::new(unit_type, variation, draws),
+                    ));
                     continue;
                 }
                 None => {}
@@ -412,7 +410,8 @@ impl ViewPlugin {
         palette: Res<'_, Palette>,
         time: Res<'_, Time>,
         shots: NewShots<'_, '_>,
-        looks: Res<'_, UnitLooks>,
+        (looks, assets): (Res<'_, UnitLooks>, Res<'_, AssetServer>),
+        mut scenes: ResMut<'_, ModelScenes>,
         lifts: Lifts<'_>,
         mut commands: Commands<'_, '_>,
     ) {
@@ -438,7 +437,8 @@ impl ViewPlugin {
                 Some(models) => {
                     commands.entity(root).insert(Heading { from: at });
                     for model in models {
-                        commands.spawn((model.bundle(Paint::default()), ChildOf(root)));
+                        let bundle = model.bundle(&mut scenes, &assets, Paint::default());
+                        commands.spawn((bundle, ChildOf(root)));
                     }
                 }
                 None => {

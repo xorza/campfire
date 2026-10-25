@@ -140,7 +140,7 @@ pub(crate) struct DrawModule {
     pub(crate) turret: Option<String>,
     sets: Vec<ConditionSet>,
     states: Vec<DrawState>,
-    ignored: LookConditions,
+    ignored: ConditionSet,
     /// Each by its name, `<hierarchy>.<animation>` in lowercase, as `parseAnimation` keeps it.
     pub(crate) animations: BTreeSet<String>,
 }
@@ -155,12 +155,18 @@ struct DrawState {
     look: StateLook,
 }
 
-/// A set of a state's condition flags as the import counts them: whether it holds `NIGHT` and
-/// `SNOW`, and how many other flags.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct ConditionSet {
-    conditions: LookConditions,
-    others: usize,
+/// A set of a state's condition flags, each in lowercase, in order and once.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ConditionSet {
+    flags: Vec<String>,
+}
+
+/// A state of a draw module, its default or a later one: the sets of flags it is drawn for, its
+/// model and its look.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ModuleState<'a> {
+    pub(crate) sets: &'a [ConditionSet],
+    pub(crate) drawn: DrawnState<'a>,
 }
 
 /// The model and the look a draw module draws on a map of some conditions.
@@ -607,7 +613,7 @@ impl DrawModule {
             turret: None,
             sets: vec![ConditionSet::default()],
             states: Vec::new(),
-            ignored: LookConditions::default(),
+            ignored: ConditionSet::default(),
             animations: BTreeSet::new(),
         }
     }
@@ -617,35 +623,48 @@ impl DrawModule {
     /// finds it: the set of the most flags in common, of a tie the one of the fewest the map
     /// lacks, of a tie the first, the states in order, the default first.
     pub(crate) fn drawn(&self, conditions: LookConditions) -> DrawnState<'_> {
-        let map = LookConditions {
-            night: conditions.night && !self.ignored.night,
-            snow: conditions.snow && !self.ignored.snow,
+        let held = |flag: &str| match flag {
+            "night" => conditions.night,
+            "snow" => conditions.snow,
+            _ => false,
         };
-        let default = DrawnState {
-            model: self.model.as_deref(),
-            look: &self.look,
-        };
-        let mut best = default;
+        let held = |flag: &String| held(flag) && !self.ignored.flags.contains(flag);
+        let mut best = None;
         let (mut most, mut fewest) = (0, usize::MAX);
-        let states = self.states.iter().map(|state| {
-            let drawn = DrawnState {
-                model: state.model.as_deref(),
-                look: &state.look,
-            };
-            (&state.sets, drawn)
-        });
-        for (sets, drawn) in std::iter::once((&self.sets, default)).chain(states) {
-            for set in sets {
-                let [night, snow] = [set.conditions.night, set.conditions.snow];
-                let common = usize::from(night && map.night) + usize::from(snow && map.snow);
-                let lacked =
-                    usize::from(night && !map.night) + usize::from(snow && !map.snow) + set.others;
+        for state in self.states() {
+            for set in state.sets {
+                let common = set.flags.iter().filter(|flag| held(flag)).count();
+                let lacked = set.flags.len() - common;
                 if common > most || (common >= most && lacked < fewest) {
-                    (best, most, fewest) = (drawn, common, lacked);
+                    (best, most, fewest) = (Some(state.drawn), common, lacked);
                 }
             }
         }
-        best
+        best.expect("the default state's set is drawn for its first")
+    }
+
+    /// Its states, its default first, then the others in order.
+    pub(crate) fn states(&self) -> impl Iterator<Item = ModuleState<'_>> {
+        let default = ModuleState {
+            sets: &self.sets,
+            drawn: DrawnState {
+                model: self.model.as_deref(),
+                look: &self.look,
+            },
+        };
+        let states = self.states.iter().map(|state| ModuleState {
+            sets: &state.sets,
+            drawn: DrawnState {
+                model: state.model.as_deref(),
+                look: &state.look,
+            },
+        });
+        std::iter::once(default).chain(states)
+    }
+
+    /// The flags it ignores as it matches its states, `IgnoreConditionStates`.
+    pub(crate) fn ignored(&self) -> &[String] {
+        &self.ignored.flags
     }
 
     /// A field of its default state that the look reads.
@@ -693,15 +712,11 @@ impl ConditionSet {
         let mut flags: Vec<String> = names.iter().map(|name| name.to_ascii_lowercase()).collect();
         flags.sort_unstable();
         flags.dedup();
-        let mut set = Self::default();
-        for flag in &flags {
-            match flag.as_str() {
-                "night" => set.conditions.night = true,
-                "snow" => set.conditions.snow = true,
-                _ => set.others += 1,
-            }
-        }
-        Ok(set)
+        Ok(Self { flags })
+    }
+
+    pub(crate) fn flags(&self) -> &[String] {
+        &self.flags
     }
 }
 
@@ -975,7 +990,7 @@ impl Reading {
                         self.stack.push(Block::Transition);
                     }
                     "ignoreconditionstates" if *kind == DrawKind::Family => {
-                        module.ignored = ConditionSet::of(at)?.conditions;
+                        module.ignored = ConditionSet::of(at)?;
                     }
                     "modelname" if matches!(*kind, DrawKind::Tree | DrawKind::Prop) => {
                         module.model = ObjectFiles::model(tokens);

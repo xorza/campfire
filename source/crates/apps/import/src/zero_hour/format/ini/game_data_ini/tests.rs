@@ -25,6 +25,18 @@ fn a_field_keeps_the_default_until_a_file_sets_it_and_the_last_file_wins() {
     ini.read(b"GameData\n  ValuePerSupplyBox = 75\nEnd\n")
         .unwrap();
     assert_eq!(ini.box_value.get(), 75);
+    // The damage thresholds, 0.5 and 0.1 by default, the shipped 0.7 and 0.35 once they read.
+    let thresholds = |ini: &GameDataIni| [ini.damaged_threshold, ini.really_damaged_threshold];
+    assert_eq!(thresholds(&ini), [0.5, 0.1]);
+    ini.read(
+        b"GameData
+  UnitDamagedThreshold = 0.7
+  UnitReallyDamagedThreshold = 0.35
+End
+",
+    )
+    .unwrap();
+    assert_eq!(thresholds(&ini), [0.7, 0.35]);
 
     // The shipped camera's fields, which the camera's conversion reads.
     let mut shipped = GameDataIni::default();

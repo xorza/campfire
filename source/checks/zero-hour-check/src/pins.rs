@@ -76,21 +76,25 @@ pub(crate) struct TerrainCounts {
     pub(crate) wraps: usize,
 }
 
-/// How many looks have night or snow variants, of unit types and of client objects; how many unit
-/// types' looks have no models, of objects that draw nothing; how many maps are night maps and
+/// How many unit types' looks have a draw of more than one state, and client objects' looks
+/// night or snow variants; how many unit types' looks have no draws, of objects that draw
+/// nothing; how many states the unit types' looks hold, and how many of their conditions have no
+/// test (animated-looks.md, A look is states of conditions); how many maps are night maps and
 /// snowy maps; and how many animations the looks name the import converts, and drops for each
 /// cause, in the order of `AnimationDropCause::ALL` (animated-looks.md, An animation is a glTF
 /// file of its own).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    "{varied} varied looks, {empty} empty looks, {night} night maps, {snowy} snowy maps, \
-     {animations} animations, dropped {:?}",
+    "{varied} varied looks, {empty} empty looks, {states} states, {never} untested conditions, \
+     {night} night maps, {snowy} snowy maps, {animations} animations, dropped {:?}",
     dropped_animations
 )]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LookCounts {
     pub(crate) varied: usize,
     pub(crate) empty: usize,
+    pub(crate) states: usize,
+    pub(crate) never: usize,
     pub(crate) night: usize,
     pub(crate) snowy: usize,
     pub(crate) animations: usize,

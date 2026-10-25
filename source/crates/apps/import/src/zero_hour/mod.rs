@@ -30,6 +30,7 @@ use crate::zero_hour::import_loss::ImportLoss;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::install::{Install, TextureKind};
+use crate::zero_hour::look_flags::LookFlags;
 use crate::zero_hour::map_import::{MapImport, MapSources};
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
@@ -59,6 +60,7 @@ pub(crate) mod import_names;
 pub(crate) mod import_team;
 pub(crate) mod imported_type;
 pub(crate) mod install;
+pub(crate) mod look_flags;
 pub(crate) mod map_import;
 pub(crate) mod model_assets;
 pub(crate) mod model_import;
@@ -153,7 +155,8 @@ impl ZeroHour {
         writer.write(TeamColors::path(), &colors.encode())?;
         let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut writer);
         let mut object_names = ImportNames::default();
-        let mut looks = models.units(&game.objects, &mut object_names)?;
+        let flags = LookFlags::of(&game.game_data, &game.names)?;
+        let mut looks = models.units(&game.objects, &mut object_names, &flags)?;
         let ModelReport {
             skipped,
             dropped_animations,
@@ -325,7 +328,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 6;
+    pub const OUTPUT_VERSION: u32 = 7;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint.
     fn write_rules(dir: &Path) -> Result<PackageFingerprint, ZeroHourError> {
