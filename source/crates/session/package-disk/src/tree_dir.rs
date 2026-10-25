@@ -79,12 +79,16 @@ impl TreeDir {
         walk.finish().map_err(IndexError::Package)
     }
 
+    /// The tree's key of the file at `path`.
+    fn file(&self, path: &PackagePath) -> PathBuf {
+        path.as_str()
+            .split('/')
+            .fold(self.root.clone(), |at, name| at.join(name))
+    }
+
     /// The bytes of the file at `path`, as many as `bound` takes; a file not there is missing.
     fn read_bytes(&self, path: &PackagePath, bound: ReadBound) -> Result<Vec<u8>, ContentError> {
-        let file = path
-            .as_str()
-            .split('/')
-            .fold(self.root.clone(), |at, name| at.join(name));
+        let file = self.file(path);
         let bytes = self
             .tree
             .get(&file)
@@ -104,9 +108,14 @@ impl PackageSource for TreeDir {
         self.read_bytes(&path, ReadBound::AtMost(FileIndex::MAX_LEN))
     }
 
-    /// Nothing to check: the tree keys each file by its exact name.
-    fn check_names(&self, _: &mut dyn Iterator<Item = &PackagePath>) -> Result<(), ContentError> {
-        Ok(())
+    /// The tree keys each file by its exact name.
+    fn holds(
+        &self,
+        paths: &mut dyn Iterator<Item = &PackagePath>,
+    ) -> Result<Vec<bool>, ContentError> {
+        Ok(paths
+            .map(|path| self.tree.contains_key(&self.file(path)))
+            .collect())
     }
 
     fn read(&self, path: &PackagePath, size: u64) -> Result<Vec<u8>, ContentError> {

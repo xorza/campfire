@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::str;
 use std::sync::Arc;
 
@@ -20,11 +21,48 @@ pub struct PackageReader {
     /// Shared by every clone, as a mode's packages each keep their reader.
     index: Arc<FileIndex>,
     source: Arc<dyn PackageSource>,
+    /// Each row whose bytes the source holds at another path, by its path: the first path of its
+    /// SHA-256 that the source holds.
+    elsewhere: Arc<BTreeMap<PackagePath, PackagePath>>,
 }
 
 impl PackageReader {
-    pub(crate) fn new(index: Arc<FileIndex>, source: Arc<dyn PackageSource>) -> Self {
-        Self { index, source }
+    /// The reader of the package `source` holds, by its `index`: each row reads from the first
+    /// path of its SHA-256, in the index's order, that the source holds by its exact name, so a
+    /// package holds each SHA-256 once (05-protocol-spec.md, A package holds each SHA-256 once).
+    /// `Missing` for the first row whose SHA-256 the source holds at no path.
+    pub(crate) fn open(
+        index: Arc<FileIndex>,
+        source: Arc<dyn PackageSource>,
+    ) -> Result<Self, ContentError> {
+        let held = source.holds(&mut index.paths())?;
+        debug_assert_eq!(
+            held.len(),
+            index.paths().count(),
+            "a source answers each path"
+        );
+        let mut elsewhere = BTreeMap::new();
+        {
+            let mut firsts: BTreeMap<ContentHash, &PackagePath> = BTreeMap::new();
+            for ((path, row), held) in index.rows().zip(held) {
+                if held {
+                    firsts.entry(row.sha256).or_insert(path);
+                }
+            }
+            for (path, row) in index.rows() {
+                let first = firsts
+                    .get(&row.sha256)
+                    .ok_or_else(|| ContentError::Missing { path: path.clone() })?;
+                if *first != path {
+                    elsewhere.insert(path.clone(), (*first).clone());
+                }
+            }
+        }
+        Ok(Self {
+            index,
+            source,
+            elsewhere: Arc::new(elsewhere),
+        })
     }
 
     pub fn fingerprint(&self) -> PackageFingerprint {
@@ -80,17 +118,19 @@ impl PackageReader {
         })
     }
 
-    /// The bytes of the file at `path`, whose row is `row`, read no further than its row's size
-    /// and refused when they differ from it.
+    /// The bytes of the file at `path`, whose row is `row`, read from where the source holds
+    /// them no further than its row's size, and refused, by the path read, when they differ from
+    /// it.
     pub(crate) fn read_row(
         &self,
         path: &PackagePath,
         row: FileRow,
     ) -> Result<Vec<u8>, ContentError> {
-        let bytes = self.source.read(path, row.size)?;
+        let at = self.elsewhere.get(path).unwrap_or(path);
+        let bytes = self.source.read(at, row.size)?;
         let size = u64::try_from(bytes.len()).expect("a file length fits u64");
         if size != row.size || ContentHash::of(&bytes) != row.sha256 {
-            return Err(ContentError::Changed { path: path.clone() });
+            return Err(ContentError::Changed { path: at.clone() });
         }
         Ok(bytes)
     }

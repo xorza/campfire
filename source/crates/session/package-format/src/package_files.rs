@@ -36,9 +36,9 @@ impl PackageFiles {
     /// The package of `source`: its index, and the files a load reads, the manifest's and those
     /// under `data/`, `scripts/` and `locale/`, each read once into memory and checked against
     /// its row. Any other file, as a session's map, reads on demand; no file the index does not
-    /// list reads. The open checks that the source holds every file the index lists by its exact
-    /// name, and fails on the first it does not (`PackageSource::check_names`). Nothing changes
-    /// an open package, so a read after the open takes the path as it is.
+    /// list reads. The open finds where the source holds each row's bytes, by exact name, and
+    /// fails on the first row it holds nowhere (`PackageReader::open`). Nothing changes an open
+    /// package, so a read after the open takes the path as it is.
     pub fn read(source: Arc<dyn PackageSource>) -> Result<Self, ContentError> {
         let index = FileIndex::decode(&source.read_index()?)?;
         Self::read_indexed(source, Arc::new(index))
@@ -50,8 +50,7 @@ impl PackageFiles {
         source: Arc<dyn PackageSource>,
         index: Arc<FileIndex>,
     ) -> Result<Self, ContentError> {
-        source.check_names(&mut index.rows().map(|(path, _)| path))?;
-        let reader = PackageReader::new(index, source);
+        let reader = PackageReader::open(index, source)?;
         let mut files = BTreeMap::new();
         for (path, row) in reader.index().rows() {
             if Self::reads(path) {

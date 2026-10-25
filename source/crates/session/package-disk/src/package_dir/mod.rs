@@ -45,19 +45,6 @@ impl PackageDir {
         walk.finish().map_err(IndexError::Package)
     }
 
-    /// Missing, unless the file at `path` is on disk by its exact name, by the names `listings`
-    /// holds of the directories on its way.
-    fn check_name(&self, path: &PackagePath, listings: &mut Listings) -> Result<(), ContentError> {
-        let held = listings
-            .hold(&self.root, path)
-            .map_err(|error| ContentError::Read(Box::new(error)))?;
-        if held {
-            Ok(())
-        } else {
-            Err(ContentError::Missing { path: path.clone() })
-        }
-    }
-
     /// The bytes of the file at `path`, as many as `bound` takes; a file not there is missing.
     fn read_bytes(&self, path: &PackagePath, bound: ReadBound) -> Result<Vec<u8>, ContentError> {
         let file = self.file_path(path);
@@ -124,20 +111,28 @@ impl PackageSource for PackageDir {
     /// The bytes of the package's index, by its exact name, no more than an index holds.
     fn read_index(&self) -> Result<Vec<u8>, ContentError> {
         let path = PackagePath::parse(FileIndex::PATH).expect("the index's path is a package's");
-        self.check_name(&path, &mut Listings::default())?;
+        let held = Listings::default()
+            .hold(&self.root, &path)
+            .map_err(|error| ContentError::Read(Box::new(error)))?;
+        if !held {
+            return Err(ContentError::Missing { path });
+        }
         self.read_bytes(&path, ReadBound::AtMost(FileIndex::MAX_LEN))
     }
 
     /// Each directory on the paths' way listed once.
-    fn check_names(
+    fn holds(
         &self,
         paths: &mut dyn Iterator<Item = &PackagePath>,
-    ) -> Result<(), ContentError> {
+    ) -> Result<Vec<bool>, ContentError> {
         let mut listings = Listings::default();
-        for path in paths {
-            self.check_name(path, &mut listings)?;
-        }
-        Ok(())
+        paths
+            .map(|path| {
+                listings
+                    .hold(&self.root, path)
+                    .map_err(|error| ContentError::Read(Box::new(error)))
+            })
+            .collect()
     }
 
     fn read(&self, path: &PackagePath, size: u64) -> Result<Vec<u8>, ContentError> {

@@ -344,6 +344,82 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
     ));
 }
 
+#[test]
+fn a_row_reads_from_the_first_path_of_its_sha256_that_the_package_holds() {
+    // Three paths of the bytes "x", in the index's order `data/a.toml`, `data/b.toml`,
+    // `textures/c.png`, indexed from a tree that holds each, then held at fewer paths.
+    let path = |text| PackagePath::parse(text).unwrap();
+    let (a, b, c) = (
+        path("data/a.toml"),
+        path("data/b.toml"),
+        path("textures/c.png"),
+    );
+    let full: BTreeMap<PathBuf, Vec<u8>> = [
+        ("p/manifest.toml", "m"),
+        ("p/data/a.toml", "x"),
+        ("p/data/b.toml", "x"),
+        ("p/textures/c.png", "x"),
+    ]
+    .into_iter()
+    .map(|(path, text)| (PathBuf::from(path), text.as_bytes().to_vec()))
+    .collect();
+    let full = TreeDir::reindexed(full);
+    let held = |keep: &[&str]| {
+        let mut tree = full.clone();
+        tree.retain(|file, _| {
+            let file = file.to_str().unwrap();
+            !["p/data/a.toml", "p/data/b.toml", "p/textures/c.png"].contains(&file)
+                || keep.contains(&file)
+        });
+        TreeDir::new(Arc::new(tree), "p").files()
+    };
+    let fingerprint = held(&["p/data/a.toml", "p/data/b.toml", "p/textures/c.png"])
+        .unwrap()
+        .fingerprint();
+    // The first path alone: every row reads its bytes, those a load keeps and one on demand.
+    let first = held(&["p/data/a.toml"]).unwrap();
+    assert_eq!(first.fingerprint(), fingerprint);
+    assert_eq!(
+        [&a, &b].map(|path| first.read_text(path).unwrap()),
+        ["x", "x"]
+    );
+    assert_eq!(first.read_file(&c).unwrap(), b"x");
+    // The first path missing and the second held: every row reads from the second.
+    let second = held(&["p/data/b.toml"]).unwrap();
+    assert_eq!(second.read_text(&a).unwrap(), "x");
+    assert_eq!(second.read_file(&c).unwrap(), b"x");
+    // No path held: the open fails on the first row of those bytes, by its own path.
+    assert!(matches!(held(&[]), Err(ContentError::Missing { path }) if path == a));
+
+    // On disk the same, by exact names: a copy at the second path that differs is not read, as
+    // the first holds the bytes; a path held only in another case is not held.
+    let test_dir = TestDir::new();
+    for (file, bytes) in &full {
+        test_dir.write(file, bytes);
+    }
+    let dir = PackageDir::new(test_dir.path("p"));
+    test_dir.write("p/data/b.toml", "y");
+    assert_eq!(dir.files().unwrap().read_text(&b).unwrap(), "x");
+    test_dir.remove("p/data/b.toml");
+    test_dir.remove("p/textures/c.png");
+    test_dir.rename("p/data/a.toml", "p/data/A.toml");
+    assert!(matches!(dir.files(), Err(ContentError::Missing { path }) if path == a));
+    test_dir.rename("p/data/A.toml", "p/data/a.toml");
+    let disk = dir.files().unwrap();
+    assert_eq!(disk.fingerprint(), fingerprint);
+    assert_eq!(disk.read_file(&c).unwrap(), b"x");
+    // A read on demand of a row held elsewhere fails by the path it reads, once that file goes.
+    test_dir.remove("p/data/a.toml");
+    assert!(matches!(disk.read_file(&c), Err(ContentError::Missing { path }) if path == a));
+    // A directory or a link at the first path holds no bytes: the second path's file does.
+    test_dir.write("p/data/b.toml", "x");
+    test_dir.write("p/data/a.toml/inside", "x");
+    assert_eq!(dir.files().unwrap().read_text(&a).unwrap(), "x");
+    test_dir.remove("p/data/a.toml");
+    test_dir.link("p/manifest.toml", "p/data/a.toml");
+    assert_eq!(dir.files().unwrap().read_text(&a).unwrap(), "x");
+}
+
 /// The most bytes a test reads of a checked-in index: far past what the workspace's hold.
 const INDEX_LEN: usize = 1 << 20;
 
