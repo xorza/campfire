@@ -40,6 +40,7 @@ use crate::modifier_carriers::ModifierCarriers;
 use crate::modifier_intervals::{IntervalDue, OnInterval};
 use crate::player_grants::PlayerGrants;
 use crate::stats_column::RowReads;
+use crate::stats_effect::StatsEffect;
 
 mod action_params;
 mod action_passives;
@@ -400,6 +401,24 @@ impl Module for Stats {
 }
 
 impl Stats {
+    /// Applies modifier `id` to unit `target` from `source`, by no action, with no end, as a
+    /// script's `add_modifier` of no duration applies one: what an object research gives its
+    /// producer (upgrades.md, Research is an action kind of production).
+    pub fn apply_unending(world: &mut World, target: StableId, id: ModifierId, source: StableId) {
+        let applier = Applier {
+            source: Some(source),
+            action: None,
+            rank: Rank::FIRST,
+            hold: None,
+        };
+        let add = StatsEffect::Add {
+            target,
+            id,
+            duration: None,
+        };
+        add.apply_world(world, applier);
+    }
+
     /// Restores `amount` of unit `id`'s `pool`, unscaled, when the unit lives: it is not dead, and
     /// its life, if it has one, is above zero, as a unit with no life lives until it dies.
     pub fn restore(world: &mut World, id: StableId, pool: PoolId, amount: Num) {
@@ -552,7 +571,7 @@ pub mod internals {
                 id,
                 duration: None,
             };
-            add.apply_from(world, applier);
+            add.apply_world(world, applier);
         }
 
         /// The modifiers `id` carries, each with its source, in their order.

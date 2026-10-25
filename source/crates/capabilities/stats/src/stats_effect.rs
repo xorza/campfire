@@ -57,6 +57,12 @@ impl StatsEffect {
     }
 
     /// Applies the effect, which a call by `applier` queued, an added modifier as
+    /// Applies the effect by `applier`, from a world alone, its added modifier's shares and state
+    /// held first, as a module that is no call applies one.
+    pub(crate) fn apply_world(self, world: &mut World, applier: Applier) {
+        self.apply_by(world, applier, None);
+    }
+
     /// `HeldModifierAdds::add` adds it: through `adds`, the call frame's, or with none, from a
     /// world alone.
     fn apply_by(self, world: &mut World, applier: Applier, adds: Option<&mut HeldModifierAdds>) {
@@ -112,21 +118,5 @@ impl Effect for StatsEffect {
             hold: None,
         };
         self.apply_by(world, applier, Some(StatsCall::of_mut(frame).adds()));
-    }
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use bevy_ecs::world::World;
-
-    use crate::applier::Applier;
-    use crate::stats_effect::StatsEffect;
-
-    impl StatsEffect {
-        /// Applies the effect as a call by `applier` would, from a world alone, its added
-        /// modifier's shares and state held first.
-        pub(crate) fn apply_from(self, world: &mut World, applier: Applier) {
-            self.apply_by(world, applier, None);
-        }
     }
 }

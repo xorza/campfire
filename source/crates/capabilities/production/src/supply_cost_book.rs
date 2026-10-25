@@ -65,7 +65,8 @@ impl SupplyCostBook {
     }
 
     /// What `unit` counts for: a living unit uses its type's `cost`, and gives its `provides`
-    /// once complete; a queued train, of a producer living or dead, uses its unit's `cost`.
+    /// once complete; a queued train, of a producer living or dead, uses its unit's `cost`, and
+    /// a queued research none.
     pub fn unit(&self, unit: SupplyUnit<'_>) -> UnitSupply {
         let SupplyUnit {
             unit_type,
@@ -81,7 +82,10 @@ impl SupplyCostBook {
         let queued: u64 = queue
             .map_or(&[][..], TrainQueue::entries)
             .iter()
-            .map(|queued| u64::from(self.trains[queued.action.index()]))
+            .map(|queued| {
+                let cost = self.trains.get(queued.action.index()).copied();
+                u64::from(cost.unwrap_or(0))
+            })
             .sum();
         UnitSupply {
             used: u64::from(own.cost) + queued,

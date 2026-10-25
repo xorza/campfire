@@ -7,7 +7,7 @@ use campfire_math::Num;
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, UnknownName};
 use campfire_sim::Capability;
-use campfire_stats::{LifePool, ModifierBook, StatsData, TypePoolsData};
+use campfire_stats::{LifePool, ModifierAppliers, ModifierBook, StatsData, TypePoolsData, Way};
 use campfire_units::{BodyForm, PoolId, UnitTypes};
 use campfire_values::{
     ActionId, Distance, ModifierId, Named, ResourceId, Share, TimeTooLarge, TypeScope, UnitType,
@@ -32,6 +32,8 @@ use crate::producer_spec::ProducerSpec;
 use crate::production_data::ProductionData;
 use crate::requirement_book::RequirementBook;
 use crate::requires_data::RequiredUnit;
+use crate::research_data::ResearchData;
+use crate::research_spec::ResearchSpec;
 use crate::resource_set::ResourceSet;
 use crate::spawn_spec::SpawnSpec;
 use crate::spawns_data::SpawnsData;
@@ -62,7 +64,9 @@ impl Production {
             let mut slotted = slots.flat_map(|slots| slots.0.values()).flatten();
             let trains = slotted.find(|id| {
                 let action = actions.and_then(|actions| actions.0.get(*id));
-                action.is_some_and(|action| action.kind() == ActionKind::Train)
+                action.is_some_and(|action| {
+                    matches!(action.kind(), ActionKind::Train | ActionKind::Research)
+                })
             });
             if let Some(id) = trains {
                 return fail(ProductionDataError::NoQueue(id.clone()));
@@ -108,6 +112,10 @@ impl Production {
                         }
                     }
                 }
+                let research = action.section::<ResearchData>();
+                if research.is_some() && action.keys.targeting != Targeting::None {
+                    return fail(ProductionDataError::ResearchAims);
+                }
                 let build = action.section::<BuildData>();
                 if build.is_some() && action.keys.targeting != Targeting::Point {
                     return fail(ProductionDataError::BuildAims);
@@ -117,6 +125,7 @@ impl Production {
                     return fail(ProductionDataError::GatherAims);
                 }
                 let requires = train.and_then(|train| train.requires.as_ref());
+                let requires = requires.or_else(|| research?.requires.as_ref());
                 let requires = requires.or_else(|| build?.requires.as_ref());
                 let required = requires.iter().flat_map(|requires| &requires.units);
                 let required = required.flat_map(RequiredUnit::names);
@@ -260,6 +269,55 @@ impl TrainSpec {
     }
 }
 
+impl ResearchSpec {
+    /// What each research gives: a modifier of its package, and who holds it; an error for one it
+    /// does not have. A match with no stats holds no research, as its section needs them.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<ActionId, Self>, BookError> {
+        let modifiers = cx.book_if::<ModifierBook>()?;
+        let mut book = ByIdBuilder::default();
+        for action in LoadedAction::all(cx)? {
+            let Some(data) = action.section::<ResearchData>() else {
+                continue;
+            };
+            let named = modifiers.and_then(|modifiers| {
+                modifiers
+                    .names()
+                    .named((action.package, data.modifier.as_str()))
+            });
+            let modifier = named.ok_or_else(|| {
+                action.unknown(UnknownName::new(ModifierId::NAMES, &data.modifier))
+            })?;
+            let spec = Self {
+                modifier,
+                holder: data.holder,
+            };
+            book.set(action.action, spec);
+        }
+        Ok(book.build())
+    }
+
+    /// Adds the modifier each research gives as applied by no action, as its player and its
+    /// producer hold it, so the load checks it reads no param that way does not give.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn applied_ways(
+        cx: &BookCx<'_>,
+        appliers: &mut ModifierAppliers,
+    ) -> Result<(), BookError> {
+        for (package, source) in cx.packages() {
+            let actions = source.content.get::<ActionsData>().into_iter();
+            for (_, action) in actions.flat_map(|actions| &actions.0) {
+                if let Some(research) = action.section::<ResearchData>() {
+                    appliers.apply(package, research.modifier.as_str(), Way::NoAction);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 impl GatherSpec {
     /// What each gather gathers, carries, takes at each windup, looks for another node within and
     /// stands at a drop-off for; an error for a resource the mode does not declare, a unit past
@@ -303,10 +361,13 @@ impl RequirementBook {
             let trains = action
                 .section::<TrainData>()
                 .map(|train| train.requires.as_ref());
+            let researches = action
+                .section::<ResearchData>()
+                .map(|research| research.requires.as_ref());
             let builds = action
                 .section::<BuildData>()
                 .map(|build| build.requires.as_ref());
-            let Some(requires) = trains.or(builds).flatten() else {
+            let Some(requires) = trains.or(researches).or(builds).flatten() else {
                 continue;
             };
             let scope = TypeScope::of_package(action.package);

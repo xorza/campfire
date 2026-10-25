@@ -1,6 +1,6 @@
 use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{QueryState, Without};
+use bevy_ecs::query::{QueryFilter, QueryState, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
@@ -14,7 +14,7 @@ use campfire_sim::{
     DueIndex, DueUnit, EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld,
     StableId, UnitDues,
 };
-use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
+use campfire_stats::{Modifiers, PlayerModifiers, PoolBook, Stats, StatsWorld, UnitPools};
 use campfire_units::{
     Body, Dead, Facing, GroundPoint, Leader, Leaving, LivingSpawns, MapBook, OpenCellAsk,
     OpenCellRun, Owner, SpawnAt, Spawner, Walk,
@@ -31,6 +31,8 @@ use crate::producer_spec::ProducerSpec;
 use crate::production_books::{ProductionBooks, TrainAdmission, TrainAsk};
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
+use crate::research_data::ResearchHolder;
+use crate::research_spec::ResearchSpec;
 use crate::train_queue::{QueueIndex, Queued, TrainQueue};
 use crate::train_spec::TrainSpec;
 use crate::trained_units::{Trained, TrainedUnits};
@@ -51,6 +53,9 @@ pub(crate) struct ExitSpawn {
     rally: Option<Vec3>,
 }
 
+/// The kinds a producer's queue makes: a unit by a train, a modifier by a research.
+const QUEUED: [ActionKind; 2] = [ActionKind::Train, ActionKind::Research];
+
 /// The parts of a living unit a train it was ordered reads and changes.
 type Training = (
     Entity,
@@ -64,18 +69,28 @@ type Training = (
     Option<&'static UnitTags>,
 );
 
-/// The trains units were ordered: their start in Act, and their finish, which spawns the unit
-/// trained.
+/// What a research's check of what is held or queued reads of each unit with a queue, dead or
+/// living: its id, its owner, its queue, and the modifiers it carries.
+pub(crate) type Queues = (
+    &'static StableId,
+    Option<&'static Owner>,
+    &'static TrainQueue,
+    Option<&'static Modifiers>,
+);
+
+/// The trains and researches units were ordered: their start in Act, and their finish, which
+/// spawns the unit trained or gives the modifier researched.
 #[derive(Debug)]
 pub struct Trains;
 
 impl Trains {
-    /// Starts each ordered train of the units the index of the orders holds, in Act, by its
-    /// unit's stable id: one whose unit's tags do not block production that passes the core's
-    /// checks, finds a place in its unit's queue, meets
-    /// its `requires` and, with supply, finds room under its player's cap, pays its whole cost, in
-    /// pools and player resources, goes on cooldown, and joins the queue, where it holds its
-    /// supply (04-capabilities/production.md, Tags block production). The order ends either way,
+    /// Starts each ordered train or research of the units the index of the orders holds, in Act,
+    /// by its unit's stable id: one whose unit's tags do not block production that passes the
+    /// core's checks, finds a place in its unit's queue, meets its `requires`, as a train with
+    /// supply finds room under its player's cap and as a research finds its modifier neither held
+    /// nor queued, pays its whole cost, in pools and player resources, goes on cooldown, and joins
+    /// the queue, where a train holds its supply (04-capabilities/production.md, Tags block
+    /// production). The order ends either way,
     /// and the unit stays free. The holdings follow the units as each run starts, so the supply
     /// and the units a requirement finds are those of the match as it stands, and each train that
     /// joins holds its supply at once. A predicting client's form `F` pays nothing, as the unit's
@@ -90,7 +105,15 @@ impl Trains {
         held_modifiers: PlayerRows<'_, '_, PlayerModifiers>,
         life: Option<Res<'_, PoolBook>>,
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
-        mut units: ParamSet<'_, '_, (OwnedUnits<'_, '_>, Query<'_, '_, Training, Without<Dead>>)>,
+        mut units: ParamSet<
+            '_,
+            '_,
+            (
+                OwnedUnits<'_, '_>,
+                Query<'_, '_, Training, Without<Dead>>,
+                Query<'_, '_, Queues>,
+            ),
+        >,
         mut held: Local<'_, Vec<DueUnit>>,
         mut holdings: ResMut<'_, Holdings>,
         (mut indexes, mut queues): (ProgressIndexes<'_>, QueueIndex<'_>),
@@ -105,14 +128,41 @@ impl Trains {
             training
                 .get(unit.entity)
                 .is_ok_and(|(_, _, _, (slots, progress), ..)| {
-                    progress.ordered(slots, book, ActionKind::Train).is_some()
+                    QUEUED
+                        .iter()
+                        .any(|&kind| progress.ordered(slots, book, kind).is_some())
                 })
         });
         if held.is_empty() {
             return;
         }
-        let mut training = units.p1();
         for &DueUnit { id, entity } in &*held {
+            let researching = {
+                let training = units.p1();
+                let (_, _, _, (slots, progress), ..) =
+                    training.get(entity).expect("a unit in the order");
+                let ordered = progress.ordered(slots, book, ActionKind::Research);
+                ordered.map(|ordered| {
+                    let held = slots.learned(ordered.slot).and_then(|held| held.action);
+                    let action = held.expect("an ordered slot holds its action");
+                    *books
+                        .researches
+                        .get(action)
+                        .expect("a research has its spec")
+                })
+            };
+            let researched = researching.is_some_and(|spec| {
+                let queues = units.p2();
+                Self::researched(
+                    spec,
+                    id,
+                    entity,
+                    &held_modifiers,
+                    &books.researches,
+                    &queues,
+                )
+            });
+            let mut training = units.p1();
             let (
                 _,
                 _,
@@ -125,9 +175,14 @@ impl Trains {
                 tags,
             ) = training.get_mut(entity).expect("a unit in the order");
             let pools = pools.of(life.as_deref().and_then(PoolBook::life));
+            let kind = if researching.is_some() {
+                ActionKind::Research
+            } else {
+                ActionKind::Train
+            };
             let ordered = progress
-                .ordered(slots, book, ActionKind::Train)
-                .expect("an ordered train");
+                .ordered(slots, book, kind)
+                .expect("an ordered train or research");
             progress.end(&mut indexes.of(id, entity));
             let purse = Purse::of(pools.read(), resources.of(held_by));
             let owner = held_by.map(|owner| owner.player_slot());
@@ -156,7 +211,7 @@ impl Trains {
                 action: checked.id,
             };
             let admission = books.admits(&holdings, ask);
-            if admission == TrainAdmission::Refused {
+            if researched || admission == TrainAdmission::Refused {
                 continue;
             }
             let values = checked.values;
@@ -182,6 +237,46 @@ impl Trains {
             queue.push(queued, paid, now, &mut queues.of(id, entity));
             if let TrainAdmission::Holds { owner, supply } = admission {
                 holdings.reserve(entity, owner, supply);
+            }
+        }
+    }
+
+    /// Whether the research `spec`, ordered of the unit `id` of `entity`, is held or queued
+    /// already: a player research by its producer's player, or in the queue of any unit of that
+    /// player; a producer research by its producer, from itself, or in its own queue (upgrades.md,
+    /// An upgrade is a modifier). A player research of a producer of no player counts as held,
+    /// as no player could hold it.
+    pub(crate) fn researched<F: QueryFilter>(
+        spec: ResearchSpec,
+        id: StableId,
+        entity: Entity,
+        players: &PlayerRows<'_, '_, PlayerModifiers>,
+        researches: &ById<ActionId, ResearchSpec>,
+        queues: &Query<'_, '_, Queues, F>,
+    ) -> bool {
+        let queued_in = |queue: &TrainQueue| {
+            let mut queued = queue.entries().iter();
+            queued.any(|queued| researches.get(queued.action) == Some(&spec))
+        };
+        let (_, owner, queue, carried) = queues.get(entity).expect("a producer has a queue");
+        match spec.holder {
+            ResearchHolder::Producer => {
+                let held =
+                    carried.is_some_and(|carried| carried.get(spec.modifier, Some(id)).is_some());
+                held || queued_in(queue)
+            }
+            ResearchHolder::Player => {
+                let Some(owner) = owner else {
+                    return true;
+                };
+                let held = players
+                    .of(Some(owner))
+                    .is_some_and(|held| held.holds(spec.modifier));
+                let player = owner.player_slot();
+                held || queues.iter().any(|(_, unit_owner, queue, _)| {
+                    unit_owner.is_some_and(|unit_owner| unit_owner.player_slot() == player)
+                        && queued_in(queue)
+                })
             }
         }
     }
@@ -227,17 +322,46 @@ impl Trains {
                 .and_then(|queue| queue.done(now))
             {
                 let trains = world.resource::<ById<ActionId, TrainSpec>>();
-                let spec = trains.get(head.action).expect("a train queues only trains");
-                let unit = Self::leave(world, entity, spec.unit_type);
-                world.resource_mut::<TrainedUnits>().0.extend([Trained {
-                    unit,
-                    producer: trainer,
-                }]);
+                if let Some(&spec) = trains.get(head.action) {
+                    let unit = Self::leave(world, entity, spec.unit_type);
+                    world.resource_mut::<TrainedUnits>().0.extend([Trained {
+                        unit,
+                        producer: trainer,
+                    }]);
+                } else {
+                    Self::give(world, entity, trainer, head.action);
+                }
                 world.resource_scope(|world, mut index: Mut<'_, DueIndex<TrainQueue>>| {
                     let mut queue = world.get_mut::<TrainQueue>(entity).expect("a producer");
                     let dues = &mut UnitDues::new(&mut index, trainer, entity);
                     queue.remove(0, now, dues);
                 });
+            }
+        }
+    }
+
+    /// Gives what the research `action` of the producer `producer` of `entity` gives: its
+    /// modifier, to the producer's player, or to the producer from itself, with no end
+    /// (upgrades.md, Research is an action kind of production). A player research of a producer
+    /// that lost its player since it started gives nothing, as no player holds it.
+    fn give(world: &mut World, entity: Entity, producer: StableId, action: ActionId) {
+        let researches = world.resource::<ById<ActionId, ResearchSpec>>();
+        let spec = *researches
+            .get(action)
+            .expect("a queue holds trains and researches");
+        match spec.holder {
+            ResearchHolder::Player => {
+                let Some(owner) = world.get::<Owner>(entity).map(|owner| owner.player_slot())
+                else {
+                    return;
+                };
+                world
+                    .player_modifiers_mut(owner)
+                    .expect("a player of the session holds its modifiers")
+                    .add(spec.modifier);
+            }
+            ResearchHolder::Producer => {
+                Stats::apply_unending(world, producer, spec.modifier, producer);
             }
         }
     }

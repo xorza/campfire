@@ -22,6 +22,9 @@ pub enum ProductionDataError {
     /// A train that aims at something, where it takes no target.
     #[error("a train takes no target")]
     TrainAims,
+    /// A research that aims at something, where it takes no target.
+    #[error("a research takes no target")]
+    ResearchAims,
     /// A train that makes a projectile or an area type, whose units only actions deliver.
     #[error("a train makes a projectile or an area type")]
     Trained,

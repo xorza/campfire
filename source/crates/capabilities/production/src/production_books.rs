@@ -8,6 +8,7 @@ use campfire_values::{ActionId, UnitType};
 use crate::holdings::Holdings;
 use crate::producer_spec::ProducerSpec;
 use crate::requirement_book::RequirementBook;
+use crate::research_spec::ResearchSpec;
 use crate::supply_book::SupplyBook;
 use crate::supply_cost_book::SupplyCostBook;
 use crate::train_queue::TrainQueue;
@@ -22,6 +23,7 @@ pub(crate) struct ProductionBooks<'w> {
     pub(crate) producers: Res<'w, ById<UnitType, ProducerSpec>>,
     pub(crate) requirements: Res<'w, RequirementBook>,
     pub(crate) trains: Res<'w, ById<ActionId, TrainSpec>>,
+    pub(crate) researches: Res<'w, ById<ActionId, ResearchSpec>>,
     pub(crate) costs: Res<'w, SupplyCostBook>,
     pub(crate) rules: Res<'w, SupplyBook>,
 }
@@ -53,9 +55,10 @@ pub(crate) enum TrainAdmission {
 }
 
 impl ProductionBooks<'_> {
-    /// Whether the train of `ask` passes what its start checks beyond the core's checks of its
-    /// slot, by `holdings`: its queue has room, its owner meets its `requires` and, in a match
-    /// with supply, has room under its cap for what it uses.
+    /// Whether the train or the research of `ask` passes what its start checks beyond the core's
+    /// checks of its slot, by `holdings`: its queue has room, its owner meets its `requires` and,
+    /// for a train in a match with supply, has room under its cap for what it uses; a research
+    /// uses none.
     pub(crate) fn admits(&self, holdings: &Holdings, ask: TrainAsk<'_>) -> TrainAdmission {
         let TrainAsk {
             unit_type,
@@ -72,7 +75,9 @@ impl ProductionBooks<'_> {
         if !room || !holdings.meet(owner, modifiers, self.requirements.of(action)) {
             return TrainAdmission::Refused;
         }
-        let made = self.trains.get(action).expect("a train's action trains");
+        let Some(made) = self.trains.get(action) else {
+            return TrainAdmission::Free;
+        };
         let cost = self.costs.cost(made.unit_type);
         let max = self.rules.0.map(|rules| u64::from(rules.max));
         match max.zip(owner) {

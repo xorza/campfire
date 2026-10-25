@@ -231,3 +231,8 @@ From `9de47b915`, which upgraded Rhai to 1.27.0, over the benches the first sess
 | And a count cell by cell, `SightMaps::look` inlined | `fog/sight`, a cell's move, +78.6 %; `fog/still` −70.8 %; `battle/crowded_vision` −49.3 %; `mean_3v3_vision` −28.0 %; `server_tick/mean_3v3` −2.26 %; `server_tick/worst_3v3` −0.79 %; `worst_3v3_vision`, eight pairs from −22.8 % to +32.5 %, median +9.5 %; `zero_hour_tick/mean_attack` +0.98 %, `mean_bases` +0.30 %, `worst_attack` +0.09 %, `worst_bases` +2.74 %, three pairs | `fog/sight` +94.9 %; `fog/still` −65.5 %; `battle/crowded_vision` −47.9 %; `mean_3v3_vision` −28.0 %; `server_tick/mean_3v3` −2.60 %; `server_tick/worst_3v3` +0.82 %; `worst_3v3_vision` −12.6 % |
 
 The profile of the last shape's `fog/sight` on `local`: `CountedMaps::count` 33.6 % and `SightMaps::look` 10.3 % before the count went cell by cell; the stage's spans, its diff and its copy of the runs cost about what the whole bitmap stage costs.
+
+### The worst ticks under memory pressure
+
+`zero_hour_tick/worst_attack` on `local`, 2026-10-25: `6f56e7970` against `ef3573c31` gave 20.5 against 30.5 Mcyc, +49 % in every pair of two runs, then 59.3 against 57.5 to 59.6 a run later, the same binaries. Over a whole run the two spend the same user cycles, 33.4 to 34.0 against 33.5 billion, and `ef3573c31` fewer page faults, 145,600 against 166,000, and fewer kernel cycles, 0.71 against 0.79 to 0.81 billion. The host held 9 GB free under 46 GB of page cache, after 5.3 million compaction stalls since its start. On `mac`, three pairs: `worst_attack` +0.75 %, `worst_bases` −3.05 %, the means −0.73 % and −0.75 %. A worst tick on `local` measures the kernel's stalls as much as the code while the page cache crowds the memory.
+

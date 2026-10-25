@@ -4,16 +4,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Upgrades
 
-The slice of [Upgrades](docs/design/upgrades.md): a player in a Zero Hour skirmish researches player and object upgrades from the panel, and sees them change units' armor, weapon sets, weapon damage and life. Five batches: the engine's research, then the types' upgrades, then armor and actions by tags, each with its scripted match; then the import; then the panel, the check and the fold. Its checks are that document's.
-
-### U1. Research (production, stats)
-
-First, as every later batch gives or reads what a research gives.
-
-- [ ] Production has the action kinds `train`, `build` and `gather` alone (`production/src/lib.rs:441`), so a player gains a modifier only by a script's `ctx.add_player_modifier` → `research` is an action kind whose entry joins its producer's `TrainQueue` (`train_queue.rs:33`), pays as it joins, takes its time, and as it ends gives its modifier to its player, or for an object research to its producer (upgrades.md, Research is an action kind of production). Builds: a module is one entry of one list, a kind registered as `train` is.
-- [ ] A research of a modifier its player, or its producer for an object research, holds or queues anywhere starts (upgrades.md, An upgrade is a modifier) → the start's checks refuse it, by one count of the queued researches each player and unit keeps, so no check walks the queues. Builds: a pass visits what changed.
-- [ ] `ProductionData`'s schema and the script API's reference gain the kind, its fields and its refusals; the test package's mode gains a research of each target.
-- Checks: the scripted match researches a player modifier and an object modifier: each pays as it joins and gives its modifier when its time ends, exactly; a second research of each is refused while the first is queued, at another producer too, and once it is held; a cancel refunds as a train's does.
+The slice of [Upgrades](docs/design/upgrades.md): a player in a Zero Hour skirmish researches player and object upgrades from the panel, and sees them change units' armor, weapon sets, weapon damage and life. Four batches left: the types' upgrades, then armor and actions by tags, each with its scripted match; then the import; then the panel, the check and the fold. Its checks are that document's.
 
 ### U2. A type's upgrades (stats)
 

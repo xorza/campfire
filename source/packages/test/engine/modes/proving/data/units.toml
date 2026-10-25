@@ -39,7 +39,7 @@ params = { xp = 0 }
 pools = ["health"]
 stats = { health = { base = 800 } }
 combat = {}
-slots = { build = ["train_guard"], watch = ["post_ward"] }
+slots = { build = ["train_guard"], watch = ["post_ward"], research = ["research_drill", "research_walls"] }
 production = { queue = 2 }
 vision = { sight_range = "5.0" }
 collision = { radius = "0.8" }

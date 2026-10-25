@@ -14,8 +14,10 @@ use campfire_values::{Motion, Relation, UnitTags, UnitType};
 use crate::holdings::Holdings;
 use crate::production_books::{ProductionBooks, TrainAdmission, TrainAsk};
 use crate::train_queue::TrainQueue;
+use crate::trains::{Queues, Trains};
 
-/// What tells whether a unit may start the train or the build one of its slots holds: the
+/// What tells whether a unit may start the train, the research or the build one of its slots
+/// holds: the
 /// actions, the production books and the holdings of a match with production, the players'
 /// resources and modifiers, the life pool, and the living units (03-game-scripting.md, A bot reads
 /// what its units may start).
@@ -43,14 +45,16 @@ pub struct StartChecks<'w, 's> {
         ),
         (Without<Dead>, Allow<Unpredicted>),
     >,
+    queues: Query<'w, 's, Queues, Allow<Unpredicted>>,
 }
 
 impl StartChecks<'_, '_> {
-    /// Whether the unit `id` may start, in tick `now`, the train or the build its slot `slot`
-    /// holds, as the order's own checks find it as it applies, by the holdings as the last tick
-    /// left them: its slot is ready and charged, its pools and its player afford it, its tags do
-    /// not block it and its player meets its `requires`; a train also finds room in its unit's
-    /// queue and, with supply, under its player's cap. A build's place is its order's, which this
+    /// Whether the unit `id` may start, in tick `now`, the train, the research or the build its
+    /// slot `slot` holds, as the order's own checks find it as it applies, by the holdings as the
+    /// last tick left them: its slot is ready and charged, its pools and its player afford it, its
+    /// tags do not block it and its player meets its `requires`; a train or a research also finds
+    /// room in its unit's queue, a train with supply room under its player's cap, and a research
+    /// its modifier neither held nor queued. A build's place is its order's, which this
     /// tests not. False for any other action, a unit that is gone, a match with no production, and
     /// one before its first tick, whose holdings count no unit yet.
     pub fn may_start(&self, id: StableId, slot: u8, now: Tick) -> bool {
@@ -73,7 +77,7 @@ impl StartChecks<'_, '_> {
             return false;
         };
         let target = match action.kind {
-            ActionKind::Train => ActionTarget::None,
+            ActionKind::Train | ActionKind::Research => ActionTarget::None,
             ActionKind::Build => ActionTarget::Point(at.get()),
             _ => return false,
         };
@@ -94,7 +98,15 @@ impl StartChecks<'_, '_> {
         let player_slot = owner.map(|owner| owner.player_slot());
         let modifiers = self.modifiers.of(owner);
         match action.kind {
-            ActionKind::Train => queue.is_some_and(|queue| {
+            ActionKind::Research
+                if books.researches.get(checked.id).is_some_and(|&spec| {
+                    let researches = &books.researches;
+                    Trains::researched(spec, id, entity, &self.modifiers, researches, &self.queues)
+                }) =>
+            {
+                false
+            }
+            ActionKind::Train | ActionKind::Research => queue.is_some_and(|queue| {
                 let ask = TrainAsk {
                     unit_type,
                     queue,

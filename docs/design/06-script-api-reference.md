@@ -487,6 +487,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `attack` | combat | since 1.0 |
 | `cast` | abilities | since 1.0 |
 | `train` | production | since 1.0 |
+| `research` | production | since 1.0 |
 | `build` | production | since 1.0 |
 | `gather` | production | since 1.0 |
 | `use` | interaction | since 1.0 |

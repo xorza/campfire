@@ -12,6 +12,7 @@ pub enum ActionKind {
     Attack,
     Use,
     Train,
+    Research,
     Build,
     Gather,
 }
@@ -24,7 +25,7 @@ impl ActionKind {
             Self::Cast => Block::Cast,
             Self::Attack => Block::Attack,
             Self::Use | Self::Build | Self::Gather => Block::Use,
-            Self::Train => Block::Produce,
+            Self::Train | Self::Research => Block::Produce,
         }
     }
 }

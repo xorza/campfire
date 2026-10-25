@@ -20,7 +20,7 @@ use campfire_declarations::{
 use campfire_players::Player;
 use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
-use campfire_stats::StatsSystems;
+use campfire_stats::{ModifierAppliers, StatsSystems};
 use campfire_units::{
     AtWork, BodyUnit, Leader, LivingSpawns, OpenCellRun, SpawnCallbacks, SpawnOf, StatusTags,
     UnitGrid, UnitTypes, UnitsSystems,
@@ -71,6 +71,8 @@ mod rally;
 mod rally_target;
 mod requirement_book;
 mod requires_data;
+mod research_data;
+mod research_spec;
 mod resource_set;
 mod site;
 mod spawn_spec;
@@ -120,6 +122,8 @@ pub use crate::rally::Rally;
 pub use crate::rally_target::RallyTarget;
 pub use crate::requirement_book::{Required, RequirementBook};
 pub use crate::requires_data::{RequiredUnit, RequiresData};
+pub use crate::research_data::{ResearchData, ResearchHolder};
+pub use crate::research_spec::ResearchSpec;
 pub use crate::resource_set::ResourceSet;
 pub use crate::site::{Progressed, Site, SiteProgress, SiteStart};
 pub use crate::spawn_spec::SpawnSpec;
@@ -239,9 +243,12 @@ impl Module for Production {
         d.book::<ById<UnitType, ProducerSpec>>(ProducerSpec::book);
         d.book::<ById<UnitType, SpawnSpec>>(SpawnSpec::book);
         d.listed::<TrainData>();
+        d.listed::<ResearchData>();
         d.listed::<BuildData>();
         d.listed::<GatherData>();
         d.book::<ById<ActionId, TrainSpec>>(TrainSpec::book);
+        d.book::<ById<ActionId, ResearchSpec>>(ResearchSpec::book);
+        d.extend::<ModifierAppliers>(ResearchSpec::applied_ways);
         d.book::<ById<ActionId, GatherSpec>>(GatherSpec::book);
         d.book::<RequirementBook>(RequirementBook::build);
         d.book::<SupplyCostBook>(SupplyCostBook::build);
@@ -398,7 +405,7 @@ pub mod internals {
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{IdAllocator, StableId};
     use campfire_units::{BuildTarget, Life};
-    use campfire_values::{ActionId, PackageIndex, TypeScope, UnitType};
+    use campfire_values::{ActionId, ModifierId, PackageIndex, TypeScope, UnitType};
 
     use crate::Production;
     use crate::build_book::{BuildBook, NewBuild};
@@ -406,6 +413,8 @@ pub mod internals {
     use crate::gather_spec::GatherSpec;
     use crate::gatherer::{GatherStep, Gatherer};
     use crate::mode_supply_data::ModeSupplyData;
+    use crate::research_data::ResearchHolder;
+    use crate::research_spec::ResearchSpec;
     use crate::site::SiteProgress;
     use crate::supply_book::SupplyBook;
     use crate::supply_cost_book::SupplyCostBook;
@@ -443,6 +452,26 @@ pub mod internals {
                 let spec = TrainSpec { unit_type };
                 ById::<ActionId, TrainSpec>::amend(world, |_, book| book.set(id, spec));
             }
+            id
+        }
+
+        /// Adds a research of `modifier` for `holder` that takes `time` and costs
+        /// `resource_cost`, no pool and no cooldown, to the match's action book and its
+        /// researches' book, as `add_train` adds a train.
+        pub fn add_research(
+            world: &mut World,
+            modifier: ModifierId,
+            holder: ResearchHolder,
+            time: Ticks,
+            resource_cost: Option<ResourceAmount>,
+        ) -> ActionId {
+            let action = TestAction {
+                resource_cost,
+                ..TestAction::new(ActionKind::Research, Aim::None, ActionRange::Global, time)
+            };
+            let id = Actions::add(world, "research", action);
+            let spec = ResearchSpec { modifier, holder };
+            ById::<ActionId, ResearchSpec>::amend(world, |_, book| book.set(id, spec));
             id
         }
 

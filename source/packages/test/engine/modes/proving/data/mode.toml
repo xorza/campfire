@@ -53,7 +53,7 @@ wave = ["creep", "creep"]
 xp_radius = "12.0"
 kill_gold = 25
 
-# A hero's basic abilities, its weapon, and a barracks' trains.
+# A hero's basic abilities, its weapon, and a barracks' trains, posts and researches.
 [[slots]]
 name = "basic"
 ranks = 1
@@ -66,6 +66,9 @@ name = "build"
 
 [[slots]]
 name = "watch"
+
+[[slots]]
+name = "research"
 
 [choices.hero]
 name = "choice-hero"
@@ -114,6 +117,28 @@ targeting = "none"
 unit_type = "guard"
 windup_ms = 1500
 cost = { gold = 100 }
+
+# A barracks researches a drill for its player for 150 gold in 2 s, and walls for itself in 3 s.
+[actions.research_drill]
+name = "action-research-drill"
+kind = "research"
+targeting = "none"
+modifier = "drill"
+windup_ms = 2000
+cost = { gold = 150 }
+
+[actions.research_walls]
+name = "action-research-walls"
+kind = "research"
+targeting = "none"
+modifier = "walls"
+holder = "producer"
+windup_ms = 3000
+
+# What the researches give: no effect of their own, which a later rule reads.
+[modifiers.drill]
+
+[modifiers.walls]
 
 # The name players see of each team.
 [teams.north]

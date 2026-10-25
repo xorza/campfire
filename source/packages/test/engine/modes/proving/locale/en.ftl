@@ -4,3 +4,5 @@ team-south = South
 team-camps = Camps
 choice-hero = Hero
 action-train-guard = Guard
+action-research-drill = Drill
+action-research-walls = Walls

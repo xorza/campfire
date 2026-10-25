@@ -159,9 +159,10 @@ impl UnitOrders {
                         let hidden = matches!(target, ActionTarget::Unit(unit) if !sees(unit));
                         match (kind, target) {
                             _ if hidden => Err(OrderDropCause::Hidden),
-                            (Some(ActionKind::Cast | ActionKind::Train), _) => {
-                                Ok(UnitOrder::Slot { slot, target })
-                            }
+                            (
+                                Some(ActionKind::Cast | ActionKind::Train | ActionKind::Research),
+                                _,
+                            ) => Ok(UnitOrder::Slot { slot, target }),
                             (Some(ActionKind::Gather), ActionTarget::Unit(target)) => {
                                 Ok(UnitOrder::Gather { slot, target })
                             }
