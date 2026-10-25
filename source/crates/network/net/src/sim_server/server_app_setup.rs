@@ -51,7 +51,7 @@ pub enum ServerRun {
     },
     /// It follows its client's `pace`, exits once its session ends, as its client asks by
     /// `stop`, and writes its log into its client's reports, of the data directory `reports`
-    /// (bug-reports.md, The log is the local server's, published at the report's tick).
+    /// (08-sessions.md, The log is the local server's, published at the report's tick).
     Local {
         stop: Arc<AtomicBool>,
         pace: Arc<Pace>,

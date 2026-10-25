@@ -4,6 +4,7 @@ use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::message::MessageReader;
 use bevy::ecs::query::{Changed, With};
+use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy::input::ButtonInput;
@@ -13,6 +14,7 @@ use bevy::math::Vec2;
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window};
+use campfire_host::ReportCamera;
 
 use crate::input_map::{Act, InputMap};
 use crate::view::ViewSystems;
@@ -27,11 +29,18 @@ use crate::view::scene_lights::EXPOSURE;
 /// it, a drag of the middle button pans it, keeping the ground it grabbed under the cursor, as an
 /// editor's and an RTS's do, and with the orbit's modifiers orbits it, turning and tilting; a
 /// click of the middle button or the reset chord sets it back. It starts over the middle of the
-/// map's heightmap, or the origin, and stays over the heightmap. The window keeps the cursor
-/// within it while it has the focus, so the cursor reaches the edges that scroll, and lets it go
-/// when it loses the focus.
+/// map's heightmap, or the origin, or where a replayed report's camera stood, `start`, and stays
+/// over the heightmap. The window keeps the cursor within it while it has the focus, so the
+/// cursor reaches the edges that scroll, and lets it go when it loses the focus.
 #[derive(Debug)]
-pub(crate) struct PlayerCameraPlugin;
+pub(crate) struct PlayerCameraPlugin {
+    pub(crate) start: Option<ReportCamera>,
+}
+
+/// Where a replayed report's camera stood, where the player's starts (08-sessions.md, The client
+/// opens a report).
+#[derive(Resource, Debug)]
+struct CameraStart(ReportCamera);
 
 /// The primary window and its cursor, in a frame the window changed.
 type FocusChanged<'w, 's> = Query<
@@ -46,6 +55,9 @@ const PIXELS_PER_NOTCH: f32 = 50.0;
 
 impl Plugin for PlayerCameraPlugin {
     fn build(&self, app: &mut App) {
+        if let Some(start) = self.start {
+            app.insert_resource(CameraStart(start));
+        }
         app.add_systems(Startup, Self::spawn);
         app.add_systems(
             Update,
@@ -60,7 +72,7 @@ impl Plugin for PlayerCameraPlugin {
 impl PlayerCameraPlugin {
     fn spawn(
         (load, heights): (Res<'_, ClientLoad>, Option<Res<'_, GroundHeights>>),
-        input: Res<'_, InputMap>,
+        (input, start): (Res<'_, InputMap>, Option<Res<'_, CameraStart>>),
         mut commands: Commands<'_, '_>,
     ) {
         let file = load.camera.unwrap_or(CameraRig::DEFAULT);
@@ -74,7 +86,10 @@ impl PlayerCameraPlugin {
             ]
         });
         let pivot = bounds.map_or(Vec2::ZERO, |[least, most]| (least + most) / 2.0);
-        let rig = CameraRig::new(file, pivot, bounds).with_press(input.press());
+        let mut rig = CameraRig::new(file, pivot, bounds).with_press(input.press());
+        if let Some(CameraStart(start)) = start.as_deref() {
+            rig.put(start);
+        }
         // No tonemapping: the default one needs lookup tables the client does not build with. With
         // none, Bevy dithers nothing, so the dither its camera requires goes too.
         commands.spawn((

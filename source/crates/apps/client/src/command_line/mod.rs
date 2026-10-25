@@ -1,9 +1,9 @@
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
+use std::path::{self, Path, PathBuf};
 
-use campfire_common::{DeclaredName, MapName, PlayerSlot};
-use campfire_host::{JoinRole, OrderFile, PlayerSlotBotArg};
+use campfire_common::{DeclaredName, MapName, PlayerSlot, Tick};
+use campfire_host::{JoinRole, OrderFile, PlayerSlotBotArg, ReportCamera, ReportDir};
 use campfire_mode::{OptionValue, PlayerSlotPick};
 use campfire_net_core::TlsKey;
 use campfire_package::ModePackages;
@@ -17,7 +17,8 @@ mod error;
 
 /// What the command line names: the orders file a bot plays, the player's key file, whether the
 /// player plays or watches and the teams it watches, the mode to play and its map, and the server:
-/// as its listing gives it, or a local one, each with the data directory.
+/// as its listing gives it, a local one, or a local one that replays a report, each with the data
+/// directory; a report names the mode, the map and the role itself.
 #[derive(Debug)]
 pub(crate) struct Args {
     pub(crate) bot: Option<OrderFile>,
@@ -56,14 +57,27 @@ pub(crate) enum PlayedServer {
         player_slot_picks: Vec<PlayerSlotPick>,
         data: PathBuf,
     },
+    /// A local server that replays the report `report` through the tick `through`, its client
+    /// watching with its camera where the report's stood, `camera`, its data in the data
+    /// directory `data`, whose server's key signed the report's log (08-sessions.md, The client
+    /// opens a report).
+    Replay {
+        report: ReportDir,
+        through: Tick,
+        camera: ReportCamera,
+        data: PathBuf,
+    },
 }
 
 /// Joins a session on a server, or plays a mode alone on a local server.
 #[derive(Debug, Parser)]
 #[command(
     version,
+    args_conflicts_with_subcommands = true,
+    subcommand_negates_reqs = true,
     override_usage = "campfire-client [OPTIONS] <MODE> <ADDRESS> <TLS_KEY> <SERVER_KEY> <TICK_HZ>\n       \
-                      campfire-client --local --data <DIRECTORY> [OPTIONS] <MODE>"
+                      campfire-client --local --data <DIRECTORY> [OPTIONS] <MODE>\n       \
+                      campfire-client report [--data <DIRECTORY>] <REPORT>"
 )]
 pub(crate) struct CommandLine {
     /// Plays the orders file's script as a bot, with no window
@@ -128,9 +142,28 @@ pub(crate) struct CommandLine {
     #[arg(long, value_name = "NAME")]
     map: Option<MapName>,
     /// The mode's package directory
-    mode: PathBuf,
+    #[arg(required = true)]
+    mode: Option<PathBuf>,
     #[command(flatten)]
     remote: Option<Remote>,
+    #[command(subcommand)]
+    open: Option<Open>,
+}
+
+/// What the client opens besides a session it joins or plays.
+#[derive(Debug, clap::Subcommand)]
+enum Open {
+    /// Opens a report the client wrote: a local server replays its log through its tick and holds
+    /// there paused, the client watching every unit with its camera where the report's stood; the
+    /// mode and the map are the report's (08-sessions.md, The client opens a report)
+    Report {
+        /// The data directory, whose server's key signed the report's log; the one that holds
+        /// the report when none is given
+        #[arg(long, value_name = "DIRECTORY")]
+        data: Option<PathBuf>,
+        /// The report's folder, as the client wrote it in its data directory's `reports`
+        report: PathBuf,
+    },
 }
 
 /// A server elsewhere, as its listing gives it: required unless `--local` is given, and refused
@@ -155,6 +188,9 @@ impl TryFrom<CommandLine> for Args {
     type Error = ArgsError;
 
     fn try_from(line: CommandLine) -> Result<Self, ArgsError> {
+        if let Some(Open::Report { data, report }) = line.open {
+            return Self::of_report(&report, data);
+        }
         let role = if line.spectate {
             RoleArg::Watch { teams: line.watch }
         } else {
@@ -187,10 +223,51 @@ impl TryFrom<CommandLine> for Args {
             bot: line.bot.map(OrderFile::from),
             role,
             key: line.key,
-            mode: line.mode,
+            mode: line
+                .mode
+                .expect("clap takes a mode unless the line opens a report"),
             map: line.map,
             server,
         })
+    }
+}
+
+impl Args {
+    /// What a line that opens the report `report` names: the report's mode and map, its client
+    /// watching as a new key, its data directory `data`, or the one that holds the report, two
+    /// folders up, as a client writes its reports into its data directory's `reports`. An error
+    /// for a report whose path does not resolve, whose facts do not read, or that no data
+    /// directory holds.
+    fn of_report(report: &Path, data: Option<PathBuf>) -> Result<Self, ArgsError> {
+        let report = path::absolute(report).map_err(ArgsError::ReportPath)?;
+        let held = report.parent().and_then(Path::parent).map(Path::to_owned);
+        let data = data.or(held).ok_or(ArgsError::ReportData)?;
+        let report = ReportDir::at(report);
+        let facts = report.read_facts().map_err(ArgsError::Report)?;
+        Ok(Self {
+            bot: None,
+            role: RoleArg::Watch { teams: Vec::new() },
+            key: None,
+            mode: facts.mode_dir,
+            map: Some(facts.map),
+            server: PlayedServer::Replay {
+                report,
+                through: facts.tick,
+                camera: facts.camera,
+                data,
+            },
+        })
+    }
+}
+
+impl PlayedServer {
+    /// Where the window's camera starts: a replayed report's, else where the package's camera
+    /// file starts it.
+    pub(crate) const fn camera(&self) -> Option<&ReportCamera> {
+        match self {
+            Self::Replay { camera, .. } => Some(camera),
+            Self::Remote { .. } | Self::Local { .. } => None,
+        }
     }
 }
 

@@ -152,7 +152,7 @@ errors = ["ERROR", "panicked at", "error["]
 steps = [{ cargo = "run --profile checks -p campfire-zero-hour-check", args = true }]
 
 # A report's replay by the verifier: its argument is the report's folder, then its own options;
-# it prints the table of the report's tick (bug-reports.md, A report replays to its tick).
+# it prints the table of the report's tick (02-engine-core.md, A report replays to its tick).
 [workspace.metadata.drive.commands.report]
 errors = ["ERROR", "panicked at", "error["]
 steps = [

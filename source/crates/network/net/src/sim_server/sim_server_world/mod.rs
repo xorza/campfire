@@ -13,6 +13,7 @@ use tracing::{Span, error, info_span};
 
 use crate::sim_server::door::Door;
 use crate::sim_server::lobby::Lobby;
+use crate::sim_server::pending_replay::PendingReplay;
 use crate::sim_server::pending_restore::PendingRestore;
 use campfire_host::Checkpoints;
 use campfire_host::Fault;
@@ -56,13 +57,14 @@ pub trait SimServerWorld {
     fn session_end(&self, stop: StopRequest) -> Option<SessionEnd>;
 }
 
-/// The session a server opens: a new one, its lobby open to its players, or the one a stop
-/// ended, to restore. A session past the restore window, or one that ended, has its log
-/// published instead, and a new one opens.
+/// The session a server opens: a new one, its lobby open to its players, the one a stop ended,
+/// to restore, or a published log, to replay. A session past the restore window, or one that
+/// ended, has its log published instead, and a new one opens.
 #[derive(Debug)]
 pub enum SessionOpening {
     New(Box<Lobby>),
     Restored(Box<PendingRestore>),
+    Replayed(Box<PendingReplay>),
 }
 
 impl SessionOpening {
@@ -71,6 +73,7 @@ impl SessionOpening {
         match self {
             Self::New(lobby) => lobby.terms(),
             Self::Restored(restore) => restore.session.terms(),
+            Self::Replayed(replay) => &replay.log.header().terms,
         }
     }
 
@@ -85,6 +88,7 @@ impl SessionOpening {
         match self {
             Self::New(lobby) => lobby.packages(),
             Self::Restored(restore) => &restore.packages,
+            Self::Replayed(replay) => &replay.packages,
         }
     }
 
@@ -93,6 +97,7 @@ impl SessionOpening {
         match self {
             Self::New(lobby) => lobby.server(),
             Self::Restored(restore) => &restore.server,
+            Self::Replayed(replay) => &replay.server,
         }
     }
 }
@@ -114,6 +119,10 @@ impl SimServerWorld for World {
             SessionOpening::Restored(restore) => {
                 self.insert_resource(*restore);
                 ServerPhase::Restoring
+            }
+            SessionOpening::Replayed(replay) => {
+                self.insert_resource(*replay);
+                ServerPhase::Replaying
             }
         };
         phase.go(self);

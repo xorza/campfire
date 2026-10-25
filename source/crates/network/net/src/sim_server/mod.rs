@@ -10,6 +10,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use bevy_state::app::AppExtStates;
 use bevy_state::condition::in_state;
+use bevy_state::state::State;
 use bevy_time::{Real, Time, Virtual};
 use campfire_common::ErrorReport;
 use campfire_common::{PlayerSlot, Tick};
@@ -53,8 +54,10 @@ use crate::sim_server::door::Door;
 use crate::sim_server::kind_shows::{KindShows, ShowSystems};
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::offering::{Dismissing, Offered, Offering};
+use crate::sim_server::pending_replay::{PendingReplay, ReplayEnd};
 use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::receipts::Receipts;
+use crate::sim_server::replay_door::ReplayDoor;
 use crate::sim_server::server_match::ServerMatch;
 use crate::sim_server::sim_server_world::SimServerWorld;
 use crate::sim_server::spectators::Spectators;
@@ -77,8 +80,10 @@ pub(crate) mod door;
 pub(crate) mod kind_shows;
 pub(crate) mod lobby;
 pub(crate) mod offering;
+pub(crate) mod pending_replay;
 pub(crate) mod pending_restore;
 pub(crate) mod receipts;
+pub(crate) mod replay_door;
 pub(crate) mod server_app_setup;
 pub(crate) mod server_match;
 pub(crate) mod sim_server_plugins;
@@ -134,6 +139,7 @@ impl Plugin for SimServerPlugin {
             Update,
             (
                 PendingRestore::run.run_if(in_state(ServerPhase::Restoring)),
+                PendingReplay::run.run_if(resource_exists::<PendingReplay>),
                 Spectators::choose_teams,
             )
                 .chain()
@@ -160,6 +166,19 @@ impl Plugin for SimServerPlugin {
                 .after(Lobby::start_when_full)
                 .distributive_run_if(in_state(ServerPhase::Running))
                 .distributive_run_if(session_running)
+                .in_set(ServerFrameSystems::Door),
+        );
+        app.add_systems(
+            Update,
+            (
+                Offering::offer_links::<ReplayDoor>,
+                ReplayDoor::take_joins,
+                ReplayEnd::hold,
+            )
+                .chain()
+                .after(Door::watch)
+                .run_if(in_state(ServerPhase::Replaying))
+                .run_if(resource_exists::<ReplayDoor>)
                 .in_set(ServerFrameSystems::Door),
         );
         app.add_systems(
@@ -216,10 +235,10 @@ impl Plugin for SimServerPlugin {
         app.add_systems(
             FixedUpdate,
             (
-                BotDriver::drive,
+                BotDriver::drive.run_if(resource_exists::<BotDriver>),
                 run_sim_tick,
                 // Right after the tick, before any entry of the next.
-                Self::at_boundary,
+                Self::at_boundary.run_if(in_state(ServerPhase::Running)),
                 report_deaths,
                 report_end,
             )
@@ -240,9 +259,7 @@ impl Plugin for SimServerPlugin {
         );
         app.configure_sets(
             FixedUpdate,
-            SimTickSystems
-                .run_if(in_state(ServerPhase::Running))
-                .run_if(sim_tick_due),
+            SimTickSystems.run_if(match_runs).run_if(sim_tick_due),
         );
         app.configure_sets(
             FixedUpdate,
@@ -442,15 +459,24 @@ fn report_dropped_time(real: Res<'_, Time<Real>>, virtual_time: Res<'_, Time<Vir
     }
 }
 
-/// The running match's clock has reached its first tick and its session has not ended, so this
-/// fixed tick runs a sim tick. A condition's parameters are checked whatever the conditions
-/// before it give, so a phase without a match reads none.
+/// The server runs a match: a live one, or the replay of a published log.
+fn match_runs(phase: Option<Res<'_, State<ServerPhase>>>) -> bool {
+    phase.is_some_and(|phase| matches!(phase.get(), ServerPhase::Running | ServerPhase::Replaying))
+}
+
+/// The running match's clock has reached its first tick, and its session has not ended and runs
+/// on, as a replay's does to its log's end, so this fixed tick runs a sim tick. A condition's
+/// parameters are checked whatever the conditions before it give, so a phase without a match
+/// reads none.
 fn sim_tick_due(
     timeline: Res<'_, LocalTimeline>,
     clock: Option<Res<'_, MatchClock>>,
     session: Option<Res<'_, Session>>,
 ) -> bool {
-    clock.is_some_and(|clock| clock.sim_tick(timeline.tick()).is_some()) && session_running(session)
+    let runs_on = session.as_ref().is_some_and(|session| session.runs_on());
+    clock.is_some_and(|clock| clock.sim_tick(timeline.tick()).is_some())
+        && runs_on
+        && session_running(session)
 }
 
 /// The running match's session has not ended, which it may within a frame; none before the

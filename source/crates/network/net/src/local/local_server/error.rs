@@ -1,3 +1,5 @@
+use campfire_common::Tick;
+use campfire_runner::TermsError;
 use campfire_store::DataDirError;
 use thiserror::Error;
 
@@ -28,4 +30,17 @@ pub enum LocalServerError {
     /// bot's name.
     #[error("a bot")]
     Bots(#[source] ServerBotsError),
+    /// The report's log was signed by another server's key than this data directory's, which no
+    /// client pinning this server takes.
+    #[error("another server's key signed the report's log")]
+    OtherServer,
+    /// The report names a tick its log did not run.
+    #[error("the report's tick {through} is not in its log, which ends before tick {end}")]
+    PastLog { through: Tick, end: Tick },
+    /// The report's log reveals no seed, as a log published so far or whole does.
+    #[error("the report's log reveals no seed")]
+    Unrevealed,
+    /// The report's terms are not those the mode's rules admit, as a mode changed since may not.
+    #[error("the report's terms")]
+    Terms(#[source] TermsError),
 }

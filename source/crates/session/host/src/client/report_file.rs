@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// The facts of a player's report, its `report.toml`: the engine release, the mode, the directory
 /// the client read it from, which a replay of the report loads, the map, the session, the last
 /// tick the client ran, whose end it drew, the player slot it plays in, the units it selected,
-/// its camera, and its window's size in pixels (bug-reports.md, A report is a folder of plain
+/// its camera, and its window's size in pixels (02-engine-core.md, A report is a folder of plain
 /// files).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -33,7 +33,7 @@ impl ReportFile {
 
 /// A report's camera: its rig's pivot on the ground, yaw and pitch in radians, and height,
 /// which put it back exactly, and for a reader its place and its forward in the world
-/// (bug-reports.md, The camera is the rig's state).
+/// (02-engine-core.md, The camera is the rig's state).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReportCamera {

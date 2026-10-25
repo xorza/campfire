@@ -35,7 +35,7 @@ pub struct KeysFile {
     pub save: Vec<Chord>,
     pub load: Vec<Chord>,
     /// The chords that write a report of what the client shows, for a bug the player sees
-    /// (bug-reports.md, A report is a folder of plain files).
+    /// (02-engine-core.md, A report is a folder of plain files).
     pub report: Vec<Chord>,
     /// The chords held that scroll the camera, zoom it and turn it, and the ones that set it
     /// back.

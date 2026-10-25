@@ -19,7 +19,7 @@ use crate::report_replay::error::ReportReplayError;
 pub(crate) mod error;
 
 /// A report as its replay reads it: its facts, its log, and the mode the facts name, loaded from
-/// the directory the client read it from (bug-reports.md, A report replays to its tick).
+/// the directory the client read it from (02-engine-core.md, A report replays to its tick).
 #[derive(Debug)]
 pub(crate) struct ReportReplay {
     facts: ReportFile,
@@ -89,9 +89,9 @@ impl ReportReplay {
     }
 
     /// Replays the log through the report's tick, the state its client drew, and tables the
-    /// units there, those of `probe` when given, else all, with `probe`'s tables of each period before
-    /// it; an error when the log does not reach the tick, does not replay on the mode, or the
-    /// probe names what the match has not.
+    /// units there, those of `probe` when given, else all, with `probe`'s tables of each period
+    /// before it; an error when the log does not reach the tick, does not replay on the mode, or
+    /// the probe names what the match has not.
     pub(crate) fn tables(
         self,
         probe: Option<&ProbeSpec>,

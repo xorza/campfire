@@ -7,12 +7,15 @@ use bevy::app::App;
 use bevy::ecs::entity::Entity;
 use campfire_common::{ErrorReport, ExitStatus};
 use campfire_host::{ClientDir, Hosting, JoinRole, Os, Pace, PlayerSlotBotArg, ServerPin};
-use campfire_mode::{OptionValue, PlayerSlotPick};
-use campfire_net::{LocalPacePlugin, LocalServer, LocalServerSetup, UdpLinks};
+use campfire_net::{
+    LocalLobby, LocalPacePlugin, LocalReplay, LocalServer, LocalServerSetup, LocalSession, UdpLinks,
+};
 use campfire_net_endpoint::Endpoint;
 use campfire_net_socket::ClientSocket;
 use campfire_package::ModePackages;
+use campfire_protocol::SessionLog;
 use campfire_sim::MatchRate;
+use campfire_store::InputFile;
 use tracing::error;
 
 use crate::command_line::{Args, PlayedServer};
@@ -32,20 +35,6 @@ pub(crate) enum Connection {
         data: Arc<ClientDir>,
         pace: Arc<Pace>,
     },
-}
-
-/// What a local server starts with: the client's data directory, the mode, the bots, the values the
-/// player picks of the mode's options and of its player slots' choices, whether the client plays or
-/// watches, and the pace both ends follow.
-#[derive(Debug, Clone, Copy)]
-struct LocalStart<'a> {
-    data: &'a ClientDir,
-    packages: &'a Arc<ModePackages>,
-    bots: &'a [PlayerSlotBotArg],
-    options: &'a [OptionValue],
-    player_slot_picks: &'a [PlayerSlotPick],
-    role: JoinRole,
-    pace: &'a Arc<Pace>,
 }
 
 impl Connection {
@@ -80,19 +69,73 @@ impl Connection {
                 data,
             } => {
                 let data = Self::open_dir(data)?;
-                let pace = Arc::new(Pace::default());
-                let server = Self::start_local(LocalStart {
-                    data: &data,
-                    packages,
+                let bots = bots
+                    .iter()
+                    .map(PlayerSlotBotArg::read)
+                    .collect::<Result<_, _>>()
+                    .map_err(|error| {
+                        error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");
+                        ExitCode::from(ExitStatus::Failure)
+                    })?;
+                let session = LocalSession::New(LocalLobby {
                     bots,
-                    options,
-                    player_slot_picks,
                     role,
-                    pace: &pace,
+                    options: options.clone(),
+                    player_slot_picks: player_slot_picks.clone(),
+                });
+                Self::open_local(&data, packages, session)
+            }
+            PlayedServer::Replay {
+                report,
+                through,
+                data,
+                ..
+            } => {
+                let data = Self::open_dir(data)?;
+                let bytes =
+                    InputFile::read(&report.log(), SessionLog::MAX_FILE_LEN).map_err(|error| {
+                        error!(error = %ErrorReport::of(&error), "the report's log does not read");
+                        ExitCode::from(ExitStatus::Failure)
+                    })?;
+                let log = SessionLog::decode(&bytes).map_err(|error| {
+                    error!(report = %report.path().display(), error = %ErrorReport::of(&error), "the report's log does not decode");
+                    ExitCode::from(ExitStatus::Failure)
                 })?;
-                Ok(Self::Local { server, data, pace })
+                let session = LocalSession::Replay(Box::new(LocalReplay {
+                    log,
+                    through: *through,
+                }));
+                Self::open_local(&data, packages, session)
             }
         }
+    }
+
+    /// The local server of the mode `packages` holds, opening `session`, its data in the
+    /// client's data directory `data`, at a pace of its own; the exit code when it does not start.
+    fn open_local(
+        data: &Arc<ClientDir>,
+        packages: &Arc<ModePackages>,
+        session: LocalSession,
+    ) -> Result<Self, ExitCode> {
+        let pace = Arc::new(Pace::default());
+        let reports = data.layout().clone();
+        let server = LocalServer::start(LocalServerSetup {
+            packages: Arc::clone(packages),
+            data: reports.local_server_dir(),
+            session,
+            pace: Arc::clone(&pace),
+            os: Os::SYSTEM,
+            reports,
+        })
+        .map_err(|error| {
+            error!(error = %ErrorReport::of(&error), "the local server does not start");
+            ExitCode::from(ExitStatus::Failure)
+        })?;
+        Ok(Self::Local {
+            server,
+            data: Arc::clone(data),
+            pace,
+        })
     }
 
     /// The client's data directory, if it has one.
@@ -163,44 +206,5 @@ impl Connection {
             }
         }
         Ok(())
-    }
-
-    /// Starts the local server of `start`'s mode, its data in the client's data directory; the
-    /// exit code when it does not start.
-    fn start_local(start: LocalStart<'_>) -> Result<LocalServer, ExitCode> {
-        let LocalStart {
-            data,
-            packages,
-            bots,
-            options,
-            player_slot_picks,
-            role,
-            pace,
-        } = start;
-        let slots = bots
-            .iter()
-            .map(PlayerSlotBotArg::read)
-            .collect::<Result<_, _>>()
-            .map_err(|error| {
-                error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");
-                ExitCode::from(ExitStatus::Failure)
-            })?;
-        let reports = data.layout().clone();
-        let data = reports.local_server_dir();
-        LocalServer::start(LocalServerSetup {
-            packages: Arc::clone(packages),
-            data,
-            bots: slots,
-            options: options.to_vec(),
-            player_slot_picks: player_slot_picks.to_vec(),
-            role,
-            pace: Arc::clone(pace),
-            os: Os::SYSTEM,
-            reports,
-        })
-        .map_err(|error| {
-            error!(error = %ErrorReport::of(&error), "the local server does not start");
-            ExitCode::from(ExitStatus::Failure)
-        })
     }
 }

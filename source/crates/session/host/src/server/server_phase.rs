@@ -16,6 +16,9 @@ pub enum ServerPhase {
     Restoring,
     /// The match runs.
     Running,
+    /// The match replays a published log to its viewers, as a local server opens a player's
+    /// report (08-sessions.md, The client opens a report).
+    Replaying,
 }
 
 impl ServerPhase {

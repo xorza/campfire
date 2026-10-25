@@ -22,13 +22,16 @@ pub use crate::close_code::CloseCode;
 pub use crate::events::link_lost::{LinkLossCause, LinkLost};
 pub use crate::local::local_link::LocalLink;
 pub use crate::local::local_server::error::LocalServerError;
-pub use crate::local::local_server::{LocalServer, LocalServerSetup};
+pub use crate::local::local_server::{
+    LocalLobby, LocalReplay, LocalServer, LocalServerSetup, LocalSession,
+};
 pub use crate::local_pace::LocalPacePlugin;
 pub use crate::net_protocol::{InputChannel, NetProtocolPlugin};
 pub use crate::paced_runner::PacedRunnerPlugin;
 pub use crate::sim_client::{LeaveRequest, PendingOrders, PendingSaves, SimClientPlugin};
 pub use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
 pub use crate::sim_server::lobby::{Lobby, LobbyOpening, LobbySetup, LobbyStart};
+pub use crate::sim_server::pending_replay::PendingReplay;
 pub use crate::sim_server::pending_restore::{PendingRestore, UncheckedRestore};
 pub use crate::sim_server::server_app_setup::{ServerAppSetup, ServerRun};
 pub use crate::sim_server::sim_server_plugins::SimServerPlugins;

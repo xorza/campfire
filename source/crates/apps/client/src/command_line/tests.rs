@@ -1,8 +1,10 @@
 use std::error::Error;
 use std::ffi::OsString;
 
-use campfire_common::NotHex;
-use campfire_host::{BotArg, PlayerSlotBotArgError};
+use campfire_common::{NotHex, Version};
+use campfire_host::{BotArg, ClientLayout, PlayerSlotBotArgError, ReportFile};
+use campfire_protocol::SessionId;
+use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 use clap::error::ErrorKind;
 
@@ -137,13 +139,77 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
             &["mode", "10.0.0.2:4433"],
             ErrorKind::MissingRequiredArgument,
         ),
+        // A word past the server's is no subcommand the client opens.
         (
             &["mode", "10.0.0.2:4433", &tls_key, key, "30", "x"],
-            ErrorKind::UnknownArgument,
+            ErrorKind::ArgumentConflict,
         ),
+        // A report takes its folder, and no option of a session's.
+        (&["report"], ErrorKind::MissingRequiredArgument),
+        (&["report", "r", "--local"], ErrorKind::UnknownArgument),
+        (&["report", "--map", "3v3", "r"], ErrorKind::UnknownArgument),
     ] {
         assert_eq!(refused(args).kind(), kind, "{args:?}");
     }
+}
+
+#[test]
+fn a_report_names_its_mode_its_map_and_its_data_directory() {
+    // A report the client wrote into its data directory's `reports`, of a player of the lane.
+    let test_dir = TestDir::new();
+    let layout = ClientLayout::at(test_dir.path("client"));
+    let session = SessionId::new([5; 32]);
+    let dir = layout
+        .create_report_dir(session, Tick::new(39))
+        .unwrap()
+        .dir;
+    let camera = ReportCamera {
+        pivot: [3.5, -2.0],
+        yaw: 0.25,
+        pitch: 1.0,
+        height: 24.0,
+        place: [3.5, 24.0, 12.0],
+        forward: [0.0, -0.84, -0.54],
+    };
+    let facts = ReportFile {
+        release: Version::ENGINE,
+        mode: TestMode::Lane.packages().manifest().header.name.clone(),
+        mode_dir: TestMode::Lane.dir(),
+        map: TestMode::Lane.map(),
+        session,
+        tick: Tick::new(39),
+        player_slot: Some(PlayerSlot::new(0)),
+        selected: Vec::new(),
+        camera,
+        window: [1920, 1080],
+    };
+    dir.write_facts(&facts).unwrap();
+    // It names the mode and the map its facts hold, a watching client of a new key, and a local
+    // server of the data directory that holds it, which replays through its tick.
+    let path = dir.path().to_str().unwrap();
+    let opened = read(&["report", path]);
+    assert_eq!(
+        (opened.mode, opened.map, opened.key, opened.role),
+        (
+            TestMode::Lane.dir(),
+            Some(TestMode::Lane.map()),
+            None,
+            RoleArg::Watch { teams: Vec::new() }
+        )
+    );
+    assert_eq!(opened.server.camera(), Some(&camera));
+    let PlayedServer::Replay { through, data, .. } = opened.server else {
+        panic!("a replay");
+    };
+    assert_eq!((through, data), (Tick::new(39), test_dir.path("client")));
+    // A data directory the line names is the one it takes; a report of no facts is refused.
+    let named = read(&["report", "--data", "elsewhere", path]);
+    let PlayedServer::Replay { data, .. } = named.server else {
+        panic!("a replay");
+    };
+    assert_eq!(data, PathBuf::from("elsewhere"));
+    let missing = line(&["report", test_dir.path("nothing").to_str().unwrap()]).unwrap();
+    assert!(matches!(Args::try_from(missing), Err(ArgsError::Report(_))));
 }
 
 #[test]
@@ -259,10 +325,10 @@ fn a_spectator_watches_a_remote_or_a_local_server_and_names_teams_only_as_one() 
     };
     assert_eq!(watcher.role, RoleArg::Watch { teams: Vec::new() });
     assert_eq!(bots[0].player_slot, PlayerSlot::new(0));
-    assert_eq!(
-        Args::try_from(line(&local).unwrap()).unwrap_err(),
-        ArgsError::ClientPlayerSlot
-    );
+    assert!(matches!(
+        Args::try_from(line(&local).unwrap()),
+        Err(ArgsError::ClientPlayerSlot)
+    ));
     let team = refused(&[&["--spectate", "--watch", "west"], &local[..]].concat());
     assert_eq!(team.kind(), ErrorKind::ArgumentConflict);
 }

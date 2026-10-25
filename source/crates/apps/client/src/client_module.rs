@@ -12,7 +12,7 @@ use bevy::window::{Window, WindowPlugin};
 use campfire_app_threads::OneThreadPlugins;
 use campfire_common::EnumAll;
 use campfire_declarations::CapabilitySet;
-use campfire_host::{ClientLayout, Pace};
+use campfire_host::{ClientLayout, Pace, ReportCamera};
 use campfire_net::PacedRunnerPlugin;
 use campfire_package::ModePackages;
 use campfire_sim::Capability;
@@ -79,8 +79,8 @@ pub(crate) enum ClientModule {
 
 /// The client's own end: a bot's, whose script the sim client plays, with no window, or a
 /// window's, which draws the match, of a match on a local server whose pace its keys change, or
-/// of a remote one, with the client's data directory when it keeps one, and the directory of
-/// the mode it plays.
+/// of a remote one, with the client's data directory when it keeps one, the directory of the
+/// mode it plays, and a replayed report's camera, where the window's starts.
 #[derive(Debug)]
 pub(crate) enum ClientEnd {
     Bot,
@@ -88,17 +88,20 @@ pub(crate) enum ClientEnd {
         local: Option<Arc<Pace>>,
         data: Option<ClientLayout>,
         mode_dir: PathBuf,
+        camera: Option<ReportCamera>,
     },
 }
 
 /// What the modules of a window's end read as they add their plugins: the mode's packages and
-/// directory, the pace of a local match, and the client's data directory.
+/// directory, the pace of a local match, the client's data directory, and a replayed report's
+/// camera.
 #[derive(Debug)]
 struct WindowCx<'a> {
     packages: &'a Arc<ModePackages>,
     mode_dir: &'a Path,
     local: Option<&'a Arc<Pace>>,
     data: Option<&'a ClientLayout>,
+    camera: Option<&'a ReportCamera>,
 }
 
 /// What a window's end keeps of its match, which some modules need: no data directory, the
@@ -192,7 +195,7 @@ impl ClientEnd {
     /// window's end in the mode of `packages`, in the list's order, as Bevy builds its asset
     /// sources as its asset plugin is added, so the window's source goes first.
     pub(crate) fn add(self, app: &mut App, packages: &Arc<ModePackages>) {
-        let (local, data, mode_dir) = match self {
+        let (local, data, mode_dir, camera) = match self {
             Self::Bot => {
                 app.add_plugins((
                     OneThreadPlugins,
@@ -206,7 +209,8 @@ impl ClientEnd {
                 local,
                 data,
                 mode_dir,
-            } => (local, data, mode_dir),
+                camera,
+            } => (local, data, mode_dir, camera),
         };
         let keeps = match (&local, &data) {
             (Some(_), _) => WindowKeeps::Local,
@@ -218,6 +222,7 @@ impl ClientEnd {
             mode_dir: &mode_dir,
             local: local.as_ref(),
             data: data.as_ref(),
+            camera: camera.as_ref(),
         };
         let capabilities = packages.manifest().capabilities;
         for module in ClientModule::of(keeps, capabilities) {
@@ -277,7 +282,9 @@ impl ClientModule {
                 app.add_plugins(AreaViewPlugin);
             }
             Self::PlayerCamera => {
-                app.add_plugins(PlayerCameraPlugin);
+                app.add_plugins(PlayerCameraPlugin {
+                    start: cx.camera.copied(),
+                });
             }
             Self::UnitPicking => {
                 app.add_plugins(UnitPickingPlugin);
@@ -358,6 +365,7 @@ mod tests {
             mode_dir: &TestMode::Lane.dir(),
             local: Some(&pace),
             data: Some(&data),
+            camera: None,
         };
         for module in ClientModule::ALL {
             if module != ClientModule::Window {

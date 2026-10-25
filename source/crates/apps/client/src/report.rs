@@ -28,7 +28,7 @@ use crate::view::camera_rig::CameraRig;
 
 /// The report chord, by the key map: it writes a report of the frame the client draws into the
 /// client's data directory, its facts and its screenshot, and asks a local match's keys for its
-/// server's log (bug-reports.md, A report is a folder of plain files). As its own resource, what
+/// server's log (02-engine-core.md, A report is a folder of plain files). As its own resource, what
 /// every report of the client holds the same: the data directory it writes into, the mode's name
 /// and directory, and the map's name.
 #[derive(Resource, Debug, Clone)]

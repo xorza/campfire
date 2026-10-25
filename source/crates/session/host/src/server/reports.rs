@@ -12,7 +12,7 @@ use crate::messages::save_command::ReportKey;
 
 /// A local server's reports of its log, each a player asked of the tick its client drew: the
 /// data directory of the client whose reports they are, the ticks the log has yet to reach, and
-/// the reports whose records the journal has yet to sync (bug-reports.md, The log is the local
+/// the reports whose records the journal has yet to sync (08-sessions.md, The log is the local
 /// server's, published at the report's tick).
 #[derive(Resource, Debug)]
 pub struct Reports {

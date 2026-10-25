@@ -1,19 +1,21 @@
+use std::convert::Infallible;
 use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use bevy_time::{Time, Virtual};
-use campfire_common::PlayerSlot;
+use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_log::LogEvent;
 use campfire_net_timeline::{Clock, LocalTimeline, TimelineRate};
 use campfire_package::ModePackages;
 use campfire_protocol::{ServerInput, ServerSeeds, SessionLog, SessionTerms};
-use campfire_runner::{CheckedTerms, Session, SessionSource};
+use campfire_runner::{CheckedTerms, Session, SessionSource, SessionWorld};
 use campfire_sim::MatchRate;
 
 use crate::sim_server::door::Door;
 use crate::sim_server::offering::Offering;
 use crate::sim_server::receipts::Receipts;
+use crate::sim_server::replay_door::ReplayDoor;
 use crate::sim_server::{FrameStart, SimServerPlugin, replayed};
 use campfire_host::BotDriver;
 use campfire_host::Checkpoints;
@@ -79,6 +81,19 @@ impl MatchSource<'_> {
             Self::Restored(restored) => restored.terms(),
         }
     }
+}
+
+/// What a replay of a published log begins from: the log, its seeds, which it reveals, the tick
+/// it runs through before the match's clock starts, its mode's packages, the server's setup, and
+/// the log's terms as the mode's rules checked them.
+#[derive(Debug)]
+pub(crate) struct ReplayBegin<'a> {
+    pub(crate) log: SessionLog,
+    pub(crate) seeds: ServerSeeds,
+    pub(crate) through: Tick,
+    pub(crate) packages: &'a ModePackages,
+    pub(crate) server: &'a ServerSetup,
+    pub(crate) checked: CheckedTerms,
 }
 
 /// The most ticks a server frame runs after a stall, the time past them dropped and logged, so a
@@ -196,6 +211,49 @@ impl ServerMatch {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Begins the replay of `begin.log` (08-sessions.md, The client opens a report): its session
+    /// a verifier's, which logs and signs nothing, replays it through tick `begin.through` before
+    /// the server's first frame, as a restore replays its log, and runs on from the next fixed
+    /// tick to the log's end, as `Session::runs_on` stops it there. Its door admits its one
+    /// spectator; no player and no bot plays, and no journal or checkpoint is kept.
+    pub(crate) fn begin_replay(
+        world: &mut World,
+        begin: ReplayBegin<'_>,
+    ) -> Result<(), MatchBeginError> {
+        let ReplayBegin {
+            log,
+            seeds,
+            through,
+            packages,
+            server,
+            checked,
+        } = begin;
+        assert!(
+            through < log.next_tick(),
+            "a replay runs through a tick its log ran, as a verifier runs no live tick"
+        );
+        let terms = log.header().terms.clone();
+        Self::take_terms(world, &terms);
+        let offering = Offering::new(terms, server);
+        let source = SessionSource {
+            log,
+            seeds,
+            packages,
+            checked,
+            signer: None,
+        };
+        Session::start(world, source).map_err(MatchBeginError::Start)?;
+        world
+            .replay_to(through.after(Ticks::ONE), |_| Ok::<(), Infallible>(()))
+            .unwrap_or_else(|never| match never {});
+        world.insert_resource(ReplayDoor::new(offering));
+        let next = world.resource::<Session>().next_tick();
+        let start = world.resource::<LocalTimeline>().tick() + 1;
+        world.insert_resource(MatchClock::new(start, next));
+        world.insert_resource(FrameStart(next));
         Ok(())
     }
 

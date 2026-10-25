@@ -3,7 +3,7 @@ use std::io::Cursor;
 use crate::error::PngError;
 
 /// The PNG format of an image of 8-bit RGBA pixels, as a report's screenshot writes it
-/// (bug-reports.md, The screenshot is the frame the window shows).
+/// (02-engine-core.md, The screenshot is the frame the window shows).
 #[derive(Debug)]
 pub struct Png;
 

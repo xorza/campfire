@@ -9,7 +9,7 @@ use crate::error::{ReportReadError, ReportWriteError};
 /// A report's folder in a client's data directory, `reports/<session id>-<tick>`, a later take
 /// of the tick's `-<take>` after it, and the files it holds: its facts, `report.toml`; its
 /// screenshot, `screenshot.png`; and a local match's log so far, `session.campfire-log`
-/// (bug-reports.md, A report is a folder of plain files).
+/// (02-engine-core.md, A report is a folder of plain files).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportDir {
     path: PathBuf,

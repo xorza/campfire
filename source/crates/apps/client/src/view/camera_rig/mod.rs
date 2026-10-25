@@ -143,7 +143,7 @@ impl CameraRig {
     }
 
     /// The rig as a report holds it, with the place and the forward of `placed`, the camera it
-    /// placed (bug-reports.md, The camera is the rig's state).
+    /// placed (02-engine-core.md, The camera is the rig's state).
     pub(crate) fn report(&self, placed: &Transform) -> ReportCamera {
         ReportCamera {
             pivot: self.pivot.to_array(),
@@ -153,6 +153,15 @@ impl CameraRig {
             place: placed.translation.to_array(),
             forward: placed.forward().to_array(),
         }
+    }
+
+    /// Puts the rig where the report's `camera` stood: its pivot, its yaw, its pitch and its
+    /// height, exactly as the report holds them (02-engine-core.md, The camera is the rig's state).
+    pub(crate) const fn put(&mut self, camera: &ReportCamera) {
+        self.pivot = Vec2::from_array(camera.pivot);
+        self.yaw = camera.yaw;
+        self.pitch = camera.pitch;
+        self.height = camera.height;
     }
 
     /// Its vertical field of view, in radians, on a screen `aspect` times as wide as tall.

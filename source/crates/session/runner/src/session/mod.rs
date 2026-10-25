@@ -208,6 +208,13 @@ impl Session {
             .map_or_else(|| self.log.next_tick(), LogReplay::next_tick)
     }
 
+    /// Whether the session runs another tick: one its replay holds, or a live one, which a
+    /// server's session alone runs; a verifier's stops at its log's end, as a local server's
+    /// replay of a report does (08-sessions.md, The client opens a report).
+    pub const fn runs_on(&self) -> bool {
+        self.replay.is_some() || matches!(self.role, SessionRole::Server { .. })
+    }
+
     /// Drops the replay once it reached the log's next tick, from where the session runs live.
     pub(crate) fn end_replay(&mut self) {
         if self
@@ -386,7 +393,7 @@ impl Session {
 
     /// The server seed of the log's last segment, which a published log reveals: at the session's
     /// end, or as a local server publishes the log so far into a player's report
-    /// (bug-reports.md, The log is the local server's, published at the report's tick).
+    /// (08-sessions.md, The log is the local server's, published at the report's tick).
     pub fn last_seed(&self) -> &ServerSeed {
         self.seeds
             .seed(self.log.segment())

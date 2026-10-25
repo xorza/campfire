@@ -59,6 +59,11 @@ fn the_camera_starts_at_its_most_height_back_along_its_pitch_looking_at_the_pivo
     );
     assert_eq!(report.place, eye.translation.to_array());
     assert_eq!(report.forward, eye.forward().to_array());
+    // A rig put where the report's stood is the turned one, and places the same eye.
+    let mut put = rig.clone();
+    put.put(&report);
+    assert_eq!(put, turned);
+    assert_eq!(put.transform(20.0), eye);
     // The default's view of old: 24 m up and 18 m back.
     let old = CameraRig::new(CameraRig::DEFAULT, Vec2::ZERO, None).transform(0.0);
     assert!(near(old.translation, Vec3::new(0.0, 24.0, 18.0)));

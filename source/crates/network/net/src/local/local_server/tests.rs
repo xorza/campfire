@@ -1,20 +1,24 @@
 //! A local server on its own thread, which a client app in the same process plays through
 //! in-process channels: it opens a session in its data directory, the client's player takes slot
 //! 0 and plays, saves and loads the save, the server starting again and the client taking its new
-//! link; once the server drops, the session ends and its log is published.
+//! link, and writes its log into a report; once the server drops, the session ends and its log is
+//! published. The report then opens on a local server of the same data directory, which replays
+//! it to its client watching.
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::local::local_server::{LocalServer, LocalServerSetup};
+use crate::local::local_server::{
+    LocalLobby, LocalReplay, LocalServer, LocalServerSetup, LocalSession,
+};
 use crate::sim_client::{PendingSaves, SimClientPlugin};
 use bevy_app::App;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_app_threads::OneThreadPlugins;
-use campfire_common::Ticks;
+use campfire_common::{Tick, Ticks};
 use campfire_host::ClientLayout;
 use campfire_host::Hosting;
 use campfire_host::JoinRole;
@@ -35,6 +39,7 @@ use campfire_runner::{Replay, SessionWorld, TermsError};
 use campfire_sim::{SimTick, SimWorld};
 use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
+use campfire_values::TeamSet;
 
 /// How long the client gets to join and play.
 const DEADLINE: Duration = Duration::from_secs(10);
@@ -50,10 +55,12 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let mut server = LocalServer::start(LocalServerSetup {
         packages: Arc::clone(&packages),
         data: test_dir.path("data"),
-        bots: Vec::new(),
-        options: Vec::new(),
-        player_slot_picks: Vec::new(),
-        role: JoinRole::Play,
+        session: LocalSession::New(LocalLobby {
+            bots: Vec::new(),
+            role: JoinRole::Play,
+            options: Vec::new(),
+            player_slot_picks: Vec::new(),
+        }),
         pace,
         os: Os {
             clock: UnixClock::manual(TestKey::NOW),
@@ -179,6 +186,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     drop(server);
     let stopped = ServerDir::open(&test_dir.path("data")).unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());
+    drop(stopped);
     let logs = test_dir.names("data/logs");
     assert_eq!(logs.len(), 1);
     let log = SessionLog::decode(&test_dir.read(format!("data/logs/{}", logs[0]))).unwrap();
@@ -191,7 +199,8 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     assert!(log.next_tick() > saves[0].tick);
     // The report's log is the session's so far: of its session, named with the tick reported,
     // through that tick at least, short of the published log's end, and of no result yet.
-    let report = SessionLog::decode(&report).unwrap();
+    let report_bytes = report;
+    let report = SessionLog::decode(&report_bytes).unwrap();
     assert_eq!(folder, format!("{}-{}", log.session_id(), tick.get()));
     assert_eq!(report.session_id(), log.session_id());
     assert!(report.next_tick() > tick);
@@ -209,4 +218,65 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         assert!(whole.run_tick().unwrap());
     }
     assert_eq!(whole.game().state_hash(), reported);
+
+    // A report of a tick five before the log's end opens on a local server of the same data
+    // directory, whose key signed its log: it replays the log through that tick and holds
+    // paused, its client watching from the tick after; played on, it runs the log's last five
+    // ticks and holds paused again at its end.
+    let pace = Arc::new(Pace::default());
+    let mut server = LocalServer::start(LocalServerSetup {
+        packages: Arc::new(TestMode::Lane.packages()),
+        data: test_dir.path("data"),
+        session: LocalSession::Replay(Box::new(LocalReplay {
+            log: SessionLog::decode(&report_bytes).unwrap(),
+            through: Tick::new(end.get() - 5),
+        })),
+        pace: Arc::clone(&pace),
+        os: Os {
+            clock: UnixClock::manual(TestKey::NOW),
+            entropy: Entropy::Fixed(7),
+        },
+        reports: ClientLayout::at(test_dir.path("client")),
+    })
+    .unwrap();
+    assert!(pace.is_paused());
+    let mut watcher = App::new();
+    watcher.add_plugins((OneThreadPlugins, TimePlugin, StatesPlugin));
+    watcher.add_plugins(SimClientPlugin {
+        main: Arc::new(TestKey::client_signer(keys.main)),
+        session: SessionSigner::new(TestKey::client_signer(keys.session)),
+        server: server.pin(),
+        role: JoinRole::Watch {
+            teams: TeamSet::ALL,
+        },
+        hosting: Hosting::Local,
+        packages: Arc::new(TestMode::Lane.packages()),
+        os: Os {
+            clock: UnixClock::manual(TestKey::NOW),
+            entropy: TestKey::client_entropy(),
+        },
+        data: None,
+        bot: None,
+    });
+    watcher.finish();
+    watcher.cleanup();
+    let entity = SimClientPlugin::spawn(watcher.world_mut());
+    watcher
+        .world_mut()
+        .entity_mut(entity)
+        .insert(server.take_link());
+    watcher.world_mut().trigger(Connect { entity });
+    let clock = loop {
+        frame(&mut watcher);
+        if let Some(clock) = watcher.world().resource::<JoinState>().watching_clock() {
+            break clock;
+        }
+    };
+    assert_eq!(clock.first(), Tick::new(end.get() - 4));
+    assert!(pace.is_paused());
+    pace.set_paused(false);
+    while !pace.is_paused() {
+        frame(&mut watcher);
+    }
+    drop(server);
 }

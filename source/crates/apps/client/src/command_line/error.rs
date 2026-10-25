@@ -1,14 +1,24 @@
+use std::io;
 use std::net::AddrParseError;
 
 use campfire_common::DeclaredName;
+use campfire_host::ReportReadError;
 use thiserror::Error;
 
 /// Why a command line clap took names no run of the client.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Error)]
 pub(crate) enum ArgsError {
     /// A server bot in player slot 0, which the client plays unless it watches.
     #[error("player slot 0 is the client's, as it plays")]
     ClientPlayerSlot,
+    /// The report's path does not resolve against the working directory.
+    #[error("the report's path")]
+    ReportPath(#[source] io::Error),
+    /// No data directory holds the report, two folders up, and the line names none.
+    #[error("no data directory holds the report, and the line names none")]
+    ReportData,
+    #[error("the report's facts")]
+    Report(#[source] ReportReadError),
 }
 
 /// A `--watch` that names no team, as a team's name is a declared name.

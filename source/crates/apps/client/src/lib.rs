@@ -83,7 +83,7 @@ pub fn run() -> ExitCode {
     let args = match Logging::command_line::<CommandLine>(env::args_os()).map(Args::try_from) {
         Ok(Ok(args)) => args,
         Ok(Err(error)) => {
-            error!(error = %error, "the command line is refused");
+            error!(error = %ErrorReport::of(&error), "the command line is refused");
             return ExitCode::from(ExitStatus::Usage);
         }
         Err(status) => return ExitCode::from(status),
@@ -131,6 +131,7 @@ pub fn run() -> ExitCode {
             data: connection.data().map(|data| data.layout().clone()),
             mode_dir: path::absolute(&args.mode)
                 .expect("the mode loaded from its directory, so its path resolves"),
+            camera: args.server.camera().copied(),
         },
     };
     let sim_client = SimClientPlugin {
