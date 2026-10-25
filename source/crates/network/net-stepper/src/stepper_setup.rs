@@ -20,7 +20,7 @@ const SECRET: [u8; 32] = [7; 32];
 /// What `Stepper::new` does once its apps exist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Init {
-    /// Starts the server, connects every client and steps until each is ready.
+    /// Starts the server, connects every client and steps once, then until each is ready.
     Ready,
     /// Leaves the apps unstarted, for the test to configure and call `Stepper::init`.
     Deferred,

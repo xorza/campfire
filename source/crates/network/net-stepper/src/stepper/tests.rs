@@ -91,6 +91,15 @@ fn init_names_the_client_it_waits_for() {
     Stepper::new(NeverReady, StepperSetup::single());
 }
 
+/// A ready stepper has run its server's first frame with no client to wait for: one step of a
+/// tick period, whose frame runs the server's first tick.
+#[test]
+fn a_ready_stepper_of_no_client_has_stepped_its_server() {
+    let stepper = Stepper::new(ConnectionStack, StepperSetup::with_plain_clients(0));
+    assert_eq!(stepper.now(), stepper.tick_rate().period());
+    assert_eq!(stepper.server_tick(), NetTick(1));
+}
+
 /// A deferred stepper leaves its client unconnected until `init`.
 #[test]
 fn a_deferred_stepper_connects_on_init() {

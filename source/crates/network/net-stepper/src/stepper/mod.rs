@@ -345,14 +345,16 @@ impl<S: Stack> Stepper<S> {
         panic!("the server's link to client {client} still exists after {WAIT_TICKS} ticks");
     }
 
-    /// Starts the server, connects every client and steps until each is connected and ready.
+    /// Starts the server, connects every client and steps once, then until each is connected and
+    /// ready: a ready server has run its first frame, its setup with it, with no client as with
+    /// any, so a frame after `init` costs what a frame costs.
     pub fn init(&mut self) {
         self.connect();
         for _ in 0..WAIT_TICKS {
+            self.step(1, self.tick_rate.period(), StepOrder::ClientsFirst);
             if self.waiting_client().is_none() {
                 return;
             }
-            self.step(1, self.tick_rate.period(), StepOrder::ClientsFirst);
         }
         if let Some(waiting) = self.waiting_client() {
             panic!("{waiting} after {WAIT_TICKS} ticks");
