@@ -4,5 +4,4 @@ why network depends on script, rhai dependency
 coverage
 migrate to stable rustc
 anti-dos connection challenge
-miri
 enemy units block the path - what happens?
