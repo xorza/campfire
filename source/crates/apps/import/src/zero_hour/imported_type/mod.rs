@@ -30,7 +30,7 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// geometry, else a circle of its radius, of its geometry's height (04-capabilities/00-overview.md,
 /// A body has a height); the life of an active or a structure body, with its `combat` section of
 /// the armor of its starting armor set and, as its `armors`, the one of its armor set of
-/// `PLAYER_UPGRADE` while its unit holds the tag of that flag (upgrades.md, Zero Hour's upgrade
+/// `PLAYER_UPGRADE` while its unit holds the tag of that flag (09-zero-hour.md, Zero Hour's upgrade
 /// flags are tags and stats); the tags of its kinds, of victory for a structure that
 /// counts for one, and of a structure, a wall and infantry, which a projectile's hits and a scatter
 /// name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its

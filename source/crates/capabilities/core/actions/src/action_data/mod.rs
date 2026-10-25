@@ -93,8 +93,8 @@ pub struct ActionKeys {
     pub script: Option<PackagePath>,
     pub targeting: Targeting,
     /// The tags its unit must pass for it to start, for its passive to hold, and for an attack to
-    /// be chosen as a weapon; it keeps its slot whatever they are (upgrades.md, An action may need
-    /// tags).
+    /// be chosen as a weapon; it keeps its slot whatever they are (04-capabilities/actions.md, An
+    /// action may need tags).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub when: Option<TagFilterData>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -24,7 +24,7 @@ pub(crate) struct RulesNames {
     pub(crate) base_defense: DeclaredName,
     pub(crate) infantry: DeclaredName,
     /// The tags an upgrade module gives its unit as it sets the armor set's or the weapon set's
-    /// `PLAYER_UPGRADE` (upgrades.md, Zero Hour's upgrade flags are tags and stats).
+    /// `PLAYER_UPGRADE` (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats).
     pub(crate) armor_upgrade: DeclaredName,
     pub(crate) weapon_upgrade: DeclaredName,
     /// The tests of a unit of each, and of one of no `weapon_upgrade`.

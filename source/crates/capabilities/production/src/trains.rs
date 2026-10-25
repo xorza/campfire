@@ -243,9 +243,9 @@ impl Trains {
 
     /// Whether the research `spec`, ordered of the unit `id` of `entity`, is held or queued
     /// already: a player research by its producer's player, or in the queue of any unit of that
-    /// player; a producer research by its producer, from itself, or in its own queue (upgrades.md,
-    /// An upgrade is a modifier). A player research of a producer of no player counts as held,
-    /// as no player could hold it.
+    /// player; a producer research by its producer, from itself, or in its own queue
+    /// (04-capabilities/production.md, An upgrade is a modifier). A player research of a producer
+    /// of no player counts as held, as no player could hold it.
     pub(crate) fn researched<F: QueryFilter>(
         spec: ResearchSpec,
         id: StableId,
@@ -340,10 +340,10 @@ impl Trains {
         }
     }
 
-    /// Gives what the research `action` of the producer `producer` of `entity` gives: its
-    /// modifier, to the producer's player, or to the producer from itself, with no end
-    /// (upgrades.md, Research is an action kind of production). A player research of a producer
-    /// that lost its player since it started gives nothing, as no player holds it.
+    /// Gives what the research `action` of the producer `producer` of `entity` gives: its modifier,
+    /// to the producer's player, or to the producer from itself, with no end
+    /// (04-capabilities/production.md, Research is an action kind of production). A player research
+    /// of a producer that lost its player since it started gives nothing, as no player holds it.
     fn give(world: &mut World, entity: Entity, producer: StableId, action: ActionId) {
         let researches = world.resource::<ById<ActionId, ResearchSpec>>();
         let spec = *researches

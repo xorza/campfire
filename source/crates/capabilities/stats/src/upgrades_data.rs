@@ -4,7 +4,8 @@ use campfire_values::TagFilterData;
 use serde::{Deserialize, Serialize};
 
 /// A unit type's `upgrades`: the modifiers of its package its units hold while their player's
-/// modifiers and their own meet each entry (upgrades.md, A unit type takes modifiers by upgrades).
+/// modifiers and their own meet each entry (04-capabilities/stats.md, A unit type takes modifiers
+/// by upgrades).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct UpgradesData(pub Vec<UpgradeData>);

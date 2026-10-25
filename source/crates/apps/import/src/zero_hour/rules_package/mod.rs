@@ -176,7 +176,8 @@ pub(crate) struct ModeImport<'a> {
 /// writes Zero Hour's money as an option); the armors, the weapons, the modifiers of their
 /// stages and the stats of their damage bonuses of `combat` (09-zero-hour.md), the trains, builds
 /// and researches of `production` (04-capabilities/production.md), and the modifiers of
-/// `upgrades`, each upgrade's and each effect's (upgrades.md).
+/// `upgrades`, each upgrade's and each effect's (09-zero-hour.md, Zero Hour's upgrade flags are
+/// tags and stats).
 pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     let ModeImport {
         start,

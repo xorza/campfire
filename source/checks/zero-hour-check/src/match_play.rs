@@ -1,4 +1,4 @@
-use campfire_actions::TypeSlotsData;
+use campfire_actions::{SlotKinds, TypeSlotsData};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -551,22 +551,34 @@ pub(crate) fn bot_script(packages: &ModePackages, text: &str) -> Result<BotScrip
     BotScript::new(&script, &BotNames::new(books)).map_err(CheckFailure::BotNames)
 }
 
-/// The slot of `action` among the actions of the type `unit` of `packages` in its slot kind
-/// `command`; a failure when the mode lacks the type or the action.
+/// The slot of `action`, of the type `unit` of `packages`, in its slot kind `command`: its place
+/// among that kind's actions past the actions of every kind before it, as a unit holds its kinds
+/// in the mode's order (04-capabilities/actions.md, Slot kinds in the mode's order); a failure
+/// when the mode lacks the type or the action.
 pub(crate) fn slot(
     packages: &ModePackages,
     unit: &'static str,
     action: &'static str,
 ) -> Result<u8, CheckFailure> {
+    let missing = CheckFailure::NoAction { unit, action };
     let command = DeclaredName::new("command").expect("a declared name");
-    let at = packages
-        .content()
-        .units
-        .get(unit)
-        .and_then(|held| held.section::<TypeSlotsData>()?.0.get(&command))
-        .and_then(|slots| slots.iter().position(|held| held.as_str() == action))
-        .ok_or(CheckFailure::NoAction { unit, action })?;
-    Ok(u8::try_from(at).expect("a unit's slots fit a u8"))
+    let held = packages.content().units.get(unit);
+    let slots = held.and_then(|held| held.section::<TypeSlotsData>());
+    let Some(slots) = slots else {
+        return Err(missing);
+    };
+    let kinds = packages.data().section_or_default::<SlotKinds>();
+    let mut before = 0;
+    for kind in kinds.kinds() {
+        let actions = slots.0.get(&kind.name).map_or(&[][..], Vec::as_slice);
+        if kind.name == command {
+            let at = actions.iter().position(|held| held.as_str() == action);
+            let at = at.ok_or(missing)?;
+            return Ok(u8::try_from(before + at).expect("a unit's slots fit a u8"));
+        }
+        before += actions.len();
+    }
+    Err(missing)
 }
 
 #[cfg(feature = "internals")]

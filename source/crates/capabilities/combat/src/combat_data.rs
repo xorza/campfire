@@ -17,7 +17,7 @@ pub struct CombatData {
 }
 
 /// An armor of the mode's a unit takes damage through while its tags pass `when`
-/// (upgrades.md, Armor by tags).
+/// (04-capabilities/combat.md, Armor by tags).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaggedArmorData {

@@ -31,12 +31,13 @@ use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's trains, builds and researches (09-zero-hour.md, Every command set's trains and
-/// builds are imported; upgrades.md, Research is an action kind of production): each
-/// `UNIT_BUILD`, `DOZER_CONSTRUCT`, `PLAYER_UPGRADE` and `OBJECT_UPGRADE` button of the command set
-/// of each unit type, and of each type a converted button makes, once for the whole import; the
-/// names of their actions, as the string table gives their labels; the buttons dropped, each once for each cause,
-/// in the order the sets are read; what it gives each producer, its actions of the slot kind
-/// `command` and its `production` section; and the supply of each type it visits.
+/// builds are imported; 04-capabilities/production.md, Research is an action kind of production):
+/// each `UNIT_BUILD`, `DOZER_CONSTRUCT`, `PLAYER_UPGRADE` and `OBJECT_UPGRADE` button of the
+/// command set of each unit type, and of each type a converted button makes, once for the whole
+/// import; the names of their actions, as the string table gives their labels; the buttons dropped,
+/// each once for each cause, in the order the sets are read; what it gives each producer, its
+/// actions of the slot kind `command` and its `production` section; and the supply of each type it
+/// visits.
 #[derive(Debug, Default)]
 pub(crate) struct ProductionImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedAction>,
@@ -454,11 +455,11 @@ impl ProductionImport {
         })
     }
 
-    /// Converts the research button `button_name`, `button`, of the set of `producer`: its
-    /// action, made once, of the modifier its upgrade's name gives, for its producer's player or
-    /// for its producer as the upgrade's type says, at its cost and after its time, and the
-    /// producer's slot, unless it drops the button (upgrades.md, Research is an action kind of
-    /// production).
+    /// Converts the research button `button_name`, `button`, of the set of `producer`: its action,
+    /// made once, of the modifier its upgrade's name gives, for its producer's player or for its
+    /// producer as the upgrade's type says, at its cost and after its time, and the producer's
+    /// slot, unless it drops the button (04-capabilities/production.md, Research is an action kind
+    /// of production).
     fn research(
         &mut self,
         rules: &ZeroHourRules,

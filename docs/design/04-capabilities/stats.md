@@ -29,6 +29,7 @@
 - **Player modifiers are upgrades.** A player's modifier holds on each living unit it selects, so an RTS's upgrades and a guild's bonuses are player modifiers.
 - **A magnitude is captured at application,** as the Gameplay Ability System captures one: a later rank changes the next application, not one held. A scaling stat change follows its source's stats while held, as League of Legends' bonus-scaling passives do, so the load refuses a loop between such changes.
 - **An application never fails after its call.** The load checks that every way a modifier is applied gives each param it reads, so no application fails later.
+- **A unit type takes modifiers by upgrades.** A type's `upgrades` lists entries of `triggers`, modifier ids any one of which, or with `all` every one, its player's modifiers and its own must hold, `conflicts` none of which they may hold, and the `modifier` the unit takes while they are met, held by a hold of its own (An instance lives while something keeps it), as Zero Hour's `UpgradeMux` tests `TriggeredBy`, `RequiresAllTriggers` and `ConflictsWith` and OpenRA's `GrantConditionOnPrerequisite` grants a condition. A unit tests its entries as it spawns, as its site completes, and as it or its player gains or loses a modifier, and the test visits only the units of the types that name that modifier. Refused: a player modifier for each type an upgrade changes, whose filter would need a tag for each of Zero Hour's 643 types of its factions, past the 256 a match holds; the effect written into the research, which differs by type.
 
 ## Tags
 

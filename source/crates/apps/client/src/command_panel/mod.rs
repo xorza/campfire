@@ -1,5 +1,6 @@
 use std::fmt::Write as _;
 use std::mem;
+use std::num::NonZeroU64;
 
 use bevy::app::{App, Plugin, Startup, Update};
 use bevy::camera::visibility::Visibility;
@@ -20,14 +21,19 @@ use bevy::ui::widget::Text;
 use campfire_actions::{ActionBook, ActionKind, ActionSlots, ActionTarget};
 use campfire_capabilities::{Directive, Order};
 use campfire_common::{Tick, Ticks};
+use campfire_declarations::ById;
 use campfire_math::Num;
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersDirective;
-use campfire_production::{BuildBook, ProductionDirective, Site, SiteProgress, TrainQueue};
+use campfire_players::ResourceAmount;
+use campfire_production::{
+    BuildBook, ProductionDirective, ResearchHolder, ResearchSpec, Site, SiteProgress, TrainQueue,
+};
 use campfire_script::MatchNames;
-use campfire_sim::{EntityIndex, SimTick, StableId, Unpredicted};
+use campfire_sim::{EntityIndex, MatchRate, SimTick, StableId, Unpredicted};
+use campfire_stats::Modifiers;
 use campfire_units::{Dead, Owner};
-use campfire_values::{ActionId, NameId, ResourceId, UnitType};
+use campfire_values::{ActionId, ModifierId, NameId, ResourceId, UnitType};
 
 use crate::input_mode::InputMode;
 use crate::name_texts::NameTexts;
@@ -37,13 +43,15 @@ use crate::selection::{Selection, SelectionSystems};
 use crate::ui_style::{self, Corner, DIMMED, Panel, PanelFunds, PanelRow, PanelRows, TEXT};
 use crate::view::unit_looks::UnitLooks;
 
-/// The command panel (02-engine-core.md, A command panel from the actions): it shows the first
-/// selected unit, in stable id order, of the player's own that has a train or a build or is a site.
-/// Its rows: the player's amount of each of the mode's resources; a button for each train and build
-/// of the unit's slots, with its name and cost, dimmed while the player cannot pay it; the unit's
-/// train queue, each entry's name and the head's progress, a click on an entry cancelling it; and
-/// of a site, its progress, a click cancelling it. A train button orders the unit alone to train; a
-/// build button starts the build preview.
+/// The command panel (02-engine-core.md, A command panel from the actions; 02-engine-core.md, The
+/// panel shows a research as an action): it shows the first selected unit, in stable id order, of
+/// the player's own that has a train, a build or a research or is a site. Its rows: the player's
+/// amount of each of the mode's resources; a button for each train, build and research of the
+/// unit's slots, with its name, its cost and its time, dimmed while the player cannot pay it, a
+/// research its player or its unit holds as done; the unit's train queue, each entry's name and the
+/// head's progress, a click on an entry cancelling it; and of a site, its progress, a click
+/// cancelling it. A train or a research button orders the unit alone to start it; a build button
+/// starts the build preview.
 #[derive(Debug)]
 pub(crate) struct CommandPanelPlugin;
 
@@ -93,18 +101,22 @@ struct Button {
     making: Making,
 }
 
-/// What a button's action makes: a unit the unit trains, or a building of a type it builds.
+/// What a button's action makes: a unit the unit trains, a building of a type it builds, or a
+/// modifier it researches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Making {
     Train,
     Build(UnitType),
+    Research(ResearchSpec),
 }
 
-/// The books the panel tells a train from a build by, and a build's building.
+/// The books the panel tells a train, a build and a research apart by, a build's building, and a
+/// research's modifier, none in a mode of no research.
 #[derive(Debug, Clone, Copy)]
 struct MakingBooks<'a> {
     actions: &'a ActionBook,
     builds: &'a BuildBook,
+    researches: Option<&'a ById<ActionId, ResearchSpec>>,
 }
 
 /// What the panel reads of a unit: its slots, its train queue, and its site.
@@ -115,6 +127,18 @@ struct PanelUnit<'a> {
     site: Option<&'a Site>,
 }
 
+/// What a button's line of value shows: its action's cost and its time in whole seconds, rounded
+/// up; that its research is held; or nothing, for an action its unit has not learned.
+#[derive(Debug, Clone, Copy)]
+enum ButtonValue<'a> {
+    Costs {
+        costs: &'a [ResourceAmount],
+        seconds: u64,
+    },
+    Done,
+    Unlearned,
+}
+
 /// The panel's root, the holder of its rows, and its line of amounts.
 type PanelNodes<'w, 's> = (
     Single<'w, 's, &'static mut Visibility, With<Panel<CommandPanelPlugin>>>,
@@ -122,7 +146,17 @@ type PanelNodes<'w, 's> = (
     Single<'w, 's, Entity, With<PanelFunds<CommandPanelPlugin>>>,
 );
 
-/// The units the panel may show: each one's player, slots, train queue, site and its progress.
+/// The books the panel reads: the actions, the builds, the researches, none in a mode of no
+/// research, and the actions' names.
+type PanelBooks<'w> = (
+    Res<'w, ActionBook>,
+    Res<'w, BuildBook>,
+    Option<Res<'w, ById<ActionId, ResearchSpec>>>,
+    Res<'w, NameTexts<ActionId>>,
+);
+
+/// The units the panel may show: each one's player, slots, train queue, site and its progress,
+/// and the modifiers it carries.
 type PanelUnits<'w, 's> = Query<
     'w,
     's,
@@ -132,6 +166,7 @@ type PanelUnits<'w, 's> = Query<
         Option<&'static TrainQueue>,
         Option<&'static Site>,
         Option<&'static SiteProgress>,
+        Option<&'static Modifiers>,
     ),
     (Without<Dead>, Allow<Unpredicted>),
 >;
@@ -158,8 +193,8 @@ impl CommandPanelPlugin {
     }
 
     /// Shows the unit the panel reads: its rows, made again when what it shows changes, and
-    /// each frame the player's amounts, the buttons' costs and dimming, and the progress of the
-    /// queue's head and of a site.
+    /// each frame the player's amounts, the buttons' costs, times, dimming and held researches,
+    /// and the progress of the queue's head and of a site.
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"
@@ -167,12 +202,8 @@ impl CommandPanelPlugin {
     fn show(
         own: OwnPlayer<'_, '_>,
         (selection, index, units): (Res<'_, Selection>, Res<'_, EntityIndex>, PanelUnits<'_, '_>),
-        (book, builds, names, tick): (
-            Res<'_, ActionBook>,
-            Res<'_, BuildBook>,
-            Res<'_, NameTexts<ActionId>>,
-            Res<'_, SimTick>,
-        ),
+        (book, builds, researches, names): PanelBooks<'_>,
+        (tick, rate): (Res<'_, SimTick>, Res<'_, MatchRate>),
         setup: Res<'_, PanelSetup>,
         (mut shown, mut next): (ResMut<'_, Shown>, Local<'_, Shown>),
         (root, rows, funds): PanelNodes<'_, '_>,
@@ -188,7 +219,7 @@ impl CommandPanelPlugin {
         let player_slot = own.player_slot();
         next.clear();
         for &unit in selection.get() {
-            let Some(Ok((owner, slots, queue, site, _))) = index.get(unit).map(|at| units.get(at))
+            let Some(Ok((owner, slots, queue, site, ..))) = index.get(unit).map(|at| units.get(at))
             else {
                 continue;
             };
@@ -199,6 +230,7 @@ impl CommandPanelPlugin {
             let books = MakingBooks {
                 actions: &book,
                 builds: &builds,
+                researches: researches.as_deref(),
             };
             if next.fill(unit, held, books) {
                 break;
@@ -210,12 +242,12 @@ impl CommandPanelPlugin {
             shown.spawn_rows(&mut commands, *rows, &names);
         }
         let mut root = root.into_inner();
-        let Some(unit) = shown.unit.and_then(|unit| index.get(unit)) else {
+        let Some((id, unit)) = shown.unit.and_then(|id| Some((id, index.get(id)?))) else {
             root.set_if_neq(Visibility::Hidden);
             return;
         };
         root.set_if_neq(Visibility::Inherited);
-        let Ok((_, slots, queue, site, progress)) = units.get(unit) else {
+        let Ok((_, slots, queue, site, progress, carried)) = units.get(unit) else {
             return;
         };
         line.clear();
@@ -225,17 +257,32 @@ impl CommandPanelPlugin {
             write!(line, "{gap}{amount}").expect("a String takes any text");
         }
         ui_style::set_text(&mut texts, *funds, &line);
+        let hz = NonZeroU64::from(rate.hz()).get();
         for row in &buttons {
-            let costs = slots
-                .and_then(|slots| slots.slot(row.button.slot))
-                .and_then(|held| Some(book.get(held.action?)?.resource_cost(held.rank?)));
+            let held = slots.and_then(|slots| slots.slot(row.button.slot));
+            let ranked = held.and_then(|held| Some((book.get(held.action?)?, held.rank?)));
+            let done = row.button.making.done(
+                id,
+                |modifier| own.holds(modifier),
+                |modifier, source| {
+                    carried.is_some_and(|carried| carried.get(modifier, Some(source)).is_some())
+                },
+            );
+            let value = match ranked {
+                _ if done => ButtonValue::Done,
+                Some((action, rank)) => ButtonValue::Costs {
+                    costs: action.resource_cost(rank),
+                    seconds: action.values(rank).windup.get().div_ceil(hz),
+                },
+                None => ButtonValue::Unlearned,
+            };
             line.clear();
-            for (at, cost) in costs.unwrap_or_default().iter().enumerate() {
-                let gap = if at == 0 { "" } else { "  " };
-                write!(line, "{gap}{}", cost.amount).expect("a String takes any text");
-            }
+            value.write(&mut line);
             ui_style::set_text(&mut texts, row.cost, &line);
-            let affords = costs.is_some_and(|costs| own.affords(costs));
+            let affords = match value {
+                ButtonValue::Costs { costs, .. } => own.affords(costs),
+                ButtonValue::Done | ButtonValue::Unlearned => false,
+            };
             let color = if affords { TEXT } else { DIMMED };
             for line in [row.name, row.cost] {
                 if let Ok(mut held) = colors.get_mut(line) {
@@ -284,7 +331,7 @@ impl CommandPanelPlugin {
             making,
         } = row.button;
         match making {
-            Making::Train => {
+            Making::Train | Making::Research(_) => {
                 let target = ActionTarget::None;
                 orders.push(Order::one(unit, OrdersDirective::Slot { slot, target }));
             }
@@ -365,6 +412,7 @@ impl Shown {
             let making = match books.actions.get(action)?.kind {
                 ActionKind::Train => Making::Train,
                 ActionKind::Build => Making::Build(books.builds.of(action)?.unit_type),
+                ActionKind::Research => Making::Research(*books.researches?.get(action)?),
                 _ => return None,
             };
             Some(Button {
@@ -419,6 +467,43 @@ impl Shown {
                     progress: lines.value,
                 })
                 .observe(CommandPanelPlugin::cancel_build);
+        }
+    }
+}
+
+impl Making {
+    /// Whether it is a research held already, as its player or its unit, `unit`, holds it: a
+    /// player's research by the player, as `player_holds` says of a modifier; a producer's by the
+    /// unit from itself, as `unit_holds` says of a modifier and its source
+    /// (04-capabilities/production.md, An upgrade is a modifier).
+    fn done(
+        self,
+        unit: StableId,
+        player_holds: impl Fn(ModifierId) -> bool,
+        unit_holds: impl Fn(ModifierId, StableId) -> bool,
+    ) -> bool {
+        let Self::Research(spec) = self else {
+            return false;
+        };
+        match spec.holder {
+            ResearchHolder::Player => player_holds(spec.modifier),
+            ResearchHolder::Producer => unit_holds(spec.modifier, unit),
+        }
+    }
+}
+
+impl ButtonValue<'_> {
+    /// Writes it into `line`: each cost's amount, then the seconds, `N s`; `done`; or nothing.
+    fn write(self, line: &mut String) {
+        match self {
+            Self::Costs { costs, seconds } => {
+                for cost in costs {
+                    write!(line, "{}  ", cost.amount).expect("a String takes any text");
+                }
+                write!(line, "{seconds} s").expect("a String takes any text");
+            }
+            Self::Done => line.push_str("done"),
+            Self::Unlearned => {}
         }
     }
 }

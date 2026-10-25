@@ -417,7 +417,7 @@ impl Module for Stats {
 impl Stats {
     /// Applies modifier `id` to unit `target` from `source`, by no action, with no end, as a
     /// script's `add_modifier` of no duration applies one: what an object research gives its
-    /// producer (upgrades.md, Research is an action kind of production).
+    /// producer (04-capabilities/production.md, Research is an action kind of production).
     pub fn apply_unending(world: &mut World, target: StableId, id: ModifierId, source: StableId) {
         let applier = Applier {
             source: Some(source),

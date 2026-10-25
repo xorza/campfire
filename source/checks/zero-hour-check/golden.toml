@@ -54,9 +54,10 @@ wounded = 0
 [skirmish]
 barracks = 698
 factory = [482, 682, 1091]
-shot = 816
-hit = 827
-fight = 2583
+strategy_center = 1879
+shot = 884
+hit = 896
+fight = 2636
 
 [supply]
 built = [482, 437]

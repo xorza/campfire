@@ -29,7 +29,7 @@ use crate::missile_play::MissilePlay;
 use crate::pins::{
     FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
     ProducedCounts, ProductionSteps, SkirmishTicks, SuppliedCounts, SupplySteps, TerrainCounts,
-    TerrainDrawn, UpgradedCounts,
+    TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
@@ -412,6 +412,8 @@ impl ImportCheck<'_> {
             && let Some(SkirmishSteps {
                 production,
                 factory,
+                strategy_center,
+                upgrades,
                 fight,
                 bot,
             }) = SkirmishPlay::run(played, rate, tools, &mut self.failures)
@@ -419,6 +421,7 @@ impl ImportCheck<'_> {
             let ticks = SkirmishTicks {
                 barracks: production.barracks_ticks,
                 factory: factory.ticks,
+                strategy_center,
                 shot: fight.shot_ticks,
                 hit: fight.hit_ticks,
                 fight: fight.fight_ticks,
@@ -441,6 +444,19 @@ impl ImportCheck<'_> {
                 ticks = ?factory.ticks,
                 money = factory.money,
                 "player 1 built a power plant, a supply center and a war factory"
+            );
+            let expected = UpgradeSteps::expected();
+            self.failures
+                .extend(Differs::of(upgrades, expected).map(CheckFailure::Upgrades));
+            info!(
+                strategy_center,
+                research = upgrades.research_ticks,
+                money = upgrades.money,
+                crusader_life = ?upgrades.crusader_life,
+                ranger_tags = ?upgrades.ranger_tags,
+                ranger_weapons = ?upgrades.ranger_weapons,
+                rods = upgrades.rods,
+                "player 1 built a strategy center and researched its upgrades"
             );
             let expected = FightSteps::expected(pinned);
             self.failures

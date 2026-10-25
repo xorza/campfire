@@ -180,3 +180,9 @@ Read on 23 October 2026: Zero Hour from GeneralsX's source, the import's output 
 - **Age of Empires II draws a villager's gender at the Town Center.** A trained villager is a male (unit 83) or a female (unit 293) at random, and a trigger counts villagers by their class, Civilian, not by a unit's id ([forum](https://forums.ageofempires.com/t/help-with-scenario-editor-triggers/282992)).
 - **0 A.D. varies one unit's look.** An actor's groups each hold variants, one drawn by its frequency from the entity's actor seed, for visual variety between otherwise identical units; the unit's template stays one ([0 A.D. wiki: Actors](https://trac.wildfiregames.com/wiki/Actors?version=13)).
 - **OpenRA has no random variant of an actor.** No trait of its documentation draws an actor's type at its creation; its civilian kinds are actors of their own.
+
+## Upgrades
+
+Read from the Steam install's `INIZH.big` on 25 October 2026.
+
+- **Counts.** Zero Hour's `Upgrade.ini` holds 82 upgrades; its command sets hold 58 player-upgrade and 37 object-upgrade buttons; its objects hold 154 `ArmorUpgrade`, 119 `WeaponSetUpgrade`, 62 `WeaponBonusUpgrade` and 52 `MaxHealthUpgrade` modules, every one of the last of change type `ADD_CURRENT_HEALTH_TOO`; 86 of its weapons take `WeaponBonus = PLAYER_UPGRADE DAMAGE`, 85 of them at 125 % and one at 112 % (the Steam install, read 2026-10-25).

@@ -29,7 +29,7 @@ impl<'a> Caster<'a> {
 
     /// Whether it is kept from the action in `slot`, as `book` gives it: from using it, for a slot
     /// of its use group or a use, else, and with no slot, from casting it; and from an action
-    /// whose `when` its tags do not pass (upgrades.md, An action may need tags).
+    /// whose `when` its tags do not pass (04-capabilities/actions.md, An action may need tags).
     pub fn blocked(self, slot: Option<ActionSlot>, book: &ActionBook) -> bool {
         let action = slot.and_then(|slot| book.get(slot.action?));
         let unmet = action.is_some_and(|action| !action.usable_by(self.tags.tags));

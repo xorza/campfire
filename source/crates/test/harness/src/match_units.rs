@@ -8,7 +8,7 @@ use campfire_progression::Experience;
 use campfire_script::MatchNames;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 use campfire_units::{Owner, SpawnPoint};
-use campfire_values::{ResourceId, Team, UnitType};
+use campfire_values::{ResourceId, Tag, Team, UnitType};
 
 /// The units of a running match, as a scripted player or a test names them by role, and its
 /// players' resources.
@@ -103,6 +103,11 @@ impl<'a> MatchUnits<'a> {
         self.world
             .resource::<MatchNames>()
             .named::<ResourceId>(name)
+    }
+
+    /// The tag the match names `name`.
+    pub fn tag(self, name: &str) -> Option<Tag> {
+        self.world.resource::<MatchNames>().named::<Tag>(name)
     }
 
     /// Player `player_slot`'s amount of `resource`.

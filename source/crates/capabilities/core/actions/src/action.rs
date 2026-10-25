@@ -146,7 +146,8 @@ impl Action {
         }
     }
 
-    /// Whether a unit of `holder`'s tags passes its `when` (upgrades.md, An action may need tags).
+    /// Whether a unit of `holder`'s tags passes its `when` (04-capabilities/actions.md, An action
+    /// may need tags).
     pub fn usable_by(&self, holder: TagSet) -> bool {
         self.when.is_none_or(|when| when.selects_tags(holder))
     }

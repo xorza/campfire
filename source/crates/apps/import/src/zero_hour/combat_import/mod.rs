@@ -34,16 +34,15 @@ use crate::zero_hour::combat_import::weapon_gate::WeaponGate;
 
 /// Zero Hour's combat (04-capabilities/combat.md, Armor by damage kind; 09-zero-hour.md, Life is
 /// the original's; 09-zero-hour.md, A weapon converts when it hits one target at once;
-/// 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
-/// slow weapons; upgrades.md, Zero Hour's upgrade flags are tags and stats): the weapons of each
-/// unit type's starting weapon set and of its set of `PLAYER_UPGRADE` that convert, as attack
-/// actions, once for the whole import and its gate between the sets, each in its type's slot
-/// kind `weapon`; the stats their upgrades' damage bonuses name, each with what a
-/// `WeaponBonusUpgrade` adds to it; every armor, the
-/// share of each damage kind it does not take whole; the weapons dropped, each once for each
-/// cause, in the order the types are read; the objects whose body the import gives no life, and
-/// those whose body starts below its most life; each type's actions of the slot kind `weapon`, by
-/// its name, which it returns; the projectile types of a weapon's own, each with the object
+/// 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and slow weapons;
+/// 09-zero-hour.md, Zero Hour's upgrade flags are tags and stats): the weapons of each unit type's
+/// starting weapon set and of its set of `PLAYER_UPGRADE` that convert, as attack actions, once for
+/// the whole import and its gate between the sets, each in its type's slot kind `weapon`; the stats
+/// their upgrades' damage bonuses name, each with what a `WeaponBonusUpgrade` adds to it; every
+/// armor, the share of each damage kind it does not take whole; the weapons dropped, each once for
+/// each cause, in the order the types are read; the objects whose body the import gives no life,
+/// and those whose body starts below its most life; each type's actions of the slot kind `weapon`,
+/// by its name, which it returns; the projectile types of a weapon's own, each with the object
 /// whose look it takes; and the modifiers of the weapons' stages of continuous fire.
 #[derive(Debug, Default)]
 pub(crate) struct CombatImport {
@@ -91,7 +90,7 @@ struct ConvertedWeapon<'a> {
 
 /// The stat a weapon's damage bonus of `PLAYER_UPGRADE` names, `upgrade_damage_<percent>`, one for
 /// each percent of the install's, and what a `WeaponBonusUpgrade` adds to it: the bonus less 1, as
-/// `WeaponBonus::appendBonuses` adds it, in the game's `f32` (upgrades.md, Zero Hour's upgrade
+/// `WeaponBonus::appendBonuses` adds it, in the game's `f32` (09-zero-hour.md, Zero Hour's upgrade
 /// flags are tags and stats).
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DamageBonus {

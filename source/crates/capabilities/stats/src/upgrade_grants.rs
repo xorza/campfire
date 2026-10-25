@@ -18,7 +18,7 @@ use crate::type_upgrades::TypeUpgrades;
 
 /// The grants of the modifiers each unit holds by its type's upgrades: each entry's modifier
 /// while its player's modifiers and its own meet the entry, from no source, at rank 1, while the
-/// unit lives (upgrades.md, A unit type takes modifiers by upgrades).
+/// unit lives (04-capabilities/stats.md, A unit type takes modifiers by upgrades).
 #[derive(Debug)]
 pub(crate) struct UpgradeGrants;
 

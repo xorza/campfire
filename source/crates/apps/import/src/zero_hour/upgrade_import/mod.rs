@@ -18,13 +18,14 @@ use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
-/// Zero Hour's upgrades (upgrades.md, An upgrade is a modifier; upgrades.md, A unit type takes
-/// modifiers by upgrades; upgrades.md, Zero Hour's upgrade flags are tags and stats): the modifier
-/// of each upgrade a research gives or a module names, which gives nothing of its own; each unit
-/// type's `upgrades`, an entry of each of its object's modules that converts; the modifiers of
-/// their effects, each shared by the modules of one first trigger and one effect, but for a second
-/// life of one type, which adds as the original's second module does; how many modules convert; and the modules and objects of sets dropped, each once for each cause, in the order
-/// the types are named.
+/// Zero Hour's upgrades (04-capabilities/production.md, An upgrade is a modifier;
+/// 04-capabilities/stats.md, A unit type takes modifiers by upgrades; 09-zero-hour.md, Zero Hour's
+/// upgrade flags are tags and stats): the modifier of each upgrade a research gives or a module
+/// names, which gives nothing of its own; each unit type's `upgrades`, an entry of each of its
+/// object's modules that converts; the modifiers of their effects, each shared by the modules of
+/// one first trigger and one effect, but for a second life of one type, which adds as the
+/// original's second module does; how many modules convert; and the modules and objects of sets
+/// dropped, each once for each cause, in the order the types are named.
 #[derive(Debug, Default)]
 pub(crate) struct UpgradeImport {
     pub(crate) upgrades: BTreeSet<DeclaredName>,
@@ -51,8 +52,8 @@ pub enum UpgradeDropCause {
     /// life, by its object's name and its class's.
     Effect,
     /// A `MaxHealthUpgrade` of a `ChangeType` other than `ADD_CURRENT_HEALTH_TOO`, which the
-    /// engine's rising maximum does (04-capabilities/stats.md, A rising maximum raises the amount by
-    /// as much, and a falling one keeps it).
+    /// engine's rising maximum does (04-capabilities/stats.md, A rising maximum raises the amount
+    /// by as much, and a falling one keeps it).
     HealthChange,
     /// A module of no trigger, or of one no file defines.
     NoUpgrade,

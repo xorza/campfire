@@ -24,6 +24,13 @@ const PRODUCTION_MONEY: [i64; 3] = [50_000 - 1000, 50_000 - 1600, 50_000 - 1825]
 /// war factory's 2,000.
 const FACTORY_MONEY: i64 = PRODUCTION_MONEY[2] - 800 - 2000 - 2000;
 
+/// The money after the crusaders' trains, each 900, the strategy center's 2,500, and the
+/// researches' 2,000, 1,000, 800 and 500.
+const UPGRADES_MONEY: i64 = FACTORY_MONEY - CRUSADERS_COST - 2500 - (2000 + 1000 + 800 + 500);
+
+/// What `CRUSADERS` crusaders' trains cost, 900 each.
+const CRUSADERS_COST: i64 = CRUSADERS as i64 * 900;
+
 /// How many crusaders the war factory trains and sends to fight, as the money left pays for.
 pub(crate) const CRUSADERS: u16 = 3;
 
@@ -96,6 +103,22 @@ pub(crate) struct ProductionSteps {
 pub(crate) struct FactorySteps {
     pub(crate) ticks: [u64; 3],
     pub(crate) money: i64,
+}
+
+/// The upgrade step's measures (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats): the
+/// ticks from the researches' orders to the last one held; the money left; the crusaders' most
+/// life, in whole points, before and after Composite Armor; whether the ranger holds the tags of
+/// its armor set's and its weapon set's `PLAYER_UPGRADE` after Chemical Suits and the flash bang;
+/// how many of its weapons it may use before and after them; and whether the power plant holds its
+/// own control rods.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct UpgradeSteps {
+    pub(crate) research_ticks: u64,
+    pub(crate) money: i64,
+    pub(crate) crusader_life: [i64; 2],
+    pub(crate) ranger_tags: [bool; 2],
+    pub(crate) ranger_weapons: [usize; 2],
+    pub(crate) rods: bool,
 }
 
 /// What the bot built: the living units of each of `BOT_TYPES` it owns as player 1's attack
@@ -298,6 +321,7 @@ pub(crate) struct MissileTicks {
 pub(crate) struct SkirmishTicks {
     pub(crate) barracks: u64,
     pub(crate) factory: [u64; 3],
+    pub(crate) strategy_center: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) shot: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -357,8 +381,8 @@ pub(crate) struct ProducedCounts {
 }
 
 /// How many researches the import converts from every command set, how many upgrade modules its
-/// unit types take, and how many modules and objects of sets it drops for each cause, in the
-/// order of `UpgradeDropCause::ALL` (upgrades.md, Zero Hour's upgrade flags are tags and stats).
+/// unit types take, and how many modules and objects of sets it drops for each cause, in the order
+/// of `UpgradeDropCause::ALL` (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display("{researches} researches, {modules} modules, dropped {:?}", dropped)]
 #[serde(deny_unknown_fields)]
@@ -435,16 +459,35 @@ impl FactorySteps {
 
 impl FightSteps {
     /// The fight of `ticks`: `CRUSADERS` trains of 10 s one after another; the money after the
-    /// factory less each crusader's 900; and no end of the match, as the bot's other buildings
-    /// count for its victory (09-zero-hour.md, Defeat by the last building that counts).
+    /// upgrades; and no end of the match, as the bot's other buildings count for its victory
+    /// (09-zero-hour.md, Defeat by the last building that counts).
     pub(crate) fn expected(ticks: SkirmishTicks) -> Self {
         Self {
             train_ticks: u64::from(CRUSADERS) * 10 * HZ,
             shot_ticks: ticks.shot,
             hit_ticks: ticks.hit,
             fight_ticks: ticks.fight,
-            money: FACTORY_MONEY - i64::from(CRUSADERS) * 900,
+            money: UPGRADES_MONEY,
             result: None,
+        }
+    }
+}
+
+impl UpgradeSteps {
+    /// The step's measures: the strategy center's two researches of 60 s one after the other in its
+    /// queue, the second ordered a tick after the first, and the barracks' and the power plant's of
+    /// 30 s beside them, so the last ends in 120 s, the first order's tick among them; the money
+    /// after them; the crusader's 480 life and 680 after Composite Armor's two modules of 100, a
+    /// tick after the last; the ranger's tags of neither flag and then of both; its rifle alone and
+    /// then its rifle and its flash bang; and the rods held.
+    pub(crate) const fn expected() -> Self {
+        Self {
+            research_ticks: 120 * HZ,
+            money: UPGRADES_MONEY,
+            crusader_life: [480, 680],
+            ranger_tags: [false, true],
+            ranger_weapons: [1, 2],
+            rods: true,
         }
     }
 }

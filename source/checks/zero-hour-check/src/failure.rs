@@ -9,7 +9,7 @@ use derive_more::Display;
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, FactorySteps, FightSteps, Fingerprints, FoughtCounts,
     LookCounts, MapCounts, MissileTicks, ProducedCounts, ProductionSteps, SuppliedCounts,
-    SupplySteps, TerrainDrawn, UpgradedCounts,
+    SupplySteps, TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -65,6 +65,10 @@ pub(crate) enum CheckFailure {
     /// The production play's ticks or money differ from the expected.
     #[display("it played production as {_0}")]
     Production(Box<Differs<ProductionSteps>>),
+    /// The upgrade step's ticks, money, life, tags, weapons or object upgrade differ from the
+    /// expected.
+    #[display("it upgraded as {_0}")]
+    Upgrades(Box<Differs<UpgradeSteps>>),
     /// The factory's chain's ticks or money differ from the expected.
     #[display("it built the factory's chain as {_0}")]
     Factory(Box<Differs<FactorySteps>>),

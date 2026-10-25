@@ -167,8 +167,8 @@ impl ActionSlots {
     }
 
     /// Whether the action in `slot`, of `book`, learned or not, is one whose `when` their unit's
-    /// tags, `holder`, pass: an order of one that fails is refused (upgrades.md, An action may
-    /// need tags).
+    /// tags, `holder`, pass: an order of one that fails is refused (04-capabilities/actions.md, An
+    /// action may need tags).
     pub fn usable(&self, book: &ActionBook, slot: u8, holder: TagSet) -> bool {
         let action = self.slot(slot).and_then(|held| book.get(held.action?));
         action.is_some_and(|action| action.usable_by(holder))

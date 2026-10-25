@@ -6,9 +6,9 @@ use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 
-/// Which of its unit's weapon sets a weapon of a slot serves, as the tag of `PLAYER_UPGRADE` chooses
-/// between them (upgrades.md, An action may need tags): each weapon's action is one of its gate, as
-/// one weapon may serve one type's starting set and another's upgrade set.
+/// Which of its unit's weapon sets a weapon of a slot serves, as the tag of `PLAYER_UPGRADE`
+/// chooses between them (04-capabilities/actions.md, An action may need tags): each weapon's action
+/// is one of its gate, as one weapon may serve one type's starting set and another's upgrade set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum WeaponGate {
     /// Both sets, or the starting set of a type of no upgrade set.

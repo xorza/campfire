@@ -5,7 +5,7 @@ use campfire_values::{TagSet, UnitType};
 use crate::armor::Armor;
 
 /// The armors of a unit type: the one its unit takes damage through, and those it takes while its
-/// tags pass a test, the first that passes first (upgrades.md, Armor by tags).
+/// tags pass a test, the first that passes first (04-capabilities/combat.md, Armor by tags).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeArmor {
     pub armor: Option<Armor>,

@@ -28,7 +28,7 @@ pub enum ImportLoss {
     /// A supply module the import does not convert (09-zero-hour.md, A box is money).
     Supply(Dropped<SupplyDropCause>),
     /// An upgrade module, or an object's weapon sets and armor sets, the import does not
-    /// convert (upgrades.md, Zero Hour's upgrade flags are tags and stats).
+    /// convert (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats).
     Upgrade(Dropped<UpgradeDropCause>),
     /// A weapon the import does not convert (09-zero-hour.md, A weapon converts when it hits one
     /// target at once).

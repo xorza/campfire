@@ -4,17 +4,20 @@ use campfire_common::PlayerSlot;
 use campfire_host::JoinState;
 use campfire_players::{PlayerResources, PlayerRows, ResourceAmount};
 use campfire_sim::Unpredicted;
+use campfire_stats::PlayerModifiers;
 use campfire_units::{Commanded, PlayerUnits};
-use campfire_values::{Relation, Relations, ResourceId, Team, TeamSet};
+use campfire_values::{ModifierId, Relation, Relations, ResourceId, Team, TeamSet};
 
 /// The client's own player as a system reads it: its player slot and team, once the client plays,
-/// the avatar it commands, its amounts of the player resources, how its side regards each team by
-/// the relations on the match's entity, and, for a spectator, the teams it chose to watch.
+/// the avatar it commands, its amounts of the player resources, the modifiers it holds, how its
+/// side regards each team by the relations on the match's entity, and, for a spectator, the teams
+/// it chose to watch.
 #[derive(SystemParam, Debug)]
 pub(crate) struct OwnPlayer<'w, 's> {
     state: Res<'w, JoinState>,
     players: PlayerUnits<'w, 's>,
     resources: PlayerRows<'w, 's, PlayerResources>,
+    modifiers: PlayerRows<'w, 's, PlayerModifiers>,
     relations: Query<'w, 's, &'static Relations, Allow<Unpredicted>>,
 }
 
@@ -65,6 +68,15 @@ impl OwnPlayer<'_, '_> {
         costs
             .iter()
             .all(|cost| self.amount(cost.resource) >= cost.amount)
+    }
+
+    /// Whether the player holds the modifier `modifier`; none before it plays, or before its
+    /// modifiers reach the client.
+    pub(crate) fn holds(&self, modifier: ModifierId) -> bool {
+        let held = self
+            .player_slot()
+            .and_then(|player_slot| self.modifiers.of_player_slot(player_slot));
+        held.is_some_and(|held| held.holds(modifier))
     }
 
     /// The avatar the client commands; none before it plays, or before the avatar spawns.

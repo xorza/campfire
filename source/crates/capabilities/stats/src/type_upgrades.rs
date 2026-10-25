@@ -7,8 +7,8 @@ use campfire_values::{ModifierId, Named, PackageIndex, TagSet, UnitType};
 use crate::modifier_book::ModifierBook;
 use crate::upgrades_data::UpgradesData;
 
-/// A unit type's upgrades, as its `upgrades` names them (upgrades.md, A unit type takes modifiers
-/// by upgrades).
+/// A unit type's upgrades, as its `upgrades` names them (04-capabilities/stats.md, A unit type
+/// takes modifiers by upgrades).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeUpgrades(pub Box<[TypeUpgrade]>);
 

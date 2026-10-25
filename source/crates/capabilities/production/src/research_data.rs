@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::requires_data::RequiresData;
 
-/// The section of an action of kind `research`: the modifier of its package it gives, who holds
-/// it, and what its player must hold for it to join a queue (upgrades.md, Research is an action
-/// kind of production).
+/// The section of an action of kind `research`: the modifier of its package it gives, who holds it,
+/// and what its player must hold for it to join a queue (04-capabilities/production.md, Research is
+/// an action kind of production).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResearchData {
