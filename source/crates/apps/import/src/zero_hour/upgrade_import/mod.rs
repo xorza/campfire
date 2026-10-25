@@ -281,7 +281,7 @@ impl UpgradeImport {
 }
 
 /// The tag the look of `module`'s object tests for its effect, which the module's modifier gives
-/// (animated-looks.md, An upgrade's look is a tag): the name of the model condition it sets, as
+/// (09-zero-hour.md, An upgrade's look is a tag): the name of the model condition it sets, as
 /// its object's states name it, `power_plant_upgraded` of a `PowerPlantUpgrade`, which sets
 /// `POWER_PLANT_UPGRADED`, and its `ConditionFlag` of a `ModelConditionUpgrade`; and of a
 /// `SubObjectsUpgrade`, which sets no condition, `<first trigger>_subobjects`, which its object's

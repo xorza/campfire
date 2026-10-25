@@ -58,7 +58,7 @@ use crate::zero_hour::format::map::map_file::samples::map;
 use crate::zero_hour::install::samples::{fixture, packed_map};
 use crate::zero_hour::look_flags::FlagCondition;
 use crate::zero_hour::model_import::{Converted, ModelImport};
-use crate::zero_hour::model_writer::{SkipReason, SkippedModel};
+use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel, StateDropCause};
 use crate::zero_hour::object_flight::samples::shell_projectile;
 use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::rules_names::RulesNames;
@@ -1112,6 +1112,38 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             name: "ghost.ghost_walk".to_owned(),
             cause: AnimationDropCause::NoHierarchy,
         }]
+    );
+    let states: Vec<&DroppedStates> = imported
+        .losses
+        .iter()
+        .filter_map(|loss| match loss {
+            ImportLoss::States(dropped) => Some(dropped),
+            _ => None,
+        })
+        .collect();
+    // The states dropped, each look's own: of a draw module that draws no model, the tank's and
+    // its camo's debris, the camo's once as its own look and once as the pair's variation, and
+    // the crate's, the marker's and the stump's only module; and of an object whose default
+    // model the package lacks, the ghost's, the hydrant's and the tree's.
+    let dropped = |object: &str, cause, states| DroppedStates {
+        object: object.to_owned(),
+        cause,
+        states,
+    };
+    let (undrawn, missing) = (StateDropCause::Undrawn, StateDropCause::Missing);
+    assert_eq!(
+        states,
+        [
+            &dropped("Crate", undrawn, 1),
+            &dropped("Ghost", missing, 1),
+            &dropped("Hydrant", missing, 1),
+            &dropped("Marker", undrawn, 1),
+            &dropped("Stump", undrawn, 1),
+            &dropped("Tank", undrawn, 1),
+            &dropped("TankCamo", undrawn, 1),
+            &dropped("TankCamo", undrawn, 1),
+            &dropped("Tree", missing, 1),
+        ]
     );
     // Each model's top, at its scale, on glTF's axes, `(x, y, z)` as `(x, z, −y)`. The tank's:
     // its hull flat at 0; its turret's pivot 3 up, its half turn about `y` keeping heights, and

@@ -8,3 +8,5 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
+
+- **Production.** `docs/design/04-capabilities/production.md` links its gather loop research as `../research/gather-loop.md`, a path that leads to no file.

@@ -27,6 +27,7 @@ mod map_lights;
 mod material_extras;
 mod object_look;
 mod picking_file;
+mod set_match;
 mod state_animation;
 mod team_colors;
 mod terrain_file;
@@ -52,6 +53,7 @@ pub use crate::map_lights::{MapLight, MapLights};
 pub use crate::material_extras::{Blend, MaterialExtras, TeamPaint};
 pub use crate::object_look::{LookVariant, ObjectLook};
 pub use crate::picking_file::{PickingFile, PixelRadius};
+pub use crate::set_match::SetMatch;
 pub use crate::state_animation::{
     AnimationMode, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
 };

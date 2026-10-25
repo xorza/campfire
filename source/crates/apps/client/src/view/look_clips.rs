@@ -24,7 +24,7 @@ pub(crate) struct LookClip {
 
 /// What an animation file says of its clip past its tracks, in its extension
 /// `AnimationExtras::EXTENSION`: its frames, their rate a second, and the frames each pivot's own
-/// meshes are hidden in, by the pivot's name (animated-looks.md, A visibility channel hides its
+/// meshes are hidden in, by the pivot's name (02-engine-core.md, A visibility channel hides its
 /// pivot's own meshes).
 #[derive(Asset, TypePath, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClipTiming {

@@ -35,6 +35,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
         moving = { test = "moving", still_ms = 250 }
         upgraded = { test = "tag", tag = "weapon_upgrade" }
         rubble = { test = "never" }
+        fallen = { test = "dead" }
         awaiting = { test = "site", stage = "waiting" }
         partly = { test = "site", stage = "started" }
 
@@ -56,6 +57,17 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     // A draw's ignored conditions.
     let ignore = units.units["lamp"].draws[0].ignore();
     assert_eq!(ignore, [DeclaredName::new("night").unwrap()]);
+    // The state a unit draws by the conditions it holds: damaged, the damaged state; damaged at
+    // night, its set of both; none, the default. The lamp ignores the night, so at night it
+    // draws its default, of no condition, before its night set.
+    let drawn = &units.units["humvee"].draws[0];
+    let holding =
+        |names: &'static [&'static str]| move |name: &DeclaredName| names.contains(&name.as_str());
+    assert_eq!(drawn.best_state(holding(&["damaged"])), 1);
+    assert_eq!(drawn.best_state(holding(&["damaged", "night"])), 1);
+    assert_eq!(drawn.best_state(holding(&[])), 0);
+    let lamp = &units.units["lamp"].draws[0];
+    assert_eq!(lamp.best_state(holding(&["night"])), 0);
     // A state's top, its flag's 3.25 m over the hull's 2.5 m, of a model whose top it does not
     // know, which it does not write; none of a state of no known top.
     assert_eq!(states[0].top().map(ModelTop::get), Some(3.25));
@@ -89,6 +101,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     let tag = DeclaredName::new("weapon_upgrade").unwrap();
     assert_eq!(test("upgraded"), ConditionTest::Tag { tag });
     assert_eq!(test("rubble"), ConditionTest::Never);
+    assert_eq!(test("fallen"), ConditionTest::Dead);
     let site = |stage| ConditionTest::Site { stage };
     assert_eq!(
         [test("awaiting"), test("partly")],

@@ -26,7 +26,9 @@ fn each_flag_tests_its_part_of_a_unit_and_any_other_none() {
         ConditionTest::Life(LifeShare::new(Num::ZERO, quarter).unwrap())
     );
     assert_eq!(test("moving"), ConditionTest::Moving { still_ms: 250 });
-    assert_eq!(test("dying"), ConditionTest::Dying);
+    // Dying, and rubble, the damage state of no life, which only a dead unit holds.
+    assert_eq!(test("dying"), ConditionTest::Dead);
+    assert_eq!(test("rubble"), ConditionTest::Dead);
     assert_eq!(
         test("weaponset_player_upgrade"),
         ConditionTest::Tag {
@@ -73,7 +75,7 @@ fn each_flag_tests_its_part_of_a_unit_and_any_other_none() {
     assert_eq!(test("power_plant_upgraded"), tag("power_plant_upgraded"));
     assert_eq!(test("user_1"), tag("user_1"));
     assert_eq!(test("user_2"), ConditionTest::Never);
-    assert_eq!(test("rubble"), ConditionTest::Never);
+    assert_eq!(test("garrisoned"), ConditionTest::Never);
     assert_eq!(
         flags.condition("door_1_opening").unwrap().name.as_str(),
         "door_1_opening"

@@ -333,7 +333,7 @@ impl CombatImport {
 
     /// Gives each projectile type named for its weapon, in `looks`, the look of the object it
     /// fires, when that object has one; then each type's look its weapons by the places of their
-    /// slots, which its attack conditions test (animated-looks.md, A condition is the game's name
+    /// slots, which its attack conditions test (09-zero-hour.md, A condition is the game's name
     /// for a test).
     pub(crate) fn complete_looks(&self, looks: &mut ClientUnits) {
         for ProjectileLook { unit_type, object } in &self.projectile_looks {

@@ -159,6 +159,7 @@ impl ZeroHour {
         let mut looks = models.units(&game.objects, &mut object_names, &flags)?;
         let ModelReport {
             skipped,
+            dropped_states,
             dropped_animations,
             missing_textures,
             textures: model_textures,
@@ -168,6 +169,7 @@ impl ZeroHour {
         losses.extend(skipped.into_iter().map(ImportLoss::Model));
         losses.extend(dropped_animations.into_iter().map(ImportLoss::Animation));
         losses.extend(missing_textures.into_iter().map(ImportLoss::Texture));
+        losses.extend(dropped_states.into_iter().map(ImportLoss::States));
         let mut names = BTreeMap::<MapName, ArchivePath>::new();
         let mut maps = Vec::new();
         let mut class_textures = BTreeMap::new();
@@ -328,7 +330,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 12;
+    pub const OUTPUT_VERSION: u32 = 14;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint.
     fn write_rules(dir: &Path) -> Result<PackageFingerprint, ZeroHourError> {

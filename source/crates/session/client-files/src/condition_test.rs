@@ -4,7 +4,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// What a look's condition tests of a unit, of what every client holds of it, as a units file
-/// names each condition (animated-looks.md, A condition is the game's name for a test).
+/// names each condition (09-zero-hour.md, A condition is the game's name for a test).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "test", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ConditionTest {
@@ -26,9 +26,9 @@ pub enum ConditionTest {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         phase: Option<AttackPhase>,
     },
-    /// The unit is dead, as a type that keeps its dead holds it for its time (animated-looks.md,
+    /// The unit is dead, as a type that keeps its dead holds it for its time (04-capabilities/combat.md,
     /// A death keeps its unit for its animation).
-    Dying,
+    Dead,
     /// No unit holds it: a condition of a game that no test of the engine's says, which a state
     /// counts all the same, so it is drawn only where no state of fewer such conditions matches.
     Never,

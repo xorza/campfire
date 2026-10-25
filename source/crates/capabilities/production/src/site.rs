@@ -17,7 +17,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// a share of, and, of a `builder` site, the builder that holds it. Its progress, which changes in
 /// each tick its builders build it, is its `SiteProgress`, so a change of the progress leaves the
 /// site unchanged. Its unit is `Unfinished` while it holds it. Both reach every client that holds
-/// its unit, so each draws the site's rise (animated-looks.md, A building rises with its site).
+/// its unit, so each draws the site's rise (04-capabilities/production.md, A building rises with its site).
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
 #[require(SiteProgress, Unfinished)]
 pub struct Site {

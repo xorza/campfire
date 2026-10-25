@@ -17,7 +17,7 @@ pub enum OnDeath {
     Despawn,
     /// It stays, dead, for `ms` milliseconds, then despawns, so every client draws its death, as
     /// Zero Hour's `SlowDeathBehavior` keeps its object for its `DestructionDelay`
-    /// (animated-looks.md, A death keeps its unit for its animation).
+    /// (04-capabilities/combat.md, A death keeps its unit for its animation).
     Keep { ms: NonZeroU32 },
 }
 

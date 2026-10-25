@@ -96,7 +96,7 @@ impl<'a> AnimationBuilder<'a> {
         }
     }
 
-    /// The glTF of the animation on `hierarchy`, its own (animated-looks.md, An animation is a
+    /// The glTF of the animation on `hierarchy`, its own (09-zero-hour.md, An animation is a
     /// glTF file of its own): the hierarchy's pivot nodes, then for each pivot past the root, which
     /// `Anim_Update` places by its parent's alone, a track of its moves and one of its turns,
     /// each a key at each frame its channels' keys fall on and at its last frame; a pivot of no

@@ -124,7 +124,7 @@ tolerance_deg = "2.0053522829578814"
 slot = "weapon"
 
 # Every player holds each unit's slot times and clips, as the original draws every unit's pre-attack,
-# shot, wait and reload, which its look's conditions derive from them (animated-looks.md, The
+# shot, wait and reload, which its look's conditions derive from them (02-engine-core.md, The
 # client derives an attack's phase).
 [visibility]
 cooldowns = ["allies", "enemies", "spectators"]

@@ -300,7 +300,7 @@ impl Construction {
     /// that holds it alone, toward the build's time in ticks, and its life the gain of that
     /// progress, within its maximum; a site that grew holds the `being_built` tag until a tick it
     /// grows no more, as Zero Hour's dozer sets `ACTIVELY_BEING_CONSTRUCTED` while it builds
-    /// (animated-looks.md, A condition is the game's name for a test). A builder builds a site
+    /// (09-zero-hour.md, A condition is the game's name for a test). A builder builds a site
     /// while it lives, its order is to
     /// build it, its body is within its build's range of the site's, and no tag blocks its `use`
     /// group. A site that reaches its time completes: it loses its site and its `constructing`

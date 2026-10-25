@@ -69,6 +69,12 @@ fn warn_of(loss: &ImportLoss) {
             cause = ?dropped.cause,
             "an object's supply is not imported"
         ),
+        ImportLoss::States(dropped) => warn!(
+            object = dropped.object,
+            cause = ?dropped.cause,
+            states = dropped.states,
+            "a look's condition states are not imported"
+        ),
         ImportLoss::Weapon(dropped) => warn!(
             weapon = dropped.name,
             cause = ?dropped.cause,

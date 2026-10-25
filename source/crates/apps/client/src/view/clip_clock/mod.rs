@@ -2,7 +2,7 @@ use campfire_client_files::AnimationMode;
 
 /// Where a state's clip stands, as W3D's `Animatable3DObjClass::Compute_Current_Frame` moves its
 /// frame: its frame, from 0 to its last, `frames − 1`; its mode; and the way it plays, forwards or
-/// backwards, which a ping-pong turns at each end (animated-looks.md, A state plays its animation
+/// backwards, which a ping-pong turns at each end (02-engine-core.md, A state plays its animation
 /// by its mode).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ClipClock {

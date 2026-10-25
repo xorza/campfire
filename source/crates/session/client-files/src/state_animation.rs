@@ -3,7 +3,7 @@ use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// How a look's state plays its animation (animated-looks.md, A state plays its animation by its
+/// How a look's state plays its animation (02-engine-core.md, A state plays its animation by its
 /// mode): its clips, of which it draws one each time it starts one, a clip as often as it is
 /// named; whether they are idle clips, of which it draws another, not the last, as one completes;
 /// its mode; the frame it starts at; the groups of states across which it keeps its frame, by

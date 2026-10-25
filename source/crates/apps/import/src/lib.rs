@@ -25,7 +25,7 @@ pub use crate::zero_hour::format::ref_pack::error::RefPackError;
 pub use crate::zero_hour::format::w3d::error::W3dError;
 pub use crate::zero_hour::game_version::GameVersion;
 pub use crate::zero_hour::import_loss::ImportLoss;
-pub use crate::zero_hour::model_writer::{SkipReason, SkippedModel};
+pub use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel, StateDropCause};
 pub use crate::zero_hour::production_import::ButtonDropCause;
 pub use crate::zero_hour::supply_import::SupplyDropCause;
 pub use crate::zero_hour::upgrade_import::UpgradeDropCause;

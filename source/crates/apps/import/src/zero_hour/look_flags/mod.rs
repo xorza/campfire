@@ -14,18 +14,18 @@ use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::upgrade_import;
 
 /// What each condition flag of Zero Hour's draw modules tests of a unit, as its looks' conditions
-/// name them (animated-looks.md, A condition is the game's name for a test): `NIGHT` and `SNOW` the
+/// name them (09-zero-hour.md, A condition is the game's name for a test): `NIGHT` and `SNOW` the
 /// map's; `DAMAGED` and `REALLYDAMAGED` its life above and at most the shares of
 /// `UnitDamagedThreshold` and `UnitReallyDamagedThreshold`, each apart from the other, as
-/// `calcDamageState` sets one damage state; `MOVING` its walk; `DYING` its death, which a slow
-/// death keeps it for; `AWAITING_CONSTRUCTION` and
+/// `calcDamageState` sets one damage state; `MOVING` its walk; `DYING` and `RUBBLE` its death,
+/// which a slow death keeps it for, as `RUBBLE` is the damage state of no life; `AWAITING_CONSTRUCTION` and
 /// `PARTIALLY_CONSTRUCTED` a site before and after a builder first built it, and
 /// `ACTIVELY_BEING_CONSTRUCTED` the engine's tag of a site that grew in the tick, as a dozer's
 /// `DozerAIUpdate` sets them; `PREATTACK_<slot>`, `FIRING_<slot>`, `BETWEEN_FIRING_SHOTS_<slot>`
 /// and `RELOADING_<slot>` each phase of an attack of the weapons of the slot `A`, `B` or `C`,
 /// the look's group at that slot's place, and `USING_WEAPON_<slot>` any of them; `WEAPONSET_PLAYER_UPGRADE` the tag of a
 /// `WeaponSetUpgrade`; a flag an upgrade module of an object sets the tag of its name, which the
-/// module's modifier gives (animated-looks.md, An upgrade's look is a tag); and any other flag
+/// module's modifier gives (09-zero-hour.md, An upgrade's look is a tag); and any other flag
 /// none.
 #[derive(Debug)]
 pub(crate) struct LookFlags {
@@ -112,7 +112,7 @@ impl LookFlags {
             "night" | "snow" => ConditionTest::Map,
             "damaged" => ConditionTest::Life(self.damaged),
             "reallydamaged" => ConditionTest::Life(self.really_damaged),
-            "dying" => ConditionTest::Dying,
+            "dying" | "rubble" => ConditionTest::Dead,
             "moving" => ConditionTest::Moving {
                 still_ms: Self::STILL_MS,
             },

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::zero_hour::animation_import::AnimationDropCause;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
-use crate::zero_hour::model_writer::SkippedModel;
+use crate::zero_hour::model_writer::{DroppedStates, SkippedModel};
 use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::supply_import::SupplyDropCause;
 use crate::zero_hour::upgrade_import::UpgradeDropCause;
@@ -16,7 +16,7 @@ use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 pub enum ImportLoss {
     /// A model the objects name that the package lacks.
     Model(SkippedModel),
-    /// An animation a look names that the package lacks (animated-looks.md, An animation is a
+    /// An animation a look names that the package lacks (09-zero-hour.md, An animation is a
     /// glTF file of its own).
     Animation(Dropped<AnimationDropCause>),
     /// A texture a model names that no archive holds, by the name the model gives, which it
@@ -47,4 +47,7 @@ pub enum ImportLoss {
     /// name, or a map's placement of a variation it converts otherwise than to its parent, by the
     /// variation's (09-zero-hour.md, A chassis converts to the parent of its file).
     Variation(Dropped<VariationDropCause>),
+    /// The condition states of an object's draw module, or of its whole look, the import does not
+    /// convert (09-zero-hour.md, A look's draws are its draw modules).
+    States(DroppedStates),
 }

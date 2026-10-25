@@ -238,7 +238,7 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         wip = { test = "site", stage = "started" }
         zap = { test = "attack", group = 1, phase = "reloading" }
         zing = { test = "attack", group = 1 }
-        zombie = { test = "dying" }
+        zombie = { test = "dead" }
     "#;
     let mut tags = TagNames::default();
     let upgrade = tags.names_mut().add("weapon_upgrade");

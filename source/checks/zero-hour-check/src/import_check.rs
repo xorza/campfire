@@ -9,8 +9,8 @@ use campfire_codec::Binary;
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
 use campfire_import::{
-    AnimationDropCause, ButtonDropCause, Dropped, ImportLoss, Imported, SupplyDropCause,
-    UpgradeDropCause, WeaponDropCause,
+    AnimationDropCause, ButtonDropCause, Dropped, ImportLoss, Imported, StateDropCause,
+    SupplyDropCause, UpgradeDropCause, WeaponDropCause,
 };
 use campfire_math::Num;
 use campfire_navigation::MapNavigationData;
@@ -30,8 +30,8 @@ use crate::match_play::PlayTools;
 use crate::missile_play::MissilePlay;
 use crate::pins::{
     FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
-    ProducedCounts, ProductionSteps, SkirmishTicks, SuppliedCounts, SupplySteps, TerrainCounts,
-    TerrainDrawn, UpgradeSteps, UpgradedCounts,
+    ProducedCounts, ProductionSteps, RangerLook, SkirmishTicks, SuppliedCounts, SupplySteps,
+    TerrainCounts, TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
@@ -193,6 +193,14 @@ impl ImportCheck<'_> {
                     .filter(|animation| animation.cause == cause)
                     .count()
             }),
+            dropped_states: StateDropCause::ALL.map(|cause| {
+                let losses = self.imported.losses.iter();
+                let states = losses.filter_map(|loss| match loss {
+                    ImportLoss::States(dropped) if dropped.cause == cause => Some(dropped.states),
+                    _ => None,
+                });
+                states.sum()
+            }),
         };
         for other in &self.imported.maps {
             let held: MapConditions = files.read_data(&MapConditions::path(other))?;
@@ -211,6 +219,12 @@ impl ImportCheck<'_> {
             );
         }
         info!(%drawn, "the looks of night and snow, and their animations");
+        let ranger = RangerLook::of(&unit_looks);
+        let expected = self.pinned(|golden| golden.ranger.clone(), ranger.clone());
+        self.failures
+            .extend(Differs::of(ranger.clone(), expected).map(CheckFailure::Ranger));
+        info!(%ranger, "the Ranger's animations");
+        self.measured.ranger = Some(ranger);
         Ok(())
     }
 

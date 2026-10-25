@@ -9,7 +9,7 @@ use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 /// When a dead unit its type keeps despawns: at the end of tick `at`, unless a later stage keeps
-/// it still (animated-looks.md, A death keeps its unit for its animation). It is inserted as the
+/// it still (04-capabilities/combat.md, A death keeps its unit for its animation). It is inserted as the
 /// unit dies, never changed in place, and its hook pushes its unit into the index of the decays
 /// due at each insert, a restore's too.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

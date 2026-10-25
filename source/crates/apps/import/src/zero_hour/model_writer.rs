@@ -6,7 +6,7 @@ use campfire_client_files::{
     LookState, LookTransition, LookVariant, LookVariation, ModelScale, ModelTop, NodeUpgrade,
     ObjectLook, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
 };
-use campfire_common::DeclaredName;
+use campfire_common::{DeclaredName, EnumAll};
 use campfire_package_disk::PackageWriter;
 use serde::{Deserialize, Serialize};
 
@@ -41,6 +41,24 @@ pub struct SkippedModel {
     pub reason: SkipReason,
 }
 
+/// The condition states of an object's draw module, or of its whole look, the import does not
+/// convert, by the object's name, why, and their count.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DroppedStates {
+    pub object: String,
+    pub cause: StateDropCause,
+    pub states: usize,
+}
+
+/// Why the import drops a look's condition states: its draw module draws no model in any of them,
+/// so the look holds no draw of it; or the package lacks the model a default state of its object
+/// names, so the object has no look, which the client shows as the engine's shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
+pub enum StateDropCause {
+    Undrawn,
+    Missing,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SkipReason {
     /// No file of the install holds it.
@@ -64,6 +82,7 @@ pub(crate) struct ModelWriter<'i, 'w> {
     /// Each animation a written state names, whether it converted.
     animations: BTreeMap<String, bool>,
     conditions: BTreeMap<DeclaredName, ConditionTest>,
+    dropped_states: Vec<DroppedStates>,
 }
 
 /// What a model the objects name gives their looks: the nodes its looks read and the bounds its
@@ -97,6 +116,7 @@ struct Converter<'i, 'w> {
 #[derive(Debug)]
 pub(crate) struct ModelReport {
     pub(crate) skipped: Vec<SkippedModel>,
+    pub(crate) dropped_states: Vec<DroppedStates>,
     pub(crate) dropped_animations: Vec<Dropped<AnimationDropCause>>,
     pub(crate) missing_textures: Vec<String>,
     pub(crate) textures: BTreeSet<ArchivePath>,
@@ -116,6 +136,7 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
             written: BTreeMap::new(),
             animations: BTreeMap::new(),
             conditions: BTreeMap::new(),
+            dropped_states: Vec::new(),
         }
     }
 
@@ -131,6 +152,7 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
     pub(crate) fn report(self) -> ModelReport {
         ModelReport {
             skipped: self.converter.skipped,
+            dropped_states: self.dropped_states,
             dropped_animations: self.converter.dropped_animations,
             missing_textures: self.converter.missing_textures.into_iter().collect(),
             textures: self.converter.textures,
@@ -248,11 +270,11 @@ impl ModelWriter<'_, '_> {
 
     /// The draws of a unit of `object`, at its scale, each module's states, its default first,
     /// and the flags it ignores, as each draw module of a drawable picks its best state, a map's
-    /// conditions among the unit's (animated-looks.md, A look is states of conditions): each
+    /// conditions among the unit's (02-engine-core.md, A look is states of conditions): each
     /// state's sets of flags its conditions, whose tests `flags` gives, its models of those the
     /// package holds, and, of `ADJUST_HEIGHT_BY_CONSTRUCTION_PERCENT`, its rise, the object's
     /// height at its scale, as `W3DModelDraw::adjustTransformMtx` sinks its scaled model by
-    /// `getMaxHeightAbovePosition` (animated-looks.md, A building rises with its site). A module
+    /// `getMaxHeightAbovePosition` (04-capabilities/production.md, A building rises with its site). A module
     /// none of whose states draws a model is dropped. Draws of no model are empty when no model
     /// they name draws anything, and none when the package lacks one a default names, so the
     /// client shows its loss.
@@ -283,6 +305,8 @@ impl ModelWriter<'_, '_> {
             drawn |= !looked.models.is_empty();
         }
         if skipped && !drawn {
+            let states = draws.iter().map(|draw| draw.states().count()).sum();
+            self.drop_states(object, StateDropCause::Missing, states);
             return Ok(None);
         }
         let mut look_draws = Vec::new();
@@ -316,6 +340,7 @@ impl ModelWriter<'_, '_> {
                 });
             }
             if states.iter().all(|state| state.models.is_empty()) {
+                self.drop_states(object, StateDropCause::Undrawn, states.len());
                 continue;
             }
             let mut ignore = Vec::with_capacity(draw.ignored().len());
@@ -345,7 +370,7 @@ impl ModelWriter<'_, '_> {
     }
 
     /// The animation of a state of `animation`, of each clip that converts, as `W3DModelDraw`
-    /// plays it (animated-looks.md, A state plays its animation by its mode); none for a state of
+    /// plays it (02-engine-core.md, A state plays its animation by its mode); none for a state of
     /// no clip that converts. Its start is the first of its flags `adjustAnimation` reads, a
     /// random frame, the first, then the last.
     fn state_animation(
@@ -420,6 +445,15 @@ impl ModelWriter<'_, '_> {
     }
 
     /// The condition of `flag`, whose test `flags` gives, written to the conditions once.
+    /// Reports `states` of `object` the import drops for `cause`.
+    fn drop_states(&mut self, object: &IniObject, cause: StateDropCause, states: usize) {
+        self.dropped_states.push(DroppedStates {
+            object: object.name.clone(),
+            cause,
+            states,
+        });
+    }
+
     fn condition(&mut self, flag: &str, flags: &LookFlags) -> Result<DeclaredName, ZeroHourError> {
         let FlagCondition { name, test } = flags.condition(flag)?;
         self.conditions.entry(name.clone()).or_insert(test);
@@ -538,7 +572,7 @@ impl ModelWriter<'_, '_> {
 
 impl SubObjectsUpgrade {
     /// The `SubObjectsUpgrade`s of `object` whose tag has a name, as the upgrades' import keeps
-    /// them (animated-looks.md, An upgrade's look is a tag).
+    /// them (09-zero-hour.md, An upgrade's look is a tag).
     fn of(object: &IniObject) -> Vec<Self> {
         let mut upgrades = Vec::new();
         for module in object.upgrades() {

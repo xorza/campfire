@@ -4,6 +4,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::client_model::{ClientModel, ModelTop};
+use crate::set_match::SetMatch;
 use crate::state_animation::{AnimationMode, StateAnimation};
 
 /// A unit type's look: its draws, each of which draws its own state at its unit's place, all of
@@ -27,7 +28,7 @@ pub struct ClientUnit {
     pub turret: Option<String>,
     /// The groups of its type's weapons, by their actions' names, each of which an attack's
     /// condition tests by its place, as Zero Hour's `FIRING_A` tests the weapon of its object's
-    /// slot A in each of its sets (animated-looks.md, A condition is the game's name for a test).
+    /// slot A in each of its sets (09-zero-hour.md, A condition is the game's name for a test).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub weapons: Vec<Vec<DeclaredName>>,
 }
@@ -44,7 +45,7 @@ pub struct LookVariation {
 
 /// One of a look's draws, as a Zero Hour object draws each of its draw modules: its states, of
 /// which a unit draws the one whose conditions best match its own, and the conditions it ignores
-/// as it matches them, as no unit held them (animated-looks.md, A look is states of conditions).
+/// as it matches them, as no unit held them (02-engine-core.md, A look is states of conditions).
 /// The first state is the draw's default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LookDraw {
@@ -75,7 +76,7 @@ pub struct LookState {
 }
 
 /// What a draw draws between a state of the key `from` and one of the key `to`, as Zero Hour's
-/// `TransitionState` (animated-looks.md, A state plays its animation by its mode).
+/// `TransitionState` (02-engine-core.md, A state plays its animation by its mode).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LookTransition {
     from: DeclaredName,
@@ -167,6 +168,23 @@ impl LookDraw {
 
     pub fn transitions(&self) -> &[LookTransition] {
         &self.transitions
+    }
+
+    /// The state a unit draws that holds each condition `held` says it holds, a condition the
+    /// draw ignores never held, as `SetMatch::best` finds it.
+    pub fn best_state(&self, held: impl Fn(&DeclaredName) -> bool) -> usize {
+        let holds = |name: &DeclaredName| !self.ignore.contains(name) && held(name);
+        SetMatch::best(self.states.iter().map(|state| {
+            state.sets.iter().map(|set| {
+                let common = set.iter().filter(|name| holds(name)).count();
+                let common = u32::try_from(common).expect("a set's conditions count in a u32");
+                let all = u32::try_from(set.len()).expect("a set's conditions count in a u32");
+                SetMatch {
+                    common,
+                    lacked: all - common,
+                }
+            })
+        }))
     }
 
     /// Each condition its states, its ignore and its models' upgrades name.

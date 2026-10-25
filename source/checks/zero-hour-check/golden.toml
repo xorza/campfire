@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "0406b3e76f00361be4b32e369da35c04184e00b78eae8090805da813eaef0c26"
+game = "2173182c0aff6992517170b7449a1b803b46afa0a9a236bfe7bd1c0b471fe2a5"
 rules = "577d8681cbd157efacd5eef0dd50182e3d86eca380d346aabccb189f47e73e1f"
 
 [map]
@@ -24,11 +24,18 @@ wraps = 19
 varied = 1324
 empty = 272
 states = 23402
-never = 77
+never = 76
 night = 15
 snowy = 17
 animations = 3091
 dropped_animations = [51, 0, 1]
+dropped_states = [247, 24]
+
+[ranger]
+stands = ["airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_ida", "airngr_skl.airngr_idb"]
+walks = ["airngr_skl.airngr_rna"]
+fires = ["airngr_skl.airngr_ata"]
+dies = ["airngr_skl.airngr_dta", "airngr_skl.airngr_dtb"]
 
 [produced]
 trains = 192

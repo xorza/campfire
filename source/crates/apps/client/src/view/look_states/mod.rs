@@ -40,9 +40,9 @@ pub(crate) mod draw_show;
 
 /// Draws each unit of a look of states in the state of each of its draws whose conditions best
 /// match its own, which it picks again as what its conditions test changes: its life, its tags,
-/// its destination, its site, its attack, and whether it moved of late (animated-looks.md, A look
+/// its destination, its site, its attack, and whether it moved of late (02-engine-core.md, A look
 /// is states of conditions); and plays each state's clip by its mode, through a transition between two states
-/// of one, and its idle clips one after another (animated-looks.md, A state plays its animation by
+/// of one, and its idle clips one after another (02-engine-core.md, A state plays its animation by
 /// its mode). A state of other models than the last spawns them hidden, and they replace the last
 /// as they are dressed, so the unit is never drawn of none.
 #[derive(Debug)]
@@ -371,7 +371,7 @@ impl LookStatesPlugin {
     /// frame are hidden, but those its look hides. A state that rises sinks its models by its
     /// rise times the share of its unit's site not yet built, as Zero Hour's
     /// `ADJUST_HEIGHT_BY_CONSTRUCTION_PERCENT` does, and any other draws them at their place
-    /// (animated-looks.md, A building rises with its site).
+    /// (04-capabilities/production.md, A building rises with its site).
     fn play(
         (time, fixed, looks): (Res<'_, Time>, Res<'_, Time<Fixed>>, Res<'_, UnitLooks>),
         (mut scenes, mut clips, timings, mut graphs, assets): ShowAssets<'_>,
@@ -473,7 +473,7 @@ impl ClipHiding<'_, '_, '_> {
     /// Hides the mesh nodes of `dressed`'s pivots that the clip of `pose` hides at its frame, but
     /// those its look hides, and shows again those it hid that it no longer hides, the clip's
     /// pivots resolved by their names into `hidden` as the model first plays it; none for a model
-    /// of no pivots (animated-looks.md, A visibility channel hides its pivot's own meshes).
+    /// of no pivots (02-engine-core.md, A visibility channel hides its pivot's own meshes).
     fn hide(&mut self, dressed: &Dressed, hidden: &mut ClipHidden, pose: ClipPose<'_>) {
         let Some(pivots) = &dressed.pivots else {
             return;

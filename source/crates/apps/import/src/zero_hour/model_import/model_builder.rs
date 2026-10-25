@@ -50,7 +50,7 @@ impl ModelBuilder {
 
     /// An HLOD: each pivot a node in its parent's, and each sub-object a node of its mesh on its
     /// pivot's; a skin's at the scene's root, its vertices at their bind pose, each moved by its
-    /// bone's node (animated-looks.md, A skin is a glTF skin).
+    /// bone's node (09-zero-hour.md, A skin is a glTF skin).
     pub(super) fn hlod(
         &mut self,
         hierarchy: &Hierarchy,

@@ -42,6 +42,7 @@
 - **A complete site runs a hook.** A site that completes runs `on_site_complete`, as Warcraft III fires `EVENT_PLAYER_UNIT_CONSTRUCT_FINISH`, queued on the server by stable id in its tick; a predicting client grows its sites alike and runs no hook.
 - **A build point its team sees.** A placement needs its point in a cell its builder's team saw in the last Vision stage, as Zero Hour's `isLocationLegalToBuild` refuses a point under shroud first, so a build into the fog finds out nothing of what stands there; the fog a restored match holds is filled again as its first tick starts, from the units and reveals the last stage saw.
 - **Tags block production.** A train starts only when its producer's tags do not block `produce`, as a cast starts only when they do not block `cast`; each kind of action names the one block that stops it, so a stun that a mode declares can stop a queue or leave it running.
+- **A building rises with its site.** A state may name a rise, and sinks its models by it times the share of its site's time not yet built, as Zero Hour's `ADJUST_HEIGHT_BY_CONSTRUCTION_PERCENT` sinks its scaled model by its geometry's height, which the import names; so a site and its progress are of the `unit` kind, which every client that holds the unit receives, where its owner alone received them. Refused: the height of the type's body, which a small structure lacks; the share derived from the site's life, which a hit breaks; the owner's sites alone, where an enemy's build would look finished from its first tick.
 
 ## Placement
 

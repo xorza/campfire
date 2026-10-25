@@ -201,7 +201,7 @@ impl ImportedType {
             }]
         });
         // A death keeps the object for the delay of the slow death a normal death of it most
-        // likely takes (animated-looks.md, A death keeps its unit for its animation).
+        // likely takes (04-capabilities/combat.md, A death keeps its unit for its animation).
         let kept = object.slow_death().map(|death| {
             let ms = game_time::of_duration(death.delay_ms).map_err(|_| TypeError::DeathDelay)?;
             u32::try_from(ms).map_err(|_| TypeError::DeathDelay)

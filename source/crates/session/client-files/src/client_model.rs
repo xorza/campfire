@@ -24,7 +24,7 @@ pub struct ClientModel {
 
 /// The nodes of a model a condition shows and hides while its unit holds it, over those its
 /// state hides, as Zero Hour's `SubObjectsUpgrade` shows and hides its object's sub-objects in
-/// every state (animated-looks.md, An upgrade's look is a tag).
+/// every state (09-zero-hour.md, An upgrade's look is a tag).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NodeUpgrade {

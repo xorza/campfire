@@ -8,7 +8,7 @@ use bevy::world_serialization::WorldAsset;
 /// its meshes kept in the main world as well as on the GPU, as the pointer casts its ray at their
 /// triangles (02-engine-core.md, A unit is picked by its drawn triangles). A look's rest models and
 /// a client object's load as the match starts, and a state's other models as a unit first takes
-/// it, which show once they are ready (animated-looks.md, A state's new models replace the old as
+/// it, which show once they are ready (02-engine-core.md, A state's new models replace the old as
 /// they are ready).
 #[derive(Resource, Debug, Default)]
 pub(crate) struct ModelScenes {

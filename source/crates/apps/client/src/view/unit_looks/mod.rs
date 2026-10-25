@@ -12,7 +12,7 @@ use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_client_files::{
     AnimationMode, AttackPhase, ClientModel, ConditionTest, LifeShare, LookDraw, LookShown,
-    ModelTop, SiteStage, StartFrame, StateAnimation,
+    ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation,
 };
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
@@ -118,7 +118,7 @@ pub(crate) enum Showing {
 }
 
 /// How a state plays its animation, as its file says it, its clips by their files' paths
-/// (animated-looks.md, A state plays its animation by its mode).
+/// (02-engine-core.md, A state plays its animation by its mode).
 #[derive(Debug)]
 pub(crate) struct StateClips {
     pub(crate) clips: Vec<ClipFile>,
@@ -155,7 +155,7 @@ pub(crate) struct UnitTests {
     tests: Vec<UnitTest>,
 }
 
-/// What a tested condition reads of a unit (animated-looks.md, A condition is the game's name for
+/// What a tested condition reads of a unit (09-zero-hour.md, A condition is the game's name for
 /// a test).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UnitTest {
@@ -164,7 +164,7 @@ enum UnitTest {
     Moving(Duration),
     Life(LifeShare),
     Site(SiteStage),
-    Dying,
+    Dead,
     /// A weapon of its look's group at a place is at a phase, or at any, by their bits in
     /// `UnitFacts::attacks`.
     Attack(u64),
@@ -212,7 +212,7 @@ pub(crate) struct LookModel {
 }
 
 /// The nodes of a look's model a condition shows and hides while its unit holds it, over those
-/// its state hides (animated-looks.md, An upgrade's look is a tag).
+/// its state hides (09-zero-hour.md, An upgrade's look is a tag).
 #[derive(Debug, Clone)]
 struct ModelUpgrade {
     when: Known,
@@ -497,28 +497,19 @@ impl DrawStates {
             .position(|transition| transition.from == from && transition.to == to)
     }
 
-    /// The state a unit that holds the tested conditions `held` draws: the one of the set of the
-    /// most conditions in common with the unit's, of a tie the fewest the unit lacks, of a tie
-    /// the first, the states in order and each one's sets in order, as Zero Hour's
-    /// `SparseMatchFinder::findBestInfoSlow` finds it (animated-looks.md, A look is states of
-    /// conditions).
+    /// The state a unit that holds the tested conditions `held` draws, as `SetMatch::best` finds
+    /// it.
     pub(crate) fn best(&self, held: u64) -> usize {
         Self::best_of(&self.states, held)
     }
 
     fn best_of(states: &[StateModels], held: u64) -> usize {
-        let mut best = 0;
-        let (mut most, mut fewest) = (0, u32::MAX);
-        for (at, state) in states.iter().enumerate() {
-            for set in &state.sets {
-                let common = (set.tested & held).count_ones() + set.held;
-                let lacked = (set.tested & !held).count_ones() + set.lacked;
-                if common > most || (common >= most && lacked < fewest) {
-                    (best, most, fewest) = (at, common, lacked);
-                }
-            }
-        }
-        best
+        SetMatch::best(states.iter().map(|state| {
+            state.sets.iter().map(|set| SetMatch {
+                common: (set.tested & held).count_ones() + set.held,
+                lacked: (set.tested & !held).count_ones() + set.lacked,
+            })
+        }))
     }
 }
 
@@ -605,7 +596,7 @@ impl UnitTests {
                 )),
                 ConditionTest::Life(share) => Some(UnitTest::Life(*share)),
                 ConditionTest::Site { stage } => Some(UnitTest::Site(*stage)),
-                ConditionTest::Dying => Some(UnitTest::Dying),
+                ConditionTest::Dead => Some(UnitTest::Dead),
                 ConditionTest::Attack { group, phase } => {
                     let bits = match phase {
                         Some(phase) => UnitFacts::attack_bit(*group, *phase),
@@ -648,7 +639,7 @@ impl UnitTests {
                     .life
                     .is_some_and(|[current, max]| share.holds(current, max)),
                 UnitTest::Site(stage) => facts.site == Some(stage),
-                UnitTest::Dying => facts.dead,
+                UnitTest::Dead => facts.dead,
                 UnitTest::Attack(bit) => facts.attacks & bit != 0,
             };
             if holds {

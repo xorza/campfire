@@ -7,7 +7,7 @@ use campfire_values::ActionId;
 
 /// What a drawing keeps of its unit's slots between the frames that read them: each slot's ready
 /// tick as the client last saw it, and the tick the client saw it rise in, the tick of the slot's
-/// last shot, as no state the client holds says when a shot was (animated-looks.md, The client
+/// last shot, as no state the client holds says when a shot was (02-engine-core.md, The client
 /// derives an attack's phase).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct SlotShots {

@@ -2,9 +2,11 @@
 //! it measures, which `golden.toml` pins.
 
 use campfire_bots::OrderUnsent;
-use campfire_common::PackageFingerprint;
+use campfire_client_files::{ClientUnits, StateAnimation};
+use campfire_common::{DeclaredName, PackageFingerprint};
 use campfire_import::{
-    AnimationDropCause, ButtonDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause,
+    AnimationDropCause, ButtonDropCause, StateDropCause, SupplyDropCause, UpgradeDropCause,
+    WeaponDropCause,
 };
 use campfire_mode::MatchResult;
 use campfire_orders::OrderDropCause;
@@ -79,15 +81,18 @@ pub(crate) struct TerrainCounts {
 /// How many unit types' looks have a draw of more than one state, and client objects' looks
 /// night or snow variants; how many unit types' looks have no draws, of objects that draw
 /// nothing; how many states the unit types' looks hold, and how many of their conditions have no
-/// test (animated-looks.md, A look is states of conditions); how many maps are night maps and
-/// snowy maps; and how many animations the looks name the import converts, and drops for each
-/// cause, in the order of `AnimationDropCause::ALL` (animated-looks.md, An animation is a glTF
-/// file of its own).
+/// test (02-engine-core.md, A look is states of conditions); how many maps are night maps and
+/// snowy maps; how many animations the looks name the import converts, and drops for each
+/// cause, in the order of `AnimationDropCause::ALL` (09-zero-hour.md, An animation is a glTF
+/// file of its own); and how many states it drops for each cause, in the order of
+/// `StateDropCause::ALL`.
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     "{varied} varied looks, {empty} empty looks, {states} states, {never} untested conditions, \
-     {night} night maps, {snowy} snowy maps, {animations} animations, dropped {:?}",
-    dropped_animations
+     {night} night maps, {snowy} snowy maps, {animations} animations, dropped {:?}, dropped \
+     states {:?}",
+    dropped_animations,
+    dropped_states
 )]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LookCounts {
@@ -99,6 +104,46 @@ pub(crate) struct LookCounts {
     pub(crate) snowy: usize,
     pub(crate) animations: usize,
     pub(crate) dropped_animations: [usize; AnimationDropCause::ALL.len()],
+    pub(crate) dropped_states: [usize; StateDropCause::ALL.len()],
+}
+
+/// The animations the Ranger's look plays, by their files' names: as it stands, holding no
+/// condition; as it walks, `MOVING`; as it fires its rifle, `FIRING_A` and `USING_WEAPON_A`; and
+/// as it dies, `DYING`; each the clips of the state its first draw draws then, as the client
+/// picks it (02-engine-core.md, A look is states of conditions).
+#[derive(Debug, Display, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[display("stands {stands:?}, walks {walks:?}, fires {fires:?}, dies {dies:?}")]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RangerLook {
+    pub(crate) stands: Vec<String>,
+    pub(crate) walks: Vec<String>,
+    pub(crate) fires: Vec<String>,
+    pub(crate) dies: Vec<String>,
+}
+
+impl RangerLook {
+    /// The animations the Ranger's look of `looks` plays as it stands, walks, fires and dies, as
+    /// `SetMatch::best` picks each state.
+    pub(crate) fn of(looks: &ClientUnits) -> Self {
+        let ranger = DeclaredName::new("americainfantryranger").expect("a name");
+        let draw = &looks.units[&ranger].draws[0];
+        let clips = |held: &[&str]| -> Vec<String> {
+            let state = &draw.states()[draw.best_state(|name| held.contains(&name.as_str()))];
+            let clips = state.animation.iter().flat_map(StateAnimation::clips);
+            let files = clips.map(|clip| clip.animation.as_str());
+            let names = files.map(|file| {
+                let file = file.trim_start_matches("client/animations/");
+                file.trim_end_matches(".glb").to_owned()
+            });
+            names.collect()
+        };
+        Self {
+            stands: clips(&[]),
+            walks: clips(&["moving"]),
+            fires: clips(&["firing_a", "using_weapon_a"]),
+            dies: clips(&["dying"]),
+        }
+    }
 }
 
 /// The production play's steps: each one's ticks, from the tick its order applies to the tick

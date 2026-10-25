@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::CheckError;
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, Fingerprints, FoughtCounts, LookCounts, MapCounts,
-    MissileTicks, ProducedCounts, SkirmishTicks, SuppliedCounts, SupplyTicks, TerrainCounts,
-    UpgradedCounts,
+    MissileTicks, ProducedCounts, RangerLook, SkirmishTicks, SuppliedCounts, SupplyTicks,
+    TerrainCounts, UpgradedCounts,
 };
 
 /// What the check measured of the known version and this importer, each a value no closed form
@@ -30,6 +30,7 @@ pub(crate) struct Golden {
     pub(crate) map: MapCounts,
     pub(crate) terrain: TerrainCounts,
     pub(crate) looks: LookCounts,
+    pub(crate) ranger: RangerLook,
     pub(crate) produced: ProducedCounts,
     pub(crate) upgraded: UpgradedCounts,
     pub(crate) supplied: SuppliedCounts,
@@ -54,6 +55,7 @@ pub(crate) struct Measured {
     pub(crate) map: Option<MapCounts>,
     pub(crate) terrain: Option<TerrainCounts>,
     pub(crate) looks: Option<LookCounts>,
+    pub(crate) ranger: Option<RangerLook>,
     pub(crate) produced: Option<ProducedCounts>,
     pub(crate) upgraded: Option<UpgradedCounts>,
     pub(crate) supplied: Option<SuppliedCounts>,
@@ -116,6 +118,7 @@ impl Measured {
             map: self.map?,
             terrain: self.terrain?,
             looks: self.looks?,
+            ranger: self.ranger?,
             produced: self.produced?,
             upgraded: self.upgraded?,
             supplied: self.supplied?,
