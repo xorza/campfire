@@ -154,6 +154,60 @@ impl Grid {
         self.spans(position, radius, DiscEdge::Out, mark);
     }
 
+    /// Calls `change` with each run of the cells of `was` that `is` lacks, `Lost`, and of `is`
+    /// that `was` lacks, `Gained`, none empty; each of `was` and `is` one run a row, rows in
+    /// order, as the spans give them: what a body that moved counts.
+    pub fn changed_runs(
+        &self,
+        was: &[Range<usize>],
+        is: &[Range<usize>],
+        mut change: impl FnMut(Range<usize>, RunChange),
+    ) {
+        let columns = self.columns();
+        let row = |run: &Range<usize>| run.start / columns;
+        debug_assert!(
+            [was, is]
+                .iter()
+                .all(|runs| runs.is_sorted_by(|a, b| row(a) < row(b))),
+            "one run a row, rows in order"
+        );
+        // Most moves in a tick keep a body's cells.
+        if was == is {
+            return;
+        }
+        let mut emit = |cells: Range<usize>, how| {
+            if !cells.is_empty() {
+                change(cells, how);
+            }
+        };
+        let (mut old, mut new) = (was.iter().peekable(), is.iter().peekable());
+        loop {
+            match (old.peek().copied(), new.peek().copied()) {
+                (None, None) => break,
+                (Some(o), Some(n)) if row(o) == row(n) => {
+                    emit(o.start..o.end.min(n.start), RunChange::Lost);
+                    emit(o.start.max(n.end)..o.end, RunChange::Lost);
+                    emit(n.start..n.end.min(o.start), RunChange::Gained);
+                    emit(n.start.max(o.end)..n.end, RunChange::Gained);
+                    old.next();
+                    new.next();
+                }
+                (Some(o), Some(n)) if row(o) < row(n) => {
+                    emit(o.clone(), RunChange::Lost);
+                    old.next();
+                }
+                (Some(o), None) => {
+                    emit(o.clone(), RunChange::Lost);
+                    old.next();
+                }
+                (_, Some(n)) => {
+                    emit(n.clone(), RunChange::Gained);
+                    new.next();
+                }
+            }
+        }
+    }
+
     /// Calls `mark` with each row's run of the cells whose centers come closer than `reach` to
     /// `body` at `position` on the ground plane, exactly: a center at `reach` is not closer. A box
     /// and a disc round it are convex, so each row's cells are one run. Rows in order. It tests the
@@ -522,6 +576,13 @@ impl Grid {
 enum CellExtent {
     Center,
     Square,
+}
+
+/// Whether a run of `Grid::changed_runs` left the cells or came to them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunChange {
+    Lost,
+    Gained,
 }
 
 /// Whether a cell whose center lies at a disc's reach is in the disc.

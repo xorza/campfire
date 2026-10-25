@@ -4,7 +4,7 @@ use std::ops::Range;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declarations::Cache;
-use campfire_geometry::Grid;
+use campfire_geometry::{Grid, RunChange};
 use campfire_values::Team;
 
 use crate::body_index::IndexedBody;
@@ -264,7 +264,6 @@ impl CrowdCosts {
             "a move keeps the unit's team, standing and layer"
         );
         let grid = &self.grid;
-        let columns = grid.columns();
         let (old, new) = (&mut self.old_runs, &mut self.new_runs);
         for kind in self
             .kinds
@@ -282,39 +281,13 @@ impl CrowdCosts {
                     .binary_search_by_key(&team, |costs| costs.team)
                     .expect("a counted unit's team has costs")
             });
-            let mut count = |cells: Range<usize>, change| {
-                if !cells.is_empty() {
-                    Self::count_cells(grid, kind, team, is.standing, cells, change);
-                }
-            };
-            let row =
-                |runs: &[Range<usize>], at: usize| runs.get(at).map(|run| run.start / columns);
-            let (mut i, mut j) = (0, 0);
-            while i < old.len() || j < new.len() {
-                match (row(old, i), row(new, j)) {
-                    (Some(a), Some(b)) if a == b => {
-                        let (o, n) = (old[i].clone(), new[j].clone());
-                        count(o.start..o.end.min(n.start), Change::Take);
-                        count(o.start.max(n.end)..o.end, Change::Take);
-                        count(n.start..n.end.min(o.start), Change::Add);
-                        count(n.start.max(o.end)..n.end, Change::Add);
-                        i += 1;
-                        j += 1;
-                    }
-                    (Some(a), Some(b)) if a < b => {
-                        count(old[i].clone(), Change::Take);
-                        i += 1;
-                    }
-                    (Some(_), None) => {
-                        count(old[i].clone(), Change::Take);
-                        i += 1;
-                    }
-                    _ => {
-                        count(new[j].clone(), Change::Add);
-                        j += 1;
-                    }
-                }
-            }
+            grid.changed_runs(old, new, |cells, how| {
+                let change = match how {
+                    RunChange::Lost => Change::Take,
+                    RunChange::Gained => Change::Add,
+                };
+                Self::count_cells(grid, kind, team, is.standing, cells, change);
+            });
         }
     }
 

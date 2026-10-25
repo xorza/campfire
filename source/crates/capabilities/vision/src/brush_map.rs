@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use campfire_geometry::{Grid, Polygon};
 
 /// The map's brush on the vision grid: each cell's brush, the first the map lists whose area holds
@@ -49,16 +51,19 @@ impl BrushMap {
         }
     }
 
-    /// The cells a unit standing in `cell` does not reveal; none on a map with no brush.
-    pub(crate) fn hidden_from(&self, cell: usize) -> Option<Hidden<'_>> {
+    /// The brush of `cell`, counted from 1, if any.
+    pub(crate) fn brush_of(&self, cell: usize) -> Option<NonZeroU32> {
+        self.of_cell.get(cell).copied().and_then(NonZeroU32::new)
+    }
+
+    /// The cells a unit standing in `brush`, or in none, does not reveal; none on a map with no
+    /// brush.
+    pub(crate) fn hidden_in(&self, brush: Option<NonZeroU32>) -> Option<Hidden<'_>> {
         let any = self.cells.get(..self.words).filter(|_| self.words > 0)?;
-        let own = match self.of_cell[cell] {
-            0 => None,
-            brush => {
-                let at = usize::try_from(brush).expect("a brush of the map") * self.words;
-                Some(&self.cells[at..at + self.words])
-            }
-        };
+        let own = brush.map(|brush| {
+            let at = usize::try_from(brush.get()).expect("a brush of the map") * self.words;
+            &self.cells[at..at + self.words]
+        });
         Some(Hidden { any, own })
     }
 }

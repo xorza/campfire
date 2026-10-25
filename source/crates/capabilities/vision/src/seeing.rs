@@ -9,7 +9,7 @@ use campfire_sim::{Position, SimTick};
 use campfire_units::{Body, Dead, SeenBy};
 use campfire_values::{Relations, Team, UnitTags};
 
-use crate::fog::Fog;
+use crate::fog::{Fog, Seer};
 use crate::reveals::{Reveal, Reveals};
 use crate::sight::Sight;
 use crate::vision_book::VisionBook;
@@ -126,12 +126,16 @@ impl Seeing {
         if changed || !fog.is_filled() {
             fog.rebuild(grid, relations);
         }
-        fog.begin_tick();
-        for (entity, &position, &team, sight, tags) in seers {
-            let detects = tags.is_some_and(|tags| tags.properties.detects());
-            let slot = entity.index_u32() as usize;
-            fog.sight(grid, slot, position.get(), team, sight.range(), detects);
-        }
+        let seers = seers
+            .iter()
+            .map(|(entity, position, &team, sight, tags)| Seer {
+                slot: entity.index_u32() as usize,
+                position: position.get(),
+                team,
+                range: sight.range(),
+                detects: tags.is_some_and(|tags| tags.properties.detects()),
+            });
+        fog.see(grid, seers);
         reveals(fog);
     }
 

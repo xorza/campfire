@@ -402,3 +402,80 @@ fn a_grid_lists_the_cells_whose_centers_lie_inside_a_polygon_or_on_its_edge() {
     assert_eq!(cells(&square, Num::HALF), middle);
     assert_eq!(cells(&square, Num::int(2)), [0, 1, 2, 3]);
 }
+
+#[test]
+fn the_runs_that_changed_are_the_cells_of_one_and_not_the_other() {
+    // Cells of 1 m over 10 by 4 m, 10 a row. Row 0 goes from 0..3 to 1..4: 0 is lost and 3
+    // gained; row 1 holds 10..13 only before, row 2 20..22 only after.
+    let bounds = Bounds::new([Num::ZERO; 2], [Num::int(10), Num::int(4)]).unwrap();
+    let grid = Grid::new(Num::ONE, bounds).unwrap();
+    let changed = |was: &[Range<usize>], is: &[Range<usize>]| {
+        let mut runs = Vec::new();
+        grid.changed_runs(was, is, |cells, how| runs.push((cells, how)));
+        runs
+    };
+    assert_eq!(
+        changed(&[0..3, 10..13], &[1..4, 20..22]),
+        [
+            (0..1, RunChange::Lost),
+            (3..4, RunChange::Gained),
+            (10..13, RunChange::Lost),
+            (20..22, RunChange::Gained),
+        ]
+    );
+    // A run inside another loses or gains both its ends; the same runs change nothing.
+    assert_eq!(
+        changed(&[0..10, 30..31], &[2..5, 30..31]),
+        [(0..2, RunChange::Lost), (5..10, RunChange::Lost)]
+    );
+    assert_eq!(
+        changed(&[2..5, 30..31], &[0..10, 30..31]),
+        [(0..2, RunChange::Gained), (5..10, RunChange::Gained)]
+    );
+    assert_eq!(changed(&[0..3, 11..14], &[0..3, 11..14]), []);
+    assert_eq!(changed(&[], &[]), []);
+
+    // Discs on cells of 0.25 m over ±6 m: the same, moved within their rows, a row up, grown, and
+    // apart; the lost cells are exactly the first's not in the second, the gained the second's
+    // not in the first, each once.
+    let edge = Num::int(6);
+    let grid = Grid::new(Num::ONE / 4, Bounds::new([-edge; 2], [edge; 2]).unwrap()).unwrap();
+    let at = |x: Num, z: Num| Vec3::new(x, Num::ZERO, z);
+    let start = at(Num::ONE / 10, Num::ZERO);
+    let radius = Num::int(3) / 2;
+    let discs = [
+        (start, radius),
+        (at(Num::int(3) / 5, Num::ZERO), radius),
+        (at(Num::ONE / 10, Num::ONE / 4), radius),
+        (start, Num::int(5) / 2),
+        (at(Num::int(4), Num::int(-3)), radius),
+    ];
+    let runs = |(position, radius): (Vec3, Num)| {
+        let mut runs = Vec::new();
+        grid.spans_within(position, radius, |run| runs.push(run));
+        runs
+    };
+    let was = runs((start, radius));
+    let old: Vec<usize> = was.iter().cloned().flatten().collect();
+    for disc in discs {
+        let is = runs(disc);
+        let new: Vec<usize> = is.iter().cloned().flatten().collect();
+        let (mut lost, mut gained) = (Vec::new(), Vec::new());
+        grid.changed_runs(&was, &is, |cells, how| match how {
+            RunChange::Lost => lost.extend(cells),
+            RunChange::Gained => gained.extend(cells),
+        });
+        let only = |of: &[usize], not: &[usize]| -> Vec<usize> {
+            of.iter()
+                .copied()
+                .filter(|cell| !not.contains(cell))
+                .collect()
+        };
+        assert_eq!(lost, only(&old, &new));
+        assert_eq!(gained, only(&new, &old));
+        assert_eq!(
+            lost.is_empty() && gained.is_empty(),
+            disc == (start, radius)
+        );
+    }
+}

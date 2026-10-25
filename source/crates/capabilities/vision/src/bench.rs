@@ -8,7 +8,7 @@ use campfire_values::{Relations, Team};
 use criterion::Criterion;
 
 use crate::brush_map::BrushMap;
-use crate::fog::Fog;
+use crate::fog::{Fog, Seer};
 use crate::vision_grid::VisionGrid;
 
 /// Runs each bench of the crate whose id criterion's filter takes.
@@ -23,9 +23,9 @@ const SIGHT: i64 = 10;
 /// runs it: each unit reveals the cells within its 10 m sight on a grid of 1 m cells with no
 /// brush, then each learns the teams that see it. Each sight reveals as many cells however close
 /// the units stand, so one density serves, the spread one; the grid reaches a sight past it, so
-/// no sight is cut at its edge. In `sight` every unit moved since the tick before, a bit along x
-/// and back by turns, so each finds its sight's runs on the grid; in `still` none did, so each
-/// takes its runs again.
+/// no sight is cut at its edge. In `sight` every unit moved a cell along x since the tick
+/// before, and back by turns, so each counts the cells at both ends of each row of its sight, the
+/// worst a tick's moves cost; in `still` none did, so each costs a compare.
 fn fog(c: &mut Criterion) {
     let span = Density::Spread.span();
     let mut scene = KernelScene::new(11);
@@ -52,15 +52,22 @@ fn fog(c: &mut Criterion) {
     let moved: Vec<(Vec3, Team)> = units
         .iter()
         .map(|&(at, team)| {
-            let step = Vec3::new(Num::EPSILON, Num::ZERO, Num::ZERO);
+            let step = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
             (at + step, team)
         })
         .collect();
     let mut tick = |fog: &mut Fog, units: &[(Vec3, Team)]| {
-        fog.begin_tick();
-        for (slot, &(position, team)) in units.iter().enumerate() {
-            fog.sight(&vision, slot, position, team, range, false);
-        }
+        let seers = units
+            .iter()
+            .enumerate()
+            .map(|(slot, &(position, team))| Seer {
+                slot,
+                position,
+                team,
+                range,
+                detects: false,
+            });
+        fog.see(&vision, seers);
         seen.clear();
         for (slot, &(position, team)) in units.iter().enumerate() {
             seen.push(fog.seen_by(&vision, slot, position, None, team, false));

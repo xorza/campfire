@@ -30,7 +30,7 @@ pub use crate::body_grid::{BodyGrid, Indexed};
 pub use crate::bounds::Bounds;
 pub use crate::cell_key::CellKey;
 pub use crate::cell_levels::CellLevels;
-pub use crate::grid::Grid;
+pub use crate::grid::{Grid, RunChange};
 pub use crate::grid_search::GridSearch;
 pub use crate::metric::Metric;
 pub use crate::placed::Placed;

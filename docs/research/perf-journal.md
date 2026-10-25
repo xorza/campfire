@@ -218,3 +218,16 @@ From `9de47b915`, which upgraded Rhai to 1.27.0, over the benches the first sess
 | The restore | `snapshot/restore` 414 µs, four times a snapshot: `StateRegistry::put_in` 12.2 %, then decoding and the compare | | not tried: a restore runs at a checkpoint, a replay or a verification, never in a tick |
 | The route planner's move stage by a flow field for a group | `zero_hour_stage`: move and collide 71 % of a Zero Hour tick | | not tried: navigation.md already plans one route a group (One command, one route) and refuses a flow field of the whole map each tick (A route prices the units on it), so the move stage's searches are single replans |
 | `integration/replication/send_insert_0_clients` | 432 µs against 96 µs with one client: with no client, `Stepper::init` returns before any step, so the timed update is the server app's first, with its setup | | a fault of the bench, in the issue log |
+
+## The counted fog, 2026-10-25
+
+`master` (`6f56e7970`) against the branch `counted-fog` with the counted fog of `PLAN.md`'s F2, interleaved pairs, `local` in clock-scaled megacycles, quiet, four pairs; `mac` in ns, three pairs. Both trees' `fog/sight` moves each unit a whole cell along x and back, where it moved a bit before, so that every seer's cells change.
+
+| Shape | `local` | `mac` |
+| --- | --- | --- |
+| Each moved look's old runs found on the grid again from its key | `fog/sight`, a bit's move, +67.4 %; `fog/still` −75.2 %; `battle/crowded_vision` −55.7 %; `mean_3v3_vision` −15.9 % | |
+| The runs kept from the tick before, in two flat buffers | `fog/sight`, a bit's move, +4.9 %; `fog/still` −70.7 %; `mean_3v3_vision` −27.6 % | |
+| And no count when a look's runs are the same | `fog/sight`, a bit's move, −26.1 %; a cell's move +111 % | |
+| And a count cell by cell, `SightMaps::look` inlined | `fog/sight`, a cell's move, +78.6 %; `fog/still` −70.8 %; `battle/crowded_vision` −49.3 %; `mean_3v3_vision` −28.0 %; `server_tick/mean_3v3` −2.26 %; `server_tick/worst_3v3` −0.79 %; `worst_3v3_vision`, eight pairs from −22.8 % to +32.5 %, median +9.5 %; `zero_hour_tick/mean_attack` +0.98 %, `mean_bases` +0.30 %, `worst_attack` +0.09 %, `worst_bases` +2.74 %, three pairs | `fog/sight` +94.9 %; `fog/still` −65.5 %; `battle/crowded_vision` −47.9 %; `mean_3v3_vision` −28.0 %; `server_tick/mean_3v3` −2.60 %; `server_tick/worst_3v3` +0.82 %; `worst_3v3_vision` −12.6 % |
+
+The profile of the last shape's `fog/sight` on `local`: `CountedMaps::count` 33.6 % and `SightMaps::look` 10.3 % before the count went cell by cell; the stage's spans, its diff and its copy of the runs cost about what the whole bitmap stage costs.

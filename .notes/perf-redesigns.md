@@ -4,7 +4,7 @@ Redesigns that the optimization session of 2026-10-25 spiked, each measured agai
 
 ## A counted fog
 
-Planned: [PLAN.md](../PLAN.md#a-counted-fog), F1 and F2. Spike: `../campfire-perf/fog`.
+Done; its decisions are in [vision.md](../docs/design/04-capabilities/vision.md), A stage that costs what changed.
 
 ## A target index split by team and tags
 
