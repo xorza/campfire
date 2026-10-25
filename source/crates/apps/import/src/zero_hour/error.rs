@@ -102,6 +102,10 @@ pub enum ZeroHourError {
     /// them.
     #[error("the game data's damage thresholds are no shares of life")]
     DamageThresholds,
+    /// A state's animation holds a number the engine does not hold: a stride or a speed that
+    /// is not finite, or a speed range not above 0 and in order.
+    #[error("a state's animation holds a stride or a speed the engine does not hold")]
+    AnimationNumber,
     /// A draw module's state names a condition flag that is no declared name.
     #[error("a draw module names the condition flag {0}, which is no name")]
     ConditionFlag(String),

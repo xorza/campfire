@@ -116,6 +116,25 @@ impl Glide {
         };
     }
 
+    /// The meters a second its drawing walks at `now` of app time, on `clock`, as
+    /// `PhysicsBehavior::getVelocityMagnitude` gives a unit's: a predicted unit's step of its last
+    /// tick; a received unit's step to its new spot while it glides there, 0 after.
+    pub(crate) fn speed(&self, now: Duration, clock: FrameClock) -> f32 {
+        if clock.timestep.is_zero() {
+            return 0.0;
+        }
+        let (from, to) = match *self {
+            Self::Ticked { before, last } => (before, last),
+            Self::Timed { from, to, since } => {
+                if now.saturating_sub(since) > clock.timestep {
+                    return 0.0;
+                }
+                (from, to)
+            }
+        };
+        from.point.distance(to.point) / clock.timestep.as_secs_f32()
+    }
+
     /// Where it stands at `now` of app time, on `clock`. A timed glide takes the share of the way
     /// that the time since its start is of a tick, at most all of it; only the difference of two
     /// times becomes an `f32`, so a long session loses no precision.
@@ -165,6 +184,19 @@ mod tests {
             [0.0, 1.0, 2.0, 2.0]
         );
         assert_eq!(at(25, 100), 0.5);
+        // It walks 2 m in a tick of 50 ms, 40 m a second, until the tick ends, then none; 20 at a
+        // tick of 100 ms.
+        let speed = |ms, tick_ms| {
+            let clock = FrameClock {
+                timestep: Duration::from_millis(tick_ms),
+                fraction: 0.9,
+            };
+            glide.speed(start + Duration::from_millis(ms), clock)
+        };
+        assert_eq!(
+            [speed(0, 50), speed(50, 50), speed(51, 50), speed(25, 100)],
+            [40.0, 40.0, 0.0, 20.0]
+        );
         // A time before its start, as a clock never gives, holds it at its start; a tick of no
         // length puts it at its end.
         assert_eq!(at(0, 50), 0.0);
@@ -173,6 +205,7 @@ mod tests {
             fraction: 0.0,
         };
         assert_eq!(glide.at(Duration::ZERO, still).point.x, 2.0);
+        assert_eq!(glide.speed(Duration::ZERO, still), 0.0);
     }
 
     #[test]
@@ -189,6 +222,8 @@ mod tests {
         };
         for now in [Duration::ZERO, Duration::from_secs(36_000)] {
             assert_eq!(glide.at(now, clock(0.25)).point.x, 1.5);
+            // Its last tick's step, 2 m in 50 ms: 40 m a second.
+            assert_eq!(glide.speed(now, clock(0.25)), 40.0);
         }
         // A share past a whole tick, which a frame long enough to catch up may give, stops at
         // the last place.
@@ -196,6 +231,7 @@ mod tests {
         // A tick that does not move it brings it to rest at its last place.
         glide.tick(at_rest(Vec3::X * 3.0));
         assert_eq!(glide.at(Duration::ZERO, clock(0.0)).point.x, 3.0);
+        assert_eq!(glide.speed(Duration::ZERO, clock(0.0)), 0.0);
     }
 
     #[test]

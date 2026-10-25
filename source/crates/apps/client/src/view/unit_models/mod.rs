@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
+use bevy::animation::{AnimatedBy, AnimationClip, AnimationPlayer, AnimationTargetId};
 use bevy::app::{App, Plugin, Startup, Update};
 use bevy::asset::{AssetServer, Handle, LoadContext};
 use bevy::camera::visibility::Visibility;
@@ -18,13 +19,13 @@ use bevy::gltf::GltfMaterial;
 use bevy::gltf::extensions::{
     ErasedGltfExtensionHandler, GltfExtensionHandler, GltfExtensionHandlers,
 };
-use bevy::gltf::gltf::{Material, Mesh, Primitive};
+use bevy::gltf::gltf::{Animation, Material, Mesh, Primitive};
 use bevy::math::Quat;
 use bevy::mesh::Mesh3d;
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldInstanceReady;
-use campfire_client_files::{ClientObject, MaterialExtras};
+use campfire_client_files::{AnimationExtras, ClientObject, MaterialExtras};
 use campfire_combat::TurretAngle;
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
@@ -40,7 +41,7 @@ use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::file_material::{FileBlend, FileMaterial, FileMaterialPlugin};
 use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
-use crate::view::look_states::{LookStatesPlugin, Redress, Replaces};
+use crate::view::look_clips::{ClipHidden, ClipTiming, HiddenPivot};
 use crate::view::match_colors::{MatchColors, Paint};
 use crate::view::model_scenes::ModelScenes;
 use crate::view::unit_looks::{LookModel, LookNodes, LookTypes, UnitLooks};
@@ -66,7 +67,7 @@ struct ExtrasHandler;
 
 impl Plugin for UnitModelsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((FileMaterialPlugin, LookStatesPlugin));
+        app.add_plugins(FileMaterialPlugin);
         app.init_resource::<ModelScenes>();
         // The glTF loader takes its handlers as it is finished, after every plugin's build.
         app.world_mut()
@@ -240,8 +241,8 @@ impl UnitModelsPlugin {
         ready: On<'_, '_, WorldInstanceReady>,
         models: Query<'_, '_, (&LookNodes, &Paint, Option<&Replaces>)>,
         (children, names, meshes): (
-            Query<'_, '_, &Children>,
-            Query<'_, '_, &Name>,
+            Query<'_, '_, &'static Children>,
+            Query<'_, '_, &'static Name>,
             Query<'_, '_, (), With<Mesh3d>>,
         ),
         (parents, transforms): (Query<'_, '_, &ChildOf>, Query<'_, '_, &Transform>),
@@ -272,10 +273,27 @@ impl UnitModelsPlugin {
         for &node in &hidden {
             commands.entity(node).insert(Visibility::Hidden);
         }
+        let tree = ModelTree {
+            children: &children,
+            names: &names,
+            meshes: &meshes,
+        };
+        let pivots = tree.pivots(ready.entity);
+        if let Some(pivots) = &pivots {
+            commands
+                .entity(pivots.player)
+                .insert(AnimationPlayer::default());
+            for (node, path) in tree.targets(pivots.player) {
+                let target = AnimationTargetId::from_names(path.iter());
+                commands
+                    .entity(node)
+                    .insert((target, AnimatedBy(pivots.player)));
+            }
+        }
         commands
             .entity(ready.entity)
             .remove::<Redress>()
-            .insert(Dressed { hidden });
+            .insert(Dressed { hidden, pivots });
         // A model is a child of its unit's drawing, which the turret's node turns with.
         if let Some(node) = turret
             && let (Ok(root), Ok(rest)) = (parents.get(ready.entity), transforms.get(node))
@@ -310,6 +328,68 @@ impl UnitModelsPlugin {
             dressed.hidden = hidden;
             commands.entity(model).remove::<Redress>();
         }
+    }
+}
+
+impl ModelTree<'_, '_, '_> {
+    /// Whether `node` is a node of a mesh, a sub-object, as the glTF loader spawns each of its
+    /// primitives a child of it.
+    fn is_mesh(&self, node: Entity) -> bool {
+        self.children
+            .get(node)
+            .is_ok_and(|children| children.iter().any(|&child| self.meshes.contains(child)))
+    }
+
+    /// The pivots of the model at `model`: the first node of its scene below its scene's root
+    /// that is no mesh and holds others, the root pivot of its hierarchy, and each pivot below it
+    /// of its own mesh nodes; none for a model of no such node, a mesh alone.
+    fn pivots(&self, model: Entity) -> Option<ModelPivots> {
+        let roots = self.children.get(model).into_iter().flatten();
+        let tops = roots.flat_map(|&root| self.children.get(root).into_iter().flatten());
+        let player = tops
+            .copied()
+            .find(|&top| !self.is_mesh(top) && self.children.get(top).is_ok())?;
+        let mut meshes = Vec::new();
+        for pivot in std::iter::once(player).chain(self.children.iter_descendants(player)) {
+            if self.is_mesh(pivot) {
+                continue;
+            }
+            let own: Vec<Entity> = self
+                .children
+                .get(pivot)
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|&child| self.is_mesh(child))
+                .collect();
+            if let (false, Ok(name)) = (own.is_empty(), self.names.get(pivot)) {
+                meshes.push(PivotMeshes {
+                    pivot: name.as_str().to_owned(),
+                    meshes: own,
+                });
+            }
+        }
+        Some(ModelPivots { player, meshes })
+    }
+
+    /// Each pivot of the hierarchy rooted at `root`, `root` itself first, with the names of the
+    /// nodes from `root` down to it, as Bevy's glTF loader names a clip's target by them.
+    fn targets(&self, root: Entity) -> Vec<(Entity, Vec<Name>)> {
+        let mut targets = Vec::new();
+        let mut below = vec![(root, Vec::new())];
+        while let Some((node, mut path)) = below.pop() {
+            let Ok(name) = self.names.get(node) else {
+                continue;
+            };
+            path.push(name.clone());
+            for &child in self.children.get(node).into_iter().flatten() {
+                if !self.is_mesh(child) {
+                    below.push((child, path.clone()));
+                }
+            }
+            targets.push((node, path));
+        }
+        targets
     }
 }
 
@@ -348,6 +428,53 @@ impl GltfExtensionHandler for ExtrasHandler {
             Self::extras_of(gltf_material).unwrap_or_else(|| FileBlend::plain(material_asset));
         let file = FileBlend::material(material_asset, extras);
         load_context.add_labeled_asset(Self::file_label(material_label), file);
+    }
+
+    /// Adds the timing of an animation's clip, of its extension: its frames, their rate, and the
+    /// frames each pivot is hidden in, by the name of the node its tracks move; an animation of
+    /// no extension has none, and one whose extension does not read is logged.
+    fn on_animation(
+        &mut self,
+        load_context: &mut LoadContext<'_>,
+        gltf_animation: &Animation<'_>,
+        _animation_clip: &mut AnimationClip,
+    ) {
+        let Some(value) = gltf_animation.extension_value(AnimationExtras::EXTENSION) else {
+            return;
+        };
+        let extras = match AnimationExtras::deserialize(value) {
+            Ok(extras) => extras,
+            Err(problem) => {
+                error!(error = %problem, "an animation's extras do not read");
+                return;
+            }
+        };
+        let node_name = |index: u32| {
+            let channels = gltf_animation.channels();
+            let mut nodes = channels.map(|channel| channel.target().node());
+            let node =
+                nodes.find(|node| u32::try_from(node.index()).is_ok_and(|at| at == index))?;
+            node.name().map(str::to_owned)
+        };
+        let hidden = extras
+            .hidden
+            .into_iter()
+            .filter_map(|frames| {
+                Some(HiddenPivot {
+                    pivot: node_name(frames.node)?,
+                    runs: frames.runs,
+                })
+            })
+            .collect();
+        let timing = ClipTiming {
+            frames: extras.frames,
+            rate: extras.rate,
+            hidden,
+        };
+        load_context.add_labeled_asset(
+            format!("Animation{}/timing", gltf_animation.index()),
+            timing,
+        );
     }
 
     /// Draws a primitive by its file material, in place of the standard material Bevy's own part
@@ -389,10 +516,47 @@ struct Node<'a> {
     name: Option<&'a str>,
 }
 
-/// On a dressed model: the nodes its dressing hid.
+/// On a model spawned hidden for a new state: the model of the state before, which goes as this
+/// one is dressed and shown.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Replaces(pub(crate) Entity);
+
+/// On a kept model of a new state, whose hidden nodes changed, which its dressing hides again:
+/// once it is dressed, or as it is dressed.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Redress;
+
+/// On a dressed model: the nodes its dressing hid, and its pivots, none for a model of no
+/// hierarchy.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
-struct Dressed {
-    hidden: Vec<Entity>,
+#[require(ClipHidden)]
+pub(crate) struct Dressed {
+    pub(crate) hidden: Vec<Entity>,
+    pub(crate) pivots: Option<ModelPivots>,
+}
+
+/// A model's pivots, as its scene spawned them: the root of its hierarchy, which its clips' player
+/// plays on, and each pivot's own mesh nodes, those of its sub-objects on it, by the pivot's name,
+/// of each pivot of any.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ModelPivots {
+    pub(crate) player: Entity,
+    pub(crate) meshes: Vec<PivotMeshes>,
+}
+
+/// A pivot's own mesh nodes, by its name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PivotMeshes {
+    pub(crate) pivot: String,
+    pub(crate) meshes: Vec<Entity>,
+}
+
+/// The tree of a spawned model's nodes, as a dressing reads it.
+#[derive(Debug, Clone, Copy)]
+struct ModelTree<'q, 'w, 's> {
+    children: &'q Query<'w, 's, &'static Children>,
+    names: &'q Query<'w, 's, &'static Name>,
+    meshes: &'q Query<'w, 's, (), With<Mesh3d>>,
 }
 
 /// What a spawned model's dressing does: the nodes it hides, and the node its unit's turret angle

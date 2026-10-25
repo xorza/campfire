@@ -4,6 +4,7 @@ use campfire_math::Num;
 use super::*;
 use crate::client_model::{ModelScale, ModelTop};
 use crate::condition_test::LifeShare;
+use crate::state_animation::{AnimationMode, SpeedRange, StartFrame};
 
 #[test]
 fn units_write_and_read_back_their_states_conditions_and_models() {
@@ -134,7 +135,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     // A draw of no state; a state of no set; a state of a condition of no test, in a variation
     // too; a life share whose bounds do not rise, or pass 1.
     let draws = |draws: &str| format!("[units.a]\ndraws = {draws}");
-    let empty = "a draw has no state, or a state of no set";
+    let empty = "a draw has no state, a state of no set, or a pair's transition twice";
     assert!(refusal(&draws("[{ states = [] }]")).starts_with(empty));
     assert!(refusal(&draws("[{ states = [{ sets = [], models = [] }] }]")).starts_with(empty));
     let untested = "a look's state names the condition `night`, of no test";
@@ -223,4 +224,148 @@ fn an_object_draws_its_variant_that_best_matches_the_maps_conditions() {
     assert_eq!(drawn(&["rain"]), "day.glb");
     // Night and damage: the damaged night, of 2 in common, past the night's 1.
     assert_eq!(drawn(&["night", "damaged"]), "hurt.glb");
+}
+
+#[test]
+fn a_states_animation_and_a_draws_transitions_write_and_read_back_and_refuse_what_never_ends() {
+    let text = r#"
+        [units.ranger]
+        draws = [{ states = [
+            { sets = [[]], models = [], key = "stand", animation = { clips = [
+                { animation = "client/animations/a.stand.glb" },
+                { animation = "client/animations/a.stand.glb" },
+                { animation = "client/animations/a.fidget.glb" },
+            ], idle = true, mode = "once", start = "random", speed = ["0.75", "1.25"] } },
+            { sets = [["moving"]], models = [], key = "walk", waits_for = "stand", animation = { clips = [
+                { animation = "client/animations/a.walk.glb", stride = "2.5" },
+            ], mode = "loop", maintain = 3, restart = true } },
+        ], transitions = [
+            { from = "stand", to = "walk", models = [], animation = { clips = [
+                { animation = "client/animations/a.step.glb" },
+            ], mode = "once_backwards" } },
+        ] }]
+
+        [conditions]
+        moving = { test = "moving", still_ms = 250 }
+    "#;
+    let units: ClientUnits = Toml::parse(text).unwrap();
+    assert_eq!(
+        Toml::parse::<ClientUnits>(&Toml::write(&units)).unwrap(),
+        units
+    );
+    let draw = &units.units["ranger"].draws[0];
+    let [stand, walk] = [0, 1].map(|at| &draw.states()[at]);
+    // Standing: three idle clips, the first named twice, once from a random frame, at a speed of
+    // 0.75 to 1.25; its key, and no state it waits for.
+    let idle = stand.animation.as_ref().unwrap();
+    let paths: Vec<&str> = idle
+        .clips()
+        .iter()
+        .map(|clip| clip.animation.as_str())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "client/animations/a.stand.glb",
+            "client/animations/a.stand.glb",
+            "client/animations/a.fidget.glb"
+        ]
+    );
+    assert!(idle.idle() && !idle.restart());
+    assert_eq!(
+        (idle.mode(), idle.start()),
+        (AnimationMode::Once, StartFrame::Random)
+    );
+    let three_quarters = Num::from_bits(Num::ONE.to_bits() * 3 / 4);
+    let five_quarters = Num::from_bits(Num::ONE.to_bits() * 5 / 4);
+    assert_eq!(
+        idle.speed(),
+        SpeedRange::new(three_quarters, five_quarters).unwrap()
+    );
+    assert_eq!(
+        (
+            stand.key.as_ref().unwrap().as_str(),
+            stand.waits_for.as_ref()
+        ),
+        ("stand", None)
+    );
+    // Walking: one clip of a stride of 2.5 m, looped from its mode's start, its frame kept across
+    // the first two groups, started again as it completes, at its own rate; it lets a standing
+    // state finish first.
+    let walking = walk.animation.as_ref().unwrap();
+    assert_eq!(walking.clips()[0].stride, Some(Num::int(5) / Num::int(2)));
+    assert_eq!(
+        (walking.mode(), walking.start()),
+        (AnimationMode::Loop, StartFrame::Natural)
+    );
+    assert_eq!(
+        (walking.maintain(), walking.restart(), walking.speed()),
+        (3, true, SpeedRange::ONE)
+    );
+    assert_eq!(walk.waits_for.as_ref().unwrap().as_str(), "stand");
+    // The step from standing to walking, once backwards.
+    let step = &draw.transitions()[0];
+    assert_eq!(
+        (step.from().as_str(), step.to().as_str()),
+        ("stand", "walk")
+    );
+    assert_eq!(
+        step.animation().unwrap().mode(),
+        AnimationMode::OnceBackwards
+    );
+    // The defaults are not written.
+    let written = Toml::write(&units);
+    assert!(!written.contains("natural") && !written.contains("idle = false"));
+
+    // No clip; groups past four; a stride of none; a speed of none, or out of order; a
+    // transition from a key to itself, or of a loop, or a pair's twice.
+    let refusal = |text: &str| {
+        Toml::parse::<ClientUnits>(text)
+            .unwrap_err()
+            .message()
+            .to_owned()
+    };
+    let animated = |animation: &str| {
+        format!(
+            "[units.a]\ndraws = [{{ states = [{{ sets = [[]], models = [], animation = {animation} }}] }}]"
+        )
+    };
+    let clip = r#"{ animation = "a.glb" }"#;
+    let no_clip = "an animation has no clip, or groups past four";
+    assert_eq!(
+        refusal(&animated(r#"{ clips = [], mode = "loop" }"#)),
+        no_clip
+    );
+    assert_eq!(
+        refusal(&animated(&format!(
+            "{{ clips = [{clip}], mode = \"loop\", maintain = 16 }}"
+        ))),
+        no_clip
+    );
+    let stride = r#"{ clips = [{ animation = "a.glb", stride = "0" }], mode = "loop" }"#;
+    assert_eq!(refusal(&animated(stride)), "a clip's stride is not above 0");
+    for speed in [r#"["0", "1"]"#, r#"["1.5", "1"]"#] {
+        let text = animated(&format!(
+            "{{ clips = [{clip}], mode = \"loop\", speed = {speed} }}"
+        ));
+        assert!(
+            refusal(&text).starts_with("a speed range is not above 0 and in order"),
+            "{speed}"
+        );
+    }
+    let transitions = |transitions: &str| {
+        format!(
+            "[units.a]\ndraws = [{{ states = [{{ sets = [[]], models = [] }}], transitions = {transitions} }}]"
+        )
+    };
+    let never = "a transition is from its key to itself, or plays other than once";
+    let to_itself = r#"[{ from = "a", to = "a", models = [] }]"#;
+    assert!(refusal(&transitions(to_itself)).starts_with(never));
+    let looped = format!(
+        "[{{ from = \"a\", to = \"b\", models = [], animation = {{ clips = [{clip}], mode = \"loop\" }} }}]"
+    );
+    assert!(refusal(&transitions(&looped)).starts_with(never));
+    let twice = r#"[{ from = "a", to = "b", models = [] }, { from = "a", to = "b", models = [] }]"#;
+    let pair = "a draw has no state, a state of no set, or a pair's transition twice";
+    assert!(refusal(&transitions(twice)).starts_with(pair));
 }

@@ -196,6 +196,15 @@ impl<'a> IniLine<'a> {
         IniLine::real_of(self.value()?, self.number)
     }
 
+    /// The whole number of its token at `at`, as `int` reads a field's value.
+    pub(crate) fn int_at(&self, at: usize) -> Result<i32, IniError> {
+        let token = self
+            .tokens
+            .get(at)
+            .ok_or(IniError::NoValue { line: self.number })?;
+        IniLine::int_of(token, self.number)
+    }
+
     /// The real number of its token at `at`, as `real` reads a field's value.
     pub(crate) fn real_at(&self, at: usize) -> Result<f32, IniError> {
         let token = self

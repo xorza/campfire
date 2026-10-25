@@ -48,6 +48,7 @@ use crate::view::unit_looks::UnitLooks;
 pub(crate) mod area_view;
 pub(crate) mod camera_rig;
 pub(crate) mod client_data;
+pub(crate) mod clip_clock;
 pub(crate) mod drawing;
 pub(crate) mod file_material;
 pub(crate) mod float_num;
@@ -55,6 +56,7 @@ pub(crate) mod footing;
 pub(crate) mod glide;
 pub(crate) mod ground_heights;
 pub(crate) mod look;
+pub(crate) mod look_clips;
 pub(crate) mod look_states;
 pub(crate) mod map_metric;
 pub(crate) mod match_colors;
@@ -348,7 +350,7 @@ impl ViewPlugin {
                         Visibility::default(),
                         Glide::rest(spot, Follows::of(received), time.elapsed()),
                         shape,
-                        LookStates::new(unit_type, variation, draws),
+                        LookStates::new(unit_type, variation, draws, unit.to_bits()),
                     ));
                     continue;
                 }

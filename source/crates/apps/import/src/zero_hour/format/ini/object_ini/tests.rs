@@ -2,6 +2,7 @@ use campfire_math::Num;
 
 use super::*;
 use crate::zero_hour::format::ini::object_ini::fight_data::{IniShell, IniTurret, WeaponSet};
+use crate::zero_hour::format::ini::object_ini::ini_animation::{AnimationFlag, IniClip, IniMode};
 use crate::zero_hour::format::ini::object_ini::ini_build::{Prerequisite, ProductionExit};
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSpawn, SupplyDock, SupplyGatherer};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{HealthChange, UpgradeEffect};
@@ -336,12 +337,22 @@ fn a_model_draws_the_state_that_best_matches_its_maps_conditions() {
     DefaultConditionState
       Model = DAY
       HideSubObject = Flag
-      Animation = Day_SKL.Day_Idle 0 2
+      Animation = Day_SKL.Day_Idle 2.5 2
+      AnimationMode = LOOP
+      Flags = START_FRAME_LAST MAINTAIN_FRAME_ACROSS_STATES2
+      AnimationSpeedFactorRange = 0.5 1.5
+      TransitionKey = TRANS_A
     End
     ConditionState = NIGHT
       Model = NIGHT
       IdleAnimation = DAY_SKL.DAY_IDLE2
-      Animation = NONE
+      AnimationMode = ONCE
+      TransitionKey = TRANS_B
+      WaitForStateToFinishIfPossible = TRANS_A
+    End
+    TransitionState = TRANS_A TRANS_B
+      Animation = Day_SKL.Day_Old
+      AnimationMode = ONCE
     End
     TransitionState = TRANS_A TRANS_B
       Animation = Day_SKL.Day_Turn
@@ -400,16 +411,117 @@ End
     for conditions in [at(true, false), at(false, true), at(true, true)] {
         assert_eq!(drawn("Lamp", conditions), lamp, "{conditions:?}");
     }
-    // Each animation a state or a transition names, in lowercase, past its repeats and `NONE`;
-    // the transition's own fields, and its alias after it, leave the states as they were.
-    let animations = |name: &str| ini.named(name).unwrap().draws()[0].animations.clone();
+    // The default's animation: its clip twice, as its line repeats it, of a stride of 2.5,
+    // looped from its last frame, its frame kept across the second group, at a speed of 0.5 to
+    // 1.5, of its key.
+    let module = &ini.named("Barracks").unwrap().draws()[0];
+    let states: Vec<&IniAnimation> = module.states().map(|state| state.animation).collect();
+    let clip = |name: &str, distance, idle| IniClip {
+        name: name.to_owned(),
+        distance,
+        idle,
+    };
+    let idle = clip("day_skl.day_idle", 2.5, false);
+    let default = states[0];
+    assert_eq!(default.clips, [idle.clone(), idle]);
+    assert_eq!(default.mode, IniMode::Loop);
+    let flags = [
+        AnimationFlag::StartFrameLast,
+        AnimationFlag::MaintainFrame2,
+        AnimationFlag::RandomStart,
+    ];
     assert_eq!(
-        animations("Barracks"),
-        BTreeSet::from(
-            ["day_skl.day_idle", "day_skl.day_idle2", "day_skl.day_turn"].map(String::from)
-        )
+        flags.map(|flag| default.flags.holds(flag)),
+        [true, true, false]
     );
-    assert!(animations("Lamp").is_empty());
+    assert_eq!(default.speed, [0.5, 1.5]);
+    assert_eq!(
+        (default.key.as_deref(), default.waits_for.as_deref()),
+        (Some("trans_a"), None)
+    );
+    // The night's: the default's copy, its clips replaced by its own idle clip at its first
+    // clip line, once, of its own keys; the snow's, the default's copy untouched.
+    let night = states[1];
+    assert_eq!(night.clips, [clip("day_skl.day_idle2", 0.0, true)]);
+    assert_eq!(
+        (night.mode, night.flags, night.speed),
+        (IniMode::Once, default.flags, default.speed)
+    );
+    assert_eq!(
+        (night.key.as_deref(), night.waits_for.as_deref()),
+        (Some("trans_b"), Some("trans_a"))
+    );
+    let snow = states[2];
+    assert_eq!(
+        (&snow.clips, snow.mode, &snow.key),
+        (&default.clips, default.mode, &default.key)
+    );
+    // The transition: the later of its pair's two, the default's copy, of its model and hidden
+    // flag, of its own clip once and no key; its alias after it is the night's.
+    assert_eq!(module.transitions().len(), 1);
+    let transition = &module.transitions()[0];
+    assert_eq!(
+        (transition.from.as_str(), transition.to.as_str()),
+        ("trans_a", "trans_b")
+    );
+    assert_eq!(transition.drawn().model, Some("day"));
+    assert_eq!(transition.drawn().look, &flag);
+    let turn = &transition.animation;
+    assert_eq!(turn.clips, [clip("day_skl.day_turn", 0.0, false)]);
+    assert_eq!((turn.mode, &turn.key), (IniMode::Once, &None));
+    assert_eq!(module.states[0].sets.len(), 2);
+
+    // Idle clips of a loop, or beside other clips, an idle line of none too; a transition of a loop, from a key to itself,
+    // or of no model with no default; a mode or a flag the game does not name.
+    let fails = |state: &str| {
+        let text = format!(
+            "Object A\n Draw = W3DModelDraw M\n  ConditionState = NONE\n   Model = A\n  End\n{state}\n End\nEnd\n"
+        );
+        ObjectFiles::default().read(text.as_bytes()).unwrap_err()
+    };
+    let state = |fields: &str| format!("  ConditionState = NIGHT\n   Model = A\n{fields}  End");
+    assert_eq!(
+        fails(&state("   IdleAnimation = A.B\n   AnimationMode = LOOP\n")),
+        IniError::Animation { line: 10 }
+    );
+    assert_eq!(
+        fails(&state(
+            "   IdleAnimation = A.B\n   Animation = A.C\n   AnimationMode = ONCE\n"
+        )),
+        IniError::Animation { line: 11 }
+    );
+    assert_eq!(
+        fails(&state(
+            "   IdleAnimation = None\n   Animation = A.C\n   AnimationMode = ONCE\n"
+        )),
+        IniError::Animation { line: 11 }
+    );
+    let transition =
+        |head: &str, fields: &str| format!("  TransitionState = {head}\n{fields}  End");
+    assert_eq!(
+        fails(&transition(
+            "A B",
+            "   Model = A\n   Animation = A.B\n   AnimationMode = LOOP\n"
+        )),
+        IniError::Animation { line: 10 }
+    );
+    assert_eq!(
+        fails(&transition("A a", "   Model = A\n")),
+        IniError::Transition { line: 6 }
+    );
+    assert_eq!(
+        fails(&transition("A", "   Model = A\n")),
+        IniError::Transition { line: 6 }
+    );
+    assert_eq!(fails(&transition("A B", "")), IniError::NoModel { line: 7 });
+    assert_eq!(
+        fails(&state("   AnimationMode = SIDEWAYS\n")),
+        IniError::NotListed { line: 8 }
+    );
+    assert!(matches!(
+        fails(&state("   Flags = SPIN\n")),
+        IniError::NotListed { line: 8 }
+    ));
 
     // A later state of a module with no `DefaultConditionState` copies nothing, so it must name
     // its model; an alias needs a state before it.

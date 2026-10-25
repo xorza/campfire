@@ -4,12 +4,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Animated looks
 
-The slice of [Animated looks](docs/design/animated-looks.md): a player of a Zero Hour skirmish sees infantry stand, walk, fire and die with the original's animations, a building rise as it is built and show its damage, and an upgrade change what its units show. Four batches, each one commit; its checks are that document's.
-
-### A3. Playing an animation (client)
-
-- [ ] A look's state names no animation (`client-files/src/client_unit.rs`), and the client plays none → each state names its draw module's animations, and with Bevy's `bevy_animation` feature each unit's state plays its animation by its mode, start and speed, its idle animations as a loop ends, and a transition's animation between two states of its keys; a clip's tracks bind to each model of its hierarchy by its nodes' names (animated-looks.md, A state plays its animation by its mode).
-- Checks: the client's tests give each mode's frame at a given time and choose the transition between two keys; in the client, a Ranger idles and walks.
+The slice of [Animated looks](docs/design/animated-looks.md): a player of a Zero Hour skirmish sees infantry stand, walk, fire and die with the original's animations, a building rise as it is built and show its damage, and an upgrade change what its units show. Three batches, each one commit; its checks are that document's.
 
 ### A4. Attacks, sites and upgrades (production, import, client)
 

@@ -260,7 +260,7 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
     let [damaged, moving, upgraded] = [1, 2, 4];
     let drawn = |looks: &UnitLooks, held: u64| {
         let draw = &looks.draws(barracks, None).unwrap().draws()[0];
-        let model = &draw.states()[draw.best(held)].models[0];
+        let model = &draw.states()[draw.best(held)].shown.models[0];
         let path = model.scene.to_string();
         path.trim_start_matches("package://0/")
             .trim_end_matches(".glb#Scene0")

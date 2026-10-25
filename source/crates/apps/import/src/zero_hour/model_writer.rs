@@ -2,8 +2,9 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_client_files::{
-    ClientModel, ClientUnit, ClientUnits, ConditionTest, LookDraw, LookState, LookVariant,
-    LookVariation, ModelScale, ModelTop, ObjectLook,
+    AnimationMode, ClientModel, ClientUnit, ClientUnits, ConditionTest, LookDraw, LookState,
+    LookTransition, LookVariant, LookVariation, ModelScale, ModelTop, ObjectLook, SpeedRange,
+    StartFrame, StateAnimation, StateClip, StatePlay,
 };
 use campfire_common::DeclaredName;
 use campfire_package_disk::PackageWriter;
@@ -13,12 +14,17 @@ use crate::gltf::model_bounds::ModelBounds;
 use crate::zero_hour::animation_import::{AnimationDropCause, ConvertedAnimation};
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::dropped::Dropped;
-use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::error::{NameClash, NameError, ZeroHourError};
+use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::ini::object_ini::ini_animation::{
+    AnimationFlag, IniAnimation, IniMode,
+};
 use crate::zero_hour::format::ini::object_ini::{
     DrawKind, DrawModule, DrawnState, IniObject, ObjectIni, PlacedAs, StateLook,
 };
 use crate::zero_hour::format::look_conditions::LookConditions;
 use crate::zero_hour::game_path;
+use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::look_flags::{FlagCondition, LookFlags};
 use crate::zero_hour::map_import;
@@ -53,7 +59,8 @@ pub enum SkipReason {
 pub(crate) struct ModelWriter<'i, 'w> {
     converter: Converter<'i, 'w>,
     written: BTreeMap<String, WrittenModel>,
-    animations: BTreeSet<String>,
+    /// Each animation a written state names, whether it converted.
+    animations: BTreeMap<String, bool>,
     conditions: BTreeMap<DeclaredName, ConditionTest>,
 }
 
@@ -105,7 +112,7 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
                 textures: BTreeSet::new(),
             },
             written: BTreeMap::new(),
-            animations: BTreeSet::new(),
+            animations: BTreeMap::new(),
             conditions: BTreeMap::new(),
         }
     }
@@ -117,16 +124,6 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
             Entry::Occupied(known) => known.into_mut(),
             Entry::Vacant(new) => new.insert(self.converter.convert(name)?),
         })
-    }
-
-    /// Converts each animation `draws` name and writes its file, the first time one is named.
-    fn animations(&mut self, draws: &[DrawModule]) -> Result<(), ZeroHourError> {
-        for name in draws.iter().flat_map(|draw| &draw.animations) {
-            if self.animations.insert(name.clone()) {
-                self.converter.animation(name)?;
-            }
-        }
-        Ok(())
     }
 
     pub(crate) fn report(self) -> ModelReport {
@@ -174,7 +171,6 @@ impl ModelWriter<'_, '_> {
             let Some(own) = self.unit_draws(draws, scale, flags)? else {
                 continue;
             };
-            self.animations(draws)?;
             let mut unit_look = ClientUnit::new(own);
             // A preview of its build stands at the angle the original's cursor shows it at.
             unit_look.placement_angle = object.build().placement_angle;
@@ -228,13 +224,10 @@ impl ModelWriter<'_, '_> {
     ) -> Result<LookVariation, ZeroHourError> {
         let draws = variation.draws();
         let look = match self.unit_draws(draws, variation.scale(), flags)? {
-            Some(own) => {
-                self.animations(draws)?;
-                LookVariation {
-                    draws: own,
-                    turret: self.turret(draws)?,
-                }
-            }
+            Some(own) => LookVariation {
+                draws: own,
+                turret: self.turret(draws)?,
+            },
             None => LookVariation {
                 draws: parent.draws.clone(),
                 turret: parent.turret.clone(),
@@ -256,17 +249,28 @@ impl ModelWriter<'_, '_> {
         scale: ModelScale,
         flags: &LookFlags,
     ) -> Result<Option<Vec<LookDraw>>, ZeroHourError> {
-        let mut look_draws = Vec::new();
+        // A look of no default model the package holds, but one it lacks, is none: it converts
+        // none of its states' animations.
         let mut skipped = false;
         let mut drawn = false;
         for draw in draws {
+            let default = draw
+                .states()
+                .next()
+                .expect("a module has its default state");
+            let looked = self.look_models([default.drawn], scale)?;
+            skipped |= looked.skipped;
+            drawn |= !looked.models.is_empty();
+        }
+        if skipped && !drawn {
+            return Ok(None);
+        }
+        let mut look_draws = Vec::new();
+        for draw in draws {
+            let mut keys = DrawKeys::default();
             let mut states = Vec::new();
-            for (at, state) in draw.states().enumerate() {
+            for state in draw.states() {
                 let looked = self.look_models([state.drawn], scale)?;
-                if at == 0 {
-                    skipped |= looked.skipped;
-                    drawn |= !looked.models.is_empty();
-                }
                 let mut sets = Vec::with_capacity(state.sets.len());
                 for set in state.sets {
                     let mut names = Vec::with_capacity(set.flags().len());
@@ -275,9 +279,19 @@ impl ModelWriter<'_, '_> {
                     }
                     sets.push(names);
                 }
+                let animation = state.animation;
                 states.push(LookState {
                     sets,
                     models: looked.models,
+                    animation: self.state_animation(animation)?,
+                    key: animation
+                        .key
+                        .as_deref()
+                        .map(|key| keys.key(key))
+                        .transpose()?,
+                    waits_for: (animation.waits_for.as_deref())
+                        .map(|key| keys.key(key))
+                        .transpose()?,
                 });
             }
             if states.iter().all(|state| state.models.is_empty()) {
@@ -287,13 +301,98 @@ impl ModelWriter<'_, '_> {
             for flag in draw.ignored() {
                 ignore.push(self.condition(flag, flags)?);
             }
-            look_draws
-                .push(LookDraw::new(states, ignore).expect("a module's states each of a set"));
-        }
-        if skipped && !drawn {
-            return Ok(None);
+            let mut transitions = Vec::with_capacity(draw.transitions().len());
+            for transition in draw.transitions() {
+                let looked = self.look_models([transition.drawn()], scale)?;
+                let animation = self.state_animation(&transition.animation)?;
+                let (from, to) = (keys.key(&transition.from)?, keys.key(&transition.to)?);
+                transitions.push(
+                    LookTransition::new(from, to, looked.models, animation)
+                        .expect("a transition the reader took plays once between two keys"),
+                );
+            }
+            look_draws.push(
+                LookDraw::new(states, ignore, transitions)
+                    .expect("a module's states each of a set, its transitions of a pair once"),
+            );
         }
         Ok(Some(look_draws))
+    }
+
+    /// The animation of a state of `animation`, of each clip that converts, as `W3DModelDraw`
+    /// plays it (animated-looks.md, A state plays its animation by its mode); none for a state of
+    /// no clip that converts. Its start is the first of its flags `adjustAnimation` reads, a
+    /// random frame, the first, then the last.
+    fn state_animation(
+        &mut self,
+        animation: &IniAnimation,
+    ) -> Result<Option<StateAnimation>, ZeroHourError> {
+        let number =
+            |value: f32| game_float::to_num(value).map_err(|_| ZeroHourError::AnimationNumber);
+        let mut clips = Vec::with_capacity(animation.clips.len());
+        for clip in &animation.clips {
+            if !self.animation(&clip.name)? {
+                continue;
+            }
+            let stride = (clip.distance > 0.0).then(|| number(clip.distance));
+            clips.push(StateClip {
+                animation: game_path::animation(&clip.name)?,
+                stride: stride.transpose()?,
+            });
+        }
+        if clips.is_empty() {
+            return Ok(None);
+        }
+        let flags = animation.flags;
+        let start = if flags.holds(AnimationFlag::RandomStart) {
+            StartFrame::Random
+        } else if flags.holds(AnimationFlag::StartFrameFirst) {
+            StartFrame::First
+        } else if flags.holds(AnimationFlag::StartFrameLast) {
+            StartFrame::Last
+        } else {
+            StartFrame::Natural
+        };
+        let maintain = [
+            AnimationFlag::MaintainFrame,
+            AnimationFlag::MaintainFrame2,
+            AnimationFlag::MaintainFrame3,
+            AnimationFlag::MaintainFrame4,
+        ]
+        .iter()
+        .enumerate()
+        .filter(|&(_, &flag)| flags.holds(flag))
+        .fold(0, |groups, (bit, _)| groups | (1 << bit));
+        let [least, most] = animation.speed;
+        let speed =
+            SpeedRange::new(number(least)?, number(most)?).ok_or(ZeroHourError::AnimationNumber)?;
+        let play = StatePlay {
+            idle: animation.idle(),
+            start,
+            maintain,
+            restart: flags.holds(AnimationFlag::RestartWhenComplete),
+            speed,
+        };
+        let mode = match animation.mode {
+            IniMode::Manual => AnimationMode::Manual,
+            IniMode::Loop => AnimationMode::Loop,
+            IniMode::Once => AnimationMode::Once,
+            IniMode::PingPong => AnimationMode::PingPong,
+            IniMode::LoopBackwards => AnimationMode::LoopBackwards,
+            IniMode::OnceBackwards => AnimationMode::OnceBackwards,
+        };
+        Ok(StateAnimation::new(clips, mode, play))
+    }
+
+    /// Whether the animation `name` converts, which it converts and writes the first time a
+    /// written state names it.
+    fn animation(&mut self, name: &str) -> Result<bool, ZeroHourError> {
+        if let Some(&converted) = self.animations.get(name) {
+            return Ok(converted);
+        }
+        let converted = self.converter.animation(name)?;
+        self.animations.insert(name.to_owned(), converted);
+        Ok(converted)
     }
 
     /// The condition of `flag`, whose test `flags` gives, written to the conditions once.
@@ -392,21 +491,50 @@ impl ModelWriter<'_, '_> {
     }
 }
 
+/// The transition keys a draw module named, by the names the package gives them, each with the
+/// key that took it, as `NAMEKEY` tells keys apart by their text.
+#[derive(Debug, Default)]
+struct DrawKeys {
+    named: BTreeMap<DeclaredName, String>,
+}
+
+impl DrawKeys {
+    /// The name the package gives the key `key`, as `ImportName` gives one; an error past the
+    /// bytes a name holds, or when another key of the module gave that name.
+    fn key(&mut self, key: &str) -> Result<DeclaredName, NameError> {
+        let name = ImportName::latin(key).declared()?;
+        match self.named.entry(name.clone()) {
+            Entry::Occupied(taken) if taken.get() != key => Err(NameError::Clash(NameClash {
+                first: taken.get().clone(),
+                second: key.to_owned(),
+            })),
+            Entry::Occupied(_) => Ok(name),
+            Entry::Vacant(free) => {
+                free.insert(key.to_owned());
+                Ok(name)
+            }
+        }
+    }
+}
+
 impl Converter<'_, '_> {
-    /// Converts the animation `name` and writes its file; `dropped_animations` gaining one the
-    /// package lacks.
-    fn animation(&mut self, name: &str) -> Result<(), ZeroHourError> {
+    /// Converts the animation `name` and writes its file; whether it converted, and
+    /// `dropped_animations` gaining one the package lacks.
+    fn animation(&mut self, name: &str) -> Result<bool, ZeroHourError> {
         match ConvertedAnimation::of(name, &mut self.assets)? {
             ConvertedAnimation::Glb(glb) => {
                 self.writer
                     .write(game_path::animation(name)?, &glb.encode())?;
+                Ok(true)
             }
-            ConvertedAnimation::Dropped(cause) => self.dropped_animations.push(Dropped {
-                name: name.to_owned(),
-                cause,
-            }),
+            ConvertedAnimation::Dropped(cause) => {
+                self.dropped_animations.push(Dropped {
+                    name: name.to_owned(),
+                    cause,
+                });
+                Ok(false)
+            }
         }
-        Ok(())
     }
 
     /// Converts the model `name` and writes its files; what it gives its looks, `skipped` gaining
@@ -438,5 +566,26 @@ impl Converter<'_, '_> {
             reason,
         });
         Ok(WrittenModel::Skipped)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_draws_keys_take_the_packages_names_and_two_of_one_name_clash() {
+        // `lit-up` gives `lit_up`, again as often as it is named; `2nd` starts with no letter, so
+        // `x2nd`; `lit_up` gives the name `lit-up` took, so it clashes.
+        let mut keys = DrawKeys::default();
+        let name = |text| DeclaredName::new(text).unwrap();
+        assert_eq!(keys.key("lit-up"), Ok(name("lit_up")));
+        assert_eq!(keys.key("lit-up"), Ok(name("lit_up")));
+        assert_eq!(keys.key("2nd"), Ok(name("x2nd")));
+        let clash = NameClash {
+            first: "lit-up".to_owned(),
+            second: "lit_up".to_owned(),
+        };
+        assert_eq!(keys.key("lit_up"), Err(NameError::Clash(clash)));
     }
 }

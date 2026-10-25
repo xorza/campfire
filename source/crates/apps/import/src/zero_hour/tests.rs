@@ -6,8 +6,8 @@ use campfire_actions::{
     TypeSlotsData,
 };
 use campfire_client_files::{
-    ClientModel, ClientUnit, LookDraw, LookState, LookVariation, ModelScale, ModelTop, ObjectLook,
-    Press,
+    AnimationMode, ClientModel, ClientUnit, LookDraw, LookState, LookTransition, LookVariation,
+    ModelScale, ModelTop, ObjectLook, Press, StateAnimation, StateClip, StatePlay,
 };
 use campfire_combat::{
     ArmorShare, AttackData, ClipData, CombatData, ModeCombatData, OnDeath, PitchData, ScatterData,
@@ -1138,27 +1138,61 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     // turret turns the node of its bone `Turret`, the model's pivot `TURRET`, as the converted
     // model names it; its red reskin's own draw module names no turret.
     let hidden = || vec![model("tank", &["tank.turret", "tank.flash"])];
-    let state = |sets: &[&[&str]], models| LookState {
-        sets: sets
-            .iter()
-            .map(|set| {
-                set.iter()
-                    .map(|name| DeclaredName::new(name).unwrap())
-                    .collect()
-            })
-            .collect(),
-        models,
+    let state = |sets: &[&[&str]], models, animation| LookState {
+        animation,
+        ..LookState::new(
+            sets.iter()
+                .map(|set| {
+                    set.iter()
+                        .map(|name| DeclaredName::new(name).unwrap())
+                        .collect()
+                })
+                .collect(),
+            models,
+        )
+    };
+    // Its default plays its aim once, of the key `rest`, which its other states copy; its really
+    // damaged state's idle walk, of a hierarchy no file holds, converts to none, so that state
+    // plays none; its night state's key is `Lit-Up`, `lit_up` in the package. Between the two, the default's copy plays its
+    // aim once backwards.
+    let aim = |mode| {
+        let clip = StateClip {
+            animation: PackagePath::parse("client/animations/tank.tank_aim.glb").unwrap(),
+            stride: None,
+        };
+        StateAnimation::new(vec![clip], mode, StatePlay::default())
+    };
+    let name = |name: &str| DeclaredName::new(name).unwrap();
+    let keyed = |state: LookState, key: &str| LookState {
+        key: Some(name(key)),
+        ..state
     };
     let tank = || ClientUnit {
         turret: Some("turret".to_owned()),
         ..ClientUnit::new(vec![
             LookDraw::new(
                 vec![
-                    state(&[&[]], hidden()),
-                    state(&[&["reallydamaged"]], Vec::new()),
-                    state(&[&["night"]], vec![model("tank", &[])]),
+                    keyed(state(&[&[]], hidden(), aim(AnimationMode::Once)), "rest"),
+                    keyed(state(&[&["reallydamaged"]], Vec::new(), None), "rest"),
+                    keyed(
+                        state(
+                            &[&["night"]],
+                            vec![model("tank", &[])],
+                            aim(AnimationMode::Once),
+                        ),
+                        "lit_up",
+                    ),
                 ],
                 Vec::new(),
+                vec![
+                    LookTransition::new(
+                        name("rest"),
+                        name("lit_up"),
+                        hidden(),
+                        aim(AnimationMode::OnceBackwards),
+                    )
+                    .unwrap(),
+                ],
             )
             .unwrap(),
         ])

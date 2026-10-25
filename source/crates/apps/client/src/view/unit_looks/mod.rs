@@ -10,7 +10,10 @@ use bevy::gltf::GltfAssetLabel;
 use bevy::math::Vec3;
 use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
-use campfire_client_files::{ClientModel, ConditionTest, LifeShare, LookDraw, ModelTop};
+use campfire_client_files::{
+    AnimationMode, ClientModel, ConditionTest, LifeShare, LookDraw, ModelTop, StartFrame,
+    StateAnimation,
+};
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
 use campfire_math::Num;
@@ -20,6 +23,7 @@ use campfire_values::{NameId, PackageIndex, Tag, TagSet, UnitType};
 use tracing::error;
 
 use crate::view::client_data::ClientLoad;
+use crate::view::float_num::FloatNum;
 use crate::view::match_colors::Paint;
 use crate::view::model_scenes::ModelScenes;
 use crate::view::package_source::PackageAssets;
@@ -63,19 +67,71 @@ pub(crate) struct LookDraws {
     top: Option<f32>,
 }
 
-/// A draw's states, each its sets of conditions against its package's tests and the map, and
-/// the one it draws for a unit of no condition of its own.
+/// A draw's states, each its sets of conditions against its package's tests and the map; the one
+/// it draws for a unit of no condition of its own; and its transitions.
 #[derive(Debug)]
 pub(crate) struct DrawStates {
     states: Box<[StateModels]>,
     rest: usize,
+    transitions: Box<[TransitionModels]>,
 }
 
-/// A state of a draw: its sets of conditions, and its models.
+/// A state of a draw: its sets of conditions, what it shows, its key, which names it to a
+/// transition, and the key of the state it lets finish before it is shown.
 #[derive(Debug)]
 pub(crate) struct StateModels {
     sets: Box<[SetMask]>,
+    pub(crate) shown: Shown,
+    pub(crate) key: Option<StateKey>,
+    pub(crate) waits_for: Option<StateKey>,
+}
+
+/// A key a draw's states and transitions name, by its place among the draw's keys, resolved as
+/// the look loads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StateKey(usize);
+
+/// What a draw shows between a state of the key `from` and one of the key `to`.
+#[derive(Debug)]
+pub(crate) struct TransitionModels {
+    from: StateKey,
+    to: StateKey,
+    pub(crate) shown: Shown,
+}
+
+/// What a state or a transition shows: its models and its animation.
+#[derive(Debug)]
+pub(crate) struct Shown {
     pub(crate) models: Vec<LookModel>,
+    pub(crate) animation: Option<StateClips>,
+}
+
+/// What a draw shows of its states and transitions: a state, or a transition, by its place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Showing {
+    State(usize),
+    Transition(usize),
+}
+
+/// How a state plays its animation, as its file says it, its clips by their files' paths
+/// (animated-looks.md, A state plays its animation by its mode).
+#[derive(Debug)]
+pub(crate) struct StateClips {
+    pub(crate) clips: Vec<ClipFile>,
+    pub(crate) idle: bool,
+    pub(crate) mode: AnimationMode,
+    pub(crate) start: StartFrame,
+    pub(crate) maintain: u8,
+    pub(crate) restart: bool,
+    pub(crate) speed: [f32; 2],
+}
+
+/// A clip's animation file, and the meters its unit walks in one run of it, none for one played
+/// at its own rate whatever its unit's speed.
+#[derive(Debug)]
+pub(crate) struct ClipFile {
+    pub(crate) path: AssetPath<'static>,
+    pub(crate) stride: Option<f32>,
 }
 
 /// A set of conditions as a unit's are matched against it: the tested conditions it holds, by
@@ -270,7 +326,7 @@ impl LookDraws {
         }
         let rest = loaded
             .iter()
-            .flat_map(|draw| draw.states[draw.rest].models.iter().cloned())
+            .flat_map(|draw| draw.states[draw.rest].shown.models.iter().cloned())
             .collect();
         Self {
             draws: loaded.into_boxed_slice(),
@@ -302,6 +358,21 @@ impl DrawStates {
         known: &BTreeMap<DeclaredName, Known>,
     ) -> Self {
         let ignored = |name: &DeclaredName| draw.ignore().contains(name);
+        let shown = |models: &[ClientModel], animation: Option<&StateAnimation>| Shown {
+            models: LookModel::all(package, models, turret),
+            animation: animation.map(|animation| StateClips::of(package, animation)),
+        };
+        let mut keys: Vec<DeclaredName> = Vec::new();
+        let mut key = |name: &DeclaredName| {
+            let at = keys
+                .iter()
+                .position(|known| known == name)
+                .unwrap_or_else(|| {
+                    keys.push(name.clone());
+                    keys.len() - 1
+                });
+            StateKey(at)
+        };
         let states: Box<[StateModels]> = draw
             .states()
             .iter()
@@ -311,15 +382,46 @@ impl DrawStates {
                     .iter()
                     .map(|set| SetMask::of(set, known, ignored))
                     .collect(),
-                models: LookModel::all(package, &state.models, turret),
+                shown: shown(&state.models, state.animation.as_ref()),
+                key: state.key.as_ref().map(&mut key),
+                waits_for: state.waits_for.as_ref().map(&mut key),
+            })
+            .collect();
+        let transitions = draw
+            .transitions()
+            .iter()
+            .map(|transition| TransitionModels {
+                from: key(transition.from()),
+                to: key(transition.to()),
+                shown: shown(transition.models(), transition.animation()),
             })
             .collect();
         let rest = Self::best_of(&states, 0);
-        Self { states, rest }
+        Self {
+            states,
+            rest,
+            transitions,
+        }
     }
 
     pub(crate) fn states(&self) -> &[StateModels] {
         &self.states
+    }
+
+    /// What it shows at `showing`.
+    pub(crate) fn shown(&self, showing: Showing) -> &Shown {
+        match showing {
+            Showing::State(at) => &self.states[at].shown,
+            Showing::Transition(at) => &self.transitions[at].shown,
+        }
+    }
+
+    /// The transition it shows from a state of the key `from` to one of the key `to`, as
+    /// `findTransitionForSig` finds it; none for a pair of no transition.
+    pub(crate) fn transition(&self, from: StateKey, to: StateKey) -> Option<usize> {
+        self.transitions
+            .iter()
+            .position(|transition| transition.from == from && transition.to == to)
     }
 
     /// The state a unit that holds the tested conditions `held` draws: the one of the set of the
@@ -344,6 +446,29 @@ impl DrawStates {
             }
         }
         best
+    }
+}
+
+impl StateClips {
+    /// The clips of `animation`, a state's of the package at `package`.
+    fn of(package: PackageIndex, animation: &StateAnimation) -> Self {
+        let speed = animation.speed();
+        Self {
+            clips: animation
+                .clips()
+                .iter()
+                .map(|clip| ClipFile {
+                    path: AssetPath::from(PackageAssets::asset_path(package, &clip.animation)),
+                    stride: clip.stride.map(FloatNum::float),
+                })
+                .collect(),
+            idle: animation.idle(),
+            mode: animation.mode(),
+            start: animation.start(),
+            maintain: animation.maintain(),
+            restart: animation.restart(),
+            speed: [speed.least(), speed.most()].map(FloatNum::float),
+        }
     }
 }
 

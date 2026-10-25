@@ -40,13 +40,13 @@ fn a_raw_animation_reads_a_key_each_frame_wraps_its_last_and_refuses_what_it_can
     let pivot = &animation.pivots[&1];
     let along_x = pivot.moves[0].as_ref().unwrap();
     assert!(pivot.moves[1].is_none() && pivot.moves[2].is_none());
-    // A frame outside the channel's moves none; frame 4, past the last, is frame 0's.
-    assert_eq!(along_x.key_frames(4), [0, 1, 2, 3, 4]);
-    let moves = (0..=4).map(|frame| along_x.move_at(frame, 4));
-    assert_eq!(moves.collect::<Vec<_>>(), [0.0, 1.0, 2.0, 0.0, 0.0]);
+    // A key at each frame to its last, 3; a frame outside the channel's moves none.
+    assert_eq!(along_x.key_frames(4), [0, 1, 2, 3]);
+    let moves = (0..4).map(|frame| along_x.move_at(frame));
+    assert_eq!(moves.collect::<Vec<_>>(), [0.0, 1.0, 2.0, 0.0]);
     let turn = pivot.turn.as_ref().unwrap();
-    assert_eq!(turn.turn_at(1, 4), [0.0, 0.0, half, half]);
-    assert_eq!(turn.turn_at(4, 4), [0.0, 0.0, 0.0, 1.0]);
+    assert_eq!(turn.turn_at(1), [0.0, 0.0, half, half]);
+    assert_eq!(turn.turn_at(3), [0.0, 0.0, half, -half]);
     let visibility = animation.pivots[&2].visibility.as_ref().unwrap();
     let shown = (0..4).map(|frame| visibility.shown(frame));
     assert_eq!(shown.collect::<Vec<_>>(), [true, false, true, true]);
@@ -72,7 +72,7 @@ fn a_raw_animation_reads_a_key_each_frame_wraps_its_last_and_refuses_what_it_can
     let along_z = read(&raw("a", "b", 2, &[long])).unwrap().pivots[&1].moves[2]
         .clone()
         .unwrap();
-    assert_eq!([along_z.move_at(0, 2), along_z.move_at(1, 2)], [5.0, 6.0]);
+    assert_eq!([along_z.move_at(0), along_z.move_at(1)], [5.0, 6.0]);
     // An Euler turn; a move of two floats a key; a last frame before the first; no frame.
     let refused = |channels: &[Vec<u8>], frames| read(&raw("a", "b", frames, channels));
     assert_eq!(
@@ -98,19 +98,22 @@ fn a_time_coded_animation_is_linear_between_its_keys_and_holds_its_last() {
     assert_eq!(animation.name, "man_skl.man_die");
     let pivot = &animation.pivots[&1];
     let along_y = pivot.moves[1].as_ref().unwrap();
-    assert_eq!(along_y.key_frames(10), [0, 4, 6, 10]);
+    // Its keys' frames and its last, 9.
+    assert_eq!(along_y.key_frames(10), [0, 4, 6, 9]);
     // Frame 2 is half of 0 to 4: 0 + (2 − 0) · 2 / 4 = 1; frame 5 half of 4 to 6: 2 + (3 − 2) · 1 /
     // 2 = 2.5; past frame 6 the last key holds.
-    let moves = [2, 4, 5, 6, 9, 10].map(|frame| along_y.move_at(frame, 10));
-    assert_eq!(moves, [1.0, 2.0, 2.5, 3.0, 3.0, 3.0]);
+    let moves = [2, 4, 5, 6, 9].map(|frame| along_y.move_at(frame));
+    assert_eq!(moves, [1.0, 2.0, 2.5, 3.0, 3.0]);
     // The first key's step is never read.
     let turn = pivot.turn.as_ref().unwrap();
-    assert_eq!(turn.key_frames(10), [0, 5, 10]);
-    assert_eq!(turn.turn_at(0, 10), first);
-    assert_eq!(
-        [turn.turn_at(5, 10), turn.turn_at(10, 10)],
-        [second, second]
-    );
+    assert_eq!(turn.key_frames(10), [0, 5, 9]);
+    assert_eq!(turn.turn_at(0), first);
+    assert_eq!([turn.turn_at(5), turn.turn_at(9)], [second, second]);
+    // A key at the last frame is no key twice.
+    let last = timed(1, 0, 1, &[(0, &[0.0]), (5, &[1.0])]);
+    let at_last = read(&compressed("a", "b", 6, 0, &[last])).unwrap();
+    let keys = at_last.pivots[&1].moves[0].as_ref().unwrap();
+    assert_eq!(keys.key_frames(6), [0, 5]);
     // A step past the first key; keys not from frame 0, not rising, or past the last frame, and
     // none; adaptive delta; a time-coded visibility channel.
     let refused = |flavor, channels: &[Vec<u8>]| read(&compressed("a", "b", 10, flavor, channels));

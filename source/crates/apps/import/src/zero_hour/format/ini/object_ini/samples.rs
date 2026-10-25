@@ -1,7 +1,8 @@
 use crate::zero_hour::format::ini::object_ini::{ObjectFiles, ObjectIni};
 
 /// `Data\INI\Default\Object.ini` of the fixture install: a tank of two draw modules, one of
-/// which draws no model and one of which names two animations, and a tree.
+/// which draws no model and one of which names two animations and a transition between two
+/// keys, and a tree.
 pub(crate) const DEFAULT_OBJECTS: &str = "; Objects the game loads first.\r
 Object Tank\r
   Draw = W3DTankDraw ModuleTag_01\r
@@ -15,6 +16,7 @@ DefaultConditionState\r
   WeaponFireFXBone = SECONDARY Fire ; a slot's bones need not name a flash\r
   Turret = Turret\r
   Animation = TANK.TANK_AIM\r
+  TransitionKey = Rest\r
 End\r
 ConditionState = REALLYDAMAGED\r
   Model = TANK_D\r
@@ -22,6 +24,10 @@ ConditionState = REALLYDAMAGED\r
 End\r
 ConditionState = NIGHT\r
   ShowSubObject = Turret\r
+  TransitionKey = Lit-Up\r
+End\r
+TransitionState = Rest Lit-Up\r
+  AnimationMode = ONCE_BACKWARDS\r
 End\r
   End\r
   Draw = W3DDebrisDraw ModuleTag_02\r

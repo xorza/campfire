@@ -262,19 +262,27 @@ impl ChannelKind {
 }
 
 impl MotionKeys {
-    /// The frames of `0..=frames` its keys fall on, rising, and `frames`, past the last, where a
-    /// loop's last frame meets its first: a value between two of them is linear.
+    /// The frames its keys fall on of an animation of `frames`, rising, and its last, `frames −
+    /// 1`, which W3D's frame never passes, as `Compute_Current_Frame` wraps or holds it there: a
+    /// value between two of them is linear.
     pub(crate) fn key_frames(&self, frames: u32) -> Vec<u32> {
+        let last = frames - 1;
         match self {
-            Self::Frames(_) => (0..=frames).collect(),
-            Self::Timed(keys) => keys.frames.iter().copied().chain([frames]).collect(),
+            Self::Frames(_) => (0..=last).collect(),
+            Self::Timed(keys) => {
+                let mut key_frames = keys.frames.clone();
+                if key_frames.last() != Some(&last) {
+                    key_frames.push(last);
+                }
+                key_frames
+            }
         }
     }
 
-    /// Its move at `frame`, of `0..=frames`.
-    pub(crate) fn move_at(&self, frame: u32, frames: u32) -> f32 {
+    /// Its move at `frame`.
+    pub(crate) fn move_at(&self, frame: u32) -> f32 {
         match self {
-            Self::Frames(keys) => keys.value(frame, frames, [0.0])[0],
+            Self::Frames(keys) => keys.value(frame, [0.0])[0],
             Self::Timed(keys) => {
                 let at = keys.at(frame);
                 let Some(&next) = keys.frames.get(at + 1) else {
@@ -287,11 +295,10 @@ impl MotionKeys {
         }
     }
 
-    /// Its turn at `frame`, one of `key_frames(frames)`, so a value of its own and no blend of
-    /// two.
-    pub(crate) fn turn_at(&self, frame: u32, frames: u32) -> [f32; 4] {
+    /// Its turn at `frame`, one of its key frames, so a value of its own and no blend of two.
+    pub(crate) fn turn_at(&self, frame: u32) -> [f32; 4] {
         match self {
-            Self::Frames(keys) => keys.value(frame, frames, [0.0, 0.0, 0.0, 1.0]),
+            Self::Frames(keys) => keys.value(frame, [0.0, 0.0, 0.0, 1.0]),
             Self::Timed(keys) => {
                 let at = keys.at(frame);
                 debug_assert!(
@@ -307,11 +314,9 @@ impl MotionKeys {
 }
 
 impl FrameKeys {
-    /// Its value at `frame`, of `L` floats: `frames`, past the last, that of frame 0, as
-    /// `HRawAnimClass` interpolates the last frame toward the first; `identity` at a frame
-    /// outside the channel's, as `MotionChannelClass::Get_Vector` gives.
-    fn value<const L: usize>(&self, frame: u32, frames: u32, identity: [f32; L]) -> [f32; L] {
-        let frame = if frame == frames { 0 } else { frame };
+    /// Its value at `frame`, of `L` floats; `identity` at a frame outside the channel's, as
+    /// `MotionChannelClass::Get_Vector` gives.
+    fn value<const L: usize>(&self, frame: u32, identity: [f32; L]) -> [f32; L] {
         let Some(at) = frame.checked_sub(self.first) else {
             return identity;
         };

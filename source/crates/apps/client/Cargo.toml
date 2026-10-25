@@ -91,6 +91,7 @@ criterion = { workspace = true, features = ["cargo_bench_support"], optional = t
 async-lock = { workspace = true, features = ["std"] }
 bevy = { workspace = true, features = [
     "async_executor",
+    "bevy_animation",
     "bevy_asset",
     "bevy_camera",
     "bevy_color",
@@ -109,6 +110,7 @@ bevy = { workspace = true, features = [
     "bevy_window",
     "bevy_winit",
     "default_font",
+    "gltf_animation",
     "ktx2",
     "multi_threaded",
     # A world asset, as a model's glTF scene, spawns its components by reflection, which needs each

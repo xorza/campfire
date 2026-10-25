@@ -90,8 +90,8 @@ fn a_raw_animation_keys_each_frame_on_its_pivots_and_its_visibility_in_its_extra
         document.animations[0].name.as_deref(),
         Some("man_skl.man_wave")
     );
-    // Two key times, each written once: each frame 0 to 4, and the first and the last.
-    let each = (0..=4_u8)
+    // Two key times, each written once: each frame 0 to its last, 3, and the first and the last.
+    let each = (0..4_u8)
         .map(|frame| f32::from(frame) / 30.0)
         .collect::<Vec<_>>();
     let [dense, ends] = [0, 1].map(|at| document.animations[0].samplers[at].input.value());
@@ -101,17 +101,15 @@ fn a_raw_animation_keys_each_frame_on_its_pivots_and_its_visibility_in_its_extra
     );
     assert_eq!(
         glb.floats_of(Index::new(u32::try_from(ends).unwrap())),
-        [0.0, 4.0 / 30.0]
+        [0.0, 3.0 / 30.0]
     );
     // On glTF's axes, `(x, y, z)` as `(x, z, −y)`, a turn's axis likewise. The pelvis: its pose
-    // 1 up, then its move, (x, 0, 1) as (x, 1, 0), none outside its frames and none at frame 4,
-    // which is frame 0's. The head: its pose, then its move turned by its half turn about `z`,
+    // 1 up, then its move, (x, 0, 1) as (x, 1, 0), none outside its frames. The head: its pose,
+    // then its move turned by its half turn about `z`,
     // (0, 0, 0.5) + (−1, 0, 0) as (−1, 0.5, 0); its turn the half turn about `z` and the
     // channel's, `(0, 0, 1, 0) · (1, 0, 0, 0)`, a half turn about `y`, `(0, 1, 0, 0)`, as
     // `(0, 0, −1, 0)`, else its own half turn, as `(0, 1, 0, 0)`. The gun stands at its pose.
-    let pelvis_moves = [
-        0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 2.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,
-    ];
+    let pelvis_moves = [0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 2.0, 1.0, 0.0, 0.0, 1.0, 0.0];
     let own = [0.0, 1.0, 0.0, 0.0];
     let turned = [0.0, 0.0, -1.0, 0.0];
     assert_eq!(
@@ -119,12 +117,12 @@ fn a_raw_animation_keys_each_frame_on_its_pivots_and_its_visibility_in_its_extra
         [
             (1, Property::Translation, dense, pelvis_moves.to_vec()),
             (1, Property::Rotation, ends, identity.repeat(2)),
-            (2, Property::Translation, dense, [-1.0, 0.5, 0.0].repeat(5)),
+            (2, Property::Translation, dense, [-1.0, 0.5, 0.0].repeat(4)),
             (
                 2,
                 Property::Rotation,
                 dense,
-                [own, turned, own, turned, own].concat()
+                [own, turned, own, turned].concat()
             ),
             (3, Property::Translation, ends, [1.0, 0.0, 0.0].repeat(2)),
             (3, Property::Rotation, ends, identity.repeat(2)),
@@ -147,7 +145,7 @@ fn a_raw_animation_keys_each_frame_on_its_pivots_and_its_visibility_in_its_extra
 #[test]
 fn a_time_coded_animation_keys_the_frames_of_its_channels_keys() {
     // The pelvis moves along `y` to 2 at frame 4 and 3 at frame 6, and along `z` to 2.5 at
-    // frame 5: one track keyed at each frame either keys, and at frame 10, past the last. Along
+    // frame 5: one track keyed at each frame either keys, and at its last frame, 9. Along
     // `y`, frame 5 is 2.5, half of 4 to 6; along `z`, frame 4 is 2.5 · 4 / 5 = 2, and 2.5 is held
     // past frame 5.
     let along_y = timed(1, 1, 1, &[(0, &[0.0]), (4, &[2.0]), (6, &[3.0])]);
@@ -162,7 +160,7 @@ fn a_time_coded_animation_keys_the_frames_of_its_channels_keys() {
     let tracks = tracks(&glb);
     let (node, property, input, moves) = &tracks[0];
     assert_eq!((*node, *property), (1, Property::Translation));
-    let times = [0_u8, 4, 5, 6, 10].map(|frame| f32::from(frame) / 30.0);
+    let times = [0_u8, 4, 5, 6, 9].map(|frame| f32::from(frame) / 30.0);
     assert_eq!(
         glb.floats_of(Index::new(u32::try_from(*input).unwrap())),
         times

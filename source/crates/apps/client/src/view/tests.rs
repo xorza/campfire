@@ -3,6 +3,8 @@ use campfire_geometry::{Bounds, Metric};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 use std::time::Duration;
 
+use bevy::animation::AnimationClip;
+use bevy::animation::graph::AnimationGraph;
 use bevy::asset::AssetApp;
 use bevy::camera::primitives::MeshAabb;
 use bevy::ecs::hierarchy::Children;
@@ -324,6 +326,8 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     IoTaskPool::get_or_init(TaskPool::new);
     let mut app = view();
     app.add_plugins(LookStatesPlugin);
+    app.init_asset::<AnimationClip>();
+    app.init_asset::<AnimationGraph>();
     app.init_asset::<WorldAsset>();
     // Ground 8 samples high everywhere, a step of 0.5 m: 4 m under every point.
     let grid = HeightGrid::new(

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::ops::Index;
 
 use campfire_client_files::ModelScale;
@@ -7,6 +7,7 @@ use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{FlagList, FlagSet, IniLine, IniText};
 use crate::zero_hour::format::ini::object_ini::build_variations::BuildVariations;
 use crate::zero_hour::format::ini::object_ini::fight_data::{FightBlock, FightData};
+use crate::zero_hour::format::ini::object_ini::ini_animation::IniAnimation;
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, ProductionModule};
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::IniUpgradeModule;
@@ -14,6 +15,7 @@ use crate::zero_hour::format::look_conditions::LookConditions;
 
 pub(crate) mod build_variations;
 pub(crate) mod fight_data;
+pub(crate) mod ini_animation;
 pub(crate) mod ini_build;
 pub(crate) mod ini_supply;
 pub(crate) mod ini_upgrade_module;
@@ -128,31 +130,44 @@ pub(crate) enum PlacedAs {
 }
 
 /// A draw module: how it names its model, the model of its default state, if it draws one, that
-/// state's look, and the bone its turret turns, its `Turret`; the sets of flags its default state
-/// is drawn for, none and its aliases'; its other condition states, in order; the map conditions
-/// it ignores (`IgnoreConditionStates`); and every animation its states and transitions name.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// state's look and animation, and the bone its turret turns, its `Turret`; the sets of flags its
+/// default state is drawn for, none and its aliases'; its other condition states, in order; the
+/// map conditions it ignores (`IgnoreConditionStates`); and its transition states.
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DrawModule {
     pub(crate) kind: DrawKind,
     /// Its default state's model, in lowercase.
     pub(crate) model: Option<String>,
     pub(crate) look: StateLook,
+    animation: IniAnimation,
     pub(crate) turret: Option<String>,
     sets: Vec<ConditionSet>,
     states: Vec<DrawState>,
     ignored: ConditionSet,
-    /// Each by its name, `<hierarchy>.<animation>` in lowercase, as `parseAnimation` keeps it.
-    pub(crate) animations: BTreeSet<String>,
+    transitions: Vec<DrawTransition>,
 }
 
 /// A condition state of a `W3DModelDraw` past its default: the sets of flags it is drawn for, its
-/// own and its aliases', and its model and look, which start as the default state's when the
-/// module has a `DefaultConditionState`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// own and its aliases', and its model, look and animation, which start as the default state's
+/// when the module has a `DefaultConditionState`.
+#[derive(Debug, Clone, PartialEq)]
 struct DrawState {
     sets: Vec<ConditionSet>,
     model: Option<String>,
     look: StateLook,
+    animation: IniAnimation,
+}
+
+/// A `TransitionState` of a `W3DModelDraw`: the keys of the states it is drawn between, from and
+/// to, in lowercase, and its model, look and animation, which start as the default state's, of no
+/// key, when the module has a `DefaultConditionState`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DrawTransition {
+    pub(crate) from: String,
+    pub(crate) to: String,
+    model: Option<String>,
+    look: StateLook,
+    pub(crate) animation: IniAnimation,
 }
 
 /// A set of a state's condition flags, each in lowercase, in order and once.
@@ -162,11 +177,12 @@ pub(crate) struct ConditionSet {
 }
 
 /// A state of a draw module, its default or a later one: the sets of flags it is drawn for, its
-/// model and its look.
+/// model and its look, and its animation.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ModuleState<'a> {
     pub(crate) sets: &'a [ConditionSet],
     pub(crate) drawn: DrawnState<'a>,
+    pub(crate) animation: &'a IniAnimation,
 }
 
 /// The model and the look a draw module draws on a map of some conditions.
@@ -294,8 +310,10 @@ enum Block {
     State {
         named: bool,
     },
-    /// A `TransitionState` of such a module, which the look reads the animations of.
-    Transition,
+    /// A `TransitionState` of such a module, and whether it holds a model, its own or its copy's.
+    Transition {
+        named: bool,
+    },
     /// An object's `Prerequisites`.
     Prerequisites,
     /// A block combat reads: a body, a weapon set or an armor set.
@@ -611,10 +629,11 @@ impl DrawModule {
             model: None,
             look: StateLook::default(),
             turret: None,
+            animation: IniAnimation::default(),
             sets: vec![ConditionSet::default()],
             states: Vec::new(),
             ignored: ConditionSet::default(),
-            animations: BTreeSet::new(),
+            transitions: Vec::new(),
         }
     }
 
@@ -651,6 +670,7 @@ impl DrawModule {
                 model: self.model.as_deref(),
                 look: &self.look,
             },
+            animation: &self.animation,
         };
         let states = self.states.iter().map(|state| ModuleState {
             sets: &state.sets,
@@ -658,6 +678,7 @@ impl DrawModule {
                 model: state.model.as_deref(),
                 look: &state.look,
             },
+            animation: &state.animation,
         });
         std::iter::once(default).chain(states)
     }
@@ -665,6 +686,10 @@ impl DrawModule {
     /// The flags it ignores as it matches its states, `IgnoreConditionStates`.
     pub(crate) fn ignored(&self) -> &[String] {
         &self.ignored.flags
+    }
+
+    pub(crate) fn transitions(&self) -> &[DrawTransition] {
+        &self.transitions
     }
 
     /// A field of its default state that the look reads.
@@ -677,22 +702,21 @@ impl DrawModule {
         state_field(&mut self.model, &mut self.look, word, tokens, line)
     }
 
-    /// A field of a state or a transition that names an animation, `Animation` or
-    /// `IdleAnimation`: its name, of none for `NONE` or no name, as `parseAnimation` reads it.
-    fn animation_field(&mut self, word: &str, tokens: &[&str]) {
-        if matches!(word, "animation" | "idleanimation")
-            && let Some(name) = tokens.get(1)
-            && !name.eq_ignore_ascii_case("none")
-        {
-            self.animations.insert(name.to_ascii_lowercase());
-        }
-    }
-
     /// The state the reader is in past the default, its last.
     fn last_state(&mut self) -> &mut DrawState {
         self.states
             .last_mut()
             .expect("a state's block is in its module")
+    }
+}
+
+impl DrawTransition {
+    /// The model and the look it draws.
+    pub(crate) fn drawn(&self) -> DrawnState<'_> {
+        DrawnState {
+            model: self.model.as_deref(),
+            look: &self.look,
+        }
     }
 }
 
@@ -914,13 +938,33 @@ impl Reading {
                 Ok(None)
             }
             // `parseConditionState` requires each state to name its model, `NONE` or one.
-            Block::DefaultState { named: false } | Block::State { named: false } => {
-                Err(IniError::NoModel { line })
+            Block::DefaultState { named: false }
+            | Block::State { named: false }
+            | Block::Transition { named: false } => Err(IniError::NoModel { line }),
+            Block::DefaultState { named: true } => {
+                let module = self.draw.as_ref().expect("a state is in a draw");
+                module.animation.check_state(line)?;
+                Ok(None)
             }
-            Block::DefaultState { named: true }
-            | Block::State { named: true }
-            | Block::Transition
-            | Block::Prerequisites
+            Block::State { named: true } => {
+                let module = self.draw.as_ref().expect("a state is in a draw");
+                let state = module
+                    .states
+                    .last()
+                    .expect("a state's block is in its module");
+                state.animation.check_state(line)?;
+                Ok(None)
+            }
+            Block::Transition { named: true } => {
+                let module = self.draw.as_ref().expect("a transition is in a draw");
+                let transition = module
+                    .transitions
+                    .last()
+                    .expect("a transition's block is its own");
+                transition.animation.check_transition(line)?;
+                Ok(None)
+            }
+            Block::Prerequisites
             | Block::Fight(_)
             | Block::Production(_)
             | Block::Supply(_)
@@ -967,10 +1011,12 @@ impl Reading {
                                 sets: vec![ConditionSet::of(at)?],
                                 model: None,
                                 look: StateLook::default(),
+                                animation: IniAnimation::default(),
                             };
                             if *copied {
                                 state.model.clone_from(&module.model);
                                 state.look.clone_from(&module.look);
+                                state.animation = module.animation.copied();
                             }
                             let named = state.model.is_some();
                             module.states.push(state);
@@ -987,7 +1033,36 @@ impl Reading {
                         }
                     }
                     "transitionstate" if *kind == DrawKind::Family => {
-                        self.stack.push(Block::Transition);
+                        // A transition starts as the default's copy, of no key of its own.
+                        let (Some(from), Some(to)) = (tokens.get(1), tokens.get(2)) else {
+                            return Err(IniError::Transition { line });
+                        };
+                        let [from, to] = [from, to].map(|key| key.to_ascii_lowercase());
+                        if from == to {
+                            return Err(IniError::Transition { line });
+                        }
+                        let mut transition = DrawTransition {
+                            from,
+                            to,
+                            model: None,
+                            look: StateLook::default(),
+                            animation: IniAnimation::default(),
+                        };
+                        if *copied {
+                            transition.model.clone_from(&module.model);
+                            transition.look.clone_from(&module.look);
+                            transition.animation = module.animation.copied();
+                            transition.animation.key = None;
+                            transition.animation.waits_for = None;
+                        }
+                        let named = transition.model.is_some();
+                        // A pair's later transition replaces its earlier, as `m_transitionMap`
+                        // takes it.
+                        module.transitions.retain(|known| {
+                            [&known.from, &known.to] != [&transition.from, &transition.to]
+                        });
+                        module.transitions.push(transition);
+                        self.stack.push(Block::Transition { named });
                     }
                     "ignoreconditionstates" if *kind == DrawKind::Family => {
                         module.ignored = ConditionSet::of(at)?;
@@ -1002,9 +1077,10 @@ impl Reading {
             Block::State { named } => {
                 let module = self.draw.as_mut().expect("a state is in a draw");
                 *named |= word == "model";
-                module.animation_field(word, tokens);
                 let state = module.last_state();
-                state_field(&mut state.model, &mut state.look, word, tokens, line)?;
+                if !state.animation.field(word, at)? {
+                    state_field(&mut state.model, &mut state.look, word, tokens, line)?;
+                }
                 if ObjectFiles::opens(word, tokens) {
                     self.stack.push(Block::Other);
                 }
@@ -1012,15 +1088,24 @@ impl Reading {
             Block::DefaultState { named } => {
                 let module = self.draw.as_mut().expect("a state is in a draw");
                 *named |= word == "model";
-                module.animation_field(word, tokens);
-                module.default_field(word, tokens, line)?;
+                if !module.animation.field(word, at)? {
+                    module.default_field(word, tokens, line)?;
+                }
                 if ObjectFiles::opens(word, tokens) {
                     self.stack.push(Block::Other);
                 }
             }
-            Block::Transition => {
+            Block::Transition { named } => {
                 let module = self.draw.as_mut().expect("a transition is in a draw");
-                module.animation_field(word, tokens);
+                *named |= word == "model";
+                let transition = module
+                    .transitions
+                    .last_mut()
+                    .expect("a transition's block is its own");
+                if !transition.animation.field(word, at)? {
+                    let (model, look) = (&mut transition.model, &mut transition.look);
+                    state_field(model, look, word, tokens, line)?;
+                }
                 if ObjectFiles::opens(word, tokens) {
                     self.stack.push(Block::Other);
                 }

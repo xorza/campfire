@@ -76,6 +76,14 @@ pub enum IniError {
     /// An `ObjectReskin` of a base not read before it.
     #[error("line {line}: a reskin's base is not read before it")]
     NoBase { line: usize },
+    /// A state's animation breaks a rule `parseConditionState` holds it to: idle clips beside
+    /// others, or of a mode other than once; or a transition's of idle clips, of a mode other than
+    /// once, or of a key.
+    #[error("line {line}: a state's animation breaks a rule of the game's")]
+    Animation { line: usize },
+    /// A `TransitionState` from a key to itself, or of fewer than two keys.
+    #[error("line {line}: a transition is not between two keys")]
+    Transition { line: usize },
 }
 
 /// Why the multiplayer settings' choices of starting money make no option of the mode

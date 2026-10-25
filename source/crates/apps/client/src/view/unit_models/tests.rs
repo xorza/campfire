@@ -4,7 +4,7 @@ use std::path::Path;
 use bevy::asset::Assets;
 use bevy::asset::io::memory::{Dir, MemoryAssetReader};
 use bevy::asset::io::{AssetSourceBuilder, AssetSourceId};
-use bevy::asset::{AssetApp, AssetPlugin, LoadState};
+use bevy::asset::{Asset, AssetApp, AssetPlugin, LoadState};
 use bevy::ecs::world::World;
 use bevy::gltf::{Gltf, GltfPlugin};
 use bevy::math::Vec3;
@@ -73,9 +73,8 @@ fn a_model_s_meshes_take_its_paint_s_tag_and_follow_its_unit_s_team() {
     );
 }
 
-/// An app of Bevy's glTF loader and the import's extras that loaded `text` as `model.gltf`, and
-/// the handle of its glTF.
-fn loaded(text: &str) -> (App, Handle<Gltf>) {
+/// An app of Bevy's glTF loader and the import's extras, of `text` at `model.gltf`.
+fn gltf_app(text: &str) -> App {
     let dir = Dir::default();
     dir.insert_asset_text(Path::new("model.gltf"), text);
     let mut app = App::new();
@@ -92,6 +91,8 @@ fn loaded(text: &str) -> (App, Handle<Gltf>) {
         GltfPlugin::default(),
     ));
     app.init_asset::<FileMaterial>();
+    app.init_asset::<AnimationClip>();
+    app.init_asset::<ClipTiming>();
     app.world_mut()
         .resource_mut::<GltfExtensionHandlers>()
         .0
@@ -99,25 +100,41 @@ fn loaded(text: &str) -> (App, Handle<Gltf>) {
         .push(Box::new(ExtrasHandler));
     app.finish();
     app.cleanup();
+    app
+}
+
+/// Updates `app` until the asset of `handle` loads.
+fn wait<A: Asset>(app: &mut App, handle: &Handle<A>) {
     let server = app.world().resource::<AssetServer>().clone();
-    let model: Handle<Gltf> = server.load("model.gltf");
     for _ in 0..10_000 {
         app.update();
-        match server.load_state(&model) {
-            LoadState::Loaded => break,
+        match server.load_state(handle) {
+            LoadState::Loaded => return,
             LoadState::Failed(error) => panic!("{error}"),
             _ => {}
         }
     }
+    panic!("the asset loads");
+}
+
+/// An app of Bevy's glTF loader and the import's extras that loaded `text` as `model.gltf`, and
+/// the handle of its glTF.
+fn loaded(text: &str) -> (App, Handle<Gltf>) {
+    let mut app = gltf_app(text);
+    let model: Handle<Gltf> = app.world().resource::<AssetServer>().load("model.gltf");
+    wait(&mut app, &model);
     (app, model)
 }
 
 #[test]
 fn a_model_that_replaces_another_shows_as_it_is_dressed_and_a_new_state_hides_again() {
-    // A model of a hull and a flag, of no mesh, its flag hidden.
+    // A model of a root pivot, its hull, and an arm on it of its flag, the flag hidden.
     let named = MATERIALS.replace(
         r#""scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"#,
-        r#""scenes":[{"nodes":[0,1]}],"nodes":[{"name":"hull","mesh":0},{"name":"flag"}],"#,
+        concat!(
+            r#""scenes":[{"nodes":[0]}],"nodes":[{"name":"root","children":[1,2]},"#,
+            r#"{"name":"hull","mesh":0},{"name":"arm","children":[3]},{"name":"flag","mesh":0}],"#,
+        ),
     );
     let (mut app, model) = loaded(&named);
     let teams = TeamColors::new(vec![[255, 0, 0]]).unwrap();
@@ -188,6 +205,39 @@ fn a_model_that_replaces_another_shows_as_it_is_dressed_and_a_new_state_hides_ag
     assert_eq!(visibility(&app, flag), Some(Visibility::Inherited));
     assert_eq!(visibility(&app, hull), Some(Visibility::Hidden));
     assert!(app.world().get::<Redress>(after).is_none());
+    // Its hierarchy: the root pivot plays its clips, the root's own mesh is its hull, the arm's
+    // its flag; each pivot is a target by the names from the root to it.
+    let [root, arm] = ["root", "arm"].map(|name| node(&app, name).unwrap());
+    let pivots = app.world().get::<Dressed>(after).unwrap().pivots.clone();
+    let meshes = |pivot: &str, meshes: Vec<Entity>| PivotMeshes {
+        pivot: pivot.to_owned(),
+        meshes,
+    };
+    assert_eq!(
+        pivots,
+        Some(ModelPivots {
+            player: root,
+            meshes: vec![meshes("root", vec![hull]), meshes("arm", vec![flag])],
+        })
+    );
+    assert!(app.world().get::<AnimationPlayer>(root).is_some());
+    let target = |path: &[&'static str]| {
+        let names: Vec<Name> = path.iter().map(|&name| Name::new(name)).collect();
+        AnimationTargetId::from_names(names.iter())
+    };
+    assert_eq!(
+        app.world().get::<AnimationTargetId>(root),
+        Some(&target(&["root"]))
+    );
+    assert_eq!(
+        app.world().get::<AnimationTargetId>(arm),
+        Some(&target(&["root", "arm"]))
+    );
+    assert_eq!(
+        app.world().get::<AnimatedBy>(arm).map(|by| by.0),
+        Some(root)
+    );
+    assert!(app.world().get::<AnimationTargetId>(hull).is_none());
 }
 
 #[test]
@@ -379,4 +429,47 @@ fn a_turret_node_turns_about_the_models_up_from_its_rest() {
     assert!(turned.abs_diff_eq(Quat::from_rotation_y(FRAC_PI_2) * rest, 1e-6));
     assert!((turned * rest.inverse() * Vec3::NEG_Z).abs_diff_eq(Vec3::NEG_X, 1e-6));
     assert_eq!(node.rotation(TurretAngle::REST), rest);
+}
+
+#[test]
+fn an_animations_extension_gives_its_clip_the_timing_of_its_frames_and_hidden_pivots() {
+    // A root and an arm on it, its one track the arm's of one key, and the extension: 4 frames
+    // at 30 a second, the arm hidden at frames 1 and 2.
+    let text = r#"{"asset":{"version":"2.0"},"extensionsUsed":["CAMPFIRE_animation_extras"],
+"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"name":"root","children":[1]},{"name":"arm"}],
+"animations":[{"channels":[{"sampler":0,"target":{"node":1,"path":"translation"}}],
+"samplers":[{"input":0,"output":1}],
+"extensions":{"CAMPFIRE_animation_extras":{"frames":4,"rate":30,"hidden":[{"node":1,"runs":[[1,3]]}]}}}],
+"accessors":[{"bufferView":0,"componentType":5126,"count":1,"type":"SCALAR","min":[0.0],"max":[0.0]},
+{"bufferView":1,"componentType":5126,"count":1,"type":"VEC3"}],
+"bufferViews":[{"buffer":0,"byteLength":4},{"buffer":0,"byteOffset":4,"byteLength":12}],
+"buffers":[{"byteLength":16,"uri":"data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAAAAAA=="}]}"#;
+    // The timing is asked for as the client asks for it, before its file loads, which holds it.
+    let mut app = gltf_app(text);
+    let server = app.world().resource::<AssetServer>().clone();
+    let timing: Handle<ClipTiming> = server.load("model.gltf#Animation0/timing");
+    wait(&mut app, &timing);
+    let timing = app.world().resource::<Assets<ClipTiming>>().get(&timing);
+    assert_eq!(
+        timing,
+        Some(&ClipTiming {
+            frames: 4,
+            rate: 30,
+            hidden: vec![HiddenPivot {
+                pivot: "arm".to_owned(),
+                runs: vec![[1, 3]],
+            }],
+        })
+    );
+    // Its 4 frames last 2/15 s. A stride of 2 m at 15 m a second takes as long, so its rate
+    // stays; a stride of 1 m takes half, so it plays twice as fast; at 7.5 m a second, as long.
+    let timing = timing.unwrap();
+    assert_eq!(
+        [
+            timing.walked(2.0, 15.0),
+            timing.walked(1.0, 15.0),
+            timing.walked(1.0, 7.5)
+        ],
+        [1.0, 2.0, 1.0]
+    );
 }

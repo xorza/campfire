@@ -99,8 +99,8 @@ impl<'a> AnimationBuilder<'a> {
     /// The glTF of the animation on `hierarchy`, its own (animated-looks.md, An animation is a
     /// glTF file of its own): the hierarchy's pivot nodes, then for each pivot past the root, which
     /// `Anim_Update` places by its parent's alone, a track of its moves and one of its turns,
-    /// each a key at each frame its channels' keys fall on and at the frame past the last, where
-    /// a loop meets its first; a pivot of no channel, two keys of its pose. A key's pose is
+    /// each a key at each frame its channels' keys fall on and at its last frame; a pivot of no
+    /// channel, a key of its pose at its first frame and at its last. A key's pose is
     /// `Anim_Update`'s, its pivot's pose, then the channels' move, then their turn, on glTF's
     /// axes; each pivot's visibility is in the animation's extras.
     fn build(mut self, hierarchy: &Hierarchy) -> GlbBuilder {
@@ -144,7 +144,7 @@ impl<'a> AnimationBuilder<'a> {
     /// The track of `pivot`'s moves, of `channels`, on `node`.
     fn moves(&mut self, pivot: &Pivot, channels: &PivotChannels, node: Index<Node>) {
         let frames = self.animation.frames;
-        let mut key_frames = BTreeSet::from([0, frames]);
+        let mut key_frames = BTreeSet::from([0, frames - 1]);
         for keys in channels.moves.iter().flatten() {
             key_frames.extend(keys.key_frames(frames));
         }
@@ -153,10 +153,10 @@ impl<'a> AnimationBuilder<'a> {
         let moves: Vec<[f32; 3]> = key_frames
             .iter()
             .map(|&frame| {
-                let along = channels.moves.each_ref().map(|keys| {
-                    keys.as_ref()
-                        .map_or(0.0, |keys| keys.move_at(frame, frames))
-                });
+                let along = channels
+                    .moves
+                    .each_ref()
+                    .map(|keys| keys.as_ref().map_or(0.0, |keys| keys.move_at(frame)));
                 let moved = pose.translation + pose.rotation.rotate(Vec3::from_array(along));
                 axes::y_up(moved.to_array())
             })
@@ -168,16 +168,16 @@ impl<'a> AnimationBuilder<'a> {
     /// The track of `pivot`'s turns, of `channels`, on `node`.
     fn turns(&mut self, pivot: &Pivot, channels: &PivotChannels, node: Index<Node>) {
         let frames = self.animation.frames;
-        let key_frames = channels
-            .turn
-            .as_ref()
-            .map_or_else(|| vec![0, frames], |keys| keys.key_frames(frames));
+        let key_frames = channels.turn.as_ref().map_or_else(
+            || BTreeSet::from([0, frames - 1]).into_iter().collect(),
+            |keys| keys.key_frames(frames),
+        );
         let rotation = pivot.pose().rotation;
         let turns: Vec<[f32; 4]> = key_frames
             .iter()
             .map(|&frame| {
                 let turn = channels.turn.as_ref().map_or(Quaternion::IDENTITY, |keys| {
-                    Quaternion::from_array(keys.turn_at(frame, frames))
+                    Quaternion::from_array(keys.turn_at(frame))
                 });
                 axes::y_up_rotation((rotation * turn).to_array())
             })
