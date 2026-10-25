@@ -115,8 +115,9 @@ cross-lint = { linux = ["x86_64-pc-windows-gnu"] }
 # binaries).
 package = ["campfire-client", "campfire-server", "campfire-verifier", "campfire-import"]
 reads = [
-    # The workspace's rules read every crate's files, the design documents, and AGENTS.md's titles.
-    { member = "campfire-rules", paths = [".", "../docs/design", "../AGENTS.md"] },
+    # The workspace's rules read every crate's files, the design documents, AGENTS.md's titles, and
+    # the research their links name.
+    { member = "campfire-rules", paths = [".", "../docs/design", "../docs/research", "../AGENTS.md"] },
     # The script API's reference and the overview's decisions.
     { member = "campfire-capabilities", paths = ["../docs/design"] },
 ]

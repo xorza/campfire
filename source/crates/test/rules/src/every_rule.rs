@@ -28,7 +28,7 @@ macro_rules! rules {
     };
 }
 
-const RULES: [Rule; 43] = rules![
+const RULES: [Rule; 44] = rules![
     bans::each_banned_call_goes_through_its_proxy_alone,
     bans::a_crates_clippy_toml_is_the_workspaces_with_its_own_entries,
     bans::no_tick_reads_removals_that_age_with_the_app,
@@ -40,6 +40,7 @@ const RULES: [Rule; 43] = rules![
     capabilities::roles::a_book_and_a_data_table_take_their_suffix,
     capabilities::sets::a_module_names_another_modules_sets_only_where_its_sets_run,
     citations::a_citation_names_a_decision_its_document_holds,
+    citations::a_documents_link_names_a_file,
     cycles::no_crates_modules_import_each_other_in_a_cycle,
     dev_dependencies::a_dev_dependency_adds_only_test_support,
     errors::every_error_the_workspace_writes_goes_through_its_report,

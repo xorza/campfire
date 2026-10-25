@@ -16,7 +16,7 @@ use bevy_replicon::server::ServerSystems;
 use bevy_replicon::server::server_tick::ServerTick;
 use bevy_replicon::server::visibility::registry::FilterRegistry;
 use bevy_replicon::shared::replication::registry::ReplicationRegistry;
-use bevy_time::Time;
+use bevy_time::{Real, Time, Virtual};
 use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::Rollback;
 use tracing::trace;
@@ -75,8 +75,15 @@ impl ServerSendPlugin {
     /// fixed network tick, while running once per fixed step can produce multiple
     /// sends in a catch-up frame. Replicon's tick is only a replication confirmed tick;
     /// it is mapped back to the stack's fixed tick by `ConfirmedTickMap`.
+    ///
+    /// A paused app runs no fixed step, yet its links change: a link that joins it, as a
+    /// replay's viewer joins a replay held paused, takes its state only from a send. So while
+    /// `Time<Virtual>` is paused, the interval runs on real time, and a send goes with no fixed
+    /// step, mapped to the tick the timeline stands at (11-net-stack/replication.md, A paused app
+    /// still sends).
     pub(crate) fn update_replication_tick(
         time: Res<'_, Time>,
+        (real, virtual_time): (Option<Res<'_, Time<Real>>>, Option<Res<'_, Time<Virtual>>>),
         timeline: Res<'_, LocalTimeline>,
         mut replication_timer: ResMut<'_, ReplicationTimer>,
         mut replication_tick: ResMut<'_, ServerTick>,
@@ -90,11 +97,16 @@ impl ServerSendPlugin {
             .unwrap_or(new_tick_raw > 0);
         *last_observed_local_tick = Some(new_tick_raw);
 
-        if replication_timer.timer.tick(time.delta()).just_finished() {
+        let paused = virtual_time.is_some_and(|time| time.is_paused());
+        let delta = match (paused, real) {
+            (true, Some(real)) => real.delta(),
+            _ => time.delta(),
+        };
+        if replication_timer.timer.tick(delta).just_finished() {
             *pending_send = true;
         }
 
-        if !*pending_send || !fixed_ran_this_frame {
+        if !*pending_send || !(fixed_ran_this_frame || paused) {
             trace!(
                 target: "campfire_net_debug::timeline",
                 kind = "server_replication_tick_skipped",

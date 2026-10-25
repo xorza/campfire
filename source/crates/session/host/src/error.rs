@@ -70,6 +70,9 @@ pub enum SaveRefusal {
     /// The session's log has no room for the load's record.
     #[error("the session's log has no room for a load")]
     LogFull,
+    /// The server replays a published log, which it keeps no save of.
+    #[error("a replay keeps no save")]
+    Replay,
 }
 
 /// Why an order script's file does not give a script.

@@ -29,7 +29,9 @@ use campfire_net_link::{Link, Unlinked};
 use campfire_net_messages::{MessageReceiver, MessageSender};
 use campfire_net_payload::UnlinkReason;
 use campfire_net_prediction::{PredictionSetup, RollbackSystems};
-use campfire_net_replication::{Predicted, ReplicationReceiver};
+use campfire_net_replication::{
+    ConfirmedTickMap, Predicted, ReplicationReceiver, ReplicationSystems,
+};
 use campfire_net_stack::ClientPlugins;
 use campfire_net_sync::{InputTimelineSetup, RemoteTimeline, SyncedLocalTimeline};
 use campfire_net_timeline::{Clock, LocalTimeline, Rollback};
@@ -371,6 +373,10 @@ impl Plugin for SimClientPlugin {
         app.add_systems(First, log_frame);
         app.add_systems(
             PreUpdate,
+            follow_watched_tick.after(ReplicationSystems::Receive),
+        );
+        app.add_systems(
+            PreUpdate,
             rewrite_after_rollback
                 .after(RollbackSystems::Prepare)
                 .before(RollbackSystems::Rollback)
@@ -603,13 +609,14 @@ fn receive_watch_start(
     }
 }
 
-/// Sends the player's save commands, while the client plays.
+/// Sends the player's save commands while the client plays or watches: a spectator's report asks
+/// a replay for the log it replays, and a server takes no other command of a spectator.
 fn send_saves(
     mut sender: Single<'_, '_, &mut MessageSender<SaveCommand>, With<Client>>,
     state: Res<'_, JoinState>,
     mut pending: ResMut<'_, PendingSaves>,
 ) {
-    if state.playing_clock().is_none() {
+    if state.session().is_none() {
         return;
     }
     for command in pending.0.drain(..) {
@@ -850,6 +857,23 @@ fn send_orders(
 /// as Bevy's loop takes each tick's time before it runs the tick.
 fn last_tick_of_frame(time: Res<'_, Time<Fixed>>) -> bool {
     time.overstep() < time.timestep()
+}
+
+/// Holds a watching client's sim tick at the state the server sent it last: the tick after the
+/// one the server ran by its newest message, as a playing client's runs with its timeline, so
+/// what reads the tick, a report and the HUD's clock, stands at what the client draws.
+fn follow_watched_tick(
+    state: Res<'_, JoinState>,
+    confirmed: Res<'_, ConfirmedTickMap>,
+    mut tick: ResMut<'_, SimTick>,
+) {
+    let (Some(clock), Some(last)) = (state.watching_clock(), confirmed.newest_tick()) else {
+        return;
+    };
+    let next = clock.next_after(last);
+    if tick.start() != next {
+        *tick = SimTick::new(next);
+    }
 }
 
 /// Runs the sim tick of the current network tick with the player's inputs stamped for it; in a

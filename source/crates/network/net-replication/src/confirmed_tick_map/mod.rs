@@ -133,6 +133,13 @@ impl ConfirmedTickMap {
         }
     }
 
+    /// The authoritative tick of the newest message the client received, its updates' or its
+    /// mutations', complete or not: the tick of the newest state a watching client holds and
+    /// draws, which a paused server's first update alone gives, as no mutation follows it.
+    pub fn newest_tick(&self) -> Option<NetTick> {
+        self.entries.back().map(|&(_, tick)| tick)
+    }
+
     /// Latest authoritative network tick for which Replicon completed all mutate messages.
     pub fn last_confirmed_tick(&self) -> Option<NetTick> {
         self.last_confirmed

@@ -54,7 +54,7 @@
 
 ## Gathering
 
-- **A gather search scans.** A worker's search for a node and for a drop-off visits the nodes and drop-offs, as Zero Hour's `findBestSupplyWarehouse` scans the player's warehouses, and a freed node finds its next worker among the waiting ones. Refused: a search of the unit grid and a queue on each node, for a tick of 200 workers at 16 nodes that costs 20.5 µs ([Gather loop](../research/gather-loop.md)).
+- **A gather search scans.** A worker's search for a node and for a drop-off visits the nodes and drop-offs, as Zero Hour's `findBestSupplyWarehouse` scans the player's warehouses, and a freed node finds its next worker among the waiting ones. Refused: a search of the unit grid and a queue on each node, for a tick of 200 workers at 16 nodes that costs 20.5 µs ([Gather loop](../../research/gather-loop.md)).
 - **One gatherer at a node.** A worker that finds its node taken goes to the nearest free node of the same resource near it, or waits, as a StarCraft II worker moves to another mineral patch.
 - **Gatherers pass through each other,** so the income does not depend on the order collision parts them in.
 - **Return cargo.** A gather aimed at a drop-off delivers the load and goes back, as StarCraft II's return cargo.

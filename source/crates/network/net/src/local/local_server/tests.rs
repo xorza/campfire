@@ -190,6 +190,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let logs = test_dir.names("data/logs");
     assert_eq!(logs.len(), 1);
     let log = SessionLog::decode(&test_dir.read(format!("data/logs/{}", logs[0]))).unwrap();
+    let session = log.session_id();
     assert_eq!(
         log.result().map(|result| result.outcome),
         Some(Outcome::Aborted)
@@ -273,9 +274,31 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         }
     };
     assert_eq!(clock.first(), Tick::new(end.get() - 4));
+    // The watcher's tick stands at the state it holds, which reaches it while the replay holds
+    // paused: before the tick after the one the replay holds at, then, played on, before the
+    // log's end.
+    let next = |watcher: &App| watcher.world().resource::<SimTick>().start();
+    while next(&watcher) != clock.first() {
+        frame(&mut watcher);
+    }
     assert!(pace.is_paused());
+    // A report the watcher takes there holds the log the replay replays, whole.
+    let held = Tick::new(end.get() - 5);
+    let again = ReportKey {
+        tick: held,
+        take: 0,
+    };
+    save(&mut watcher, SaveCommand::Report(again));
+    let file = format!(
+        "client/reports/{session}-{}/session.campfire-log",
+        held.get()
+    );
+    while !test_dir.exists(&file) {
+        frame(&mut watcher);
+    }
+    assert_eq!(test_dir.read(file), report_bytes);
     pace.set_paused(false);
-    while !pace.is_paused() {
+    while !pace.is_paused() || next(&watcher) != end {
         frame(&mut watcher);
     }
     drop(server);

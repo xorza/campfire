@@ -9,6 +9,8 @@ fn the_event_reads_back_what_it_logs() {
         SaveRefusal::ByMode,
         SaveRefusal::NoData,
         SaveRefusal::NoSave,
+        SaveRefusal::LogFull,
+        SaveRefusal::Replay,
     ] {
         round_trip(&SaveRefused { refusal });
     }

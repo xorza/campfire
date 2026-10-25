@@ -173,6 +173,7 @@ impl Plugin for SimServerPlugin {
             (
                 Offering::offer_links::<ReplayDoor>,
                 ReplayDoor::take_joins,
+                ReplayDoor::take_commands,
                 ReplayEnd::hold,
             )
                 .chain()

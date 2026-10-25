@@ -1,5 +1,6 @@
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsString;
+use std::path::{Component, Path, PathBuf};
 
 use campfire_store::{DirEntries, EntryKind, InputFile, PathError, ReadError};
 
@@ -283,5 +284,86 @@ pub(crate) fn a_citation_names_a_decision_its_document_holds(workspace: &Workspa
             "s.rs: a decision cited by its number",
             "s.rs: a design cited by its number",
         ]
+    );
+}
+
+/// The relative paths `text`, a Markdown document's, links to: each `](path)` that names no
+/// scheme, and not an anchor of its own document alone, with its anchor dropped.
+fn relative_links(text: &str) -> Vec<&str> {
+    let mut found = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find("](") {
+        rest = &rest[at + 2..];
+        let Some(end) = rest.find(')') else {
+            break;
+        };
+        let target = &rest[..end];
+        let path = target.split('#').next().unwrap_or_default();
+        let outside = path.contains("://") || path.starts_with("mailto:");
+        if !path.is_empty() && !target.contains(' ') && !outside {
+            found.push(path);
+        }
+    }
+    found
+}
+
+/// `path` with each `..` taking the component before it away, as a link's path resolves.
+fn lexical(path: &Path) -> PathBuf {
+    let mut resolved = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            Component::CurDir => {}
+            other => resolved.push(other),
+        }
+    }
+    resolved
+}
+
+pub(crate) fn a_documents_link_names_a_file(_: &Workspace) {
+    // The design's documents and `AGENTS.md`, each link resolved from its document's folder,
+    // its target looked up in its folder's listing, each folder listed once.
+    let root = source().join("..");
+    let mut documents = design_documents();
+    let agents = InputFile::read_text(&root.join("AGENTS.md"), DOC_LEN).unwrap();
+    documents.push(SourceFile::new("AGENTS.md", agents));
+    let mut listed: BTreeMap<PathBuf, BTreeSet<OsString>> = BTreeMap::new();
+    let mut broken = Vec::new();
+    for file in &documents {
+        let folder = Path::new(&file.path)
+            .parent()
+            .expect("a document stands in a folder");
+        for link in relative_links(&file.text) {
+            let target = lexical(&folder.join(link));
+            let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
+                broken.push(format!("{}: {link}", file.path));
+                continue;
+            };
+            let names = listed.entry(parent.to_owned()).or_insert_with(|| {
+                match DirEntries::read(&root.join(parent)) {
+                    Ok(entries) => entries.into_iter().map(|entry| entry.name).collect(),
+                    Err(PathError {
+                        error: ReadError::Missing,
+                        ..
+                    }) => BTreeSet::new(),
+                    Err(error) => panic!("{error:?}"),
+                }
+            });
+            if !names.contains(name) {
+                broken.push(format!("{}: {link}", file.path));
+            }
+        }
+    }
+    assert_eq!(broken, Vec::<String>::new());
+    // A sample: a path, one up with an anchor, an anchor alone, a web link, and a bracket and
+    // a parenthesis that hold prose, not a link.
+    let sample = "[a](b.md) and [c](../d/e.md#x), [f](#g), [h](https://i.org/j), [k] (l), \
+                  a[m](n o)";
+    assert_eq!(relative_links(sample), ["b.md", "../d/e.md"]);
+    assert_eq!(
+        lexical(Path::new("docs/design/04-capabilities/../../research/x.md")),
+        Path::new("docs/research/x.md")
     );
 }

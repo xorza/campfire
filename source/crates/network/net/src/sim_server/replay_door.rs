@@ -4,11 +4,13 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use campfire_common::Tick;
-use campfire_net_messages::MessageSender;
+use campfire_common::{ErrorReport, Tick};
+use campfire_log::LogEvent;
+use campfire_net_messages::{MessageReceiver, MessageSender};
 use campfire_protocol::Delegation;
 use campfire_runner::Session;
 use campfire_values::TeamSet;
+use tracing::{error, info};
 
 use crate::sim_server::offering::{CheckedJoins, JoinLinks, Offering};
 use crate::sim_server::spectators::Spectators;
@@ -17,12 +19,17 @@ use campfire_host::JoinError;
 use campfire_host::Joined;
 use campfire_host::MatchClock;
 use campfire_host::PlayerSlots;
+use campfire_host::Reports;
+use campfire_host::SaveCommand;
+use campfire_host::SaveRefusal;
+use campfire_host::SaveRefused;
 use campfire_host::WatchStart;
 
 /// The door of a session that replays a published log (08-sessions.md, The client opens a
 /// report): it offers the log's terms to every new link and admits one spectator, who watches the
 /// views of the teams it chose, or every unit when it chose every team or none. A player finds no
-/// player slot, as the log alone plays them, and the session logs nothing of either.
+/// player slot, as the log alone plays them, and the session logs nothing of either; a report
+/// the spectator takes holds the log.
 #[derive(Resource, Debug)]
 pub(crate) struct ReplayDoor {
     offering: Offering,
@@ -47,6 +54,34 @@ impl AsRef<Offering> for ReplayDoor {
 impl ReplayDoor {
     pub(crate) const fn new(offering: Offering) -> Self {
         Self { offering }
+    }
+
+    /// Takes the save commands of the spectator: a report's writes the log the replay replays
+    /// into the report's folder, so the report replays as the one it opens; a save or a load is
+    /// refused, as a replay keeps no save. Each is logged.
+    pub(crate) fn take_commands(
+        mut links: Query<'_, '_, &mut MessageReceiver<SaveCommand>, With<Viewer>>,
+        session: Res<'_, Session>,
+        reports: Option<Res<'_, Reports>>,
+    ) {
+        for mut receiver in &mut links {
+            for command in receiver.receive() {
+                let (SaveCommand::Report(key), Some(reports)) = (command, reports.as_deref())
+                else {
+                    SaveRefused {
+                        refusal: SaveRefusal::Replay,
+                    }
+                    .log();
+                    continue;
+                };
+                match reports.write_replayed(key, session.log()) {
+                    Ok(()) => info!(tick = %key.tick, "wrote the replayed log into the report"),
+                    Err(problem) => {
+                        error!(tick = %key.tick, error = %ErrorReport::of(&problem), "could not write the replayed log into the report");
+                    }
+                }
+            }
+        }
     }
 
     /// Admits the spectator of each offered link that answered to watch while none watches, and

@@ -21,7 +21,7 @@ A document holds what guides development and does not drift from the code, so ke
 - **Nothing the code, data or tests already state.** No field lists, formulas, counts, file layouts, check lists, which crate holds what, or what a system does step by step: the code, its doc comments and its tests are their record. A specification that third parties implement, as the protocol, is the one exception, for its byte layouts.
 - **Facts go to `docs/research/`.** What a source says and what a measurement found, with its date, are research; the design cites them.
 - **A slice's proposal is temporary.** A slice proposes its design in a document of its own, whose `Checks` guide its steps; when the slice ends, each lasting decision moves into the document of the system it governs, as its title and why, and the slice's document is deleted.
-- **Code cites a decision by document and title,** `(04-capabilities/combat.md, Armor by damage kind)`, several apart by `; `, a path relative to `docs/design/`; a title holds no semicolon. A test of `rules` fails on a citation whose document or title is gone, and on a design cited by number.
+- **Code cites a decision by document and title,** `(04-capabilities/combat.md, Armor by damage kind)`, several apart by `; `, a path relative to `docs/design/`; a title holds no semicolon. A test of `rules` fails on a citation whose document or title is gone, on a design cited by number, and on a document's link to no file.
 - **Planned work is a decision too,** written where its system's decisions are, and marked planned.
 
 ## Direction

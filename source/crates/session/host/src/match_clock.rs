@@ -48,6 +48,17 @@ impl MatchClock {
         )
     }
 
+    /// The sim tick that runs after the stack's tick `tick`: the one the state the server sent
+    /// in `tick` stands before, as a server sends its update after its tick runs; the clock's
+    /// first before it starts.
+    pub fn next_after(self, tick: NetTick) -> Tick {
+        let next = tick
+            .0
+            .checked_add(1)
+            .expect("a match's ticks fit the stack's");
+        self.sim_tick(NetTick(next)).unwrap_or(self.first)
+    }
+
     /// The sim tick of `tick`; `None` before the match starts, or runs on.
     pub fn sim_tick(self, tick: NetTick) -> Option<Tick> {
         let since = tick.0.checked_sub(self.start.0)?;
@@ -72,6 +83,13 @@ mod tests {
         assert_eq!(resumed.sim_tick(NetTick(7)), Some(Tick::new(5000)));
         assert_eq!(resumed.sim_tick(NetTick(9)), Some(Tick::new(5002)));
         assert_eq!(resumed.net_tick(Tick::new(5002)), NetTick(9));
+        // The state sent in the stack's tick 100 stands after sim tick 0, before tick 1; sent
+        // before the start, it stands before the first.
+        assert_eq!(fresh.next_after(NetTick(100)), Tick::new(1));
+        assert_eq!(fresh.next_after(NetTick(103)), Tick::new(4));
+        assert_eq!(fresh.next_after(NetTick(99)), Tick::new(0));
+        assert_eq!(fresh.next_after(NetTick(40)), Tick::new(0));
+        assert_eq!(resumed.next_after(NetTick(6)), Tick::new(5000));
         assert_eq!(fresh.net_tick(Tick::new(0)), NetTick(100));
         // From sim tick 4 on, the fresh clock starts at the stack's tick 104, and holds no tick
         // before.

@@ -1,13 +1,14 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_protocol::{Journal, SessionId};
+use campfire_protocol::{Journal, SessionId, SessionLog};
 use campfire_runner::Session;
+use campfire_store::DurableFile;
 use tracing::warn;
 
 use crate::client::client_layout::ClientLayout;
 use crate::client::report_dir::ReportDir;
-use crate::error::SaveRefusal;
+use crate::error::{ReportWriteError, SaveRefusal};
 use crate::messages::save_command::ReportKey;
 
 /// A local server's reports of its log, each a player asked of the tick its client drew: the
@@ -51,6 +52,17 @@ impl Reports {
     /// Whether no report waits for the log or for the journal.
     pub(crate) const fn is_empty(&self) -> bool {
         self.asked.is_empty() && self.pending.is_empty()
+    }
+
+    /// Writes `log`, the whole log a replay replays, into the folder of the report `key` of its
+    /// session, as a report of a replay holds the log that replays it (08-sessions.md, The client
+    /// opens a report).
+    pub fn write_replayed(&self, key: ReportKey, log: &SessionLog) -> Result<(), ReportWriteError> {
+        let dir = self.layout.report_dir(log.session_id(), key);
+        dir.create()?;
+        let mut bytes = Vec::new();
+        log.encode(&mut bytes);
+        Ok(DurableFile::write(&dir.log(), &bytes)?)
     }
 
     /// Takes the report `key`, of the last tick its client ran, which a predicting client runs

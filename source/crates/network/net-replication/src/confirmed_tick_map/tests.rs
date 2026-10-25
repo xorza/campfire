@@ -9,6 +9,11 @@ fn the_map_drops_its_oldest_entries() {
     }
 
     assert_eq!(map.get(RepliconTick::new(0)), None);
+    // The newest message's tick is the newest replicon tick's, whatever order they came in.
+    assert_eq!(
+        map.newest_tick(),
+        Some(NetTick::from(MAX_CONFIRMED_TICKS as u32))
+    );
     assert_eq!(
         map.get(RepliconTick::new(MAX_CONFIRMED_TICKS as u32)),
         Some(NetTick::from(MAX_CONFIRMED_TICKS as u32))

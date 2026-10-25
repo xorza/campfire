@@ -33,6 +33,15 @@ visibility.
   aspects. Dropping the filters makes an entity with its own `Replicate` public when it leaves
   its parent, and keeping the grants makes an unparented child continue to replicate.
 
+## The sender
+
+- **A paused app still sends.** A send follows the fixed loop's step, once a frame, so a paused
+  app, which runs no step, would send nothing; while `Time<Virtual>` is paused, the send
+  interval runs on real time and a send goes with no step, mapped to the tick the timeline
+  stands at, as several Replicon ticks may map to one. A link that joins a paused app, as a
+  replay's viewer joins a replay held at a report's tick, so takes its state. Refused: a send of
+  a replay's own, which a paused load or a join of a paused local match would also need.
+
 ## The receiver
 
 - **A client that both targets name is predicted alone.** `InterpolationYield`, a mirror of the

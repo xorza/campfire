@@ -232,7 +232,7 @@ mod tests {
     use crate::server_send_plugin::ServerSendPlugin;
     use bevy_app::prelude::*;
     use bevy_replicon::server::server_tick::ServerTick;
-    use bevy_time::Time;
+    use bevy_time::{Real, Time, Virtual};
     use campfire_net_timeline::LocalTimeline;
     use core::time::Duration;
 
@@ -302,6 +302,44 @@ mod tests {
 
         assert_eq!(app.world().resource::<ServerTick>().get(), 1);
         assert_eq!(app.world().resource::<SendCount>().0, 1);
+    }
+
+    #[test]
+    fn a_paused_app_sends_at_the_interval_of_real_time_with_no_fixed_step() {
+        // Paused, the virtual clock stands still and no fixed step runs: the 10 ms interval
+        // passes on real time, and its send goes at the timeline's tick, once each interval.
+        let mut app = App::new();
+        app.init_resource::<Time>();
+        app.init_resource::<Time<Real>>();
+        app.init_resource::<Time<Virtual>>();
+        app.world_mut().resource_mut::<Time<Virtual>>().pause();
+        // Real time's first update gives no delta, only its start.
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .update_with_duration(Duration::ZERO);
+        app.insert_resource(LocalTimeline::default());
+        app.insert_resource(ReplicationTimer::new(Duration::from_millis(10)));
+        app.init_resource::<ServerTick>();
+        app.init_resource::<SendCount>();
+        add_replication_tick_test_systems(&mut app);
+        clear_send_state(&mut app);
+        let frame = |app: &mut App, real_ms| {
+            app.world_mut().clear_trackers();
+            app.world_mut()
+                .resource_mut::<Time<Real>>()
+                .update_with_duration(Duration::from_millis(real_ms));
+            app.world_mut().run_schedule(RunFixedMainLoop);
+            app.world_mut().run_schedule(PostUpdate);
+        };
+        frame(&mut app, 4);
+        assert_eq!(app.world().resource::<ServerTick>().get(), 0);
+        frame(&mut app, 6);
+        assert_eq!(app.world().resource::<ServerTick>().get(), 1);
+        frame(&mut app, 4);
+        assert_eq!(app.world().resource::<ServerTick>().get(), 1);
+        frame(&mut app, 6);
+        assert_eq!(app.world().resource::<ServerTick>().get(), 2);
+        assert_eq!(app.world().resource::<SendCount>().0, 2);
     }
 
     #[test]
