@@ -4,15 +4,7 @@ Redesigns that the optimization session of 2026-10-25 spiked, each measured agai
 
 ## A counted fog
 
-Spike: `../campfire-perf/fog` (`git -C ../campfire-perf/fog diff`).
-
-- **The cost.** Each Vision stage clears every group's bitmap and reveals every seer's sight again, row by row, whether the seer moved or not: `Fog::sight` and `Bitmap::set` take 6.2 % of a 3v3 run's samples, and the vision stage 55 ms of a 520 ms match. Buildings, towers, wards and idle units, which never move, pay it every tick; a Zero Hour base holds dozens.
-- **The change.** Each cell keeps the count of each group's sights on it, and of each group's detectors, beside the bitmap, whose bit stays set while its count is above 0. A seer keeps its runs, group, detection and brush; a seer whose key is unchanged costs nothing, one that moved counts on the cells its rows gained and takes back those they lost, and one that changed its group, detection or brush, or left, takes back all its runs. A reveal counts for its tick and is taken back as the next stage begins.
-- **Established practice.** Zero Hour's `PartitionManager` keeps a count of lookers per cell and player and has each object look and unlook as it moves; Warcraft III and StarCraft II keep reference-counted sight the same way. Refused: the bitmaps rebuilt each tick, as now, whose cost grows with every seer however still.
-- **Same bits.** The fog's bitmaps stay a pure function of the seers and the reveals: the spike's test plays 200 random ticks of 40 seers over three groups, two brushes, detection and reveals, and finds every cell's bit equal to a fog built again each tick. A restored match fills it from nothing, as now.
-- **Numbers.** `local`, quiet, four interleaved pairs, each pair the same way: `battle/crowded_vision` −64.1 %, `server_stage/mean_3v3_vision` −32.8 %, `server_tick/mean_3v3` −3.8 %; `fog/still` −81 %, `fog/sight`, every seer moved, −10 %. The worst 3v3 tick does not move (−0.3 %). `mac`, three pairs, each the same way: `battle/crowded_vision` −60.0 %, `mean_3v3_vision` −34.5 %, `server_tick/mean_3v3` −3.3 %.
-- **Costs.** Two `u16` counts a cell and group beside each bitmap, 26 KB for each group on the 3v3's 96 × 136 m map at 1 m cells; a seer's runs kept between ticks. A seer that moves every tick pays its rows' ends twice, which the bitmaps' clear no longer costs.
-- **Left for the change.** The spike leaves `SightCache<Sighting>`, the per-tick bitmap clear and `Bitmap::set` in place unused, and has run only the vision crate's tests; the change deletes them, runs the gate, and moves the cross-check into `sight_maps`' tests.
+Planned: [PLAN.md](../PLAN.md#a-counted-fog), F1 and F2. Spike: `../campfire-perf/fog`.
 
 ## A target index split by team and tags
 
