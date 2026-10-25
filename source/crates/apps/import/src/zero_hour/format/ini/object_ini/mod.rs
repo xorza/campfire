@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Index;
 
 use campfire_client_files::ModelScale;
@@ -129,8 +129,8 @@ pub(crate) enum PlacedAs {
 
 /// A draw module: how it names its model, the model of its default state, if it draws one, that
 /// state's look, and the bone its turret turns, its `Turret`; the sets of flags its default state
-/// is drawn for, none and its aliases'; its other condition states, in order; and the map
-/// conditions it ignores (`IgnoreConditionStates`).
+/// is drawn for, none and its aliases'; its other condition states, in order; the map conditions
+/// it ignores (`IgnoreConditionStates`); and every animation its states and transitions name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DrawModule {
     pub(crate) kind: DrawKind,
@@ -141,6 +141,8 @@ pub(crate) struct DrawModule {
     sets: Vec<ConditionSet>,
     states: Vec<DrawState>,
     ignored: LookConditions,
+    /// Each by its name, `<hierarchy>.<animation>` in lowercase, as `parseAnimation` keeps it.
+    pub(crate) animations: BTreeSet<String>,
 }
 
 /// A condition state of a `W3DModelDraw` past its default: the sets of flags it is drawn for, its
@@ -286,6 +288,8 @@ enum Block {
     State {
         named: bool,
     },
+    /// A `TransitionState` of such a module, which the look reads the animations of.
+    Transition,
     /// An object's `Prerequisites`.
     Prerequisites,
     /// A block combat reads: a body, a weapon set or an armor set.
@@ -604,6 +608,7 @@ impl DrawModule {
             sets: vec![ConditionSet::default()],
             states: Vec::new(),
             ignored: LookConditions::default(),
+            animations: BTreeSet::new(),
         }
     }
 
@@ -651,6 +656,17 @@ impl DrawModule {
             self.turret = Some((*bone).to_owned());
         }
         state_field(&mut self.model, &mut self.look, word, tokens, line)
+    }
+
+    /// A field of a state or a transition that names an animation, `Animation` or
+    /// `IdleAnimation`: its name, of none for `NONE` or no name, as `parseAnimation` reads it.
+    fn animation_field(&mut self, word: &str, tokens: &[&str]) {
+        if matches!(word, "animation" | "idleanimation")
+            && let Some(name) = tokens.get(1)
+            && !name.eq_ignore_ascii_case("none")
+        {
+            self.animations.insert(name.to_ascii_lowercase());
+        }
     }
 
     /// The state the reader is in past the default, its last.
@@ -888,6 +904,7 @@ impl Reading {
             }
             Block::DefaultState { named: true }
             | Block::State { named: true }
+            | Block::Transition
             | Block::Prerequisites
             | Block::Fight(_)
             | Block::Production(_)
@@ -954,6 +971,9 @@ impl Reading {
                             (None, 0) => return Err(IniError::FirstAlias { line }),
                         }
                     }
+                    "transitionstate" if *kind == DrawKind::Family => {
+                        self.stack.push(Block::Transition);
+                    }
                     "ignoreconditionstates" if *kind == DrawKind::Family => {
                         module.ignored = ConditionSet::of(at)?.conditions;
                     }
@@ -967,6 +987,7 @@ impl Reading {
             Block::State { named } => {
                 let module = self.draw.as_mut().expect("a state is in a draw");
                 *named |= word == "model";
+                module.animation_field(word, tokens);
                 let state = module.last_state();
                 state_field(&mut state.model, &mut state.look, word, tokens, line)?;
                 if ObjectFiles::opens(word, tokens) {
@@ -976,7 +997,15 @@ impl Reading {
             Block::DefaultState { named } => {
                 let module = self.draw.as_mut().expect("a state is in a draw");
                 *named |= word == "model";
+                module.animation_field(word, tokens);
                 module.default_field(word, tokens, line)?;
+                if ObjectFiles::opens(word, tokens) {
+                    self.stack.push(Block::Other);
+                }
+            }
+            Block::Transition => {
+                let module = self.draw.as_mut().expect("a transition is in a draw");
+                module.animation_field(word, tokens);
                 if ObjectFiles::opens(word, tokens) {
                     self.stack.push(Block::Other);
                 }

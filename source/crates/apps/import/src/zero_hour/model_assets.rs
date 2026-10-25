@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::format::w3d::w3d_animation::W3dAnimation;
 use crate::zero_hour::format::w3d::w3d_file::W3dFile;
 use crate::zero_hour::install::Install;
 
@@ -48,6 +49,16 @@ impl<'a> ModelAssets<'a> {
     /// loaded.
     pub(crate) fn file(&self, stem: &str) -> Option<&W3dFile> {
         self.files.get(&stem.to_ascii_lowercase())?.as_ref()
+    }
+
+    /// The animation `name` of the W3D file `<stem>.w3d` that `load` read, which the file no
+    /// longer holds, as each animation converts once; none for a file the install lacks, one not
+    /// loaded, or one of no animation of that name.
+    pub(crate) fn take_animation(&mut self, stem: &str, name: &str) -> Option<W3dAnimation> {
+        self.files
+            .get_mut(&stem.to_ascii_lowercase())?
+            .as_mut()?
+            .take_animation(name)
     }
 
     /// The texture a mesh names as `name`, as the loader finds it: `DDSFileClass`'s name, the

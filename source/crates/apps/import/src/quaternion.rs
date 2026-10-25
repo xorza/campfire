@@ -26,6 +26,11 @@ impl Quaternion {
         [self.x, self.y, self.z, self.w]
     }
 
+    /// The rotation back, of a unit quaternion: `−x, −y, −z, w`.
+    pub(crate) const fn conjugate(self) -> Self {
+        Self::from_array([-self.x, -self.y, -self.z, self.w])
+    }
+
     /// `vector` turned: `v + 2w (q × v) + 2 q × (q × v)`.
     pub(crate) fn rotate(self, vector: Vec3) -> Vec3 {
         let axis = Vec3::new(self.x, self.y, self.z);

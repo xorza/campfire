@@ -336,9 +336,16 @@ fn a_model_draws_the_state_that_best_matches_its_maps_conditions() {
     DefaultConditionState
       Model = DAY
       HideSubObject = Flag
+      Animation = Day_SKL.Day_Idle 0 2
     End
     ConditionState = NIGHT
       Model = NIGHT
+      IdleAnimation = DAY_SKL.DAY_IDLE2
+      Animation = NONE
+    End
+    TransitionState = TRANS_A TRANS_B
+      Animation = Day_SKL.Day_Turn
+      AnimationMode = ONCE
     End
     AliasConditionState = NIGHT DAMAGED
     ConditionState = SNOW
@@ -393,6 +400,16 @@ End
     for conditions in [at(true, false), at(false, true), at(true, true)] {
         assert_eq!(drawn("Lamp", conditions), lamp, "{conditions:?}");
     }
+    // Each animation a state or a transition names, in lowercase, past its repeats and `NONE`;
+    // the transition's own fields, and its alias after it, leave the states as they were.
+    let animations = |name: &str| ini.named(name).unwrap().draws()[0].animations.clone();
+    assert_eq!(
+        animations("Barracks"),
+        BTreeSet::from(
+            ["day_skl.day_idle", "day_skl.day_idle2", "day_skl.day_turn"].map(String::from)
+        )
+    );
+    assert!(animations("Lamp").is_empty());
 
     // A later state of a module with no `DefaultConditionState` copies nothing, so it must name
     // its model; an alias needs a state before it.

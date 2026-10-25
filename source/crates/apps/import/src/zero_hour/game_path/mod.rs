@@ -20,6 +20,12 @@ pub(crate) fn model(name: &str) -> Result<PackagePath, NoPackagePath> {
     package_path(format!("client/models/{name}.glb"))
 }
 
+/// Where the animation `name`, `<hierarchy>.<animation>`, goes: `client/animations/<name>.glb`;
+/// an error for a name no package path holds.
+pub(crate) fn animation(name: &str) -> Result<PackagePath, NoPackagePath> {
+    package_path(format!("client/animations/{name}.glb"))
+}
+
 /// Where the texture at `path` goes: `client/textures/` and its path with `/` between names, its
 /// extension `.ktx2`; an error for a name no package path holds.
 pub(crate) fn texture(path: &ArchivePath) -> Result<PackagePath, NoPackagePath> {

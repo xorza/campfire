@@ -4,10 +4,9 @@ use bevy_math::Vec3;
 use campfire_client_files::{Blend, TeamPaint};
 
 use gltf_json::mesh::{Mode, Primitive, Semantic};
-use gltf_json::scene::UnitQuaternion;
 use gltf_json::texture::Info;
 use gltf_json::validation::Checked;
-use gltf_json::{Accessor, Extras, Index, Material, Mesh, Node};
+use gltf_json::{Accessor, Extras, Index, Material, Mesh, Node, Skin};
 
 use crate::gltf::glb_builder::GlbBuilder;
 use crate::pose::RigidPose;
@@ -23,6 +22,7 @@ use crate::zero_hour::model_import::w3d_material::{
     self, KeyMaterial, MaterialKey, Source, Surface,
 };
 use crate::zero_hour::model_nodes::{LookSubObject, ModelNodes, PivotName};
+use crate::zero_hour::pivot_nodes::PivotNodes;
 
 /// A model as it is built: its glTF, its materials by their keys, and the textures no archive
 /// holds.
@@ -49,7 +49,8 @@ impl ModelBuilder {
     }
 
     /// An HLOD: each pivot a node in its parent's, and each sub-object a node of its mesh on its
-    /// pivot's; a skin's at the scene's root, its vertices already placed.
+    /// pivot's; a skin's at the scene's root, its vertices at their bind pose, each moved by its
+    /// bone's node (animated-looks.md, A skin is a glTF skin).
     pub(super) fn hlod(
         &mut self,
         hierarchy: &Hierarchy,
@@ -64,27 +65,7 @@ impl ModelBuilder {
             return Err(ModelError::Pivot);
         }
         let poses = hierarchy.poses();
-        let pivots: Vec<Index<Node>> = hierarchy
-            .pivots
-            .iter()
-            .map(|pivot| {
-                let pose = pivot.pose();
-                self.glb.document.push(Node {
-                    name: Some(pivot.name.clone()),
-                    translation: Some(axes::y_up(pose.translation.to_array())),
-                    rotation: Some(UnitQuaternion(axes::y_up_rotation(
-                        pose.rotation.to_array(),
-                    ))),
-                    ..Node::default()
-                })
-            })
-            .collect();
-        for (&node, pivot) in pivots.iter().zip(&hierarchy.pivots) {
-            match pivot.parent {
-                Some(parent) => self.child(pivots[parent], node),
-                None => self.glb.scene().nodes.push(node),
-            }
-        }
+        let PivotNodes { nodes: pivots } = PivotNodes::of(hierarchy, &mut self.glb);
         let mut nodes = ModelNodes {
             sub_objects: Vec::new(),
             pivots: hierarchy
@@ -96,6 +77,10 @@ impl ModelBuilder {
                 })
                 .collect(),
         };
+        let skin = meshes
+            .iter()
+            .any(|mesh| mesh.is_some_and(|mesh| mesh.bones.is_some()))
+            .then(|| self.skin(&poses, &pivots));
         for (sub, mesh) in sub_objects.iter().zip(meshes) {
             let Some(mesh) = mesh else {
                 nodes.sub_objects.push(LookSubObject {
@@ -110,12 +95,13 @@ impl ModelBuilder {
             let node = self.glb.document.push(Node {
                 name: Some(sub.name.clone()),
                 mesh: Some(mesh_index),
+                skin: skin.filter(|_| mesh.bones.is_some()),
                 ..Node::default()
             });
             if mesh.bones.is_some() {
                 self.glb.scene().nodes.push(node);
             } else {
-                self.child(pivots[sub.pivot], node);
+                self.glb.child(pivots[sub.pivot], node);
             }
             nodes.sub_objects.push(LookSubObject {
                 name: sub.name.clone(),
@@ -140,12 +126,23 @@ impl ModelBuilder {
         Ok(nodes)
     }
 
-    /// Makes `child` a child of `parent`.
-    fn child(&mut self, parent: Index<Node>, child: Index<Node>) {
-        self.glb.document.nodes[parent.value()]
-            .children
-            .get_or_insert_with(Vec::new)
-            .push(child);
+    /// The skin of the nodes `pivots`, each a joint whose inverse bind matrix undoes its pose of
+    /// `poses` on glTF's axes, so a vertex bound to it stays where it is placed until its node
+    /// moves.
+    fn skin(&mut self, poses: &[RigidPose], pivots: &[Index<Node>]) -> Index<Skin> {
+        let matrices: Vec<[f32; 16]> = poses
+            .iter()
+            .map(|&pose| axes::y_up_pose(pose).inverse().matrix())
+            .collect();
+        let inverse_bind_matrices = Some(self.glb.matrices(&matrices));
+        self.glb.document.push(Skin {
+            extensions: None,
+            extras: Extras::default(),
+            inverse_bind_matrices,
+            joints: pivots.to_vec(),
+            name: None,
+            skeleton: None,
+        })
     }
 
     /// A mesh alone: one node of it, at the scene's root.
@@ -176,7 +173,7 @@ impl ModelBuilder {
     }
 
     /// A glTF mesh of `mesh`: its vertices on glTF's axes, a skin's placed by each one's bone of
-    /// `poses`; for each pass, one primitive for each texture, shader and vertex material its
+    /// `poses` and bound to that bone alone, as W3D binds it; for each pass, one primitive for each texture, shader and vertex material its
     /// triangles draw, and for its detail stage one for each texture and shader that mixes it in,
     /// each a layer over what is drawn before it, all of the same vertices (09-zero-hour.md, A W3D
     /// material becomes the one material).
@@ -213,12 +210,25 @@ impl ModelBuilder {
         Self::fill_zero_normals(&positions, &mesh.triangles, &mut normals);
         let position = self.glb.positions(&positions);
         let normal = self.glb.vectors(&normals);
+        let [joints, weights] = match &mesh.bones {
+            Some(bones) => {
+                let joints: Vec<[u16; 4]> = bones.iter().map(|&bone| [bone, 0, 0, 0]).collect();
+                let weights = vec![[1.0, 0.0, 0.0, 0.0]; bones.len()];
+                [
+                    Some(self.glb.joints(&joints)),
+                    Some(self.glb.weights(&weights)),
+                ]
+            }
+            None => [None; 2],
+        };
         let attributes = |texcoord: Option<Index<Accessor>>, color: Option<Index<Accessor>>| {
             [
                 (Semantic::Positions, Some(position)),
                 (Semantic::Normals, Some(normal)),
                 (Semantic::TexCoords(0), texcoord),
                 (Semantic::Colors(0), color),
+                (Semantic::Joints(0), joints),
+                (Semantic::Weights(0), weights),
             ]
             .into_iter()
             .filter_map(|(semantic, accessor)| Some((Checked::Valid(semantic), accessor?)))

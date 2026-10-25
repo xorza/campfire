@@ -9,6 +9,7 @@ mod texture;
 mod zero_hour;
 
 pub use crate::texture::error::TextureError;
+pub use crate::zero_hour::animation_import::AnimationDropCause;
 pub use crate::zero_hour::archive_path::ArchivePath;
 pub use crate::zero_hour::dropped::Dropped;
 pub use crate::zero_hour::error::{

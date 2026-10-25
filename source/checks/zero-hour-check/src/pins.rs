@@ -3,7 +3,9 @@
 
 use campfire_bots::OrderUnsent;
 use campfire_common::PackageFingerprint;
-use campfire_import::{ButtonDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause};
+use campfire_import::{
+    AnimationDropCause, ButtonDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause,
+};
 use campfire_mode::MatchResult;
 use campfire_orders::OrderDropCause;
 use campfire_runner::BotInputDrop;
@@ -75,16 +77,24 @@ pub(crate) struct TerrainCounts {
 }
 
 /// How many looks have night or snow variants, of unit types and of client objects; how many unit
-/// types' looks have no models, of objects that draw nothing; and how many maps are night maps and
-/// snowy maps.
+/// types' looks have no models, of objects that draw nothing; how many maps are night maps and
+/// snowy maps; and how many animations the looks name the import converts, and drops for each
+/// cause, in the order of `AnimationDropCause::ALL` (animated-looks.md, An animation is a glTF
+/// file of its own).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[display("{varied} varied looks, {empty} empty looks, {night} night maps and {snowy} snowy maps")]
+#[display(
+    "{varied} varied looks, {empty} empty looks, {night} night maps, {snowy} snowy maps, \
+     {animations} animations, dropped {:?}",
+    dropped_animations
+)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LookCounts {
     pub(crate) varied: usize,
     pub(crate) empty: usize,
     pub(crate) night: usize,
     pub(crate) snowy: usize,
+    pub(crate) animations: usize,
+    pub(crate) dropped_animations: [usize; AnimationDropCause::ALL.len()],
 }
 
 /// The production play's steps: each one's ticks, from the tick its order applies to the tick

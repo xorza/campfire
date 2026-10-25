@@ -3,6 +3,9 @@
 
 use campfire_math::{Num, Vec3};
 
+use crate::pose::RigidPose;
+use crate::quaternion::Quaternion;
+
 /// A point or a direction of W3D's frame, `z` up, on glTF's axes, `y` up: `(x, y, z)` as
 /// `(x, z, −y)`, a rotation, so handedness and winding hold.
 pub(crate) const fn y_up(vector: [f32; 3]) -> [f32; 3] {
@@ -12,6 +15,15 @@ pub(crate) const fn y_up(vector: [f32; 3]) -> [f32; 3] {
 /// A rotation of W3D's frame on glTF's axes: its axis turned as a vector is, its angle kept.
 pub(crate) const fn y_up_rotation(rotation: [f32; 4]) -> [f32; 4] {
     [rotation[0], rotation[2], -rotation[1], rotation[3]]
+}
+
+/// A placement of W3D's frame on glTF's axes: its move as `y_up` turns a vector, its rotation as
+/// `y_up_rotation` turns one.
+pub(crate) fn y_up_pose(pose: RigidPose) -> RigidPose {
+    RigidPose {
+        translation: y_up(pose.translation.to_array()).into(),
+        rotation: Quaternion::from_array(y_up_rotation(pose.rotation.to_array())),
+    }
 }
 
 /// A point of the game's ground, `x` east and `y` north, on the engine's ground plane: `(x, −y)`

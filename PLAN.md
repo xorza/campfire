@@ -4,13 +4,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Animated looks
 
-The slice of [Animated looks](docs/design/animated-looks.md): a player of a Zero Hour skirmish sees infantry stand, walk, fire and die with the original's animations, a building rise as it is built and show its damage, and an upgrade change what its units show. Six batches, each one commit; its checks are that document's.
-
-### A1. Animations and skins (import)
-
-- [ ] The import skips each W3D animation (`format/w3d/w3d_file.rs:100`) → it reads `W3D_CHUNK_ANIMATION` and its time-coded `W3D_CHUNK_COMPRESSED_ANIMATION`, and writes each animation a look names as a `.glb` of its hierarchy and its tracks, its visibility keys in its extras (animated-looks.md, An animation is a glTF file of its own; animated-looks.md, A visibility channel hides its pivot's own meshes).
-- [ ] A skin's vertices are placed at their bind pose for good (`model_import/model_builder.rs:178`) → a skin is a glTF skin, each vertex bound to its one bone (animated-looks.md, A skin is a glTF skin).
-- Checks: the importer's tests convert a hand-written animation and skin, keys and matrices computed by hand; the Zero Hour check counts the animations converted and dropped by cause, and its golden is written again.
+The slice of [Animated looks](docs/design/animated-looks.md): a player of a Zero Hour skirmish sees infantry stand, walk, fire and die with the original's animations, a building rise as it is built and show its damage, and an upgrade change what its units show. Five batches, each one commit; its checks are that document's.
 
 ### A2. Look states (client-files, client, import)
 

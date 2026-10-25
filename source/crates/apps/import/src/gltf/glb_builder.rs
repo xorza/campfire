@@ -5,7 +5,8 @@ use gltf_json::buffer::{Target, View};
 use gltf_json::texture::{Sampler, WrappingMode};
 use gltf_json::validation::{Checked, USize64, Validate};
 use gltf_json::{
-    Accessor, Asset, Buffer, Extras, Image, Index, Material, Path, Root, Scene, Texture,
+    Accessor, Animation, Asset, Buffer, Extras, Image, Index, Material, Node, Path, Root, Scene,
+    Texture,
 };
 
 /// A glTF document of `gltf-json`'s schema and its one buffer, which `encode` writes as a GLB
@@ -30,30 +31,38 @@ struct PushedTexture {
     texture: Index<Texture>,
 }
 
-/// What an accessor's elements are, and the target of their view.
+/// What an accessor's elements are, and the target of their view: none for data no mesh draws,
+/// as an animation's keys and a skin's matrices.
 #[derive(Debug, Clone, Copy)]
 struct Elements {
     component: ComponentType,
     kind: Type,
     /// Whether an integer component reads as 0 to 1.
     normalized: bool,
-    target: Target,
+    target: Option<Target>,
 }
 
 impl Elements {
     const VEC3: Self = Self::floats(Type::Vec3);
     const VEC2: Self = Self::floats(Type::Vec2);
+    const VEC4: Self = Self::floats(Type::Vec4);
     const COLORS: Self = Self {
         component: ComponentType::U8,
         kind: Type::Vec4,
         normalized: true,
-        target: Target::ArrayBuffer,
+        target: Some(Target::ArrayBuffer),
+    };
+    const JOINTS: Self = Self {
+        component: ComponentType::U16,
+        kind: Type::Vec4,
+        normalized: false,
+        target: Some(Target::ArrayBuffer),
     };
     const INDICES: Self = Self {
         component: ComponentType::U32,
         kind: Type::Scalar,
         normalized: false,
-        target: Target::ElementArrayBuffer,
+        target: Some(Target::ElementArrayBuffer),
     };
 
     const fn floats(kind: Type) -> Self {
@@ -61,7 +70,14 @@ impl Elements {
             component: ComponentType::F32,
             kind,
             normalized: false,
-            target: Target::ArrayBuffer,
+            target: Some(Target::ArrayBuffer),
+        }
+    }
+
+    const fn data(kind: Type) -> Self {
+        Self {
+            target: None,
+            ..Self::floats(kind)
         }
     }
 }
@@ -99,6 +115,14 @@ impl GlbBuilder {
     /// The document's one scene.
     pub(crate) fn scene(&mut self) -> &mut Scene {
         &mut self.document.scenes[0]
+    }
+
+    /// Makes `child` a child of `parent`.
+    pub(crate) fn child(&mut self, parent: Index<Node>, child: Index<Node>) {
+        self.document.nodes[parent.value()]
+            .children
+            .get_or_insert_with(Vec::new)
+            .push(child);
     }
 
     /// An accessor of `vectors`, with their bounds, as glTF requires of positions.
@@ -140,6 +164,59 @@ impl GlbBuilder {
     pub(crate) fn colors(&mut self, colors: &[[u8; 4]]) -> Index<Accessor> {
         let bytes = colors.iter().flatten().copied().collect();
         self.accessor(bytes, colors.len(), Elements::COLORS)
+    }
+
+    /// An accessor of each vertex's joints, four indices of a skin's.
+    pub(crate) fn joints(&mut self, joints: &[[u16; 4]]) -> Index<Accessor> {
+        let bytes = joints
+            .iter()
+            .flatten()
+            .flat_map(|joint| joint.to_le_bytes());
+        self.accessor(bytes.collect(), joints.len(), Elements::JOINTS)
+    }
+
+    /// An accessor of each vertex's weights, one for each of its joints.
+    pub(crate) fn weights(&mut self, weights: &[[f32; 4]]) -> Index<Accessor> {
+        self.floats(
+            weights.iter().flatten().copied(),
+            weights.len(),
+            Elements::VEC4,
+        )
+    }
+
+    /// An accessor of an animation's key times, in seconds, with their bounds, as glTF requires
+    /// of a sampler's input.
+    pub(crate) fn times(&mut self, times: &[f32]) -> Index<Accessor> {
+        let accessor = self.floats(
+            times.iter().copied(),
+            times.len(),
+            Elements::data(Type::Scalar),
+        );
+        let bounds = &mut self.document.accessors[accessor.value()];
+        let [min, max] = [times.first(), times.last()].map(|time| {
+            let time = *time.expect("a sampler of a key at least");
+            Some(Json::convert(&[time]).expect("a float is JSON"))
+        });
+        (bounds.min, bounds.max) = (min, max);
+        accessor
+    }
+
+    /// An accessor of an animation's moves, each a vector.
+    pub(crate) fn moves(&mut self, moves: &[[f32; 3]]) -> Index<Accessor> {
+        let floats = moves.iter().flatten().copied();
+        self.floats(floats, moves.len(), Elements::data(Type::Vec3))
+    }
+
+    /// An accessor of an animation's turns, each a quaternion `x, y, z, w`.
+    pub(crate) fn turns(&mut self, turns: &[[f32; 4]]) -> Index<Accessor> {
+        let floats = turns.iter().flatten().copied();
+        self.floats(floats, turns.len(), Elements::data(Type::Vec4))
+    }
+
+    /// An accessor of matrices, each its columns in order, as a skin's inverse bind matrices.
+    pub(crate) fn matrices(&mut self, matrices: &[[f32; 16]]) -> Index<Accessor> {
+        let floats = matrices.iter().flatten().copied();
+        self.floats(floats, matrices.len(), Elements::data(Type::Mat4))
     }
 
     pub(crate) fn indices(&mut self, indices: &[u32]) -> Index<Accessor> {
@@ -218,14 +295,28 @@ impl GlbBuilder {
                 .then_some("KHR_materials_specular");
             let unlit = extensions.unlit.is_some().then_some("KHR_materials_unlit");
             let others = extensions.others.keys().map(String::as_str);
-            let used = &mut self.document.extensions_used;
-            for extension in specular.into_iter().chain(unlit).chain(others) {
-                if let Err(at) = used.binary_search_by(|known| known.as_str().cmp(extension)) {
-                    used.insert(at, extension.to_owned());
-                }
-            }
+            self.use_extensions(specular.into_iter().chain(unlit).chain(others));
         }
         self.document.push(material)
+    }
+
+    /// `animation`'s index, with each extension it uses in `extensionsUsed`, in name order.
+    pub(crate) fn animation(&mut self, animation: Animation) -> Index<Animation> {
+        if let Some(extensions) = &animation.extensions {
+            let others = extensions.others.keys().map(String::as_str);
+            self.use_extensions(others);
+        }
+        self.document.push(animation)
+    }
+
+    /// Adds each of `extensions` that `extensionsUsed` lacks to it, in name order.
+    fn use_extensions<'a>(&mut self, extensions: impl Iterator<Item = &'a str>) {
+        let used = &mut self.document.extensions_used;
+        for extension in extensions {
+            if let Err(at) = used.binary_search_by(|known| known.as_str().cmp(extension)) {
+                used.insert(at, extension.to_owned());
+            }
+        }
     }
 
     /// The GLB file's bytes. A debug build checks the document against glTF's schema first.
@@ -310,7 +401,7 @@ impl GlbBuilder {
             byte_offset: Some(USize64::from(self.buffer.len())),
             byte_stride: None,
             name: None,
-            target: Some(Checked::Valid(elements.target)),
+            target: elements.target.map(Checked::Valid),
             extensions: None,
             extras: Extras::default(),
         });
@@ -358,6 +449,12 @@ pub(crate) mod reach_in {
             let (words, rest) = self.bytes_of(accessor).as_chunks::<4>();
             assert!(rest.is_empty());
             words.iter().copied().map(u32::from_le_bytes).collect()
+        }
+
+        pub(crate) fn joints_of(&self, accessor: Index<Accessor>) -> Vec<u16> {
+            let (words, rest) = self.bytes_of(accessor).as_chunks::<2>();
+            assert!(rest.is_empty());
+            words.iter().copied().map(u16::from_le_bytes).collect()
         }
 
         pub(crate) fn colors_of(&self, accessor: Index<Accessor>) -> Vec<u8> {

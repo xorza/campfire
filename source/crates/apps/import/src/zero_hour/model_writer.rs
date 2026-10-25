@@ -10,7 +10,9 @@ use campfire_package_disk::PackageWriter;
 use serde::{Deserialize, Serialize};
 
 use crate::gltf::model_bounds::ModelBounds;
+use crate::zero_hour::animation_import::{AnimationDropCause, ConvertedAnimation};
 use crate::zero_hour::archive_path::ArchivePath;
+use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::ini::object_ini::{
     DrawKind, DrawModule, DrawnState, IniObject, ObjectIni, PlacedAs, StateLook,
@@ -41,14 +43,16 @@ pub enum SkipReason {
     Aggregate,
 }
 
-/// The models of an import and the client's looks of the objects, of `client/units.toml`: each
-/// model converted once, at `client/models/<name>.glb`, into the package's writer; the nodes each
-/// one's looks read; the models the objects name that the package lacks; and the textures the
-/// models name that no archive holds.
+/// The models and the animations of an import and the client's looks of the objects, of
+/// `client/units.toml`: each model converted once, at `client/models/<name>.glb`, and each
+/// animation a unit's look names once, at `client/animations/<name>.glb`, into the package's
+/// writer; the nodes each model's looks read; the animations converted or dropped; the models the
+/// objects name that the package lacks; and the textures the models name that no archive holds.
 #[derive(Debug)]
 pub(crate) struct ModelWriter<'i, 'w> {
     converter: Converter<'i, 'w>,
     written: BTreeMap<String, WrittenModel>,
+    animations: BTreeSet<String>,
 }
 
 /// What a model the objects name gives their looks: the nodes its looks read and the bounds its
@@ -64,22 +68,25 @@ pub(crate) enum WrittenModel {
     Skipped,
 }
 
-/// What converts a model and writes its files: the assets it reads, the writer, and what the
-/// models lacked so far.
+/// What converts a model or an animation and writes its file: the assets it reads, the writer,
+/// and what the models and the animations lacked so far.
 #[derive(Debug)]
 struct Converter<'i, 'w> {
     assets: ModelAssets<'i>,
     writer: &'w mut PackageWriter,
     skipped: Vec<SkippedModel>,
+    dropped_animations: Vec<Dropped<AnimationDropCause>>,
     missing_textures: BTreeSet<String>,
     textures: BTreeSet<ArchivePath>,
 }
 
-/// What the models of an import lacked and drew with: the models the package lacks, the textures
-/// no archive holds, and the files of those they draw with.
+/// What the models and the animations of an import lacked and drew with: the models the package
+/// lacks, the animations it drops, the textures no archive holds, and the files of those the
+/// models draw with.
 #[derive(Debug)]
 pub(crate) struct ModelReport {
     pub(crate) skipped: Vec<SkippedModel>,
+    pub(crate) dropped_animations: Vec<Dropped<AnimationDropCause>>,
     pub(crate) missing_textures: Vec<String>,
     pub(crate) textures: BTreeSet<ArchivePath>,
 }
@@ -91,10 +98,12 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
                 assets,
                 writer,
                 skipped: Vec::new(),
+                dropped_animations: Vec::new(),
                 missing_textures: BTreeSet::new(),
                 textures: BTreeSet::new(),
             },
             written: BTreeMap::new(),
+            animations: BTreeSet::new(),
         }
     }
 
@@ -107,9 +116,20 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
         })
     }
 
+    /// Converts each animation `draws` name and writes its file, the first time one is named.
+    fn animations(&mut self, draws: &[DrawModule]) -> Result<(), ZeroHourError> {
+        for name in draws.iter().flat_map(|draw| &draw.animations) {
+            if self.animations.insert(name.clone()) {
+                self.converter.animation(name)?;
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn report(self) -> ModelReport {
         ModelReport {
             skipped: self.converter.skipped,
+            dropped_animations: self.converter.dropped_animations,
             missing_textures: self.converter.missing_textures.into_iter().collect(),
             textures: self.converter.textures,
         }
@@ -152,6 +172,7 @@ impl ModelWriter<'_, '_> {
             let Some(mut unit_look) = self.look(unit, scale)? else {
                 continue;
             };
+            self.animations(draws)?;
             // A preview of its build stands at the angle the original's cursor shows it at.
             unit_look.placement_angle = object.build().placement_angle;
             unit_look.turret = self.turret(draws)?;
@@ -207,11 +228,14 @@ impl ModelWriter<'_, '_> {
         let draws = variation.draws();
         let drawn = |conditions| draws.iter().map(move |draw| draw.drawn(conditions));
         let look = match self.look(drawn, variation.scale())? {
-            Some(look) => LookVariation {
-                models: look.models,
-                variants: look.variants,
-                turret: self.turret(draws)?,
-            },
+            Some(look) => {
+                self.animations(draws)?;
+                LookVariation {
+                    models: look.models,
+                    variants: look.variants,
+                    turret: self.turret(draws)?,
+                }
+            }
             None => LookVariation {
                 models: parent.models.clone(),
                 variants: parent.variants.clone(),
@@ -311,6 +335,22 @@ impl ModelWriter<'_, '_> {
 }
 
 impl Converter<'_, '_> {
+    /// Converts the animation `name` and writes its file; `dropped_animations` gaining one the
+    /// package lacks.
+    fn animation(&mut self, name: &str) -> Result<(), ZeroHourError> {
+        match ConvertedAnimation::of(name, &mut self.assets)? {
+            ConvertedAnimation::Glb(glb) => {
+                self.writer
+                    .write(game_path::animation(name)?, &glb.encode())?;
+            }
+            ConvertedAnimation::Dropped(cause) => self.dropped_animations.push(Dropped {
+                name: name.to_owned(),
+                cause,
+            }),
+        }
+        Ok(())
+    }
+
     /// Converts the model `name` and writes its files; what it gives its looks, `skipped` gaining
     /// a model the package lacks.
     fn convert(&mut self, name: &str) -> Result<WrittenModel, ZeroHourError> {

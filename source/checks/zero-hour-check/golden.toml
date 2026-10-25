@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "d75e4c85115a3ace27e37cda510c65331e108e4ad00a70d5fa3288d1928b00ce"
+game = "ff1cc64b79b8deae6de9c43298064b905b21d99e19bbcd178f39bff1d811bc1a"
 rules = "3ce491bf031db4f3713f1f65dbfba97fb47ba4c8eb819276b094ab09d2a8c651"
 
 [map]
@@ -25,6 +25,8 @@ varied = 382
 empty = 273
 night = 15
 snowy = 17
+animations = 3091
+dropped_animations = [51, 0, 1]
 
 [produced]
 trains = 192

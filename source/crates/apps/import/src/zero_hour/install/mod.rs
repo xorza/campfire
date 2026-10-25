@@ -350,6 +350,7 @@ pub(crate) mod samples {
     use campfire_store::internals::TestDir;
 
     use crate::texture::samples::textures;
+    use crate::zero_hour::animation_import::samples::animation_files;
     use crate::zero_hour::format::big::big_archive::samples::big;
     use crate::zero_hour::format::csf::string_table::samples::strings;
     use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
@@ -390,14 +391,15 @@ pub(crate) mod samples {
 
     /// An install whose archives each hold `shared.ini`: `A.big`, which also holds the fixture map
     /// in its directory, a map outside one, the two textures, a terrain texture, the terrain types,
-    /// the game data, the mouse's, the object INI files, and the models, `Rock01.w3d` in the
-    /// language directory `English` and, unread, outside it; `b.big`, `c.BIG`, base Generals'
+    /// the game data, the mouse's, the object INI files, the models, `Rock01.w3d` in the
+    /// language directory `English` and, unread, outside it, and the animations; `b.big`, `c.BIG`, base Generals'
     /// `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`, beside a file that is no
     /// archive.
     pub(crate) fn fixture(test_dir: &TestDir) {
         let packed = packed_map();
         let [rock_texture, sign] = textures();
         let [prop, spray] = nothing_drawn();
+        let [aim, walk, sway] = animation_files();
         test_dir.write(
             "zh/A.big",
             big(&[
@@ -430,6 +432,9 @@ pub(crate) mod samples {
                 ("Art\\W3D\\Rock01.w3d", b"unread"),
                 ("Art\\W3D\\Prop.w3d", &prop),
                 ("Art\\W3D\\Spray.w3d", &spray),
+                ("Art\\W3D\\Tank_Aim.w3d", &aim),
+                ("Art\\W3D\\Ghost_Walk.w3d", &walk),
+                ("Art\\W3D\\Pole_Sway.w3d", &sway),
             ]),
         );
         test_dir.write(

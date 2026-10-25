@@ -7,8 +7,8 @@ use campfire_codec::Binary;
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
 use campfire_import::{
-    ButtonDropCause, Dropped, ImportLoss, Imported, SupplyDropCause, UpgradeDropCause,
-    WeaponDropCause,
+    AnimationDropCause, ButtonDropCause, Dropped, ImportLoss, Imported, SupplyDropCause,
+    UpgradeDropCause, WeaponDropCause,
 };
 use campfire_math::Num;
 use campfire_navigation::MapNavigationData;
@@ -135,8 +135,9 @@ impl ImportCheck<'_> {
         Ok(())
     }
 
-    /// The looks that draw other models on a night or snowy map, those that draw nothing, and
-    /// the maps of night and of snow among those the import wrote.
+    /// The looks that draw other models on a night or snowy map, those that draw nothing, the
+    /// maps of night and of snow among those the import wrote, and the animations the looks name
+    /// converted and dropped, by cause.
     pub(crate) fn looks(&mut self) -> Result<(), CheckError> {
         let files = &self.packages.mode().package.files;
         let unit_looks: ClientUnits = files.read_data(&ClientUnits::path())?;
@@ -152,11 +153,27 @@ impl ImportCheck<'_> {
             .filter(|look| look.models.is_empty() && look.variants.is_empty())
             .count();
         let [night, snow] = ["night", "snow"].map(|name| DeclaredName::new(name).expect("a name"));
+        let dropped: Vec<&Dropped<AnimationDropCause>> = self
+            .imported
+            .losses
+            .iter()
+            .filter_map(|loss| match loss {
+                ImportLoss::Animation(animation) => Some(animation),
+                _ => None,
+            })
+            .collect();
         let mut drawn = LookCounts {
             varied,
             empty,
             night: 0,
             snowy: 0,
+            animations: files.files_under("client/animations").count(),
+            dropped_animations: AnimationDropCause::ALL.map(|cause| {
+                dropped
+                    .iter()
+                    .filter(|animation| animation.cause == cause)
+                    .count()
+            }),
         };
         for other in &self.imported.maps {
             let held: MapConditions = files.read_data(&MapConditions::path(other))?;
@@ -167,13 +184,14 @@ impl ImportCheck<'_> {
         self.failures
             .extend(Differs::of(drawn, expected).map(CheckFailure::Looks));
         self.measured.looks = Some(drawn);
-        info!(
-            varied = drawn.varied,
-            empty = drawn.empty,
-            night = drawn.night,
-            snowy = drawn.snowy,
-            "the looks of night and snow"
-        );
+        for dropped in &dropped {
+            info!(
+                animation = dropped.name,
+                cause = ?dropped.cause,
+                "a look's animation is not imported"
+            );
+        }
+        info!(%drawn, "the looks of night and snow, and their animations");
         Ok(())
     }
 

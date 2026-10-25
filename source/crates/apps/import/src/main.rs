@@ -39,6 +39,11 @@ fn warn_of(loss: &ImportLoss) {
                 ),
             }
         }
+        ImportLoss::Animation(dropped) => warn!(
+            animation = dropped.name,
+            cause = ?dropped.cause,
+            "a look's animation is not imported"
+        ),
         ImportLoss::Texture(texture) => warn!(
             texture,
             "a model names a texture no archive holds, and draws the game's MissingTexture"

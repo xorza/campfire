@@ -1,14 +1,15 @@
 //! The client's data files of a package, which the sim never reads, and which only the import, that
 //! writes them, and the client, that draws them, depend on: how its camera moves, which keys do
 //! what, which units show their bars, how the pointer picks its units, its teams' colors, how its
-//! unit types and its maps' client objects look, what its models' materials say past glTF's own,
-//! the light its maps are drawn in, their terrain and its ground heights, and the objects of each
-//! map the client alone draws.
+//! unit types and its maps' client objects look, what its models' materials and animations say
+//! past glTF's own, the light its maps are drawn in, their terrain and its ground heights, and the
+//! objects of each map the client alone draws.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
+mod animation_extras;
 mod camera_file;
 mod client_file;
 mod client_model;
@@ -30,6 +31,7 @@ mod terrain_file;
 mod texture_format;
 mod texture_levels;
 
+pub use crate::animation_extras::{AnimationExtras, HiddenFrames};
 pub use crate::camera_file::{CameraFile, CameraHeight};
 pub use crate::client_file::{ClientFile, ClientFormat};
 pub use crate::client_model::{ClientModel, ModelScale, ModelTop};

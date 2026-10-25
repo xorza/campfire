@@ -12,7 +12,7 @@ use crate::zero_hour::format::w3d::w3d_mesh::{
 /// clamped texture `Rock.tga` and one of none; on the turret a triangle with zero normals and a
 /// vertex no triangle uses; on the flash bone an additive two-sided triangle of a texture no
 /// archive holds, `Gone.tga`, and no coordinates; a box; a name of no render object; and a skin
-/// on the turret.
+/// on the turret, its second vertex on the flash bone.
 pub(crate) fn tank() -> Vec<u8> {
     let pivot = |name: &str, parent, translation, rotation| Pivot {
         name: name.to_owned(),
@@ -141,7 +141,7 @@ fn tank_meshes() -> [W3dMesh; 4] {
         flags: SKIN_GEOMETRY,
         positions: vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
         normals: vec![[0.0, 0.0, 1.0]; 3],
-        bones: Some(vec![1; 3]),
+        bones: Some(vec![1, 2, 1]),
         triangles: vec![[0, 1, 2]],
         ..W3dMesh::named("TANK.SKIN")
     };

@@ -1,13 +1,14 @@
 use crate::zero_hour::format::w3d::error::W3dError;
 use crate::zero_hour::format::w3d::hierarchy::Hierarchy;
 use crate::zero_hour::format::w3d::hlod::Hlod;
+use crate::zero_hour::format::w3d::w3d_animation::W3dAnimation;
 use crate::zero_hour::format::w3d::w3d_chunks::W3dChunks;
 use crate::zero_hour::format::w3d::w3d_fields::W3dFields;
 use crate::zero_hour::format::w3d::w3d_mesh::W3dMesh;
 
 /// A W3D file, as `WW3DAssetManager` loads one (`w3d_file.h` in the released source): its meshes,
-/// the names of its collision boxes and particle emitters, its hierarchies and its HLODs, the
-/// chunks a model reads; others, as animations, are skipped.
+/// the names of its collision boxes and particle emitters, its hierarchies, its HLODs and its
+/// animations, the chunks a look reads; others are skipped.
 #[derive(Debug, Default)]
 pub(crate) struct W3dFile {
     pub(crate) meshes: Vec<W3dMesh>,
@@ -15,9 +16,10 @@ pub(crate) struct W3dFile {
     pub(crate) emitters: Vec<String>,
     pub(crate) hierarchies: Vec<Hierarchy>,
     pub(crate) hlods: Vec<Hlod>,
+    pub(crate) animations: Vec<W3dAnimation>,
 }
 
-/// The chunks a file's top holds that a model reads.
+/// The chunks a file's top holds that a model reads, past its animations'.
 const MESH: u32 = 0x0000;
 const HIERARCHY: u32 = 0x0100;
 const HLOD: u32 = 0x0700;
@@ -33,6 +35,16 @@ const EMITTER_HEAD: usize = 4;
 const EMITTER_NAME: usize = 16;
 
 impl W3dFile {
+    /// Its animation `name`, `<hierarchy>.<animation>`, which it no longer holds; none for a
+    /// name it holds none of.
+    pub(crate) fn take_animation(&mut self, name: &str) -> Option<W3dAnimation> {
+        let at = self
+            .animations
+            .iter()
+            .position(|animation| animation.name == name)?;
+        Some(self.animations.swap_remove(at))
+    }
+
     /// Its hierarchy `name`; none for a name it holds none of.
     pub(crate) fn hierarchy(&self, name: &str) -> Option<&Hierarchy> {
         self.hierarchies
@@ -48,6 +60,9 @@ impl W3dFile {
                 MESH => file.meshes.push(W3dMesh::read(chunk.body)?),
                 HIERARCHY => file.hierarchies.push(Hierarchy::read(chunk.body)?),
                 HLOD => file.hlods.push(Hlod::read(chunk.body)?),
+                id if W3dAnimation::CHUNKS.contains(&id) => {
+                    file.animations.push(W3dAnimation::read(chunk)?);
+                }
                 BOX => {
                     let mut fields = W3dFields::of(chunk.body);
                     fields.cursor.take(BOX_HEAD)?;
@@ -92,24 +107,30 @@ pub(crate) mod samples {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::zero_hour::format::w3d::w3d_animation::samples::raw;
     use crate::zero_hour::format::w3d::w3d_chunks::samples::chunk;
     use crate::zero_hour::format::w3d::w3d_file::samples::{box_chunk, emitter_chunk};
 
     #[test]
-    fn a_file_keeps_the_chunks_a_model_reads_and_refuses_one_past_its_end() {
-        // An animation, 0x200, is skipped; the box and the emitter keep their names in lowercase.
+    fn a_file_keeps_the_chunks_a_look_reads_and_refuses_one_past_its_end() {
+        // A morph animation, 0x2C0, is skipped; the box and the emitter keep their names in
+        // lowercase, and the animation its name of its hierarchy's.
         let bytes = [
-            chunk(0x200, false, &[1, 2, 3]),
+            chunk(0x2C0, false, &[1, 2, 3]),
             box_chunk("TANK.PICKBOX"),
             emitter_chunk("Spray"),
+            raw("Tank_Fire", "Tank_SKL", 2, &[]),
         ]
         .concat();
-        let file = W3dFile::read(&bytes).unwrap();
+        let mut file = W3dFile::read(&bytes).unwrap();
         assert_eq!(file.boxes, ["tank.pickbox"]);
         assert_eq!(file.emitters, ["spray"]);
         assert!(file.meshes.is_empty() && file.hierarchies.is_empty() && file.hlods.is_empty());
+        assert!(file.take_animation("tank_fire").is_none());
+        assert_eq!(file.take_animation("tank_skl.tank_fire").unwrap().frames, 2);
+        assert!(file.take_animation("tank_skl.tank_fire").is_none());
         // A size past the end, and a head of fewer than 8 bytes.
-        let mut long = chunk(0x200, false, &[1, 2, 3]);
+        let mut long = chunk(0x2C0, false, &[1, 2, 3]);
         long[4] = 4;
         assert!(matches!(W3dFile::read(&long), Err(W3dError::Short)));
         assert!(matches!(W3dFile::read(&[0; 7]), Err(W3dError::Short)));

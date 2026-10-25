@@ -29,8 +29,8 @@ pub(crate) enum CheckFailure {
     /// Cells it draws have a tile with no texture.
     #[display("{_0} of its drawn cells have a tile with no texture")]
     Untextured(usize),
-    /// The import's looks of night and snow, its empty looks, and its maps of night and snow differ
-    /// from the pinned.
+    /// The import's looks of night and snow, its empty looks, its maps of night and snow, and its
+    /// animations converted and dropped by cause differ from the pinned.
     #[display("it has {_0}")]
     Looks(Box<Differs<LookCounts>>),
     /// The import's trains, builds and dropped buttons by cause differ from the pinned.

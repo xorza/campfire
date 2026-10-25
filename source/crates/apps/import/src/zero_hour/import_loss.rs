@@ -1,6 +1,7 @@
 use campfire_common::MapName;
 use serde::{Deserialize, Serialize};
 
+use crate::zero_hour::animation_import::AnimationDropCause;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
 use crate::zero_hour::model_writer::SkippedModel;
@@ -15,6 +16,9 @@ use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 pub enum ImportLoss {
     /// A model the objects name that the package lacks.
     Model(SkippedModel),
+    /// An animation a look names that the package lacks (animated-looks.md, An animation is a
+    /// glTF file of its own).
+    Animation(Dropped<AnimationDropCause>),
     /// A texture a model names that no archive holds, by the name the model gives, which it
     /// draws as the game's `MissingTexture`, its lit color tinted.
     Texture(String),

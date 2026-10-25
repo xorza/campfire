@@ -174,19 +174,55 @@ fn an_hlod_becomes_nodes_on_its_pivots_with_meshes_on_glb_axes() {
     assert_eq!(glb.floats_of(flash_coordinates), [0.0; 6]);
     assert_eq!(attribute(flash, Semantic::Colors(0)), None);
 
-    // The skin's vertices placed by the turret's pose into the model's frame: the half turn
-    // takes (x, y, z) to (−x, −y, z), then the move by (1, 2, 3): (1, 0, 0) to (0, 2, 3),
-    // (0, 1, 0) to (1, 1, 3), (0, 0, 1) to (1, 2, 4); on glTF's axes (0, 3, −2), (1, 3, −1)
-    // and (1, 4, −2). Its normals turn with it, (0, 0, 1) staying up.
+    // The skin's vertices placed by their bones' poses into the model's frame: the turret's half
+    // turn takes (x, y, z) to (−x, −y, z), then its move by (1, 2, 3): (1, 0, 0) to (0, 2, 3),
+    // (0, 0, 1) to (1, 2, 4); the flash bone's the same turn, then its move by (0, −1, 0) +
+    // (1, 2, 3) = (1, 1, 3): (0, 1, 0) to (1, 0, 3). On glTF's axes (0, 3, −2), (1, 3, 0) and
+    // (1, 4, −2). Its normals turn with them, (0, 0, 1) staying up.
     let skin = &document.meshes[3].primitives[0];
     assert_eq!(
         glb.floats_of(attribute(skin, Semantic::Positions).unwrap()),
-        [0.0, 3.0, -2.0, 1.0, 3.0, -1.0, 1.0, 4.0, -2.0]
+        [0.0, 3.0, -2.0, 1.0, 3.0, 0.0, 1.0, 4.0, -2.0]
     );
     assert_eq!(
         glb.floats_of(attribute(skin, Semantic::Normals).unwrap()),
         [0.0, 1.0, 0.0].repeat(3)
     );
+    // Each vertex bound to its one bone, the joint of its pivot's index, at a weight of 1.
+    assert_eq!(
+        glb.joints_of(attribute(skin, Semantic::Joints(0)).unwrap()),
+        [1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0]
+    );
+    assert_eq!(
+        glb.floats_of(attribute(skin, Semantic::Weights(0)).unwrap()),
+        [1.0, 0.0, 0.0, 0.0].repeat(3)
+    );
+    assert_eq!(attribute(turret, Semantic::Joints(0)), None);
+    // The skin's joints are the pivots' nodes, and the skin's node alone takes it. A joint's
+    // inverse bind matrix undoes its pose on glTF's axes: the root's is the identity; the
+    // turret's, a half turn about `y` at (1, 3, −2), is that turn, `(x, y, z)` to `(−x, y, −z)`,
+    // then the move −(−1, 3, 2) = (1, −3, −2); the flash bone's, at (1, 3, −1), the turn, then
+    // −(−1, 3, 1) = (1, −3, −1).
+    let skins: Vec<Option<usize>> = document
+        .nodes
+        .iter()
+        .map(|node| node.skin.map(|skin| skin.value()))
+        .collect();
+    assert_eq!(skins, [None, None, None, None, None, None, Some(0)]);
+    assert_eq!(places(&document.skins[0].joints), [0, 1, 2]);
+    let half_turn = [-1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0];
+    let identity = [
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    ];
+    let matrices = [
+        &identity[..],
+        &half_turn,
+        &[1.0, -3.0, -2.0, 1.0],
+        &half_turn,
+        &[1.0, -3.0, -1.0, 1.0],
+    ];
+    let inverse_bind = document.skins[0].inverse_bind_matrices.unwrap();
+    assert_eq!(glb.floats_of(inverse_bind), matrices.concat());
     // The turret and the skin share one material: of no texture, under the default shader,
     // which textures.
     let materials = [turret, skin, flash].map(|primitive| primitive.material.unwrap().value());

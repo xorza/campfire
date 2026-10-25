@@ -41,6 +41,7 @@ use crate::zero_hour::unit_types::TypeAdditions;
 use crate::zero_hour::upgrade_import::UpgradeImport;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
+pub(crate) mod animation_import;
 pub(crate) mod archive_path;
 pub(crate) mod axes;
 pub(crate) mod camera_import;
@@ -64,6 +65,7 @@ pub(crate) mod model_import;
 pub(crate) mod model_nodes;
 pub(crate) mod model_writer;
 pub(crate) mod object_flight;
+pub(crate) mod pivot_nodes;
 mod press_import;
 pub(crate) mod production_import;
 pub(crate) mod rules_names;
@@ -154,12 +156,14 @@ impl ZeroHour {
         let mut looks = models.units(&game.objects, &mut object_names)?;
         let ModelReport {
             skipped,
+            dropped_animations,
             missing_textures,
             textures: model_textures,
         } = models.report();
         let variations = game.objects.variations().dropped().into_iter().cloned();
         let mut losses: Vec<ImportLoss> = variations.map(ImportLoss::Variation).collect();
         losses.extend(skipped.into_iter().map(ImportLoss::Model));
+        losses.extend(dropped_animations.into_iter().map(ImportLoss::Animation));
         losses.extend(missing_textures.into_iter().map(ImportLoss::Texture));
         let mut names = BTreeMap::<MapName, ArchivePath>::new();
         let mut maps = Vec::new();
@@ -321,7 +325,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 5;
+    pub const OUTPUT_VERSION: u32 = 6;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint.
     fn write_rules(dir: &Path) -> Result<PackageFingerprint, ZeroHourError> {

@@ -35,6 +35,8 @@ use campfire_values::{
 
 use super::*;
 use crate::texture::samples::ktx2;
+use crate::zero_hour::animation_import::{AnimationDropCause, ConvertedAnimation};
+use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::error::{NameClash, NameError, VersionDifference};
 use crate::zero_hour::format::big::big_archive::samples::big;
 use crate::zero_hour::format::csf::string_table::StringTable;
@@ -1070,6 +1072,35 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     assert_eq!(
         test_dir.read("one/game/client/models/tank.glb"),
         tank.glb.encode()
+    );
+    // Each animation the tank's states name once, as its conversion gives it: its aim's, whose
+    // hierarchy is its model's; its walk's, of a hierarchy no file holds, is dropped.
+    assert_eq!(
+        test_dir.names("one/game/client/animations"),
+        ["tank.tank_aim.glb"]
+    );
+    let Ok(ConvertedAnimation::Glb(aim)) = ConvertedAnimation::of("tank.tank_aim", &mut assets)
+    else {
+        panic!("the tank's aim converts");
+    };
+    assert_eq!(
+        test_dir.read("one/game/client/animations/tank.tank_aim.glb"),
+        aim.encode()
+    );
+    let dropped: Vec<&Dropped<AnimationDropCause>> = imported
+        .losses
+        .iter()
+        .filter_map(|loss| match loss {
+            ImportLoss::Animation(dropped) => Some(dropped),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        dropped,
+        [&Dropped {
+            name: "ghost.ghost_walk".to_owned(),
+            cause: AnimationDropCause::NoHierarchy,
+        }]
     );
     // Each model's top, at its scale, on glTF's axes, `(x, y, z)` as `(x, z, −y)`. The tank's:
     // its hull flat at 0; its turret's pivot 3 up, its half turn about `y` keeping heights, and
