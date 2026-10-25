@@ -1,4 +1,4 @@
-data_version 69
+data_version 70
 actions.progress 91dd90cbde2fd145
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
@@ -76,7 +76,7 @@ sim.tick 3328d301c5649b40
 stats.level ad5ac71447c2fd50
 stats.life 40ac46e305f71e63
 stats.modifier_clocks 5af3c8c15034127c
-stats.modifiers 5ae97dc73c7088bb
+stats.modifiers d3848b5faf79c0f5
 stats.player_modifiers a8df3177805e52f3
 stats.pools 7afa89e615deaaca
 units.body 6b7ff95bfd4a56ed

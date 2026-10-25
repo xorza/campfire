@@ -25,7 +25,8 @@ pub enum Ends {
 /// aura or an area, which hold it while their rules select its carrier; an action's `hold`,
 /// which its toggle that is on or its channel that runs keeps; its carrier's player, which holds
 /// it while it holds the modifier and its `affects` selects the carrier; its carrier's shot
-/// streak, which its stage keeps; or an item its carrier carries. Every hold from one source of
+/// streak, which its stage keeps; an item its carrier carries; or its carrier's type's upgrade,
+/// which keeps it while its triggers are met. Every hold from one source of
 /// one modifier is one hold: which of them holds it changes nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hold {
@@ -35,6 +36,7 @@ pub enum Hold {
     Player,
     Streak,
     Item,
+    Upgrade,
 }
 
 impl Hold {
@@ -129,7 +131,8 @@ impl HoldSet {
         | Self::bit(Hold::Running)
         | Self::bit(Hold::Player)
         | Self::bit(Hold::Streak)
-        | Self::bit(Hold::Item);
+        | Self::bit(Hold::Item)
+        | Self::bit(Hold::Upgrade);
 
     pub(crate) const fn of(hold: Hold) -> Self {
         Self(Self::bit(hold))
@@ -212,8 +215,9 @@ mod tests {
             .union(HoldSet::of(Hold::Running))
             .union(HoldSet::of(Hold::Player))
             .union(HoldSet::of(Hold::Streak))
-            .union(HoldSet::of(Hold::Item));
-        assert_eq!(decode(0b11_1111), Some(all));
-        assert_eq!(decode(0b100_0000), None);
+            .union(HoldSet::of(Hold::Item))
+            .union(HoldSet::of(Hold::Upgrade));
+        assert_eq!(decode(0b111_1111), Some(all));
+        assert_eq!(decode(0b1000_0000), None);
     }
 }

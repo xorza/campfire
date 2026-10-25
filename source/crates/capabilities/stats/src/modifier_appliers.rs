@@ -7,6 +7,7 @@ use campfire_values::{PackageIndex, PackagePath};
 use crate::error::Way;
 use crate::modifiers_data::ModifiersData;
 use crate::passive_data::PassiveData;
+use crate::upgrades_data::UpgradesData;
 
 /// What applies each package's modifiers, as data and scripts name them, before the ways pass on:
 /// a fact the modules whose data applies a modifier extend. A script applies the modifiers of
@@ -41,8 +42,8 @@ impl Fact for ModifierAppliers {}
 impl ModifierAppliers {
     /// What the actions and the modifiers of every package apply: an action's `hold`,
     /// `passive_modifier` and effect lists, and its script, with that action; a type that stands
-    /// its `passive`, and the mode's script, with none; an aura's modifier, and a modifier's
-    /// script, each way of that modifier.
+    /// its `passive` and its `upgrades`, and the mode's script, with none; an aura's modifier, and
+    /// a modifier's script, each way of that modifier.
     pub(crate) fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let mut appliers = Self::default();
         for (package, source) in cx.packages() {
@@ -77,6 +78,10 @@ impl ModifierAppliers {
         for unit in cx.standing() {
             if let Some(passive) = unit.data.section::<PassiveData>() {
                 appliers.apply(unit.package, passive.0.as_str(), Way::NoAction);
+            }
+            let upgrades = unit.data.section::<UpgradesData>().into_iter();
+            for upgrade in upgrades.flat_map(|upgrades| &upgrades.0) {
+                appliers.apply(unit.package, upgrade.modifier.as_str(), Way::NoAction);
             }
         }
         for mode in &cx.source().mode_scripts {

@@ -1,5 +1,5 @@
-use campfire_stats::{ModifierData, PlayerModifiers, Stats, StatsWorld};
-use campfire_values::PackageIndex;
+use campfire_stats::{ModifierData, PlayerModifiers, Stats, StatsWorld, TypeUpgrade, TypeUpgrades};
+use campfire_values::{ModifierId, PackageIndex};
 
 use super::*;
 
@@ -115,4 +115,112 @@ fn a_research_pays_as_it_joins_gives_its_modifier_as_it_ends_and_never_runs_twic
     game.step();
     assert_eq!(queued(&game, own), 0);
     assert_eq!(Stats::carried_modifiers(&game, own), both);
+}
+
+#[test]
+fn a_types_upgrades_hold_while_its_players_and_its_own_modifiers_meet_them() {
+    // The barracks type takes `tough` by `drill` or `walls`, `armored` by both, and `fast` by
+    // `drill` unless `walls`. Player 0's first barracks researches `drill` for its player, its
+    // second `walls` for itself, each in 1 tick; a research gives as its tick ends, and its
+    // grants hold from the next tick's Resolve.
+    let mut game = ordering_match();
+    let shop = Shop::place(&mut game);
+    let modifier = |game: &mut Match, name| {
+        Stats::load_modifier(
+            game,
+            PackageIndex::MODE,
+            name,
+            &ModifierData::default(),
+            None,
+        );
+        Stats::modifier(game, PackageIndex::MODE, name).unwrap()
+    };
+    // Modifiers load in the order of their names.
+    let [armored, drill, fast, tough, walls] =
+        ["armored", "drill", "fast", "tough", "walls"].map(|name| modifier(&mut game, name));
+    let upgrade = |triggers: &[ModifierId], all, conflicts: &[ModifierId], modifier| TypeUpgrade {
+        triggers: triggers.into(),
+        all,
+        conflicts: conflicts.into(),
+        when: None,
+        modifier,
+    };
+    let upgrades = TypeUpgrades(Box::new([
+        upgrade(&[drill, walls], false, &[], tough),
+        upgrade(&[drill, walls], true, &[], armored),
+        upgrade(&[drill], false, &[walls], fast),
+    ]));
+    Shop::give(&mut game, shop.barracks, upgrades);
+    let player = PlayerSlot::new(0);
+    Players::spawn(&mut game, 1, 1);
+    let entity = game.player_entity(player).unwrap();
+    game.entity_mut(entity).insert(PlayerModifiers::default());
+    let by_player = Production::add_research(
+        &mut game,
+        drill,
+        ResearchHolder::Player,
+        Ticks::new(1),
+        None,
+    );
+    let by_producer = Production::add_research(
+        &mut game,
+        walls,
+        ResearchHolder::Producer,
+        Ticks::new(1),
+        None,
+    );
+    let [first, own, later] = [(); 3].map(|()| Production::allocate_id(&mut game));
+    for (id, x, research) in [(first, 10, by_player), (own, 20, by_producer)] {
+        shop.producer(
+            &mut game,
+            id,
+            x,
+            Team::new(0),
+            Some(player),
+            research,
+            TrainQueue::default(),
+        );
+    }
+    let upgraded = |game: &Match, id| {
+        let carried = Stats::carried_modifiers(game, id).into_iter();
+        let held = carried.filter(|&(modifier, _)| [tough, armored, fast].contains(&modifier));
+        held.map(|(modifier, _)| modifier).collect::<Vec<_>>()
+    };
+
+    // No trigger held: no upgrade.
+    game.step();
+    assert_eq!(upgraded(&game, first), []);
+    // `drill`: `tough` and `fast` on both, not `armored`, from the tick after the research's.
+    Production::order_train(&mut game, first);
+    game.step();
+    assert_eq!(upgraded(&game, first), []);
+    game.step();
+    assert_eq!(upgraded(&game, first), [fast, tough]);
+    assert_eq!(upgraded(&game, own), [fast, tough]);
+    // A barracks placed after the research takes them at the next Resolve.
+    shop.producer(
+        &mut game,
+        later,
+        30,
+        Team::new(0),
+        Some(player),
+        by_player,
+        TrainQueue::default(),
+    );
+    game.step();
+    assert_eq!(upgraded(&game, later), [fast, tough]);
+    // The second's own `walls`: it takes `armored` and gives up `fast`, its conflict; the
+    // others, which hold no `walls`, keep what they held.
+    Production::order_train(&mut game, own);
+    game.step();
+    game.step();
+    assert_eq!(upgraded(&game, own), [armored, tough]);
+    assert_eq!(upgraded(&game, first), [fast, tough]);
+    // The player's `drill` taken away: the first and the later hold nothing, the second `tough`
+    // by its `walls` alone.
+    game.player_modifiers_mut(player).unwrap().remove(drill);
+    game.step();
+    assert_eq!(upgraded(&game, first), []);
+    assert_eq!(upgraded(&game, later), []);
+    assert_eq!(upgraded(&game, own), [tough]);
 }

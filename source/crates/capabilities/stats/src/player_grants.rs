@@ -27,6 +27,13 @@ pub(crate) struct Revisits<'w, 's> {
     revived: Removals<'w, 's, Dead>,
 }
 
+impl Revisits<'_, '_> {
+    /// The units that lost their owner or came back to life since this reader's last run.
+    pub(crate) fn read(&mut self) -> impl Iterator<Item = Entity> + '_ {
+        self.unowned.read().chain(self.revived.read())
+    }
+}
+
 /// The parts of a unit its player's grants read.
 type PlayerUnit = (
     Entity,
@@ -66,7 +73,7 @@ impl PlayerGrants {
                 .map(|(player, _)| player.player_slot()),
         );
         again.clear();
-        again.extend(revisits.unowned.read().chain(revisits.revived.read()));
+        again.extend(revisits.read());
         again.sort_unstable();
         let every = book.is_changed();
         for (entity, &id, owner, tags, modifiers, dead) in &units {

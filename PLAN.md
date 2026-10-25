@@ -4,12 +4,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Upgrades
 
-The slice of [Upgrades](docs/design/upgrades.md): a player in a Zero Hour skirmish researches player and object upgrades from the panel, and sees them change units' armor, weapon sets, weapon damage and life. Four batches left: the types' upgrades, then armor and actions by tags, each with its scripted match; then the import; then the panel, the check and the fold. Its checks are that document's.
-
-### U2. A type's upgrades (stats)
-
-- [ ] A unit takes no modifier by what its player or it holds but by a player modifier's filter (stats.md, Player modifiers are upgrades) → a unit type's `upgrades` lists entries of `triggers`, `all`, `conflicts` and `modifier`, and a unit holds each entry's modifier while its player's modifiers and its own meet it, under a new `Hold::Upgrade` (`stats/src/lifetime.rs:31`); the test runs as a unit spawns, as its site completes, and as it or its player gains or loses a modifier, and visits only the units of the types that name that modifier, by an index of them built at the load (upgrades.md, A unit type takes modifiers by upgrades). Builds: a pass visits what changed; a name is resolved once.
-- Checks: the scripted match: an entry holds at a spawn after its research, at a research after its spawn, and as a site completes, not before; an entry of any trigger, of `all` and of a conflict holds exactly as its triggers say; a player modifier taken away releases the entries it met; a unit of a type that names no trigger is never visited, by a count of the units the pass visits.
+The slice of [Upgrades](docs/design/upgrades.md): a player in a Zero Hour skirmish researches player and object upgrades from the panel, and sees them change units' armor, weapon sets, weapon damage and life. Three batches left: armor and actions by tags, with its scripted match; then the import; then the panel, the check and the fold. Its checks are that document's.
 
 ### U3. Armor and actions by tags (combat, actions)
 

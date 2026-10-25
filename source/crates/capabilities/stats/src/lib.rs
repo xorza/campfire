@@ -41,6 +41,7 @@ use crate::modifier_intervals::{IntervalDue, OnInterval};
 use crate::player_grants::PlayerGrants;
 use crate::stats_column::RowReads;
 use crate::stats_effect::StatsEffect;
+use crate::upgrade_grants::UpgradeGrants;
 
 mod action_params;
 mod action_passives;
@@ -113,8 +114,11 @@ mod stats_world;
 mod type_passive;
 mod type_pools;
 mod type_pools_data;
+mod type_upgrades;
 mod unit_pools;
 mod unit_stats;
+mod upgrade_grants;
+mod upgrades_data;
 
 pub use crate::application::{Application, NewInstance};
 pub use crate::applier::Applier;
@@ -183,8 +187,10 @@ pub use crate::stats_world::StatsWorld;
 pub use crate::type_passive::TypePassive;
 pub use crate::type_pools::TypePools;
 pub use crate::type_pools_data::TypePoolsData;
+pub use crate::type_upgrades::{TypeUpgrade, TypeUpgrades};
 pub use crate::unit_pools::{PoolMeters, PoolMetersMut, UnitPools, UnitPoolsReadOnly};
 pub use crate::unit_stats::UnitStats;
+pub use crate::upgrades_data::{UpgradeData, UpgradesData};
 
 /// The `stats` capability.
 #[derive(Debug)]
@@ -286,6 +292,7 @@ impl Module for Stats {
         d.section::<TypePoolsData>();
         d.section::<StatsData>();
         d.section::<PassiveData>();
+        d.section::<UpgradesData>();
         d.section::<ModeStatsData>();
         d.section::<ModePoolsData>();
         d.removals::<Dead>();
@@ -335,6 +342,7 @@ impl Module for Stats {
         d.hook::<OnInterval>(Status::Runs(ApiVersion::FIRST));
         d.book::<ById<UnitType, Pools>>(TypePools::pools);
         d.book::<ById<UnitType, TypePassive>>(TypePassive::book);
+        d.book::<ById<UnitType, TypeUpgrades>>(TypeUpgrades::book);
         d.callback::<SpawnCallbacks>(Capability::Stats, TypePassive::grant);
         d.part::<BodyUnit, Level>(|_| Some(Level::default()));
         d.observer(Level::raise);
@@ -369,7 +377,13 @@ impl Module for Stats {
         }
         cx.add(
             StatsSystems::GrantAtResolve,
-            (ActionPassives::want, PlayerGrants::want, GrantPass::run).chain(),
+            (
+                ActionPassives::want,
+                PlayerGrants::want,
+                UpgradeGrants::want,
+                GrantPass::run,
+            )
+                .chain(),
         );
         cx.add(StatsSystems::ClearDead, ModifierEnds::clear_dead_modifiers);
         if intervals {

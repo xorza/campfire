@@ -301,6 +301,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `pools` | stats | since 1.0 |
 | `stats` | stats | since 1.0 |
 | `passive` | stats | since 1.0 |
+| `upgrades` | stats | since 1.0 |
 | `tracks` | progression | since 1.0 |
 | `experience` | progression | since 1.0 |
 | `combat` | combat | since 1.0 |
