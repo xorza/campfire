@@ -1,4 +1,3 @@
-use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Stdio;
@@ -36,20 +35,6 @@ impl OutputFile {
     /// read that checks the files finds it.
     pub fn create_dirs(path: &Path) -> Result<(), PathError<DurableDirError>> {
         DurableDir::make_all_unsynced(path)
-    }
-
-    /// A new file at `path` that is the file `same_as`, which holds `bytes`: a hard link to it,
-    /// so both names are one file on disk, as a package keeps one copy of identical files; or,
-    /// where the file system makes no such link, as of no links, a full count of them or another
-    /// device, a new file of `bytes`, as `write_new` writes it. An error when a file is there.
-    pub fn link_new(path: &Path, same_as: &Path, bytes: &[u8]) -> Result<(), PathError<io::Error>> {
-        match fs::hard_link(same_as, path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                Err(PathError::at(path)(error))
-            }
-            Err(_) => Self::write_new(path, bytes),
-        }
     }
 }
 

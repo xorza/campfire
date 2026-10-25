@@ -151,11 +151,6 @@ impl TestDir {
         FileLink::make_dir(&self.path(target), &self.path(link));
     }
 
-    /// Whether `a` and `b`, both relative to the root, name one file on disk.
-    pub fn same_file(&self, a: impl AsRef<Path>, b: impl AsRef<Path>) -> bool {
-        FileLink::same(&self.path(a), &self.path(b))
-    }
-
     /// Lets other users read the file or the directory `relative`.
     pub fn expose(&self, relative: impl AsRef<Path>) {
         UserOnly::expose(&self.path(relative));

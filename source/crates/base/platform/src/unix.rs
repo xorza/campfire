@@ -147,7 +147,7 @@ impl Native {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
+    use std::os::unix::fs::{PermissionsExt, symlink};
     use std::os::unix::process::CommandExt;
     use std::path::Path;
     use std::process::Command;
@@ -192,11 +192,6 @@ pub(crate) mod internals {
 
         pub(crate) fn link_dir(target: &Path, link: &Path) -> io::Result<()> {
             symlink(target, link)
-        }
-
-        pub(crate) fn file_id(path: &Path) -> io::Result<[u64; 2]> {
-            let metadata = fs::metadata(path)?;
-            Ok([metadata.dev(), metadata.ino()])
         }
 
         pub(crate) fn exposure_at(path: &Path) -> io::Result<Option<String>> {

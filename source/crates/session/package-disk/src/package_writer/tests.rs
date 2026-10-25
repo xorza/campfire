@@ -44,44 +44,44 @@ fn a_writer_writes_each_file_and_their_index_in_path_order() {
     );
     assert_eq!(test_dir.read("two/package.index"), index);
 
-    // A file of the bytes of one written before is a link to that file, the first of them in
-    // the order of writing: one file on disk, which each path reads whole; the index lists
-    // each path, as a writer of copies would.
-    let mut linked = PackageWriter::create(&test_dir.path("four")).unwrap();
+    // A file of the bytes of one written before is its row alone: the package holds the first
+    // path written of those bytes, here `c/d.txt`, not the directory of `a/e.txt`; the index
+    // lists each path, as a writer of copies would, and each reads the bytes.
+    let mut once = PackageWriter::create(&test_dir.path("four")).unwrap();
     for (at, bytes) in [
         ("data/b.toml", &b"b"[..]),
-        ("a.txt", b"aa"),
         ("c/d.txt", b"aa"),
+        ("a/e.txt", b"aa"),
     ] {
-        linked.write(path(at), bytes).unwrap();
+        once.write(path(at), bytes).unwrap();
     }
-    let fingerprint = linked.finish().unwrap();
+    let fingerprint = once.finish().unwrap();
+    assert_eq!(test_dir.names("four"), ["c", "data", "package.index"]);
     assert_eq!(test_dir.read("four/c/d.txt"), b"aa");
-    assert!(test_dir.same_file("four/a.txt", "four/c/d.txt"));
-    assert!(!test_dir.same_file("four/a.txt", "four/data/b.toml"));
     let rows = format!(
-        "campfire/package-index/v2\n{aa} 2 a.txt\n{aa} 2 c/d.txt\n{} 1 data/b.toml\n",
+        "campfire/package-index/v2\n{aa} 2 a/e.txt\n{aa} 2 c/d.txt\n{} 1 data/b.toml\n",
         hex(b"b"),
         aa = hex(b"aa")
     );
     assert_eq!(test_dir.read("four/package.index"), rows.as_bytes());
     let files = PackageDir::new(test_dir.path("four")).files().unwrap();
     assert_eq!(files.fingerprint(), fingerprint);
+    assert_eq!(files.read_file(&path("a/e.txt")).unwrap(), b"aa");
 
-    // A path written twice, of other bytes or the same, and a directory that is there, are
-    // refused.
+    // A path written twice, of other bytes or the same, is refused before any write, and a
+    // directory that is there is refused.
     let mut twice = PackageWriter::create(&test_dir.path("three")).unwrap();
     twice.write(path("a.txt"), b"1").unwrap();
     for bytes in [b"2", b"1"] {
         assert!(matches!(
             twice.write(path("a.txt"), bytes),
-            Err(WriteError::File(error)) if error.path == test_dir.path("three/a.txt")
+            Err(WriteError::Package(ContentError::Repeated(at))) if at == path("a.txt")
         ));
     }
-    // The refused writes keep no row and no link's target: a file of the bytes of the
-    // refused `2` is a file of its own, and the index lists `a.txt` as its first write.
+    // The refused writes keep no row and mark no bytes as written: a file of the bytes of the
+    // refused `2` is written, and the index lists `a.txt` as its first write.
     twice.write(path("b.txt"), b"2").unwrap();
-    assert!(!test_dir.same_file("three/a.txt", "three/b.txt"));
+    assert_eq!(test_dir.read("three/a.txt"), b"1");
     assert_eq!(test_dir.read("three/b.txt"), b"2");
     twice.finish().unwrap();
     let rows = format!(

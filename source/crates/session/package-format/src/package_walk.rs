@@ -66,6 +66,11 @@ impl PackageWalk {
         }
     }
 
+    /// Whether it holds the row of a file at `path`.
+    pub fn contains(&self, path: &PackagePath) -> bool {
+        self.rows.contains_key(path)
+    }
+
     /// The index of every file taken, and its encoding.
     pub fn finish(self) -> Result<EncodedIndex, ContentError> {
         FileIndex::encode(self.rows)

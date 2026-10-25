@@ -1,9 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use campfire_common::PackageFingerprint;
-use campfire_package_format::ContentHash;
-use campfire_package_format::{FileIndex, PackageWalk};
+use campfire_package_format::{ContentError, ContentHash, FileIndex, PackageWalk};
 use campfire_store::{DurableDir, DurableFile, OutputFile};
 use campfire_values::PackagePath;
 
@@ -13,14 +12,14 @@ use crate::error::WriteError;
 /// directory, written once with no sync, as the directories on its way are made with none, and
 /// its row kept, then the index of the rows, synced, so
 /// every file is checked against what was written whenever it is read, and a write a crash cut
-/// short is found then. A file whose SHA-256 an earlier file has is a hard link to that file, so
-/// the package keeps one copy of identical files on disk (05-protocol-spec.md, Packages).
+/// short is found then. A file whose SHA-256 an earlier file has is its row alone, as the package
+/// holds each SHA-256 once (05-protocol-spec.md, A package holds each SHA-256 once).
 #[derive(Debug)]
 pub struct PackageWriter {
     root: PathBuf,
     rows: PackageWalk,
-    /// The first file written of each SHA-256.
-    firsts: BTreeMap<ContentHash, PathBuf>,
+    /// The SHA-256 of each file written.
+    written: BTreeSet<ContentHash>,
     /// The directories it made, which a file after needs no call to make again.
     dirs: BTreeSet<PathBuf>,
 }
@@ -32,36 +31,35 @@ impl PackageWriter {
         Ok(Self {
             root: root.to_owned(),
             rows: PackageWalk::new(),
-            firsts: BTreeMap::new(),
+            written: BTreeSet::new(),
             dirs: BTreeSet::new(),
         })
     }
 
-    /// Writes the file at `path` with `bytes`, and the directories on its way, linked to the
-    /// first file of the same bytes; an error for a path written before. The row and the link's
-    /// target are kept once the file is written, so a write refused leaves neither.
+    /// Takes the file at `path` with `bytes`: writes it, and the directories on its way, unless
+    /// a file of the same bytes was written before, whose row then names its bytes; an error for
+    /// a path taken before. The row is kept once the file is written, so a write refused leaves
+    /// none.
     pub fn write(&mut self, path: PackagePath, bytes: &[u8]) -> Result<(), WriteError> {
-        let at = path
-            .as_str()
-            .split('/')
-            .fold(self.root.clone(), |at, name| at.join(name));
-        if let Some(dir) = at.parent()
-            && !self.dirs.contains(dir)
-        {
-            OutputFile::create_dirs(dir).map_err(WriteError::Directory)?;
-            self.dirs.insert(dir.to_owned());
+        if self.rows.contains(&path) {
+            return Err(WriteError::Package(ContentError::Repeated(path)));
         }
         let hashed = self.rows.hash(bytes).expect("a slice reads");
-        match self.firsts.get(&hashed.sha256()) {
-            Some(first) => OutputFile::link_new(&at, first, bytes),
-            None => OutputFile::write_new(&at, bytes),
+        if !self.written.contains(&hashed.sha256()) {
+            let at = path
+                .as_str()
+                .split('/')
+                .fold(self.root.clone(), |at, name| at.join(name));
+            if let Some(dir) = at.parent()
+                && !self.dirs.contains(dir)
+            {
+                OutputFile::create_dirs(dir).map_err(WriteError::Directory)?;
+                self.dirs.insert(dir.to_owned());
+            }
+            OutputFile::write_new(&at, bytes).map_err(WriteError::File)?;
+            self.written.insert(hashed.sha256());
         }
-        .map_err(WriteError::File)?;
-        self.rows
-            .insert(path, hashed)
-            .map_err(WriteError::Package)?;
-        self.firsts.entry(hashed.sha256()).or_insert(at);
-        Ok(())
+        self.rows.insert(path, hashed).map_err(WriteError::Package)
     }
 
     /// Writes the package's index; its fingerprint.
