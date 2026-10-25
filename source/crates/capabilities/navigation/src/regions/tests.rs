@@ -129,7 +129,7 @@ fn check(grid: &Grid, blocked: &[u64], regions: &Regions) {
             );
         }
     }
-    let mut candidates = Vec::new();
+    let mut scratch = NearestScratch::default();
     let columns = grid.columns();
     for (index, cell) in (0..component.len()).step_by(97).enumerate() {
         let reach = regions.reach(cell);
@@ -146,11 +146,59 @@ fn check(grid: &Grid, blocked: &[u64], regions: &Regions) {
         let brute = (0..component.len())
             .filter(|&other| regions.set(other).is_some_and(|set| reach.contains(set)))
             .min_by_key(|&other| (grid.center_distance(other, goal), other));
+        let mut work = 0;
         assert_eq!(
-            regions.nearest(grid, reach, goal, &mut candidates, &mut 0),
+            regions.nearest(grid, reach, goal, &mut scratch, &mut work),
             brute
         );
+        assert_eq!((brute, work), nearest_by_sort(regions, grid, reach, goal));
     }
+}
+
+/// `Regions::nearest` with no row or column skipped: every cell of a region scanned by its
+/// `center_distance` from the goal; the cell and the work it counts, which `nearest` must equal.
+fn nearest_by_sort(
+    regions: &Regions,
+    grid: &Grid,
+    reach: Reachable,
+    goal: Vec3,
+) -> (Option<usize>, u32) {
+    let mut candidates = Vec::new();
+    for (chunk, held) in (0..).zip(&regions.chunks) {
+        for (label, region) in (1..).zip(&held.regions) {
+            if reach.contains(region.set) {
+                candidates.push(Candidate {
+                    bound: grid.box_distance(region.low.map(widen), region.high.map(widen), goal),
+                    chunk,
+                    label,
+                });
+            }
+        }
+    }
+    candidates.sort_unstable();
+    let mut work = *regions.starts.last().unwrap();
+    let mut best: Option<(u128, usize)> = None;
+    for candidate in candidates {
+        if best.is_some_and(|(distance, _)| candidate.bound > distance) {
+            break;
+        }
+        let region =
+            regions.chunks[candidate.chunk as usize].regions[usize::from(candidate.label) - 1];
+        let [columns, rows] = [0, 1].map(|axis| region.high[axis] - region.low[axis] + 1);
+        work += columns * rows;
+        for row in widen(region.low[1])..=widen(region.high[1]) {
+            for column in widen(region.low[0])..=widen(region.high[0]) {
+                let cell = row * regions.columns + column;
+                if regions.local[cell] == candidate.label {
+                    let found = (grid.center_distance(cell, goal), cell);
+                    if best.is_none_or(|best| found < best) {
+                        best = Some(found);
+                    }
+                }
+            }
+        }
+    }
+    (best.map(|(_, cell)| cell), work)
 }
 
 #[test]

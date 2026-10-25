@@ -1,4 +1,5 @@
 use std::mem;
+use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
@@ -28,6 +29,9 @@ pub(crate) struct CrowdCosts {
     /// into.
     stamps: Vec<Stamp>,
     fresh: Vec<Stamp>,
+    /// A moved unit's runs of cells before and after, by row, for `recount`.
+    old_runs: Vec<Range<usize>>,
+    new_runs: Vec<Range<usize>>,
 }
 
 /// One kind of walker's counts, a team's at a time, by team, and of every unit that stands, of
@@ -133,6 +137,8 @@ impl CrowdCosts {
             kinds,
             stamps: Vec::new(),
             fresh: Vec::new(),
+            old_runs: Vec::new(),
+            new_runs: Vec::new(),
         }
     }
 
@@ -151,8 +157,15 @@ impl CrowdCosts {
                 (None, None) => break,
                 (Some(&&was), Some(&&is)) if was.body.id == is.body.id => {
                     if was != is {
-                        self.count(was, Change::Take);
-                        self.count(is, Change::Add);
+                        let moved = was.team == is.team
+                            && was.standing == is.standing
+                            && was.body.layer == is.body.layer;
+                        if moved {
+                            self.recount(was, is);
+                        } else {
+                            self.count(was, Change::Take);
+                            self.count(is, Change::Add);
+                        }
                     }
                     old.next();
                     new.next();
@@ -205,22 +218,8 @@ impl CrowdCosts {
             team,
             standing,
         } = stamp;
-        let (columns, rows) = (self.grid.columns(), self.grid.rows());
-        let cells = self.grid.cells();
-        let step = |count: &mut u16| {
-            *count = match change {
-                Change::Add => *count + 1,
-                Change::Take => *count - 1,
-            }
-        };
-        let mark = |stood: &mut [u64], cell: usize, set: bool| {
-            let bit = cell % columns * rows + cell / columns;
-            if set {
-                stood[bit / 64] |= 1 << (bit % 64);
-            } else {
-                stood[bit / 64] &= !(1 << (bit % 64));
-            }
-        };
+        let grid = &self.grid;
+        let cells = grid.cells();
         let units = |units: u32| match change {
             Change::Add => units + 1,
             Change::Take => units - 1,
@@ -231,49 +230,141 @@ impl CrowdCosts {
             .filter(|kind| kind.walker.layer == body.layer)
         {
             kind.units = units(kind.units);
-            body.spans_closer(&self.grid, kind.walker.radius, |run| {
-                for cell in run {
-                    step(&mut kind.standing[cell]);
-                    mark(&mut kind.stood, cell, kind.standing[cell] > 0);
-                }
+            let team = team.map(|team| {
+                let at = match kind.teams.binary_search_by_key(&team, |costs| costs.team) {
+                    Ok(at) => at,
+                    Err(at) => {
+                        let costs = TeamCosts {
+                            team,
+                            units: 0,
+                            movable: vec![0; cells],
+                            held: vec![0; cells],
+                            hemmed: vec![0; cells],
+                            stood: vec![0; cells.div_ceil(64)],
+                        };
+                        kind.teams.insert(at, costs);
+                        at
+                    }
+                };
+                kind.teams[at].units = units(kind.teams[at].units);
+                at
             });
+            body.spans_closer(grid, kind.walker.radius, |run| {
+                Self::count_cells(grid, kind, team, standing, run, change);
+            });
+        }
+    }
+
+    /// Moves `was`'s unit to `is`, of its team and standing on its layer: counts only the cells
+    /// each kind's footprint gained or lost, row by row, as the take of the one and the add of
+    /// the other leave every other cell's counts as they were.
+    fn recount(&mut self, was: Stamp, is: Stamp) {
+        debug_assert!(
+            was.team == is.team && was.standing == is.standing && was.body.layer == is.body.layer,
+            "a move keeps the unit's team, standing and layer"
+        );
+        let grid = &self.grid;
+        let columns = grid.columns();
+        let (old, new) = (&mut self.old_runs, &mut self.new_runs);
+        for kind in self
+            .kinds
+            .iter_mut()
+            .filter(|kind| kind.walker.layer == is.body.layer)
+        {
+            old.clear();
+            new.clear();
+            was.body
+                .spans_closer(grid, kind.walker.radius, |run| old.push(run));
+            is.body
+                .spans_closer(grid, kind.walker.radius, |run| new.push(run));
+            let team = is.team.map(|team| {
+                kind.teams
+                    .binary_search_by_key(&team, |costs| costs.team)
+                    .expect("a counted unit's team has costs")
+            });
+            let mut count = |cells: Range<usize>, change| {
+                if !cells.is_empty() {
+                    Self::count_cells(grid, kind, team, is.standing, cells, change);
+                }
+            };
+            let row =
+                |runs: &[Range<usize>], at: usize| runs.get(at).map(|run| run.start / columns);
+            let (mut i, mut j) = (0, 0);
+            while i < old.len() || j < new.len() {
+                match (row(old, i), row(new, j)) {
+                    (Some(a), Some(b)) if a == b => {
+                        let (o, n) = (old[i].clone(), new[j].clone());
+                        count(o.start..o.end.min(n.start), Change::Take);
+                        count(o.start.max(n.end)..o.end, Change::Take);
+                        count(n.start..n.end.min(o.start), Change::Add);
+                        count(n.start.max(o.end)..n.end, Change::Add);
+                        i += 1;
+                        j += 1;
+                    }
+                    (Some(a), Some(b)) if a < b => {
+                        count(old[i].clone(), Change::Take);
+                        i += 1;
+                    }
+                    (Some(_), None) => {
+                        count(old[i].clone(), Change::Take);
+                        i += 1;
+                    }
+                    _ => {
+                        count(new[j].clone(), Change::Add);
+                        j += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Adds a unit of `standing` to `cells`, one run of one row, in `kind`'s counts and in those
+    /// of its team at `team` among the kind's, if any, or takes it away, as `change` says, and
+    /// marks each cell some unit holds.
+    fn count_cells(
+        grid: &Grid,
+        kind: &mut KindCosts,
+        team: Option<usize>,
+        standing: Standing,
+        cells: Range<usize>,
+        change: Change,
+    ) {
+        let (columns, rows) = (grid.columns(), grid.rows());
+        let step = |count: &mut u16| {
+            *count = match change {
+                Change::Add => *count + 1,
+                Change::Take => *count - 1,
+            }
+        };
+        let mark = |stood: &mut [u64], bit: usize, set: bool| {
+            if set {
+                stood[bit / 64] |= 1 << (bit % 64);
+            } else {
+                stood[bit / 64] &= !(1 << (bit % 64));
+            }
+        };
+        // A run is one row, so its cells' column-major bits step by the rows from its first's.
+        let bits = (cells.start % columns * rows + cells.start / columns..).step_by(rows);
+        for (cell, bit) in cells.zip(bits) {
+            step(&mut kind.standing[cell]);
+            mark(&mut kind.stood, bit, kind.standing[cell] > 0);
             let Some(team) = team else {
                 continue;
             };
-            let at = match kind.teams.binary_search_by_key(&team, |costs| costs.team) {
-                Ok(at) => at,
-                Err(at) => {
-                    let costs = TeamCosts {
-                        team,
-                        units: 0,
-                        movable: vec![0; cells],
-                        held: vec![0; cells],
-                        hemmed: vec![0; cells],
-                        stood: vec![0; cells.div_ceil(64)],
-                    };
-                    kind.teams.insert(at, costs);
-                    at
+            let costs = &mut kind.teams[team];
+            match standing {
+                Standing::Movable => step(&mut costs.movable[cell]),
+                Standing::Held => step(&mut costs.held[cell]),
+                Standing::Hemmed => {
+                    step(&mut costs.held[cell]);
+                    step(&mut costs.hemmed[cell]);
                 }
-            };
-            let costs = &mut kind.teams[at];
-            costs.units = units(costs.units);
-            body.spans_closer(&self.grid, kind.walker.radius, |run| {
-                for cell in run {
-                    match standing {
-                        Standing::Movable => step(&mut costs.movable[cell]),
-                        Standing::Held => step(&mut costs.held[cell]),
-                        Standing::Hemmed => {
-                            step(&mut costs.held[cell]);
-                            step(&mut costs.hemmed[cell]);
-                        }
-                    }
-                    mark(
-                        &mut costs.stood,
-                        cell,
-                        costs.movable[cell] + costs.held[cell] > 0,
-                    );
-                }
-            });
+            }
+            mark(
+                &mut costs.stood,
+                bit,
+                costs.movable[cell] + costs.held[cell] > 0,
+            );
         }
     }
 }
@@ -340,102 +431,4 @@ impl Cache for CrowdCosts {
 pub(crate) mod bench;
 
 #[cfg(test)]
-mod tests {
-    use campfire_geometry::{Bounds, Radius, Shape};
-    use campfire_math::{Num, Vec3};
-    use campfire_sim::IdAllocator;
-    use campfire_units::Layer;
-
-    use super::*;
-
-    #[test]
-    fn a_cell_costs_by_whether_its_walker_may_move_the_units_of_its_team_in_it() {
-        // Cells of 1 m over 4 by 4 m, and a walker of no body: a unit of 0.5 m holds the one
-        // cell whose center lies within its radius, the cell of its own center.
-        let bounds = Bounds::new([Num::ZERO; 2], [Num::int(4); 2]).unwrap();
-        let grid = Grid::new(Num::ONE, bounds).unwrap();
-        let walker = Walker {
-            layer: Layer::FIRST,
-            radius: Num::ZERO,
-        };
-        let mut costs = CrowdCosts::new(grid, &WalkerKinds::from([walker]));
-        let mut ids = IdAllocator::default();
-        let at =
-            |x: i64, z: i64| Vec3::new(Num::int(x) + Num::HALF, Num::ZERO, Num::int(z) + Num::HALF);
-        let stamp = |id, position, team, standing| Stamp {
-            body: IndexedBody {
-                id,
-                position,
-                shape: Shape::Circle(Radius::new(Num::HALF).unwrap()),
-                layer: Layer::FIRST,
-            },
-            team,
-            standing,
-        };
-        let [red, blue] = [0, 1].map(Team::new);
-        let [idle, penned, kept, foe, stray] = [(); 5].map(|()| ids.allocate());
-        let cell = |x: usize, z: usize| z * 4 + x;
-        let cells = [
-            cell(1, 1),
-            cell(2, 2),
-            cell(3, 3),
-            cell(0, 3),
-            cell(3, 0),
-            cell(0, 0),
-        ];
-        let prices = |costs: &CrowdCosts, team| {
-            let price = costs.price(walker, Some(team), CrowdWalls::Priced);
-            cells.map(|cell| price.map_or(0, |price| price.of(cell)))
-        };
-        let walls = |costs: &CrowdCosts, walls| {
-            let price = costs.price(walker, Some(red), walls);
-            cells.map(|cell| price.is_some_and(|price| price.walls(cell)))
-        };
-        // No unit stands: no price, and no test of the crowd's cells.
-        assert!(costs.price(walker, Some(red), CrowdWalls::Priced).is_none());
-        assert!(costs.price(walker, Some(red), CrowdWalls::Stuck).is_none());
-        // A red unit a red walker may move at (1, 1), one hemmed in at (2, 2), one the mode holds
-        // at (0, 3), a blue one at (3, 0) and one of no team at (0, 0): the first costs a red
-        // walker 42, the next two 84 each, and the others nothing; a blue walker pays for none of
-        // the red, and a walker of no team has no price. Only a stuck walker's route walls cells:
-        // the hemmed unit's, the blue unit's and the one of no team's
-        // (04-capabilities/navigation.md, A stuck walker's route walls the units of other teams
-        // that stand).
-        costs.update([
-            stamp(idle, at(1, 1), Some(red), Standing::Movable),
-            stamp(penned, at(2, 2), Some(red), Standing::Hemmed),
-            stamp(kept, at(0, 3), Some(red), Standing::Held),
-            stamp(foe, at(3, 0), Some(blue), Standing::Movable),
-            stamp(stray, at(0, 0), None, Standing::Held),
-        ]);
-        assert_eq!(prices(&costs, red), [42, 84, 0, 84, 0, 0]);
-        assert_eq!(prices(&costs, blue), [0, 0, 0, 0, 42, 0]);
-        assert!(costs.price(walker, None, CrowdWalls::Priced).is_none());
-        assert_eq!(walls(&costs, CrowdWalls::Priced), [false; 6]);
-        assert_eq!(
-            walls(&costs, CrowdWalls::Stuck),
-            [false, true, false, false, true, true]
-        );
-        // The movable unit moves to (3, 3), and the hemmed one, the blue one and the one of no
-        // team go: their old cells cost nothing again, and no cell is walled.
-        costs.update([
-            stamp(idle, at(3, 3), Some(red), Standing::Movable),
-            stamp(kept, at(0, 3), Some(red), Standing::Held),
-        ]);
-        assert_eq!(prices(&costs, red), [0, 0, 42, 84, 0, 0]);
-        assert_eq!(walls(&costs, CrowdWalls::Stuck), [false; 6]);
-        // All go, and the costs price nothing again.
-        costs.update([]);
-        assert!(costs.price(walker, Some(red), CrowdWalls::Priced).is_none());
-        assert!(costs.price(walker, Some(red), CrowdWalls::Stuck).is_none());
-        let kind = &costs.kinds[0];
-        let team = &kind.teams[0];
-        assert!(team.stood.iter().chain(&kind.stood).all(|&word| word == 0));
-        assert!(
-            team.hemmed
-                .iter()
-                .chain(&kind.standing)
-                .all(|&count| count == 0)
-        );
-    }
-}
+mod tests;

@@ -10,7 +10,9 @@ use crate::kernel_scene::{Density, KernelScene};
 use crate::placed::Placed;
 
 /// `BodyGrid` over the crowded scene's `KernelScene::UNITS` bodies of 0.2 to 1.19 m, as a stage
-/// finds the units near a point: its build, `rebuild`, its throughput the bodies; and
+/// finds the units near a point: its build, `rebuild`, its throughput the bodies, each build of
+/// bodies that moved since the one before; its refresh of the bodies it holds, which keeps its
+/// index, `refresh_still`, and of bodies that moved, which builds it, `refresh_moved`; and
 /// `visit_near` of `INPUTS` points within the scene with reaches of 1 to 8 m, each counting the
 /// bodies it visits.
 pub(crate) fn body_grid(c: &mut Criterion) {
@@ -33,12 +35,37 @@ pub(crate) fn body_grid(c: &mut Criterion) {
             (position, reach)
         })
         .collect();
+    let moved: Vec<Indexed<(), u64>> = bodies
+        .iter()
+        .map(|&entry| Indexed {
+            body: Placed::new(
+                entry.body.position + Vec3::new(Num::EPSILON, Num::ZERO, Num::ZERO),
+                entry.body.shape,
+            ),
+            ..entry
+        })
+        .collect();
     let mut grid = BodyGrid::default();
 
     let mut group = Kind::Atomic.group(c, "body_grid", Scale::Sample);
     group.throughput(campfire_measure::elements(KernelScene::UNITS));
+    let mut turn = false;
     group.bench_function("rebuild", |bench| {
-        bench.iter(|| grid.rebuild(black_box(&bodies).iter().copied()));
+        bench.iter(|| {
+            turn = !turn;
+            let bodies = if turn { &moved } else { &bodies };
+            grid.rebuild(black_box(bodies).iter().copied());
+        });
+    });
+    group.bench_function("refresh_still", |bench| {
+        bench.iter(|| grid.refresh(black_box(&bodies).iter().copied()));
+    });
+    group.bench_function("refresh_moved", |bench| {
+        bench.iter(|| {
+            turn = !turn;
+            let bodies = if turn { &moved } else { &bodies };
+            grid.refresh(black_box(bodies).iter().copied());
+        });
     });
     grid.rebuild(bodies.iter().copied());
     group.throughput(campfire_measure::elements(INPUTS));

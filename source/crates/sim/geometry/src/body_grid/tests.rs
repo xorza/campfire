@@ -131,13 +131,24 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
     // Two points 50 km away either way spread the base's rows over 100,000, more than 4 times its
     // bodies and 64, so it keeps no row starts and searches all its bodies for each row.
     let far = [-500_000, 500_000].map(|z| placed(&mut ids, [0, z], 0));
-    for outliers in [false, true] {
+    // One grid refreshed over every pass: the outliers join the bodies it holds, then leave, and
+    // each pass refreshes it twice, the second time keeping what the first built, as a fresh grid
+    // builds it.
+    let mut grid = BodyGrid::default();
+    for outliers in [false, true, false] {
         let mut bodies = lattice.clone();
         if outliers {
             bodies.extend(far);
         }
-        let mut grid = BodyGrid::default();
-        grid.rebuild(bodies.iter().copied());
+        for _ in 0..2 {
+            grid.refresh(bodies.iter().copied());
+            let mut fresh = BodyGrid::default();
+            fresh.rebuild(bodies.iter().copied());
+            assert_eq!(
+                (&grid.entries, &grid.cells, &grid.widest, &grid.placed),
+                (&fresh.entries, &fresh.cells, &fresh.widest, &fresh.placed)
+            );
+        }
         let levels: Vec<u8> = grid.widest.iter().map(|level| level.level).collect();
         assert_eq!(levels, [0, 1, 2]);
         let kept = grid.rows.layers().next().unwrap().row(0);

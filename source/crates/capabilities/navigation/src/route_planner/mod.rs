@@ -9,7 +9,7 @@ use campfire_math::{Num, Vec3};
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::crowd_costs::CrowdPrice;
 use crate::pathing_grid::Clearance;
-use crate::regions::Candidate;
+use crate::regions::NearestScratch;
 use crate::route_planner::open_cells::OpenCells;
 use crate::segment::Segment;
 
@@ -46,8 +46,8 @@ pub struct RoutePlanner {
     expanded: Vec<u32>,
     /// A short route's window cells its blockers block, one bit a cell, row by row.
     overlay: Vec<u64>,
-    /// The regions the nearest reachable cell to a goal may lie in.
-    candidates: Vec<Candidate>,
+    /// The buffers of the search for the nearest reachable cell to a goal.
+    nearest: NearestScratch,
     /// The work a tick may do, and the work done since the tick began.
     limit: u64,
     spent: u64,
@@ -217,7 +217,7 @@ impl RoutePlanner {
             cells: Vec::new(),
             expanded: Vec::new(),
             overlay: Vec::new(),
-            candidates: Vec::new(),
+            nearest: NearestScratch::default(),
             limit: u64::try_from(cells).expect("a grid has at most 2²² cells"),
             spent: 0,
         }
@@ -306,7 +306,7 @@ impl RoutePlanner {
         let target = if clear {
             Some(grid.nearest_cell(goal))
         } else if long {
-            regions.nearest(grid, leaves, goal, &mut self.candidates, &mut work)
+            regions.nearest(grid, leaves, goal, &mut self.nearest, &mut work)
         } else {
             self.nearest_open(walkable, goal, &mut work)
         };
@@ -323,7 +323,7 @@ impl RoutePlanner {
         let replaced = long && !leaves.meets(regions.reach(target));
         if replaced {
             target = regions
-                .nearest(grid, leaves, goal, &mut self.candidates, &mut work)
+                .nearest(grid, leaves, goal, &mut self.nearest, &mut work)
                 .expect("a start with a reachable set has a cell in it");
         }
         self.routes += 1;
@@ -647,6 +647,16 @@ impl RoutePlanner {
         let columns = grid.columns();
         let (column, row) = (at % columns, at / columns);
         let open = |column: usize, row: usize| Self::passable(&self.overlay, walkable, column, row);
+        // Each straight cell is tested once: a diagonal step needs the two beside it open too.
+        let straight = [(0, -1), (-1, 0), (1, 0), (0, 1)]
+            .map(|(dx, dz)| open(column.wrapping_add_signed(dx), row.wrapping_add_signed(dz)));
+        let side = |dx: isize, dz: isize| match (dx, dz) {
+            (0, -1) => straight[0],
+            (-1, 0) => straight[1],
+            (1, 0) => straight[2],
+            (0, 1) => straight[3],
+            _ => unreachable!("a straight step"),
+        };
         let mut reached = [None; 8];
         for (slot, (dx, dz)) in [
             (-1, -1),
@@ -663,11 +673,12 @@ impl RoutePlanner {
         {
             let (x, z) = (column.wrapping_add_signed(dx), row.wrapping_add_signed(dz));
             let entered = x < columns && z < grid.rows() && Some(z * columns + x) == search.to;
-            if !entered && !open(x, z) {
+            let diagonal = dx != 0 && dz != 0;
+            if !entered && !(if diagonal { open(x, z) } else { side(dx, dz) }) {
                 continue;
             }
-            let step = if dx != 0 && dz != 0 {
-                if !open(x, row) || !open(column, z) {
+            let step = if diagonal {
+                if !side(dx, 0) || !side(0, dz) {
                     continue;
                 }
                 Self::DIAGONAL

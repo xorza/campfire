@@ -86,7 +86,7 @@ farthest_m = 310
 [base]
 ended = 12082
 standing = [0, 8]
-think_ops = 19927
+think_ops = 19928
 stalls = 371
 
 [base.result]
@@ -143,7 +143,7 @@ no_build = 0
 [attack]
 ended = 18630
 standing = [4, 0]
-think_ops = 9101
+think_ops = 9102
 stalls = 259
 
 [attack.result]

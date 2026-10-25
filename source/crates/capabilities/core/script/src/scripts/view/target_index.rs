@@ -45,7 +45,7 @@ impl TargetIndex {
         }
         let rows = rows.iter().enumerate();
         let targets = rows.filter(|(_, row)| row.targetable);
-        self.bodies.rebuild(targets.map(|(at, row)| Indexed {
+        self.bodies.refresh(targets.map(|(at, row)| Indexed {
             id: row.id,
             key: at,
             body: Placed::new(row.position, row.shape),
@@ -107,8 +107,8 @@ impl TargetIndex {
             charge.add(1);
             let row = &rows.units()[entry.key];
             let relation = rows.relations().between(team, row.team);
-            if metric.reaches(from, radius, entry.body)
-                && filter.selects(relation, row.tags.tags)
+            if filter.selects(relation, row.tags.tags)
+                && metric.reaches(from, radius, entry.body)
                 && seen(rows.columns(), entry.key)
             {
                 visit(entry);

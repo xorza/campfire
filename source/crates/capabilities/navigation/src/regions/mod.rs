@@ -82,6 +82,14 @@ pub(crate) struct Reachable {
     count: u8,
 }
 
+/// The buffers of `Regions::nearest`, which a caller keeps: the regions the nearest cell may lie
+/// in, and the squares of a region's columns' offsets from the goal.
+#[derive(Debug, Default)]
+pub(crate) struct NearestScratch {
+    candidates: Vec<Candidate>,
+    squares: Vec<u128>,
+}
+
 /// A region the nearest cell to a goal may lie in: by how near its box comes to the goal, in
 /// squares of half bits, then by its chunk and label.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -172,17 +180,21 @@ impl Regions {
 
     /// The cell of a region in `reach` whose center on `grid` is nearest `goal`, ties to the lower
     /// number; `None` when `reach` is empty. Regions go in order of how near their box comes to
-    /// the goal, and each is scanned until a box comes no nearer than the best cell found.
-    /// `candidates` is a buffer the caller keeps; each region and each cell scanned counts in
-    /// `work`.
+    /// the goal, and each is scanned until a box comes no nearer than the best cell found, a row
+    /// only when it may come nearer. `scratch` holds the buffers the caller keeps; each region
+    /// and each cell of a region scanned counts in `work`.
     pub(crate) fn nearest(
         &self,
         grid: &Grid,
         reach: Reachable,
         goal: Vec3,
-        candidates: &mut Vec<Candidate>,
+        scratch: &mut NearestScratch,
         work: &mut u32,
     ) -> Option<usize> {
+        let NearestScratch {
+            candidates,
+            squares,
+        } = scratch;
         candidates.clear();
         for (chunk, held) in (0..).zip(&self.chunks) {
             let regions = (1..).zip(&held.regions);
@@ -203,7 +215,7 @@ impl Regions {
         candidates.sort_unstable();
         *work += *self.starts.last().expect("a start past the last chunk");
         let mut best: Option<(u128, usize)> = None;
-        for candidate in &*candidates {
+        for &candidate in &*candidates {
             if best.is_some_and(|(distance, _)| candidate.bound > distance) {
                 break;
             }
@@ -211,13 +223,39 @@ impl Regions {
             let region = self.chunks[candidate.chunk as usize].regions[usize::from(label) - 1];
             let [columns, rows] = [0, 1].map(|axis| region.high[axis] - region.low[axis] + 1);
             *work += columns * rows;
+            squares.clear();
+            squares.extend(
+                (widen(region.low[0])..=widen(region.high[0]))
+                    .map(|column| grid.center_square(0, column, goal)),
+            );
+            // The squares fall to the goal's column and rise after it, so the columns within a
+            // reach of it are one run around its square.
+            let nearest = (0..squares.len())
+                .min_by_key(|&at| squares[at])
+                .expect("a region holds a column");
             for row in widen(region.low[1])..=widen(region.high[1]) {
-                for column in widen(region.low[0])..=widen(region.high[0]) {
+                let row_square = grid.center_square(1, row, goal);
+                let columns = match best {
+                    None => 0..squares.len(),
+                    Some((distance, _))
+                        if row_square.saturating_add(squares[nearest]) > distance =>
+                    {
+                        continue;
+                    }
+                    Some((distance, _)) => {
+                        let room = distance - row_square;
+                        let first = squares[..=nearest].partition_point(|&square| square > room);
+                        first
+                            ..nearest + squares[nearest..].partition_point(|&square| square <= room)
+                    }
+                };
+                let first = widen(region.low[0]) + columns.start;
+                for (column, &column_square) in (first..).zip(&squares[columns]) {
                     let cell = row * self.columns + column;
                     if self.local[cell] != label {
                         continue;
                     }
-                    let found = (grid.center_distance(cell, goal), cell);
+                    let found = (column_square + row_square, cell);
                     if best.is_none_or(|best| found < best) {
                         best = Some(found);
                     }

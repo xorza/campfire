@@ -76,16 +76,12 @@ impl Grid {
     pub fn box_distance(&self, low: [usize; 2], high: [usize; 2], position: Vec3) -> u128 {
         // Centers and positions lie within 2⁴⁸ halves of a bit, so each offset fits `i64` and
         // each square `i128`, and the wrapping steps skip the checks a release build makes.
-        let step = self.cell.to_bits();
-        let min = self.bounds.min();
-        let index = |index: usize| i64::try_from(index).expect("a cell of the grid");
         let at = halves::ground(position);
         let offset = |axis: usize| {
-            let first = min[axis].to_bits().wrapping_mul(2);
-            let center = |index: i64| {
-                first.wrapping_add(step.wrapping_mul(index.wrapping_mul(2).wrapping_add(1)))
-            };
-            let nearest = at[axis].clamp(center(index(low[axis])), center(index(high[axis])));
+            let nearest = at[axis].clamp(
+                self.center_halves(axis, low[axis]),
+                self.center_halves(axis, high[axis]),
+            );
             i128::from(at[axis].wrapping_sub(nearest))
         };
         let (dx, dz) = (offset(0), offset(1));
@@ -94,11 +90,32 @@ impl Grid {
             .cast_unsigned()
     }
 
+    /// The square of the offset along `axis`, 0 for x and 1 for z, from the center of column or
+    /// row `index` to `position`, in halves of a bit, exactly: a cell's column's and row's add up
+    /// to its `center_distance`.
+    pub fn center_square(&self, axis: usize, index: usize, position: Vec3) -> u128 {
+        let at = halves::ground(position)[axis];
+        let offset = i128::from(at.wrapping_sub(self.center_halves(axis, index)));
+        offset.wrapping_mul(offset).cast_unsigned()
+    }
+
     /// The square of the distance from the center of `cell` to `position` on the ground plane, in
     /// halves of a bit, exactly.
     pub fn center_distance(&self, cell: usize, position: Vec3) -> u128 {
-        let square = [cell % self.columns(), cell / self.columns()];
-        self.box_distance(square, square, position)
+        let columns = self.columns();
+        self.center_square(0, cell % columns, position)
+            + self.center_square(1, cell / columns, position)
+    }
+
+    /// The center of column or row `index` along `axis`, in halves of a bit.
+    fn center_halves(&self, axis: usize, index: usize) -> i64 {
+        let index = i64::try_from(index).expect("a cell of the grid");
+        let first = self.bounds.min()[axis].to_bits().wrapping_mul(2);
+        first.wrapping_add(
+            self.cell
+                .to_bits()
+                .wrapping_mul(index.wrapping_mul(2).wrapping_add(1)),
+        )
     }
 
     /// The center of `cell` at height `y`, rounded down to a whole bit, or the point of the bounds
