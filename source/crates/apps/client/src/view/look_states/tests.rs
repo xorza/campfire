@@ -11,11 +11,11 @@ use bevy::time::TimeUpdateStrategy;
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 use campfire_client_files::ClientUnits;
 use campfire_codec::Toml;
-use campfire_math::Num;
+use campfire_production::SiteStart;
 use campfire_script::MatchNames;
 use campfire_sim::IdAllocator;
 use campfire_units::{BodyUnit, Meter, TypeOrigin, TypeOriginBook};
-use campfire_values::PackageIndex;
+use campfire_values::{PackageIndex, Rank};
 
 use super::*;
 use crate::test_app;
@@ -362,4 +362,42 @@ fn a_clip_hides_its_pivots_own_meshes_in_its_frames_but_those_its_look_hides() {
     assert_eq!(visibilities(&mut clip_hidden, 2), [Hidden, Hidden]);
     assert_eq!(visibilities(&mut clip_hidden, 3), [Inherited, Hidden]);
     assert!(clip_hidden.meshes.is_empty());
+}
+
+#[test]
+fn a_rising_states_models_sink_by_the_share_of_their_site_not_yet_built() {
+    let rising = r#"
+        [units.depot]
+        draws = [{ states = [{ sets = [[]], models = [{ model = "depot.glb" }], rise = "4" }] }]
+    "#;
+    let (mut app, depot_type) = looks_app(rising, "depot");
+    // A site of 4 ticks, a tick built.
+    let site = Site::new(SiteStart {
+        action: ActionId::new(0),
+        rank: Rank::FIRST,
+        time: Num::int(4),
+        gain: Num::ZERO,
+        paid: &[],
+        holder: None,
+    });
+    let mut progress = SiteProgress::default();
+    progress.grow(&site, Num::ONE);
+    let [unit, root] = drawn(&mut app, (depot_type, site.clone(), progress));
+    step(&mut app, 0);
+    let sunk = |app: &App| {
+        let model = app.world().get::<Children>(root).unwrap()[0];
+        app.world().get::<Transform>(model).unwrap().translation.y
+    };
+    // A quarter built: 3 of its 4 m below its place; three quarters, 1 m.
+    assert_eq!(sunk(&app), -3.0);
+    progress.grow(&site, Num::int(2));
+    app.world_mut().entity_mut(unit).insert(progress);
+    step(&mut app, 0);
+    assert_eq!(sunk(&app), -1.0);
+    // Complete, a site no more: at its place.
+    app.world_mut()
+        .entity_mut(unit)
+        .remove::<(Site, SiteProgress)>();
+    step(&mut app, 0);
+    assert_eq!(sunk(&app), 0.0);
 }

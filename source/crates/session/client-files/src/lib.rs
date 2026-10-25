@@ -36,11 +36,13 @@ mod texture_levels;
 pub use crate::animation_extras::{AnimationExtras, HiddenFrames};
 pub use crate::camera_file::{CameraFile, CameraHeight};
 pub use crate::client_file::{ClientFile, ClientFormat};
-pub use crate::client_model::{ClientModel, ModelScale, ModelTop};
+pub use crate::client_model::{ClientModel, ModelScale, ModelTop, NodeUpgrade};
 pub use crate::client_objects::{ClientObject, ClientObjects};
-pub use crate::client_unit::{ClientUnit, LookDraw, LookState, LookTransition, LookVariation};
+pub use crate::client_unit::{
+    ClientUnit, LookDraw, LookShown, LookState, LookTransition, LookVariation,
+};
 pub use crate::client_units::ClientUnits;
-pub use crate::condition_test::{ConditionTest, LifeShare};
+pub use crate::condition_test::{AttackPhase, ConditionTest, LifeShare, SiteStage};
 pub use crate::error::{ClientFileError, TeamColorsError, TerrainFileError, TextureLevelsError};
 pub use crate::hud_file::{HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};

@@ -204,6 +204,7 @@ impl Module for Production {
             Self::NODE,
             Self::DROP_OFF,
             Self::GATHERING,
+            Self::BEING_BUILT,
         ]);
         d.component::<TrainQueue>();
         d.timed::<TrainQueue>();
@@ -365,6 +366,8 @@ impl Production {
     /// The engine tag of a worker in its gather loop, which another such worker passes through.
     pub const GATHERING: EngineTag =
         EngineTag::new(7, "gathering", TagProperties::NONE.with_passes());
+    /// The engine tag of a site that grew in the tick, as a builder builds it.
+    pub const BEING_BUILT: EngineTag = EngineTag::new(8, "being_built", TagProperties::NONE);
 
     /// The checks of build and gather orders, each placement testing the units `S` sees.
     fn check_builds<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {

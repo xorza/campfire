@@ -9,9 +9,9 @@ use campfire_script::{
     AnyKeptRows, Checked, ColumnRows, IdNames, KeptRows, RowFill, ScriptText, ScriptValue, Unit,
     View, ViewColumn,
 };
+use campfire_states::Replication;
 use campfire_units::Owner;
 use campfire_values::{ActionId, Team, UnitType};
-use campfire_visibility::DataKind;
 
 use crate::gatherer::Gatherer;
 use crate::mode_supply_data::ModeSupplyData;
@@ -173,7 +173,7 @@ impl ViewColumn for ProductionColumn {
 impl ProductionColumn {
     /// `unit.load`: the amount `unit` carries, 0 with none, or in a view with no production.
     pub fn load(unit: &Unit) -> Checked<i64> {
-        let row = unit.admit(DataKind::Prediction)?;
+        let row = unit.admit(Gatherer::KIND)?;
         let load = unit
             .view()
             .column(|column: &Self| column.rows.now().rows[row].load);
@@ -183,7 +183,7 @@ impl ProductionColumn {
     /// `unit.site_progress`: the share of its site's time `unit`'s progress reached, from 0 to 1,
     /// `()` for no site, or in a view with no production.
     pub(crate) fn site_progress(unit: &Unit) -> Checked<ScriptValue> {
-        let row = unit.admit(DataKind::Prediction)?;
+        let row = unit.admit(SiteProgress::KIND)?;
         let site = unit
             .view()
             .column(|column: &Self| column.rows.now().rows[row].site);
@@ -193,7 +193,7 @@ impl ProductionColumn {
     /// `unit.queue`: the unit types of the trains `unit` queued, by name, first the one under way;
     /// none for no queue, or in a view with no production.
     pub(crate) fn queue(unit: &Unit) -> Checked<IdNames<UnitType>> {
-        let row = unit.admit(DataKind::Queues)?;
+        let row = unit.admit(TrainQueue::KIND)?;
         let view = unit.view();
         let queue = view.column(|column: &Self| {
             let names = column.rows.now().queue(row).iter().map(|&action| {
@@ -208,7 +208,7 @@ impl ProductionColumn {
     /// `unit.node_amount`: the amount `unit` holds as a node, `()` for no node, or in a view with
     /// no production.
     pub(crate) fn node_amount(unit: &Unit) -> Checked<ScriptValue> {
-        let row = unit.admit(DataKind::Unit)?;
+        let row = unit.admit(Node::KIND)?;
         let node = unit
             .view()
             .column(|column: &Self| column.rows.now().rows[row].node);

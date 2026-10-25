@@ -3,8 +3,8 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "ebddea68c24e735d1f114e4dc546e2f79af3a2c2306a4abd8e19e6d6b268cb0a"
-rules = "3ce491bf031db4f3713f1f65dbfba97fb47ba4c8eb819276b094ab09d2a8c651"
+game = "88a5e6fc8363092407757e8050098a209da12825d0e383d81c3229f14497316a"
+rules = "577d8681cbd157efacd5eef0dd50182e3d86eca380d346aabccb189f47e73e1f"
 
 [map]
 heights = [270, 340]
@@ -24,7 +24,7 @@ wraps = 19
 varied = 1324
 empty = 272
 states = 23402
-never = 100
+never = 78
 night = 15
 snowy = 17
 animations = 3091
@@ -37,8 +37,8 @@ dropped = [0, 23, 31, 6, 4, 0, 0, 0]
 
 [upgraded]
 researches = 69
-modules = 296
-dropped = [338, 0, 7, 0, 12, 0, 116]
+modules = 355
+dropped = [287, 0, 0, 7, 0, 12, 0, 116]
 
 [supplied]
 nodes = 4

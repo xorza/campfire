@@ -1,5 +1,4 @@
 use super::*;
-use crate::zero_hour::format::ini::object_ini::HideShow;
 
 /// A tank's pivots, each with its parent: the root; the turret; two numbered flashes, a
 /// barrel and a bare flash on the turret; and on the root, a bare flash and a slot's
@@ -104,4 +103,26 @@ fn a_default_look_hides_flagged_parts_muzzle_flashes_and_its_hidden_sub_objects(
     let root = look(vec![change("tank.hull", true), change("Decal", false)]);
     assert_eq!(nodes.hidden(&root), ["tank.hull"]);
     assert_eq!(nodes.hidden(&StateLook::default()), ["tank.decal"]);
+    // An upgrade's changes, each sub-object's last: the turret and those below it hidden, the
+    // barrel shown again; a name of none in neither.
+    let changes = [
+        change("TURRET", true),
+        change("barrel", false),
+        change("missing", true),
+    ];
+    assert_eq!(
+        nodes.changes(&changes),
+        NodeChanges {
+            show: vec!["tank.barrel".to_owned()],
+            hide: ["tank.turret", "tank.flash1", "tank.flash2a", "tank.flash2b"]
+                .map(str::to_owned)
+                .to_vec(),
+        }
+    );
+    assert_eq!(nodes.changes(&[]), NodeChanges::default());
+    // The box, on the root, hides the 7 sub-objects off the root, but is never named itself, as
+    // it is never drawn.
+    let boxed = nodes.changes(&[change("pickbox", true)]);
+    assert_eq!(boxed.hide.len(), 7);
+    assert!(!boxed.hide.contains(&"tank.pickbox".to_owned()));
 }

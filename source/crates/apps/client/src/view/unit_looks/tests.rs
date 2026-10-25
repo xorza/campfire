@@ -1,4 +1,4 @@
-use campfire_client_files::{ClientUnit, ClientUnits, LookVariation, ModelScale};
+use campfire_client_files::{ClientUnit, ClientUnits, LookVariation, ModelScale, NodeUpgrade};
 use campfire_codec::Toml;
 use campfire_declarations::ByIdBuilder;
 use campfire_script::TagNames;
@@ -14,6 +14,7 @@ fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
         scale: ModelScale::ONE,
         hide: hide.iter().map(|&name| name.to_owned()).collect(),
         top: None,
+        upgrades: Vec::new(),
     };
     let tall = |path: &str, top: f32| ClientModel {
         top: ModelTop::new(top),
@@ -126,6 +127,7 @@ fn a_unit_of_a_type_of_variations_draws_its_variations_look_when_the_look_has_as
         scale: ModelScale::ONE,
         hide: Vec::new(),
         top: ModelTop::new(top),
+        upgrades: Vec::new(),
     };
     let variation = |name: &str, top: f32, turret: Option<&str>| LookVariation {
         draws: vec![LookDraw::still(vec![model(name, top)])],
@@ -221,6 +223,8 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
             { sets = [["damaged"], ["damaged", "night"]], models = [{ model = "hurt.glb" }] },
             { sets = [["moving", "rubble"]], models = [{ model = "walk.glb" }] },
             { sets = [["upgraded"]], models = [{ model = "upgraded.glb" }] },
+            { sets = [["waiting"]], models = [{ model = "site.glb" }] },
+            { sets = [["wip"]], models = [{ model = "frame.glb" }] },
         ], ignore = ["snow"] }]
 
         [conditions]
@@ -230,6 +234,10 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         rubble = { test = "never" }
         snow = { test = "map" }
         upgraded = { test = "tag", tag = "weapon_upgrade" }
+        waiting = { test = "site", stage = "waiting" }
+        wip = { test = "site", stage = "started" }
+        zap = { test = "attack", group = 1, phase = "reloading" }
+        zing = { test = "attack", group = 1 }
     "#;
     let mut tags = TagNames::default();
     let upgrade = tags.names_mut().add("weapon_upgrade");
@@ -255,9 +263,9 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         };
         UnitLooks::of(types, &data)
     };
-    // The tested conditions' bits, by name: damaged 0, moving 1, upgraded 2; the map's and the
-    // one of no test are none.
-    let [damaged, moving, upgraded] = [1, 2, 4];
+    // The tested conditions' bits, by name: damaged 0, moving 1, upgraded 2, waiting 3, wip 4,
+    // zap 5, zing 6; the map's and the one of no test are none.
+    let [damaged, moving, upgraded, waiting, wip, zap, zing] = [1, 2, 4, 8, 16, 32, 64];
     let drawn = |looks: &UnitLooks, held: u64| {
         let draw = &looks.draws(barracks, None).unwrap().draws()[0];
         let model = &draw.states()[draw.best(held)].shown.models[0];
@@ -283,17 +291,55 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
     assert_eq!(drawn(&day, 0), "day");
     assert_eq!(drawn(&day, damaged | moving), "hurt");
     assert_eq!(drawn(&day, upgraded), "upgraded");
+    assert_eq!([drawn(&day, waiting), drawn(&day, wip)], ["site", "frame"]);
 
     // What a unit holds: its tag; its walk while it moved within 250 ms; its life above a
-    // quarter and at most half of its most, 3 of 8.
+    // quarter and at most half of its most, 3 of 8; its site's stage.
     let tests = day.tests(barracks).unwrap();
     let still = UnitFacts {
         tags: TagSet::default(),
         walks: false,
         still_for: Duration::ZERO,
         life: Some([Num::int(8), Num::int(8)]),
+        site: None,
+        attacks: 0,
     };
     assert_eq!(tests.held(still), 0);
+    // A weapon of the second group reloads: zap, and zing, of any phase; one of the second
+    // between shots, zing alone; one of the first, none.
+    let attacking = |group, phase| UnitFacts {
+        attacks: UnitFacts::attack_bit(group, phase).unwrap(),
+        ..still
+    };
+    assert_eq!(
+        [
+            tests.held(attacking(1, AttackPhase::Reloading)),
+            tests.held(attacking(0, AttackPhase::Reloading)),
+            tests.held(attacking(1, AttackPhase::Between)),
+        ],
+        [zap | zing, 0, zing]
+    );
+    // Four bits a group: the second's reload is bit 7, the sixteenth's last bit 63, and the
+    // second's at any phase bits 4 to 7; a seventeenth has none.
+    assert_eq!(UnitFacts::attack_bits(1), Some(0b1111_0000));
+    assert_eq!(UnitFacts::attack_bits(16), None);
+    assert_eq!(
+        UnitFacts::attack_bit(1, AttackPhase::Reloading),
+        Some(1 << 7)
+    );
+    assert_eq!(
+        UnitFacts::attack_bit(15, AttackPhase::Reloading),
+        Some(1 << 63)
+    );
+    assert_eq!(UnitFacts::attack_bit(16, AttackPhase::PreAttack), None);
+    let built = |stage| UnitFacts {
+        site: Some(stage),
+        ..still
+    };
+    assert_eq!(
+        [SiteStage::Waiting, SiteStage::Started].map(|stage| tests.held(built(stage))),
+        [waiting, wip]
+    );
     let tagged = UnitFacts {
         tags: [upgrade].into_iter().collect(),
         ..still
@@ -323,5 +369,65 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         }),
         0
     );
-    assert_eq!(tests.moving(), moving);
+    assert_eq!(tests.timed(), moving | zap | zing);
+}
+
+#[test]
+fn a_models_upgrade_shows_and_hides_its_nodes_over_its_states_while_its_unit_holds_it() {
+    // A tank of its flag hidden; its armor, tested by bit 2, shows the flag and hides the hatch;
+    // its paint, a map's condition every unit holds, hides the hull; a condition of no test,
+    // which none holds, shows the hatch.
+    let upgrade = |condition: &str, show: &[&str], hide: &[&str]| NodeUpgrade {
+        condition: DeclaredName::new(condition).unwrap(),
+        show: show.iter().map(|&node| node.to_owned()).collect(),
+        hide: hide.iter().map(|&node| node.to_owned()).collect(),
+    };
+    let tank = ClientModel {
+        model: PackagePath::parse("tank.glb").unwrap(),
+        scale: ModelScale::ONE,
+        hide: vec!["flag".to_owned()],
+        top: None,
+        upgrades: vec![
+            upgrade("armor", &["flag"], &["hatch"]),
+            upgrade("paint", &[], &["hull"]),
+            upgrade("rubble", &["hatch"], &[]),
+        ],
+    };
+    let name = |name: &str| DeclaredName::new(name).unwrap();
+    let known = BTreeMap::from([
+        (name("armor"), Known::Tested(2)),
+        (name("paint"), Known::Held),
+        (name("rubble"), Known::Lacked),
+    ]);
+    let source = ModelSource {
+        package: PackageIndex::MODE,
+        turret: None,
+        known: Some(&known),
+    };
+    let [model] = <[LookModel; 1]>::try_from(LookModel::all(source, &[tank])).unwrap();
+    let hidden = |held| model.held_nodes(held).hide.to_vec();
+    // Unarmored: the flag, then the hull; armored, bit 2: the flag shown, the hatch hidden, then
+    // the hull, in the upgrades' order.
+    assert_eq!(hidden(0), ["flag", "hull"]);
+    assert_eq!(hidden(1 << 2), ["hatch", "hull"]);
+    assert_eq!(hidden(1 << 3), ["flag", "hull"]);
+    // Its upgrades test bit 2 alone; a source of no conditions holds none.
+    assert_eq!(model.upgraded(), 1 << 2);
+    let tank = LookModel::all(ModelSource::still(PackageIndex::MODE), &[model_file()]);
+    assert_eq!(tank[0].upgraded(), 0);
+}
+
+/// A model file of an upgrade of a condition, as a look of no conditions reads it.
+fn model_file() -> ClientModel {
+    ClientModel {
+        model: PackagePath::parse("tank.glb").unwrap(),
+        scale: ModelScale::ONE,
+        hide: Vec::new(),
+        top: None,
+        upgrades: vec![NodeUpgrade {
+            condition: DeclaredName::new("armor").unwrap(),
+            show: Vec::new(),
+            hide: vec!["hatch".to_owned()],
+        }],
+    }
 }

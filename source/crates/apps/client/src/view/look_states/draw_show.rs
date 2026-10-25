@@ -61,11 +61,13 @@ pub(crate) struct ClipPose<'a> {
 }
 
 /// What a change of what a draw shows reads and spawns through: the drawing's root, its models'
-/// paint, its dice, the scenes and clips loaded, the clips' timings, the graphs, the asset server,
-/// the models waiting to replace others, and the commands.
+/// paint, the tested conditions its unit holds, which show and hide its models' nodes, its dice,
+/// the scenes and clips loaded, the clips' timings, the graphs, the asset server, the models
+/// waiting to replace others, and the commands.
 pub(crate) struct ShowCx<'a, 'w, 's> {
     pub(crate) root: Entity,
     pub(crate) paint: Paint,
+    pub(crate) held: u64,
     pub(crate) dice: &'a mut LookDice,
     pub(crate) scenes: &'a mut ModelScenes,
     pub(crate) clips: &'a mut LookClips,
@@ -82,6 +84,7 @@ impl Debug for ShowCx<'_, '_, '_> {
             .debug_struct("ShowCx")
             .field("root", &self.root)
             .field("paint", &self.paint)
+            .field("held", &self.held)
             .field("dice", &self.dice)
             .finish_non_exhaustive()
     }
@@ -106,6 +109,28 @@ struct Before {
 impl DrawShow {
     pub(crate) fn models(&self) -> &[Entity] {
         &self.models
+    }
+
+    /// Shows and hides again the nodes of each model of what it shows of `draw` whose upgrades
+    /// test a condition of `changed`, the tested conditions its unit came to hold or no longer
+    /// holds, by those its unit holds now.
+    pub(crate) fn renode(&self, draw: &DrawStates, changed: u64, cx: &mut ShowCx<'_, '_, '_>) {
+        let Some(showing) = self.showing else {
+            return;
+        };
+        for (model, &entity) in draw.shown(showing).models.iter().zip(&self.models) {
+            if model.upgraded() & changed != 0 {
+                cx.commands
+                    .entity(entity)
+                    .insert((model.held_nodes(cx.held), Redress));
+            }
+        }
+    }
+
+    /// The meters the models of what it shows of `draw` rise by as their unit's site is built;
+    /// none for what rises by none, or before it shows anything.
+    pub(crate) fn rise(&self, draw: &DrawStates) -> Option<f32> {
+        draw.shown(self.showing?).rise
     }
 
     /// Asks `draw` to show its state `state`, as `W3DModelDraw::setModelState` does: no change
@@ -326,7 +351,7 @@ impl ShowCx<'_, '_, '_> {
             if let Some(kept) = kept {
                 cx.commands
                     .entity(kept)
-                    .insert((model.nodes.clone(), Redress));
+                    .insert((model.held_nodes(cx.held), Redress));
                 next.push(kept);
                 continue;
             }
@@ -341,6 +366,9 @@ impl ShowCx<'_, '_, '_> {
             });
             let bundle = model.bundle(cx.scenes, cx.assets, cx.paint);
             let mut spawned = cx.commands.spawn((bundle, Drawn, ChildOf(cx.root)));
+            if model.upgraded() & cx.held != 0 {
+                spawned.insert(model.held_nodes(cx.held));
+            }
             if let Some(shown) = replaced {
                 spawned.insert((Visibility::Hidden, Replaces(shown)));
             }

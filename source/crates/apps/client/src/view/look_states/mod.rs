@@ -12,16 +12,25 @@ use bevy::ecs::query::{Added, Allow, Changed, Or};
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use bevy::time::{Fixed, Time};
-use campfire_sim::{Position, Unpredicted};
+use bevy::transform::components::Transform;
+use campfire_actions::{ActionProgress, ActionSlots, SlotTimes};
+use campfire_client_files::SiteStage;
+use campfire_combat::{ClipShots, Weapon};
+use campfire_declarations::ById;
+use campfire_math::Num;
+use campfire_production::{Site, SiteProgress};
+use campfire_sim::{Position, SimTick, Unpredicted};
 use campfire_units::{Destination, Life, Variation};
-use campfire_values::{Team, UnitTags, UnitType};
+use campfire_values::{ActionId, Team, UnitTags, UnitType};
 
 use crate::view::drawing::{Drawing, DrawingOf};
+use crate::view::float_num::FloatNum;
 use crate::view::glide::{FrameClock, Glide};
 use crate::view::look_clips::{ClipHidden, ClipPivot, ClipTiming, LookClips};
 use crate::view::look_states::draw_show::{ClipPose, ClipStep, DrawShow, ShowCx};
 use crate::view::match_colors::Paint;
 use crate::view::model_scenes::ModelScenes;
+use crate::view::slot_shots::{AttackParts, SlotShots};
 use crate::view::unit_looks::{LookDraws, UnitFacts, UnitLooks};
 use crate::view::unit_models::{Dressed, Replaces};
 use crate::view::{DrawSystems, ViewSystems};
@@ -30,8 +39,8 @@ pub(crate) mod draw_show;
 
 /// Draws each unit of a look of states in the state of each of its draws whose conditions best
 /// match its own, which it picks again as what its conditions test changes: its life, its tags,
-/// its destination, and whether it moved of late (animated-looks.md, A look is states of
-/// conditions); and plays each state's clip by its mode, through a transition between two states
+/// its destination, its site, its attack, and whether it moved of late (animated-looks.md, A look
+/// is states of conditions); and plays each state's clip by its mode, through a transition between two states
 /// of one, and its idle clips one after another (animated-looks.md, A state plays its animation by
 /// its mode). A state of other models than the last spawns them hidden, and they replace the last
 /// as they are dressed, so the unit is never drawn of none.
@@ -40,13 +49,15 @@ pub(crate) struct LookStatesPlugin;
 
 /// On the root of a unit's drawing of a look of draws: its type and variation, whose draws it
 /// draws; the tested conditions its unit held when its states were last picked, none before the
-/// first; when its unit last moved; its dice; and how it shows each of its draws.
+/// first; when its unit last moved; the shots of its slots it saw; its dice; and how it shows
+/// each of its draws.
 #[derive(Component, Debug)]
 pub(crate) struct LookStates {
     unit_type: UnitType,
     variation: Option<Variation>,
     held: Option<u64>,
     moved: Duration,
+    shots: SlotShots,
     dice: LookDice,
     draws: Vec<DrawShow>,
 }
@@ -62,7 +73,15 @@ type Retested<'w, 's> = Query<
     's,
     &'static Drawing,
     (
-        Or<(Changed<Life>, Changed<UnitTags>, Changed<Destination>)>,
+        Or<(
+            Changed<Life>,
+            Changed<UnitTags>,
+            Changed<Destination>,
+            Changed<SiteProgress>,
+            Changed<ActionProgress>,
+            Changed<SlotTimes>,
+            Changed<ClipShots>,
+        )>,
         Allow<Unpredicted>,
     ),
 >;
@@ -80,7 +99,8 @@ type Roots<'w, 's> = ParamSet<
 /// The units whose place changed, which moved.
 type Moved<'w, 's> = Query<'w, 's, &'static Drawing, (Changed<Position>, Allow<Unpredicted>)>;
 
-/// What a unit holds that its look's tests read, and its team, which paints its models.
+/// What a unit holds that its look's tests read, its site, which raises a state's models as it is
+/// built, and its team, which paints its models.
 type UnitParts<'w, 's> = Query<
     'w,
     's,
@@ -88,10 +108,34 @@ type UnitParts<'w, 's> = Query<
         Option<&'static Life>,
         &'static UnitTags,
         Option<&'static Destination>,
+        Option<(&'static Site, &'static SiteProgress)>,
         &'static Team,
     ),
     Allow<Unpredicted>,
 >;
+
+/// What a unit holds that its attack's phase reads: its progress and slots, and its slots' times
+/// and its clips' shots, where its client holds them.
+type AttackQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static ActionProgress,
+        &'static ActionSlots,
+        Option<&'static SlotTimes>,
+        Option<&'static ClipShots>,
+    ),
+    Allow<Unpredicted>,
+>;
+
+/// What a pick reads beside the units: the app's time, the looks, the sim's tick, which an
+/// attack's phase reads, and the book of weapons, none in a match of no combat.
+type PickReads<'w> = (
+    Res<'w, Time>,
+    Res<'w, UnitLooks>,
+    Res<'w, SimTick>,
+    Option<Res<'w, ById<ActionId, Weapon>>>,
+);
 
 /// The players of the models' clips, each with its graph.
 type Players<'w, 's> = Query<
@@ -106,6 +150,15 @@ type Players<'w, 's> = Query<
 /// A drawing's root as its clips play: the root, its unit, its glide, which gives its walk, and
 /// its states.
 type PlayedRoot<'a> = (Entity, &'a DrawingOf, &'a Glide, &'a mut LookStates);
+
+/// What a draw's models hold that its clip and its rise pose: their dressing and the meshes their
+/// clip hides, their clips' players, their nodes' visibilities, and their places.
+type ModelParts<'w, 's> = (
+    Query<'w, 's, (&'static Dressed, &'static mut ClipHidden)>,
+    Players<'w, 's>,
+    Query<'w, 's, &'static mut Visibility>,
+    Query<'w, 's, &'static mut Transform>,
+);
 
 /// The loaded scenes and clips, the clips' timings and graphs, and the asset server.
 type ShowAssets<'w> = (
@@ -144,6 +197,7 @@ impl LookStates {
             variation,
             held: None,
             moved: Duration::ZERO,
+            shots: SlotShots::default(),
             dice: LookDice(seed),
             draws: vec![DrawShow::default(); draws.draws().len()],
         }
@@ -176,15 +230,15 @@ impl LookDice {
 
 impl LookStatesPlugin {
     /// Picks the states of each new drawing, of each unit whose conditions' parts changed or
-    /// that moved, and of each that held a condition of its moving as it may stand now; and asks
-    /// each draw to show its state anew.
+    /// that moved, and of each that held a condition time ends, of its walk or its attack, as it
+    /// may hold another now; and asks each draw to show its state anew.
     fn pick(
-        (time, looks): (Res<'_, Time>, Res<'_, UnitLooks>),
+        (time, looks, tick, weapons): PickReads<'_>,
         (mut scenes, mut clips, timings, mut graphs, assets): ShowAssets<'_>,
         (retested, moved): (Retested<'_, '_>, Moved<'_, '_>),
-        units: UnitParts<'_, '_>,
+        (units, armed): (UnitParts<'_, '_>, AttackQuery<'_, '_>),
         (replacing, mut roots): (Query<'_, '_, &'static Replaces>, Roots<'_, '_>),
-        (mut walking, mut visits): (Local<'_, Vec<Entity>>, Local<'_, Vec<Entity>>),
+        (mut timed, mut visits): (Local<'_, Vec<Entity>>, Local<'_, Vec<Entity>>),
         mut commands: Commands<'_, '_>,
     ) {
         let now = time.elapsed();
@@ -198,33 +252,62 @@ impl LookStatesPlugin {
                 visits.push(drawing.root());
             }
         }
-        visits.append(&mut walking);
+        visits.append(&mut timed);
         visits.sort_unstable();
         visits.dedup();
         for &root in &*visits {
             let Ok((&DrawingOf(unit), mut states)) = roots.get_mut(root) else {
                 continue;
             };
-            let (Ok((life, &tags, destination, &team)), Some(draws), Some(tests)) = (
+            let (Ok((life, &tags, destination, site, &team)), Some(draws), Some(tests)) = (
                 units.get(unit),
                 looks.draws(states.unit_type, states.variation),
                 looks.tests(states.unit_type),
             ) else {
                 continue;
             };
+            let groups = looks.weapons(states.unit_type);
+            let attack = armed.get(unit).ok().zip(weapons.as_deref());
+            let attacks = match attack {
+                Some(((progress, slots, times, clips), weapons)) if !groups.is_empty() => {
+                    let at = tick.start();
+                    if let Some(times) = times {
+                        states.shots.see(times.iter().map(|time| time.ready_at), at);
+                    }
+                    let parts = AttackParts {
+                        progress,
+                        slots,
+                        times,
+                        clips,
+                        weapons,
+                        now: at,
+                    };
+                    Self::attacks(&parts, &states.shots, groups)
+                }
+                _ => 0,
+            };
             let facts = UnitFacts {
                 tags: tags.tags,
                 walks: destination.is_some_and(|destination| destination.get().is_some()),
                 still_for: now.saturating_sub(states.moved),
                 life: life.map(|life| [life.current(), life.max()]),
+                site: site.map(|(_, progress)| {
+                    if progress.get() == Num::ZERO {
+                        SiteStage::Waiting
+                    } else {
+                        SiteStage::Started
+                    }
+                }),
+                attacks,
             };
             let held = tests.held(facts);
-            if held & tests.moving() != 0 {
-                walking.push(root);
+            if held & tests.timed() != 0 {
+                timed.push(root);
             }
             if states.held == Some(held) {
                 continue;
             }
+            let changed = states.held.map_or(0, |before| before ^ held);
             states.held = Some(held);
             let LookStates {
                 dice, draws: shows, ..
@@ -232,6 +315,7 @@ impl LookStatesPlugin {
             let mut cx = ShowCx {
                 root,
                 paint: Paint::of(team),
+                held,
                 dice,
                 scenes: &mut scenes,
                 clips: &mut clips,
@@ -243,14 +327,40 @@ impl LookStatesPlugin {
             };
             for (draw, show) in draws.draws().iter().zip(shows) {
                 show.request(draw, draw.best(held), &mut cx);
+                show.renode(draw, changed, &mut cx);
             }
         }
+    }
+
+    /// The bits of `UnitFacts::attacks` of a unit of `parts`, its shots `shots` seen: each phase
+    /// a slot of its look's weapon group of `groups` is at.
+    fn attacks(parts: &AttackParts<'_>, shots: &SlotShots, groups: &[Box<[ActionId]>]) -> u64 {
+        let mut attacks = 0;
+        for (slot, held) in (0..=u8::MAX).zip(parts.slots.iter()) {
+            let Some(action) = held.action else {
+                continue;
+            };
+            let Some(phase) = parts.slot(shots, slot).phase() else {
+                continue;
+            };
+            for (group, weapons) in (0..=u8::MAX).zip(groups) {
+                if weapons.contains(&action)
+                    && let Some(bit) = UnitFacts::attack_bit(group, phase)
+                {
+                    attacks |= bit;
+                }
+            }
+        }
+        attacks
     }
 
     /// Moves the clip of each draw of each drawing by the frame's time, its drawing's walk setting
     /// the rate of a clip of a stride, and poses its models by it: each model's player plays the
     /// clip's graph, held at the clip's time, and each pivot's own meshes the clip hides at its
-    /// frame are hidden, but those its look hides.
+    /// frame are hidden, but those its look hides. A state that rises sinks its models by its
+    /// rise times the share of its unit's site not yet built, as Zero Hour's
+    /// `ADJUST_HEIGHT_BY_CONSTRUCTION_PERCENT` does, and any other draws them at their place
+    /// (animated-looks.md, A building rises with its site).
     fn play(
         (time, fixed, looks): (Res<'_, Time>, Res<'_, Time<Fixed>>, Res<'_, UnitLooks>),
         (mut scenes, mut clips, timings, mut graphs, assets): ShowAssets<'_>,
@@ -259,11 +369,7 @@ impl LookStatesPlugin {
             Query<'_, '_, &'static Replaces>,
             Query<'_, '_, PlayedRoot<'static>>,
         ),
-        (mut dressed, mut players, mut visibilities): (
-            Query<'_, '_, (&Dressed, &mut ClipHidden)>,
-            Players<'_, '_>,
-            Query<'_, '_, &'static mut Visibility>,
-        ),
+        (mut dressed, mut players, mut visibilities, mut transforms): ModelParts<'_, '_>,
         mut hidden: Local<'_, Vec<Entity>>,
         mut commands: Commands<'_, '_>,
     ) {
@@ -273,19 +379,24 @@ impl LookStatesPlugin {
             fraction: fixed.overstep_fraction(),
         };
         for (root, &DrawingOf(unit), glide, mut states) in &mut roots {
-            let Ok((_, _, _, &team)) = units.get(unit) else {
+            let Ok((_, _, _, site, &team)) = units.get(unit) else {
                 continue;
             };
+            let unbuilt = site.map_or(0.0, |(site, progress)| {
+                (Num::ONE - progress.share(site)).float()
+            });
             let Some(draws) = looks.draws(states.unit_type, states.variation) else {
                 continue;
             };
             let speed = glide.speed(time.elapsed(), clock);
+            let held = states.held.unwrap_or(0);
             let LookStates {
                 dice, draws: shows, ..
             } = &mut *states;
             let mut cx = ShowCx {
                 root,
                 paint: Paint::of(team),
+                held,
                 dice,
                 scenes: &mut scenes,
                 clips: &mut clips,
@@ -297,6 +408,14 @@ impl LookStatesPlugin {
             };
             for (draw, show) in draws.draws().iter().zip(shows.iter_mut()) {
                 show.advance(draw, ClipStep { seconds, speed }, &mut cx);
+                let sunk = -show.rise(draw).map_or(0.0, |rise| rise * unbuilt);
+                for &model in show.models() {
+                    if let Ok(mut transform) = transforms.get_mut(model)
+                        && transform.translation.y != sunk
+                    {
+                        transform.translation.y = sunk;
+                    }
+                }
                 let Some(pose) = show.pose(&timings) else {
                     continue;
                 };

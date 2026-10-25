@@ -44,7 +44,7 @@ use crate::view::ground_heights::GroundHeights;
 use crate::view::look_clips::{ClipHidden, ClipTiming, HiddenPivot};
 use crate::view::match_colors::{MatchColors, Paint};
 use crate::view::model_scenes::ModelScenes;
-use crate::view::unit_looks::{LookModel, LookNodes, LookTypes, UnitLooks};
+use crate::view::unit_looks::{LookModel, LookNodes, LookTypes, ModelSource, UnitLooks};
 
 /// Draws units and the map's client objects with their packages' models: loads each unit type's
 /// models, each primitive in the file material of its glTF material and its extras, once for each
@@ -139,7 +139,10 @@ impl UnitModelsPlugin {
                         error!(look, "a client object's look is none of its package's");
                         continue;
                     };
-                    new.insert(LookModel::all(PackageIndex::MODE, &look.models, None))
+                    new.insert(LookModel::all(
+                        ModelSource::still(PackageIndex::MODE),
+                        &look.models,
+                    ))
                 }
             };
             let root = commands

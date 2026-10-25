@@ -6,8 +6,9 @@ use campfire_actions::{
     TypeSlotsData,
 };
 use campfire_client_files::{
-    AnimationMode, ClientModel, ClientUnit, LookDraw, LookState, LookTransition, LookVariation,
-    ModelScale, ModelTop, ObjectLook, Press, StateAnimation, StateClip, StatePlay,
+    AnimationMode, ClientModel, ClientUnit, ConditionTest, LookDraw, LookShown, LookState,
+    LookTransition, LookVariation, ModelScale, ModelTop, NodeUpgrade, ObjectLook, Press,
+    StateAnimation, StateClip, StatePlay,
 };
 use campfire_combat::{
     ArmorShare, AttackData, ClipData, CombatData, ModeCombatData, OnDeath, PitchData, ScatterData,
@@ -1123,6 +1124,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             ("tank", false) => 4.0,
             _ => scale,
         }),
+        upgrades: Vec::new(),
     };
     let model = |name: &str, hide: &[&str]| scaled(name, 1.0, hide);
     let unit = ClientUnit::still;
@@ -1138,6 +1140,21 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     // turret turns the node of its bone `Turret`, the model's pivot `TURRET`, as the converted
     // model names it; its red reskin's own draw module names no turret.
     let hidden = || vec![model("tank", &["tank.turret", "tank.flash"])];
+    // Each of its tank models shows its turret and hides its flash by its armor's sub-object
+    // upgrade, which the condition of the upgrade's tag tests.
+    let armor = DeclaredName::new("upgrade_americacompositearmor_subobjects").unwrap();
+    let armored = |models: Vec<ClientModel>| -> Vec<ClientModel> {
+        let upgrade = NodeUpgrade {
+            condition: armor.clone(),
+            show: vec!["tank.turret".to_owned()],
+            hide: vec!["tank.flash".to_owned()],
+        };
+        let armored = |model| ClientModel {
+            upgrades: vec![upgrade.clone()],
+            ..model
+        };
+        models.into_iter().map(armored).collect()
+    };
     let state = |sets: &[&[&str]], models, animation| LookState {
         animation,
         ..LookState::new(
@@ -1153,8 +1170,9 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     };
     // Its default plays its aim once, of the key `rest`, which its other states copy; its really
     // damaged state's idle walk, of a hierarchy no file holds, converts to none, so that state
-    // plays none; its night state's key is `Lit-Up`, `lit_up` in the package. Between the two, the default's copy plays its
-    // aim once backwards.
+    // plays none, and it rises by the tank's height, its default sphere's radius of 1 at its
+    // scale of 1; its night state's key is `Lit-Up`, `lit_up` in the package. Between the two,
+    // the default's copy plays its aim once backwards.
     let aim = |mode| {
         let clip = StateClip {
             animation: PackagePath::parse("client/animations/tank.tank_aim.glb").unwrap(),
@@ -1172,12 +1190,21 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         ..ClientUnit::new(vec![
             LookDraw::new(
                 vec![
-                    keyed(state(&[&[]], hidden(), aim(AnimationMode::Once)), "rest"),
-                    keyed(state(&[&["reallydamaged"]], Vec::new(), None), "rest"),
+                    keyed(
+                        state(&[&[]], armored(hidden()), aim(AnimationMode::Once)),
+                        "rest",
+                    ),
+                    keyed(
+                        LookState {
+                            rise: Some(Num::ONE),
+                            ..state(&[&["reallydamaged"]], Vec::new(), None)
+                        },
+                        "rest",
+                    ),
                     keyed(
                         state(
                             &[&["night"]],
-                            vec![model("tank", &[])],
+                            armored(vec![model("tank", &[])]),
                             aim(AnimationMode::Once),
                         ),
                         "lit_up",
@@ -1188,8 +1215,11 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                     LookTransition::new(
                         name("rest"),
                         name("lit_up"),
-                        hidden(),
-                        aim(AnimationMode::OnceBackwards),
+                        LookShown {
+                            models: armored(hidden()),
+                            animation: aim(AnimationMode::OnceBackwards),
+                            rise: None,
+                        },
                     )
                     .unwrap(),
                 ],
@@ -1205,10 +1235,18 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     // center's look keeps the angle its build's preview places it at.
     let rock = || unit(vec![scaled("rock01", 1.5, &[])]);
     let empty = || ClientUnit::new(Vec::new());
-    let flags = LookFlags::of(&GameDataIni::default(), &RulesNames::default()).unwrap();
+    let objects = ObjectIni::of(&[]);
+    let flags = LookFlags::of(&GameDataIni::default(), &RulesNames::default(), &objects).unwrap();
     let test = |flag: &str| {
         let FlagCondition { name, test } = flags.condition(flag).unwrap();
         (name, test)
+    };
+    let armed = |slots: &[&str]| ClientUnit {
+        weapons: slots
+            .iter()
+            .map(|weapon| vec![DeclaredName::new(weapon).unwrap()])
+            .collect(),
+        ..empty()
     };
     let expected = ClientUnits {
         units: looks(vec![
@@ -1223,9 +1261,18 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             ),
             ("americafirebase", empty()),
             ("americainfantrypathfinder", empty()),
-            ("americainfantryranger", empty()),
+            // The Ranger's rifle, of both its sets, in slot A, and its upgrade set's bolt in slot
+            // B, the groups its look's attack conditions test; the Crusader's cannon in A and its
+            // rifle in B.
+            (
+                "americainfantryranger",
+                armed(&["weapon_rangerrifle", "weapon_bolt_upgraded"]),
+            ),
             ("americapowerplant", empty()),
-            ("americatankcrusader", empty()),
+            (
+                "americatankcrusader",
+                armed(&["weapon_tankcannon", "weapon_rangerrifle"]),
+            ),
             ("americavehicledozer", empty()),
             ("bush", unit(hidden())),
             ("crate", empty()),
@@ -1256,17 +1303,21 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                             turret: tank().turret,
                         },
                         LookVariation {
-                            draws: unit(vec![model("tank", &[])]).draws,
+                            draws: unit(armored(vec![model("tank", &[])])).draws,
                             turret: None,
                         },
                     ],
                     ..empty()
                 },
             ),
-            ("tankred", unit(vec![model("tank", &[])])),
+            ("tankred", unit(armored(vec![model("tank", &[])]))),
             ("tankshell", empty()),
         ]),
-        conditions: ["night", "reallydamaged"].map(test).into_iter().collect(),
+        conditions: ["night", "reallydamaged"]
+            .map(test)
+            .into_iter()
+            .chain([(armor.clone(), ConditionTest::Tag { tag: armor.clone() })])
+            .collect(),
         objects: [
             ("bush", ObjectLook::new(vec![model("tank", &[])])),
             ("oak", ObjectLook::new(vec![model("rock01", &[])])),

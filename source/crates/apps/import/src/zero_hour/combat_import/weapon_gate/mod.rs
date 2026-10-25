@@ -19,6 +19,14 @@ pub(super) enum WeaponGate {
     Upgraded,
 }
 
+/// A weapon of a slot, by the slot's place, from 0 for `PRIMARY`, and its gate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct GatedWeapon<'a> {
+    pub(super) slot: usize,
+    pub(super) weapon: &'a str,
+    pub(super) gate: WeaponGate,
+}
+
 impl WeaponGate {
     /// The weapons of the starting set `starting` and of the upgrade set `upgrade`, slot by slot,
     /// each with its gate: a slot's weapon both sets hold alike serves both, and otherwise each
@@ -27,20 +35,23 @@ impl WeaponGate {
     pub(super) fn of<'a>(
         starting: &'a WeaponSet,
         upgrade: Option<&'a WeaponSet>,
-    ) -> Vec<(&'a str, Self)> {
+    ) -> Vec<GatedWeapon<'a>> {
         let mut gated = Vec::with_capacity(2 * starting.weapons.len());
         for (slot, held) in starting.weapons.iter().enumerate() {
             let held = held.as_deref();
+            let mut serve = |weapon: Option<&'a str>, gate| {
+                gated.extend(weapon.map(|weapon| GatedWeapon { slot, weapon, gate }));
+            };
             let Some(upgrade) = upgrade else {
-                gated.extend(held.map(|weapon| (weapon, Self::Both)));
+                serve(held, Self::Both);
                 continue;
             };
             let upgraded = upgrade.weapons[slot].as_deref();
             if held == upgraded {
-                gated.extend(held.map(|weapon| (weapon, Self::Both)));
+                serve(held, Self::Both);
             } else {
-                gated.extend(held.map(|weapon| (weapon, Self::Starting)));
-                gated.extend(upgraded.map(|weapon| (weapon, Self::Upgraded)));
+                serve(held, Self::Starting);
+                serve(upgraded, Self::Upgraded);
             }
         }
         gated

@@ -9,7 +9,7 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 
 | Kind | Holds |
 | --- | --- |
-| `unit` | A unit's public state: type, team, owner, place, body, level, death, destination, the action under way, status tags |
+| `unit` | A unit's public state: type, team, owner, place, body, level, death, destination, the action under way, status tags, a site and its progress |
 | `life` | The life pool |
 | `pools` | The other pools |
 | `modifiers` | A unit's modifiers |

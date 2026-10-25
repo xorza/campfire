@@ -24,6 +24,18 @@ pub(crate) enum UpgradeEffect {
     WeaponBonus,
     /// `MaxHealthUpgrade`: its object's most life rises by `add`, its life changing by `change`.
     MaxHealth { add: f32, change: HealthChange },
+    /// `PowerPlantUpgrade`: its player's power rises and its object's rods extend, as its
+    /// `PowerPlantUpdate` sets `POWER_PLANT_UPGRADED`.
+    PowerPlant,
+    /// `ModelConditionUpgrade`: its object holds the model condition `flag`, its
+    /// `ConditionFlag`, none for none named.
+    ModelCondition { flag: Option<String> },
+    /// `SubObjectsUpgrade`: its object's drawable shows the sub-objects `show` and hides `hide`,
+    /// its `ShowSubObjects` and `HideSubObjects`, in every state.
+    SubObjects {
+        show: Vec<String>,
+        hide: Vec<String>,
+    },
     /// Any other upgrade module, by its class's name as the object writes it.
     Other(String),
 }
@@ -51,6 +63,12 @@ impl IniUpgradeModule {
                 add: 0.0,
                 change: HealthChange::SameCurrent,
             },
+            "powerplantupgrade" => UpgradeEffect::PowerPlant,
+            "modelconditionupgrade" => UpgradeEffect::ModelCondition { flag: None },
+            "subobjectsupgrade" => UpgradeEffect::SubObjects {
+                show: Vec::new(),
+                hide: Vec::new(),
+            },
             lower if lower.ends_with("upgrade") => UpgradeEffect::Other(class.to_owned()),
             _ => return None,
         };
@@ -69,19 +87,29 @@ impl IniUpgradeModule {
             UpgradeEffect::WeaponSet => "WeaponSetUpgrade",
             UpgradeEffect::WeaponBonus => "WeaponBonusUpgrade",
             UpgradeEffect::MaxHealth { .. } => "MaxHealthUpgrade",
+            UpgradeEffect::PowerPlant => "PowerPlantUpgrade",
+            UpgradeEffect::ModelCondition { .. } => "ModelConditionUpgrade",
+            UpgradeEffect::SubObjects { .. } => "SubObjectsUpgrade",
             UpgradeEffect::Other(class) => class,
         }
     }
 
-    /// Takes the module's line of `word`; a change type of no name the game lists fails the read,
-    /// as `INI::parseIndexList` does.
+    /// Takes the module's line of `word`, sub-objects appended as `parseAsciiStringVectorAppend`
+    /// appends them; a change type of no name the game lists fails the read, as
+    /// `INI::parseIndexList` does.
     pub(crate) fn field(&mut self, word: &str, at: &IniLine<'_>) -> Result<(), IniError> {
-        let names = || at.tokens[1..].iter().map(|&name| name.to_owned()).collect();
+        let names =
+            || -> Vec<String> { at.tokens[1..].iter().map(|&name| name.to_owned()).collect() };
         match (word, &mut self.effect) {
             ("triggeredby", _) => self.triggers = names(),
             ("conflictswith", _) => self.conflicts = names(),
             ("requiresalltriggers", _) => self.all = at.yes()?,
             ("addmaxhealth", UpgradeEffect::MaxHealth { add, .. }) => *add = at.real()?,
+            ("conditionflag", UpgradeEffect::ModelCondition { flag }) => {
+                *flag = Some(at.value()?.to_ascii_lowercase());
+            }
+            ("showsubobjects", UpgradeEffect::SubObjects { show, .. }) => show.extend(names()),
+            ("hidesubobjects", UpgradeEffect::SubObjects { hide, .. }) => hide.extend(names()),
             ("changetype", UpgradeEffect::MaxHealth { change, .. }) => {
                 *change = match at.value()?.to_ascii_uppercase().as_str() {
                     "SAME_CURRENTHEALTH" => HealthChange::SameCurrent,

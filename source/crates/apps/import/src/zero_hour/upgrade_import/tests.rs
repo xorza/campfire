@@ -71,6 +71,11 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
             &["Upgrade_A"][..],
             UpgradeDropCause::Effect,
         ),
+        (
+            UpgradeEffect::ModelCondition { flag: None },
+            &["Upgrade_A"][..],
+            UpgradeDropCause::NoCondition,
+        ),
     ] {
         assert_eq!(
             convert(module(effect, triggers)),
@@ -92,6 +97,38 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     let held = [import.module(sources, &armor, &[]).unwrap()];
     let twice = import.module(sources, &armor, &held).unwrap();
     assert_eq!(twice.modifier, held[0].modifier);
+    // A power plant's rods, a model condition and sub-objects each give the tag its look tests:
+    // the condition's, or for sub-objects, which set none, one of the first trigger's.
+    let sub_objects = UpgradeEffect::SubObjects {
+        show: vec!["Rods".to_owned()],
+        hide: Vec::new(),
+    };
+    for (effect, modifier, tag) in [
+        (
+            UpgradeEffect::PowerPlant,
+            "upgrade_a_power",
+            "power_plant_upgraded",
+        ),
+        (
+            UpgradeEffect::ModelCondition {
+                flag: Some("user_1".to_owned()),
+            },
+            "upgrade_a_user_1",
+            "user_1",
+        ),
+        (sub_objects, "upgrade_a_subobjects", "upgrade_a_subobjects"),
+    ] {
+        let looked = module(effect, &["Upgrade_A"]);
+        assert_eq!(look_tag(&looked), Ok(Some(declared(tag))));
+        let entry = import.module(sources, &looked, &[]).unwrap();
+        assert_eq!(entry.modifier, declared(modifier));
+        assert_eq!(
+            import.effects[&entry.modifier],
+            EffectModifier::tagged(&declared(tag))
+        );
+    }
+    // An armor's module sets no condition its look tests.
+    assert_eq!(look_tag(&armor), Ok(None));
     // What converted keeps its modifiers: A's and B's, and the effect's, of the life stat.
     assert_eq!(
         import.upgrades,

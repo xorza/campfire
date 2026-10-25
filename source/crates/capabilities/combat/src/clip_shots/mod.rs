@@ -32,7 +32,7 @@ struct Fired {
 
 impl ClipShots {
     /// Whether the clip of `action` is full: it fired no shot since its clip was last full.
-    pub(crate) fn is_full(&self, action: ActionId) -> bool {
+    pub fn is_full(&self, action: ActionId) -> bool {
         self.0
             .binary_search_by_key(&action, |fired| fired.action)
             .is_err()

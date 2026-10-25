@@ -256,6 +256,11 @@ impl Weapon {
         amount.saturating_mul(factor, Rounding::NearestEven)
     }
 
+    /// Whether it fires in clips, at every rank.
+    pub const fn has_clip(&self) -> bool {
+        self.clip.is_some()
+    }
+
     /// Its clip at `rank`, if it has one, its reload sped by its rate bonus for a unit of stats
     /// `stats`.
     pub fn clip(&self, stats: &[Num], rank: Rank) -> Option<ClipRule> {

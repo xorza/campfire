@@ -590,7 +590,8 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "constructing",
             "node",
             "drop_off",
-            "gathering"
+            "gathering",
+            "being_built"
         ]
     );
 }

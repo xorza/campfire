@@ -2,7 +2,7 @@ use crate::zero_hour::format::ini::object_ini::{ObjectFiles, ObjectIni};
 
 /// `Data\INI\Default\Object.ini` of the fixture install: a tank of two draw modules, one of
 /// which draws no model and one of which names two animations and a transition between two
-/// keys, and a tree.
+/// keys, and an upgrade that shows its turret and hides its flash; and a tree.
 pub(crate) const DEFAULT_OBJECTS: &str = "; Objects the game loads first.\r
 Object Tank\r
   Draw = W3DTankDraw ModuleTag_01\r
@@ -21,6 +21,7 @@ End\r
 ConditionState = REALLYDAMAGED\r
   Model = TANK_D\r
   IdleAnimation = Ghost.Ghost_Walk\r
+  Flags = ADJUST_HEIGHT_BY_CONSTRUCTION_PERCENT\r
 End\r
 ConditionState = NIGHT\r
   ShowSubObject = Turret\r
@@ -36,6 +37,11 @@ Model = Debris\r
   Behavior = SlowDeathBehavior ModuleTag_03\r
 Turret\r
 End\r
+  End\r
+  Behavior = SubObjectsUpgrade ModuleTag_04\r
+TriggeredBy = Upgrade_AmericaCompositeArmor\r
+ShowSubObjects = Turret\r
+HideSubObjects = Flash\r
   End\r
   ArmorSet\r
 Conditions = None\r

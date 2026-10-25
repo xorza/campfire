@@ -4,14 +4,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Animated looks
 
-The slice of [Animated looks](docs/design/animated-looks.md): a player of a Zero Hour skirmish sees infantry stand, walk, fire and die with the original's animations, a building rise as it is built and show its damage, and an upgrade change what its units show. Three batches, each one commit; its checks are that document's.
-
-### A4. Attacks, sites and upgrades (production, import, client)
-
-- [ ] A site's progress reaches its owner alone (`production/src/site.rs:189`) → it reaches every client that holds the site, and a state may rise with it (animated-looks.md, A building rises with its site).
-- [ ] The client reads no attack's phase for a look → the conditions of an attack's pre-attack, strike, wait between shots and reload of each weapon slot come from `ActionProgress` and the clip's state.
-- [ ] `PowerPlantUpgrade`, `ModelConditionUpgrade` and `SubObjectsUpgrade` are dropped whole → each converts to a modifier of a tag its states test, its other effects still a loss (animated-looks.md, An upgrade's look is a tag).
-- Checks: the client's tests compute each attack phase and a site's rise; the Zero Hour check's skirmish play pins a site's rise; in the client, a barracks rises, a Ranger fires, and a power plant shows its rods.
+The slice of [Animated looks](docs/design/animated-looks.md): a player of a Zero Hour skirmish sees infantry stand, walk, fire and die with the original's animations, a building rise as it is built and show its damage, and an upgrade change what its units show. Two batches, each one commit; its checks are that document's.
 
 ### A5. Deaths (combat, import, client)
 

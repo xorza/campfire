@@ -155,7 +155,7 @@ impl ZeroHour {
         writer.write(TeamColors::path(), &colors.encode())?;
         let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut writer);
         let mut object_names = ImportNames::default();
-        let flags = LookFlags::of(&game.game_data, &game.names)?;
+        let flags = LookFlags::of(&game.game_data, &game.names, &game.objects)?;
         let mut looks = models.units(&game.objects, &mut object_names, &flags)?;
         let ModelReport {
             skipped,
@@ -252,7 +252,7 @@ impl ZeroHour {
         let production = ProductionImport::of(&game, &mut object_names);
         let mut object_names = object_names.into_projectiles();
         let combat = CombatImport::of(&game, &mut object_names)?;
-        combat.add_projectile_looks(&mut looks);
+        combat.complete_looks(&mut looks);
         let upgrades = UpgradeImport::of(&game, object_names.types(), &production, &combat)?;
         let text = Toml::write(&looks);
         writer.write(ClientUnits::path(), text.as_bytes())?;
@@ -328,7 +328,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 9;
+    pub const OUTPUT_VERSION: u32 = 11;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint.
     fn write_rules(dir: &Path) -> Result<PackageFingerprint, ZeroHourError> {

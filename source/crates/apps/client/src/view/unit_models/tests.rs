@@ -298,6 +298,7 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
         scale: ModelScale::new(scale).unwrap(),
         hide: hide.iter().map(|&node| node.to_owned()).collect(),
         top: None,
+        upgrades: Vec::new(),
     };
     // An oak of two models, one at 1.5 and one hiding its stump; a bush of one.
     let looks = ClientUnits {

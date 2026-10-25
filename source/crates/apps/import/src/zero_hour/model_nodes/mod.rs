@@ -1,4 +1,4 @@
-use crate::zero_hour::format::ini::object_ini::{StateLook, WeaponBones};
+use crate::zero_hour::format::ini::object_ini::{HideShow, StateLook, WeaponBones};
 
 /// What a model's default look reads of it: its sub-objects, in the HLOD's order, each with its
 /// full name, its pivot, whether the model has a node of it, and whether its mesh is hidden by
@@ -16,6 +16,13 @@ pub(crate) struct LookSubObject {
     /// False for a collision box, which the game never draws.
     pub(crate) drawn: bool,
     pub(crate) hidden: bool,
+}
+
+/// The drawn sub-objects a list of shows and hides shows and hides, by name.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct NodeChanges {
+    pub(crate) show: Vec<String>,
+    pub(crate) hide: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,15 +53,8 @@ impl ModelNodes {
             }
         }
         for change in &look.hide_show {
-            let Some(at) = self.sub_object(&change.name) else {
-                continue;
-            };
-            hidden[at] = change.hide;
-            let pivot = self.sub_objects[at].pivot;
-            for (other, sub_object) in self.sub_objects.iter().enumerate() {
-                if self.below(sub_object.pivot, pivot) {
-                    hidden[other] = change.hide;
-                }
+            for at in self.touched(&change.name) {
+                hidden[at] = change.hide;
             }
         }
         self.sub_objects
@@ -62,6 +62,41 @@ impl ModelNodes {
             .zip(hidden)
             .filter(|(sub_object, hidden)| sub_object.drawn && *hidden)
             .map(|(sub_object, _)| sub_object.name.clone())
+            .collect()
+    }
+
+    /// The names of the drawn sub-objects `changes` show and hide, each as the last change that
+    /// touches it says, as `W3DModelDraw::updateSubObjects` sets an upgrade's over a state's.
+    pub(crate) fn changes(&self, changes: &[HideShow]) -> NodeChanges {
+        let mut set: Vec<Option<bool>> = vec![None; self.sub_objects.len()];
+        for change in changes {
+            for at in self.touched(&change.name) {
+                set[at] = Some(change.hide);
+            }
+        }
+        let mut changed = NodeChanges::default();
+        for (sub_object, hide) in self.sub_objects.iter().zip(set) {
+            match hide.filter(|_| sub_object.drawn) {
+                Some(true) => changed.hide.push(sub_object.name.clone()),
+                Some(false) => changed.show.push(sub_object.name.clone()),
+                None => {}
+            }
+        }
+        changed
+    }
+
+    /// The places of the sub-objects a show or a hide of `name` touches, as `doHideShowSubObjs`
+    /// does: its own, then those on the strict child pivots of its pivot; none for a name of no
+    /// sub-object.
+    fn touched(&self, name: &str) -> Vec<usize> {
+        let Some(at) = self.sub_object(name) else {
+            return Vec::new();
+        };
+        let pivot = self.sub_objects[at].pivot;
+        let below = self.sub_objects.iter().enumerate();
+        let below = below.filter(|(_, sub_object)| self.below(sub_object.pivot, pivot));
+        std::iter::once(at)
+            .chain(below.map(|(other, _)| other))
             .collect()
     }
 

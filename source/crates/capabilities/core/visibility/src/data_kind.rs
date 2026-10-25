@@ -7,8 +7,8 @@ use crate::recipients::Recipients;
 /// kinds are declared in is the one the session's terms keep.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, NamedEnum)]
 pub enum DataKind {
-    /// A unit's public state: its type, team, owner, place, body, level, death, destination and
-    /// the action under way.
+    /// A unit's public state: its type, team, owner, place, body, level, death, destination, the
+    /// action under way, its status tags, and a site and its progress.
     Unit,
     /// A unit's life pool.
     Life,

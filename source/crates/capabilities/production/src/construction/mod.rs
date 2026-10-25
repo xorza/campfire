@@ -298,7 +298,10 @@ impl Construction {
     /// Grows each site, in the Mode stage before the trains finish, by stable id: its progress
     /// adds its build's rate for the count of builders that build it, a `builder` site's the one
     /// that holds it alone, toward the build's time in ticks, and its life the gain of that
-    /// progress, within its maximum. A builder builds a site while it lives, its order is to
+    /// progress, within its maximum; a site that grew holds the `being_built` tag until a tick it
+    /// grows no more, as Zero Hour's dozer sets `ACTIVELY_BEING_CONSTRUCTED` while it builds
+    /// (animated-looks.md, A condition is the game's name for a test). A builder builds a site
+    /// while it lives, its order is to
     /// build it, its body is within its build's range of the site's, and no tag blocks its `use`
     /// group. A site that reaches its time completes: it loses its site and its `constructing`
     /// tag, its builders' orders end, and, on the server, its building frees its free units and
@@ -411,8 +414,13 @@ impl Construction {
             let progressed = progress
                 .bypass_change_detection()
                 .grow(site, spec.rate(count));
-            if *progress != before {
+            let grew = *progress != before;
+            if grew {
                 progress.set_changed();
+            }
+            let status_now = status.turned(Production::BEING_BUILT, grew && !progressed.complete);
+            if *status != status_now {
+                *status = status_now;
             }
             // Life is sent on change and not predicted (10-replication-audiences.md, A client
             // writes only what it predicts or derives).

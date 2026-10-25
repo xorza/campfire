@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::dropped::Losses;
-use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::error::{NameError, ZeroHourError};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
     HealthChange, IniUpgradeModule, UpgradeEffect,
 };
@@ -48,9 +48,11 @@ pub(crate) struct EffectModifier {
 /// Why the import drops an upgrade module, or an object's sets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 pub enum UpgradeDropCause {
-    /// A module of an effect other than an armor set, a weapon set, a weapon bonus or the most
-    /// life, by its object's name and its class's.
+    /// A module of an effect other than an armor set, a weapon set, a weapon bonus, the most
+    /// life, a model condition or sub-objects, by its object's name and its class's.
     Effect,
+    /// A `ModelConditionUpgrade` of no `ConditionFlag`, which sets none.
+    NoCondition,
     /// A `MaxHealthUpgrade` of a `ChangeType` other than `ADD_CURRENT_HEALTH_TOO`, which the
     /// engine's rising maximum does (04-capabilities/stats.md, A rising maximum raises the amount
     /// by as much, and a falling one keeps it).
@@ -208,6 +210,10 @@ impl UpgradeImport {
             .map(|name| modifier(name))
             .collect::<Result<Vec<_>, _>>()?;
         let names = &rules.names;
+        let tag = || {
+            let tag = look_tag(module).map_err(|_| UpgradeDropCause::LongName)?;
+            tag.ok_or(UpgradeDropCause::NoCondition)
+        };
         let (suffix, effect) = match module.effect {
             UpgradeEffect::Armor => (
                 "armor".to_owned(),
@@ -239,6 +245,14 @@ impl UpgradeImport {
                     EffectModifier::adding(BTreeMap::from([life])),
                 )
             }
+            UpgradeEffect::PowerPlant => ("power".to_owned(), EffectModifier::tagged(&tag()?)),
+            UpgradeEffect::ModelCondition { .. } => {
+                let tag = tag()?;
+                (tag.as_str().to_owned(), EffectModifier::tagged(&tag))
+            }
+            UpgradeEffect::SubObjects { .. } => {
+                ("subobjects".to_owned(), EffectModifier::tagged(&tag()?))
+            }
             UpgradeEffect::Other(_) => return Err(UpgradeDropCause::Effect),
         };
         let adds = matches!(module.effect, UpgradeEffect::MaxHealth { .. });
@@ -264,6 +278,26 @@ impl UpgradeImport {
             modifier: name,
         })
     }
+}
+
+/// The tag the look of `module`'s object tests for its effect, which the module's modifier gives
+/// (animated-looks.md, An upgrade's look is a tag): the name of the model condition it sets, as
+/// its object's states name it, `power_plant_upgraded` of a `PowerPlantUpgrade`, which sets
+/// `POWER_PLANT_UPGRADED`, and its `ConditionFlag` of a `ModelConditionUpgrade`; and of a
+/// `SubObjectsUpgrade`, which sets no condition, `<first trigger>_subobjects`, which its object's
+/// models name. None for a module of another effect, of no flag, or of no trigger; an error past
+/// the bytes a name holds.
+pub(crate) fn look_tag(module: &IniUpgradeModule) -> Result<Option<DeclaredName>, NameError> {
+    let name = match &module.effect {
+        UpgradeEffect::PowerPlant => ImportName::latin("power_plant_upgraded"),
+        UpgradeEffect::ModelCondition { flag: Some(flag) } => ImportName::latin(flag),
+        UpgradeEffect::SubObjects { .. } => match module.triggers.first() {
+            Some(first) => return ImportName::latin(first).suffixed("subobjects").map(Some),
+            None => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+    name.declared().map(Some)
 }
 
 #[cfg(test)]

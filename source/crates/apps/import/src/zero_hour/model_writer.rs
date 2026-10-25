@@ -2,9 +2,9 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_client_files::{
-    AnimationMode, ClientModel, ClientUnit, ClientUnits, ConditionTest, LookDraw, LookState,
-    LookTransition, LookVariant, LookVariation, ModelScale, ModelTop, ObjectLook, SpeedRange,
-    StartFrame, StateAnimation, StateClip, StatePlay,
+    AnimationMode, ClientModel, ClientUnit, ClientUnits, ConditionTest, LookDraw, LookShown,
+    LookState, LookTransition, LookVariant, LookVariation, ModelScale, ModelTop, NodeUpgrade,
+    ObjectLook, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
 };
 use campfire_common::DeclaredName;
 use campfire_package_disk::PackageWriter;
@@ -19,8 +19,9 @@ use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::object_ini::ini_animation::{
     AnimationFlag, IniAnimation, IniMode,
 };
+use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
 use crate::zero_hour::format::ini::object_ini::{
-    DrawKind, DrawModule, DrawnState, IniObject, ObjectIni, PlacedAs, StateLook,
+    DrawKind, DrawModule, DrawnState, HideShow, IniObject, ObjectIni, PlacedAs, StateLook,
 };
 use crate::zero_hour::format::look_conditions::LookConditions;
 use crate::zero_hour::game_path;
@@ -30,7 +31,8 @@ use crate::zero_hour::look_flags::{FlagCondition, LookFlags};
 use crate::zero_hour::map_import;
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_import::{Converted, ModelImport};
-use crate::zero_hour::model_nodes::ModelNodes;
+use crate::zero_hour::model_nodes::{ModelNodes, NodeChanges};
+use crate::zero_hour::upgrade_import;
 
 /// A model the objects name that the package lacks, and why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,6 +146,14 @@ struct LookModels {
     skipped: bool,
 }
 
+/// An object's `SubObjectsUpgrade`: the tag its modifier gives, and the sub-objects it shows,
+/// then those it hides, as `SubObjectsUpgrade::upgradeImplementation` changes them in order.
+#[derive(Debug, Clone)]
+struct SubObjectsUpgrade {
+    tag: DeclaredName,
+    changes: Vec<HideShow>,
+}
+
 impl ModelWriter<'_, '_> {
     /// The looks of `client/units.toml` of `ini`'s objects: each object's look, its models, each at
     /// its object's asset scale, with the nodes its default look hides and the node its turret
@@ -168,7 +178,7 @@ impl ModelWriter<'_, '_> {
         for object in ini.objects() {
             let scale = object.scale();
             let draws = object.draws();
-            let Some(own) = self.unit_draws(draws, scale, flags)? else {
+            let Some(own) = self.unit_draws(object, flags)? else {
                 continue;
             };
             let mut unit_look = ClientUnit::new(own);
@@ -223,7 +233,7 @@ impl ModelWriter<'_, '_> {
         flags: &LookFlags,
     ) -> Result<LookVariation, ZeroHourError> {
         let draws = variation.draws();
-        let look = match self.unit_draws(draws, variation.scale(), flags)? {
+        let look = match self.unit_draws(variation, flags)? {
             Some(own) => LookVariation {
                 draws: own,
                 turret: self.turret(draws)?,
@@ -236,19 +246,29 @@ impl ModelWriter<'_, '_> {
         Ok(look)
     }
 
-    /// The draws of a unit of `draws` at `scale`, each module's states, its default first, and
-    /// the flags it ignores, as each draw module of a drawable picks its best state, a map's
+    /// The draws of a unit of `object`, at its scale, each module's states, its default first,
+    /// and the flags it ignores, as each draw module of a drawable picks its best state, a map's
     /// conditions among the unit's (animated-looks.md, A look is states of conditions): each
-    /// state's sets of flags its conditions, whose tests `flags` gives, and its models of those
-    /// the package holds. A module none of whose states draws a model is dropped. Draws of no
-    /// model are empty when no model they name draws anything, and none when the package lacks
-    /// one a default names, so the client shows its loss.
+    /// state's sets of flags its conditions, whose tests `flags` gives, its models of those the
+    /// package holds, and, of `ADJUST_HEIGHT_BY_CONSTRUCTION_PERCENT`, its rise, the object's
+    /// height at its scale, as `W3DModelDraw::adjustTransformMtx` sinks its scaled model by
+    /// `getMaxHeightAbovePosition` (animated-looks.md, A building rises with its site). A module
+    /// none of whose states draws a model is dropped. Draws of no model are empty when no model
+    /// they name draws anything, and none when the package lacks one a default names, so the
+    /// client shows its loss.
     fn unit_draws(
         &mut self,
-        draws: &[DrawModule],
-        scale: ModelScale,
+        object: &IniObject,
         flags: &LookFlags,
     ) -> Result<Option<Vec<LookDraw>>, ZeroHourError> {
+        let (draws, scale) = (object.draws(), object.scale());
+        let height = object.geometry().height() * scale.get();
+        let upgrades = SubObjectsUpgrade::of(object);
+        let rise = |animation: &IniAnimation| {
+            let rises = animation.flags.holds(AnimationFlag::AdjustHeight);
+            let rise = rises.then(|| game_float::to_num(height));
+            rise.transpose().map_err(|_| ZeroHourError::StateNumber)
+        };
         // A look of no default model the package holds, but one it lacks, is none: it converts
         // none of its states' animations.
         let mut skipped = false;
@@ -258,7 +278,7 @@ impl ModelWriter<'_, '_> {
                 .states()
                 .next()
                 .expect("a module has its default state");
-            let looked = self.look_models([default.drawn], scale)?;
+            let looked = self.look_models([default.drawn], scale, &upgrades)?;
             skipped |= looked.skipped;
             drawn |= !looked.models.is_empty();
         }
@@ -270,7 +290,7 @@ impl ModelWriter<'_, '_> {
             let mut keys = DrawKeys::default();
             let mut states = Vec::new();
             for state in draw.states() {
-                let looked = self.look_models([state.drawn], scale)?;
+                let looked = self.look_models([state.drawn], scale, &upgrades)?;
                 let mut sets = Vec::with_capacity(state.sets.len());
                 for set in state.sets {
                     let mut names = Vec::with_capacity(set.flags().len());
@@ -284,6 +304,7 @@ impl ModelWriter<'_, '_> {
                     sets,
                     models: looked.models,
                     animation: self.state_animation(animation)?,
+                    rise: rise(animation)?,
                     key: animation
                         .key
                         .as_deref()
@@ -303,11 +324,15 @@ impl ModelWriter<'_, '_> {
             }
             let mut transitions = Vec::with_capacity(draw.transitions().len());
             for transition in draw.transitions() {
-                let looked = self.look_models([transition.drawn()], scale)?;
-                let animation = self.state_animation(&transition.animation)?;
+                let looked = self.look_models([transition.drawn()], scale, &upgrades)?;
+                let shown = LookShown {
+                    models: looked.models,
+                    animation: self.state_animation(&transition.animation)?,
+                    rise: rise(&transition.animation)?,
+                };
                 let (from, to) = (keys.key(&transition.from)?, keys.key(&transition.to)?);
                 transitions.push(
-                    LookTransition::new(from, to, looked.models, animation)
+                    LookTransition::new(from, to, shown)
                         .expect("a transition the reader took plays once between two keys"),
                 );
             }
@@ -327,8 +352,7 @@ impl ModelWriter<'_, '_> {
         &mut self,
         animation: &IniAnimation,
     ) -> Result<Option<StateAnimation>, ZeroHourError> {
-        let number =
-            |value: f32| game_float::to_num(value).map_err(|_| ZeroHourError::AnimationNumber);
+        let number = |value: f32| game_float::to_num(value).map_err(|_| ZeroHourError::StateNumber);
         let mut clips = Vec::with_capacity(animation.clips.len());
         for clip in &animation.clips {
             if !self.animation(&clip.name)? {
@@ -365,7 +389,7 @@ impl ModelWriter<'_, '_> {
         .fold(0, |groups, (bit, _)| groups | (1 << bit));
         let [least, most] = animation.speed;
         let speed =
-            SpeedRange::new(number(least)?, number(most)?).ok_or(ZeroHourError::AnimationNumber)?;
+            SpeedRange::new(number(least)?, number(most)?).ok_or(ZeroHourError::StateNumber)?;
         let play = StatePlay {
             idle: animation.idle(),
             start,
@@ -432,11 +456,11 @@ impl ModelWriter<'_, '_> {
     where
         I: IntoIterator<Item = DrawnState<'d>>,
     {
-        let own = self.look_models(drawn(LookConditions::default()), scale)?;
+        let own = self.look_models(drawn(LookConditions::default()), scale, &[])?;
         let mut skipped = own.skipped;
         let mut variants = Vec::new();
         for conditions in LookConditions::VARIANTS {
-            let looked = self.look_models(drawn(conditions), scale)?;
+            let looked = self.look_models(drawn(conditions), scale, &[])?;
             skipped |= looked.skipped;
             variants.push(LookVariant {
                 conditions: map_import::condition_names(conditions),
@@ -461,6 +485,7 @@ impl ModelWriter<'_, '_> {
         &mut self,
         drawn: impl IntoIterator<Item = DrawnState<'d>>,
         scale: ModelScale,
+        upgrades: &[SubObjectsUpgrade],
     ) -> Result<LookModels, ZeroHourError> {
         let mut looked = LookModels {
             models: Vec::new(),
@@ -476,18 +501,64 @@ impl ModelWriter<'_, '_> {
                     let top = bounds
                         .top(&hide)
                         .and_then(|top| ModelTop::new(top * scale.get()));
+                    let mut node_upgrades = Vec::new();
+                    for SubObjectsUpgrade { tag, changes } in upgrades {
+                        let NodeChanges { show, hide } = nodes.changes(changes);
+                        if show.is_empty() && hide.is_empty() {
+                            continue;
+                        }
+                        node_upgrades.push(NodeUpgrade {
+                            condition: tag.clone(),
+                            show,
+                            hide,
+                        });
+                    }
                     looked.models.push(ClientModel {
                         model: game_path::model(model)?,
                         scale,
                         hide,
                         top,
+                        upgrades: node_upgrades,
                     });
                 }
                 WrittenModel::Nothing => {}
                 WrittenModel::Skipped => looked.skipped = true,
             }
         }
+        let upgrades = looked.models.iter().flat_map(|model| &model.upgrades);
+        for NodeUpgrade { condition, .. } in upgrades {
+            let test = ConditionTest::Tag {
+                tag: condition.clone(),
+            };
+            self.conditions.entry(condition.clone()).or_insert(test);
+        }
         Ok(looked)
+    }
+}
+
+impl SubObjectsUpgrade {
+    /// The `SubObjectsUpgrade`s of `object` whose tag has a name, as the upgrades' import keeps
+    /// them (animated-looks.md, An upgrade's look is a tag).
+    fn of(object: &IniObject) -> Vec<Self> {
+        let mut upgrades = Vec::new();
+        for module in object.upgrades() {
+            let UpgradeEffect::SubObjects { show, hide } = &module.effect else {
+                continue;
+            };
+            let Ok(Some(tag)) = upgrade_import::look_tag(module) else {
+                continue;
+            };
+            let change = |hide| {
+                move |name: &String| HideShow {
+                    name: name.clone(),
+                    hide,
+                }
+            };
+            let changes = show.iter().map(change(false));
+            let changes = changes.chain(hide.iter().map(change(true))).collect();
+            upgrades.push(Self { tag, changes });
+        }
+        upgrades
     }
 }
 

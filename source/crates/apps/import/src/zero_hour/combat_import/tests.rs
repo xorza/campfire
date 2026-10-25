@@ -664,16 +664,24 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
     client
         .units
         .insert(DeclaredName::new("tankshell").unwrap(), own);
+    // Were the shell armed of a cannon in its secondary slot, its own look would take that group
+    // at the place of the slot; its projectiles' looks, copied before, take none.
+    let cannon = DeclaredName::new("weapon_cannon").unwrap();
+    let slots = vec![Vec::new(), vec![cannon]];
     CombatImport {
         projectile_looks: looks,
+        weapon_slots: BTreeMap::from([(TypeName::named("tankshell"), slots.clone())]),
         ..CombatImport::default()
     }
-    .add_projectile_looks(&mut client);
+    .complete_looks(&mut client);
     let named: Vec<&str> = client.units.keys().map(DeclaredName::as_str).collect();
     assert_eq!(
         named,
         ["tankshell", "tankshell_cannon", "tankshell_howitzer"]
     );
+    let weapons: Vec<&Vec<Vec<DeclaredName>>> =
+        client.units.values().map(|look| &look.weapons).collect();
+    assert_eq!(weapons, [&slots, &Vec::new(), &Vec::new()]);
     // A name of a weapon's shell that an object took is refused.
     let clash = import("Howitzer", [400, 300], "Object TankShell_Cannon\nEnd\n");
     assert!(matches!(

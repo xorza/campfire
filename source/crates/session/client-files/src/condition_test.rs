@@ -17,9 +17,39 @@ pub enum ConditionTest {
     Moving { still_ms: u32 },
     /// The unit's life is of a share of its most within its bounds.
     Life(LifeShare),
+    /// The unit is a site at `stage` of its build.
+    Site { stage: SiteStage },
+    /// The unit attacks, and a weapon of its look's weapon group at `group` is at `phase`, or at
+    /// any phase for none, as Zero Hour's `USING_WEAPON_A` holds beside each.
+    Attack {
+        group: u8,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        phase: Option<AttackPhase>,
+    },
     /// No unit holds it: a condition of a game that no test of the engine's says, which a state
     /// counts all the same, so it is drawn only where no state of fewer such conditions matches.
     Never,
+}
+
+/// A phase of an attack's weapon, as Zero Hour's `Object::updateDrawableWeaponState` names each:
+/// its pre-attack, before its weapon's shot; the tick of its shot; the wait for its next shot; and
+/// the reload of its clip, which its last shot emptied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttackPhase {
+    PreAttack,
+    Firing,
+    Between,
+    Reloading,
+}
+
+/// A stage of a site's build: before any builder built it, as Zero Hour's `AWAITING_CONSTRUCTION`,
+/// or after, as its `PARTIALLY_CONSTRUCTED`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SiteStage {
+    Waiting,
+    Started,
 }
 
 /// A share of a unit's most life: above `above`, and at most `at_most`, from 0 to 1.

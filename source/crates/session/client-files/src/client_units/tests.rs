@@ -3,7 +3,7 @@ use campfire_math::Num;
 
 use super::*;
 use crate::client_model::{ModelScale, ModelTop};
-use crate::condition_test::LifeShare;
+use crate::condition_test::{LifeShare, SiteStage};
 use crate::state_animation::{AnimationMode, SpeedRange, StartFrame};
 
 #[test]
@@ -35,6 +35,8 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
         moving = { test = "moving", still_ms = 250 }
         upgraded = { test = "tag", tag = "weapon_upgrade" }
         rubble = { test = "never" }
+        awaiting = { test = "site", stage = "waiting" }
+        partly = { test = "site", stage = "started" }
 
         [objects.tree]
         models = [{ model = "client/models/ptxbirch04.glb", scale = 1.25 }]
@@ -87,6 +89,11 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     let tag = DeclaredName::new("weapon_upgrade").unwrap();
     assert_eq!(test("upgraded"), ConditionTest::Tag { tag });
     assert_eq!(test("rubble"), ConditionTest::Never);
+    let site = |stage| ConditionTest::Site { stage };
+    assert_eq!(
+        [test("awaiting"), test("partly")],
+        [site(SiteStage::Waiting), site(SiteStage::Started)]
+    );
     assert_eq!(
         Toml::parse::<ClientUnits>(&Toml::write(&units)).unwrap(),
         units
@@ -132,12 +139,15 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
             "{refused}"
         );
     }
-    // A draw of no state; a state of no set; a state of a condition of no test, in a variation
-    // too; a life share whose bounds do not rise, or pass 1.
+    // A draw of no state; a state of no set, or that rises by less than 0; a state of a condition
+    // of no test, in a variation too; a life share whose bounds do not rise, or pass 1.
     let draws = |draws: &str| format!("[units.a]\ndraws = {draws}");
-    let empty = "a draw has no state, a state of no set, or a pair's transition twice";
+    let empty =
+        "a draw has no state, a state of no set or that sinks, or a pair's transition twice";
     assert!(refusal(&draws("[{ states = [] }]")).starts_with(empty));
     assert!(refusal(&draws("[{ states = [{ sets = [], models = [] }] }]")).starts_with(empty));
+    let sinks = "[{ states = [{ sets = [[]], models = [], rise = \"-1\" }] }]";
+    assert!(refusal(&draws(sinks)).starts_with(empty));
     let untested = "a look's state names the condition `night`, of no test";
     let at_night = "[{ states = [{ sets = [[\"night\"]], models = [] }] }]";
     assert_eq!(refusal(&draws(at_night)), untested);
@@ -231,7 +241,7 @@ fn a_states_animation_and_a_draws_transitions_write_and_read_back_and_refuse_wha
     let text = r#"
         [units.ranger]
         draws = [{ states = [
-            { sets = [[]], models = [], key = "stand", animation = { clips = [
+            { sets = [[]], models = [], key = "stand", rise = "2.5", animation = { clips = [
                 { animation = "client/animations/a.stand.glb" },
                 { animation = "client/animations/a.stand.glb" },
                 { animation = "client/animations/a.fidget.glb" },
@@ -240,7 +250,7 @@ fn a_states_animation_and_a_draws_transitions_write_and_read_back_and_refuse_wha
                 { animation = "client/animations/a.walk.glb", stride = "2.5" },
             ], mode = "loop", maintain = 3, restart = true } },
         ], transitions = [
-            { from = "stand", to = "walk", models = [], animation = { clips = [
+            { from = "stand", to = "walk", models = [], rise = "2.5", animation = { clips = [
                 { animation = "client/animations/a.step.glb" },
             ], mode = "once_backwards" } },
         ] }]
@@ -256,7 +266,9 @@ fn a_states_animation_and_a_draws_transitions_write_and_read_back_and_refuse_wha
     let draw = &units.units["ranger"].draws[0];
     let [stand, walk] = [0, 1].map(|at| &draw.states()[at]);
     // Standing: three idle clips, the first named twice, once from a random frame, at a speed of
-    // 0.75 to 1.25; its key, and no state it waits for.
+    // 0.75 to 1.25; a rise of 2.5 m as its site is built; its key, and no state it waits for.
+    let two_and_a_half = Num::int(5) / Num::int(2);
+    assert_eq!((stand.rise, walk.rise), (Some(two_and_a_half), None));
     let idle = stand.animation.as_ref().unwrap();
     let paths: Vec<&str> = idle
         .clips()
@@ -303,22 +315,23 @@ fn a_states_animation_and_a_draws_transitions_write_and_read_back_and_refuse_wha
         (3, true, SpeedRange::ONE)
     );
     assert_eq!(walk.waits_for.as_ref().unwrap().as_str(), "stand");
-    // The step from standing to walking, once backwards.
+    // The step from standing to walking, once backwards, of the same rise.
     let step = &draw.transitions()[0];
     assert_eq!(
         (step.from().as_str(), step.to().as_str()),
         ("stand", "walk")
     );
+    let shown = step.shown();
     assert_eq!(
-        step.animation().unwrap().mode(),
-        AnimationMode::OnceBackwards
+        (shown.animation.as_ref().unwrap().mode(), shown.rise),
+        (AnimationMode::OnceBackwards, Some(two_and_a_half))
     );
     // The defaults are not written.
     let written = Toml::write(&units);
     assert!(!written.contains("natural") && !written.contains("idle = false"));
 
     // No clip; groups past four; a stride of none; a speed of none, or out of order; a
-    // transition from a key to itself, or of a loop, or a pair's twice.
+    // transition from a key to itself, of a loop, or that rises by less than 0, or a pair's twice.
     let refusal = |text: &str| {
         Toml::parse::<ClientUnits>(text)
             .unwrap_err()
@@ -358,14 +371,16 @@ fn a_states_animation_and_a_draws_transitions_write_and_read_back_and_refuse_wha
             "[units.a]\ndraws = [{{ states = [{{ sets = [[]], models = [] }}], transitions = {transitions} }}]"
         )
     };
-    let never = "a transition is from its key to itself, or plays other than once";
+    let never = "a transition is from its key to itself, plays other than once, or sinks";
     let to_itself = r#"[{ from = "a", to = "a", models = [] }]"#;
     assert!(refusal(&transitions(to_itself)).starts_with(never));
+    let sinks = r#"[{ from = "a", to = "b", models = [], rise = "-1" }]"#;
+    assert!(refusal(&transitions(sinks)).starts_with(never));
     let looped = format!(
         "[{{ from = \"a\", to = \"b\", models = [], animation = {{ clips = [{clip}], mode = \"loop\" }} }}]"
     );
     assert!(refusal(&transitions(&looped)).starts_with(never));
     let twice = r#"[{ from = "a", to = "b", models = [] }, { from = "a", to = "b", models = [] }]"#;
-    let pair = "a draw has no state, a state of no set, or a pair's transition twice";
+    let pair = "a draw has no state, a state of no set or that sinks, or a pair's transition twice";
     assert!(refusal(&transitions(twice)).starts_with(pair));
 }

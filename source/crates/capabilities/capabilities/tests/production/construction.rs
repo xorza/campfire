@@ -240,7 +240,8 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
             "tick {tick}"
         );
         let status = *game.part::<StatusTags>(depot);
-        let constructing = StatusTags::from([Production::CONSTRUCTING]);
+        // A site that grew in the tick is being built too.
+        let constructing = StatusTags::from([Production::CONSTRUCTING, Production::BEING_BUILT]);
         assert_eq!(
             status,
             if tick < 10 {

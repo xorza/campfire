@@ -1,9 +1,11 @@
+use campfire_common::DeclaredName;
 use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// A model, a `.glb` of the package, the scale it is drawn at, the names of its nodes its
-/// default look hides, as the glTF names them, and the top of what it draws.
+/// default look hides, as the glTF names them, the top of what it draws, and the nodes each
+/// condition of an upgrade shows and hides over those, in order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientModel {
@@ -16,6 +18,21 @@ pub struct ClientModel {
     /// (02-engine-core.md, The import measures a look's height).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top: Option<ModelTop>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub upgrades: Vec<NodeUpgrade>,
+}
+
+/// The nodes of a model a condition shows and hides while its unit holds it, over those its
+/// state hides, as Zero Hour's `SubObjectsUpgrade` shows and hides its object's sub-objects in
+/// every state (animated-looks.md, An upgrade's look is a tag).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeUpgrade {
+    pub condition: DeclaredName,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub show: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hide: Vec<String>,
 }
 
 /// The height in meters of the top of what a model draws over its origin, at its scale, with

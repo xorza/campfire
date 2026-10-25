@@ -11,15 +11,15 @@ use bevy::math::Vec3;
 use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_client_files::{
-    AnimationMode, ClientModel, ConditionTest, LifeShare, LookDraw, ModelTop, StartFrame,
-    StateAnimation,
+    AnimationMode, AttackPhase, ClientModel, ConditionTest, LifeShare, LookDraw, LookShown,
+    ModelTop, SiteStage, StartFrame, StateAnimation,
 };
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
 use campfire_math::Num;
 use campfire_script::MatchNames;
 use campfire_units::{TypeOriginBook, Variation, Variations};
-use campfire_values::{NameId, PackageIndex, Tag, TagSet, UnitType};
+use campfire_values::{ActionId, NameId, PackageIndex, Tag, TagSet, UnitType};
 use tracing::error;
 
 use crate::view::client_data::ClientLoad;
@@ -47,13 +47,15 @@ pub(crate) struct LookTypes<'a> {
 }
 
 /// A type's look: its package, its own draws, those of each of its variations, none for a look
-/// that does not vary, and the angle in degrees a build preview places it at.
+/// that does not vary, the angle in degrees a build preview places it at, and the groups of its
+/// type's weapons its attack conditions test.
 #[derive(Debug)]
 struct TypeLook {
     package: PackageIndex,
     own: LookDraws,
     variations: Box<[LookDraws]>,
     placement_angle: Num,
+    weapons: Box<[Box<[ActionId]>]>,
 }
 
 /// The draws a unit of a look draws, each of its states: none for a look drawn as nothing; the
@@ -99,11 +101,13 @@ pub(crate) struct TransitionModels {
     pub(crate) shown: Shown,
 }
 
-/// What a state or a transition shows: its models and its animation.
+/// What a state or a transition shows: its models, its animation, and the meters its models rise
+/// by as its unit's site is built.
 #[derive(Debug)]
 pub(crate) struct Shown {
     pub(crate) models: Vec<LookModel>,
     pub(crate) animation: Option<StateClips>,
+    pub(crate) rise: Option<f32>,
 }
 
 /// What a draw shows of its states and transitions: a state, or a transition, by its place.
@@ -159,6 +163,10 @@ enum UnitTest {
     /// Its unit walks and moved within this long.
     Moving(Duration),
     Life(LifeShare),
+    Site(SiteStage),
+    /// A weapon of its look's group at a place is at a phase, or at any, by their bits in
+    /// `UnitFacts::attacks`.
+    Attack(u64),
 }
 
 /// A package's tests, and what each of its conditions is to a look.
@@ -178,13 +186,17 @@ enum Known {
 }
 
 /// What a unit holds that its look's tests read: its tags, whether it walks to a destination, how
-/// long since it last moved, and its life and its most life, none for a unit of no life.
+/// long since it last moved, its life and its most life, none for a unit of no life, its site's
+/// stage, none for a unit that is no site, and the phases of its look's weapon groups, by their
+/// bits, as `attack_bit` places them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct UnitFacts {
     pub(crate) tags: TagSet,
     pub(crate) walks: bool,
     pub(crate) still_for: Duration,
     pub(crate) life: Option<[Num; 2]>,
+    pub(crate) site: Option<SiteStage>,
+    pub(crate) attacks: u64,
 }
 
 /// A model a look is drawn with: the path of its glTF's first scene, its nodes, and the factor it
@@ -194,6 +206,26 @@ pub(crate) struct LookModel {
     pub(crate) scene: AssetPath<'static>,
     pub(crate) nodes: LookNodes,
     pub(crate) scale: f32,
+    upgrades: Arc<[ModelUpgrade]>,
+}
+
+/// The nodes of a look's model a condition shows and hides while its unit holds it, over those
+/// its state hides (animated-looks.md, An upgrade's look is a tag).
+#[derive(Debug, Clone)]
+struct ModelUpgrade {
+    when: Known,
+    show: Box<[String]>,
+    hide: Box<[String]>,
+}
+
+/// Where a look's models come from: their package, the node they turn by their unit's turret
+/// angle, and their package's conditions, which their upgrades name, none for models no unit
+/// draws.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ModelSource<'a> {
+    package: PackageIndex,
+    turret: Option<&'a str>,
+    known: Option<&'a BTreeMap<DeclaredName, Known>>,
 }
 
 /// What a drawn model needs once its scene is spawned: the names of the nodes its look hides, and
@@ -249,6 +281,22 @@ impl UnitLooks {
                         .map(|variation| load(&variation.draws, variation.turret.as_deref()))
                         .collect(),
                     placement_angle: unit.placement_angle.unwrap_or(Num::ZERO),
+                    weapons: unit
+                        .weapons
+                        .iter()
+                        .map(|group| {
+                            let named = group.iter().filter_map(|weapon| {
+                                let found =
+                                    types.names.named::<ActionId>((package, weapon.as_str()));
+                                if found.is_none() {
+                                    let (look, weapon) = (&*origin.name, weapon.as_str());
+                                    error!(look, weapon, "a look's weapon names no action");
+                                }
+                                found
+                            });
+                            named.collect()
+                        })
+                        .collect(),
                 })
             })
             .collect();
@@ -294,6 +342,13 @@ impl UnitLooks {
     pub(crate) fn tests(&self, unit_type: UnitType) -> Option<&UnitTests> {
         let look = self.looks.get(unit_type.index())?.as_ref()?;
         self.tests.get(usize::from(look.package.get()))
+    }
+
+    /// The groups of `unit_type`'s weapons its look's attack conditions test, each by its place;
+    /// none for a type of no look.
+    pub(crate) fn weapons(&self, unit_type: UnitType) -> &[Box<[ActionId]>] {
+        let look = self.looks.get(unit_type.index()).and_then(Option::as_ref);
+        look.map_or(&[], |look| &look.weapons)
     }
 
     /// The angle in degrees a build preview places `unit_type` at: its look's, 0 for a look that
@@ -358,10 +413,19 @@ impl DrawStates {
         known: &BTreeMap<DeclaredName, Known>,
     ) -> Self {
         let ignored = |name: &DeclaredName| draw.ignore().contains(name);
-        let shown = |models: &[ClientModel], animation: Option<&StateAnimation>| Shown {
-            models: LookModel::all(package, models, turret),
-            animation: animation.map(|animation| StateClips::of(package, animation)),
-        };
+        let shown =
+            |models: &[ClientModel], animation: Option<&StateAnimation>, rise: Option<Num>| Shown {
+                models: LookModel::all(
+                    ModelSource {
+                        package,
+                        turret,
+                        known: Some(known),
+                    },
+                    models,
+                ),
+                animation: animation.map(|animation| StateClips::of(package, animation)),
+                rise: rise.map(FloatNum::float),
+            };
         let mut keys: Vec<DeclaredName> = Vec::new();
         let mut key = |name: &DeclaredName| {
             let at = keys
@@ -382,7 +446,7 @@ impl DrawStates {
                     .iter()
                     .map(|set| SetMask::of(set, known, ignored))
                     .collect(),
-                shown: shown(&state.models, state.animation.as_ref()),
+                shown: shown(&state.models, state.animation.as_ref(), state.rise),
                 key: state.key.as_ref().map(&mut key),
                 waits_for: state.waits_for.as_ref().map(&mut key),
             })
@@ -393,7 +457,14 @@ impl DrawStates {
             .map(|transition| TransitionModels {
                 from: key(transition.from()),
                 to: key(transition.to()),
-                shown: shown(transition.models(), transition.animation()),
+                shown: {
+                    let LookShown {
+                        models,
+                        animation,
+                        rise,
+                    } = transition.shown();
+                    shown(models, animation.as_ref(), *rise)
+                },
             })
             .collect();
         let rest = Self::best_of(&states, 0);
@@ -531,6 +602,21 @@ impl UnitTests {
                     Duration::from_millis(u64::from(*still_ms)),
                 )),
                 ConditionTest::Life(share) => Some(UnitTest::Life(*share)),
+                ConditionTest::Site { stage } => Some(UnitTest::Site(*stage)),
+                ConditionTest::Attack { group, phase } => {
+                    let bits = match phase {
+                        Some(phase) => UnitFacts::attack_bit(*group, *phase),
+                        None => UnitFacts::attack_bits(*group),
+                    };
+                    if bits.is_none() {
+                        let (condition, group) = (name.as_str(), *group);
+                        error!(
+                            condition,
+                            group, "a look's condition tests a weapon group past the last"
+                        );
+                    }
+                    bits.map(UnitTest::Attack)
+                }
             };
             let bit = tested.and_then(|test| {
                 if tests.tests.len() >= UnitLooks::MOST_TESTS {
@@ -558,6 +644,8 @@ impl UnitTests {
                 UnitTest::Life(share) => facts
                     .life
                     .is_some_and(|[current, max]| share.holds(current, max)),
+                UnitTest::Site(stage) => facts.site == Some(stage),
+                UnitTest::Attack(bit) => facts.attacks & bit != 0,
             };
             if holds {
                 held |= 1 << bit;
@@ -566,15 +654,61 @@ impl UnitTests {
         held
     }
 
-    /// The bits of its tests a unit holds only while it moves, which go as it stands still.
-    pub(crate) fn moving(&self) -> u64 {
-        let mut moving = 0;
+    /// The bits of its tests that time ends while nothing else of the unit changes: a walk's, as
+    /// it stands still, and an attack's, as each phase ends.
+    pub(crate) fn timed(&self) -> u64 {
+        let mut timed = 0;
         for (bit, test) in self.tests.iter().enumerate() {
-            if matches!(test, UnitTest::Moving(_)) {
-                moving |= 1 << bit;
+            if matches!(test, UnitTest::Moving(_) | UnitTest::Attack(_)) {
+                timed |= 1 << bit;
             }
         }
-        moving
+        timed
+    }
+}
+
+impl Known {
+    /// Whether a unit that holds the tested conditions `held` holds it.
+    const fn holds(self, held: u64) -> bool {
+        match self {
+            Self::Tested(bit) => (held >> bit) & 1 == 1,
+            Self::Held => true,
+            Self::Lacked => false,
+        }
+    }
+}
+
+impl ModelSource<'_> {
+    /// The source of models of the package at `package` no unit draws, of no turret, whose
+    /// upgrades none holds.
+    pub(crate) const fn still(package: PackageIndex) -> Self {
+        Self {
+            package,
+            turret: None,
+            known: None,
+        }
+    }
+}
+
+impl UnitFacts {
+    /// The bit of `attacks` of the weapon group at `group` at `phase`, four for each group; none
+    /// for a group past the sixteen it holds.
+    pub(crate) fn attack_bit(group: u8, phase: AttackPhase) -> Option<u64> {
+        let phase = match phase {
+            AttackPhase::PreAttack => 0,
+            AttackPhase::Firing => 1,
+            AttackPhase::Between => 2,
+            AttackPhase::Reloading => 3,
+        };
+        let first = Self::attack_bits(group)?.trailing_zeros();
+        Some(1 << (first + phase))
+    }
+
+    /// The bits of `attacks` of the weapon group at `group`, at any of its four phases; none for a
+    /// group past the sixteen it holds.
+    pub(crate) fn attack_bits(group: u8) -> Option<u64> {
+        let at = u32::from(group) * 4;
+        (at < u64::BITS).then(|| 0b1111 << at)
     }
 }
 
@@ -595,21 +729,71 @@ impl LookModel {
         )
     }
 
+    /// Its nodes for a unit that holds the tested conditions `held`: those its state hides, then
+    /// shown and hidden by each upgrade whose condition it holds, in order, as Zero Hour's
+    /// `updateSubObjects` sets an upgrade's sub-objects over a state's.
+    pub(crate) fn held_nodes(&self, held: u64) -> LookNodes {
+        let mut applied = self
+            .upgrades
+            .iter()
+            .filter(|upgrade| upgrade.when.holds(held));
+        let Some(first) = applied.next() else {
+            return self.nodes.clone();
+        };
+        let mut hide = self.nodes.hide.to_vec();
+        for upgrade in std::iter::once(first).chain(applied) {
+            hide.retain(|node| !upgrade.show.contains(node));
+            for node in &upgrade.hide {
+                if !hide.contains(node) {
+                    hide.push(node.clone());
+                }
+            }
+        }
+        LookNodes {
+            hide: hide.into(),
+            turret: self.nodes.turret.clone(),
+        }
+    }
+
+    /// The bits of the tested conditions its upgrades show and hide its nodes by.
+    pub(crate) fn upgraded(&self) -> u64 {
+        let tested = self
+            .upgrades
+            .iter()
+            .filter_map(|upgrade| match upgrade.when {
+                Known::Tested(bit) => Some(1 << bit),
+                Known::Held | Known::Lacked => None,
+            });
+        tested.fold(0, |bits, bit| bits | bit)
+    }
+
     /// Whether `other` draws as it does but for its hidden nodes, its scene at its scale.
     pub(crate) fn same_scene(&self, other: &Self) -> bool {
         self.scene == other.scene && self.scale == other.scale
     }
 
-    /// The models `models` of the package at `package`, which turn `turret` by their unit's turret
-    /// angle.
-    pub(crate) fn all(
-        package: PackageIndex,
-        models: &[ClientModel],
-        turret: Option<&str>,
-    ) -> Vec<Self> {
+    /// The models `models` of `source`.
+    pub(crate) fn all(source: ModelSource<'_>, models: &[ClientModel]) -> Vec<Self> {
+        let ModelSource {
+            package,
+            turret,
+            known,
+        } = source;
         models
             .iter()
             .map(|model| Self {
+                upgrades: model
+                    .upgrades
+                    .iter()
+                    .map(|upgrade| ModelUpgrade {
+                        when: known
+                            .and_then(|known| known.get(&upgrade.condition))
+                            .copied()
+                            .unwrap_or(Known::Lacked),
+                        show: upgrade.show.as_slice().into(),
+                        hide: upgrade.hide.as_slice().into(),
+                    })
+                    .collect(),
                 scene: GltfAssetLabel::Scene(0)
                     .from_asset(PackageAssets::asset_path(package, &model.model)),
                 nodes: LookNodes {
