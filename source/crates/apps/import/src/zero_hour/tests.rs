@@ -20,11 +20,13 @@ use campfire_package::ModePackages;
 use campfire_package_format::ContentHash;
 use campfire_production::{
     BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiredUnit, RequiresData,
-    TrainData,
+    ResearchData, ResearchHolder, TrainData,
 };
 use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_sim::Capability;
-use campfire_stats::{StatsData, TypePoolsData};
+use campfire_stats::{
+    ModeStatsData, ModifiersData, StatOp, StatsData, TypePoolsData, UpgradeData, UpgradesData,
+};
 use campfire_store::internals::TestDir;
 use campfire_units::TypeTagsData;
 use campfire_values::{
@@ -45,6 +47,7 @@ use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
 use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
+use crate::zero_hour::format::ini::upgrade_ini::samples::UPGRADES;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::format::map::map_file::samples::map;
 use crate::zero_hour::install::samples::{fixture, packed_map};
@@ -52,6 +55,8 @@ use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_writer::{SkipReason, SkippedModel};
 use crate::zero_hour::object_flight::samples::shell_projectile;
 use crate::zero_hour::production_import::ButtonDropCause;
+use crate::zero_hour::rules_names::RulesNames;
+use crate::zero_hour::upgrade_import::UpgradeDropCause;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 
 /// The fixture install's version, as its archives hold their bytes now.
@@ -333,9 +338,40 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         streak: None,
         pre_attack: None,
     };
-    let mut cannon = ActionData::of(enemies, cannon);
+    let mut cannon = ActionData::of(enemies.clone(), cannon);
     cannon.keys.range = meters(150);
     cannon.delivery = Some(Arc::new(ProjectileDeliveryData::one(declared("tankshell"))));
+    // The bolt of the ranger's upgraded set alone, while it holds the weapon set's tag: 30
+    // explosive damage within 100 m at 2,400 m/s, a shot each 1,000 ms, 30 frames; its upgrade's
+    // 125 % names the stat of that percent.
+    let bolt = AttackData {
+        rate: WeaponValue::Own(one(1000)),
+        rate_bonus: None,
+        damage: damage(30),
+        damage_bonus: Stat::named("upgrade_damage_125"),
+        damage_kind: declared("explosion"),
+        clip: None,
+        splash: None,
+        scatter: None,
+        pitch_deg: None,
+        speed: Speed::new(Num::int(2400)),
+        streak: None,
+        pre_attack: None,
+    };
+    let mut bolt = ActionData::of(enemies, bolt);
+    bolt.keys.range = meters(100);
+    bolt.keys.when = Some(RulesNames::default().weapon_upgraded);
+    // The center's and the barracks' researches, each of its upgrade's cost and time, 30 s, 15.5
+    // s and 10 s, 900, 465 and 300 frames, ⌊frames × 100 / 3⌋ ms; the barracks' walls an
+    // object's upgrade, which its producer holds.
+    let research = |upgrade: &str, holder| {
+        let research = ResearchData {
+            modifier: declared(upgrade),
+            holder,
+            requires: None,
+        };
+        ActionData::of(Targeting::None, research)
+    };
     let actions = &mode.content().section::<ActionsData>().unwrap().0;
     assert_eq!(
         *actions,
@@ -349,6 +385,25 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
                 5000,
                 train("americavehicledozer", None)
             ),
+            made(
+                "research_upgrade_americabarrackswalls",
+                400,
+                10000,
+                research("upgrade_americabarrackswalls", ResearchHolder::Producer)
+            ),
+            made(
+                "research_upgrade_americacompositearmor",
+                1000,
+                30000,
+                research("upgrade_americacompositearmor", ResearchHolder::Player)
+            ),
+            made(
+                "research_upgrade_americarangerflashbang",
+                500,
+                15500,
+                research("upgrade_americarangerflashbang", ResearchHolder::Player)
+            ),
+            (declared("weapon_bolt_upgraded"), bolt),
             (declared("weapon_rangerrifle"), rifle),
             (declared("weapon_tankcannon"), cannon),
         ])
@@ -396,7 +451,10 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let command = |name: &str| slotted(name, "command");
     assert_eq!(
         command("americacommandcenter"),
-        all_declared(&["train_americavehicledozer"])
+        all_declared(&[
+            "train_americavehicledozer",
+            "research_upgrade_americacompositearmor"
+        ])
     );
     assert_eq!(
         command("americavehicledozer"),
@@ -406,16 +464,20 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         command("americabarracks"),
         all_declared(&[
             "train_americainfantryranger",
-            "train_americainfantrypathfinder"
+            "train_americainfantrypathfinder",
+            "research_upgrade_americarangerflashbang",
+            "research_upgrade_americabarrackswalls"
         ])
     );
     assert_eq!(command("americainfantryranger"), Vec::<DeclaredName>::new());
-    // Each type's weapons, of its starting set, in slot order, those dropped left out; its life,
-    // its armor, and the command center's tag of victory.
+    // Each type's weapons, of its starting set and its upgraded set, in slot order, those
+    // dropped left out: the ranger's rifle, in both of its sets, and its upgraded set's bolt
+    // after its starting set's pistol, which drops; its life, its armor, and the command
+    // center's tag of victory.
     let weapons = |name: &str| slotted(name, "weapon");
     assert_eq!(
         weapons("americainfantryranger"),
-        all_declared(&["weapon_rangerrifle"])
+        all_declared(&["weapon_rangerrifle", "weapon_bolt_upgraded"])
     );
     assert_eq!(
         weapons("americatankcrusader"),
@@ -509,8 +571,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         Some(&shell_projectile(400))
     );
     // The weapons dropped, each by its cause, in the order the types are read: the ranger's
-    // pistol of a random delay, and the crusader's railgun no file defines; the flamer of the
-    // ranger's upgraded set is never read. The wall's highlander
+    // pistol of a random delay, the flamer of its upgraded set, of a radius and no projectile,
+    // and the crusader's railgun no file defines. The wall's highlander
     // body gives no life; the dozer starts at 200 of its 250, which the engine starts full.
     let dropped: Vec<(&str, WeaponDropCause)> = imported
         .losses
@@ -524,6 +586,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         dropped,
         [
             ("Pistol", WeaponDropCause::RandomDelay),
+            ("Flamer", WeaponDropCause::Radius),
             ("Railgun", WeaponDropCause::NoWeapon),
         ]
     );
@@ -570,13 +633,17 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
          team-player-6 = Player 6\nteam-player-7 = Player 7\nteam-player-8 = Player 8\n\
          team-neutral = Neutral\n\
          action-build-americabarracks = Barracks & {\"{\"}Yard{\"}\"}\n\
+         action-research-upgrade-americabarrackswalls = Upgrade_AmericaBarracksWalls\n\
+         action-research-upgrade-americacompositearmor = Upgrade_AmericaCompositeArmor\n\
+         action-research-upgrade-americarangerflashbang = Upgrade_AmericaRangerFlashBang\n\
          action-train-americainfantrypathfinder = AmericaInfantryPathfinder\n\
          action-train-americainfantryranger = AmericaInfantryRanger\n\
          action-train-americavehicledozer = Dozer\n"
     );
-    // The buttons dropped, each by its cause, in the order the sets are read: the center's,
-    // the dozer's, then the barracks', which the dozer's set makes; the power plant, in both the
-    // dozer's and the barracks' sets, once.
+    // The buttons dropped, each by its cause, in the order the sets are read: the center's
+    // research of a science, the dozer's, then the barracks', which the dozer's set makes,
+    // the research of no upgrade last; the power plant, in both the dozer's and the barracks'
+    // sets, once.
     let dropped: Vec<(&str, ButtonDropCause)> = imported
         .losses
         .iter()
@@ -589,6 +656,10 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         dropped,
         [
             (
+                "Command_UpgradeAmericaLaserMissiles",
+                ButtonDropCause::Science
+            ),
+            (
                 "Command_ConstructAmericaPowerPlant",
                 ButtonDropCause::Science
             ),
@@ -599,6 +670,133 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             ),
             ("Command_ConstructFortressWall", ButtonDropCause::NoWalker),
             ("Command_ConstructGhost", ButtonDropCause::NoObject),
+            ("Command_UpgradeLost", ButtonDropCause::NoObject),
+        ]
+    );
+    // Each type's upgrades: the crusader's armor and its 100 more life by the composite armor;
+    // the ranger's weapon set by the flash bang, and its weapon bonus by both, unless its
+    // barracks walls, as a conflict no file defines goes; the barracks' 200 more life by its
+    // own walls.
+    let upgrades = |name: &str| unit(name).section::<UpgradesData>().cloned();
+    let entry = |triggers: &[&str], all, conflicts: &[&str], modifier| UpgradeData {
+        triggers: all_declared(triggers),
+        all,
+        conflicts: all_declared(conflicts),
+        when: None,
+        modifier: declared(modifier),
+    };
+    let [armor, flash, walls] = [
+        "upgrade_americacompositearmor",
+        "upgrade_americarangerflashbang",
+        "upgrade_americabarrackswalls",
+    ];
+    assert_eq!(
+        upgrades("americatankcrusader"),
+        Some(UpgradesData(vec![
+            entry(&[armor], false, &[], "upgrade_americacompositearmor_armor"),
+            entry(
+                &[armor],
+                false,
+                &[],
+                "upgrade_americacompositearmor_life_100"
+            ),
+        ]))
+    );
+    assert_eq!(
+        upgrades("americainfantryranger"),
+        Some(UpgradesData(vec![
+            entry(
+                &[flash],
+                false,
+                &[],
+                "upgrade_americarangerflashbang_weapons"
+            ),
+            entry(
+                &[flash, armor],
+                true,
+                &[walls],
+                "upgrade_americarangerflashbang_bonus"
+            ),
+        ]))
+    );
+    assert_eq!(
+        upgrades("americabarracks"),
+        Some(UpgradesData(vec![entry(
+            &[walls],
+            false,
+            &[],
+            "upgrade_americabarrackswalls_life_200"
+        )]))
+    );
+    assert_eq!(upgrades("americavehicledozer"), None);
+    // The modifiers: each upgrade's, of nothing of its own, and each effect's: the tags of the
+    // armor set's and the weapon set's flag, the bonus's 125 % less 1, and the life added.
+    let modifiers = &mode.content().section::<ModifiersData>().unwrap().0;
+    let modifier = |name: &str| &modifiers[&declared(name)];
+    let added = |name: &str, stat: &str| {
+        let change = &modifier(name).stats[&Stat::named(stat).unwrap()];
+        (change.op, change.value.clone())
+    };
+    let value = |value: Num| Number::Value(Scalar::Decimal(value));
+    for upgrade in [armor, flash, walls] {
+        let held = modifier(upgrade);
+        assert!(held.tags.is_empty() && held.stats.is_empty(), "{upgrade}");
+    }
+    assert_eq!(
+        modifier("upgrade_americacompositearmor_armor").tags,
+        all_declared(&["armor_upgrade"])
+    );
+    assert_eq!(
+        modifier("upgrade_americarangerflashbang_weapons").tags,
+        all_declared(&["weapon_upgrade"])
+    );
+    assert_eq!(
+        added("upgrade_americarangerflashbang_bonus", "upgrade_damage_125"),
+        (StatOp::Add, value(Num::int(1) / Num::int(4)))
+    );
+    assert_eq!(
+        added("upgrade_americacompositearmor_life_100", "life"),
+        (StatOp::Add, Number::from(100))
+    );
+    assert_eq!(
+        added("upgrade_americabarrackswalls_life_200", "life"),
+        (StatOp::Add, Number::from(200))
+    );
+    assert!(
+        data.section::<ModeStatsData>()
+            .unwrap()
+            .0
+            .contains_key(&Stat::named("upgrade_damage_125").unwrap())
+    );
+    // The modules dropped, in the order of the types' names, and the crusader for its set of a
+    // crate's condition: the ranger's armor of an upgrade no file defines, the crusader's life of
+    // a change that keeps its share, and its stealth, an effect of none of the four, and the
+    // bonus of its shell, a projectile's type.
+    let dropped: Vec<(&str, UpgradeDropCause)> = imported
+        .losses
+        .iter()
+        .filter_map(|loss| match loss {
+            ImportLoss::Upgrade(dropped) => Some((dropped.name.as_str(), dropped.cause)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        dropped,
+        [
+            (
+                "AmericaInfantryRanger ArmorUpgrade",
+                UpgradeDropCause::NoUpgrade
+            ),
+            ("AmericaTankCrusader", UpgradeDropCause::Set),
+            (
+                "AmericaTankCrusader MaxHealthUpgrade",
+                UpgradeDropCause::HealthChange
+            ),
+            (
+                "AmericaTankCrusader StealthUpgrade",
+                UpgradeDropCause::Effect
+            ),
+            ("TankShell WeaponBonusUpgrade", UpgradeDropCause::Projectile),
         ]
     );
     let manifest = mode.manifest();
@@ -653,6 +851,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     rules.templates.read(PLAYER_TEMPLATES.as_bytes()).unwrap();
     rules.sets.read(COMMAND_SETS.as_bytes()).unwrap();
     rules.buttons.read(COMMAND_BUTTONS.as_bytes()).unwrap();
+    rules.upgrades.read(UPGRADES.as_bytes()).unwrap();
     rules.strings = StringTable::read(&strings()).unwrap();
     rules.weapons.read(WEAPONS.as_bytes()).unwrap();
     rules.armors.read(ARMORS.as_bytes()).unwrap();
@@ -702,6 +901,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let production = ProductionImport::of(&rules, &mut names);
     let mut names = names.into_projectiles();
     let combat = CombatImport::of(&rules, &mut names).unwrap();
+    let upgrades = UpgradeImport::of(&rules, names.types(), &production, &combat).unwrap();
     let types = names.close();
     let additions = TypeAdditions {
         weapon: &combat.weapons,
@@ -710,6 +910,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         nodes: &production.supply.nodes,
         drop_offs: &production.supply.drop_offs,
         spawns: &production.supply.spawns,
+        upgrades: &upgrades.types,
     };
     let units = types.units_file(additions, &rules.names);
     assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);

@@ -13,7 +13,7 @@
 ## Pools
 
 - **At most eight pools,** so a unit's pools are fixed arrays a rollback copies without allocating.
-- **A rising maximum raises the amount by as much; a falling one keeps it.** League of Legends' rule, where Dota 2 keeps the fraction, which needs a rounding the engine does not take.
+- **A rising maximum raises the amount by as much, and a falling one keeps it.** League of Legends' rule, where Dota 2 keeps the fraction, which needs a rounding the engine does not take.
 
 ## Modifiers
 

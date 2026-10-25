@@ -47,9 +47,12 @@ impl CommandSetIni {
 #[cfg(test)]
 pub(crate) mod samples {
     /// `Data\INI\CommandSet.ini` of the fixture install: the command center's, the dozer's and
-    /// the barracks', each of a button the import drops among those it converts.
+    /// the barracks', each of a button the import drops among those it converts, the command
+    /// center's and the barracks' of researches.
     pub(crate) const COMMAND_SETS: &str = "CommandSet AmericaCommandCenterCommandSet\r
   1 = Command_ConstructAmericaDozer\r
+  2 = Command_UpgradeAmericaCompositeArmor\r
+  3 = Command_UpgradeAmericaLaserMissiles ; a science\r
   13 = Command_SetRallyPoint\r
 End\r
 CommandSet AmericaDozerCommandSet\r
@@ -64,6 +67,9 @@ CommandSet AmericaBarracksCommandSet\r
   3 = Command_ConstructFortressWall ; a train of no walker\r
   5 = Command_ConstructGhost ; no object\r
   6 = Command_ConstructAmericaPowerPlant ; dropped again, reported once\r
+  7 = Command_UpgradeAmericaRangerFlashBang\r
+  8 = Command_UpgradeAmericaBarracksWalls\r
+  9 = Command_UpgradeLost ; no upgrade\r
 End\r
 ";
 }

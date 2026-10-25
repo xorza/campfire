@@ -23,6 +23,7 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
             collides: CollideMask::DEFAULT,
             at_self: false,
             continuous_fire: ContinuousFire::default(),
+            upgrade: UpgradeBonus::default(),
             min_range: 0.0,
             damage_type: DamageType::SmallArms,
             delay: ShotDelay::Fixed(100),
@@ -137,6 +138,19 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
             .continuous_fire
             .changes_other_fields()
     );
+    // The minigun's upgrade gives 125 % of its damage and changes nothing else; a bonus of
+    // another field changes one.
+    let upgrade = ini.get("Minigun").unwrap().upgrade;
+    assert_eq!(
+        (upgrade.damage(), upgrade.changes_other_fields()),
+        (1.25, false)
+    );
+    assert_eq!(rifle.upgrade.damage(), 1.0);
+    let mut ranged = WeaponIni::default();
+    ranged
+        .read(b"Weapon W\n  WeaponBonus = PLAYER_UPGRADE RANGE 150%\nEnd\n")
+        .unwrap();
+    assert!(ranged.get("W").unwrap().upgrade.changes_other_fields());
     let undone = "Weapon W\n  WeaponBonus = CONTINUOUS_FIRE_MEAN DAMAGE 150%\n  \
                   WeaponBonus = CONTINUOUS_FIRE_MEAN DAMAGE 100%\nEnd\n";
     let mut read = WeaponIni::default();

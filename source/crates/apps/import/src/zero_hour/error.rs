@@ -126,6 +126,10 @@ pub enum ZeroHourError {
     /// build stops at as wrong data.
     #[error("{object} names the armor {armor}, which no file defines")]
     NoArmor { object: String, armor: String },
+    /// An upgrade's name gives the modifier's name another upgrade's gives, or an effect's
+    /// modifier takes the name of an upgrade's or of a weapon stage's.
+    #[error("the upgrade or effect {0} has a name another modifier's gives")]
+    UpgradeName(String),
     /// A weapon's name makes the action's name another weapon's of other numbers makes.
     #[error("the weapon {0} has a name no action may take once")]
     WeaponName(String),

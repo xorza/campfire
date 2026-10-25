@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::{ActionKeys, ActionRange, RangeField, Targeting};
 use campfire_client_files::ClientUnits;
@@ -28,11 +28,18 @@ use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
+mod weapon_gate;
+
+use crate::zero_hour::combat_import::weapon_gate::WeaponGate;
+
 /// Zero Hour's combat (04-capabilities/combat.md, Armor by damage kind; 09-zero-hour.md, Life is
 /// the original's; 09-zero-hour.md, A weapon converts when it hits one target at once;
 /// 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
-/// slow weapons): the weapons of each unit type's starting weapon set that convert, as attack
-/// actions, once for the whole import, each in its type's slot kind `weapon`; every armor, the
+/// slow weapons; upgrades.md, Zero Hour's upgrade flags are tags and stats): the weapons of each
+/// unit type's starting weapon set and of its set of `PLAYER_UPGRADE` that convert, as attack
+/// actions, once for the whole import and its gate between the sets, each in its type's slot
+/// kind `weapon`; the stats their upgrades' damage bonuses name, each with what a
+/// `WeaponBonusUpgrade` adds to it; every armor, the
 /// share of each damage kind it does not take whole; the weapons dropped, each once for each
 /// cause, in the order the types are read; the objects whose body the import gives no life, and
 /// those whose body starts below its most life; each type's actions of the slot kind `weapon`, by
@@ -43,6 +50,9 @@ pub(crate) struct CombatImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedWeapon>,
     pub(crate) modifiers: BTreeMap<DeclaredName, StageModifier>,
     pub(crate) weapons: BTreeMap<TypeName, Vec<DeclaredName>>,
+    /// The types a weapon of their starting set arms.
+    armed: BTreeSet<TypeName>,
+    pub(crate) bonuses: BTreeMap<Stat, Number>,
     pub(crate) armors: BTreeMap<DeclaredName, BTreeMap<DeclaredName, ArmorShare>>,
     pub(crate) dropped: Losses<WeaponDropCause>,
     pub(crate) unliving: Vec<String>,
@@ -69,13 +79,24 @@ pub(crate) struct ImportedWeapon {
     pub(crate) delivery: Option<ProjectileDeliveryData>,
 }
 
-/// A weapon the import converts, the projectile it fires, if it fires one, and the modifiers of
-/// its stages of continuous fire, by their names.
+/// A weapon the import converts, the projectile it fires, if it fires one, the modifiers of its
+/// stages of continuous fire, by their names, and its upgrade's damage bonus.
 #[derive(Debug, Clone)]
 struct ConvertedWeapon<'a> {
     weapon: ImportedWeapon,
     fired: Option<FiredProjectile<'a>>,
     modifiers: Vec<(DeclaredName, StageModifier)>,
+    bonus: Option<DamageBonus>,
+}
+
+/// The stat a weapon's damage bonus of `PLAYER_UPGRADE` names, `upgrade_damage_<percent>`, one for
+/// each percent of the install's, and what a `WeaponBonusUpgrade` adds to it: the bonus less 1, as
+/// `WeaponBonus::appendBonuses` adds it, in the game's `f32` (upgrades.md, Zero Hour's upgrade
+/// flags are tags and stats).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DamageBonus {
+    stat: Stat,
+    added: Number,
 }
 
 /// A stage of a weapon's continuous fire as the mode's data writes it, `[modifiers.<weapon>_mean]`
@@ -116,10 +137,10 @@ struct Stages {
 const QUARTER_DEG: f32 = 90.0;
 
 impl CombatImport {
-    /// Whether a weapon it converted arms `unit`.
+    /// Whether a weapon it converted arms `unit` as it starts, before any upgrade: one of its
+    /// starting set, as a unit armed by its upgrade set alone attacks nothing until its upgrade.
     pub(crate) fn arms(&self, unit: &DeclaredName) -> bool {
-        let weapons = self.weapons.get(unit);
-        weapons.is_some_and(|weapons| !weapons.is_empty())
+        self.armed.contains(unit)
     }
 
     /// The combat of `rules`, of the unit types `names` made, each type's weapons by its name;
@@ -160,14 +181,18 @@ impl CombatImport {
         } in names.types()
         {
             let fight = object.fight();
-            // A type of an armor lives, and its armor is its object's starting one.
-            if let Some(armor) = fight.starting_armor().filter(|_| typed.armor().is_some())
-                && rules.armors.get(armor).is_none()
-            {
-                return Err(ZeroHourError::NoArmor {
-                    object: object.name.clone(),
-                    armor: armor.to_owned(),
-                });
+            // A type of an armor lives, and its armors are its object's starting and upgrade
+            // ones.
+            let armors = [fight.starting_armor(), fight.upgrade_armor()].into_iter();
+            if typed.armor().is_some() || !typed.tagged_armors().is_empty() {
+                for armor in armors.flatten() {
+                    if rules.armors.get(armor).is_none() {
+                        return Err(ZeroHourError::NoArmor {
+                            object: object.name.clone(),
+                            armor: armor.to_owned(),
+                        });
+                    }
+                }
             }
             match (fight.body, typed.life()) {
                 (Some(body), Some(_)) if body.initial < body.max => {
@@ -181,15 +206,21 @@ impl CombatImport {
             let Some(set) = fight.starting_weapons().filter(|_| !typed.leads()) else {
                 continue;
             };
-            for weapon in set.weapons.iter().flatten() {
-                let id = ImportName::latin(weapon).id("weapon")?;
+            for (weapon, gate) in WeaponGate::of(set, fight.upgrade_weapons()) {
+                let named = ImportName::latin(weapon).id("weapon")?;
                 let converted = rules
                     .weapons
                     .get(weapon)
                     .ok_or(WeaponDropCause::NoWeapon)
-                    .and_then(|ini| ImportedWeapon::of(ini, rules, &id));
+                    .and_then(|ini| ImportedWeapon::of(ini, rules, &named))
+                    .and_then(|converted| Ok((gate.id(&named)?, converted)))
+                    .and_then(|(id, converted)| {
+                        import.take_bonus(converted.bonus.as_ref())?;
+                        Ok((id, converted))
+                    });
                 match converted {
-                    Ok(converted) => {
+                    Ok((id, mut converted)) => {
+                        converted.weapon.keys.when = gate.when(&rules.names);
                         // Weapons whose names differ only in case would share one action.
                         match import.actions.entry(id.clone()) {
                             Entry::Occupied(held)
@@ -199,13 +230,13 @@ impl CombatImport {
                                         converted.fired.as_ref(),
                                     ) =>
                             {
-                                return Err(ZeroHourError::WeaponName(weapon.clone()));
+                                return Err(ZeroHourError::WeaponName(weapon.to_owned()));
                             }
                             Entry::Occupied(_) => {}
                             Entry::Vacant(new) => {
                                 new.insert(converted.weapon);
                                 if let Some(projectile) = converted.fired {
-                                    fired.insert(id.clone(), (weapon.as_str(), projectile));
+                                    fired.insert(id.clone(), (weapon, projectile));
                                 }
                                 import.modifiers.extend(converted.modifiers);
                             }
@@ -213,6 +244,9 @@ impl CombatImport {
                         let weapons = import.weapons.entry(type_name.clone()).or_default();
                         if !weapons.contains(&id) {
                             weapons.push(id);
+                        }
+                        if gate != WeaponGate::Upgraded {
+                            import.armed.insert(type_name.clone());
                         }
                     }
                     Err(cause) => import.dropped.drop(weapon, cause),
@@ -222,6 +256,22 @@ impl CombatImport {
         import.armors = armors;
         import.name_projectiles(fired, names)?;
         Ok(import)
+    }
+
+    /// Keeps the stat of `bonus`, a weapon's, with what an upgrade adds to it; a bad number for a
+    /// stat another weapon's bonus of another percent named, as two percents round to one name.
+    fn take_bonus(&mut self, bonus: Option<&DamageBonus>) -> Result<(), WeaponDropCause> {
+        let Some(DamageBonus { stat, added }) = bonus else {
+            return Ok(());
+        };
+        match self.bonuses.entry(stat.clone()) {
+            Entry::Occupied(held) if held.get() != added => Err(WeaponDropCause::BadNumber),
+            Entry::Occupied(_) => Ok(()),
+            Entry::Vacant(new) => {
+                new.insert(added.clone());
+                Ok(())
+            }
+        }
     }
 
     /// Names the projectile type of each of `fired`, by its action, in `names`, and delivers it
@@ -347,6 +397,10 @@ impl ImportedWeapon {
             return Err(WeaponDropCause::AtSelf);
         }
         let stages = Self::stages(weapon, id, &rules.names.rate_of_fire)?;
+        if weapon.upgrade.changes_other_fields() {
+            return Err(WeaponDropCause::UpgradeBonus);
+        }
+        let bonus = Self::damage_bonus(weapon.upgrade.damage())?;
         // A clip of one shot reloads after each shot from the shot, so its delay never counts, and
         // its reload is its period (09-zero-hour.md, A clip of one shot is a period).
         let one_shot = weapon.clip_size == 1;
@@ -479,7 +533,7 @@ impl ImportedWeapon {
                     rate: WeaponValue::Own(ms(period_ms)?),
                     rate_bonus: stages.as_ref().map(|_| rules.names.rate_of_fire.clone()),
                     damage: WeaponValue::Own(damage),
-                    damage_bonus: None,
+                    damage_bonus: bonus.as_ref().map(|bonus| bonus.stat.clone()),
                     damage_kind: damage_kind.kind(),
                     clip,
                     splash,
@@ -493,7 +547,32 @@ impl ImportedWeapon {
             },
             fired,
             modifiers: stages.map_or_else(Vec::new, |stages| stages.modifiers),
+            bonus,
         })
+    }
+
+    /// The damage bonus of `factor`, a weapon's of `PLAYER_UPGRADE`: none for a factor of 1, which
+    /// changes nothing; a bad number for a percent below 0, past a `u32` or not finite.
+    fn damage_bonus(factor: f32) -> Result<Option<DamageBonus>, WeaponDropCause> {
+        if factor == 1.0 {
+            return Ok(None);
+        }
+        let percent = (factor * 100.0).round();
+        if !(0.0..4_294_967_296.0).contains(&f64::from(percent)) {
+            return Err(WeaponDropCause::BadNumber);
+        }
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a whole percent within a u32"
+        )]
+        let percent = percent as u32;
+        let stat = Stat::named(&format!("upgrade_damage_{percent}")).expect("a stat's name");
+        let added = game_float::to_num(factor - 1.0).map_err(|_| WeaponDropCause::BadNumber)?;
+        Ok(Some(DamageBonus {
+            stat,
+            added: Number::Value(Scalar::Decimal(added)),
+        }))
     }
 
     /// The streak of `weapon`'s continuous fire, of the action `id`, and the modifiers of its two
@@ -574,6 +653,25 @@ impl ImportedWeapon {
             (false, false, true) => Some(RelationSet::Neutrals),
             (true, false, false) => Some(RelationSet::Allies),
             _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod reach_in {
+    use campfire_common::DeclaredName;
+
+    use crate::zero_hour::combat_import::CombatImport;
+    use crate::zero_hour::type_name::TypeName;
+
+    impl CombatImport {
+        /// Gives `unit` the weapon `weapon`, of its starting set when `starting`, else of its
+        /// upgrade set alone, as the conversion of its object's sets gives it.
+        pub(crate) fn give(&mut self, unit: TypeName, weapon: DeclaredName, starting: bool) {
+            if starting {
+                self.armed.insert(unit.clone());
+            }
+            self.weapons.entry(unit).or_default().push(weapon);
         }
     }
 }

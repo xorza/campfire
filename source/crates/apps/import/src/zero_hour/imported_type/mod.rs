@@ -1,4 +1,4 @@
-use campfire_combat::{CombatData, CombatPatch, TurretData, TurretPatch};
+use campfire_combat::{CombatData, CombatPatch, TaggedArmorData, TurretData, TurretPatch};
 use campfire_common::DeclaredName;
 use campfire_declarations::SectionWriter;
 use campfire_geometry::BodyBox;
@@ -29,7 +29,9 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// drives, or, when it is a structure that is not small, a box of twice its radii for a box
 /// geometry, else a circle of its radius, of its geometry's height (04-capabilities/00-overview.md,
 /// A body has a height); the life of an active or a structure body, with its `combat` section of
-/// the armor of its starting armor set; the tags of its kinds, of victory for a structure that
+/// the armor of its starting armor set and, as its `armors`, the one of its armor set of
+/// `PLAYER_UPGRADE` while its unit holds the tag of that flag (upgrades.md, Zero Hour's upgrade
+/// flags are tags and stats); the tags of its kinds, of victory for a structure that
 /// counts for one, and of a structure, a wall and infantry, which a projectile's hits and a scatter
 /// name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its
 /// `BuildCost` in money as the cost a kill's bounty takes its share of; and the money its
@@ -54,8 +56,8 @@ pub(crate) struct ImportedType {
     /// The body of each of its build variations, in their order, of a type that varies, in place
     /// of its own `collision` (04-capabilities/00-overview.md, A unit type may vary its units).
     variations: Option<VariationsData>,
-    /// The armor of its starting armor set, the one field of its `combat` the install gives; the
-    /// engine's own load completes it from the rules data's defaults.
+    /// The armor of its starting armor set, and of its upgrade's, the fields of its `combat` the
+    /// install gives; the engine's own load completes it from the rules data's defaults.
     combat: Option<CombatPatch>,
     /// Its turn rate, the one field of its `turret` the install gives, completed as `combat` is.
     turret: Option<TurretPatch>,
@@ -185,8 +187,20 @@ impl ImportedType {
             .starting_armor()
             .map(|armor| ImportName::latin(armor).declared())
             .transpose()?;
+        let upgraded = fight
+            .upgrade_armor()
+            .filter(|&upgraded| fight.starting_armor() != Some(upgraded))
+            .map(|upgraded| ImportName::latin(upgraded).declared())
+            .transpose()?;
+        let armors = upgraded.map(|armor| {
+            vec![TaggedArmorData {
+                when: names.armor_upgraded.clone(),
+                armor,
+            }]
+        });
         let combat = life.map(|_| CombatPatch {
             armor,
+            armors,
             ..CombatPatch::default()
         });
         // A turret that turns no weapon, or does not turn, aims nothing the engine's turret aims.
@@ -374,9 +388,22 @@ impl ImportedType {
         self.life
     }
 
+    /// Whether it is a fired projectile's type, which holds its flight alone.
+    pub(crate) const fn is_projectile(&self) -> bool {
+        self.projectile.is_some()
+    }
+
     /// Its armor, of a type that lives.
     pub(crate) fn armor(&self) -> Option<&DeclaredName> {
         self.combat.as_ref()?.armor.as_ref()
+    }
+
+    /// The armors it takes by its tags, of a type that lives.
+    pub(crate) fn tagged_armors(&self) -> &[TaggedArmorData] {
+        let combat = self.combat.as_ref();
+        combat
+            .and_then(|combat| combat.armors.as_deref())
+            .unwrap_or_default()
     }
 
     /// How far its body reaches from its unit's place along `x` and `z`, at `angle` degrees, as

@@ -6,6 +6,7 @@ use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCa
 use crate::zero_hour::model_writer::SkippedModel;
 use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::supply_import::SupplyDropCause;
+use crate::zero_hour::upgrade_import::UpgradeDropCause;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 
 /// What the import does not hold of the install as the original holds it, each with what it is
@@ -26,6 +27,9 @@ pub enum ImportLoss {
     Button(Dropped<ButtonDropCause>),
     /// A supply module the import does not convert (09-zero-hour.md, A box is money).
     Supply(Dropped<SupplyDropCause>),
+    /// An upgrade module, or an object's weapon sets and armor sets, the import does not
+    /// convert (upgrades.md, Zero Hour's upgrade flags are tags and stats).
+    Upgrade(Dropped<UpgradeDropCause>),
     /// A weapon the import does not convert (09-zero-hour.md, A weapon converts when it hits one
     /// target at once).
     Weapon(Dropped<WeaponDropCause>),

@@ -54,6 +54,11 @@ fn warn_of(loss: &ImportLoss) {
             cause = ?dropped.cause,
             "a command button is not imported"
         ),
+        ImportLoss::Upgrade(dropped) => warn!(
+            module = dropped.name,
+            cause = ?dropped.cause,
+            "an upgrade module, or an object's sets, are not imported"
+        ),
         ImportLoss::Supply(dropped) => warn!(
             object = dropped.name,
             cause = ?dropped.cause,

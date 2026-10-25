@@ -3,7 +3,7 @@
 
 use campfire_bots::OrderUnsent;
 use campfire_common::PackageFingerprint;
-use campfire_import::{ButtonDropCause, SupplyDropCause, WeaponDropCause};
+use campfire_import::{ButtonDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause};
 use campfire_mode::MatchResult;
 use campfire_orders::OrderDropCause;
 use campfire_runner::BotInputDrop;
@@ -354,6 +354,18 @@ pub(crate) struct ProducedCounts {
     pub(crate) trains: usize,
     pub(crate) builds: usize,
     pub(crate) dropped: [usize; ButtonDropCause::ALL.len()],
+}
+
+/// How many researches the import converts from every command set, how many upgrade modules its
+/// unit types take, and how many modules and objects of sets it drops for each cause, in the
+/// order of `UpgradeDropCause::ALL` (upgrades.md, Zero Hour's upgrade flags are tags and stats).
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[display("{researches} researches, {modules} modules, dropped {:?}", dropped)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct UpgradedCounts {
+    pub(crate) researches: usize,
+    pub(crate) modules: usize,
+    pub(crate) dropped: [usize; UpgradeDropCause::ALL.len()],
 }
 
 /// How many ground quads, overlays, texture copies and border wraps a terrain file holds.

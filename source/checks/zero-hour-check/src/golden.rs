@@ -11,11 +11,12 @@ use crate::error::CheckError;
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, Fingerprints, FoughtCounts, LookCounts, MapCounts,
     MissileTicks, ProducedCounts, SkirmishTicks, SuppliedCounts, SupplyTicks, TerrainCounts,
+    UpgradedCounts,
 };
 
 /// What the check measured of the known version and this importer, each a value no closed form
 /// gives: the fingerprints, a run on Linux and a run on macOS alike; Tournament Desert's counts;
-/// the import's looks, trains, builds, supply and weapons; the plays' ticks, the supply play's
+/// the import's looks, trains, builds, researches, upgrades, supply and weapons; the plays' ticks, the supply play's
 /// deliveries, the defense plays' hits and kills and the missile play's shot, hit and kill among
 /// them; the bot's base; and how the base play's and the attack play's matches stood.
 /// A run pins them, and a run that blesses writes them again (09-zero-hour.md, The check's
@@ -30,6 +31,7 @@ pub(crate) struct Golden {
     pub(crate) terrain: TerrainCounts,
     pub(crate) looks: LookCounts,
     pub(crate) produced: ProducedCounts,
+    pub(crate) upgraded: UpgradedCounts,
     pub(crate) supplied: SuppliedCounts,
     pub(crate) fought: FoughtCounts,
     pub(crate) skirmish: SkirmishTicks,
@@ -53,6 +55,7 @@ pub(crate) struct Measured {
     pub(crate) terrain: Option<TerrainCounts>,
     pub(crate) looks: Option<LookCounts>,
     pub(crate) produced: Option<ProducedCounts>,
+    pub(crate) upgraded: Option<UpgradedCounts>,
     pub(crate) supplied: Option<SuppliedCounts>,
     pub(crate) fought: Option<FoughtCounts>,
     pub(crate) skirmish: Option<SkirmishTicks>,
@@ -114,6 +117,7 @@ impl Measured {
             terrain: self.terrain?,
             looks: self.looks?,
             produced: self.produced?,
+            upgraded: self.upgraded?,
             supplied: self.supplied?,
             fought: self.fought?,
             skirmish: self.skirmish?,

@@ -17,7 +17,8 @@ pub(crate) struct WeaponIni {
 /// a second, `INSTANT` by default; its `MinTargetPitch` and `MaxTargetPitch` in degrees, −180 and
 /// 180 by default; whether it names a `LaserName`; whether it may hit the ground, `AntiGround`,
 /// yes by default; its `RadiusDamageAffects` and its `ProjectileCollidesWith`; whether it deals its
-/// damage at its own place, `DamageDealtAtSelfPosition`; its continuous fire; its `DamageType`, of
+/// damage at its own place, `DamageDealtAtSelfPosition`; its continuous fire; its bonuses of
+/// `PLAYER_UPGRADE`, 1 by default, as `WeaponBonus` starts; its `DamageType`, of
 /// the game's types, `EXPLOSION` by default; its `DelayBetweenShots`, `ClipSize`, `ClipReloadTime`
 /// and `PreAttackDelay`, times in milliseconds; its `PreAttackType`, `PER_SHOT` by default; and its
 /// `ProjectileObject`, none for `NONE`.
@@ -38,6 +39,7 @@ pub(crate) struct IniWeapon {
     pub(crate) collides: CollideMask,
     pub(crate) at_self: bool,
     pub(crate) continuous_fire: ContinuousFire,
+    pub(crate) upgrade: UpgradeBonus,
     pub(crate) min_range: f32,
     pub(crate) damage_type: DamageType,
     pub(crate) delay: ShotDelay,
@@ -63,6 +65,13 @@ pub(crate) struct ContinuousFire {
     pub(crate) shots: [i32; 2],
     pub(crate) coast_ms: i32,
     bonuses: [[f32; BONUS_FIELDS.len()]; 2],
+}
+
+/// What a weapon's object gains with `PLAYER_UPGRADE`, as a `WeaponBonusUpgrade` sets it: its
+/// bonus to each field of `BONUS_FIELDS`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct UpgradeBonus {
+    bonuses: [f32; BONUS_FIELDS.len()],
 }
 
 /// `TheWeaponBonusNames`, of the game's build, which leaves `ALLOW_DEMORALIZE` out: a bonus's
@@ -100,11 +109,17 @@ const BONUS_CONDITIONS: [&str; 27] = [
 /// The place of `CONTINUOUS_FIRE_MEAN` among `BONUS_CONDITIONS`, `FAST` the next.
 const CONTINUOUS_FIRE_MEAN: usize = 2;
 
+/// The place of `PLAYER_UPGRADE` among `BONUS_CONDITIONS`.
+const PLAYER_UPGRADE: usize = 5;
+
 /// `TheWeaponBonusFieldNames`: what a bonus changes, the rate of fire at 3.
 const BONUS_FIELDS: [&str; 5] = ["DAMAGE", "RADIUS", "RANGE", "RATE_OF_FIRE", "PRE_ATTACK"];
 
 /// The place of `RATE_OF_FIRE` among `BONUS_FIELDS`.
 const RATE_OF_FIRE: usize = 3;
+
+/// The place of `DAMAGE` among `BONUS_FIELDS`.
+const DAMAGE: usize = 0;
 
 /// A weapon's `RadiusDamageAffects`, of `TheWeaponAffectsMaskNames`: whom its radius damages, by
 /// their relation to its unit, its unit itself, `SELF`, and whether it kills its own unit, spares
@@ -184,6 +199,7 @@ impl Default for IniWeapon {
             collides: CollideMask::DEFAULT,
             at_self: false,
             continuous_fire: ContinuousFire::default(),
+            upgrade: UpgradeBonus::default(),
             min_range: 0.0,
             damage_type: DamageType::Explosion,
             delay: ShotDelay::default(),
@@ -291,6 +307,27 @@ impl Default for ContinuousFire {
     }
 }
 
+impl Default for UpgradeBonus {
+    fn default() -> Self {
+        Self {
+            bonuses: [1.0; BONUS_FIELDS.len()],
+        }
+    }
+}
+
+impl UpgradeBonus {
+    /// Its bonus to the damage.
+    pub(crate) const fn damage(&self) -> f32 {
+        self.bonuses[DAMAGE]
+    }
+
+    /// Whether it changes a field other than the damage, its bonus to it not 1.
+    pub(crate) fn changes_other_fields(&self) -> bool {
+        let mut fields = self.bonuses.iter().enumerate();
+        fields.any(|(at, &bonus)| at != DAMAGE && bonus != 1.0)
+    }
+}
+
 impl ContinuousFire {
     /// The rate of fire each stage gives, `MEAN`'s and `FAST`'s.
     pub(crate) const fn rates(&self) -> [f32; 2] {
@@ -309,8 +346,8 @@ impl ContinuousFire {
 impl IniWeapon {
     /// Takes a `WeaponBonus` line, its condition, its field and its percent, as
     /// `WeaponBonusSet::parseWeaponBonusSet` sets one field of one condition, a later line of the
-    /// same over the earlier, keeping the continuous-fire stages'; a name of no list fails the
-    /// read, as `INI::scanIndexList` does.
+    /// same over the earlier, keeping the continuous-fire stages' and `PLAYER_UPGRADE`'s; a name
+    /// of no list fails the read, as `INI::scanIndexList` does.
     fn bonus(&mut self, at: &IniLine<'_>) -> Result<(), IniError> {
         let listed = |token: Option<&&str>, names: &[&str]| {
             let token = token.ok_or(IniError::NoValue { line: at.number })?;
@@ -323,6 +360,10 @@ impl IniWeapon {
         let field = listed(at.tokens.get(2), &BONUS_FIELDS)?;
         // `INI::scanPercentToReal` divides the real by 100 in the game's `f32`.
         let value = at.real_at(3)? / 100.0;
+        if condition == PLAYER_UPGRADE {
+            self.upgrade.bonuses[field] = value;
+            return Ok(());
+        }
         let Some(stage) = condition
             .checked_sub(CONTINUOUS_FIRE_MEAN)
             .filter(|&stage| stage < 2)
@@ -532,6 +573,7 @@ Weapon Bolt\r
   AttackRange = 100\r
   WeaponSpeed = 2400\r
   DelayBetweenShots = 1000\r
+  WeaponBonus = PLAYER_UPGRADE DAMAGE 125%\r
 End\r
 Weapon Stinger\r
   PrimaryDamage = 30\r

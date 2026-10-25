@@ -7,13 +7,15 @@ use campfire_codec::Binary;
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
 use campfire_import::{
-    ButtonDropCause, Dropped, ImportLoss, Imported, SupplyDropCause, WeaponDropCause,
+    ButtonDropCause, Dropped, ImportLoss, Imported, SupplyDropCause, UpgradeDropCause,
+    WeaponDropCause,
 };
 use campfire_math::Num;
 use campfire_navigation::MapNavigationData;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
 use campfire_production::{DropOffData, NodeData};
+use campfire_stats::UpgradesData;
 use tracing::info;
 
 use crate::attack_play::AttackPlay;
@@ -27,7 +29,7 @@ use crate::missile_play::MissilePlay;
 use crate::pins::{
     FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
     ProducedCounts, ProductionSteps, SkirmishTicks, SuppliedCounts, SupplySteps, TerrainCounts,
-    TerrainDrawn,
+    TerrainDrawn, UpgradedCounts,
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
@@ -224,6 +226,47 @@ impl ImportCheck<'_> {
             dropped = ?produced.dropped,
             "the command sets' trains and builds"
         );
+    }
+
+    /// The researches of every command set, the upgrade modules the unit types take, and the
+    /// modules and objects of sets dropped, by cause.
+    pub(crate) fn upgrades(&mut self) {
+        let dropped: Vec<&Dropped<UpgradeDropCause>> = self
+            .imported
+            .losses
+            .iter()
+            .filter_map(|loss| match loss {
+                ImportLoss::Upgrade(module) => Some(module),
+                _ => None,
+            })
+            .collect();
+        let units = self.packages.content().units.values();
+        let modules = units
+            .filter_map(|unit| unit.section::<UpgradesData>())
+            .map(|upgrades| upgrades.0.len())
+            .sum();
+        let upgraded = UpgradedCounts {
+            researches: self.kind_count(ActionKind::Research),
+            modules,
+            dropped: UpgradeDropCause::ALL.map(|cause| {
+                dropped
+                    .iter()
+                    .filter(|module| module.cause == cause)
+                    .count()
+            }),
+        };
+        let expected = self.pinned(|golden| golden.upgraded, upgraded);
+        self.failures
+            .extend(Differs::of(upgraded, expected).map(CheckFailure::Upgraded));
+        self.measured.upgraded = Some(upgraded);
+        for dropped in &dropped {
+            info!(
+                module = dropped.name,
+                cause = ?dropped.cause,
+                "an upgrade module, or an object's sets, are not imported"
+            );
+        }
+        info!(%upgraded, "the researches and the upgrade modules");
     }
 
     /// The docks' nodes, the supply centers' drop-offs, the gatherers' gathers, the hackers'

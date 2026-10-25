@@ -10,13 +10,16 @@ pub(crate) struct CommandButtonIni {
     buttons: BTreeMap<String, CommandButton>,
 }
 
-/// What the import reads of a button: its command, the object it makes, and the label of its
-/// text in the string table.
+/// What the import reads of a button: its command, the object it makes, the upgrade it
+/// researches, the label of its text in the string table, and whether it needs a science, as a
+/// `Science` line of a science names one.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct CommandButton {
     pub(crate) command: ButtonCommand,
     pub(crate) object: Option<String>,
+    pub(crate) upgrade: Option<String>,
     pub(crate) label: Option<String>,
+    pub(crate) science: bool,
 }
 
 /// A button's `Command`, of those the import converts.
@@ -26,6 +29,10 @@ pub(crate) enum ButtonCommand {
     UnitBuild,
     /// `DOZER_CONSTRUCT`: its builder places its object to build it.
     DozerConstruct,
+    /// `PLAYER_UPGRADE`: its producer researches its upgrade for its player.
+    PlayerUpgrade,
+    /// `OBJECT_UPGRADE`: its producer researches its upgrade for itself.
+    ObjectUpgrade,
     /// Any other, which the import leaves.
     #[default]
     Other,
@@ -47,10 +54,22 @@ impl CommandButtonIni {
                         button.command = match line.value()?.to_ascii_uppercase().as_str() {
                             "UNIT_BUILD" => ButtonCommand::UnitBuild,
                             "DOZER_CONSTRUCT" => ButtonCommand::DozerConstruct,
+                            "PLAYER_UPGRADE" => ButtonCommand::PlayerUpgrade,
+                            "OBJECT_UPGRADE" => ButtonCommand::ObjectUpgrade,
                             _ => ButtonCommand::Other,
                         };
                     }
                     "object" => button.object = Some(line.value()?.to_owned()),
+                    "upgrade" => button.upgrade = Some(line.value()?.to_owned()),
+                    // `parseScienceVector` starts the list again, and a `NONE` anywhere in it
+                    // empties it.
+                    "science" => {
+                        let sciences = &line.tokens[1..];
+                        button.science = !sciences.is_empty()
+                            && !sciences
+                                .iter()
+                                .any(|token| token.eq_ignore_ascii_case("none"));
+                    }
                     "textlabel" => button.label = Some(line.value()?.to_owned()),
                     _ => {}
                 }
@@ -112,6 +131,29 @@ CommandButton Command_ConstructGhost\r
   Command = UNIT_BUILD\r
   Object = Lost\r
 End\r
+CommandButton Command_UpgradeAmericaCompositeArmor\r
+  Command = PLAYER_UPGRADE\r
+  Upgrade = Upgrade_AmericaCompositeArmor\r
+  TextLabel = CONTROLBAR:UpgradeCompositeArmor\r
+End\r
+CommandButton Command_UpgradeAmericaRangerFlashBang\r
+  Command = PLAYER_UPGRADE\r
+  Upgrade = Upgrade_AmericaRangerFlashBang\r
+End\r
+CommandButton Command_UpgradeAmericaBarracksWalls\r
+  Command = OBJECT_UPGRADE\r
+  Upgrade = Upgrade_AmericaBarracksWalls\r
+  Science = None\r
+End\r
+CommandButton Command_UpgradeAmericaLaserMissiles\r
+  Command = PLAYER_UPGRADE\r
+  Upgrade = Upgrade_AmericaCompositeArmor\r
+  Science = SCIENCE_AMERICA\r
+End\r
+CommandButton Command_UpgradeLost\r
+  Command = OBJECT_UPGRADE\r
+  Upgrade = Upgrade_Lost\r
+End\r
 ";
 }
 
@@ -127,7 +169,9 @@ mod tests {
         let dozer = CommandButton {
             command: ButtonCommand::UnitBuild,
             object: Some("AmericaVehicleDozer".to_owned()),
+            upgrade: None,
             label: Some("CONTROLBAR:ConstructAmericaDozer".to_owned()),
+            science: false,
         };
         assert_eq!(ini.get("Command_ConstructAmericaDozer"), Some(&dozer));
         let rally = ini.get("Command_SetRallyPoint").unwrap();
@@ -140,6 +184,26 @@ mod tests {
             ButtonCommand::DozerConstruct
         );
         assert!(ini.get("command_constructamericadozer").is_none());
+        // An upgrade's button names it; a science of `NONE` is none.
+        let armor = ini.get("Command_UpgradeAmericaCompositeArmor").unwrap();
+        assert_eq!(
+            (armor.command, armor.upgrade.as_deref(), armor.science),
+            (
+                ButtonCommand::PlayerUpgrade,
+                Some("Upgrade_AmericaCompositeArmor"),
+                false
+            )
+        );
+        let walls = ini.get("Command_UpgradeAmericaBarracksWalls").unwrap();
+        assert_eq!(
+            (walls.command, walls.science),
+            (ButtonCommand::ObjectUpgrade, false)
+        );
+        assert!(
+            ini.get("Command_UpgradeAmericaLaserMissiles")
+                .unwrap()
+                .science
+        );
         // A later file keeps the fields it does not name; a command of either case is read.
         ini.read(b"CommandButton Command_ConstructAmericaDozer\n Command = dozer_construct\nEnd\n")
             .unwrap();

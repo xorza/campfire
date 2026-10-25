@@ -32,6 +32,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
             start: &start,
             production: &ProductionImport::default(),
             combat,
+            upgrades: &UpgradeImport::default(),
             start_money: &money,
         })
     };
@@ -98,6 +99,8 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
         &names.wall,
         &names.base_defense,
         &names.infantry,
+        &names.armor_upgrade,
+        &names.weapon_upgrade,
     ] {
         assert!(tags.holds(tag.as_str()), "{tag}");
     }

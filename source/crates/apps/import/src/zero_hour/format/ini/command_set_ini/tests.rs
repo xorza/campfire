@@ -23,7 +23,12 @@ fn a_set_lists_its_buttons_by_place_a_later_file_over_the_places_it_names() {
         .unwrap();
     assert_eq!(
         buttons(&ini, "AmericaCommandCenterCommandSet").unwrap(),
-        ["Other", "Second", "Command_SetRallyPoint"]
+        [
+            "Other",
+            "Second",
+            "Command_UpgradeAmericaLaserMissiles",
+            "Command_SetRallyPoint"
+        ]
     );
     let fails = |text: &[u8]| CommandSetIni::default().read(text).unwrap_err();
     assert_eq!(

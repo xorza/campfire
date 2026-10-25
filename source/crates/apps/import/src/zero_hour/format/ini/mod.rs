@@ -13,4 +13,5 @@ pub(crate) mod multiplayer_ini;
 pub(crate) mod object_ini;
 pub(crate) mod player_template_ini;
 pub(crate) mod terrain_ini;
+pub(crate) mod upgrade_ini;
 pub(crate) mod weapon_ini;

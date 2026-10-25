@@ -146,6 +146,34 @@ Weapon = PRIMARY TankCannon\r
 Weapon = SECONDARY RangerRifle\r
 Weapon = TERTIARY Railgun\r
   End\r
+  WeaponSet\r
+Conditions = CRATEUPGRADE_ONE\r
+Weapon = PRIMARY TankCannon\r
+  End\r
+  ArmorSet\r
+Conditions = None\r
+Armor = HumanArmor\r
+  End\r
+  ArmorSet\r
+Conditions = PLAYER_UPGRADE\r
+Armor = StructureArmor\r
+  End\r
+  Behavior = ArmorUpgrade ModuleTag_20\r
+TriggeredBy = Upgrade_AmericaCompositeArmor\r
+  End\r
+  Behavior = MaxHealthUpgrade ModuleTag_21\r
+TriggeredBy = Upgrade_AmericaCompositeArmor\r
+AddMaxHealth = 100.0\r
+ChangeType = ADD_CURRENT_HEALTH_TOO\r
+  End\r
+  Behavior = MaxHealthUpgrade ModuleTag_22\r
+TriggeredBy = Upgrade_AmericaCompositeArmor\r
+AddMaxHealth = 50.0\r
+ChangeType = PRESERVE_RATIO\r
+  End\r
+  Behavior = StealthUpgrade ModuleTag_23\r
+TriggeredBy = Upgrade_AmericaCompositeArmor\r
+  End\r
   Locomotor = SET_NORMAL TankTreads\r
   Behavior = AIUpdateInterface ModuleTag_06\r
 Turret\r
@@ -170,6 +198,9 @@ SecondHeight = 10\r
 FirstPercentIndent = 50%\r
 SecondPercentIndent = 90%\r
 FlightPathAdjustDistPerSecond = 100\r
+  End\r
+  Behavior = WeaponBonusUpgrade ModuleTag_04\r
+TriggeredBy = Upgrade_AmericaCompositeArmor\r
   End\r
   Geometry = SPHERE\r
   GeometryMajorRadius = 1.0\r
@@ -245,6 +276,11 @@ InitialHealth = 1200.0\r
   Behavior = ProductionUpdate ModuleTag_11\r
 MaxQueueEntries = 5\r
   End\r
+  Behavior = MaxHealthUpgrade ModuleTag_20\r
+TriggeredBy = Upgrade_AmericaBarracksWalls\r
+AddMaxHealth = 200.0\r
+ChangeType = ADD_CURRENT_HEALTH_TOO\r
+  End\r
   Behavior = QueueProductionExitUpdate ModuleTag_12\r
 UnitCreatePoint = X:0.0 Y:0.0 Z:0.0\r
 NaturalRallyPoint = X:55.0 Y:0.0 Z:0.0\r
@@ -258,7 +294,20 @@ InitialHealth = 180.0\r
   End\r
   WeaponSet\r
 Conditions = PLAYER_UPGRADE\r
-Weapon = PRIMARY Flamer\r
+Weapon = PRIMARY RangerRifle\r
+Weapon = SECONDARY Bolt\r
+Weapon = TERTIARY Flamer\r
+  End\r
+  Behavior = WeaponSetUpgrade ModuleTag_20\r
+TriggeredBy = Upgrade_AmericaRangerFlashBang\r
+  End\r
+  Behavior = WeaponBonusUpgrade ModuleTag_21\r
+TriggeredBy = Upgrade_AmericaRangerFlashBang Upgrade_AmericaCompositeArmor\r
+RequiresAllTriggers = Yes\r
+ConflictsWith = Upgrade_AmericaBarracksWalls Upgrade_Unknown\r
+  End\r
+  Behavior = ArmorUpgrade ModuleTag_22\r
+TriggeredBy = Upgrade_Lost\r
   End\r
   WeaponSet\r
 Conditions = None\r

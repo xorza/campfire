@@ -1,7 +1,7 @@
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::filter_data::FilterData;
+use crate::filter_data::{FilterData, FilterTag};
 use crate::relation_set::RelationSet;
 
 /// A filter in data that selects by tags alone, its relations `all`, as a death's `victim`
@@ -11,6 +11,14 @@ use crate::relation_set::RelationSet;
 pub struct TagFilterData(FilterData);
 
 impl TagFilterData {
+    /// The filter of `tags`, its relations `all`, as a tool writes one.
+    pub fn new(tags: impl IntoIterator<Item = FilterTag>) -> Self {
+        Self(FilterData {
+            relations: RelationSet::All,
+            tags: tags.into_iter().collect(),
+        })
+    }
+
     /// The filter, its relations `all`.
     pub const fn filter(&self) -> &FilterData {
         &self.0
@@ -47,6 +55,7 @@ impl Serialize for TagFilterData {
 #[cfg(test)]
 mod tests {
     use campfire_codec::Toml;
+    use campfire_common::DeclaredName;
 
     use super::*;
 
@@ -66,5 +75,12 @@ mod tests {
             "filter enemies:!constructing selects by tags alone, its relations all"
         );
         assert_eq!(TagFilterData::default().filter(), &FilterData::all());
+        // A filter made of its tags writes as one read of them.
+        let tag = |name: &str, negated| FilterTag {
+            name: DeclaredName::new(name).unwrap(),
+            negated,
+        };
+        let made = TagFilterData::new([tag("constructing", true), tag("armored", false)]);
+        assert_eq!(made, read("all:!constructing:armored").unwrap());
     }
 }

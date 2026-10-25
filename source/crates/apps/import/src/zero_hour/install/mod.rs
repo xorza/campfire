@@ -361,6 +361,7 @@ pub(crate) mod samples {
         DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
     };
     use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
+    use crate::zero_hour::format::ini::upgrade_ini::samples::UPGRADES;
     use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
     use crate::zero_hour::format::map::map_file::samples::map;
     use crate::zero_hour::format::ref_pack::samples::literal;
@@ -416,6 +417,7 @@ pub(crate) mod samples {
                 ("Data\\INI\\PlayerTemplate.ini", PLAYER_TEMPLATES.as_bytes()),
                 ("Data\\INI\\CommandSet.ini", COMMAND_SETS.as_bytes()),
                 ("Data\\INI\\CommandButton.ini", COMMAND_BUTTONS.as_bytes()),
+                ("Data\\INI\\Upgrade.ini", UPGRADES.as_bytes()),
                 ("Data\\INI\\Multiplayer.ini", MULTIPLAYER.as_bytes()),
                 ("Data\\English\\generals.csf", &strings()),
                 ("Data\\INI\\Object.ini", OBJECTS.as_bytes()),

@@ -38,6 +38,7 @@ use crate::zero_hour::rules_package::{ModeImport, RULES_FILES};
 use crate::zero_hour::skirmish_start::SkirmishStart;
 use crate::zero_hour::terrain_atlas::ClassTexture;
 use crate::zero_hour::unit_types::TypeAdditions;
+use crate::zero_hour::upgrade_import::UpgradeImport;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 pub(crate) mod archive_path;
@@ -73,6 +74,7 @@ pub(crate) mod terrain_atlas;
 pub(crate) mod terrain_cells;
 pub(crate) mod type_name;
 pub(crate) mod unit_types;
+pub(crate) mod upgrade_import;
 pub(crate) mod weapon_drop_cause;
 pub(crate) mod zero_hour_rules;
 
@@ -244,6 +246,7 @@ impl ZeroHour {
         let mut object_names = object_names.into_projectiles();
         let combat = CombatImport::of(&game, &mut object_names)?;
         combat.add_projectile_looks(&mut looks);
+        let upgrades = UpgradeImport::of(&game, object_names.types(), &production, &combat)?;
         let text = Toml::write(&looks);
         writer.write(ClientUnits::path(), text.as_bytes())?;
         // Every unit type is made: the maps', the start's, the command sets' and the projectiles
@@ -254,6 +257,7 @@ impl ZeroHour {
             start: &start,
             production: &production,
             combat: &combat,
+            upgrades: &upgrades,
             start_money: &money,
         };
         writer.write(ModeFile::path(), rules_package::mode_data(mode).as_bytes())?;
@@ -264,6 +268,7 @@ impl ZeroHour {
             nodes: &production.supply.nodes,
             drop_offs: &production.supply.drop_offs,
             spawns: &production.supply.spawns,
+            upgrades: &upgrades.types,
         };
         let units = types.units_file(additions, &game.names);
         writer.write(UnitsFile::path(), units.text.as_bytes())?;
@@ -293,6 +298,7 @@ impl ZeroHour {
             }
         }
         losses.extend(production.dropped.into_iter().map(ImportLoss::Button));
+        losses.extend(upgrades.dropped.into_iter().map(ImportLoss::Upgrade));
         let supply = production.supply.dropped.into_iter();
         losses.extend(supply.map(ImportLoss::Supply));
         losses.extend(combat.dropped.into_iter().map(ImportLoss::Weapon));
@@ -315,7 +321,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 3;
+    pub const OUTPUT_VERSION: u32 = 5;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint.
     fn write_rules(dir: &Path) -> Result<PackageFingerprint, ZeroHourError> {

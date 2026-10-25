@@ -9,12 +9,14 @@ use crate::zero_hour::format::ini::object_ini::build_variations::BuildVariations
 use crate::zero_hour::format::ini::object_ini::fight_data::{FightBlock, FightData};
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, ProductionModule};
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
+use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::IniUpgradeModule;
 use crate::zero_hour::format::look_conditions::LookConditions;
 
 pub(crate) mod build_variations;
 pub(crate) mod fight_data;
 pub(crate) mod ini_build;
 pub(crate) mod ini_supply;
+pub(crate) mod ini_upgrade_module;
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
 /// draw modules show by default, and their build variations, resolved once every file is read, as
@@ -49,7 +51,7 @@ pub(crate) struct ObjectId(u32);
 /// over it (`ThingTemplate::copyFrom`): its name as the INI writes it, its draw modules, and the
 /// fields that say how the game draws, places and moves it: its kinds, its fence's width, its
 /// asset scale, whether it is a landmark bridge, its geometry and its normal locomotors by name,
-/// each the game's default when absent.
+/// each the game's default when absent; and its upgrade modules, in the order it gives them.
 #[derive(Debug, Clone)]
 pub(crate) struct IniObject {
     pub(crate) id: ObjectId,
@@ -67,6 +69,7 @@ pub(crate) struct IniObject {
     build: IniBuild,
     supply: IniSupply,
     fight: FightData,
+    upgrades: Vec<IniUpgradeModule>,
 }
 
 /// The kinds of an object's `KindOf` that the import reads: those that decide who draws its placed
@@ -291,6 +294,8 @@ enum Block {
     Production(ProductionModule),
     /// A behavior module whose fields supply reads.
     Supply(SupplyModule),
+    /// An upgrade module, the object's last.
+    Upgrade,
     Other,
 }
 
@@ -395,6 +400,7 @@ impl ObjectFiles {
                 build: IniBuild::default(),
                 supply: IniSupply::default(),
                 fight: FightData::default(),
+                upgrades: Vec::new(),
             },
             Some(base) => IniObject {
                 id,
@@ -808,6 +814,11 @@ impl IniObject {
         &self.fight
     }
 
+    /// Its upgrade modules, in the order it gives them.
+    pub(crate) fn upgrades(&self) -> &[IniUpgradeModule] {
+        &self.upgrades
+    }
+
     /// Whether it counts for a multiplayer victory: a structure of the kind
     /// `MP_COUNT_FOR_VICTORY`, as `Team::hasAnyBuildings` counts it.
     pub(crate) const fn counts_for_victory(&self) -> bool {
@@ -881,6 +892,7 @@ impl Reading {
             | Block::Fight(_)
             | Block::Production(_)
             | Block::Supply(_)
+            | Block::Upgrade
             | Block::Other => Ok(None),
         }
     }
@@ -1007,6 +1019,16 @@ impl Reading {
                     self.stack.push(Block::Other);
                 }
             }
+            Block::Upgrade => {
+                let open = self.object.as_mut().expect("a module is an object's");
+                let module = open.object.upgrades.last_mut();
+                module
+                    .expect("an upgrade block opened its module")
+                    .field(word, at)?;
+                if ObjectFiles::opens(word, tokens) {
+                    self.stack.push(Block::Other);
+                }
+            }
             Block::Supply(module) => {
                 let module = *module;
                 let open = self.object.as_mut().expect("a module is an object's");
@@ -1041,6 +1063,15 @@ impl Reading {
                         .and_then(|module| open.object.supply.module(module))
                 {
                     self.stack.push(Block::Supply(module));
+                    return Ok(());
+                }
+                if word == "behavior"
+                    && let Some(module) = tokens
+                        .get(1)
+                        .and_then(|class| IniUpgradeModule::module(class))
+                {
+                    open.object.upgrades.push(module);
+                    self.stack.push(Block::Upgrade);
                     return Ok(());
                 }
                 if let Some(block) = open.object.fight.open(word, tokens) {

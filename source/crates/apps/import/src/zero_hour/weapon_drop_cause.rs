@@ -51,6 +51,8 @@ pub enum WeaponDropCause {
     /// Its continuous fire's stages change a field other than its rate of fire, or coast for no
     /// time.
     ContinuousFire,
+    /// Its bonus of `PLAYER_UPGRADE` changes a field other than its damage.
+    UpgradeBonus,
     /// It keeps a `MinimumAttackRange` not within its `AttackRange`.
     MinRange,
     /// Its `DelayBetweenShots` is a range the game draws from, and its clip holds more than one

@@ -7,7 +7,7 @@ use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::{Num, Rounding};
 use campfire_production::{
     BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiredUnit, RequiresData,
-    TrainData,
+    ResearchData, ResearchHolder, TrainData,
 };
 use campfire_values::{Number, Ranked, Share, TextId};
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,9 @@ use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::command_button_ini::{ButtonCommand, CommandButton};
 use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, Prerequisite};
+use crate::zero_hour::format::ini::upgrade_ini::UpgradeKind;
 use crate::zero_hour::game_time;
+use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::{NamedObject, ProductionNames};
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::skirmish_start::FactionStart;
@@ -28,10 +30,11 @@ use crate::zero_hour::supply_import::{DOCK_RANGE, Spawning, SupplyImport};
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
-/// Zero Hour's trains and builds (09-zero-hour.md, Every command set's trains and builds are
-/// imported): each `UNIT_BUILD` and `DOZER_CONSTRUCT` button of the command set of each unit type,
-/// and of each type a converted button makes, once for the whole import; the names of their
-/// actions, as the string table gives their labels; the buttons dropped, each once for each cause,
+/// Zero Hour's trains, builds and researches (09-zero-hour.md, Every command set's trains and
+/// builds are imported; upgrades.md, Research is an action kind of production): each
+/// `UNIT_BUILD`, `DOZER_CONSTRUCT`, `PLAYER_UPGRADE` and `OBJECT_UPGRADE` button of the command set
+/// of each unit type, and of each type a converted button makes, once for the whole import; the
+/// names of their actions, as the string table gives their labels; the buttons dropped, each once for each cause,
 /// in the order the sets are read; what it gives each producer, its actions of the slot kind
 /// `command` and its `production` section; and the supply of each type it visits.
 #[derive(Debug, Default)]
@@ -116,19 +119,20 @@ impl FactionBase {
     }
 }
 
-/// A train or a build as the mode's data writes it, `[actions.<id>]`: the pipeline's keys it
-/// gives, and its kind's section.
+/// A train, a build or a research as the mode's data writes it, `[actions.<id>]`: the
+/// pipeline's keys it gives, and its kind's section.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedAction {
     keys: ActionKeys,
     made: MadeSection,
 }
 
-/// The section of what a train or a build makes, of its kind.
+/// The section of what a train, a build or a research makes, of its kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MadeSection {
     Train(TrainData),
     Build(BuildData),
+    Research(ResearchData),
 }
 
 impl ImportedAction {
@@ -137,6 +141,15 @@ impl ImportedAction {
         match &self.made {
             MadeSection::Train(train) => self.keys.table(train),
             MadeSection::Build(build) => self.keys.table(build),
+            MadeSection::Research(research) => self.keys.table(research),
+        }
+    }
+
+    /// The modifier it gives, when it is a research.
+    pub(crate) const fn researched(&self) -> Option<&DeclaredName> {
+        match &self.made {
+            MadeSection::Research(research) => Some(&research.modifier),
+            MadeSection::Train(_) | MadeSection::Build(_) => None,
         }
     }
 }
@@ -144,22 +157,25 @@ impl ImportedAction {
 /// Why the import drops a button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 pub enum ButtonDropCause {
-    /// No file defines the button, or its object, or an object its prerequisites name.
+    /// No file defines the button, or its object or its upgrade, or an object its prerequisites
+    /// name.
     NoObject,
-    /// Its object's prerequisites need a science.
+    /// It, or its object's prerequisites, need a science.
     Science,
     /// It trains an object that does not walk, or variations one of which does not.
     NoWalker,
     /// It builds an object of no body, as a small structure (09-zero-hour.md, A cylinder structure
     /// builds as a circle).
     NoBody,
-    /// It trains at an object of no `ProductionUpdate`, or of a queue past 1 to 255.
+    /// It trains or researches at an object of no `ProductionUpdate`, or of a queue past 1 to
+    /// 255.
     NoQueue,
     /// Its object, or an object its prerequisites name, gives no unit type.
     NoType,
-    /// Its object's build time is below 0, or not finite.
+    /// Its object's or its upgrade's build time is below 0, or not finite.
     BadTime,
-    /// Its action's name, of its kind and its type's, passes the bytes a declared name holds.
+    /// Its action's name, of its kind and its type's or its upgrade's, or its upgrade's own,
+    /// passes the bytes a declared name holds.
     LongName,
 }
 
@@ -188,12 +204,13 @@ impl ProductionImport {
             || led.is_some_and(|spawns| spawns.unit_types.iter().any(|spawn| combat.arms(spawn)))
     }
 
-    /// Whether `unit`'s command set holds trains alone: none of its actions builds or gathers.
+    /// Whether `unit`'s command set holds trains and researches alone: none of its actions
+    /// builds or gathers.
     fn fights(&self, unit: &DeclaredName) -> bool {
         let commands = self.commands.get(unit);
         commands.into_iter().flatten().all(|id| {
             let action = self.actions.get(id);
-            action.is_some_and(|action| matches!(action.made, MadeSection::Train(_)))
+            action.is_some_and(|action| !matches!(action.made, MadeSection::Build(_)))
         })
     }
 
@@ -319,6 +336,10 @@ impl ProductionImport {
         let making = match button.command {
             ButtonCommand::UnitBuild => Making::Train,
             ButtonCommand::DozerConstruct => Making::Build,
+            ButtonCommand::PlayerUpgrade | ButtonCommand::ObjectUpgrade => {
+                self.research(rules, producer, button_name, button);
+                return None;
+            }
             ButtonCommand::Other => return None,
         };
         let made = button
@@ -379,7 +400,7 @@ impl ProductionImport {
         let message = format!("action-{}", id.as_str().replace('_', "-"));
         self.texts
             .entry(message.clone())
-            .or_insert_with(|| Self::text(&rules.strings, button, made));
+            .or_insert_with(|| Self::text(&rules.strings, button, &made.name));
         let requires = (!units.is_empty()).then(|| RequiresData {
             units,
             modifiers: Vec::new(),
@@ -431,6 +452,72 @@ impl ProductionImport {
             name: typed.name,
             object: typed.object,
         })
+    }
+
+    /// Converts the research button `button_name`, `button`, of the set of `producer`: its
+    /// action, made once, of the modifier its upgrade's name gives, for its producer's player or
+    /// for its producer as the upgrade's type says, at its cost and after its time, and the
+    /// producer's slot, unless it drops the button (upgrades.md, Research is an action kind of
+    /// production).
+    fn research(
+        &mut self,
+        rules: &ZeroHourRules,
+        producer: &NamedObject<'_>,
+        button_name: &str,
+        button: &CommandButton,
+    ) {
+        let named = button.upgrade.as_deref();
+        let upgrade = named.and_then(|name| Some((name, rules.upgrades.get(name)?)));
+        let Some((name, upgrade)) = upgrade else {
+            return self.dropped.drop(button_name, ButtonDropCause::NoObject);
+        };
+        if button.science {
+            return self.dropped.drop(button_name, ButtonDropCause::Science);
+        }
+        let Some(section) = Self::section(producer.object.build()) else {
+            return self.dropped.drop(button_name, ButtonDropCause::NoQueue);
+        };
+        let Ok(windup_ms) = game_time::of_build_seconds(upgrade.time) else {
+            return self.dropped.drop(button_name, ButtonDropCause::BadTime);
+        };
+        let upgrade_name = ImportName::latin(name);
+        let (Ok(id), Ok(modifier)) = (
+            upgrade_name.id(ActionKind::Research.name()),
+            upgrade_name.declared(),
+        ) else {
+            return self.dropped.drop(button_name, ButtonDropCause::LongName);
+        };
+        let message = format!("action-{}", id.as_str().replace('_', "-"));
+        self.texts
+            .entry(message.clone())
+            .or_insert_with(|| Self::text(&rules.strings, button, name));
+        let money = rules.names.money.clone();
+        let cost = (upgrade.cost > 0).then(|| (money, Self::number(i64::from(upgrade.cost))));
+        let windup_ms = i64::try_from(windup_ms).expect("a windup of an `Int` of frames fits");
+        let holder = match upgrade.kind {
+            UpgradeKind::Player => ResearchHolder::Player,
+            UpgradeKind::Object => ResearchHolder::Producer,
+        };
+        self.actions
+            .entry(id.clone())
+            .or_insert_with(|| ImportedAction {
+                keys: ActionKeys {
+                    name: Some(TextId::new(&message).expect("an action's message is a message id")),
+                    cost: cost.into_iter().collect(),
+                    windup_ms: Some(Self::number(windup_ms)),
+                    ..ActionKeys::new(Targeting::None)
+                },
+                made: MadeSection::Research(ResearchData {
+                    modifier,
+                    holder,
+                    requires: None,
+                }),
+            });
+        let commands = self.commands.entry(producer.name.clone()).or_default();
+        if !commands.contains(&id) {
+            commands.push(id);
+        }
+        self.sections.insert(producer.name.clone(), section);
     }
 
     /// The objects `build`'s prerequisites require, each line the objects any one of which passes
@@ -494,11 +581,12 @@ impl ProductionImport {
         Ranked::One(Number::from(value))
     }
 
-    /// The name of the action of `button`, which makes `made`: the text of its label, its
-    /// hotkey's marker dropped, `&&` an `&`; the object's name when the table lacks the label.
-    fn text(strings: &StringTable, button: &CommandButton, made: &IniObject) -> String {
+    /// The name of the action of `button`, which makes or researches `made`: the text of its
+    /// label, its hotkey's marker dropped, `&&` an `&`; `made`'s name when the table lacks the
+    /// label.
+    fn text(strings: &StringTable, button: &CommandButton, made: &str) -> String {
         let Some(text) = button.label.as_deref().and_then(|label| strings.get(label)) else {
-            return made.name.clone();
+            return made.to_owned();
         };
         let mut out = String::with_capacity(text.len());
         let mut chars = text.chars().peekable();

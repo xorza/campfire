@@ -118,9 +118,10 @@ What the import does not hold against the original:
 - **Stealth.** `Stealthed` is not read, as no unit hides.
 - **Base defenses.** The Patriot, the Fire Base, the Gattling Cannon, the tunnel network and the Stinger site fire; the demo trap, a small structure of no body, is not built.
 - **Spawns.** The Stinger site's soldiers leave by the free cell nearest its center, where the original stands them on its roof by its bones, and its damage does not pass to them while they live (`HiveStructureBody`); the tunnel network holds no units.
-- **The mob.** A mob's members take its orders alone: none catches up, bails out of a crisis or takes a target of its own (`MobMemberSlavedUpdate`), and none goes prone as the mob is hurt; their veterancy is not pooled, and no upgrade arms them (`Upgrade_GLAArmTheMob`).
+- **The mob.** A mob's members take its orders alone: none catches up, bails out of a crisis or takes a target of its own (`MobMemberSlavedUpdate`), and none goes prone as the mob is hurt; and their veterancy is not pooled.
 - **Build variations.** A unit's variation is drawn as a train makes it, from the match's random, so it is not the original's; a map's placed object of variations stays its own type.
-- **Weapon sets and bonuses.** Only the set of `Conditions = None`; no upgrade or veterancy changes a weapon.
+- **Weapon sets and bonuses.** Only the set of `Conditions = None` and the set of `PLAYER_UPGRADE` alone, and a weapon's bonus of `PLAYER_UPGRADE` to its damage; no veterancy, crate or other condition changes a weapon or an armor.
+- **Upgrades' other effects.** Of an object's upgrade modules only `ArmorUpgrade`, `WeaponSetUpgrade`, `WeaponBonusUpgrade` and a `MaxHealthUpgrade` of `ADD_CURRENT_HEALTH_TOO` convert; the others, as a stealth, a locomotor set, a command set or an object's creation, and every module of a projectile's type, are dropped; and an upgrade's effect holds while its triggers do and its conflicts do not, where the original's, once given, stays.
 - **Other bodies.** Objects of an immortal, highlander, undead, hive or inactive body have no life.
 - **Deaths.** A unit that dies goes at once: no death animation, rubble or death object.
 - **Alliances.** Each player is its own team.
@@ -129,7 +130,7 @@ What the import does not hold against the original:
 - **A site's look.** A site draws its building whole, not its scaffold.
 - **The panel.** Text buttons, with no images, hotkeys, sell, upgrades or powers.
 - **Supply.** The USA's supply center gathers nothing, as its Chinook flies; no upgrade boosts a delivery (`UpgradedSupplyBoost`); a dock shows no boxes going (`W3DSupplyDraw`); a dock serves one gatherer, and the others wait at its side or go to another dock, with no approach positions; a gatherer with no dock in reach stands, where the original regroups at its base; a computer player's gatherer scans no farther than a human's, where the original's scans twice as far; and the one-shot spawns of a building that trains nothing, a tunnel network's defenders, are not imported.
-- **Dropped buttons.** Buttons of a science prerequisite, of an either-or one, trains of a unit that does not walk, and builds of no box body are not imported.
+- **Dropped buttons.** Buttons of a science prerequisite, of an either-or one, trains of a unit that does not walk, builds of no box body, and researches of a science or at an object of no production queue are not imported.
 - **Terrain light.** The terrain is lit by the map's object lights, which on most shipped maps are its own, and per pixel.
 - **Random outcomes** are Campfire's.
 

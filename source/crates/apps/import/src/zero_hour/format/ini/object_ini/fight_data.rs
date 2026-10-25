@@ -92,19 +92,27 @@ pub(crate) enum BodyKind {
     Other,
 }
 
-/// A `WeaponSet`: how many conditions it is for, and its weapons by slot, `PRIMARY`,
-/// `SECONDARY` then `TERTIARY`, none for a slot it leaves empty or names `NONE`.
+/// A `WeaponSet`: the conditions it is for, and its weapons by slot, `PRIMARY`, `SECONDARY` then
+/// `TERTIARY`, none for a slot it leaves empty or names `NONE`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct WeaponSet {
-    pub(crate) conditions: usize,
+    pub(crate) conditions: SetConditions,
     pub(crate) weapons: [Option<String>; 3],
 }
 
-/// An `ArmorSet`: how many conditions it is for, and its armor, none for `NONE` or none named.
+/// An `ArmorSet`: the conditions it is for, and its armor, none for `NONE` or none named.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ArmorSet {
-    pub(crate) conditions: usize,
+    pub(crate) conditions: SetConditions,
     pub(crate) armor: Option<String>,
+}
+
+/// The conditions a set is for, as its `Conditions` names them, `NONE` none: whether they hold
+/// `PLAYER_UPGRADE`, which an upgrade module sets, and how many others they hold.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct SetConditions {
+    pub(crate) upgrade: bool,
+    pub(crate) others: usize,
 }
 
 /// A block of combat an object's reader is inside.
@@ -147,6 +155,29 @@ impl FlagSet for IniScan {
             _ => return false,
         }
         true
+    }
+}
+
+impl SetConditions {
+    /// How many conditions it holds.
+    pub(crate) const fn count(self) -> usize {
+        self.others + if self.upgrade { 1 } else { 0 }
+    }
+
+    /// Whether it holds `PLAYER_UPGRADE` and no other condition.
+    const fn upgrade_alone(self) -> bool {
+        self.upgrade && self.others == 0
+    }
+
+    /// Of sets of `conditions`, in their order, the place of the one an object starts with, of
+    /// the fewest conditions, the first on a tie, and of the one it takes by `PLAYER_UPGRADE`, the
+    /// first other of that condition alone.
+    fn chosen(conditions: impl Iterator<Item = Self>) -> [Option<usize>; 2] {
+        let conditions: Vec<Self> = conditions.collect();
+        let starting = (0..conditions.len()).min_by_key(|&at| conditions[at].count());
+        let upgrade = (0..conditions.len())
+            .find(|&at| Some(at) != starting && conditions[at].upgrade_alone());
+        [starting, upgrade]
     }
 }
 
@@ -251,10 +282,15 @@ impl FightData {
     ) -> Result<Option<FightBlock>, IniError> {
         let named = |value: &str| (!value.eq_ignore_ascii_case("none")).then(|| value.to_owned());
         let conditions = || {
-            at.tokens[1..]
-                .iter()
-                .filter(|flag| !flag.eq_ignore_ascii_case("none"))
-                .count()
+            let mut conditions = SetConditions::default();
+            for flag in &at.tokens[1..] {
+                if flag.eq_ignore_ascii_case("player_upgrade") {
+                    conditions.upgrade = true;
+                } else if !flag.eq_ignore_ascii_case("none") {
+                    conditions.others += 1;
+                }
+            }
+            conditions
         };
         match (block, word) {
             (FightBlock::Body, "maxhealth") => self.body_mut().max = at.real()?,
@@ -341,13 +377,41 @@ impl FightData {
     /// The weapon set it starts with, of no condition set: the one of the fewest conditions,
     /// the first on a tie, as the game's sparse match finds it for no flag; none with none.
     pub(crate) fn starting_weapons(&self) -> Option<&WeaponSet> {
-        self.weapon_sets.iter().min_by_key(|set| set.conditions)
+        let [starting, _] =
+            SetConditions::chosen(self.weapon_sets.iter().map(|set| set.conditions));
+        Some(&self.weapon_sets[starting?])
+    }
+
+    /// The weapon set it takes once an upgrade sets `PLAYER_UPGRADE`: the first set of that
+    /// condition alone it does not start with, as the game's sparse match finds it for that flag;
+    /// none with none.
+    pub(crate) fn upgrade_weapons(&self) -> Option<&WeaponSet> {
+        let [_, upgrade] = SetConditions::chosen(self.weapon_sets.iter().map(|set| set.conditions));
+        Some(&self.weapon_sets[upgrade?])
     }
 
     /// The armor it starts with, found as its weapon set is; none with no set or none named.
     pub(crate) fn starting_armor(&self) -> Option<&str> {
-        let set = self.armor_sets.iter().min_by_key(|set| set.conditions)?;
-        set.armor.as_deref()
+        let [starting, _] = SetConditions::chosen(self.armor_sets.iter().map(|set| set.conditions));
+        self.armor_sets[starting?].armor.as_deref()
+    }
+
+    /// The armor it takes once an upgrade sets `PLAYER_UPGRADE`, found as its weapon set is; none
+    /// with no such set or none named.
+    pub(crate) fn upgrade_armor(&self) -> Option<&str> {
+        let [_, upgrade] = SetConditions::chosen(self.armor_sets.iter().map(|set| set.conditions));
+        self.armor_sets[upgrade?].armor.as_deref()
+    }
+
+    /// How many of its weapon sets and armor sets it neither starts with nor takes by an upgrade,
+    /// as each is of a condition the import does not convert.
+    pub(crate) fn unconverted_sets(&self) -> usize {
+        let unconverted = |conditions: Vec<SetConditions>| {
+            let chosen = SetConditions::chosen(conditions.iter().copied());
+            conditions.len() - chosen.iter().flatten().count()
+        };
+        unconverted(self.weapon_sets.iter().map(|set| set.conditions).collect())
+            + unconverted(self.armor_sets.iter().map(|set| set.conditions).collect())
     }
 
     const fn body_mut(&mut self) -> &mut IniBody {

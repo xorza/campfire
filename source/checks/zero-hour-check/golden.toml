@@ -3,8 +3,8 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "8f6a9b0e1126db65b360b61cd98bd7810b8bbf1f8780aa66472cc6188c21394a"
-rules = "e98a921607dd058bfc04bfeb5f215541a8de96088b42c762b5c4b64156d04c64"
+game = "d75e4c85115a3ace27e37cda510c65331e108e4ad00a70d5fa3288d1928b00ce"
+rules = "3ce491bf031db4f3713f1f65dbfba97fb47ba4c8eb819276b094ab09d2a8c651"
 
 [map]
 heights = [270, 340]
@@ -29,7 +29,12 @@ snowy = 17
 [produced]
 trains = 192
 builds = 160
-dropped = [0, 22, 31, 6, 0, 0, 0, 0]
+dropped = [0, 23, 31, 6, 4, 0, 0, 0]
+
+[upgraded]
+researches = 69
+modules = 296
+dropped = [338, 0, 7, 0, 12, 0, 116]
 
 [supplied]
 nodes = 4
@@ -39,8 +44,8 @@ hacks = 5
 dropped = [0, 0, 5, 6, 0, 0, 0, 5, 5, 5, 5, 5, 4, 0]
 
 [fought]
-weapons = 67
-dropped = [0, 0, 8, 0, 2, 0, 1, 0, 8, 9, 0, 1, 2, 12, 1, 0, 0, 0, 4, 1, 6, 0, 2, 0]
+weapons = 88
+dropped = [0, 0, 13, 0, 2, 0, 1, 0, 11, 9, 0, 1, 3, 17, 1, 0, 0, 0, 0, 4, 1, 6, 0, 2, 0]
 armors = 53
 kinds = 38
 unliving = 34

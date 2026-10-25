@@ -120,6 +120,7 @@ fn check(out: &Path, selection: &PlaySelection) -> Result<Vec<CheckFailure>, Che
     check.looks()?;
     check.other_maps();
     check.production();
+    check.upgrades();
     check.supply();
     check.combat();
     check.plays()

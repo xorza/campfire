@@ -9,7 +9,7 @@ use derive_more::Display;
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, FactorySteps, FightSteps, Fingerprints, FoughtCounts,
     LookCounts, MapCounts, MissileTicks, ProducedCounts, ProductionSteps, SuppliedCounts,
-    SupplySteps, TerrainDrawn,
+    SupplySteps, TerrainDrawn, UpgradedCounts,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -36,6 +36,10 @@ pub(crate) enum CheckFailure {
     /// The import's trains, builds and dropped buttons by cause differ from the pinned.
     #[display("it converted {_0}")]
     Produced(Box<Differs<ProducedCounts>>),
+    /// The import's researches, upgrade modules and dropped modules by cause differ from the
+    /// pinned.
+    #[display("it upgraded {_0}")]
+    Upgraded(Box<Differs<UpgradedCounts>>),
     /// The import's nodes, drop-offs, gathers, hacks and dropped supply by cause differ from the
     /// pinned.
     #[display("it supplied {_0}")]

@@ -9,7 +9,6 @@ use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
-use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::supply_import::{ImportedGather, SupplyDropCause};
 
@@ -111,15 +110,15 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         };
         import.supply.spawns.insert(TypeName::named(unit), spawns);
     }
+    // The mortar's one weapon is of its upgrade set alone, which arms it after an upgrade.
     let mut combat = CombatImport::default();
-    for (unit, weapon) in [
-        ("ranger", "weapon_rifle"),
-        ("tank", "weapon_cannon"),
-        ("technical", "weapon_gun"),
+    for (unit, weapon, starting) in [
+        ("ranger", "weapon_rifle", true),
+        ("mortar", "weapon_mortar_upgraded", false),
+        ("tank", "weapon_cannon", true),
+        ("technical", "weapon_gun", true),
     ] {
-        combat
-            .weapons
-            .insert(TypeName::named(unit), vec![name(weapon)]);
+        combat.give(TypeName::named(unit), name(weapon), starting);
     }
     let start = |units: &[&str]| FactionStart {
         name: name("faction"),

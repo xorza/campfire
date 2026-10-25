@@ -1,9 +1,10 @@
 use campfire_math::Num;
 
 use super::*;
-use crate::zero_hour::format::ini::object_ini::fight_data::{IniShell, IniTurret};
+use crate::zero_hour::format::ini::object_ini::fight_data::{IniShell, IniTurret, WeaponSet};
 use crate::zero_hour::format::ini::object_ini::ini_build::{Prerequisite, ProductionExit};
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSpawn, SupplyDock, SupplyGatherer};
+use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{HealthChange, UpgradeEffect};
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
 
 /// Objects of each kind a placed object can be, their reskins, and lists of each form.
@@ -666,5 +667,113 @@ fn an_object_gives_combat_its_shells_curve_and_its_first_turret() {
     assert_eq!(
         bad.read(text.as_bytes()),
         Err(IniError::WeaponSlot { line: 4 })
+    );
+
+    // The ranger starts with its set of no condition, its second, and takes its first, of
+    // `PLAYER_UPGRADE`, by an upgrade; the crusader's crate set is neither, and its armor of
+    // that flag its upgrade's.
+    let fixture = ObjectIni::of(&[DEFAULT_OBJECTS, OBJECTS]);
+    let object = |name: &str| fixture.named(name).unwrap();
+    let weapons = |set: Option<&WeaponSet>| set.map(|set| set.weapons.clone());
+    let named = |weapons: [Option<&str>; 3]| Some(weapons.map(|weapon| weapon.map(str::to_owned)));
+    let ranger = object("AmericaInfantryRanger").fight();
+    assert_eq!(
+        weapons(ranger.starting_weapons()),
+        named([Some("RangerRifle"), Some("Pistol"), None])
+    );
+    assert_eq!(
+        weapons(ranger.upgrade_weapons()),
+        named([Some("RangerRifle"), Some("Bolt"), Some("Flamer")])
+    );
+    assert_eq!(
+        (ranger.upgrade_armor(), ranger.unconverted_sets()),
+        (None, 0)
+    );
+    let crusader = object("AmericaTankCrusader").fight();
+    assert_eq!(crusader.upgrade_weapons(), None);
+    assert_eq!(
+        (
+            crusader.starting_armor(),
+            crusader.upgrade_armor(),
+            crusader.unconverted_sets()
+        ),
+        (Some("HumanArmor"), Some("StructureArmor"), 1)
+    );
+    // A set of that flag alone it starts with, as it has no other, is no upgrade's.
+    let mut alone = ObjectFiles::default();
+    alone
+        .read(
+            b"Object A
+ ArmorSet
+  Conditions = PLAYER_UPGRADE
+  Armor = X
+ End
+End
+",
+        )
+        .unwrap();
+    let alone = alone.named("A").unwrap().fight();
+    assert_eq!(
+        (alone.starting_armor(), alone.upgrade_armor()),
+        (Some("X"), None)
+    );
+    // Each upgrade module in its order, of its triggers, conflicts and effect; any other class
+    // of the name's ending by its name.
+    let names = |names: &[&str]| {
+        names
+            .iter()
+            .map(|&name| name.to_owned())
+            .collect::<Vec<_>>()
+    };
+    let module = |effect, triggers: &[&str], all, conflicts: &[&str]| IniUpgradeModule {
+        effect,
+        triggers: names(triggers),
+        conflicts: names(conflicts),
+        all,
+    };
+    let armor = "Upgrade_AmericaCompositeArmor";
+    let life = |add, change| UpgradeEffect::MaxHealth { add, change };
+    assert_eq!(
+        object("AmericaTankCrusader").upgrades(),
+        [
+            module(UpgradeEffect::Armor, &[armor], false, &[]),
+            module(
+                life(100.0, HealthChange::AddCurrentToo),
+                &[armor],
+                false,
+                &[]
+            ),
+            module(
+                life(50.0, HealthChange::PreserveRatio),
+                &[armor],
+                false,
+                &[]
+            ),
+            module(
+                UpgradeEffect::Other("StealthUpgrade".to_owned()),
+                &[armor],
+                false,
+                &[]
+            ),
+        ]
+    );
+    let flash = "Upgrade_AmericaRangerFlashBang";
+    assert_eq!(
+        object("AmericaInfantryRanger").upgrades(),
+        [
+            module(UpgradeEffect::WeaponSet, &[flash], false, &[]),
+            module(
+                UpgradeEffect::WeaponBonus,
+                &[flash, armor],
+                true,
+                &["Upgrade_AmericaBarracksWalls", "Upgrade_Unknown"]
+            ),
+            module(UpgradeEffect::Armor, &["Upgrade_Lost"], false, &[]),
+        ]
+    );
+    let text = "Object A\n Behavior = MaxHealthUpgrade M\n  ChangeType = HALF\n End\nEnd\n";
+    assert_eq!(
+        ObjectFiles::default().read(text.as_bytes()),
+        Err(IniError::NotListed { line: 3 })
     );
 }

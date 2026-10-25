@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_values::{FilterData, FilterTag, RelationSet, Stat};
+use campfire_values::{FilterData, FilterTag, RelationSet, Stat, TagFilterData};
 
 /// The names the import's stages write that the rules package beside the mode declares,
 /// `source/packages/zero-hour/data/rules.toml`, each checked once as the import's rules are
@@ -23,6 +23,14 @@ pub(crate) struct RulesNames {
     pub(crate) wall: DeclaredName,
     pub(crate) base_defense: DeclaredName,
     pub(crate) infantry: DeclaredName,
+    /// The tags an upgrade module gives its unit as it sets the armor set's or the weapon set's
+    /// `PLAYER_UPGRADE` (upgrades.md, Zero Hour's upgrade flags are tags and stats).
+    pub(crate) armor_upgrade: DeclaredName,
+    pub(crate) weapon_upgrade: DeclaredName,
+    /// The tests of a unit of each, and of one of no `weapon_upgrade`.
+    pub(crate) armor_upgraded: TagFilterData,
+    pub(crate) weapon_upgraded: TagFilterData,
+    pub(crate) weapon_unupgraded: TagFilterData,
     /// The tag of the markers the players start at, which a map's `Player_<n>_Start` waypoints
     /// carry (09-zero-hour.md, A skirmish starts with the faction's start objects).
     pub(crate) start: DeclaredName,
@@ -67,6 +75,14 @@ impl Default for RulesNames {
         let life = name("life");
         let structure = name("structure");
         let wall = name("wall");
+        let armor_upgrade = name("armor_upgrade");
+        let weapon_upgrade = name("weapon_upgrade");
+        let tagged = |name: &DeclaredName, negated| {
+            TagFilterData::new([FilterTag {
+                name: name.clone(),
+                negated,
+            }])
+        };
         Self {
             money: name("money"),
             life_stat: stat(&life),
@@ -87,6 +103,11 @@ impl Default for RulesNames {
             enemy_structures: filter(RelationSet::Enemies, Some((&structure, false))),
             allied_structures: filter(RelationSet::Allies, Some((&structure, false))),
             walls: filter(RelationSet::All, Some((&wall, false))),
+            armor_upgraded: tagged(&armor_upgrade, false),
+            weapon_upgraded: tagged(&weapon_upgrade, false),
+            weapon_unupgraded: tagged(&weapon_upgrade, true),
+            armor_upgrade,
+            weapon_upgrade,
             life,
             structure,
             wall,
@@ -112,6 +133,13 @@ mod tests {
             (&names.walls, "all:wall"),
         ] {
             assert_eq!(*filter, FilterData::parse(text).unwrap(), "{text}");
+        }
+        for (filter, text) in [
+            (&names.armor_upgraded, "all:armor_upgrade"),
+            (&names.weapon_upgraded, "all:weapon_upgrade"),
+            (&names.weapon_unupgraded, "all:!weapon_upgrade"),
+        ] {
+            assert_eq!(*filter.filter(), FilterData::parse(text).unwrap(), "{text}");
         }
     }
 }

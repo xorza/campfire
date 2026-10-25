@@ -18,7 +18,7 @@ use campfire_package::{
 use campfire_package_format::DependencyPath;
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
-use campfire_stats::ModifiersData;
+use campfire_stats::{ModeStatsData, ModifiersData};
 use campfire_values::{PackagePath, Relation, Scalar, Speed, TextId};
 
 use crate::zero_hour::combat_import::CombatImport;
@@ -26,6 +26,7 @@ use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
 use crate::zero_hour::import_team::ImportTeam;
 use crate::zero_hour::production_import::{FactionBase, ProductionImport};
 use crate::zero_hour::skirmish_start::{FactionStart, SkirmishStart};
+use crate::zero_hour::upgrade_import::UpgradeImport;
 
 /// The operations of a script call, and of each pool's calls of a tick: twice the most one think
 /// of the Zero Hour check's bots runs, rounded up, as a longer match's bases grow
@@ -153,13 +154,14 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
     }
 }
 
-/// What the mode's data is made of: the skirmish's start, the trains and builds, the weapons and
-/// armors, and the starting money.
+/// What the mode's data is made of: the skirmish's start, the trains, builds and researches, the
+/// weapons and armors, the upgrades, and the starting money.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ModeImport<'a> {
     pub(crate) start: &'a SkirmishStart,
     pub(crate) production: &'a ProductionImport,
     pub(crate) combat: &'a CombatImport,
+    pub(crate) upgrades: &'a UpgradeImport,
     pub(crate) start_money: &'a MoneyChoices,
 }
 
@@ -171,14 +173,16 @@ pub(crate) struct ModeImport<'a> {
 /// and its choice of a start, standard or a base (09-zero-hour.md, A player slot picks its start;
 /// 09-zero-hour.md, A base start), and the
 /// option of the money it starts with, of `start_money`'s values (09-zero-hour.md, The import
-/// writes Zero Hour's money as an option); the armors, the weapons and the modifiers of their
-/// stages of `combat` (09-zero-hour.md) and the trains and builds of `production`
-/// (04-capabilities/production.md).
+/// writes Zero Hour's money as an option); the armors, the weapons, the modifiers of their
+/// stages and the stats of their damage bonuses of `combat` (09-zero-hour.md), the trains, builds
+/// and researches of `production` (04-capabilities/production.md), and the modifiers of
+/// `upgrades`, each upgrade's and each effect's (upgrades.md).
 pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     let ModeImport {
         start,
         production,
         combat,
+        upgrades,
         start_money,
     } = mode;
     debug_assert!(
@@ -309,12 +313,30 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     if !actions.is_empty() {
         writer.value::<ActionsData>(TomlValue::of(&actions));
     }
-    if !combat.modifiers.is_empty() {
-        let modifiers = combat
-            .modifiers
-            .iter()
-            .map(|(id, stage)| (id, stage.table()));
-        let modifiers: BTreeMap<&DeclaredName, TomlValue> = modifiers.collect();
+    if !combat.bonuses.is_empty() {
+        let none = TomlTable::default();
+        let stats = combat.bonuses.keys().map(|stat| (stat, &none));
+        let stats: BTreeMap<_, _> = stats.collect();
+        writer.value::<ModeStatsData>(TomlValue::of(&stats));
+    }
+    let stages = combat
+        .modifiers
+        .iter()
+        .map(|(id, stage)| (id, stage.table()));
+    let nothing = TomlValue::from(TomlTable::default());
+    let researched = upgrades.upgrades.iter().map(|id| (id, nothing.clone()));
+    let effects = upgrades
+        .effects
+        .iter()
+        .map(|(id, effect)| (id, effect.table()));
+    let modifiers: BTreeMap<&DeclaredName, TomlValue> =
+        stages.chain(researched).chain(effects).collect();
+    debug_assert_eq!(
+        modifiers.len(),
+        combat.modifiers.len() + upgrades.upgrades.len() + upgrades.effects.len(),
+        "a stage's, an upgrade's and an effect's modifiers share no name"
+    );
+    if !modifiers.is_empty() {
         writer.value::<ModifiersData>(TomlValue::of(&modifiers));
     }
     Toml::write(&writer.into_table())

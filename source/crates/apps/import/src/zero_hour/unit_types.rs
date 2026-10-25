@@ -8,6 +8,7 @@ use campfire_math::Num;
 use campfire_orders::AcquireData;
 use campfire_package::UnitsFile;
 use campfire_production::{DropOffData, NodeData, ProductionData, SpawnsData};
+use campfire_stats::UpgradesData;
 
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::rules_names::RulesNames;
@@ -24,9 +25,9 @@ pub(crate) struct ImportedTypes {
 /// What the stages give each unit type, by its name: the actions of its slot kinds `weapon`, in its
 /// starting weapon set's order, and `command`, in its command set's order, its gather last; its
 /// `production` section when it trains; and its `node` when it is a dock and its `drop_off` when
-/// it is a supply center (09-zero-hour.md, Every command set's trains and builds are imported;
-/// 09-zero-hour.md, A weapon converts when it hits one target at once; 09-zero-hour.md, A
-/// box is money).
+/// it is a supply center; and its `upgrades` (09-zero-hour.md, Every command set's trains and
+/// builds are imported; 09-zero-hour.md, A weapon converts when it hits one target at once;
+/// 09-zero-hour.md, A box is money; upgrades.md, A unit type takes modifiers by upgrades).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TypeAdditions<'a> {
     pub(crate) weapon: &'a BTreeMap<TypeName, Vec<DeclaredName>>,
@@ -35,6 +36,7 @@ pub(crate) struct TypeAdditions<'a> {
     pub(crate) nodes: &'a BTreeMap<TypeName, NodeData>,
     pub(crate) drop_offs: &'a BTreeMap<TypeName, DropOffData>,
     pub(crate) spawns: &'a BTreeMap<TypeName, SpawnsData>,
+    pub(crate) upgrades: &'a BTreeMap<TypeName, UpgradesData>,
 }
 
 /// The package's `data/units.toml`, and the largest speed of its types, when one drives.
@@ -93,6 +95,9 @@ impl ImportedTypes {
                 if let Some(spawns) = additions.spawns.get(name) {
                     writer.section(spawns);
                 }
+                if let Some(upgrades) = additions.upgrades.get(name) {
+                    writer.section(upgrades);
+                }
                 (name.declared().clone(), writer.into_table())
             })
             .collect();
@@ -125,6 +130,7 @@ pub(crate) mod reach_in {
                 nodes: &BTreeMap::new(),
                 drop_offs: &BTreeMap::new(),
                 spawns: &BTreeMap::new(),
+                upgrades: &BTreeMap::new(),
             };
             self.units_file(additions, &RulesNames::default())
         }

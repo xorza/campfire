@@ -11,6 +11,7 @@ use crate::zero_hour::format::ini::multiplayer_ini::MultiplayerIni;
 use crate::zero_hour::format::ini::object_ini::{ObjectFiles, ObjectIni};
 use crate::zero_hour::format::ini::player_template_ini::PlayerTemplateIni;
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
+use crate::zero_hour::format::ini::upgrade_ini::UpgradeIni;
 use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
 use crate::zero_hour::install::Install;
 use crate::zero_hour::rules_names::RulesNames;
@@ -27,6 +28,7 @@ pub(crate) struct ZeroHourRules {
     pub(crate) templates: PlayerTemplateIni,
     pub(crate) sets: CommandSetIni,
     pub(crate) buttons: CommandButtonIni,
+    pub(crate) upgrades: UpgradeIni,
     pub(crate) multiplayer: MultiplayerIni,
     pub(crate) weapons: WeaponIni,
     pub(crate) armors: ArmorIni,
@@ -60,6 +62,7 @@ impl ZeroHourRules {
                 CommandButtonIni::default(),
                 CommandButtonIni::read,
             )?,
+            upgrades: install.read_inis("Upgrade", UpgradeIni::default(), UpgradeIni::read)?,
             multiplayer: install.read_inis(
                 "Multiplayer",
                 MultiplayerIni::default(),

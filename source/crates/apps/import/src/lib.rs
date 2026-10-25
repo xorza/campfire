@@ -27,5 +27,6 @@ pub use crate::zero_hour::import_loss::ImportLoss;
 pub use crate::zero_hour::model_writer::{SkipReason, SkippedModel};
 pub use crate::zero_hour::production_import::ButtonDropCause;
 pub use crate::zero_hour::supply_import::SupplyDropCause;
+pub use crate::zero_hour::upgrade_import::UpgradeDropCause;
 pub use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 pub use crate::zero_hour::{Imported, ZeroHour};

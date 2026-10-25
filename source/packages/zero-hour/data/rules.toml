@@ -64,7 +64,8 @@ damage_kinds = [
 life = "life"
 
 # The tags its rules name: of a building that counts for victory, of a structure, of a wall, of a
-# base defense, and of infantry.
+# base defense, and of infantry; and the tags an upgrade gives as it sets the armor set's and the
+# weapon set's `PLAYER_UPGRADE`, which a type's armors and weapons test.
 [tags.counts_for_victory]
 
 [tags.structure]
@@ -74,6 +75,10 @@ life = "life"
 [tags.base_defense]
 
 [tags.infantry]
+
+[tags.armor_upgrade]
+
+[tags.weapon_upgrade]
 
 # The tag of the markers its players start at.
 [navigation]

@@ -424,12 +424,18 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         leads: false,
     };
     // The soldier lives by its active body, 180, in the armor of its set of no condition,
-    // the second it gives, by the name the mode declares; a reskin keeps its base's body,
-    // as its table reads none.
-    assert_eq!(
-        of("Soldier"),
-        lives(180, Some("humanarmor"), vec!["infantry"])
-    );
+    // the second it gives, by the name the mode declares, and in its set of `PLAYER_UPGRADE`'s
+    // while it holds that flag's tag; a reskin keeps its base's body, as its table reads none.
+    let mut soldier = lives(180, Some("humanarmor"), vec!["infantry"]);
+    soldier.combat = Some(CombatPatch {
+        armor: Some(declared("humanarmor")),
+        armors: Some(vec![TaggedArmorData {
+            when: RulesNames::default().armor_upgraded,
+            armor: declared("chemsuitarmor"),
+        }]),
+        ..CombatPatch::default()
+    });
+    assert_eq!(of("Soldier"), soldier);
     assert_eq!(of("Veteran"), of("Soldier"));
     // A structure that counts for victory and defends a base lives by its structure body, of no
     // armor, and of no geometry stands as the game's sphere of radius 1, 1 m tall, of the tags

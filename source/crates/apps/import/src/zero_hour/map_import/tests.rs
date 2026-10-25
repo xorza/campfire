@@ -32,6 +32,11 @@ height = "1"
 radius = "5"
 
 [units.americatankcrusader.combat]
+armor = "humanarmor"
+
+[[units.americatankcrusader.combat.armors]]
+armor = "structurearmor"
+when = "all:armor_upgrade"
 
 [units.americatankcrusader.navigation]
 gait = "drive"
@@ -368,7 +373,8 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
         ]
     );
     // The tank drives on its treads, 30.5 m and 90° a second, a circle of √(4² + 3²) = 5 m,
-    // lives by its active body, 400, of no armor, and turns its gun on a turret of 180° a
+    // lives by its active body, 400, in a soldier's armor and a building's once its upgrade
+    // sets its armor set's flag, and turns its gun on a turret of 180° a
     // second within 33,644,228 · 2⁻²⁴°; the wall is a structure, a box of 2 · 10 by 2 · 2.5
     // m, whose highlander body gives it no life; the fence is a wall of no body. Each body
     // has the game's default height, 1 m, as no geometry names its own.
