@@ -31,17 +31,6 @@ A/A, base and candidate of one commit, interleaved pairs, 2026-10-25:
 - **Rhai 1.27.0 costs a script tick (2026-10-25).** The tip on 1.27.0 against the same tip on 1.26.1, quiet, each pair the same way: `script_host/native` +9.0 % and +5.7 % (`local`, `mac`), `battle/crowded_think` +3.5 % and +4.2 %, `mean_3v3_think` +3.4 % and +2.9 %, `server_tick/mean_3v3` +1.8 % and +2.0 %; `worst_3v3` does not move. The workspace keeps 1.27.0.
 - **Where a tick goes (2026-10-25).** A 3v3 match's stages, `local`: think 222 ms, move 60, vision 55, hit 52, resolve 51, collide 37, inputs 19, act 17, mode 8; 520 ms in all, 86.7 µs a tick, before the counted fog and the target classes. Zero Hour's bases play: move and collide 71 % of about 249 µs a tick. A net server's 3v3 frame costs 448 µs against its sim tick's 86 µs; the harness runs the server and its clients in one process, so its share cannot be split without a bench of the server alone.
 
-## The counted fog
-
-`6f56e7970` against the counted fog's shapes, interleaved pairs, 2026-10-25; both trees' `fog/sight` moved each unit a whole cell along x and back, where it had moved a bit ([Vision](../docs/design/04-capabilities/vision.md), A stage that costs what changed):
-
-| Shape | `local` | `mac` |
-| --- | --- | --- |
-| A moved look's old runs found on the grid again from its key | `fog/sight`, a bit's move, +67.4 %; `fog/still` −75.2 %; `mean_3v3_vision` −15.9 % | |
-| The runs kept from the tick before | `fog/sight`, a bit's move, +4.9 %; `mean_3v3_vision` −27.6 % | |
-| And no count when a look's runs are the same | `fog/sight`, a bit's move, −26.1 %; a cell's move +111 % | |
-| And a count cell by cell, the shape kept | `fog/sight`, a cell's move, +78.6 %; `fog/still` −70.8 %; `battle/crowded_vision` −49.3 %; `mean_3v3_vision` −28.0 %; `server_tick/mean_3v3` −2.26 % | `fog/sight` +94.9 %; `fog/still` −65.5 %; `battle/crowded_vision` −47.9 %; `mean_3v3_vision` −28.0 %; `server_tick/mean_3v3` −2.60 % |
-
 ## Rejected
 
 | Idea | Why |
