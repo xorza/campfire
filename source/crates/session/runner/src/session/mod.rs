@@ -11,7 +11,7 @@ use campfire_players::PlayerSlotHolder;
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointBegun, CheckpointError, Controller, Delegation, InputChain,
     InputError, Journal, LogLoadError, LogReplay, PlayerPacket, PlayerSlotChangeKind,
-    PlayerSlotStart, RecordSink, ResultError, SeedError, ServerInput, ServerInputError,
+    PlayerSlotStart, RecordSink, ResultError, SeedError, ServerInput, ServerInputError, ServerSeed,
     ServerSeeds, SessionLog, SessionResult, Signer, SnapshotFingerprint, Taken,
 };
 use campfire_sim::{MatchRate, SimWorld};
@@ -384,6 +384,15 @@ impl Session {
         *self.role.new_journal() = Some(Journal::resume(&self.log, sink, len));
     }
 
+    /// The server seed of the log's last segment, which a published log reveals: at the session's
+    /// end, or as a local server publishes the log so far into a player's report
+    /// (bug-reports.md, The log is the local server's, published at the report's tick).
+    pub fn last_seed(&self) -> &ServerSeed {
+        self.seeds
+            .seed(self.log.segment())
+            .expect("the seeds reach the log's last segment")
+    }
+
     /// The journal of the session's log, once the server keeps one.
     pub const fn journal(&self) -> Option<&Journal> {
         self.role.journal()
@@ -441,11 +450,7 @@ impl Session {
     /// Publishes the log by adding the server seed of its last segment, which reveals every
     /// earlier one.
     pub fn reveal_seed(&mut self) {
-        let last = self
-            .seeds
-            .seed(self.log.segment())
-            .expect("the seeds reach the log's last segment");
-        self.log.reveal_seed(last.clone());
+        self.log.reveal_seed(self.last_seed().clone());
     }
 
     pub const fn log(&self) -> &SessionLog {

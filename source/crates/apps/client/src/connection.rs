@@ -185,7 +185,8 @@ impl Connection {
                 error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");
                 ExitCode::from(ExitStatus::Failure)
             })?;
-        let data = data.layout().local_server_dir();
+        let reports = data.layout().clone();
+        let data = reports.local_server_dir();
         LocalServer::start(LocalServerSetup {
             packages: Arc::clone(packages),
             data,
@@ -195,6 +196,7 @@ impl Connection {
             role,
             pace: Arc::clone(pace),
             os: Os::SYSTEM,
+            reports,
         })
         .map_err(|error| {
             error!(error = %ErrorReport::of(&error), "the local server does not start");

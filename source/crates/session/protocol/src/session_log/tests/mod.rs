@@ -661,7 +661,7 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     // The journal counts on its own: its frames past what the log holds.
     let mut log = new_log();
     let mut journal = Journal::start(&log, MemorySink::new().boxed());
-    let before = journal.len();
+    let before = journal.file_len();
     log.bounds.journal = before + 106 + kept - 1;
     assert_eq!(
         sent[0].submit_to(&mut log, &mut applied, Some(&mut journal)),
@@ -671,7 +671,7 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     sent[0]
         .submit_to(&mut log, &mut applied, Some(&mut journal))
         .unwrap();
-    assert_eq!(journal.len(), before + 106);
+    assert_eq!(journal.file_len(), before + 106);
 
     // Each seal takes a byte for the next tick's count of entries, and one more as the count
     // of the segment's ticks passes 127: 127 + 2 bytes in 128 seals.

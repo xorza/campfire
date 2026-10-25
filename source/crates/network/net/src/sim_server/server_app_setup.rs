@@ -22,9 +22,11 @@ use crate::paced_runner::PacedRunnerPlugin;
 use crate::sim_server::ServerFrameSystems;
 use crate::sim_server::sim_server_plugins::SimServerPlugins;
 use crate::sim_server::sim_server_world::{SessionOpening, SimServerWorld, StopRequest};
+use campfire_host::ClientLayout;
 use campfire_host::Hosting;
 use campfire_host::Listening;
 use campfire_host::Pace;
+use campfire_host::Reports;
 use campfire_host::ServerDir;
 
 /// What a server's app is built from: the session it opens, its data directory, which it holds
@@ -47,11 +49,13 @@ pub enum ServerRun {
         stop: StopSignals,
         listening: Listening,
     },
-    /// It follows its client's `pace`, and exits once its session ends, as its client asks by
-    /// `stop`.
+    /// It follows its client's `pace`, exits once its session ends, as its client asks by
+    /// `stop`, and writes its log into its client's reports, of the data directory `reports`
+    /// (bug-reports.md, The log is the local server's, published at the report's tick).
     Local {
         stop: Arc<AtomicBool>,
         pace: Arc<Pace>,
+        reports: ClientLayout,
     },
 }
 
@@ -104,12 +108,17 @@ impl<E: Bundle> ServerAppSetup<E> {
                         .after(ServerFrameSystems::Saves),
                 );
             }
-            ServerRun::Local { stop, pace } => {
+            ServerRun::Local {
+                stop,
+                pace,
+                reports,
+            } => {
                 app.add_plugins(LocalPacePlugin {
                     pace,
                     tick_rate: MatchRate::new(tick_hz).rate(),
                 });
                 app.insert_resource(LocalStop(stop));
+                app.insert_resource(Reports::new(reports));
                 app.add_systems(
                     Update,
                     ServerRun::exit_local.after(ServerFrameSystems::Saves),

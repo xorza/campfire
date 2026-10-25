@@ -524,7 +524,7 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     }
     // The load's record, 4 + 1 + 1 + 32 = 38 bytes framed, needs its room and the end's in the
     // journal.
-    let start = journal.len();
+    let start = journal.file_len();
     log.bounds.journal = start + 38 + 4 * log.unit - 1;
     assert_eq!(log.load(1, Some(&mut journal)), Err(LogLoadError::LogFull));
     log.bounds.journal += 1;
@@ -533,7 +533,7 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     // rebuilds the log loaded.
     log.load(1, Some(&mut journal)).unwrap();
     twin.load(1, None).unwrap();
-    assert_eq!(journal.len(), start + 38);
+    assert_eq!(journal.file_len(), start + 38);
     log.bounds = Bounds::MAX;
     assert_eq!(encoded(&twin), saved);
     for loaded in [&log, &twin] {

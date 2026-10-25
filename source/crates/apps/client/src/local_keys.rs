@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use bevy::app::{App, Plugin, Update};
+use bevy::ecs::observer::On;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Res, ResMut};
 use bevy::input::ButtonInput;
@@ -9,10 +10,12 @@ use campfire_host::{Pace, PaceSpeed, SaveCommand};
 use campfire_net::PendingSaves;
 
 use crate::input_map::{Act, InputMap};
+use crate::report::ReportTaken;
 
 /// The keys of a local match, by the key map: its pause chord pauses it and plays it on, its
 /// slower and faster chords step its speed down and up through 0.5, 1, 2 and 4 times, its save
-/// chord saves it, and its load chord loads its latest save.
+/// chord saves it, its load chord loads its latest save, and a report the report chord took asks
+/// the server for its log so far.
 #[derive(Debug)]
 pub(crate) struct LocalKeysPlugin {
     pub(crate) pace: Arc<Pace>,
@@ -26,6 +29,7 @@ impl Plugin for LocalKeysPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Keyed(Arc::clone(&self.pace)));
         app.add_systems(Update, Self::press);
+        app.add_observer(Self::report);
     }
 }
 
@@ -50,6 +54,12 @@ impl LocalKeysPlugin {
         if input.pressed(Act::Load, &keys) {
             saves.push(SaveCommand::LoadLatest);
         }
+    }
+
+    /// Asks the server to write its log into the report `taken`'s folder once the log reaches
+    /// the report's tick.
+    fn report(taken: On<'_, '_, ReportTaken>, mut saves: ResMut<'_, PendingSaves>) {
+        saves.push(SaveCommand::Report(taken.key));
     }
 
     /// The speed `step` places from `speed` in `PaceSpeed::ALL`, held at its ends.

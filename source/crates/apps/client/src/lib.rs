@@ -52,6 +52,7 @@ mod own_player;
 mod placing;
 mod pointer;
 mod rally_click;
+mod report;
 mod right_click;
 mod selecting;
 mod selection;
@@ -126,6 +127,7 @@ pub fn run() -> ExitCode {
         Some(_) => ClientEnd::Bot,
         None => ClientEnd::Window {
             local: connection.pace().cloned(),
+            data: connection.data().map(|data| data.layout().clone()),
         },
     };
     let sim_client = SimClientPlugin {

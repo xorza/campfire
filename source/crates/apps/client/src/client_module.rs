@@ -11,7 +11,7 @@ use bevy::window::{Window, WindowPlugin};
 use campfire_app_threads::OneThreadPlugins;
 use campfire_common::EnumAll;
 use campfire_declarations::CapabilitySet;
-use campfire_host::Pace;
+use campfire_host::{ClientLayout, Pace};
 use campfire_net::PacedRunnerPlugin;
 use campfire_package::ModePackages;
 use campfire_sim::Capability;
@@ -28,6 +28,7 @@ use crate::local_keys::LocalKeysPlugin;
 use crate::orders::OrdersPlugin;
 use crate::pointer::unit_picking::UnitPickingPlugin;
 use crate::rally_click::RallyClickPlugin;
+use crate::report::ReportPlugin;
 use crate::selecting::SelectingPlugin;
 use crate::shop_panel::ShopPanelPlugin;
 use crate::use_click::UseClickPlugin;
@@ -50,6 +51,8 @@ pub(crate) enum ClientModule {
     Window,
     /// The keys of a local match: its pause, its speed, its saves.
     LocalKeys,
+    /// The report chord, of a window that keeps a data directory.
+    Report,
     ClientFiles,
     View,
     AreaView,
@@ -75,19 +78,32 @@ pub(crate) enum ClientModule {
 
 /// The client's own end: a bot's, whose script the sim client plays, with no window, or a
 /// window's, which draws the match, of a match on a local server whose pace its keys change, or
-/// of a remote one.
+/// of a remote one, with the client's data directory when it keeps one.
 #[derive(Debug)]
 pub(crate) enum ClientEnd {
     Bot,
-    Window { local: Option<Arc<Pace>> },
+    Window {
+        local: Option<Arc<Pace>>,
+        data: Option<ClientLayout>,
+    },
 }
 
-/// What the modules of a window's end read as they add their plugins: the mode's packages, and
-/// the pace of a local match.
+/// What the modules of a window's end read as they add their plugins: the mode's packages, the
+/// pace of a local match, and the client's data directory.
 #[derive(Debug)]
 struct WindowCx<'a> {
     packages: &'a Arc<ModePackages>,
     local: Option<&'a Arc<Pace>>,
+    data: Option<&'a ClientLayout>,
+}
+
+/// What a window's end keeps of its match, which some modules need: no data directory, the
+/// client's data directory of a remote match, or that of a local match, whose server runs in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WindowKeeps {
+    Nothing,
+    Remote,
+    Local,
 }
 
 impl ClientModule {
@@ -106,6 +122,7 @@ impl ClientModule {
             Self::BuildPreview => &[Capability::Production, Capability::Navigation],
             Self::Window
             | Self::LocalKeys
+            | Self::Report
             | Self::ClientFiles
             | Self::View
             | Self::PlayerCamera
@@ -119,11 +136,12 @@ impl ClientModule {
         }
     }
 
-    /// Whether the module joins a window's end of a match on a local server, `local`, or a
-    /// remote one: the local keys a local match's alone, every other module either.
-    const fn joins(self, local: bool) -> bool {
+    /// Whether the module joins a window's end that keeps `keeps`: the local keys a local
+    /// match's alone, the report chord's one that keeps a data directory, every other module any.
+    const fn joins(self, keeps: WindowKeeps) -> bool {
         match self {
-            Self::LocalKeys => local,
+            Self::LocalKeys => matches!(keeps, WindowKeeps::Local),
+            Self::Report => !matches!(keeps, WindowKeeps::Nothing),
             Self::Window
             | Self::ClientFiles
             | Self::View
@@ -149,11 +167,14 @@ impl ClientModule {
         }
     }
 
-    /// The modules of the list that join a window's end, `local` or not, in a mode of
+    /// The modules of the list that join a window's end that keeps `keeps`, in a mode of
     /// `capabilities`, in the list's order.
-    pub(crate) fn of(local: bool, capabilities: CapabilitySet) -> impl Iterator<Item = Self> {
+    pub(crate) fn of(
+        keeps: WindowKeeps,
+        capabilities: CapabilitySet,
+    ) -> impl Iterator<Item = Self> {
         Self::ALL.into_iter().filter(move |module| {
-            module.joins(local)
+            module.joins(keeps)
                 && module
                     .needs()
                     .iter()
@@ -167,7 +188,7 @@ impl ClientEnd {
     /// window's end in the mode of `packages`, in the list's order, as Bevy builds its asset
     /// sources as its asset plugin is added, so the window's source goes first.
     pub(crate) fn add(self, app: &mut App, packages: &Arc<ModePackages>) {
-        let local = match self {
+        let (local, data) = match self {
             Self::Bot => {
                 app.add_plugins((
                     OneThreadPlugins,
@@ -177,14 +198,20 @@ impl ClientEnd {
                 ));
                 return;
             }
-            Self::Window { local } => local,
+            Self::Window { local, data } => (local, data),
+        };
+        let keeps = match (&local, &data) {
+            (Some(_), _) => WindowKeeps::Local,
+            (None, Some(_)) => WindowKeeps::Remote,
+            (None, None) => WindowKeeps::Nothing,
         };
         let cx = WindowCx {
             packages,
             local: local.as_ref(),
+            data: data.as_ref(),
         };
         let capabilities = packages.manifest().capabilities;
-        for module in ClientModule::of(local.is_some(), capabilities) {
+        for module in ClientModule::of(keeps, capabilities) {
             module.add(app, &cx);
         }
     }
@@ -216,6 +243,16 @@ impl ClientModule {
                 let pace = cx.local.expect("the local keys join a local match alone");
                 app.add_plugins(LocalKeysPlugin {
                     pace: Arc::clone(pace),
+                });
+            }
+            Self::Report => {
+                let data = cx
+                    .data
+                    .expect("the report chord joins a window that keeps data alone");
+                app.add_plugins(ReportPlugin {
+                    data: data.clone(),
+                    mode: packages.manifest().header.name.clone(),
+                    map: packages.map_name().clone(),
                 });
             }
             Self::ClientFiles => {
@@ -291,6 +328,8 @@ impl ClientModule {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use bevy::ecs::schedule::Schedules;
     use campfire_test_packages::TestMode;
 
@@ -305,9 +344,11 @@ mod tests {
         test_app::add_match(&mut app);
         let packages = Arc::new(TestMode::Lane.packages());
         let pace = Arc::new(Pace::default());
+        let data = ClientLayout::at(PathBuf::from("client"));
         let cx = WindowCx {
             packages: &packages,
             local: Some(&pace),
+            data: Some(&data),
         };
         for module in ClientModule::ALL {
             if module != ClientModule::Window {
@@ -329,10 +370,10 @@ mod tests {
 
     #[test]
     fn a_window_adds_the_modules_whose_capabilities_its_mode_holds() {
-        let (remote, local) = (false, true);
-        let of = |local, capabilities: &[Capability]| {
+        let (remote, local) = (WindowKeeps::Nothing, WindowKeeps::Local);
+        let of = |keeps, capabilities: &[Capability]| {
             let set = (capabilities.iter()).fold(CapabilitySet::CORE, |set, &of| set.with(of));
-            ClientModule::of(local, set).collect::<Vec<_>>()
+            ClientModule::of(keeps, set).collect::<Vec<_>>()
         };
         // A remote window of no capability: the core's modules, in the list's order.
         let core = [
@@ -349,47 +390,53 @@ mod tests {
             ClientModule::Orders,
         ];
         assert_eq!(of(remote, &[]), core);
-        // A local one adds its keys; production alone adds the gather and rally clicks, the
+        // A local one adds its keys and the report chord, and a remote one that keeps a data
+        // directory the chord alone; production alone adds the gather and rally clicks, the
         // panel and its names, and the preview only with navigation; items the shop, the
         // inventory and their names; areas their discs; interaction the use click; progression
         // the learn keys.
-        let with = |extra: &[ClientModule], local_keys: bool| {
+        let with = |extra: &[ClientModule], keeps: WindowKeeps| {
             let mut modules = core.to_vec();
-            if local_keys {
-                modules.insert(1, ClientModule::LocalKeys);
+            if keeps == WindowKeeps::Local {
+                modules.push(ClientModule::LocalKeys);
+            }
+            if keeps != WindowKeeps::Nothing {
+                modules.push(ClientModule::Report);
             }
             modules.extend_from_slice(extra);
             modules.sort_by_key(|module| ClientModule::ALL.iter().position(|of| of == module));
             modules
         };
-        assert_eq!(of(local, &[]), with(&[], true));
+        assert_eq!(of(local, &[]), with(&[], local));
+        let kept = WindowKeeps::Remote;
+        assert_eq!(of(kept, &[]), with(&[], kept));
         let panel = [
             ClientModule::GatherClick,
             ClientModule::RallyClick,
             ClientModule::ActionNames,
             ClientModule::CommandPanel,
         ];
-        assert_eq!(of(remote, &[Capability::Production]), with(&panel, false));
+        assert_eq!(of(remote, &[Capability::Production]), with(&panel, remote));
         let built = [Capability::Production, Capability::Navigation];
         let preview = [&panel[..], &[ClientModule::BuildPreview]].concat();
-        assert_eq!(of(remote, &built), with(&preview, false));
+        assert_eq!(of(remote, &built), with(&preview, remote));
         let shop = [
             ClientModule::ItemNames,
             ClientModule::ShopPanel,
             ClientModule::InventoryBar,
         ];
-        assert_eq!(of(remote, &[Capability::Items]), with(&shop, false));
+        assert_eq!(of(remote, &[Capability::Items]), with(&shop, remote));
         let areas = [ClientModule::AreaView];
-        assert_eq!(of(remote, &[Capability::Areas]), with(&areas, false));
+        assert_eq!(of(remote, &[Capability::Areas]), with(&areas, remote));
         let interaction = [ClientModule::UseClick];
         assert_eq!(
             of(remote, &[Capability::Interaction]),
-            with(&interaction, false)
+            with(&interaction, remote)
         );
         let progression = [ClientModule::LearnKeys];
         assert_eq!(
             of(remote, &[Capability::Progression]),
-            with(&progression, false)
+            with(&progression, remote)
         );
     }
 }

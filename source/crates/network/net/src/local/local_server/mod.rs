@@ -25,7 +25,7 @@ use campfire_host::ServerDir;
 use campfire_host::ServerPin;
 use campfire_host::ServerSetup;
 use campfire_host::SessionTimes;
-use campfire_host::{PlannedBot, ServerBots};
+use campfire_host::{ClientLayout, PlannedBot, ServerBots};
 use campfire_host::{Publisher, SessionDir};
 
 pub(crate) mod error;
@@ -63,6 +63,8 @@ pub struct LocalServerSetup {
     pub player_slot_picks: Vec<PlayerSlotPick>,
     pub pace: Arc<Pace>,
     pub os: Os,
+    /// Its client's data directory, whose reports it writes its log into.
+    pub reports: ClientLayout,
 }
 
 impl LocalServer {
@@ -79,6 +81,7 @@ impl LocalServer {
             role,
             pace,
             os,
+            reports,
         } = setup;
         let dir = ServerDir::open(&data).map_err(LocalServerError::Data)?;
         let signer = KeyFile::read_or_create(&dir.layout().key_file(), os.entropy)
@@ -147,6 +150,7 @@ impl LocalServer {
             run: ServerRun::Local {
                 stop: Arc::clone(&stop),
                 pace,
+                reports,
             },
         };
         let worker = Worker::start(Job::LocalServer, move || {

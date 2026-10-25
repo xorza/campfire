@@ -275,6 +275,7 @@ miniz_oxide = { version = "=0.9.1", default-features = false }
 naga = { version = "=30.0.1", default-features = false }
 netdev = { version = "=0.46.3", default-features = false }
 nostr = { version = "=0.45.5", default-features = false }
+png = { version = "=0.18.1", default-features = false }
 polling = { version = "=3.11.0", default-features = false }
 postcard = { version = "=1.1.3", default-features = false }
 proc-macro2 = { version = "=1.0.107", default-features = false }

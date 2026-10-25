@@ -443,6 +443,7 @@ Exact versions are pinned; each release tag pins its toolchain and `Cargo.lock`,
 | RNG | `blake3` keyed hash | A PRF by specification, counter-based as Random123; `rand` may change output in minor releases |
 | Binary encoding | `postcard` | A stable wire format since 1.0 |
 | Data files, log lines | `toml`, `serde_json` | Through `codec` |
+| Screenshots | `png` | Through `codec`; the `image` crate Bevy builds holds no PNG encoder, and its PNG feature brings formats no report writes ([Bug reports](bug-reports.md)) |
 | Client files' vectors | `bevy_math` | The client draws them with no conversion; the sim's vectors are `math`'s |
 | State hashes | `blake3` | |
 | File and package fingerprints | `sha2` | SHA-256, as Blossom addresses blobs |

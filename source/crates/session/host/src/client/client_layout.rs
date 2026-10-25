@@ -1,11 +1,18 @@
 use std::path::PathBuf;
 
+use campfire_common::Tick;
 use campfire_protocol::SessionId;
+use campfire_store::{DurableDir, DurableDirCreateError};
+
+use crate::client::report_dir::ReportDir;
+use crate::error::ReportWriteError;
+use crate::messages::save_command::ReportKey;
 
 /// The paths of a client's data directory, the one place they are named: the newest receipt of
-/// each session, `receipts/<session id>.receipt`, and its local server's data directory,
-/// `server`, a data directory of its own with its own lock. Made from the directory's path alone,
-/// so a tool reads a finished run's directory it does not hold by it.
+/// each session, `receipts/<session id>.receipt`; its local server's data directory, `server`, a
+/// data directory of its own with its own lock; and each report's folder under `reports`. Made
+/// from the directory's path alone, so a tool reads a finished run's directory it does not hold
+/// by it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientLayout {
     root: PathBuf,
@@ -23,6 +30,39 @@ impl ClientLayout {
     /// The newest receipt of the session of `session_id`.
     pub(crate) fn receipt_file(&self, session_id: SessionId) -> PathBuf {
         self.receipts_dir().join(format!("{session_id}.receipt"))
+    }
+
+    /// The folder of the report `key` of the session of `session_id`.
+    pub fn report_dir(&self, session_id: SessionId, key: ReportKey) -> ReportDir {
+        let ReportKey { tick, take } = key;
+        let name = match take {
+            0 => format!("{session_id}-{tick}"),
+            _ => format!("{session_id}-{tick}-{take}"),
+        };
+        ReportDir::at(self.reports_dir().join(name), key)
+    }
+
+    /// Makes the folder of a new report of the session of `session_id` at `tick`: the first take
+    /// of the tick whose folder no earlier report made.
+    pub fn create_report_dir(
+        &self,
+        session_id: SessionId,
+        tick: Tick,
+    ) -> Result<ReportDir, ReportWriteError> {
+        DurableDir::create_all(&self.reports_dir())?;
+        for take in 0..=u32::MAX {
+            let dir = self.report_dir(session_id, ReportKey { tick, take });
+            match DurableDir::create_new(dir.path()) {
+                Ok(()) => return Ok(dir),
+                Err(made) if matches!(made.error, DurableDirCreateError::Exists) => {}
+                Err(made) => return Err(made.into()),
+            }
+        }
+        unreachable!("a tick holds fewer reports than a u32 counts")
+    }
+
+    fn reports_dir(&self) -> PathBuf {
+        self.root.join("reports")
     }
 
     /// The data directory of the client's local server.

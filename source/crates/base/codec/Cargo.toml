@@ -12,6 +12,7 @@ internals = []
 
 [dependencies]
 arrayvec.workspace = true
+png.workspace = true
 postcard = { workspace = true, features = ["use-std"] }
 serde = { workspace = true, features = ["derive", "rc", "std"] }
 serde_json = { workspace = true, features = ["std"] }

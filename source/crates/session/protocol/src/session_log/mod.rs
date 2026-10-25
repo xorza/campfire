@@ -383,8 +383,9 @@ impl SessionLog {
                 .is_some_and(|len| len <= bound)
         };
         fits(self.file_len, growth.file, self.bounds.file())
-            && journal
-                .is_none_or(|journal| fits(journal.len(), growth.journal, self.bounds.journal()))
+            && journal.is_none_or(|journal| {
+                fits(journal.file_len(), growth.journal, self.bounds.journal())
+            })
     }
 
     /// The bytes the session's end may still take: `END_RECORDS` records, and the record of each
@@ -414,10 +415,10 @@ impl SessionLog {
             "the file stays within its bound"
         );
         if let Some(journal) = journal {
-            let before = journal.len();
+            let before = journal.file_len();
             journal.append(&self.record);
             debug_assert_eq!(
-                journal.len(),
+                journal.file_len(),
                 before + growth.journal,
                 "an entry's record adds what the log counted"
             );

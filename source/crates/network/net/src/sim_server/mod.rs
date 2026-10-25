@@ -65,9 +65,11 @@ use campfire_host::Checkpoints;
 use campfire_host::InputMessage;
 use campfire_host::JournalWatch;
 use campfire_host::PlayerLink;
+use campfire_host::Reports;
 use campfire_host::SaveCommand;
 use campfire_host::SaveTaken;
 use campfire_host::ServerPhase;
+use campfire_host::SessionDir;
 
 pub(crate) mod ack_sender;
 pub(crate) mod data_filter;
@@ -182,6 +184,12 @@ impl Plugin for SimServerPlugin {
                 .run_if(in_state(ServerPhase::Running))
                 .run_if(session_running)
                 .in_set(ServerFrameSystems::Saves),
+        );
+        app.add_systems(
+            Last,
+            SessionDir::publish_reports
+                .after(JournalWatch::flush)
+                .run_if(resource_exists::<Reports>),
         );
         app.add_observer(Spectators::leave);
         Viewer::follow_links(app);

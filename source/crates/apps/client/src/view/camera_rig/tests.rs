@@ -50,6 +50,15 @@ fn the_camera_starts_at_its_most_height_back_along_its_pitch_looking_at_the_pivo
         eye.translation,
         Vec3::new(100.0 + 404.0001, 330.0, -50.0)
     ));
+    // Its report holds the rig's own state, which puts it back exactly, and the eye it placed.
+    let report = turned.report(&eye);
+    assert_eq!(report.pivot, [100.0, -50.0]);
+    assert_eq!(
+        [report.yaw, report.pitch, report.height],
+        [turned.yaw, 37.5_f32.to_radians(), 310.0]
+    );
+    assert_eq!(report.place, eye.translation.to_array());
+    assert_eq!(report.forward, eye.forward().to_array());
     // The default's view of old: 24 m up and 18 m back.
     let old = CameraRig::new(CameraRig::DEFAULT, Vec2::ZERO, None).transform(0.0);
     assert!(near(old.translation, Vec3::new(0.0, 24.0, 18.0)));

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use campfire_bots::OrderScriptError;
 use campfire_protocol::{ConnectError, DelegationError};
 use campfire_runner::ServerInputRefusal;
-use campfire_store::{PathError, ReadError};
+use campfire_store::{DurableDirCreateError, DurableDirError, DurableError, PathError, ReadError};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -82,4 +82,18 @@ pub enum OrderFileError {
         #[source]
         error: OrderScriptError,
     },
+}
+
+/// Why a file of a player's report was not written, by its step, each of which its path's error
+/// names.
+#[derive(Debug, Error)]
+pub enum ReportWriteError {
+    /// The reports' folder or the report's was not made.
+    #[error(transparent)]
+    Dir(#[from] PathError<DurableDirError>),
+    /// The report's own folder was not made new.
+    #[error(transparent)]
+    NewDir(#[from] PathError<DurableDirCreateError>),
+    #[error(transparent)]
+    File(#[from] PathError<DurableError>),
 }

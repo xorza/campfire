@@ -228,6 +228,16 @@ impl JoinState {
         }
     }
 
+    /// The session the client plays or watches; `None` while it does neither.
+    pub const fn session(&self) -> Option<SessionId> {
+        match &self.step {
+            Step::Playing(Playing { member, .. }) | Step::Watching(Watching { member, .. }) => {
+                Some(member.session.id)
+            }
+            _ => None,
+        }
+    }
+
     /// The clock of the match the client watches as a spectator; `None` while it does not.
     pub const fn watching_clock(&self) -> Option<MatchClock> {
         match &self.step {

@@ -94,3 +94,13 @@ pub(crate) mod internals {
         }
     }
 }
+
+/// Why a PNG file gives no image of 8-bit RGBA pixels.
+#[derive(Debug, Error)]
+pub enum PngError {
+    #[error(transparent)]
+    Decode(#[from] png::DecodingError),
+    /// It holds pixels other than 8-bit RGBA.
+    #[error("the PNG's pixels are not 8-bit RGBA")]
+    NotRgba,
+}

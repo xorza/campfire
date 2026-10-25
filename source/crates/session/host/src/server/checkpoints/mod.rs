@@ -20,6 +20,7 @@ use crate::faults::fault::Fault;
 use crate::hosting::Hosting;
 use crate::messages::save_command::SaveCommand;
 use crate::server::checkpoint_thread::{CheckpointThread, Returned};
+use crate::server::reports::Reports;
 use crate::server::snapshot_dir::SnapshotDir;
 
 /// A session's checkpoints on its server: the boundaries it checkpoints at, and the thread that
@@ -137,17 +138,21 @@ impl Checkpoints {
     }
 
     /// Takes `command` of a placed player: on a local server, a save makes a checkpoint due at
-    /// the boundary after the next tick, unless the mode alone saves, and a load settles the
-    /// checkpoints and loads the latest save in place, as `load` does; why not, when it refuses
-    /// it.
+    /// the boundary after the next tick, unless the mode alone saves, a load settles the
+    /// checkpoints and loads the latest save in place, as `load` does, and a report waits for
+    /// its log, as `Reports::take` takes it; why not, when it refuses it.
     pub fn take(world: &mut World, command: SaveCommand) -> Result<SaveTaken, SaveRefusal> {
         if *world.resource::<Hosting>() != Hosting::Local {
             return Err(SaveRefusal::NotLocal);
         }
-        if !world.contains_resource::<Self>() {
-            return Err(SaveRefusal::NoData);
-        }
         match command {
+            SaveCommand::Report(key) => {
+                Reports::take(world, key)?;
+                Ok(SaveTaken::Planned)
+            }
+            SaveCommand::Save | SaveCommand::LoadLatest if !world.contains_resource::<Self>() => {
+                Err(SaveRefusal::NoData)
+            }
             SaveCommand::Save => {
                 let session = world.resource::<Session>();
                 if session.saves().by == SaveBy::Mode {
@@ -200,6 +205,7 @@ impl Checkpoints {
                 panic!("the log holds its own latest save")
             }
         }
+        Reports::loaded(world);
         world.remove_resource::<Self>();
         let mut base = StateDelta::default();
         world.track_again(&mut base);

@@ -14,6 +14,7 @@ internals = [
     "campfire-bots/internals",
     "campfire-capabilities/internals",
     "campfire-client-files/internals",
+    "campfire-codec/internals",
     "campfire-combat/internals",
     "campfire-declarations/internals",
     "campfire-geometry/internals",
@@ -53,6 +54,7 @@ campfire-areas.workspace = true
 campfire-bots.workspace = true
 campfire-capabilities.workspace = true
 campfire-client-files.workspace = true
+campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-declarations.workspace = true
@@ -138,7 +140,6 @@ unic-langid.workspace = true
 
 [dev-dependencies]
 campfire-client = { workspace = true, features = ["internals"] }
-campfire-codec = { workspace = true, features = ["internals"] }
 campfire-test-packages.workspace = true
 fluent-syntax.workspace = true
 naga = { workspace = true, features = ["wgsl-in"] }

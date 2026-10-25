@@ -8,6 +8,8 @@ pub(crate) mod join_state;
 pub(crate) mod known_commanded;
 pub(crate) mod player_signer;
 pub(crate) mod receipt_writer;
+pub(crate) mod report_dir;
+pub(crate) mod report_file;
 pub(crate) mod sent_inputs;
 pub(crate) mod server_pin;
 pub(crate) mod session_signer;

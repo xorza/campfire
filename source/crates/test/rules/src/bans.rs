@@ -148,7 +148,7 @@ const CODEC_METHODS: [&str; 24] = [
 
 /// The types only `codec` holds, each banned whole so every method of it is: a value type among
 /// them, which is a deserializer of its own.
-const CODEC_TYPES: [&str; 9] = [
+const CODEC_TYPES: [&str; 11] = [
     "postcard::Serializer",
     "postcard::Deserializer",
     "toml::Serializer",
@@ -158,6 +158,8 @@ const CODEC_TYPES: [&str; 9] = [
     "serde_json::Value",
     "toml::Value",
     "toml::Table",
+    "png::Encoder",
+    "png::Decoder",
 ];
 
 /// The calls only `schedule` makes: those that set a schedule's build settings, which can switch
@@ -269,13 +271,20 @@ pub(crate) const PROXIES: [Proxy; 7] = [
         types: &CODEC_TYPES,
         dependencies: &[
             "arrayvec",
+            "png",
             "postcard",
             "serde",
             "serde_json",
             "thiserror",
             "toml",
         ],
-        names: &["postcard::", "serde_json::", "toml::", "postcard_utils"],
+        names: &[
+            "postcard::",
+            "serde_json::",
+            "toml::",
+            "png::",
+            "postcard_utils",
+        ],
         crates: None,
     },
     Proxy {
@@ -350,13 +359,14 @@ const UNOWNED_NAMES: [&str; 8] = [
 const THREAD_LOCAL: &str = "std::thread::LocalKey";
 
 /// What names a banned type in source, other than the thread-local one.
-const TYPE_NAMES: [&str; 11] = [
+const TYPE_NAMES: [&str; 12] = [
     "std::fs",
     "tempfile::",
     "TaskPool",
     "postcard::",
     "toml::",
     "serde_json::",
+    "png::",
     "HashMap",
     "HashSet",
     "RandomState",

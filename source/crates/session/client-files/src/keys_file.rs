@@ -34,6 +34,9 @@ pub struct KeysFile {
     pub faster: Vec<Chord>,
     pub save: Vec<Chord>,
     pub load: Vec<Chord>,
+    /// The chords that write a report of what the client shows, for a bug the player sees
+    /// (bug-reports.md, A report is a folder of plain files).
+    pub report: Vec<Chord>,
     /// The chords held that scroll the camera, zoom it and turn it, and the ones that set it
     /// back.
     pub scroll_left: Vec<Chord>,
@@ -223,6 +226,7 @@ impl Default for KeysFile {
             faster: plain(&[Key::Equal, Key::NumpadAdd]),
             save: plain(&[Key::F5]),
             load: plain(&[Key::F9]),
+            report: plain(&[Key::F12]),
             scroll_left: plain(&[Key::ArrowLeft]),
             scroll_right: plain(&[Key::ArrowRight]),
             scroll_up: plain(&[Key::ArrowUp]),

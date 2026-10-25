@@ -85,12 +85,12 @@ impl Journal {
     }
 
     /// How many records the log took into the journal.
-    pub(crate) const fn written(&self) -> u64 {
+    pub const fn written(&self) -> u64 {
         self.written
     }
 
     /// How many bytes the journal's file holds.
-    pub(crate) const fn len(&self) -> u64 {
+    pub const fn file_len(&self) -> u64 {
         self.len
     }
 

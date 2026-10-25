@@ -21,6 +21,7 @@ mod drop_option;
 mod error;
 mod json;
 mod json_value;
+mod png;
 mod sink;
 mod struct_fields;
 mod toml;
@@ -30,9 +31,12 @@ mod toml_table;
 mod toml_value;
 
 pub use crate::binary::{Binary, Decoded};
-pub use crate::error::{BinaryError, JsonError, Malformed, TaggedError, TomlError, TomlWriteError};
+pub use crate::error::{
+    BinaryError, JsonError, Malformed, PngError, TaggedError, TomlError, TomlWriteError,
+};
 pub use crate::json::Json;
 pub use crate::json_value::JsonValue;
+pub use crate::png::{Png, RgbaImage};
 pub use crate::sink::Sink;
 pub use crate::struct_fields::StructFields;
 pub use crate::toml::Toml;

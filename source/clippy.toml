@@ -35,6 +35,8 @@ disallowed-types = [
     { path = "serde_json::Serializer", reason = "write through campfire_codec::Json" },
     { path = "serde_json::Deserializer", reason = "parse through campfire_codec::Json" },
     { path = "serde_json::Value", reason = "read a value through campfire_codec::JsonValue" },
+    { path = "png::Encoder", reason = "encode through campfire_codec::Png" },
+    { path = "png::Decoder", reason = "decode through campfire_codec::Png" },
     # Banned everywhere: randomly seeded, so iteration order differs between runs, which breaks determinism.
     { path = "std::collections::HashMap", reason = "randomly seeded; use a fixed-hasher map" },
     { path = "std::collections::HashSet", reason = "randomly seeded; use a fixed-hasher set" },

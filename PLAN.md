@@ -4,15 +4,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Bug reports
 
-The slice of [Bug reports](docs/design/bug-reports.md): a player who sees a bug presses F12 and gets a folder with the session's log up to that tick, a screenshot and the camera; an agent replays the log to that tick and reads the units there, and opens the report in the client to see the same frame. Three batches, each one commit; its checks are that document's.
-
-### R1. A report (client files, codec, client, host)
-
-- [ ] The key map has no chord of a report (`client-files/src/keys_file.rs:224`) → the `report` chord, F12 by default, which every keys file holds (bug-reports.md, A report is a folder of plain files).
-- [ ] `codec` encodes no PNG → it encodes an RGBA frame as a compressed PNG, by the `png` crate, a dependency for the user's approval (bug-reports.md, The screenshot is the frame the window shows).
-- [ ] The client writes no report → on the chord, it captures the window's frame by Bevy's `Screenshot`, and writes `screenshot.png` and `report.toml`, of the camera rig's state, its place and forward, the session, the tick drawn, the player slot, the selected units and the window's size, into `<data>/reports/<session>-<tick>/` through `store` (bug-reports.md, A report is a folder of plain files; bug-reports.md, The camera is the rig's state).
-- [ ] A local server publishes its log only at its session's end (`host/src/server/session_dir/mod.rs:241`) → the report's chord sends the local server a command, as the save's does (`host/src/server/checkpoints/mod.rs:143`), and the server settles its journal and publishes the log so far, its seed revealed, into the report's folder (bug-reports.md, The log is the local server's, published at the report's tick).
-- Checks: the client's tests write a report of a fixed scene, its camera read back to the same rig and its PNG decoded to the frame; a test of the local server publishes its log at a tick and replays it to the hash the session held there; in the client, F12 in a Zero Hour skirmish writes a report.
+The slice of [Bug reports](docs/design/bug-reports.md): a player who sees a bug presses F12 and gets a folder with the session's log up to that tick, a screenshot and the camera; an agent replays the log to that tick and reads the units there, and opens the report in the client to see the same frame. Each batch is one commit; its checks are that document's.
 
 ### R2. A report replays to its tick (runner, harness, driver)
 

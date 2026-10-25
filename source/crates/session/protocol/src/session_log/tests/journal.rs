@@ -24,7 +24,7 @@ fn a_journal_rebuilds_the_log_it_followed() {
     assert_eq!(file.appends(), 0);
     journal.flush();
     assert_eq!(file.appends(), 1);
-    assert_eq!(journal.len(), len(file.bytes().len()));
+    assert_eq!(journal.file_len(), len(file.bytes().len()));
     drop(journal);
     // The log holds the packet after its checkpoint alone, of the three entries it took, as
     // does the log its journal rebuilds; their state is the one a log with no journal holds.

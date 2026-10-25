@@ -4,6 +4,7 @@ use bevy::ecs::resource::Resource;
 use bevy::math::{Quat, Vec2, Vec3};
 use bevy::transform::components::Transform;
 use campfire_client_files::{CameraFile, CameraHeight, Press};
+use campfire_host::ReportCamera;
 
 /// The player's camera: it looks down at a pitch at a point of the ground, its pivot, from a
 /// height above it, turned about it by a yaw. Keys and the screen's edges scroll the pivot across
@@ -139,6 +140,19 @@ impl CameraRig {
         let back = self.height / self.pitch.tan();
         let offset = Quat::from_rotation_y(self.yaw) * Vec3::new(0.0, self.height, back);
         Transform::from_translation(target + offset).looking_at(target, Vec3::Y)
+    }
+
+    /// The rig as a report holds it, with the place and the forward of `placed`, the camera it
+    /// placed (bug-reports.md, The camera is the rig's state).
+    pub(crate) fn report(&self, placed: &Transform) -> ReportCamera {
+        ReportCamera {
+            pivot: self.pivot.to_array(),
+            yaw: self.yaw,
+            pitch: self.pitch,
+            height: self.height,
+            place: placed.translation.to_array(),
+            forward: placed.forward().to_array(),
+        }
     }
 
     /// Its vertical field of view, in radians, on a screen `aspect` times as wide as tall.

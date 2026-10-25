@@ -171,7 +171,7 @@ fn a_journal_frames_its_records_and_hands_them_to_its_sink_once_a_flush() {
     for record in RECORDS {
         journal.append(record);
     }
-    assert_eq!((journal.written(), journal.len()), (3, 144));
+    assert_eq!((journal.written(), journal.file_len()), (3, 144));
     // The sink takes nothing until the flush, then the three records in one append; a flush
     // of nothing appends nothing, and a drop flushes what is left.
     assert_eq!(file.bytes(), JournalFrames::TAG);

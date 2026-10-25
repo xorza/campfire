@@ -1,12 +1,12 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
 use bevy_ecs::world::World;
-use campfire_common::Version;
+use campfire_common::{ErrorReport, Version};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::{
@@ -20,12 +20,14 @@ use campfire_store::{
     AppendOpenError, DirEntries, DurableDir, DurableDirError, DurableFile, InputFile, PathError,
     ReadError, Stamped,
 };
+use tracing::{error, info};
 
 use crate::events::journal_cut::JournalCut;
 use crate::events::session_aborted::SessionAborted;
 use crate::server::checkpoints::Checkpoints;
 use crate::server::error::MatchBeginError;
 use crate::server::journal_watch::{JournalFrom, JournalWatch};
+use crate::server::reports::{DueReport, Reports};
 use crate::server::server_dir::ServerDir;
 use crate::server::session_dir::error::{
     AbortError, FindError, RestoreError, SessionCreateError, SessionPublishError, WaitingError,
@@ -235,14 +237,74 @@ impl SessionDir {
     }
 
     /// Publishes the log of `session`, which its journal under `data` holds whole, with the
-    /// server seed `revealed` of its last segment, in `data`, written durably: the file the
-    /// journal publishes in two streaming reads (08-sessions.md, A published log is written from
-    /// the journal); the file's path.
+    /// server seed `revealed` of its last segment, in `data`, written durably, as `publish_into`
+    /// writes it; the file's path.
     pub fn publish(
         data: &ServerDir,
         session: SessionId,
         revealed: &ServerSeed,
     ) -> Result<PathBuf, SessionPublishError> {
+        DurableDir::create(&data.layout().logs_dir())?;
+        let file = data.layout().published_log(session);
+        Self::publish_into(data, session, Bound::Whole, revealed, &file)?;
+        Ok(file)
+    }
+
+    /// Publishes the log so far into each report's folder once the journal synced its records,
+    /// the last segment's seed revealed, as `publish_into` writes it; logs each report written,
+    /// and each that failed.
+    pub fn publish_reports(world: &mut World) {
+        let Some(durable) = world
+            .get_resource::<JournalWatch>()
+            .map(|watch| watch.0.durable())
+        else {
+            return;
+        };
+        if world
+            .get_resource::<Reports>()
+            .is_none_or(Reports::is_empty)
+        {
+            return;
+        }
+        let mut reports = world
+            .remove_resource::<Reports>()
+            .expect("the reports of a local server");
+        let mut session = world.resource_mut::<Session>();
+        let next = session.log().next_tick();
+        if let Some(journal) = session.journal_mut() {
+            reports.mark(next, journal);
+        }
+        let session = world.resource::<Session>();
+        let (id, seed) = (session.log().session_id(), session.last_seed().clone());
+        let data = world.resource::<ServerDir>();
+        for DueReport { dir, bytes } in reports.due(id, durable) {
+            let file = dir.log();
+            if let Err(problem) = dir.create() {
+                error!(file = %file.display(), error = %ErrorReport::of(&problem), "could not make the report's folder");
+                continue;
+            }
+            match Self::publish_into(data, id, Bound::Bytes(bytes), &seed, &file) {
+                Ok(()) => info!(file = %file.display(), "wrote the log so far into the report"),
+                Err(problem) => {
+                    error!(file = %file.display(), error = %ErrorReport::of(&problem), "could not write the log into the report");
+                }
+            }
+        }
+        world.insert_resource(reports);
+    }
+
+    /// Writes durably into `file` the log of `session`, whose journal under `data` holds it in
+    /// `bound` of its bytes, with the server seed `revealed` of its last segment: the file the
+    /// journal publishes in two streaming reads (08-sessions.md, A published log is written from
+    /// the journal), so a session's log is never whole in memory, and a bound keeps a read off the
+    /// frames the journal's writer appends after it.
+    pub(crate) fn publish_into(
+        data: &ServerDir,
+        session: SessionId,
+        bound: Bound,
+        revealed: &ServerSeed,
+        file: &Path,
+    ) -> Result<(), SessionPublishError> {
         let dir = Self {
             session,
             path: data.layout().session_dir(session),
@@ -256,16 +318,17 @@ impl SessionDir {
             let streamed = InputFile::stream(&journal)
                 .map_err(SessionPublishError::Read)
                 .and_then(|stream| {
-                    JournalFrames::stream(stream, visit).map_err(SessionPublishError::Journal)
+                    let streamed = match bound {
+                        Bound::Whole => JournalFrames::stream(stream, visit),
+                        Bound::Bytes(len) => JournalFrames::stream(stream.take(len), visit),
+                    };
+                    streamed.map_err(SessionPublishError::Journal)
                 });
             if let Err(error) = streamed {
                 failed = Some(error);
             }
         };
-        DurableDir::create(&data.layout().logs_dir())?;
-        let file = data.layout().published_log(session);
-        // The file streams to its durable write, so a session's log is never whole in memory; a
-        // journal that does not publish ends the write, and its error is the publication's.
+        // A journal that does not publish ends the write, and its error is the publication's.
         let mut unpublished = None;
         let mut fill = |out: &mut dyn Write| match SessionLog::publish(&mut walk, revealed, out) {
             Ok(()) => Ok(()),
@@ -275,7 +338,7 @@ impl SessionDir {
                 Err(io::Error::other("the journal does not publish"))
             }
         };
-        let written = DurableFile::write_with(&file, &mut fill);
+        let written = DurableFile::write_with(file, &mut fill);
         if let Some(error) = failed {
             return Err(error);
         }
@@ -283,8 +346,16 @@ impl SessionDir {
             return Err(error.into());
         }
         written?;
-        Ok(file)
+        Ok(())
     }
+}
+
+/// How much of a session's journal a publication reads: all of it, as at the session's end, or
+/// its first bytes, of the records durable when a report asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Bound {
+    Whole,
+    Bytes(u64),
 }
 
 /// What a session's replay leaves beside its match: the watch of its journal, and its
