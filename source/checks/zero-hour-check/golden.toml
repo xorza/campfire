@@ -143,7 +143,7 @@ no_build = 0
 [attack]
 ended = 18630
 standing = [4, 0]
-think_ops = 9102
+think_ops = 9093
 stalls = 259
 
 [attack.result]

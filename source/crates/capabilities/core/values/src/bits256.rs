@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// 256 bits, by index: the storage of the sets of tags and of teams, which a rollback copies
 /// without an allocation.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Bits256([u64; Self::WORDS]);
 

@@ -4,7 +4,7 @@ use crate::bits256::Bits256;
 use crate::tag::Tag;
 
 /// A set of tags, one bit each: a unit type's, a modifier's, or a unit's whole set.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct TagSet(Bits256);
 
