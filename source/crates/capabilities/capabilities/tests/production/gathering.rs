@@ -2,6 +2,7 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::system::SystemState;
 
+use campfire_actions::ActionBook;
 use campfire_capabilities::Order;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
@@ -387,6 +388,41 @@ fn a_block_of_use_ends_a_gather_with_no_load_and_the_loop_starts_again_as_it_end
         ),
         (Some(worker), Some(gathers))
     );
+    assert_eq!(game.part::<Gatherer>(worker).load(), None);
+}
+
+#[test]
+fn a_gather_whose_when_its_worker_fails_ends_with_no_load_and_starts_again_as_it_passes() {
+    // The gather needs a worker of no `test_blocks_move` tag, whose block of moving keeps no
+    // worker from a gather. A worker in range gathers from tick 0, its order's; in tick 2 it takes
+    // the tag: its gather ends, and the node frees, as a block of `use` ends it. Once it loses the
+    // tag, in tick 3, it takes the node again, its gather running from tick 3.
+    let Mining { mut game, mine, .. } = Mining::new();
+    Units::load_test_modifiers(&mut game);
+    let unmet = Filter::of_match(&game, "all:!test_blocks_move");
+    ActionBook::amend(&mut game, |_, book| book.set_when(mine.gather, Some(unmet)));
+    let node = mine.mineral(&mut game, halves(0, 12), 100);
+    let worker = mine.worker(&mut game, halves(1, 8), 0);
+    Production::gather_at(&mut game, &[worker], node);
+    let state = |game: &Match| {
+        (
+            game.part::<Node>(node).holder(),
+            Production::gather_step(game, worker),
+        )
+    };
+    let gathers = |since| {
+        Some(GatherStep::Gathering {
+            since: Tick::new(since),
+        })
+    };
+    game.step();
+    assert_eq!(state(&game), (Some(worker), gathers(0)));
+    Units::set_blocks(&mut game, worker, &[Block::Move]);
+    game.step();
+    assert_eq!(state(&game), (None, Some(GatherStep::ToNode)));
+    Units::set_blocks(&mut game, worker, &[]);
+    game.step();
+    assert_eq!(state(&game), (Some(worker), gathers(3)));
     assert_eq!(game.part::<Gatherer>(worker).load(), None);
 }
 

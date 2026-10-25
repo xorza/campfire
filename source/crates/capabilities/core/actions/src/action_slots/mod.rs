@@ -16,7 +16,6 @@ use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::action::Action;
 use crate::action_book::ActionBook;
 use crate::action_kind::ActionKind;
 use crate::action_range::ActionRange;
@@ -76,12 +75,13 @@ impl ActionSlot {
 }
 
 /// What a unit's test of a target reads: the actions' book, the units that may be targets, and
-/// the unit's team.
+/// the unit's team and tags, which its actions' `when` test.
 #[derive(Debug, Clone, Copy)]
 pub struct TargetTest<'a, 'w, 's> {
     pub book: &'a ActionBook,
     pub targets: &'a Targets<'w, 's>,
     pub team: Team,
+    pub tags: TagSet,
 }
 
 impl ActionSlots {
@@ -122,17 +122,31 @@ impl ActionSlots {
 }
 
 impl ActionSlots {
-    /// The slot of the first learned weapon of these slots, of `book`, whose filter selects a unit
-    /// of `tags` its unit regards with `relation`, ready or not; or with `None`, the first learned
-    /// weapon at all.
-    pub fn weapon_in(&self, book: &ActionBook, target: Option<(Relation, TagSet)>) -> Option<u8> {
+    /// The slot of the first learned weapon of these slots, of `book`, whose `when` their unit's
+    /// tags, `holder`, pass and whose filter selects a unit of `tags` its unit regards with
+    /// `relation`, ready or not; or with `None`, the first learned such weapon at all.
+    pub fn weapon_in(
+        &self,
+        book: &ActionBook,
+        holder: TagSet,
+        target: Option<(Relation, TagSet)>,
+    ) -> Option<u8> {
         let at = self.iter().position(|slot| {
             slot.action.is_some_and(|action| {
                 let action = book.get(action).expect("a slot's action is in the book");
-                Action::arms(slot.rank, action.weapon_filter(), target)
+                action.arms(slot.rank, holder, target)
             })
         })?;
         Some(u8::try_from(at).expect("a unit's slots fit u8"))
+    }
+
+    /// Whether a learned slot of these, of `book`, holds a weapon, whatever its `when`, as a type
+    /// that scans for targets needs one.
+    pub fn holds_weapon(&self, book: &ActionBook) -> bool {
+        self.iter().any(|slot| {
+            let action = slot.action.and_then(|action| book.get(action));
+            slot.rank.is_some() && action.is_some_and(|action| action.weapon_filter().is_some())
+        })
     }
 
     /// Whether a unit of these slots, of `test`'s team, may attack `target`: a living enemy that
@@ -144,33 +158,45 @@ impl ActionSlots {
             book,
             targets,
             team,
+            tags,
         } = *test;
         targets.enemy(team, target).is_some_and(|unit| {
             let selected = (targets.relation(team, unit.team), unit.tags);
-            self.weapon_in(book, Some(selected)).is_some()
+            self.weapon_in(book, tags, Some(selected)).is_some()
         })
     }
 
+    /// Whether the action in `slot`, of `book`, learned or not, is one whose `when` their unit's
+    /// tags, `holder`, pass: an order of one that fails is refused (upgrades.md, An action may
+    /// need tags).
+    pub fn usable(&self, book: &ActionBook, slot: u8, holder: TagSet) -> bool {
+        let action = self.slot(slot).and_then(|held| book.get(held.action?));
+        action.is_some_and(|action| action.usable_by(holder))
+    }
+
     /// Whether the action in `slot`, learned or not, takes the unit `target` of a unit of these
-    /// slots on `test`'s team, by the start's rule of its target, `Action::start_target`; whether
-    /// the unit may start it then is the order's and the start's own test
-    /// (04-capabilities/control.md, A bot's search runs its order's own test).
+    /// slots on `test`'s team and of its tags, by its `when` and the start's rule of its target,
+    /// `Action::start_target`; whether the unit may start it then is the order's and the start's
+    /// own test (04-capabilities/control.md, A bot's search runs its order's own test).
     pub fn may_aim(&self, test: &TargetTest<'_, '_, '_>, slot: u8, target: StableId) -> bool {
         let TargetTest {
             book,
             targets,
             team,
+            tags,
         } = *test;
         let action = self.slot(slot).and_then(|held| book.get(held.action?));
-        action.is_some_and(|action| {
-            let unit = |id| {
-                let unit = targets.target(id)?;
-                Some((targets.relation(team, unit.team), unit.tags))
-            };
-            action
-                .start_target(ActionTarget::Unit(target), unit)
-                .is_some()
-        })
+        action
+            .filter(|action| action.usable_by(tags))
+            .is_some_and(|action| {
+                let unit = |id| {
+                    let unit = targets.target(id)?;
+                    Some((targets.relation(team, unit.team), unit.tags))
+                };
+                action
+                    .start_target(ActionTarget::Unit(target), unit)
+                    .is_some()
+            })
     }
 
     /// The slot `slot`, when it holds an action it learned: an order of an action the unit has

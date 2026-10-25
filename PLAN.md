@@ -4,13 +4,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Upgrades
 
-The slice of [Upgrades](docs/design/upgrades.md): a player in a Zero Hour skirmish researches player and object upgrades from the panel, and sees them change units' armor, weapon sets, weapon damage and life. Three batches left: armor and actions by tags, with its scripted match; then the import; then the panel, the check and the fold. Its checks are that document's.
-
-### U3. Armor and actions by tags (combat, actions)
-
-- [ ] A unit type names one armor (`combat/src/combat_data.rs:14`) → it may also name `armors`, entries of a tag test and an armor, the first that passes replacing `armor`, derived as the unit's tags change (upgrades.md, Armor by tags).
-- [ ] Every action of a unit's slots may start whatever the unit's tags, but for those its tags block → an action's `when`, a tag test in the filter's syntax, refuses its start and keeps it out of each weapon choice and scan while it fails, its slot kept (upgrades.md, An action may need tags).
-- Checks: the scripted match: a unit given the tag its `armors` test takes the second armor's share of a damage, computed by hand, and the first's once it loses it; a unit of a weapon of `when` and one of `!` the same tag fires the first while it holds the tag and the second otherwise, by the damage each deals; its slots stay as they were.
+The slice of [Upgrades](docs/design/upgrades.md): a player in a Zero Hour skirmish researches player and object upgrades from the panel, and sees them change units' armor, weapon sets, weapon damage and life. Two batches left: the import; then the panel, the check and the fold. Its checks are that document's.
 
 ### U4. Zero Hour's upgrades (import)
 

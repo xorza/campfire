@@ -269,7 +269,8 @@ impl Attacks {
                         continue;
                     };
                     let selects = (targets.relation(team, unit.team), unit.tags);
-                    let weapon_slot = slots.weapon_in(&book, Some(selects));
+                    let holder = tags.map_or(TagSet::NONE, |tags| tags.tags);
+                    let weapon_slot = slots.weapon_in(&book, holder, Some(selects));
                     let (Some(slot), false) = (weapon_slot, blocked) else {
                         progress.end_pre_attack();
                         continue;

@@ -13,7 +13,7 @@ use campfire_production::{BuildPlaces, Builder, GatherView, Gatherer, PlaceSearc
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_units::{Commanded, Dead, Destination, GroundPoint, MapBook, PlayerUnits};
-use campfire_values::{Block, ItemId, Relations, Team, UnitTags, UnitType};
+use campfire_values::{Block, ItemId, Relations, TagSet, Team, UnitTags, UnitType};
 use campfire_vision::{ByHolding, ByVision, SeenTargets, TeamSight};
 
 use crate::loaded::ActionName;
@@ -220,21 +220,25 @@ impl<S: TeamSight> BotView<'_, '_, S> {
         let Some(entity) = self.index.get(unit) else {
             return false;
         };
-        let Ok((_, _, &team, slots, ..)) = self.units.get(entity) else {
+        let Ok((_, _, &team, slots, tags, _)) = self.units.get(entity) else {
             return false;
         };
         let test = TargetTest {
             book: &self.book,
             targets: &self.targets,
             team,
+            tags: tags.map_or(TagSet::NONE, |tags| tags.tags),
         };
         match role {
             UnitRole::Seen => true,
             UnitRole::Attacked => slots.is_some_and(|slots| slots.may_attack(&test, target)),
             UnitRole::Aimed(slot) => {
                 slots.is_some_and(|slots| match slots.kind_in(&self.book, slot) {
-                    Some(ActionKind::Gather) => (self.gathers.as_ref())
-                        .is_some_and(|gathers| gathers.gathers(unit, slot, target)),
+                    Some(ActionKind::Gather) => {
+                        slots.usable(&self.book, slot, test.tags)
+                            && (self.gathers.as_ref())
+                                .is_some_and(|gathers| gathers.gathers(unit, slot, target))
+                    }
                     _ => slots.may_aim(&test, slot, target),
                 })
             }

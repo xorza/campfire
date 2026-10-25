@@ -11,7 +11,7 @@ use campfire_geometry::Placed;
 use campfire_math::Num;
 use campfire_sim::{DueIndex, DueUnit, Position, SimTick, StableId};
 use campfire_units::{Body, Dead, UnitsNear, Walk};
-use campfire_values::{Team, UnitType};
+use campfire_values::{TagSet, Team, UnitTags, UnitType};
 use campfire_vision::{ByVision, SeenTargets};
 
 use crate::acquire::{Acquire, NextScan};
@@ -53,7 +53,7 @@ impl Acquiring {
                 (&Position, &Team, &UnitType, &NextScan),
                 (&ActionSlots, &mut ActionProgress),
                 (Option<Walk>, Option<&mut AttackMove>),
-                Option<&Body>,
+                (Option<&Body>, Option<&UnitTags>),
             ),
             Without<Dead>,
         >,
@@ -72,7 +72,7 @@ impl Acquiring {
                 (&position, &team, &unit_type, &next),
                 (slots, mut progress),
                 (walk, attack_move),
-                body,
+                (body, tags),
             )) = units.get_mut(entity)
             else {
                 continue;
@@ -98,8 +98,9 @@ impl Acquiring {
             if !idle {
                 continue;
             }
+            let holder = tags.map_or(TagSet::NONE, |tags| tags.tags);
             let from = Placed::new(position.get(), Body::shape_of(body));
-            let Some(reach) = Self::reach(slots, &actions) else {
+            let Some(reach) = Self::reach(slots, &actions, holder) else {
                 continue;
             };
             let metric = targets.metric();
@@ -114,7 +115,7 @@ impl Acquiring {
                     return ControlFlow::Continue(());
                 };
                 let relation = targets.relation(team, unit.team);
-                let weapon = slots.weapon_in(&actions, Some((relation, unit.tags)));
+                let weapon = slots.weapon_in(&actions, holder, Some((relation, unit.tags)));
                 let to = Placed::new(unit.position, unit.shape);
                 let reached = weapon.is_some_and(|slot| {
                     let values = slots
@@ -148,13 +149,15 @@ impl Acquiring {
         }
     }
 
-    /// The widest range of the learned weapons of `slots`, of `actions`: how far a scan looks past
-    /// the unit's edge, every distance for a weapon of the whole map; none for a unit with no
-    /// learned weapon.
-    fn reach(slots: &ActionSlots, actions: &ActionBook) -> Option<Num> {
-        let weapons = slots
-            .indexed()
-            .filter(|&(at, _)| slots.kind_in(actions, at) == Some(ActionKind::Attack));
+    /// The widest range of the learned weapons of `slots`, of `actions`, whose `when` the unit's
+    /// tags, `holder`, pass: how far a scan looks past the unit's edge, every distance for a
+    /// weapon of the whole map; none for a unit with no such weapon.
+    fn reach(slots: &ActionSlots, actions: &ActionBook, holder: TagSet) -> Option<Num> {
+        let weapons = slots.indexed().filter(|&(at, slot)| {
+            let usable = slot.action.and_then(|action| actions.get(action));
+            slots.kind_in(actions, at) == Some(ActionKind::Attack)
+                && usable.is_some_and(|action| action.usable_by(holder))
+        });
         let ranges = weapons.filter_map(|(_, slot)| match slot.values_in(actions)?.range {
             ActionRange::Meters(range) => Some(range.get()),
             ActionRange::Global => Some(Num::MAX),

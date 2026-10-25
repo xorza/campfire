@@ -27,7 +27,7 @@ use campfire_units::internals::Spawn;
 use campfire_units::{Dead, Destination, GroundPoint, MoveStep, NeededLevel, UnitTypeCore, Units};
 use campfire_values::{
     ActionId, FilterData, PackageIndex, Param, ParamRef, Rank, Ranked, Scalar, Team, TimeTooLarge,
-    TrackId, TypeScope,
+    TrackId, TypeScope, UnitTags,
 };
 
 use crate::abilities::{LASH_OUT, STRIKE, abilities_match, cost, int, lash_out, param};
@@ -187,6 +187,7 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
         book: &book,
         targets: &targets,
         team: *game.part::<Team>(caster),
+        tags: game.part::<UnitTags>(caster).tags,
     };
     let slots = game.part::<ActionSlots>(caster);
     assert!(slots.may_aim(&test, 0, enemy_hero) && !slots.may_aim(&test, 0, enemy_creep));

@@ -588,6 +588,17 @@ pub mod internals {
             add.apply_world(world, applier);
         }
 
+        /// Ends the instance of the modifier `id` from `source` on `carrier`, as a removal in the
+        /// running tick would.
+        pub fn take_modifier(
+            world: &mut World,
+            carrier: StableId,
+            id: ModifierId,
+            source: Option<StableId>,
+        ) {
+            Self::remove_modifier(world, carrier, id, source);
+        }
+
         /// The modifiers `id` carries, each with its source, in their order.
         pub fn carried_modifiers(
             world: &World,

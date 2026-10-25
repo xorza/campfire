@@ -40,7 +40,7 @@ impl Acquire {
                 return Err(rule(AcquireError::NoTargets));
             }
             let held = slots.get(unit.unit_type);
-            if held.is_none_or(|held| held.weapon_in(actions, None).is_none()) {
+            if held.is_none_or(|held| !held.holds_weapon(actions)) {
                 return Err(rule(AcquireError::NoWeapon));
             }
             let works = held.is_some_and(|held| {

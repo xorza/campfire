@@ -4,6 +4,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ActionBook, ActionSlots, SlotTimes};
 use campfire_common::Tick;
 use campfire_sim::{DueIndex, DueUnit, StableId, TickClock, TimedKept, TimedProcess, TimedRuns};
+use campfire_values::{TagSet, UnitTags};
 
 use crate::grants::{Grant, GrantFrom, Grants};
 use crate::lifetime::Hold;
@@ -38,11 +39,11 @@ impl TimedProcess for ActionPassives {
 
 impl ActionPassives {
     /// Pushes the grants of each unit's passives and holds as its slots stand: the passive of each
-    /// action with a rank, and with `passive_while_ready` off cooldown, and the `hold` of each
-    /// toggle that is on, each from the unit itself at the action's rank; and none of each other.
-    /// What a unit wants follows from its slots, its modifiers and the books, and from the tick
-    /// only as a cooldown a passive waits for ends: so a run visits only the units whose slots or
-    /// modifiers changed since its last, and those the index of the waits holds due, in a buffer
+    /// action with a rank whose `when` the unit's tags pass, and with `passive_while_ready` off
+    /// cooldown, and the `hold` of each toggle that is on, each from the unit itself at the
+    /// action's rank; and none of each other. What a unit wants follows from its slots, its
+    /// modifiers, its tags and the books, and from the tick only as a cooldown a passive waits for
+    /// ends: so a run visits only the units whose slots, modifiers or tags changed since its last, and those the index of the waits holds due, in a buffer
     /// it keeps, unless a book changed; it pushes each unit whose passive waits at the wait's end.
     pub(crate) fn want(
         (actions, book, stats): (
@@ -62,6 +63,7 @@ impl ActionPassives {
                 Ref<'_, ActionSlots>,
                 Ref<'_, SlotTimes>,
                 Ref<'_, Modifiers>,
+                Option<Ref<'_, UnitTags>>,
             ),
         >,
         mut index: ResMut<'_, DueIndex<Self>>,
@@ -75,11 +77,15 @@ impl ActionPassives {
         visits.clear();
         visits.extend(due.iter().map(|unit| unit.entity));
         visits.sort_unstable();
-        for (entity, &id, slots, times, modifiers) in &units {
-            let changed = slots.is_changed() || times.is_changed() || modifiers.is_changed();
+        for (entity, &id, slots, times, modifiers, tags) in &units {
+            let changed = slots.is_changed()
+                || times.is_changed()
+                || modifiers.is_changed()
+                || tags.as_ref().is_some_and(DetectChanges::is_changed);
             if !(every || changed || visits.binary_search(&entity).is_ok()) {
                 continue;
             }
+            let holder = tags.map_or(TagSet::NONE, |tags| tags.tags);
             let mut run = grants.of(entity, id);
             for (slot, time) in slots.iter().zip(times.iter()) {
                 let Some(action_id) = slot.action else {
@@ -90,7 +96,8 @@ impl ActionPassives {
                     .expect("a slot's action is in the book");
                 if let Some(passive) = action.passive {
                     let cooling = passive.while_ready && time.ready_at > now;
-                    if slot.rank.is_some() && cooling {
+                    let rank = slot.rank.filter(|_| action.usable_by(holder));
+                    if rank.is_some() && cooling {
                         index.push(time.ready_at, id, entity);
                     }
                     run.push(Grant {
@@ -98,7 +105,7 @@ impl ActionPassives {
                         from: GrantFrom::Itself,
                         hold: Hold::Passive,
                         action: Some(action_id),
-                        rank: slot.rank.filter(|_| !cooling),
+                        rank: rank.filter(|_| !cooling),
                     });
                 }
                 // A channel's hold its channel holds each tick it runs, as its progress, not its

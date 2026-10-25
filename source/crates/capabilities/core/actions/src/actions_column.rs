@@ -5,12 +5,11 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::{
-    AnyKeptRows, ColumnRows, Filter, KeptRows, RowFill, RunMove, UnitRow, View, ViewColumn,
+    AnyKeptRows, ColumnRows, KeptRows, RowFill, RunMove, UnitRow, View, ViewColumn,
 };
 use campfire_sim::StableId;
-use campfire_values::{ActionId, Rank, Team};
+use campfire_values::{ActionId, Rank, TagSet, Team, UnitTags};
 
-use crate::action::Action;
 use crate::action_book::ActionBook;
 use crate::action_range::ActionRange;
 use crate::action_slots::ActionSlots;
@@ -24,6 +23,7 @@ use crate::slot_kinds::SlotKinds;
 pub(super) type RowReads = (
     Option<&'static ActionSlots>,
     Option<&'static ActionProgress>,
+    Option<&'static UnitTags>,
 );
 
 /// What the action pipeline adds to the script view: the match's actions and slot kinds, and each
@@ -59,7 +59,6 @@ pub struct SlotRow {
     pub action: Option<ActionId>,
     pub rank: Option<Rank>,
     pub ranks: u8,
-    pub(crate) weapon: Option<Filter>,
 }
 
 impl ViewColumn for ActionsColumn {
@@ -128,9 +127,15 @@ impl ActionsRows {
 }
 
 impl ActionsColumn {
-    /// Adds the row of a unit with `slots`, or with none: each slot's rank, its action's ranks
-    /// and its weapon filter, the attack target, and the range of its first weapon.
-    pub fn push(&mut self, slots: Option<&ActionSlots>, progress: Option<&ActionProgress>) {
+    /// Adds the row of a unit with `slots`, or with none, of `tags`: each slot's rank and its
+    /// action's ranks, the attack target, and the range of its first weapon whose `when` the
+    /// unit's tags pass.
+    pub fn push(
+        &mut self,
+        slots: Option<&ActionSlots>,
+        progress: Option<&ActionProgress>,
+        tags: TagSet,
+    ) {
         let (book, rows) = (&self.book, self.rows.now_mut());
         let start = u32::try_from(rows.slots.len()).expect("slots fit u32");
         let Some(slots) = slots else {
@@ -141,7 +146,7 @@ impl ActionsColumn {
             });
             return;
         };
-        let attack_range = slots.weapon_in(book, None).map(|slot| {
+        let attack_range = slots.weapon_in(book, tags, None).map(|slot| {
             slots
                 .meters_in(book, slot)
                 .expect("the load gives every attack a range in meters")
@@ -156,7 +161,6 @@ impl ActionsColumn {
                 ranks: action.map_or(0, |action| {
                     u8::try_from(action.ranks.len()).expect("an action has few ranks")
                 }),
-                weapon: action.and_then(Action::weapon_filter),
             }
         }));
         let end = u32::try_from(rows.slots.len()).expect("slots fit u32");
@@ -233,15 +237,16 @@ impl ActionsColumn {
         })
     }
 
-    /// Whether a learned weapon of `unit`, in row `row`, selects `target`, as `unit` regards it.
+    /// Whether a learned weapon of `unit`, in row `row`, whose `when` its tags pass, selects
+    /// `target`, as `unit` regards it.
     pub fn armed_against(view: &View, row: usize, unit: &UnitRow, target: &UnitRow) -> bool {
         let relation = view.relation(unit.team, target.team);
         let target = Some((relation, target.tags.tags));
         Self::read(view, |column| {
-            column
-                .run(row)
-                .iter()
-                .any(|slot| Action::arms(slot.rank, slot.weapon, target))
+            column.run(row).iter().any(|slot| {
+                let action = slot.action.and_then(|action| column.book.get(action));
+                action.is_some_and(|action| action.arms(slot.rank, unit.tags.tags, target))
+            })
         })
     }
 
@@ -263,9 +268,10 @@ impl ActionsColumn {
 
     /// Adds a unit's actions to the actions' column of the script view.
     pub fn fill_row(
-        (slots, progress): ROQueryItem<'_, '_, RowReads>,
+        (slots, progress, tags): ROQueryItem<'_, '_, RowReads>,
         fill: &mut RowFill<'_, Self>,
     ) {
-        fill.column.push(slots, progress);
+        let tags = tags.map_or(TagSet::NONE, |tags| tags.tags);
+        fill.column.push(slots, progress, tags);
     }
 }

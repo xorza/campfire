@@ -3,8 +3,8 @@ use std::num::NonZeroU64;
 
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_actions::{
-    ActionProgress, ActionRange, ActionSlots, ActionTarget, AttackTarget, InProgress, OrderPhase,
-    ProgressDues, SlotAim, SlotKind, SlotsMut, TimedSlots,
+    ActionBook, ActionProgress, ActionRange, ActionSlots, ActionTarget, AttackTarget, InProgress,
+    OrderPhase, ProgressDues, SlotAim, SlotKind, SlotsMut, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Directive, Match, Order, OrderPayloads, Release};
@@ -15,6 +15,7 @@ use campfire_combat::{Combat, OnDeath, Respawn};
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_declarations::MatchFacts;
 use campfire_declarations::Role;
+use campfire_declarations::internals::BookLoad;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
@@ -303,6 +304,32 @@ fn trainer(game: &mut Match) -> TwoHeroes {
     let mut held = unit.get_components_mut::<SlotsMut>().unwrap();
     held.grant(SlotKind::new(0), &[train], Some(Rank::FIRST));
     heroes
+}
+
+#[test]
+fn a_slot_order_of_an_action_whose_when_its_unit_fails_is_refused() {
+    // The train in slot 1 needs an avatar, and the hero, of a type of no tags, is none.
+    let mut game = orders_match();
+    let TwoHeroes { first: hero, .. } = trainer(&mut game);
+    let train = game
+        .part::<ActionSlots>(hero)
+        .slot(1)
+        .unwrap()
+        .action
+        .unwrap();
+    let unmet = Filter::of_match(&game, "all:avatar");
+    ActionBook::amend(&mut game, |_, book| book.set_when(train, Some(unmet)));
+    let order = Order::payload(&[Order::one(
+        hero,
+        OrdersDirective::Slot {
+            slot: 1,
+            target: ActionTarget::None,
+        },
+    )]);
+    game.step_with(&[(PlayerSlot::new(0), &order)]);
+    let progress = game.part::<ActionProgress>(hero);
+    assert_eq!(progress.in_progress(), None);
+    assert_eq!(dropped(&game), [(Some(hero), OrderDropCause::Unusable)]);
 }
 
 #[test]

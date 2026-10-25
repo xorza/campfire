@@ -13,7 +13,8 @@ use campfire_script::DataTable;
 use campfire_sim::MatchRate;
 use campfire_units::PoolCost;
 use campfire_values::{
-    Distance, FilterData, Number, PackagePath, Param, Rank, Ranked, Scalar, TextId, TimeTooLarge,
+    Distance, FilterData, Number, PackagePath, Param, Rank, Ranked, Scalar, TagFilterData, TextId,
+    TimeTooLarge,
 };
 use serde::de::Error;
 use serde::{Deserialize, Serialize};
@@ -91,6 +92,11 @@ pub struct ActionKeys {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub script: Option<PackagePath>,
     pub targeting: Targeting,
+    /// The tags its unit must pass for it to start, for its passive to hold, and for an attack to
+    /// be chosen as a weapon; it keeps its slot whatever they are (upgrades.md, An action may need
+    /// tags).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<TagFilterData>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<Ranked<RangeField>>,
     /// The meters nearer than which it takes no target (04-capabilities/actions.md, An action may
@@ -145,6 +151,7 @@ impl ActionKeys {
             name: None,
             script: None,
             targeting,
+            when: None,
             range: None,
             min_range: None,
             cooldown_ms: None,
@@ -870,13 +877,13 @@ mod tests {
     }
 
     #[test]
-    fn the_pipeline_fields_are_the_keys_of_every_kind_but_the_name_and_the_targeting() {
-        // The keys' fields but the name and the targeting, every action's, and the delivery and
-        // the lists, which read apart: one field each, in the keys' order.
+    fn the_pipeline_fields_are_the_keys_of_every_kind_but_the_name_the_targeting_and_the_when() {
+        // The keys' fields but the name, the targeting and the `when`, every action's, and the
+        // delivery and the lists, which read apart: one field each, in the keys' order.
         let mut keys: Vec<&str> = StructFields::of::<ActionKeys>()
             .iter()
             .copied()
-            .filter(|&key| key != "name" && key != "targeting")
+            .filter(|&key| key != "name" && key != "targeting" && key != "when")
             .collect();
         keys.push(ActionData::DELIVERY);
         keys.extend(ActionData::LISTS);

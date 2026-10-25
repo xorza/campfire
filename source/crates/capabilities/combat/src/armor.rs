@@ -2,10 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
-use campfire_declarations::PerId;
 use campfire_math::{Num, Rounding};
 use campfire_script::UnknownName;
-use campfire_values::{Article, DamageKind, NameId, NameKind, NameScope, Named, Names, UnitType};
+use campfire_values::{Article, DamageKind, NameId, NameKind, NameScope, Named, Names};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -54,10 +53,6 @@ impl ArmorShare {
     pub fn new(share: Num) -> Option<Self> {
         (share >= Num::ZERO).then_some(Self(share))
     }
-}
-
-impl PerId<UnitType> for Armor {
-    const SCRIPTS_ONLY: bool = false;
 }
 
 /// As its number, which `Deserialize` reads.

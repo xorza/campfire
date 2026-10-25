@@ -350,6 +350,7 @@ pub mod internals {
                     kind: action.kind,
                     passive: None,
                     hold: None,
+                    when: None,
                     aim: action.aim,
                     ranks: vec![RankValues {
                         range: action.range,
@@ -383,6 +384,7 @@ pub mod internals {
                     kind: ActionKind::Cast,
                     passive: None,
                     hold: None,
+                    when: None,
                     aim: Aim::None,
                     ranks: vec![RankValues {
                         range: ActionRange::meters(Num::ZERO),

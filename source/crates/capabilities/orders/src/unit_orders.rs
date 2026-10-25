@@ -12,7 +12,7 @@ use campfire_navigation::{GroupBox, Party, PartyKey, Route};
 use campfire_players::{OrderedUnits, TickCommands};
 use campfire_sim::{DueIndex, Position, SimTick, UnitDues};
 use campfire_units::{BuildTarget, Dead, Destination, GroundPoint, MapBook, UnitOrdered};
-use campfire_values::Team;
+use campfire_values::{TagSet, Team, UnitTags};
 use campfire_vision::{SeenTargets, TeamSight};
 
 use crate::attack_move::AttackMove;
@@ -32,6 +32,7 @@ type Commanded = (
     &'static Position,
     Has<Destination>,
     Option<&'static ActionSlots>,
+    Option<&'static UnitTags>,
 );
 
 /// A unit of a group's move: its entity and where it stands.
@@ -100,7 +101,7 @@ impl UnitOrders {
             };
             if let Some((GroundPoint { x, z }, walk)) = walk {
                 movers.clear();
-                movers.extend(controlled.filter(|(.., (_, _, walks, _))| *walks).map(
+                movers.extend(controlled.filter(|(.., (_, _, walks, ..))| *walks).map(
                     |(_, entity, (_, &at, ..))| Mover {
                         entity,
                         position: at.get(),
@@ -134,8 +135,10 @@ impl UnitOrders {
                 }
                 return;
             }
-            for (id, entity, (team, _, _, slots)) in controlled {
+            for (id, entity, (team, _, _, slots, tags)) in controlled {
                 let sees = |target| team.is_some_and(|&team| visible.sees(team, target));
+                let holder = tags.map_or(TagSet::NONE, |tags| tags.tags);
+                let usable = |slot| slots.is_some_and(|slots| slots.usable(&book, slot, holder));
                 let unit_order = match order.directive {
                     OrdersDirective::Attack { target } => {
                         let armed = team.zip(slots).is_some_and(|(&team, slots)| {
@@ -143,6 +146,7 @@ impl UnitOrders {
                                 book: &book,
                                 targets: &targets,
                                 team,
+                                tags: holder,
                             };
                             slots.may_attack(&test, target)
                         });
@@ -162,6 +166,15 @@ impl UnitOrders {
                             (
                                 Some(ActionKind::Cast | ActionKind::Train | ActionKind::Research),
                                 _,
+                            )
+                            | (Some(ActionKind::Gather), ActionTarget::Unit(_))
+                                if !usable(slot) =>
+                            {
+                                Err(OrderDropCause::Unusable)
+                            }
+                            (
+                                Some(ActionKind::Cast | ActionKind::Train | ActionKind::Research),
+                                _,
                             ) => Ok(UnitOrder::Slot { slot, target }),
                             (Some(ActionKind::Gather), ActionTarget::Unit(target)) => {
                                 Ok(UnitOrder::Gather { slot, target })
@@ -177,6 +190,7 @@ impl UnitOrders {
                         match (kind == Some(ActionKind::Build), hidden) {
                             (false, _) => Err(OrderDropCause::NoBuild),
                             (true, true) => Err(OrderDropCause::Hidden),
+                            (true, false) if !usable(slot) => Err(OrderDropCause::Unusable),
                             (true, false) => Ok(UnitOrder::Build { slot, target }),
                         }
                     }

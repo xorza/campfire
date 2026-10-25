@@ -97,7 +97,7 @@ impl UpgradeGrants {
                 player.is_some_and(|held| held.holds(modifier))
                     || own.clone().any(|carried| carried.instance.id == modifier)
             };
-            let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
+            let tags = tags.map_or(TagSet::NONE, |tags| tags.tags);
             if !dead {
                 let entries = upgrades.into_iter().flat_map(|upgrades| &upgrades.0);
                 let met = entries.filter(|entry| entry.met(tags, holds));

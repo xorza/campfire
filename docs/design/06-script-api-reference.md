@@ -401,6 +401,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `name` | core | since 1.0 |
 | `script` | core | since 1.0 |
 | `targeting` | core | since 1.0 |
+| `when` | core | since 1.0 |
 | `range` | core | since 1.0 |
 | `min_range` | core | since 1.0 |
 | `cooldown_ms` | core | since 1.0 |
@@ -517,6 +518,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | --- | --- | --- |
 | `on_death` | combat | since 1.0 |
 | `armor` | combat | since 1.0 |
+| `armors` | combat | since 1.0 |
 
 ### A unit type's `turret`
 

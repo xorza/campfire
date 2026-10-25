@@ -19,9 +19,8 @@ use campfire_stats::{
     CarriedMut, ModifierBook, ModifierClocks, ModifierEvents, ModifierHooks, StatsWorld, UnitStats,
 };
 use campfire_units::{Deaths, Fallen, Life, StatId, TagEffect};
-use campfire_values::{Block, NameId, UnitTags, UnitType};
+use campfire_values::{Block, NameId, TagSet, UnitTags, UnitType};
 
-use crate::armor::Armor;
 use crate::combat_book::CombatBook;
 use crate::combat_event::CombatEvent;
 use crate::damage::{Damage, WeaponHit};
@@ -32,6 +31,7 @@ use crate::next_damage::NextDamage;
 use crate::pass_queue::{PassEntry, PassQueue};
 use crate::recent_attack::RecentAttack;
 use crate::recent_attackers::RecentAttackers;
+use crate::type_armor::TypeArmor;
 use crate::weighers::{Weigh, Weighers};
 
 /// The tick's damage pass: the queue of damage and heals, dealt in order, with the combat events
@@ -245,12 +245,15 @@ impl DamagePass {
         (world.get::<Life>(entity).is_some() && world.lives(entity)).then_some(entity)
     }
 
-    /// What `damage` deals to `target` through the armor of its type, before the mode weighs it:
-    /// the whole for a type of none.
+    /// What `damage` deals to `target` through the armor its type gives its tags, before the mode
+    /// weighs it: the whole for none.
     fn armored(world: &World, target: Entity, damage: Damage) -> Num {
         let armor = world.get::<UnitType>(target).and_then(|&unit_type| {
-            let armors = world.get_resource::<ById<UnitType, Armor>>()?;
-            armors.get(unit_type)
+            let armors = world.get_resource::<ById<UnitType, TypeArmor>>()?;
+            let tags = world.get::<UnitTags>(target);
+            armors
+                .get(unit_type)?
+                .of(tags.map_or(TagSet::NONE, |tags| tags.tags))
         });
         armor.map_or(damage.amount, |armor| {
             armor.take(damage.kind, damage.amount)

@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 
 use campfire_codec::TomlTable;
 use campfire_combat::{
-    ArmorShare, CombatData, CombatPatch, ModeCombatData, ModeCombatPatch, OnDeath, TurretData,
-    TurretPatch,
+    ArmorShare, CombatData, CombatPatch, ModeCombatData, ModeCombatPatch, OnDeath, TaggedArmorData,
+    TurretData, TurretPatch,
 };
 use campfire_declarations::SectionWriter;
 use campfire_geometry::Bounds;
@@ -24,11 +24,13 @@ fn name(text: &str) -> DeclaredName {
 #[test]
 fn each_patch_reads_back_through_its_sections_reader() {
     let readers = Release::sections();
-    // A unit type of a `combat` of its armor alone and a `turret` of its turn rate alone, under
-    // defaults of the rest: each section holds its patch's field and its defaults'.
+    // A unit type of a `combat` of its armors alone and a `turret` of its turn rate alone, under
+    // defaults of the rest: each section holds its patch's fields and its defaults'.
+    let heavy: TaggedArmorData = Toml::parse("when = \"all:upgraded\"\narmor = \"heavy\"").unwrap();
     let mut unit = SectionWriter::default();
     unit.patch::<CombatData>(&CombatPatch {
         armor: Some(name("plate")),
+        armors: Some(vec![heavy.clone()]),
         ..CombatPatch::default()
     })
     .patch::<TurretData>(&TurretPatch {
@@ -38,7 +40,7 @@ fn each_patch_reads_back_through_its_sections_reader() {
     let unit = unit.into_table();
     assert_eq!(
         Toml::write(&unit),
-        "[combat]\narmor = \"plate\"\n\n[turret]\nturn_rate = \"180\"\n"
+        "[combat]\narmor = \"plate\"\n\n[[combat.armors]]\narmor = \"heavy\"\nwhen = \"all:upgraded\"\n\n[turret]\nturn_rate = \"180\"\n"
     );
     let units = TomlValue::of(&BTreeMap::from([(name("tank"), unit)]));
     let defaults: TomlTable = Toml::parse(
@@ -51,6 +53,7 @@ fn each_patch_reads_back_through_its_sections_reader() {
     let combat = CombatData {
         on_death: OnDeath::Stay,
         armor: Some(name("plate")),
+        armors: vec![heavy],
     };
     assert_eq!(tank.section::<CombatData>(), Some(&combat));
     let turret = TurretData::new(Num::int(180), Num::int(2), name("weapon"));

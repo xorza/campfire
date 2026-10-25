@@ -169,6 +169,7 @@ pub(crate) struct DroppedCounts {
     pub(crate) hidden: u64,
     pub(crate) slot_kind: u64,
     pub(crate) no_build: u64,
+    pub(crate) unusable: u64,
 }
 
 impl UnsentCounts {
@@ -207,6 +208,7 @@ impl DroppedCounts {
             OrderDropCause::Hidden => &mut self.hidden,
             OrderDropCause::SlotKind => &mut self.slot_kind,
             OrderDropCause::NoBuild => &mut self.no_build,
+            OrderDropCause::Unusable => &mut self.unusable,
         };
         *counted += 1;
     }

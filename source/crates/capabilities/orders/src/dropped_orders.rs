@@ -54,6 +54,9 @@ pub enum OrderDropCause {
     SlotKind,
     /// A build whose slot holds no build.
     NoBuild,
+    /// A slot's action whose `when` its unit's tags do not pass (upgrades.md, An action may need
+    /// tags).
+    Unusable,
 }
 
 impl DroppedOrders {

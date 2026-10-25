@@ -450,6 +450,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let combat = |armor: Option<&str>| CombatData {
         on_death: OnDeath::Despawn,
         armor: armor.map(declared),
+        armors: Vec::new(),
     };
     let lives = Some(all_declared(&["life"]));
     assert_eq!(

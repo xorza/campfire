@@ -64,6 +64,7 @@ impl ActionBookBuilder {
             passive,
             hold,
             aim,
+            when,
             ranks,
             delivery,
             pays,
@@ -81,6 +82,7 @@ impl ActionBookBuilder {
             passive,
             hold,
             aim,
+            when,
             ranks: ranks.values,
             resource_costs: ranks.resource_costs.into_boxed_slice(),
             script,
@@ -176,8 +178,9 @@ impl Book for ActionBook {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use campfire_script::Filter;
     use campfire_units::ScriptBook;
-    use campfire_values::ActionId;
+    use campfire_values::{ActionId, NameId};
 
     use crate::action::Action;
     use crate::action_book::{ActionBook, ActionBookBuilder, PackageAction};
@@ -212,6 +215,13 @@ pub(crate) mod internals {
             book.actions.push(action);
             *self = book.build();
             id
+        }
+
+        /// Gives the action `id` the tag test `when`, as its data's `when` would.
+        pub fn set_when(&mut self, id: ActionId, when: Option<Filter>) {
+            let mut book = self.reopen();
+            book.actions[id.index()].when = when;
+            *self = book.build();
         }
     }
 }

@@ -1,4 +1,4 @@
-use campfire_script::UnknownName;
+use campfire_script::{Filter, UnknownName};
 use campfire_sim::MatchRate;
 use campfire_values::{ModifierId, PackageIndex, ResourceId, TrackId};
 
@@ -19,6 +19,7 @@ pub struct ActionParts {
     pub passive: Option<Passive>,
     pub hold: Option<ModifierId>,
     pub aim: Aim,
+    pub when: Option<Filter>,
     pub ranks: LoadedRanks,
     pub delivery: Option<Delivery>,
     pub pays: Option<ChannelPay>,
@@ -50,6 +51,12 @@ impl ActionParts {
             Targeting::Direction => Aim::Direction,
             Targeting::Unit(filter) => Aim::Unit(names.filter(filter)?),
         };
+        let when = data
+            .keys
+            .when
+            .as_ref()
+            .map(|when| names.filter(when.filter()));
+        let when = when.transpose()?;
         let ranks = data.load_ranks(ranks, rate, |name| names.cost_target(name))?;
         let delivery = data.delivery.as_ref().map(|delivery| {
             let name = delivery.unit_type();
@@ -89,6 +96,7 @@ impl ActionParts {
             passive,
             hold,
             aim,
+            when,
             ranks,
             delivery,
             pays: pays.transpose()?,

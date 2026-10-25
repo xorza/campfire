@@ -6,7 +6,7 @@ use campfire_actions::{
 use campfire_geometry::Placed;
 use campfire_sim::{DueUnit, Position};
 use campfire_units::{Body, Dead, Walk};
-use campfire_values::Team;
+use campfire_values::{TagSet, Team, UnitTags};
 
 /// The destinations units walk to on their own: after their attack targets.
 #[derive(Debug)]
@@ -32,7 +32,7 @@ impl Destinations {
                 &Team,
                 (&ActionSlots, &mut ActionProgress),
                 Option<Walk>,
-                Option<&Body>,
+                (Option<&Body>, Option<&UnitTags>),
             ),
             Without<Dead>,
         >,
@@ -41,7 +41,7 @@ impl Destinations {
         held.clear();
         indexes.attackers(&mut held);
         for &DueUnit { id, entity } in &*held {
-            let Ok((&position, &team, (slots, mut progress), mut walk, body)) =
+            let Ok((&position, &team, (slots, mut progress), mut walk, (body, tags))) =
                 chasers.get_mut(entity)
             else {
                 continue;
@@ -55,7 +55,8 @@ impl Destinations {
             }
             let aimed = targets.enemy(team, target).and_then(|unit| {
                 let selected = (targets.relation(team, unit.team), unit.tags);
-                let slot = slots.weapon_in(&book, Some(selected))?;
+                let holder = tags.map_or(TagSet::NONE, |tags| tags.tags);
+                let slot = slots.weapon_in(&book, holder, Some(selected))?;
                 Some((unit, slots.values_in(&book, slot)?))
             });
             let from = Placed::new(position.get(), Body::shape_of(body));

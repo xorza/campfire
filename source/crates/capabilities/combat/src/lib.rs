@@ -65,6 +65,7 @@ mod respawn;
 mod shot_streak;
 mod streak_shots;
 mod turret;
+mod type_armor;
 mod unanswered_deaths;
 mod volley;
 mod weapon;
@@ -82,7 +83,7 @@ pub use crate::clip_shots::ClipShots;
 pub use crate::combat_api::CombatApi;
 pub use crate::combat_book::CombatBook;
 pub use crate::combat_column::CombatColumn;
-pub use crate::combat_data::{CombatData, CombatPatch};
+pub use crate::combat_data::{CombatData, CombatPatch, TaggedArmorData};
 pub use crate::damage::{Damage, DamageCause};
 pub use crate::damage_effect_data::DamageEffectData;
 pub use crate::damage_handle::DamageHandle;
@@ -103,6 +104,7 @@ pub use crate::shot_streak::ShotStreak;
 pub use crate::turret::Turret;
 pub use crate::turret::turret_angle::TurretAngle;
 pub use crate::turret::turret_data::{TurretData, TurretPatch};
+pub use crate::type_armor::{TaggedArmor, TypeArmor};
 pub use crate::unanswered_deaths::{DeathCall, OnUnitDeath, UnansweredDeaths};
 pub use crate::weapon::{
     ClipRule, OuterRing, Pitch, PreAttackRule, Rate, Scatter, Splash, Streak, Weapon, WeaponDamage,
@@ -236,7 +238,7 @@ impl Module for Combat {
         d.hook::<CalcHeal>(Status::Runs(ApiVersion::FIRST));
         d.book::<ById<UnitType, Life>>(TypePools::lives);
         d.book::<ById<UnitType, OnDeath>>(OnDeath::book);
-        d.book::<ById<UnitType, Armor>>(Armor::book);
+        d.book::<ById<UnitType, TypeArmor>>(TypeArmor::book);
         d.part::<BodyUnit, Life>(|at| at.of_type::<Life>().copied());
         // A unit that can die keeps who struck it, for its death's assisters.
         d.part::<BodyUnit, RecentAttackers>(|at| {

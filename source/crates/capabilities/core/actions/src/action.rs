@@ -22,6 +22,9 @@ pub struct Action {
     /// The modifier its unit holds while its toggle is on or its channel runs.
     pub hold: Option<ModifierId>,
     pub aim: Aim,
+    /// The tags its unit must pass for it to start, for its passive to hold, and for an attack to
+    /// be chosen as a weapon.
+    pub when: Option<Filter>,
     /// Its capability fields at each rank, from rank 1.
     pub ranks: Vec<RankValues>,
     /// Its costs in its caster's player's resources, each rank's run where its values say.
@@ -143,16 +146,24 @@ impl Action {
         }
     }
 
-    /// Whether a slot at `rank` whose action has the weapon filter `weapon` arms its unit
-    /// against a unit of `tags` it regards with `relation`, or with `None`, against any: the one
-    /// rule of `ActionSlots::weapon_in` and of the script view.
+    /// Whether a unit of `holder`'s tags passes its `when` (upgrades.md, An action may need tags).
+    pub fn usable_by(&self, holder: TagSet) -> bool {
+        self.when.is_none_or(|when| when.selects_tags(holder))
+    }
+
+    /// Whether a slot at `rank` of this action arms its unit, of `holder`'s tags, against a unit
+    /// of `tags` it regards with `relation`, or with `None`, against any: an attack whose `when`
+    /// its unit passes and whose filter selects the target; the one rule of
+    /// `ActionSlots::weapon_in` and of the script view.
     pub(crate) fn arms(
+        &self,
         rank: Option<Rank>,
-        weapon: Option<Filter>,
+        holder: TagSet,
         target: Option<(Relation, TagSet)>,
     ) -> bool {
         rank.is_some()
-            && weapon.is_some_and(|filter| {
+            && self.usable_by(holder)
+            && self.weapon_filter().is_some_and(|filter| {
                 target.is_none_or(|(relation, tags)| filter.selects(relation, tags))
             })
     }

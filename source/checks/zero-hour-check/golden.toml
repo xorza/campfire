@@ -115,6 +115,7 @@ no_weapon = 3
 hidden = 0
 slot_kind = 0
 no_build = 0
+unusable = 0
 
 [[base.drops]]
 unread = 0
@@ -139,6 +140,7 @@ no_weapon = 0
 hidden = 0
 slot_kind = 0
 no_build = 0
+unusable = 0
 
 [attack]
 ended = 18630
@@ -172,6 +174,7 @@ no_weapon = 0
 hidden = 0
 slot_kind = 0
 no_build = 0
+unusable = 0
 
 [[attack.drops]]
 unread = 0
@@ -196,3 +199,4 @@ no_weapon = 0
 hidden = 0
 slot_kind = 0
 no_build = 0
+unusable = 0

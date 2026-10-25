@@ -3,7 +3,7 @@ use std::slice;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Changed, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_actions::{ActionBook, ActionKind, ActionSlots, Aim};
+use campfire_actions::{ActionBook, ActionSlots, Aim, Caster};
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_declarations::ById;
 use campfire_geometry::Placed;
@@ -12,7 +12,7 @@ use campfire_players::{OnMatch, PlayerResources, PlayerRows, ResourceAmount};
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use campfire_units::{Body, Dead, MapBook, Owner, WalkReadOnlyItem};
-use campfire_values::{ActionId, Relations, ResourceId, Team, UnitTags, UnitType};
+use campfire_values::{ActionId, Motion, Relations, ResourceId, Team, UnitTags, UnitType};
 
 use crate::gather_loop::WorkerParts;
 use crate::gather_loop::checked_gather::CheckedGather;
@@ -326,7 +326,7 @@ impl GatherView<'_, '_> {
             body: body.copied(),
         };
         let node = self.node(order.node.node, seeker);
-        if tags.is_some_and(|tags| tags.properties.blocks(ActionKind::Gather.block())) {
+        if Caster::of(tags, Motion::Own, None).blocked(slots.slot(order.slot), &self.book) {
             return match (order.step, node) {
                 (GatherStep::Gathering { .. }, Some(node)) => Step::Interrupt(node.entity),
                 _ => Step::Hold,
