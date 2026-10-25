@@ -6,7 +6,7 @@ use crate::workspace::Workspace;
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 76] = [
+const LOOKUPS: [(&str, &str); 77] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
     ("actions/action_names.rs", "named"),
@@ -63,6 +63,8 @@ const LOOKUPS: [(&str, &str); 76] = [
     ("script/scripts/view/match_names.rs", "named"),
     ("script/scripts/view/name_tables.rs", "named"),
     ("values/filter_data.rs", "named"),
+    // A probe's unit type, as a command line or a test names it.
+    ("match_probe/probe_spec.rs", "named"),
     // Script calls, each argument by its type, and the mode inputs, whose names enter with the
     // players' inputs.
     ("actions/slot_kind.rs", "named"),

@@ -1,8 +1,8 @@
 //! Capabilities: the mechanisms a mode combines, a crate each, on the core, and the mode above
 //! them. This crate is the top of them: `release` installs every module, `books` builds a
-//! match's books, and `Order` is the body of a command, by the capability that owns it. Its
-//! `pub use` list names only its own items: a crate above depends on the crate of each type it
-//! names.
+//! match's books, `Order` is the body of a command, by the capability that owns it, and
+//! `MatchProbe` tables a match's units. Its `pub use` list names only its own items: a crate
+//! above depends on the crate of each type it names.
 //!
 //! A capability crate depends only on the crates of lower layers, each one layer above its
 //! highest dependency, as a test of `release` reads them from the manifests (02-engine-core.md,
@@ -17,6 +17,7 @@ mod books;
 mod bot;
 #[cfg(feature = "internals")]
 mod fixtures;
+mod match_probe;
 mod order;
 mod release;
 
@@ -26,6 +27,9 @@ pub use crate::books::load_names::LoadNames;
 pub use crate::books::package_content::{ContentSeed, PackageContent};
 pub use crate::bot::bot_api::OnBotThink;
 pub use crate::bot::bot_call::{BotCall, BotFacts, ThinkOrder};
+pub use crate::match_probe::error::{ProbeRefusal, ProbeSpecError};
+pub use crate::match_probe::probe_spec::{ProbeSpec, ProbeUnitsSpec};
+pub use crate::match_probe::{MatchProbe, ProbeUnits};
 pub use crate::order::location::{GroundLocation, Location, MarkerLocation, NearLocation};
 pub use crate::order::named_refs::NamedRefs;
 pub use crate::order::{Directive, Order, OrderPayloads, OrderPayloadsIter};

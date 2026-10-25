@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use campfire_bots::OrderScriptError;
+use campfire_codec::TomlError;
 use campfire_protocol::{ConnectError, DelegationError};
 use campfire_runner::ServerInputRefusal;
 use campfire_store::{DurableDirCreateError, DurableDirError, DurableError, PathError, ReadError};
@@ -82,6 +83,15 @@ pub enum OrderFileError {
         #[source]
         error: OrderScriptError,
     },
+}
+
+/// Why a report's facts do not read.
+#[derive(Debug, Error)]
+pub enum ReportReadError {
+    #[error(transparent)]
+    File(#[from] PathError<ReadError>),
+    #[error(transparent)]
+    Toml(#[from] TomlError),
 }
 
 /// Why a file of a player's report was not written, by its step, each of which its path's error

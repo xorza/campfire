@@ -2,8 +2,8 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use campfire_capabilities::Books;
-use campfire_harness::{ProbeFile, ProbeSpec};
+use campfire_capabilities::{Books, ProbeSpec};
+use campfire_harness::ProbeFile;
 use campfire_units::UnitTypeBook;
 use clap::ValueEnum;
 

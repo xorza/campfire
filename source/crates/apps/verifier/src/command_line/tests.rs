@@ -9,27 +9,64 @@ fn read(args: &[&str]) -> Result<CommandLine, clap::Error> {
 }
 
 #[test]
-fn the_command_line_names_the_packages_the_log_and_the_snapshots_or_its_flaw() {
-    let args = read(&["packages", "session.log", "snapshots"]).unwrap();
+fn the_command_line_names_a_verification_or_a_report_or_its_flaw() {
+    let verify = |args: &[&str]| match read(args).unwrap().command {
+        VerifierCommand::Verify {
+            packages,
+            log,
+            snapshots,
+        } => (packages, log, snapshots),
+        VerifierCommand::Report { .. } => panic!("{args:?} names a verification"),
+    };
     assert_eq!(
-        (args.packages, args.log, args.snapshots),
+        verify(&["verify", "packages", "session.log", "snapshots"]),
         (
             PathBuf::from("packages"),
             PathBuf::from("session.log"),
             Some(PathBuf::from("snapshots"))
         )
     );
-    assert_eq!(read(&["packages", "session.log"]).unwrap().snapshots, None);
+    assert_eq!(verify(&["verify", "packages", "session.log"]).2, None);
+
+    // A report, with the probes' directory the line names or `target/report`.
+    let report = |args: &[&str]| match read(args).unwrap().command {
+        VerifierCommand::Report {
+            report,
+            probe,
+            probe_dir,
+        } => (report, probe, probe_dir),
+        VerifierCommand::Verify { .. } => panic!("{args:?} names a report"),
+    };
+    let spec: ProbeSpec = "1000:all".parse().unwrap();
+    assert_eq!(
+        report(&["report", "reports/a-40", "--probe", "1000:all"]),
+        (
+            PathBuf::from("reports/a-40"),
+            Some(spec),
+            PathBuf::from("target/report")
+        )
+    );
+    let probes = report(&["report", "reports/a-40", "--probe-dir", "probes"]);
+    assert_eq!((probes.1, probes.2), (None, PathBuf::from("probes")));
 
     for (args, kind) in [
-        (&["packages"][..], ErrorKind::MissingRequiredArgument),
         (
-            &["packages", "session.log", "snapshots", "more"],
+            &["packages", "session.log"][..],
+            ErrorKind::InvalidSubcommand,
+        ),
+        (&["verify", "packages"], ErrorKind::MissingRequiredArgument),
+        (
+            &["verify", "packages", "session.log", "snapshots", "more"],
             ErrorKind::UnknownArgument,
         ),
         (
-            &["--fast", "packages", "session.log"],
+            &["verify", "--fast", "packages", "session.log"],
             ErrorKind::UnknownArgument,
+        ),
+        (&["report"], ErrorKind::MissingRequiredArgument),
+        (
+            &["report", "reports/a-40", "--probe", "1000"],
+            ErrorKind::ValueValidation,
         ),
     ] {
         assert_eq!(read(args).unwrap_err().kind(), kind, "{args:?}");

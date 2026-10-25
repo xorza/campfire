@@ -1,6 +1,7 @@
 use campfire_bots::{BotScriptError, OrderScriptError, ThinkError};
+use campfire_capabilities::ProbeRefusal;
 use campfire_common::{DeclaredName, ErrorReport};
-use campfire_harness::{ProbeRefusal, ProbeWriteError};
+use campfire_harness::ProbeWriteError;
 use campfire_math::{Num, Vec3};
 use campfire_mode::PickError;
 use campfire_orders::OrdersDirective;

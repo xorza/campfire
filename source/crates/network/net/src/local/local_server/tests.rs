@@ -151,7 +151,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
 
     // A report of a tick a fifth of a second past the one the client draws, which the server
     // runs later: the server writes its log so far into the report's folder of the client's data,
-    // once the log reached the tick and its journal synced the records.
+    // once the log ran the tick and its journal synced the records.
     let tick = (client.world().resource::<SimTick>().start()).after(Ticks::new(6));
     save(
         &mut client,
@@ -190,11 +190,11 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     assert_eq!(saves.len(), 1);
     assert!(log.next_tick() > saves[0].tick);
     // The report's log is the session's so far: of its session, named with the tick reported,
-    // up to that tick at least, short of the published log's end, and of no result yet.
+    // through that tick at least, short of the published log's end, and of no result yet.
     let report = SessionLog::decode(&report).unwrap();
     assert_eq!(folder, format!("{}-{}", log.session_id(), tick.get()));
     assert_eq!(report.session_id(), log.session_id());
-    assert!(report.next_tick() >= tick);
+    assert!(report.next_tick() > tick);
     assert!(report.next_tick() <= log.next_tick());
     assert_eq!(report.checkpoints().count(), 1);
     assert_eq!(report.result(), None);

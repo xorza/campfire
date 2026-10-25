@@ -12,8 +12,9 @@ pub enum SaveCommand {
     Report(ReportKey),
 }
 
-/// Which of a session's reports a folder holds: the tick the client drew, and how many reports of
-/// that tick the client wrote before, as a paused match draws one tick for each of them.
+/// Which of a session's reports a folder holds: the last tick the client ran, whose end it drew,
+/// and how many reports of that tick the client wrote before, as a paused match draws one tick
+/// for each of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReportKey {
     pub tick: Tick,

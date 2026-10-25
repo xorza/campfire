@@ -1,11 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use campfire_codec::{Png, RgbaImage, Toml};
-use campfire_store::{DurableDir, DurableFile};
+use campfire_store::{DurableDir, DurableFile, InputFile};
 
 use crate::client::report_file::ReportFile;
-use crate::error::ReportWriteError;
-use crate::messages::save_command::ReportKey;
+use crate::error::{ReportReadError, ReportWriteError};
 
 /// A report's folder in a client's data directory, `reports/<session id>-<tick>`, a later take
 /// of the tick's `-<take>` after it, and the files it holds: its facts, `report.toml`; its
@@ -14,20 +13,16 @@ use crate::messages::save_command::ReportKey;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportDir {
     path: PathBuf,
-    key: ReportKey,
 }
 
 impl ReportDir {
-    pub(crate) const fn at(path: PathBuf, key: ReportKey) -> Self {
-        Self { path, key }
+    /// The report whose folder is `path`, as a reader of a report takes it.
+    pub const fn at(path: PathBuf) -> Self {
+        Self { path }
     }
 
     pub fn path(&self) -> &Path {
         &self.path
-    }
-
-    pub const fn key(&self) -> ReportKey {
-        self.key
     }
 
     /// Makes the folder, and the reports' folder above it, when missing.
@@ -41,6 +36,12 @@ impl ReportDir {
             &self.facts(),
             Toml::write(facts).as_bytes(),
         )?)
+    }
+
+    /// The facts the folder holds; an error when they do not read.
+    pub fn read_facts(&self) -> Result<ReportFile, ReportReadError> {
+        let text = InputFile::read_text(&self.facts(), ReportFile::MAX_LEN)?;
+        Ok(Toml::parse(&text)?)
     }
 
     /// Writes `screenshot` durably into the folder as a PNG.

@@ -7,6 +7,7 @@
 )]
 
 use std::env;
+use std::path;
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -128,6 +129,8 @@ pub fn run() -> ExitCode {
         None => ClientEnd::Window {
             local: connection.pace().cloned(),
             data: connection.data().map(|data| data.layout().clone()),
+            mode_dir: path::absolute(&args.mode)
+                .expect("the mode loaded from its directory, so its path resolves"),
         },
     };
     let sim_client = SimClientPlugin {

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
+use campfire_capabilities::ProbeSpecError;
 use campfire_codec::{BinaryError, TomlError};
-use campfire_harness::ProbeSpecError;
 use campfire_import::ZeroHourError;
 use campfire_package::LoadError;
 use campfire_package_format::ContentError;

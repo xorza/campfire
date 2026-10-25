@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use bevy::app::{App, Plugin, Update};
 use bevy::camera::Camera3d;
 use bevy::ecs::event::Event;
@@ -13,8 +15,8 @@ use bevy::render::view::window::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::transform::components::Transform;
 use bevy::window::{PrimaryWindow, Window};
 use campfire_codec::RgbaImage;
-use campfire_common::{ErrorReport, MapName, Version};
-use campfire_host::{ClientLayout, JoinState, ReportDir, ReportFile, ReportKey};
+use campfire_common::{ErrorReport, MapName, Tick, Version};
+use campfire_host::{ClientLayout, JoinState, NewReport, ReportDir, ReportFile, ReportKey};
 use campfire_package::PackageName;
 use campfire_sim::SimTick;
 use tracing::{error, info};
@@ -26,17 +28,18 @@ use crate::view::camera_rig::CameraRig;
 
 /// The report chord, by the key map: it writes a report of the frame the client draws into the
 /// client's data directory, its facts and its screenshot, and asks a local match's keys for its
-/// server's log (bug-reports.md, A report is a folder of plain files).
-/// What every report of the client holds the same, its plugin's and its resource's: the data
-/// directory it writes into, and the names of the mode and the map.
+/// server's log (bug-reports.md, A report is a folder of plain files). As its own resource, what
+/// every report of the client holds the same: the data directory it writes into, the mode's name
+/// and directory, and the map's name.
 #[derive(Resource, Debug, Clone)]
 pub(crate) struct ReportPlugin {
     pub(crate) data: ClientLayout,
     pub(crate) mode: PackageName,
+    pub(crate) mode_dir: PathBuf,
     pub(crate) map: MapName,
 }
 
-/// A report the chord wrote, of the tick the client runs next, whose start it draws.
+/// A report the chord wrote, of the last tick the client ran, whose end it draws.
 #[derive(Event, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ReportTaken {
     pub(crate) key: ReportKey,
@@ -71,28 +74,33 @@ impl ReportPlugin {
             info!("no match to report");
             return;
         };
+        let Some(ran) = tick.start().get().checked_sub(1).map(Tick::new) else {
+            info!("no tick of the match ran to report");
+            return;
+        };
         let facts = ReportFile {
             release: Version::ENGINE,
             mode: reporter.mode.clone(),
+            mode_dir: reporter.mode_dir.clone(),
             map: reporter.map.clone(),
             session,
-            tick: tick.start(),
+            tick: ran,
             player_slot: state.player_slot(),
             selected: selection.get().to_vec(),
             camera: rig.report(&camera),
             window: window.physical_size().to_array(),
         };
         let written = (reporter.data.create_report_dir(session, facts.tick))
-            .and_then(|dir| dir.write_facts(&facts).map(|()| dir));
-        let dir = match written {
-            Ok(dir) => dir,
+            .and_then(|report| report.dir.write_facts(&facts).map(|()| report));
+        let NewReport { dir, key } = match written {
+            Ok(report) => report,
             Err(problem) => {
                 error!(session = %session, tick = %facts.tick, error = %ErrorReport::of(&problem), "could not write the report");
                 return;
             }
         };
         info!(dir = %dir.path().display(), "wrote the report");
-        commands.trigger(ReportTaken { key: dir.key() });
+        commands.trigger(ReportTaken { key });
         commands.spawn(Screenshot::primary_window()).observe(
             move |captured: On<'_, '_, ScreenshotCaptured>| {
                 Self::write_screenshot(&dir, captured.image.clone());
@@ -136,7 +144,6 @@ mod tests {
     use bevy::asset::RenderAssetUsages;
     use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
     use campfire_codec::Png;
-    use campfire_common::Tick;
     use campfire_protocol::SessionId;
     use campfire_store::InputFile;
     use campfire_store::internals::TestDir;
@@ -160,7 +167,8 @@ mod tests {
         let test_dir = TestDir::new();
         let dir = ClientLayout::at(test_dir.path("client"))
             .create_report_dir(SessionId::new([4; 32]), Tick::new(7))
-            .unwrap();
+            .unwrap()
+            .dir;
         ReportPlugin::write_screenshot(&dir, frame);
         let file = InputFile::read(&dir.screenshot(), 1 << 10).unwrap();
         let image = Png::decode(&file).unwrap();

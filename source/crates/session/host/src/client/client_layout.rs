@@ -18,6 +18,13 @@ pub struct ClientLayout {
     root: PathBuf,
 }
 
+/// A report's folder the client made, and the key the server writes its log into it by.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewReport {
+    pub dir: ReportDir,
+    pub key: ReportKey,
+}
+
 impl ClientLayout {
     pub const fn at(root: PathBuf) -> Self {
         Self { root }
@@ -39,7 +46,7 @@ impl ClientLayout {
             0 => format!("{session_id}-{tick}"),
             _ => format!("{session_id}-{tick}-{take}"),
         };
-        ReportDir::at(self.reports_dir().join(name), key)
+        ReportDir::at(self.reports_dir().join(name))
     }
 
     /// Makes the folder of a new report of the session of `session_id` at `tick`: the first take
@@ -48,12 +55,13 @@ impl ClientLayout {
         &self,
         session_id: SessionId,
         tick: Tick,
-    ) -> Result<ReportDir, ReportWriteError> {
+    ) -> Result<NewReport, ReportWriteError> {
         DurableDir::create_all(&self.reports_dir())?;
         for take in 0..=u32::MAX {
-            let dir = self.report_dir(session_id, ReportKey { tick, take });
+            let key = ReportKey { tick, take };
+            let dir = self.report_dir(session_id, key);
             match DurableDir::create_new(dir.path()) {
-                Ok(()) => return Ok(dir),
+                Ok(()) => return Ok(NewReport { dir, key }),
                 Err(made) if matches!(made.error, DurableDirCreateError::Exists) => {}
                 Err(made) => return Err(made.into()),
             }

@@ -10,7 +10,7 @@ use campfire_protocol::{
 };
 
 use crate::fixed_session::FixedSession;
-use crate::match_probe::ProbeFile;
+use crate::probe_file::ProbeFile;
 use campfire_runner::{BotInputDrop, ServerInputRefusal, SessionWorld};
 use campfire_sim::{UnreadCommand, UnreadCommands};
 

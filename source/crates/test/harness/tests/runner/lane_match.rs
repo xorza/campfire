@@ -7,12 +7,11 @@ use std::num::NonZeroU64;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
-use campfire_capabilities::{Directive, Order};
+use campfire_capabilities::{Directive, MatchProbe, Order, ProbeRefusal, ProbeSpec, ProbeUnits};
 use campfire_combat::{Combat, DamageCause};
 use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick};
 use campfire_harness::{
-    ArchetypeWatch, FixedMatch, FixedSession, MatchProbe, MatchRecord, MatchUnits, ProbeFile,
-    ProbeRefusal, ProbeSpec, ProbeUnits,
+    ArchetypeWatch, FixedMatch, FixedSession, MatchRecord, MatchUnits, ProbeFile,
 };
 use campfire_math::Num;
 use campfire_navigation::PathWalker;

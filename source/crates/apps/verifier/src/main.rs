@@ -1,19 +1,21 @@
-//! Replays a session log file with the packages under a directory, and logs the state hash after
+//! Verifies a session log file with the packages under a directory, and logs the state hash after
 //! its last tick, in hex; with a directory of snapshots, each named by its fingerprint in hex, it
-//! also checks the snapshot of each checkpoint. It logs as `campfire_logging::Logging` says, `info`
-//! by default.
+//! also checks the snapshot of each checkpoint. Or replays a player's bug report to the tick its
+//! client drew, and prints a table of the units there. It logs as `campfire_logging::Logging`
+//! says, `info` by default.
 
 use std::env;
+use std::io;
 use std::process::ExitCode;
 
 use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
 use campfire_log::LogEvent;
 use campfire_logging::Logging;
-use campfire_verifier::{Verified, verify_file};
+use campfire_verifier::{ReportProbe, Verified, replay_report, verify_file};
 use tracing::error;
 
-use crate::command_line::CommandLine;
+use crate::command_line::{CommandLine, VerifierCommand};
 
 mod command_line;
 
@@ -23,22 +25,41 @@ fn main() -> ExitCode {
         file: "info,campfire_runner=debug,campfire_script=debug",
     }
     .start();
-    let args: CommandLine = match Logging::command_line(env::args_os()) {
-        Ok(args) => args,
+    let line: CommandLine = match Logging::command_line(env::args_os()) {
+        Ok(line) => line,
         Err(status) => return ExitCode::from(status),
     };
-    match verify_file(&args.packages, &args.log, args.snapshots.as_deref()) {
-        Ok(hash) => {
-            Verified {
-                file: args.log,
-                hash,
+    match line.command {
+        VerifierCommand::Verify {
+            packages,
+            log,
+            snapshots,
+        } => match verify_file(&packages, &log, snapshots.as_deref()) {
+            Ok(hash) => {
+                Verified { file: log, hash }.log();
+                ExitCode::from(ExitStatus::Success)
             }
-            .log();
-            ExitCode::from(ExitStatus::Success)
-        }
-        Err(error) => {
-            error!(file = %args.log.display(), error = %ErrorReport::of(&error), "the log does not verify");
-            ExitCode::from(ExitStatus::Failure)
+            Err(error) => {
+                error!(file = %log.display(), error = %ErrorReport::of(&error), "the log does not verify");
+                ExitCode::from(ExitStatus::Failure)
+            }
+        },
+        VerifierCommand::Report {
+            report,
+            probe,
+            probe_dir,
+        } => {
+            let probe = probe.map(|spec| ReportProbe {
+                spec,
+                dir: probe_dir,
+            });
+            match replay_report(&report, probe.as_ref(), io::stdout().lock()) {
+                Ok(()) => ExitCode::from(ExitStatus::Success),
+                Err(error) => {
+                    error!(report = %report.display(), error = %ErrorReport::of(&error), "the report does not replay");
+                    ExitCode::from(ExitStatus::Failure)
+                }
+            }
         }
     }
 }

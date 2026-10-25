@@ -10,6 +10,8 @@ kind = "app"
 
 [features]
 internals = [
+    "campfire-capabilities/internals",
+    "campfire-host/internals",
     "campfire-log/internals",
     "campfire-logging/internals",
     "campfire-package/internals",
@@ -18,10 +20,13 @@ internals = [
     "campfire-runner/internals",
     "campfire-sim/internals",
     "campfire-store/internals",
+    "campfire-units/internals",
 ]
 
 [dependencies]
+campfire-capabilities.workspace = true
 campfire-common.workspace = true
+campfire-host.workspace = true
 campfire-log.workspace = true
 campfire-logging.workspace = true
 campfire-package.workspace = true
@@ -30,6 +35,7 @@ campfire-protocol.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true
 campfire-store.workspace = true
+campfire-units.workspace = true
 
 clap = { workspace = true, features = [
     "derive",
@@ -45,14 +51,12 @@ tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
-campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-harness.workspace = true
 campfire-math = { workspace = true, features = ["internals"] }
 campfire-orders = { workspace = true, features = ["internals"] }
 campfire-projectiles = { workspace = true, features = ["internals"] }
 campfire-test-packages.workspace = true
 campfire-threads = { workspace = true, features = ["internals"] }
-campfire-units = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["ecs", "internals"] }
 campfire-verifier = { workspace = true, features = ["internals"] }
 

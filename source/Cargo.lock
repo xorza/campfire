@@ -3704,6 +3704,7 @@ dependencies = [
  "campfire-capabilities",
  "campfire-common",
  "campfire-harness",
+ "campfire-host",
  "campfire-log",
  "campfire-logging",
  "campfire-math",

@@ -53,9 +53,8 @@ impl Reports {
         self.asked.is_empty() && self.pending.is_empty()
     }
 
-    /// Takes the report `key`, of the tick the client runs next, whose start it draws, which a
-    /// predicting client reaches before the server; why not, on a server of no reports or of no
-    /// journal.
+    /// Takes the report `key`, of the last tick its client ran, which a predicting client runs
+    /// before the server; why not, on a server of no reports or of no journal.
     pub(crate) fn take(world: &mut World, key: ReportKey) -> Result<(), SaveRefusal> {
         if !world.contains_resource::<Self>() {
             return Err(SaveRefusal::NoData);
@@ -78,17 +77,17 @@ impl Reports {
         }
     }
 
-    /// Marks each report whose tick the log reached, its next tick `next`, as pending on the
+    /// Marks each report whose tick the log ran, before its next tick `next`, as pending on the
     /// records `journal` took, which it hands its writer.
     pub(crate) fn mark(&mut self, next: Tick, journal: &mut Journal) {
-        if !self.asked.iter().any(|key| key.tick <= next) {
+        if !self.asked.iter().any(|key| key.tick < next) {
             return;
         }
         journal.flush();
         let (records, bytes) = (journal.written(), journal.file_len());
         let pending = &mut self.pending;
         self.asked.retain(|&key| {
-            let reached = key.tick <= next;
+            let reached = key.tick < next;
             if reached {
                 pending.push(PendingReport {
                     key,

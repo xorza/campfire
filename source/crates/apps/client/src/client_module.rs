@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy::DefaultPlugins;
@@ -78,21 +79,24 @@ pub(crate) enum ClientModule {
 
 /// The client's own end: a bot's, whose script the sim client plays, with no window, or a
 /// window's, which draws the match, of a match on a local server whose pace its keys change, or
-/// of a remote one, with the client's data directory when it keeps one.
+/// of a remote one, with the client's data directory when it keeps one, and the directory of
+/// the mode it plays.
 #[derive(Debug)]
 pub(crate) enum ClientEnd {
     Bot,
     Window {
         local: Option<Arc<Pace>>,
         data: Option<ClientLayout>,
+        mode_dir: PathBuf,
     },
 }
 
-/// What the modules of a window's end read as they add their plugins: the mode's packages, the
-/// pace of a local match, and the client's data directory.
+/// What the modules of a window's end read as they add their plugins: the mode's packages and
+/// directory, the pace of a local match, and the client's data directory.
 #[derive(Debug)]
 struct WindowCx<'a> {
     packages: &'a Arc<ModePackages>,
+    mode_dir: &'a Path,
     local: Option<&'a Arc<Pace>>,
     data: Option<&'a ClientLayout>,
 }
@@ -188,7 +192,7 @@ impl ClientEnd {
     /// window's end in the mode of `packages`, in the list's order, as Bevy builds its asset
     /// sources as its asset plugin is added, so the window's source goes first.
     pub(crate) fn add(self, app: &mut App, packages: &Arc<ModePackages>) {
-        let (local, data) = match self {
+        let (local, data, mode_dir) = match self {
             Self::Bot => {
                 app.add_plugins((
                     OneThreadPlugins,
@@ -198,7 +202,11 @@ impl ClientEnd {
                 ));
                 return;
             }
-            Self::Window { local, data } => (local, data),
+            Self::Window {
+                local,
+                data,
+                mode_dir,
+            } => (local, data, mode_dir),
         };
         let keeps = match (&local, &data) {
             (Some(_), _) => WindowKeeps::Local,
@@ -207,6 +215,7 @@ impl ClientEnd {
         };
         let cx = WindowCx {
             packages,
+            mode_dir: &mode_dir,
             local: local.as_ref(),
             data: data.as_ref(),
         };
@@ -252,6 +261,7 @@ impl ClientModule {
                 app.add_plugins(ReportPlugin {
                     data: data.clone(),
                     mode: packages.manifest().header.name.clone(),
+                    mode_dir: cx.mode_dir.to_owned(),
                     map: packages.map_name().clone(),
                 });
             }
@@ -328,8 +338,6 @@ impl ClientModule {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use bevy::ecs::schedule::Schedules;
     use campfire_test_packages::TestMode;
 
@@ -347,6 +355,7 @@ mod tests {
         let data = ClientLayout::at(PathBuf::from("client"));
         let cx = WindowCx {
             packages: &packages,
+            mode_dir: &TestMode::Lane.dir(),
             local: Some(&pace),
             data: Some(&data),
         };

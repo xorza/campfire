@@ -44,7 +44,10 @@ fn the_binary_logs_the_last_state_hash() {
     test_dir.create_dir(&snapshots);
     let named = format!("{snapshots}/{}", SnapshotFingerprint::of(&snapshot));
     test_dir.write(&named, &snapshot);
-    for args in [&[packages, &path][..], &[packages, &path, &snapshots]] {
+    for args in [
+        &["verify", packages, &path][..],
+        &["verify", packages, &path, &snapshots],
+    ] {
         let output = verifier(args);
         assert!(output.status.success(), "{output:?}");
         let logged = String::from_utf8(output.stderr).unwrap();
@@ -54,7 +57,7 @@ fn the_binary_logs_the_last_state_hash() {
     // A snapshot of other bytes under the checkpoint's name.
     *snapshot.last_mut().unwrap() ^= 1;
     test_dir.write(&named, &snapshot);
-    let output = verifier(&[packages, &path, &snapshots]);
+    let output = verifier(&["verify", packages, &path, &snapshots]);
     assert_eq!(output.status.code(), Some(1));
     let logged = String::from_utf8(output.stderr).unwrap();
     let refused = format!(
@@ -65,7 +68,7 @@ fn the_binary_logs_the_last_state_hash() {
 
     let corrupt = format!("{dir}/headless-truncated.log");
     test_dir.write(&corrupt, &log[..log.len() - 1]);
-    let output = verifier(&[packages, &corrupt]);
+    let output = verifier(&["verify", packages, &corrupt]);
     assert_eq!(output.status.code(), Some(1));
     let logged = String::from_utf8(output.stderr).unwrap();
     let refused = format!(

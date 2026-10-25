@@ -1,4 +1,4 @@
-use campfire_harness::ProbeSpec;
+use campfire_capabilities::ProbeSpec;
 
 use super::*;
 

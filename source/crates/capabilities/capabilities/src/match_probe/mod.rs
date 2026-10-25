@@ -1,29 +1,24 @@
-use std::fmt::Write as _;
-use std::num::{NonZeroU32, NonZeroU64, ParseIntError};
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::fmt::{self, Write as _};
+use std::num::NonZeroU64;
 use std::sync::Arc;
-use std::{env, thread};
 
 use bevy_ecs::world::{EntityRef, World};
 use campfire_actions::{ActionProgress, ActionTarget, InProgress};
-use campfire_common::{DeclaredName, ErrorReport, PlayerSlot, StableNumber};
+use campfire_common::PlayerSlot;
 use campfire_math::Vec3;
 use campfire_navigation::{Progress, Route};
-use campfire_protocol::SessionId;
-use campfire_sim::{MatchRate, Position, SimTick, StableId};
-use campfire_store::{DurableDir, DurableFile};
+use campfire_sim::{EntityIndex, MatchRate, Position, SimTick, StableId};
 use campfire_units::{AtWork, Destination, Life, Owner, UnitTypeBook};
-use campfire_values::{Names, Team, TypeScope, UnitType};
+use campfire_values::{Names, Team, UnitType};
 
-use crate::error::{ProbeRefusal, ProbeSpecError, ProbeWriteError};
-use crate::match_units::MatchUnits;
+pub(crate) mod error;
+pub(crate) mod probe_spec;
 
 /// A table of a match's units at a period, as text, for a person to read: for each player slot
 /// the counts of the units it selects that the slot owns, by what they do, then a line for each
-/// unit it selects. A test
-/// asserts on its lines, and a check writes them to a file, in place of a dump written into a
-/// play and removed after (02-engine-core.md, One probe of a match).
+/// unit it selects. A test asserts on its lines, a check writes them to a file, and the verifier
+/// tables a report's tick, in place of a dump written into a play and removed after
+/// (02-engine-core.md, One probe of a match).
 #[derive(Debug)]
 pub struct MatchProbe {
     every: NonZeroU64,
@@ -40,33 +35,6 @@ pub enum ProbeUnits {
     Type(UnitType),
     /// In any order.
     Ids(Vec<StableId>),
-}
-
-/// A probe as text names it, `<period_ms>:<units>`, as `CAMPFIRE_PROBE` and the Zero Hour
-/// check's `--probe` take it: how often it writes, and the units it prints, `all`,
-/// `player=<n>` counted from 1, as a check names its players, `team=<n>`, `type=<name>` or
-/// `ids=<id>,<id>`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProbeSpec {
-    pub every_ms: NonZeroU64,
-    pub units: ProbeUnitsSpec,
-}
-
-/// The units a probe's text names, a type by its name.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProbeUnitsSpec {
-    All,
-    Owner(PlayerSlot),
-    Team(Team),
-    Type(DeclaredName),
-    Ids(Vec<StableId>),
-}
-
-/// A probe of a match, and the file it writes.
-#[derive(Debug)]
-pub struct ProbeFile {
-    pub probe: MatchProbe,
-    pub file: PathBuf,
 }
 
 /// What a unit does, as a probe reads it: it fights while it holds an attack target or attacks,
@@ -138,9 +106,20 @@ impl MatchProbe {
         let Some(ran) = world.resource::<SimTick>().start().get().checked_sub(1) else {
             return;
         };
-        if ran % self.every != 0 {
-            return;
+        if ran % self.every == 0 {
+            self.write(world, Some(ran));
         }
+    }
+
+    /// Writes the table of `world` as it stands, whatever the period, as a report's replay
+    /// tables the tick its client drew.
+    pub fn table(&mut self, world: &World) {
+        let ran = world.resource::<SimTick>().start().get().checked_sub(1);
+        self.write(world, ran);
+    }
+
+    /// Writes the table of `world` after the tick `ran`, or before its first.
+    fn write(&mut self, world: &World, ran: Option<u64>) {
         let rate = *world.resource::<MatchRate>();
         let stuck_after = Progress::stuck_after(rate);
         let names = world
@@ -148,7 +127,8 @@ impl MatchProbe {
             .map(UnitTypeBook::types);
         let mut counts: Vec<(PlayerSlot, Counts)> = Vec::new();
         let mut rows: Vec<[String; COLUMNS.len()]> = Vec::new();
-        for (id, unit) in MatchUnits::of(world).all() {
+        for (id, entity) in world.resource::<EntityIndex>().iter() {
+            let unit = world.entity(entity);
             if !id.is_allocated() || !self.selects(id, &unit) {
                 continue;
             }
@@ -168,10 +148,12 @@ impl MatchProbe {
         }
         counts.sort_unstable_by_key(|&(slot, _)| slot);
         let hz = NonZeroU64::from(rate.hz());
-        let (seconds, rest) = (ran / hz, ran % hz);
-        match rest {
-            0 => writeln!(self.text, "tick {ran}, {seconds} s"),
-            _ => writeln!(self.text, "tick {ran}, {seconds} s and {rest} ticks"),
+        match ran.map(|ran| (ran, ran / hz, ran % hz)) {
+            None => writeln!(self.text, "before tick 0"),
+            Some((ran, seconds, 0)) => writeln!(self.text, "tick {ran}, {seconds} s"),
+            Some((ran, seconds, rest)) => {
+                writeln!(self.text, "tick {ran}, {seconds} s and {rest} ticks")
+            }
         }
         .expect("text writes");
         for (slot, counts) in &counts {
@@ -335,121 +317,6 @@ impl MatchProbe {
     }
 }
 
-impl ProbeSpec {
-    /// The variable that asks every fixed match for a probe.
-    pub(crate) const VAR: &'static str = "CAMPFIRE_PROBE";
-
-    /// Its probe of a match of `types` at `hz` ticks a second; a refusal for a period of no
-    /// whole count of ticks, which a probe would round, or a type the match has not.
-    pub fn probe(
-        &self,
-        types: Option<&UnitTypeBook>,
-        hz: NonZeroU32,
-    ) -> Result<MatchProbe, ProbeRefusal> {
-        let scaled = self.every_ms.checked_mul(NonZeroU64::from(hz));
-        let every = scaled
-            .filter(|scaled| scaled.get() % 1000 == 0)
-            .and_then(|scaled| NonZeroU64::new(scaled.get() / 1000))
-            .ok_or(ProbeRefusal::Period(self.every_ms))?;
-        let units = match &self.units {
-            ProbeUnitsSpec::All => ProbeUnits::All,
-            &ProbeUnitsSpec::Owner(slot) => ProbeUnits::Owner(slot),
-            &ProbeUnitsSpec::Team(team) => ProbeUnits::Team(team),
-            ProbeUnitsSpec::Type(name) => {
-                let found =
-                    types.and_then(|types| types.types().named((TypeScope::Mode, name.as_str())));
-                ProbeUnits::Type(found.ok_or_else(|| ProbeRefusal::NoType(name.clone()))?)
-            }
-            ProbeUnitsSpec::Ids(ids) => ProbeUnits::Ids(ids.clone()),
-        };
-        Ok(MatchProbe::new(every, units))
-    }
-}
-
-impl FromStr for ProbeSpec {
-    type Err = ProbeSpecError;
-
-    fn from_str(text: &str) -> Result<Self, ProbeSpecError> {
-        let (every_ms, units) = text.split_once(':').ok_or(ProbeSpecError::Shape)?;
-        Ok(Self {
-            every_ms: every_ms.parse().map_err(ProbeSpecError::Period)?,
-            units: units.parse()?,
-        })
-    }
-}
-
-impl FromStr for ProbeUnitsSpec {
-    type Err = ProbeSpecError;
-
-    fn from_str(text: &str) -> Result<Self, ProbeSpecError> {
-        if text == "all" {
-            return Ok(Self::All);
-        }
-        let (kind, value) = text.split_once('=').ok_or(ProbeSpecError::Units)?;
-        Ok(match kind {
-            "player" => {
-                let player: u32 = number(value)?;
-                let index = player.checked_sub(1).ok_or(ProbeSpecError::Player)?;
-                Self::Owner(PlayerSlot::new(index))
-            }
-            "team" => Self::Team(Team::new(number(value)?)),
-            "type" => Self::Type(DeclaredName::new(value).ok_or(ProbeSpecError::Name)?),
-            "ids" => {
-                let ids: Result<Vec<u64>, _> = value.split(',').map(number).collect();
-                let ids = ids?.into_iter();
-                Self::Ids(
-                    ids.map(|id| StableId::from(StableNumber::new(id)))
-                        .collect(),
-                )
-            }
-            _ => return Err(ProbeSpecError::Units),
-        })
-    }
-}
-
-/// The number `text` names.
-fn number<T: FromStr<Err = ParseIntError>>(text: &str) -> Result<T, ProbeSpecError> {
-    text.parse().map_err(ProbeSpecError::Number)
-}
-
-impl ProbeFile {
-    /// The probe `CAMPFIRE_PROBE` asks of `game`, a match of the session `session`, which writes
-    /// `target/probe/<test>-<session>.probe`, its test the thread it runs on, as libtest names
-    /// it, its session the first digits of its id; none with no variable. A variable that does
-    /// not read, or a probe the match refuses, is a test's misuse, and fails it.
-    pub(crate) fn of_env(game: &World, session: SessionId) -> Option<Self> {
-        let text = env::var(ProbeSpec::VAR).ok()?;
-        let spec: ProbeSpec = text.parse().unwrap_or_else(|error| {
-            panic!("{}={text}: {}", ProbeSpec::VAR, ErrorReport::of(&error))
-        });
-        let types = game.get_resource::<UnitTypeBook>();
-        let hz = game.resource::<MatchRate>().hz();
-        let probe = spec.probe(types, hz).unwrap_or_else(|error| {
-            panic!("{}={text}: {}", ProbeSpec::VAR, ErrorReport::of(&error))
-        });
-        let thread = thread::current();
-        let test = thread.name().unwrap_or("main").replace("::", "-");
-        let session = &session.to_string()[..8];
-        let dir = Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../../target/probe"
-        ));
-        Some(Self {
-            probe,
-            file: dir.join(format!("{test}-{session}.probe")),
-        })
-    }
-
-    /// Writes what the probe wrote to its file, its directory made if it is missing.
-    pub fn write(&self) -> Result<(), ProbeWriteError> {
-        if let Some(dir) = self.file.parent() {
-            DurableDir::create_all(dir)?;
-        }
-        DurableFile::write(&self.file, self.probe.text().as_bytes())?;
-        Ok(())
-    }
-}
-
 impl Counts {
     const fn count(&mut self, doing: Doing, stuck: bool) {
         let counted = match doing {
@@ -466,8 +333,8 @@ impl Counts {
     }
 }
 
-impl std::fmt::Display for Counts {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Counts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self {
             idle,
             walking,
@@ -481,53 +348,5 @@ impl std::fmt::Display for Counts {
             "{idle} idle, {walking} walking ({stuck} stuck), {working} working, \
              {fighting} fighting, {acting} acting"
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_probe_reads_its_period_and_its_units() {
-        let every = |ms| NonZeroU64::new(ms).unwrap();
-        let id = |id| StableId::from(StableNumber::new(id));
-        let name = |text| DeclaredName::new(text).unwrap();
-        for (text, units) in [
-            ("1000:all", ProbeUnitsSpec::All),
-            // Players count from 1, as the check names them: player 2 is slot 1.
-            ("1000:player=2", ProbeUnitsSpec::Owner(PlayerSlot::new(1))),
-            ("1000:team=3", ProbeUnitsSpec::Team(Team::new(3))),
-            ("1000:type=dozer", ProbeUnitsSpec::Type(name("dozer"))),
-            ("1000:ids=9,2", ProbeUnitsSpec::Ids(vec![id(9), id(2)])),
-        ] {
-            let expected = ProbeSpec {
-                every_ms: every(1000),
-                units,
-            };
-            assert_eq!(text.parse(), Ok(expected), "{text}");
-        }
-        for (text, error) in [
-            ("1000", ProbeSpecError::Shape),
-            ("1000:some", ProbeSpecError::Units),
-            ("1000:player=0", ProbeSpecError::Player),
-            ("1000:type=", ProbeSpecError::Name),
-        ] {
-            assert_eq!(text.parse::<ProbeSpec>(), Err(error), "{text}");
-        }
-        for text in [
-            "0:all",
-            "soon:all",
-            "1000:team=x",
-            "1000:ids=1,,2",
-            "1000:player=-1",
-        ] {
-            let refused = text.parse::<ProbeSpec>();
-            let number = matches!(
-                refused,
-                Err(ProbeSpecError::Period(_) | ProbeSpecError::Number(_))
-            );
-            assert!(number, "{text}: {refused:?}");
-        }
     }
 }

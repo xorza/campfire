@@ -264,6 +264,7 @@ impl RunVerifier<'_> {
                 let file = host_layout(dir, session).published_log(written.session);
                 let path = replayer.log_path(dir);
                 let status = Command::new(executable)
+                    .arg("verify")
                     .arg(Path::new(PACKAGES_DIR).join(PACKAGES))
                     .arg(file)
                     .current_dir(dir)

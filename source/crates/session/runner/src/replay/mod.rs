@@ -111,9 +111,14 @@ impl<'p> Replay<'p> {
 
     /// Runs the ticks the log holds before `end`, after those that ran, giving `ran` the world
     /// after each, and checks each checkpoint on the way, the one at `end` too, and the result
-    /// when `end` is the log's end.
-    fn run_to(&mut self, end: Tick, mut ran: impl FnMut(&World)) -> Result<(), ReplayError> {
+    /// when `end` is the log's end: a report's replay stops at the tick its client drew
+    /// (bug-reports.md, A report replays to its tick).
+    pub fn run_to(&mut self, end: Tick, mut ran: impl FnMut(&World)) -> Result<(), ReplayError> {
         let start = self.game.session().next_tick();
+        assert!(
+            start <= end && end <= self.ticks,
+            "a replay runs to a tick between the one it stands at and the log's end"
+        );
         self.game.replay_to(end, |world| {
             if world.session().next_tick() > start {
                 ran(world);

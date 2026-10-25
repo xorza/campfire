@@ -24,7 +24,7 @@ mod session_times;
 mod unix_clock;
 
 pub use crate::client::client_dir::ClientDir;
-pub use crate::client::client_layout::ClientLayout;
+pub use crate::client::client_layout::{ClientLayout, NewReport};
 pub use crate::client::join_state::error::TermsMismatch;
 pub use crate::client::join_state::{
     JoinState, JoinedSession, Joining, LinkLoss, Loss, Member, Playing, Retry, StartEffect,
@@ -37,7 +37,9 @@ pub use crate::client::report_file::{ReportCamera, ReportFile};
 pub use crate::client::sent_inputs::SentInputs;
 pub use crate::client::server_pin::ServerPin;
 pub use crate::client::session_signer::SessionSigner;
-pub use crate::error::{JoinError, OrderFileError, ReceiptRefusal, ReportWriteError, SaveRefusal};
+pub use crate::error::{
+    JoinError, OrderFileError, ReceiptRefusal, ReportReadError, ReportWriteError, SaveRefusal,
+};
 pub use crate::events::bot_order_unsent::BotOrderUnsent;
 pub use crate::events::checkpoint_failed::CheckpointFailed;
 pub use crate::events::client_frame::ClientFrame;
