@@ -9,11 +9,11 @@ on:
 permissions:
   contents: read
 
-# A newer push to a pull request ends its older run; every run of a branch runs to its end, so
-# each of its commits gets a verdict and master's saves its cache.
+# A newer push to a ref ends its older run, master's too: only the newest commit's verdict counts,
+# and a cancelled run saves no cache, so master's cache comes from its newest finished run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
