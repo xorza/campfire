@@ -51,11 +51,12 @@ fn a_turret_turns_toward_its_target_and_its_attack_starts_within_its_tolerance()
     assert_eq!((angle(&game), turning(&game)), (Num::ZERO, None));
 
     // A weapon of another slot kind than the turret's, or at a place of its kind the turret does
-    // not carry, starts at once, its turret turning still; one at a place it carries waits.
-    for (slot, places, started) in [
-        (1, None, Some(Tick::new(0))),
-        (0, Some(vec![1]), Some(Tick::new(0))),
-        (0, Some(vec![0, 1]), None),
+    // not carry, starts at once, and the turret, which aims for none of its weapons, stays at
+    // rest, out of the index; one at a place it carries waits, its turret turning.
+    for (slot, places, started, turned) in [
+        (1, None, Some(Tick::new(0)), 0),
+        (0, Some(vec![1]), Some(Tick::new(0)), 0),
+        (0, Some(vec![0, 1]), None, 6),
     ] {
         let mut game = fight_match();
         let [gunner, _] = turret_fight(&mut game, slot, |data| match places {
@@ -64,7 +65,9 @@ fn a_turret_turns_toward_its_target_and_its_attack_starts_within_its_tolerance()
         });
         game.step();
         assert_eq!(Attack::of(&game, gunner).started(), started, "{slot}");
-        assert_eq!(angle(&game), Num::int(6));
+        assert_eq!(angle(&game), Num::int(turned), "{slot}");
+        let rests = turning(&game).is_none();
+        assert_eq!(rests, turned == 0, "{slot}");
     }
     // A place past the last a turret holds is refused.
     let slot_kind = DeclaredName::new("weapon").unwrap();

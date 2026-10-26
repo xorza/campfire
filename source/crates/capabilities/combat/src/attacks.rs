@@ -21,6 +21,7 @@ use campfire_stats::{ModifierEvents, PoolBook, UnitPools, UnitPoolsReadOnly, Uni
 use campfire_units::{Body, Dead, Due, Facing, ForcedMove, MapBook, Owner, TurnStep, UnitsNear};
 use campfire_values::{ActionId, Allegiance, Block, Motion, TagSet, Team, UnitTags, UnitType};
 
+use crate::armed::Armed;
 use crate::attack_data::PreAttackEach;
 use crate::clip_shots::ClipShots;
 use crate::combat_event::CombatEvent;
@@ -276,9 +277,13 @@ impl Attacks {
                         progress.set_attack_target(None, &mut indexes.of(id, entity));
                         continue;
                     };
-                    let selects = (targets.relation(team, unit.team), unit.tags);
-                    let holder = tags.map_or(TagSet::NONE, |tags| tags.tags);
-                    let weapon_slot = slots.weapon_in(&book, holder, Some(selects));
+                    let armed = Armed {
+                        slots,
+                        book: &book,
+                        team,
+                        holder: tags.map_or(TagSet::NONE, |tags| tags.tags),
+                    };
+                    let weapon_slot = armed.weapon_against(&targets, &unit);
                     let (Some(slot), false) = (weapon_slot, blocked) else {
                         progress.end_pre_attack();
                         continue;

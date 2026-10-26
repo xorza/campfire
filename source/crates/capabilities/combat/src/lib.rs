@@ -28,6 +28,7 @@ use crate::streak_shots::StreakShots;
 use crate::turret::aiming::Aiming;
 use crate::volley::{GoingOff, Volley};
 
+mod armed;
 mod armor;
 mod attack_data;
 mod attacks;

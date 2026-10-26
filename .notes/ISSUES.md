@@ -10,5 +10,4 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
-- **Combat.** **Plan: T1.** A turret turns toward its unit's attack target whatever weapon the unit attacks with (`Aiming::aim`), where Zero Hour's turret aims only while the current weapon is of a slot it controls (`AIUpdateInterface::getWhichTurretForCurrentWeapon`): a unit that attacks with a weapon its turret does not carry turns its turret toward the target all the same. No converted unit of the import of 2026-10-26 has such a weapon.
 
