@@ -4,12 +4,12 @@ use bevy::app::{App, Plugin, Startup};
 use bevy::asset::Assets;
 use bevy::ecs::world::{Mut, World};
 use bevy::image::Image;
-use bevy::material::AlphaMode;
 use bevy::mesh::{Mesh, Mesh3d};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 
 use crate::client_packages::ClientPackages;
 use crate::view::client_data::ClientLoad;
+use crate::view::file_material::{FileBlend, FileMaterial, FileMaterialPlugin};
 use crate::view::ground_heights::GroundHeights;
 use crate::view::terrain_image::TerrainImage;
 use crate::view::terrain_meshes::TerrainMeshes;
@@ -22,10 +22,11 @@ use crate::view::terrain_meshes::TerrainMeshes;
 pub(crate) struct TerrainViewPlugin;
 
 /// The overlays' lift over the ground, so they draw over the quads they share a depth with.
-const OVERLAY_BIAS: f32 = 1.0;
+const OVERLAY_BIAS: i32 = 1;
 
 impl Plugin for TerrainViewPlugin {
     fn build(&self, app: &mut App) {
+        FileMaterialPlugin::require(app);
         app.add_systems(Startup, Self::draw);
     }
 }
@@ -58,14 +59,12 @@ impl TerrainViewPlugin {
                 reflectance: surface.specular * 0.5,
                 ..StandardMaterial::default()
             };
-            let overlay_material = StandardMaterial {
-                alpha_mode: AlphaMode::Blend,
-                depth_bias: OVERLAY_BIAS,
-                ..ground_material.clone()
-            };
+            let overlay_material = FileBlend::ground(ground_material.clone(), OVERLAY_BIAS);
+            let overlay_material = world
+                .resource_mut::<Assets<FileMaterial>>()
+                .add(overlay_material);
             let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
             let ground_material = materials.add(ground_material);
-            let overlay_material = materials.add(overlay_material);
             let mut meshes = world.resource_mut::<Assets<Mesh>>();
             let ground = meshes.add(ground.into_mesh());
             let overlay = (!overlay.indices.is_empty()).then(|| meshes.add(overlay.into_mesh()));

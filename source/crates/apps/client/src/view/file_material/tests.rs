@@ -1,6 +1,11 @@
+use std::f32::consts::FRAC_PI_2;
+
 use bevy::asset::{AssetId, Assets, uuid::Uuid};
 use bevy::color::{Color, LinearRgba};
+use bevy::core_pipeline::core_3d::TransparentSortingInfo3d;
+use bevy::math::{Affine3A, Quat, Vec3};
 use bevy::pbr::Material;
+use bevy::render::render_phase::ViewRangefinder3d;
 use bevy::render::render_resource::Face;
 use bevy::shader::{Shader, ShaderCache, ShaderCacheError, ShaderCacheSource, ShaderDefVal};
 use naga::Module;
@@ -74,6 +79,7 @@ fn extras_give_their_phase_blend_depth_write_test_and_bias_over_the_gltf_materia
                 colors: MatchColors::BUFFER,
                 factors,
                 depth_write,
+                order: BlendOrder::ByDistance,
             }
         );
         // The rest is the glTF material's, as Bevy draws it.
@@ -251,4 +257,32 @@ fn the_shader_composes_and_validates_opaque_and_where_it_may_discard() {
         shaders.compose(3, &misspelled, &opaque),
         Err(ShaderCacheError::CreateShaderModule(_))
     ));
+}
+
+#[test]
+fn a_ground_s_overlays_sort_before_every_blended_mesh_and_keep_their_own_depth_bias() {
+    // Bevy's transparent phase draws its meshes in the order of their view depth plus their
+    // material's depth bias, the least first. A camera at (0, 50, 0) looks down: the ground's
+    // overlay, its centre under the camera, and a particle's mesh 1 000 m away, past it.
+    let overlay = FileBlend::ground(StandardMaterial::default(), 1);
+    let particles = FileBlend::particles(Handle::default(), Blend::Add);
+    let camera = Affine3A::from_rotation_translation(
+        Quat::from_rotation_x(-FRAC_PI_2),
+        Vec3::new(0.0, 50.0, 0.0),
+    );
+    let rangefinder = ViewRangefinder3d::from_world_from_view(&camera);
+    let sorted = |center: Vec3, material: &FileMaterial| {
+        TransparentSortingInfo3d::Sorted {
+            mesh_center: center,
+            depth_bias: material.depth_bias(),
+        }
+        .sort_distance(&rangefinder)
+    };
+    let ground = sorted(Vec3::ZERO, &overlay);
+    let far = sorted(Vec3::new(0.0, -1000.0, 0.0), &particles);
+    assert!(ground < far, "{ground} {far}");
+    // Its pipeline's depth bias is its own 1, not the order's.
+    assert_eq!(overlay.extension.order, BlendOrder::Ground { bias: 1 });
+    assert_eq!(overlay.extension.factors, Factors::Alpha);
+    assert_eq!(particles.extension.order, BlendOrder::ByDistance);
 }

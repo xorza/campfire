@@ -32,10 +32,10 @@ use crate::view::client_data::ClientLoad;
 use crate::view::drawing::Drawing;
 use crate::view::effects::effect_book::{EffectBook, GroupId};
 use crate::view::effects::effect_plays::{EffectPlays, PlaySources};
-use crate::view::effects::particle_quads::{ParticleQuads, ViewAxes};
+use crate::view::effects::particle_quads::{GroupQuads, ParticleQuads, ViewAxes};
 use crate::view::effects::particle_run::{ParticleRun, SystemKey};
 use crate::view::effects::step_clock::StepClock;
-use crate::view::file_material::{FileBlend, FileMaterial};
+use crate::view::file_material::{FileBlend, FileMaterial, FileMaterialPlugin};
 use crate::view::ground_heights::GroundHeights;
 use crate::view::look_states::LookStates;
 use crate::view::package_source::PackageAssets;
@@ -130,13 +130,21 @@ type Shooters<'w, 's> = Query<
     (Changed<SlotTimes>, Allow<Unpredicted>),
 >;
 
-/// A draw group's mesh, its entity, and whether the entity shows, by its place among the
-/// groups.
+/// A draw group's material, its mesh and the mesh's entity, made as the group first holds a quad,
+/// as Bevy's mesh allocator takes no mesh of no vertex, and whether the entity shows, by its place
+/// among the groups.
 #[derive(Debug)]
 struct GroupMesh {
+    material: Handle<FileMaterial>,
+    drawn: Option<DrawnGroup>,
+    shown: bool,
+}
+
+/// A draw group's mesh and its entity.
+#[derive(Debug)]
+struct DrawnGroup {
     mesh: Handle<Mesh>,
     entity: Entity,
-    shown: bool,
 }
 
 /// Steps and draws the match's effects (effects.md, Particles run on the CPU and draw as
@@ -149,6 +157,7 @@ const SEED: u64 = 0x5EED_5EED_5EED_5EED;
 
 impl Plugin for EffectsPlugin {
     fn build(&self, app: &mut App) {
+        FileMaterialPlugin::require(app);
         app.add_systems(Startup, MatchEffects::load);
         app.add_systems(
             Update,
@@ -168,8 +177,8 @@ impl Plugin for EffectsPlugin {
 }
 
 impl MatchEffects {
-    /// Reads the mode's effects, and gives each draw group its material, of its texture, and an
-    /// empty mesh to draw in; none for a mode of no effects.
+    /// Reads the mode's effects, and gives each draw group its material, of its texture; none for
+    /// a mode of no effects.
     fn load(
         (load, origins, names): (
             Res<'_, ClientLoad>,
@@ -177,7 +186,7 @@ impl MatchEffects {
             Res<'_, MatchNames>,
         ),
         assets: Res<'_, AssetServer>,
-        (mut meshes, mut materials): (ResMut<'_, Assets<Mesh>>, ResMut<'_, Assets<FileMaterial>>),
+        mut materials: ResMut<'_, Assets<FileMaterial>>,
         mut commands: Commands<'_, '_>,
     ) {
         let Some(file) = &load.effects else {
@@ -199,23 +208,9 @@ impl MatchEffects {
             .map(|group| {
                 let path = PackageAssets::asset_path(PackageIndex::MODE, &group.texture);
                 let texture = assets.load(AssetPath::from(path));
-                let material = materials.add(FileBlend::particles(texture, group.blend));
-                let mesh = meshes.add(Self::empty());
-                let entity = commands
-                    .spawn((
-                        Mesh3d(mesh.clone()),
-                        MeshMaterial3d(material),
-                        Transform::IDENTITY,
-                        Visibility::Hidden,
-                        NoFrustumCulling,
-                        NotShadowCaster,
-                        NotShadowReceiver,
-                        Pickable::IGNORE,
-                    ))
-                    .id();
                 GroupMesh {
-                    mesh,
-                    entity,
+                    material: materials.add(FileBlend::particles(texture, group.blend)),
+                    drawn: None,
                     shown: false,
                 }
             })
@@ -501,6 +496,25 @@ impl MatchEffects {
         for (at, group) in effects.meshes.iter_mut().enumerate() {
             let quads = effects.quads.group(GroupId::of(at));
             let shown = !quads.indices.is_empty();
+            let Some(drawn) = &group.drawn else {
+                if shown {
+                    let mesh = meshes.add(Self::mesh_of(quads));
+                    let entity = commands
+                        .spawn((
+                            Mesh3d(mesh.clone()),
+                            MeshMaterial3d(group.material.clone()),
+                            Transform::IDENTITY,
+                            NoFrustumCulling,
+                            NotShadowCaster,
+                            NotShadowReceiver,
+                            Pickable::IGNORE,
+                        ))
+                        .id();
+                    group.drawn = Some(DrawnGroup { mesh, entity });
+                    group.shown = true;
+                }
+                continue;
+            };
             if shown != group.shown {
                 group.shown = shown;
                 let visibility = if shown {
@@ -508,12 +522,12 @@ impl MatchEffects {
                 } else {
                     Visibility::Hidden
                 };
-                commands.entity(group.entity).insert(visibility);
+                commands.entity(drawn.entity).insert(visibility);
             }
             if !shown {
                 continue;
             }
-            let Some(mut mesh) = meshes.get_mut(&group.mesh) else {
+            let Some(mut mesh) = meshes.get_mut(&drawn.mesh) else {
                 continue;
             };
             if let Some(VertexAttributeValues::Float32x3(positions)) =
@@ -541,16 +555,16 @@ impl MatchEffects {
         }
     }
 
-    /// A mesh of no quad, of the attributes a quad writes.
-    fn empty() -> Mesh {
+    /// The mesh of `quads`, a group's first.
+    fn mesh_of(quads: &GroupQuads) -> Mesh {
         Mesh::new(
             PrimitiveTopology::TriangleList,
             RenderAssetUsages::default(),
         )
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<[f32; 3]>::new())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, Vec::<[f32; 2]>::new())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, Vec::<[f32; 4]>::new())
-        .with_inserted_indices(Indices::U32(Vec::new()))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, quads.positions.clone())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, quads.uvs.clone())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, quads.colors.clone())
+        .with_inserted_indices(Indices::U32(quads.indices.clone()))
     }
 }
 

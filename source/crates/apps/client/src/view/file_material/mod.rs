@@ -27,7 +27,8 @@ pub(crate) type FileMaterial = ExtendedMaterial<StandardMaterial, FileBlend>;
 
 /// What a material's extras say past the standard material: how its color meets what is behind
 /// it, whether it writes depth, the alpha below which it is not drawn, 0 for none, how its team
-/// colors it, and the match's colors its mesh's tag names.
+/// colors it, the match's colors its mesh's tag names, and where it stands among the meshes Bevy
+/// blends.
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone, PartialEq)]
 #[bind_group_data(FileBlendKey)]
 pub(crate) struct FileBlend {
@@ -40,6 +41,17 @@ pub(crate) struct FileBlend {
     pub(crate) colors: Handle<ShaderBuffer>,
     pub(crate) factors: Factors,
     pub(crate) depth_write: bool,
+    pub(crate) order: BlendOrder,
+}
+
+/// Where a file material's mesh stands among those Bevy's transparent phase blends, which it
+/// orders by their bounds' centres plus their materials' depth bias: by its own, the depth bias
+/// both its order's and its depth's; or first of all, as the ground every other mesh stands
+/// over, its depth biased by `bias` alone.
+#[derive(Reflect, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum BlendOrder {
+    ByDistance,
+    Ground { bias: i32 },
 }
 
 /// How a file material's color meets what is behind it, as its blend factors say.
@@ -63,6 +75,7 @@ pub(crate) enum Factors {
 pub(crate) struct FileBlendKey {
     factors: Factors,
     depth_write: bool,
+    order: BlendOrder,
 }
 
 /// The shader of every file material, embedded in the client by `FileMaterialPlugin`, from this
@@ -76,6 +89,16 @@ const HUE_MASK: u32 = 2;
 /// The file materials: their shader, embedded, and their material's plugin.
 #[derive(Debug)]
 pub(crate) struct FileMaterialPlugin;
+
+impl FileMaterialPlugin {
+    /// Adds the plugin to `app` unless a plugin that draws file materials added it before, as
+    /// the unit models, the terrain's overlays and the effects each do.
+    pub(crate) fn require(app: &mut App) {
+        if !app.is_plugin_added::<Self>() {
+            app.add_plugins(Self);
+        }
+    }
+}
 
 impl Plugin for FileMaterialPlugin {
     fn build(&self, app: &mut App) {
@@ -125,6 +148,29 @@ impl FileBlend {
                 colors: MatchColors::BUFFER,
                 factors,
                 depth_write: extras.depth_write,
+                order: BlendOrder::ByDistance,
+            },
+        }
+    }
+
+    /// The material a ground's overlays draw in over it, of `base`, blended by its alpha: first
+    /// of the blended meshes, so a particle or a unit's blended part over it draws after it
+    /// wherever its mesh's centre stands, its depth biased by `bias` over the ground's
+    /// quads it shares a depth with.
+    pub(crate) fn ground(base: StandardMaterial, bias: i32) -> FileMaterial {
+        ExtendedMaterial {
+            base: StandardMaterial {
+                alpha_mode: AlphaMode::Blend,
+                depth_bias: f32::MIN,
+                ..base
+            },
+            extension: Self {
+                cutoff: 0.0,
+                team: 0,
+                colors: MatchColors::BUFFER,
+                factors: Factors::Alpha,
+                depth_write: false,
+                order: BlendOrder::Ground { bias },
             },
         }
     }
@@ -149,6 +195,7 @@ impl FileBlend {
                 colors: MatchColors::BUFFER,
                 factors,
                 depth_write: false,
+                order: BlendOrder::ByDistance,
             },
         }
     }
@@ -233,6 +280,7 @@ impl From<&FileBlend> for FileBlendKey {
         Self {
             factors: blend.factors,
             depth_write: blend.depth_write,
+            order: blend.order,
         }
     }
 }
@@ -251,9 +299,13 @@ impl MaterialExtension for FileBlend {
         let FileBlendKey {
             factors,
             depth_write,
+            order,
         } = key.bind_group_data;
         if let Some(depth) = descriptor.depth_stencil.as_mut() {
             depth.depth_write_enabled = Some(depth_write);
+            if let BlendOrder::Ground { bias } = order {
+                depth.bias.constant = bias;
+            }
         }
         if let (Some(blend), Some(fragment)) = (factors.blend(), descriptor.fragment.as_mut()) {
             for target in fragment.targets.iter_mut().flatten() {

@@ -67,7 +67,7 @@ struct ExtrasHandler;
 
 impl Plugin for UnitModelsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(FileMaterialPlugin);
+        FileMaterialPlugin::require(app);
         app.init_resource::<ModelScenes>();
         // The glTF loader takes its handlers as it is finished, after every plugin's build.
         app.world_mut()

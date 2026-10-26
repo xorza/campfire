@@ -22,7 +22,7 @@ use super::*;
 use crate::pointer::Pointer;
 use crate::test_app;
 use crate::view::client_data::ClientLoad;
-use crate::view::file_material::{Factors, FileBlend};
+use crate::view::file_material::{BlendOrder, Factors, FileBlend};
 use crate::view::footing::Footing;
 
 /// A shape 1 m tall, of `radius`.
@@ -44,6 +44,7 @@ fn blend(factors: Factors, cutoff: f32) -> FileMaterial {
             colors: Handle::default(),
             factors,
             depth_write: false,
+            order: BlendOrder::ByDistance,
         },
     }
 }
