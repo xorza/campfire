@@ -27,7 +27,8 @@ use crate::zero_hour::upgrade_import;
 /// `WeaponSetUpgrade`; `CONTINUOUS_FIRE_MEAN`, `CONTINUOUS_FIRE_FAST` and `CONTINUOUS_FIRE_SLOW`
 /// the tags of a streak's stages and of its fall, which their modifiers give; a flag an upgrade module of an object sets the tag of its name, which the
 /// module's modifier gives (09-zero-hour.md, An upgrade's look is a tag); and any other flag
-/// none.
+/// none, a condition no test says, which a set counts (02-engine-core.md, A set counts the
+/// conditions no test says).
 #[derive(Debug)]
 pub(crate) struct LookFlags {
     damaged: LifeShare,
@@ -37,11 +38,11 @@ pub(crate) struct LookFlags {
     upgraded: BTreeSet<DeclaredName>,
 }
 
-/// A flag's condition: its name, and its test.
+/// A flag's condition: its name, and its test, none for a condition no test says.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FlagCondition {
     pub(crate) name: DeclaredName,
-    pub(crate) test: ConditionTest,
+    pub(crate) test: Option<ConditionTest>,
 }
 
 impl LookFlags {
@@ -147,9 +148,12 @@ impl LookFlags {
                 tag: self.continuous_fire[2].clone(),
             },
             _ if self.upgraded.contains(&name) => ConditionTest::Tag { tag: name.clone() },
-            _ => ConditionTest::Never,
+            _ => return Ok(FlagCondition { name, test: None }),
         };
-        Ok(FlagCondition { name, test })
+        Ok(FlagCondition {
+            name,
+            test: Some(test),
+        })
     }
 }
 

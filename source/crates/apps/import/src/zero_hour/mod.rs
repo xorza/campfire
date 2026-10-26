@@ -53,6 +53,7 @@ pub(crate) mod camera_import;
 pub(crate) mod cliff_walls;
 pub(crate) mod combat_import;
 pub(crate) mod convex_clip;
+pub(crate) mod draw_sets;
 pub(crate) mod dropped;
 pub(crate) mod dropped_roads;
 pub(crate) mod effect_drop_cause;
@@ -399,7 +400,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 36;
+    pub const OUTPUT_VERSION: u32 = 37;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

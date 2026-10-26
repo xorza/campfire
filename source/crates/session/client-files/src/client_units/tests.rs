@@ -6,6 +6,7 @@ use crate::client_model::{ModelScale, ModelTop};
 use crate::client_unit::{BarrelFlash, FireBarrel, FireBone};
 use crate::condition_test::{LifeShare, SiteStage};
 use crate::state_animation::{AnimationMode, SpeedRange, StartFrame};
+use crate::state_set::StateSet;
 
 #[test]
 fn units_write_and_read_back_their_states_conditions_and_models() {
@@ -17,7 +18,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
                 { model = "client/models/avhumflag.glb", top = 3.25 },
                 { model = "client/models/avhumfx.glb" },
             ] },
-            { sets = [["damaged"], ["damaged", "night"]], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, barrels = [{ bone = "MuzzleFX01", flash = { node = "avhummer_d.muzzlefx01", ms = 100 } }, {}] }] },
+            { sets = [["damaged"], ["damaged", "night"], { names = ["damaged"], untested = 2 }], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, barrels = [{ bone = "MuzzleFX01", flash = { node = "avhummer_d.muzzlefx01", ms = 100 } }, {}] }] },
         ] }]
         death = "fx_humvee_death"
 
@@ -41,7 +42,6 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
         damaged = { test = "life", above = "0.25", at_most = "0.5" }
         moving = { test = "moving", still_ms = 250 }
         upgraded = { test = "tag", tag = "weapon_upgrade" }
-        rubble = { test = "never" }
         fallen = { test = "dead" }
         engaged = { test = "attacking" }
         awaiting = { test = "site", stage = "waiting" }
@@ -93,12 +93,16 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
             .map(|field| written.matches(field).count()),
         [1, 1, 1, 0, 1, 1]
     );
-    // A state's sets, its own and its aliases'.
+    // A state's sets, its own and its aliases', the last of two untested conditions.
     let damaged = DeclaredName::new("damaged").unwrap();
     let night = DeclaredName::new("night").unwrap();
     assert_eq!(
         states[1].sets,
-        [vec![damaged.clone()], vec![damaged, night]]
+        [
+            StateSet::from([damaged.clone()]),
+            StateSet::from([damaged.clone(), night]),
+            StateSet::new([damaged], 2)
+        ]
     );
     // A draw's ignored conditions.
     let ignore = units.units["lamp"].draws[0].ignore();
@@ -146,7 +150,6 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     assert_eq!(test("moving"), ConditionTest::Moving { still_ms: 250 });
     let tag = DeclaredName::new("weapon_upgrade").unwrap();
     assert_eq!(test("upgraded"), ConditionTest::Tag { tag });
-    assert_eq!(test("rubble"), ConditionTest::Never);
     assert_eq!(test("fallen"), ConditionTest::Dead);
     assert_eq!(test("engaged"), ConditionTest::Attacking);
     let site = |stage| ConditionTest::Site { stage };
@@ -211,6 +214,9 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     let untested = "a look's state names the condition `night`, of no test";
     let at_night = "[{ states = [{ sets = [[\"night\"]], models = [] }] }]";
     assert_eq!(refusal(&draws(at_night)), untested);
+    let counted =
+        "[{ states = [{ sets = [{ names = [\"night\"], untested = 1 }], models = [] }] }]";
+    assert_eq!(refusal(&draws(counted)), untested);
     let varied = format!("[units.a]\ndraws = []\nvariations = [{{ draws = {at_night} }}]");
     assert_eq!(refusal(&varied), untested);
     let ignored = "[{ states = [{ sets = [[]], models = [] }], ignore = [\"night\"] }]";

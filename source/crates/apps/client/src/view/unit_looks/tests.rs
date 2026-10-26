@@ -220,7 +220,7 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
             { sets = [["night"]], models = [{ model = "night.glb" }] },
             { sets = [["snow"]], models = [{ model = "snow.glb" }] },
             { sets = [["damaged"], ["damaged", "night"]], models = [{ model = "hurt.glb" }] },
-            { sets = [["moving", "rubble"]], models = [{ model = "walk.glb" }] },
+            { sets = [{ names = ["moving"], untested = 1 }], models = [{ model = "walk.glb" }] },
             { sets = [["upgraded"]], models = [{ model = "upgraded.glb" }] },
             { sets = [["waiting"]], models = [{ model = "site.glb" }] },
             { sets = [["wip"]], models = [{ model = "frame.glb" }] },
@@ -232,7 +232,6 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         engaged = { test = "attacking" }
         moving = { test = "moving", still_ms = 250 }
         night = { test = "map" }
-        rubble = { test = "never" }
         snow = { test = "map" }
         upgraded = { test = "tag", tag = "weapon_upgrade" }
         waiting = { test = "site", stage = "waiting" }
@@ -266,7 +265,7 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         UnitLooks::of(types, &data)
     };
     // The tested conditions' bits, by name: damaged 0, engaged 1, moving 2, upgraded 3, waiting 4,
-    // wip 5, zap 6, zing 7, zombie 8; the map's and the one of no test are none.
+    // wip 5, zap 6, zing 7, zombie 8; the map's are none.
     let [
         damaged,
         engaged,
@@ -289,7 +288,8 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
     // On a night map of snow, whose snow the draw ignores: at rest the night state, of 1 in
     // common, past the default's none and the snow's, which lacks its ignored snow. Damaged:
     // the damaged night, of 2. Moving: the night still, of 1 and none lacked, past the walk's 1
-    // and its condition of no test lacked. Upgraded: the night, first of a tie of 1 and none.
+    // and its untested condition lacked, as its set of `moving` and `rubble`, a condition of no
+    // test, drew. Upgraded: the night, first of a tie of 1 and none.
     let night = looks_on(&["night", "snow"]);
     let rest = &night.draws(barracks, None).unwrap().draws()[0];
     assert_eq!(rest.rest, 1);
@@ -478,8 +478,8 @@ fn a_gattling_draws_its_state_of_each_stage_and_of_its_fall_while_it_attacks() {
 #[test]
 fn a_models_upgrade_shows_and_hides_its_nodes_over_its_states_while_its_unit_holds_it() {
     // A tank of its flag hidden; its armor, tested by bit 2, shows the flag and hides the hatch;
-    // its paint, a map's condition every unit holds, hides the hull; a condition of no test,
-    // which none holds, shows the hatch. Its second weapon group's clip shows two rounds, a
+    // its paint, a map's condition every unit holds, hides the hull; a map's condition the map
+    // lacks, which none holds, shows the hatch. Its second weapon group's clip shows two rounds, a
     // rocket and then a rocket and the flag.
     let upgrade = |condition: &str, show: &[&str], hide: &[&str]| NodeUpgrade {
         condition: DeclaredName::new(condition).unwrap(),

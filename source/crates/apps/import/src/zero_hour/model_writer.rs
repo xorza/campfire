@@ -16,6 +16,7 @@ use crate::gltf::model_bounds::ModelBounds;
 use crate::zero_hour::animation_import::{AnimationDropCause, AnimationEnds, ConvertedAnimation};
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::barrel_recoil::BarrelRecoil;
+use crate::zero_hour::draw_sets::DrawSets;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::error::{ModelError, NameClash, NameError, ZeroHourError};
 use crate::zero_hour::format::game_float;
@@ -369,32 +370,37 @@ impl ModelWriter<'_, '_> {
                 rounds_shown: draw.rounds_shown,
                 recoil: BarrelRecoil::of(draw.recoil),
             };
+            // A state of no set left is never drawn, so its models and its animation convert not,
+            // nor a wait for its key or a transition of it.
+            let DrawSets {
+                states: state_sets,
+                tests,
+            } = DrawSets::of(draw, flags)?;
             let mut keys = DrawKeys::default();
-            let mut states = Vec::new();
-            for state in draw.states() {
-                let looked = self.look_models([state.drawn], module)?;
-                let mut sets = Vec::with_capacity(state.sets.len());
-                for set in state.sets {
-                    let mut names = Vec::with_capacity(set.flags().len());
-                    for flag in set.flags() {
-                        names.push(self.condition(flag, flags)?);
-                    }
-                    sets.push(names);
+            let mut kept = Vec::new();
+            for (state, sets) in draw.states().zip(state_sets) {
+                if !sets.is_empty() {
+                    let key = state.animation.key.as_deref().map(|key| keys.key(key));
+                    kept.push((state, sets, key.transpose()?));
                 }
+            }
+            let kept_keys: Vec<DeclaredName> =
+                kept.iter().filter_map(|(_, _, key)| key.clone()).collect();
+            let mut states = Vec::with_capacity(kept.len());
+            for (state, sets, key) in kept {
+                let looked = self.look_models([state.drawn], module)?;
                 let animation = state.animation;
+                let waits_for = (animation.waits_for.as_deref())
+                    .map(|key| keys.key(key))
+                    .transpose()?
+                    .filter(|key| kept_keys.contains(key));
                 states.push(LookState {
                     sets,
                     models: looked.models,
                     animation: self.state_animation(animation)?,
                     rise: rise(animation)?,
-                    key: animation
-                        .key
-                        .as_deref()
-                        .map(|key| keys.key(key))
-                        .transpose()?,
-                    waits_for: (animation.waits_for.as_deref())
-                        .map(|key| keys.key(key))
-                        .transpose()?,
+                    key,
+                    waits_for,
                     fire_bones: looked.fire_bones,
                 });
             }
@@ -402,19 +408,26 @@ impl ModelWriter<'_, '_> {
                 self.drop_states(object, StateDropCause::Undrawn, states.len());
                 continue;
             }
+            for (name, test) in tests {
+                self.conditions.entry(name).or_insert(test);
+            }
+            // A flag no test says, which no unit holds, needs no ignoring.
             let mut ignore = Vec::with_capacity(draw.ignored().len());
             for flag in draw.ignored() {
-                ignore.push(self.condition(flag, flags)?);
+                ignore.extend(self.condition(flag, flags)?);
             }
             let mut transitions = Vec::with_capacity(draw.transitions().len());
             for transition in draw.transitions() {
+                let (from, to) = (keys.key(&transition.from)?, keys.key(&transition.to)?);
+                if !(kept_keys.contains(&from) && kept_keys.contains(&to)) {
+                    continue;
+                }
                 let looked = self.look_models([transition.drawn()], module)?;
                 let shown = LookShown {
                     models: looked.models,
                     animation: self.state_animation(&transition.animation)?,
                     rise: rise(&transition.animation)?,
                 };
-                let (from, to) = (keys.key(&transition.from)?, keys.key(&transition.to)?);
                 transitions.push(
                     LookTransition::new(from, to, shown)
                         .expect("a transition the reader took plays once between two keys"),
@@ -508,7 +521,6 @@ impl ModelWriter<'_, '_> {
         Ok(ends.as_ref())
     }
 
-    /// The condition of `flag`, whose test `flags` gives, written to the conditions once.
     /// Reports `states` of `object` the import drops for `cause`.
     fn drop_states(&mut self, object: &IniObject, cause: StateDropCause, states: usize) {
         self.dropped_states.push(DroppedStates {
@@ -518,10 +530,19 @@ impl ModelWriter<'_, '_> {
         });
     }
 
-    fn condition(&mut self, flag: &str, flags: &LookFlags) -> Result<DeclaredName, ZeroHourError> {
+    /// The condition of `flag`, whose test `flags` gives, written to the conditions once; none for
+    /// one no test says.
+    fn condition(
+        &mut self,
+        flag: &str,
+        flags: &LookFlags,
+    ) -> Result<Option<DeclaredName>, ZeroHourError> {
         let FlagCondition { name, test } = flags.condition(flag)?;
+        let Some(test) = test else {
+            return Ok(None);
+        };
         self.conditions.entry(name.clone()).or_insert(test);
-        Ok(name)
+        Ok(Some(name))
     }
 
     /// The node of `draws` that `bone` names, as its turret turns or pitches it: the pivot of the

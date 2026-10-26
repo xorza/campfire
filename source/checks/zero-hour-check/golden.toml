@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "6d15cf29962019242fa8d52b1aaf53a203a2fb0a3d3aeefe6495521add656ab7"
+game = "9ebcd240b68e8fa0500ca4efb8c807f49d342cb0d083c5f17481aba20b68d068"
 rules = "004eaedb6b71376e8fe7ec2eeaeec98cef3227d89749f7b5f90a10d0c25d0c84"
 
 [map]
@@ -33,15 +33,15 @@ joins = 16
 dropped = [0, 0, 0]
 
 [looks]
-varied = 1324
-empty = 272
-states = 23402
-never = 72
+varied = 1261
+empty = 273
+states = 19229
+untested = 246
 night = 15
 snowy = 17
-animations = 3091
-dropped_animations = [51, 0, 1]
-dropped_states = [247, 24]
+animations = 2740
+dropped_animations = [46, 0, 1]
+dropped_states = [324, 24]
 
 [ranger]
 stands = ["airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_ida", "airngr_skl.airngr_idb"]
@@ -75,7 +75,7 @@ hits = 0
 trails = 3
 ends = 22
 deaths = 596
-bones = 3810
+bones = 2243
 dropped = [35, 0, 8, 2, 7, 292, 0, 18, 65, 139, 46, 5]
 
 [fought]

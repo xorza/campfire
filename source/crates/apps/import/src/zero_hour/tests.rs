@@ -1323,7 +1323,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     let flags = LookFlags::of(&GameDataIni::default(), &RulesNames::default(), &objects).unwrap();
     let test = |flag: &str| {
         let FlagCondition { name, test } = flags.condition(flag).unwrap();
-        (name, test)
+        (name, test.expect("a tested flag"))
     };
     let armed = |slots: &[&str]| ClientUnit {
         weapons: slots

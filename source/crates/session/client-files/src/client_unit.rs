@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::client_model::{ClientModel, ModelTop};
 use crate::set_match::SetMatch;
 use crate::state_animation::{AnimationMode, StateAnimation};
+use crate::state_set::StateSet;
 
 /// A unit type's look: its draws, each of which draws its own state at its unit's place, all of
 /// them; the look of each of its type's variations; the angle in degrees a client's preview of a
@@ -72,14 +73,14 @@ pub struct LookDraw {
     transitions: Vec<LookTransition>,
 }
 
-/// A state of a draw: the sets of condition names it is drawn for, each a set its unit may hold;
+/// A state of a draw: the sets of conditions it is drawn for, each a set its unit may hold;
 /// its models, its animation, and the meters its models rise by as its unit's site is built; its
 /// key, which names it to a transition; and the key of the state it lets finish its animation
 /// before it is drawn.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LookState {
-    pub sets: Vec<Vec<DeclaredName>>,
+    pub sets: Vec<StateSet>,
     pub models: Vec<ClientModel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub animation: Option<StateAnimation>,
@@ -207,7 +208,7 @@ impl LookDraw {
     /// The draw of `models` alone, drawn for no condition.
     pub fn still(models: Vec<ClientModel>) -> Self {
         Self {
-            states: vec![LookState::new(vec![Vec::new()], models)],
+            states: vec![LookState::new(vec![StateSet::default()], models)],
             ignore: Vec::new(),
             transitions: Vec::new(),
         }
@@ -226,17 +227,18 @@ impl LookDraw {
     }
 
     /// The state a unit draws that holds each condition `held` says it holds, a condition the
-    /// draw ignores never held, as `SetMatch::best` finds it.
+    /// draw ignores, and each untested one, never held, as `SetMatch::best` finds it.
     pub fn best_state(&self, held: impl Fn(&DeclaredName) -> bool) -> usize {
         let holds = |name: &DeclaredName| !self.ignore.contains(name) && held(name);
         SetMatch::best(self.states.iter().map(|state| {
             state.sets.iter().map(|set| {
-                let common = set.iter().filter(|name| holds(name)).count();
+                let names = set.names();
+                let common = names.iter().filter(|name| holds(name)).count();
                 let common = u32::try_from(common).expect("a set's conditions count in a u32");
-                let all = u32::try_from(set.len()).expect("a set's conditions count in a u32");
+                let all = u32::try_from(names.len()).expect("a set's conditions count in a u32");
                 SetMatch {
                     common,
-                    lacked: all - common,
+                    lacked: all - common + set.untested(),
                 }
             })
         }))
@@ -247,7 +249,7 @@ impl LookDraw {
         let sets = self
             .states
             .iter()
-            .flat_map(|state| state.sets.iter().flatten());
+            .flat_map(|state| state.sets.iter().flat_map(StateSet::names));
         let models = self.states.iter().flat_map(|state| &state.models);
         let models = models.chain(
             self.transitions
@@ -262,7 +264,7 @@ impl LookDraw {
 
 impl LookState {
     /// The state of `sets` and `models`, of no animation and no key.
-    pub const fn new(sets: Vec<Vec<DeclaredName>>, models: Vec<ClientModel>) -> Self {
+    pub const fn new(sets: Vec<StateSet>, models: Vec<ClientModel>) -> Self {
         Self {
             sets,
             models,

@@ -40,7 +40,7 @@ pub(crate) enum CheckFailure {
     /// Cells it draws have a tile with no texture.
     #[display("{_0} of its drawn cells have a tile with no texture")]
     Untextured(usize),
-    /// The import's varied looks, its empty looks, its states, its conditions of no test, its maps
+    /// The import's varied looks, its empty looks, its states, its sets of untested conditions, its maps
     /// of night and snow, and its animations converted and dropped by cause differ from the
     /// pinned.
     #[display("it has {_0}")]

@@ -11,7 +11,8 @@ fn each_flag_tests_its_part_of_a_unit_and_any_other_none() {
                  ConditionFlag = USER_1\n  End\nEnd\n";
     let objects = ObjectIni::of(&[plant]);
     let flags = LookFlags::of(&game_data, &RulesNames::default(), &objects).unwrap();
-    let test = |flag: &str| flags.condition(flag).unwrap().test;
+    let test = |flag: &str| flags.condition(flag).unwrap().test.expect("a tested flag");
+    let untested = |flag: &str| flags.condition(flag).unwrap().test.is_none();
     let [quarter, half] = [4, 2].map(|part| Num::from_bits(Num::ONE.to_bits() / part));
     assert_eq!(test("night"), ConditionTest::Map);
     assert_eq!(test("snow"), ConditionTest::Map);
@@ -69,7 +70,6 @@ fn each_flag_tests_its_part_of_a_unit_and_any_other_none() {
             test("between_firing_shots_c"),
             test("reloading_a"),
             test("using_weapon_b"),
-            test("firing_d"),
         ],
         [
             attack(0, Some(AttackPhase::PreAttack)),
@@ -77,9 +77,9 @@ fn each_flag_tests_its_part_of_a_unit_and_any_other_none() {
             attack(2, Some(AttackPhase::Between)),
             attack(0, Some(AttackPhase::Reloading)),
             attack(1, None),
-            ConditionTest::Never,
         ]
     );
+    assert!(untested("firing_d"));
     // The flags an upgrade sets test the tags of their names, which the upgrades' modifiers give;
     // a flag none sets, none.
     let tag = |name: &str| ConditionTest::Tag {
@@ -87,8 +87,8 @@ fn each_flag_tests_its_part_of_a_unit_and_any_other_none() {
     };
     assert_eq!(test("power_plant_upgraded"), tag("power_plant_upgraded"));
     assert_eq!(test("user_1"), tag("user_1"));
-    assert_eq!(test("user_2"), ConditionTest::Never);
-    assert_eq!(test("garrisoned"), ConditionTest::Never);
+    assert!(untested("user_2"));
+    assert!(untested("garrisoned"));
     assert_eq!(
         flags.condition("door_1_opening").unwrap().name.as_str(),
         "door_1_opening"

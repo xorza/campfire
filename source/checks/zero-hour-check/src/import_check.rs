@@ -3,8 +3,8 @@ use std::num::NonZeroU32;
 
 use campfire_actions::ActionKind;
 use campfire_client_files::{
-    ActionLook, ClientFile, ClientObjects, ClientUnit, ClientUnits, ConditionTest, EffectsFile,
-    LookDraw, MapConditions, TerrainFile,
+    ActionLook, ClientFile, ClientObjects, ClientUnit, ClientUnits, EffectsFile, LookDraw,
+    MapConditions, TerrainFile,
 };
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
@@ -212,17 +212,19 @@ impl ImportCheck<'_> {
             .filter(|look| look.draws.is_empty())
             .count();
         let states = unit_looks.units().values().map(states_of).sum();
-        let never = unit_looks
-            .conditions()
+        let untested = unit_looks
+            .units()
             .values()
-            .filter(|test| **test == ConditionTest::Never)
+            .flat_map(ClientUnit::every_draw)
+            .flat_map(|draw| draw.states().iter().flat_map(|state| &state.sets))
+            .filter(|set| set.untested() > 0)
             .count();
         let [night, snow] = ["night", "snow"].map(|name| DeclaredName::new(name).expect("a name"));
         let mut drawn = LookCounts {
             varied,
             empty,
             states,
-            never,
+            untested,
             night: 0,
             snowy: 0,
             animations: files.files_under("client/animations").count(),

@@ -12,7 +12,7 @@ use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_client_files::{
     AnimationMode, AttackPhase, ClientModel, ClipRounds, ConditionTest, FireBone, LifeShare,
-    LookDraw, LookShown, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation,
+    LookDraw, LookShown, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation, StateSet,
 };
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
@@ -142,7 +142,8 @@ pub(crate) struct ClipFile {
 
 /// A set of conditions as a unit's are matched against it: the tested conditions it holds, by
 /// their bits, and how many of the others a unit always holds, as the map's, and never holds, as
-/// a condition of no test, a map's condition the map lacks, or one its draw ignores.
+/// an untested condition the set counts, a map's condition the map lacks, or one its draw
+/// ignores.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SetMask {
     tested: u64,
@@ -564,18 +565,19 @@ impl StateClips {
 }
 
 impl SetMask {
-    /// The mask of `set`, of conditions `known` by their package, those `ignored` never held.
+    /// The mask of `set`, of conditions `known` by their package, those `ignored` and its untested
+    /// ones never held (02-engine-core.md, A set counts the conditions no test says).
     fn of(
-        set: &[DeclaredName],
+        set: &StateSet,
         known: &BTreeMap<DeclaredName, Known>,
         ignored: impl Fn(&DeclaredName) -> bool,
     ) -> Self {
         let mut mask = Self {
             tested: 0,
             held: 0,
-            lacked: 0,
+            lacked: set.untested(),
         };
-        for name in set {
+        for name in set.names() {
             let known = *known
                 .get(name)
                 .expect("a read units file names no condition of no test");
@@ -592,8 +594,8 @@ impl SetMask {
 
 impl UnitTests {
     /// The tests of `conditions`, a package's, on a map of `map`, and what each condition is to a
-    /// look: a map's condition held or lacked for the whole match, a condition of no test lacked,
-    /// and each other tested, by its bit. A tag the match does not name, and a test past the
+    /// look: a map's condition held or lacked for the whole match, and each other tested, by its
+    /// bit. A tag the match does not name, and a test past the
     /// `MOST_TESTS`, are logged, and lacked.
     fn of(
         conditions: &BTreeMap<DeclaredName, ConditionTest>,
@@ -609,7 +611,6 @@ impl UnitTests {
                     known.insert(name.clone(), if held { Known::Held } else { Known::Lacked });
                     continue;
                 }
-                ConditionTest::Never => None,
                 ConditionTest::Tag { tag } => {
                     let found = names.named::<Tag>(tag.as_str());
                     if found.is_none() {

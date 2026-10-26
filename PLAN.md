@@ -12,16 +12,6 @@ Touches `docs/research/lan-late-input.md` and the issue log; it stands after N2,
 
 - [ ] Every failure of `lan.2` the research holds, stamps 300, 20, 302, 20 and 20, is the first order after a start or a restart; in run 40328962123, bot 0 stamped 20 while the server's last tick was 19, a lead of 1 where the objective is 2, which the sync's deadband of 1 lets stay, and after a stall of every process a lead of 1 leaves only the phase to the server's next tick for the bot's frame and send. From the artifacts of macOS runs after N2, failed and passed, and of Linux runs for comparison: each bot's tick at each frame's start less the server's, from its start or restart to its first order; the frame each order left in; whether the lead reached its objective by then. The facts go to the research, dated; the issue moves to Decide with the options they show, as a deadband on the ahead side alone, or a lead the sync reaches before a first order may go. Checks: none of the code.
 
-## Untested conditions
-
-A fix of the issue log's Client files item, decided 2026-10-26.
-
-### L4. A set counts the conditions no test says
-
-Touches the client files' units file, the import's looks and the client's look states, one batch.
-
-- [ ] A look's set names each condition of `ConditionTest::Never` (`condition_test.rs:38`, `look_flags/mod.rs:134`), names of one game's conditions the engine carries. In the import of 2026-10-26, 75 conditions are of no test and 13762 sets name one; a set B of a draw beats a set A for every unit when B's tested conditions hold all of A's and B's other tested ones and its untested ones are fewer than A's untested ones, or as many with B first, as Zero Hour's `SparseMatchFinder::findBestInfoSlow` counts a condition its object lacks only among the lacked; that rule leaves 427 of the 13762, which name 12 conditions, `attacking` among them, which L2 tests now. The import trims each set another beats so, a state of no set left with it and a transition of no state's key with that; a set holds its tested names and the count of its untested conditions; `Never` goes, and the client's `SetMask` adds the count to its lacked. `02-engine-core.md`'s "A condition of no test is never held" becomes the count, its refused options naming the names kept and the conditions dropped, which changed 391 of 952 draws' choices; the counts go to `research/zero-hour.md`, dated. Direction: the importer takes a game's data as it is; the engine reads it as it should be. Checks: the client files' tests refuse a set of a name of no test; the import's tests trim a beaten set and count an untested condition; the client's tests draw the same state of a set of a count as of the names it replaced.
-
 ## Turret slots
 
 A fix of the issue log's Ready items, found 2026-10-26.

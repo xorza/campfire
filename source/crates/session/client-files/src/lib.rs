@@ -34,6 +34,7 @@ mod picking_file;
 mod set_match;
 mod spread;
 mod state_animation;
+mod state_set;
 mod team_colors;
 mod terrain_file;
 mod texture_format;
@@ -73,6 +74,7 @@ pub use crate::spread::Spread;
 pub use crate::state_animation::{
     AnimationMode, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
 };
+pub use crate::state_set::StateSet;
 pub use crate::team_colors::TeamColors;
 pub use crate::terrain_file::{
     BorderWrap, DecalVertex, GroundQuad, Overlay, TerrainDecals, TerrainFile, TerrainFileFields,

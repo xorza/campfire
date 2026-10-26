@@ -33,9 +33,6 @@ pub enum ConditionTest {
     /// The unit is dead, as a type that keeps its dead holds it for its time (04-capabilities/combat.md,
     /// A death keeps its unit for its animation).
     Dead,
-    /// No unit holds it: a condition of a game that no test of the engine's says, which a state
-    /// counts all the same, so it is drawn only where no state of fewer such conditions matches.
-    Never,
 }
 
 /// A phase of an attack's weapon, as Zero Hour's `Object::updateDrawableWeaponState` names each:
