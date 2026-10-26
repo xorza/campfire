@@ -209,9 +209,9 @@ impl<'p> MatchPlay<'p> {
     /// `fixed`, a match of `packages`, before its first tick, played with `tools`.
     pub(crate) fn new(mut fixed: FixedMatch, packages: &'p ModePackages, tools: PlayTools) -> Self {
         let world = fixed.game_mut();
-        let pools = world.resource::<MatchFacts>().role.pools();
-        let pool = pools.expect("a check's match runs scripts").limits.think;
-        let bots = TickBots::new(world, pool);
+        let setup = world.resource::<MatchFacts>().role.budgets();
+        let think_limit = setup.expect("a check's match runs scripts").limits.think;
+        let bots = TickBots::new(world, think_limit);
         let books = Arc::clone(packages.load_books());
         let PlayTools { probe, record } = tools;
         if let Some(probe) = probe {

@@ -56,7 +56,7 @@ impl<'w> Calls<'_, 'w> {
         ModeAnswer::new(self.batch, scripts, self.now, resume)
     }
 
-    /// Runs the hook `H` with the arguments `args` gives, from the mode's pool, in each of the
+    /// Runs the hook `H` with the arguments `args` gives, from the mode's budget, in each of the
     /// mode's scripts that defines it, in its list's order: on success a call's state, choices
     /// and ids commit and its effects apply; the first failure ends the run, which changes
     /// nothing of its call.
@@ -76,7 +76,7 @@ impl<'w> Calls<'_, 'w> {
         Ok(())
     }
 
-    /// Answers with the hook `H` and `args`, for `id` if any, from the pool of `payer`, the
+    /// Answers with the hook `H` and `args`, for `id` if any, from the budget of `payer`, the
     /// player whose input it answers, or the mode's, as `ModeAnswer::call_from` does: `Break`
     /// when a call waits, so what the caller answers in a later tick waits, from this call on.
     pub(crate) fn answer<H: HookDecl>(
@@ -93,7 +93,7 @@ impl<'w> Calls<'_, 'w> {
     }
 
     /// Answers with the hook `H` and the arguments `args` gives of the call's `ctx` in the script
-    /// at `place` of the mode's list alone, as a timer of it runs, from the mode's pool: `Break`
+    /// at `place` of the mode's list alone, as a timer of it runs, from the mode's budget: `Break`
     /// when the call waits.
     pub(crate) fn answer_in<H: HookDecl>(
         &mut self,

@@ -1034,7 +1034,7 @@ fn a_units_ai_waits_while_it_is_dead_and_thinks_again_once_it_respawns() {
     );
 }
 
-/// A thinker the scripts' view lacks, here one with no team, stays due, as one whose pool is
+/// A thinker the scripts' view lacks, here one with no team, stays due, as one whose budget is
 /// spent, and thinks once the view holds it again.
 #[test]
 fn a_thinker_the_view_lacks_stays_due_and_thinks_once_it_holds_it() {
@@ -1176,8 +1176,8 @@ fn an_ai_needs_think_and_orders_its_unit_but_changes_nothing() {
 }
 
 #[test]
-fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
-    // A pool of 1500 operations: a spinning call runs its 1000 and fails, which leaves 500; the
+fn a_unit_that_finds_the_think_budget_spent_goes_first_next_tick() {
+    // A budget of 1500 operations: a spinning call runs its 1000 and fails, which leaves 500; the
     // next is ended past those 500, so its unit stays due.
     let limits = ScriptLimits {
         per_call: NonZeroU64::new(1000).unwrap(),
@@ -1199,7 +1199,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     let first = Spawn::of(spinner, (0, 0, 0)).place(&mut game);
     let second = Spawn::of(spinner, (1, 0, 0)).place(&mut game);
 
-    // Tick 0: both due since 0; the first runs, the second finds the pool spent and stays due
+    // Tick 0: both due since 0; the first runs, the second finds the budget spent and stays due
     // since 0. Tick 1: the second, due since 0, goes before the first, due since 1, and the
     // first stays due. Tick 2: the first again. Each tick one call fails at its limit, and the
     // other waits; none is lost.

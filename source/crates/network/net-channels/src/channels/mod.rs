@@ -18,6 +18,7 @@ use crate::packet_builder::{CandidateCursor, PacketSource};
 use crate::packet_kind::PacketKind;
 use crate::receive_budget::{DEFAULT_RECEIVE_BUDGET, ReceiveBudget};
 use crate::send_budget::SEND_BUDGET;
+use crate::send_gate::SendGate;
 use crate::single_body::SingleBody;
 use crate::tick_decoder::TickDecoder;
 use crate::tick_encoder::TickEncoder;
@@ -187,6 +188,8 @@ pub struct Channels {
     /// Why a reliable channel refused a message, after which the link sends nothing more and its
     /// transport ends it, as its peer would hold a stream with a hole.
     refused: Option<SendRefusal>,
+    /// The channels a flush sends from.
+    send_gate: SendGate,
     /// Bytes of the packets given to the packet session.
     pub(crate) sent_bytes: BenchCounter,
     /// Packets given to the packet session.
@@ -215,6 +218,7 @@ impl Default for Channels {
             staged: Vec::new(),
             staged_len: 0,
             refused: None,
+            send_gate: SendGate::Open,
             sent_bytes: BenchCounter::default(),
             sent_packets: BenchCounter::default(),
             resent_messages: BenchCounter::default(),
@@ -251,6 +255,16 @@ impl Channels {
     /// give neither (11-net-stack/transport.md, An idle transport sends its tick).
     pub const fn set_heartbeat(&mut self, heartbeat: Duration) {
         self.heartbeat = heartbeat;
+    }
+
+    /// Sets the channels a flush sends from; a channel it shuts keeps its messages for a later
+    /// flush, unreliable ones too.
+    pub const fn set_send_gate(&mut self, gate: SendGate) {
+        self.send_gate = gate;
+    }
+
+    pub const fn send_gate(&self) -> SendGate {
+        self.send_gate
     }
 
     /// Whether a flush at `now` that sent nothing sends a packet of its tick alone.
@@ -336,6 +350,11 @@ impl Channels {
             channel_id,
             ChannelReader::Messages,
         );
+    }
+
+    /// Whether the transport sends on the channel at `channel_id`.
+    pub fn sends_on(&self, channel_id: NetId) -> bool {
+        self.senders.get(channel_id).is_some()
     }
 
     /// Adds the sending channel `channel`, of the type named `name`, at `channel_id`, unless the
@@ -592,11 +611,13 @@ impl Channels {
 
         // Collect candidates while each channel keeps its pending queues.
         self.candidate_order.clear();
+        let gate = self.send_gate;
         {
             let candidates = self.candidate_order.candidates_mut();
-            self.senders.iter_mut().for_each(|channel| {
-                channel.collect_send_candidates(candidates);
-            });
+            self.senders
+                .iter_mut()
+                .filter(|channel| gate.sends(channel.channel_id))
+                .for_each(|channel| channel.collect_send_candidates(candidates));
         }
         self.candidate_order.prioritize();
 
@@ -697,6 +718,7 @@ impl Channels {
         }
         self.senders
             .iter_mut()
+            .filter(|channel| gate.sends(channel.channel_id))
             .for_each(|channel| channel.end_send(flush_outcome));
         self.candidate_order.clear();
         if total_bytes_sent > 0 {
@@ -724,6 +746,7 @@ impl Channels {
         self.staged.clear();
         self.staged_len = 0;
         self.refused = None;
+        self.send_gate = SendGate::Open;
     }
 }
 

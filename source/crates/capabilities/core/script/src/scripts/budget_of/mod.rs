@@ -3,11 +3,11 @@ use campfire_common::PlayerSlot;
 use crate::scripts::call_start::{CallStart, Purity};
 use crate::scripts::script_role::ScriptRole;
 
-/// The pool a script call draws from, as scripting gives them (02-engine-core.md, Operation pools);
-/// its `systems` pool, of `on_system`, is planned, and `calc_damage`, `calc_heal` and `on_generate`
-/// draw from none.
+/// The budget a script call draws from, as scripting gives them (02-engine-core.md, Operation
+/// budgets); its `systems` budget, of `on_system`, is planned, and `calc_damage`, `calc_heal` and
+/// `on_generate` draw from none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Pool {
+pub enum BudgetOf {
     /// The calls a player causes: their units' actions, with those actions' deliveries and
     /// modifiers, and their mode inputs.
     Player(PlayerSlot),
@@ -19,11 +19,11 @@ pub enum Pool {
     Mode,
 }
 
-impl Pool {
-    /// The pool the call `start` draws from, none for a pure call: an AI's think, the think pool;
-    /// a call of the mode, the mode's, or its payer's when it answers a player's input; an
+impl BudgetOf {
+    /// The budget the call `start` draws from, none for a pure call: an AI's think, the think
+    /// budget; a call of the mode, the mode's, or its payer's when it answers a player's input; an
     /// action's or a modifier's, its payer's, the player that controls its acting unit, the think
-    /// pool when none does or the unit is gone, and the mode's when it has no acting unit, as a
+    /// budget when none does or the unit is gone, and the mode's when it has no acting unit, as a
     /// modifier from no source.
     pub const fn of_call(start: &CallStart) -> Option<Self> {
         if matches!(start.purity, Purity::Reads) {

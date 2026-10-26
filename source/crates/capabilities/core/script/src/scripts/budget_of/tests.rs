@@ -7,7 +7,7 @@ use crate::scripts::call_start::{ActionCast, Spent};
 use crate::scripts::mode_scripts::ListPlace;
 
 #[test]
-fn a_call_draws_from_its_payers_pool_and_only_a_call_no_player_causes_waits() {
+fn a_call_draws_from_its_payers_budget_and_only_a_call_no_player_causes_waits() {
     let now = Tick::new(3);
     let unit = IdAllocator::default().allocate();
     let slot = PlayerSlot::new(1);
@@ -37,28 +37,32 @@ fn a_call_draws_from_its_payers_pool_and_only_a_call_no_player_causes_waits() {
     };
     let cases = [
         // A cast by a player's unit, and one by a unit no player controls or that is gone.
-        (paid(cast), Some(Pool::Player(slot)), Spent::Fails),
-        (cast, Some(Pool::Think), Spent::Fails),
+        (paid(cast), Some(BudgetOf::Player(slot)), Spent::Fails),
+        (cast, Some(BudgetOf::Think), Spent::Fails),
         // A modifier's hook from a player's unit, from another unit, and from no source.
-        (paid(sourced), Some(Pool::Player(slot)), Spent::Fails),
-        (sourced, Some(Pool::Think), Spent::Fails),
-        (hook, Some(Pool::Mode), Spent::Fails),
+        (paid(sourced), Some(BudgetOf::Player(slot)), Spent::Fails),
+        (sourced, Some(BudgetOf::Think), Spent::Fails),
+        (hook, Some(BudgetOf::Mode), Spent::Fails),
         // The mode's event, and its answer to a player's input.
-        (mode, Some(Pool::Mode), Spent::Waits),
-        (paid(mode), Some(Pool::Player(slot)), Spent::Fails),
+        (mode, Some(BudgetOf::Mode), Spent::Waits),
+        (paid(mode), Some(BudgetOf::Player(slot)), Spent::Fails),
         // A think, of any unit's, and a pure hook, which draws from none.
-        (CallStart::think(unit, now), Some(Pool::Think), Spent::Waits),
+        (
+            CallStart::think(unit, now),
+            Some(BudgetOf::Think),
+            Spent::Waits,
+        ),
         (
             paid(CallStart::think(unit, now)),
-            Some(Pool::Think),
+            Some(BudgetOf::Think),
             Spent::Waits,
         ),
         (CallStart::pure(ListPlace::FIRST, now), None, Spent::Waits),
     ];
-    for (start, pool, spent) in cases {
+    for (start, budget, spent) in cases {
         assert_eq!(
-            (Pool::of_call(&start), start.when_spent()),
-            (pool, spent),
+            (BudgetOf::of_call(&start), start.when_spent()),
+            (budget, spent),
             "{start:?}"
         );
     }

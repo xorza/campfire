@@ -169,6 +169,9 @@ pub(crate) fn mapped_cx_deserialize<M: MapEntities>(
 }
 
 impl MessageRegistry {
+    /// Its name, in its seal's messages and in the protocol check, where it names its hash.
+    pub(crate) const NAME: &'static str = "message registry";
+
     pub(crate) fn register<M: Message>(
         &mut self,
         mode: MessageModeFns,
@@ -263,7 +266,7 @@ impl MessageRegistry {
     }
 
     fn open(&self) {
-        self.seal.assert_open("message registry");
+        self.seal.assert_open(Self::NAME);
     }
 
     /// Seals the registry, as `MessagePlugin::finish` builds the message systems from it. Its
@@ -286,7 +289,7 @@ impl MessageRegistry {
                 u8::from(message.serialize_fns.maps_entities),
             ]);
         }
-        self.seal.seal("message registry", hasher.finish());
+        self.seal.seal(Self::NAME, hasher.finish());
         self.receive_component_ids = self
             .messages
             .iter()

@@ -85,7 +85,7 @@ mode_hook! {
 
 impl ModeHooks {
     /// Runs `on_input` for each mode input of the tick, in input order, from its player's
-    /// pool. An input whose name the mode does not declare, or whose value is not of its type, is
+    /// budget. An input whose name the mode does not declare, or whose value is not of its type, is
     /// none the mode reads, which the tick's report of unread commands keeps (02-engine-core.md,
     /// A command nothing reads is counted).
     pub(super) fn mode_inputs(
@@ -136,7 +136,7 @@ impl ModeHooks {
                     name,
                     value,
                 );
-                // An input is answered once: one whose call finds its player's pool spent fails.
+                // An input is answered once: one whose call finds its player's budget spent fails.
                 let answered = call.answer::<OnInput>(None, Some(input.player_slot), args);
                 debug_assert!(answered.is_continue(), "an input's call never waits");
             }
@@ -149,7 +149,7 @@ impl ModeHooks {
 
     /// Answers the events of the queue `Q` in this tick's Mode stage, those that wait from
     /// earlier ticks first, then the tick's, in order, through the mode's scripts. An event whose
-    /// call finds the mode's pool spent waits, with those after it, for a later tick, which runs
+    /// call finds the mode's budget spent waits, with those after it, for a later tick, which runs
     /// it in the scripts that did not answer it; one that a call adds joins the end, and runs
     /// within the tick when every event before it ran.
     pub(super) fn answer<Q: ModeEvents>(world: &mut World, mut pending: Local<'_, Q>) {
@@ -181,8 +181,8 @@ impl ModeHooks {
     }
 
     /// Runs `on_timer` of the script that set each timer due in this tick's Mode stage, earliest
-    /// first, from the mode pool, or fires it with no call when that script defines none. A timer
-    /// whose call finds the pool spent stays due, and fires in a later tick.
+    /// first, from the mode budget, or fires it with no call when that script defines none. A timer
+    /// whose call finds the budget spent stays due, and fires in a later tick.
     pub(super) fn run_timers(world: &mut World) {
         let now = world.resource::<SimTick>().end();
         if world.resource::<Timers>().due(now).is_none() {

@@ -5,11 +5,11 @@ use campfire_values::{
     ActionId, ActionStart, Allegiance, DashDelivery, Hit, PackageIndex, Rank, Scalar,
 };
 
+use crate::scripts::budget_of::BudgetOf;
 use crate::scripts::call_extension::{CallExtension, CallExtensions, CallParams, Commit};
 use crate::scripts::call_start::{CallStart, Purity};
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::frame::effects::{Effect, Effects};
-use crate::scripts::pool::Pool;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::script_role::ScriptRole;
 use crate::scripts::script_value::ScriptValue;
@@ -47,9 +47,9 @@ impl Frame {
         self.call.map(|call| call.role)
     }
 
-    /// The pool the running call draws from, none for a pure call or none running.
-    pub(crate) fn pool(&self) -> Option<Pool> {
-        self.call.as_ref().and_then(Pool::of_call)
+    /// The budget the running call draws from, none for a pure call or none running.
+    pub(crate) fn budget(&self) -> Option<BudgetOf> {
+        self.call.as_ref().and_then(BudgetOf::of_call)
     }
 
     pub fn acting(&self) -> Option<StableId> {

@@ -8,7 +8,7 @@ use crate::match_mode::MatchMode;
 use crate::mode_hooks::{OnPlayerJoin, OnPlayerLeave};
 
 /// The joins and leaves whose hook has yet to run, in the order the log took them. The Mode stage
-/// adds its tick's and runs the calls from the front; those whose call found the mode pool spent
+/// adds its tick's and runs the calls from the front; those whose call found the mode budget spent
 /// stay, and run first in a later tick's Mode stage. So a tick ends with only those.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -25,7 +25,7 @@ impl SimResource for UnansweredPlayerSlotEvents {
 }
 
 /// A join runs `on_player_join`, and a leave `on_player_leave`, with the player's player slot, from
-/// the mode's pool, in the order the log took them.
+/// the mode's budget, in the order the log took them.
 impl ModeEvents for UnansweredPlayerSlotEvents {
     const HOOKS: &'static [Hook] = &[Hook::of::<OnPlayerJoin>(), Hook::of::<OnPlayerLeave>()];
 

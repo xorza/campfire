@@ -80,7 +80,7 @@ pub(crate) mod internals {
     use campfire_declarations::{CapabilitySet, Role};
     use campfire_log::internals::LogCheck;
     use campfire_players::Players;
-    use campfire_script::{ScriptLimits, ScriptPools};
+    use campfire_script::{BudgetSetup, ScriptLimits};
     use campfire_sim::{Capability, MatchRate};
     use campfire_units::PoolId;
 
@@ -117,7 +117,7 @@ pub(crate) mod internals {
             MatchBuilder {
                 declared: declared.to_vec(),
                 rate: Self::TEST_RATE,
-                role: Role::Server(ScriptPools {
+                role: Role::Server(BudgetSetup {
                     limits: ScriptLimits::ROOMY,
                     players: 1,
                 }),
@@ -189,14 +189,14 @@ pub(crate) mod internals {
         /// With scripts for `players` players.
         #[must_use]
         pub fn players(mut self, players: u32) -> Self {
-            self.pools().players = players;
+            self.budgets().players = players;
             self
         }
 
         /// With scripts within `limits`.
         #[must_use]
         pub fn limits(mut self, limits: ScriptLimits) -> Self {
-            self.pools().limits = limits;
+            self.budgets().limits = limits;
             self
         }
 
@@ -207,11 +207,11 @@ pub(crate) mod internals {
             self
         }
 
-        fn pools(&mut self) -> &mut ScriptPools {
-            let Role::Server(pools) = &mut self.role else {
+        fn budgets(&mut self) -> &mut BudgetSetup {
+            let Role::Server(setup) = &mut self.role else {
                 panic!("only a server's match runs scripts");
             };
-            pools
+            setup
         }
 
         /// The match.

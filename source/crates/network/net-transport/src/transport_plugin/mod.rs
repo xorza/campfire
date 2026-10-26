@@ -12,7 +12,12 @@ use campfire_net_timeline::LocalInstant;
 use tracing::{debug, trace_span};
 
 use crate::channel_registry::{ChannelGate, ChannelRegistry};
-use campfire_net_channels::SendRefusal;
+use crate::protocol_channel::ProtocolChannel;
+use crate::protocol_check::ProtocolCheck;
+use crate::protocol_differs::ProtocolDiffers;
+use crate::protocol_hashes::ProtocolHashes;
+use campfire_log::LogEvent;
+use campfire_net_channels::{SendGate, SendRefusal};
 use campfire_net_connection::{Client, ClientOf};
 use core::any::TypeId;
 
@@ -40,6 +45,42 @@ impl TransportPlugin {
                     });
                 }
             }
+        }
+    }
+
+    /// Takes the peer's protocol check on each link that waits for it: hashes that match this
+    /// end's open every channel, and others unlink the peer, naming the registries that differ. A
+    /// check that comes once the link passed is read and dropped.
+    fn take_checks(
+        hashes: Res<'_, ProtocolHashes>,
+        mut commands: Commands<'_, '_>,
+        mut query: Query<'_, '_, (Entity, &mut Transport, &mut ProtocolCheck), With<Linked>>,
+    ) {
+        for (entity, mut transport, mut check) in &mut query {
+            let Some(receiver) = transport.channel_receiver_mut(ProtocolChannel::ID) else {
+                continue;
+            };
+            let mut remote = None;
+            while let Some(message) = receiver.read_message() {
+                remote.get_or_insert(message.bytes);
+            }
+            let (Some(remote), ProtocolCheck::Waiting) = (remote, *check) else {
+                continue;
+            };
+            if remote == hashes.bytes() {
+                *check = ProtocolCheck::Passed;
+                transport.set_send_gate(SendGate::Open);
+                continue;
+            }
+            ProtocolDiffers {
+                link: entity.to_bits(),
+                differing: hashes.differing(&remote).join(", "),
+            }
+            .log();
+            commands.trigger(Unlink {
+                entity,
+                reason: UnlinkReason::ProtocolMismatch,
+            });
         }
     }
 
@@ -71,25 +112,32 @@ impl TransportPlugin {
         }
     }
 
-    /// On disconnection, reset the Transport to its original state.
+    /// On disconnection, reset the Transport to its original state, and its protocol check with
+    /// it, which the next packet session makes again.
     fn handle_disconnection(
         trigger: On<'_, '_, Add<Disconnected>>,
         mut query: Query<'_, '_, &mut Transport>,
+        mut commands: Commands<'_, '_>,
     ) {
         if let Ok(mut transport) = query.get_mut(trigger.entity) {
             transport.reset();
+            commands
+                .entity(trigger.entity)
+                .try_remove::<ProtocolCheck>();
         }
     }
 
     /// Gives a link of side `R`, as its transport comes, the sender of each channel its side sends
     /// on and the receiver of each open channel it receives on; a channel the link holds keeps
-    /// its state.
+    /// its state. A link linked already starts its protocol check.
     fn open_channels<R: LinkSide>(
         trigger: On<'_, '_, Insert<(Transport, R)>>,
-        mut query: Query<'_, '_, &mut Transport, With<R>>,
+        mut query: Query<'_, '_, (&mut Transport, Has<Linked>, Has<ProtocolCheck>), With<R>>,
         registry: Res<'_, ChannelRegistry>,
+        hashes: Res<'_, ProtocolHashes>,
+        mut commands: Commands<'_, '_>,
     ) {
-        let Ok(mut transport) = query.get_mut(trigger.entity) else {
+        let Ok((mut transport, linked, checking)) = query.get_mut(trigger.entity) else {
             return;
         };
         for channel in registry.channels() {
@@ -105,6 +153,9 @@ impl TransportPlugin {
                     channel.reader,
                 );
             }
+        }
+        if linked && !checking {
+            transport.start_check(trigger.entity, &hashes, &mut commands);
         }
     }
 
@@ -158,6 +209,7 @@ impl Plugin for TransportPlugin {
         // The registry is the transport's, whichever comes first, a channel's registration or
         // the plugin.
         app.init_resource::<ChannelRegistry>();
+        app.init_resource::<ProtocolHashes>();
         app.add_observer(Self::handle_disconnection);
         app.add_observer(Transport::on_linked);
         app.add_observer(Self::open_channels::<Client>);
@@ -165,7 +217,13 @@ impl Plugin for TransportPlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        app.world_mut().resource_mut::<ChannelRegistry>().seal();
+        let world = app.world_mut();
+        let mut registry = world.resource_mut::<ChannelRegistry>();
+        registry.seal();
+        let hash = registry.hash().expect("the registry is sealed");
+        world
+            .resource_mut::<ProtocolHashes>()
+            .add(ChannelRegistry::NAME, hash);
         app.configure_sets(
             PreUpdate,
             TransportSystems::Receive.after(LinkSystems::Receive),
@@ -173,7 +231,9 @@ impl Plugin for TransportPlugin {
         app.configure_sets(PostUpdate, TransportSystems::Send.before(LinkSystems::Send));
         app.add_systems(
             PreUpdate,
-            Self::buffer_receive.in_set(TransportSystems::Receive),
+            (Self::buffer_receive, Self::take_checks)
+                .chain()
+                .in_set(TransportSystems::Receive),
         );
         app.add_systems(PostUpdate, Self::buffer_send.in_set(TransportSystems::Send));
     }

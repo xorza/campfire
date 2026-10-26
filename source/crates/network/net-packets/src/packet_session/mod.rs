@@ -499,7 +499,7 @@ impl PacketSession {
                 let code = <[u8; 8]>::try_from(&*datagram).map_or(AppCode::ENDED, |code| {
                     AppCode::from_wire(u64::from_be_bytes(code))
                 });
-                self.state = State::Ended(UnlinkReason::ClosedByPeer(code));
+                self.state = State::Ended(UnlinkReason::of_peer_close(code));
             }
         }
         Received::Read { largest }

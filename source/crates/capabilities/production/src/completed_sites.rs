@@ -7,7 +7,7 @@ use campfire_sim::{SimResource, StableId};
 use serde::{Deserialize, Serialize};
 
 /// The buildings whose sites completed, by stable id in each tick, whose `on_site_complete` has
-/// yet to run. The Mode stage runs the calls from the front; those whose call found the mode pool
+/// yet to run. The Mode stage runs the calls from the front; those whose call found the mode budget
 /// spent stay, and run first in a later tick's Mode stage.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompletedSites(pub PendingCalls<StableId>);
@@ -33,7 +33,7 @@ impl HookDecl for OnSiteComplete {
     type Args = (Ctx, Unit);
 }
 
-/// A site that completed runs `on_site_complete`, from the mode's pool, with its building; one
+/// A site that completed runs `on_site_complete`, from the mode's budget, with its building; one
 /// whose building is gone runs no call.
 impl ModeEvents for CompletedSites {
     const HOOKS: &'static [Hook] = &[Hook::of::<OnSiteComplete>()];

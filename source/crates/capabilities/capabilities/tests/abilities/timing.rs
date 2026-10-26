@@ -22,7 +22,7 @@ use campfire_players::PlayersWorld;
 use campfire_progression::{Experience, TrackBook, TrackSet};
 use campfire_script::FailureKind;
 use campfire_script::internals::FailedCall;
-use campfire_script::{CapabilityRefusal, Pool, ScriptBudgets, ScriptLimits};
+use campfire_script::{BudgetOf, CapabilityRefusal, ScriptBudgets, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimRng, SimWorld, StableId};
 use campfire_stats::{ModifierData, Modifiers, Stats};
@@ -620,8 +620,8 @@ fn on_resolve(ctx, caster, target) {
 }
 
 #[test]
-fn a_cast_draws_from_its_casters_player_pool() {
-    // Each player's pool holds one whole call: player 0's spinning cast spends all of its pool,
+fn a_cast_draws_from_its_casters_player_budget() {
+    // Each player's budget holds one whole call: player 0's spinning cast spends all of its budget,
     // and player 1's strike in the same tick still resolves from its own, which it spends as it
     // does alone.
     let mut left = Vec::new();
@@ -679,10 +679,10 @@ fn a_cast_draws_from_its_casters_player_pool() {
             ScriptLimits::ROOMY.per_call.get()
         };
         assert_eq!(
-            budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left(),
+            budgets.get_mut(BudgetOf::Player(PlayerSlot::new(0))).left(),
             spent
         );
-        left.push(budgets.get_mut(Pool::Player(PlayerSlot::new(1))).left());
+        left.push(budgets.get_mut(BudgetOf::Player(PlayerSlot::new(1))).left());
     }
     assert_eq!(left[0], left[1]);
     assert!(left[0] < ScriptLimits::ROOMY.per_call.get());

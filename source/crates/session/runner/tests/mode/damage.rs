@@ -227,7 +227,7 @@ fn a_weapon_of_when_fires_while_its_holders_tags_pass_it_and_its_slots_stay() {
 }
 
 #[test]
-fn calc_damage_and_calc_heal_are_pure_outside_the_pools_and_a_failure_keeps_the_amount() {
+fn calc_damage_and_calc_heal_are_pure_outside_the_budgets_and_a_failure_keeps_the_amount() {
     let script = r#"
 fn calc_damage(ctx, d) {
     if d.kind == "magic" {
@@ -243,7 +243,7 @@ fn calc_heal(ctx, h) {
     if h.is_leech { h.amount } else { h.amount / 2 }
 }
 "#;
-    // A mode pool of 30 operations, a call's most, which the five calls of `calc_damage` and
+    // A mode budget of 30 operations, a call's most, which the five calls of `calc_damage` and
     // `calc_heal` below would spend were they drawn from it.
     let limits = ScriptLimits {
         per_call: NonZeroU64::new(30).unwrap(),

@@ -4,7 +4,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// The calls of a hook that wait to run, in order: a stage adds its tick's at the end and runs
-/// the calls from the front; those whose call found the pool spent stay, and run first in a later
+/// the calls from the front; those whose call found the budget spent stay, and run first in a later
 /// tick. The first may wait with some of the mode's scripts answered, and a later tick runs it in
 /// the rest (03-game-scripting.md, An event waits in the scripts that did not answer it). State,
 /// as a later tick runs them.

@@ -8,10 +8,10 @@ use campfire_progression::LevelUps;
 use super::*;
 
 #[test]
-fn a_player_spends_only_their_own_pool() {
-    // Each player's pool holds one whole call of 1000: player 0's spin runs its 1000 and fails,
-    // which spends its pool, so its next input fails unrun; player 1's input in the same tick
-    // runs from its own pool.
+fn a_player_spends_only_their_own_budget() {
+    // Each player's budget holds one whole call of 1000: player 0's spin runs its 1000 and fails,
+    // which spends its budget, so its next input fails unrun; player 1's input in the same tick
+    // runs from its own budget.
     let spin = r#"
 fn on_input(ctx, player, name, value) {
     ctx.state.inputs += 1;
@@ -37,16 +37,16 @@ fn on_input(ctx, player, name, value) {
     );
     let failures = game.resource_mut::<ScriptFailures>().take_calls();
     let errors: Vec<_> = failures.iter().map(|failure| failure.kind).collect();
-    assert_eq!(errors, [FailureKind::CallLimit, FailureKind::PoolSpent]);
+    assert_eq!(errors, [FailureKind::CallLimit, FailureKind::BudgetSpent]);
     assert_eq!(inputs(&game), StateValue::Int(1));
-    // Every pool starts full in the next tick.
+    // Every budget starts full in the next tick.
     Mode::tick_inputs(&mut game, &[(0, input("phase", ""))]);
     assert_eq!(inputs(&game), StateValue::Int(2));
 }
 
 #[test]
-fn a_timer_whose_call_finds_the_mode_pool_spent_stays_due() {
-    // A pool of 1500 operations: the first spinning call runs its 1000 and fails, which leaves
+fn a_timer_whose_call_finds_the_mode_budget_spent_stays_due() {
+    // A budget of 1500 operations: the first spinning call runs its 1000 and fails, which leaves
     // 500; the second ends past those, and its timer waits for the next tick.
     let spin = r#"
 fn on_match_start(ctx) {
@@ -86,8 +86,8 @@ fn on_timer(ctx, name, data) {
 }
 
 #[test]
-fn a_death_or_a_level_up_whose_call_finds_the_mode_pool_spent_waits_with_its_unit() {
-    // Each death call spins 50 additions: a mode pool of 500 operations holds two of them, not
+fn a_death_or_a_level_up_whose_call_finds_the_mode_budget_spent_waits_with_its_unit() {
+    // Each death call spins 50 additions: a mode budget of 500 operations holds two of them, not
     // three, and then the third and a level-up.
     let script = r#"
 fn on_match_start(ctx) {
@@ -187,8 +187,8 @@ fn on_level_up(ctx, unit, track, level) {
 }
 
 #[test]
-fn a_join_or_a_leave_whose_call_finds_the_mode_pool_spent_waits() {
-    // Each call spins 50 additions: a mode pool of 500 operations holds two of them, not three.
+fn a_join_or_a_leave_whose_call_finds_the_mode_budget_spent_waits() {
+    // Each call spins 50 additions: a mode budget of 500 operations holds two of them, not three.
     let script = "
 fn on_player_join(ctx, player) {
     ctx.state.kind += `join ${player.player_slot};`;
@@ -254,7 +254,7 @@ fn on_input(ctx, player, name, value) {
     let mut spent = |name: &str| {
         Mode::tick_inputs(&mut game, &[(0, input(name, ""))]);
         let mut budgets = game.resource_mut::<ScriptBudgets>();
-        ScriptLimits::ROOMY.player - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left()
+        ScriptLimits::ROOMY.player - budgets.get_mut(BudgetOf::Player(PlayerSlot::new(0))).left()
     };
     let (once, twice) = (spent("phase"), spent("rich"));
     assert_eq!(twice - once, 8);
@@ -281,7 +281,7 @@ fn on_input(ctx, player, name, value) {
         Mode::tick_inputs(game, &[(0, input(name, ""))]);
         assert_eq!(Mode::failures(game), [], "{name}");
         let mut budgets = game.resource_mut::<ScriptBudgets>();
-        ScriptLimits::ROOMY.player - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left()
+        ScriptLimits::ROOMY.player - budgets.get_mut(BudgetOf::Player(PlayerSlot::new(0))).left()
     };
     let few = spent(&mut game, "phase");
     spent(&mut game, "rich");

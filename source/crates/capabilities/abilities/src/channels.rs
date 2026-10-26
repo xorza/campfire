@@ -56,7 +56,7 @@ impl HookDecl for OnInterrupt {
 impl Channeling {
     /// Runs each unit's channel in Hit, in the order of its stable id, after the casts resolve: a
     /// cut one's `on_interrupt`, then a due tick's pay and its `on_channel_tick`, each a call of
-    /// the channel's action at its rank from the unit, in its player's pool; and one at its end
+    /// the channel's action at its rank from the unit, in its player's budget; and one at its end
     /// ends, as does a wind-down at its own. A unit whose tags keep it from casting has its
     /// channel cut. A channel's calls share one snapshot of the units, read as the batch begins.
     /// A channel that still runs holds its action's `hold` on its unit this tick, from the unit at

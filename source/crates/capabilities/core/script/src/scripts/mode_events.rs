@@ -16,7 +16,7 @@ use crate::scripts::mode_scripts::ListPlace;
 use crate::scripts::script_batch::{Answered, ScriptBatch};
 
 /// A queue of events the mode's scripts answer by their hooks, in order, the state of the
-/// capability that produces them: an event whose call finds the mode's pool spent waits, with
+/// capability that produces them: an event whose call finds the mode's budget spent waits, with
 /// those after it, for a later tick, which runs it in the scripts that did not answer it
 /// (06-script-api.md, A queue of mode events answers itself; 03-game-scripting.md, An event waits
 /// in the scripts that did not answer it).
@@ -103,7 +103,7 @@ impl<'a, 'w> ModeAnswer<'a, 'w> {
     }
 
     /// Answers with the hook `H` in each script that defines it, for `id` if any, from the mode's
-    /// pool, as `call_from` does.
+    /// budget, as `call_from` does.
     pub fn call<H: HookDecl>(
         &mut self,
         id: Option<StableId>,
@@ -113,7 +113,7 @@ impl<'a, 'w> ModeAnswer<'a, 'w> {
     }
 
     /// Answers with the hook `H` in each script that defines it, in the list's order, for `id`
-    /// if any, from the pool of `payer`, the player whose input it answers, or the mode's: with
+    /// if any, from the budget of `payer`, the player whose input it answers, or the mode's: with
     /// the arguments `args` gives each, or with no call when it gives none, as for a unit gone by
     /// then. The first call of the answer runs only in the scripts that did not answer it before.
     /// A failure is recorded; `Break` when a call waits, which `partial` then counts the scripts
@@ -144,7 +144,7 @@ impl<'a, 'w> ModeAnswer<'a, 'w> {
     }
 
     /// Answers with the hook `H` in the script at `place` alone, when it defines it, as
-    /// `call_from` does, from the mode's pool.
+    /// `call_from` does, from the mode's budget.
     pub fn call_in<H: HookDecl>(
         &mut self,
         place: ListPlace,
@@ -196,6 +196,6 @@ enum Outcome {
     Answered,
     /// Its arguments are gone, as its unit is: no script answers the event.
     NoCall,
-    /// It found the pool spent.
+    /// It found the budget spent.
     Waits,
 }

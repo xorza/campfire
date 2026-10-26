@@ -68,16 +68,18 @@ send costs.
   computed in `Plugin::finish` from the finished registries, and a mismatch unlinks with
   `UnlinkReason::ProtocolMismatch`. Refused: Bevy's `DebugName`, which hashes a constant unless
   `bevy_utils/debug` is on.
-- **The hashes travel in the ALPN, planned.** A UDP link's ALPN names the app and the hash of its
-  three registries, so a build that differs fails the TLS handshake with `no_application_protocol`,
-  which unlinks with `ProtocolMismatch`, before a packet session exists; a plain link comes from
-  one build and checks nothing. Source: QUIC, which agrees on its application protocol by ALPN and
-  closes the handshake on none, with a name for each version of a protocol (RFC 9001 §8.1); Unity
-  Netcode for Entities, which checks its RPC and component hashes in its handshake. Refused: an
-  event of the registries it checks, whose own ids shift in a build that differs and which the
-  server sends beside the first data; the hashes in the transport parameters, a refusal path of
-  its own that hides no more; a reserved channel sent first, a checked state that every data path
-  waits on.
+- **The protocol check goes first on a reserved channel.** Each peer sends the hash of each of its
+  registries on a channel every registry holds first, so it has one id in every build, before any
+  other message, and a link's other channels send only once the peer's hashes matched; the end that
+  finds a mismatch unlinks with `ProtocolMismatch`, and closes with the stack's code for it, which
+  the peer reads as `ProtocolMismatch` too. Every link checks, plain, sealed or in process. Source:
+  bevy_replicon, which authorizes a client only once its `ProtocolHash` matches and sends it only
+  its independent messages before; Unity Netcode for Entities, which checks its RPC and component
+  hashes in its handshake. Refused: the hashes in the ALPN, as every endpoint is made before the
+  plugins seal the registries, so both apps would make their endpoints after their plugins finish,
+  and the local pair checks no ALPN; an event of the registries it checks, whose own ids shift in a
+  build that differs and which the server sends beside the first data; fixed ids alone, which let
+  data flow before the check (decided 2026-10-26).
 - **Replicon's channels map from `RepliconChannels`,** one the stack channel for each replicon
   channel, each with one direction.
 

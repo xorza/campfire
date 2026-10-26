@@ -17,10 +17,10 @@ pub enum CallError {
     /// The script API refused a call.
     #[error("the script API refused a call")]
     Api(#[source] ApiError),
-    /// The call found its pool spent, or spent it as it ran: what the caller answers in a later
+    /// The call found its budget spent, or spent it as it ran: what the caller answers in a later
     /// tick waits, or the call fails.
-    #[error("the call's pool is spent")]
-    PoolSpent,
+    #[error("the call's budget is spent")]
+    BudgetSpent,
     /// The call ran past the operation limit of one call.
     #[error("script call over its operation limit")]
     CallLimit,
@@ -198,12 +198,12 @@ pub enum ParamProblem {
 }
 
 impl CallError {
-    /// A failed call's error: the API's own when it refused the call, and `PoolSpent` for a
+    /// A failed call's error: the API's own when it refused the call, and `BudgetSpent` for a
     /// spent budget.
     pub fn from_script(error: ScriptError) -> Self {
         match error {
             ScriptError::CallLimit => Self::CallLimit,
-            ScriptError::TickBudget => Self::PoolSpent,
+            ScriptError::TickBudget => Self::BudgetSpent,
             ScriptError::Raised(raised) => match raised.get::<ApiError>() {
                 Some(api) => Self::Api(api),
                 None => Self::Raised(raised),
@@ -216,7 +216,7 @@ impl CallError {
     pub fn kind(&self) -> FailureKind {
         match self {
             Self::Api(api) => FailureKind::Api(*api),
-            Self::PoolSpent => FailureKind::PoolSpent,
+            Self::BudgetSpent => FailureKind::BudgetSpent,
             Self::CallLimit => FailureKind::CallLimit,
             Self::Raised(raised) => FailureKind::Raised(raised.get::<NumError>()),
             Self::Runtime(_) => FailureKind::Runtime,
@@ -237,7 +237,7 @@ impl ApiError {
 pub enum FailureKind {
     Api(ApiError),
     CallLimit,
-    PoolSpent,
+    BudgetSpent,
     Raised(Option<NumError>),
     Runtime,
 }
@@ -252,9 +252,9 @@ mod tests {
     #[test]
     fn a_call_error_keeps_each_case_a_call_can_fail_by() {
         let kind = |error| CallError::from_script(error).kind();
-        // A spent budget is a spent pool; an API's refusal is the API's, a `NumError` raised is
-        // read back, and a script's own `throw` is a value of no error.
-        assert_eq!(kind(ScriptError::TickBudget), FailureKind::PoolSpent);
+        // A spent tick budget is `BudgetSpent`; an API's refusal is the API's, a `NumError` raised
+        // is read back, and a script's own `throw` is a value of no error.
+        assert_eq!(kind(ScriptError::TickBudget), FailureKind::BudgetSpent);
         assert_eq!(kind(ScriptError::CallLimit), FailureKind::CallLimit);
         let of = |value| ScriptError::Raised(Raised(value));
         assert_eq!(

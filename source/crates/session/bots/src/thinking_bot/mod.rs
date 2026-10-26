@@ -26,9 +26,9 @@ pub struct ThinkingBot {
     think_ms: NonZeroU32,
 }
 
-/// A thinking bot as a driver plays it: the bot, the period of its think, and whether it waits
-/// to think in the next tick, as its last think found the tick's pool spent (03-game-scripting.md,
-/// The thinks of a tick share a pool).
+/// A thinking bot as a driver plays it: the bot, the period of its think, and whether it waits to
+/// think in the next tick, as its last think found the tick's budget spent (03-game-scripting.md,
+/// The thinks of a tick share a budget).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PacedBot {
     bot: ThinkingBot,
@@ -141,7 +141,7 @@ impl PacedBot {
     }
 
     /// Thinks as `think` says when the think is due before its tick: the bot waits from a think
-    /// that found the pool spent, and thinks in the next tick; the error of any other think that
+    /// that found the budget spent, and thinks in the next tick; the error of any other think that
     /// failed.
     pub fn play<S: BotSink>(
         &mut self,
@@ -152,7 +152,7 @@ impl PacedBot {
             return Ok(());
         }
         let thought = self.bot.think(world, think);
-        self.waits = matches!(thought, Err(ThinkError::Call(CallError::PoolSpent)));
+        self.waits = matches!(thought, Err(ThinkError::Call(CallError::BudgetSpent)));
         if self.waits {
             return Ok(());
         }

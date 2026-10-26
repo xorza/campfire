@@ -11,7 +11,7 @@ use crate::navigation_book::NavigationBook;
 
 /// The walkers that reached the last waypoint of their paths, in the order they reached it, whose
 /// `on_path_end` has yet to run. The Mode stage runs the calls from the front; those whose call
-/// found the mode pool spent stay, and run first in a later tick's Mode stage.
+/// found the mode budget spent stay, and run first in a later tick's Mode stage.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PathArrivals(pub PendingCalls<PathArrival>);
 
@@ -44,7 +44,7 @@ impl HookDecl for OnPathEnd {
     type Args = (Ctx, Unit, ScriptText);
 }
 
-/// A walker that reached its path's last waypoint runs `on_path_end`, from the mode's pool, with
+/// A walker that reached its path's last waypoint runs `on_path_end`, from the mode's budget, with
 /// the unit and the path's name; one whose unit is gone runs no call.
 impl ModeEvents for PathArrivals {
     const HOOKS: &'static [Hook] = &[Hook::of::<OnPathEnd>()];

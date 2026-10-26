@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 /// The operations a call's native work counts beside Rhai's own: the view's list methods add a
-/// step for each row they visit, and the host counts them toward the call's limit and its pool
+/// step for each row they visit, and the host counts them toward the call's limit and its budget
 /// (02-engine-core.md, A list costs a step a row). The view and the host share it.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct CallCharge(Rc<Cell<u64>>);

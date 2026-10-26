@@ -16,7 +16,7 @@ use crate::points::Points;
 use crate::track_book::TrackBook;
 
 /// The levels units reached, in the order reached, whose `on_level_up` has yet to run. The Mode
-/// stage runs the calls from the front; the level-ups whose call found the mode pool spent stay,
+/// stage runs the calls from the front; the level-ups whose call found the mode budget spent stay,
 /// and run first in a later tick's Mode stage.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LevelUps(pub PendingCalls<LevelUp>);
@@ -92,7 +92,7 @@ impl HookDecl for OnLevelUp {
     type Args = (Ctx, Unit, ScriptText, i64);
 }
 
-/// A level a unit reached runs `on_level_up`, from the mode's pool, with the unit, the track's
+/// A level a unit reached runs `on_level_up`, from the mode's budget, with the unit, the track's
 /// name and the level; one whose unit is gone runs no call. A level that a call reaches joins the
 /// end, so a chain of level-ups ends within the tick, as levels are finite.
 impl ModeEvents for LevelUps {

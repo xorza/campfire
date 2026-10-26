@@ -260,7 +260,7 @@ pub(super) static DATA_FLAWS: &[Flaw] = &[
             )
         },
     ),
-    // A player's pool below the whole call of 20 000.
+    // A player's budget below the whole call of 20 000.
     Flaw::of(
         MANIFEST,
         Edit::Set(
@@ -268,7 +268,7 @@ pub(super) static DATA_FLAWS: &[Flaw] = &[
             "{ per_call = 20000, player = 19999, think = 200000, mode = 100000 }",
         ),
         MODE_DIR,
-        |problem| manifest_fails(problem, "a script pool holds less than a whole call"),
+        |problem| manifest_fails(problem, "a script budget holds less than a whole call"),
     ),
     Flaw::of(
         MANIFEST,
@@ -277,7 +277,7 @@ pub(super) static DATA_FLAWS: &[Flaw] = &[
             "{ per_call = 20000, player = 40000, think = 200000, mode = 19999 }",
         ),
         MODE_DIR,
-        |problem| manifest_fails(problem, "a script pool holds less than a whole call"),
+        |problem| manifest_fails(problem, "a script budget holds less than a whole call"),
     ),
     Flaw::of(
         MANIFEST,

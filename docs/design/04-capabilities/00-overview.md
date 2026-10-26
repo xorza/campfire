@@ -109,7 +109,7 @@ The engine has no genres. It has **capabilities**, each one mechanism; a package
 
 ## Scripted systems
 
-- **A mechanism in Rhai.** A mode may declare a scripted system: a script that runs each interval in a stage over the units a filter selects, under the `systems` pool, as Dota 2's custom games add thinkers in Lua. It is called once an interval with all its units, so Rhai's call cost is one an interval, and its filter's units are kept, not searched.
+- **A mechanism in Rhai.** A mode may declare a scripted system: a script that runs each interval in a stage over the units a filter selects, under the `systems` budget, as Dota 2's custom games add thinkers in Lua. It is called once an interval with all its units, so Rhai's call cost is one an interval, and its filter's units are kept, not searched.
 
 ## Testing
 

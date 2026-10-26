@@ -2,12 +2,18 @@
 
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{HookContext, Insert};
 use bevy_ecs::observer::On;
-use bevy_ecs::system::Query;
+use bevy_ecs::query::Has;
+use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::DeferredWorld;
-use campfire_net_channels::Channels;
+use campfire_net_channels::{Channels, SendGate};
 use campfire_net_link::{Link, Linked};
+
+use crate::protocol_channel::ProtocolChannel;
+use crate::protocol_check::ProtocolCheck;
+use crate::protocol_hashes::ProtocolHashes;
 
 /// The [`Channels`] of a link, on its entity: the largest payload its packet session hands over
 /// sizes their fragments, when the transport comes and at each link (11-net-stack/layering.md, The
@@ -38,16 +44,40 @@ impl Transport {
         transport.size_fragments(max_payload);
     }
 
-    /// A new packet session: the channels start their tick again, and its largest payload sizes
-    /// their fragments.
+    /// A new packet session: the channels start their tick again, its largest payload sizes
+    /// their fragments, and the protocol check starts.
     pub(crate) fn on_linked(
         trigger: On<'_, '_, Insert<Linked>>,
-        mut query: Query<'_, '_, (&Link, &mut Self)>,
+        mut query: Query<'_, '_, (&Link, &mut Self, Has<ProtocolCheck>)>,
+        hashes: Res<'_, ProtocolHashes>,
+        mut commands: Commands<'_, '_>,
     ) {
-        let Ok((link, mut transport)) = query.get_mut(trigger.entity) else {
+        let Ok((link, mut transport, checking)) = query.get_mut(trigger.entity) else {
             return;
         };
         transport.link(link.packet_session.max_payload());
+        if !checking {
+            transport.start_check(trigger.entity, &hashes, &mut commands);
+        }
+    }
+
+    /// Starts the protocol check of the link `entity`, when its transport opened the check's
+    /// channel: sends this end's hashes, and holds every other channel until the peer's arrive
+    /// and match (11-net-stack/transport.md, The protocol check goes first on a reserved channel).
+    /// Its caller starts it once for each packet session, on a link with no `ProtocolCheck`.
+    pub(crate) fn start_check(
+        &mut self,
+        entity: Entity,
+        hashes: &ProtocolHashes,
+        commands: &mut Commands<'_, '_>,
+    ) {
+        if !self.sends_on(ProtocolChannel::ID) {
+            return;
+        }
+        self.set_send_gate(SendGate::Only(ProtocolChannel::ID));
+        let priority = ProtocolChannel::setup().priority;
+        self.send(ProtocolChannel::ID, hashes.bytes(), priority);
+        commands.entity(entity).insert(ProtocolCheck::Waiting);
     }
 }
 

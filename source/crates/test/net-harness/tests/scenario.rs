@@ -109,7 +109,7 @@ fn play(setup: InProcessSetup) -> [u32; 2] {
     // orders of its script select (10-replication-audiences.md, The commanded units are their
     // player's prediction).
     for (index, &id) in heroes.iter().enumerate() {
-        let player = StableId::of_player(PlayerSlot::new(u32::try_from(index).unwrap()));
+        let player = StableId::of_player(local.player_slot(index));
         let commanded = |app: &App| {
             let entity = app.world().entity_ref_of(player).unwrap();
             entity.get::<CommandedUnits>().unwrap().get().to_vec()

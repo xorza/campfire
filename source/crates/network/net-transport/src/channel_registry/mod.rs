@@ -13,6 +13,8 @@ use campfire_net_core::RegistrySeal;
 use campfire_net_core::TypeMapper;
 use campfire_net_core::{RegistryHash, RegistryHasher};
 
+use crate::protocol_channel::ProtocolChannel;
+
 /// The tag of the channel registry's hash.
 const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/channel-registry/v1");
 
@@ -24,7 +26,7 @@ const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/channel-
 /// [`register_channel`](ChannelRegistry::register_channel) method.
 ///
 ///
-#[derive(Resource, Default, Clone, Debug, TypePath)]
+#[derive(Resource, Clone, Debug, TypePath)]
 pub struct ChannelRegistry {
     /// Each channel, at the index of its net id.
     channels: Vec<RegisteredChannel>,
@@ -65,7 +67,28 @@ pub(crate) struct OpenedChannel {
     pub(crate) gate: ChannelGate,
 }
 
+/// The registry of the protocol check's channel alone, at the first id, whichever layer
+/// registers a channel first (11-net-stack/transport.md, The protocol check goes first on a
+/// reserved channel).
+impl Default for ChannelRegistry {
+    fn default() -> Self {
+        let mut registry = Self {
+            channels: Vec::new(),
+            type_map: TypeMapper::default(),
+            seal: RegistrySeal::default(),
+        };
+        let id = registry.register_channel::<ProtocolChannel>(ProtocolChannel::setup());
+        debug_assert_eq!(id, ProtocolChannel::ID, "the check's channel is the first");
+        registry.add_direction::<ProtocolChannel>(LinkDirections::BOTH, ChannelGate::Open);
+        registry.read_by_owner::<ProtocolChannel>();
+        registry
+    }
+}
+
 impl ChannelRegistry {
+    /// Its name, in its seal's messages and in the protocol check, where it names its hash.
+    pub(crate) const NAME: &'static str = "channel registry";
+
     /// Registers the channel `C` with its setup, and returns its net id; a channel registered
     /// before keeps its first setup.
     pub fn register_channel<C: Channel>(&mut self, setup: ChannelSetup) -> NetId {
@@ -139,7 +162,7 @@ impl ChannelRegistry {
     }
 
     fn open(&self) {
-        self.seal.assert_open("channel registry");
+        self.seal.assert_open(Self::NAME);
     }
 
     /// Seals the registry, as `TransportPlugin::finish` does, once each channel's bounds hold. Its
@@ -152,7 +175,7 @@ impl ChannelRegistry {
             channel.setup.hash_into(&mut hasher);
             hasher.write(&[u8::from(channel.directions)]);
         }
-        self.seal.seal("channel registry", hasher.finish());
+        self.seal.seal(Self::NAME, hasher.finish());
     }
 
     /// The hash peers compare, once the registry is sealed.

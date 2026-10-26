@@ -65,8 +65,8 @@ impl ScriptBatch<'_> {
     }
 
     /// Runs one call of `hook` as `run` does, and answers its end: a failure is recorded, for
-    /// `id` if any, but a pool found spent by a call that waits, which its caller runs again in a
-    /// later tick (02-engine-core.md, Operation pools).
+    /// `id` if any, but a budget found spent by a call that waits, which its caller runs again in a
+    /// later tick (02-engine-core.md, Operation budgets).
     pub fn answer<T>(
         &mut self,
         start: CallStart,
@@ -76,7 +76,7 @@ impl ScriptBatch<'_> {
     ) -> Answered<T> {
         match self.run(start, body) {
             Ok(ran) => Answered::Ran(ran),
-            Err(CallError::PoolSpent) if start.when_spent() == Spent::Waits => Answered::Waits,
+            Err(CallError::BudgetSpent) if start.when_spent() == Spent::Waits => Answered::Waits,
             Err(error) => {
                 self.record(id, hook, &error);
                 Answered::Failed
@@ -85,20 +85,20 @@ impl ScriptBatch<'_> {
     }
 
     /// Calls the hook `H` of `script` with `args` in the running call, which writes, from the
-    /// budget of its pool.
+    /// budget it draws from.
     pub fn call<H: HookDecl>(
         &mut self,
         script: ScriptId,
         args: H::Args,
     ) -> Result<ScriptValue, CallError> {
-        let pool = self.ctx.frame().pool();
-        let pool = pool.expect("a call that writes draws from a pool");
+        let budget = self.ctx.frame().budget();
+        let budget = budget.expect("a call that writes draws from a budget");
         let budgets = self.world.resource_mut::<ScriptBudgets>().into_inner();
-        call_in::<H>(self.host, budgets.get_mut(pool), script, args)
+        call_in::<H>(self.host, budgets.get_mut(budget), script, args)
     }
 
     /// Calls the hook `H` of `script` with `args` in the running call, which is pure, from no
-    /// pool: only the limit per call bounds it.
+    /// budget: only the limit per call bounds it.
     pub fn call_pure<H: HookDecl>(
         &mut self,
         script: ScriptId,
@@ -106,7 +106,7 @@ impl ScriptBatch<'_> {
     ) -> Result<ScriptValue, CallError> {
         debug_assert!(
             self.ctx.frame().is_pure(),
-            "only a pure call draws from no pool"
+            "only a pure call draws from no budget"
         );
         call_in::<H>(self.host, &mut Budget::new(u64::MAX), script, args)
     }
@@ -139,7 +139,7 @@ impl ScriptBatch<'_> {
 }
 
 /// What became of a hook's call: it ran and gave `T`; it failed, and its failure is recorded; or
-/// it found its pool spent and waits, unrecorded, for a later tick.
+/// it found its budget spent and waits, unrecorded, for a later tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Answered<T> {
     Ran(T),

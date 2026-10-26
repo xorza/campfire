@@ -9,7 +9,7 @@ use bevy_ecs::world::{EntityRef, World};
 use bevy_time::{Time, Virtual};
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::{Directive, Order};
-use campfire_common::DeclaredName;
+use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_harness::HashTrail;
 use campfire_host::internals::SimClientWorldInternals;
 use campfire_host::internals::TickHashes;
@@ -905,11 +905,17 @@ impl InProcessMatch {
 
     /// `client`'s player's avatar, as the server holds it, once the server spawned it.
     fn spawned_avatar(&self, client: usize) -> Option<StableId> {
+        let slot = self.player_slot(client);
         let world = self.stepper.server_world();
-        let slot = world
-            .link_player_slot(self.link(client))
-            .expect("the match started, with the client's slot");
         world.avatar_of(slot).map(|avatar| avatar.id)
+    }
+
+    /// The player slot `client`'s player took, in the order the server placed the joins.
+    pub fn player_slot(&self, client: usize) -> PlayerSlot {
+        let world = self.stepper.server_world();
+        world
+            .link_player_slot(self.link(client))
+            .expect("the match started, with the client's slot")
     }
 
     /// Makes each client play the script of its avatar's team, by team index, as a bot does; gives

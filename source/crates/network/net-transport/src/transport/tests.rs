@@ -57,6 +57,7 @@ fn one_message_counts_on_both_sides() {
 #[test]
 fn the_fragment_len_follows_the_packet_sessions_largest_payload() {
     let mut world = World::new();
+    world.init_resource::<ProtocolHashes>();
     world.add_observer(Transport::on_linked);
     let mut link = Link::default();
     link.packet_session.set_max_payload(256);

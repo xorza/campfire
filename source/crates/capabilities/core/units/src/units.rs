@@ -66,7 +66,7 @@ use crate::view_reader::ViewReader;
 /// the tick sit at.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
 pub enum UnitsSystems {
-    /// The tick begins: every pool starts full, and the last tick's failures clear.
+    /// The tick begins: every budget starts full, and the last tick's failures clear.
     Begin,
     /// The tick ends: the units whose lifespan ended despawn.
     End,
@@ -212,7 +212,7 @@ impl Module for Units {
     }
 
     /// Adds the core to a match: the grid of its body units, empty, which its readers build. With
-    /// scripts, in Inputs, every pool starts full and the last tick's failures clear, and as the
+    /// scripts, in Inputs, every budget starts full and the last tick's failures clear, and as the
     /// tick ends, its writes to units that never spawned drop.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.scripted(UnitsSystems::Begin, UnitTicks::begin_tick);
@@ -340,8 +340,8 @@ impl Units {
                 .then(|| Ctx::new(world.non_send::<View>().clone()))
         });
         d.non_send::<ScriptHost>(|world, role| {
-            let pools = role.pools()?;
-            let mut host = ScriptHost::new(pools.limits.per_call);
+            let setup = role.budgets()?;
+            let mut host = ScriptHost::new(setup.limits.per_call);
             world.non_send::<Ctx>().tag(&mut host);
             Some(host)
         });

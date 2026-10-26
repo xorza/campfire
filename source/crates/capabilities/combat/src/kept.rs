@@ -8,7 +8,7 @@ use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
 /// Keeps a dead unit whose death a later stage has yet to answer, as the mode's `on_unit_death`
-/// does when its pool is spent: the unit stays, dead, until that stage removes this, and then
+/// does when its budget is spent: the unit stays, dead, until that stage removes this, and then
 /// despawns at the end of that tick if its type despawns.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Kept;

@@ -14,7 +14,7 @@ use crate::scripts::script_role::ScriptRole;
 /// it reads, at `rank`, and its modifier's; the package whose names it means, 0 the mode's; the
 /// depth of the chain of combat events it runs in, 0 outside one; the hit a delivery's hook runs
 /// for, which the damage it deals carries; how its action started; the delivery a dash it starts
-/// carries, an instant action's own in its `on_resolve`; and the player whose pool pays for it,
+/// carries, an instant action's own in its `on_resolve`; and the player whose budget pays for it,
 /// the acting unit's controller or the player whose input it answers, none when no player does;
 /// for a call of the mode's role, the place of its script in the mode's list; and the player whose
 /// view a bot's call reads.
@@ -52,8 +52,8 @@ pub struct ActionCast {
     pub package: PackageIndex,
 }
 
-/// What a call does when it finds its pool spent: it fails, as a call a player causes does, or
-/// it waits for a later tick, as the engine's own calls do (02-engine-core.md, Operation pools).
+/// What a call does when it finds its budget spent: it fails, as a call a player causes does, or
+/// it waits for a later tick, as the engine's own calls do (02-engine-core.md, Operation budgets).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Spent {
     Fails,
@@ -61,7 +61,7 @@ pub enum Spent {
 }
 
 /// What a call may do with the match: queue effects and write state, or, as a pure hook's,
-/// only read. A pure call draws from no pool, and applies nothing.
+/// only read. A pure call draws from no budget, and applies nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Purity {
     Writes,
@@ -92,7 +92,7 @@ impl CallStart {
         }
     }
 
-    /// What the call does when it finds its pool spent: an AI's think, or a mode's event, which
+    /// What the call does when it finds its budget spent: an AI's think, or a mode's event, which
     /// no player causes, waits; an action's, a modifier's and a mode input's call fails.
     pub const fn when_spent(&self) -> Spent {
         match (self.role, self.payer) {

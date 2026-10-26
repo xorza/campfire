@@ -12,11 +12,11 @@ pub trait Report: Resource + Sized {
     fn installed(role: &Role) -> Option<Self>;
 }
 
-/// What each pool spent in the last tick, which a server's match alone holds, as it runs scripts;
+/// What each budget spent in the last tick, which a server's match alone holds, as it runs scripts;
 /// full again as the next tick starts.
 impl Report for ScriptBudgets {
     fn installed(role: &Role) -> Option<Self> {
-        role.pools().map(Self::full)
+        role.budgets().map(Self::full)
     }
 }
 

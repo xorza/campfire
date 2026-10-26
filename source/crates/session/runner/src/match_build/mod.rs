@@ -4,7 +4,7 @@ use campfire_common::SegmentSeed;
 use campfire_declarations::Role;
 use campfire_mode::{HostPicks, ModeSetup};
 use campfire_package::ModePackages;
-use campfire_script::ScriptPools;
+use campfire_script::BudgetSetup;
 use campfire_sim::MatchRate;
 
 /// A match of a mode, built from its read packages.
@@ -22,11 +22,11 @@ impl MatchBuild {
         players: u32,
     ) -> MatchSetup {
         let manifest = packages.manifest();
-        let pools = ScriptPools {
+        let setup = BudgetSetup {
             limits: manifest.script_limits,
             players,
         };
-        MatchSetup::new(seed, rate, Role::Server(pools))
+        MatchSetup::new(seed, rate, Role::Server(setup))
     }
 
     /// Builds the match of `spec` in `world`, a new world, of `packages`, for `players` players,

@@ -107,7 +107,6 @@ pub use crate::deferred_entity_commands::DeferredEntityCommands;
 pub use crate::delayed_despawn::DelayedDespawn;
 pub use crate::diffable::Diffable;
 pub use crate::disable_replicate_hierarchy::DisableReplicateHierarchy;
-pub use crate::hello_channel::HelloChannel;
 pub use crate::history_component::HistoryComponent;
 pub use crate::history_diff_receiver::HistoryDiffError;
 pub use crate::history_diff_receiver::HistoryDiffReceiver;

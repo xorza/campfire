@@ -120,7 +120,7 @@ impl PerId<UnitType> for Ai {
 }
 
 /// The tick a unit that thinks is due in again, a part of each unit of a type with AI from its
-/// spawn. A unit whose call found the think pool spent keeps its tick, so it stays due, and goes
+/// spawn. A unit whose call found the think budget spent keeps its tick, so it stays due, and goes
 /// first in the next tick, before the units due later. A think writes it anew.
 pub type NextThink = NextTurn<Ai>;
 

@@ -8,7 +8,7 @@ use campfire_declarations::internals::BookLoad;
 use campfire_declarations::{Book, ById, Role};
 use campfire_math::Num;
 use campfire_orders::Ai;
-use campfire_script::{MatchNames, ScriptLimits, ScriptPools};
+use campfire_script::{BudgetSetup, MatchNames, ScriptLimits};
 use campfire_sim::{Capability, SimWorld};
 use campfire_stats::{ModifierBook, ParamBook, StatBook, StatRule};
 use campfire_values::{Stat, UnitType};
@@ -52,7 +52,7 @@ fn stats_match(books: Books) -> Match {
 fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
     // A book only scripts read, as an AI's, is held where scripts run; any other in every role,
     // of a module the match installs.
-    let scripts = Role::Server(ScriptPools {
+    let scripts = Role::Server(BudgetSetup {
         limits: ScriptLimits::ROOMY,
         players: 1,
     });

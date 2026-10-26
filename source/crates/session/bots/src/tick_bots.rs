@@ -9,16 +9,16 @@ use crate::thinking_bot::{PacedBot, Think};
 
 /// The bots of a match's player slots, played before each tick as the server plays them, and as
 /// every check plays them by the same rule: each bot in turn, its orders and mode inputs to a sink;
-/// the thinks of a tick drawing on one pool, the mode's `think` limit (03-game-scripting.md, The
-/// thinks of a tick share a pool), the player slot that plays first turned each tick, so no player
-/// slot keeps finding the pool spent by those before it. It holds the view the bots read, and their
-/// buffers, kept so a tick of no think allocates nothing.
+/// the thinks of a tick drawing on one budget, the mode's `think` limit (03-game-scripting.md, The
+/// thinks of a tick share a budget), the player slot that plays first turned each tick, so no
+/// player slot keeps finding the budget spent by those before it. It holds the view the bots read,
+/// and their buffers, kept so a tick of no think allocates nothing.
 #[derive(Debug)]
 pub struct TickBots {
     bots: Vec<TickBot>,
     view: HeldBotView,
     buffers: BotBuffers,
-    pool: u64,
+    think_limit: u64,
 }
 
 /// What the thinks of a tick spent: the most operations one of them ran.
@@ -43,14 +43,14 @@ pub enum PlayerSlotPlay {
 }
 
 impl TickBots {
-    /// No bot yet, of the match of `world`, whose thinks share a pool of `pool` operations a
-    /// tick.
-    pub fn new(world: &mut World, pool: u64) -> Self {
+    /// No bot yet, of the match of `world`, whose thinks share a budget of `think_limit`
+    /// operations a tick.
+    pub fn new(world: &mut World, think_limit: u64) -> Self {
         Self {
             bots: Vec::new(),
             view: HeldBotView::new(world),
             buffers: BotBuffers::default(),
-            pool,
+            think_limit,
         }
     }
 
@@ -83,7 +83,7 @@ impl TickBots {
             bots,
             view,
             buffers,
-            pool,
+            think_limit,
         } = self;
         let mut thinks = TickThinks::default();
         let Some(count) = u64::try_from(bots.len()).ok().filter(|&count| count > 0) else {
@@ -91,7 +91,7 @@ impl TickBots {
         };
         let first = usize::try_from(tick.get() % count).expect("a place among the bots");
         let (before_first, from_first) = bots.split_at_mut(first);
-        let mut budget = Budget::new(*pool);
+        let mut budget = Budget::new(*think_limit);
         for bot in from_first.iter_mut().chain(before_first) {
             let player_slot = bot.player_slot;
             match &mut bot.play {

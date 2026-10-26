@@ -23,7 +23,7 @@ impl HookDecl for OnUnitDeath {
 
 /// The deaths whose `on_unit_death` has yet to run, in the order the units died. The Mode stage
 /// adds its tick's deaths and runs the calls from the front; the deaths whose call found the mode
-/// pool spent stay, and run first in a later tick's Mode stage. So a tick ends with only those.
+/// budget spent stay, and run first in a later tick's Mode stage. So a tick ends with only those.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub struct UnansweredDeaths {
     deaths: PendingCalls<Unanswered>,
@@ -76,7 +76,7 @@ impl UnansweredDeaths {
     }
 }
 
-/// A death runs `on_unit_death`, from the mode's pool, with the unit, its killer or `()`, and its
+/// A death runs `on_unit_death`, from the mode's budget, with the unit, its killer or `()`, and its
 /// assisters: a killer gone by then is `()`, and an assister gone by then is left out; a death
 /// whose unit is gone runs no call. A death that waits keeps its unit, dead, until its call runs.
 impl ModeEvents for UnansweredDeaths {

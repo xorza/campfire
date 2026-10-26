@@ -3134,8 +3134,6 @@ dependencies = [
  "campfire-net-timeline",
  "campfire-net-transport",
  "campfire-threads",
- "serde",
- "tracing",
 ]
 
 [[package]]
@@ -3210,6 +3208,7 @@ dependencies = [
  "bytes",
  "campfire-app-threads",
  "campfire-common",
+ "campfire-log",
  "campfire-math",
  "campfire-net-channels",
  "campfire-net-connection",
@@ -3219,6 +3218,7 @@ dependencies = [
  "campfire-net-stepper",
  "campfire-net-timeline",
  "campfire-net-transport",
+ "serde",
  "tracing",
 ]
 

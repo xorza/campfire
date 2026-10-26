@@ -3,17 +3,17 @@ use std::num::NonZeroU64;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// How many operations scripts may run: in one call, and in each pool's calls of one tick together,
-/// as `Pool` gives the pools. Each player, AI and the mode draw from pools of their own, so no call
-/// can spend what another's needs, and the sum of the pools is the most one tick's scripts run. The
-/// mode's manifest sets them, and each pool holds a whole call. The script API's `systems` limit,
-/// of the planned `systems` pool, and `generate`, the larger limit of a call of `on_generate`, are
-/// planned.
+/// How many operations scripts may run: in one call, and in each budget's calls of one tick
+/// together, as `BudgetOf` gives the budgets. Each player, AI and the mode draw from budgets of
+/// their own, so no call can spend what another's needs, and the sum of the budgets is the most one
+/// tick's scripts run. The mode's manifest sets them, and each budget holds a whole call. The
+/// script API's `systems` limit, of the planned `systems` budget, and `generate`, the larger limit
+/// of a call of `on_generate`, are planned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScriptLimits {
     /// At least one: Rhai reads a limit of 0 operations as no limit.
     pub per_call: NonZeroU64,
-    /// For the calls each player causes. Each player slot has a pool of this size.
+    /// For the calls each player causes. Each player slot has a budget of this size.
     pub player: u64,
     /// For AI `on_think` calls, and the hooks of sources no player controls.
     pub think: u64,
@@ -26,7 +26,7 @@ impl ScriptLimits {
     /// events is that deep, and the damage pass must end within its tick.
     pub(crate) const CHAIN_DEPTH: u8 = 16;
 
-    /// Whether each pool holds a whole call.
+    /// Whether each budget holds a whole call.
     const fn holds_calls(self) -> bool {
         let per_call = self.per_call.get();
         self.player >= per_call && self.think >= per_call && self.mode >= per_call
@@ -61,7 +61,7 @@ impl Serialize for ScriptLimits {
     }
 }
 
-/// A manifest's limits, refused unless each pool holds a whole call.
+/// A manifest's limits, refused unless each budget holds a whole call.
 impl<'de> Deserialize<'de> for ScriptLimits {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let Fields {
@@ -78,7 +78,7 @@ impl<'de> Deserialize<'de> for ScriptLimits {
         };
         if !limits.holds_calls() {
             return Err(D::Error::custom(
-                "a script pool holds less than a whole call",
+                "a script budget holds less than a whole call",
             ));
         }
         Ok(limits)

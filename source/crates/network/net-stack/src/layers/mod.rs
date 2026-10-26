@@ -28,8 +28,6 @@ use campfire_net_timeline::TimelinePlugins;
 use campfire_net_transport::TransportPlugin;
 use core::num::NonZeroU32;
 
-use crate::protocol_check_plugin::ProtocolCheckPlugin;
-
 /// The default tick rate, 60 Hz.
 pub(crate) const DEFAULT_TICK_RATE: TickRate = TickRate::hertz(NonZeroU32::new(60).unwrap());
 
@@ -50,7 +48,6 @@ pub(crate) fn shared(group: PluginGroupBuilder, tick_rate: TickRate) -> PluginGr
         .add(MessagePlugin)
         .add_group(ConnectionPlugins)
         .add_group(ReplicationPlugins)
-        .add(ProtocolCheckPlugin)
         .add(PredictionMarkerPlugin)
         .add(InterpolationMarkerPlugin)
         .add(InterpolationRegistryPlugin)

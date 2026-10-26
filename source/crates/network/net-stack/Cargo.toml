@@ -32,7 +32,6 @@ internals = [
     "campfire-net-transport/internals",
     "campfire-net-socket/internals",
     "campfire-net-timeline/internals",
-    "campfire-net-payload/internals",
     "campfire-math/internals",
 ]
 
@@ -40,7 +39,6 @@ internals = [
 campfire-app-threads = { workspace = true, optional = true }
 campfire-math.workspace = true
 campfire-net-timeline.workspace = true
-campfire-net-core.workspace = true
 campfire-net-link.workspace = true
 campfire-net-connection.workspace = true
 campfire-net-stepper = { workspace = true, optional = true }
@@ -54,25 +52,22 @@ campfire-net-prediction.workspace = true
 campfire-net-endpoint = { workspace = true, optional = true }
 campfire-net-packets = { workspace = true, optional = true }
 campfire-net-socket = { workspace = true, optional = true }
-campfire-net-payload.workspace = true
-
-serde = { workspace = true, features = ["derive", "rc", "std"] }
-tracing = { workspace = true, features = ["attributes", "std"] }
 
 bevy = { workspace = true, features = ["bevy_state"], optional = true }
 bevy_app.workspace = true
-bevy_ecs = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }
 campfire-measure.workspace = true
 campfire-net-bytes = { workspace = true, features = ["internals"] }
 campfire-net-channels = { workspace = true, features = ["internals"] }
+campfire-net-core.workspace = true
 campfire-net-emulator = { workspace = true, features = ["internals"] }
+campfire-net-payload = { workspace = true, features = ["internals"] }
 campfire-net-stack = { workspace = true, features = ["internals"] }
 campfire-threads = { workspace = true, features = ["internals"] }
 
-
+bevy_ecs = { workspace = true, features = ["std"] }
 bevy_replicon = { workspace = true, features = ["client", "server"] }
 
 [lints]

@@ -141,7 +141,7 @@ fn a_bots_think_fails_on_what_is_no_unit_no_directive_not_its_own_or_past_its_bu
         };
         assert_eq!(failed.kind(), FailureKind::Api(error), "{body}");
     }
-    // A think whose budget its loop spends finds the pool spent, which its driver answers by
+    // A think whose budget its loop spends finds the budget spent, which its driver answers by
     // thinking again in the next tick; the same think from a budget that holds it gives its
     // order.
     let script = "fn on_bot_think(ctx) { for i in 0..20 {} ctx.order(ctx.own(\"barracks\"), \
@@ -153,7 +153,7 @@ fn a_bots_think_fails_on_what_is_no_unit_no_directive_not_its_own_or_past_its_bu
     );
     let spent = think(&packages, &mut fixed, 10).unwrap_err();
     assert!(
-        matches!(spent, ThinkError::Call(CallError::PoolSpent)),
+        matches!(spent, ThinkError::Call(CallError::BudgetSpent)),
         "{spent}"
     );
     let held = think(&packages, &mut fixed, 100_000).unwrap();
@@ -229,7 +229,7 @@ fn bots_of_one_period_think_each_in_ticks_of_its_own_player_slot() {
 }
 
 #[test]
-fn a_paced_bot_thinks_in_its_phase_and_waits_out_a_spent_pool() {
+fn a_paced_bot_thinks_in_its_phase_and_waits_out_a_spent_budget() {
     // The walker thinks every 200 ms, 4 ticks of the proving mode's 20 Hz; player slot 0 in ticks
     // 0, 4 and 8. Out of phase, tick 1 gives nothing. In tick 4 a budget of 10 operations is spent
     // before its loop ends: no order, and the bot waits, so it thinks in tick 5, out of its phase,

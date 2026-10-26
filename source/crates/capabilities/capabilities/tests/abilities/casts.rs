@@ -19,7 +19,7 @@ use campfire_orders::{AiData, Orders};
 use campfire_players::PlayersWorld;
 use campfire_script::internals::FailedCall;
 use campfire_script::{
-    ApiError, CapabilityRefusal, FailureKind, NumError, Pool, ScriptBudgets, ScriptLimits,
+    ApiError, BudgetOf, CapabilityRefusal, FailureKind, NumError, ScriptBudgets, ScriptLimits,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimSystems, SimWorld};
@@ -361,7 +361,7 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
 
 #[test]
 fn ai_load_does_not_spend_what_a_cast_needs() {
-    // The one test of how abilities and `orders` meet: AI's calls and a cast's draw from pools of
+    // The one test of how abilities and `orders` meet: AI's calls and a cast's draw from budgets of
     // their own.
     let declared = [
         Capability::Stats,
@@ -372,7 +372,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     ];
     let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     // Eleven units whose AI spins, all due in every tick: ten calls fail at the 10 000 limit and
-    // spend the 100 000 of the think pool, and the eleventh finds it spent. Their type loads
+    // spend the 100 000 of the think budget, and the eleventh finds it spent. Their type loads
     // before any unit spawns, as a match's types do.
     let spinner = Units::load_type(
         &mut game,
@@ -399,11 +399,11 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         })
         .collect();
 
-    // The cast in the same tick draws from its player's pool, whole: 500 → 450, 100 → 90.
+    // The cast in the same tick draws from its player's budget, whole: 500 → 450, 100 → 90.
     Abilities::cast(&mut game, caster, ActionTarget::Unit(enemy));
     assert_eq!(Stats::health(&game, enemy), 450);
     assert_eq!(Abilities::pool(&game, caster), 90);
-    // The think pool runs out after 10 of the spinning calls: the first 10 spinners, by stable
+    // The think budget runs out after 10 of the spinning calls: the first 10 spinners, by stable
     // id, spend it, and the last stays due.
     let expected: Vec<_> = spinners[..10]
         .iter()
@@ -415,7 +415,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         .collect();
     assert_eq!(Abilities::failed_calls(&mut game), expected);
     let mut budgets = game.resource_mut::<ScriptBudgets>();
-    assert_eq!(budgets.get_mut(Pool::Think).left(), 0);
+    assert_eq!(budgets.get_mut(BudgetOf::Think).left(), 0);
 }
 
 #[test]
@@ -681,7 +681,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
                 let mut budgets = game.resource_mut::<ScriptBudgets>();
                 spent.push(
                     ScriptLimits::ROOMY.player
-                        - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left(),
+                        - budgets.get_mut(BudgetOf::Player(PlayerSlot::new(0))).left(),
                 );
             } else {
                 game.step();

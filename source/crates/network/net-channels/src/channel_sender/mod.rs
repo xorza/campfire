@@ -35,7 +35,7 @@ use crate::reliable_send_state::{ReliableDelivery, ReliableSendState};
 #[derive(Debug)]
 pub(crate) struct ChannelSender {
     channel_type_id: ChannelTypeId,
-    channel_id: NetId,
+    pub(crate) channel_id: NetId,
     name: &'static str,
     setup: ChannelSetup,
     timer: Option<SendTimer>,

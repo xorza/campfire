@@ -15,6 +15,9 @@ impl AppCode {
     pub const ENDED: Self = Self(0);
     /// The endpoint dropped, as its app exited.
     pub const DROPPED: Self = Self(1);
+    /// The peer's protocol check gave hashes other than this end's, so each end of the link
+    /// reads `UnlinkReason::ProtocolMismatch`, the one that found it and the one it closed on.
+    pub const PROTOCOL_MISMATCH: Self = Self(2);
     /// The first code an app may name.
     pub const FIRST: u32 = 16;
 
@@ -48,7 +51,8 @@ mod tests {
         assert_eq!(AppCode::new(AppCode::FIRST).get(), 16);
         assert_eq!(AppCode::new(40).get(), 40);
         assert_eq!(AppCode::from_wire(1), AppCode::DROPPED);
-        assert_eq!([AppCode::ENDED, AppCode::DROPPED].map(AppCode::get), [0, 1]);
+        let stack = [AppCode::ENDED, AppCode::DROPPED, AppCode::PROTOCOL_MISMATCH];
+        assert_eq!(stack.map(AppCode::get), [0, 1, 2]);
     }
 
     #[test]

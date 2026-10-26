@@ -185,7 +185,7 @@ pub(crate) mod internals {
     use crate::scripts::script_value::{ScriptType, ScriptValue};
 
     impl ScriptValue {
-        /// What `probe` of `source` returns, called with `args` from no pool, on the view as it
+        /// What `probe` of `source` returns, called with `args` from no budget, on the view as it
         /// stands.
         pub fn probe(
             world: &mut World,
@@ -204,7 +204,8 @@ pub(crate) mod internals {
             .map_err(CallError::from_script)
         }
 
-        /// The value as a `T`; a value of another type is a bug of the caller, which asked its type.
+        /// The value as a `T`; a value of another type is a bug of the caller, which asked its
+        /// type.
         pub fn cast<T: ScriptType>(self) -> T {
             self.try_cast()
                 .unwrap_or_else(|| panic!("value is no {}", std::any::type_name::<T>()))

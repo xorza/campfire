@@ -46,8 +46,8 @@ impl DeliveryHooks {
     }
 
     /// Runs the hooks of `due`, in order: each with its action's params at its rank, its caster,
-    /// `()` once gone, its target, `()` for an end, and its hit, from its caster's player's pool,
-    /// or the think pool, for the delivery unit's allegiance, its caster's as it launched, or a
+    /// `()` once gone, its target, `()` for an end, and its hit, from its caster's player's budget,
+    /// or the think budget, for the delivery unit's allegiance, its caster's as it launched, or a
     /// dash's caster's. The action's list for the hook queues first, to the unit reached; a hook
     /// its action's script does not define does not run, and its list applies alone. A launch's
     /// area runs its launch's list alone, and no hook. A failed call changes nothing, its list

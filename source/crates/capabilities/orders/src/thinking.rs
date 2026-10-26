@@ -89,7 +89,7 @@ impl Thinking {
 
     /// Runs `on_think` for each unit `collect_thinkers` found due, in its order. Each call's
     /// orders apply when it returns; a failed call's do not. A unit whose call finds the think
-    /// pool spent stays due, so under load AI thinks later, and no unit misses its turn for good.
+    /// budget spent stays due, so under load AI thinks later, and no unit misses its turn for good.
     pub(crate) fn think(world: &mut World) {
         let due = world.resource_mut::<Due<ThinkDue>>().take();
         if !due.is_empty() {
@@ -112,7 +112,7 @@ impl Thinking {
             } in due
             {
                 // A unit with no position or team is no unit scripts see: it stays due, as one
-                // whose pool is spent, and thinks once the view holds it.
+                // whose budget is spent, and thinks once the view holds it.
                 let Some(unit) = ctx.view().unit(id) else {
                     batch
                         .world()
@@ -125,7 +125,7 @@ impl Thinking {
                 let thought = batch.answer(CallStart::think(id, now), hook, Some(id), |batch| {
                     batch.call::<OnThink>(script, args)
                 });
-                // A unit whose think finds the pool spent thinks again in a later tick.
+                // A unit whose think finds the budget spent thinks again in a later tick.
                 let next = match thought {
                     Answered::Ran(_) | Answered::Failed => now.after(period),
                     Answered::Waits => since,

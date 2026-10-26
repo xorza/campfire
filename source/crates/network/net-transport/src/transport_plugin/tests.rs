@@ -1,6 +1,6 @@
 use super::*;
 use bevy_ecs::system::RunSystemOnce;
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use campfire_app_threads::OneThreadPlugins;
 use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::Channels;
@@ -8,6 +8,14 @@ use campfire_net_channels::internals::whole_messages;
 use campfire_net_core::Instant;
 use campfire_net_payload::{OpenedPayload, PacketNumber};
 use core::time::Duration;
+
+use crate::app_channel_ext::AppChannelExt;
+use crate::fixtures::protocol::{Channel1, channel_id};
+use crate::fixtures::transport_stack::TransportStack;
+use campfire_math::TickRate;
+use campfire_net_channels::{Channel, ChannelReceiver, ChannelSetup};
+use campfire_net_core::LinkDirection;
+use campfire_net_stepper::{ClientKind, Init, Stack, Stepper, StepperSetup};
 
 #[derive(Resource, Default)]
 struct Outcomes {
@@ -52,7 +60,6 @@ fn a_protocol_violation_unlinks_the_link_once() {
 /// Stopping a server unlinks its IO.
 #[test]
 fn stopping_the_server_unlinks_it() {
-    use crate::fixtures::transport_stack::TransportStack;
     use campfire_net_connection::Stop;
     use campfire_net_connection::Stopped;
     use campfire_net_link::Unlinked;
@@ -120,7 +127,7 @@ fn a_gated_channel_opens_to_a_link_once_admitted() {
         .is_some();
     assert!(early_receives);
     let mut client_transport = world.get_mut::<Transport>(client).unwrap();
-    client_transport.send(channel, bytes::Bytes::from_static(&[1]), 1.0);
+    client_transport.send(channel, Bytes::from_static(&[1]), 1.0);
     assert_eq!(client_transport.refused(), None);
 }
 
@@ -157,7 +164,7 @@ fn an_open_channel_comes_with_the_transport_and_keeps_its_state() {
     let mut transport = world.get_mut::<Transport>(client).unwrap();
     assert!(transport.channel_receiver_mut(channel).is_none());
     transport
-        .send_mut(channel, bytes::Bytes::from_static(b"m"), 1.0)
+        .send_mut(channel, Bytes::from_static(b"m"), 1.0)
         .unwrap();
     world.entity_mut(client).insert(Client);
     let pending = world.get::<Transport>(client).unwrap().pending_reliable();
@@ -185,12 +192,29 @@ fn a_channel_of_two_gates_panics() {
 /// budget, `Backlogged`. An unreliable channel drops one and keeps its link.
 #[test]
 fn a_reliable_channel_that_refuses_a_message_unlinks_its_link() {
-    use crate::fixtures::protocol::{Channel1, ChannelOrderedReliable, channel_id};
-    use crate::fixtures::transport_stack::TransportStack;
-    use campfire_net_stepper::{StepOrder, Stepper, StepperSetup};
+    use crate::fixtures::protocol::ChannelOrderedReliable;
+    use campfire_net_stepper::StepOrder;
 
     let sends = |reliable: bool, len: usize, count: usize| {
         let mut stepper = Stepper::new(TransportStack, StepperSetup::single());
+        // The sends start once the server's check passed and the client acknowledged it.
+        let settled = |stepper: &mut Stepper<TransportStack>| {
+            let link = stepper.client_of(0);
+            let passed = link.get::<ProtocolCheck>() == Some(&ProtocolCheck::Passed);
+            passed
+                && link
+                    .get::<Transport>()
+                    .unwrap()
+                    .pending_reliable()
+                    .is_empty()
+        };
+        for _ in 0..10 {
+            if settled(&mut stepper) {
+                break;
+            }
+            stepper.step(1, stepper.frame_interval(), StepOrder::ServerFirst);
+        }
+        assert!(settled(&mut stepper), "the check settles in 10 frames");
         let world = stepper.server_world_mut();
         world.init_resource::<Outcomes>();
         world.add_observer(
@@ -206,7 +230,7 @@ fn a_reliable_channel_that_refuses_a_message_unlinks_its_link() {
         let mut client = stepper.client_of_mut(0);
         let mut transport = client.get_mut::<Transport>().unwrap();
         for _ in 0..count {
-            transport.send(channel, bytes::Bytes::from(vec![0; len]), 1.0);
+            transport.send(channel, Bytes::from(vec![0; len]), 1.0);
         }
         stepper.step(2, stepper.frame_interval(), StepOrder::ServerFirst);
         stepper
@@ -216,9 +240,140 @@ fn a_reliable_channel_that_refuses_a_message_unlinks_its_link() {
             .clone()
     };
     // The send budget is twice the largest message, so two largest fill it and a third passes.
-    let largest = campfire_net_channels::ChannelSetup::default().max_message_len;
+    let largest = ChannelSetup::default().max_message_len;
     assert_eq!(sends(true, largest + 1, 1), [UnlinkReason::MessageTooLarge]);
     assert_eq!(sends(true, largest, 3), [UnlinkReason::Backlogged]);
     assert_eq!(sends(false, largest + 1, 1), []);
     assert_eq!(sends(true, largest, 2), []);
+}
+
+/// A client whose registry holds one more channel than its server's, the test protocol's own on
+/// top: another build.
+#[derive(Debug, Clone, Copy, Default)]
+struct OtherBuild;
+
+/// The channel only `OtherBuild`'s clients register.
+#[derive(Debug)]
+struct Extra;
+
+impl Channel for Extra {}
+
+impl Stack for OtherBuild {
+    fn add_client(&self, app: &mut App, client: usize, tick_rate: TickRate) {
+        TransportStack.add_client(app, client, tick_rate);
+        app.register_channel::<Extra>(ChannelSetup::default())
+            .add_direction(LinkDirection::ClientToServer);
+    }
+
+    fn add_server(&self, app: &mut App, tick_rate: TickRate) {
+        TransportStack.add_server(app, tick_rate);
+    }
+
+    fn add_protocol(&self, app: &mut App) {
+        TransportStack.add_protocol(app);
+    }
+
+    fn client_link(&self, link: &mut EntityWorldMut<'_>) {
+        TransportStack.client_link(link);
+    }
+
+    fn server_link(&self, link: &mut EntityWorldMut<'_>) {
+        TransportStack.server_link(link);
+    }
+
+    fn is_ready(&self, world: &World) -> bool {
+        TransportStack.is_ready(world)
+    }
+}
+
+/// What `play` finds: the client's gate as it sent, whether the server received the message,
+/// each end's unlinks, the server's first, and the registries each end logged as differing.
+#[derive(Debug, PartialEq, Eq)]
+struct Played {
+    gate: SendGate,
+    received: bool,
+    unlinked: Vec<UnlinkReason>,
+    differing: Vec<String>,
+}
+
+/// Sends a message on `Channel1` from the client of `stack` as it starts, and steps until both
+/// ends settle.
+fn play<S: Stack>(stack: S, kind: ClientKind) -> Played {
+    let setup = StepperSetup {
+        init: Init::Deferred,
+        ..StepperSetup::with_clients(kind, 1)
+    };
+    let mut stepper = Stepper::new(stack, setup);
+    let record = |world: &mut World| {
+        world.init_resource::<Outcomes>();
+        world.add_observer(
+            |unlink: On<'_, '_, Unlink>, mut outcomes: ResMut<'_, Outcomes>| {
+                outcomes.unlinked.push(unlink.reason);
+            },
+        );
+    };
+    record(stepper.server_world_mut());
+    record(stepper.client_world_mut(0));
+    stepper.init();
+    let channel = channel_id::<Channel1>(stepper.client_app(0));
+    let mut client = stepper.client_mut(0);
+    let mut transport = client.get_mut::<Transport>().unwrap();
+    let gate = transport.send_gate();
+    transport.send(channel, Bytes::from_static(b"data"), 1.0);
+    let channel = channel_id::<Channel1>(stepper.server_app());
+    let mut received = false;
+    for _ in 0..10 {
+        stepper.frame_step(1);
+        let Some(link) = stepper.try_client_of_entity(0) else {
+            continue;
+        };
+        let world = stepper.server_world_mut();
+        let Some(mut transport) = world.get_mut::<Transport>(link) else {
+            continue;
+        };
+        received |= (transport.channel_receiver_mut(channel))
+            .and_then(ChannelReceiver::read_message)
+            .is_some();
+    }
+    let mut unlinked = stepper
+        .server_world()
+        .resource::<Outcomes>()
+        .unlinked
+        .clone();
+    unlinked.extend(&stepper.client_world(0).resource::<Outcomes>().unlinked);
+    let logged = stepper.log().take::<ProtocolDiffers>();
+    Played {
+        gate,
+        received,
+        unlinked,
+        differing: logged.into_iter().map(|event| event.differing).collect(),
+    }
+}
+
+/// Peers of one build pass the protocol check, and a message the client sends before it passed
+/// waits for it, as the client holds every other channel while it waits. A client of another
+/// build and its server unlink each other with `ProtocolMismatch`, and the message it sent never
+/// reaches the server: the server, which reads the client's check first, logs the channel
+/// registry as the one that differs, and the client reads the mismatch from its close. Alike in a
+/// plain packet session and in a sealed one.
+#[test]
+fn a_peer_of_another_build_unlinks_before_its_data_flows() {
+    let gate = SendGate::Only(ProtocolChannel::ID);
+    let mismatch = UnlinkReason::ProtocolMismatch;
+    for kind in [ClientKind::Plain, ClientKind::Udp] {
+        let same = Played {
+            gate,
+            received: true,
+            unlinked: vec![],
+            differing: vec![],
+        };
+        assert_eq!(play(TransportStack, kind), same, "{kind:?}");
+        let other = Played {
+            gate,
+            received: false,
+            unlinked: vec![mismatch, mismatch],
+            differing: vec!["channel registry".to_owned()],
+        };
+        assert_eq!(play(OtherBuild, kind), other, "{kind:?}");
+    }
 }

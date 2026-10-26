@@ -51,10 +51,10 @@ impl BotDriver {
             books,
         } = bots;
         let rate = *world.resource::<MatchRate>();
-        let pools = world.resource::<MatchFacts>().role.pools();
-        let pool = pools.expect("a server's match runs scripts").limits.think;
+        let setup = world.resource::<MatchFacts>().role.budgets();
+        let think_limit = setup.expect("a server's match runs scripts").limits.think;
         let planned = Self::planned(player_slots, world.resource::<Session>().log(), next, rate);
-        let mut bots = TickBots::new(world, pool);
+        let mut bots = TickBots::new(world, think_limit);
         for bot in planned {
             bots.push(bot);
         }

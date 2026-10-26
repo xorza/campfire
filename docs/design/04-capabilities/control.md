@@ -35,7 +35,7 @@
 
 ## AI
 
-- **AI thinks in staggered turns.** `on_think` runs every `think_ms`, staggered by stable id; a unit whose call finds the think pool spent stays due, so under load AI thinks later and no unit loses its turn.
+- **AI thinks in staggered turns.** `on_think` runs every `think_ms`, staggered by stable id; a unit whose call finds the think budget spent stays due, so under load AI thinks later and no unit loses its turn.
 - **AI sees the stage's start.** Every call of a tick's Think sees the units as the stage began, and queries sort by stable id.
 - **AI orders only its own unit,** checked as queued and applied when the call returns.
 - **A reset as a jungle monster's.** `order_reset` walks a unit to its spawn, taking no order on the way, and refills it as it arrives, as League of Legends' jungle monsters hard-reset.

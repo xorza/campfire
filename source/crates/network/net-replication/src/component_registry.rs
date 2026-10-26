@@ -22,6 +22,9 @@ pub struct ComponentRegistry {
 }
 
 impl ComponentRegistry {
+    /// Its name, in its seal's messages and in the protocol check, where it names its hash.
+    pub(crate) const NAME: &'static str = "component registry";
+
     pub fn is_registered<C: 'static>(&self) -> bool {
         self.contains(&ComponentTypeId::of::<C>())
     }
@@ -41,7 +44,7 @@ impl ComponentRegistry {
     }
 
     fn open(&self) {
-        self.seal.assert_open("component registry");
+        self.seal.assert_open(Self::NAME);
     }
 
     /// Seals the registry, as the shared replication plugin's `finish` does. Its hash holds each
@@ -56,7 +59,7 @@ impl ComponentRegistry {
                 Some(ReplicationKind::Diff) => 2,
             }]);
         }
-        self.seal.seal("component registry", hasher.finish());
+        self.seal.seal(Self::NAME, hasher.finish());
     }
 
     /// The hash peers compare, once the registry is sealed.

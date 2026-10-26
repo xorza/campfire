@@ -48,6 +48,29 @@ pub enum UnlinkReason {
     MessageTooLarge,
 }
 
+impl UnlinkReason {
+    /// The code a local unlink of this reason closes its link with: its own for a close, the
+    /// stack's for a protocol mismatch, which the peer reads as one too, and `ENDED` for any
+    /// other.
+    pub const fn close_code(self) -> AppCode {
+        match self {
+            Self::Closed(code) => code,
+            Self::ProtocolMismatch => AppCode::PROTOCOL_MISMATCH,
+            _ => AppCode::ENDED,
+        }
+    }
+
+    /// The reason of a link whose peer closed it with `code`: a protocol mismatch the peer found,
+    /// or its close.
+    pub const fn of_peer_close(code: AppCode) -> Self {
+        if code.get() == AppCode::PROTOCOL_MISMATCH.get() {
+            Self::ProtocolMismatch
+        } else {
+            Self::ClosedByPeer(code)
+        }
+    }
+}
+
 impl fmt::Display for UnlinkReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -68,6 +91,35 @@ impl fmt::Display for UnlinkReason {
             }
             Self::MessageTooLarge => f.write_str("a reliable message passed its channel's largest"),
             Self::ProtocolMismatch => f.write_str("the peer's protocol differs from this end's"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A close carries its own code, a protocol mismatch the stack's, which the peer reads as a
+    /// mismatch too, and any other reason `ENDED`; a peer's other codes read as its close.
+    #[test]
+    fn a_close_code_reads_back_as_its_reason() {
+        let code = AppCode::new(AppCode::FIRST);
+        assert_eq!(UnlinkReason::Closed(code).close_code(), code);
+        assert_eq!(
+            UnlinkReason::ProtocolMismatch.close_code(),
+            AppCode::PROTOCOL_MISMATCH
+        );
+        assert_eq!(UnlinkReason::TimedOut.close_code(), AppCode::ENDED);
+        let mismatch = UnlinkReason::ProtocolMismatch.close_code();
+        assert_eq!(
+            UnlinkReason::of_peer_close(mismatch),
+            UnlinkReason::ProtocolMismatch
+        );
+        for other in [code, AppCode::ENDED, AppCode::DROPPED] {
+            assert_eq!(
+                UnlinkReason::of_peer_close(other),
+                UnlinkReason::ClosedByPeer(other)
+            );
         }
     }
 }

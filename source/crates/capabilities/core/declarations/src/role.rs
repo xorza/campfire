@@ -1,12 +1,12 @@
 use bevy_ecs::resource::Resource;
-use campfire_script::ScriptPools;
+use campfire_script::BudgetSetup;
 
 /// What a match is to its host, which the match keeps as it is built.
 #[derive(Resource, Debug, Clone)]
 pub enum Role {
     /// A server's or a verifier's match, which computes the whole state and runs scripts from
-    /// its pools.
-    Server(ScriptPools),
+    /// its budgets.
+    Server(BudgetSetup),
     /// A server's match of the rules alone, which computes the whole state and runs no scripts,
     /// as a test or a bench of the capabilities builds.
     Rules,
@@ -17,7 +17,7 @@ pub enum Role {
 }
 
 impl Role {
-    /// Whether the match runs scripts: a server's from its pools.
+    /// Whether the match runs scripts: a server's from its budgets.
     pub const fn scripts(&self) -> bool {
         matches!(self, Self::Server(_))
     }
@@ -28,10 +28,11 @@ impl Role {
         !matches!(self, Self::Client)
     }
 
-    /// The pools the match's scripts draw from; none for a match that runs no scripts.
-    pub const fn pools(&self) -> Option<ScriptPools> {
+    /// The setup of the budgets the match's scripts draw from; none for a match that runs no
+    /// scripts.
+    pub const fn budgets(&self) -> Option<BudgetSetup> {
         match *self {
-            Self::Server(pools) => Some(pools),
+            Self::Server(setup) => Some(setup),
             Self::Rules | Self::Client => None,
         }
     }

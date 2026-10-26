@@ -16,7 +16,7 @@ use campfire_declarations::{ById, EntityParts, Module};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
 use campfire_players::{Player, PlayerResources};
-use campfire_script::{PlannedCapability, ScriptLimits, ScriptPools, View};
+use campfire_script::{BudgetSetup, PlannedCapability, ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, StateRegistry};
 use campfire_store::{DirEntries, EntryKind, InputFile};
@@ -95,8 +95,8 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
 }
 
 /// Installs `declared` into a fresh match that runs `scripts`.
-fn installed(declared: &[Capability], pools: Option<ScriptPools>) -> Match {
-    let role = pools.map_or(Role::Rules, Role::Server);
+fn installed(declared: &[Capability], budgets: Option<BudgetSetup>) -> Match {
+    let role = budgets.map_or(Role::Rules, Role::Server);
     Match::builder(declared).role(role).build()
 }
 
@@ -109,7 +109,7 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_p
         think: 1,
         mode: 1,
     };
-    let scripts = ScriptPools { limits, players: 1 };
+    let scripts = BudgetSetup { limits, players: 1 };
     let mut scripted = installed(&all, Some(scripts));
     let client = installed(&all, None);
     for (world, scripts) in [(&scripted, true), (&client, false)] {
@@ -160,7 +160,7 @@ fn every_pair_of_capabilities_with_only_what_they_need_orders_every_pair_of_thei
         think: 1,
         mode: 1,
     };
-    let scripts = ScriptPools { limits, players: 1 };
+    let scripts = BudgetSetup { limits, players: 1 };
     let built: Vec<Capability> = Capability::ALL
         .into_iter()
         .filter(|&capability| capability != Mode)
@@ -529,7 +529,7 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
     // The learns are progression's, the cancels and rallies production's, the trades items'; a
     // trade, as a server runs it. No match here declares `orders`.
     let scheduled = |declared: &[Capability]| {
-        let budgets = ScriptPools {
+        let budgets = BudgetSetup {
             limits: ScriptLimits::ROOMY,
             players: 1,
         };

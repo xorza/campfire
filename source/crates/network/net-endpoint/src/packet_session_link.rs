@@ -7,7 +7,7 @@ use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::DeferredWorld;
 use campfire_net_link::Unlink;
 use campfire_net_packets::{ClosePacketSession, PeerKey};
-use campfire_net_payload::{AppCode, UnlinkReason};
+use campfire_net_payload::AppCode;
 
 /// The packet session a link entity carries. A local `Unlink` closes it with its code, and its
 /// removal or replacement, by any path, closes it with `AppCode::ENDED`. It holds its endpoint
@@ -30,8 +30,8 @@ impl PacketSessionLink {
         }
     }
 
-    /// A local `Unlink` closes the packet session with its code, `ENDED` for any reason but a
-    /// close, and the link parts from it.
+    /// A local `Unlink` closes the packet session with its reason's code, and the link parts
+    /// from it.
     pub(crate) fn unlink(
         unlink: On<'_, '_, Unlink>,
         links: Query<'_, '_, &Self>,
@@ -40,11 +40,7 @@ impl PacketSessionLink {
         let Ok(link) = links.get(unlink.entity) else {
             return;
         };
-        let code = match unlink.reason {
-            UnlinkReason::Closed(code) => code,
-            _ => AppCode::ENDED,
-        };
-        link.close(code);
+        link.close(unlink.reason.close_code());
         commands.entity(unlink.entity).try_remove::<Self>();
     }
 

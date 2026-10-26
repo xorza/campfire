@@ -36,7 +36,7 @@ impl SimComponent for Owner {
     const NAME: &'static str = "units.owner";
     type Host = UnitEntity;
 
-    // The script pools and the players' tables hold a place for each player only, and a unit's
+    // The script budgets and the players' tables hold a place for each player only, and a unit's
     // owner is of its team, whose vision its client holds the unit by.
     fn check(&self, world: &World, entity: Entity) -> bool {
         world

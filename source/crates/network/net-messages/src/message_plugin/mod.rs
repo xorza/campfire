@@ -48,6 +48,7 @@ use campfire_net_core::PeerId;
 use campfire_net_link::Unlink;
 use campfire_net_payload::UnlinkReason;
 use campfire_net_transport::ChannelRegistry;
+use campfire_net_transport::ProtocolHashes;
 use campfire_net_transport::Transport;
 use campfire_net_transport::TransportSystems;
 use std::sync::Arc;
@@ -61,6 +62,7 @@ pub struct MessagePlugin;
 impl Plugin for MessagePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MessageRegistry>();
+        app.init_resource::<ProtocolHashes>();
         app.add_observer(Self::handle_disconnection);
 
         app.register_required_components::<Client, LinkMessages>();
@@ -76,6 +78,10 @@ impl Plugin for MessagePlugin {
             .remove_resource::<MessageRegistry>()
             .unwrap();
         registry.seal();
+        let hash = registry.hash().expect("the registry is sealed");
+        app.world_mut()
+            .resource_mut::<ProtocolHashes>()
+            .add(MessageRegistry::NAME, hash);
 
         let receive = (
             QueryParamBuilder::new(|builder| {

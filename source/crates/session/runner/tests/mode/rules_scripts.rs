@@ -95,8 +95,8 @@ fn the_modes_own_script_ends_the_match_listed_after_a_rules_script() {
 }
 
 #[test]
-fn an_event_whose_call_finds_the_pool_spent_runs_later_in_the_scripts_that_did_not_answer_it() {
-    // Each level-up call spins 50 additions: a mode pool of 300 operations holds one, not two.
+fn an_event_whose_call_finds_the_budget_spent_runs_later_in_the_scripts_that_did_not_answer_it() {
+    // Each level-up call spins 50 additions: a mode budget of 300 operations holds one, not two.
     let rules = "
 fn on_level_up(ctx, unit, track, level) {
     ctx.players[0].state.kills += 1;
@@ -127,7 +127,7 @@ fn on_level_up(ctx, unit, track, level) {
     let mut game = listed_match(&[rules, own], 1, limits).unwrap();
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
     Mode::tick_inputs(&mut game, &[(0, input("phase", ""))]);
-    // The rules script answered the level-up; the mode's own call found the pool spent, and the
+    // The rules script answered the level-up; the mode's own call found the budget spent, and the
     // level-up waits with one script answered.
     let state = |game: &Match| {
         let partial = game.resource::<LevelUps>().partial();

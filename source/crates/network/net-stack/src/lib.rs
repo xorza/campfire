@@ -9,7 +9,6 @@ mod client_plugins;
 #[cfg(feature = "internals")]
 mod fixtures;
 mod layers;
-mod protocol_check_plugin;
 #[cfg(test)]
 mod scenario;
 mod server_plugins;

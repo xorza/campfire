@@ -7,7 +7,7 @@ use campfire_sim::{SimResource, StableId};
 use serde::{Deserialize, Serialize};
 
 /// The units trains made, in the order they spawned, whose `on_unit_trained` has yet to run. The
-/// Mode stage runs the calls from the front; those whose call found the mode pool spent stay, and
+/// Mode stage runs the calls from the front; those whose call found the mode budget spent stay, and
 /// run first in a later tick's Mode stage.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrainedUnits(pub PendingCalls<Trained>);
@@ -39,7 +39,7 @@ impl HookDecl for OnUnitTrained {
     type Args = (Ctx, Unit, ScriptValue);
 }
 
-/// A unit a train made runs `on_unit_trained`, from the mode's pool, with the unit and its
+/// A unit a train made runs `on_unit_trained`, from the mode's budget, with the unit and its
 /// producer, `()` once the producer is gone; one whose unit is gone runs no call.
 impl ModeEvents for TrainedUnits {
     const HOOKS: &'static [Hook] = &[Hook::of::<OnUnitTrained>()];

@@ -682,6 +682,8 @@ fn spawn(stepper: &mut Stepper<ReplicationStack>) -> StepperCounts {
     StepperCounts::read(stepper) - before
 }
 
+/// The frame's received bytes hold the client's protocol check too: 3 registries of a length
+/// byte, a name of 16, 18 and 16 bytes and a hash of 32, 149 bytes, in a message of 155.
 #[test]
 fn a_frame_that_spawns_1000_entities_sends_exact_bytes() {
     let mut stepper = Stepper::new(ReplicationStack, StepperSetup::single());
@@ -692,7 +694,7 @@ fn a_frame_that_spawns_1000_entities_sends_exact_bytes() {
                 sent_bytes: 8130,
                 sent_packets: 9,
                 resent_messages: 0,
-                received_bytes: 8151,
+                received_bytes: 8306,
             },
             replication: ChannelCounts {
                 sent_bytes: 8018,
