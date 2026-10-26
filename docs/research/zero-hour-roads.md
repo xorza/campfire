@@ -9,7 +9,7 @@ How Zero Hour stores and draws its roads, read on 26 October 2026: the game's co
 
 ## In the install
 
-- **Census of the 150 maps.** 130 hold roads: 40,960 segments, 7 starts with no end after them, and 3 segments whose template is empty. The most segments are `md_gla05_end`'s, 1,811; the most road types `md_gla05`'s, 37. Of the segments' ends, by how many ends of the same type share their point: 12,689 alone, 26,548 two, 4,566 three, 546 four, 37 five, 8 six and 2 ten; 317 points hold ends of two types. Flags: 27,535 angled, 16,298 tight, 3,069 joins. Bridge ends: 241.
+- **Census of the 150 maps.** 130 hold roads: 40,960 segments, 7 starts with no end after them, and 3 segments whose template is empty, all on `usa02`: one of about 206 units from (690, 430) to (835, 284), where `TwoLaneOld2` roads meet both its ends, and two of no length at those ends. The most segments are `md_gla05_end`'s, 1,811; the most road types `md_gla05`'s, 37. Of the segments' ends, by how many ends of the same type share their point: 12,689 alone, 26,548 two, 4,566 three, 546 four, 37 five, 8 six and 2 ten; 317 points hold ends of two types. Flags: 27,535 angled, 16,298 tight, 3,069 joins. Bridge ends: 241.
 - **Types used.** 60 of the 63 roads: highways and lanes (`TwoLane` 1,384, `TwoLaneDark` 2,019, `FourLane` 743 and their variants), dirt and gravel roads and paths (`DirtRoad` 1,655, `GravelRoad` 1,054), sidewalks (`Sidewalk` 7,233, `Sidewalk2` to `4` about 2,700 each), cobblestones (1,186), train tracks (875), and markings and symbols (crosswalks, caution areas and strips, arrows, parking lines, words, a helipad).
 - **`Roads.ini`.** 63 roads and 27 bridges; a road's fields are `Texture`, `RoadWidth`, in world units (35 or 60 for lanes), and `RoadWidthInTexture`, a share of its texture's height (0.9 or 0.95 for most, 3 for 18 symbols and markings) (`TerrainRoads.cpp`).
 - **Textures.** `TRTwoLane.tga` is `Art\Textures\trtwolane.dds`, 512 texels square; `TRSidewalk.tga` is `trsidewalk.dds`, 256 square: the game reads a texture's DDS before its TGA, as the import's model textures do. The game loads each with three levels, repeated on both axes (`RoadType::loadTexture`).
@@ -25,6 +25,14 @@ How Zero Hour stores and draws its roads, read on 26 October 2026: the game's co
 
 - **After the terrain, in stacking order.** Each road type is one draw, the types by their stacking, which the alpha joins set; every frame keeps the pieces whose ends' box meets the view (`drawRoads`, `visibilityChanged`).
 - **Blended, unwritten to depth.** The texture modulates the vertex's colour, the terrain's static light at the sample nearest the vertex (`updateSegLighting`), its alpha the texture's; the result blends by source alpha over the terrain, with a depth test of less or equal and no depth write, and the cloud and noise passes over it (`RoadShader2Stage::set`).
+
+## On a slope
+
+Measured on 26 October 2026, after a player's report of a road hanging in the air on Tournament Desert, from the import's terrain file against its height grid.
+
+- **The game lifts a column whole.** `loadFloat4PtSection` takes, for each column along a piece, the highest cell corner at each sample across it, then sets both of the column's vertices to the highest of them (its `if (true)` branch collapses every column), plus `MAP_HEIGHT_SCALE / 8`. A piece across a slope floats at its low side by the ground's rise across its width.
+- **Tournament Desert.** Of the 3,635 decal vertices, the 25 highest above the ground under them stand 7.0 to 9.9 units above it. The report's: a `DirtRoad` junction, 52 units wide, near game point (1,490, 1,348), where the ground rises about 1.25 units for each 10 across the road; its low vertex stands at 30.08, the ground under it at 20.68, the highest corner of its own cell at 21.88.
+- **The original draws the same.** Its code holds no other path for a road's height, so the original's road hangs there too; its camera, steeper and nearer the ground, shows less of it.
 
 ## The engine
 
