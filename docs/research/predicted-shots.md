@@ -28,3 +28,11 @@ Read on 26 October 2026.
 - **Pre-spawns exist and no sim code uses them.** `net-replication`'s `PreSpawned` matches a client's entity to the server's by a hash of its archetype and its simulated tick, or a given one, and `net-prediction` despawns a pre-spawn a rollback before its tick makes again and expires an unmatched one when the server's applied state reaches its tick (11-net-stack/replication.md).
 - **A delivery is the server's.** `DeliveryEntity` is a kind its owner does not predict, and `Projectiles` installs its launches and flights on the server alone, as "a predicting client predicts no delivery".
 - **A tracking projectile meets a target it does not predict.** A client holds another player's units as the server last sent them, behind the tick it predicts its own at; a steered or homing projectile it predicted would steer toward its target's place of that older tick, where the server's steers toward its place at the same tick, so its flight would differ from the server's and be corrected.
+
+## Effects in a replay of predicted ticks
+
+Read on 27 October 2026.
+
+- **Netcode for Entities.** `IsFirstTimeFullyPredictingTick` is set in the prediction loop only on a tick predicted the first time; its documentation gives it to effects that cannot be rolled back, a spawn, a particle system or a sound, so that each plays once and a replay does not repeat it ([NetworkTimeFlags](https://docs.unity3d.com/Packages/com.unity.netcode@1.1/api/Unity.NetCode.NetworkTimeFlags.html), [Ghost spawning](https://docs.unity3d.com/Packages/com.unity.netcode@1.3/manual/ghost-spawning.html)).
+- **Photon Fusion.** `IsResimulation` is true on a tick the client simulated before, and `IsForward` on one it did not ([Simulation](https://doc-api.photonengine.com/en/Fusion/v1/class_fusion_1_1_simulation.html)).
+- **The engine's own.** A rollback replays its ticks through `FixedMain` in `PreUpdate` (`RollbackPlugin::run_rollback`), so the frame's `Update` sees only the state after the replay; `MatchEffects::play_fires` takes a shot from a rise of a slot's ready tick past the latest it saw, over the frame, and does not know whether a tick was replayed.

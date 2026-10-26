@@ -2,19 +2,37 @@
 
 The open steps, in the order they are done, and the foundations. The rules are in [AGENTS.md](AGENTS.md#workflow).
 
-## Net faults
+## Prediction and replication faults
 
-A fix of the issue log's Net items, found 2026-10-26. It stands first, as N2 makes each CI run after it keep the frames N3 measures.
+The fixes of the issue log's Net, Client and Combat items of prediction and replication, decided 2026-10-27. They stand before the end of Effects, as P2 and P3 change how the client plays an effect.
 
-### N3. The lead of a bot's first order is measured
+### P1. The input timeline's band lies ahead of its objective
 
-Touches `docs/research/lan-late-input.md` and the issue log; it stands after N2, as it reads the frames N2 keeps.
+Touches `net-sync` and `11-net-stack/time.md`; it stands first, as it is the stack's alone.
 
-- [ ] Every failure of `lan.2` the research holds, stamps 300, 20, 302, 20 and 20, is the first order after a start or a restart; in run 40328962123, bot 0 stamped 20 while the server's last tick was 19, a lead of 1 where the objective is 2, which the sync's deadband of 1 lets stay, and after a stall of every process a lead of 1 leaves only the phase to the server's next tick for the bot's frame and send. From the artifacts of macOS runs after N2, failed and passed, and of Linux runs for comparison: each bot's tick at each frame's start less the server's, from its start or restart to its first order; the frame each order left in; whether the lead reached its objective by then. The facts go to the research, dated; the issue moves to Decide with the options they show, as a deadband on the ahead side alone, or a lead the sync reaches before a first order may go. Checks: none of the code.
+- [ ] The input timeline keeps a lead under its objective inside its deadband, so a bot's orders leave at a lead of about 1 tick and a stall of every process leaves them the phase alone ([LAN late input](docs/research/lan-late-input.md#the-lead-of-a-first-order)); the band lies on the ahead side alone (11-net-stack/time.md, The input timeline's band lies ahead of its objective, planned), and the interpolation timeline keeps its own. Checks: a test of the sync holds a lead of 1 corrected to 2 and one of 3 kept; the LAN check's runs, local and in CI, measure the lead of each first order at 2 or more.
+
+### P2. A shot plays in its tick's first prediction
+
+Touches the net client, `host` and the client's effects and stand-ins; it stands after P1, apart from it.
+
+- [ ] The client takes a shot from a rise of a slot's ready tick over its frame, after a rollback's replay, so a shot the replay moves to a later tick plays its effect and flash twice and draws a second stand-in (`MatchEffects::play_fires`, `ShotStandIns::place`); the net client publishes whether a tick is replayed, and the client takes each shot in its tick, playing it in the tick's first prediction alone (02-engine-core.md, A shot plays in its tick's first prediction, planned), its stand-in at that tick. Checks: a test replays a slot's shot one tick later and holds one effect, one flash and one stand-in; a shot first predicted in a replay plays none.
+
+### P3. A death replicates before its unit goes
+
+Touches `net-replication`, combat and the client's effects; it stands after P2, as both change how the client plays an effect.
+
+- [ ] A unit whose type despawns at death is despawned in its death's tick, and the server sends once a frame, so no client receives its `Dead` and a destroyed building vanishes with no explosion ([Zero Hour's deaths](docs/research/zero-hour-deaths.md#what-the-engine-shows)); the server sends after every tick (11-net-stack/replication.md, A send follows each tick, planned), a dead unit despawns at the end of the tick after its death, and the client plays a death by an observer of `Dead`'s insert (04-capabilities/combat.md, A death replicates before its unit goes, planned). Checks: a LAN test destroys a unit of a despawn type and holds the client's death effect, in a frame that applies the death and the despawn together too; a catch-up frame of three ticks sends three states; the sim's golden moves by the death's extra tick alone.
 
 ## Effects
 
 The slice of [Effects](docs/design/effects.md): a player of a Zero Hour skirmish sees each shot's fire effect at its barrel, each projectile's exhaust, each hit's burst and each death's explosion, as the game's FX lists and particle systems draw them. Its facts are [Zero Hour's effects](docs/research/zero-hour-effects.md); its checks are that document's.
+
+### E4. A death plays its phases
+
+Touches the import, `client-files` and the client's effects; it stands after P3, which makes every death reach the client, and before the end of the slice, which sees it.
+
+- [ ] A look's death names one effect, which the import takes from an `FXListDie` alone, so a tank, whose death is a `SlowDeathBehavior`, plays none and vanishes ([Zero Hour's deaths](docs/research/zero-hour-deaths.md)); a look's death names an effect at its start, midpoint and end, the import takes them from the slow death a normal death most likely takes, and the client plays them as `Dead` comes, at the middle of the keep and as the unit goes (effects.md, A death plays its phases, planned); hulks, debris, death weapons, tread dust and track marks are counted as losses. Checks: the import's tests convert a slow death's three phases and count each loss; a client test plays the three at their times; the Zero Hour check pins the deaths named and the losses.
 
 ### End of the slice
 

@@ -41,6 +41,15 @@ visibility.
   stands at, as several Replicon ticks may map to one. A link that joins a paused app, as a
   replay's viewer joins a replay held at a report's tick, so takes its state. Refused: a send of
   a replay's own, which a paused load or a join of a paused local match would also need.
+- **A send follows each tick, planned.** The server sends after every tick it runs, a catch-up
+  frame's included, so every tick's state reaches a client and a state that holds one tick, as
+  a death before its unit despawns, is never merged away; a paused app keeps its send of no
+  step. Practice: Unreal's `TearOff` replicates a dying actor's final state before the server
+  stops sending it ([Zero Hour's deaths](../../research/zero-hour-deaths.md#other-engines)).
+  Refused: a send once a frame, which a catch-up frame merges; a death message, which reverses
+  effects.md's refusal of events; a tear-off that hides a dead unit from the sim but not from
+  replication, a stack feature of several batches; a fixed keep of every dead unit, which a
+  longer stall still merges away.
 
 ## The receiver
 

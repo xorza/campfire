@@ -94,6 +94,16 @@ How the stack answers "what time is it".
   `jitter_margin` defaults to 0, a tail margin above the measured jitter that interpolation keeps
   at 1. Practice: Netcode for Entities' `TargetCommandSlack` of 2 ticks. Refused: a second tick
   for the input's arrival, which paid the same reason twice.
+- **The input timeline's band lies ahead of its objective, planned.** A lead under the objective
+  is corrected, and one up to a tick past it stays, so each input arrives a tick early at least
+  plus the phase to the server's next tick, which a stall of every process takes away; the
+  interpolation timeline keeps its band about its objective. Practice: Netcode for Entities keeps
+  its command age near `TargetCommandSlack`, and Overwatch speeds up a client whose inputs starve
+  ([LAN late input](../../research/lan-late-input.md#the-lead-of-a-first-order)). Refused: a
+  band about the objective, which lets a lead of 1 stay; inputs held after a start until the lead
+  reaches the objective, which leaves a lead of 1 later in a match; the LAN check's excuse widened
+  to a stall of every process, which leaves the input late; the server's report of each input's
+  age, the most exact measure, at the cost of a message and a new controller.
 - **A client behind steps, a client ahead slews.** The input timeline steps to its objective once a
   deficit passes the deadband, as a late input costs more than latency, and the interpolation
   timeline slews, as a step shows as a jump ([LAN late input](../../research/lan-late-input.md)).
