@@ -168,12 +168,15 @@ impl Wake {
     }
 
     /// Takes the pending byte, so the next wait waits until another wake. The byte is drained
-    /// before the flag clears, so a wake sends its byte only after the last one left the socket;
-    /// a wake between the two sends none, and the pass after this wait reads what it brought.
+    /// before the flag clears, and the clear releases the drain, so a wake sends its byte only
+    /// after the last one left the socket; a wake between the two sends none, and the clear
+    /// acquires that wake's swap, so the pass after this wait reads what it brought, as libuv's
+    /// `uv__async_io` clears its `pending` by a read-modify-write after it reads its pipe
+    /// (11-net-stack/udp.md, A wake sends one byte until a wait takes it).
     fn take(&self) {
         let mut byte = [0; 1];
         while self.receiver.recv(&mut byte).is_ok() {}
-        self.pending.store(false, Ordering::Release);
+        let _ = self.pending.swap(false, Ordering::AcqRel);
     }
 }
 

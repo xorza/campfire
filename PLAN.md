@@ -2,16 +2,6 @@
 
 The open steps, in the order they are done, and the foundations. The rules are in [AGENTS.md](AGENTS.md#workflow).
 
-## Issue fixes
-
-A fix of the issue log's Ready items, found 2026-10-26, one batch.
-
-### I1. A wake sends one byte until a wait takes it
-
-Touches the socket's IO thread wake alone; it stands first, as macOS CI failed on it (run 40353599661).
-
-- [ ] A macOS loopback datagram reaches its socket after its `send` returns, so a wake byte still in flight outlived a wait's drain and ended the next wait for nothing: a probe of the wake test's steps on an M5 failed 4 rounds of 20000 at rest and about 1 in 19 under CPU load, and none of 160000 on Linux. Commit `ff9e1346` sends a byte only while a flag says none is pending, as libuv's `uv_async_send` and `polling`'s `Poller::notify` coalesce wakes, and the same probe with the flag failed none of 180000 rounds on the M5. What remains: `Wake::take` clears the flag by a plain release store, where the clear must acquire what a wake that sent no byte brought for the pass after the wait, as libuv's `uv__async_io` clears `pending` by a read-modify-write; the decision is in no design document, and the probe's facts in no research. The clear becomes an acquiring swap, the decision goes into `11-net-stack/udp.md`, and the facts into `docs/research/udp.md`. Direction: what can be forgotten is a type. Checks: `udp_port`'s wake test passes on macOS under CPU load and in CI.
-
 ## Looks of the report of 2026-10-26
 
 Three faults a player's report showed (2026-10-26, report `1e38d2c4…-945` and its session's log to tick 5711, on Tournament Desert): a Humvee drew its gun's muzzle flash at all times; a Tomahawk kept its missile on its rail after each launch, where Zero Hour's comes back after its reload; and China's Gattling tank, attacking a Crusader from tick 5505, did not spin its barrels. Each cause is found; L1 is a batch of its own, as it changes the import's weapons alone, and L2 and L3 one, as both change the import's looks and the client's look states.

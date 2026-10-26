@@ -102,3 +102,12 @@ socket: its handshake, its trust, and how a server guards itself. The packet ses
   a drop of every early datagram, which delays the session's first messages by a resend.
 - **The socket stays on `quinn-udp`, with GSO and GRO.** A send joins the datagrams of one peer
   and one length; a read splits what GRO joined.
+- **A wake sends one byte until a wait takes it.** The app wakes the IO thread's wait by a byte from
+  one loopback datagram socket to another, which the poller watches, and sends it only while a flag
+  says none is pending; the thread drains the byte, then clears the flag by an exchange that
+  releases the drain and acquires each wake that sent nothing, so at most one byte is in flight and
+  the pass after the wait reads what every wake brought, as libuv's async handle and `polling`'s
+  `Poller::notify` coalesce their wakes, each clearing its flag by a read-modify-write. Refused: a
+  byte for each wake, which a macOS loopback datagram still in flight after its `send` lets outlive
+  a wait's drain and end the next wait for nothing; `Poller::notify`, which allocates on each call
+  on kqueue. Source: [UDP research](../../research/udp.md#a-wake-in-flight).

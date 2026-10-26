@@ -10,6 +10,15 @@ Read on 20 October 2026. A socket layer with no runtime: `UdpSocketState::new(Ud
 
 Read on 11 October 2026. One API over epoll, kqueue and Windows' IOCP. `Poller::wait(events, timeout)` blocks until a source it watches is ready or the timeout passes, and `Poller::notify` wakes a wait from another thread. `mio`, the other such crate, comes in only through tokio.
 
+## A wake in flight
+
+Measured on 26 October 2026, on an M5 Mac and on the Linux workstation, with a probe of the steps of `udp_port`'s wake test, as macOS CI run 40353599661 failed its second assertion.
+
+- **A loopback datagram arrives after its send.** On macOS a datagram from one loopback socket to another may reach the receiver after `send` returns, so a wait that drains its socket may leave a byte still in flight, which ends the next wait.
+- **A byte for each wake.** The probe failed 4 rounds of 20,000 at rest and about 1 in 19 under CPU load on the M5, and none of 160,000 on Linux under load.
+- **One byte while a flag is pending** (commit `ff9e1346`): none of 180,000 rounds failed on the M5. With the flag cleared by an exchange that acquires and releases, none of 20,000 rounds failed at rest and none of 100,000 under load, twelve `yes` processes on its ten cores.
+- **Others coalesce.** libuv's `uv__async_io` (`src/unix/async.c`, branch `v1.x`, read the same day) reads its pipe, outside Linux, and then clears each handle's `pending` by an atomic `fetch_and`, which its comment pairs with the sequentially consistent compare-and-swap of `uv_async_send`. `polling` 3.11.0's `Poller::notify` notifies only when a sequentially consistent compare-exchange of its `notified` finds it clear, and `Poller::wait` clears it by a sequentially consistent swap after its wait.
+
 ## `rustls` 0.23.45
 
 Read on 11 October 2026.
