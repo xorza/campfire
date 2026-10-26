@@ -10,6 +10,7 @@ use super::*;
 #[test]
 fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
     let model = |path: &str, hide: &[&str]| ClientModel {
+        rounds: Vec::new(),
         model: PackagePath::parse(path).unwrap(),
         scale: ModelScale::ONE,
         hide: hide.iter().map(|&name| name.to_owned()).collect(),
@@ -117,6 +118,7 @@ fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
 #[test]
 fn a_unit_of_a_type_of_variations_draws_its_variations_look_when_the_look_has_as_many() {
     let model = |name: &str, top: f32| ClientModel {
+        rounds: Vec::new(),
         model: PackagePath::parse(&format!("client/models/{name}.glb")).unwrap(),
         scale: ModelScale::ONE,
         hide: Vec::new(),
@@ -382,13 +384,19 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
 fn a_models_upgrade_shows_and_hides_its_nodes_over_its_states_while_its_unit_holds_it() {
     // A tank of its flag hidden; its armor, tested by bit 2, shows the flag and hides the hatch;
     // its paint, a map's condition every unit holds, hides the hull; a condition of no test,
-    // which none holds, shows the hatch.
+    // which none holds, shows the hatch. Its second weapon group's clip shows two rounds, a
+    // rocket and then a rocket and the flag.
     let upgrade = |condition: &str, show: &[&str], hide: &[&str]| NodeUpgrade {
         condition: DeclaredName::new(condition).unwrap(),
         show: show.iter().map(|&node| node.to_owned()).collect(),
         hide: hide.iter().map(|&node| node.to_owned()).collect(),
     };
+    let round = |nodes: &[&str]| nodes.iter().map(|&node| node.to_owned()).collect();
     let tank = ClientModel {
+        rounds: vec![ClipRounds {
+            slot: 1,
+            rounds: vec![round(&["rocket01"]), round(&["rocket02", "flag"])],
+        }],
         model: PackagePath::parse("tank.glb").unwrap(),
         scale: ModelScale::ONE,
         hide: vec!["flag".to_owned()],
@@ -411,12 +419,20 @@ fn a_models_upgrade_shows_and_hides_its_nodes_over_its_states_while_its_unit_hol
         known: Some(&known),
     };
     let [model] = <[LookModel; 1]>::try_from(LookModel::all(source, &[tank])).unwrap();
-    let hidden = |held| model.held_nodes(held).hide.to_vec();
+    let hidden = |held, lacks: &[u16]| model.held_nodes(held, lacks).hide.to_vec();
     // Unarmored: the flag, then the hull; armored, bit 2: the flag shown, the hatch hidden, then
-    // the hull, in the upgrades' order.
-    assert_eq!(hidden(0), ["flag", "hull"]);
-    assert_eq!(hidden(1 << 2), ["hatch", "hull"]);
-    assert_eq!(hidden(1 << 3), ["flag", "hull"]);
+    // the hull, in the upgrades' order. A clip that lacks no round shows both, the flag too,
+    // over its state; one round lacked hides the first rocket; the first group's lack hides
+    // none; both lacked hide both rockets and the flag.
+    assert_eq!(hidden(0, &[]), ["hull"]);
+    assert_eq!(hidden(1 << 2, &[]), ["hatch", "hull"]);
+    assert_eq!(hidden(1 << 3, &[2, 0]), ["hull"]);
+    assert_eq!(hidden(0, &[0, 1]), ["hull", "rocket01"]);
+    assert_eq!(
+        hidden(1 << 2, &[0, 2]),
+        ["hatch", "hull", "rocket01", "rocket02", "flag"]
+    );
+    assert!(model.shows_rounds());
     // Its upgrades test bit 2 alone; a source of no conditions holds none.
     assert_eq!(model.upgraded(), 1 << 2);
     let tank = LookModel::all(ModelSource::still(PackageIndex::MODE), &[model_file()]);
@@ -426,6 +442,7 @@ fn a_models_upgrade_shows_and_hides_its_nodes_over_its_states_while_its_unit_hol
 /// A model file of an upgrade of a condition, as a look of no conditions reads it.
 fn model_file() -> ClientModel {
     ClientModel {
+        rounds: Vec::new(),
         model: PackagePath::parse("tank.glb").unwrap(),
         scale: ModelScale::ONE,
         hide: Vec::new(),

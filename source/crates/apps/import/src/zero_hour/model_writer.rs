@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bevy_math::Vec3;
 use campfire_client_files::{
-    AnimationMode, ClientModel, ClientUnit, ConditionTest, FireBone, LookDraw, LookShown,
-    LookState, LookTransition, LookVariant, LookVariation, ModelScale, ModelTop, NodeUpgrade,
-    ObjectLook, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
+    AnimationMode, ClientModel, ClientUnit, ClipRounds, ConditionTest, FireBone, LookDraw,
+    LookShown, LookState, LookTransition, LookVariant, LookVariation, ModelScale, ModelTop,
+    NodeUpgrade, ObjectLook, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
 };
 use campfire_combat::{BarrelData, UnitOffset};
 use campfire_common::{DeclaredName, EnumAll};
@@ -333,7 +333,7 @@ impl ModelWriter<'_, '_> {
                 .states()
                 .next()
                 .expect("a module has its default state");
-            let looked = self.look_models([default.drawn], scale, &upgrades)?;
+            let looked = self.look_models([default.drawn], scale, &upgrades, draw.rounds_shown)?;
             skipped |= looked.skipped;
             drawn |= !looked.models.is_empty();
         }
@@ -347,7 +347,8 @@ impl ModelWriter<'_, '_> {
             let mut keys = DrawKeys::default();
             let mut states = Vec::new();
             for state in draw.states() {
-                let looked = self.look_models([state.drawn], scale, &upgrades)?;
+                let looked =
+                    self.look_models([state.drawn], scale, &upgrades, draw.rounds_shown)?;
                 let mut sets = Vec::with_capacity(state.sets.len());
                 for set in state.sets {
                     let mut names = Vec::with_capacity(set.flags().len());
@@ -383,7 +384,8 @@ impl ModelWriter<'_, '_> {
             }
             let mut transitions = Vec::with_capacity(draw.transitions().len());
             for transition in draw.transitions() {
-                let looked = self.look_models([transition.drawn()], scale, &upgrades)?;
+                let looked =
+                    self.look_models([transition.drawn()], scale, &upgrades, draw.rounds_shown)?;
                 let shown = LookShown {
                     models: looked.models,
                     animation: self.state_animation(&transition.animation)?,
@@ -594,11 +596,11 @@ impl ModelWriter<'_, '_> {
     where
         I: IntoIterator<Item = DrawnState<'d>>,
     {
-        let own = self.look_models(drawn(LookConditions::default()), scale, &[])?;
+        let own = self.look_models(drawn(LookConditions::default()), scale, &[], [false; 3])?;
         let mut skipped = own.skipped;
         let mut variants = Vec::new();
         for conditions in LookConditions::VARIANTS {
-            let looked = self.look_models(drawn(conditions), scale, &[])?;
+            let looked = self.look_models(drawn(conditions), scale, &[], [false; 3])?;
             skipped |= looked.skipped;
             variants.push(LookVariant {
                 conditions: conditions.names(),
@@ -617,13 +619,16 @@ impl ModelWriter<'_, '_> {
         }))
     }
 
-    /// The models of `drawn`, each with the look whose hidden nodes it hides, at `scale`, of those
-    /// that draw one the package holds, and whether the package lacks one it names.
+    /// The models of `drawn`, each with the look whose hidden nodes it hides, at `scale`, the
+    /// nodes each of `upgrades` shows and hides, and the rounds of each weapon slot `rounds_shown`
+    /// names, of those that draw one the package holds; whether the package lacks one it names;
+    /// and the bones its weapon slots' fire effects play at.
     fn look_models<'d>(
         &mut self,
         drawn: impl IntoIterator<Item = DrawnState<'d>>,
         scale: ModelScale,
         upgrades: &[SubObjectsUpgrade],
+        rounds_shown: [bool; 3],
     ) -> Result<LookModels, ZeroHourError> {
         let mut looked = LookModels {
             models: Vec::new(),
@@ -662,7 +667,17 @@ impl ModelWriter<'_, '_> {
                             hide,
                         });
                     }
+                    let shown = (0_u8..).zip(&look.weapons).zip(rounds_shown);
+                    let rounds = shown
+                        .filter(|&(_, shown)| shown)
+                        .map(|((slot, bones), _)| ClipRounds {
+                            slot,
+                            rounds: nodes.rounds(bones),
+                        })
+                        .filter(|clip| !clip.rounds.is_empty())
+                        .collect();
                     looked.models.push(ClientModel {
+                        rounds,
                         model: game_path::model(model)?,
                         scale,
                         hide,

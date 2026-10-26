@@ -43,7 +43,7 @@ pub use crate::action_look::ActionLook;
 pub use crate::animation_extras::{AnimationExtras, HiddenFrames};
 pub use crate::camera_file::{CameraFile, CameraHeight};
 pub use crate::client_file::{ClientFile, ClientFormat};
-pub use crate::client_model::{ClientModel, ModelScale, ModelTop, NodeUpgrade};
+pub use crate::client_model::{ClientModel, ClipRounds, ModelScale, ModelTop, NodeUpgrade};
 pub use crate::client_objects::{ClientObject, ClientObjects};
 pub use crate::client_unit::{
     ClientUnit, FireBarrel, FireBone, LookDraw, LookShown, LookState, LookTransition, LookVariation,

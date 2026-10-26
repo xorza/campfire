@@ -6,8 +6,8 @@ use campfire_actions::{
     TypeSlotsData,
 };
 use campfire_client_files::{
-    AnimationMode, ClientModel, ClientUnit, ConditionTest, LookDraw, LookShown, LookState,
-    LookTransition, LookVariation, ModelScale, ModelTop, NodeUpgrade, ObjectLook, Press,
+    AnimationMode, ClientModel, ClientUnit, ClipRounds, ConditionTest, LookDraw, LookShown,
+    LookState, LookTransition, LookVariation, ModelScale, ModelTop, NodeUpgrade, ObjectLook, Press,
     StateAnimation, StateClip, StatePlay,
 };
 use campfire_combat::{
@@ -1165,6 +1165,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     // its triangle flat; its skin's vertices 3, 3 and 4 up. So 8 whole, and 4 of its turret and
     // flash hidden. The rock's triangle is 1 m tall.
     let scaled = |name: &str, scale: f32, hide: &[&str]| ClientModel {
+        rounds: Vec::new(),
         model: PackagePath::parse(&format!("client/models/{name}.glb")).unwrap(),
         scale: ModelScale::new(scale).unwrap(),
         hide: hide.iter().map(|&node| node.to_owned()).collect(),
@@ -1204,6 +1205,20 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         };
         models.into_iter().map(armored).collect()
     };
+    // The tank's own draw module shows its first slot's rounds, of its `WeaponHideShowBone`
+    // `Turret`: one round of the turret and the flash on its child pivot; its third slot names no
+    // bone of rounds; its red reskin's module shows none.
+    let rounded = |models: Vec<ClientModel>| -> Vec<ClientModel> {
+        let rounds = ClipRounds {
+            slot: 0,
+            rounds: vec![vec!["tank.turret".to_owned(), "tank.flash".to_owned()]],
+        };
+        let rounded = |model| ClientModel {
+            rounds: vec![rounds.clone()],
+            ..model
+        };
+        models.into_iter().map(rounded).collect()
+    };
     let state = |sets: &[&[&str]], models, animation| LookState {
         animation,
         ..LookState::new(
@@ -1240,7 +1255,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             LookDraw::new(
                 vec![
                     keyed(
-                        state(&[&[]], armored(hidden()), aim(AnimationMode::Once)),
+                        state(&[&[]], rounded(armored(hidden())), aim(AnimationMode::Once)),
                         "rest",
                     ),
                     keyed(
@@ -1253,7 +1268,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                     keyed(
                         state(
                             &[&["night"]],
-                            armored(vec![model("tank", &[])]),
+                            rounded(armored(vec![model("tank", &[])])),
                             aim(AnimationMode::Once),
                         ),
                         "lit_up",
@@ -1265,7 +1280,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                         name("rest"),
                         name("lit_up"),
                         LookShown {
-                            models: armored(hidden()),
+                            models: rounded(armored(hidden())),
                             animation: aim(AnimationMode::OnceBackwards),
                             rise: None,
                         },

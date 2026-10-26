@@ -13,15 +13,11 @@ fn a_clip_of_three_empties_at_its_third_shot_and_a_full_clip_is_not_held() {
     };
     let (rifle, pistol) = (ActionId::new(4), ActionId::new(2));
     let mut shots = ClipShots::default();
-    let fired = |shots: &ClipShots, action| {
-        let held = shots.0.iter().find(|fired| fired.action == action);
-        held.map_or(0, |fired| fired.shots)
-    };
     // The rifle's first two shots leave it 1 and 2 fired; its third empties it, and its
     // clip, full again, leaves the list as it began.
     assert!(!shots.shoot(rifle, clip));
     assert!(!shots.shoot(rifle, clip));
-    assert_eq!(fired(&shots, rifle), 2);
+    assert_eq!(shots.fired(rifle), 2);
     // A shot of another weapon between them counts on its own, kept in the order of ids.
     assert!(!shots.shoot(pistol, clip));
     assert_eq!(
@@ -29,7 +25,7 @@ fn a_clip_of_three_empties_at_its_third_shot_and_a_full_clip_is_not_held() {
         [pistol, rifle]
     );
     assert!(shots.shoot(rifle, clip));
-    assert_eq!(fired(&shots, rifle), 0);
+    assert_eq!(shots.fired(rifle), 0);
     assert_eq!(
         shots.0,
         [Fired {

@@ -214,6 +214,38 @@ impl ModelNodes {
         Some(axes::y_up(pose.translation.to_array()).into())
     }
 
+    /// The drawn sub-objects that show each round of a weapon slot's clip, in the order its clip
+    /// fires them, as `doHideShowProjectileObjects` hides them: those its `WeaponHideShowBone`
+    /// touches, one round for the whole clip; else, for each number from 01, those of its launch
+    /// bone's name with that number, up to the last number the model holds, none for a number it
+    /// lacks. A show or a hide of a name touches its sub-object and those on its pivot's children.
+    pub(crate) fn rounds(&self, weapon: &WeaponBones) -> Vec<Vec<String>> {
+        let drawn = |name: &str| -> Vec<String> {
+            let touched = self.touched(name).into_iter();
+            let touched = touched.filter(|&at| self.sub_objects[at].drawn);
+            touched
+                .map(|at| self.sub_objects[at].name.clone())
+                .collect()
+        };
+        if let Some(name) = &weapon.rounds {
+            let round = drawn(name);
+            return if round.is_empty() {
+                Vec::new()
+            } else {
+                vec![round]
+            };
+        }
+        let Some(launch) = &weapon.launch else {
+            return Vec::new();
+        };
+        let mut rounds: Vec<Vec<String>> = (1..=99)
+            .map(|number| drawn(&format!("{launch}{number:02}")))
+            .collect();
+        let held = rounds.iter().rposition(|round| !round.is_empty());
+        rounds.truncate(held.map_or(0, |last| last + 1));
+        rounds
+    }
+
     /// The name of its pivot `name`, of either case, as its node is named.
     pub(crate) fn pivot_name(&self, name: &str) -> Option<&str> {
         Some(self.pivots[self.pivot(name)?].name.as_str())

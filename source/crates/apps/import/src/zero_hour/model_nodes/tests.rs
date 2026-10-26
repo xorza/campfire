@@ -227,3 +227,62 @@ fn a_slots_barrels_launch_from_their_launch_bones_or_the_models_place() {
     assert_eq!(rail(None, &animated)[0].at, Vec3::new(2.0, 6.0, 0.0));
     assert_eq!(tank.pristine(Some(&lifted[1..])), rest);
 }
+
+#[test]
+fn a_slots_rounds_are_its_hide_show_bone_or_its_numbered_launch_bones() {
+    // Its `WeaponHideShowBone`, the turret: one round of the turret and what stands on its child
+    // pivots, the flashes and the barrel.
+    let tank = tank();
+    let turret = WeaponBones {
+        rounds: Some("Turret".to_owned()),
+        launch: Some("missile".to_owned()),
+        ..WeaponBones::default()
+    };
+    let names = |names: &[&str]| {
+        names
+            .iter()
+            .map(|&name| name.to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        tank.rounds(&turret),
+        [names(&[
+            "tank.turret",
+            "tank.flash1",
+            "tank.flash2a",
+            "tank.flash2b",
+            "tank.barrel"
+        ])]
+    );
+    // A rack's missiles 01, 02 and 04 under its launch bone `Missile`: a round each, 03 of none,
+    // none past the last; a launch bone the model lacks, and a slot of neither, none.
+    let sub_object = |name: &str, pivot| LookSubObject {
+        name: name.to_owned(),
+        pivot,
+        drawn: true,
+        hidden: false,
+    };
+    let rack = ModelNodes {
+        sub_objects: vec![
+            sub_object("rack.missile01", 0),
+            sub_object("rack.missile02", 0),
+            sub_object("rack.missile04", 0),
+        ],
+        pivots: Vec::new(),
+    };
+    let launch = |name: &str| WeaponBones {
+        launch: Some(name.to_owned()),
+        ..WeaponBones::default()
+    };
+    assert_eq!(
+        rack.rounds(&launch("Missile")),
+        [
+            names(&["rack.missile01"]),
+            names(&["rack.missile02"]),
+            Vec::new(),
+            names(&["rack.missile04"])
+        ]
+    );
+    assert!(rack.rounds(&launch("rocket")).is_empty());
+    assert!(rack.rounds(&WeaponBones::default()).is_empty());
+}

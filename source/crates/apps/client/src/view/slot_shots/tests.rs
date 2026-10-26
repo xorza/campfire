@@ -23,6 +23,8 @@ fn a_slots_phase_is_its_shot_its_pre_attack_its_reload_or_its_wait() {
         pre_attack_until: None,
         ready_at: None,
         reloads: false,
+        clip_shots: None,
+        fired: 0,
         now: tick(10),
     };
     let phase = |change: fn(&mut SlotAttack)| {
@@ -69,5 +71,48 @@ fn a_slots_phase_is_its_shot_its_pre_attack_its_reload_or_its_wait() {
             slot.striking = true;
         }),
         None
+    );
+}
+
+#[test]
+fn a_clip_lacks_its_fired_shots_and_every_round_as_it_reloads_until_ready() {
+    // A clip of 4 at tick 10: none fired lacks none; 3 fired, 3; emptied, full again and ready at
+    // tick 12, all 4 as it reloads; ready at tick 10, none. A weapon of no clip lacks none.
+    fn reloading(slot: &mut SlotAttack) {
+        slot.reloads = true;
+        slot.ready_at = Some(Tick::new(12));
+    }
+    let attack = SlotAttack {
+        attacking: false,
+        striking: false,
+        pre_attack_until: None,
+        ready_at: None,
+        reloads: false,
+        clip_shots: NonZeroU16::new(4),
+        fired: 0,
+        now: Tick::new(10),
+    };
+    let lack = |change: fn(&mut SlotAttack)| {
+        let mut slot = attack;
+        change(&mut slot);
+        slot.lack()
+    };
+    let lacks = |rounds, reloads| ClipLack { rounds, reloads };
+    assert_eq!(lack(|_| {}), lacks(0, false));
+    assert_eq!(lack(|slot| slot.fired = 3), lacks(3, false));
+    assert_eq!(lack(reloading), lacks(4, true));
+    assert_eq!(
+        lack(|slot| {
+            slot.reloads = true;
+            slot.ready_at = Some(Tick::new(10));
+        }),
+        lacks(0, false)
+    );
+    assert_eq!(
+        lack(|slot| {
+            reloading(slot);
+            slot.clip_shots = None;
+        }),
+        lacks(0, false)
     );
 }

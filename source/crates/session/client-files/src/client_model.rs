@@ -4,8 +4,9 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// A model, a `.glb` of the package, the scale it is drawn at, the names of its nodes its
-/// default look hides, as the glTF names them, the top of what it draws, and the nodes each
-/// condition of an upgrade shows and hides over those, in order.
+/// default look hides, as the glTF names them, the top of what it draws, the nodes each
+/// condition of an upgrade shows and hides over those, in order, and the nodes that show the
+/// rounds of a weapon slot's clip.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientModel {
@@ -20,6 +21,20 @@ pub struct ClientModel {
     pub top: Option<ModelTop>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub upgrades: Vec<NodeUpgrade>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rounds: Vec<ClipRounds>,
+}
+
+/// The nodes of a model that show the rounds of the clip of the weapon slot `slot`, by the slot's
+/// place among the look's weapons: each round's, in the order its clip fires them, over those its
+/// state and its upgrades hide. The client hides one round more for each shot of the clip, and
+/// every round while the clip reloads, as Zero Hour hides a launcher's missiles
+/// (02-engine-core.md, A model shows its clip's rounds).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClipRounds {
+    pub slot: u8,
+    pub rounds: Vec<Vec<String>>,
 }
 
 /// The nodes of a model a condition shows and hides while its unit holds it, over those its

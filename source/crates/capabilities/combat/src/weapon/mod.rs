@@ -266,6 +266,11 @@ impl Weapon {
         self.clip.is_some()
     }
 
+    /// The shots of its clip at `rank`, if it has one.
+    pub fn clip_shots(&self, rank: Rank) -> Option<NonZeroU16> {
+        Some(self.clip.as_ref()?[rank.index()].shots)
+    }
+
     /// Its clip at `rank`, if it has one, its reload sped by its rate bonus for a unit of stats
     /// `stats`.
     pub fn clip(&self, stats: &[Num], rank: Rank) -> Option<ClipRule> {

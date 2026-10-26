@@ -28,10 +28,10 @@ use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::float_num::FloatNum;
 use crate::view::glide::{FrameClock, Glide};
 use crate::view::look_clips::{ClipHidden, ClipPivot, ClipTiming, LookClips};
-use crate::view::look_states::draw_show::{ClipPose, ClipStep, DrawShow, ShowCx};
+use crate::view::look_states::draw_show::{ClipPose, ClipStep, DrawShow, Relacked, ShowCx};
 use crate::view::match_colors::Paint;
 use crate::view::model_scenes::ModelScenes;
-use crate::view::slot_shots::{AttackParts, SlotShots};
+use crate::view::slot_shots::{AttackParts, ClipLack, SlotShots};
 use crate::view::unit_looks::{LookDraws, UnitFacts, UnitLooks};
 use crate::view::unit_models::{Dressed, Replaces};
 use crate::view::{DrawSystems, ViewSystems};
@@ -50,13 +50,14 @@ pub(crate) struct LookStatesPlugin;
 
 /// On the root of a unit's drawing of a look of draws: its type and variation, whose draws it
 /// draws; the tested conditions its unit held when its states were last picked, none before the
-/// first; when its unit last moved; the shots of its slots it saw; its dice; and how it shows
-/// each of its draws.
+/// first; the rounds its weapon groups' clips lacked then, by the groups' places; when its unit
+/// last moved; the shots of its slots it saw; its dice; and how it shows each of its draws.
 #[derive(Component, Debug)]
 pub(crate) struct LookStates {
     unit_type: UnitType,
     variation: Option<Variation>,
     held: Option<u64>,
+    lacks: Vec<u16>,
     moved: Duration,
     shots: SlotShots,
     dice: LookDice,
@@ -97,6 +98,14 @@ type Roots<'w, 's> = ParamSet<
         Query<'static, 'static, (&'static DrawingOf, &'static mut LookStates)>,
     ),
 >;
+
+/// What the pick keeps between its runs: the drawings a condition time ends visits again, the
+/// drawings it visits, and what a unit's clips lack.
+type PickScratch<'s> = (
+    Local<'s, Vec<Entity>>,
+    Local<'s, Vec<Entity>>,
+    Local<'s, Vec<ClipLack>>,
+);
 
 /// The units whose place changed, which moved.
 type Moved<'w, 's> = Query<'w, 's, &'static Drawing, (Changed<Position>, Allow<Unpredicted>)>;
@@ -211,6 +220,7 @@ impl LookStates {
             unit_type,
             variation,
             held: None,
+            lacks: Vec::new(),
             moved: Duration::ZERO,
             shots: SlotShots::default(),
             dice: LookDice(seed),
@@ -258,7 +268,7 @@ impl LookStatesPlugin {
         ),
         (units, armed): (UnitParts<'_, '_>, AttackQuery<'_, '_>),
         (replacing, mut roots): (Query<'_, '_, &'static Replaces>, Roots<'_, '_>),
-        (mut timed, mut visits): (Local<'_, Vec<Entity>>, Local<'_, Vec<Entity>>),
+        (mut timed, mut visits, mut lacks): PickScratch<'_>,
         mut commands: Commands<'_, '_>,
     ) {
         let now = time.elapsed();
@@ -290,6 +300,7 @@ impl LookStatesPlugin {
             };
             let groups = looks.weapons(states.unit_type);
             let attack = armed.get(unit).ok().zip(weapons.as_deref());
+            lacks.clear();
             let attacks = match attack {
                 Some(((progress, slots, times, clips), weapons)) if !groups.is_empty() => {
                     let at = tick.start();
@@ -304,9 +315,22 @@ impl LookStatesPlugin {
                         weapons,
                         now: at,
                     };
+                    Self::lacks(&parts, &states.shots, groups, &mut lacks);
                     Self::attacks(&parts, &states.shots, groups)
                 }
                 _ => 0,
+            };
+            // A clip that reloads comes back full with no change the client sees.
+            if lacks.iter().any(|lack| lack.reloads) {
+                timed.push(root);
+            }
+            let rounds = lacks.iter().map(|lack| lack.rounds);
+            let lacked = if states.lacks.iter().copied().eq(rounds.clone()) {
+                Relacked::Same
+            } else {
+                states.lacks.clear();
+                states.lacks.extend(rounds);
+                Relacked::Changed
             };
             let facts = UnitFacts {
                 tags: tags.tags,
@@ -327,18 +351,23 @@ impl LookStatesPlugin {
             if held & tests.timed() != 0 {
                 timed.push(root);
             }
-            if states.held == Some(held) {
+            let picked = states.held != Some(held);
+            if !picked && lacked == Relacked::Same {
                 continue;
             }
             let changed = states.held.map_or(0, |before| before ^ held);
             states.held = Some(held);
             let LookStates {
-                dice, draws: shows, ..
+                dice,
+                draws: shows,
+                lacks: lacked_rounds,
+                ..
             } = &mut *states;
             let mut cx = ShowCx {
                 root,
                 paint: Paint::of(team),
                 held,
+                lacks: lacked_rounds,
                 dice,
                 scenes: &mut scenes,
                 clips: &mut clips,
@@ -349,10 +378,31 @@ impl LookStatesPlugin {
                 commands: &mut commands,
             };
             for (draw, show) in draws.draws().iter().zip(shows) {
-                show.request(draw, draw.best(held), &mut cx);
-                show.renode(draw, changed, &mut cx);
+                if picked {
+                    show.request(draw, draw.best(held), &mut cx);
+                }
+                show.renode(draw, changed, lacked, &mut cx);
             }
         }
+    }
+
+    /// What the clip of each of its look's weapon groups `groups` lacks, by the groups' places, of a
+    /// unit of `parts`, its shots `shots` seen, into `lacks`: the clip of its first slot of a
+    /// weapon of the group, none for a group of no such slot.
+    fn lacks(
+        parts: &AttackParts<'_>,
+        shots: &SlotShots,
+        groups: &[Box<[ActionId]>],
+        lacks: &mut Vec<ClipLack>,
+    ) {
+        lacks.extend(groups.iter().map(|weapons| {
+            let slots = (0..=u8::MAX).zip(parts.slots.iter());
+            let mut held = slots
+                .filter(|(_, held)| held.action.is_some_and(|action| weapons.contains(&action)));
+            held.next().map_or_else(ClipLack::default, |(slot, _)| {
+                parts.slot(shots, slot).lack()
+            })
+        }));
     }
 
     /// The bits of `UnitFacts::attacks` of a unit of `parts`, its shots `shots` seen: each phase
@@ -414,12 +464,16 @@ impl LookStatesPlugin {
             let speed = glide.speed(time.elapsed(), clock);
             let held = states.held.unwrap_or(0);
             let LookStates {
-                dice, draws: shows, ..
+                dice,
+                draws: shows,
+                lacks,
+                ..
             } = &mut *states;
             let mut cx = ShowCx {
                 root,
                 paint: Paint::of(team),
                 held,
+                lacks,
                 dice,
                 scenes: &mut scenes,
                 clips: &mut clips,

@@ -61,13 +61,14 @@ pub(crate) struct ClipPose<'a> {
 }
 
 /// What a change of what a draw shows reads and spawns through: the drawing's root, its models'
-/// paint, the tested conditions its unit holds, which show and hide its models' nodes, its dice,
-/// the scenes and clips loaded, the clips' timings, the graphs, the asset server, the models
-/// waiting to replace others, and the commands.
+/// paint, the tested conditions its unit holds and the rounds its weapon groups' clips lack, which
+/// show and hide its models' nodes, its dice, the scenes and clips loaded, the clips' timings, the
+/// graphs, the asset server, the models waiting to replace others, and the commands.
 pub(crate) struct ShowCx<'a, 'w, 's> {
     pub(crate) root: Entity,
     pub(crate) paint: Paint,
     pub(crate) held: u64,
+    pub(crate) lacks: &'a [u16],
     pub(crate) dice: &'a mut LookDice,
     pub(crate) scenes: &'a mut ModelScenes,
     pub(crate) clips: &'a mut LookClips,
@@ -85,6 +86,7 @@ impl Debug for ShowCx<'_, '_, '_> {
             .field("root", &self.root)
             .field("paint", &self.paint)
             .field("held", &self.held)
+            .field("lacks", &self.lacks)
             .field("dice", &self.dice)
             .finish_non_exhaustive()
     }
@@ -96,6 +98,13 @@ impl Debug for ShowCx<'_, '_, '_> {
 pub(crate) struct ClipStep {
     pub(crate) seconds: f32,
     pub(crate) speed: f32,
+}
+
+/// Whether what a unit's clips lack changed since its models' nodes were last set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Relacked {
+    Changed,
+    Same,
 }
 
 /// What a draw showed as it starts what it shows: that, none before its first; and the share
@@ -113,16 +122,24 @@ impl DrawShow {
 
     /// Shows and hides again the nodes of each model of what it shows of `draw` whose upgrades
     /// test a condition of `changed`, the tested conditions its unit came to hold or no longer
-    /// holds, by those its unit holds now.
-    pub(crate) fn renode(&self, draw: &DrawStates, changed: u64, cx: &mut ShowCx<'_, '_, '_>) {
+    /// holds, or that shows the rounds of a clip when `lacked` says what its clips lack changed,
+    /// by what its unit holds and lacks now.
+    pub(crate) fn renode(
+        &self,
+        draw: &DrawStates,
+        changed: u64,
+        lacked: Relacked,
+        cx: &mut ShowCx<'_, '_, '_>,
+    ) {
         let Some(showing) = self.showing else {
             return;
         };
         for (model, &entity) in draw.shown(showing).models.iter().zip(&self.models) {
-            if model.upgraded() & changed != 0 {
+            let rounds = lacked == Relacked::Changed && model.shows_rounds();
+            if model.upgraded() & changed != 0 || rounds {
                 cx.commands
                     .entity(entity)
-                    .insert((model.held_nodes(cx.held), Redress));
+                    .insert((model.held_nodes(cx.held, cx.lacks), Redress));
             }
         }
     }
@@ -360,7 +377,7 @@ impl ShowCx<'_, '_, '_> {
             if let Some(kept) = kept {
                 cx.commands
                     .entity(kept)
-                    .insert((model.held_nodes(cx.held), Redress));
+                    .insert((model.held_nodes(cx.held, cx.lacks), Redress));
                 next.push(kept);
                 continue;
             }
@@ -375,8 +392,8 @@ impl ShowCx<'_, '_, '_> {
             });
             let bundle = model.bundle(cx.scenes, cx.assets, cx.paint);
             let mut spawned = cx.commands.spawn((bundle, Drawn, ChildOf(cx.root)));
-            if model.upgraded() & cx.held != 0 {
-                spawned.insert(model.held_nodes(cx.held));
+            if model.upgraded() & cx.held != 0 || model.shows_rounds() {
+                spawned.insert(model.held_nodes(cx.held, cx.lacks));
             }
             if let Some(shown) = replaced {
                 spawned.insert((Visibility::Hidden, Replaces(shown)));

@@ -11,8 +11,8 @@ use bevy::math::Vec3;
 use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_client_files::{
-    AnimationMode, AttackPhase, ClientModel, ConditionTest, FireBone, LifeShare, LookDraw,
-    LookShown, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation,
+    AnimationMode, AttackPhase, ClientModel, ClipRounds, ConditionTest, FireBone, LifeShare,
+    LookDraw, LookShown, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation,
 };
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
@@ -203,14 +203,15 @@ pub(crate) struct UnitFacts {
     pub(crate) attacks: u64,
 }
 
-/// A model a look is drawn with: the path of its glTF's first scene, its nodes, and the factor it
-/// is drawn at.
+/// A model a look is drawn with: the path of its glTF's first scene, its nodes, the factor it is
+/// drawn at, the nodes its upgrades show and hide, and those that show its clips' rounds.
 #[derive(Debug, Clone)]
 pub(crate) struct LookModel {
     pub(crate) scene: AssetPath<'static>,
     pub(crate) nodes: LookNodes,
     pub(crate) scale: f32,
     upgrades: Arc<[ModelUpgrade]>,
+    rounds: Arc<[ClipRounds]>,
 }
 
 /// The nodes of a look's model a condition shows and hides while its unit holds it, over those
@@ -754,23 +755,42 @@ impl LookModel {
         )
     }
 
-    /// Its nodes for a unit that holds the tested conditions `held`: those its state hides, then
-    /// shown and hidden by each upgrade whose condition it holds, in order, as Zero Hour's
-    /// `updateSubObjects` sets an upgrade's sub-objects over a state's.
-    pub(crate) fn held_nodes(&self, held: u64) -> LookNodes {
+    /// Its nodes for a unit that holds the tested conditions `held` and whose weapon groups'
+    /// clips lack `lacks` rounds, by the groups' places: those its state hides, then shown and
+    /// hidden by each upgrade whose condition it holds, in order, as Zero Hour's
+    /// `updateSubObjects` sets an upgrade's sub-objects over a state's; then the first rounds of
+    /// each clip as many as it lacks hidden, and the rest shown, as `doHideShowProjectileObjects`
+    /// sets them over both (02-engine-core.md, A model shows its clip's rounds).
+    pub(crate) fn held_nodes(&self, held: u64, lacks: &[u16]) -> LookNodes {
         let mut applied = self
             .upgrades
             .iter()
-            .filter(|upgrade| upgrade.when.holds(held));
-        let Some(first) = applied.next() else {
+            .filter(|upgrade| upgrade.when.holds(held))
+            .peekable();
+        if applied.peek().is_none() && self.rounds.is_empty() {
             return self.nodes.clone();
-        };
+        }
         let mut hide = self.nodes.hide.to_vec();
-        for upgrade in std::iter::once(first).chain(applied) {
-            hide.retain(|node| !upgrade.show.contains(node));
+        let mut set = |node: &String, hidden: bool| {
+            if !hidden {
+                hide.retain(|held| held != node);
+            } else if !hide.contains(node) {
+                hide.push(node.clone());
+            }
+        };
+        for upgrade in applied {
+            for node in &upgrade.show {
+                set(node, false);
+            }
             for node in &upgrade.hide {
-                if !hide.contains(node) {
-                    hide.push(node.clone());
+                set(node, true);
+            }
+        }
+        for clip in &*self.rounds {
+            let lacked = lacks.get(usize::from(clip.slot)).copied().unwrap_or(0);
+            for (round, nodes) in (0_u16..).zip(&clip.rounds) {
+                for node in nodes {
+                    set(node, round < lacked);
                 }
             }
         }
@@ -778,6 +798,11 @@ impl LookModel {
             hide: hide.into(),
             ..self.nodes.clone()
         }
+    }
+
+    /// Whether it shows the rounds of a clip.
+    pub(crate) fn shows_rounds(&self) -> bool {
+        !self.rounds.is_empty()
     }
 
     /// The bits of the tested conditions its upgrades show and hide its nodes by.
@@ -827,6 +852,7 @@ impl LookModel {
                     turret_pitch: turret.pitch.map(Arc::from),
                 },
                 scale: model.scale.get(),
+                rounds: model.rounds.as_slice().into(),
             })
             .collect()
     }

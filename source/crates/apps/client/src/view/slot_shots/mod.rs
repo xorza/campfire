@@ -1,3 +1,5 @@
+use std::num::NonZeroU16;
+
 use campfire_actions::{ActionProgress, ActionSlots, InProgress, SlotTimes};
 use campfire_client_files::AttackPhase;
 use campfire_combat::{ClipShots, Weapon};
@@ -29,8 +31,9 @@ pub(crate) struct AttackParts<'a> {
 
 /// What an attack's phase reads of one slot at the tick `now`: whether its unit attacks; whether
 /// it strikes, its attack under way or its shot in this tick; the end of its pre-attack no shot
-/// spent; the tick it is ready again, where its client holds it; and whether its weapon fires in
-/// clips and its clip is full, so its last shot emptied it.
+/// spent; the tick it is ready again, where its client holds it; whether its weapon fires in
+/// clips and its clip is full, so its last shot emptied it; and the shots of its clip and those
+/// it fired since its clip was last full, where its client holds them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SlotAttack {
     pub(crate) attacking: bool,
@@ -38,6 +41,8 @@ pub(crate) struct SlotAttack {
     pub(crate) pre_attack_until: Option<Tick>,
     pub(crate) ready_at: Option<Tick>,
     pub(crate) reloads: bool,
+    pub(crate) clip_shots: Option<NonZeroU16>,
+    pub(crate) fired: u16,
     pub(crate) now: Tick,
 }
 
@@ -76,13 +81,20 @@ impl AttackParts<'_> {
         );
         let pre_attack = self.progress.pre_attack();
         let pre_attack = pre_attack.filter(|pre| pre.slot == slot && !pre.spent);
-        let action = self.slots.slot(slot).and_then(|held| held.action);
-        let clipped = action
-            .and_then(|action| self.weapons.get(action))
-            .is_some_and(Weapon::has_clip);
+        let held = self.slots.slot(slot);
+        let action = held.and_then(|held| held.action);
+        let weapon = action.and_then(|action| self.weapons.get(action));
+        let clipped = weapon.is_some_and(Weapon::has_clip);
         let full = action
             .zip(self.clips)
             .is_some_and(|(action, clips)| clips.is_full(action));
+        let rank = held.and_then(|held| held.rank);
+        let clip_shots = weapon
+            .zip(rank)
+            .and_then(|(weapon, rank)| weapon.clip_shots(rank));
+        let fired = action
+            .zip(self.clips)
+            .map_or(0, |(action, clips)| clips.fired(action));
         SlotAttack {
             attacking: self.progress.attack_target().is_some(),
             striking: under_way || shots.fired(slot) == Some(self.now),
@@ -92,12 +104,43 @@ impl AttackParts<'_> {
                 .and_then(|times| times.iter().nth(usize::from(slot)))
                 .map(|time| time.ready_at),
             reloads: clipped && full,
+            clip_shots: clip_shots.filter(|_| self.clips.is_some()),
+            fired,
             now: self.now,
         }
     }
 }
 
+/// The rounds the clip of a slot lacks, and whether it lacks them as it reloads, until its slot is
+/// ready, so they come back with no change its client sees.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ClipLack {
+    pub(crate) rounds: u16,
+    pub(crate) reloads: bool,
+}
+
 impl SlotAttack {
+    /// What its clip lacks, as Zero Hour gives its draw its clip's remaining ammo
+    /// (`Object::adjustModelConditionForWeaponStatus`): every round while it reloads, until it is
+    /// ready, else the shots it fired since its clip was last full; none for a weapon of no clip,
+    /// or of a unit whose clips its client does not hold.
+    pub(crate) fn lack(self) -> ClipLack {
+        let Some(shots) = self.clip_shots else {
+            return ClipLack::default();
+        };
+        let waits = self.ready_at.is_some_and(|ready_at| self.now < ready_at);
+        if self.reloads && waits {
+            return ClipLack {
+                rounds: shots.get(),
+                reloads: true,
+            };
+        }
+        ClipLack {
+            rounds: self.fired,
+            reloads: false,
+        }
+    }
+
     /// Its phase, as `Object::updateDrawableWeaponState` sets its weapon's condition: none unless
     /// its unit attacks; its shot, which comes first; its pre-attack, until its end; the reload of
     /// its clip, until it is ready; the wait for its next shot until then; and none once it is

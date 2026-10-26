@@ -146,6 +146,9 @@ pub(crate) struct DrawModule {
     animation: IniAnimation,
     pub(crate) turret: Option<String>,
     pub(crate) turret_pitch: Option<String>,
+    /// The weapon slots whose clips its models show the rounds of,
+    /// `ProjectileBoneFeedbackEnabledSlots`.
+    pub(crate) rounds_shown: [bool; 3],
     sets: Vec<ConditionSet>,
     states: Vec<DrawState>,
     ignored: ConditionSet,
@@ -211,13 +214,15 @@ pub(crate) struct HideShow {
     pub(crate) hide: bool,
 }
 
-/// A weapon slot's bones, each a base name the game numbers from 01.
+/// A weapon slot's bones, each a base name the game numbers from 01, and the sub-object its
+/// `WeaponHideShowBone` names, which shows its clip's rounds as one.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct WeaponBones {
     pub(crate) fire_fx: Option<String>,
     pub(crate) recoil: Option<String>,
     pub(crate) muzzle_flash: Option<String>,
     pub(crate) launch: Option<String>,
+    pub(crate) rounds: Option<String>,
 }
 
 /// The draw modules of the `W3DModelDraw` family, whose default state names the model.
@@ -638,6 +643,7 @@ impl DrawModule {
             look: StateLook::default(),
             turret: None,
             turret_pitch: None,
+            rounds_shown: [false; 3],
             animation: IniAnimation::default(),
             sets: vec![ConditionSet::default()],
             states: Vec::new(),
@@ -769,7 +775,8 @@ fn state_field(
         "hidesubobject" | "showsubobject" => {
             look.hide_show(&tokens[1..], word == "hidesubobject");
         }
-        "weaponfirefxbone" | "weaponrecoilbone" | "weaponmuzzleflash" | "weaponlaunchbone" => {
+        "weaponfirefxbone" | "weaponrecoilbone" | "weaponmuzzleflash" | "weaponlaunchbone"
+        | "weaponhideshowbone" => {
             let (Some(slot), Some(bone)) = (tokens.get(1), tokens.get(2)) else {
                 return Err(IniError::WeaponSlot { line });
             };
@@ -782,6 +789,7 @@ fn state_field(
                 "weaponfirefxbone" => &mut bones.fire_fx,
                 "weaponrecoilbone" => &mut bones.recoil,
                 "weaponmuzzleflash" => &mut bones.muzzle_flash,
+                "weaponhideshowbone" => &mut bones.rounds,
                 _ => &mut bones.launch,
             };
             *field = Some((*bone).to_owned()).filter(|bone| !bone.eq_ignore_ascii_case("none"));
@@ -1099,6 +1107,16 @@ impl Reading {
                     }
                     "ignoreconditionstates" if *kind == DrawKind::Family => {
                         module.ignored = ConditionSet::of(at)?;
+                    }
+                    "projectilebonefeedbackenabledslots" if *kind == DrawKind::Family => {
+                        let mut shown = [false; 3];
+                        for slot in &tokens[1..] {
+                            let at_slot = SLOTS
+                                .iter()
+                                .position(|known| slot.eq_ignore_ascii_case(known));
+                            shown[at_slot.ok_or(IniError::WeaponSlot { line })?] = true;
+                        }
+                        module.rounds_shown = shown;
                     }
                     "modelname" if matches!(*kind, DrawKind::Tree | DrawKind::Prop) => {
                         module.model = ObjectFiles::model(tokens);

@@ -284,6 +284,7 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
     .unwrap();
     let name = |text: &str| DeclaredName::new(text).unwrap();
     let model = |path: &str, scale: f32, hide: &[&str]| ClientModel {
+        rounds: Vec::new(),
         model: PackagePath::parse(path).unwrap(),
         scale: ModelScale::new(scale).unwrap(),
         hide: hide.iter().map(|&node| node.to_owned()).collect(),

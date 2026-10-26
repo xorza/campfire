@@ -38,6 +38,12 @@ impl ClipShots {
             .is_err()
     }
 
+    /// The shots `action` fired since its clip was last full, 0 for a full clip.
+    pub fn fired(&self, action: ActionId) -> u16 {
+        let at = self.0.binary_search_by_key(&action, |fired| fired.action);
+        at.map_or(0, |at| self.0[at].shots)
+    }
+
     /// Counts a shot of `action`, of `clip` at its rank: whether the shot emptied the clip, which
     /// is then full again, so the weapon reloads.
     pub(crate) fn shoot(&mut self, action: ActionId, clip: ClipRule) -> bool {

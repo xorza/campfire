@@ -6,6 +6,7 @@ use crate::zero_hour::format::ini::object_ini::{ObjectFiles, ObjectIni};
 pub(crate) const DEFAULT_OBJECTS: &str = "; Objects the game loads first.\r
 Object Tank\r
   Draw = W3DTankDraw ModuleTag_01\r
+  ProjectileBoneFeedbackEnabledSlots = PRIMARY TERTIARY\r
 DefaultConditionState\r
   Model = TANK\r
   HideSubObject = Turret\r
@@ -13,6 +14,7 @@ DefaultConditionState\r
   HideSubObject = barrel Hatch\r
   WeaponMuzzleFlash = PRIMARY MuzzleFX\r
   WeaponLaunchBone = PRIMARY None\r
+  WeaponHideShowBone = PRIMARY Turret\r
   WeaponFireFXBone = SECONDARY Fire ; a slot's bones need not name a flash\r
   Turret = Turret\r
   TurretPitch = Barrel\r

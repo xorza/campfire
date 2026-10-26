@@ -339,6 +339,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     // The tank's model is 2.5 m tall; the pit's is drawn under its origin; the shed's file gives
     // no top.
     let model = |name: &str, hide: &[&str], top: Option<f32>| ClientModel {
+        rounds: Vec::new(),
         model: PackagePath::parse(&format!("client/models/{name}.glb")).unwrap(),
         scale: ModelScale::new(1.25).unwrap(),
         hide: hide.iter().map(|&node| node.to_owned()).collect(),
@@ -488,6 +489,7 @@ fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as
     let mut app = view();
     app.init_asset::<WorldAsset>();
     let shell = ClientUnit::still(vec![ClientModel {
+        rounds: Vec::new(),
         model: PackagePath::parse("client/models/shell.glb").unwrap(),
         scale: ModelScale::new(2.0).unwrap(),
         hide: Vec::new(),
