@@ -5,6 +5,7 @@ use bevy::asset::Assets;
 use bevy::asset::io::memory::{Dir, MemoryAssetReader};
 use bevy::asset::io::{AssetSourceBuilder, AssetSourceId};
 use bevy::asset::{Asset, AssetApp, LoadState};
+use bevy::ecs::system::In;
 use bevy::ecs::world::World;
 use bevy::gltf::{Gltf, GltfPlugin};
 use bevy::math::Vec3;
@@ -411,41 +412,58 @@ fn a_dressing_hides_the_named_nodes_and_finds_the_turret() {
     assert_eq!([dressing.turret, dressing.turret_pitch], [None, None]);
 }
 
+/// Turns each turret's nodes to `aim`, as the drawings' turn does each frame.
+fn turned(
+    In(aim): In<TurretAim>,
+    mut drawings: Query<'_, '_, &mut TurretNodes>,
+    mut nodes: Query<'_, '_, &mut Transform>,
+) {
+    for mut turret in &mut drawings {
+        turret.turn(aim, &mut nodes);
+    }
+}
+
 #[test]
-fn a_turrets_nodes_turn_about_their_own_up_and_side_from_their_rest() {
+fn a_turrets_nodes_turn_about_their_own_up_and_side_from_their_rest_or_their_clips_pose() {
     // A turret node at rest tilted 10° about x, turned 90°: a quarter turn about its own up
     // after the tilt, so its forward, +x, points along the tilted −z. Its elevation at rest
     // turned 90° about up, raised 30°: about its own side, its forward rises 30° along −z.
     let tilt = Quat::from_rotation_x(10_f32.to_radians());
     let quarter = Quat::from_rotation_y(FRAC_PI_2);
     let mut world = World::new();
-    let [turret, elevation] = [(); 2].map(|()| world.spawn_empty().id());
-    let nodes = TurretNodes {
+    let [turret, elevation] =
+        [tilt, quarter].map(|rotation| world.spawn(Transform::from_rotation(rotation)).id());
+    world.spawn(TurretNodes {
         angle: Some(TurretNode {
             node: turret,
-            rest: tilt,
+            base: tilt,
         }),
         pitch: Some(TurretNode {
             node: elevation,
-            rest: quarter,
+            base: quarter,
         }),
+    });
+    let turn = world.register_system(turned);
+    let at = |world: &mut World, angle: i64, pitch: i64| {
+        let aim = TurretAim::of(Num::int(angle), Num::int(pitch));
+        world.run_system_with(turn, aim).unwrap();
+        [turret, elevation].map(|node| world.get::<Transform>(node).unwrap().rotation)
     };
-    let rotations: Vec<(Entity, Quat)> = nodes
-        .rotations(TurretAim::of(Num::int(90), Num::int(30)))
-        .collect();
-    let [(at_turret, turned), (at_elevation, raised)] = rotations[..] else {
-        panic!("a turret's two nodes turn");
-    };
-    assert_eq!([at_turret, at_elevation], [turret, elevation]);
+    let [turned, raised] = at(&mut world, 90, 30);
     assert!((turned * Vec3::X).abs_diff_eq(tilt * Vec3::NEG_Z, 1e-6));
     let (sin, cos) = 30_f32.to_radians().sin_cos();
     assert!((raised * Vec3::X).abs_diff_eq(Vec3::new(0.0, sin, -cos), 1e-6));
-    // At rest, each node keeps its rest.
-    let rest: Vec<Quat> = nodes
-        .rotations(TurretAim::of(Num::ZERO, Num::ZERO))
-        .map(|(_, rotation)| rotation)
-        .collect();
-    assert_eq!(rest, [tilt, quarter]);
+    // At rest, each node keeps its rest, as no clip wrote it.
+    assert_eq!(at(&mut world, 0, 0), [tilt, quarter]);
+    // A clip that poses the turret's node 20° about up turns it from that pose: 20° and 90°.
+    world.increment_change_tick();
+    let posed = Quat::from_rotation_y(20_f32.to_radians());
+    world.get_mut::<Transform>(turret).unwrap().rotation = posed;
+    let [turned, _] = at(&mut world, 90, 0);
+    let both = posed * quarter;
+    assert!((turned * Vec3::X).abs_diff_eq(both * Vec3::X, 1e-6));
+    // A frame its clip does not write keeps the pose, turned once, not again.
+    assert_eq!(at(&mut world, 90, 0)[0], turned);
 }
 
 #[test]

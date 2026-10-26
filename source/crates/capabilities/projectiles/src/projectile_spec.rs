@@ -136,6 +136,14 @@ impl ProjectileSpec {
         })
     }
 
+    /// Its speed a tick as it launches: a steered type's launch speed, any other's speed.
+    pub const fn launch_speed(&self) -> Num {
+        match self.flight {
+            FlightSpec::Steered(steer) => steer.launch,
+            FlightSpec::Homing(_) | FlightSpec::Line(_) | FlightSpec::Curve(_) => self.speed,
+        }
+    }
+
     /// How it flies.
     pub const fn flight(&self) -> ProjectileFlight {
         match self.flight {
@@ -205,5 +213,38 @@ impl ProjectileSpec {
             book.set(unit.unit_type, spec);
         }
         Ok(book.build())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroU32;
+
+    use campfire_codec::Toml;
+
+    use super::*;
+
+    #[test]
+    fn a_projectile_launches_at_its_steers_launch_speed_or_else_at_its_speed() {
+        // At 30 ticks a second, a missile of 30 m/s flies 1 m a tick: its steer of a launch speed
+        // of 15 m/s leaves at ½ m a tick, one of none at the missile's speed, as a homing shell.
+        let rate = MatchRate::new(NonZeroU32::new(30).unwrap());
+        let launch = |text: &str| {
+            let data = Toml::parse::<ProjectileData>(text).unwrap();
+            let spec = ProjectileSpec::of(&data, &TagNames::default(), rate).unwrap();
+            spec.launch_speed()
+        };
+        let steer = "turn_rate = 90, fuel_ms = 1000";
+        assert_eq!(
+            launch(&format!(
+                "speed = 30\nsteer = {{ launch_speed = 15, {steer} }}"
+            )),
+            Num::HALF
+        );
+        assert_eq!(
+            launch(&format!("speed = 30\nsteer = {{ {steer} }}")),
+            Num::ONE
+        );
+        assert_eq!(launch("speed = 30\nhoming = true"), Num::ONE);
     }
 }

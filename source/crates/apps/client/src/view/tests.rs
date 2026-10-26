@@ -33,6 +33,7 @@ use crate::test_app;
 use crate::view::area_view::{AREA_LIFT, AreaViewPlugin};
 use crate::view::look_states::LookStatesPlugin;
 use crate::view::map_metric::MapMetric;
+use crate::view::match_colors::Paint;
 use crate::view::unit_looks::{LookNodes, LookTypes};
 
 /// A unit type the client data draws with no model, as every type of a view with no looks: its

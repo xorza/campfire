@@ -21,7 +21,7 @@ use campfire_actions::{ActionBook, SlotKindBook};
 use campfire_app_threads::OneThreadPlugins;
 use campfire_client_files::{HudFile, PickingFile, TeamColors};
 use campfire_geometry::Metric;
-use campfire_host::JoinState;
+use campfire_host::{JoinState, ReceivedTick};
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use campfire_test_packages::TestMode;
 use campfire_units::MapBook;
@@ -75,12 +75,13 @@ pub(crate) fn headless() -> App {
 }
 
 /// Adds to `app` what a client's match holds before any plugin of the client's end: the match's
-/// books and tick, empty, the world's bounds for its map, the client's join, waiting for its
-/// offer, no looks, an empty selection, the engine's keys, and a clock that moves only as a test
-/// sets it.
+/// books and tick, empty, no state received, the world's bounds for its map, the client's join,
+/// waiting for its offer, no looks, an empty selection, the engine's keys, and a clock that
+/// moves only as a test sets it.
 pub(crate) fn add_match(app: &mut App) {
     app.init_resource::<EntityIndex>();
     app.init_resource::<SimTick>();
+    app.init_resource::<ReceivedTick>();
     app.init_resource::<MapBook>();
     app.init_resource::<ActionBook>();
     app.insert_resource(SlotKindBook(Arc::default()));

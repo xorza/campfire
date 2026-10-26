@@ -27,6 +27,7 @@ pub use crate::client::join_state::{
 pub use crate::client::known_commanded::KnownCommanded;
 pub use crate::client::player_signer::PlayerSigner;
 pub use crate::client::receipt_writer::ReceiptWriter;
+pub use crate::client::received_tick::ReceivedTick;
 pub use crate::client::report_dir::ReportDir;
 pub use crate::client::report_file::{ReportCamera, ReportFile};
 pub use crate::client::sent_inputs::SentInputs;

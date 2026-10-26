@@ -1,13 +1,12 @@
 use std::collections::BTreeMap;
 
 use bevy::app::{App, FixedPostUpdate, Plugin, Startup, Update};
-use bevy::asset::{AssetServer, Assets, Handle};
+use bevy::asset::{Assets, Handle};
 use bevy::camera::ClearColor;
 use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::lifecycle::{Add, RemovedComponents};
 use bevy::ecs::observer::On;
 use bevy::ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
@@ -23,7 +22,7 @@ use bevy::time::{Fixed, Time};
 use bevy::transform::components::Transform;
 use bevy::window::Window;
 use campfire_actions::ActionProgress;
-use campfire_host::JoinState;
+use campfire_host::{JoinState, ReceivedTick};
 use campfire_mode::{MatchEnd, MatchResult};
 use campfire_projectiles::Projectile;
 use campfire_sim::{EntityIndex, Position, Unpredicted};
@@ -40,9 +39,11 @@ use crate::view::ground_heights::GroundHeights;
 use crate::view::look::{Condition, Look, Pose, ShapeKind, UnitShape};
 use crate::view::look_states::LookStates;
 use crate::view::map_metric::Lifts;
-use crate::view::match_colors::{MatchColors, Paint};
+use crate::view::match_colors::MatchColors;
 use crate::view::model_scenes::ModelScenes;
 use crate::view::scene_lights::{SceneLights, Sun};
+use crate::view::shot_dress::ShotDress;
+use crate::view::shot_stand_ins::ShotStandIns;
 use crate::view::unit_looks::UnitLooks;
 
 pub(crate) mod area_view;
@@ -68,6 +69,8 @@ pub(crate) mod package_source;
 pub(crate) mod pixel_scale;
 pub(crate) mod player_camera;
 pub(crate) mod scene_lights;
+pub(crate) mod shot_dress;
+pub(crate) mod shot_stand_ins;
 pub(crate) mod slot_shots;
 pub(crate) mod terrain_image;
 pub(crate) mod terrain_meshes;
@@ -181,19 +184,20 @@ type Started<'w, 's> = Query<
     (Changed<ActionProgress>, Without<Dead>, Allow<Unpredicted>),
 >;
 
-/// The projectiles not drawn yet: where each is, its type, and whether the client only receives
-/// it.
+/// The projectiles not drawn yet: each entity with its projectile, where it is, its type, its
+/// variation, and whether the client only receives it.
 type NewShots<'w, 's> = Query<
     'w,
     's,
     (
         Entity,
+        &'static Projectile,
         &'static Position,
         &'static UnitType,
         Option<&'static Variation>,
         Has<Unpredicted>,
     ),
-    (With<Projectile>, Without<Drawing>, Allow<Unpredicted>),
+    (Without<Drawing>, Allow<Unpredicted>),
 >;
 
 /// The drawn projectiles whose sim place changed.
@@ -208,8 +212,9 @@ impl Plugin for ViewPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(EngineText::english());
         app.init_resource::<ModelScenes>();
+        app.init_resource::<ShotStandIns>();
         app.add_systems(Startup, Self::set_scene);
-        app.add_systems(FixedPostUpdate, Self::step);
+        app.add_systems(FixedPostUpdate, (Self::step, ShotStandIns::step));
         app.configure_sets(Update, DrawSystems.in_set(ViewSystems));
         app.add_systems(
             Update,
@@ -220,6 +225,7 @@ impl Plugin for ViewPlugin {
         app.add_systems(
             Update,
             (
+                ShotStandIns::expire,
                 Self::mourn,
                 Self::follow,
                 Self::head_shots,
@@ -231,6 +237,7 @@ impl Plugin for ViewPlugin {
                 .in_set(ViewSystems),
         );
         app.add_observer(Self::show_end);
+        app.add_observer(ShotStandIns::place);
     }
 }
 
@@ -408,51 +415,43 @@ impl ViewPlugin {
     }
 
     /// Gives each projectile the client received a drawing at its place, its height included,
-    /// which glides as a unit's drawing does: its type's models, which turn along its flight, or
-    /// nothing for a look of no models, or with no look a ball at a chest's height above it.
+    /// which glides as a unit's drawing does, dressed as `ShotDress` dresses it; one a stand-in
+    /// stood for starts at the stand-in's place and turn, which it glides from as its place
+    /// arrives, and the stand-in goes (02-engine-core.md, A predicted shot draws a stand-in).
     fn draw_shots(
-        palette: Res<'_, Palette>,
         time: Res<'_, Time>,
         shots: NewShots<'_, '_>,
-        (looks, assets): (Res<'_, UnitLooks>, Res<'_, AssetServer>),
-        mut scenes: ResMut<'_, ModelScenes>,
+        mut dress: ShotDress<'_>,
+        (mut stand_ins, state_tick, places): (
+            ResMut<'_, ShotStandIns>,
+            Res<'_, ReceivedTick>,
+            Query<'_, '_, &Transform>,
+        ),
         lifts: Lifts<'_>,
         mut commands: Commands<'_, '_>,
     ) {
         let heights = lifts.get();
-        for (shot, &position, &unit_type, variation, received) in &shots {
+        for (shot, projectile, &position, &unit_type, variation, received) in &shots {
             let at = ground(position, heights);
-            let root = commands
-                .spawn((
-                    DrawingOf(shot),
-                    Transform::from_translation(at),
-                    Visibility::default(),
-                    Glide::rest(
-                        Spot {
-                            point: at,
-                            yaw: 0.0,
-                        },
-                        Follows::of(received),
-                        time.elapsed(),
-                    ),
-                ))
-                .id();
-            match looks.look(unit_type, variation.copied()) {
-                Some(models) => {
-                    commands.entity(root).insert(Heading { from: at });
-                    for model in models {
-                        let bundle = model.bundle(&mut scenes, &assets, Paint::default());
-                        commands.spawn((bundle, ChildOf(root)));
-                    }
+            let spot = Spot {
+                point: at,
+                yaw: 0.0,
+            };
+            let glide = Glide::rest(spot, Follows::of(received), time.elapsed());
+            let mut transform = Transform::from_translation(at);
+            let stand_in = state_tick
+                .get()
+                .and_then(|tick| stand_ins.take(projectile.source(), unit_type, tick));
+            if let Some(stand_in) = stand_in {
+                if let Ok(&stood) = places.get(stand_in) {
+                    transform = stood;
                 }
-                None => {
-                    commands.spawn((
-                        Mesh3d(palette.projectile.clone()),
-                        MeshMaterial3d(palette.shot.clone()),
-                        Transform::from_translation(Vec3::Y * SHOT_HEIGHT),
-                        ChildOf(root),
-                    ));
-                }
+                commands.entity(stand_in).despawn();
+            }
+            let mut root =
+                commands.spawn((DrawingOf(shot), transform, Visibility::default(), glide));
+            if dress.dress(&mut root, unit_type, variation.copied()) {
+                root.insert(Heading { from: at });
             }
         }
     }

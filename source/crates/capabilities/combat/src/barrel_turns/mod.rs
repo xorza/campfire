@@ -13,6 +13,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::barrels::Barrels;
+use crate::shot_source::ShotSource;
 use crate::turret::Turret;
 use crate::turret::turret_aim::TurretAim;
 
@@ -53,10 +54,8 @@ impl BarrelTurns {
     }
 
     /// Gives each of the tick's shots of a weapon of barrels its launch from the barrel its
-    /// weapon fires next, in the order fired: carried by its unit's turret, as the turret
-    /// stands, when the turret carries the slot kind of the weapon's slot, then turned as its
-    /// unit faces, at its place (04-capabilities/combat.md, A shot leaves its weapon's barrel). A
-    /// shot whose source is gone keeps none. The server alone runs it, as it alone launches.
+    /// weapon fires next, in the order fired, as `ShotSource::launch` gives it. A shot whose source
+    /// is gone keeps none. The server alone runs it, as it alone launches.
     pub(crate) fn launch(
         (barrels, turrets, map): (
             Res<'_, ById<UnitType, Barrels>>,
@@ -84,25 +83,21 @@ impl BarrelTurns {
             let Some((&unit_type, slots, facing, aim, mut turns)) = unit else {
                 continue;
             };
-            let action = shot.damage.action;
-            let of_weapon = barrels
-                .get(unit_type)
-                .map_or(&[][..], |barrels| barrels.of(action));
-            if of_weapon.is_empty() {
+            let Some(barrels) = barrels.get(unit_type) else {
                 continue;
-            }
-            let barrel = of_weapon[turns.turn(action, of_weapon.len())];
-            let slot = slots.iter().position(|slot| slot.action == Some(action));
-            let slot = u8::try_from(slot.expect("a weapon that fired is in a slot"))
-                .expect("a unit's slots fit u8");
-            let turret = turrets
-                .get(unit_type)
-                .filter(|turret| turret.carries(slots, slot));
-            let barrel = match turret.zip(aim) {
-                Some((turret, &aim)) => turret.carried(aim, barrel),
-                None => barrel,
             };
-            shot.launch = Some(barrel.launched(map.point(shot.from), facing.copied()));
+            let source = ShotSource {
+                turret: turrets.get(unit_type),
+                slots,
+                aim: aim.copied(),
+                facing: facing.copied(),
+                point: map.point(shot.from),
+            };
+            let action = shot.damage.action;
+            if let Some(launch) = source.launch(barrels, action, |count| turns.turn(action, count))
+            {
+                shot.launch = Some(launch);
+            }
         }
     }
 }

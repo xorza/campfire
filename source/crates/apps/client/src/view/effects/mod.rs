@@ -4,6 +4,7 @@ use bevy::camera::Camera3d;
 use bevy::camera::visibility::{NoFrustumCulling, Visibility};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::event::Event;
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::name::Name;
@@ -26,7 +27,7 @@ use campfire_projectiles::Projectile;
 use campfire_script::MatchNames;
 use campfire_sim::{EntityIndex, Unpredicted};
 use campfire_units::{Dead, TypeOriginBook};
-use campfire_values::{PackageIndex, UnitType};
+use campfire_values::{ActionId, PackageIndex, UnitType};
 
 use crate::view::client_data::ClientLoad;
 use crate::view::drawing::Drawing;
@@ -83,26 +84,42 @@ struct Follower {
     root: Entity,
 }
 
+/// A shot the client saw a unit fire: the unit, the place of the slot that fired among its slots,
+/// and the slot's action.
+#[derive(Event, Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ShotSeen {
+    pub(crate) unit: Entity,
+    pub(crate) slot: usize,
+    pub(crate) action: ActionId,
+}
+
 /// On a unit's drawing's root: the latest tick the effects saw each slot of its unit ready at, a
 /// rise past which is a shot (02-engine-core.md, The client derives an attack's phase), a
-/// rollback that sets a slot back and fires it again playing no second shot; and the barrel each
-/// weapon slot of its look fires its next shot from, as Zero Hour turns a weapon's barrel with
-/// each shot (effects.md, A shot's effect at its barrel).
+/// rollback that sets a slot back and fires it again playing no second shot; the barrel of its
+/// look each weapon slot of its look fires its next shot from (effects.md, A shot's effect at its
+/// barrel); and the barrel of its type each of its unit's slots launches its next projectile from
+/// (02-engine-core.md, A predicted shot draws a stand-in).
 #[derive(Component, Debug, Default)]
 pub(crate) struct FireSeen {
     ready: Vec<Tick>,
-    turns: Vec<usize>,
+    turns: SlotTurns,
+    pub(crate) launches: SlotTurns,
 }
 
-impl FireSeen {
-    /// The barrel of `barrels` the weapon slot `slot` fires from, and turns it to the next, back
-    /// to the first after the last.
-    fn turn(&mut self, slot: usize, barrels: usize) -> usize {
-        if self.turns.len() <= slot {
-            self.turns.resize(slot + 1, 0);
+/// The barrel each slot fires its next shot from, by the slot's place, as Zero Hour turns a
+/// weapon's barrel with each shot.
+#[derive(Debug, Default)]
+pub(crate) struct SlotTurns(Vec<usize>);
+
+impl SlotTurns {
+    /// The barrel of `barrels` the slot `slot` fires from, and turns it to the next, back to the
+    /// first after the last.
+    pub(crate) fn turn(&mut self, slot: usize, barrels: usize) -> usize {
+        if self.0.len() <= slot {
+            self.0.resize(slot + 1, 0);
         }
-        let barrel = self.turns[slot] % barrels;
-        self.turns[slot] = (barrel + 1) % barrels;
+        let barrel = self.0[slot] % barrels;
+        self.0[slot] = (barrel + 1) % barrels;
         barrel
     }
 }
@@ -124,6 +141,7 @@ type Shooters<'w, 's> = Query<
     'w,
     's,
     (
+        Entity,
         &'static UnitType,
         &'static SlotTimes,
         &'static ActionSlots,
@@ -240,8 +258,8 @@ impl MatchEffects {
     /// barrel of none or a slot of no barrel, as the game's weapon plays one its draw does not
     /// (`Weapon.cpp`); the barrel's muzzle flash; and its hit of a weapon of no projectile at its
     /// target's drawing (effects.md, A shot's effect at its barrel). A shot is a rise of a slot's
-    /// ready tick, of a unit whose slots' times changed; a match of no effects shows the flashes
-    /// alone.
+    /// ready tick, of a unit whose slots' times changed, which it triggers as `ShotSeen`; a match
+    /// of no effects shows the flashes alone.
     fn play_fires(
         mut effects: Option<ResMut<'_, Self>>,
         (looks, index, heights, time): (
@@ -268,12 +286,12 @@ impl MatchEffects {
             visibilities: &mut visibilities,
             now: time.elapsed(),
         };
-        for (&unit_type, times, slots, progress, drawing) in &shooters {
+        for (unit, &unit_type, times, slots, progress, drawing) in &shooters {
             let root = drawing.root();
             let Ok(mut fired) = seen.get_mut(root) else {
                 commands.entity(root).insert(FireSeen {
                     ready: times.iter().map(|time| time.ready_at).collect(),
-                    turns: Vec::new(),
+                    ..FireSeen::default()
                 });
                 continue;
             };
@@ -286,6 +304,11 @@ impl MatchEffects {
                 let Some(action) = slot.action.filter(|_| rose && !fresh) else {
                     continue;
                 };
+                commands.trigger(ShotSeen {
+                    unit,
+                    slot: at,
+                    action,
+                });
                 let group = looks
                     .weapons(unit_type)
                     .iter()
@@ -293,7 +316,7 @@ impl MatchEffects {
                 let barrel = group.and_then(|group| {
                     let slot = u8::try_from(group).ok()?;
                     let barrels = states.get(root).ok()?.barrels(&looks, slot)?;
-                    Some(&barrels[fired.turn(group, barrels.len())])
+                    Some(&barrels[fired.turns.turn(group, barrels.len())])
                 });
                 if let Some(flash) = barrel.and_then(|barrel| barrel.flash.as_ref()) {
                     flashes.show(&mut parts, root, flash);
@@ -594,12 +617,12 @@ mod tests {
     #[test]
     fn a_slot_turns_to_its_next_barrel_with_each_shot_and_back_to_the_first() {
         // Slot 1 of two barrels: 0, 1, 0; slot 0 of three, turned on its own: 0, 1, 2, 0.
-        let mut seen = FireSeen::default();
-        let slot_one: Vec<usize> = (0..3).map(|_| seen.turn(1, 2)).collect();
+        let mut turns = SlotTurns::default();
+        let slot_one: Vec<usize> = (0..3).map(|_| turns.turn(1, 2)).collect();
         assert_eq!(slot_one, [0, 1, 0]);
-        let slot_zero: Vec<usize> = (0..4).map(|_| seen.turn(0, 3)).collect();
+        let slot_zero: Vec<usize> = (0..4).map(|_| turns.turn(0, 3)).collect();
         assert_eq!(slot_zero, [0, 1, 2, 0]);
         // A state of fewer barrels takes the turn within its own.
-        assert_eq!(seen.turn(0, 1), 0);
+        assert_eq!(turns.turn(0, 1), 0);
     }
 }

@@ -26,6 +26,7 @@ use campfire_host::JoinState;
 use campfire_host::JournalCommand;
 use campfire_host::Os;
 use campfire_host::Pace;
+use campfire_host::ReceivedTick;
 use campfire_host::ReportKey;
 use campfire_host::ServerDir;
 use campfire_host::ServerPin;
@@ -144,6 +145,11 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         frame(&mut client, "its play");
         played += usize::from(playing(&client));
     }
+    // A playing client holds the tick its newest state stands before, behind the one it
+    // predicts.
+    let received = client.world().resource::<ReceivedTick>().get();
+    let received = received.expect("a playing client received a state");
+    assert!(received <= client.world().resource::<SimTick>().start());
 
     // A save, then a load of it: the server starts again on its data, and the client loses its
     // link, takes the new one, and plays on.
@@ -302,6 +308,10 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     while next(&watcher) != clock.first() {
         frame(&mut watcher, "the held tick");
     }
+    assert_eq!(
+        watcher.world().resource::<ReceivedTick>().get(),
+        Some(clock.first())
+    );
     assert!(pace.is_paused());
     // A report the watcher takes there holds the log the replay replays, whole.
     let held = Tick::new(end.get() - 5);

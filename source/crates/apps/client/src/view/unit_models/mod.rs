@@ -3,16 +3,16 @@ use std::collections::btree_map::Entry;
 use std::sync::Arc;
 
 use bevy::animation::{AnimatedBy, AnimationClip, AnimationPlayer, AnimationTargetId};
-use bevy::app::{App, Plugin, Startup, Update};
+use bevy::app::{AnimationSystems, App, Plugin, PostUpdate, Startup, Update};
 use bevy::asset::{AssetServer, Handle, LoadContext};
 use bevy::camera::visibility::Visibility;
-use bevy::ecs::change_detection::DetectChangesMut;
+use bevy::ecs::change_detection::{DetectChanges, DetectChangesMut};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::name::Name;
 use bevy::ecs::observer::On;
-use bevy::ecs::query::{Added, Allow, Changed, With};
+use bevy::ecs::query::{Allow, Changed, With};
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
 use bevy::ecs::world::EntityWorldMut;
@@ -24,6 +24,7 @@ use bevy::gltf::gltf::{Animation, Material, Mesh, Primitive};
 use bevy::math::Quat;
 use bevy::mesh::Mesh3d;
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
+use bevy::transform::TransformSystems;
 use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldInstanceReady;
 use campfire_client_files::{AnimationExtras, ClientObject, MaterialExtras};
@@ -83,9 +84,14 @@ impl Plugin for UnitModelsPlugin {
         );
         app.add_observer(Self::dress);
         app.add_systems(
+            PostUpdate,
+            Self::turn_turrets
+                .after(AnimationSystems)
+                .before(TransformSystems::Propagate),
+        );
+        app.add_systems(
             Update,
             (
-                Self::turn_turrets,
                 Self::redress.in_set(DressSystems),
                 (Self::follow_teams, Self::repaint).chain(),
             ),
@@ -171,32 +177,17 @@ impl UnitModelsPlugin {
         Transform::from_xyz(x, y, z).with_rotation(turn)
     }
 
-    /// Turns the turret nodes of each drawing by its unit's turret aim, as the sim last gave it:
-    /// of each unit whose aim changed, and of each drawing whose model was just dressed, so a
-    /// node is written only when its aim or its node is new.
+    /// Turns the turret nodes of each drawing by its unit's turret aim, as the sim last gave it,
+    /// each frame once the clips posed the models, as a clip may pose a turret's node each frame
+    /// (`TurretNodes::turn`).
     fn turn_turrets(
-        changed: TurnedTurrets<'_, '_>,
-        dressed: Query<'_, '_, (&DrawingOf, &TurretNodes), Added<TurretNodes>>,
-        (aims, turrets): (
-            Query<'_, '_, &TurretAim, Allow<Unpredicted>>,
-            Query<'_, '_, &TurretNodes>,
-        ),
+        mut drawings: Query<'_, '_, (&DrawingOf, &mut TurretNodes)>,
+        aims: Query<'_, '_, &TurretAim, Allow<Unpredicted>>,
         mut nodes: Query<'_, '_, &mut Transform>,
     ) {
-        let changed = changed.iter().filter_map(|(&aim, drawing)| {
-            turrets
-                .get(drawing.root())
-                .ok()
-                .map(|&turret| (aim, turret))
-        });
-        let dressed = dressed.iter().filter_map(|(&DrawingOf(unit), &turret)| {
-            aims.get(unit).ok().map(|&aim| (aim, turret))
-        });
-        for (aim, turret) in changed.chain(dressed) {
-            for (node, rotation) in turret.rotations(aim) {
-                if let Ok(mut node) = nodes.get_mut(node) {
-                    node.rotation = rotation;
-                }
+        for (&DrawingOf(unit), mut turret) in &mut drawings {
+            if let Ok(&aim) = aims.get(unit) {
+                turret.bypass_change_detection().turn(aim, &mut nodes);
             }
         }
     }
@@ -308,8 +299,8 @@ impl UnitModelsPlugin {
         // A model is a child of its unit's drawing, which the turret's nodes turn with.
         let at_rest = |node: Option<Entity>| {
             let node = node?;
-            let rest = transforms.get(node).ok()?.rotation;
-            Some(TurretNode { node, rest })
+            let base = transforms.get(node).ok()?.rotation;
+            Some(TurretNode { node, base })
         };
         let nodes = TurretNodes {
             angle: at_rest(turret),
@@ -517,11 +508,6 @@ impl GltfExtensionHandler for ExtrasHandler {
 type Recolored<'w, 's> =
     Query<'w, 's, (&'static Team, &'static Drawing), (Changed<Team>, Allow<Unpredicted>)>;
 
-/// The units whose turret aim changed, the client's own and those it only receives, each with
-/// its drawing.
-type TurnedTurrets<'w, 's> =
-    Query<'w, 's, (&'static TurretAim, &'static Drawing), (Changed<TurretAim>, Allow<Unpredicted>)>;
-
 /// A node of a spawned model: its entity, and its name.
 #[derive(Debug, Clone, Copy)]
 struct Node<'a> {
@@ -594,29 +580,42 @@ pub(crate) struct TurretNodes {
     pitch: Option<TurretNode>,
 }
 
-/// A node of a model a turret turns, and its rotation at rest, as its model holds it.
+/// A node of a model a turret turns, and its rotation before the turn: its rest, as its model
+/// holds it, or the rotation its clip last gave it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct TurretNode {
     node: Entity,
-    rest: Quat,
+    base: Quat,
 }
 
 impl TurretNodes {
-    /// Each node's rotation at `aim`: its rest turned about its own up by the angle, and about
-    /// its own side by the pitch, raising its forward, as Zero Hour's `W3DModelDraw` controls a
-    /// turret's bones in their own frames (02-engine-core.md, The client draws a projectile with
-    /// its look).
-    fn rotations(&self, aim: TurretAim) -> impl Iterator<Item = (Entity, Quat)> {
+    /// Turns its nodes of `nodes` to `aim`: each node's base turned about its own up by the angle,
+    /// and about its own side by the pitch, raising its forward, as Zero Hour's `W3DModelDraw`
+    /// controls a turret's bones in their own frames (02-engine-core.md, The client draws a
+    /// projectile with its look). A node a clip wrote since its last turn takes the clip's
+    /// rotation as its base, as W3D applies a captured bone after its animation
+    /// (`PivotClass::Capture_Update`); a node is written only when its rotation changes.
+    fn turn(&mut self, aim: TurretAim, nodes: &mut Query<'_, '_, &mut Transform>) {
         let radians = |degrees: Num| degrees.float().to_radians();
-        let angle = self.angle.map(|turret| {
-            let turn = Quat::from_rotation_y(radians(aim.angle()));
-            (turret.node, turret.rest * turn)
-        });
-        let pitch = self.pitch.map(|turret| {
-            let raise = Quat::from_rotation_z(radians(aim.pitch()));
-            (turret.node, turret.rest * raise)
-        });
-        angle.into_iter().chain(pitch)
+        let turns = [
+            (&mut self.angle, Quat::from_rotation_y(radians(aim.angle()))),
+            (&mut self.pitch, Quat::from_rotation_z(radians(aim.pitch()))),
+        ];
+        for (turret, turn) in turns {
+            let Some(turret) = turret else {
+                continue;
+            };
+            let Ok(mut transform) = nodes.get_mut(turret.node) else {
+                continue;
+            };
+            if transform.is_changed() {
+                turret.base = transform.rotation;
+            }
+            let rotation = turret.base * turn;
+            if transform.rotation != rotation {
+                transform.rotation = rotation;
+            }
+        }
     }
 }
 

@@ -70,6 +70,7 @@ use campfire_host::Os;
 use campfire_host::PlayerSigner;
 use campfire_host::ReceiptRefused;
 use campfire_host::ReceiptWriter;
+use campfire_host::ReceivedTick;
 use campfire_host::SentInputs;
 use campfire_host::ServerPin;
 use campfire_host::SessionOffer;
@@ -319,6 +320,7 @@ impl Plugin for SimClientPlugin {
         }));
         world.init_resource::<SentInputs>();
         world.init_resource::<KnownCommanded>();
+        world.init_resource::<ReceivedTick>();
         if let Some(data) = &self.data {
             world.insert_resource(ReceiptWriter::start(Arc::clone(data)));
         }
@@ -373,7 +375,9 @@ impl Plugin for SimClientPlugin {
         app.add_systems(First, log_frame);
         app.add_systems(
             PreUpdate,
-            follow_watched_tick.after(ReplicationSystems::Receive),
+            (follow_received_tick, follow_watched_tick)
+                .chain()
+                .after(ReplicationSystems::Receive),
         );
         app.add_systems(
             PreUpdate,
@@ -859,18 +863,31 @@ fn last_tick_of_frame(time: Res<'_, Time<Fixed>>) -> bool {
     time.overstep() < time.timestep()
 }
 
-/// Holds a watching client's sim tick at the state the server sent it last: the tick after the
-/// one the server ran by its newest message, as a playing client's runs with its timeline, so
-/// what reads the tick, a report and the HUD's clock, stands at what the client draws.
-fn follow_watched_tick(
+/// Holds the sim tick the newest state the client received stands before, by the clock of the
+/// match it plays or watches.
+fn follow_received_tick(
     state: Res<'_, JoinState>,
     confirmed: Res<'_, ConfirmedTickMap>,
+    mut received: ResMut<'_, ReceivedTick>,
+) {
+    let clock = state.playing_clock().or_else(|| state.watching_clock());
+    let tick = clock
+        .zip(confirmed.newest_tick())
+        .map(|(clock, last)| clock.next_after(last));
+    received.set_if_neq(ReceivedTick::new(tick));
+}
+
+/// Holds a watching client's sim tick at the state the server sent it last, as a playing
+/// client's runs with its timeline, so what reads the tick, a report and the HUD's clock, stands
+/// at what the client draws.
+fn follow_watched_tick(
+    state: Res<'_, JoinState>,
+    received: Res<'_, ReceivedTick>,
     mut tick: ResMut<'_, SimTick>,
 ) {
-    let (Some(clock), Some(last)) = (state.watching_clock(), confirmed.newest_tick()) else {
+    let (Some(_), Some(next)) = (state.watching_clock(), received.get()) else {
         return;
     };
-    let next = clock.next_after(last);
     if tick.start() != next {
         *tick = SimTick::new(next);
     }
