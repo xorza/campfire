@@ -7,8 +7,8 @@ use super::*;
 
 #[test]
 fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds() {
-    // The book holds the blast, the hit and the smoke; the tank names a death of no list,
-    // so it plays none; its damaged state names its first slot's bone, its default none.
+    // The book holds the blast and the smoke; the tank names a death of no list, so it plays
+    // none.
     let effects: EffectsFile = Toml::parse(
         r#"
         step = 0.033333335
@@ -63,7 +63,7 @@ fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds()
         [units.tank]
         draws = [{ states = [
             { sets = [[]], models = [] },
-            { sets = [["damaged"]], models = [], fire_bones = [{ slot = 1, bone = "MuzzleFX01" }] },
+            { sets = [["damaged"]], models = [], fire_bones = [{ slot = 1, barrels = [{ bone = "MuzzleFX01" }] }] },
         ] }]
         death = "fizzle"
         [units.shell]
@@ -89,19 +89,11 @@ fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds()
         origins: &origins,
         names: &MatchNames::default(),
     });
-    let [bunker, tank, shell] = [0, 1, 2].map(|at| origins.iter().nth(at).unwrap().0);
+    let [bunker, _, shell] = [0, 1, 2].map(|at| origins.iter().nth(at).unwrap().0);
     let blast = book.list_id(&DeclaredName::new("blast").unwrap()).unwrap();
     let smoke = book.id(&DeclaredName::new("smoke").unwrap()).unwrap();
     assert_eq!(plays.deaths, BTreeMap::from([(bunker, blast)]));
     assert_eq!(plays.ends, BTreeMap::from([(shell, blast)]));
     assert_eq!(plays.trails, BTreeMap::from([(shell, smoke)]));
-    let slot = FireSlot {
-        unit_type: tank,
-        slot: 1,
-    };
-    assert_eq!(
-        plays.bones,
-        BTreeMap::from([(slot, "MuzzleFX01".to_owned())])
-    );
     assert!(plays.fires.is_empty() && plays.hits.is_empty());
 }

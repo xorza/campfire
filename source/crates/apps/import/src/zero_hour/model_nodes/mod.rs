@@ -1,3 +1,5 @@
+use campfire_client_files::FireBarrel;
+
 use crate::zero_hour::format::ini::object_ini::{HideShow, StateLook, WeaponBones};
 
 /// What a model's default look reads of it: its sub-objects, in the HLOD's order, each with its
@@ -100,36 +102,56 @@ impl ModelNodes {
             .collect()
     }
 
-    /// The pivots of a weapon slot's muzzle flashes, as `validateWeaponBarrelInfo` finds them:
-    /// for each number from 01 to 99, while any of the slot's bones has that number, the flash's;
-    /// else, if no number found one, the flash's bare name.
+    /// The pivots of a weapon slot's muzzle flashes, its barrels' that have one.
     fn muzzle_flashes(&self, weapon: &WeaponBones) -> Vec<usize> {
+        let barrels = self.barrel_pivots(weapon, |weapon| &weapon.muzzle_flash);
+        barrels.into_iter().flatten().collect()
+    }
+
+    /// The bones a weapon slot's fire effect plays at, each barrel's in the order its shots take
+    /// them, none for a barrel of no fire bone; none at all when no barrel has one.
+    pub(crate) fn fire_barrels(&self, weapon: &WeaponBones) -> Vec<FireBarrel> {
+        let barrels = self.barrel_pivots(weapon, |weapon| &weapon.fire_fx);
+        if barrels.iter().all(Option::is_none) {
+            return Vec::new();
+        }
+        let name = |pivot: usize| self.pivots[pivot].name.clone();
+        barrels
+            .into_iter()
+            .map(|pivot| FireBarrel {
+                bone: pivot.map(name),
+            })
+            .collect()
+    }
+
+    /// The pivot of `bone` of each of a weapon slot's barrels, as `validateWeaponBarrelInfo`
+    /// finds them: for each number from 01 to 99, while any of the slot's bones has that number,
+    /// a barrel, of its bone of that number, none for a barrel it lacks; else, if no number found
+    /// one, one barrel of its bone's bare name.
+    fn barrel_pivots(
+        &self,
+        weapon: &WeaponBones,
+        bone: fn(&WeaponBones) -> &Option<String>,
+    ) -> Vec<Option<usize>> {
         let bones = [
             &weapon.fire_fx,
             &weapon.recoil,
             &weapon.muzzle_flash,
             &weapon.launch,
         ];
-        let mut flashes = Vec::new();
-        let mut barrels = 0;
+        let mut barrels = Vec::new();
         for number in 1..=99 {
             let numbered =
                 |bone: &Option<String>| self.pivot(&format!("{}{number:02}", bone.as_ref()?));
             if bones.iter().all(|bone| numbered(bone).is_none()) {
                 break;
             }
-            barrels += 1;
-            flashes.extend(numbered(&weapon.muzzle_flash));
+            barrels.push(numbered(bone(weapon)));
         }
-        if barrels == 0 {
-            flashes.extend(
-                weapon
-                    .muzzle_flash
-                    .as_ref()
-                    .and_then(|flash| self.pivot(flash)),
-            );
+        if barrels.is_empty() {
+            barrels.push(bone(weapon).as_ref().and_then(|bare| self.pivot(bare)));
         }
-        flashes
+        barrels
     }
 
     /// The name of its pivot `name`, of either case, as its node is named.

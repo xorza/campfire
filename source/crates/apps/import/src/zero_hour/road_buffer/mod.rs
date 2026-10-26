@@ -11,7 +11,7 @@ use crate::zero_hour::road_pieces::RoadPieces;
 use crate::zero_hour::terrain_atlas::TexturePlace;
 
 /// A map's road pieces as `W3DRoadBuffer::loadRoads` builds them, in `f32` as the game computes
-/// them (roads.md, A road is a decal the import meshes): its segments chained, each to one of its
+/// them (09-zero-hour.md, A road is a decal the import meshes): its segments chained, each to one of its
 /// type that shares its point, flipped to run on, so a chain runs back along the list; the ends of
 /// a type at each point counted; a junction where three or four meet; a curve or a miter where
 /// the ends of two segments next in a chain meet alone; and an alpha join where an end alone of

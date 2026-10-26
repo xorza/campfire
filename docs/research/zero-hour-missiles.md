@@ -51,3 +51,7 @@ How Zero Hour flies a missile, which weapons fire one, and how other engines mod
 
 - **Homing.** A homing projectile steps its type's `speed` a tick straight toward its target's position, hits when its circle of half its width reaches the target's body, and ends with no hit when the target dies, becomes no target or teleports; the load requires it faster than `max_move_speed` (`flights.rs`, [Actions](../design/04-capabilities/actions.md)).
 - **A curve.** A cubic Bézier curve from its launch to its target's center, its inner points at fractions of the way and heights over the ground between, its end following its target by `follow` m/s, meeting the units its `hits` selects by its sphere; the import flies Zero Hour's `DumbProjectileBehavior` shells on it.
+
+## The port's Tomahawk
+
+- **A report of 26 October 2026.** In a match on Tournament Desert, a Tomahawk at (1,053, −1,446) fired four missiles at an ECM tank at (1,045, −1,815), 370 m away. Its replay, probed at 100 ms, shows each missile end 9 ticks after its launch, about 50 m out, with the tank at 300 of 300 life. Each started at the launcher's place, and the launcher's model kept its missile on its rail.

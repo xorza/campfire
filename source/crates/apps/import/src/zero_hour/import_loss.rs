@@ -30,7 +30,7 @@ pub enum ImportLoss {
     UntexturedCells { map: MapName, cells: usize },
     /// A waypoint of a map past its bounds, by its name, which the import drops.
     Waypoint { map: MapName, waypoint: String },
-    /// A map's road segments of a type the import does not draw (roads.md, A road's type is
+    /// A map's road segments of a type the import does not draw (09-zero-hour.md, A road's type is
     /// `Roads.ini`'s).
     Road { map: MapName, dropped: DroppedRoads },
     /// A command button the import does not convert (09-zero-hour.md, Every command set's

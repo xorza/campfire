@@ -31,12 +31,13 @@ use campfire_values::{PackageIndex, UnitType};
 use crate::view::client_data::ClientLoad;
 use crate::view::drawing::Drawing;
 use crate::view::effects::effect_book::{EffectBook, GroupId};
-use crate::view::effects::effect_plays::{EffectPlays, FireSlot, PlaySources};
+use crate::view::effects::effect_plays::{EffectPlays, PlaySources};
 use crate::view::effects::particle_quads::{ParticleQuads, ViewAxes};
 use crate::view::effects::particle_run::{ParticleRun, SystemKey};
 use crate::view::effects::step_clock::StepClock;
 use crate::view::file_material::{FileBlend, FileMaterial};
 use crate::view::ground_heights::GroundHeights;
+use crate::view::look_states::LookStates;
 use crate::view::package_source::PackageAssets;
 use crate::view::unit_looks::UnitLooks;
 use crate::view::{DrawSystems, ViewSystems};
@@ -80,11 +81,27 @@ struct Follower {
 }
 
 /// On a unit's drawing's root: the latest tick the effects saw each slot of its unit ready at, a
-/// rise past which is a shot (02-engine-core.md, The client derives an attack's phase); a
-/// rollback that sets a slot back and fires it again plays no second shot.
+/// rise past which is a shot (02-engine-core.md, The client derives an attack's phase), a
+/// rollback that sets a slot back and fires it again playing no second shot; and the barrel each
+/// weapon slot of its look fires its next shot from, as Zero Hour turns a weapon's barrel with
+/// each shot (effects.md, A shot's effect at its barrel).
 #[derive(Component, Debug, Default)]
 pub(crate) struct FireSeen {
     ready: Vec<Tick>,
+    turns: Vec<usize>,
+}
+
+impl FireSeen {
+    /// The barrel of `barrels` the weapon slot `slot` fires from, and turns it to the next, back
+    /// to the first after the last.
+    fn turn(&mut self, slot: usize, barrels: usize) -> usize {
+        if self.turns.len() <= slot {
+            self.turns.resize(slot + 1, 0);
+        }
+        let barrel = self.turns[slot] % barrels;
+        self.turns[slot] = (barrel + 1) % barrels;
+        barrel
+    }
 }
 
 /// The units that died, of their types and drawings.
@@ -228,7 +245,7 @@ impl MatchEffects {
         ),
         shooters: Shooters<'_, '_>,
         drawn: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
-        mut seen: Query<'_, '_, &mut FireSeen>,
+        (mut seen, states): (Query<'_, '_, &mut FireSeen>, Query<'_, '_, &LookStates>),
         (places, children, names): (
             Query<'_, '_, &GlobalTransform>,
             Query<'_, '_, &Children>,
@@ -246,6 +263,7 @@ impl MatchEffects {
             let Ok(mut fired) = seen.get_mut(root) else {
                 commands.entity(root).insert(FireSeen {
                     ready: times.iter().map(|time| time.ready_at).collect(),
+                    turns: Vec::new(),
                 });
                 continue;
             };
@@ -263,17 +281,18 @@ impl MatchEffects {
                         .weapons(unit_type)
                         .iter()
                         .position(|group| group.contains(&action));
-                    let bone = group.and_then(|group| {
-                        let slot = FireSlot {
-                            unit_type,
-                            slot: u8::try_from(group).ok()?,
-                        };
-                        effects.plays.bones.get(&slot)
+                    let barrel = group.and_then(|group| {
+                        let slot = u8::try_from(group).ok()?;
+                        let barrels = states.get(root).ok()?.barrels(&looks, slot)?;
+                        Some(&barrels[fired.turn(group, barrels.len())])
                     });
+                    // A barrel of no fire bone plays no fire effect, as the game's plays none.
+                    let plays = barrel.is_none_or(|barrel| barrel.bone.is_some());
+                    let bone = barrel.and_then(|barrel| barrel.bone.as_deref());
                     let barrel = bone
                         .and_then(|bone| Self::bone(root, bone, &children, &names))
                         .unwrap_or(root);
-                    if let Ok(place) = places.get(barrel) {
+                    if let Some(place) = places.get(barrel).ok().filter(|_| plays) {
                         effects
                             .run
                             .play(&effects.book, fire, place.affine(), &ground);
@@ -532,5 +551,22 @@ impl MatchEffects {
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, Vec::<[f32; 2]>::new())
         .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, Vec::<[f32; 4]>::new())
         .with_inserted_indices(Indices::U32(Vec::new()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_slot_turns_to_its_next_barrel_with_each_shot_and_back_to_the_first() {
+        // Slot 1 of two barrels: 0, 1, 0; slot 0 of three, turned on its own: 0, 1, 2, 0.
+        let mut seen = FireSeen::default();
+        let slot_one: Vec<usize> = (0..3).map(|_| seen.turn(1, 2)).collect();
+        assert_eq!(slot_one, [0, 1, 0]);
+        let slot_zero: Vec<usize> = (0..4).map(|_| seen.turn(0, 3)).collect();
+        assert_eq!(slot_zero, [0, 1, 2, 0]);
+        // A state of fewer barrels takes the turn within its own.
+        assert_eq!(seen.turn(0, 1), 0);
     }
 }

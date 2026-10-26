@@ -89,7 +89,7 @@ impl RoadsIni {
     }
 
     /// The type the game gives a map's road whose template no type names, the one of id 1
-    /// (roads.md, A road's type is `Roads.ini`'s); none when that is a bridge, or no type.
+    /// (09-zero-hour.md, A road's type is `Roads.ini`'s); none when that is a bridge, or no type.
     pub(crate) fn untyped(&self) -> Option<RoadId> {
         self.roads
             .iter()

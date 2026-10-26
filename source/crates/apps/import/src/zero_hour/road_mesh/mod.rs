@@ -4,7 +4,7 @@ use campfire_client_files::TerrainQuads;
 use crate::zero_hour::convex_clip::ConvexClip;
 use crate::zero_hour::format::map::map_file::MapHeights;
 
-/// A road piece's mesh as it lies on the ground (roads.md, A decal lies on the ground), in `f32`
+/// A road piece's mesh as it lies on the ground (09-zero-hour.md, A decal lies on the ground), in `f32`
 /// as the game computes it, on the game's axes, `x` east, `y` north and `z` up: its vertices'
 /// points and their texture coordinates in repeats of its type's texture, `u` along it and `v`
 /// down the texture, and its triangles, wound as the game winds the piece's. One mesh is the

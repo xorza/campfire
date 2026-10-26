@@ -546,24 +546,14 @@ impl ModelWriter<'_, '_> {
             };
             match self.model(model)? {
                 WrittenModel::Nodes { nodes, bounds } => {
-                    // A slot's fire effect plays at its first barrel's bone, its name and 01, or
-                    // at its bare name for a single barrel (`validateWeaponBarrelInfo`), of the
-                    // first model that holds it.
+                    // A slot's fire effect plays at its barrels of the first model that holds any.
                     for (slot, bones) in (0_u8..).zip(&look.weapons) {
-                        let Some(prefix) = &bones.fire_fx else {
-                            continue;
-                        };
                         if looked.fire_bones.iter().any(|bone| bone.slot == slot) {
                             continue;
                         }
-                        let bone = nodes
-                            .pivot_name(&format!("{prefix}01"))
-                            .or_else(|| nodes.pivot_name(prefix));
-                        if let Some(bone) = bone {
-                            looked.fire_bones.push(FireBone {
-                                slot,
-                                bone: bone.to_owned(),
-                            });
+                        let barrels = nodes.fire_barrels(bones);
+                        if !barrels.is_empty() {
+                            looked.fire_bones.push(FireBone { slot, barrels });
                         }
                     }
                     let hide = nodes.hidden(look);

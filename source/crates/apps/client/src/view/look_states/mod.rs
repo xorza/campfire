@@ -15,7 +15,7 @@ use bevy::ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use bevy::time::{Fixed, Time};
 use bevy::transform::components::Transform;
 use campfire_actions::{ActionProgress, ActionSlots, SlotTimes};
-use campfire_client_files::SiteStage;
+use campfire_client_files::{FireBarrel, SiteStage};
 use campfire_combat::{ClipShots, Weapon};
 use campfire_declarations::ById;
 use campfire_math::Num;
@@ -187,6 +187,18 @@ impl Plugin for LookStatesPlugin {
 }
 
 impl LookStates {
+    /// The barrels the weapon slot `slot` fires from, of the first of its draws whose shown state,
+    /// or the state its transition goes to, names them, of its look in `looks`; none when none
+    /// does.
+    pub(crate) fn barrels<'l>(&self, looks: &'l UnitLooks, slot: u8) -> Option<&'l [FireBarrel]> {
+        let draws = looks.draws(self.unit_type, self.variation)?.draws();
+        self.draws.iter().zip(draws).find_map(|(show, draw)| {
+            let state = &draw.states()[show.state()?];
+            let bones = state.fire_bones.iter().find(|bones| bones.slot == slot)?;
+            Some(&*bones.barrels)
+        })
+    }
+
     /// The states of a unit of `unit_type` and `variation` that draws `draws`, none picked yet,
     /// its dice of `seed`.
     pub(crate) fn new(

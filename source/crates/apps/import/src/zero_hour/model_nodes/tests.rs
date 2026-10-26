@@ -126,3 +126,34 @@ fn a_default_look_hides_flagged_parts_muzzle_flashes_and_its_hidden_sub_objects(
     assert_eq!(boxed.hide.len(), 7);
     assert!(!boxed.hide.contains(&"tank.pickbox".to_owned()));
 }
+
+#[test]
+fn a_slot_fires_at_each_barrel_any_of_its_bones_numbers_or_at_its_bare_bone() {
+    // `MuzzleFX` numbers two barrels, 01 and 02, of either case; `fire` its two, a barrel each,
+    // as its flash `MuzzleFX` numbers them; `solo` its bare bone alone; `missing` none.
+    let tank = tank();
+    let barrels = |fire: &str, flash: &str| {
+        let barrels = tank.fire_barrels(&bones(Some(fire), flash));
+        barrels
+            .into_iter()
+            .map(|barrel| barrel.bone)
+            .collect::<Vec<_>>()
+    };
+    let named = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| Some((*name).to_owned()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        barrels("MuzzleFX", "none"),
+        named(&["muzzlefx01", "muzzlefx02"])
+    );
+    assert_eq!(barrels("fire", "none"), named(&["fire01", "fire02"]));
+    assert_eq!(barrels("solo", "none"), named(&["solo"]));
+    assert!(barrels("missing", "none").is_empty());
+    // A flash numbered 01 and 02 makes two barrels: a fire bone numbered for neither leaves each
+    // of no bone, so none at all; one numbered for both gives each its own.
+    assert!(barrels("solo", "MuzzleFX").is_empty());
+    assert_eq!(barrels("fire", "MuzzleFX"), named(&["fire01", "fire02"]));
+}

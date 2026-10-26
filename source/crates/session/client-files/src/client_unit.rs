@@ -83,19 +83,29 @@ pub struct LookState {
     pub key: Option<DeclaredName>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waits_for: Option<DeclaredName>,
-    /// The node of its models a weapon slot's fire effect plays at, by the slot's place among
+    /// The nodes of its models a weapon slot's fire effect plays at, by the slot's place among
     /// the look's weapons, none for a slot whose effect plays at its unit's place
     /// (effects.md, A shot's effect at its barrel).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fire_bones: Vec<FireBone>,
 }
 
-/// The node `bone` of a state's models, which the fire effect of the weapon slot `slot` plays at.
+/// The barrels of the weapon slot `slot` of a state's models, in the order its shots take them,
+/// whose fire effect plays at each one's bone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FireBone {
     pub slot: u8,
-    pub bone: String,
+    pub barrels: Vec<FireBarrel>,
+}
+
+/// A barrel of a weapon slot: the node its shot's fire effect plays at, none for a barrel whose
+/// shot plays no fire effect.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FireBarrel {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bone: Option<String>,
 }
 
 /// What a draw draws between a state of the key `from` and one of the key `to`, as Zero Hour's

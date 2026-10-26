@@ -82,7 +82,7 @@ pub(crate) struct TerrainCounts {
 
 /// Tournament Desert's road segments, curves, miters, junctions by kind and alpha joins the import
 /// draws, and the segments it drops for each cause, in the order of `RoadDropCause::ALL`
-/// (roads.md, A road is a decal the import meshes).
+/// (09-zero-hour.md, A road is a decal the import meshes).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     "{segments} segments, {curves} curves, {miters} miters, {tees} tees, {four_ways} four-ways, \

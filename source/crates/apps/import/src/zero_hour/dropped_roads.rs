@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use campfire_common::EnumAll;
 use serde::{Deserialize, Serialize};
 
-/// Why a map's road segments are not drawn (roads.md, A road's type is `Roads.ini`'s).
+/// Why a map's road segments are not drawn (09-zero-hour.md, A road's type is `Roads.ini`'s).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 pub enum RoadDropCause {
     /// Segments of a template no road type names, by their template, where the type of id 1 the

@@ -260,7 +260,7 @@ impl ImportCheck<'_> {
 
     /// The waypoints the import dropped of every map it wrote, which loads in the imported
     /// mode, as the import's own load checks, and its road segments of no type, which the
-    /// install's road of id 1 takes (roads.md, A road's type is `Roads.ini`'s).
+    /// install's road of id 1 takes (09-zero-hour.md, A road's type is `Roads.ini`'s).
     pub(crate) fn other_maps(&mut self) {
         let mut untyped = 0;
         for loss in &self.imported.losses {

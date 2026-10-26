@@ -19,7 +19,7 @@ use crate::zero_hour::format::map::terrain::{Terrain, TerrainFields};
 /// level of that tile, and the wrap of a level is the level of the wrap. Beside the classes, when
 /// a map draws roads, the texture grows to twice the width, and each road type's texture takes a
 /// place of its own there, wrapped about by a border alike, so a road that repeats its texture
-/// samples its own copy (roads.md, A decal's texture joins the terrain's).
+/// samples its own copy (02-engine-core.md, A decal's texture joins the terrain's).
 #[derive(Debug)]
 pub(crate) struct TerrainAtlas {
     /// Each class's block's corner, by the class's index, when the grid had room for it.

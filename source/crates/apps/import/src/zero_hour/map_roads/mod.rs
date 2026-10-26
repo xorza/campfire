@@ -10,7 +10,7 @@ use crate::zero_hour::format::map::map_object::MapObject;
 /// game computes them: each object that starts a road and the one after it, when that one ends
 /// it, a segment; those of a type, in the map's order, the types they are, each once, in the
 /// order the game draws them, the last read first, and the count of those of no type by their
-/// template (roads.md, A road's type is `Roads.ini`'s).
+/// template (09-zero-hour.md, A road's type is `Roads.ini`'s).
 #[derive(Debug)]
 pub(crate) struct MapRoads {
     segments: Vec<RoadSegment>,

@@ -393,7 +393,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 26;
+    pub const OUTPUT_VERSION: u32 = 28;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.
@@ -457,7 +457,7 @@ impl ZeroHour {
 
     /// The texture of a road type, of the file `name` its `Texture` gives, as the game's asset
     /// manager finds it: its DDS, else its TGA, in `Art\Textures\` of the language's directory,
-    /// then of the archives' (roads.md, A road's type is `Roads.ini`'s), read once into `read`
+    /// then of the archives' (09-zero-hour.md, A road's type is `Roads.ini`'s), read once into `read`
     /// with its size, for its conversion; none for one no archive holds.
     fn road_texture(
         &self,

@@ -11,8 +11,8 @@ use bevy::math::Vec3;
 use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_client_files::{
-    AnimationMode, AttackPhase, ClientModel, ConditionTest, LifeShare, LookDraw, LookShown,
-    ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation,
+    AnimationMode, AttackPhase, ClientModel, ConditionTest, FireBone, LifeShare, LookDraw,
+    LookShown, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation,
 };
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
@@ -79,13 +79,15 @@ pub(crate) struct DrawStates {
 }
 
 /// A state of a draw: its sets of conditions, what it shows, its key, which names it to a
-/// transition, and the key of the state it lets finish before it is shown.
+/// transition, the key of the state it lets finish before it is shown, and the barrels each
+/// weapon slot fires from.
 #[derive(Debug)]
 pub(crate) struct StateModels {
     sets: Box<[SetMask]>,
     pub(crate) shown: Shown,
     pub(crate) key: Option<StateKey>,
     pub(crate) waits_for: Option<StateKey>,
+    pub(crate) fire_bones: Box<[FireBone]>,
 }
 
 /// A key a draw's states and transitions name, by its place among the draw's keys, resolved as
@@ -455,6 +457,7 @@ impl DrawStates {
                 shown: shown(&state.models, state.animation.as_ref(), state.rise),
                 key: state.key.as_ref().map(&mut key),
                 waits_for: state.waits_for.as_ref().map(&mut key),
+                fire_bones: state.fire_bones.clone().into_boxed_slice(),
             })
             .collect();
         let transitions = draw

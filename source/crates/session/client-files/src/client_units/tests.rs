@@ -3,7 +3,7 @@ use campfire_math::Num;
 
 use super::*;
 use crate::client_model::{ModelScale, ModelTop};
-use crate::client_unit::FireBone;
+use crate::client_unit::{FireBarrel, FireBone};
 use crate::condition_test::{LifeShare, SiteStage};
 use crate::state_animation::{AnimationMode, SpeedRange, StartFrame};
 
@@ -17,7 +17,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
                 { model = "client/models/avhumflag.glb", top = 3.25 },
                 { model = "client/models/avhumfx.glb" },
             ] },
-            { sets = [["damaged"], ["damaged", "night"]], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, bone = "MuzzleFX01" }] },
+            { sets = [["damaged"], ["damaged", "night"]], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, barrels = [{ bone = "MuzzleFX01" }, {}] }] },
         ] }]
         death = "fx_humvee_death"
 
@@ -64,7 +64,12 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
         states[1].fire_bones,
         [FireBone {
             slot: 0,
-            bone: "MuzzleFX01".to_owned()
+            barrels: vec![
+                FireBarrel {
+                    bone: Some("MuzzleFX01".to_owned())
+                },
+                FireBarrel::default()
+            ]
         }]
     );
     assert_eq!(states[0].fire_bones, []);
@@ -79,7 +84,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     );
     let written = Toml::write(&units);
     assert_eq!(
-        ["fire_bones", "death =", "hit =", "end =", "trail ="]
+        ["slot =", "death =", "hit =", "end =", "trail ="]
             .map(|field| written.matches(field).count()),
         [1, 1, 0, 1, 1]
     );

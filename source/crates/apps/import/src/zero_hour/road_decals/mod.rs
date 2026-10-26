@@ -5,7 +5,7 @@ use crate::zero_hour::convex_clip::ConvexClip;
 use crate::zero_hour::road_mesh::RoadMesh;
 use crate::zero_hour::terrain_atlas::TexturePlace;
 
-/// A map's road decals as the terrain file holds them, in drawing order (roads.md, A decal's
+/// A map's road decals as the terrain file holds them, in drawing order (02-engine-core.md, A decal's
 /// texture joins the terrain's): each piece's triangles split where their coordinates cross a
 /// whole repeat of their type's texture, so each part samples one copy of it, at its place in the
 /// terrain's texture, and each point on the engine's axes.

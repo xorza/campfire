@@ -2,7 +2,7 @@ use campfire_client_files::TerrainFile;
 use campfire_math::Num;
 use campfire_units::HeightGrid;
 
-/// How a terrain's decals lie on its ground (roads.md, A decal lies on the ground): how many of
+/// How a terrain's decals lie on its ground (09-zero-hour.md, A decal lies on the ground): how many of
 /// its decal vertices stand off the ground, as the client draws it, plus the float by more than
 /// `TOLERANCE`, and the most any stands off it.
 #[derive(Debug, Clone, Copy)]

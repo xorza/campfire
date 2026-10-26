@@ -133,6 +133,15 @@ impl DrawShow {
         draw.shown(self.showing?).rise
     }
 
+    /// The state it shows, or during a transition the state it goes to; none before its first.
+    pub(crate) const fn state(&self) -> Option<usize> {
+        match self.showing {
+            Some(Showing::State(at)) => Some(at),
+            Some(Showing::Transition(_)) => self.pending,
+            None => None,
+        }
+    }
+
     /// Asks `draw` to show its state `state`, as `W3DModelDraw::setModelState` does: no change
     /// for the state it shows of none next, or the one it shows next; the state shown next when
     /// it lets the shown one finish its clip; the transition between the two shown first, when
