@@ -76,6 +76,7 @@ use campfire_host::ServerPin;
 use campfire_host::SessionOffer;
 use campfire_host::SessionRefused;
 use campfire_host::SessionSigner;
+use campfire_host::TickRun;
 use campfire_host::UnitDied;
 use campfire_host::WatchStart;
 use campfire_host::WatchTeams;
@@ -321,6 +322,7 @@ impl Plugin for SimClientPlugin {
         world.init_resource::<SentInputs>();
         world.init_resource::<KnownCommanded>();
         world.init_resource::<ReceivedTick>();
+        world.init_resource::<TickRun>();
         if let Some(data) = &self.data {
             world.insert_resource(ReceiptWriter::start(Arc::clone(data)));
         }
@@ -910,6 +912,12 @@ fn run_predicted_tick(world: &mut World) {
         return;
     };
     *world.resource_mut::<SimTick>() = SimTick::new(sim_tick);
+    let run = if world.contains_resource::<Rollback>() {
+        TickRun::Replay
+    } else {
+        TickRun::First
+    };
+    world.resource_mut::<TickRun>().set_if_neq(run);
     world.resource_scope(|world, sent: Mut<'_, SentInputs>| {
         let mut inputs = world.resource_mut::<TickInputs>();
         for payload in sent.at(sim_tick) {

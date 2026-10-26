@@ -1320,8 +1320,10 @@ tick 6300
 #1501 caster_creep team 0 at -38.41525507, 0, -8.7037528 pool1=165
 #1502 caster_creep team 0 at -39.21163267, 0, -8.7964787 pool1=280
 #1503 caster_creep team 0 at -39.80590963, 0, -9.20306057 pool1=184
+#1507 caster_creep team 1 at -40.167353, 0, -2.7049001 pool1=0 dead
 #1508 caster_creep team 1 at -39.3709061, 0, -2.5584686 pool1=280
 #1509 caster_creep team 1 at -38.50101817, 0, -2.51616246 pool1=280
+#1512 melee_creep team 0 at 37.9548217, 0, 5.5473785 pool1=0 dead
 #1513 caster_creep team 0 at 40.2649068, 0, -1.79891527 pool1=280
 #1514 caster_creep team 0 at 38.7725963, 0, -1.855084 pool1=280
 #1515 caster_creep team 0 at 39.6069752, 0, -1.29852456 pool1=280
@@ -1410,6 +1412,7 @@ tick 6600
 #1879 caster_creep team 0 at 36.3642475, 0, -5.1149701 pool1=280
 #1880 caster_creep team 0 at 37.53744966, 0, -5.3288497 pool1=280
 #1881 melee_creep team 1 at 40.2783346, 0, -0.0417797 pool1=305
+#1883 melee_creep team 1 at 38.73238015, 0, 0.4042762 pool1=0 dead
 #1884 caster_creep team 1 at 37.55401933, 0, 4.4306036 pool1=280
 #1885 caster_creep team 1 at 36.5101759, 0, 4.4898241 pool1=280
 #1886 caster_creep team 1 at 38.281171, 0, 5.218829 pool1=280
@@ -2910,6 +2913,7 @@ tick 12000
 #24 wolf team 2 at -18, 0, 12 pool1=900
 #25 wolf team 2 at 18, 0, 12 pool1=900
 #26 warden team 2 at 0, 0, 0 pool1=5000
+#4126 caster_creep team 1 at 41.053503, 0, -8.8579134 pool1=0 dead
 #4438 caster_creep team 1 at -41.45859694, 0, -0.09968376 pool1=280
 #4757 melee_creep team 0 at -39.9702958, 0, -1.5594747 pool1=235
 #4759 caster_creep team 0 at -38.236076, 0, -6.2673837 pool1=280
@@ -3088,6 +3092,7 @@ tick 12600
 #5141 caster_creep team 0 at 41.7419406, 0, -2.11899656 pool1=280
 #5142 caster_creep team 0 at 41.9713726, 0, -2.9842059 pool1=280
 #5143 caster_creep team 0 at 40.6674481, 0, -2.3114545 pool1=280
+#5144 melee_creep team 1 at 40.03252435, 0, 1.32347983 pool1=0 dead
 #5145 melee_creep team 1 at 39.1224334, 0, 2.62764806 pool1=38
 #5146 melee_creep team 1 at 39.5303928, 0, 2.0303928 pool1=445
 #5147 caster_creep team 1 at 39.84638727, 0, 7.0787691 pool1=280

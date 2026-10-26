@@ -33,6 +33,7 @@ pub use crate::client::report_file::{ReportCamera, ReportFile};
 pub use crate::client::sent_inputs::SentInputs;
 pub use crate::client::server_pin::ServerPin;
 pub use crate::client::session_signer::SessionSigner;
+pub use crate::client::tick_run::TickRun;
 pub use crate::error::{
     JoinError, JournalRefusal, OrderFileError, ReceiptRefusal, ReportLogError, ReportReadError,
     ReportWriteError,

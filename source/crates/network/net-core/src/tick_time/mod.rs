@@ -268,6 +268,12 @@ impl TickSpan {
         let ticks = self.value.round();
         i32::try_from(ticks).unwrap_or(if ticks < 0 { i32::MIN } else { i32::MAX })
     }
+
+    /// The span in whole ticks, rounded up, and saturated at `i32`'s range.
+    pub fn to_i32_ceil(self) -> i32 {
+        let ticks = self.value.ceil();
+        i32::try_from(ticks).unwrap_or(if ticks < 0 { i32::MIN } else { i32::MAX })
+    }
 }
 
 impl Neg for TickSpan {

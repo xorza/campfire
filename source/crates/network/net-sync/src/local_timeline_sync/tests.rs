@@ -27,10 +27,6 @@ fn instant(text: &str) -> TickInstant {
     TickInstant::try_from(num(text)).unwrap()
 }
 
-fn span(text: &str) -> TickSpan {
-    TickSpan::try_from(num(text)).unwrap()
-}
-
 #[derive(Debug, Resource, Default)]
 struct SyncedParamRuns(u8);
 
@@ -64,34 +60,30 @@ fn the_synced_local_timeline_waits_for_its_sync() {
 }
 
 #[test]
-fn the_local_objective_keeps_its_margin_past_the_sync_deadband() {
+fn the_local_objective_leads_by_its_delays_and_two_ticks_whatever_its_band() {
     let tick_rate = TickRate::try_from(100).unwrap();
     let mut remote = RemoteTimeline::default();
     remote.set_now(TickInstant::from(NetTick(100)));
 
     let estimate = LinkEstimate::new(Duration::from_millis(40), Duration::from_millis(5));
 
-    let mut setup = InputTimelineSetup::default();
-    setup.sync.jitter_multiple = 2;
-    setup.sync.jitter_margin = positive("1");
-    setup.sync.error_margin = positive("0.75");
+    let objective = |error_margin| {
+        let mut setup = InputTimelineSetup::default();
+        setup.sync.jitter_multiple = 2;
+        setup.sync.jitter_margin = positive("1");
+        setup.sync.error_margin = positive(error_margin);
+        LocalTimelineSync::default().sync_objective(&SyncSample {
+            remote: &remote,
+            setup: &setup,
+            estimate,
+            tick_rate,
+        })
+    };
 
-    let objective = LocalTimelineSync::default().sync_objective(&SyncSample {
-        remote: &remote,
-        setup: &setup,
-        estimate,
-        tick_rate,
-    });
-
-    // remote 100 + RTT/2 2 ticks + jitter margin 2 ticks
-    // + server input pipeline 1 tick + controller deadband 0.75 ticks.
-    assert_eq!(objective, instant("105.75"));
-
-    let earliest_uncorrected_timeline = objective - span("0.75");
-    // Even if the sync controller chooses not to correct a -0.75 tick error,
-    // the client is still at the delivery objective that includes RTT/2 and
-    // jitter margin plus the server's one-tick input pipeline delay.
-    assert_eq!(earliest_uncorrected_timeline, instant("105"));
+    // remote 100 + RTT/2 2 ticks + jitter margin 2 ticks + server input pipeline 1 tick + a tick
+    // early 1 tick; the band, which lies ahead of the objective, moves it none.
+    assert_eq!(objective("0.75"), instant("106"));
+    assert_eq!(objective("1"), instant("106"));
 }
 
 #[test]
@@ -120,20 +112,16 @@ fn the_input_delay_still_offsets_the_local_objective() {
         tick_rate,
     });
 
-    assert_eq!(objective, instant("103.75"));
+    assert_eq!(objective, instant("104"));
 }
 
-/// The server reads inputs in `FixedPreUpdate`, after receiving packets in
-/// `PreUpdate` and advancing its tick in `FixedFirst`. Inputs sent by the
-/// client must therefore target at least `remote + 1`, even under
-/// worst-case controller drift (`offset = -error_margin`).
-///
-/// The post-replicon `+sync_error_margin` term in the objective
-/// cancels with the symmetric controller drift, leaving the safety
-/// margin riding on the explicit one-tick server input pipeline margin
-/// plus `network_delay + jitter_margin`.
+/// The server reads inputs in `FixedPreUpdate`, after receiving packets in `PreUpdate` and
+/// advancing its tick in `FixedFirst`, so an input must target `remote + 1` at least, and the
+/// objective keeps one tick more for a stall of every process. The controller steps any deficit
+/// (`SyncHysteresis::speed_adjustment`), so the local timeline stands at its objective at the
+/// least, and the input it sends there targets `remote + 2`.
 #[test]
-fn the_sync_objective_keeps_a_sent_input_ahead_under_the_worst_drift() {
+fn the_sync_objective_keeps_a_sent_input_a_tick_early() {
     let tick_rate = TickRate::try_from(100).unwrap();
     let mut remote = RemoteTimeline::default();
     remote.set_now(TickInstant::from(NetTick(100)));
@@ -141,16 +129,11 @@ fn the_sync_objective_keeps_a_sent_input_ahead_under_the_worst_drift() {
     // Localhost — zero RTT, zero jitter.
     let estimate = LinkEstimate::new(Duration::ZERO, Duration::ZERO);
 
-    // User tightens `jitter_margin` below 1.0 for snappier sync, while
-    // still using input delay. The local tick itself can be behind
-    // `remote + 1`; the sent input tick must not be.
+    // A `jitter_margin` tightened below 1 tick, with an input delay of 2: the local tick may stand
+    // behind `remote + 2`; the input it sends may not.
     let mut setup =
         InputTimelineSetup::default().with_input_delay(InputDelaySetup::fixed_input_delay(2));
     setup.sync.jitter_margin = positive("0.5");
-    assert!(
-        setup.sync.error_margin >= positive("1"),
-        "test premise: error_margin is at least 1 tick"
-    );
 
     let timeline = LocalTimelineSync {
         input_delay_ticks: 2,
@@ -162,21 +145,10 @@ fn the_sync_objective_keeps_a_sent_input_ahead_under_the_worst_drift() {
         estimate,
         tick_rate,
     });
-
-    // Controller may legitimately let `local - objective` reach
-    // `-error_margin` without correcting (see `SyncHysteresis::speed_adjustment`).
-    let worst_case_drift = TickSpan::try_from(setup.sync.error_margin).unwrap();
-    let worst_case_local = objective - worst_case_drift;
-    let sent_input_tick = worst_case_local + TickSpan::from(2);
-
-    let required_input_tick = TickInstant::from(NetTick(101));
-    assert!(
-        sent_input_tick >= required_input_tick,
-        "worst-case sent input tick is {sent_input_tick:?}, but the \
-         server reads inputs in FixedPreUpdate after receiving packets in \
-         PreUpdate and advancing in FixedFirst, so the packet must contain \
-         input for at least {required_input_tick:?} (= remote + 1).",
-    );
+    // 100 + 0.5 + 2 − 2.
+    assert_eq!(objective, instant("100.5"));
+    let sent_input_tick = objective + TickSpan::from(2);
+    assert!(sent_input_tick >= TickInstant::from(NetTick(102)));
 }
 
 /// At 50 Hz a tick is 20 ms, and the default jitter margin adds one tick to the RTT, so the delay
@@ -258,8 +230,8 @@ fn the_input_timeline_changes_its_speed_after_a_repeated_error() {
     });
     let mut sync = LocalTimelineSync::default();
 
-    // The objective is remote 100 + jitter margin 1 + input pipeline 1 + deadband 0.5 = 102.5,
-    // and the resync rounds its 102.5-tick delta to 103.
+    // The objective is remote 100 + jitter margin 1 + input pipeline 1 + a tick early 1 = 103,
+    // and the resync shifts by its 103 ticks.
     assert_eq!(
         sync.sync(
             TickInstant::ZERO,
@@ -274,7 +246,7 @@ fn the_input_timeline_changes_its_speed_after_a_repeated_error() {
     );
     let local_now = TickInstant::from(NetTick(104));
 
-    // An error of 104 - 102.5 = 1.5 ticks is past the 0.5 deadband, but the first one is not
+    // An error of 104 - 103 = 1 tick is past the 0.5 band ahead, but the first one is not
     // repeated yet.
     assert_eq!(
         sync.sync(
@@ -302,13 +274,14 @@ fn the_input_timeline_changes_its_speed_after_a_repeated_error() {
         None
     );
 
-    // The adjustment is 1 + (1.1 - 1) * (1.5 / 10) * 2 = 1.03, and a timeline ahead slows down.
-    assert_eq!(sync.relative_speed(), 1.0 / 1.03);
+    // The adjustment is 1 + (1.1 - 1) * (1 / 10) * 2 = 1.02, and a timeline ahead slows down.
+    assert_eq!(sync.relative_speed(), 1.0 / 1.02);
 
-    // Back inside the band, 102.5 is 0 ticks off: the speed is exactly nominal again.
+    // Back inside the band, 103.25 is a quarter of a tick ahead: the speed is exactly nominal
+    // again.
     assert_eq!(
         sync.sync(
-            instant("102.5"),
+            instant("103.25"),
             &SyncSample {
                 remote: &remote,
                 setup: &setup,
@@ -319,10 +292,25 @@ fn the_input_timeline_changes_its_speed_after_a_repeated_error() {
         None
     );
     assert_eq!(sync.relative_speed(), 1.0);
+    // A quarter of a tick behind, inside what a band about the objective would keep, it steps
+    // up to its objective: 0.25 ticks, rounded up to 1.
+    assert_eq!(
+        sync.sync(
+            instant("102.75"),
+            &SyncSample {
+                remote: &remote,
+                setup: &setup,
+                estimate: LOCALHOST,
+                tick_rate: TICK_RATE,
+            },
+        ),
+        Some(1)
+    );
 }
 
 /// The first resync applies the delay the link calls for in the same step as its objective:
-/// at delay 0 the objective is 102.5, so at delay 2 it is 100.5, and from 0.5 the shift is 100.
+/// at delay 0 the objective is 103, so at delay 2 it is 101, and from 0.5 the shift of 100.5 is
+/// rounded up to 101, ahead of the objective.
 /// A reset clears the delay with the link.
 #[test]
 fn a_resync_applies_the_link_input_delay_with_its_objective() {
@@ -346,7 +334,7 @@ fn a_resync_applies_the_link_input_delay_with_its_objective() {
                 tick_rate: TICK_RATE,
             },
         ),
-        Some(100)
+        Some(101)
     );
     assert_eq!(sync.input_delay(), 2);
 

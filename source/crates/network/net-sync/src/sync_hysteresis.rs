@@ -28,11 +28,12 @@ impl Default for SyncHysteresis {
 }
 
 impl SyncHysteresis {
-    /// The adjustment for an error of `offset` ticks. An error behind the objective past the band
-    /// steps to it at once when `deficit` says so, as each input it sends meanwhile goes late
-    /// (11-net-stack/time.md, A client behind steps, a client ahead slews). Any other error past the
-    /// band adjusts the speed only once it repeats on one side of the objective: a sign flip starts
-    /// a new run, since errors on both sides are noise, not drift.
+    /// The adjustment for an error of `offset` ticks. Any error behind the objective steps to it at
+    /// once when `deficit` says so, as each input it sends meanwhile goes later, so its band lies
+    /// ahead of its objective alone (11-net-stack/time.md, A client behind steps, a client ahead
+    /// slews; 11-net-stack/time.md, The input timeline's band lies ahead of its objective). Any
+    /// other error past the band adjusts the speed only once it repeats on one side of the
+    /// objective: a sign flip starts a new run, since errors on both sides are noise, not drift.
     pub(crate) fn speed_adjustment(
         &mut self,
         setup: &SyncSetup,
@@ -47,13 +48,13 @@ impl SyncHysteresis {
             self.consecutive_errors = 0;
             return SyncAdjustment::Resync;
         }
-        if error <= setup.error_margin {
-            self.consecutive_errors = 0;
-            return SyncAdjustment::Nominal;
-        }
         if offset.is_negative() && deficit == Deficit::Step {
             self.consecutive_errors = 0;
             return SyncAdjustment::Resync;
+        }
+        if error <= setup.error_margin {
+            self.consecutive_errors = 0;
+            return SyncAdjustment::Nominal;
         }
         self.consecutive_errors = if flipped {
             1
@@ -89,12 +90,15 @@ impl SyncHysteresis {
 
 #[cfg(test)]
 mod tests {
+    use campfire_math::Num;
+
     use super::*;
 
     /// With a threshold of 3, two errors ahead then two behind never slew: the flip restarts the
     /// run at 1, and a third error behind completes it, 1 + 0.05 × 2 × 2 / 10 = 1.02. A timeline
-    /// that steps a deficit steps at the first error behind, every time. A run ahead slows the
-    /// same in both, to 1 / 1.02.
+    /// that steps a deficit steps at the first error behind, every time, half a tick within the
+    /// band as well, where the other runs at its speed; within the band ahead both run at it. A
+    /// run ahead slows the same in both, to 1 / 1.02.
     #[test]
     fn a_sign_flip_restarts_the_run_and_a_deficit_steps_at_once_or_slews() {
         let setup = SyncSetup {
@@ -122,7 +126,19 @@ mod tests {
                 SyncAdjustment::Resync
             ]
         ));
+        let half = TickSpan::try_from(Num::HALF).unwrap();
+        let within =
+            |deficit, offset| SyncHysteresis::default().speed_adjustment(&setup, offset, deficit);
+        let behind = [Deficit::Step, Deficit::Slew].map(|deficit| within(deficit, -half));
+        assert!(matches!(
+            behind,
+            [SyncAdjustment::Resync, SyncAdjustment::Nominal]
+        ));
         for deficit in [Deficit::Slew, Deficit::Step] {
+            assert!(matches!(
+                within(deficit, TickSpan::from(1)),
+                SyncAdjustment::Nominal
+            ));
             let mut hysteresis = SyncHysteresis::default();
             let ahead = [2, 2, 2]
                 .map(|offset| hysteresis.speed_adjustment(&setup, TickSpan::from(offset), deficit));

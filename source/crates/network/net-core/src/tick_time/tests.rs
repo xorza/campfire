@@ -157,9 +157,9 @@ fn a_signed_addition_carries_and_borrows() {
 }
 
 /// A half rounds away from zero, and the largest span, 2^31 - 2^-24, rounds to 2^31, past
-/// `i32`, so it saturates.
+/// `i32`, so it saturates; rounded up, any fraction takes the next tick above.
 #[test]
-fn to_i32_rounds_to_the_nearest_tick() {
+fn to_i32_rounds_to_the_nearest_tick_or_up() {
     assert_eq!(span("0.49").to_i32(), 0);
     assert_eq!(span("0.5").to_i32(), 1);
     assert_eq!(span("0.61").to_i32(), 1);
@@ -170,6 +170,11 @@ fn to_i32_rounds_to_the_nearest_tick() {
 
     assert_eq!(TickSpan::MAX.to_i32(), i32::MAX);
     assert_eq!(TickSpan::MIN.to_i32(), i32::MIN);
+    assert_eq!(
+        ["0.01", "0.5", "1", "-0.01", "-0.99", "-1"].map(|text| span(text).to_i32_ceil()),
+        [1, 1, 1, 0, 0, -1]
+    );
+    assert_eq!(TickSpan::MAX.to_i32_ceil(), i32::MAX);
 }
 
 fn mul(span: TickSpan, numerator: u32, denominator: u32) -> TickSpan {

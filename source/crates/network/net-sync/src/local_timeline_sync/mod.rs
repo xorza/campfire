@@ -151,23 +151,18 @@ impl TimelineSync for LocalTimelineSync {
             tick_rate,
         );
         let input_delay = TickSpan::from(i32::from(self.input_delay_ticks));
-        let sync_error_margin = TickSpan::try_from(setup.sync.error_margin)
-            .expect("the error margin is under 2^31 ticks");
         // Inputs received by the server in `PreUpdate` are first read in
         // `FixedPreUpdate`, after `LocalTimeline` advances in `FixedFirst`.
         // Therefore an input packet that arrives while the server is at tick T
-        // must contain inputs for at least tick T + 1.
-        //
-        // `sync_error_margin` compensates for the sync controller's allowed
-        // deadband: the controller may let the local timeline drift behind the
-        // objective by this much without correcting.
-        let obj = remote + network_delay + jitter_margin + TickSpan::from(1) + sync_error_margin
-            - input_delay;
+        // must contain inputs for at least tick T + 1; one tick more keeps it in
+        // time through a stall that wakes every process together, which takes the
+        // phase to the server's next tick away (11-net-stack/time.md, An input
+        // leads by one margin for each reason).
+        let obj = remote + network_delay + jitter_margin + TickSpan::from(2) - input_delay;
         trace!(
             ?remote,
             ?network_delay,
             ?jitter_margin,
-            ?sync_error_margin,
             ?input_delay,
             "LocalTimeline sync objective: {:?}",
             obj
@@ -183,7 +178,9 @@ impl TimelineSync for LocalTimelineSync {
                 i32::from(self.input_delay_ticks) - i32::from(self.link_input_delay_ticks),
             );
         self.input_delay_ticks = self.link_input_delay_ticks;
-        (objective - now).to_i32()
+        // Up, so the timeline lands at its objective or ahead of it, inside its band
+        // (11-net-stack/time.md, The input timeline's band lies ahead of its objective).
+        (objective - now).to_i32_ceil()
     }
 
     fn is_synced(&self) -> bool {

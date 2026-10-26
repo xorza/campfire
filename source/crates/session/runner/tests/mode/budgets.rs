@@ -154,7 +154,7 @@ fn on_level_up(ctx, unit, track, level) {
     };
     Mode::tick_inputs(&mut game, &[(0, input("probe", "xp"))]);
     // Two deaths ran; the third waits, and so does the level-up behind it. The first two grunts
-    // despawned; the third stays, dead and kept, for its call.
+    // stay dead until their decay; the third stays, dead and kept, for its call.
     assert_eq!(
         Mode::field(&game, "kind"),
         StateValue::Text("b by a;b by a;".into())
@@ -174,15 +174,15 @@ fn on_level_up(ctx, unit, track, level) {
     );
     assert_eq!(
         grunts.map(|grunt| stands(&game, grunt)),
-        [None, None, Some((true, true))]
+        [Some((true, false)), Some((true, false)), Some((true, true))]
     );
     Mode::tick_inputs(&mut game, &[]);
     // Both run first in the next tick, with the third grunt and its killer as handles; then it
-    // despawns.
+    // stays dead, unkept, until its decay.
     let all = "b by a;b by a;b by a;level 2;";
     assert_eq!(Mode::field(&game, "kind"), StateValue::Text(all.into()));
     assert_eq!(waiting(&game), (0, 0));
-    assert_eq!(stands(&game, grunts[2]), None);
+    assert_eq!(stands(&game, grunts[2]), Some((true, false)));
     assert_eq!(Mode::failures(&mut game), []);
 }
 

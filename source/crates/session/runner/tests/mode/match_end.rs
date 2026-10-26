@@ -116,7 +116,6 @@ fn on_input(ctx, player, name, value) {
         Mode::failures(&mut game),
         [FailureKind::Api(CombatRefusal::RespawnDespawns.refused())]
     );
-    assert!(game.get_entity(tower).is_err());
 }
 
 /// The ticks a pass between two stages ran in, one count each pass.

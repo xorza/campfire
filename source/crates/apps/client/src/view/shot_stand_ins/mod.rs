@@ -16,7 +16,7 @@ use campfire_units::{Facing, MapBook};
 use campfire_values::UnitType;
 
 use crate::view::drawing::Drawing;
-use crate::view::effects::{FireSeen, ShotSeen};
+use crate::view::effects::fire_seen::{FireSeen, ShotSeen};
 use crate::view::float_num::FloatNum;
 use crate::view::glide::{Glide, Spot};
 use crate::view::map_metric::Lifts;
@@ -24,10 +24,9 @@ use crate::view::shot_dress::ShotDress;
 use crate::view::{Heading, ground};
 
 /// The ticks a stand-in's tick and the tick of the state its server's projectile arrives with may
-/// lie apart: a frame may run several ticks, whose last the stand-in takes for its shot's, and
-/// bring several states, whose newest the client takes for its projectile's, as Netcode for
-/// Entities matches a predicted spawn within 5 ticks (02-engine-core.md, A predicted shot draws a
-/// stand-in).
+/// lie apart: a frame may bring several states, whose newest the client takes for its
+/// projectile's, as Netcode for Entities matches a predicted spawn within 5 ticks
+/// (02-engine-core.md, A predicted shot draws a stand-in).
 const SLACK: u64 = 5;
 
 /// The stand-ins for the projectiles of the client's own units' shots, oldest first, each until
@@ -84,13 +83,18 @@ impl ShotStandIns {
     pub(crate) fn place(
         seen: On<'_, '_, ShotSeen>,
         (actions, barrels, turrets, specs, map): LaunchBooks<'_>,
-        (tick, lifts): (Res<'_, SimTick>, Lifts<'_>),
+        lifts: Lifts<'_>,
         (shooters, mut fired): (Shooters<'_, '_>, Query<'_, '_, &mut FireSeen>),
         mut dress: ShotDress<'_>,
         mut stand_ins: ResMut<'_, Self>,
         mut commands: Commands<'_, '_>,
     ) {
-        let ShotSeen { unit, slot, action } = *seen;
+        let ShotSeen {
+            unit,
+            slot,
+            action,
+            tick,
+        } = *seen;
         let Ok((&source, &shooter, slots, position, facing, aim, drawing)) = shooters.get(unit)
         else {
             return;
@@ -144,7 +148,7 @@ impl ShotStandIns {
             unit_type: projectile,
             from,
             step: way * speed.float(),
-            fired: tick.start(),
+            fired: tick,
         });
     }
 

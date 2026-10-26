@@ -49,6 +49,8 @@ The lead of each bot over the server from the start or the restart of its match 
 - **A margin of a lead of 1 is the phase to the server's next tick.** The first orders' margins in the local runs: at least 11.5 ms on Linux, median 32.4 ms; at least 2.4 ms on the Mac, median 33.1 ms; none late. In run 40400460466: 17.5 to 31.2 ms for the orders stamped 20 on Windows and 25.3 ms on Linux.
 - **On macOS a shared stall leaves no margin.** In run 40400460466 on macOS, the server and both bots stopped together for 60 to 110 ms four times in the first 0.6 s, at 0.05, 0.26, 0.43 and 0.55 s from the server's first frame, and woke within 2 ms of each other. Both bots began a frame at tick 19 at 0.5871 s, after the server's frame of tick 18 at 0.5858 s, and sent their orders stamped 20 at 0.5874 s; the server began its frame of tick 20 at 0.5883 s and logged both in tick 20 at 0.5888 and 0.5890 s, a margin of 0.9 ms. The bots' frames before it led the server by −1.27 to 3.91 ticks, median 0.98 and 0.96.
 
+- **With the band ahead of the objective.** In 7 local LAN check runs of 27 October 2026 on the Linux workstation, once the input timeline stepped every deficit up to its objective, every run passed; in the 3 whose logs the driver kept, 15 first orders, the last frame before each first order led by 1.97 or 1.98 ticks, two earlier frames by 0.91 and 1.00, and the margins were 33.6 to 62.4 ms, median 50.0 ms, where the 30 Linux runs of 26 October gave 11.5 ms at the least and 32.4 ms at the median.
+
 ## How other engines keep an input early
 
 Read on 27 October 2026.

@@ -71,7 +71,7 @@ fn each_case_puts_exact_counts_on_the_wire() {
                 Duration::from_nanos(6_944_444),
                 Senders::Both,
             ),
-            [cost([98, 14299], [0, 0], 0), cost([60, 14280], [0, 0], 0)],
+            [cost([95, 14041], [0, 0], 0), cost([60, 14280], [0, 0], 0)],
         ),
         (
             lossy,

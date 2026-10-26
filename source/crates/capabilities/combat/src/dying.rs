@@ -26,9 +26,11 @@ pub struct Dying;
 impl Dying {
     /// A unit at zero life dies: its attack target, and the action it ordered or has under way,
     /// end, so nothing it began goes on after a respawn, and the Mode stage learns of it; one no
-    /// strike took there died with no killer; one whose type keeps it decays when its time ends.
-    /// They die in stable-id order, which the record of deaths keeps for the hooks the mode runs
-    /// and the deaths it carries to the next tick.
+    /// strike took there died with no killer; one whose type keeps it or despawns it decays when
+    /// its time ends, `SimTick::FRAME_MOST` ticks at the least, so a frame's send holds its death
+    /// (04-capabilities/combat.md, A death replicates before its unit goes). They die in
+    /// stable-id order, which the record of deaths keeps for the hooks the mode runs and the
+    /// deaths it carries to the next tick.
     pub(super) fn die(
         mut commands: Commands<'_, '_>,
         (mut deaths, on_death, tick, rate): (
@@ -69,13 +71,15 @@ impl Dying {
                 progress.set_attack_target(None, dues);
                 progress.end(dues);
             }
-            let kept = unit_type.and_then(|&unit_type| match on_death.get(unit_type) {
+            let kept = match unit_type.and_then(|&unit_type| on_death.get(unit_type)) {
                 Some(&OnDeath::Keep { ms }) => Some(
                     rate.duration(NonZeroU64::from(ms).get())
-                        .expect("a u32 of milliseconds at a u32 rate counts in a u64 of ticks"),
+                        .expect("a u32 of milliseconds at a u32 rate counts in a u64 of ticks")
+                        .max(SimTick::FRAME_MOST),
                 ),
-                _ => None,
-            });
+                Some(&OnDeath::Despawn) => Some(SimTick::FRAME_MOST),
+                Some(&OnDeath::Stay) | None => None,
+            };
             if let Some(ticks) = kept {
                 let at = tick.start().after(ticks);
                 commands.entity(entity).insert((Dead, Decay { at }));
@@ -92,20 +96,6 @@ impl Dying {
                     tags: tags.map_or(TagSet::NONE, |tags| tags.tags),
                 };
                 deaths.push(fallen, None, []);
-            }
-        }
-    }
-
-    /// Despawns the dead whose unit type despawns, at the end of the tick they died in, or of the
-    /// tick a later stage stopped keeping them.
-    pub(super) fn despawn_dead(
-        mut commands: Commands<'_, '_>,
-        deaths: Res<'_, ById<UnitType, OnDeath>>,
-        dead: Query<'_, '_, (Entity, &UnitType), (With<Dead>, Without<Kept>)>,
-    ) {
-        for (entity, &unit_type) in &dead {
-            if deaths.get(unit_type) == Some(&OnDeath::Despawn) {
-                commands.entity(entity).despawn();
             }
         }
     }

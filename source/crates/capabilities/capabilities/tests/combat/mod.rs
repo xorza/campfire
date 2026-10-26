@@ -129,11 +129,16 @@ fn an_attack_winds_up_and_strikes_each_period() {
     game.run_until(17);
     assert_eq!(Stats::health(&game, dummy), 10);
     game.run_until(18);
-    assert!(game.try_part::<Life>(dummy).is_none());
+    assert!(game.try_part::<Dead>(dummy).is_some());
     assert_eq!(Attack::of(&game, fighter).target(), Some(dummy));
-    // The next tick finds the target gone and drops it.
+    // The next tick finds the target dead and drops it.
     game.run_until(19);
     assert_eq!(Attack::of(&game, fighter).target(), None);
+    // The dummy, dead in tick 17, decays at the end of tick 26, 9 ticks on.
+    game.run_until(26);
+    assert!(game.try_part::<Dead>(dummy).is_some());
+    game.run_until(27);
+    assert!(game.try_part::<Life>(dummy).is_none());
 
     // A list keeps each attacker once, by stable id.
     let index = game.resource::<EntityIndex>();
@@ -659,7 +664,7 @@ fn a_windup_on_a_target_that_dies_spends_nothing() {
     // Both start in tick 0; the quick one strikes in tick 1 and kills the prey, before the slow
     // one's strike in tick 2. The slow one drops its target in tick 2 and is ready at once.
     game.run_until(2);
-    assert!(game.try_part::<Life>(prey).is_none());
+    assert!(game.try_part::<Dead>(prey).is_some());
     assert_eq!(Attack::of(&game, slow).started(), Some(Tick::new(0)));
     game.run_until(3);
     assert_eq!(Attack::of(&game, slow), Attack::default());
@@ -1023,9 +1028,9 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
             ],
             "{window:?}"
         );
-        // The hero stays, dead; the creep is gone by the tick's end.
+        // The hero stays, dead; the creep too, until its decay a frame's ticks on.
         assert!(game.try_part::<Dead>(hero).is_some());
-        assert!(game.try_part::<Life>(creep).is_none());
+        assert!(game.try_part::<Decay>(creep).is_some());
     }
 
     // The hero comes back at the start of its respawn tick, 10, at its spawn point with full
@@ -1086,34 +1091,42 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
 
 #[test]
 fn a_kept_dead_unit_stays_its_time_of_no_target_or_order_and_then_despawns() {
-    // A victim of 30 life kept 100 ms, 3 ticks at 30 a second, ⌈100 · 30 / 1000⌉.
-    let mut game = fight_match();
-    let ms = NonZeroU32::new(100).unwrap();
-    let kept = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Keep { ms });
-    let [fighter, kept] = load_types(&mut game, [fighter(), kept]);
-    let attacker = Spawn::of(fighter, (4, 0, 0)).place(&mut game);
-    let victim = Spawn::of(kept, (5, 0, 0))
-        .team(Team::new(1))
-        .place(&mut game);
-    Combat::attack(&mut game, attacker, victim);
-    while game.try_part::<Dead>(victim).is_none() {
-        game.step();
-    }
-    // It died in the tick that just ran; it decays at the end of the third after.
-    let died = game.now().get() - 1;
-    assert_eq!(
-        game.try_part::<Decay>(victim),
-        Some(&Decay {
-            at: Tick::new(died + 3)
-        })
-    );
+    // A victim of 30 life, killed by one strike, which dies in the tick that just ran.
+    let killed = |on_death| {
+        let mut game = fight_match();
+        let victim = combatant(30, 0, 0, 1, 0).on_death(on_death);
+        let [fighter, victim] = load_types(&mut game, [fighter(), victim]);
+        let attacker = Spawn::of(fighter, (4, 0, 0)).place(&mut game);
+        let victim = Spawn::of(victim, (5, 0, 0))
+            .team(Team::new(1))
+            .place(&mut game);
+        Combat::attack(&mut game, attacker, victim);
+        while game.try_part::<Dead>(victim).is_none() {
+            game.step();
+        }
+        let died = game.now().get() - 1;
+        let decay = game
+            .try_part::<Decay>(victim)
+            .map(|decay| decay.at.get() - died);
+        (game, attacker, victim, died, decay)
+    };
+    // Kept 500 ms, 15 ticks at 30 a second, ⌈500 · 30 / 1000⌉, it decays at the end of the 15th
+    // tick after; kept 100 ms, 3 ticks, or despawned at its death, at the end of the 9th, the
+    // most a server frame runs, so a frame's send holds its death; one that stays, never.
+    let keep = |ms| OnDeath::Keep {
+        ms: NonZeroU32::new(ms).unwrap(),
+    };
+    let decays =
+        [keep(500), keep(100), OnDeath::Despawn, OnDeath::Stay].map(|on_death| killed(on_death).4);
+    assert_eq!(decays, [Some(15), Some(9), Some(9), None]);
+    assert_eq!(SimTick::FRAME_MOST, Ticks::new(9));
+    let (mut game, attacker, victim, died, _) = killed(keep(500));
     // Its attacker drops it in the next tick's attack step, and an order to attack it again
     // takes no target; it stays through the tick before its decay's.
     game.step();
     assert_eq!(Attack::of(&game, attacker).target(), None);
     Combat::attack(&mut game, attacker, victim);
-    game.step();
-    assert_eq!(game.now().get(), died + 3);
+    game.run_until(died + 15);
     assert!(game.try_part::<Dead>(victim).is_some());
     assert_eq!(Attack::of(&game, attacker).target(), None);
     // The tick of its decay ends with it gone.

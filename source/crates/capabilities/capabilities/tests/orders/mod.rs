@@ -589,12 +589,12 @@ fn an_attack_chases_winds_up_and_strikes_each_period() {
     assert_eq!(Orders::ready_at(&game, fighter), Tick::new(9));
     assert_eq!(game.part::<Destination>(fighter).get(), None);
 
-    // Strikes in ticks 11, 16 and 21 take 70 to 40, 10 and 0: the dummy despawns in tick 21.
+    // Strikes in ticks 11, 16 and 21 take 70 to 40, 10 and 0: the dummy dies in tick 21.
     game.run_until(21);
     assert_eq!(Stats::health(&game, dummy), 10);
     game.run_until(22);
-    assert!(game.try_part::<Life>(dummy).is_none());
-    // The next tick finds the target gone, drops it, and stays.
+    assert!(game.try_part::<Dead>(dummy).is_some());
+    // The next tick finds the target dead, drops it, and stays.
     game.run_until(23);
     assert_eq!(game.part::<ActionProgress>(fighter).attack_target(), None);
     assert_eq!(game.part::<Position>(fighter).get(), Vec3::from((4, 0, 0)));
@@ -667,7 +667,7 @@ fn attack_orders_need_a_living_enemy() {
     game.run_until(9);
     assert_eq!(Stats::health(&game, gone), 30);
     game.run_until(10);
-    assert!(game.try_part::<Life>(gone).is_none());
+    assert!(game.try_part::<Dead>(gone).is_some());
 
     for order in [
         attack(fighter, ally),

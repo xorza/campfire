@@ -1,6 +1,7 @@
 mod auras;
 mod bots;
 mod checkpoints;
+mod deaths;
 mod fog;
 mod leak;
 mod pace;

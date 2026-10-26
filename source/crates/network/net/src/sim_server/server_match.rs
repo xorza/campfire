@@ -10,7 +10,7 @@ use campfire_net_timeline::{Clock, LocalTimeline, TimelineRate};
 use campfire_package::ModePackages;
 use campfire_protocol::{ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_runner::{CheckedTerms, Session, SessionSource, SessionWorld};
-use campfire_sim::MatchRate;
+use campfire_sim::{MatchRate, SimTick};
 
 use crate::sim_server::door::Door;
 use crate::sim_server::offering::Offering;
@@ -96,16 +96,10 @@ pub(crate) struct ReplayBegin<'a> {
     pub(crate) checked: CheckedTerms,
 }
 
-/// The most ticks a server frame runs after a stall, the time past them dropped and logged, so a
-/// frame costs at most this many ticks' work and a stall never feeds a longer frame after it, as
-/// a fixed time step bounds its catch-up (08-sessions.md, A burst after a stall runs 9 ticks at
-/// most).
-const MAX_FRAME_TICKS: u32 = 9;
-
 impl ServerMatch {
     /// Begins the match of `begin.source` in the next fixed tick, recording into its log, each
     /// segment drawing from its seed, and runs it from then on. A frame advances the server's
-    /// clock by `MAX_FRAME_TICKS` at most; a longer frame's time past that is dropped, and
+    /// clock by `SimTick::FRAME_MOST` at most; a longer frame's time past that is dropped, and
     /// logged. Every unit replicates to the clients whose team sees it, and the owner's client
     /// predicts it, but a projectile or an area. With its files, the log goes into the journal
     /// as the server logs it, `JournalWatch` watches it, and the server takes the checkpoints
@@ -258,7 +252,7 @@ impl ServerMatch {
     }
 
     /// Takes the session's `terms` before its match begins: bounds the server's frames, so a
-    /// frame advances its clock by `MAX_FRAME_TICKS` at most, each as long as the clock's tick
+    /// frame advances its clock by `SimTick::FRAME_MOST` at most, each as long as the clock's tick
     /// now, which a local match's pace may have set. The
     /// match's `MatchFacts` keep their visibility, the one copy of it, which each data filter
     /// takes its audience from as the match's entities spawn.
@@ -272,9 +266,9 @@ impl ServerMatch {
             "the server ticks at the session's rate at a speed, not at {rate:?}"
         );
         let tick = rate.period();
-        world
-            .resource_mut::<Time<Virtual>>()
-            .set_max_delta(tick * MAX_FRAME_TICKS);
+        world.resource_mut::<Time<Virtual>>().set_max_delta(
+            tick * u32::try_from(SimTick::FRAME_MOST.get()).expect("a frame's ticks fit a u32"),
+        );
     }
 
     /// Runs the match on from the save its session went back to in place (08-sessions.md, A load

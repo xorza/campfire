@@ -332,7 +332,7 @@ impl Module for Combat {
             CombatSystems::Respawn,
             Dying::forget_attackers.before(Dying::respawn),
         );
-        cx.server(CombatSystems::Despawn, (Dying::despawn_dead, Dying::decay));
+        cx.server(CombatSystems::Despawn, Dying::decay);
         if slow {
             cx.server(
                 CombatSystems::Hits,

@@ -1,15 +1,13 @@
-use bevy::app::{App, Plugin, Startup, Update};
+use bevy::app::{App, FixedPostUpdate, Plugin, Startup, Update};
 use bevy::asset::{AssetPath, AssetServer, Assets, Handle, RenderAssetUsages};
 use bevy::camera::Camera3d;
 use bevy::camera::visibility::{NoFrustumCulling, Visibility};
-use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::event::Event;
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::name::Name;
 use bevy::ecs::query::With;
-use bevy::ecs::query::{Added, Allow, Changed};
+use bevy::ecs::query::{Added, Allow};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
@@ -21,21 +19,22 @@ use bevy::picking::Pickable;
 use bevy::time::Time;
 use bevy::transform::components::GlobalTransform;
 use bevy::transform::components::Transform;
-use campfire_actions::{ActionProgress, ActionSlots, SlotTimes};
-use campfire_common::Tick;
+use campfire_actions::ActionProgress;
 use campfire_projectiles::Projectile;
 use campfire_script::MatchNames;
 use campfire_sim::{EntityIndex, Unpredicted};
 use campfire_units::{Dead, TypeOriginBook};
-use campfire_values::{ActionId, PackageIndex, UnitType};
+use campfire_values::{PackageIndex, UnitType};
 
 use crate::view::client_data::ClientLoad;
 use crate::view::drawing::Drawing;
 use crate::view::effects::effect_book::{EffectBook, GroupId};
 use crate::view::effects::effect_plays::{EffectPlays, PlaySources};
+use crate::view::effects::fire_seen::{FireSeen, SeenShots};
 use crate::view::effects::muzzle_flashes::{FlashParts, MuzzleFlashes};
 use crate::view::effects::particle_quads::{GroupQuads, ParticleQuads, ViewAxes};
 use crate::view::effects::particle_run::{ParticleRun, SystemKey};
+use crate::view::effects::seen_deaths::SeenDeaths;
 use crate::view::effects::step_clock::StepClock;
 use crate::view::file_material::{FileBlend, FileMaterial, FileMaterialPlugin};
 use crate::view::ground_heights::GroundHeights;
@@ -47,9 +46,11 @@ use crate::view::{DrawSystems, ViewSystems};
 
 pub(crate) mod effect_book;
 pub(crate) mod effect_plays;
+pub(crate) mod fire_seen;
 pub(crate) mod muzzle_flashes;
 pub(crate) mod particle_quads;
 pub(crate) mod particle_run;
+pub(crate) mod seen_deaths;
 pub(crate) mod step_clock;
 
 /// The match's effects, of the mode's own package's effects file: its book, the particle systems
@@ -84,50 +85,6 @@ struct Follower {
     root: Entity,
 }
 
-/// A shot the client saw a unit fire: the unit, the place of the slot that fired among its slots,
-/// and the slot's action.
-#[derive(Event, Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ShotSeen {
-    pub(crate) unit: Entity,
-    pub(crate) slot: usize,
-    pub(crate) action: ActionId,
-}
-
-/// On a unit's drawing's root: the latest tick the effects saw each slot of its unit ready at, a
-/// rise past which is a shot (02-engine-core.md, The client derives an attack's phase), a
-/// rollback that sets a slot back and fires it again playing no second shot; the barrel of its
-/// look each weapon slot of its look fires its next shot from (effects.md, A shot's effect at its
-/// barrel); and the barrel of its type each of its unit's slots launches its next projectile from
-/// (02-engine-core.md, A predicted shot draws a stand-in).
-#[derive(Component, Debug, Default)]
-pub(crate) struct FireSeen {
-    ready: Vec<Tick>,
-    turns: SlotTurns,
-    pub(crate) launches: SlotTurns,
-}
-
-/// The barrel each slot fires its next shot from, by the slot's place, as Zero Hour turns a
-/// weapon's barrel with each shot.
-#[derive(Debug, Default)]
-pub(crate) struct SlotTurns(Vec<usize>);
-
-impl SlotTurns {
-    /// The barrel of `barrels` the slot `slot` fires from, and turns it to the next, back to the
-    /// first after the last.
-    pub(crate) fn turn(&mut self, slot: usize, barrels: usize) -> usize {
-        if self.0.len() <= slot {
-            self.0.resize(slot + 1, 0);
-        }
-        let barrel = self.0[slot] % barrels;
-        self.0[slot] = (barrel + 1) % barrels;
-        barrel
-    }
-}
-
-/// The units that died, of their types and drawings.
-type Dying<'w, 's> =
-    Query<'w, 's, (Entity, &'static UnitType, &'static Drawing), (Added<Dead>, Allow<Unpredicted>)>;
-
 /// The projectiles drawn of late, of their types and drawings.
 type NewShots<'w, 's> = Query<
     'w,
@@ -136,19 +93,12 @@ type NewShots<'w, 's> = Query<
     (With<Projectile>, Added<Drawing>, Allow<Unpredicted>),
 >;
 
-/// The units whose slots' times changed, of their types, slots, attacks and drawings.
+/// A unit as its shot plays: its type, its attack and its drawing.
 type Shooters<'w, 's> = Query<
     'w,
     's,
-    (
-        Entity,
-        &'static UnitType,
-        &'static SlotTimes,
-        &'static ActionSlots,
-        &'static ActionProgress,
-        &'static Drawing,
-    ),
-    (Changed<SlotTimes>, Allow<Unpredicted>),
+    (&'static UnitType, &'static ActionProgress, &'static Drawing),
+    Allow<Unpredicted>,
 >;
 
 /// A draw group's material, its mesh and the mesh's entity, made as the group first holds a quad,
@@ -180,12 +130,17 @@ impl Plugin for EffectsPlugin {
     fn build(&self, app: &mut App) {
         FileMaterialPlugin::require(app);
         app.init_resource::<MuzzleFlashes>();
+        app.init_resource::<SeenShots>();
+        app.init_resource::<SeenDeaths>();
+        app.add_observer(SeenDeaths::see);
         app.add_systems(Startup, MatchEffects::load);
+        app.add_systems(FixedPostUpdate, FireSeen::see_predicted);
         // A shot shows its flash over its state's nodes, as Zero Hour sets the state of the shot
         // before its weapon fires (`AIAttackFireWeaponState::update`).
         app.add_systems(
             Update,
             (
+                FireSeen::see_received,
                 MatchEffects::play_fires,
                 MuzzleFlashes::hide_ended,
                 MatchEffects::play_deaths,
@@ -253,13 +208,13 @@ impl MatchEffects {
         });
     }
 
-    /// Plays each shot at its unit's barrel, the next of those its type's state names for the
-    /// shot's weapon slot: its fire effect at the barrel's bone, or at its unit's drawing for a
-    /// barrel of none or a slot of no barrel, as the game's weapon plays one its draw does not
-    /// (`Weapon.cpp`); the barrel's muzzle flash; and its hit of a weapon of no projectile at its
-    /// target's drawing (effects.md, A shot's effect at its barrel). A shot is a rise of a slot's
-    /// ready tick, of a unit whose slots' times changed, which it triggers as `ShotSeen`; a match
-    /// of no effects shows the flashes alone.
+    /// Plays each shot the client saw at its unit's barrel, the next of those its type's state
+    /// names for the shot's weapon slot: its fire effect at the barrel's bone, or at its unit's
+    /// drawing for a barrel of none or a slot of no barrel, as the game's weapon plays one its
+    /// draw does not (`Weapon.cpp`); the barrel's muzzle flash; and its hit of a weapon of no
+    /// projectile at its target's drawing (effects.md, A shot's effect at its barrel). Each shot
+    /// it triggers as `ShotSeen` besides; a shot of a unit gone plays nothing, and a match of no
+    /// effects shows the flashes alone.
     fn play_fires(
         mut effects: Option<ResMut<'_, Self>>,
         (looks, index, heights, time): (
@@ -268,7 +223,7 @@ impl MatchEffects {
             Option<Res<'_, GroundHeights>>,
             Res<'_, Time>,
         ),
-        shooters: Shooters<'_, '_>,
+        (mut shots, shooters): (ResMut<'_, SeenShots>, Shooters<'_, '_>),
         drawn: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
         (mut seen, states): (Query<'_, '_, &mut FireSeen>, Query<'_, '_, &LookStates>),
         (places, children, names, mut visibilities): (
@@ -286,108 +241,82 @@ impl MatchEffects {
             visibilities: &mut visibilities,
             now: time.elapsed(),
         };
-        for (unit, &unit_type, times, slots, progress, drawing) in &shooters {
-            let root = drawing.root();
-            let Ok(mut fired) = seen.get_mut(root) else {
-                commands.entity(root).insert(FireSeen {
-                    ready: times.iter().map(|time| time.ready_at).collect(),
-                    ..FireSeen::default()
-                });
+        for shot in shots.0.drain(..) {
+            let Ok((&unit_type, progress, drawing)) = shooters.get(shot.unit) else {
                 continue;
             };
-            let fresh = fired.ready.len() != times.iter().len();
-            for (at, (time, slot)) in times.iter().zip(slots.iter()).enumerate() {
-                let rose = fired
-                    .ready
-                    .get(at)
-                    .is_some_and(|held| time.ready_at > *held);
-                let Some(action) = slot.action.filter(|_| rose && !fresh) else {
-                    continue;
-                };
-                commands.trigger(ShotSeen {
-                    unit,
-                    slot: at,
-                    action,
-                });
-                let group = looks
-                    .weapons(unit_type)
-                    .iter()
-                    .position(|group| group.contains(&action));
-                let barrel = group.and_then(|group| {
-                    let slot = u8::try_from(group).ok()?;
-                    let barrels = states.get(root).ok()?.barrels(&looks, slot)?;
-                    Some(&barrels[fired.turns.turn(group, barrels.len())])
-                });
-                if let Some(flash) = barrel.and_then(|barrel| barrel.flash.as_ref()) {
-                    flashes.show(&mut parts, root, flash);
-                }
-                let Some(effects) = effects.as_deref_mut() else {
-                    continue;
-                };
-                if let Some(&fire) = effects.plays.fires.get(&action) {
-                    let bone = barrel.and_then(|barrel| barrel.bone.as_deref());
-                    let at = bone
-                        .and_then(|bone| Self::bone(root, bone, &children, &names))
-                        .unwrap_or(root);
-                    if let Ok(place) = places.get(at) {
-                        effects
-                            .run
-                            .play(&effects.book, fire, place.affine(), &ground);
-                        effects.follow_last(root);
-                    }
-                }
-                if let Some(&hit) = effects.plays.hits.get(&action) {
-                    let target = progress.attacking().and_then(|target| index.get(target));
-                    let target = target.and_then(|target| drawn.get(target).ok());
-                    if let Some(place) = target.and_then(|drawing| places.get(drawing.root()).ok())
-                    {
-                        effects
-                            .run
-                            .play(&effects.book, hit, place.affine(), &ground);
-                    }
+            let root = drawing.root();
+            let Ok(mut fired) = seen.get_mut(root) else {
+                continue;
+            };
+            commands.trigger(shot);
+            let action = shot.action;
+            let group = looks
+                .weapons(unit_type)
+                .iter()
+                .position(|group| group.contains(&action));
+            let barrel = group.and_then(|group| {
+                let slot = u8::try_from(group).ok()?;
+                let barrels = states.get(root).ok()?.barrels(&looks, slot)?;
+                Some(&barrels[fired.turns.turn(group, barrels.len())])
+            });
+            if let Some(flash) = barrel.and_then(|barrel| barrel.flash.as_ref()) {
+                flashes.show(&mut parts, root, flash);
+            }
+            let Some(effects) = effects.as_deref_mut() else {
+                continue;
+            };
+            if let Some(&fire) = effects.plays.fires.get(&action) {
+                let bone = barrel.and_then(|barrel| barrel.bone.as_deref());
+                let at = bone
+                    .and_then(|bone| Self::bone(root, bone, &children, &names))
+                    .unwrap_or(root);
+                if let Ok(place) = places.get(at) {
+                    effects
+                        .run
+                        .play(&effects.book, fire, place.affine(), &ground);
+                    effects.follow_last(root);
                 }
             }
-            if fresh {
-                fired.ready.clear();
-                fired.ready.extend(times.iter().map(|time| time.ready_at));
-            } else {
-                for (held, time) in fired.ready.iter_mut().zip(times.iter()) {
-                    *held = (*held).max(time.ready_at);
+            if let Some(&hit) = effects.plays.hits.get(&action) {
+                let target = progress.attacking().and_then(|target| index.get(target));
+                let target = target.and_then(|target| drawn.get(target).ok());
+                if let Some(place) = target.and_then(|drawing| places.get(drawing.root()).ok()) {
+                    effects
+                        .run
+                        .play(&effects.book, hit, place.affine(), &ground);
                 }
             }
         }
     }
 
-    /// Plays each unit type's death effect at its unit's drawing as the unit dies; a rollback
-    /// across a predicted death, which takes `Dead` away and gives it back in one frame, plays
-    /// none again.
+    /// Plays each unit type's death effect where its unit's drawing stood as the unit died, the
+    /// unit despawned since or not; a rollback across a predicted death, which takes `Dead` away
+    /// and gives it back in one frame from a unit that stays, plays none again.
     fn play_deaths(
         effects: Option<ResMut<'_, Self>>,
         heights: Option<Res<'_, GroundHeights>>,
-        (dying, mut revived): (Dying<'_, '_>, RemovedComponents<'_, '_, Dead>),
-        places: Query<'_, '_, &GlobalTransform>,
+        (mut deaths, mut revived): (ResMut<'_, SeenDeaths>, RemovedComponents<'_, '_, Dead>),
+        units: Query<'_, '_, (), Allow<Unpredicted>>,
         mut back: Local<'_, Vec<Entity>>,
     ) {
         back.clear();
         back.extend(revived.read());
         back.sort_unstable();
         let Some(mut effects) = effects else {
+            deaths.0.clear();
             return;
         };
         let effects = &mut *effects;
         let ground = Self::ground(heights.as_deref());
-        for (unit, unit_type, drawing) in &dying {
-            if back.binary_search(&unit).is_ok() {
-                continue;
-            }
-            let death = effects.plays.deaths.get(unit_type);
-            let (Some(&death), Ok(place)) = (death, places.get(drawing.root())) else {
+        for death in deaths.played(&back, |unit| units.contains(unit)) {
+            let Some(&played) = effects.plays.deaths.get(&death.unit_type) else {
                 continue;
             };
             effects
                 .run
-                .play(&effects.book, death, place.affine(), &ground);
-            effects.follow_last(drawing.root());
+                .play(&effects.book, played, death.place, &ground);
+            effects.follow_last(death.root);
         }
     }
 
@@ -607,22 +536,5 @@ impl MatchEffects {
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, quads.uvs.clone())
         .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, quads.colors.clone())
         .with_inserted_indices(Indices::U32(quads.indices.clone()))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_slot_turns_to_its_next_barrel_with_each_shot_and_back_to_the_first() {
-        // Slot 1 of two barrels: 0, 1, 0; slot 0 of three, turned on its own: 0, 1, 2, 0.
-        let mut turns = SlotTurns::default();
-        let slot_one: Vec<usize> = (0..3).map(|_| turns.turn(1, 2)).collect();
-        assert_eq!(slot_one, [0, 1, 0]);
-        let slot_zero: Vec<usize> = (0..4).map(|_| turns.turn(0, 3)).collect();
-        assert_eq!(slot_zero, [0, 1, 2, 0]);
-        // A state of fewer barrels takes the turn within its own.
-        assert_eq!(turns.turn(0, 1), 0);
     }
 }

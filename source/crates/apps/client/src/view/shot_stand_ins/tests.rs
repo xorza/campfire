@@ -99,12 +99,12 @@ fn a_predicted_shot_draws_a_stand_in_at_its_barrel_which_the_servers_projectile_
     // Each fires at tick 10. The own shot's stand-in stands at its first barrel, turned: (10, 0,
     // 5) + (0, 2, −1), along `−z`, its `+x` turned a quarter about the vertical; the received
     // unit's shot draws none, as the server's projectile comes as soon.
-    app.insert_resource(SimTick::new(Tick::new(10)));
     for unit in [own, received] {
         app.world_mut().trigger(ShotSeen {
             unit,
             slot: 0,
             action: weapon,
+            tick: Tick::new(10),
         });
     }
     app.world_mut().flush();
@@ -132,11 +132,11 @@ fn a_predicted_shot_draws_a_stand_in_at_its_barrel_which_the_servers_projectile_
     // A type of no look stands in as the palette's ball.
     assert_eq!(world.get::<Children>(first).unwrap().len(), 1);
     // The next shot, at tick 11, leaves the second barrel, a meter further along `−z`.
-    app.insert_resource(SimTick::new(Tick::new(11)));
     app.world_mut().trigger(ShotSeen {
         unit: own,
         slot: 0,
         action: weapon,
+        tick: Tick::new(11),
     });
     app.world_mut().flush();
     let [_, second] = roots(&app)[..] else {
@@ -242,11 +242,11 @@ fn a_predicted_shot_draws_a_stand_in_at_its_barrel_which_the_servers_projectile_
     assert!(app.world().get_entity(first).is_err());
     // A shot at tick 20 stands while the client holds the state of tick 17, and ends as the
     // client leaves its match and holds none.
-    app.insert_resource(SimTick::new(Tick::new(20)));
     app.world_mut().trigger(ShotSeen {
         unit: own,
         slot: 0,
         action: weapon,
+        tick: Tick::new(20),
     });
     received(&mut app, 17);
     let [left] = roots(&app)[..] else {

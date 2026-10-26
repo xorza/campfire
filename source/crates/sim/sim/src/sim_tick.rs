@@ -12,6 +12,12 @@ use crate::sim_state::SimResource;
 pub struct SimTick(Tick);
 
 impl SimTick {
+    /// The most ticks a server runs in one frame after a stall, the time past them dropped and
+    /// logged, so a frame costs at most this many ticks' work, as a fixed time step bounds its
+    /// catch-up (08-sessions.md, A burst after a stall runs 9 ticks at most); and a state that
+    /// holds this many ticks from a tick on is in the world at the send of the frame that ran it.
+    pub const FRAME_MOST: Ticks = Ticks::new(9);
+
     /// A predicting client sets the tick it runs from its network timeline, which a rollback
     /// winds back.
     pub const fn new(tick: Tick) -> Self {

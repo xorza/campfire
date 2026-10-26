@@ -88,13 +88,15 @@ How the stack answers "what time is it".
   0. Refused: a half tick added at the receiver, a guess that is wrong on every host that wakes on
   time; a send after each tick, which Bevy's frame-level I/O does not do.
 - **An unknown estimate is `None`,** not zero: the timelines wait for the handshake's samples.
-- **An input leads by one margin for each reason.** On loopback the local timeline leads the
-  server by 2 ticks: one so that an input reaches the server before the server simulates its tick,
-  which reads inputs after its tick advances, and one for the sync deadband. The input timeline's
-  `jitter_margin` defaults to 0, a tail margin above the measured jitter that interpolation keeps
-  at 1. Practice: Netcode for Entities' `TargetCommandSlack` of 2 ticks. Refused: a second tick
-  for the input's arrival, which paid the same reason twice.
-- **The input timeline's band lies ahead of its objective, planned.** A lead under the objective
+- **An input leads by one margin for each reason.** On loopback the local timeline leads the server
+  by 2 ticks: one so that an input reaches the server before the server simulates its tick, which
+  reads inputs after its tick advances, and one so that a stall that wakes every process together,
+  which takes the phase to the server's next tick away, still leaves it a tick early ([LAN late
+  input](../../research/lan-late-input.md#the-lead-of-a-first-order)). The input timeline's
+  `jitter_margin` defaults to 0, a tail margin above the measured jitter that interpolation
+  keeps at 1. Practice: Netcode for Entities' `TargetCommandSlack` of 2 ticks. Refused: a second
+  tick for the input's arrival, which paid the same reason twice.
+- **The input timeline's band lies ahead of its objective.** A lead under the objective
   is corrected, and one up to a tick past it stays, so each input arrives a tick early at least
   plus the phase to the server's next tick, which a stall of every process takes away; the
   interpolation timeline keeps its band about its objective. Practice: Netcode for Entities keeps
@@ -104,8 +106,8 @@ How the stack answers "what time is it".
   reaches the objective, which leaves a lead of 1 later in a match; the LAN check's excuse widened
   to a stall of every process, which leaves the input late; the server's report of each input's
   age, the most exact measure, at the cost of a message and a new controller.
-- **A client behind steps, a client ahead slews.** The input timeline steps to its objective once a
-  deficit passes the deadband, as a late input costs more than latency, and the interpolation
+- **A client behind steps, a client ahead slews.** The input timeline steps to its objective at any
+  deficit, by whole ticks rounded up, as a late input costs more than latency, and the interpolation
   timeline slews, as a step shows as a jump ([LAN late input](../../research/lan-late-input.md)).
 - **An input is stamped for the frame's last tick.** A client gathers its frame's orders once and
   stamps them for the last tick the frame predicts, as Netcode for Entities' command send gathers

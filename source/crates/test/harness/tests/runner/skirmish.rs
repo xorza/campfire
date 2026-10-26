@@ -95,8 +95,8 @@ fn a_skirmish_starts_each_held_slot_and_ends_as_the_last_team_with_a_building_st
     // With bots in slots 2 and 3, all start. The second's center takes 10 damage, its whole
     // life, in tick 0: it dies as the tick's deaths find it, and the mode, which hears it then,
     // holds that bot out of play and takes its dozer's life whole; two teams hold a building
-    // that counts, so the match goes on, and the center despawns. The dozer dies, and despawns,
-    // in the next tick's deaths.
+    // that counts, so the match goes on, and the center stays dead until its decay. The dozer
+    // dies in the next tick's deaths.
     let mut fixed = skirmish([
         PlayerSlotPlan::Player,
         PlayerSlotPlan::Bot,
@@ -106,13 +106,13 @@ fn a_skirmish_starts_each_held_slot_and_ends_as_the_last_team_with_a_building_st
     let dozer = one(&fixed, "dozer", 1);
     destroy(&mut fixed, &[center]);
     let world = fixed.game();
-    assert!(owned(world, "center", 1).is_empty());
+    assert!(MatchUnits::of(world).unit(center).contains::<Dead>());
     let dozer_life = MatchUnits::of(world).unit(dozer).get::<Life>();
     assert_eq!(dozer_life.map(|life| life.is_empty()), Some(true));
     assert!(held_out(world, 1) && !held_out(world, 0) && !held_out(world, 2));
     assert!(!is_ended(world));
     fixed.step();
-    assert!(owned(fixed.game(), "dozer", 1).is_empty());
+    assert!(MatchUnits::of(fixed.game()).unit(dozer).contains::<Dead>());
     // The third's center dies alike, and the match ends, player 1's team, the first, the
     // winner. The match runs no stage after it ends, so the center stays dead and that bot's
     // dozer does not die, its life gone.

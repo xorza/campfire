@@ -24,7 +24,8 @@ pub struct SyncSetup {
     /// The default is 1 tick, which interpolation keeps. The input timeline defaults it to 0,
     /// since its objective adds a tick for the input to reach the server before its tick.
     pub jitter_margin: PositiveTickSpan,
-    /// The error, in ticks, inside which the controlled timeline runs at the nominal speed.
+    /// The error, in ticks, inside which the controlled timeline runs at the nominal speed: on
+    /// both sides of its objective, or ahead of it alone for a timeline that steps a deficit.
     pub error_margin: PositiveTickSpan,
     /// The error, in ticks, past which the controlled timeline snaps to its objective.
     pub max_error_margin: PositiveTickSpan,
