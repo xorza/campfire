@@ -65,6 +65,15 @@ packet stream under the transport's messages. The sealed handshake is in [UDP](u
   the core's next deadline is earlier than the one it sleeps to, as quinn moves its timer only when
   `poll_timeout` changes. Refused: a flag set when the frame took a payload, which wakes for
   datagrams already sent.
+- **The IO thread sends, planned.** On the OS clock the frame seals each link's packets under the
+  lock, queues them, and wakes the IO thread, which makes the sends, so the frame pays one wake
+  however many peers it sends to; a driven clock sends in the frame's pass as now. This replaces
+  the wake only for an unknown deadline for a frame that queues datagrams. Source: quinn, which
+  sends from its endpoint driver, and `quinn-udp`, which sends one destination a call, so a
+  server's tick of one packet per client gets no GSO batch. Refused: a send per peer on the frame
+  thread, which grows each frame with its players, 1.5 to 3 ms of a 16.7 ms tick at a thousand
+  clients; `sendmmsg` across peers, `unsafe` of our own on Linux alone, before a measurement shows
+  the IO thread is the limit.
 - **A path check is a server's capability,** which both routes by connection ID and challenges a new
   path, as only the server routes so ([UDP](udp.md)). Refused: a `bool` beside a challenge method,
   which leaves a client methods it cannot reach.

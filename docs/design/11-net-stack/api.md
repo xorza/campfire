@@ -71,6 +71,13 @@ How an app registers its protocol and names what the stack publishes.
   replication, which bevy_replicon 0.45 does not do, so the call was a silent no-op. A client
   sends its data as messages. Lockstep, a zero prediction limit that added 2 ticks of input delay
   with no stated reason, which no code in the workspace ran.
+- **The stack keeps its general features that no app calls yet.** Delayed interpolation, timeline
+  switches, local spawns and pre-spawns, prediction despawns, diff replication, `ControlledBy`,
+  `ManualVisibility` and `ReplicateLike` stay, each held working by its tests, as features a game
+  on the engine expects of its netcode, as lightyear offers them; the rule above deletes what is
+  broken or half made, not a general feature that works. Refused: their deletion because no
+  Campfire mode calls them (the workspace review of 26 October 2026), which loses them for the next
+  game.
 
 ## Code
 

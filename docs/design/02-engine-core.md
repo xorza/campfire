@@ -252,6 +252,10 @@ Each rule has a check that fails when it breaks, as a rule only review holds dri
 
 - **One gateway.** Every serde encoding and decoding goes through `codec`, with one configuration, one canonical form and one error type for each format.
 - **Three formats.** Postcard 1.x for every binary encoding, TOML for what a person writes, JSON for logged events and glTF; no other serde format.
+- **The import's client units stay TOML.** `client/units.toml` is written by the import, not by a
+  person, and stays TOML, so a person reads and compares what the import gave, at the cost of its
+  parse at each client start. Refused: postcard, the format of a file no person writes, which hides
+  the import's looks from the person who checks them (the workspace review of 26 October 2026).
 - **One encoding of each value.** A decode encodes what it read again and compares, as postcard takes over-long integers and ignores trailing bytes; a whole value refuses any byte past it.
 - **No allocation on a hot path.** An encode appends to a caller's `Vec` or writes into a `Sink`.
 - **Hand-written layouts for fixed formats.** A layout a specification fixes byte by byte stays with its owner by hand: the importer's file formats, the protocol's signed messages and frames.
