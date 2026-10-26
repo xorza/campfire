@@ -1,5 +1,3 @@
-use std::num::NonZeroU64;
-
 use crate::decay::Decay;
 use crate::kept::Kept;
 use crate::on_death::OnDeath;
@@ -71,15 +69,9 @@ impl Dying {
                 progress.set_attack_target(None, dues);
                 progress.end(dues);
             }
-            let kept = match unit_type.and_then(|&unit_type| on_death.get(unit_type)) {
-                Some(&OnDeath::Keep { ms }) => Some(
-                    rate.duration(NonZeroU64::from(ms).get())
-                        .expect("a u32 of milliseconds at a u32 rate counts in a u64 of ticks")
-                        .max(SimTick::FRAME_MOST),
-                ),
-                Some(&OnDeath::Despawn) => Some(SimTick::FRAME_MOST),
-                Some(&OnDeath::Stay) | None => None,
-            };
+            let kept = unit_type
+                .and_then(|&unit_type| on_death.get(unit_type))
+                .and_then(|&death| death.kept(*rate));
             if let Some(ticks) = kept {
                 let at = tick.start().after(ticks);
                 commands.entity(entity).insert((Dead, Decay { at }));

@@ -152,6 +152,11 @@ pub(crate) struct DrawModule {
     /// `ProjectileBoneFeedbackEnabledSlots`.
     pub(crate) rounds_shown: [bool; 3],
     pub(crate) recoil: IniRecoil,
+    /// Whether it throws tread dust as its object moves, as a `W3DTankDraw`, the
+    /// `W3DOverlordTankDraw` that extends it and a `W3DTankTruckDraw` do, `TrackDebrisDirtLeft` and `TrackDebrisDirtRight` when they name
+    /// none; and whether it lays track marks, as a `TrackMarks` texture names them.
+    pub(crate) tread_dust: bool,
+    pub(crate) track_marks: bool,
     sets: Vec<ConditionSet>,
     states: Vec<DrawState>,
     ignored: ConditionSet,
@@ -648,6 +653,8 @@ impl DrawModule {
             turret_pitch: None,
             rounds_shown: [false; 3],
             recoil: IniRecoil::default(),
+            tread_dust: false,
+            track_marks: false,
             animation: IniAnimation::default(),
             sets: vec![ConditionSet::default()],
             states: Vec::new(),
@@ -1123,6 +1130,9 @@ impl Reading {
                         }
                         module.rounds_shown = shown;
                     }
+                    "trackmarks" if *kind == DrawKind::Family => {
+                        module.track_marks = !at.value()?.eq_ignore_ascii_case("none");
+                    }
                     "modelname" if matches!(*kind, DrawKind::Tree | DrawKind::Prop) => {
                         module.model = ObjectFiles::model(tokens);
                     }
@@ -1176,7 +1186,12 @@ impl Reading {
                     "w3dpropdraw" => DrawKind::Prop,
                     _ => DrawKind::Other,
                 };
-                self.draw = Some(DrawModule::new(kind));
+                let mut draw = DrawModule::new(kind);
+                draw.tread_dust = matches!(
+                    module.as_str(),
+                    "w3dtankdraw" | "w3doverlordtankdraw" | "w3dtanktruckdraw"
+                );
+                self.draw = Some(draw);
                 self.stack.push(Block::Draw {
                     kind,
                     states: 0,

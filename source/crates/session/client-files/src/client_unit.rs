@@ -36,16 +36,44 @@ pub struct ClientUnit {
     /// slot A in each of its sets (09-zero-hour.md, A condition is the game's name for a test).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub weapons: Vec<Vec<DeclaredName>>,
-    /// The effect a unit of its type plays as it dies, by its name in the effects file
-    /// (effects.md, An effect is the client's, from the state it holds).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub death: Option<DeclaredName>,
+    /// The effects a unit of its type plays as it dies (effects.md, A death plays its phases).
+    #[serde(default, skip_serializing_if = "DeathLook::is_empty")]
+    pub death: DeathLook,
     /// The effect a projectile of its type plays where it ends, and the particle system it
     /// carries as it flies, each by its name in the effects file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end: Option<DeclaredName>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trail: Option<DeclaredName>,
+}
+
+/// What a unit of a type plays as it dies, each effect by its name in the effects file: as it
+/// dies, at the middle of the time its type keeps it dead, and as it goes, as Zero Hour's slow
+/// death plays an FX list in its `INITIAL`, `MIDPOINT` and `FINAL` phases (effects.md, A death
+/// plays its phases).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeathLook {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub start: Vec<DeclaredName>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub middle: Vec<DeclaredName>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub end: Vec<DeclaredName>,
+}
+
+impl DeathLook {
+    /// The death of no effect.
+    pub const NONE: Self = Self {
+        start: Vec::new(),
+        middle: Vec::new(),
+        end: Vec::new(),
+    };
+
+    /// Whether it plays nothing.
+    pub const fn is_empty(&self) -> bool {
+        self.start.is_empty() && self.middle.is_empty() && self.end.is_empty()
+    }
 }
 
 /// The look of one of a type's variations: its draws, and the names of the nodes its models turn
@@ -158,7 +186,7 @@ impl ClientUnit {
             turret: None,
             turret_pitch: None,
             weapons: Vec::new(),
-            death: None,
+            death: DeathLook::NONE,
             end: None,
             trail: None,
         }

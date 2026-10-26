@@ -3,7 +3,7 @@ use campfire_math::Num;
 
 use super::*;
 use crate::client_model::{ModelScale, ModelTop};
-use crate::client_unit::{BarrelFlash, FireBarrel, FireBone};
+use crate::client_unit::{BarrelFlash, DeathLook, FireBarrel, FireBone};
 use crate::condition_test::{LifeShare, SiteStage};
 use crate::state_animation::{AnimationMode, SpeedRange, StartFrame};
 use crate::state_set::StateSet;
@@ -20,7 +20,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
             ] },
             { sets = [["damaged"], ["damaged", "night"], { names = ["damaged"], untested = 2 }], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, barrels = [{ bone = "MuzzleFX01", flash = { node = "avhummer_d.muzzlefx01", ms = 100 } }, {}] }] },
         ] }]
-        death = "fx_humvee_death"
+        death = { start = ["fx_humvee_death"], end = ["fx_humvee_blast"] }
 
         [units.humvee_shell]
         draws = []
@@ -78,8 +78,13 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
         }]
     );
     assert_eq!(states[0].fire_bones, []);
-    assert_eq!(units.units["humvee"].death, Some(name("fx_humvee_death")));
-    assert_eq!(units.units["lamp"].death, None);
+    let humvee_death = DeathLook {
+        start: vec![name("fx_humvee_death")],
+        middle: Vec::new(),
+        end: vec![name("fx_humvee_blast")],
+    };
+    assert_eq!(units.units["humvee"].death, humvee_death);
+    assert!(units.units["lamp"].death.is_empty());
     let gun = &units.actions()[&name("humvee_gun")];
     assert_eq!((&gun.fire, &gun.hit), (&Some(name("fx_gun_fire")), &None));
     let shell = &units.units["humvee_shell"];
@@ -89,9 +94,11 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     );
     let written = Toml::write(&units);
     assert_eq!(
-        ["slot =", "node =", "death =", "hit =", "end =", "trail ="]
-            .map(|field| written.matches(field).count()),
-        [1, 1, 1, 0, 1, 1]
+        [
+            "slot =", "node =", "start =", "middle =", "hit =", "end =", "trail ="
+        ]
+        .map(|field| written.matches(field).count()),
+        [1, 1, 1, 0, 0, 2, 1]
     );
     // A state's sets, its own and its aliases', the last of two untested conditions.
     let damaged = DeclaredName::new("damaged").unwrap();

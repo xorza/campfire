@@ -971,8 +971,13 @@ fn an_object_keeps_the_slow_death_a_normal_death_most_likely_takes() {
     let veteran = module("    VeterancyLevels = NONE +VETERAN\n");
     assert_eq!(deaths(&veteran), Ok(None));
     assert_eq!(deaths(""), Ok(None));
-    // A death of no name, or a name with no sign, fails at its line.
-    for wrong in ["DeathTypes = ALL -MELTED", "DeathTypes = NORMAL"] {
+    // A death of no name, a name with no sign, or a phase of no name fails at its line, and a
+    // phase's line of no list too.
+    for wrong in [
+        "DeathTypes = ALL -MELTED",
+        "DeathTypes = NORMAL",
+        "FX = MIDDLE FX_Blast",
+    ] {
         let text = module(&format!("    {wrong}\n"));
         assert_eq!(
             deaths(&text),
@@ -980,6 +985,10 @@ fn an_object_keeps_the_slow_death_a_normal_death_most_likely_takes() {
             "{wrong}"
         );
     }
+    assert_eq!(
+        deaths(&module("    OCL = FINAL\n")),
+        Err(IniError::NoValue { line: 3 })
+    );
 
     // An `FXListDie` is no slow death; a normal death plays the list of its first that applies
     // and names one: not the crush's, nor one of `NONE`, but the blast's.

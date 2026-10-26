@@ -395,7 +395,7 @@ impl ImportCheck<'_> {
             hits: named(|look| look.hit.is_some()),
             trails: looks.clone().filter(|look| look.trail.is_some()).count(),
             ends: looks.clone().filter(|look| look.end.is_some()).count(),
-            deaths: looks.filter(|look| look.death.is_some()).count(),
+            deaths: looks.filter(|look| !look.death.is_empty()).count(),
             bones: states.filter(|state| !state.fire_bones.is_empty()).count(),
             dropped: self.dropped(EffectDropCause::ALL, |loss| match loss {
                 ImportLoss::Effect(effect) => Some(effect.cause),

@@ -7,7 +7,7 @@ use bevy::ecs::hierarchy::Children;
 use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::name::Name;
 use bevy::ecs::query::With;
-use bevy::ecs::query::{Added, Allow};
+use bevy::ecs::query::{Added, Allow, Has};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
@@ -20,9 +20,11 @@ use bevy::time::Time;
 use bevy::transform::components::GlobalTransform;
 use bevy::transform::components::Transform;
 use campfire_actions::ActionProgress;
+use campfire_combat::OnDeath;
+use campfire_declarations::ById;
 use campfire_projectiles::Projectile;
 use campfire_script::MatchNames;
-use campfire_sim::{EntityIndex, Unpredicted};
+use campfire_sim::{EntityIndex, MatchRate, Unpredicted};
 use campfire_units::{Dead, TypeOriginBook};
 use campfire_values::{PackageIndex, UnitType};
 
@@ -34,7 +36,7 @@ use crate::view::effects::fire_seen::{FireSeen, SeenShots};
 use crate::view::effects::muzzle_flashes::{FlashParts, MuzzleFlashes};
 use crate::view::effects::particle_quads::{GroupQuads, ParticleQuads, ViewAxes};
 use crate::view::effects::particle_run::{ParticleRun, SystemKey};
-use crate::view::effects::seen_deaths::SeenDeaths;
+use crate::view::effects::seen_deaths::{DeathStep, DeathUnderWay, SeenDeaths, UnitNow};
 use crate::view::effects::step_clock::StepClock;
 use crate::view::file_material::{FileBlend, FileMaterial, FileMaterialPlugin};
 use crate::view::ground_heights::GroundHeights;
@@ -84,6 +86,15 @@ struct Follower {
     system: SystemKey,
     root: Entity,
 }
+
+/// What a death's phases are played by: the drawn ground's heights, the app's clock, the match's
+/// rate, and the time each type keeps its dead, which a match of no combat lacks.
+type DeathTimes<'w> = (
+    Option<Res<'w, GroundHeights>>,
+    Res<'w, Time>,
+    Res<'w, MatchRate>,
+    Option<Res<'w, ById<UnitType, OnDeath>>>,
+);
 
 /// The projectiles drawn of late, of their types and drawings.
 type NewShots<'w, 's> = Query<
@@ -154,6 +165,14 @@ impl Plugin for EffectsPlugin {
                 .after(DressSystems)
                 .in_set(ViewSystems),
         );
+    }
+}
+
+impl Follower {
+    /// A follower of `root` for each system the last play of `run` attached to its object.
+    fn last(run: &ParticleRun, root: Entity) -> impl Iterator<Item = Self> + '_ {
+        let attached = run.attached().iter();
+        attached.map(move |&system| Self { system, root })
     }
 }
 
@@ -290,15 +309,21 @@ impl MatchEffects {
         }
     }
 
-    /// Plays each unit type's death effect where its unit's drawing stood as the unit died, the
-    /// unit despawned since or not; a rollback across a predicted death, which takes `Dead` away
-    /// and gives it back in one frame from a unit that stays, plays none again.
+    /// Plays each unit type's death in its phases (effects.md, A death plays its phases): its
+    /// start where its unit's drawing stood as the unit died, the unit despawned since or not;
+    /// its middle at the middle of the time its type keeps it dead, and its end as it goes,
+    /// each where its drawing stands then, or stood last. A rollback across a predicted death,
+    /// which takes `Dead` away and gives it back in one frame from a unit that stays, plays none
+    /// again, and a unit that lives again plays no more of its death.
     fn play_deaths(
         effects: Option<ResMut<'_, Self>>,
-        heights: Option<Res<'_, GroundHeights>>,
+        (heights, time, rate, on_death): DeathTimes<'_>,
         (mut deaths, mut revived): (ResMut<'_, SeenDeaths>, RemovedComponents<'_, '_, Dead>),
-        units: Query<'_, '_, (), Allow<Unpredicted>>,
-        mut back: Local<'_, Vec<Entity>>,
+        (units, places): (
+            Query<'_, '_, Has<Dead>, Allow<Unpredicted>>,
+            Query<'_, '_, &GlobalTransform>,
+        ),
+        (mut back, mut under_way): (Local<'_, Vec<Entity>>, Local<'_, Vec<DeathUnderWay>>),
     ) {
         back.clear();
         back.extend(revived.read());
@@ -307,17 +332,60 @@ impl MatchEffects {
             deaths.0.clear();
             return;
         };
-        let effects = &mut *effects;
+        let Self {
+            book,
+            run,
+            plays,
+            followers,
+            ..
+        } = &mut *effects;
         let ground = Self::ground(heights.as_deref());
+        let now = time.elapsed();
         for death in deaths.played(&back, |unit| units.contains(unit)) {
-            let Some(&played) = effects.plays.deaths.get(&death.unit_type) else {
+            let Some(plays) = plays.deaths.get(&death.unit_type) else {
                 continue;
             };
-            effects
-                .run
-                .play(&effects.book, played, death.place, &ground);
-            effects.follow_last(death.root);
+            for &list in &plays.start {
+                run.play(book, list, death.place, &ground);
+                followers.extend(Follower::last(run, death.root));
+            }
+            if plays.middle.is_empty() && plays.end.is_empty() {
+                continue;
+            }
+            let kept = on_death
+                .as_ref()
+                .and_then(|book| book.get(death.unit_type))
+                .and_then(|&on_death| on_death.kept(*rate));
+            let middle = kept.map(|ticks| {
+                let ticks = u32::try_from(ticks.get()).expect("a keep's ticks fit a u32");
+                now + rate.length() * ticks / 2
+            });
+            under_way.push(DeathUnderWay {
+                death,
+                middle: middle.filter(|_| !plays.middle.is_empty()),
+            });
         }
+        under_way.retain_mut(|way| {
+            let Some(plays) = plays.deaths.get(&way.death.unit_type) else {
+                return false;
+            };
+            let unit = match units.get(way.death.unit) {
+                Ok(true) => UnitNow::Dead,
+                Ok(false) => UnitNow::Living,
+                Err(_) => UnitNow::Gone,
+            };
+            let place = places.get(way.death.root).ok().map(GlobalTransform::affine);
+            let (lists, stays) = match way.step(unit, place, now) {
+                DeathStep::Waits => return true,
+                DeathStep::Ends => return false,
+                DeathStep::Middle => (&plays.middle, true),
+                DeathStep::End => (&plays.end, false),
+            };
+            for &list in lists {
+                run.play(book, list, way.death.place, &ground);
+            }
+            stays
+        });
     }
 
     /// Starts each new projectile's trail on its drawing, moves each trail along with its
@@ -397,9 +465,7 @@ impl MatchEffects {
 
     /// Keeps the systems the last play started on its object following `root`.
     fn follow_last(&mut self, root: Entity) {
-        let attached = self.run.attached().iter();
-        self.followers
-            .extend(attached.map(|&system| Follower { system, root }));
+        self.followers.extend(Follower::last(&self.run, root));
     }
 
     /// The node of the name `bone` among `root` and its descendants, the first found depth first.

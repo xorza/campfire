@@ -13,11 +13,20 @@ use crate::view::effects::effect_book::{EffectBook, ListId, SystemId};
 /// hit.
 #[derive(Debug, Default)]
 pub(crate) struct EffectPlays {
-    pub(crate) deaths: BTreeMap<UnitType, ListId>,
+    pub(crate) deaths: BTreeMap<UnitType, DeathPlays>,
     pub(crate) ends: BTreeMap<UnitType, ListId>,
     pub(crate) trails: BTreeMap<UnitType, SystemId>,
     pub(crate) fires: BTreeMap<ActionId, ListId>,
     pub(crate) hits: BTreeMap<ActionId, ListId>,
+}
+
+/// The lists a type's death plays, of those the book holds: as its unit dies, at the middle of
+/// its keep, and as it goes (effects.md, A death plays its phases).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DeathPlays {
+    pub(crate) start: Vec<ListId>,
+    pub(crate) middle: Vec<ListId>,
+    pub(crate) end: Vec<ListId>,
 }
 
 /// What the plays are of: the effects' book, the mode's own package's looks, the match's types'
@@ -49,7 +58,13 @@ impl EffectPlays {
                 continue;
             };
             let list = |name: &Option<_>| book.list_id(name.as_ref()?);
-            if let Some(death) = list(&look.death) {
+            let lists = |names: &[_]| names.iter().filter_map(|name| book.list_id(name)).collect();
+            let death = DeathPlays {
+                start: lists(&look.death.start),
+                middle: lists(&look.death.middle),
+                end: lists(&look.death.end),
+            };
+            if death != DeathPlays::default() {
                 plays.deaths.insert(unit_type, death);
             }
             if let Some(end) = list(&look.end) {

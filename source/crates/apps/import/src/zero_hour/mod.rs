@@ -272,7 +272,7 @@ impl ZeroHour {
                 trails.extend(weapon.exhaust.as_deref());
             }
         }
-        let effects = EffectsImport::of(EffectSources {
+        let mut effects = EffectsImport::of(EffectSources {
             systems: &game.particles,
             lists: &game.effects,
             trails: &trails,
@@ -280,7 +280,6 @@ impl ZeroHour {
             texture: |name: &str| road_assets.texture(name),
         })?;
         writer.write(EffectsFile::path(), &effects.file.encode())?;
-        losses.extend(effects.dropped.iter().cloned().map(ImportLoss::Effect));
         // The textures the models, the terrain and the effects draw with, each converted once: no
         // other file of the install is drawn.
         let drawn = model_textures
@@ -308,6 +307,7 @@ impl ZeroHour {
             writer.write(to, &ktx2)?;
         }
         effects.name_deaths(&game.objects, &mut looks.units)?;
+        losses.extend(effects.dropped.iter().cloned().map(ImportLoss::Effect));
         combat.complete_looks(&mut looks.units);
         let delivery = |action: &DeclaredName| match combat.actions.get(action) {
             None => WeaponShot::Dropped,
@@ -401,7 +401,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 37;
+    pub const OUTPUT_VERSION: u32 = 39;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::ecs::entity::Entity;
 use bevy::ecs::lifecycle::Add;
 use bevy::ecs::observer::On;
@@ -25,6 +27,60 @@ pub(crate) struct SeenDeath {
     pub(crate) unit_type: UnitType,
     pub(crate) root: Entity,
     pub(crate) place: Affine3A,
+}
+
+/// A death whose middle or end is still to play: the death, its place the latest its drawing
+/// stood at, and the app time its middle plays at, none once it played or for a death of no
+/// middle.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct DeathUnderWay {
+    pub(crate) death: SeenDeath,
+    pub(crate) middle: Option<Duration>,
+}
+
+/// Where a dying unit stands in a frame: dead still, living again, or gone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UnitNow {
+    Dead,
+    Living,
+    Gone,
+}
+
+/// What a death under way does in a frame: waits, plays its middle, plays its end and ends, or
+/// ends with nothing more, its unit living again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeathStep {
+    Waits,
+    Middle,
+    End,
+    Ends,
+}
+
+impl DeathUnderWay {
+    /// Its step in a frame at `now` of app time, its unit as `unit` stands and its drawing at
+    /// `place`, which it takes as its latest: its middle once its time came, then its end as its
+    /// unit goes.
+    pub(crate) fn step(
+        &mut self,
+        unit: UnitNow,
+        place: Option<Affine3A>,
+        now: Duration,
+    ) -> DeathStep {
+        match unit {
+            UnitNow::Living => DeathStep::Ends,
+            UnitNow::Gone => DeathStep::End,
+            UnitNow::Dead => {
+                if let Some(place) = place {
+                    self.death.place = place;
+                }
+                if self.middle.take_if(|middle| *middle <= now).is_some() {
+                    DeathStep::Middle
+                } else {
+                    DeathStep::Waits
+                }
+            }
+        }
+    }
 }
 
 impl SeenDeaths {

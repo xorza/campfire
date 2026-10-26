@@ -1,0 +1,18 @@
+# Wrecks
+
+A slice's proposal. At its end, a player of a Zero Hour skirmish sees a destroyed tank leave its burning hulk, which sinks and goes, throw its turret and its debris, which fly, bounce and sink, and a tank drive with dust at its treads and lay track marks that fade, as the game's death objects and tank draws show them. Its plan is `PLAN.md`'s Wrecks; when the slice ends, its lasting decisions fold into `02-engine-core.md` for the formats and the client and `09-zero-hour.md` for what the import converts and loses, and this document goes. Its facts are [Zero Hour's deaths](../research/zero-hour-deaths.md).
+
+## Decisions
+
+- **A wreck is the client's.** A death's hulk and debris are drawn by the client alone, from the death it sees, as an effect is (effects.md, An effect is the client's, from the state it holds): Zero Hour's hulks are `NO_COLLIDE` and its debris `UNATTACKABLE`, so no rule reads them. Refused: sim entities, which every link would carry and every tick would run for nothing a rule reads, as OpenRA's husks and Spring's wreck features are, which a player can capture or reclaim.
+- **A death names its wrecks by phase.** A look's death names, beside its effects, the wrecks each phase throws: a hulk, a model left where the unit stood, which falls with gravity, lives its time and sinks; and debris, models thrown by a force, which bounce, rest and sink; each with its offset, count, force and spin, as `CreateObject` and `CreateDebris` give them. The format names no game; the import converts an `OCL` of a slow death's phase whose objects are `HULK`s or debris, and counts the rest a loss, as an object of gameplay a creation list makes.
+- **Wrecks move by the client's step.** A wreck steps at the effects file's step, as particles do (effects.md, A system steps as its file says), falls by the file's gravity, Zero Hour's −64 per second squared converted, bounces on the drawn ground, spins at its rate and rests, and draws from the client's own random sequence, as nothing of it is state. Refused: Avian or Rapier, a dependency for pieces that need only a fall and a bounce.
+- **A tread throws dust while it drives.** A look names the particle systems its treads run while its unit moves on the ground, at a velocity and a count scaled by its speed, as `W3DTankDraw` scales them, and stops them as it stands, as a system on its drawing the effects already follow.
+- **A tread lays track marks.** A look names a track texture; the client lays a strip of quads behind the unit as it moves, an edge each fixed distance, up to a fixed count, the oldest fading, drawn over the ground among its overlays, as `W3DTerrainTracks` lays them. The import converts each `TrackMarks` texture as it converts a road's.
+- **What the slice leaves.** A slow death's weapons, a fling and a sink of the unit itself, an object of gameplay a creation list makes, a debris piece's bounce sound, and a truck's dust and dirt spray: each a loss of the import, counted.
+
+## Checks
+
+- The import's tests convert a slow death's hulk and debris of each disposition, a tank draw's tread systems and its track texture, and count each loss; the Zero Hour check pins them.
+- The client's tests step a wreck to hand-computed places: its fall, its bounce on the ground, its rest and its sink, and its end; a tread's systems run as its unit moves and stop as it stands, scaled by its speed; a track lays its edges at their distance, fades the oldest and drops past its count.
+- In the client, a player of Tournament Desert sees a destroyed Crusader's hulk sink and its turret fly, and a tank's dust and track marks as it drives.

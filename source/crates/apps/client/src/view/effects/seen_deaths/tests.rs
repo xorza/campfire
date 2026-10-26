@@ -54,3 +54,35 @@ fn a_death_is_seen_as_dead_reaches_its_unit_and_plays_unless_a_rollback_takes_it
     assert_eq!(played, [gone, stays]);
     assert!(deaths.0.is_empty());
 }
+
+#[test]
+fn a_death_under_way_plays_its_middle_once_its_time_came_and_its_end_as_its_unit_goes() {
+    let at = |x: f32| Affine3A::from_translation(Vec3::new(x, 0.0, 0.0));
+    let second = Duration::from_secs(1);
+    let mut world = World::new();
+    let [unit, root] = [world.spawn_empty().id(), world.spawn_empty().id()];
+    let mut way = DeathUnderWay {
+        death: SeenDeath {
+            unit,
+            unit_type: UnitType::new(3),
+            root,
+            place: at(1.0),
+        },
+        middle: Some(second),
+    };
+    // Dead before its middle, it waits, its place the drawing's latest; at its middle's time it
+    // plays the middle, once; then it waits on, where its drawing stood last when its drawing
+    // is gone, and plays its end as its unit goes.
+    assert_eq!(
+        way.step(UnitNow::Dead, Some(at(2.0)), Duration::ZERO),
+        DeathStep::Waits
+    );
+    assert_eq!(way.death.place, at(2.0));
+    assert_eq!(way.step(UnitNow::Dead, None, second), DeathStep::Middle);
+    assert_eq!(way.step(UnitNow::Dead, None, second * 2), DeathStep::Waits);
+    assert_eq!(way.step(UnitNow::Gone, None, second * 2), DeathStep::End);
+    assert_eq!(way.death.place, at(2.0));
+    // A unit that lives again plays no more of its death.
+    way.middle = Some(second);
+    assert_eq!(way.step(UnitNow::Living, None, second), DeathStep::Ends);
+}

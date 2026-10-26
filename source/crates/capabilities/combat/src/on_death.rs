@@ -1,6 +1,8 @@
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroU64};
 
+use campfire_common::Ticks;
 use campfire_declarations::PerId;
+use campfire_sim::{MatchRate, SimTick};
 use campfire_values::UnitType;
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +37,25 @@ enum OnDeathFile {
 enum NamedDeath {
     Stay,
     Despawn,
+}
+
+impl OnDeath {
+    /// The ticks its dead unit stays before it despawns at `rate`: its keep, `SimTick::FRAME_MOST`
+    /// at the least, so the send of the frame that ran its death holds it
+    /// (04-capabilities/combat.md, A death replicates before its unit goes); none for a unit that
+    /// stays.
+    pub fn kept(self, rate: MatchRate) -> Option<Ticks> {
+        match self {
+            Self::Keep { ms } => {
+                let ticks = rate
+                    .duration(NonZeroU64::from(ms).get())
+                    .expect("a u32 of milliseconds at a u32 rate counts in a u64 of ticks");
+                Some(ticks.max(SimTick::FRAME_MOST))
+            }
+            Self::Despawn => Some(SimTick::FRAME_MOST),
+            Self::Stay => None,
+        }
+    }
 }
 
 impl PerId<UnitType> for OnDeath {

@@ -6,17 +6,39 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Effects](docs/design/effects.md): a player of a Zero Hour skirmish sees each shot's fire effect at its barrel, each projectile's exhaust, each hit's burst and each death's explosion, as the game's FX lists and particle systems draw them. Its facts are [Zero Hour's effects](docs/research/zero-hour-effects.md); its checks are that document's.
 
-### E4. A death plays its phases
-
-Touches the import, `client-files` and the client's effects; it stands before the end of the slice, which sees it.
-
-- [ ] A look's death names one effect, which the import takes from an `FXListDie` alone, so a tank, whose death is a `SlowDeathBehavior`, plays none and vanishes ([Zero Hour's deaths](docs/research/zero-hour-deaths.md)); a look's death names an effect at its start, midpoint and end, the import takes them from the slow death a normal death most likely takes, and the client plays them as `Dead` comes, at the middle of the keep and as the unit goes (effects.md, A death plays its phases, planned); hulks, debris, death weapons, tread dust and track marks are counted as losses. Checks: the import's tests convert a slow death's three phases and count each loss; a client test plays the three at their times; the Zero Hour check pins the deaths named and the losses.
-
 ### End of the slice
 
 It stands last, as the player's check is of the whole slice.
 
 - [ ] A player sees Tournament Desert's shots, hits, trails and deaths in the client as the game draws them ([question](PLAN_QUESTIONS.md#effects-end-of-the-slice)); then the slice's decisions fold into the documents of their systems, `02-engine-core.md` for the format and the client's particles and `09-zero-hour.md` for what the import converts and loses, the code's citations of `effects.md` with them, and `effects.md` goes.
+
+## Wrecks
+
+The slice of [Wrecks](docs/design/wrecks.md): a player of a Zero Hour skirmish sees a destroyed tank's hulk and debris, and a tank's tread dust and track marks. Its facts are [Zero Hour's deaths](docs/research/zero-hour-deaths.md); its checks are that document's. It stands after Effects, whose deaths it extends.
+
+### W1. A death names its wrecks, and a tread its dust and marks
+
+Touches `client-files` and the import; it stands first, as the client reads what it writes.
+
+- [ ] A look's death names effects alone, and a tank draw's dust and marks are counted losses ([Zero Hour's deaths](docs/research/zero-hour-deaths.md#what-the-engine-shows)); a look's death names the hulk and the debris of each phase, and a look its tread systems and its track texture (wrecks.md, A death names its wrecks by phase; A tread throws dust while it drives; A tread lays track marks), converted from a slow death's `OCL`s of `HULK` objects and `CreateDebris`, and from `W3DTankDraw`'s `TreadDebris` and `TrackMarks`, the rest counted. Checks: the import's tests of each disposition and each loss; the Zero Hour check pins them.
+
+### W2. Wrecks fall, bounce and sink
+
+Touches the client's effects; it stands after W1.
+
+- [ ] The client draws no wreck (wrecks.md, A wreck is the client's; Wrecks move by the client's step): a death's phase spawns its hulk and debris at its unit's drawing, each stepped at the file's step by gravity, bounced on the drawn ground, spun, rested, sunk and gone. Checks: a client test steps a hulk and a debris piece to hand-computed places through each stage.
+
+### W3. A tread throws dust and lays marks
+
+Touches the client's effects and the ground's drawing; it stands after W2, apart from it.
+
+- [ ] A moving tank throws no dust and lays no mark (wrecks.md, A tread throws dust while it drives; A tread lays track marks): its tread systems run on its drawing while it moves, scaled by its speed, and its track lays a strip of fading quads among the ground's overlays. Checks: a client test runs and stops the systems and lays, fades and drops a track's edges.
+
+### End of the slice
+
+It stands last, as the player's check is of the whole slice.
+
+- [ ] A player sees Tournament Desert's hulks, debris, dust and track marks in the client as the game draws them; then the slice's decisions fold into `02-engine-core.md` and `09-zero-hour.md`, and `wrecks.md` goes.
 
 ## Console
 

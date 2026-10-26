@@ -286,7 +286,7 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
     );
     let trimmed = effects(&exhaust, FX_LISTS);
     assert!(!trimmed.file.systems().contains_key(&name("exhaust")));
-    let effects = carried(&exhaust, FX_LISTS, &["Exhaust"]);
+    let mut effects = carried(&exhaust, FX_LISTS, &["Exhaust"]);
     assert!(effects.file.systems().contains_key(&name("exhaust")));
 
     // The cannon fires `FX_TankFire`, which the lists do not hold, and its shell hits with
@@ -328,21 +328,49 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
         )])
     );
     assert!(units.is_empty());
-    let dropped = effects.action_looks(&weapons, |_| WeaponShot::Dropped, &mut units);
-    assert!(dropped.unwrap().is_empty());
+    let none = effects.action_looks(&weapons, |_| WeaponShot::Dropped, &mut units);
+    assert!(none.unwrap().is_empty());
 
-    // A tank's death plays its first `FXListDie`'s list the file holds; a look of no object, or
-    // an object of no look, names none.
+    // A tank's death plays at its start its first `FXListDie`'s list and its slow death's first
+    // `INITIAL` list, at its middle its `MIDPOINT`'s, which the file lacks, and at its end the
+    // first of its two `FINAL` lists, each the file holds; a look of no object, or an object of
+    // no look, names none. The phase's other list, its hulk, its weapon and its draw's tread dust
+    // and track marks are counted, once each.
+    let tank = "Object Tank\n  Draw = W3DTankDraw D\n    TrackMarks = EXTnkTrack.tga\n  End\n  \
+                Behavior = FXListDie M\n    DeathFX = FX_TankHit\n  End\n  \
+                Behavior = SlowDeathBehavior S\n    FX = INITIAL FX_TankHit\n    \
+                FX = MIDPOINT FX_Missing\n    OCL = MIDPOINT OCL_Hulk\n    OCL = FINAL OCL_Turret\n    \
+                FX = FINAL FX_TankHit\n    FX = FINAL FX_Other\n    Weapon = FINAL Blast\n  End\nEnd\n";
     let mut objects = ObjectFiles::default();
     objects
-        .read(b"Object Tank\n  Behavior = FXListDie M\n    DeathFX = FX_TankHit\n  End\nEnd\nObject Rock\nEnd\n")
+        .read(format!("{tank}Object Rock\nEnd\n").as_bytes())
         .unwrap();
     let objects = objects.finish();
     let mut units = BTreeMap::from([
         (name("tank"), ClientUnit::new(Vec::new())),
         (name("rock"), ClientUnit::new(Vec::new())),
     ]);
+    let before = effects.dropped.len();
     effects.name_deaths(&objects, &mut units).unwrap();
-    assert_eq!(units[&name("tank")].death, Some(name("fx_tankhit")));
-    assert_eq!(units[&name("rock")].death, None);
+    let hit = name("fx_tankhit");
+    assert_eq!(
+        units[&name("tank")].death,
+        DeathLook {
+            start: vec![hit.clone(), hit.clone()],
+            middle: Vec::new(),
+            end: vec![hit],
+        }
+    );
+    assert!(units[&name("rock")].death.is_empty());
+    assert_eq!(
+        effects.dropped[before..],
+        [
+            EffectDropCause::DeathObject,
+            EffectDropCause::DeathChoice,
+            EffectDropCause::DeathWeapon,
+            EffectDropCause::TreadDust,
+            EffectDropCause::TrackMarks,
+        ]
+        .map(|cause| dropped("Tank", cause))
+    );
 }

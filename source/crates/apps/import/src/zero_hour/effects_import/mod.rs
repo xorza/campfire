@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bevy_math::{Quat, Vec3};
 use campfire_client_files::{
-    ActionLook, AlphaKey, Blend, ClientUnit, ColorKey, EffectList, EffectsFile, EmissionVelocity,
-    EmissionVolume, ListedSystem, ParticleSystem, SlaveSystem, Spread,
+    ActionLook, AlphaKey, Blend, ClientUnit, ColorKey, DeathLook, EffectList, EffectsFile,
+    EmissionVelocity, EmissionVolume, ListedSystem, ParticleSystem, SlaveSystem, Spread,
 };
 use campfire_common::DeclaredName;
 use campfire_values::PackagePath;
@@ -174,22 +174,57 @@ impl EffectsImport {
         })
     }
 
-    /// Names, in `looks`, the effect each unit type of an object of `objects` plays as it dies,
-    /// of the lists it holds; an error for an object of no name a package holds.
+    /// Names, in `looks`, the effects each unit type of an object of `objects` plays as it dies,
+    /// of the lists it holds: at its start the `DeathFX` of its first `FXListDie` that applies and
+    /// the first FX list of the `INITIAL` phase of the slow death a normal death most likely
+    /// takes, and at its middle and its end that death's `MIDPOINT` and `FINAL` (effects.md, A
+    /// death plays its phases). It counts what it leaves of each: a phase's other lists, the
+    /// objects and the weapons of its phases, and its draws' tread dust and track marks. An error
+    /// for an object of no name a package holds.
     pub(crate) fn name_deaths(
-        &self,
+        &mut self,
         objects: &ObjectIni,
         looks: &mut BTreeMap<DeclaredName, ClientUnit>,
     ) -> Result<(), NameError> {
+        let mut losses = Losses::default();
         for object in objects.objects() {
-            let Some(effect) = object.death_effect() else {
-                continue;
-            };
             let Some(look) = looks.get_mut(&ImportName::object(object).declared()?) else {
                 continue;
             };
-            look.death = self.list(effect)?;
+            let phases = object.slow_death().map(|death| &death.phases);
+            let firsts = phases.map(|phases| {
+                phases
+                    .each_ref()
+                    .map(|phase| phase.effects.first().map(String::as_str))
+            });
+            let [initial, midpoint, last] = firsts.unwrap_or_default();
+            look.death = DeathLook {
+                start: self.lists(object.death_effect().into_iter().chain(initial))?,
+                middle: self.lists(midpoint)?,
+                end: self.lists(last)?,
+            };
+            let name = &object.name;
+            for phase in phases.into_iter().flatten() {
+                if phase.effects.len() > 1 {
+                    losses.drop(name, EffectDropCause::DeathChoice);
+                }
+                if phase.objects > 0 {
+                    losses.drop(name, EffectDropCause::DeathObject);
+                }
+                if phase.weapons > 0 {
+                    losses.drop(name, EffectDropCause::DeathWeapon);
+                }
+            }
+            for draw in object.draws() {
+                if draw.tread_dust {
+                    losses.drop(name, EffectDropCause::TreadDust);
+                }
+                if draw.track_marks {
+                    losses.drop(name, EffectDropCause::TrackMarks);
+                }
+            }
         }
+        self.dropped.extend(losses);
         Ok(())
     }
 
@@ -233,6 +268,18 @@ impl EffectsImport {
             }
         }
         Ok(looks)
+    }
+
+    /// The package's names of the lists of the game's `names` the file holds, in their order.
+    fn lists<'a>(
+        &self,
+        names: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Vec<DeclaredName>, NameError> {
+        let mut held = Vec::new();
+        for name in names {
+            held.extend(self.list(name)?);
+        }
+        Ok(held)
     }
 
     /// The package's name of the list of the game's name `name`, when the file holds it.
