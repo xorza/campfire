@@ -80,6 +80,14 @@ life = "life"
 
 [tags.weapon_upgrade]
 
+# The tags of a unit at each stage of its continuous fire, and of one fallen from a stage, which the
+# stages' and the fall's modifiers give and its looks' `CONTINUOUS_FIRE_*` conditions test.
+[tags.continuous_fire_mean]
+
+[tags.continuous_fire_fast]
+
+[tags.continuous_fire_slow]
+
 # The tags of the markers its players start at and their starting units rally at.
 [navigation]
 spawn_tags = ["start", "rally"]

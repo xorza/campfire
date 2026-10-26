@@ -158,6 +158,15 @@ pub(super) static ACTION_FLAWS: &[Flaw] = &[
     ),
     Flaw::of(
         MODE_DATA,
+        Edit::Set(
+            "actions.tower_attack.streak",
+            r#"{ coast_ms = 1000, stages = [{ shots = 2, modifier = "warden_blessing" }], fall = { modifier = "spun_down", ms = 1000 } }"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: ModifierId::NAMES, name, .. } if name == "spun_down"),
+    ),
+    Flaw::of(
+        MODE_DATA,
         Edit::Replace(
             "[actions.wolf_attack]\n",
             "[actions.wolf_attack]\ncooldown_ms = 1000\n",

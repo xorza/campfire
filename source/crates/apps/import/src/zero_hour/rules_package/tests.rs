@@ -44,18 +44,31 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         !none.contains("actions") && !none.contains("armors") && !none.contains("modifiers"),
         "{none}"
     );
-    // A stage's modifier reads back as the modifier that adds to the rate of fire.
-    let rate = RulesNames::default().rate_of_fire;
+    // A stage's modifier reads back as the modifier that adds to the rate of fire and gives its
+    // tag; a fall's, of no stat, as the one that gives its tag alone.
+    let names = RulesNames::default();
+    let rate = names.rate_of_fire.clone();
     let one = Number::Value(Scalar::Decimal(Num::ONE));
     let stage = StageModifier {
         stats: BTreeMap::from([(rate.clone(), one.clone())]),
+        tags: vec![names.continuous_fire[0].clone()],
+    };
+    let fall = StageModifier {
+        stats: BTreeMap::new(),
+        tags: vec![names.continuous_fire_slow.clone()],
     };
     let mut combat = CombatImport::default();
     combat.modifiers.insert(name("weapon_w_mean"), stage);
+    combat.modifiers.insert(name("weapon_w_slow"), fall);
     let mut written: TomlTable = Toml::parse(&data(&combat)).unwrap();
     let modifiers: ModifiersData = written.take("modifiers").unwrap().unwrap();
-    let change = &modifiers.0[&name("weapon_w_mean")].stats[&rate];
+    let mean = &modifiers.0[&name("weapon_w_mean")];
+    let change = &mean.stats[&rate];
     assert_eq!((change.op, &change.value), (StatOp::Add, &one));
+    assert_eq!(mean.tags, [names.continuous_fire[0].clone()]);
+    let slow = &modifiers.0[&name("weapon_w_slow")];
+    assert!(slow.stats.is_empty());
+    assert_eq!(slow.tags, [names.continuous_fire_slow]);
 }
 
 #[test]
@@ -101,6 +114,9 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
         &names.infantry,
         &names.armor_upgrade,
         &names.weapon_upgrade,
+        &names.continuous_fire[0],
+        &names.continuous_fire[1],
+        &names.continuous_fire_slow,
     ] {
         assert!(tags.holds(tag.as_str()), "{tag}");
     }

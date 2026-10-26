@@ -264,13 +264,25 @@ pub enum PreAttackEach {
 
 /// A weapon's `streak` (04-capabilities/combat.md, A shot streak gives a stage's
 /// modifier): how long after the weapon is ready again a unit's streak of its shots holds
-/// without a shot, and its stages, each the shots past which its unit holds the stage's
-/// modifier.
+/// without a shot, its stages, each the shots past which its unit holds the stage's modifier,
+/// and its fall, if it has one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StreakData {
     pub coast_ms: u64,
     pub stages: Vec<StageData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fall: Option<FallData>,
+}
+
+/// A streak's `fall` (04-capabilities/combat.md, A streak's fall holds a modifier): the modifier
+/// of the weapon's package its unit holds from a fall of its stage, and how long after a fall
+/// past the coast it holds without a shot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FallData {
+    pub modifier: DeclaredName,
+    pub ms: u64,
 }
 
 /// A stage of a weapon's streak: the shots in a row its unit fires past, and the modifier of the

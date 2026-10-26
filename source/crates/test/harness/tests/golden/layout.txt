@@ -1,4 +1,4 @@
-data_version 72
+data_version 73
 actions.progress 91dd90cbde2fd145
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
@@ -13,7 +13,7 @@ combat.kept 38f27f78ec03c9db
 combat.next_damage 29a4914780f75863
 combat.recent_attackers 2d636b06899c6163
 combat.respawn b5032795d09dab8f
-combat.shot_streak cd7a931082f365b1
+combat.shot_streak 8a6a9cb82924ef1f
 combat.turret_aim fa45bc37a1eb10aa
 deliveries.dash_delivering 776ca8dc66220523
 items.inventory 8652b58008c7aed2

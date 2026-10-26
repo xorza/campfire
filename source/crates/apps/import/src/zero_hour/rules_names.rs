@@ -27,6 +27,10 @@ pub(crate) struct RulesNames {
     /// `PLAYER_UPGRADE` (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats).
     pub(crate) armor_upgrade: DeclaredName,
     pub(crate) weapon_upgrade: DeclaredName,
+    /// The tags of a unit at a stage of continuous fire, `MEAN` and `FAST`, and of one fallen from
+    /// a stage, `SLOW`.
+    pub(crate) continuous_fire: [DeclaredName; 2],
+    pub(crate) continuous_fire_slow: DeclaredName,
     /// The tests of a unit of each, and of one of no `weapon_upgrade`.
     pub(crate) armor_upgraded: TagFilterData,
     pub(crate) weapon_upgraded: TagFilterData,
@@ -113,6 +117,8 @@ impl Default for RulesNames {
             weapon_unupgraded: tagged(&weapon_upgrade, true),
             armor_upgrade,
             weapon_upgrade,
+            continuous_fire: [name("continuous_fire_mean"), name("continuous_fire_fast")],
+            continuous_fire_slow: name("continuous_fire_slow"),
             life,
             structure,
             wall,

@@ -27,6 +27,18 @@ fn each_flag_tests_its_part_of_a_unit_and_any_other_none() {
     );
     assert_eq!(test("moving"), ConditionTest::Moving { still_ms: 250 });
     assert_eq!(test("attacking"), ConditionTest::Attacking);
+    // Each stage of continuous fire, and its fall, the tag its modifier gives.
+    let names = RulesNames::default();
+    let [mean, fast] = names.continuous_fire.clone();
+    assert_eq!(
+        [
+            "continuous_fire_mean",
+            "continuous_fire_fast",
+            "continuous_fire_slow"
+        ]
+        .map(test),
+        [mean, fast, names.continuous_fire_slow].map(|tag| ConditionTest::Tag { tag })
+    );
     // Dying, and rubble, the damage state of no life, which only a dead unit holds.
     assert_eq!(test("dying"), ConditionTest::Dead);
     assert_eq!(test("rubble"), ConditionTest::Dead);

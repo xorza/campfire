@@ -17,7 +17,7 @@ use crate::attack_data::{AttackData, SplashData, StreakData, WeaponValue};
 use crate::error::CombatDataError;
 use crate::weapon::{
     ClipRule, OuterRing, Pitch, PreAttackRule, Rate, Scatter, ScatterTag, Splash, Streak,
-    StreakStage, Weapon, WeaponDamage,
+    StreakFall, StreakStage, Weapon, WeaponDamage,
 };
 
 /// What an attack's weapon resolves by: its action as the load holds it and as the book holds
@@ -144,8 +144,8 @@ impl WeaponNames<'_> {
         })
     }
 
-    /// The streak `data` gives, its coast in ticks and each stage's modifier one of its
-    /// package's.
+    /// The streak `data` gives, its coast and its fall's hold in ticks, and each stage's modifier
+    /// and its fall's one of its package's.
     fn streak(self, data: &StreakData) -> Result<Streak, BookError> {
         let broken = |problem| self.loaded.broken(problem);
         let coast = self.ticks(data.coast_ms).map_err(broken)?;
@@ -158,9 +158,19 @@ impl WeaponNames<'_> {
                 modifier: named.ok_or_else(|| self.unknown(ModifierId::NAMES, &stage.modifier))?,
             })
         });
+        let fall = data.fall.as_ref().map(|fall| {
+            let names = self.modifiers.map(ModifierBook::names);
+            let named =
+                names.and_then(|names| names.named((self.loaded.package, fall.modifier.as_str())));
+            Ok(StreakFall {
+                modifier: named.ok_or_else(|| self.unknown(ModifierId::NAMES, &fall.modifier))?,
+                hold: self.ticks(fall.ms).map_err(broken)?,
+            })
+        });
         Ok(Streak {
             coast,
             stages: stages.collect::<Result<_, BookError>>()?,
+            fall: fall.transpose()?,
         })
     }
 

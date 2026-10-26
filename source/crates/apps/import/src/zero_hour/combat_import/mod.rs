@@ -5,13 +5,14 @@ use campfire_actions::{ActionKeys, ActionRange, RangeField, Targeting};
 use campfire_client_files::ClientUnit;
 use campfire_codec::{TomlTable, TomlValue};
 use campfire_combat::{
-    ArmorShare, AttackData, BarrelsData, ClipData, OuterData, PitchData, PreAttackData,
+    ArmorShare, AttackData, BarrelsData, ClipData, FallData, OuterData, PitchData, PreAttackData,
     PreAttackEach, ScatterData, SplashData, StageData, StreakData, WeaponValue,
 };
 use campfire_common::DeclaredName;
 use campfire_math::{Num, Rounding};
 use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_values::{Number, Ranked, RelationSet, Scalar, Speed, Stat};
+use serde::Serialize;
 
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::ZeroHourError;
@@ -25,6 +26,7 @@ use crate::zero_hour::import_names::{ProjectileNames, TypedObject};
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::object_flight::ObjectFlight;
+use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
@@ -101,25 +103,34 @@ struct DamageBonus {
     added: Number,
 }
 
-/// A stage of a weapon's continuous fire as the mode's data writes it, `[modifiers.<weapon>_mean]`
-/// or `_fast`: what it adds to the rate of fire, the stage's bonus less 1, as
-/// `WeaponBonus::appendBonuses` adds it (09-zero-hour.md, Continuous fire
-/// converts).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A stage of a weapon's continuous fire, or its fall, as the mode's data writes it,
+/// `[modifiers.<weapon>_mean]`, `_fast` or `_slow`: what it adds to the rate of fire, a stage's
+/// bonus less 1, as `WeaponBonus::appendBonuses` adds it, none for the fall; and the tag of its
+/// condition (09-zero-hour.md, Continuous fire converts).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct StageModifier {
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) stats: BTreeMap<Stat, Number>,
+    pub(crate) tags: Vec<DeclaredName>,
 }
 
 impl StageModifier {
     /// Its table under `[modifiers]`.
     pub(crate) fn table(&self) -> TomlValue {
-        TomlValue::of(&BTreeMap::from([("stats", &self.stats)]))
+        TomlValue::of(self)
     }
 }
 
 /// The names of a weapon's stages of continuous fire, after `CONTINUOUS_FIRE_MEAN` and
 /// `CONTINUOUS_FIRE_FAST`.
 const STAGES: [&str; 2] = ["mean", "fast"];
+
+/// The name of a weapon's fall from a stage, after `CONTINUOUS_FIRE_SLOW`.
+const FALL: &str = "slow";
+
+/// The frames a fall past the coast holds, `LOGICFRAMES_PER_SECOND`, as `FiringTracker::update`
+/// sets its next cool-down a second on.
+const FALL_FRAMES: u64 = 30;
 
 /// The object a weapon fires, and its projectile as that weapon fires it.
 #[derive(Debug, Clone)]
@@ -446,7 +457,7 @@ impl ImportedWeapon {
         if weapon.at_self {
             return Err(WeaponDropCause::AtSelf);
         }
-        let stages = Self::stages(weapon, id, &rules.names.rate_of_fire)?;
+        let stages = Self::stages(weapon, id, &rules.names)?;
         if weapon.upgrade.changes_other_fields() {
             return Err(WeaponDropCause::UpgradeBonus);
         }
@@ -651,7 +662,7 @@ impl ImportedWeapon {
     fn stages(
         weapon: &IniWeapon,
         id: &DeclaredName,
-        rate_of_fire: &Stat,
+        names: &RulesNames,
     ) -> Result<Option<Stages>, WeaponDropCause> {
         let fire = weapon.continuous_fire;
         if fire.changes_other_fields() {
@@ -672,19 +683,24 @@ impl ImportedWeapon {
             0 => return Err(WeaponDropCause::ContinuousFire),
             ms => ms,
         };
-        let mut modifiers = Vec::with_capacity(STAGES.len());
+        let named = |suffix| {
+            ImportName::of(id.as_str().as_bytes())
+                .suffixed(suffix)
+                .map_err(|_| WeaponDropCause::LongName)
+        };
+        let mut modifiers = Vec::with_capacity(STAGES.len() + 1);
         let mut stages = Vec::with_capacity(STAGES.len());
-        for ((stage, shots), rate) in STAGES.into_iter().zip(shots).zip(rates) {
-            let name = ImportName::of(id.as_str().as_bytes())
-                .suffixed(stage)
-                .map_err(|_| WeaponDropCause::LongName)?;
+        let staged = STAGES.into_iter().zip(&names.continuous_fire);
+        for (((stage, tag), shots), rate) in staged.zip(shots).zip(rates) {
+            let name = named(stage)?;
             // `WeaponBonus::appendBonuses` adds a bonus less 1, in the game's `f32`.
             let added = game_float::to_num(rate - 1.0).map_err(|_| WeaponDropCause::BadNumber)?;
             let change = Number::Value(Scalar::Decimal(added));
             modifiers.push((
                 name.clone(),
                 StageModifier {
-                    stats: BTreeMap::from([(rate_of_fire.clone(), change)]),
+                    stats: BTreeMap::from([(names.rate_of_fire.clone(), change)]),
+                    tags: vec![tag.clone()],
                 },
             ));
             stages.push(StageData {
@@ -692,8 +708,24 @@ impl ImportedWeapon {
                 modifier: name,
             });
         }
+        let fall = named(FALL)?;
+        modifiers.push((
+            fall.clone(),
+            StageModifier {
+                stats: BTreeMap::new(),
+                tags: vec![names.continuous_fire_slow.clone()],
+            },
+        ));
+        let fall = FallData {
+            modifier: fall,
+            ms: game_time::frames_ms(FALL_FRAMES),
+        };
         Ok(Some(Stages {
-            streak: StreakData { coast_ms, stages },
+            streak: StreakData {
+                coast_ms,
+                stages,
+                fall: Some(fall),
+            },
             modifiers,
         }))
     }

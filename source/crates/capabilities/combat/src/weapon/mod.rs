@@ -61,12 +61,22 @@ pub struct OuterRing {
 }
 
 /// A weapon's shot streak (04-capabilities/combat.md, A shot streak gives a stage's modifier): the
-/// ticks after the weapon is ready again that a streak holds without a shot, and its stages, their
-/// shots strictly growing.
+/// ticks after the weapon is ready again that a streak holds without a shot, its stages, their
+/// shots strictly growing, and its fall, if it has one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Streak {
     pub(crate) coast: Ticks,
     pub(crate) stages: Box<[StreakStage]>,
+    pub(crate) fall: Option<StreakFall>,
+}
+
+/// A streak's fall (04-capabilities/combat.md, A streak's fall holds a modifier): the modifier its
+/// unit holds from a fall of its stage, and the ticks after a fall past the coast it holds
+/// without a shot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StreakFall {
+    pub(crate) modifier: ModifierId,
+    pub(crate) hold: Ticks,
 }
 
 /// A stage of a streak: the shots in a row past which its unit holds `modifier`.
@@ -318,7 +328,7 @@ pub(crate) mod internals {
     use campfire_values::{ModifierId, RelationSet};
 
     use crate::attack_data::PreAttackEach;
-    use crate::weapon::{OuterRing, PreAttackRule, Splash, Streak, StreakStage};
+    use crate::weapon::{OuterRing, PreAttackRule, Splash, Streak, StreakFall, StreakStage};
 
     impl PreAttackRule {
         /// A pre-attack of `ticks` at each rank, started again `each`.
@@ -364,6 +374,16 @@ pub(crate) mod internals {
             Self {
                 coast,
                 stages: stages.collect(),
+                fall: None,
+            }
+        }
+
+        /// It, with a fall of `modifier` held `hold` ticks after a fall past the coast.
+        #[must_use]
+        pub fn with_fall(self, modifier: ModifierId, hold: Ticks) -> Self {
+            Self {
+                fall: Some(StreakFall { modifier, hold }),
+                ..self
             }
         }
     }

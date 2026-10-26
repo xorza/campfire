@@ -75,8 +75,8 @@ mod wielded;
 
 pub use crate::armor::{Armor, ArmorShare};
 pub use crate::attack_data::{
-    AttackData, ClipData, OuterData, PitchData, PreAttackData, PreAttackEach, ScatterData,
-    SplashData, StageData, StreakData, WeaponValue,
+    AttackData, ClipData, FallData, OuterData, PitchData, PreAttackData, PreAttackEach,
+    ScatterData, SplashData, StageData, StreakData, WeaponValue,
 };
 pub use crate::attacks::Attacks;
 pub use crate::barrel_turns::BarrelTurns;

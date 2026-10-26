@@ -401,6 +401,81 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
 }
 
 #[test]
+fn a_gattling_draws_its_state_of_each_stage_and_of_its_fall_while_it_attacks() {
+    // Its states as Zero Hour's Gattling tank names them, each stage and the fall the tag its
+    // modifier gives.
+    let text = r#"
+        [units.gattling]
+        draws = [{ states = [
+            { sets = [[]], models = [{ model = "rest.glb" }] },
+            { sets = [["attacking"]], models = [{ model = "spin.glb" }] },
+            { sets = [["attacking", "continuous_fire_mean"]], models = [{ model = "mean.glb" }] },
+            { sets = [["attacking", "continuous_fire_fast"]], models = [{ model = "fast.glb" }] },
+            { sets = [["attacking", "continuous_fire_slow"]], models = [{ model = "slow.glb" }] },
+        ] }]
+
+        [conditions]
+        attacking = { test = "attacking" }
+        continuous_fire_fast = { test = "tag", tag = "continuous_fire_fast" }
+        continuous_fire_mean = { test = "tag", tag = "continuous_fire_mean" }
+        continuous_fire_slow = { test = "tag", tag = "continuous_fire_slow" }
+    "#;
+    let mut tags = TagNames::default();
+    let [mean, fast, slow] = [
+        "continuous_fire_mean",
+        "continuous_fire_fast",
+        "continuous_fire_slow",
+    ]
+    .map(|name| tags.names_mut().add(name));
+    let mut names = MatchNames::default();
+    names.set_tags(tags);
+    let origins: TypeOriginBook = [TypeOrigin {
+        package: PackageIndex::MODE,
+        name: "gattling".into(),
+    }]
+    .into_iter()
+    .collect();
+    let gattling = origins.iter().next().unwrap().0;
+    let data = ClientLoad::of_looks([Toml::parse::<ClientUnits>(text).unwrap()]);
+    let types = LookTypes {
+        origins: &origins,
+        variations: None,
+        names: &names,
+    };
+    let looks = UnitLooks::of(types, &data);
+    let tests = looks.tests(gattling).unwrap();
+    let draw = &looks.draws(gattling, None).unwrap().draws()[0];
+    let drawn = |attacking: bool, tag: Option<Tag>| {
+        let facts = UnitFacts {
+            tags: tag.into_iter().collect(),
+            walks: false,
+            still_for: Duration::ZERO,
+            life: None,
+            site: None,
+            dead: false,
+            attacking,
+            attacks: 0,
+        };
+        let model = &draw.states()[draw.best(tests.held(facts))].shown.models[0];
+        let path = model.scene.to_string();
+        path.trim_start_matches("package://0/")
+            .trim_end_matches(".glb#Scene0")
+            .to_owned()
+    };
+    // At rest, then attacking below every stage, at each stage, and fallen from one.
+    assert_eq!(
+        [
+            drawn(false, None),
+            drawn(true, None),
+            drawn(true, Some(mean)),
+            drawn(true, Some(fast)),
+            drawn(true, Some(slow)),
+        ],
+        ["rest", "spin", "mean", "fast", "slow"]
+    );
+}
+
+#[test]
 fn a_models_upgrade_shows_and_hides_its_nodes_over_its_states_while_its_unit_holds_it() {
     // A tank of its flag hidden; its armor, tested by bit 2, shows the flag and hides the hatch;
     // its paint, a map's condition every unit holds, hides the hull; a condition of no test,

@@ -12,7 +12,6 @@ use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::object_flight::samples::shell_projectile;
-use crate::zero_hour::rules_names::RulesNames;
 
 /// A rocket of a `MissileAIUpdate` and no locomotor that thrusts, which the import flies not.
 const ROCKET: &str = "Object Rocket\n  Behavior = MissileAIUpdate ModuleTag_01\n  End\nEnd\n";
@@ -215,9 +214,10 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
     assert_eq!(weapon("Blast"), Err(WeaponDropCause::Suicide));
     assert_eq!(weapon("Pulse"), Err(WeaponDropCause::AtSelf));
     // The minigun's 250 ms are ⌈7.5⌉ = 8 frames, 266 ms; past 1 and 5 shots in a row, its
-    // stages add 2 − 1 = 1 and 3 − 1 = 2 to its rate of fire, each a modifier named for it, and
-    // its coast is 2,000 ms. The spinner's fast stage changes its damage, which the engine does
-    // not hold.
+    // stages add 2 − 1 = 1 and 3 − 1 = 2 to its rate of fire, each a modifier named for it that
+    // gives its stage's tag, and its coast is 2,000 ms; its fall, a modifier that gives the fall's
+    // tag alone, holds 30 frames, 1,000 ms, past the coast. The spinner's fast stage changes its
+    // damage, which the engine does not hold.
     let minigun = of("Minigun").unwrap();
     let stage = |shots, name: &str| StageData {
         shots,
@@ -236,20 +236,37 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
                 stage(1, "weapon_minigun_mean"),
                 stage(5, "weapon_minigun_fast")
             ],
+            fall: Some(FallData {
+                modifier: DeclaredName::new("weapon_minigun_slow").unwrap(),
+                ms: 1000,
+            }),
         })
     );
-    let added = |value: i64| StageModifier {
+    let names = RulesNames::default();
+    let added = |value: i64, tag: &DeclaredName| StageModifier {
         stats: BTreeMap::from([(
-            RulesNames::default().rate_of_fire,
+            names.rate_of_fire.clone(),
             Number::Value(Scalar::Decimal(Num::int(value))),
         )]),
+        tags: vec![tag.clone()],
     };
     let named = |name: &str| DeclaredName::new(name).unwrap();
+    let fall = StageModifier {
+        stats: BTreeMap::new(),
+        tags: vec![names.continuous_fire_slow.clone()],
+    };
     assert_eq!(
         minigun.modifiers,
         [
-            (named("weapon_minigun_mean"), added(1)),
-            (named("weapon_minigun_fast"), added(2))
+            (
+                named("weapon_minigun_mean"),
+                added(1, &names.continuous_fire[0])
+            ),
+            (
+                named("weapon_minigun_fast"),
+                added(2, &names.continuous_fire[1])
+            ),
+            (named("weapon_minigun_slow"), fall),
         ]
     );
     assert_eq!(weapon("Spinner"), Err(WeaponDropCause::ContinuousFire));

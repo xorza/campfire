@@ -20,26 +20,35 @@ use crate::attack_data::AttackData;
 use crate::streak_shots::{FiredShot, StreakShot, StreakShots};
 use crate::weapon::{Streak, Weapon};
 
-/// A unit's shots in a row of its streak weapons, none before its first
+/// A unit's shots in a row of its streak weapons, none before its first and after it stops
 /// (04-capabilities/combat.md, A shot streak gives a stage's modifier): the weapon of its last
-/// shot, whose stages it counts by, that shot's target, the shots, its stage, and the tick its
-/// coast ends. Every unit with slots holds it on a server's match, as Bevy's required component,
-/// as a script may grant a streak weapon to any unit; a client never holds it, as the streak is
-/// the server's (04-capabilities/combat.md, The streak is the server's).
+/// shot, whose stages and fall it counts by, that shot's target, the shots, its stage, and the
+/// tick its coast ends. Every unit with slots holds it on a server's match, as Bevy's required
+/// component, as a script may grant a streak weapon to any unit; a client never holds it, as the
+/// streak is the server's (04-capabilities/combat.md, The streak is the server's).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ShotStreak(Option<Shots>);
 
-/// A streak under way.
+/// A streak under way: its count and its target none once it cooled down, as Zero Hour's
+/// `FiringTracker::coolDown` sets its count to 0 and forgets its victim.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 struct Shots {
     weapon: ActionId,
-    target: StableId,
+    target: Option<StableId>,
     count: u32,
-    /// The index of its stage among its weapon's stages; none below the first, or past its
-    /// coast.
-    stage: Option<u8>,
+    stage: Heat,
     coast_end: Tick,
+}
+
+/// Where a streak stands: below its first stage; at a stage, by its index among its weapon's
+/// stages; or fallen from one, which its weapon's fall holds until a rise or its next cool-down,
+/// as Zero Hour's `CONTINUOUS_FIRE_SLOW` holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum Heat {
+    Cold,
+    Stage(u8),
+    Fallen,
 }
 
 impl ShotStreak {
@@ -64,16 +73,22 @@ impl ShotStreak {
                 for stage in streak.into_iter().flat_map(|streak| &streak.stages) {
                     appliers.apply(package, stage.modifier.as_str(), Way::NoAction);
                 }
+                if let Some(fall) = streak.and_then(|streak| streak.fall.as_ref()) {
+                    appliers.apply(package, fall.modifier.as_str(), Way::NoAction);
+                }
             }
         }
         Ok(())
     }
 
-    /// Counts `shot`, of a weapon of `streak`: one more for the target of the shot before, or
-    /// for another before the coast ends, else one; then the stage falls to none when the count
-    /// is below its own stage's shots, or rises by one when it passes the next stage's, as Zero
-    /// Hour's `FiringTracker::shotFired` steps. A stage of another streak weapon counts as its last
-    /// stage at most. The tick the stage ends, when it holds one.
+    /// Counts `shot`, of a weapon of `streak`, as Zero Hour's `FiringTracker::shotFired` does:
+    /// one more for the target of the shot before, or for another before the coast ends, else
+    /// one, a streak past its coast having cooled down; then, at a stage, the streak cools down
+    /// when the count is below the stage's shots, and else rises by one when the count passes
+    /// the next stage's; below every stage, or fallen, it rises to the first when the count
+    /// passes its shots, a fall held only by a weapon of a fall. A stage of another streak weapon
+    /// counts as its last stage at most. The first tick past its coast, when it holds a stage or
+    /// a fall.
     pub(crate) fn shoot(&mut self, shot: StreakShot, streak: &Streak) -> Option<Tick> {
         let StreakShot {
             weapon,
@@ -81,55 +96,95 @@ impl ShotStreak {
             now,
             ready,
         } = shot;
-        let count = match self.0 {
-            Some(before) if before.target == target || now < before.coast_end => {
+        let before = self.0.filter(|before| now <= before.coast_end);
+        let count = match before {
+            Some(before) if before.target == Some(target) || now < before.coast_end => {
                 before.count.saturating_add(1)
             }
             _ => 1,
         };
         let last = streak.stages.len() - 1;
-        let held = self
-            .0
-            .and_then(|before| before.stage)
-            .map(|stage| usize::from(stage).min(last));
-        let stage = match held {
-            Some(at) if count < streak.stages[at].shots => None,
-            held => {
-                let next = held.map_or(0, |at| at + 1);
-                let rises = streak
-                    .stages
-                    .get(next)
-                    .is_some_and(|stage| count > stage.shots);
-                if rises { Some(next) } else { held }
-            }
+        let rises = |at: usize| {
+            let stage = streak.stages.get(at);
+            stage.is_some_and(|stage| count > stage.shots)
         };
-        self.0 = Some(Shots {
-            weapon,
-            target,
-            count,
-            stage: stage.map(|at| u8::try_from(at).expect("a streak's stages fit u8")),
-            coast_end: ready.after(streak.coast),
+        let stage = match before.map_or(Heat::Cold, |before| before.stage) {
+            Heat::Stage(at) => {
+                let at = usize::from(at).min(last);
+                if count < streak.stages[at].shots {
+                    None
+                } else if rises(at + 1) {
+                    Some(Heat::stage(at + 1))
+                } else {
+                    Some(Heat::stage(at))
+                }
+            }
+            _ if rises(0) => Some(Heat::Stage(0)),
+            Heat::Fallen => Some(Heat::cooled(streak)),
+            Heat::Cold => Some(Heat::Cold),
+        };
+        let coast_end = ready.after(streak.coast);
+        self.0 = Some(match stage {
+            Some(stage) => Shots {
+                weapon,
+                target: Some(target),
+                count,
+                stage,
+                coast_end,
+            },
+            None => Shots {
+                weapon,
+                target: None,
+                count: 0,
+                stage: Heat::cooled(streak),
+                coast_end,
+            },
         });
         self.due()
     }
 
-    /// The first tick past its coast, while it holds a stage.
-    fn due(self) -> Option<Tick> {
+    /// Cools it down in tick `now`, the first past its coast, its last shot's weapon of `streak`,
+    /// as Zero Hour's `FiringTracker::update` does: from a stage to the weapon's fall, its coast
+    /// ending the fall's hold after `now`, when the weapon has one; else, and from a fall, it
+    /// stops. The first tick past the fall's hold, when it falls.
+    fn cool(&mut self, now: Tick, streak: Option<&Streak>) -> Option<Tick> {
         let shots = self.0?;
-        shots.stage?;
-        Some(shots.coast_end.after(Ticks::ONE))
+        let fall = streak
+            .and_then(|streak| streak.fall)
+            .filter(|_| matches!(shots.stage, Heat::Stage(_)));
+        self.0 = fall.map(|fall| Shots {
+            weapon: shots.weapon,
+            target: None,
+            count: 0,
+            stage: Heat::Fallen,
+            coast_end: now.after(fall.hold),
+        });
+        self.due()
     }
 
-    /// The modifier of its stage, of the weapons of `weapons`, while it holds one.
+    /// The first tick past its coast, while it holds a stage or a fall.
+    fn due(self) -> Option<Tick> {
+        let shots = self.0?;
+        match shots.stage {
+            Heat::Cold => None,
+            Heat::Stage(_) | Heat::Fallen => Some(shots.coast_end.after(Ticks::ONE)),
+        }
+    }
+
+    /// The modifier of its stage or of its fall, of the weapons of `weapons`, while it holds
+    /// one.
     fn modifier(self, weapons: &ById<ActionId, Weapon>) -> Option<ModifierId> {
         let shots = self.0?;
-        let stage = shots.stage?;
         let streak = weapons.get(shots.weapon)?.streak.as_ref()?;
-        Some(streak.stages[usize::from(stage)].modifier)
+        match shots.stage {
+            Heat::Cold => None,
+            Heat::Stage(at) => Some(streak.stages[usize::from(at)].modifier),
+            Heat::Fallen => Some(streak.fall?.modifier),
+        }
     }
 
     /// Counts each shot this tick's strikes fired of a streak weapon in its unit's streak, in the
-    /// order they fired, and pushes the unit at its coast's end while it holds a stage.
+    /// order they fired, and pushes the unit at its coast's end while it holds a stage or a fall.
     pub(crate) fn count(
         (weapons, mut fired): (Res<'_, ById<ActionId, Weapon>>, ResMut<'_, StreakShots>),
         (mut index, mut shots): (ResMut<'_, DueIndex<Self>>, Local<'_, Vec<FiredShot>>),
@@ -150,11 +205,11 @@ impl ShotStreak {
         }
     }
 
-    /// Ends the stage of each unit whose coast ended before tick `now`, its count kept, as Zero
-    /// Hour's `FiringTracker::update` cools down past its coast; a unit whose streak went on is
-    /// pushed at its new end.
+    /// Cools down each unit whose coast ended before tick `now`, as Zero Hour's
+    /// `FiringTracker::update` does, a unit that falls pushed at its fall's end; a unit whose
+    /// streak went on is pushed at its new end.
     pub(crate) fn coast(
-        tick: Res<'_, SimTick>,
+        (tick, weapons): (Res<'_, SimTick>, Res<'_, ById<ActionId, Weapon>>),
         mut index: ResMut<'_, DueIndex<Self>>,
         mut due: Local<'_, Vec<DueUnit>>,
         mut streaks: Query<'_, '_, &mut Self>,
@@ -169,8 +224,9 @@ impl ShotStreak {
             match streak.due() {
                 Some(at) if at > now => index.push(at, id, entity),
                 Some(_) => {
-                    if let Some(shots) = &mut streak.0 {
-                        shots.stage = None;
+                    let weapon = streak.0.and_then(|shots| weapons.get(shots.weapon));
+                    if let Some(at) = streak.cool(now, weapon.and_then(|w| w.streak.as_ref())) {
+                        index.push(at, id, entity);
                     }
                 }
                 None => {}
@@ -179,9 +235,9 @@ impl ShotStreak {
     }
 
     /// Pushes the grants of each unit whose streak changed that differ from what it holds under
-    /// the streak's hold: its stage's modifier from itself at rank 1 while it lives and holds a
-    /// stage, and a release of each other streak modifier it holds. A shot that keeps the stage
-    /// pushes none.
+    /// the streak's hold: its stage's or its fall's modifier from itself at rank 1 while it lives
+    /// and holds one, and a release of each other streak modifier it holds. A shot that keeps the
+    /// stage pushes none.
     pub(crate) fn want(
         weapons: Res<'_, ById<ActionId, Weapon>>,
         mut grants: ResMut<'_, Grants>,
@@ -225,8 +281,25 @@ impl ShotStreak {
     }
 }
 
-/// A unit whose streak holds a stage is due in the first tick past its coast, dead or alive: a
-/// death ends its modifier, and its stage ends with its coast.
+impl Heat {
+    /// The stage at `at` among its weapon's stages, which fit `u8`.
+    fn stage(at: usize) -> Self {
+        Self::Stage(u8::try_from(at).expect("a streak's stages fit u8"))
+    }
+
+    /// Where a streak of a weapon of `streak` stands as it cools down from a stage: fallen, when
+    /// the weapon has a fall, else cold.
+    const fn cooled(streak: &Streak) -> Self {
+        if streak.fall.is_some() {
+            Self::Fallen
+        } else {
+            Self::Cold
+        }
+    }
+}
+
+/// A unit whose streak holds a stage or a fall is due in the first tick past its coast, dead or
+/// alive: a death ends its modifier, and its stage or its fall ends with its coast.
 impl TimedProcess for ShotStreak {
     const RUNS: TimedRuns = TimedRuns::Server;
     const KEPT: TimedKept = TimedKept::BySetters;
@@ -242,7 +315,8 @@ impl SimComponent for ShotStreak {
     const NAME: &'static str = "combat.shot_streak";
     type Host = UnitEntity;
 
-    // A streak counts by a streak weapon of the book, at a stage it has.
+    // A streak counts by a streak weapon of the book, at a stage it has, or fallen from one by a
+    // weapon of a fall; it holds a target exactly while it counts a shot.
     fn check(&self, world: &World, _: Entity) -> bool {
         let Some(shots) = self.0 else {
             return true;
@@ -252,10 +326,12 @@ impl SimComponent for ShotStreak {
             .get(shots.weapon)
             .and_then(|weapon| weapon.streak.as_ref());
         streak.is_some_and(|streak| {
-            shots.count > 0
-                && shots
-                    .stage
-                    .is_none_or(|stage| usize::from(stage) < streak.stages.len())
+            let stage = match shots.stage {
+                Heat::Cold => true,
+                Heat::Stage(at) => usize::from(at) < streak.stages.len(),
+                Heat::Fallen => streak.fall.is_some(),
+            };
+            stage && shots.target.is_some() == (shots.count > 0)
         })
     }
 }

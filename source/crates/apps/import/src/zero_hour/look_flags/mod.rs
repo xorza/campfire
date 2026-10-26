@@ -24,7 +24,8 @@ use crate::zero_hour::upgrade_import;
 /// `DozerAIUpdate` sets them; `PREATTACK_<slot>`, `FIRING_<slot>`, `BETWEEN_FIRING_SHOTS_<slot>`
 /// and `RELOADING_<slot>` each phase of an attack of the weapons of the slot `A`, `B` or `C`,
 /// the look's group at that slot's place, and `USING_WEAPON_<slot>` any of them; `WEAPONSET_PLAYER_UPGRADE` the tag of a
-/// `WeaponSetUpgrade`; a flag an upgrade module of an object sets the tag of its name, which the
+/// `WeaponSetUpgrade`; `CONTINUOUS_FIRE_MEAN`, `CONTINUOUS_FIRE_FAST` and `CONTINUOUS_FIRE_SLOW`
+/// the tags of a streak's stages and of its fall, which their modifiers give; a flag an upgrade module of an object sets the tag of its name, which the
 /// module's modifier gives (09-zero-hour.md, An upgrade's look is a tag); and any other flag
 /// none.
 #[derive(Debug)]
@@ -32,6 +33,7 @@ pub(crate) struct LookFlags {
     damaged: LifeShare,
     really_damaged: LifeShare,
     weapon_upgrade: DeclaredName,
+    continuous_fire: [DeclaredName; 3],
     upgraded: BTreeSet<DeclaredName>,
 }
 
@@ -77,6 +79,11 @@ impl LookFlags {
             damaged,
             really_damaged,
             weapon_upgrade: names.weapon_upgrade.clone(),
+            continuous_fire: [
+                names.continuous_fire[0].clone(),
+                names.continuous_fire[1].clone(),
+                names.continuous_fire_slow.clone(),
+            ],
             upgraded,
         })
     }
@@ -129,6 +136,15 @@ impl LookFlags {
             },
             "weaponset_player_upgrade" => ConditionTest::Tag {
                 tag: self.weapon_upgrade.clone(),
+            },
+            "continuous_fire_mean" => ConditionTest::Tag {
+                tag: self.continuous_fire[0].clone(),
+            },
+            "continuous_fire_fast" => ConditionTest::Tag {
+                tag: self.continuous_fire[1].clone(),
+            },
+            "continuous_fire_slow" => ConditionTest::Tag {
+                tag: self.continuous_fire[2].clone(),
             },
             _ if self.upgraded.contains(&name) => ConditionTest::Tag { tag: name.clone() },
             _ => ConditionTest::Never,
