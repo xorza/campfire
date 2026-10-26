@@ -6,6 +6,12 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Effects](docs/design/effects.md): a player of a Zero Hour skirmish sees each shot's fire effect at its barrel, each projectile's exhaust, each hit's burst and each death's explosion, as the game's FX lists and particle systems draw them. Its facts are [Zero Hour's effects](docs/research/zero-hour-effects.md); its checks are that document's.
 
+### E5. A death's end plays only at its decay
+
+Touches combat's replication and the client's effects; it stands before the end of the slice, which sees it.
+
+- [ ] A client takes a unit's despawn for its death's end, so a dying unit that leaves its sight plays its end explosion in the fog ([Zero Hour's deaths](docs/research/zero-hour-deaths.md#what-the-engine-shows)); a dead unit's `Decay` goes once to the clients that hold it, and the client plays the end only on a despawn with the state of the decay's tick (04-capabilities/combat.md, A death's decay reaches its clients, planned). Checks: an in-process test destroys a unit a client sees, and holds its end played at its decay and none for a dying unit that leaves the client's sight first; the sim's golden moves by `Decay`'s sending alone.
+
 ### End of the slice
 
 It stands last, as the player's check is of the whole slice.
@@ -34,11 +40,17 @@ Touches the client's effects and the ground's drawing; it stands after W2, apart
 
 - [ ] A moving tank throws no dust and lays no mark (wrecks.md, A tread throws dust while it drives; A tread lays track marks): its tread systems run on its drawing while it moves, scaled by its speed, and its track lays a strip of fading quads among the ground's overlays. Checks: a client test runs and stops the systems and lays, fades and drops a track's edges.
 
+### W4. An aircraft's death falls
+
+Touches `client-files`, the import and the client's effects; it stands after W3, as it falls on what W2 moves.
+
+- [ ] A `JetSlowDeathBehavior`, a `HelicopterSlowDeathBehavior`, a `BattleBusSlowDeathBehavior` and a `NeutronMissileSlowDeathBehavior` are read as no death, so a Comanche, a Helix or a Raptor vanishes 9 ticks after its death with no effect, and none is counted ([Zero Hour's deaths](docs/research/zero-hour-deaths.md)); the import reads the jet's and the helicopter's deaths, their effects, wrecks, rates and delays, and a keep of their longest fall, and counts the bus's and the missile's with their objects; the client draws the fall (wrecks.md, An aircraft's death falls, planned). Checks: the import's tests of each kind; a client test falls a jet and a helicopter to hand-computed places, their hit and blow-up at their times; the Zero Hour check pins the deaths.
+
 ### End of the slice
 
 It stands last, as the player's check is of the whole slice.
 
-- [ ] A player sees Tournament Desert's hulks, debris, dust and track marks in the client as the game draws them; then the slice's decisions fold into `02-engine-core.md` and `09-zero-hour.md`, and `wrecks.md` goes.
+- [ ] A player sees Tournament Desert's hulks, debris, dust and track marks, and an aircraft's fall, in the client as the game draws them; then the slice's decisions fold into `02-engine-core.md` and `09-zero-hour.md`, and `wrecks.md` goes.
 
 ## Console
 
