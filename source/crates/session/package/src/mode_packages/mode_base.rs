@@ -16,10 +16,11 @@ use crate::error::load_problem::LoadProblem;
 use crate::files::bot_list::BotList;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
-use crate::files::script_list::{ScriptOrder, ScriptSource};
+use crate::files::script_list::ScriptOrder;
 use crate::files::units_file::UnitsFile;
 use crate::package::Package;
-use crate::package_name::PackageName;
+use campfire_values::PackageName;
+use campfire_values::ScriptSource;
 
 /// A mode and the packages it depends on, read and parsed, its scripts compiled: what it is on
 /// any of its maps, which `ModeRead` reads once and each map's load shares, as an import checks

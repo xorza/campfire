@@ -1,0 +1,4 @@
+campfire/package-index/v2
+e65b5e338eaa1e360fbe82dd18ccd2ded0f7a0f59e534ba3afa5336bc600cc6a 230 manifest.toml
+c0ac4446930a3aa929cc79a6f2c70a66c5d2cce56343ae221ff54c4f32e3db84 1345 scripts/creep_ai.rhai
+37d7a8abe7bed4a2a38819c379de11b166f93409526d661323d10d195299739f 955 scripts/tower_ai.rhai

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use campfire_script::{NameTables, ScriptId};
 use campfire_sim::{Capability, MatchRate};
 use campfire_values::{
-    MatchScope, NameId, Named, Names, PackageIndex, PackagePath, TypeScope, UnitType,
+    MatchScope, NameId, Named, Names, PackageIndex, PackagePath, ScriptSource, TypeScope, UnitType,
 };
 
 use crate::book::Book;
@@ -231,6 +231,39 @@ impl<'a> BookCx<'a> {
             path: path.clone(),
         })?;
         Ok(ScriptId::nth(self.script_starts[usize::from(package)] + at))
+    }
+
+    /// The package of the script `source`, which data of the package at `package` names: that
+    /// package for its own, or the mode's rules package of its name (03-game-scripting.md, A unit
+    /// type's AI may be a rules package's script); an error for a name of no rules package of the
+    /// mode.
+    pub fn script_package(
+        &self,
+        package: PackageIndex,
+        source: &ScriptSource,
+    ) -> Result<PackageIndex, BookError> {
+        let Some(name) = source.package() else {
+            return Ok(package);
+        };
+        let rules =
+            |held: &SourcePackage<'_>| matches!(held.kind, SourceKind::Rules) && name == held.name;
+        let found = self.packages().find(|(_, held)| rules(held));
+        found
+            .map(|(at, _)| at)
+            .ok_or_else(|| BookError::ScriptPackage {
+                package,
+                name: name.clone(),
+            })
+    }
+
+    /// The script `source`, which data of the package at `package` names, as `script_package`
+    /// finds its package and `script` its place.
+    pub fn script_of(
+        &self,
+        package: PackageIndex,
+        source: &ScriptSource,
+    ) -> Result<ScriptId, BookError> {
+        self.script(self.script_package(package, source)?, source.path())
     }
 
     /// The book `B`, which a module of the match declares, built if it is not yet.

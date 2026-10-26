@@ -1,4 +1,4 @@
-use crate::package_name::PackageName;
+use campfire_values::PackageName;
 
 /// A record of mode data that more than one package gives, and the package whose value the mode
 /// takes, the last loaded (03-game-scripting.md, Overrides by load order): a key of the data, or a

@@ -15,9 +15,9 @@ use crate::files::manifest::Manifest;
 use crate::files::rules_manifest::RulesNeeds;
 use crate::files::script_list::ScriptOrder;
 use crate::package::Package;
-use crate::package_name::PackageName;
 use campfire_package_format::ContentError;
 use campfire_package_format::PackageFiles;
+use campfire_values::PackageName;
 
 const AVATAR_DATA: &str = "data/avatar.toml";
 const LOADOUT_DATA: &str = "data/loadout.toml";

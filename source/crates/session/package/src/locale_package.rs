@@ -6,8 +6,8 @@ use crate::error::{LoadError, PackageRef};
 use crate::files::manifest::Manifest;
 use crate::language::Language;
 use crate::locale_file::LocaleFile;
-use crate::package_name::PackageName;
 use campfire_package_format::PackageFiles;
+use campfire_values::PackageName;
 
 /// A locale package: its name, and its translations of the packages it depends on, by each
 /// package's name, then by language.

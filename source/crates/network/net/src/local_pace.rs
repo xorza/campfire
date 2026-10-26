@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use bevy_app::{App, First, Plugin};
 use bevy_ecs::resource::Resource;
-use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use bevy_time::{Time, TimeSystems, Virtual};
 use campfire_math::TickRate;
@@ -23,6 +23,11 @@ pub struct LocalPacePlugin {
     pub tick_rate: TickRate,
 }
 
+/// The pace's application to the app's clock in `First`, which a system that holds the pace goes
+/// before.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct PaceSystems;
+
 /// The pace an app follows, and the one it applied last.
 #[derive(Resource, Debug)]
 struct Paced {
@@ -40,7 +45,7 @@ impl Plugin for LocalPacePlugin {
             paused: false,
             speed: PaceSpeed::Normal,
         });
-        app.add_systems(First, Paced::apply.before(TimeSystems));
+        app.add_systems(First, Paced::apply.in_set(PaceSystems).before(TimeSystems));
     }
 }
 

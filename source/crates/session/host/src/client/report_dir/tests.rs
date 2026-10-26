@@ -1,8 +1,8 @@
 use campfire_common::{MapName, PlayerSlot, Tick};
-use campfire_package::PackageName;
 use campfire_protocol::SessionId;
 use campfire_sim::StableId;
 use campfire_store::internals::TestDir;
+use campfire_values::PackageName;
 
 use super::*;
 use crate::client::client_layout::{ClientLayout, NewReport};

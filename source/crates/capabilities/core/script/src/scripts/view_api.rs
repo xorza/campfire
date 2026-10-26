@@ -1,4 +1,4 @@
-use campfire_geometry::Shape;
+use campfire_geometry::{Placed, Shape};
 use campfire_values::{Named, Param, Tag, Team, UnitType};
 use campfire_visibility::DataKind;
 
@@ -117,6 +117,18 @@ impl ViewApi {
                 let (team, other) = (unit.read(|row| row.team)?, other.read(|row| row.team)?);
                 let relation = unit.view().relation(team, other);
                 Ok(relation.may_attack())
+            },
+        )
+        .method(
+            method(
+                "reaches",
+                &[&["unit", "range"]],
+                "whether `range` from the edge of its body reaches the other's, as a weapon's range and `nearest_visible` measure, boxes too",
+            ),
+            |unit: Unit, other: Unit, range: ScriptRadius| {
+                let placed = |unit: &Unit| unit.read(|row| Placed::new(row.position, row.shape));
+                let (from, to) = (placed(&unit)?, placed(&other)?);
+                Ok(unit.view().metric().reaches(from, range.get(), to))
             },
         )
         .method(

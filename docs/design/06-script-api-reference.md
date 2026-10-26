@@ -200,6 +200,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `position` | read | core | since 1.0 | where it stands |
 | `queue` | read, gives a list of unit type names | production | since 1.0 | the unit types its queue trains, first the one under way, none with no queue |
 | `radius` | read | core | since 1.0 | its body's radius, 0 with no body, `()` for a box |
+| `reaches` | `(unit: Unit, range: Num)` | core | since 1.0 | whether `range` from the edge of its body reaches the other's, as a weapon's range and `nearest_visible` measure, boxes too |
 | `recent_attackers` | `(ms: ms)` | combat | since 1.0 | the living units that struck it within the last `ms`, rounded up to whole ticks |
 | `site_progress` | read | production | since 1.0 | the share of its build's time its site reached, from 0 to 1, `()` when it is no site |
 | `spawn_pos` | read | core | since 1.0 | where it spawned, where it respawns; `()` with none |

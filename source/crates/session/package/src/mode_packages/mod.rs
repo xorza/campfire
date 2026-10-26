@@ -19,12 +19,12 @@ use crate::error::load_problem::LoadProblem;
 use crate::error::{LoadError, StoreError};
 use crate::files::map_file::MapFile;
 use crate::files::mode_manifest::ModeManifest;
-use crate::files::script_list::ScriptSource;
 use crate::mode_packages::load_check::LoadCheck;
 use crate::mode_packages::mode_base::ModeBase;
 use crate::mode_packages::mode_read::ModeRead;
-use crate::package_name::PackageName;
 use crate::package_view::{PackageView, ViewKind};
+use campfire_values::PackageName;
+use campfire_values::ScriptSource;
 
 mod load_check;
 pub(crate) mod mode_base;

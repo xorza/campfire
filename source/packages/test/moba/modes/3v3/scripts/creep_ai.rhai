@@ -39,6 +39,7 @@ fn keep_target(unit) {
     }
 }
 
+// Whether `unit` sees `other` within its aggro range, as `nearest_visible` measures it.
 fn in_reach(unit, other) {
-    unit.can_see(other) && unit.position.within(other.position, unit.params.aggro_range)
+    unit.can_see(other) && unit.reaches(other, unit.params.aggro_range)
 }

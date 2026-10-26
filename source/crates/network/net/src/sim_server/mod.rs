@@ -1,5 +1,6 @@
 use bevy_app::{
-    App, FixedUpdate, Last, Plugin, PostUpdate, RunFixedMainLoop, RunFixedMainLoopSystems, Update,
+    App, First, FixedUpdate, Last, Plugin, PostUpdate, RunFixedMainLoop, RunFixedMainLoopSystems,
+    Update,
 };
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, QueryState};
@@ -31,6 +32,7 @@ use campfire_units::Deaths;
 use tracing::trace_span;
 
 use crate::close_code::CloseCode;
+use crate::local_pace::PaceSystems;
 use campfire_host::Fault;
 use campfire_host::Hosting;
 use campfire_host::InputLogged;
@@ -175,7 +177,6 @@ impl Plugin for SimServerPlugin {
                 Offering::offer_links::<ReplayDoor>,
                 ReplayDoor::take_joins,
                 ReplayDoor::take_commands,
-                ReplayEnd::hold,
             )
                 .chain()
                 .after(Door::watch)
@@ -262,6 +263,20 @@ impl Plugin for SimServerPlugin {
         app.configure_sets(
             FixedUpdate,
             SimTickSystems.run_if(match_runs).run_if(sim_tick_due),
+        );
+        app.add_systems(
+            FixedUpdate,
+            ReplayEnd::hold
+                .after(SimTickSystems)
+                .run_if(in_state(ServerPhase::Replaying))
+                .run_if(resource_exists::<ReplayEnd>),
+        );
+        app.add_systems(
+            First,
+            ReplayEnd::hold
+                .before(PaceSystems)
+                .run_if(in_state(ServerPhase::Replaying))
+                .run_if(resource_exists::<ReplayEnd>),
         );
         app.configure_sets(
             FixedUpdate,

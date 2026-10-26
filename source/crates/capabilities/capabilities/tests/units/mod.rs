@@ -13,7 +13,7 @@ use campfire_common::{ErrorReport, PlayerSlot, Tick};
 use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
 use campfire_deliveries::Deliveries;
-use campfire_geometry::{Bounds, Metric};
+use campfire_geometry::{BodyBox, Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::OnPath;
 use campfire_script::{
@@ -148,6 +148,37 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
         Unit::ids(Units::probe(&mut game, near_two, of).unwrap()),
         [high]
     );
+    // `reaches` measures as `nearest_visible` does, from edge to edge, a box too: high, 3 m from
+    // the center of `of`'s body of 1 m, is 2 m from its edge; east, at 4 m with a box of 4 by 2 m,
+    // its edge at x = 2, is 1 m from it, either way round, which no sum of radii can say.
+    let box_body = BodyBox::new([Num::int(4), Num::int(2)], Num::ZERO).unwrap();
+    game.insert_parts(east, Body::of_box(box_body));
+    let reaches = |game: &mut Match, from: StableId, to: &str, range: i64| {
+        let source = format!(
+            r#"fn probe(ctx, of) {{ of.reaches(ctx.find(of, of.position, 6, "{to}")[0], {range}) }}"#
+        );
+        Units::probe(game, &source, from)
+            .unwrap()
+            .as_bool()
+            .unwrap()
+    };
+    let ranges = [2, 1, 0].map(|range| {
+        [
+            reaches(&mut game, of, "enemies:!creep", range),
+            reaches(&mut game, of, "enemies:creep", range),
+            reaches(&mut game, east, "enemies", range),
+        ]
+    });
+    assert_eq!(
+        ranges,
+        [
+            [true, true, true],
+            [false, true, true],
+            [false, false, false]
+        ]
+    );
+    let entity = game.unit_entity(east);
+    game.entity_mut(entity).remove::<Body>();
 
     // The nearest in turn as each despawns, by distance between centers: east and west tie at
     // 4 m, and east has the lower id; far, its body's edge at 5 m as edge's center is, is 6 m

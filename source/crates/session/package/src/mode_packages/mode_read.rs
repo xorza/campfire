@@ -10,7 +10,7 @@ use crate::files::manifest::Manifest;
 use crate::files::mode_manifest::ModeManifest;
 use crate::mode_packages::ModePackages;
 use crate::mode_packages::mode_base::ModeBase;
-use crate::package_name::PackageName;
+use campfire_values::PackageName;
 
 /// A mode's files and its manifest, with the files of each package the manifest names, each
 /// read once: what loads the mode on any of its maps, as an import checks each map it wrote.

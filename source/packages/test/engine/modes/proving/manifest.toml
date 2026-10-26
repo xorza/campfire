@@ -15,3 +15,4 @@ script_limits = { per_call = 20000, player = 20000, think = 200000, mode = 20000
 [dependencies]
 hero-lancer = { path = "../../heroes/lancer" }
 hero-sage = { path = "../../heroes/sage" }
+test-ai = { path = "../../ai" }

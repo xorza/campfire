@@ -726,6 +726,7 @@ fn book_error(packages: &ModePackages, error: BookError) -> LoadError {
                 problem: ScriptProblem::Missing,
             },
         ),
+        BookError::ScriptPackage { package, name } => (package, LoadProblem::ScriptPackage(name)),
         BookError::Rule {
             package,
             at,

@@ -53,31 +53,31 @@ impl Ai {
 
 impl Ai {
     /// Adds that the AI of each unit type that stands applies, with no action, the modifiers its
-    /// script applies; an error for a script the type's package does not hold.
+    /// script applies; an error for a script its package does not hold.
     pub(crate) fn applied_ways(
         cx: &BookCx<'_>,
         appliers: &mut ModifierAppliers,
     ) -> Result<(), BookError> {
         for unit in cx.standing() {
             if let Some(orders) = unit.data.section::<AiData>() {
-                appliers.script(cx, unit.package, &orders.ai, &Way::NoAction)?;
+                let package = cx.script_package(unit.package, &orders.ai)?;
+                appliers.script(cx, package, orders.ai.path(), &Way::NoAction)?;
             }
         }
         Ok(())
     }
 
-    /// Adds the AI script of each unit type, which serves the AI and reads the mode's params.
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "a book's builder and an extension take the build's signature"
-    )]
+    /// Adds the AI script of each unit type, which serves the AI and reads the mode's params; an
+    /// error for a script of no rules package of the mode.
     pub(crate) fn named_scripts(
         cx: &BookCx<'_>,
         scripts: &mut NamedScripts,
     ) -> Result<(), BookError> {
         for unit in cx.types() {
             if let Some(orders) = unit.data.section::<AiData>() {
-                scripts.name(unit.package, &orders.ai, ScriptRole::Ai, ScriptParams::Mode);
+                let package = cx.script_package(unit.package, &orders.ai)?;
+                let path = orders.ai.path();
+                scripts.name(package, path, ScriptRole::Ai, ScriptParams::Mode);
             }
         }
         Ok(())
@@ -95,8 +95,9 @@ impl Ai {
         })
     }
 
-    /// The AI of each unit type that stands and takes orders, its script one of its package's; an
-    /// error for a script the package does not hold, or an AI that does not load.
+    /// The AI of each unit type that stands and takes orders, its script its package's own or a
+    /// rules package's; an error for a script its package does not hold, or an AI that does not
+    /// load.
     pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let scripts = cx.book::<ScriptBook>()?;
         let mut book = ByIdBuilder::default();
@@ -104,7 +105,7 @@ impl Ai {
             let Some(orders) = unit.data.section::<AiData>() else {
                 continue;
             };
-            let script = cx.script(unit.package, &orders.ai)?;
+            let script = cx.script_of(unit.package, &orders.ai)?;
             let ai = Self::of(orders, script, scripts, cx.rate()).map_err(|error| {
                 BookError::rule(unit.package, BookPlace::UnitType(unit.place()), error)
             })?;

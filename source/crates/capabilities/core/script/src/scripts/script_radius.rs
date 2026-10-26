@@ -6,7 +6,8 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_arg::ScriptArg;
 use campfire_values::NameKind;
 
-/// A radius a script gives a query or a reveal: a number not below 0. One below 0 fails the call.
+/// A radius a script gives a query, a reveal or a reach: a number not below 0. One below 0 fails
+/// the call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScriptRadius(Num);
 

@@ -5,7 +5,7 @@ use campfire_common::DeclaredName;
 use campfire_mode::ModeParam;
 use serde::{Deserialize, Serialize};
 
-use crate::files::script_list::ScriptSource;
+use campfire_values::ScriptSource;
 
 /// The bots a mode names, by name, as its `data/mode.toml` gives them under `bots`, which a host
 /// gives a player slot by its name (08-sessions.md, A mode names its bots).

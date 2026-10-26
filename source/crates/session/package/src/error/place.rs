@@ -2,7 +2,7 @@ use campfire_common::DeclaredName;
 use campfire_values::PackagePath;
 use derive_more::Display;
 
-use crate::package_name::PackageName;
+use campfire_values::PackageName;
 
 /// Where in a package a load problem is, each by the path its data names it by.
 #[derive(Debug, Display, Clone, PartialEq, Eq)]

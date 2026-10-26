@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer};
 use crate::files::package_header::PackageHeader;
 use crate::files::rate_bounds::RateBounds;
 use crate::language::Language;
-use crate::package_name::PackageName;
+use campfire_values::PackageName;
 
 /// A rules package's manifest: its header's fields, and what it needs of a mode that depends on
 /// it, in one table.

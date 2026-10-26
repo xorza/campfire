@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use campfire_common::{MapName, PlayerSlot, Tick, Version};
-use campfire_package::PackageName;
 use campfire_protocol::SessionId;
 use campfire_sim::StableId;
+use campfire_values::PackageName;
 use serde::{Deserialize, Serialize};
 
 /// The facts of a player's report, its `report.toml`: the engine release, the mode, the directory

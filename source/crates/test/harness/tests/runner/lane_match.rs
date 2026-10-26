@@ -298,7 +298,7 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
     );
     let session = FixedSession::new(
         PackageTree::of(TestMode::Lane)
-            .edit("modes/lane/scripts/tower_ai.rhai", throws)
+            .edit("ai/scripts/tower_ai.rhai", throws)
             .packages(),
         2,
     );

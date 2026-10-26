@@ -10,5 +10,3 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
-- **Orders.** A unit type's `orders.ai` names only a script of its own package, so modes that share an AI keep a copy each: the test packages' `tower_ai.rhai` is three identical files, and their `creep_ai.rhai` three that drifted apart.
-- **Script.** A script cannot test whether another unit's body comes within a reach of a unit's edge when either body is a box, whose `radius` reads `()`: the MOBA and proving creep AIs measure their aggro range centre to centre, where `nearest_visible`, which picks their targets, measures it from the edge.

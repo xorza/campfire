@@ -12,14 +12,13 @@ use campfire_mode::{
     TeamData, TeamManifest,
 };
 use campfire_package::{
-    BotData, BotList, Dependency, Language, ModeManifest, PackageHeader, PackageName, ScriptOrder,
-    ScriptSource, TickRange,
+    BotData, BotList, Dependency, Language, ModeManifest, PackageHeader, ScriptOrder, TickRange,
 };
 use campfire_package_format::DependencyPath;
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
 use campfire_stats::{ModeStatsData, ModifiersData};
-use campfire_values::{PackagePath, Relation, Scalar, Speed, TextId};
+use campfire_values::{PackageName, PackagePath, Relation, Scalar, ScriptSource, Speed, TextId};
 
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;

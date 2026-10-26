@@ -5,7 +5,7 @@ use std::fmt;
 use campfire_common::DeclaredName;
 use campfire_script::UnknownName;
 use campfire_sim::Capability;
-use campfire_values::{PackageIndex, PackagePath};
+use campfire_values::{PackageIndex, PackageName, PackagePath};
 use thiserror::Error;
 
 /// Why a patch does not make its value whole.
@@ -36,6 +36,12 @@ pub enum BookError {
     Script {
         package: PackageIndex,
         path: PackagePath,
+    },
+    /// Data names a script of the package `name`, which is no rules package of the mode.
+    #[error("a script of {name}, no rules package of the mode")]
+    ScriptPackage {
+        package: PackageIndex,
+        name: PackageName,
     },
     /// Data at `at` uses `capability`, which the mode does not declare.
     #[error("{at} uses {capability:?}, which the mode does not declare")]

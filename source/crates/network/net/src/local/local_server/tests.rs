@@ -318,9 +318,24 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         frame(&mut watcher, "the report of the held tick");
     }
     assert_eq!(test_dir.read(file), report_bytes);
+    // The replay holds at the log's end, where the watcher stands, never past it, as the server
+    // runs no step past the last tick; a play there runs none either, for 200 ms, six of the
+    // lane's ticks, past the server's next frame and a send.
     pace.set_paused(false);
     while !pace.is_paused() || next(&watcher) != end {
         frame(&mut watcher, "the replay's end");
+        assert!(
+            next(&watcher) <= end,
+            "the watcher stands past the log's end"
+        );
     }
+    pace.set_paused(false);
+    let played = Instant::now();
+    while played.elapsed() < Duration::from_millis(200) {
+        frame(&mut watcher, "a play at the end");
+        assert!(next(&watcher) <= end, "a play at the end runs a step");
+    }
+    assert!(pace.is_paused());
+    assert_eq!(next(&watcher), end);
     drop(server);
 }

@@ -28,7 +28,7 @@ use campfire_units::internals::Spawn;
 use campfire_units::{Body, Dead, ForcedMove, Life, MoveStep, Owner, UnitTypeCore, Units};
 use campfire_values::{
     ActionStart, Block, DamageKind, FilterData, Named, PackageIndex, PackagePath, Param, Rank,
-    Ranked, ResourceId, Team, TypeScope,
+    Ranked, ResourceId, ScriptSource, Team, TypeScope,
 };
 
 use crate::abilities::{
@@ -382,7 +382,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     );
     Abilities::give_combatant(&mut game, spinner);
     let ai = AiData {
-        ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
+        ai: ScriptSource::Own(PackagePath::parse("scripts/ai.rhai").unwrap()),
         think_ms: 1,
     };
     let spin = "fn on_think(ctx, unit) { loop {} }";

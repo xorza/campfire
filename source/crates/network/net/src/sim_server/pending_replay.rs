@@ -3,6 +3,7 @@ use std::sync::Arc;
 use bevy_app::AppExit;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
+use bevy_time::{Fixed, Time};
 use campfire_common::{ErrorReport, Tick};
 use campfire_host::{Pace, ServerSetup};
 use campfire_package::ModePackages;
@@ -75,13 +76,19 @@ impl PendingReplay {
 impl ReplayEnd {
     /// Holds the pace paused once the session ran the log's last tick, as there is no tick
     /// more to play, so the replay's viewer stands at the log's end as at the report's tick;
-    /// logs it once.
+    /// logs it once. It runs in each fixed step after the sim tick, where it drops the time the
+    /// frame holds for more steps, and in each frame before the pace applies, so a play at the
+    /// end runs no step: a step with no sim tick moves the stack's tick alone, and the viewer,
+    /// whose clock counts a sim tick for each, would stand past the log's end.
     pub(crate) fn hold(world: &mut World) {
         let session = world.resource::<Session>();
         if session.runs_on() {
             return;
         }
         let tick = session.next_tick();
+        let mut fixed = world.resource_mut::<Time<Fixed>>();
+        let held = fixed.overstep();
+        fixed.discard_overstep(held);
         let mut end = world.resource_mut::<Self>();
         end.pace.set_paused(true);
         if !end.told {

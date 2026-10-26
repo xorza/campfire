@@ -15,8 +15,8 @@ use bevy::window::{PrimaryWindow, Window};
 use campfire_codec::RgbaImage;
 use campfire_common::{ErrorReport, MapName, Tick, Version};
 use campfire_host::{ClientLayout, JoinState, NewReport, ReportDir, ReportFile, ReportKey};
-use campfire_package::PackageName;
 use campfire_sim::SimTick;
+use campfire_values::PackageName;
 use tracing::{error, info};
 
 use crate::input_map::{Act, InputMap};

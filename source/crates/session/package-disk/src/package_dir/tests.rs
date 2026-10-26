@@ -440,9 +440,9 @@ fn every_workspace_package_holds_the_index_of_its_files() {
     }
     let mut found = Vec::new();
     packages(&PackageDir::workspace(""), &mut found);
-    // The six test heroes, the six test modes, the test spells and rules, the MOBA's six heroes,
-    // its spells, its German text and its 3v3, and Zero Hour's rules.
-    assert_eq!(found.len(), 24, "{found:?}");
+    // The six test heroes, the six test modes, the test spells, rules and AIs, the MOBA's six
+    // heroes, its spells, its German text and its 3v3, and Zero Hour's rules.
+    assert_eq!(found.len(), 25, "{found:?}");
     for dir in found {
         let index = PackageDir::new(&dir).index_files().unwrap();
         let at = dir.join(FileIndex::PATH);

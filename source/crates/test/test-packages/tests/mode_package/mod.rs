@@ -17,9 +17,7 @@ use campfire_declarations::{BookPlace, NamesListError};
 use campfire_geometry::Metric;
 use campfire_math::Num;
 use campfire_mode::{ModeData, ModeDataError, ModeError, PlayerControl};
-use campfire_package::{
-    LoadProblem, ModePackages, ModeRead, PackageName, PackageRef, Place, ScriptProblem,
-};
+use campfire_package::{LoadProblem, ModePackages, ModeRead, PackageRef, Place, ScriptProblem};
 use campfire_package_disk::PackageDir;
 use campfire_package_format::ContentError;
 use campfire_progression::TrackError;
@@ -30,7 +28,7 @@ use campfire_sim::{Capability, MatchRate};
 use campfire_stats::{AppliedError, PurgeEffectData, StatGraphError, Way};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{HeightGrid, TypesError, UnitTypeError};
-use campfire_values::{Number, Scalar, Stat};
+use campfire_values::{Number, PackageName, Scalar, Stat};
 
 use crate::moba::{edited, load, moba, two_lanes};
 use crate::module_rules::{entry, rule, rule_at, unit_type};

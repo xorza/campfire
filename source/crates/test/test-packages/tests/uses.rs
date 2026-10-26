@@ -6,10 +6,11 @@ use campfire_actions::{ActionProblem, PipelineField, SlotError, SlotKind};
 use campfire_common::DeclaredName;
 use campfire_interaction::UseError;
 use campfire_items::ItemsDataError;
-use campfire_package::{LoadError, LoadProblem, ModePackages, PackageName, Place};
+use campfire_package::{LoadError, LoadProblem, ModePackages, Place};
 use campfire_script::Filter;
 use campfire_sim::Capability;
 use campfire_test_packages::Edit;
+use campfire_values::PackageName;
 use campfire_values::{ActionId, Named};
 
 use crate::moba::{edited, load};

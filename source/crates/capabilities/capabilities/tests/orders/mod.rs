@@ -39,7 +39,7 @@ use campfire_units::{
     BodyForm, BodyShape, Dead, Destination, GroundPoint, Layer, Life, MoveStep, Owner, SeenBy,
     UnitTypeCore, Units, UnitsWorld,
 };
-use campfire_values::{PackagePath, PathId, Rank, Scalar, Team, TeamSet, UnitType};
+use campfire_values::{PackagePath, PathId, Rank, Scalar, ScriptSource, Team, TeamSet, UnitType};
 use campfire_visibility::{OutView, SettingValue};
 use campfire_vision::Vision;
 
@@ -1062,7 +1062,7 @@ fn a_thinker_the_view_lacks_stays_due_and_thinks_once_it_holds_it() {
 fn an_ai_needs_think_and_orders_its_unit_but_changes_nothing() {
     let mut game = orders_match();
     let ai = AiData {
-        ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
+        ai: ScriptSource::Own(PackagePath::parse("scripts/ai.rhai").unwrap()),
         think_ms: 250,
     };
     for source in [
@@ -1189,7 +1189,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     let spinner = Orders::ai_type(&mut game, &[], &[], None);
     // 1 ms is 0.03 ticks, up to 1: both think in every tick.
     let ai = AiData {
-        ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
+        ai: ScriptSource::Own(PackagePath::parse("scripts/ai.rhai").unwrap()),
         think_ms: 1,
     };
     let spin = "fn on_think(ctx, unit) { loop {} }";

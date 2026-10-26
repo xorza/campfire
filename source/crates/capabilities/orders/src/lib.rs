@@ -188,7 +188,7 @@ pub mod internals {
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{MatchRate, StableId};
     use campfire_units::{ScriptBook, UnitTypeCore, Units};
-    use campfire_values::{FilterData, PackagePath, Scalar, UnitType};
+    use campfire_values::{FilterData, PackagePath, Scalar, ScriptSource, UnitType};
 
     use crate::Orders;
     use crate::acquire::Acquire;
@@ -248,7 +248,7 @@ pub mod internals {
             let unit_type = Units::load_next_type(world, &data);
             if let Some(source) = ai {
                 let ai = AiData {
-                    ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
+                    ai: ScriptSource::Own(PackagePath::parse("scripts/ai.rhai").unwrap()),
                     think_ms: 250,
                 };
                 let script = Units::compile_hooked(world, source).unwrap();

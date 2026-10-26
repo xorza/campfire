@@ -3,7 +3,7 @@ fn on_think(ctx, tower) {
     let target = defend_hero(ctx, tower, range);
     if target == () {
         let current = tower.attack_target;
-        if current != () && current.is_alive && reaches(tower, current, range) {
+        if current != () && current.is_alive && tower.reaches(current, range) {
             target = current;
         }
     }
@@ -21,16 +21,10 @@ fn on_think(ctx, tower) {
 fn defend_hero(ctx, tower, range) {
     for ally in ctx.find(tower, tower.position, range, "allies:avatar") {
         for attacker in ally.recent_attackers(tower.params.help_window_ms) {
-            if attacker.is_avatar && attacker.is_enemy_of(tower) && reaches(tower, attacker, range) {
+            if attacker.is_avatar && attacker.is_enemy_of(tower) && tower.reaches(attacker, range) {
                 return attacker;
             }
         }
     }
     ()
-}
-
-// Whether `other` is within `range` of `tower`, from the edge of the one body to the edge of the
-// other, as the tower's attack counts it.
-fn reaches(tower, other, range) {
-    tower.position.within(other.position, range + tower.radius + other.radius)
 }

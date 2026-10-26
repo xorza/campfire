@@ -12,7 +12,7 @@ use crate::error::locale_problem::LocaleProblem;
 use crate::language::Language;
 use crate::locale_package::LocalePackage;
 use crate::mode_packages::ModePackages;
-use crate::package_name::PackageName;
+use campfire_values::PackageName;
 
 type Bundle = FluentBundle<Arc<FluentResource>>;
 

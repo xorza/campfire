@@ -3,13 +3,12 @@
 use campfire_common::DeclaredName;
 use campfire_mode::ModeParam;
 use campfire_package::{
-    DataOverride, LoadError, LoadProblem, ModePackages, PackageName, PackageRef, Place,
-    ScriptProblem,
+    DataOverride, LoadError, LoadProblem, ModePackages, PackageRef, Place, ScriptProblem,
 };
 use campfire_script::{ListPlace, ModeScripts, ScriptId, StateValue};
 use campfire_sim::Capability;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_values::{Named, Param, Scalar};
+use campfire_values::{Named, PackageName, Param, Scalar};
 
 const MODE_DATA: &str = "modes/ruled/data/mode.toml";
 /// The ruled mode's list: the rules package's script alone.
@@ -65,6 +64,39 @@ fn a_mode_runs_its_rules_package_s_script_and_fails_on_one_it_does_not_hold() {
         refused,
         LoadProblem::Script { path, problem: ScriptProblem::Unreferenced } if path.as_str() == "scripts/mode.rhai"
     ));
+}
+
+/// The lane's towers think by the shared AI of `test-ai`, a rules package the lane depends on; a
+/// unit type's AI of a package the mode does not depend on, or of one that is no rules package,
+/// fails the load.
+#[test]
+fn a_unit_type_s_ai_is_a_script_of_a_rules_package_the_mode_depends_on() {
+    const UNITS: &str = "modes/lane/data/units.toml";
+    let lane = TestMode::Lane.packages();
+    let names: Vec<_> = (lane.packages())
+        .map(|view| view.package.header.name.as_str())
+        .collect();
+    assert!(names.contains(&"test-ai"), "{names:?}");
+    for other in ["test-other", "hero-runner"] {
+        let refused = PackageTree::of(TestMode::Lane)
+            .edit(
+                UNITS,
+                Edit::Replace(
+                    "\"test-ai\", path = \"scripts/tower_ai",
+                    &format!("\"{other}\", path = \"scripts/tower_ai"),
+                ),
+            )
+            .load()
+            .unwrap_err();
+        assert_eq!(
+            refused.package,
+            PackageRef::Name(PackageName::new("test-lane").unwrap())
+        );
+        assert!(
+            matches!(&*refused.problem, LoadProblem::ScriptPackage(name) if name == other),
+            "{other}: {refused:?}"
+        );
+    }
 }
 
 #[test]

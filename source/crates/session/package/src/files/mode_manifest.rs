@@ -13,7 +13,7 @@ use crate::files::dependency::Dependency;
 use crate::files::package_header::PackageHeader;
 use crate::files::tick_range::TickRange;
 use crate::language::Language;
-use crate::package_name::PackageName;
+use campfire_values::PackageName;
 
 /// A mode's manifest: its header's fields, then the rules its matches run by, in one table. Its
 /// capabilities read as the list the file names, `C` a `Vec`, which `checked` makes a set the
@@ -164,6 +164,6 @@ mod tests {
             "{written}"
         );
         assert_eq!(mode(&written), read);
-        assert_eq!(read.dependencies.len(), 2);
+        assert_eq!(read.dependencies.len(), 3);
     }
 }

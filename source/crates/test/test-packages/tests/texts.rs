@@ -2,10 +2,10 @@
 //! package, else the package's own.
 
 use campfire_package::{
-    Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, PackageName, PackageRef, Texts,
+    Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, PackageRef, Texts,
 };
 use campfire_test_packages::Edit;
-use campfire_values::TextId;
+use campfire_values::{PackageName, TextId};
 
 use crate::moba::{edited, edited_at, load};
 

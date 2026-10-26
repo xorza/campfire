@@ -11,7 +11,7 @@ pools = ["health"]
 stats = { health = { base = 300 }, attack_damage = { base = 25 }, attack_speed = { base = "1.25" }, move_speed = { base = "3.75" } }
 combat = {}
 slots = { weapon = ["creep_attack"] }
-orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
+orders = { ai = { package = "test-ai", path = "scripts/creep_ai.rhai" }, think_ms = 250 }
 vision = { sight_range = "8.0" }
 collision = { radius = "0.35" }
 
@@ -25,7 +25,7 @@ pools = ["health"]
 stats = { health = { base = 1500 }, attack_damage = { base = 150 }, attack_speed = { base = "0.83" } }
 combat = {}
 slots = { weapon = ["tower_attack"] }
-orders = { ai = "scripts/tower_ai.rhai", think_ms = 250 }
+orders = { ai = { package = "test-ai", path = "scripts/tower_ai.rhai" }, think_ms = 250 }
 vision = { sight_range = "9.0" }
 collision = { radius = "0.9" }
 

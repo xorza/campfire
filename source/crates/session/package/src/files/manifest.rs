@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::error::load_problem::LoadProblem;
 use crate::error::{LoadError, PackageRef};
-use crate::package_name::PackageName;
+use campfire_values::PackageName;
 
 use crate::files::mode_manifest::ModeManifest;
 use crate::files::package_header::LocaleManifest;

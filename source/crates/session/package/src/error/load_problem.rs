@@ -9,8 +9,8 @@ use thiserror::Error;
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
-use crate::package_name::PackageName;
 use campfire_package_format::ContentError;
+use campfire_values::PackageName;
 
 /// A problem that fails a package's load, as the load's checks find them (06-script-api.md, Checks
 /// at package load).
@@ -26,8 +26,8 @@ pub enum LoadProblem {
     /// depends on.
     #[error("not a package of the kind its place needs")]
     WrongKind,
-    /// A script of the mode's list or of its bots names a package that is no rules package the
-    /// mode depends on.
+    /// A script of the mode's list, of its bots or of a unit type's AI names a package that is no
+    /// rules package the mode depends on.
     #[error("a script the mode names is of {0}, no rules package it depends on")]
     ScriptPackage(PackageName),
     /// A rules package's data gives a key that only a mode's own data gives: its script or its

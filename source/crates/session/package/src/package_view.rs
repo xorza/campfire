@@ -2,8 +2,8 @@ use campfire_capabilities::PackageContent;
 use campfire_values::PackageIndex;
 
 use crate::avatar_unit::AvatarUnit;
-use crate::files::script_list::ScriptSource;
 use crate::package::Package;
+use campfire_values::ScriptSource;
 
 /// One of a mode's packages, as every package is: its place, it, its content, and its kind.
 #[derive(Debug, Clone, Copy)]
