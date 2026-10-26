@@ -6,9 +6,9 @@ use campfire_actions::{
     TypeSlotsData,
 };
 use campfire_client_files::{
-    AnimationMode, ClientModel, ClientUnit, ClipRounds, ConditionTest, LookDraw, LookShown,
-    LookState, LookTransition, LookVariation, ModelScale, ModelTop, NodeUpgrade, ObjectLook, Press,
-    StateAnimation, StateClip, StatePlay,
+    AnimationMode, BarrelFlash, ClientModel, ClientUnit, ClipRounds, ConditionTest, FireBarrel,
+    FireBone, LookDraw, LookShown, LookState, LookTransition, LookVariation, ModelScale, ModelTop,
+    NodeUpgrade, ObjectLook, Press, StateAnimation, StateClip, StatePlay,
 };
 use campfire_combat::{
     ArmorShare, AttackData, ClipData, CombatData, ModeCombatData, OnDeath, PitchData, ScatterData,
@@ -1169,9 +1169,9 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         model: PackagePath::parse(&format!("client/models/{name}.glb")).unwrap(),
         scale: ModelScale::new(scale).unwrap(),
         hide: hide.iter().map(|&node| node.to_owned()).collect(),
-        top: ModelTop::new(match (name, hide.is_empty()) {
-            ("tank", true) => 8.0,
-            ("tank", false) => 4.0,
+        top: ModelTop::new(match (name, hide.contains(&"tank.turret")) {
+            ("tank", false) => 8.0,
+            ("tank", true) => 4.0,
             _ => scale,
         }),
         upgrades: Vec::new(),
@@ -1186,18 +1186,21 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     };
     // The tank's states: its default, of its turret hidden, and with it the flash below; its
     // really damaged state, of a model the package lacks, so of none; and its night state, which
-    // shows its turret. Its debris module draws no model, so its look has no draw of it. Its
-    // turret turns the node of its bone `Turret`, the model's pivot `TURRET`, as the converted
-    // model names it; its red reskin's own draw module names no turret.
+    // shows its turret, but not its first slot's muzzle flash, which each shot of its one barrel
+    // of no recoil bone shows for a frame, 33 ms. Its debris module draws no model, so its look
+    // has no draw of it. Its turret turns the node of its bone `Turret`, the model's pivot
+    // `TURRET`, as the converted model names it; its red reskin's own draw module names no
+    // turret.
     let hidden = || vec![model("tank", &["tank.turret", "tank.flash"])];
     // Each of its tank models shows its turret and hides its flash by its armor's sub-object
-    // upgrade, which the condition of the upgrade's tag tests.
+    // upgrade, which the condition of the upgrade's tag tests; of a state whose slot flashes at
+    // it, the flash stays hidden, so out of the upgrade.
     let armor = DeclaredName::new("upgrade_americacompositearmor_subobjects").unwrap();
-    let armored = |models: Vec<ClientModel>| -> Vec<ClientModel> {
+    let armored = |models: Vec<ClientModel>, hide: &[&str]| -> Vec<ClientModel> {
         let upgrade = NodeUpgrade {
             condition: armor.clone(),
             show: vec!["tank.turret".to_owned()],
-            hide: vec!["tank.flash".to_owned()],
+            hide: hide.iter().map(|&node| node.to_owned()).collect(),
         };
         let armored = |model| ClientModel {
             upgrades: vec![upgrade.clone()],
@@ -1206,12 +1209,12 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         models.into_iter().map(armored).collect()
     };
     // The tank's own draw module shows its first slot's rounds, of its `WeaponHideShowBone`
-    // `Turret`: one round of the turret and the flash on its child pivot; its third slot names no
-    // bone of rounds; its red reskin's module shows none.
+    // `Turret`: one round of the turret, but the flash on its child pivot; its third slot names
+    // no bone of rounds; its red reskin's module shows none.
     let rounded = |models: Vec<ClientModel>| -> Vec<ClientModel> {
         let rounds = ClipRounds {
             slot: 0,
-            rounds: vec![vec!["tank.turret".to_owned(), "tank.flash".to_owned()]],
+            rounds: vec![vec!["tank.turret".to_owned()]],
         };
         let rounded = |model| ClientModel {
             rounds: vec![rounds.clone()],
@@ -1249,13 +1252,30 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         key: Some(name(key)),
         ..state
     };
+    let flashing = |state: LookState| LookState {
+        fire_bones: vec![FireBone {
+            slot: 0,
+            barrels: vec![FireBarrel {
+                bone: None,
+                flash: Some(BarrelFlash {
+                    node: "tank.flash".to_owned(),
+                    ms: 33,
+                }),
+            }],
+        }],
+        ..state
+    };
     let tank = || ClientUnit {
         turret: Some("turret".to_owned()),
         ..ClientUnit::new(vec![
             LookDraw::new(
                 vec![
                     keyed(
-                        state(&[&[]], rounded(armored(hidden())), aim(AnimationMode::Once)),
+                        flashing(state(
+                            &[&[]],
+                            rounded(armored(hidden(), &[])),
+                            aim(AnimationMode::Once),
+                        )),
                         "rest",
                     ),
                     keyed(
@@ -1266,11 +1286,11 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                         "rest",
                     ),
                     keyed(
-                        state(
+                        flashing(state(
                             &[&["night"]],
-                            rounded(armored(vec![model("tank", &[])])),
+                            rounded(armored(vec![model("tank", &["tank.flash"])], &[])),
                             aim(AnimationMode::Once),
-                        ),
+                        )),
                         "lit_up",
                     ),
                 ],
@@ -1280,7 +1300,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                         name("rest"),
                         name("lit_up"),
                         LookShown {
-                            models: rounded(armored(hidden())),
+                            models: rounded(armored(hidden(), &[])),
                             animation: aim(AnimationMode::OnceBackwards),
                             rise: None,
                         },
@@ -1368,7 +1388,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                             turret_pitch: tank().turret_pitch,
                         },
                         LookVariation {
-                            draws: unit(armored(vec![model("tank", &[])])).draws,
+                            draws: unit(armored(vec![model("tank", &[])], &["tank.flash"])).draws,
                             turret: None,
                             turret_pitch: None,
                         },
@@ -1376,7 +1396,10 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                     ..empty()
                 },
             ),
-            ("tankred", unit(armored(vec![model("tank", &[])]))),
+            (
+                "tankred",
+                unit(armored(vec![model("tank", &[])], &["tank.flash"])),
+            ),
             ("tankshell", empty()),
         ]),
         ["night", "reallydamaged"]

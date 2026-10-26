@@ -33,6 +33,7 @@ use crate::view::match_colors::Paint;
 use crate::view::model_scenes::ModelScenes;
 use crate::view::slot_shots::{AttackParts, ClipLack, SlotShots};
 use crate::view::unit_looks::{LookDraws, UnitFacts, UnitLooks};
+use crate::view::unit_models::DressSystems;
 use crate::view::unit_models::{Dressed, Replaces};
 use crate::view::{DrawSystems, ViewSystems};
 
@@ -190,6 +191,7 @@ impl Plugin for LookStatesPlugin {
             (Self::pick, Self::play)
                 .chain()
                 .after(DrawSystems)
+                .before(DressSystems)
                 .in_set(ViewSystems),
         );
     }
@@ -299,7 +301,9 @@ impl LookStatesPlugin {
                 continue;
             };
             let groups = looks.weapons(states.unit_type);
-            let attack = armed.get(unit).ok().zip(weapons.as_deref());
+            let arms = armed.get(unit).ok();
+            let attacking = arms.is_some_and(|(progress, ..)| progress.attack_target().is_some());
+            let attack = arms.zip(weapons.as_deref());
             lacks.clear();
             let attacks = match attack {
                 Some(((progress, slots, times, clips), weapons)) if !groups.is_empty() => {
@@ -345,6 +349,7 @@ impl LookStatesPlugin {
                     }
                 }),
                 dead,
+                attacking,
                 attacks,
             };
             let held = tests.held(facts);

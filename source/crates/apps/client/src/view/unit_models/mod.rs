@@ -13,7 +13,7 @@ use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::name::Name;
 use bevy::ecs::observer::On;
 use bevy::ecs::query::{Added, Allow, Changed, With};
-use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
 use bevy::ecs::world::EntityWorldMut;
 use bevy::gltf::GltfMaterial;
@@ -86,7 +86,7 @@ impl Plugin for UnitModelsPlugin {
             Update,
             (
                 Self::turn_turrets,
-                Self::redress,
+                Self::redress.in_set(DressSystems),
                 (Self::follow_teams, Self::repaint).chain(),
             ),
         );
@@ -533,6 +533,11 @@ struct Node<'a> {
 /// one is dressed and shown.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Replaces(pub(crate) Entity);
+
+/// The systems that hide again the nodes of the kept models whose hidden nodes changed, after the
+/// looks pick their states and before a shot shows its muzzle flash over them.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct DressSystems;
 
 /// On a kept model of a new state, whose hidden nodes changed, which its dressing hides again:
 /// once it is dressed, or as it is dressed.

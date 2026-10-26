@@ -15,12 +15,14 @@ use serde::{Deserialize, Serialize};
 use crate::gltf::model_bounds::ModelBounds;
 use crate::zero_hour::animation_import::{AnimationDropCause, AnimationEnds, ConvertedAnimation};
 use crate::zero_hour::archive_path::ArchivePath;
+use crate::zero_hour::barrel_recoil::BarrelRecoil;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::error::{ModelError, NameClash, NameError, ZeroHourError};
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::object_ini::ini_animation::{
     AnimationFlag, IniAnimation, IniMode,
 };
+use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
 use crate::zero_hour::format::ini::object_ini::{
     DrawKind, DrawModule, DrawnState, HideShow, IniObject, ObjectIni, PlacedAs, StateLook,
@@ -171,6 +173,17 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
             textures: self.converter.textures,
         }
     }
+}
+
+/// What the models of a draw module's states take beside their states: their object's scale,
+/// the nodes each of its upgrades shows and hides, the weapon slots whose clips' rounds they show,
+/// and the module's recoil, which times its barrels' flashes.
+#[derive(Debug, Clone, Copy)]
+struct ModuleModels<'a> {
+    scale: ModelScale,
+    upgrades: &'a [SubObjectsUpgrade],
+    rounds_shown: [bool; 3],
+    recoil: BarrelRecoil,
 }
 
 /// The models a look draws on a map of some conditions, whether the package lacks a model it
@@ -333,7 +346,13 @@ impl ModelWriter<'_, '_> {
                 .states()
                 .next()
                 .expect("a module has its default state");
-            let looked = self.look_models([default.drawn], scale, &upgrades, draw.rounds_shown)?;
+            let module = ModuleModels {
+                scale,
+                upgrades: &upgrades,
+                rounds_shown: draw.rounds_shown,
+                recoil: BarrelRecoil::of(draw.recoil),
+            };
+            let looked = self.look_models([default.drawn], module)?;
             skipped |= looked.skipped;
             drawn |= !looked.models.is_empty();
         }
@@ -344,11 +363,16 @@ impl ModelWriter<'_, '_> {
         }
         let mut look_draws = Vec::new();
         for draw in draws {
+            let module = ModuleModels {
+                scale,
+                upgrades: &upgrades,
+                rounds_shown: draw.rounds_shown,
+                recoil: BarrelRecoil::of(draw.recoil),
+            };
             let mut keys = DrawKeys::default();
             let mut states = Vec::new();
             for state in draw.states() {
-                let looked =
-                    self.look_models([state.drawn], scale, &upgrades, draw.rounds_shown)?;
+                let looked = self.look_models([state.drawn], module)?;
                 let mut sets = Vec::with_capacity(state.sets.len());
                 for set in state.sets {
                     let mut names = Vec::with_capacity(set.flags().len());
@@ -384,8 +408,7 @@ impl ModelWriter<'_, '_> {
             }
             let mut transitions = Vec::with_capacity(draw.transitions().len());
             for transition in draw.transitions() {
-                let looked =
-                    self.look_models([transition.drawn()], scale, &upgrades, draw.rounds_shown)?;
+                let looked = self.look_models([transition.drawn()], module)?;
                 let shown = LookShown {
                     models: looked.models,
                     animation: self.state_animation(&transition.animation)?,
@@ -596,11 +619,18 @@ impl ModelWriter<'_, '_> {
     where
         I: IntoIterator<Item = DrawnState<'d>>,
     {
-        let own = self.look_models(drawn(LookConditions::default()), scale, &[], [false; 3])?;
+        // An object fires no weapon, so its models show no rounds and no flash.
+        let module = ModuleModels {
+            scale,
+            upgrades: &[],
+            rounds_shown: [false; 3],
+            recoil: BarrelRecoil::of(IniRecoil::default()),
+        };
+        let own = self.look_models(drawn(LookConditions::default()), module)?;
         let mut skipped = own.skipped;
         let mut variants = Vec::new();
         for conditions in LookConditions::VARIANTS {
-            let looked = self.look_models(drawn(conditions), scale, &[], [false; 3])?;
+            let looked = self.look_models(drawn(conditions), module)?;
             skipped |= looked.skipped;
             variants.push(LookVariant {
                 conditions: conditions.names(),
@@ -619,17 +649,21 @@ impl ModelWriter<'_, '_> {
         }))
     }
 
-    /// The models of `drawn`, each with the look whose hidden nodes it hides, at `scale`, the
-    /// nodes each of `upgrades` shows and hides, and the rounds of each weapon slot `rounds_shown`
-    /// names, of those that draw one the package holds; whether the package lacks one it names;
-    /// and the bones its weapon slots' fire effects play at.
+    /// The models of `drawn`, each with the look whose hidden nodes it hides, of `module`'s scale,
+    /// the nodes each of its upgrades shows and hides, and the rounds of each weapon slot it
+    /// shows, of those that draw one the package holds; whether the package lacks one it names;
+    /// and its weapon slots' barrels, where their fire effects play and their flashes show.
     fn look_models<'d>(
         &mut self,
         drawn: impl IntoIterator<Item = DrawnState<'d>>,
-        scale: ModelScale,
-        upgrades: &[SubObjectsUpgrade],
-        rounds_shown: [bool; 3],
+        module: ModuleModels<'_>,
     ) -> Result<LookModels, ZeroHourError> {
+        let ModuleModels {
+            scale,
+            upgrades,
+            rounds_shown,
+            recoil,
+        } = module;
         let mut looked = LookModels {
             models: Vec::new(),
             skipped: false,
@@ -646,7 +680,7 @@ impl ModelWriter<'_, '_> {
                         if looked.fire_bones.iter().any(|bone| bone.slot == slot) {
                             continue;
                         }
-                        let barrels = nodes.fire_barrels(bones);
+                        let barrels = nodes.fire_barrels(bones, recoil);
                         if !barrels.is_empty() {
                             looked.fire_bones.push(FireBone { slot, barrels });
                         }
@@ -657,7 +691,7 @@ impl ModelWriter<'_, '_> {
                         .and_then(|top| ModelTop::new(top * scale.get()));
                     let mut node_upgrades = Vec::new();
                     for SubObjectsUpgrade { tag, changes } in upgrades {
-                        let NodeChanges { show, hide } = nodes.changes(changes);
+                        let NodeChanges { show, hide } = nodes.changes(changes, look);
                         if show.is_empty() && hide.is_empty() {
                             continue;
                         }
@@ -672,7 +706,7 @@ impl ModelWriter<'_, '_> {
                         .filter(|&(_, shown)| shown)
                         .map(|((slot, bones), _)| ClipRounds {
                             slot,
-                            rounds: nodes.rounds(bones),
+                            rounds: nodes.rounds(bones, look),
                         })
                         .filter(|clip| !clip.rounds.is_empty())
                         .collect();

@@ -48,6 +48,7 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 pub(crate) mod animation_import;
 pub(crate) mod archive_path;
 pub(crate) mod axes;
+pub(crate) mod barrel_recoil;
 pub(crate) mod camera_import;
 pub(crate) mod cliff_walls;
 pub(crate) mod combat_import;
@@ -398,7 +399,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 34;
+    pub const OUTPUT_VERSION: u32 = 35;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

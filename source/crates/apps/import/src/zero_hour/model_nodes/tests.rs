@@ -1,5 +1,6 @@
 use super::*;
 use crate::quaternion::Quaternion;
+use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 
 /// A quarter turn about W3D's `y`, `−y` by the right hand, which raises `x` to `z`, up.
 const RAISED: [f32; 4] = [
@@ -11,8 +12,9 @@ const RAISED: [f32; 4] = [
 
 /// A tank's pivots, each with its parent and its pose in its parent's frame: the root; the
 /// turret, 3 m up; two numbered flashes, a barrel and a bare flash on the turret; on the root, a
-/// bare flash and a slot's numbered fire bones beside a bare flash of its own; and on the turret,
-/// a rail, 2 m forward and 1 m up, turned to point up, whose number 02 the model lacks.
+/// bare flash and a slot's numbered fire bones beside a bare flash of its own; on the turret, a
+/// rail, 2 m forward and 1 m up, turned to point up, whose number 02 the model lacks; and on the
+/// root, a spark bone numbered 01 alone.
 fn tank() -> ModelNodes {
     let at = |translation: [f32; 3]| RigidPose {
         translation: translation.into(),
@@ -33,6 +35,7 @@ fn tank() -> ModelNodes {
         ("fire01", Some(0), RigidPose::IDENTITY),
         ("fire02", Some(0), RigidPose::IDENTITY),
         ("rail01", Some(1), rail),
+        ("spark01", Some(0), RigidPose::IDENTITY),
     ]
     .map(|(name, parent, pose)| PivotName {
         name: name.to_owned(),
@@ -89,6 +92,23 @@ fn a_default_look_hides_flagged_parts_muzzle_flashes_and_its_hidden_sub_objects(
         nodes.hidden(&flashes),
         ["tank.flash1", "tank.flash2a", "tank.solo", "tank.decal"]
     );
+    // A show of the turret shows the sub-objects below it but its flashes, which hide after it,
+    // the first on each of their bones: the second on `MuzzleFX02` shows.
+    let shown = StateLook {
+        hide_show: vec![HideShow {
+            name: "turret".to_owned(),
+            hide: false,
+        }],
+        weapons: [
+            bones(None, "MuzzleFX"),
+            WeaponBones::default(),
+            WeaponBones::default(),
+        ],
+    };
+    assert_eq!(
+        nodes.hidden(&shown),
+        ["tank.flash1", "tank.flash2a", "tank.decal"]
+    );
     // Each change in order, by its full name or its name after the first `.`: the turret
     // hides the sub-objects on the pivots below its own, the barrel is shown again, and a name
     // of no sub-object is skipped.
@@ -130,8 +150,9 @@ fn a_default_look_hides_flagged_parts_muzzle_flashes_and_its_hidden_sub_objects(
         change("barrel", false),
         change("missing", true),
     ];
+    let bare = StateLook::default();
     assert_eq!(
-        nodes.changes(&changes),
+        nodes.changes(&changes, &bare),
         NodeChanges {
             show: vec!["tank.barrel".to_owned()],
             hide: ["tank.turret", "tank.flash1", "tank.flash2a", "tank.flash2b"]
@@ -139,10 +160,20 @@ fn a_default_look_hides_flagged_parts_muzzle_flashes_and_its_hidden_sub_objects(
                 .to_vec(),
         }
     );
-    assert_eq!(nodes.changes(&[]), NodeChanges::default());
+    assert_eq!(nodes.changes(&[], &bare), NodeChanges::default());
+    // An upgrade that shows the turret of a look of flashes leaves the flashes hidden.
+    assert_eq!(
+        nodes.changes(&[change("turret", false)], &shown),
+        NodeChanges {
+            show: ["tank.turret", "tank.flash2b", "tank.barrel"]
+                .map(str::to_owned)
+                .to_vec(),
+            hide: Vec::new(),
+        }
+    );
     // The box, on the root, hides the 7 sub-objects off the root, but is never named itself, as
     // it is never drawn.
-    let boxed = nodes.changes(&[change("pickbox", true)]);
+    let boxed = nodes.changes(&[change("pickbox", true)], &bare);
     assert_eq!(boxed.hide.len(), 7);
     assert!(!boxed.hide.contains(&"tank.pickbox".to_owned()));
 }
@@ -152,8 +183,9 @@ fn a_slot_fires_at_each_barrel_any_of_its_bones_numbers_or_at_its_bare_bone() {
     // `MuzzleFX` numbers two barrels, 01 and 02, of either case; `fire` its two, a barrel each,
     // as its flash `MuzzleFX` numbers them; `solo` its bare bone alone; `missing` none.
     let tank = tank();
+    let recoil = BarrelRecoil::of(IniRecoil::default());
     let barrels = |fire: &str, flash: &str| {
-        let barrels = tank.fire_barrels(&bones(Some(fire), flash));
+        let barrels = tank.fire_barrels(&bones(Some(fire), flash), recoil);
         barrels
             .into_iter()
             .map(|barrel| barrel.bone)
@@ -173,9 +205,38 @@ fn a_slot_fires_at_each_barrel_any_of_its_bones_numbers_or_at_its_bare_bone() {
     assert_eq!(barrels("solo", "none"), named(&["solo"]));
     assert!(barrels("missing", "none").is_empty());
     // A flash numbered 01 and 02 makes two barrels: a fire bone numbered for neither leaves each
-    // of no bone, so none at all; one numbered for both gives each its own.
-    assert!(barrels("solo", "MuzzleFX").is_empty());
+    // of no bone, each shown by its flash; one numbered for both gives each its own; one
+    // numbered for the first alone gives the second the first's, as it has a flash.
+    assert_eq!(barrels("solo", "MuzzleFX"), [None, None]);
     assert_eq!(barrels("fire", "MuzzleFX"), named(&["fire01", "fire02"]));
+    assert_eq!(barrels("spark", "MuzzleFX"), named(&["spark01", "spark01"]));
+    assert_eq!(barrels("spark", "none"), named(&["spark01"]));
+    // Each flash is the first sub-object on its bone, shown for a frame, 33 ms, of a barrel of no
+    // recoil bone, and for the 3 frames of the default recoil, 100 ms, of one of a recoil bone.
+    let flash = |node: &str, ms| {
+        Some(BarrelFlash {
+            node: node.to_owned(),
+            ms,
+        })
+    };
+    let flashes = |bones: &WeaponBones| {
+        let barrels = tank.fire_barrels(bones, recoil).into_iter();
+        barrels.map(|barrel| barrel.flash).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        flashes(&bones(None, "MuzzleFX")),
+        [flash("tank.flash1", 33), flash("tank.flash2a", 33)]
+    );
+    let recoiled = WeaponBones {
+        recoil: Some("MuzzleFX".to_owned()),
+        ..bones(None, "MuzzleFX")
+    };
+    assert_eq!(
+        flashes(&recoiled),
+        [flash("tank.flash1", 100), flash("tank.flash2a", 100)]
+    );
+    // A flash bone of no sub-object, the rail's, shows none.
+    assert!(flashes(&bones(None, "rail")).is_empty());
 }
 
 #[test]
@@ -244,8 +305,9 @@ fn a_slots_rounds_are_its_hide_show_bone_or_its_numbered_launch_bones() {
             .map(|&name| name.to_owned())
             .collect::<Vec<_>>()
     };
+    let bare = StateLook::default();
     assert_eq!(
-        tank.rounds(&turret),
+        tank.rounds(&turret, &bare),
         [names(&[
             "tank.turret",
             "tank.flash1",
@@ -253,6 +315,19 @@ fn a_slots_rounds_are_its_hide_show_bone_or_its_numbered_launch_bones() {
             "tank.flash2b",
             "tank.barrel"
         ])]
+    );
+    // Of a look whose slot flashes at `MuzzleFX`, the round leaves out its flashes.
+    let flashing = StateLook {
+        weapons: [
+            bones(None, "MuzzleFX"),
+            WeaponBones::default(),
+            WeaponBones::default(),
+        ],
+        ..StateLook::default()
+    };
+    assert_eq!(
+        tank.rounds(&turret, &flashing),
+        [names(&["tank.turret", "tank.flash2b", "tank.barrel"])]
     );
     // A rack's missiles 01, 02 and 04 under its launch bone `Missile`: a round each, 03 of none,
     // none past the last; a launch bone the model lacks, and a slot of neither, none.
@@ -275,7 +350,7 @@ fn a_slots_rounds_are_its_hide_show_bone_or_its_numbered_launch_bones() {
         ..WeaponBones::default()
     };
     assert_eq!(
-        rack.rounds(&launch("Missile")),
+        rack.rounds(&launch("Missile"), &bare),
         [
             names(&["rack.missile01"]),
             names(&["rack.missile02"]),
@@ -283,6 +358,6 @@ fn a_slots_rounds_are_its_hide_show_bone_or_its_numbered_launch_bones() {
             names(&["rack.missile04"])
         ]
     );
-    assert!(rack.rounds(&launch("rocket")).is_empty());
-    assert!(rack.rounds(&WeaponBones::default()).is_empty());
+    assert!(rack.rounds(&launch("rocket"), &bare).is_empty());
+    assert!(rack.rounds(&WeaponBones::default(), &bare).is_empty());
 }

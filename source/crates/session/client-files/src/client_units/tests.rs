@@ -3,7 +3,7 @@ use campfire_math::Num;
 
 use super::*;
 use crate::client_model::{ModelScale, ModelTop};
-use crate::client_unit::{FireBarrel, FireBone};
+use crate::client_unit::{BarrelFlash, FireBarrel, FireBone};
 use crate::condition_test::{LifeShare, SiteStage};
 use crate::state_animation::{AnimationMode, SpeedRange, StartFrame};
 
@@ -17,7 +17,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
                 { model = "client/models/avhumflag.glb", top = 3.25 },
                 { model = "client/models/avhumfx.glb" },
             ] },
-            { sets = [["damaged"], ["damaged", "night"]], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, barrels = [{ bone = "MuzzleFX01" }, {}] }] },
+            { sets = [["damaged"], ["damaged", "night"]], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, barrels = [{ bone = "MuzzleFX01", flash = { node = "avhummer_d.muzzlefx01", ms = 100 } }, {}] }] },
         ] }]
         death = "fx_humvee_death"
 
@@ -43,6 +43,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
         upgraded = { test = "tag", tag = "weapon_upgrade" }
         rubble = { test = "never" }
         fallen = { test = "dead" }
+        engaged = { test = "attacking" }
         awaiting = { test = "site", stage = "waiting" }
         partly = { test = "site", stage = "started" }
 
@@ -57,7 +58,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     let humvee = &states[0].models[0];
     assert_eq!(humvee.model.as_str(), "client/models/avhummer.glb");
     assert_eq!(humvee.hide, ["turretup01", "muzzlefx01"]);
-    // The damaged state's fire bone, of the first slot; the look's death; the gun's fire, of no
+    // The damaged state's fire bone and flash, of the first slot; the look's death; the gun's fire, of no
     // hit; the shell's end and trail; none of what a look does not name, which it does not write.
     let name = |text: &str| DeclaredName::new(text).unwrap();
     assert_eq!(
@@ -66,7 +67,11 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
             slot: 0,
             barrels: vec![
                 FireBarrel {
-                    bone: Some("MuzzleFX01".to_owned())
+                    bone: Some("MuzzleFX01".to_owned()),
+                    flash: Some(BarrelFlash {
+                        node: "avhummer_d.muzzlefx01".to_owned(),
+                        ms: 100
+                    })
                 },
                 FireBarrel::default()
             ]
@@ -84,9 +89,9 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     );
     let written = Toml::write(&units);
     assert_eq!(
-        ["slot =", "death =", "hit =", "end =", "trail ="]
+        ["slot =", "node =", "death =", "hit =", "end =", "trail ="]
             .map(|field| written.matches(field).count()),
-        [1, 1, 0, 1, 1]
+        [1, 1, 1, 0, 1, 1]
     );
     // A state's sets, its own and its aliases'.
     let damaged = DeclaredName::new("damaged").unwrap();
@@ -143,6 +148,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     assert_eq!(test("upgraded"), ConditionTest::Tag { tag });
     assert_eq!(test("rubble"), ConditionTest::Never);
     assert_eq!(test("fallen"), ConditionTest::Dead);
+    assert_eq!(test("engaged"), ConditionTest::Attacking);
     let site = |stage| ConditionTest::Site { stage };
     assert_eq!(
         [test("awaiting"), test("partly")],

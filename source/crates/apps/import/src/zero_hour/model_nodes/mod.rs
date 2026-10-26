@@ -1,9 +1,10 @@
 use bevy_math::Vec3;
-use campfire_client_files::FireBarrel;
+use campfire_client_files::{BarrelFlash, FireBarrel};
 
 use crate::pose::RigidPose;
-use crate::zero_hour::axes;
+use crate::zero_hour::barrel_recoil::BarrelRecoil;
 use crate::zero_hour::format::ini::object_ini::{HideShow, StateLook, WeaponBones};
+use crate::zero_hour::{axes, game_time};
 
 /// What a model's default look reads of it: its sub-objects, in the HLOD's order, each with its
 /// full name, its pivot, whether the model has a node of it, and whether its mesh is hidden by
@@ -48,29 +49,23 @@ pub(crate) struct ModelBarrel {
 
 impl ModelNodes {
     /// The names of the drawn sub-objects `look` leaves hidden, as `W3DModelDraw` sets a state:
-    /// those hidden by their flag; then each weapon slot's muzzle flashes; then each hide or show
-    /// in order, also over the sub-objects on the strict child pivots of its own.
+    /// those hidden by their flag; then each hide or show in order, also over the sub-objects on
+    /// the strict child pivots of its own; then each weapon slot's muzzle flashes, as
+    /// `handleClientRecoil` hides each every frame its barrel's recoil does not start
+    /// (09-zero-hour.md, A muzzle flash shows at its barrel's shot).
     pub(crate) fn hidden(&self, look: &StateLook) -> Vec<String> {
         let mut hidden: Vec<bool> = self
             .sub_objects
             .iter()
             .map(|sub_object| sub_object.hidden)
             .collect();
-        for weapon in &look.weapons {
-            for flash in self.muzzle_flashes(weapon) {
-                if let Some(at) = self
-                    .sub_objects
-                    .iter()
-                    .position(|sub_object| sub_object.pivot == flash)
-                {
-                    hidden[at] = true;
-                }
-            }
-        }
         for change in &look.hide_show {
             for at in self.touched(&change.name) {
                 hidden[at] = change.hide;
             }
+        }
+        for at in self.flashes(look) {
+            hidden[at] = true;
         }
         self.sub_objects
             .iter()
@@ -81,13 +76,17 @@ impl ModelNodes {
     }
 
     /// The names of the drawn sub-objects `changes` show and hide, each as the last change that
-    /// touches it says, as `W3DModelDraw::updateSubObjects` sets an upgrade's over a state's.
-    pub(crate) fn changes(&self, changes: &[HideShow]) -> NodeChanges {
+    /// touches it says, as `W3DModelDraw::updateSubObjects` sets an upgrade's over a state's, but
+    /// the muzzle flashes of `look`, which stay hidden.
+    pub(crate) fn changes(&self, changes: &[HideShow], look: &StateLook) -> NodeChanges {
         let mut set: Vec<Option<bool>> = vec![None; self.sub_objects.len()];
         for change in changes {
             for at in self.touched(&change.name) {
                 set[at] = Some(change.hide);
             }
+        }
+        for at in self.flashes(look) {
+            set[at] = None;
         }
         let mut changed = NodeChanges::default();
         for (sub_object, hide) in self.sub_objects.iter().zip(set) {
@@ -115,26 +114,66 @@ impl ModelNodes {
             .collect()
     }
 
-    /// The pivots of a weapon slot's muzzle flashes, its barrels' that have one.
-    fn muzzle_flashes(&self, weapon: &WeaponBones) -> Vec<usize> {
-        let barrels = self.barrel_pivots(weapon, |weapon| &weapon.muzzle_flash);
-        barrels.into_iter().flatten().collect()
+    /// The places of the muzzle flashes of the weapon slots of `look`.
+    fn flashes(&self, look: &StateLook) -> Vec<usize> {
+        let slots = look.weapons.iter();
+        let pivots =
+            slots.flat_map(|weapon| self.barrel_pivots(weapon, |weapon| &weapon.muzzle_flash));
+        pivots
+            .flatten()
+            .filter_map(|pivot| self.flash(pivot))
+            .collect()
     }
 
-    /// The bones a weapon slot's fire effect plays at, each barrel's in the order its shots take
-    /// them, none for a barrel of no fire bone; none at all when no barrel has one.
-    pub(crate) fn fire_barrels(&self, weapon: &WeaponBones) -> Vec<FireBarrel> {
-        let barrels = self.barrel_pivots(weapon, |weapon| &weapon.fire_fx);
-        if barrels.iter().all(Option::is_none) {
-            return Vec::new();
+    /// The place of the muzzle flash on `pivot`: its first sub-object, as `setMuzzleFlashHidden`
+    /// takes it (`Get_Sub_Object_On_Bone(0, …)`); none for a pivot of none.
+    fn flash(&self, pivot: usize) -> Option<usize> {
+        self.sub_objects
+            .iter()
+            .position(|sub_object| sub_object.pivot == pivot)
+    }
+
+    /// A weapon slot's barrels, in the order its shots take them, of a draw module of `recoil`:
+    /// each one's fire bone, its own, or for a barrel of a flash and of no fire bone of its number
+    /// the barrel's before it, as `validateWeaponBarrelInfo` gives one fire bone to many flashes;
+    /// and its drawn flash, shown for the frames `recoil` gives a barrel of a recoil bone or of
+    /// none, of whole milliseconds as the engine counts frames, none for a recoil that does not
+    /// end; none at all when no barrel has a fire bone or a flash.
+    pub(crate) fn fire_barrels(
+        &self,
+        weapon: &WeaponBones,
+        recoil: BarrelRecoil,
+    ) -> Vec<FireBarrel> {
+        let fires = self.barrel_pivots(weapon, |weapon| &weapon.fire_fx);
+        let flashes = self.barrel_pivots(weapon, |weapon| &weapon.muzzle_flash);
+        let recoils = self.barrel_pivots(weapon, |weapon| &weapon.recoil);
+        let mut before = None;
+        let mut barrels = Vec::with_capacity(fires.len());
+        for ((fire, flash), recoils) in fires.into_iter().zip(flashes).zip(recoils) {
+            let shared = flash.is_some() && weapon.fire_fx.is_some();
+            let fire = fire.or_else(|| before.filter(|_| shared));
+            before = fire;
+            let flash = flash
+                .and_then(|pivot| self.flash(pivot))
+                .filter(|&at| self.sub_objects[at].drawn);
+            let frames = recoil.flash_frames(recoils.is_some());
+            let flash = flash.zip(frames).map(|(at, frames)| BarrelFlash {
+                node: self.sub_objects[at].name.clone(),
+                ms: u32::try_from(game_time::frames_ms(u64::from(frames)))
+                    .expect("a minute of frames fits u32"),
+            });
+            barrels.push(FireBarrel {
+                bone: fire.map(|pivot| self.pivots[pivot].name.clone()),
+                flash,
+            });
         }
-        let name = |pivot: usize| self.pivots[pivot].name.clone();
+        if barrels
+            .iter()
+            .all(|barrel| barrel.bone.is_none() && barrel.flash.is_none())
+        {
+            barrels.clear();
+        }
         barrels
-            .into_iter()
-            .map(|pivot| FireBarrel {
-                bone: pivot.map(name),
-            })
-            .collect()
     }
 
     /// The pivot of `bone` of each of a weapon slot's barrels, as `validateWeaponBarrelInfo`
@@ -218,11 +257,13 @@ impl ModelNodes {
     /// fires them, as `doHideShowProjectileObjects` hides them: those its `WeaponHideShowBone`
     /// touches, one round for the whole clip; else, for each number from 01, those of its launch
     /// bone's name with that number, up to the last number the model holds, none for a number it
-    /// lacks. A show or a hide of a name touches its sub-object and those on its pivot's children.
-    pub(crate) fn rounds(&self, weapon: &WeaponBones) -> Vec<Vec<String>> {
+    /// lacks. A show or a hide of a name touches its sub-object and those on its pivot's children,
+    /// but the muzzle flashes of `look`, which stay hidden.
+    pub(crate) fn rounds(&self, weapon: &WeaponBones, look: &StateLook) -> Vec<Vec<String>> {
+        let flashes = self.flashes(look);
         let drawn = |name: &str| -> Vec<String> {
             let touched = self.touched(name).into_iter();
-            let touched = touched.filter(|&at| self.sub_objects[at].drawn);
+            let touched = touched.filter(|at| self.sub_objects[*at].drawn && !flashes.contains(at));
             touched
                 .map(|at| self.sub_objects[at].name.clone())
                 .collect()

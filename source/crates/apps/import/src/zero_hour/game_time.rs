@@ -60,7 +60,7 @@ pub(crate) fn of_build_seconds(seconds: f32) -> Result<u64, TimeError> {
 
 /// The milliseconds the engine turns into `frames`: `⌊frames × 100 / 3⌋`, which its rounding up
 /// turns back into the same frames.
-const fn frames_ms(frames: u64) -> u64 {
+pub(crate) const fn frames_ms(frames: u64) -> u64 {
     frames * 100 / 3
 }
 

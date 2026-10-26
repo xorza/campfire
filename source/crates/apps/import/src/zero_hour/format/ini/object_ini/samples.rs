@@ -1,12 +1,14 @@
 use crate::zero_hour::format::ini::object_ini::{ObjectFiles, ObjectIni};
 
 /// `Data\INI\Default\Object.ini` of the fixture install: a tank of two draw modules, one of
-/// which draws no model and one of which names two animations and a transition between two
-/// keys, and an upgrade that shows its turret and hides its flash; and a tree.
+/// which draws no model and one of which names two animations, a transition between two keys and
+/// its barrels' recoil, and an upgrade that shows its turret and hides its flash; and a tree.
 pub(crate) const DEFAULT_OBJECTS: &str = "; Objects the game loads first.\r
 Object Tank\r
   Draw = W3DTankDraw ModuleTag_01\r
   ProjectileBoneFeedbackEnabledSlots = PRIMARY TERTIARY\r
+  InitialRecoilSpeed = 120\r
+  RecoilDamping = 0.5\r
 DefaultConditionState\r
   Model = TANK\r
   HideSubObject = Turret\r

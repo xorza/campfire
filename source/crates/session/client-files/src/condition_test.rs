@@ -26,6 +26,10 @@ pub enum ConditionTest {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         phase: Option<AttackPhase>,
     },
+    /// The unit has an attack target, as it approaches, pursues and attacks it, as Zero Hour's
+    /// `ATTACKING` holds from its attack state's start to its end (`AIAttackState::onEnter`,
+    /// `onExit`).
+    Attacking,
     /// The unit is dead, as a type that keeps its dead holds it for its time (04-capabilities/combat.md,
     /// A death keeps its unit for its animation).
     Dead,

@@ -26,6 +26,7 @@ fn each_flag_tests_its_part_of_a_unit_and_any_other_none() {
         ConditionTest::Life(LifeShare::new(Num::ZERO, quarter).unwrap())
     );
     assert_eq!(test("moving"), ConditionTest::Moving { still_ms: 250 });
+    assert_eq!(test("attacking"), ConditionTest::Attacking);
     // Dying, and rubble, the damage state of no life, which only a dead unit holds.
     assert_eq!(test("dying"), ConditionTest::Dead);
     assert_eq!(test("rubble"), ConditionTest::Dead);

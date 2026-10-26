@@ -167,6 +167,7 @@ enum UnitTest {
     Life(LifeShare),
     Site(SiteStage),
     Dead,
+    Attacking,
     /// A weapon of its look's group at a place is at a phase, or at any, by their bits in
     /// `UnitFacts::attacks`.
     Attack(u64),
@@ -190,8 +191,8 @@ enum Known {
 
 /// What a unit holds that its look's tests read: its tags, whether it walks to a destination, how
 /// long since it last moved, its life and its most life, none for a unit of no life, its site's
-/// stage, none for a unit that is no site, whether it is dead, and the phases of its look's weapon groups, by their
-/// bits, as `attack_bit` places them.
+/// stage, none for a unit that is no site, whether it is dead, whether it has an attack target,
+/// and the phases of its look's weapon groups, by their bits, as `attack_bit` places them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct UnitFacts {
     pub(crate) tags: TagSet,
@@ -200,6 +201,7 @@ pub(crate) struct UnitFacts {
     pub(crate) life: Option<[Num; 2]>,
     pub(crate) site: Option<SiteStage>,
     pub(crate) dead: bool,
+    pub(crate) attacking: bool,
     pub(crate) attacks: u64,
 }
 
@@ -622,6 +624,7 @@ impl UnitTests {
                 ConditionTest::Life(share) => Some(UnitTest::Life(*share)),
                 ConditionTest::Site { stage } => Some(UnitTest::Site(*stage)),
                 ConditionTest::Dead => Some(UnitTest::Dead),
+                ConditionTest::Attacking => Some(UnitTest::Attacking),
                 ConditionTest::Attack { group, phase } => {
                     let bits = match phase {
                         Some(phase) => UnitFacts::attack_bit(*group, *phase),
@@ -665,6 +668,7 @@ impl UnitTests {
                     .is_some_and(|[current, max]| share.holds(current, max)),
                 UnitTest::Site(stage) => facts.site == Some(stage),
                 UnitTest::Dead => facts.dead,
+                UnitTest::Attacking => facts.attacking,
                 UnitTest::Attack(bit) => facts.attacks & bit != 0,
             };
             if holds {

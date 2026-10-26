@@ -79,6 +79,7 @@ fn draws_of(ini: &ObjectFiles, name: &str) -> Vec<DrawModule> {
         turret: draw.turret.clone(),
         turret_pitch: draw.turret_pitch.clone(),
         rounds_shown: draw.rounds_shown,
+        recoil: draw.recoil,
         ..DrawModule::new(draw.kind)
     };
     ini.named(name)
@@ -124,8 +125,9 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
     // The tank's default state: its model; its hides and shows, the second of `Barrel`
     // changing the first in its place; its weapon bones, a bone `None` none, and the sub-object
     // its first slot's rounds show; the bones its turret turns and pitches, `Turret` and
-    // `Barrel`; the slots whose rounds it shows, the first and the third; and the debris draw
-    // module names no model.
+    // `Barrel`; the slots whose rounds it shows, the first and the third; its recoil, of its speed
+    // of a second and its damping, its most the default; and the debris draw module names no
+    // model.
     let model = |model: &str, look| DrawModule {
         model: Some(model.to_owned()),
         look,
@@ -158,6 +160,11 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
         turret: Some("Turret".to_owned()),
         turret_pitch: Some("Barrel".to_owned()),
         rounds_shown: [true, false, true],
+        recoil: IniRecoil {
+            speed: Some(120.0),
+            most: 3.0,
+            damping: 0.5,
+        },
         ..model("tank", tank_look)
     };
     let tank = [tank_draw, DrawModule::new(DrawKind::Other)];

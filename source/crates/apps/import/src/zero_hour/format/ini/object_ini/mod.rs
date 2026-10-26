@@ -10,6 +10,7 @@ use crate::zero_hour::format::ini::object_ini::fight_data::{FightBlock, FightDat
 use crate::zero_hour::format::ini::object_ini::ini_animation::IniAnimation;
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, ProductionModule};
 use crate::zero_hour::format::ini::object_ini::ini_death::IniDeath;
+use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::IniUpgradeModule;
 use crate::zero_hour::format::look_conditions::LookConditions;
@@ -19,6 +20,7 @@ pub(crate) mod fight_data;
 pub(crate) mod ini_animation;
 pub(crate) mod ini_build;
 pub(crate) mod ini_death;
+pub(crate) mod ini_recoil;
 pub(crate) mod ini_supply;
 pub(crate) mod ini_upgrade_module;
 
@@ -134,7 +136,7 @@ pub(crate) enum PlacedAs {
 
 /// A draw module: how it names its model, the model of its default state, if it draws one, that
 /// state's look and animation, and the bones its turret turns and pitches, its `Turret` and its
-/// `TurretPitch`; the sets of flags its default state is drawn for, none and its aliases'; its
+/// `TurretPitch`; its barrels' recoil; the sets of flags its default state is drawn for, none and its aliases'; its
 /// other condition states, in order; the map conditions it ignores (`IgnoreConditionStates`);
 /// and its transition states.
 #[derive(Debug, Clone, PartialEq)]
@@ -149,6 +151,7 @@ pub(crate) struct DrawModule {
     /// The weapon slots whose clips its models show the rounds of,
     /// `ProjectileBoneFeedbackEnabledSlots`.
     pub(crate) rounds_shown: [bool; 3],
+    pub(crate) recoil: IniRecoil,
     sets: Vec<ConditionSet>,
     states: Vec<DrawState>,
     ignored: ConditionSet,
@@ -644,6 +647,7 @@ impl DrawModule {
             turret: None,
             turret_pitch: None,
             rounds_shown: [false; 3],
+            recoil: IniRecoil::default(),
             animation: IniAnimation::default(),
             sets: vec![ConditionSet::default()],
             states: Vec::new(),
@@ -1105,6 +1109,7 @@ impl Reading {
                         module.transitions.push(transition);
                         self.stack.push(Block::Transition { named });
                     }
+                    _ if *kind == DrawKind::Family && module.recoil.field(word, at)? => {}
                     "ignoreconditionstates" if *kind == DrawKind::Family => {
                         module.ignored = ConditionSet::of(at)?;
                     }

@@ -46,7 +46,8 @@ pub use crate::client_file::{ClientFile, ClientFormat};
 pub use crate::client_model::{ClientModel, ClipRounds, ModelScale, ModelTop, NodeUpgrade};
 pub use crate::client_objects::{ClientObject, ClientObjects};
 pub use crate::client_unit::{
-    ClientUnit, FireBarrel, FireBone, LookDraw, LookShown, LookState, LookTransition, LookVariation,
+    BarrelFlash, ClientUnit, FireBarrel, FireBone, LookDraw, LookShown, LookState, LookTransition,
+    LookVariation,
 };
 pub use crate::client_units::ClientUnits;
 pub use crate::condition_test::{AttackPhase, ConditionTest, LifeShare, SiteStage};

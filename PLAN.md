@@ -2,21 +2,48 @@
 
 The open steps, in the order they are done, and the foundations. The rules are in [AGENTS.md](AGENTS.md#workflow).
 
-## Looks of the report of 2026-10-26
+## Net faults
 
-Two faults a player's report showed (2026-10-26, report `1e38d2c4…-945` and its session's log to tick 5711, on Tournament Desert): a Humvee drew its gun's muzzle flash at all times; and China's Gattling tank, attacking a Crusader from tick 5505, did not spin its barrels. Each cause is found; L2 and L3 are one batch, as both change the import's looks and the client's look states.
+A fix of the issue log's Net items, found 2026-10-26. It stands first, as N2 makes each CI run after it keep the frames N3 measures.
 
-### L2. An attacking unit draws its attacking state
+### N1. A wake that fails ends the process
 
-Touches the client files' tests, the import's look flags and the client's look states; it and L3 are one batch, as both change the import's looks and the client's look states, and it stands first of the two, as it adds no data the client must time.
+Touches the net socket's wake, one batch.
 
-- [ ] `ATTACKING` is a condition of no test, `never`, so no unit draws a state of it: the Gattling tank's `ATTACKING` states loop its barrels' spin, and other looks name it beside their attack phases. Zero Hour sets it while its unit's AI attacks, from its attack state's start to its end, its approach and its pursuit among it (`AIAttackState::onEnter`, `onExit`). A condition test holds while its unit has an attack target, and the import gives `ATTACKING` that test. Direction: a look is states of conditions, and the client derives what the sim does not send. Checks: the client files' tests read the test; the import's tests give `ATTACKING` it; the client's tests draw an attacking state while a unit has an attack target and its default after.
+- [ ] A wake whose send fails, other than for a full buffer, clears the pending flag (`udp_port.rs:155`, `Wake::send`), so a wake of another thread that came during that send found the flag set, sent no byte, and is lost: no byte is in flight to end the wait. No order of the flag's operations mends it. tokio's I/O driver calls `waker.wake().expect("failed to wake I/O driver")`, and libuv's `uv__async_send` calls `abort()` on any write error but `EAGAIN`. A send that would block stays a wake, as its buffer holds a byte; an interrupted send sends again; any other error panics; the flag clears only in `take`. `udp.md` gains the decision, its refused option the flag kept set after a failure, as `polling`'s `Poller::notify` keeps it, which stalls the thread the same way; `research/udp.md` gains tokio's and libuv's code, read 2026-10-26. Direction: what can be forgotten is a type, and a logic error crashes. Checks: the wake's test passes; no test makes a loopback send fail, so the panic is held by review.
 
-### L3. A muzzle flash shows only at its shot
+### N2. The LAN check's logs hold each frame's start
 
-Touches the import's looks and the client's models and look states, in L2's batch.
+Touches the LAN check, one batch.
 
-- [ ] A state's default hides each weapon slot's muzzle flashes before its own hides and shows (`ModelNodes::hidden`), so a `ShowSubObject` of a turret shows the flash on the turret's child pivot: the Humvee's state `NONE` shows `Turret`, and with it `avhummer.muzzlefx01`, at all times. Zero Hour hides each flash every frame after the state's hides and shows, and shows it while its barrel's recoil starts (`W3DModelDraw::handleClientRecoil`). The import hides the flashes after the state's hides and shows, and keeps them out of an upgrade's shows and a clip's rounds; the client shows a barrel's flash while its recoil starts, for the frames the draw module's recoil data give. Direction: the importer takes a game's data as it is, and the client derives what the sim does not send. Checks: the import's tests keep a flash hidden under a shown turret; the client's tests show a flash at a shot and hide it after.
+- [ ] `LOG_EXTRA` (`lan_match.rs:42`) names the targets `campfire_net::events::server_frame` and `campfire_net::events::client_frame`, where `ServerFrame` and `ClientFrame` log at `campfire_host::events::…`, so no artifact holds a frame's start, and the research of a late input cannot tell a bot's lead. The filter names the targets the two events log at, so a move of an event cannot leave it empty. Direction: a name is resolved once. Checks: a test of the LAN check logs each event under the filter and reads it back; the LAN check passes.
+
+### N3. The lead of a bot's first order is measured
+
+Touches `docs/research/lan-late-input.md` and the issue log; it stands after N2, as it reads the frames N2 keeps.
+
+- [ ] Every failure of `lan.2` the research holds, stamps 300, 20, 302, 20 and 20, is the first order after a start or a restart; in run 40328962123, bot 0 stamped 20 while the server's last tick was 19, a lead of 1 where the objective is 2, which the sync's deadband of 1 lets stay, and after a stall of every process a lead of 1 leaves only the phase to the server's next tick for the bot's frame and send. From the artifacts of macOS runs after N2, failed and passed, and of Linux runs for comparison: each bot's tick at each frame's start less the server's, from its start or restart to its first order; the frame each order left in; whether the lead reached its objective by then. The facts go to the research, dated; the issue moves to Decide with the options they show, as a deadband on the ahead side alone, or a lead the sync reaches before a first order may go. Checks: none of the code.
+
+## Continuous fire
+
+A fix of the issue log's continuous-fire items, found 2026-10-26: China's Gattling tank spins its barrels faster as it keeps firing, and slower after.
+
+### C1. A streak cools down as Zero Hour's, and its stages draw
+
+Touches the combat capability's streak and the import's weapons and look flags, one batch; it stands before L4, whose trim reads which conditions are tested. The Zero Hour check's golden moves where a Gattling unit fires again after its coast.
+
+- [ ] The streak keeps its count at a fall and at its coast's end, and passes its coast only while it holds a stage (`shot_streak/mod.rs:77`, `ShotStreak::shoot`; `:156`, `coast`), where Zero Hour's `FiringTracker::coolDown` sets the count to 0 and forgets the victim at each cool-down, and `update` cools down in the first frame past the coast whether or not a stage holds, so the next shot counts 1 (GeneralsX `0e79905d1`, `FiringTracker.cpp`). `zero-hour-continuous-fire.md`'s "The end" says the count stays, and `combat.md`'s "A shot streak gives a stage's modifier" refuses OpenRA's reset at each fall as one Zero Hour does not do; both are wrong. A streak cools down at a fall and past its coast, stage or none, as the original; the research and the decision say so. Direction: the importer takes a game's data as it is; a capability serves every game. Checks: the combat tests count a shot after a fall and after a coast with no stage from 1.
+- [ ] `CONTINUOUS_FIRE_MEAN` and `CONTINUOUS_FIRE_FAST` are of no test, though the stage's modifier that sets each reaches every client, as `modifiers` go to everyone by default, and a modifier grants tags. `CONTINUOUS_FIRE_SLOW` is of no test, and no state of the streak holds it: Zero Hour sets it at a fall from a stage and clears it at the next rise, or at the next cool-down, past the coast of the last shot or 31 frames after a coast's fall, as `update` sets its next cool-down `LOGICFRAMES_PER_SECOND` on and runs it in the first frame past (`FiringTracker::speedUp`, `coolDown`, `update`). A streak takes an optional `fall = { modifier, ms }`, whose modifier the unit holds from a fall until its stage rises or its next cool-down, `ms` after a coast's fall or past the coast of a shot after it, under the streak's hold; the import writes each stage's modifier with the tag of its condition, and a fall of 1,000 ms whose modifier holds `continuous_fire_slow`, the rules package declares the three tags, and the look flags give the three conditions their tags' tests. `combat.md` and `09-zero-hour.md`'s "Continuous fire converts" gain the fall. Direction: a capability serves every game; the client derives what reaches every client. Checks: the combat tests hold the fall's modifier from a fall to a rise and to its cool-down's end; the import's tests write the tags and the fall; the client's tests draw a Gattling tank's state of each stage and of its fall while it attacks.
+
+## Untested conditions
+
+A fix of the issue log's Client files item, decided 2026-10-26.
+
+### L4. A set counts the conditions no test says
+
+Touches the client files' units file, the import's looks and the client's look states, one batch; it stands after C1, as each condition a test gains leaves the count.
+
+- [ ] A look's set names each condition of `ConditionTest::Never` (`condition_test.rs:38`, `look_flags/mod.rs:134`), names of one game's conditions the engine carries. In the import of 2026-10-26, 75 conditions are of no test and 13762 sets name one; a set B of a draw beats a set A for every unit when B's tested conditions hold all of A's and B's other tested ones and its untested ones are fewer than A's untested ones, or as many with B first, as Zero Hour's `SparseMatchFinder::findBestInfoSlow` counts a condition its object lacks only among the lacked; that rule leaves 427 of the 13762, which name 12 conditions, `attacking` among them, which L2 tests now. The import trims each set another beats so, a state of no set left with it and a transition of no state's key with that; a set holds its tested names and the count of its untested conditions; `Never` goes, and the client's `SetMask` adds the count to its lacked. `02-engine-core.md`'s "A condition of no test is never held" becomes the count, its refused options naming the names kept and the conditions dropped, which changed 391 of 952 draws' choices; the counts go to `research/zero-hour.md`, dated. Direction: the importer takes a game's data as it is; the engine reads it as it should be. Checks: the client files' tests refuse a set of a name of no test; the import's tests trim a beaten set and count an untested condition; the client's tests draw the same state of a set of a count as of the names it replaced.
 
 ## Turret slots
 
@@ -24,7 +51,7 @@ A fix of the issue log's Ready items, found 2026-10-26.
 
 ### I2. A turret carries the slots its data names
 
-Touches the combat capability's turret and the import's turrets, one batch; it stands after the looks, as no converted weapon of the import of 2026-10-26 stands in a slot its turrets do not control, so it changes no match of Zero Hour's.
+Touches the combat capability's turret and the import's turrets, one batch; it stands before the end of the Effects slice, as no converted weapon of the import of 2026-10-26 stands in a slot its turrets do not control, so it changes no match of Zero Hour's.
 
 - [ ] A turret carries every weapon of its slot kind, where Zero Hour's carries only the slots its `ControlledWeaponSlots` names, and aims the slots of an `AltTurret` with a second turret (`AIUpdateInterface::getWhichTurretForWeaponSlot`); the import reads only an AI module's first `Turret`. A turret carries the weapon slots its data names, and the import writes them from `ControlledWeaponSlots` and an `AltTurret`'s. No converted weapon of the import of 2026-10-26 stands in a slot its turrets do not control; the four `AmericaVehicleBattleShip` types fire one weapon from `PRIMARY` and `SECONDARY`, which their `AltTurret` aims. Direction: a capability serves every game. Checks: the combat tests aim a turret's weapon and fire a weapon of another slot at the body's facing; the import's tests write a turret's slots and an `AltTurret`'s.
 
@@ -34,7 +61,7 @@ The slice of [Effects](docs/design/effects.md): a player of a Zero Hour skirmish
 
 ### End of the slice
 
-It stands last, as the player's check of each shot's effect at its barrel waits for L3's muzzle flash.
+It stands last, as the player's check is of the whole slice.
 
 - [ ] A player sees Tournament Desert's shots, hits, trails and deaths in the client as the game draws them ([question](PLAN_QUESTIONS.md#effects-end-of-the-slice)); then the slice's decisions fold into the documents of their systems, `02-engine-core.md` for the format and the client's particles and `09-zero-hour.md` for what the import converts and loses, the code's citations of `effects.md` with them, and `effects.md` goes.
 

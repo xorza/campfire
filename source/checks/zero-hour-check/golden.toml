@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "e26fc93702141c4851d3858d0f258dd3af35c842c81db965bd44dde5432a4368"
+game = "96bb6491a38511ab2c12d40eb57607e4a2e23576859209ffc0ac1356b0fe4cab"
 rules = "db18bca8292336d666fc24720c9c0fc499e0520a0a0a1b3adff9760c0a9dd04b"
 
 [map]
@@ -36,7 +36,7 @@ dropped = [0, 0, 0]
 varied = 1324
 empty = 272
 states = 23402
-never = 76
+never = 75
 night = 15
 snowy = 17
 animations = 3091
@@ -75,7 +75,7 @@ hits = 0
 trails = 3
 ends = 22
 deaths = 596
-bones = 3622
+bones = 3810
 dropped = [35, 0, 8, 2, 7, 292, 0, 18, 65, 139, 46, 5]
 
 [fought]

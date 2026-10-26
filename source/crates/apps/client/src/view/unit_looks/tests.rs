@@ -224,10 +224,12 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
             { sets = [["upgraded"]], models = [{ model = "upgraded.glb" }] },
             { sets = [["waiting"]], models = [{ model = "site.glb" }] },
             { sets = [["wip"]], models = [{ model = "frame.glb" }] },
+            { sets = [["engaged"]], models = [{ model = "aim.glb" }] },
         ], ignore = ["snow"] }]
 
         [conditions]
         damaged = { test = "life", above = "0.25", at_most = "0.5" }
+        engaged = { test = "attacking" }
         moving = { test = "moving", still_ms = 250 }
         night = { test = "map" }
         rubble = { test = "never" }
@@ -263,10 +265,19 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         };
         UnitLooks::of(types, &data)
     };
-    // The tested conditions' bits, by name: damaged 0, moving 1, upgraded 2, waiting 3, wip 4,
-    // zap 5, zing 6, zombie 7; the map's and the one of no test are none.
-    let [damaged, moving, upgraded, waiting, wip, zap, zing, zombie] =
-        [1, 2, 4, 8, 16, 32, 64, 128];
+    // The tested conditions' bits, by name: damaged 0, engaged 1, moving 2, upgraded 3, waiting 4,
+    // wip 5, zap 6, zing 7, zombie 8; the map's and the one of no test are none.
+    let [
+        damaged,
+        engaged,
+        moving,
+        upgraded,
+        waiting,
+        wip,
+        zap,
+        zing,
+        zombie,
+    ] = [1, 2, 4, 8, 16, 32, 64, 128, 256];
     let drawn = |looks: &UnitLooks, held: u64| {
         let draw = &looks.draws(barracks, None).unwrap().draws()[0];
         let model = &draw.states()[draw.best(held)].shown.models[0];
@@ -293,6 +304,8 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
     assert_eq!(drawn(&day, damaged | moving), "hurt");
     assert_eq!(drawn(&day, upgraded), "upgraded");
     assert_eq!([drawn(&day, waiting), drawn(&day, wip)], ["site", "frame"]);
+    // Engaged, while its unit has an attack target: the aim; once the target is gone, the day.
+    assert_eq!([drawn(&day, engaged), drawn(&day, 0)], ["aim", "day"]);
 
     // What a unit holds: its tag; its walk while it moved within 250 ms; its life above a
     // quarter and at most half of its most, 3 of 8; its site's stage.
@@ -304,6 +317,7 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         life: Some([Num::int(8), Num::int(8)]),
         site: None,
         dead: false,
+        attacking: false,
         attacks: 0,
     };
     assert_eq!(tests.held(still), 0);
@@ -313,6 +327,12 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         ..still
     };
     assert_eq!(tests.held(dead), zombie);
+    // An attack target: engaged, which no time ends, as its unit's progress changes with it.
+    let engaging = UnitFacts {
+        attacking: true,
+        ..still
+    };
+    assert_eq!(tests.held(engaging), engaged);
     // A weapon of the second group reloads: zap, and zing, of any phase; one of the second
     // between shots, zing alone; one of the first, none.
     let attacking = |group, phase| UnitFacts {

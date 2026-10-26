@@ -89,15 +89,16 @@ pub struct LookState {
     pub key: Option<DeclaredName>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waits_for: Option<DeclaredName>,
-    /// The nodes of its models a weapon slot's fire effect plays at, by the slot's place among
-    /// the look's weapons, none for a slot whose effect plays at its unit's place
-    /// (effects.md, A shot's effect at its barrel).
+    /// The barrels of its models' weapon slots, where a shot's fire effect plays and which flash
+    /// it shows, by the slot's place among the look's weapons, none for a slot of no barrel,
+    /// whose effect plays at its unit's place (effects.md, A shot's effect at its barrel;
+    /// 02-engine-core.md, A shot shows its barrel's flash).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fire_bones: Vec<FireBone>,
 }
 
 /// The barrels of the weapon slot `slot` of a state's models, in the order its shots take them,
-/// whose fire effect plays at each one's bone.
+/// where each shot's fire effect plays and which muzzle flash it shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FireBone {
@@ -106,12 +107,23 @@ pub struct FireBone {
 }
 
 /// A barrel of a weapon slot: the node its shot's fire effect plays at, none for a barrel whose
-/// shot plays no fire effect.
+/// shot plays it at its unit; and its muzzle flash, none for a barrel of none.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FireBarrel {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bone: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flash: Option<BarrelFlash>,
+}
+
+/// A barrel's muzzle flash: the nodes of the name `node`, which its state hides, and which each
+/// shot of the barrel shows for `ms` milliseconds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BarrelFlash {
+    pub node: String,
+    pub ms: u32,
 }
 
 /// What a draw draws between a state of the key `from` and one of the key `to`, as Zero Hour's

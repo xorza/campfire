@@ -32,6 +32,7 @@ use crate::view::client_data::ClientLoad;
 use crate::view::drawing::Drawing;
 use crate::view::effects::effect_book::{EffectBook, GroupId};
 use crate::view::effects::effect_plays::{EffectPlays, PlaySources};
+use crate::view::effects::muzzle_flashes::{FlashParts, MuzzleFlashes};
 use crate::view::effects::particle_quads::{GroupQuads, ParticleQuads, ViewAxes};
 use crate::view::effects::particle_run::{ParticleRun, SystemKey};
 use crate::view::effects::step_clock::StepClock;
@@ -40,10 +41,12 @@ use crate::view::ground_heights::GroundHeights;
 use crate::view::look_states::LookStates;
 use crate::view::package_source::PackageAssets;
 use crate::view::unit_looks::UnitLooks;
+use crate::view::unit_models::DressSystems;
 use crate::view::{DrawSystems, ViewSystems};
 
 pub(crate) mod effect_book;
 pub(crate) mod effect_plays;
+pub(crate) mod muzzle_flashes;
 pub(crate) mod particle_quads;
 pub(crate) mod particle_run;
 pub(crate) mod step_clock;
@@ -158,11 +161,15 @@ const SEED: u64 = 0x5EED_5EED_5EED_5EED;
 impl Plugin for EffectsPlugin {
     fn build(&self, app: &mut App) {
         FileMaterialPlugin::require(app);
+        app.init_resource::<MuzzleFlashes>();
         app.add_systems(Startup, MatchEffects::load);
+        // A shot shows its flash over its state's nodes, as Zero Hour sets the state of the shot
+        // before its weapon fires (`AIAttackFireWeaponState::update`).
         app.add_systems(
             Update,
             (
                 MatchEffects::play_fires,
+                MuzzleFlashes::hide_ended,
                 MatchEffects::play_deaths,
                 MatchEffects::fly,
                 MatchEffects::follow,
@@ -171,6 +178,7 @@ impl Plugin for EffectsPlugin {
             )
                 .chain()
                 .after(DrawSystems)
+                .after(DressSystems)
                 .in_set(ViewSystems),
         );
     }
@@ -227,32 +235,39 @@ impl MatchEffects {
         });
     }
 
-    /// Plays each shot's fire effect at its unit's barrel, the bone its type's state names for
-    /// the shot's weapon slot, or at its unit's drawing for none; and each shot's hit of a weapon
-    /// of no projectile at its target's drawing (effects.md, A shot's effect at its barrel). A
-    /// shot is a rise of a slot's ready tick, of a unit whose slots' times changed.
+    /// Plays each shot at its unit's barrel, the next of those its type's state names for the
+    /// shot's weapon slot: its fire effect at the barrel's bone, or at its unit's drawing for a
+    /// barrel of none or a slot of no barrel, as the game's weapon plays one its draw does not
+    /// (`Weapon.cpp`); the barrel's muzzle flash; and its hit of a weapon of no projectile at its
+    /// target's drawing (effects.md, A shot's effect at its barrel). A shot is a rise of a slot's
+    /// ready tick, of a unit whose slots' times changed; a match of no effects shows the flashes
+    /// alone.
     fn play_fires(
-        effects: Option<ResMut<'_, Self>>,
-        (looks, index, heights): (
+        mut effects: Option<ResMut<'_, Self>>,
+        (looks, index, heights, time): (
             Res<'_, UnitLooks>,
             Res<'_, EntityIndex>,
             Option<Res<'_, GroundHeights>>,
+            Res<'_, Time>,
         ),
         shooters: Shooters<'_, '_>,
         drawn: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
         (mut seen, states): (Query<'_, '_, &mut FireSeen>, Query<'_, '_, &LookStates>),
-        (places, children, names): (
+        (places, children, names, mut visibilities): (
             Query<'_, '_, &GlobalTransform>,
-            Query<'_, '_, &Children>,
-            Query<'_, '_, &Name>,
+            Query<'_, '_, &'static Children>,
+            Query<'_, '_, &'static Name>,
+            Query<'_, '_, &'static mut Visibility>,
         ),
-        mut commands: Commands<'_, '_>,
+        (mut flashes, mut commands): (ResMut<'_, MuzzleFlashes>, Commands<'_, '_>),
     ) {
-        let Some(mut effects) = effects else {
-            return;
-        };
-        let effects = &mut *effects;
         let ground = Self::ground(heights.as_deref());
+        let mut parts = FlashParts {
+            children: &children,
+            names: &names,
+            visibilities: &mut visibilities,
+            now: time.elapsed(),
+        };
         for (&unit_type, times, slots, progress, drawing) in &shooters {
             let root = drawing.root();
             let Ok(mut fired) = seen.get_mut(root) else {
@@ -271,23 +286,27 @@ impl MatchEffects {
                 let Some(action) = slot.action.filter(|_| rose && !fresh) else {
                     continue;
                 };
+                let group = looks
+                    .weapons(unit_type)
+                    .iter()
+                    .position(|group| group.contains(&action));
+                let barrel = group.and_then(|group| {
+                    let slot = u8::try_from(group).ok()?;
+                    let barrels = states.get(root).ok()?.barrels(&looks, slot)?;
+                    Some(&barrels[fired.turn(group, barrels.len())])
+                });
+                if let Some(flash) = barrel.and_then(|barrel| barrel.flash.as_ref()) {
+                    flashes.show(&mut parts, root, flash);
+                }
+                let Some(effects) = effects.as_deref_mut() else {
+                    continue;
+                };
                 if let Some(&fire) = effects.plays.fires.get(&action) {
-                    let group = looks
-                        .weapons(unit_type)
-                        .iter()
-                        .position(|group| group.contains(&action));
-                    let barrel = group.and_then(|group| {
-                        let slot = u8::try_from(group).ok()?;
-                        let barrels = states.get(root).ok()?.barrels(&looks, slot)?;
-                        Some(&barrels[fired.turn(group, barrels.len())])
-                    });
-                    // A barrel of no fire bone plays no fire effect, as the game's plays none.
-                    let plays = barrel.is_none_or(|barrel| barrel.bone.is_some());
                     let bone = barrel.and_then(|barrel| barrel.bone.as_deref());
-                    let barrel = bone
+                    let at = bone
                         .and_then(|bone| Self::bone(root, bone, &children, &names))
                         .unwrap_or(root);
-                    if let Some(place) = places.get(barrel).ok().filter(|_| plays) {
+                    if let Ok(place) = places.get(at) {
                         effects
                             .run
                             .play(&effects.book, fire, place.affine(), &ground);

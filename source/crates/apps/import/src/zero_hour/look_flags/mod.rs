@@ -17,7 +17,7 @@ use crate::zero_hour::upgrade_import;
 /// name them (09-zero-hour.md, A condition is the game's name for a test): `NIGHT` and `SNOW` the
 /// map's; `DAMAGED` and `REALLYDAMAGED` its life above and at most the shares of
 /// `UnitDamagedThreshold` and `UnitReallyDamagedThreshold`, each apart from the other, as
-/// `calcDamageState` sets one damage state; `MOVING` its walk; `DYING` and `RUBBLE` its death,
+/// `calcDamageState` sets one damage state; `MOVING` its walk; `ATTACKING` its attack target; `DYING` and `RUBBLE` its death,
 /// which a slow death keeps it for, as `RUBBLE` is the damage state of no life; `AWAITING_CONSTRUCTION` and
 /// `PARTIALLY_CONSTRUCTED` a site before and after a builder first built it, and
 /// `ACTIVELY_BEING_CONSTRUCTED` the engine's tag of a site that grew in the tick, as a dozer's
@@ -113,6 +113,7 @@ impl LookFlags {
             "damaged" => ConditionTest::Life(self.damaged),
             "reallydamaged" => ConditionTest::Life(self.really_damaged),
             "dying" | "rubble" => ConditionTest::Dead,
+            "attacking" => ConditionTest::Attacking,
             "moving" => ConditionTest::Moving {
                 still_ms: Self::STILL_MS,
             },
