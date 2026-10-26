@@ -10,8 +10,6 @@ use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
 use tracing::trace;
 
-pub type Priority = f32;
-
 /// The values a sender holds until the frame sends them: the queue under
 /// `MessageSender<M>` and
 /// `EventSender<M>`.
@@ -24,7 +22,7 @@ pub(crate) struct SendQueue<M> {
 struct Queued<M> {
     value: M,
     channel: ChannelTypeId,
-    priority: Priority,
+    priority: f32,
 }
 
 impl<M> Default for SendQueue<M> {
@@ -68,7 +66,7 @@ pub(crate) trait QueuedSender<M>: Component<Mutability = Mutable> {
 }
 
 impl<M: 'static> SendQueue<M> {
-    pub(crate) fn push(&mut self, value: M, channel: ChannelTypeId, priority: Priority) {
+    pub(crate) fn push(&mut self, value: M, channel: ChannelTypeId, priority: f32) {
         self.queued.push(Queued {
             value,
             channel,
@@ -82,9 +80,7 @@ impl<M: 'static> SendQueue<M> {
     }
 
     /// Serializes each value queued in the `S` among `senders`, after its net id, into `link`. A
-    /// value whose serialization fails, or that is above its channel's size limit, is dropped
-    /// alone: the ones queued behind it are sent. A sender with nothing queued is read alone, so
-    /// it stays unchanged.
+    /// sender with nothing queued is read alone, so it stays unchanged.
     pub(crate) fn send<S: QueuedSender<M>>(
         senders: &mut FilteredEntityMut<'_, '_>,
         net_id: NetId,

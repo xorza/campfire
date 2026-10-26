@@ -6,9 +6,9 @@ pub struct CallbackTable<C, const N: usize>([Option<C>; N]);
 impl<C: Copy, const N: usize> CallbackTable<C, N> {
     /// Puts `callback` in place `at`, which holds none yet.
     pub fn register(&mut self, at: usize, callback: C) {
-        let slot = &mut self.0[at];
-        assert!(slot.is_none(), "a place of a registry takes one callback");
-        *slot = Some(callback);
+        let place = &mut self.0[at];
+        assert!(place.is_none(), "a place of a registry takes one callback");
+        *place = Some(callback);
     }
 
     /// The callback in place `at`, when one was registered there.

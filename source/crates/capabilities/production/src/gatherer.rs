@@ -1,8 +1,9 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_actions::ActionKind;
 use campfire_common::Tick;
-use campfire_declarations::PerId;
+use campfire_declarations::{BookCx, BookError, ById, ByIdBuilder, PerId};
 use campfire_math::Vec3;
 use campfire_players::PlayersWorld;
 use campfire_sim::{
@@ -14,6 +15,7 @@ use campfire_values::{NameId, ResourceId, UnitType};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
+use crate::Production;
 use crate::order_dues::{self, StandingOrder};
 
 /// A unit that gathers, as one whose slots hold a gather: its gather loop, none while it has
@@ -154,6 +156,19 @@ impl Replication for Gatherer {
 
 impl PerId<UnitType> for Gatherer {
     const SCRIPTS_ONLY: bool = false;
+}
+
+impl Gatherer {
+    /// A gatherer of each unit type that stands and places a gather in its slots.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
+        for unit in cx.standing() {
+            if Production::slots(cx, unit, ActionKind::Gather) {
+                book.set(unit.unit_type, Self::default());
+            }
+        }
+        Ok(book.build())
+    }
 }
 
 #[cfg(feature = "internals")]

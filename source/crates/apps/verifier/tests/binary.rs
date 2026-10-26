@@ -34,8 +34,8 @@ fn the_binary_logs_the_last_state_hash() {
             .output()
             .unwrap()
     };
-    // Every package of the workspace: what the verifier holds.
-    let packages = PackageDir::workspace("");
+    // The engine's test packages, the lane mode's among them, so each run reads no other.
+    let packages = PackageDir::workspace("test/engine");
     let hash = verify_file(&packages, Path::new(&path), None).unwrap();
     let packages = packages.to_str().unwrap();
     let success = format!("{} file={path} hash={hash}\n", Verified::MESSAGE);

@@ -44,7 +44,9 @@ pub use crate::client_unit::{
 };
 pub use crate::client_units::ClientUnits;
 pub use crate::condition_test::{AttackPhase, ConditionTest, LifeShare, SiteStage};
-pub use crate::error::{ClientFileError, TeamColorsError, TerrainFileError, TextureLevelsError};
+pub use crate::error::{
+    ClientFileError, TeamColorsError, TerrainFileError, TextureLevelsError, UntestedCondition,
+};
 pub use crate::hud_file::{HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};
 pub use crate::ktx2_image::Ktx2Image;
@@ -59,8 +61,8 @@ pub use crate::state_animation::{
 };
 pub use crate::team_colors::TeamColors;
 pub use crate::terrain_file::{
-    BorderWrap, GroundQuad, Overlay, TerrainFile, TerrainQuads, TerrainSurface, TerrainTexture,
-    TextureCopy,
+    BorderWrap, DecalVertex, GroundQuad, Overlay, TerrainDecals, TerrainFile, TerrainFileFields,
+    TerrainQuads, TerrainSurface, TerrainTexture, TextureCopy,
 };
 pub use crate::texture_format::TextureFormat;
 pub use crate::texture_levels::TextureLevels;

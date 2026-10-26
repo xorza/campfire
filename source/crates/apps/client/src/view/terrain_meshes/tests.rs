@@ -1,4 +1,8 @@
-use campfire_client_files::{GroundQuad, Overlay};
+use bevy::math::UVec2;
+use campfire_client_files::{
+    DecalVertex, GroundQuad, Overlay, TerrainFileFields, TerrainQuads, TerrainSurface,
+    TerrainTexture,
+};
 use campfire_math::Num;
 
 use super::*;
@@ -23,9 +27,9 @@ fn grid() -> HeightGrid {
     .unwrap()
 }
 
-/// The ground of the grid's four cells, cell 3 flipped, and an overlay over cell 3; a texture
-/// of 64 × 32 texels.
-fn quads() -> TerrainQuads {
+/// The ground of the grid's four cells, cell 3 flipped, an overlay over cell 3, and a decal
+/// triangle; a texture of 64 × 32 texels.
+fn file() -> TerrainFile {
     let square = |corner: Vec2| {
         [Vec2::ZERO, Vec2::X, Vec2::ONE, Vec2::Y].map(|offset| corner + 16.0 * offset)
     };
@@ -42,7 +46,7 @@ fn quads() -> TerrainQuads {
         flip: cell == 3,
     })
     .collect();
-    TerrainQuads {
+    let quads = TerrainQuads {
         columns: 3,
         ground,
         overlays: vec![Overlay {
@@ -51,7 +55,39 @@ fn quads() -> TerrainQuads {
             alpha: [0, 255, 51, 0],
             flip: false,
         }],
-    }
+    };
+    // Near the samples [0, 0], [1, 1] at a tie on both axes, and [2, 2] past the grid.
+    let decals = TerrainDecals {
+        vertices: [
+            ([-6.0, 3.0, -20.0], [16.0, 8.0]),
+            ([-5.0, 3.0, -15.0], [32.0, 8.0]),
+            ([14.0, 3.0, 40.0], [32.0, 16.0]),
+        ]
+        .map(|(position, uv)| DecalVertex {
+            position: Vec3::from_array(position),
+            uv: Vec2::from_array(uv),
+        })
+        .to_vec(),
+        triangles: vec![[0, 2, 1]],
+    };
+    let texture = TerrainTexture {
+        size: UVec2::new(64, 32),
+        levels: 1,
+        copies: Vec::new(),
+        wraps: Vec::new(),
+    };
+    let surface = TerrainSurface {
+        metallic: 0.0,
+        roughness: 1.0,
+        specular: 0.0,
+    };
+    TerrainFile::new(TerrainFileFields {
+        quads,
+        decals,
+        texture,
+        surface,
+    })
+    .unwrap()
 }
 
 fn close(found: Vec3, expected: Vec3) -> bool {
@@ -61,7 +97,7 @@ fn close(found: Vec3, expected: Vec3) -> bool {
 
 #[test]
 fn a_quad_lies_on_its_cell_s_samples_with_their_normals_its_coordinates_and_its_diagonal() {
-    let meshes = TerrainMeshes::of(&quads(), UVec2::new(64, 32), &grid());
+    let meshes = TerrainMeshes::of(&file(), &grid());
     let ground = &meshes.ground;
     assert_eq!(ground.positions.len(), 16);
     // Cell 0's corners: the samples [0, 0], [1, 0], [1, 1] and [0, 1].
@@ -118,8 +154,8 @@ fn a_quad_lies_on_its_cell_s_samples_with_their_normals_its_coordinates_and_its_
     assert!(ground.colors.is_empty());
     // The overlay lies on cell 3, of its own coordinates and alpha, 51 / 255 = 0.2.
     let overlay = &meshes.overlay;
-    assert_eq!(overlay.positions, ground.positions[12..]);
-    assert_eq!(overlay.normals, ground.normals[12..]);
+    assert_eq!(overlay.positions[..4], ground.positions[12..]);
+    assert_eq!(overlay.normals[..4], ground.normals[12..]);
     assert_eq!(overlay.uvs[0], Vec2::splat(0.5));
     assert_eq!(overlay.uvs[2], Vec2::new(0.75, 1.0));
     assert_eq!(
@@ -128,7 +164,22 @@ fn a_quad_lies_on_its_cell_s_samples_with_their_normals_its_coordinates_and_its_
             .iter()
             .map(|color| color.w)
             .collect::<Vec<_>>(),
-        [0.0, 1.0, 0.2, 0.0]
+        [0.0, 1.0, 0.2, 0.0, 1.0, 1.0, 1.0]
     );
-    assert_eq!(overlay.indices, [0, 2, 1, 0, 3, 2]);
+    // The decal after the overlay, its indices past the overlay's four vertices. Its first
+    // vertex lies 0.4 cells east of [0, 0]; its second half a cell from [0, 0] on both axes, so
+    // [1, 1]; its third 2.4 cells east and 6 south, so [2, 2], the grid's last.
+    assert_eq!(overlay.indices, [0, 2, 1, 0, 3, 2, 4, 6, 5]);
+    assert_eq!(overlay.positions[4], Vec3::new(-6.0, 3.0, -20.0));
+    assert_eq!(overlay.normals[4], ground.normals[0]);
+    assert_eq!(overlay.normals[5], ground.normals[2]);
+    assert_eq!(overlay.normals[6], ground.normals[14]);
+    assert_eq!(
+        overlay.uvs[4..],
+        [
+            Vec2::new(0.25, 0.25),
+            Vec2::new(0.5, 0.25),
+            Vec2::new(0.5, 0.5)
+        ]
+    );
 }

@@ -6,6 +6,7 @@ use campfire_common::DeclaredName;
 use campfire_declarations::{Listed, ListedSet};
 use campfire_math::Num;
 use campfire_script::{ApiBuilder, DataSection, DataTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use serde::de::Error;
 use serde::ser::SerializeMap;
@@ -93,6 +94,8 @@ impl Listed for ProjectileDeliveryData {
     type Set = DeliverySections;
 
     const KEY: &'static str = "projectile";
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn DeliverySection> {
         Arc::new(self)

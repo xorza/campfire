@@ -81,6 +81,7 @@ thiserror = { workspace = true, features = ["std"] }
 [dev-dependencies]
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
+campfire-threads = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

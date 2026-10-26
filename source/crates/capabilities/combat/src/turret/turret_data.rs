@@ -1,6 +1,7 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{PatchError, Patched, Section, SectionTable};
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -69,4 +70,5 @@ impl DataSection for TurretData {
 impl Section for TurretData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "turret";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

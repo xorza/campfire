@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use bevy::DefaultPlugins;
 use bevy::app::{App, PluginGroup};
+use bevy::asset::io::{AssetSourceBuilder, AssetSourceId};
 use bevy::asset::{AssetApp, AssetPlugin};
 use bevy::log::LogPlugin;
 use bevy::mesh::Mesh;
@@ -35,10 +36,11 @@ use crate::view::match_picking::MatchPicking;
 use crate::view::unit_looks::UnitLooks;
 
 /// An app with no window of what a client's match holds before any plugin of the client's end, as
-/// `add_match` adds it, with a clock and the assets of meshes and materials.
+/// `add_match` adds it, with a clock and the assets of meshes and materials, loaded on the test's
+/// pools of one thread.
 pub(crate) fn view() -> App {
     let mut app = App::new();
-    app.add_plugins((TimePlugin, AssetPlugin::default()));
+    app.add_plugins((OneThreadPlugins, TimePlugin, AssetPlugin::default()));
     app.init_asset::<Mesh>();
     app.init_asset::<StandardMaterial>();
     add_match(&mut app);
@@ -94,6 +96,15 @@ pub(crate) fn add_match(app: &mut App) {
     app.insert_resource(MatchColors::new(TeamColors::default()));
     app.insert_resource(MatchHud(HudFile::default()));
     app.insert_resource(MatchPicking(PickingFile::default()));
+}
+
+/// An app with no window that loads assets on the test's thread from `source` as well, under
+/// `id`, a source registered before the asset plugin builds, as Bevy asks.
+pub(crate) fn assets_with(id: AssetSourceId<'static>, source: AssetSourceBuilder) -> App {
+    let mut app = App::new();
+    app.register_asset_source(id, source);
+    app.add_plugins((OneThreadPlugins, AssetPlugin::default()));
+    app
 }
 
 /// An app with no window that loads assets on the test's thread, models among them.

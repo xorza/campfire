@@ -368,25 +368,6 @@ fn a_late_value_moves_the_run_after_it() {
     assert_eq!(effective_value_at(&history, NetTick(9)), Some(4.0));
 }
 
-/// A shift by -3 saturates 1 and 2 at 0 together: the unchanged 2 keeps tick 0 and takes the
-/// explicit state of 1, so the front stays explicit, and 5 moves to 2 with its source, 1
-/// saturated to 0.
-#[test]
-fn a_shift_keeps_the_front_explicit() {
-    let mut history = ConfirmedHistory::<TestValue>::default();
-    history.insert_present(NetTick(1), TestValue(1.0));
-    assert!(history.add_unchanged(NetTick(2)));
-    assert!(history.add_unchanged(NetTick(5)));
-
-    history.shift(-3);
-
-    assert_eq!(
-        entries(&history),
-        vec![(NetTick(0), explicit(1.0)), (NetTick(2), same(0))]
-    );
-    assert_eq!(effective_value_at(&history, NetTick(2)), Some(1.0));
-}
-
 /// With a value at 1, a removal at 4, a value at 6 and an unchanged anchor at 8, a range holds
 /// the removal only when it covers tick 4: its start is exclusive and its end inclusive, and the
 /// anchor at 8 resolves to the value at 6.

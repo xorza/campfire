@@ -176,7 +176,7 @@ impl FixedMatch {
             .expect("a fixed session's chain holds the segment");
         self.game
             .session_mut()
-            .record_checkpoint(record.clone())
+            .serve_checkpoint(record.clone())
             .expect("the match's own checkpoint");
         record
     }
@@ -187,7 +187,7 @@ impl FixedMatch {
         let result = self.game.session_result();
         self.game
             .session_mut()
-            .record_result(result)
+            .serve_result(result)
             .expect("the match's own result");
         self.game.session_mut().reveal_seed();
         result

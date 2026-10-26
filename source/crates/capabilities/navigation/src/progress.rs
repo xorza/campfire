@@ -51,16 +51,17 @@ impl Progress {
     /// The ticks in a row, at `rate`, a walker that moves less than half a step a tick takes to be
     /// stuck.
     pub fn stuck_after(rate: MatchRate) -> u32 {
-        let ticks = rate.ticks(Self::STUCK_MS).expect("a fixed time fits").get();
-        u32::try_from(ticks).expect("a fixed time's ticks fit u32")
+        Self::ticks_in(rate, Self::STUCK_MS)
     }
 
     /// The ticks in a row, at `rate`, a walker stays stuck before it asks its route again.
     pub(crate) fn ask_after(rate: MatchRate) -> u32 {
-        let ticks = rate
-            .ticks(Self::STUCK_ASK_MS)
-            .expect("a fixed time fits")
-            .get();
+        Self::ticks_in(rate, Self::STUCK_ASK_MS)
+    }
+
+    /// The ticks, at `rate`, of `ms`, one of its fixed times.
+    fn ticks_in(rate: MatchRate, ms: u64) -> u32 {
+        let ticks = rate.ticks(ms).expect("a fixed time fits").get();
         u32::try_from(ticks).expect("a fixed time's ticks fit u32")
     }
 
@@ -102,21 +103,14 @@ impl Progress {
         self.stuck_asks >= Self::MOST_STUCK_ASKS
     }
 
-    /// Forgets the walk, as the walker took a goal of its own or stopped.
+    /// Forgets the walk, as the walker took a goal of its own or stopped, or passed a waypoint,
+    /// the way on that a stuck walker lacks, so it takes its next waypoint fresh.
     pub const fn restart(&mut self) {
         *self = Self {
             toward: None,
             stuck: 0,
             stuck_asks: 0,
         };
-    }
-
-    /// Forgets the routes it asked as it was stuck and its stuck ticks, as it passed a waypoint,
-    /// the way on that a stuck walker lacks, and takes its next waypoint fresh.
-    pub(crate) const fn passed_waypoint(&mut self) {
-        self.toward = None;
-        self.stuck = 0;
-        self.stuck_asks = 0;
     }
 
     /// Counts an ask of its route again as the walker was stuck, and starts its stuck ticks again,
@@ -193,7 +187,7 @@ mod tests {
         // Passing a waypoint is progress: the count starts again, and the next waypoint, taken
         // fresh, counts nothing its first tick.
         assert_eq!(progress.track(here, detour, step), 1);
-        progress.passed_waypoint();
+        progress.restart();
         assert_eq!(progress.track(here, waypoint, step), 0);
     }
 }

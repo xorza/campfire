@@ -2,6 +2,7 @@ use campfire_declarations::{
     BookCx, BookError, ById, ByIdBuilder, PatchError, Patched, PerId, Section, SectionTable,
 };
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::UnitType;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -87,6 +88,7 @@ impl DataSection for UnitNavigationData {
 impl Section for UnitNavigationData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "navigation";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(test)]

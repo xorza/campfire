@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
 use campfire_declarations::{PatchError, Patched, Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable, UnknownName};
 use campfire_units::PoolId;
 use campfire_values::{Named, Names, Stat};
@@ -111,4 +112,5 @@ impl DataSection for LeechData {
 impl Section for ModeCombatData {
     const TABLE: SectionTable = SectionTable::Mode;
     const KEY: &'static str = "combat";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

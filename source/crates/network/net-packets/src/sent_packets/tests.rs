@@ -86,7 +86,7 @@ fn the_largest_newly_acknowledged_gives_the_rtt_sample() {
 fn a_packet_the_threshold_spares_is_lost_by_time() {
     let (mut packets, mut reno) = sent(2);
     let mut rtt = RttEstimator::default();
-    rtt.update(Duration::from_millis(80), Duration::ZERO);
+    rtt.update(Duration::from_millis(80), Duration::ZERO, at(0));
     let mut fates = Vec::new();
     packets.on_ack(ack(1, 0), at(50), &mut rtt, &mut reno, &mut fates);
     // The sample of 1, sent at 10 ms, is 40 ms, and the latest; 80 ms stays the larger.
@@ -122,15 +122,16 @@ fn the_probe_timeout_doubles_with_each_probe() {
 }
 
 /// Losses with no acknowledgement among them that span more than three probe timeouts collapse
-/// the window. Packets 0 to 20 go 10 ms apart; after a sample of 10 ms, an ACK of 20 alone at
-/// 205 ms gives a sample of 5 ms: smoothed (7 · 10 + 5) / 8 = 9.375 ms, variance (3 · 5 + 5) / 4
-/// = 5 ms. It calls 0 to 17 lost by number, and 18 and 19 by time, 9/8 · 9.375 ms after their
-/// sends. They span 190 ms, past (9.375 + 4 · 5 + 25) · 3 = 163.125 ms.
+/// the window. Packets 0 to 20 go 10 ms apart; after a sample of 10 ms at 0 ms, an ACK of 20 alone
+/// at 205 ms gives a sample of 5 ms: smoothed (7 · 10 + 5) / 8 = 9.375 ms, variance (3 · 5 + 5) /
+/// 4 = 5 ms. It calls 0 to 17 lost by number, and 18 and 19 by time, 9/8 · 9.375 ms after their
+/// sends. Those sent after the first sample, 1 to 19, span 180 ms, past (9.375 + 4 · 5 + 25) · 3
+/// = 163.125 ms.
 #[test]
 fn losses_over_three_probe_timeouts_are_a_persistent_congestion() {
     let (mut packets, mut reno) = sent(21);
     let mut rtt = RttEstimator::default();
-    rtt.update(Duration::from_millis(10), Duration::ZERO);
+    rtt.update(Duration::from_millis(10), Duration::ZERO, at(0));
     let mut fates = Vec::new();
     packets.on_ack(ack(20, 0), at(205), &mut rtt, &mut reno, &mut fates);
     let lost = fates
@@ -144,6 +145,15 @@ fn losses_over_three_probe_timeouts_are_a_persistent_congestion() {
     let (mut packets, mut reno) = sent(21);
     let mut fates = Vec::new();
     packets.on_ack(ack(20, 1 << 9), at(205), &mut rtt, &mut reno, &mut fates);
+    assert_eq!(reno.window(), 6_000);
+
+    // With the first sample at 100 ms, the losses sent after it, 11 to 19, span 80 ms: the
+    // window only halves (RFC 9002 §7.6.2).
+    let (mut packets, mut reno) = sent(21);
+    let mut rtt = RttEstimator::default();
+    rtt.update(Duration::from_millis(10), Duration::ZERO, at(100));
+    let mut fates = Vec::new();
+    packets.on_ack(ack(20, 0), at(205), &mut rtt, &mut reno, &mut fates);
     assert_eq!(reno.window(), 6_000);
 }
 

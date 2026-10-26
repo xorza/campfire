@@ -1,11 +1,6 @@
 //! A session over the network stack: its messages on the stack's channels, the server's and the
 //! client's plugins on their links, and the local server of a singleplayer client.
 
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-
 mod close_code;
 mod events;
 mod local;
@@ -28,7 +23,7 @@ pub use crate::local::local_server::{
 pub use crate::local_pace::LocalPacePlugin;
 pub use crate::net_protocol::{InputChannel, NetProtocolPlugin};
 pub use crate::paced_runner::PacedRunnerPlugin;
-pub use crate::sim_client::{LeaveRequest, PendingOrders, PendingSaves, SimClientPlugin};
+pub use crate::sim_client::{LeaveRequest, PendingJournalCommands, PendingOrders, SimClientPlugin};
 pub use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
 pub use crate::sim_server::lobby::{Lobby, LobbyOpening, LobbySetup, LobbyStart};
 pub use crate::sim_server::pending_replay::PendingReplay;

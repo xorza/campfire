@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declarations::Book;
+use campfire_declarations::{Book, BookCx, BookError};
 use campfire_script::MatchNames;
 
 use crate::mode_supply_data::ModeSupplyData;
@@ -21,4 +21,11 @@ impl Book for SupplyBook {
 
     /// The production column takes it from the match at each read.
     fn share(&self, _: &mut MatchNames) {}
+}
+
+impl SupplyBook {
+    /// The mode's `[supply]`, none when it counts none.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        Ok(Self(cx.mode_section::<ModeSupplyData>().copied()))
+    }
 }

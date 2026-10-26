@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use campfire_declarations::{Listed, SectionReaders};
 use campfire_script::ApiBuilder;
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_values::{Number, Ranked};
 use serde::Deserialize;
@@ -40,6 +41,8 @@ impl Listed for TestKind {
     type Set = KindSections;
 
     const KEY: &'static str = ActionKind::Cast.name();
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn KindSection> {
         Arc::new(self)

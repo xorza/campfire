@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable, UnitTypeData};
 use campfire_script::StateFieldDecl;
+use campfire_script::{ApiVersion, Status};
 use campfire_values::Scalar;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,7 @@ pub struct TypeTagsData(pub Vec<DeclaredName>);
 impl Section for TypeTagsData {
     const TABLE: SectionTable = SectionTable::AnyType;
     const KEY: &'static str = "tags";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// A unit type's `params`, by name.
@@ -34,6 +36,7 @@ pub struct TypeParamsData(pub BTreeMap<DeclaredName, Scalar>);
 impl Section for TypeParamsData {
     const TABLE: SectionTable = SectionTable::AnyType;
     const KEY: &'static str = "params";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// A unit type's `state`, each field by name.
@@ -44,6 +47,7 @@ pub(crate) struct TypeStateData(pub BTreeMap<DeclaredName, StateFieldDecl>);
 impl Section for TypeStateData {
     const TABLE: SectionTable = SectionTable::AnyType;
     const KEY: &'static str = "state";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// The core fields of a unit type's sections, each empty where it gives none.

@@ -104,11 +104,14 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
     ] {
         assert!(tags.holds(tag.as_str()), "{tag}");
     }
-    assert_eq!(navigation.spawn_tags, std::slice::from_ref(&names.start));
+    assert_eq!(
+        navigation.spawn_tags,
+        [names.start.clone(), names.rally.clone()]
+    );
     let marker_params = rules.take::<Vec<DeclaredName>>("marker_params");
     assert_eq!(
         marker_params.unwrap().unwrap(),
-        std::slice::from_ref(&names.waypoint_name)
+        [names.waypoint_name.clone(), names.player_slot.clone()]
     );
     let slots = rules.take::<Vec<SlotKindData>>("slots").unwrap().unwrap();
     let slots: Vec<&DeclaredName> = slots.iter().map(|slot| &slot.name).collect();

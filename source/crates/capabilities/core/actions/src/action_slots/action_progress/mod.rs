@@ -234,7 +234,7 @@ impl ActionProgress {
         dues.push(self);
     }
 
-    /// Ends what is under way, as `stop` does, but makes no unit due.
+    /// Ends what is under way, as `end` does, but makes no unit due.
     const fn halt(&mut self) {
         self.cut();
         self.underway = None;
@@ -506,8 +506,9 @@ impl ActionProgress {
         }
     }
 
-    /// Stops what is under way from `slot`, a channel cut, and its pre-attack, as its slot is
-    /// filled afresh.
+    /// Ends what is under way from `slot`, a channel cut, and its pre-attack, as its slot is
+    /// filled afresh: an order of the slot ends, as its action is gone, where an interrupt sends
+    /// it back to its order; a wind-down runs on, as it is of the slot, whatever the slot holds.
     pub(crate) fn slot_emptied(&mut self, slot: u8, dues: &mut ProgressDues<'_>) {
         if self
             .pre_attack
@@ -515,11 +516,10 @@ impl ActionProgress {
         {
             self.pre_attack = None;
         }
-        if self
-            .underway
-            .is_some_and(|underway| underway.slot() == slot)
-        {
-            self.interrupt(dues);
+        if self.underway.is_some_and(|underway| {
+            underway.slot() == slot && !matches!(underway, InProgress::WindDown { .. })
+        }) {
+            self.end(dues);
         }
     }
 }
@@ -529,10 +529,10 @@ impl SimComponent for ActionProgress {
     type Host = UnitEntity;
 
     // What is under way of a slot its unit does not have, an attack of no weapon or an order of
-    // one, has no rules for a cast to follow; a channel's action and rank are its slot's. A
-    // place past the world's bound would overflow the distance to another. A death ends what is
-    // under way, the attack target and its pre-attack, and no pass of a dead unit's would end
-    // them.
+    // one, has no rules for a cast to follow; a channel's action is its slot's, at a rank its slot
+    // holds or passed. A place past the world's bound would overflow the distance to another. A
+    // death ends what is under way, the attack target and its pre-attack, and no pass of a dead
+    // unit's would end them.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let book = world.resource::<ActionBook>();
         let dead = world.entity(entity).contains::<Dead>();
@@ -562,8 +562,10 @@ impl ActionProgress {
                     wind_down,
                     ..
                 } => {
-                    let held =
-                        slot.is_some_and(|slot| slot.action == Some(id) && slot.rank == Some(at));
+                    // A learn raises its slot's rank under it, and a rank never falls.
+                    let held = slot.is_some_and(|slot| {
+                        slot.action == Some(id) && slot.rank.is_some_and(|rank| rank >= at)
+                    });
                     let rule = book
                         .get(id)
                         .and_then(|action| action.values_at(at)?.channel);

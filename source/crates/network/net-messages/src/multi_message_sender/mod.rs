@@ -4,7 +4,6 @@ use crate::message_registry::MessageRegistry;
 use crate::message_type_id::MessageTypeId;
 use crate::replicon_map_param::RepliconMapParam;
 use crate::send_map_view::SendMapView;
-use crate::send_queue::Priority;
 use bevy_ecs::query::{Has, QueryFilter, With};
 use bevy_ecs::{
     entity::EntitySet,
@@ -67,7 +66,7 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
         &mut self,
         message: &M,
         links: impl EntitySet,
-        priority: Priority,
+        priority: f32,
     ) {
         let channel = self
             .channels
@@ -91,14 +90,12 @@ impl<F: QueryFilter> MultiMessageSender<'_, '_, F> {
             } else {
                 LinkDirection::ServerToClient
             };
-            debug_assert!(
+            // A send against the registered direction misuses the public API.
+            assert!(
                 travels(sends),
                 "{} is sent {sends:?}, against its registered direction",
                 core::any::type_name::<M>()
             );
-            if !travels(sends) {
-                continue;
-            }
             let bytes = if maps_entities && is_client {
                 let view = self
                     .replicon

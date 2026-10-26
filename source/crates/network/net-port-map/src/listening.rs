@@ -1,3 +1,8 @@
+#![expect(
+    unsafe_code,
+    reason = "`polling` registers a socket with its poller by an unsafe call (02-engine-core.md, Unsafe only where an outside API asks)"
+)]
+
 use std::io::{self, ErrorKind};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;

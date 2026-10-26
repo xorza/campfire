@@ -5,11 +5,6 @@
 //! Every type comes from its layer crate, as `campfire_net_link::Link` or
 //! `campfire_net_replication::Replicate`; this crate re-exports none of them.
 
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-
 mod client_plugins;
 #[cfg(feature = "internals")]
 mod fixtures;

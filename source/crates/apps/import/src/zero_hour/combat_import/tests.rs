@@ -1,4 +1,3 @@
-use campfire_client_files::ClientUnit;
 use campfire_projectiles::{CruiseData, ProjectileHits, SteerData};
 use campfire_values::FilterData;
 
@@ -659,11 +658,8 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
         looks,
         [look("tankshell_cannon"), look("tankshell_howitzer")]
     );
-    let mut client = ClientUnits::default();
     let own = ClientUnit::new(Vec::new());
-    client
-        .units
-        .insert(DeclaredName::new("tankshell").unwrap(), own);
+    let mut client = BTreeMap::from([(DeclaredName::new("tankshell").unwrap(), own)]);
     // Were the shell armed of a cannon in its secondary slot, its own look would take that group
     // at the place of the slot; its projectiles' looks, copied before, take none.
     let cannon = DeclaredName::new("weapon_cannon").unwrap();
@@ -674,13 +670,12 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
         ..CombatImport::default()
     }
     .complete_looks(&mut client);
-    let named: Vec<&str> = client.units.keys().map(DeclaredName::as_str).collect();
+    let named: Vec<&str> = client.keys().map(DeclaredName::as_str).collect();
     assert_eq!(
         named,
         ["tankshell", "tankshell_cannon", "tankshell_howitzer"]
     );
-    let weapons: Vec<&Vec<Vec<DeclaredName>>> =
-        client.units.values().map(|look| &look.weapons).collect();
+    let weapons: Vec<&Vec<Vec<DeclaredName>>> = client.values().map(|look| &look.weapons).collect();
     assert_eq!(weapons, [&slots, &Vec::new(), &Vec::new()]);
     // A name of a weapon's shell that an object took is refused.
     let clash = import("Howitzer", [400, 300], "Object TankShell_Cannon\nEnd\n");

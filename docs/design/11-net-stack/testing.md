@@ -45,7 +45,7 @@ How the stack is tested over an emulated network; the clocks are in [Time](time.
 - **Presets are plausible profiles.** `DuplexModel`'s LTE, EDGE and Very Bad Network take the
   Network Link Conditioner's values as third parties report them (countingup, NSHipster), as no
   Apple page lists them; they are not measurements.
-- **The packet session drops a copy of a packet,** by its window of 32 accepted packets and the
+- **The packet session drops a copy of a packet,** by its window of 64 accepted packets and the
   packets the frame holds, so every IO gets the same at-most-once delivery on unreliable
   channels. Refused: leaving it to the IO, since a datagram IO without its own check would
   deliver a message twice.

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// of the tick its client drew (08-sessions.md, The log is the local server's, published at the
 /// report's tick).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SaveCommand {
+pub enum JournalCommand {
     Save,
     LoadLatest,
     Report(ReportKey),

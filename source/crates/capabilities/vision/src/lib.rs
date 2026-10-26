@@ -2,10 +2,6 @@
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-#![expect(
     clippy::type_complexity,
     reason = "a Bevy query names its data and its filters in one type"
 )]
@@ -106,7 +102,7 @@ impl Module for Vision {
         d.server_part::<UnitEntity, SeenBy>();
     }
 
-    /// Adds vision to a match, on combat, when its map has a grid: in Vision, the last stage of a
+    /// Adds vision to a match when its map has a grid: in Vision, the last stage of a
     /// tick, each living unit with a sight reveals the grid cells around it to its vision group,
     /// and each unit learns the teams that see it, with the reveals under way. A match of no grid
     /// sees nothing. What a team sees is the server's: a predicting client holds the units its

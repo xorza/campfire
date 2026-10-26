@@ -1,8 +1,11 @@
 use campfire_geometry::internals::KernelScene;
 use campfire_geometry::{Bounds, Grid, Polygon};
 
+use campfire_common::Ticks;
+
 use super::*;
 use crate::brush_map::BrushMap;
+use crate::reveals::Reveal;
 
 /// A grid of 1 m cells over ±50 m, three teams with no allies, so three groups, and two brushes:
 /// a square from (−6, −6) to (4, 5) and a triangle by (8, 8).
@@ -70,7 +73,8 @@ fn held(fog: &Fog, vision: &VisionGrid) -> Vec<[bool; 2]> {
 #[test]
 fn a_counted_fog_sees_what_a_fog_built_afresh_each_tick_sees() {
     // 40 slots over 200 ticks: each tick a slot's seer may leave, come, change team, or move up
-    // to half a meter either way, and every seventh tick reveals 3 m to team 1.
+    // to half a meter either way, and every seventh tick reveals 3 m to team 1 for 10 ticks, so
+    // two reveals overlap at times and each ends by itself.
     let vision = vision();
     let mut scene = KernelScene::new(5);
     let seer = |scene: &mut KernelScene, slot: usize| Seer {
@@ -83,6 +87,7 @@ fn a_counted_fog_sees_what_a_fog_built_afresh_each_tick_sees() {
     let mut slots: Vec<Option<Seer>> = (0..40).map(|slot| Some(seer(&mut scene, slot))).collect();
     let mut fog = Fog::default();
     fog.rebuild(&vision, &Relations::default());
+    let mut held_reveals = Reveals::default();
     for tick in 0..200 {
         for (slot, unit) in slots.iter_mut().enumerate() {
             match scene.below(12) {
@@ -110,14 +115,23 @@ fn a_counted_fog_sees_what_a_fog_built_afresh_each_tick_sees() {
             }
         }
         let seers: Vec<Seer> = slots.iter().flatten().copied().collect();
-        let reveals: Vec<_> = (tick % 7 == 0)
-            .then(|| (scene.point(20), Team::new(1), Num::int(3)))
-            .into_iter()
-            .collect();
-        fog.see(&vision, seers.iter().copied());
-        for &(position, team, radius) in &reveals {
-            fog.reveal(&vision, position, team, radius);
+        let now = Tick::new(tick);
+        if tick % 7 == 0 {
+            held_reveals.push(Reveal {
+                team: Team::new(1),
+                position: scene.point(20),
+                radius: Num::int(3),
+                last: now.after(Ticks::new(9)),
+            });
         }
+        fog.see(&vision, seers.iter().copied());
+        fog.expire(&mut held_reveals, now);
+        fog.count_new(&vision, &held_reveals);
+        let reveals: Vec<_> = held_reveals
+            .since(0)
+            .iter()
+            .map(|reveal| (reveal.position, reveal.team, reveal.radius))
+            .collect();
         assert!(
             held(&fog, &vision) == afresh(&fog, &vision, &seers, &reveals),
             "tick {tick}"

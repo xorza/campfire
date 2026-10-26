@@ -12,12 +12,12 @@ use bevy_ecs::entity::Entity;
 use bevy_time::{Time, Virtual};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_host::{
-    InputsDiscarded, JoinState, JournalWatch, PaceSpeed, SaveCommand, SaveRefusal, SaveRefused,
-    ServerDir, SessionDir,
+    InputsDiscarded, JoinState, JournalCommand, JournalRefusal, JournalRefused, JournalWatch,
+    PaceSpeed, ServerDir, SessionDir,
 };
 use campfire_mode::{SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
-use campfire_net::{PendingSaves, SimServerWorld};
+use campfire_net::{PendingJournalCommands, SimServerWorld};
 use campfire_net_connection::Connected;
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
@@ -59,9 +59,9 @@ fn started(test_dir: &TestDir, saves: SavesData) -> InProcessMatch {
     local
 }
 
-fn command(local: &mut InProcessMatch, command: SaveCommand) {
+fn command(local: &mut InProcessMatch, command: JournalCommand) {
     let world = local.client_mut(0).world_mut();
-    world.resource_mut::<PendingSaves>().push(command);
+    world.resource_mut::<PendingJournalCommands>().push(command);
 }
 
 fn log(local: &InProcessMatch) -> &SessionLog {
@@ -109,15 +109,15 @@ fn playing_on(local: &InProcessMatch) -> bool {
 fn a_players_save_is_refused_when_the_mode_alone_saves() {
     let test_dir = TestDir::new();
     let mut local = playing(&test_dir, SaveBy::Mode);
-    command(&mut local, SaveCommand::Save);
+    command(&mut local, JournalCommand::Save);
     for _ in 0..10 {
         local.step();
     }
     assert_eq!(log(&local).segment(), 0);
     assert_eq!(
-        local.log().take::<SaveRefused>(),
-        [SaveRefused {
-            refusal: SaveRefusal::ByMode,
+        local.log().take::<JournalRefused>(),
+        [JournalRefused {
+            refusal: JournalRefusal::ByMode,
         }]
     );
 }
@@ -128,7 +128,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     let mut local = playing(&test_dir, SaveBy::Player);
 
     // The save: a checkpoint at the boundary after the tick that runs next, segment 1.
-    command(&mut local, SaveCommand::Save);
+    command(&mut local, JournalCommand::Save);
     for _ in 0..10 {
         local.step();
     }
@@ -145,8 +145,8 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     // it, and each client's link up throughout.
     local.pace().set_speed(PaceSpeed::Double);
     let links = [0, 1].map(|client| local.link(client));
-    command(&mut local, SaveCommand::LoadLatest);
-    command(&mut local, SaveCommand::LoadLatest);
+    command(&mut local, JournalCommand::LoadLatest);
+    command(&mut local, JournalCommand::LoadLatest);
     for _ in 0..10 {
         local.step();
         assert!(linked(&local, links));

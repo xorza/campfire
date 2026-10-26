@@ -11,7 +11,7 @@ use campfire_mode::{InputValue, ModeInput};
 use campfire_navigation::PathWalker;
 use campfire_orders::OrdersDirective;
 use campfire_progression::ProgressionDirective;
-use campfire_protocol::{InputRules, PlayerSlotPlan, ServerInput};
+use campfire_protocol::{PlayerSlotPlan, ServerInput};
 use campfire_sim::{Position, StableId};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::internals::Spawn;
@@ -333,7 +333,7 @@ impl Moba3v3 {
     /// The MOBA 3v3 with its slots opened as `plan` says.
     pub fn planned(plan: impl IntoIterator<Item = PlayerSlotPlan>) -> ScriptedMode<Self> {
         let packages = TestMode::Moba3v3.packages();
-        let session = FixedSession::planned(packages, InputRules::LAN, plan).rate(TICK_HZ);
+        let session = FixedSession::planned(packages, plan).rate(TICK_HZ);
         ScriptedMode::new(session, Self::script())
     }
 
@@ -373,7 +373,7 @@ impl Moba3v3 {
         let script = Self::showcase_script(&item);
         let players = usize::try_from(Self::PLAYERS).expect("6 fits usize");
         let plan = iter::repeat_n(PlayerSlotPlan::Player, players);
-        let session = FixedSession::planned(packages, InputRules::LAN, plan).rate(TICK_HZ);
+        let session = FixedSession::planned(packages, plan).rate(TICK_HZ);
         ScriptedMode::new(session, script)
     }
 

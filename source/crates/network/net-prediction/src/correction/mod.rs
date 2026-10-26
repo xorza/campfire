@@ -391,9 +391,7 @@ where
                 if slot.0.is_none() || !holders.shows::<C>(location.archetype_id) {
                     return;
                 }
-                let Some(visual_correction) = slot.0.as_mut() else {
-                    return;
-                };
+                let visual_correction = slot.0.as_mut().expect("the slot holds a correction");
                 let elapsed = visual_correction.elapsed(now);
                 let policy_ratio = override_policy
                     .map_or(global, |policy| policy)

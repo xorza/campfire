@@ -13,8 +13,8 @@ use crate::client_path;
 /// its colors; a direction is the way the light goes, on the engine's axes.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MapLights {
-    pub ambient: [f32; 3],
-    pub lights: Vec<MapLight>,
+    ambient: [f32; 3],
+    lights: Vec<MapLight>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -35,6 +35,14 @@ impl MapLights {
                 finite(light.color) && light.direction.is_finite() && light.direction != Vec3::ZERO
             });
         holds.then_some(Self { ambient, lights })
+    }
+
+    pub const fn ambient(&self) -> [f32; 3] {
+        self.ambient
+    }
+
+    pub fn lights(&self) -> &[MapLight] {
+        &self.lights
     }
 
     /// The file of the map `map`.

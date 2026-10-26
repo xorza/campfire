@@ -15,7 +15,7 @@ impl MatchBuild {
     /// The spec of the match of `packages` for `players` players at `rate`, drawing from
     /// `seed`: its scripts within the mode's limits. Its capabilities are its books', the mode's
     /// declared ones, of which one the release does not have yet installs nothing.
-    pub(crate) const fn spec(
+    pub(crate) fn spec(
         packages: &ModePackages,
         seed: SegmentSeed,
         rate: MatchRate,
@@ -129,7 +129,7 @@ pub(crate) mod internals {
         }
 
         /// The default tick rate of the mode `packages` holds.
-        const fn rate(packages: &ModePackages) -> MatchRate {
+        fn rate(packages: &ModePackages) -> MatchRate {
             MatchRate::new(packages.manifest().tick_hz.default())
         }
     }

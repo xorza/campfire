@@ -1,10 +1,12 @@
 use std::path::{Path, PathBuf};
 
 use campfire_codec::{Png, RgbaImage, Toml};
+use campfire_common::Version;
+use campfire_protocol::SessionLog;
 use campfire_store::{DurableDir, DurableFile, InputFile};
 
 use crate::client::report_file::ReportFile;
-use crate::error::{ReportReadError, ReportWriteError};
+use crate::error::{ReportLogError, ReportReadError, ReportWriteError};
 
 /// A report's folder in a client's data directory, `reports/<session id>-<tick>`, a later take
 /// of the tick's `-<take>` after it, and the files it holds: its facts, `report.toml`; its
@@ -38,10 +40,22 @@ impl ReportDir {
         )?)
     }
 
-    /// The facts the folder holds; an error when they do not read.
+    /// The facts the folder holds; an error when they do not read, or are of another release,
+    /// as `verify_file` refuses a log of one, whose packages need not read in this one.
     pub fn read_facts(&self) -> Result<ReportFile, ReportReadError> {
         let text = InputFile::read_text(&self.facts(), ReportFile::MAX_LEN)?;
-        Ok(Toml::parse(&text)?)
+        let facts: ReportFile = Toml::parse(&text)?;
+        if facts.release != Version::ENGINE {
+            return Err(ReportReadError::OtherRelease(facts.release));
+        }
+        Ok(facts)
+    }
+
+    /// The log the folder holds, decoded; an error when it does not read, as a remote match's
+    /// report holds none, or does not decode.
+    pub fn read_log(&self) -> Result<SessionLog, ReportLogError> {
+        let bytes = InputFile::read(&self.log(), SessionLog::MAX_FILE_LEN)?;
+        Ok(SessionLog::decode(&bytes)?)
     }
 
     /// Writes `screenshot` durably into the folder as a PNG.

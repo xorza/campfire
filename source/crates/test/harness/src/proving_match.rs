@@ -3,7 +3,7 @@ use campfire_capabilities::Order;
 use campfire_math::{Num, Vec3};
 use campfire_orders::OrdersDirective;
 use campfire_production::TrainQueue;
-use campfire_protocol::{InputRules, PlayerSlotPlan};
+use campfire_protocol::PlayerSlotPlan;
 use campfire_sim::StableId;
 use campfire_test_packages::TestMode;
 use campfire_units::GroundPoint;
@@ -112,7 +112,7 @@ impl ProvingMatch {
     pub fn load() -> ScriptedMode<Self> {
         let packages = TestMode::Proving.packages();
         let plan = [PlayerSlotPlan::Player, PlayerSlotPlan::Open];
-        let session = FixedSession::planned(packages, InputRules::LAN, plan);
+        let session = FixedSession::planned(packages, plan);
         ScriptedMode::new(session, SCRIPT.to_vec())
     }
 }

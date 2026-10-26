@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_mode::{OptionPicks, OptionValue, PlayerSlotPick};
 use campfire_package::ModePackages;
-use campfire_protocol::{InputRules, PlayerSlotPlan};
+use campfire_protocol::PlayerSlotPlan;
 use campfire_values::ResourceId;
 
 use crate::failure::CheckFailure;
@@ -61,7 +61,7 @@ impl SupplyPlay {
             }
         };
         let china: PlayerSlotPick = CHINA.parse().expect("the play's pick");
-        let session = FixedSession::planned(packages, InputRules::LAN, [PlayerSlotPlan::Player])
+        let session = FixedSession::planned(packages, [PlayerSlotPlan::Player])
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&[china]);

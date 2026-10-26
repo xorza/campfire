@@ -2,6 +2,7 @@
 
 use campfire_package::{LoadError, LoadProblem, ModePackages, PackageRef};
 use campfire_test_packages::Edit;
+use campfire_threads::Parallel;
 
 /// A flaw of the test packages: the edit that makes it, in its file, the more edits it needs,
 /// each to a file, the package whose load it fails, and whether a problem is the one it gives.
@@ -33,12 +34,13 @@ impl Flaw {
 }
 
 /// Each of `flaws` fails `load` of its edits, in its package, by its name or its directory, with
-/// its problem.
+/// its problem; the flaws load on every core (02-engine-core.md, A sweep runs on every core).
 pub(crate) fn fails_each(
     flaws: &[Flaw],
-    load: impl Fn(&[(&'static str, Edit<'static>)]) -> Result<ModePackages, LoadError>,
+    load: impl Fn(&[(&'static str, Edit<'static>)]) -> Result<ModePackages, LoadError> + Sync,
 ) {
-    for flaw in flaws {
+    Parallel::map(flaws.len(), |at| {
+        let flaw = &flaws[at];
         let mut edits = vec![(flaw.file, flaw.edit)];
         edits.extend_from_slice(flaw.also);
         let Err(error) = load(&edits) else {
@@ -51,5 +53,5 @@ pub(crate) fn fails_each(
             PackageRef::PackageFingerprint(_) => false,
         };
         assert!(named && (flaw.refused)(problem), "{flaw:?}: {error:?}");
-    }
+    });
 }

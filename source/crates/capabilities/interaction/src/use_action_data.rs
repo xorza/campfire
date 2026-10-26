@@ -3,6 +3,7 @@ use std::sync::Arc;
 use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, PipelineField, Takes};
 use campfire_declarations::Listed;
 use campfire_script::ApiBuilder;
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_values::{Number, Ranked};
 use serde::Deserialize;
@@ -59,26 +60,11 @@ impl Listed for UseActionData {
 
     const KEY: &'static str = ActionKind::Use.name();
 
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
+
     fn into_listed(self) -> Arc<dyn KindSection> {
         Arc::new(self)
     }
 
     fn api(_: &mut ApiBuilder<'_>) {}
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_use_needs_the_orders_that_fill_its_slot_and_the_abilities_that_run_it() {
-        assert_eq!(
-            UseActionData {}.needs(),
-            [
-                Capability::Interaction,
-                Capability::Abilities,
-                Capability::Orders
-            ]
-        );
-    }
 }

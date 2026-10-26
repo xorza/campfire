@@ -1,3 +1,5 @@
+use std::sync::{Arc, OnceLock};
+
 use campfire_common::{MapName, PackageFingerprint};
 use campfire_package_format::{ContentError, FileIndex, PackageFiles, PackageFinder, PackagePlace};
 use campfire_values::PackagePath;
@@ -7,6 +9,7 @@ use crate::error::{LoadError, PackageRef, StoreError};
 use crate::files::manifest::Manifest;
 use crate::files::mode_manifest::ModeManifest;
 use crate::mode_packages::ModePackages;
+use crate::mode_packages::mode_base::ModeBase;
 use crate::package_name::PackageName;
 
 /// A mode's files and its manifest, with the files of each package the manifest names, each
@@ -16,6 +19,9 @@ pub struct ModeRead {
     files: PackageFiles,
     manifest: ModeManifest,
     dependencies: Vec<(PackageName, PackageFiles)>,
+    /// What the mode is on any map, read, parsed and compiled at its first map's load, which
+    /// each later map's load shares.
+    base: OnceLock<Arc<ModeBase>>,
 }
 
 impl ModeRead {
@@ -41,6 +47,7 @@ impl ModeRead {
             files,
             manifest,
             dependencies,
+            base: OnceLock::new(),
         })
     }
 
@@ -74,17 +81,26 @@ impl ModeRead {
             files,
             manifest,
             dependencies,
+            base: OnceLock::new(),
         })
     }
 
     /// The mode on its map `map`, or its only map when `map` names none: see `ModePackages::new`.
+    /// What the mode is on any map is read, parsed and compiled once, at the first map's load,
+    /// and the next only reads its map and runs the load's checks of it.
     pub fn on(&self, map: Option<&MapName>) -> Result<ModePackages, LoadError> {
-        let dependencies: Vec<_> = self
-            .dependencies
-            .iter()
-            .map(|(name, files)| (name.clone(), files))
-            .collect();
-        ModePackages::new(&self.files, self.manifest.clone(), map, &dependencies)
+        let base = if let Some(base) = self.base.get() {
+            Arc::clone(base)
+        } else {
+            let dependencies: Vec<_> = self
+                .dependencies
+                .iter()
+                .map(|(name, files)| (name.clone(), files))
+                .collect();
+            let base = ModeBase::read(&self.files, self.manifest.clone(), &dependencies)?;
+            Arc::clone(self.base.get_or_init(|| Arc::new(base)))
+        };
+        ModePackages::on_map(base, &self.files, map)
     }
 
     /// The files of the package of `fingerprint` that `finder` holds, which must still have

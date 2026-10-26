@@ -5,6 +5,7 @@ pub(crate) mod bot_driver;
 pub(crate) mod checkpoint_thread;
 pub(crate) mod checkpoints;
 pub(crate) mod error;
+pub(crate) mod journal_commands;
 pub(crate) mod journal_watch;
 pub(crate) mod player_link;
 pub(crate) mod player_slot_bot_arg;

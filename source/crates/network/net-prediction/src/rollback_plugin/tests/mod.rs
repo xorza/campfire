@@ -708,11 +708,32 @@ fn a_shift_of_the_local_timeline_leaves_the_confirmed_history() {
         .entity_mut(predicted)
         .insert(prediction_history);
 
+    // The locally predicted entities' ticks and a prediction despawn's are the local timeline's
+    // too, and move with it.
+    let despawned = stepper
+        .client_world_mut(0)
+        .spawn(PredictionDespawned { tick: NetTick(5) })
+        .id();
+    {
+        let world = stepper.client_world_mut(0);
+        let mut check_state = world.resource_mut::<RollbackCheckState>();
+        check_state.local_despawn = vec![(NetTick(5), predicted)];
+        check_state.local_skip_despawn = vec![(NetTick(7), predicted)];
+    }
+
     stepper
         .client_world_mut(0)
         .trigger(LocalTimelineShift { delta: 100 });
 
     let world = stepper.client_world(0);
+    let check_state = world.resource::<RollbackCheckState>();
+    assert_eq!(check_state.local_despawn, [(NetTick(105), predicted)]);
+    assert_eq!(check_state.local_skip_despawn, [(NetTick(107), predicted)]);
+    let despawned = world
+        .entity(despawned)
+        .get::<PredictionDespawned>()
+        .unwrap();
+    assert_eq!(despawned.tick, NetTick(105));
     let confirmed_history = world
         .get::<ConfirmedHistory<CompFull>>(predicted)
         .expect("confirmed history should still be present");

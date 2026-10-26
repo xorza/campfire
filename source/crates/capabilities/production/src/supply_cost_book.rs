@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declarations::{Book, ById};
+use campfire_declarations::{Book, BookCx, BookError, ById, ByIdBuilder};
 use campfire_script::MatchNames;
 use campfire_values::{ActionId, NameId, UnitType};
 
@@ -99,4 +99,20 @@ impl Book for SupplyCostBook {
 
     /// The production column takes it from the match at each read.
     fn share(&self, _: &mut MatchNames) {}
+}
+
+impl SupplyCostBook {
+    /// What each train costs in supply, as the supply of its unit type gives it.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let mut supplies = ByIdBuilder::default();
+        for unit in cx.standing() {
+            if let Some(&supply) = unit.data.section::<SupplyData>() {
+                supplies.set(unit.unit_type, supply);
+            }
+        }
+        Ok(Self::new(
+            supplies.build(),
+            cx.book::<ById<ActionId, TrainSpec>>()?,
+        ))
+    }
 }

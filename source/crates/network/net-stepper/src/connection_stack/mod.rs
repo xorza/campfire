@@ -4,7 +4,7 @@ use bevy_time::TimePlugin;
 use campfire_app_threads::OneThreadPlugins;
 use campfire_math::TickRate;
 use campfire_net_connection::{ConnectionPlugins, ServerConnectionPlugin};
-use campfire_net_endpoint::EndpointPlugin;
+use campfire_net_endpoint::{EndpointPlugin, PacketSessionLinkPlugin};
 use campfire_net_link::{LinkPlugin, ServerLinkPlugin};
 use campfire_net_packets::EmulatedWires;
 use campfire_net_timeline::{ClockPlugin, TimelinePlugins};
@@ -26,6 +26,7 @@ impl ConnectionStack {
                 TimePlugin,
                 TimelinePlugins { tick_rate },
                 LinkPlugin,
+                PacketSessionLinkPlugin,
                 EndpointPlugin::<EmulatedWires>::default(),
                 ConnectionPlugins,
             ));

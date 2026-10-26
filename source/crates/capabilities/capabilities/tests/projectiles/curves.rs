@@ -85,9 +85,7 @@ fn a_shell_stands_at_a_point_of_its_curve_each_tick_and_hits_its_target_at_the_l
     Combat::attack(&mut game, shooter, target);
     // It fires in tick 2 and spawns at its first point; in tick 3 it stands there, and in tick 4
     // at the next, 5 m flown.
-    for _ in 0..4 {
-        game.step();
-    }
+    game.steps(4);
     let curve = Flight::Curve {
         from: Vec3::ZERO,
         to: Vec3::from((8, 0, 0)),
@@ -125,9 +123,7 @@ fn a_shells_end_follows_its_target_by_follow_a_tick_past_a_tenth_of_a_square_met
             .team(Team::new(1))
             .place(&mut game);
         Combat::attack(&mut game, shooter, target);
-        for _ in 0..3 {
-            game.step();
-        }
+        game.steps(3);
         put(&mut game, target, Vec3::new(Num::int(8), Num::ZERO, moved));
         (game, target)
     };
@@ -146,9 +142,7 @@ fn a_shells_end_follows_its_target_by_follow_a_tick_past_a_tenth_of_a_square_met
     // With no `follow`, its end stays: in tick 5 it stands 1 m from the target's edge, and meets
     // nothing; in tick 6, past its last point, it ends there.
     let (mut game, target) = run(0, Num::int(2));
-    for _ in 0..3 {
-        game.step();
-    }
+    game.steps(3);
     assert_eq!(Projectiles::projectiles(&game), [Vec3::from((8, 0, 0))]);
     game.step();
     assert_eq!(Projectiles::projectiles(&game), []);
@@ -205,9 +199,7 @@ fn a_shells_sphere_meets_the_lowest_id_it_selects_on_its_way_and_never_its_sourc
             .place(&mut game)
     });
     Combat::attack(&mut game, shooter, target);
-    for _ in 0..5 {
-        game.step();
-    }
+    game.steps(5);
     let healths = [first, second, target, shooter].map(|id| Stats::health(&game, id));
     assert_eq!(healths, [70, 100, 100, 100]);
     assert_eq!(Projectiles::projectiles(&game), []);
@@ -223,9 +215,7 @@ fn a_shells_sphere_meets_the_lowest_id_it_selects_on_its_way_and_never_its_sourc
             .place(&mut game);
         let friend = Spawn::of(volley.tall, (half, Num::ZERO, Num::ZERO)).place(&mut game);
         Combat::attack(&mut game, shooter, target);
-        for _ in 0..6 {
-            game.step();
-        }
+        game.steps(6);
         [friend, target, shooter].map(|id| Stats::health(&game, id))
     };
     assert_eq!(friendly_fire(&both), [70, 100, 100]);
@@ -251,9 +241,7 @@ fn a_shell_rises_over_the_highest_ground_on_its_way_and_ends_as_its_life_passes(
         .team(Team::new(1))
         .place(&mut game);
     Combat::attack(&mut game, shooter, target);
-    for _ in 0..4 {
-        game.step();
-    }
+    game.steps(4);
     let Flight::Curve {
         from, to, points, ..
     } = flight(&mut game)
@@ -277,9 +265,7 @@ fn a_shell_rises_over_the_highest_ground_on_its_way_and_ends_as_its_life_passes(
         .team(Team::new(1))
         .place(&mut game);
     Combat::attack(&mut game, shooter, target);
-    for _ in 0..4 {
-        game.step();
-    }
+    game.steps(4);
     assert_eq!(Projectiles::projectiles(&game), [Vec3::ZERO]);
     game.step();
     assert_eq!(Projectiles::projectiles(&game), []);
@@ -295,9 +281,7 @@ fn a_restored_curve_holds_its_points_and_its_state_within_them() {
         .team(Team::new(1))
         .place(&mut game);
     Combat::attack(&mut game, shooter, target);
-    for _ in 0..4 {
-        game.step();
-    }
+    game.steps(4);
     let (entity, projectile, &state) = game
         .query::<(Entity, &Projectile, &FlightState)>()
         .single(&game)
@@ -384,9 +368,7 @@ impl Shot {
 
     /// Steps its match from its start through tick `tick`.
     fn through(&mut self, tick: u64) {
-        for _ in 0..=tick {
-            self.game.step();
-        }
+        self.game.steps(tick + 1);
     }
 }
 

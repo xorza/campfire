@@ -23,29 +23,30 @@ pub struct Reveal {
 }
 
 impl Reveals {
-    pub(crate) const fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
     pub fn push(&mut self, reveal: Reveal) {
         self.0.push(reveal);
     }
 
-    /// Drops the reveals whose last tick came before `now`, then calls `reveal` with each one
-    /// under way in `now`: a reveal stays to the tick after its last, so a fog filled again in that
-    /// tick, as after a restore, sees what the last Vision stage saw.
-    pub(crate) fn run(&mut self, now: Tick, mut reveal: impl FnMut(&Reveal)) {
-        self.0.retain(|under_way| under_way.last >= now);
-        self.0.iter().for_each(&mut reveal);
+    /// The reveal at `at`, in the order made.
+    pub(crate) fn get(&self, at: usize) -> &Reveal {
+        &self.0[at]
     }
 
-    /// Calls `reveal` with each reveal that was under way in `then`, a tick whose Vision stage
-    /// ran, changing nothing.
-    pub(crate) fn each_of(&self, then: Tick, mut reveal: impl FnMut(&Reveal)) {
-        self.0
-            .iter()
-            .filter(|under_way| under_way.last >= then)
-            .for_each(&mut reveal);
+    /// The reveals from the one at `from` on, in the order made.
+    pub(crate) fn since(&self, from: usize) -> &[Reveal] {
+        &self.0[from..]
+    }
+
+    /// Whether a reveal's last tick came before `now`, so its fog's next stage ends it.
+    pub(crate) fn any_ended(&self, now: Tick) -> bool {
+        self.0.iter().any(|reveal| reveal.last < now)
+    }
+
+    /// Drops the reveals whose last tick came before `now`, the others kept in the order made: a
+    /// reveal stays to the tick after its last, so a fog filled again in that tick, as after a
+    /// restore, sees what the last Vision stage saw.
+    pub(crate) fn end_before(&mut self, now: Tick) {
+        self.0.retain(|under_way| under_way.last >= now);
     }
 }
 

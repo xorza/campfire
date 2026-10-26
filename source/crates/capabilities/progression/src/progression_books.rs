@@ -1,17 +1,13 @@
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_actions::SlotKinds;
-use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, Section};
-use campfire_script::UnknownName;
-use campfire_values::{Named, Names, PackageIndex, TrackId, UnitType};
+use campfire_declarations::{BookCx, BookError, BookPlace, Section};
+use campfire_values::{Names, PackageIndex, TrackId};
 
 use crate::Progression;
 use crate::error::TrackError;
 use crate::mode_tracks_data::ModeTracksData;
 use crate::track_book::TrackBook;
-use crate::track_set::TrackSet;
-use crate::type_tracks_data::TypeTracksData;
 
 impl Progression {
     /// The rule of the mode's slot kinds: none gives its ranks levels in a mode with no `level`
@@ -40,45 +36,5 @@ impl Progression {
     /// The names of the mode's tracks.
     pub(crate) fn track_names(cx: &BookCx<'_>) -> Result<Arc<Names<TrackId>>, BookError> {
         Ok(Arc::clone(cx.book::<TrackBook>()?.names()))
-    }
-}
-
-impl TrackBook {
-    /// The mode's `[tracks]`; an error for more tracks than a match holds, or more than one that
-    /// counts the units' level.
-    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
-        let none = BTreeMap::new();
-        let tracks = cx.mode_section::<ModeTracksData>();
-        let tracks = tracks.map_or(&none, |tracks| &tracks.0);
-        Self::new(tracks).map_err(|error| {
-            let at = BookPlace::Section(ModeTracksData::KEY);
-            BookError::rule(PackageIndex::MODE, at, error)
-        })
-    }
-}
-
-impl TrackSet {
-    /// The tracks of each unit type that stands and gains experience; an error for a track the
-    /// mode does not declare.
-    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
-        let names = cx.book::<TrackBook>()?.names();
-        let mut book = ByIdBuilder::default();
-        for unit in cx.standing() {
-            let Some(tracks) = unit.data.section::<TypeTracksData>() else {
-                continue;
-            };
-            let set = tracks.0.iter().map(|track| {
-                let named = names.named(track.as_str());
-                named.ok_or_else(|| {
-                    let at = BookPlace::UnitType(unit.place());
-                    BookError::unknown(unit.package, at, UnknownName::new(TrackId::NAMES, track))
-                })
-            });
-            let set: Self = set.collect::<Result<_, BookError>>()?;
-            if !tracks.0.is_empty() {
-                book.set(unit.unit_type, set);
-            }
-        }
-        Ok(book.build())
     }
 }

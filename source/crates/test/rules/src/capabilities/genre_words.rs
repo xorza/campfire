@@ -74,7 +74,10 @@ pub(crate) fn no_capability_names_a_genres_words(workspace: &Workspace) {
     named.sort();
     named.dedup();
     assert_eq!(named, Vec::<String>::new());
+}
 
+#[test]
+fn a_genre_word_is_found_as_an_identifiers_whole_word() {
     // An identifier's whole word, in either case, is found; one inside another word, a comment,
     // a string, a raw string, a character and a lifetime are not.
     let code = concat!(

@@ -1,16 +1,38 @@
-use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, Section, Sections};
+use bevy_ecs::resource::Resource;
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section, Sections};
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::Num;
+use campfire_script::MatchNames;
 use campfire_units::MapBook;
-use campfire_values::{PackageIndex, Team, UnitType};
+use campfire_values::{PackageIndex, Team};
 
 use crate::brush_map::BrushMap;
 use crate::error::VisionDataError;
 use crate::grid_data::GridData;
-use crate::sight::Sight;
-use crate::vision_book::VisionBook;
-use crate::vision_data::VisionData;
 use crate::vision_grid::VisionGrid;
+
+/// The map's vision grid; none in a map with no grid, where every unit sees all. Map data, not
+/// state: a restore takes it from the map, as a new match does.
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
+#[component(immutable)]
+pub struct VisionBook(pub Option<VisionGrid>);
+
+impl VisionBook {
+    pub const fn grid(&self) -> Option<&VisionGrid> {
+        self.0.as_ref()
+    }
+
+    /// Whether the map has a grid, which what sees needs.
+    pub(crate) const fn has_grid(&self) -> bool {
+        self.0.is_some()
+    }
+}
+
+impl Book for VisionBook {
+    const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, _: &mut MatchNames) {}
+}
 
 impl VisionBook {
     /// The rule of a mode that declares vision: its map has a grid, for sight to reveal.
@@ -25,8 +47,8 @@ impl VisionBook {
 
     /// The map's vision grid over its bounds, with its brush, for the match's teams; none for a
     /// map of no `[grid]`. An error for a cell that makes no grid of the bounds, a brush point
-    /// that has no place on the map, points that make no simple polygon, or more teams than a
-    /// grid holds.
+    /// that has no place on the map, points that make no simple polygon, more teams than a grid
+    /// holds, or more cells times teams than its counts may take.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let map = cx.book::<MapBook>()?;
         let teams = cx.names::<Team>()?.len();
@@ -56,24 +78,14 @@ impl VisionBook {
         if teams > VisionGrid::MAX_TEAMS {
             return Err(VisionDataError::TooManyTeams);
         }
+        if grid.cells().saturating_mul(teams) > VisionGrid::MAX_CELL_TEAMS {
+            return Err(VisionDataError::TooLarge);
+        }
         Ok(Self(Some(VisionGrid {
             brush: BrushMap::new(&grid, &areas),
             grid,
             teams,
         })))
-    }
-}
-
-impl Sight {
-    /// The sight of each unit type with a `vision` section, a delivery type's among them.
-    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
-        let mut book = ByIdBuilder::default();
-        for unit in cx.types() {
-            if let Some(vision) = unit.data.section::<VisionData>() {
-                book.set(unit.unit_type, vision.sight);
-            }
-        }
-        Ok(book.build())
     }
 }
 

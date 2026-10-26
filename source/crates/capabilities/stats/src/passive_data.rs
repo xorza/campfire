@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use campfire_actions::ActionsData;
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use serde::Deserialize;
 
 use crate::error::AppliedError;
@@ -15,6 +16,7 @@ pub struct PassiveData(pub DeclaredName);
 impl Section for PassiveData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "passive";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 impl PassiveData {

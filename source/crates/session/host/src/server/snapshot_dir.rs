@@ -12,20 +12,26 @@ use crate::faults::error::SnapshotWriteError;
 pub struct SnapshotDir(pub(crate) PathBuf);
 
 impl SnapshotDir {
-    /// Writes `snapshot` durably, the directory made when missing, named by its fingerprint;
-    /// the fingerprint.
-    pub(crate) fn write(&self, snapshot: &[u8]) -> Result<SnapshotFingerprint, SnapshotWriteError> {
-        let fingerprint = SnapshotFingerprint::of(snapshot);
+    /// The snapshots of the directory `path`, as a verifier takes a session's.
+    pub const fn at(path: PathBuf) -> Self {
+        Self(path)
+    }
+
+    /// Writes `snapshot`, whose fingerprint is `fingerprint`, durably, the directory made when
+    /// missing, named by the fingerprint.
+    pub(crate) fn write(
+        &self,
+        snapshot: &[u8],
+        fingerprint: SnapshotFingerprint,
+    ) -> Result<(), SnapshotWriteError> {
+        debug_assert_eq!(fingerprint, SnapshotFingerprint::of(snapshot));
         DurableDir::create(&self.0)?;
         DurableFile::write(&self.file(fingerprint), snapshot)?;
-        Ok(fingerprint)
+        Ok(())
     }
 
     /// Reads the snapshot whose fingerprint is `fingerprint`, as long as a snapshot may be.
-    pub(crate) fn read(
-        &self,
-        fingerprint: SnapshotFingerprint,
-    ) -> Result<Vec<u8>, PathError<ReadError>> {
+    pub fn read(&self, fingerprint: SnapshotFingerprint) -> Result<Vec<u8>, PathError<ReadError>> {
         InputFile::read(&self.file(fingerprint), StateRegistry::MAX_SNAPSHOT_LEN)
     }
 

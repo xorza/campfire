@@ -9,3 +9,12 @@ pub struct ConfirmedTick {
     /// Authoritative network tick carried by the confirmed tick.
     pub tick: NetTick,
 }
+
+impl ConfirmedTick {
+    /// Whether it is newer than `other`: of a later network tick, or of the same one and a newer
+    /// Replicon tick, as several Replicon ticks may map to one network tick.
+    pub(crate) fn is_newer_than(self, other: Self) -> bool {
+        self.tick > other.tick
+            || (self.tick == other.tick && self.replicon_tick.is_newer(other.replicon_tick))
+    }
+}

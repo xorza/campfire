@@ -1,16 +1,19 @@
 use bevy::asset::RenderAssetUsages;
-use bevy::math::{UVec2, Vec2, Vec3, Vec4};
+use bevy::math::{Vec2, Vec3, Vec4};
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
-use campfire_client_files::TerrainQuads;
+use campfire_client_files::{TerrainDecals, TerrainFile};
 use campfire_units::HeightGrid;
 
 use crate::view::float_num::FloatNum;
 
 /// A terrain file's two meshes over its map's height grid (02-engine-core.md, A terrain is quads
 /// over the height grid; 02-engine-core.md, The terrain is lit as every model is): the ground, each
-/// cell's quad; and the overlays, in the file's order. Each quad has its own four vertices, at the
-/// grid's samples of its cell's corners, with the sample's normal and the quad's texture
-/// coordinates as shares of the texture; an overlay's alpha at each corner is its vertices'.
+/// cell's quad; and the overlays, in the file's order, then its decals, in theirs, so one draw
+/// blends them in that order. Each quad has its own four vertices, at the grid's samples of its
+/// cell's corners, with the sample's normal and the quad's texture coordinates as shares of the
+/// texture; an overlay's alpha at each corner is its vertices'. A decal's vertex keeps its point
+/// and takes the normal of the sample nearest it, as the ground under it is lit, and an alpha of
+/// 1, so its texture's alpha alone blends it.
 #[derive(Debug)]
 pub(crate) struct TerrainMeshes {
     pub(crate) ground: TerrainMesh,
@@ -43,25 +46,26 @@ enum Diagonal {
     OneThree,
 }
 
-/// The grid's samples on the engine's axes, each with its normal, row after row.
+/// The grid's samples on the engine's axes, each with its normal, row after row, `cell` apart.
 #[derive(Debug)]
 struct Samples {
     columns: usize,
+    cell: f32,
     positions: Vec<Vec3>,
     normals: Vec<Vec3>,
 }
 
 impl TerrainMeshes {
-    /// The meshes of `quads` over `grid`, whose cells they are, their texture `size` texels at
-    /// its first level.
-    pub(crate) fn of(quads: &TerrainQuads, size: UVec2, grid: &HeightGrid) -> Self {
+    /// The meshes of `file` over `grid`, whose cells its quads are.
+    pub(crate) fn of(file: &TerrainFile, grid: &HeightGrid) -> Self {
+        let quads = file.quads();
         debug_assert!(
             quads.fits(grid.columns(), grid.rows()),
             "a terrain over the grid's cells"
         );
         let samples = Samples::of(grid);
         // A file's texture sides lie far below 2²⁴, exact in an f32.
-        let size = size.as_vec2();
+        let size = file.texture().size.as_vec2();
         let mut ground = TerrainMesh::default();
         for (cell, quad) in quads.ground.iter().enumerate() {
             let quad = CellQuad {
@@ -84,6 +88,7 @@ impl TerrainMeshes {
                     .map(|alpha| Vec4::new(1.0, 1.0, 1.0, f32::from(alpha) / 255.0)),
             );
         }
+        overlay.decals(&samples, file.decals(), size);
         Self { ground, overlay }
     }
 }
@@ -125,6 +130,42 @@ impl TerrainMesh {
             Diagonal::ZeroTwo => [0, 2, 1, 0, 3, 2],
         };
         self.indices.extend(triangles.map(|corner| first + corner));
+    }
+}
+
+impl TerrainMesh {
+    /// Adds `decals`, of a texture `size` texels, each vertex with the normal of the sample of
+    /// `samples` nearest it, a tie the sample of the greater coordinate.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a sample's number is whole and at least 0, and the cast saturates past the grid"
+    )]
+    fn decals(&mut self, samples: &Samples, decals: &TerrainDecals, size: Vec2) {
+        let first = u32::try_from(self.positions.len()).expect("a map's vertices fit u32");
+        let rows = samples.positions.len() / samples.columns;
+        let origin = samples.positions[0];
+        let cell = samples.cell;
+        let nearest = |at: f32, from: f32, count: usize| {
+            let at = ((at - from) / cell + 0.5).floor().max(0.0);
+            (at as usize).min(count - 1)
+        };
+        for vertex in &decals.vertices {
+            let [x, _, z] = vertex.position.to_array();
+            let column = nearest(x, origin.x, samples.columns);
+            let row = nearest(z, origin.z, rows);
+            self.positions.push(vertex.position);
+            self.normals
+                .push(samples.normals[row * samples.columns + column]);
+            self.uvs.push(vertex.uv / size);
+            self.colors.push(Vec4::ONE);
+        }
+        self.indices.extend(
+            decals
+                .triangles
+                .iter()
+                .flat_map(|triangle| triangle.map(|at| first + at)),
+        );
     }
 }
 
@@ -175,6 +216,7 @@ impl Samples {
         }
         Self {
             columns,
+            cell,
             positions,
             normals,
         }

@@ -134,7 +134,12 @@ impl Steering {
 
     /// How far a short route's window reaches from the walker's cell along each axis on `grid`.
     pub(crate) fn reach(grid: &PathingGrid) -> Num {
-        grid.cell() * i64::try_from(Self::WINDOW).expect("a small window")
+        Self::cells(grid, Self::WINDOW)
+    }
+
+    /// The length of `count` cells of `grid`.
+    fn cells(grid: &PathingGrid, count: usize) -> Num {
+        grid.cell() * i64::try_from(count).expect("a small window")
     }
 
     /// Reads this tick's `bodies`, in one pass: those of the units that stand into an index with
@@ -476,7 +481,7 @@ impl Steering {
         blockers: &mut Vec<IndexedBody>,
     ) {
         let standing = self.standing.as_ref().expect("steering read the bodies");
-        let window = grid.cell() * i64::try_from(Self::YIELD_WINDOW).expect("a small window");
+        let window = Self::cells(grid, Self::YIELD_WINDOW);
         let near = window + grid.cell() / 2 + body.shape.bound();
         let passes = |other: &IndexedBody| match friends {
             Friends::Pass { team } => movable(&self.idle, self.moves, team, other.id).is_some(),

@@ -10,6 +10,7 @@ use campfire_math::Num;
 use campfire_script::{
     ApiBuilder, CallError, CapabilityRefusal, Checked, Ctx, Frame, MemberDecl, Unit, View,
 };
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::{Capability, StableId};
 use campfire_values::{DamageKind, Number};
 use serde::Deserialize;
@@ -36,6 +37,8 @@ impl Listed for DamageEffectData {
     type Set = ListedEffects;
 
     const KEY: &'static str = "damage";
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn ListedEffect> {
         Arc::new(self)

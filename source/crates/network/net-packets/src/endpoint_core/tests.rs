@@ -384,7 +384,7 @@ impl ClientEstablish for ResetEstablishment {
             protection: Protection::Plain,
             prefix: None,
             route: None,
-            reset_token: Some(TOKEN),
+            reset_token: Some(Secret::new(TOKEN)),
             binding: None,
             early: Vec::new(),
         });

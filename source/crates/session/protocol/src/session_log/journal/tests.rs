@@ -82,8 +82,9 @@ fn read(bytes: &[u8]) -> Option<(Vec<&[u8]>, usize)> {
     };
     let records: Vec<&[u8]> = frames.by_ref().collect();
     let mut streamed = Vec::new();
-    JournalFrames::stream(bytes, &mut |record| streamed.push(record.to_vec())).unwrap();
+    let whole = JournalFrames::stream(bytes, &mut |record| streamed.push(record.to_vec())).unwrap();
     assert_eq!(streamed, records);
+    assert_eq!(whole, u64::try_from(frames.whole()).unwrap());
     Some((records, frames.whole()))
 }
 

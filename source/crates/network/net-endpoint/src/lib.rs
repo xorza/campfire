@@ -3,11 +3,6 @@
 //! packet session (11-net-stack/packet-session.md, One generic `EndpointPlugin<Io>` registers each
 //! IO's endpoints).
 
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-
 mod endpoint;
 mod endpoint_plugin;
 mod frame_wake;
@@ -15,6 +10,6 @@ mod link_binding;
 mod packet_session_link;
 
 pub use crate::endpoint::Endpoint;
-pub use crate::endpoint_plugin::EndpointPlugin;
+pub use crate::endpoint_plugin::{EndpointPlugin, PacketSessionLinkPlugin};
 pub use crate::frame_wake::FrameWake;
 pub use crate::link_binding::LinkBinding;

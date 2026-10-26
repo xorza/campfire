@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use campfire_codec::Toml;
 use campfire_script::{ApiBuilder, DataTable};
+use campfire_script::{ApiVersion, Status};
 
 use super::*;
 use crate::section::ReadValue;
@@ -18,6 +19,7 @@ struct Speed {
 impl Section for Speed {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "speed";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// A delivery type's section of a test.
@@ -30,6 +32,7 @@ struct Bolt {
 impl Section for Bolt {
     const TABLE: SectionTable = SectionTable::DeliveryType;
     const KEY: &'static str = "bolt";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// A map's section of a test.
@@ -41,6 +44,7 @@ struct Grid {
 impl Section for Grid {
     const TABLE: SectionTable = SectionTable::Map;
     const KEY: &'static str = "grid";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// A unit type's section of a test that takes `Speed`'s key.
@@ -50,6 +54,7 @@ struct OtherSpeed;
 impl Section for OtherSpeed {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "speed";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// An open set of a test, whose members read as their `Debug`.
@@ -85,6 +90,8 @@ impl Listed for Two {
 
     const KEY: &'static str = "two";
 
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
+
     fn into_listed(self) -> Arc<dyn fmt::Debug + Send + Sync> {
         Arc::new(self)
     }
@@ -102,6 +109,8 @@ impl Listed for OtherTwo {
 
     const KEY: &'static str = "two";
 
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
+
     fn into_listed(self) -> Arc<dyn fmt::Debug + Send + Sync> {
         Arc::new(self)
     }
@@ -117,6 +126,7 @@ struct Bag(String);
 impl Section for Bag {
     const TABLE: SectionTable = SectionTable::Map;
     const KEY: &'static str = "bag";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 impl ReadValue for Bag {

@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
-use campfire_declarations::Book;
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_math::Num;
 use campfire_script::MatchNames;
 use campfire_stats::Level;
-use campfire_values::{NameId, Names, TrackId};
+use campfire_values::{NameId, Names, PackageIndex, TrackId};
 
 use crate::error::TrackError;
+use crate::mode_tracks_data::ModeTracksData;
 use crate::track_data::TrackData;
 
 /// The tracks a match loaded, by id, each with the experience of its levels. Package data, not
@@ -105,6 +106,20 @@ impl Book for TrackBook {
     /// read.
     fn share(&self, names: &mut MatchNames) {
         names.set_table(Arc::clone(self.names()));
+    }
+}
+
+impl TrackBook {
+    /// The mode's `[tracks]`; an error for more tracks than a match holds, or more than one that
+    /// counts the units' level.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let none = BTreeMap::new();
+        let tracks = cx.mode_section::<ModeTracksData>();
+        let tracks = tracks.map_or(&none, |tracks| &tracks.0);
+        Self::new(tracks).map_err(|error| {
+            let at = BookPlace::Section(ModeTracksData::KEY);
+            BookError::rule(PackageIndex::MODE, at, error)
+        })
     }
 }
 

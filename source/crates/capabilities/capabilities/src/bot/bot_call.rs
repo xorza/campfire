@@ -20,6 +20,9 @@ use crate::order::named_refs::NamedRefs;
 pub struct BotCall {
     /// Each param of the thinking bot, by name, which `ctx.params` reads as a script value.
     params: Arc<[(DeclaredName, ModeParam)]>,
+    /// `params` as script values, converted once for each set of params a think readies, as the
+    /// mode's params are, so a read clones a value and converts none.
+    values: Vec<(DeclaredName, ScriptValue)>,
     /// Each unit of the bot, by stable id, with each action of its slots it may start, the units
     /// rising.
     startable: Vec<(StableId, ActionId)>,
@@ -47,10 +50,18 @@ pub struct ThinkOrder {
 }
 
 impl BotCall {
-    /// Readies it for the think of a bot of `params`: they are shared, and each converts as a
-    /// script reads it.
+    /// Readies it for the think of a bot of `params`, which are shared: converted into script
+    /// values once, when they are not the params of the last think.
     pub fn ready(&mut self, params: &Arc<[(DeclaredName, ModeParam)]>) {
+        if Arc::ptr_eq(&self.params, params) && self.values.len() == params.len() {
+            return;
+        }
         self.params = Arc::clone(params);
+        self.values.clear();
+        let values = params
+            .iter()
+            .map(|(name, value)| (name.clone(), value.to_value()));
+        self.values.extend(values);
     }
 
     /// Its facts, for the driver to write before the think, its units rising.
@@ -106,8 +117,8 @@ impl CallParams for BotCall {
     const SCOPE: ParamScope = ParamScope::Bot;
 
     fn param(&self, name: &str) -> Option<ScriptValue> {
-        let held = self.params.iter().find(|(held, _)| held.as_str() == name);
-        held.map(|(_, value)| value.to_value())
+        let held = self.values.iter().find(|(held, _)| held.as_str() == name);
+        held.map(|(_, value)| value.clone())
     }
 
     /// None: no effect list numbers a bot's param by its place.

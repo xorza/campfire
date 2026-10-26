@@ -125,6 +125,11 @@ impl Modifiers {
         self.find(id, source).ok()
     }
 
+    /// The instance at `at`, a place `position` gave.
+    pub(crate) fn instance_at(&self, at: usize) -> &Instance {
+        &self.instances[at]
+    }
+
     /// The value of the share at `at` of its buffer.
     pub(crate) fn share_value(&self, at: usize) -> Num {
         self.shares[at].value

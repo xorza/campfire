@@ -20,6 +20,7 @@ use campfire_script::{PlannedCapability, ScriptLimits, ScriptPools, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, StateRegistry};
 use campfire_store::{DirEntries, EntryKind, InputFile};
+use campfire_threads::Parallel;
 use campfire_units::internals::Spawn;
 use campfire_units::{UnitTypeCore, ViewReader};
 use campfire_values::UnitType;
@@ -149,10 +150,10 @@ fn every_pair_of_capabilities_with_only_what_they_need_orders_every_pair_of_thei
     // A step that a module orders against reaches it only through the modules installed, and
     // the strict schedule refuses a pair of systems no step orders as the first tick builds it:
     // so the match of each pair of capabilities, each with only what it needs, builds, for a
-    // server that runs scripts, one that runs none, and a predicting client. Production and
-    // navigation alone are such a pair: production's builds and gathers, which navigation
-    // brings, order against the actions' steps with no stats to order through.
-    let rows = Release::rows();
+    // server that runs scripts, one that runs none, and a predicting client, the builder adding
+    // each need. Production and navigation alone are such a pair: production's builds and
+    // gathers, which navigation brings, order against the actions' steps with no stats to order
+    // through. The matches build on every core (02-engine-core.md, A sweep runs on every core).
     let limits = ScriptLimits {
         per_call: NonZeroU64::MIN,
         player: 1,
@@ -164,37 +165,26 @@ fn every_pair_of_capabilities_with_only_what_they_need_orders_every_pair_of_thei
         .into_iter()
         .filter(|&capability| capability != Mode)
         .collect();
-    let mut matches = 0;
+    let mut pairs = Vec::new();
     for (at, &first) in built.iter().enumerate() {
         for &second in &built[at..] {
             let mut declared = vec![first, second];
             declared.dedup();
-            let mut next = 0;
-            while let Some(&capability) = declared.get(next) {
-                let needs = rows
-                    .needs(capability)
-                    .expect("a built capability has its row");
-                for &need in needs {
-                    if !declared.contains(&need) {
-                        declared.push(need);
-                    }
-                }
-                next += 1;
-            }
-            for mut game in [
-                installed(&declared, Some(scripts)),
-                installed(&declared, None),
-                Match::builder(&declared).role(Role::Client).build(),
-            ] {
-                game.step();
-                matches += 1;
-            }
+            pairs.push(declared);
         }
     }
+    let roles = [Role::Server(scripts), Role::Rules, Role::Client];
+    let stepped = Parallel::map(pairs.len() * roles.len(), |at| {
+        let declared = &pairs[at / roles.len()];
+        let mut game = Match::builder(declared)
+            .role(roles[at % roles.len()].clone())
+            .build();
+        game.step();
+    });
     // 12 capabilities a manifest declares: 12 alone and 12 * 11 / 2 = 66 pairs, three matches
     // each.
     assert_eq!(built.len(), 12);
-    assert_eq!(matches, (12 + 66) * 3);
+    assert_eq!(stepped.len(), (12 + 66) * 3);
 }
 
 #[test]

@@ -1,5 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use serde::{Deserialize, Serialize};
 
 /// A unit type's `pools`: the mode's pools its units have, by name.
@@ -10,4 +11,5 @@ pub struct TypePoolsData(pub Vec<DeclaredName>);
 impl Section for TypePoolsData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "pools";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

@@ -1,5 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
@@ -26,4 +27,5 @@ impl DataSection for ModeNavigationData {
 impl Section for ModeNavigationData {
     const TABLE: SectionTable = SectionTable::Mode;
     const KEY: &'static str = "navigation";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

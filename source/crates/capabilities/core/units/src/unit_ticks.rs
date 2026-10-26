@@ -1,7 +1,9 @@
+use bevy_ecs::query::Without;
 use bevy_ecs::system::{Commands, Local, NonSend, Query, Res, ResMut};
 use campfire_script::{ScriptBudgets, ScriptFailures, ScriptHost, ScriptPrints};
 use campfire_sim::{DueIndex, DueUnit, SimTick};
 
+use crate::dead::Dead;
 use crate::lifespan::Lifespan;
 use crate::new_unit_states::NewUnitStates;
 
@@ -37,11 +39,13 @@ impl UnitTicks {
 
     /// Despawns each unit whose timed life ends with this tick, at its end, as the dead despawn: it
     /// is seen and sees in this tick's Vision stage for the last time. It visits only the units
-    /// the index of the lives that end holds due, in a buffer it keeps.
+    /// the index of the lives that end holds due, in a buffer it keeps. A dead unit is its
+    /// death's to despawn, which may keep it for a later stage, so its life waits until it lives
+    /// again.
     pub(super) fn end_lifespans(
         tick: Res<'_, SimTick>,
         mut index: ResMut<'_, DueIndex<Lifespan>>,
-        units: Query<'_, '_, &Lifespan>,
+        units: Query<'_, '_, &Lifespan, Without<Dead>>,
         mut commands: Commands<'_, '_>,
         mut due: Local<'_, Vec<DueUnit>>,
     ) {

@@ -1,10 +1,9 @@
 use crate::local_timeline::LocalTimeline;
 use crate::set_tick_rate::SetTickRate;
 use crate::timeline_rate::TimelineRate;
-use crate::timeline_systems::TimelineSystems;
 use bevy_app::{App, FixedFirst, FixedLast, FixedMainScheduleOrder, Plugin};
 use bevy_ecs::prelude::On;
-use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleLabel};
+use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::ResMut;
 use bevy_time::{Fixed, Time};
 use campfire_math::TickRate;
@@ -40,10 +39,7 @@ impl Plugin for LocalTimelinePlugin {
             .set_timestep(self.tick_rate.period());
         app.add_observer(Self::update_tick_rate);
 
-        app.add_systems(
-            FixedFirst,
-            LocalTimeline::increment_tick.in_set(TimelineSystems::IncrementLocal),
-        );
+        app.add_systems(FixedFirst, LocalTimeline::increment_tick);
         app.add_systems(EndLocalTick, LocalTimeline::end_tick);
         app.world_mut()
             .get_resource_or_init::<FixedMainScheduleOrder>()

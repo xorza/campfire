@@ -64,10 +64,6 @@ impl MatchCore {
     /// addressee no module of the match reads (02-engine-core.md, A command nothing reads is
     /// counted). The mode decodes its inputs by the names its schema declares, within its calls,
     /// so it counts those it does not read itself.
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "a Bevy system takes `Res` by value"
-    )]
     fn count_unread(
         inputs: Res<'_, TickInputs>,
         facts: Res<'_, MatchFacts>,

@@ -518,6 +518,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
         [
             "UnitTracker<GridUnits>::aged",
             "UnitTracker<GridUnits>::lost_body",
+            "Lifespan::revived",
             "Units::refill_view",
             "OrderSteps::forget_gone",
             "Level::raise",

@@ -112,7 +112,6 @@ impl SessionLog {
         let mut rest = bytes.strip_prefix(LOG_TAG).ok_or(LogError::NotLog)?;
         let header = take_header(&mut rest)?;
         let mut log = Self::within(header, bounds).map_err(LogError::Header)?;
-        let mut inputs = Vec::new();
         let mut applied = Vec::new();
         let first: u32 = take(&mut rest)?;
         let segments: u32 = take(&mut rest)?;
@@ -128,11 +127,11 @@ impl SessionLog {
             }
             let ticks: u64 = take(&mut rest)?;
             for _ in 0..ticks {
-                log.record_logged(&mut rest, &mut inputs, &mut applied)?;
+                log.record_logged(&mut rest, &mut applied)?;
                 drop(log.seal_tick(None));
             }
         }
-        log.record_logged(&mut rest, &mut inputs, &mut applied)?;
+        log.record_logged(&mut rest, &mut applied)?;
         if let Some(server_seed) = take::<Option<ServerSeed>>(&mut rest)? {
             if !server_seed.check(log.segment(), &log.header.terms.seed_commitment) {
                 return Err(LogError::WrongSeed);
@@ -209,17 +208,16 @@ impl SessionLog {
     }
 
     /// Records the entries `put_entries` wrote at the front of `rest` before the next tick, with
-    /// `inputs` and `applied` as scratch.
-    fn record_logged<'a>(
+    /// `applied` as scratch.
+    fn record_logged(
         &mut self,
-        rest: &mut &'a [u8],
-        inputs: &mut Vec<(Tick, &'a [u8])>,
+        rest: &mut &[u8],
         applied: &mut Vec<Applied>,
     ) -> Result<(), LogError> {
         let entries: u32 = take(rest)?;
         for _ in 0..entries {
             match take::<u8>(rest)? {
-                PACKET_ENTRY => self.record_packet(rest, inputs, applied)?,
+                PACKET_ENTRY => self.record_packet(rest, applied)?,
                 SERVER_ENTRY => self.record_server_input(rest)?,
                 _ => return Err(LogError::UnknownEntry),
             }
@@ -227,27 +225,26 @@ impl SessionLog {
         Ok(())
     }
 
-    /// Records the packet `put_packet` wrote at the front of `rest`, with `inputs` and `applied`
-    /// as scratch.
-    pub(super) fn record_packet<'a>(
+    /// Records the packet `put_packet` wrote at the front of `rest`, with `applied` as scratch.
+    pub(super) fn record_packet(
         &mut self,
-        rest: &mut &'a [u8],
-        inputs: &mut Vec<(Tick, &'a [u8])>,
+        rest: &mut &[u8],
         applied: &mut Vec<Applied>,
     ) -> Result<(), LogError> {
         let tick = self.next_tick();
         let player_slot = PlayerSlot::new(take(rest)?);
         let count: u32 = take(rest)?;
-        inputs.clear();
+        let start = *rest;
+        // Each input decodes once here, so the passes of the record decode it again infallibly.
         for _ in 0..count {
-            let stamp = take(rest)?;
-            let payload = take(rest)?;
-            inputs.push((stamp, payload));
+            let _ = take::<Tick>(rest)?;
+            let _ = take::<&[u8]>(rest)?;
         }
+        let inputs = PacketInputs { rest: start, count };
         let signature = take(rest)?;
         let packet = PlayerPacket {
             player_slot,
-            inputs: inputs.iter().copied(),
+            inputs,
             signature: &signature,
         };
         self.record(packet, applied, None)
@@ -313,6 +310,33 @@ impl SessionLog {
             .map_err(|error| LogError::Checkpoint { segment, error })
     }
 }
+
+/// The inputs of a packet's record, each decoded from its bytes as a pass reads it: the record
+/// keeps no list of them, so a journal's records stream through a buffer of one.
+#[derive(Debug, Clone)]
+struct PacketInputs<'a> {
+    rest: &'a [u8],
+    count: u32,
+}
+
+impl<'a> Iterator for PacketInputs<'a> {
+    type Item = (Tick, &'a [u8]);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.count = self.count.checked_sub(1)?;
+        let decoded = "a packet's inputs decoded whole as its record was read";
+        let stamp = take(&mut self.rest).expect(decoded);
+        let payload = take(&mut self.rest).expect(decoded);
+        Some((stamp, payload))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let count = usize::try_from(self.count).expect("u32 fits usize");
+        (count, Some(count))
+    }
+}
+
+impl ExactSizeIterator for PacketInputs<'_> {}
 
 /// Writes `packet`: its `u32` player slot, its inputs as a `u32` count and each input's stamp and
 /// payload bytes, and its signature.

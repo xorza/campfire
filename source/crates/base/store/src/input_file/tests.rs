@@ -18,6 +18,17 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
     assert!(matches!(refused(&five, 4), ReadError::TooLarge { max: 4 }));
     assert_eq!(InputFile::read(&five, 4).unwrap_err().path, five);
     assert_eq!(InputFile::read_text(&five, 5).unwrap(), "12345");
+    // A stream within the bound gives the bytes and the file's length as it opened; one byte
+    // past is too large before it reads.
+    let mut streamed = Vec::new();
+    let mut stream = InputFile::stream_within(&five, 5).unwrap();
+    assert_eq!(stream.stamp().len, 5);
+    stream.read_to_end(&mut streamed).unwrap();
+    assert_eq!(streamed, b"12345");
+    assert!(matches!(
+        InputFile::stream_within(&five, 4).unwrap_err().error,
+        ReadError::TooLarge { max: 4 }
+    ));
 
     let none = test_dir.path("none");
     assert!(matches!(refused(&none, 64), ReadError::Missing));
@@ -98,6 +109,14 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
         ReadError::Short { offset: 4, len: 2 }
     ));
     assert_eq!(short.path, five);
+    // A length far past the file is short before its buffer is made, which would not fit memory.
+    assert!(matches!(
+        ranges.read_at(0, usize::MAX).unwrap_err().error,
+        ReadError::Short {
+            offset: 0,
+            len: usize::MAX
+        }
+    ));
     assert!(matches!(
         ranges.read_at(u64::MAX, 1).unwrap_err().error,
         ReadError::Short {
@@ -114,18 +133,12 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
         ReadError::Missing
     ));
 
-    // The time of change is its handle's, no later than now; the ranges' stamp holds it and the
-    // length.
-    let stamped = InputFile::read_stamped(&five, 5).unwrap();
-    assert_eq!(stamped.bytes, b"12345");
-    assert!(stamped.modified <= SystemTime::now());
-    assert_eq!(
-        ranges.stamp(),
-        FileStamp {
-            len: 5,
-            modified: stamped.modified
-        }
-    );
+    // The time of change is its handle's, no later than now; a stream's stamp and the ranges'
+    // hold it and the length.
+    let stamp = InputFile::stream(&five).unwrap().stamp();
+    assert!(stamp.modified <= SystemTime::now());
+    assert_eq!(stamp.len, 5);
+    assert_eq!(ranges.stamp(), stamp);
 }
 
 #[test]

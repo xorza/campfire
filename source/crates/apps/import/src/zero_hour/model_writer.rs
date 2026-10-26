@@ -2,9 +2,9 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_client_files::{
-    AnimationMode, ClientModel, ClientUnit, ClientUnits, ConditionTest, LookDraw, LookShown,
-    LookState, LookTransition, LookVariant, LookVariation, ModelScale, ModelTop, NodeUpgrade,
-    ObjectLook, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
+    AnimationMode, ClientModel, ClientUnit, ConditionTest, LookDraw, LookShown, LookState,
+    LookTransition, LookVariant, LookVariation, ModelScale, ModelTop, NodeUpgrade, ObjectLook,
+    SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
 };
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_package_disk::PackageWriter;
@@ -28,7 +28,6 @@ use crate::zero_hour::game_path;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::look_flags::{FlagCondition, LookFlags};
-use crate::zero_hour::map_import;
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_nodes::{ModelNodes, NodeChanges};
@@ -108,6 +107,15 @@ struct Converter<'i, 'w> {
     dropped_animations: Vec<Dropped<AnimationDropCause>>,
     missing_textures: BTreeSet<String>,
     textures: BTreeSet<ArchivePath>,
+}
+
+/// The looks of an import's `client/units.toml`, which later stages complete before the import
+/// writes them.
+#[derive(Debug)]
+pub(crate) struct ImportedLooks {
+    pub(crate) units: BTreeMap<DeclaredName, ClientUnit>,
+    pub(crate) conditions: BTreeMap<DeclaredName, ConditionTest>,
+    pub(crate) objects: BTreeMap<DeclaredName, ObjectLook>,
 }
 
 /// What the models and the animations of an import lacked and drew with: the models the package
@@ -194,8 +202,9 @@ impl ModelWriter<'_, '_> {
         ini: &'r ObjectIni,
         names: &mut ImportNames<'r>,
         flags: &LookFlags,
-    ) -> Result<ClientUnits, ZeroHourError> {
-        let mut units = ClientUnits::default();
+    ) -> Result<ImportedLooks, ZeroHourError> {
+        let mut units = BTreeMap::new();
+        let mut objects = BTreeMap::new();
         let shown = StateLook::default();
         for object in ini.objects() {
             let scale = object.scale();
@@ -238,12 +247,15 @@ impl ModelWriter<'_, '_> {
             if let Some(object_look) = self.object_look(drawn, scale)?
                 && !object_look.models.is_empty()
             {
-                units.objects.insert(declared.clone(), object_look);
+                objects.insert(declared.clone(), object_look);
             }
-            units.units.insert(declared, unit_look);
+            units.insert(declared, unit_look);
         }
-        units.conditions = std::mem::take(&mut self.conditions);
-        Ok(units)
+        Ok(ImportedLooks {
+            units,
+            conditions: std::mem::take(&mut self.conditions),
+            objects,
+        })
     }
 
     /// The look of `variation`, a build variation of the object of `parent`: its draws and its
@@ -497,7 +509,7 @@ impl ModelWriter<'_, '_> {
             let looked = self.look_models(drawn(conditions), scale, &[])?;
             skipped |= looked.skipped;
             variants.push(LookVariant {
-                conditions: map_import::condition_names(conditions),
+                conditions: conditions.names(),
                 models: looked.models,
             });
         }

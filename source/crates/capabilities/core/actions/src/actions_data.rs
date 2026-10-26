@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use campfire_codec::{TomlError, TomlTable, TomlValue};
 use campfire_common::DeclaredName;
 use campfire_declarations::{ReadValue, Section, SectionReaders, SectionTable};
+use campfire_script::{ApiVersion, Status};
 
 use crate::action_data::ActionData;
 
@@ -13,6 +14,7 @@ pub struct ActionsData(pub BTreeMap<DeclaredName, ActionData>);
 impl Section for ActionsData {
     const TABLE: SectionTable = SectionTable::Package;
     const KEY: &'static str = "actions";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// Each action read with the release's readers, which read its lists' effects.

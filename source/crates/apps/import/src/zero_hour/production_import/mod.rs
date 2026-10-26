@@ -384,7 +384,7 @@ impl ProductionImport {
                 let Ok(typed) = names.unit_type(required, rules) else {
                     return drop(ButtonDropCause::NoType);
                 };
-                any.push(typed.name.into());
+                any.push(typed.name.declared().clone());
             }
             units.push(RequiredUnit::any_of(any).expect("a prerequisite line names an object"));
         }
@@ -450,7 +450,7 @@ impl ProductionImport {
             self.sections.insert(producer.name.clone(), section);
         }
         Some(NamedObject {
-            name: typed.name,
+            name: typed.name.clone(),
             object: typed.object,
         })
     }

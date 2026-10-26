@@ -2,23 +2,30 @@ use std::num::{NonZeroI64, NonZeroU32};
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declarations::Book;
+use campfire_actions::ActionBook;
+use campfire_common::DeclaredName;
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_players::ResourceAmount;
-use campfire_script::MatchNames;
-use campfire_values::{ActionId, ItemId, ModifierId, NameId, Names, ResourceId};
+use campfire_script::{MatchNames, UnknownName};
+use campfire_stats::ModifierBook;
+use campfire_values::{
+    ActionId, ItemId, ModifierId, NameId, Named, Names, PackageIndex, ResourceId,
+};
 
+use crate::Items;
 use crate::error::ItemError;
+use crate::items_data::ItemsData;
 
 /// The mode's item types, by id: package data, not state. A full stack of each costs what an
 /// amount holds, and each costs at least its components. A clone shares the items, as a write
 /// that reads them holds them.
 #[derive(Resource, Debug, Clone, PartialEq, Eq)]
 #[component(immutable)]
-pub struct ItemBook(Arc<Items>);
+pub struct ItemBook(Arc<ItemTables>);
 
 /// The items of an `ItemBook`.
 #[derive(Debug, Default, PartialEq, Eq)]
-struct Items {
+struct ItemTables {
     /// The items' names, by id.
     names: Names<ItemId>,
     specs: Vec<ItemSpec>,
@@ -80,7 +87,7 @@ impl ItemBook {
             .collect();
         modifiers.sort_unstable();
         modifiers.dedup();
-        Ok(Self(Arc::new(Items {
+        Ok(Self(Arc::new(ItemTables {
             names,
             specs: items,
             modifiers,
@@ -116,6 +123,77 @@ impl Book for ItemBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &mut MatchNames) {}
+}
+
+impl ItemBook {
+    /// The mode's item types, each with its cost in the players' resources, its components, its
+    /// modifiers and its action, of the mode's package; an error for a name the mode does not
+    /// have, or costs that break a rule of the book.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let index = PackageIndex::MODE;
+        let none = ItemsData::default();
+        let items = cx
+            .package(index)
+            .content
+            .get::<ItemsData>()
+            .unwrap_or(&none);
+        let ids: Names<ItemId> = items.0.keys().map(DeclaredName::as_str).collect();
+        let no_resources = Names::default();
+        let resources = Items::resources(cx, &no_resources)?;
+        let modifiers = cx.book::<ModifierBook>()?;
+        let actions = cx.book::<ActionBook>()?;
+        let mut specs = Vec::with_capacity(items.0.len());
+        for (name, item) in &items.0 {
+            let spec = || {
+                let cost = item.cost.iter().map(|(resource, &amount)| {
+                    let found = resources.named(resource.as_str());
+                    Ok(ResourceAmount {
+                        resource: found
+                            .ok_or_else(|| UnknownName::new(ResourceId::NAMES, resource))?,
+                        amount: i64::from(amount),
+                    })
+                });
+                let components = item.components.iter().map(|component| {
+                    let found = ids.named(component.as_str());
+                    found.ok_or_else(|| UnknownName::new(ItemId::NAMES, component))
+                });
+                let held = item.modifiers.iter().map(|modifier| {
+                    let found = modifiers.names().named((index, modifier.as_str()));
+                    found.ok_or_else(|| UnknownName::new(ModifierId::NAMES, modifier))
+                });
+                let action = item.action.as_ref().map(|action| {
+                    let found = actions.names().named((index, action.as_str()));
+                    found.ok_or_else(|| UnknownName::new(ActionId::NAMES, action))
+                });
+                Ok(ItemSpec {
+                    cost: cost.collect::<Result<_, UnknownName>>()?,
+                    components: components.collect::<Result<_, UnknownName>>()?,
+                    stack: item.stack,
+                    uses: item.uses,
+                    modifiers: held.collect::<Result<_, UnknownName>>()?,
+                    action: action.transpose()?,
+                })
+            };
+            let at = BookPlace::Entry {
+                table: ItemsData::KEY,
+                name: name.clone(),
+            };
+            specs.push(spec().map_err(|name| BookError::unknown(index, at, name))?);
+        }
+        Self::new(ids, specs).map_err(|error| {
+            let (ItemError::StackCost(item) | ItemError::CheaperThanComponents(item)) = error;
+            let name = items
+                .0
+                .keys()
+                .nth(item.index())
+                .expect("an item of the package");
+            let at = BookPlace::Entry {
+                table: ItemsData::KEY,
+                name: name.clone(),
+            };
+            BookError::rule(index, at, error)
+        })
+    }
 }
 
 #[cfg(test)]

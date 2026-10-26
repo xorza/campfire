@@ -73,7 +73,7 @@ impl FactionStart {
         let mut unit_type = |object: &'r IniObject| {
             names
                 .unit_type(object, rules)
-                .map(|named| DeclaredName::from(named.name))
+                .map(|named| named.name.declared().clone())
                 .map_err(|error| Self::type_error(object, error))
         };
         let building = object(building)?;

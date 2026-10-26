@@ -23,9 +23,7 @@ fn a_turret_turns_toward_its_target_and_its_attack_starts_within_its_tolerance()
     // tick 13, 6° from its aim, and 90° in tick 14, where the attack starts.
     let mut game = fight_match();
     let [gunner, target] = turret_fight(&mut game, 0);
-    for _ in 0..14 {
-        game.step();
-    }
+    game.steps(14);
     let angle = |game: &Match| game.part::<TurretAngle>(gunner).degrees();
     assert_eq!(angle(&game), Num::int(84));
     assert_eq!(Attack::of(&game, gunner).started(), None);
@@ -43,9 +41,7 @@ fn a_turret_turns_toward_its_target_and_its_attack_starts_within_its_tolerance()
             .due_at(game.unit_entity(gunner))
     };
     assert_eq!(turning(&game), Some(Tick::ZERO));
-    for _ in 0..29 {
-        game.step();
-    }
+    game.steps(29);
     assert_eq!((angle(&game), turning(&game)), (Num::ZERO, None));
 
     // A weapon of another slot kind than the turret's starts at once, its turret turning still.

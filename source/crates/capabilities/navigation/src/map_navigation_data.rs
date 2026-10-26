@@ -1,6 +1,7 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_units::MapPoint;
 use serde::{Deserialize, Serialize};
 
@@ -27,4 +28,5 @@ pub struct WallData {
 impl Section for MapNavigationData {
     const TABLE: SectionTable = SectionTable::Map;
     const KEY: &'static str = "navigation";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

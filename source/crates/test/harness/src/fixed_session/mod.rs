@@ -42,24 +42,13 @@ impl FixedSession {
     /// A session of `packages` at its manifest's default rate for `players` players, under the
     /// LAN's input limits, which the client plays under.
     pub fn new(packages: ModePackages, players: u32) -> Self {
-        Self::with_rules(packages, players, InputRules::LAN)
-    }
-
-    /// A session of `packages` at its manifest's default rate for `players` players, its inputs
-    /// within `rules`.
-    pub fn with_rules(packages: ModePackages, players: u32, rules: InputRules) -> Self {
         let players = usize::try_from(players).expect("players fit usize");
-        let plan = iter::repeat_n(PlayerSlotPlan::Player, players);
-        Self::planned(packages, rules, plan)
+        Self::planned(packages, iter::repeat_n(PlayerSlotPlan::Player, players))
     }
 
-    /// A session of `packages` at its manifest's default rate, its inputs within `rules`, its
+    /// A session of `packages` at its manifest's default rate, under the LAN's input limits, its
     /// player slots as `plan` opens them.
-    pub fn planned(
-        packages: ModePackages,
-        rules: InputRules,
-        plan: impl IntoIterator<Item = PlayerSlotPlan>,
-    ) -> Self {
+    pub fn planned(packages: ModePackages, plan: impl IntoIterator<Item = PlayerSlotPlan>) -> Self {
         let tick_hz = packages.manifest().tick_hz.default();
         let session_rules = SessionRules::of(&packages);
         let visibility = session_rules.visibility().settings();
@@ -70,7 +59,7 @@ impl FixedSession {
                 server_key: server_key(),
                 seed_commitment: SEED_CHAIN.commitment(),
                 tick_hz,
-                inputs: rules,
+                inputs: InputRules::LAN,
                 player_slots,
                 visibility,
                 picks: &picks,
@@ -89,6 +78,16 @@ impl FixedSession {
         self.terms.tick_hz = tick_hz;
         let rules = SessionRules::of(&self.packages);
         rules.check(&self.terms).expect("a rate the mode runs at");
+        self
+    }
+
+    /// The session, its inputs within `rules`.
+    #[must_use]
+    pub fn rules(mut self, rules: InputRules) -> Self {
+        self.terms.inputs = rules;
+        SessionRules::of(&self.packages)
+            .check(&self.terms)
+            .expect("input rules the mode takes");
         self
     }
 

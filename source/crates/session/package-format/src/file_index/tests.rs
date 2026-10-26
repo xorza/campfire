@@ -1,7 +1,7 @@
 use std::io;
 
 use super::*;
-use crate::package_walk::PackageWalk;
+use crate::package_walk::{HashedFile, PackageWalk};
 
 /// An index's bytes: its tag's line, then `rows`, each a line.
 fn indexed(rows: &[&str]) -> Vec<u8> {
@@ -120,6 +120,11 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
         .hash(Reads(vec![Err(io::ErrorKind::Interrupted), Ok(b"abc")]))
         .unwrap();
     assert_eq!(interrupted, walk.hash(&b"abc"[..]).unwrap());
+    // A file held whole hashes as its stream does: none, one byte, and one chunk of 64 KiB and a
+    // byte more, which streams in two reads.
+    for bytes in [Vec::new(), vec![7], vec![7; 64 * 1024 + 1]] {
+        assert_eq!(HashedFile::of(&bytes), walk.hash(bytes.as_slice()).unwrap());
+    }
     let failed = walk.hash(Reads(vec![Ok(b"ab"), Err(io::ErrorKind::PermissionDenied)]));
     assert_eq!(failed.unwrap_err().kind(), io::ErrorKind::PermissionDenied);
     assert_eq!(walk.finish().unwrap().index.rows().count(), 0);

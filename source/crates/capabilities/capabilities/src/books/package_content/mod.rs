@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::{fmt, iter};
 
@@ -63,12 +62,6 @@ impl PackageContent {
     pub fn items(&self) -> &BTreeMap<DeclaredName, ItemData> {
         static NONE: ItemsData = ItemsData(BTreeMap::new());
         &self.section().unwrap_or(&NONE).0
-    }
-
-    /// Its section `S`, or the value a package that does not give it reads as.
-    pub fn section_or_default<S: Section + Default>(&self) -> Cow<'_, S> {
-        debug_assert_eq!(S::TABLE, SectionTable::Package, "{}", S::KEY);
-        self.sections.get_or_default()
     }
 }
 

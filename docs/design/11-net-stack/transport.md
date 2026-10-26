@@ -50,8 +50,15 @@ send costs.
 - **What a channel holds past a packet is a copy, charged with its entry.** A message behind a gap
   and a final fragment that waits for its size are copied out of their packet, which the receive
   arena's 256 KiB chunk holds, and each entry costs its slot as well as its bytes, so a message
-  32,767 ids ahead costs one entry, not a slot for each id between, and empty messages fill the
-  budget too. Refused: a slice of the packet, which pins its chunk; a ring at each id's distance.
+  16,383 ids ahead costs one entry, not a slot for each id between, and empty messages fill the
+  budget too. The entries are a B-tree by id, so a peer's order of ids costs `O(log n)` each.
+  Refused: a slice of the packet, which pins its chunk; a ring at each id's distance; a list
+  sorted by distance, which moves half its entries for each id a peer sends into its middle.
+- **An id past the sender's window breaks the protocol.** A reliable message as far as
+  `SEND_WINDOW` or farther ahead of the id its receiver waits for unlinks its peer, as the
+  sender's window of unacked ids starts at or before that id, so no honest peer sends one.
+  Source: QUIC, whose receiver closes on data past the flow control limit it gave (RFC 9000
+  §4.1).
 
 ## Protocol agreement
 

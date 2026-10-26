@@ -1,11 +1,15 @@
 use std::num::NonZeroU16;
 
-use crate::attack_data::PreAttackEach;
 use campfire_common::Ticks;
+use campfire_declarations::PerId;
 use campfire_geometry::Volume;
 use campfire_math::{Num, Rounding, SinCos, Vec3};
 use campfire_units::StatId;
-use campfire_values::{DamageKind, ModifierId, NameId, Rank, RelationSet, Speed, Tag, TagSet};
+use campfire_values::{
+    ActionId, DamageKind, ModifierId, NameId, Rank, RelationSet, Speed, Tag, TagSet,
+};
+
+use crate::attack_data::PreAttackEach;
 
 /// What makes an action of kind `attack` a weapon, as the match runs it: where its rate and its
 /// damage come from, the stat that speeds its own period, the kind of damage it deals, its clip
@@ -294,6 +298,10 @@ impl Splash {
             .as_ref()
             .map_or(self.radius, |outer| outer.radius)
     }
+}
+
+impl PerId<ActionId> for Weapon {
+    const SCRIPTS_ONLY: bool = false;
 }
 
 #[cfg(feature = "internals")]

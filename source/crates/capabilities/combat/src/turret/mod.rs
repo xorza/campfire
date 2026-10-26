@@ -1,13 +1,14 @@
 use std::num::NonZeroI64;
 
-use campfire_actions::SlotKind;
-use campfire_declarations::PerId;
+use campfire_actions::{SlotKind, SlotKindBook};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::{Num, Rounding};
+use campfire_script::UnknownName;
 use campfire_sim::MatchRate;
 use campfire_units::TurnStep;
+use campfire_values::{Named, UnitType};
 
 use crate::turret::turret_data::TurretData;
-use campfire_values::UnitType;
 
 pub(crate) mod aiming;
 pub(crate) mod turret_angle;
@@ -48,6 +49,27 @@ impl Turret {
 
 impl PerId<UnitType> for Turret {
     const SCRIPTS_ONLY: bool = false;
+}
+
+impl Turret {
+    /// The turret of each unit type that stands with one, its attacks those of its slot kind; an
+    /// error for a kind the mode does not declare.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let kinds = &cx.book::<SlotKindBook>()?.0;
+        let mut book = ByIdBuilder::default();
+        for unit in cx.standing() {
+            let Some(turret) = unit.data.section::<TurretData>() else {
+                continue;
+            };
+            let slot = kinds.names().named(turret.slot.as_str()).ok_or_else(|| {
+                let at = BookPlace::UnitType(unit.place());
+                let name = UnknownName::new(SlotKind::NAMES, &turret.slot);
+                BookError::unknown(unit.package, at, name)
+            })?;
+            book.set(unit.unit_type, Self::of(turret, slot, cx.rate()));
+        }
+        Ok(book.build())
+    }
 }
 
 #[cfg(test)]

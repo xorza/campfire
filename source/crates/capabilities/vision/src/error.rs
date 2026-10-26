@@ -26,4 +26,8 @@ pub enum VisionDataError {
     /// More teams than a map with a vision grid holds.
     #[error("more teams than a map with a vision grid holds")]
     TooManyTeams,
+    /// More cells times teams than a match's counts of sight may take
+    /// (`VisionGrid::MAX_CELL_TEAMS`).
+    #[error("the grid's cells times the match's teams pass what its sight's counts may take")]
+    TooLarge,
 }

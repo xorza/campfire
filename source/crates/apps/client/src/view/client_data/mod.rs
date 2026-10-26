@@ -163,9 +163,7 @@ impl ClientLoad {
             .unwrap_or_default()
             .conditions;
         for package in &mut self.packages {
-            for look in package.units.objects.values_mut() {
-                look.settle(&conditions);
-            }
+            package.units.settle_objects(&conditions);
         }
         self.map_conditions = conditions;
     }
@@ -216,14 +214,20 @@ impl ClientLoad {
 }
 
 #[cfg(test)]
-impl ClientLoad {
-    /// The client data of packages of the looks `units`, in their places' order, as a test of the
-    /// looks draws.
-    pub(crate) fn of_looks(units: impl IntoIterator<Item = ClientUnits>) -> Self {
-        let packages = units.into_iter().map(|units| PackageClient { units });
-        Self {
-            packages: packages.collect(),
-            ..Self::default()
+mod test_load {
+    use campfire_client_files::ClientUnits;
+
+    use crate::view::client_data::{ClientLoad, PackageClient};
+
+    impl ClientLoad {
+        /// The client data of packages of the looks `units`, in their places' order, as a test
+        /// of the looks draws.
+        pub(crate) fn of_looks(units: impl IntoIterator<Item = ClientUnits>) -> Self {
+            let packages = units.into_iter().map(|units| PackageClient { units });
+            Self {
+                packages: packages.collect(),
+                ..Self::default()
+            }
         }
     }
 }

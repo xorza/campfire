@@ -1,3 +1,8 @@
+#![expect(
+    unsafe_code,
+    reason = "the one-instruction division is inline assembly, which is unsafe (02-engine-core.md, Unsafe only where an outside API asks)"
+)]
+
 use std::arch::asm;
 
 use crate::wide_division::WideDivision;

@@ -177,6 +177,11 @@ fn a_prediction_despawn_disables_where_the_app_predicts() {
         world.get::<PredictionDespawned>(entity),
         Some(&PredictionDespawned { tick: NetTick(7) })
     );
+    // Outside `FixedMain`, which no replay runs, an entity this end alone predicts goes at once,
+    // as no rollback must bring it back.
+    let local = world.spawn(LocallyPredicted::default()).id();
+    PredictionDespawnCommand { entity: local }.apply(&mut world);
+    assert!(world.get_entity(local).is_err());
 }
 
 #[test]

@@ -2,10 +2,6 @@
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-#![expect(
     clippy::type_complexity,
     reason = "a Bevy query names its data and its filters in one type"
 )]

@@ -10,16 +10,16 @@ cell = "1.0"
 name = "w1"
 tags = ["start"]
 position = [-10, 0]
-params = { name = "Player_1_Start" }
+params = { name = "Player_1_Start", player_slot = 0 }
 
 [[markers]]
 name = "w2"
 tags = ["start"]
 position = [10, 0]
-params = { name = "Player_2_Start" }
+params = { name = "Player_2_Start", player_slot = 1 }
 
 [[markers]]
 name = "w3"
 tags = ["start"]
 position = [0, 10]
-params = { name = "Player_3_Start" }
+params = { name = "Player_3_Start", player_slot = 2 }

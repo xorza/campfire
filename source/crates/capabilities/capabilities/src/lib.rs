@@ -34,7 +34,7 @@ pub use crate::order::location::{GroundLocation, Location, MarkerLocation, NearL
 pub use crate::order::named_refs::NamedRefs;
 pub use crate::order::{Directive, Order, OrderPayloads, OrderPayloadsIter};
 pub use crate::release::Release;
-pub use crate::release::error::CapabilityError;
+pub use crate::release::error::{CapabilityError, CheckedBooksError};
 pub use crate::release::r#match::Match;
 pub use crate::release::match_kind::{MatchKind, ModeStart, PackageScript};
 pub use crate::release::match_setup::MatchSetup;
@@ -45,7 +45,6 @@ pub mod internals {
     pub use crate::fixtures::actions::ActionsFixtures;
     pub use crate::fixtures::areas::AreasFixtures;
     pub use crate::fixtures::navigation::NavigationFixtures;
-    pub use crate::fixtures::orders::OrdersFixtures;
     pub use crate::fixtures::production::ProductionFixtures;
     pub use crate::fixtures::stats::StatsFixtures;
     pub use crate::fixtures::units::{FilterFixtures, UnitsFixtures, ViewFixtures};

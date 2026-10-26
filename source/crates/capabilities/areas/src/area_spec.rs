@@ -1,10 +1,11 @@
 use campfire_common::{DeclaredName, Ticks};
-use campfire_declarations::PerId;
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::Num;
 use campfire_script::{Filter, TagNames, UnknownName};
 use campfire_sim::MatchRate;
-use campfire_stats::Affects;
-use campfire_values::{ModifierId, RelationSet, TimeTooLarge, UnitType};
+use campfire_stats::{Affects, ModifierBook};
+use campfire_units::UnitTypes;
+use campfire_values::{ModifierId, Named, RelationSet, TimeTooLarge, UnitType};
 
 use crate::area_data::AreaData;
 use crate::error::AreaError;
@@ -70,4 +71,31 @@ impl Inside {
 
 impl PerId<UnitType> for AreaSpec {
     const SCRIPTS_ONLY: bool = false;
+}
+
+impl AreaSpec {
+    /// The spec of each area type, its filters resolved against the match's tags and its modifiers
+    /// among its package's; an error for a name the match does not have, or a time too large to
+    /// count in ticks.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let tags = cx.fact::<UnitTypes>()?.tags();
+        let modifiers = cx.book::<ModifierBook>()?;
+        let mut book = ByIdBuilder::default();
+        for unit in cx.types() {
+            let Some(area) = unit.data.section::<AreaData>() else {
+                continue;
+            };
+            let modifier = |name: &DeclaredName| {
+                let modifier = modifiers.names().named((unit.package, name.as_str()));
+                modifier.ok_or_else(|| UnknownName::new(ModifierId::NAMES, name))
+            };
+            let at = || BookPlace::UnitType(unit.place());
+            let spec = Self::of(area, tags, cx.rate(), modifier).map_err(|error| match error {
+                AreaError::Time(error) => BookError::rule(unit.package, at(), error),
+                AreaError::Unknown(name) => BookError::unknown(unit.package, at(), name),
+            })?;
+            book.set(unit.unit_type, spec);
+        }
+        Ok(book.build())
+    }
 }

@@ -58,33 +58,25 @@ impl Interaction {
                 return fail(UseError::Named(id.clone()));
             }
         }
+        // A use aims at a unit, and no loadout declares one, as a loadout's actions are a hero's.
         for (package, source) in cx.packages() {
             let actions = source.content.get::<ActionsData>().into_iter();
-            let mut actions = actions.flat_map(|actions| &actions.0);
-            let aimless = actions.find(|(_, action)| {
-                action.kind() == ActionKind::Use
-                    && !matches!(action.keys.targeting, Targeting::Unit(_))
-            });
-            if let Some((id, _)) = aimless {
+            let uses = actions
+                .flat_map(|actions| &actions.0)
+                .filter(|(_, action)| action.kind() == ActionKind::Use);
+            for (id, action) in uses {
+                let problem = if !matches!(action.keys.targeting, Targeting::Unit(_)) {
+                    UseError::Aims
+                } else if matches!(source.kind, SourceKind::Loadout) {
+                    UseError::Named(id.clone())
+                } else {
+                    continue;
+                };
                 let at = BookPlace::Entry {
                     table: ActionsData::KEY,
                     name: id.clone(),
                 };
-                return Err(BookError::rule(package, at, UseError::Aims));
-            }
-        }
-        for (package, source) in cx.packages() {
-            if !matches!(source.kind, SourceKind::Loadout) {
-                continue;
-            }
-            let actions = source.content.get::<ActionsData>().into_iter();
-            let mut actions = actions.flat_map(|actions| &actions.0);
-            if let Some((id, _)) = actions.find(|(_, action)| action.kind() == ActionKind::Use) {
-                let at = BookPlace::Entry {
-                    table: ActionsData::KEY,
-                    name: id.clone(),
-                };
-                return Err(BookError::rule(package, at, UseError::Named(id.clone())));
+                return Err(BookError::rule(package, at, problem));
             }
         }
         Ok(())

@@ -253,9 +253,9 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
 #[test]
 fn a_channel_ticks_from_the_tick_after_its_cast_and_an_order_a_stun_a_death_or_its_slot_emptied_cuts_it()
  {
-    // Drain: a channel of 300 ms, 9 ticks at 30 a second, that ticks each 100 ms, 3 ticks, and
-    // holds Ward, a shield of 100. Each tick strikes its target for 10; a cut one strikes it
-    // for 7.
+    // Drain: a channel of 300 ms, 9 ticks at 30 a second, that ticks each 100 ms, 3 ticks, at
+    // its first rank, each 50 ms at its later ones, and holds Ward, a shield of 100. Each tick
+    // strikes its target for 10; a cut one strikes it for 7.
     let script = r#"
 fn on_channel_tick(ctx, caster, target) {
     ctx.damage(target, "true", 10);
@@ -279,7 +279,7 @@ fn on_interrupt(ctx, caster, target) {
             )))),
             channel: Some(ChannelData {
                 duration_ms: Some(Ranked::One(int(300))),
-                tick_ms: Ranked::One(int(100)),
+                tick_ms: Ranked::PerRank(vec![int(100), int(50), int(50), int(50), int(50)]),
                 damage_interrupts: false,
                 windup_spread: None,
                 wind_down_ms: None,
@@ -365,6 +365,32 @@ fn on_interrupt(ctx, caster, target) {
         });
     });
     assert_eq!(health(&emptied), cut);
+    // A rank learned in tick 5 leaves the channel at the rank it began with: it ticks each
+    // 100 ms on, as a whole one does, not each 50 ms; and the match as it stands then, with its
+    // slot past the channel's rank, restores.
+    let learned = run(&mut game, 100, &|game, caster| {
+        game.part_mut::<ActionSlots>(caster).learn(0);
+        let mut snapshot = Vec::new();
+        game.snapshot(&mut snapshot);
+        game.restore_in_place(&snapshot).unwrap();
+    });
+    assert_eq!(health(&learned), health(&whole));
+    // An order of a slot an item fills afresh in its tick ends, as what it ordered is gone: it
+    // does not go back to its order and start what the slot holds then.
+    let caster = Abilities::caster(&mut game, drain, 1);
+    *game.part_mut::<Position>(caster) = Position::from((120, 0, 0));
+    let target = Abilities::spawn_combatant(&mut game, (121, 0, 0), Team::new(1), ());
+    ProgressDues::change_unit(&mut game, caster, |progress, dues| {
+        progress.order(0, ActionTarget::Unit(target), dues);
+    });
+    let entity = game.unit_entity(caster);
+    ProgressDues::with(&mut game, caster, entity, |game, dues| {
+        let mut unit = game.entity_mut(entity);
+        let mut held = unit.get_components_mut::<SlotsMut>().unwrap();
+        held.fill(0, Some(drain), dues);
+    });
+    game.step();
+    assert_eq!(game.part::<ActionProgress>(caster).in_progress(), None);
 }
 
 #[test]

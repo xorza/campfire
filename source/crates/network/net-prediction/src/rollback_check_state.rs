@@ -1,6 +1,9 @@
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use campfire_net_core::NetTick;
+use campfire_net_timeline::LocalTimelineShift;
+
+use crate::prediction_despawned::PredictionDespawned;
 
 /// What a rollback is for, which sets what it does to the locally predicted entities a rollback
 /// would otherwise despawn or protect.
@@ -96,6 +99,25 @@ impl RollbackCheckState {
     /// skip), otherwise `RollbackPlugin::prepare_rollback` won't find the restore value.
     pub const fn forced_rollback_tick(&self) -> Option<NetTick> {
         self.forced_rollback_tick
+    }
+
+    /// Moves the ticks of the locally predicted entities, which are the local timeline's, by the
+    /// shift's whole ticks, and the tick of each prediction despawn with them, as the prediction
+    /// histories move (`LocalTimelineShift`'s contract), so a rollback compares ticks of one
+    /// labelling.
+    pub(crate) fn shift_with_local_timeline(
+        trigger: On<'_, '_, LocalTimelineShift>,
+        mut state: ResMut<'_, Self>,
+        mut despawned: Query<'_, '_, &mut PredictionDespawned>,
+    ) {
+        let state = &mut *state;
+        let listed = state.local_despawn.iter_mut();
+        for (tick, _) in listed.chain(state.local_skip_despawn.iter_mut()) {
+            *tick = *tick + trigger.delta;
+        }
+        for mut despawned in &mut despawned {
+            despawned.tick = despawned.tick + trigger.delta;
+        }
     }
 
     /// Reset all connection-scoped rollback check state. The locally predicted entities are this

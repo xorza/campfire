@@ -3,18 +3,12 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 use campfire_units::internals::Spawn;
 use campfire_units::{Life, UnitTypeCore, Units};
-use campfire_values::{TagProperties, Team, TypeScope};
+use campfire_values::{Team, TypeScope};
 use campfire_vision::internals::SIGHTS;
 use campfire_vision::{Sight, Vision};
 
-use crate::fixtures::units::UnitsFixtures;
-
 /// The test fixtures of `Vision` that need a crate above its own.
 pub trait VisionFixtures {
-    /// Holds on unit `id` the test tags whose effects make `properties`, as its modifiers
-    /// would.
-    fn set_properties(world: &mut World, id: StableId, properties: TagProperties);
-
     /// Loads the mode's seers, each of 100 life, so it may be a target, and seeing one of
     /// `SIGHTS`, named for it.
     fn load_seers(world: &mut World);
@@ -24,10 +18,6 @@ pub trait VisionFixtures {
 }
 
 impl VisionFixtures for Vision {
-    fn set_properties(world: &mut World, id: StableId, properties: TagProperties) {
-        Units::hold_properties(world, id, properties);
-    }
-
     fn load_seers(world: &mut World) {
         for sight in SIGHTS {
             let core = UnitTypeCore::default();

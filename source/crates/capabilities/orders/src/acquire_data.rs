@@ -1,4 +1,5 @@
 use campfire_declarations::{PatchError, Patched, Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::FilterData;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -47,4 +48,5 @@ impl DataSection for AcquireData {
 impl Section for AcquireData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "acquire";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

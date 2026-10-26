@@ -153,6 +153,7 @@ impl Module for Units {
         d.cache::<UnitTracker<GridUnits>>();
         d.observer(UnitTracker::<GridUnits>::aged);
         d.observer(UnitTracker::<GridUnits>::lost_body);
+        d.observer(Lifespan::revived);
         d.observer(Self::refill_view);
         d.check::<Position>(Self::within_bounds);
         d.host::<Position, UnitEntity>();
@@ -240,7 +241,6 @@ impl Units {
         }
     }
 
-    /// Visits each kind of entity of the core's units, which state types name as their host.
     /// The body of each unit type that stands with a `collision` or `variations`: its
     /// collision's, or the bound of its variations
     /// (04-capabilities/00-overview.md, A unit type may vary its units).
@@ -260,6 +260,7 @@ impl Units {
         Ok(bodies.build())
     }
 
+    /// Visits each kind of entity of the core's units, which state types name as their host.
     fn kinds<V: KindVisitor>(v: &mut V) {
         v.kind::<BodyUnit>();
         v.state::<BodyUnit, Dead>();

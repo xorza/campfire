@@ -9,6 +9,7 @@ use campfire_common::DeclaredName;
 use campfire_declarations::{BookError, Listed, ReadValue, SectionReaders};
 use campfire_deliveries::Delivering;
 use campfire_script::{ApiBuilder, CallError, Frame, View};
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_values::{Named, Number, TypeScope, UnitType};
 use serde::Deserialize;
@@ -59,6 +60,8 @@ impl Listed for LandEffectData {
     type Set = ListedEffects;
 
     const KEY: &'static str = "land";
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn ListedEffect> {
         Arc::new(self)

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_values::{EngineStat, Stat};
 use serde::{Deserialize, Serialize};
 
@@ -76,6 +77,7 @@ impl StatsData {
 impl Section for StatsData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "stats";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(test)]

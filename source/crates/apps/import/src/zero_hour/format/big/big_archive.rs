@@ -37,7 +37,8 @@ impl BigArchive {
         }
         let count = be32(&head[8..12]);
         let header_len = usize::try_from(be32(&head[12..16])).expect("a u32 fits usize");
-        if header_len < HEADER {
+        if header_len < HEADER || u64::try_from(header_len).expect("a usize fits u64") > file.len()
+        {
             return Err(refused(ArchiveError::Short));
         }
         let list = file.read_at(0, header_len).map_err(short)?;

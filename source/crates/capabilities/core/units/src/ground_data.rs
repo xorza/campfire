@@ -1,4 +1,5 @@
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use serde::{Deserialize, Serialize};
 
 use crate::ground::{CellSplit, CoarseSpan};
@@ -18,6 +19,7 @@ pub struct GroundData {
 impl Section for GroundData {
     const TABLE: SectionTable = SectionTable::Map;
     const KEY: &'static str = "ground";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// Whether `split` is the split a read takes when the field is left out.

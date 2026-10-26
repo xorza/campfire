@@ -154,7 +154,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         |names: &[&str]| names.iter().map(|&name| declared(name)).collect::<Vec<_>>();
     let one = |value: i64| Ranked::One(Number::from(value));
     let navigation = data.section::<ModeNavigationData>().unwrap();
-    assert_eq!(navigation.spawn_tags, all_declared(&["start"]));
+    assert_eq!(navigation.spawn_tags, all_declared(&["start", "rally"]));
     // Its base, as the dozer builds the barracks and the center and the barracks train, and two
     // of each unit (09-zero-hour.md, A base start); its army the ranger alone, as the sample's
     // pathfinder holds no weapon.
@@ -848,7 +848,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // texels; the other names none.
     let file = ZeroHourMap::read(&map(8)).unwrap();
     let mut textures = vec![None; file.terrain.fields().classes.len()];
-    textures[0] = Some(ClassTexture {
+    textures[0] = Some(PackageTexture {
         path: PackagePath::parse("client/textures/art/terrain/tsand.ktx2").unwrap(),
         size: UVec2::new(2, 1),
     });
@@ -864,18 +864,22 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     rules.strings = StringTable::read(&strings()).unwrap();
     rules.weapons.read(WEAPONS.as_bytes()).unwrap();
     rules.armors.read(ARMORS.as_bytes()).unwrap();
-    let looks = Toml::parse(&test_dir.read_text("one/game/client/units.toml")).unwrap();
+    let looks: ClientUnits =
+        Toml::parse(&test_dir.read_text("one/game/client/units.toml")).unwrap();
     let mut names = ImportNames::default();
+    let roads = MapRoads::of(&file.objects, &rules.roads);
     let sources = MapSources {
         rules: &rules,
         names: &mut names,
-        looks: &looks,
+        object_looks: looks.objects(),
         lights: 3,
         game: TerrainDraw {
             adjust_cliff_textures: true,
             three_way_blends: false,
         },
         textures: &textures,
+        roads: &roads,
+        road_textures: &[],
     };
     let expected = MapImport::new(&file, sources).unwrap();
     assert_eq!(
@@ -1283,8 +1287,8 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             .collect(),
         ..empty()
     };
-    let expected = ClientUnits {
-        units: looks(vec![
+    let expected = ClientUnits::new(
+        looks(vec![
             ("americabarracks", empty()),
             (
                 "americacommandcenter",
@@ -1348,12 +1352,12 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             ("tankred", unit(armored(vec![model("tank", &[])]))),
             ("tankshell", empty()),
         ]),
-        conditions: ["night", "reallydamaged"]
+        ["night", "reallydamaged"]
             .map(test)
             .into_iter()
             .chain([(armor.clone(), ConditionTest::Tag { tag: armor.clone() })])
             .collect(),
-        objects: [
+        [
             ("bush", ObjectLook::new(vec![model("tank", &[])])),
             ("oak", ObjectLook::new(vec![model("rock01", &[])])),
             ("rock", ObjectLook::new(vec![scaled("rock01", 1.5, &[])])),
@@ -1362,7 +1366,8 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         .into_iter()
         .map(|(name, look)| (DeclaredName::new(name).unwrap(), look))
         .collect(),
-    };
+    )
+    .unwrap();
     assert_eq!(
         Toml::parse::<ClientUnits>(&test_dir.read_text("one/game/client/units.toml")).unwrap(),
         expected

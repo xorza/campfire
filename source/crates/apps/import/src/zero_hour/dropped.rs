@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::fmt::{self, Debug, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +9,13 @@ use serde::{Deserialize, Serialize};
 pub struct Dropped<C> {
     pub name: String,
     pub cause: C,
+}
+
+/// The part's name, then its cause.
+impl<C: Debug> Display for Dropped<C> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ({:?})", self.name, self.cause)
+    }
 }
 
 /// What a stage drops, each part once for each cause it drops by, in the order it first drops

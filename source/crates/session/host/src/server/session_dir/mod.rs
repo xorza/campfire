@@ -5,20 +5,20 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use campfire_common::{ErrorReport, Version};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    JournalFrames, PublishWriteError, ServerSeed, SessionId, SessionLog, SessionPrivate,
-    SessionTerms, Signer,
+    JournalFrames, JournalReplay, PublishWriteError, ServerSeed, SessionId, SessionLog,
+    SessionPrivate, SessionTerms, Signer, WalkStopped,
 };
 use campfire_runner::{
     CheckedTerms, ResumeAt, Session, SessionRules, SessionSource, SessionWorld, StartError,
 };
 use campfire_store::{
-    AppendOpenError, DirEntries, DurableDir, DurableDirError, DurableFile, InputFile, PathError,
-    ReadError, Stamped,
+    AppendOpenError, DirEntries, DurableDir, DurableDirError, DurableFile, FileStamp, InputFile,
+    PathError, ReadError,
 };
 use tracing::{error, info};
 
@@ -188,29 +188,46 @@ impl SessionDir {
         };
         let private = SessionPrivate::decode(&private).map_err(RestoreError::Private)?;
         let path = self.journal();
-        let Stamped { bytes, modified } =
-            match InputFile::read_stamped(&path, SessionLog::MAX_JOURNAL_LEN) {
-                Ok(stamped) => stamped,
-                Err(PathError {
-                    error: ReadError::Missing,
-                    ..
-                }) => return Ok(None),
-                Err(error) => return Err(RestoreError::Read(error)),
+        let stream = match InputFile::stream_within(&path, SessionLog::MAX_JOURNAL_LEN) {
+            Ok(stream) => stream,
+            Err(PathError {
+                error: ReadError::Missing,
+                ..
+            }) => return Ok(None),
+            Err(error) => return Err(RestoreError::Read(error)),
+        };
+        let FileStamp { len, modified } = stream.stamp();
+        // The journal streams through a buffer of one record into the log it rebuilds; a record
+        // the log refuses ends the rebuild, and the rest is read only to find the journal's end.
+        let mut replay = None;
+        let mut refused = None;
+        let whole = JournalFrames::stream(stream.take(len), &mut |record| {
+            if refused.is_some() {
+                return;
+            }
+            let taken = match &mut replay {
+                None => JournalReplay::begin(record, Version::ENGINE).map(|begun| {
+                    replay = Some(begun);
+                }),
+                Some(replay) => replay.apply(record),
             };
-        let mut frames = JournalFrames::new(&bytes).map_err(RestoreError::NotJournal)?;
-        let records: Vec<&[u8]> = frames.by_ref().collect();
-        let len = |bytes: usize| u64::try_from(bytes).expect("a file's length fits u64");
-        let whole = len(frames.whole());
+            if let Err(error) = taken {
+                refused = Some(error);
+            }
+        })
+        .map_err(RestoreError::Frames)?;
         let cut = JournalCut {
             session: self.session,
-            bytes: len(bytes.len()) - whole,
+            bytes: len - whole,
         };
-        if records.is_empty() {
+        if let Some(error) = refused {
+            return Err(RestoreError::Replay(error));
+        }
+        let Some(replay) = replay else {
             cut.log_dropped();
             return Ok(None);
-        }
-        let log =
-            SessionLog::from_journal(records, Version::ENGINE).map_err(RestoreError::Replay)?;
+        };
+        let log = replay.finish();
         if log.session_id() != self.session {
             return Err(RestoreError::OtherSession(log.session_id()));
         }
@@ -266,31 +283,29 @@ impl SessionDir {
         {
             return;
         }
-        let mut reports = world
-            .remove_resource::<Reports>()
-            .expect("the reports of a local server");
-        let mut session = world.resource_mut::<Session>();
-        let next = session.log().next_tick();
-        if let Some(journal) = session.journal_mut() {
-            reports.mark(next, journal);
-        }
-        let session = world.resource::<Session>();
-        let (id, seed) = (session.log().session_id(), session.last_seed().clone());
-        let data = world.resource::<ServerDir>();
-        for DueReport { dir, bytes } in reports.due(id, durable) {
-            let file = dir.log();
-            if let Err(problem) = dir.create() {
-                error!(file = %file.display(), error = %ErrorReport::of(&problem), "could not make the report's folder");
-                continue;
+        world.resource_scope(|world, mut reports: Mut<'_, Reports>| {
+            let mut session = world.resource_mut::<Session>();
+            let next = session.log().next_tick();
+            if let Some(journal) = session.journal_mut() {
+                reports.mark(next, journal);
             }
-            match Self::publish_into(data, id, Bound::Bytes(bytes), &seed, &file) {
-                Ok(()) => info!(file = %file.display(), "wrote the log so far into the report"),
-                Err(problem) => {
-                    error!(file = %file.display(), error = %ErrorReport::of(&problem), "could not write the log into the report");
+            let session = world.resource::<Session>();
+            let (id, seed) = (session.log().session_id(), session.last_seed());
+            let data = world.resource::<ServerDir>();
+            for DueReport { dir, bytes } in reports.due(id, durable) {
+                let file = dir.log();
+                if let Err(problem) = dir.create() {
+                    error!(file = %file.display(), error = %ErrorReport::of(&problem), "could not make the report's folder");
+                    continue;
+                }
+                match Self::publish_into(data, id, Bound::Bytes(bytes), seed, &file) {
+                    Ok(()) => info!(file = %file.display(), "wrote the log so far into the report"),
+                    Err(problem) => {
+                        error!(file = %file.display(), error = %ErrorReport::of(&problem), "could not write the log into the report");
+                    }
                 }
             }
-        }
-        world.insert_resource(reports);
+        });
     }
 
     /// Writes durably into `file` the log of `session`, whose journal under `data` holds it in
@@ -310,10 +325,11 @@ impl SessionDir {
             path: data.layout().session_dir(session),
         };
         let journal = dir.journal();
+        // A walk that fails keeps why, and stops the publication before its file is named.
         let mut failed = None;
         let mut walk = |visit: &mut dyn FnMut(&[u8])| {
             if failed.is_some() {
-                return;
+                return Err(WalkStopped);
             }
             let streamed = InputFile::stream(&journal)
                 .map_err(SessionPublishError::Read)
@@ -324,15 +340,19 @@ impl SessionDir {
                     };
                     streamed.map_err(SessionPublishError::Journal)
                 });
-            if let Err(error) = streamed {
+            streamed.map(drop).map_err(|error| {
                 failed = Some(error);
-            }
+                WalkStopped
+            })
         };
         // A journal that does not publish ends the write, and its error is the publication's.
         let mut unpublished = None;
         let mut fill = |out: &mut dyn Write| match SessionLog::publish(&mut walk, revealed, out) {
             Ok(()) => Ok(()),
             Err(PublishWriteError::Write(error)) => Err(error),
+            Err(PublishWriteError::Walk(WalkStopped)) => {
+                Err(io::Error::other("a walk of the journal stopped short"))
+            }
             Err(PublishWriteError::Journal(error)) => {
                 unpublished = Some(error);
                 Err(io::Error::other("the journal does not publish"))
@@ -412,30 +432,23 @@ impl RestoredSession {
             .checkpoints()
             .last()
             .map(|record| (record.segment, record.snapshot));
+        let source = SessionSource {
+            log,
+            seeds,
+            packages,
+            checked,
+            signer: Some(signer),
+        };
         if let Some((segment, fingerprint)) = latest {
             let snapshot = snapshots
                 .read(fingerprint)
                 .map_err(MatchBeginError::ReadSnapshot)?;
-            let source = SessionSource {
-                log,
-                seeds,
-                packages,
-                checked,
-                signer: Some(signer),
-            };
             let at = ResumeAt {
                 segment,
                 snapshot: &snapshot,
             };
             Session::resume(world, source, at).map_err(MatchBeginError::Resume)?;
         } else {
-            let source = SessionSource {
-                log,
-                seeds,
-                packages,
-                checked,
-                signer: Some(signer),
-            };
             Session::start(world, source).map_err(MatchBeginError::Start)?;
         }
         let journal = JournalWatch::keep(
@@ -482,16 +495,14 @@ impl RestoredSession {
             let result = world.session_result();
             world
                 .session_mut()
-                .record_result(result)
+                .serve_result(result)
                 .expect("the server's own result holds");
         }
         world.session_mut().reveal_seed();
         world.session_mut().close_journal();
-        let log = world.resource::<Session>().log();
-        let revealed = log.revealed_seeds().expect("the seed is revealed");
-        let last = revealed
-            .seed(log.segment())
-            .expect("the seeds reach the last segment");
+        let session = world.resource::<Session>();
+        let log = session.log();
+        let last = session.last_seed();
         let file =
             SessionDir::publish(data, log.session_id(), last).map_err(AbortError::Publish)?;
         SessionAborted {

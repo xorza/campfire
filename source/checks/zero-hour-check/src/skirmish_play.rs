@@ -12,7 +12,7 @@ use campfire_package::ModePackages;
 use campfire_players::{OrderUnits, PlayersWorld};
 use campfire_production::{Site, TrainQueue};
 use campfire_projectiles::Projectile;
-use campfire_protocol::{InputRules, PlayerSlotPlan};
+use campfire_protocol::PlayerSlotPlan;
 use campfire_sim::StableId;
 use campfire_stats::{Modifiers, PlayerModifiers, Stats};
 use campfire_units::{Life, UnitsWorld};
@@ -164,7 +164,7 @@ impl SkirmishPlay {
             }
         };
         let plan = [PlayerSlotPlan::Player, PlayerSlotPlan::Bot];
-        let session = FixedSession::planned(packages, InputRules::LAN, plan)
+        let session = FixedSession::planned(packages, plan)
             .rate(rate)
             .picked(picks.places())
             // America, whose start the play reads, in place of a faction drawn (09-zero-hour.md,

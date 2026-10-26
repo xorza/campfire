@@ -3,11 +3,13 @@ use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
+use campfire_common::Tick;
 use campfire_declarations::Cache;
 use campfire_geometry::{BodyBox, RunChange};
 use campfire_math::{Num, Vec3};
 use campfire_values::{Relations, Team, TeamSet};
 
+use crate::reveals::Reveals;
 use crate::run_cache::RunCache;
 use crate::sight_maps::{Looker, SightMaps};
 use crate::vision_grid::VisionGrid;
@@ -25,8 +27,11 @@ pub struct Fog {
     maps: SightMaps,
     /// Each seer's look and its runs, by its slot, as the last stage counted them.
     looks: RunCache<LookKey>,
-    /// The runs the last stage's reveals counted, which the next takes back.
+    /// The runs each counted reveal counted, reveal after reveal, kept until it ends.
     revealed: Vec<Revealed>,
+    /// Where each counted reveal's runs end among `revealed`, in the reveals' order: the first
+    /// of them, as the reveals are counted in the order made.
+    reveal_ends: Vec<usize>,
     /// The cells each box covers, which only its place and shape decide.
     covers: RunCache<Covering>,
 }
@@ -100,6 +105,7 @@ impl Fog {
         self.maps.reset(grid.grid.cells(), self.groups.count());
         self.looks.clear();
         self.revealed.clear();
+        self.reveal_ends.clear();
         self.covers.clear();
     }
 
@@ -116,14 +122,9 @@ impl Fog {
         self.end_stage(grid);
     }
 
-    /// Takes back the last stage's reveals.
     fn begin_stage(&mut self) {
         self.filled = true;
         self.looks.begin_tick();
-        for Revealed { group, cells } in self.revealed.drain(..) {
-            self.maps
-                .look(Looker::reveal(group), cells, RunChange::Lost);
-        }
         self.covers.begin_tick();
     }
 
@@ -173,16 +174,49 @@ impl Fog {
         });
     }
 
-    /// Reveals the cells within `radius` of `position`, brush included, to `team`'s group, in the
-    /// stage `see` began.
-    pub(crate) fn reveal(&mut self, grid: &VisionGrid, position: Vec3, team: Team, radius: Num) {
-        let group = self.groups.of(team);
-        let looker = Looker::reveal(group);
-        let (maps, revealed) = (&mut self.maps, &mut self.revealed);
-        grid.grid.spans_within(position, radius, |cells| {
-            maps.look(looker, cells.clone(), RunChange::Gained);
-            revealed.push(Revealed { group, cells });
-        });
+    /// Takes back the runs of each counted reveal of `reveals` whose last tick came before
+    /// `now`, which then leaves `reveals`, and keeps the others' as they are: a reveal never moves,
+    /// so it counts once as it comes and once as it goes (04-capabilities/vision.md, A stage that
+    /// costs what changed).
+    pub(crate) fn expire(&mut self, reveals: &mut Reveals, now: Tick) {
+        let counted = self.reveal_ends.len();
+        let (mut start, mut kept, mut kept_runs) = (0, 0, 0);
+        for at in 0..counted {
+            let end = self.reveal_ends[at];
+            if reveals.get(at).last < now {
+                for Revealed { group, cells } in &self.revealed[start..end] {
+                    self.maps
+                        .look(Looker::reveal(*group), cells.clone(), RunChange::Lost);
+                }
+            } else {
+                for run in start..end {
+                    self.revealed.swap(kept_runs, run);
+                    kept_runs += 1;
+                }
+                self.reveal_ends[kept] = kept_runs;
+                kept += 1;
+            }
+            start = end;
+        }
+        self.revealed.truncate(kept_runs);
+        self.reveal_ends.truncate(kept);
+        reveals.end_before(now);
+    }
+
+    /// Counts each reveal of `reveals` made since the last count: the cells within its radius,
+    /// brush included, to its team's group.
+    pub(crate) fn count_new(&mut self, grid: &VisionGrid, reveals: &Reveals) {
+        for reveal in reveals.since(self.reveal_ends.len()) {
+            let group = self.groups.of(reveal.team);
+            let looker = Looker::reveal(group);
+            let (maps, revealed) = (&mut self.maps, &mut self.revealed);
+            grid.grid
+                .spans_within(reveal.position, reveal.radius, |cells| {
+                    maps.look(looker, cells.clone(), RunChange::Gained);
+                    revealed.push(Revealed { group, cells });
+                });
+            self.reveal_ends.push(self.revealed.len());
+        }
     }
 
     /// The teams that see a unit of `team` at `position`: its own group's, and those of each group

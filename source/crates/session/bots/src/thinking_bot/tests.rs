@@ -110,8 +110,9 @@ fn on_bot_think(ctx) {
 
 #[test]
 fn a_bots_think_fails_on_what_is_no_unit_no_directive_not_its_own_or_past_its_budget() {
-    // A list with a number in it, a table of no directive, and a read of the other player's gold,
-    // which its player's client does not receive, each fail the think, which gives no order.
+    // A list with a number in it, a table of no directive, a read of the other player's gold,
+    // which its player's client does not receive, and an order to the allies it sees, not all its
+    // own, as `may_start` and `idle` refuse one, each fail the think, which gives no order.
     for (body, error) in [
         ("ctx.order([1], #{ orders: \"stop\" });", ApiError::NotAUnit),
         (
@@ -121,6 +122,11 @@ fn a_bots_think_fails_on_what_is_no_unit_no_directive_not_its_own_or_past_its_bu
         (
             "ctx.players[1].resource(\"gold\");",
             ApiError::Unreceived(DataKind::Resources),
+        ),
+        (
+            "let h = ctx.own(ctx.params.hero)[0]; \
+             ctx.order(ctx.find_visible(h, h.position, 500, \"allies\"), #{ orders: \"stop\" });",
+            ApiError::NotForRole,
         ),
     ] {
         let script = format!("fn on_bot_think(ctx) {{ {body} }}");

@@ -136,7 +136,7 @@ impl SimServerWorld for World {
         let result = self.session_result();
         let mut session = self.resource_mut::<Session>();
         session
-            .record_result(result)
+            .serve_result(result)
             .expect("the server's own result holds");
         session.reveal_seed();
         Ok(())
@@ -183,14 +183,9 @@ impl SimServerWorld for World {
         if let Some(exit) = WorkerFaults::apply(self) {
             return Some(exit);
         }
-        let log = self.resource::<Session>().log();
-        let id = log.session_id();
-        let revealed = log
-            .revealed_seeds()
-            .expect("a session that ends reveals its seed");
-        let last = revealed
-            .seed(log.segment())
-            .expect("the seeds reach the last segment");
+        let session = self.resource::<Session>();
+        let id = session.log().session_id();
+        let last = session.last_seed();
         let hash = self.state_hash();
         let data = self.resource::<ServerDir>();
         Some(match SessionDir::publish(data, id, last) {

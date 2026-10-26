@@ -1,5 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_units::MapPoint;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,7 @@ pub struct PathData {
 impl Section for MapPathsData {
     const TABLE: SectionTable = SectionTable::Map;
     const KEY: &'static str = "paths";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[expect(

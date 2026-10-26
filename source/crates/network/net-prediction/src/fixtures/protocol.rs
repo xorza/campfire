@@ -1,6 +1,5 @@
 use crate::prediction_registration_ext::PredictionRegistrationExt;
 use bevy_app::{App, Plugin};
-use bevy_curve::{Curve, Ease, FunctionCurve, Interval};
 use bevy_ecs::component::Component;
 use bevy_reflect::Reflect;
 use campfire_net_frame_interpolation::{
@@ -10,7 +9,6 @@ use campfire_net_interpolation::InterpolationFns;
 use campfire_net_interpolation::InterpolationRegistrationExt;
 use campfire_net_interpolation::internals::CompFull;
 use campfire_net_replication::AppComponentExt;
-use campfire_net_replication::Diffable;
 use campfire_net_replication::internals::{CompMap, CompRepliconDiff};
 use serde::{Deserialize, Serialize};
 
@@ -20,21 +18,22 @@ pub struct CompPredictionOnly(pub f32);
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Reflect)]
 pub struct CompNotNetworked(pub f32);
 
-/// A component that lerps linearly and diffs by subtraction, as correction needs.
-macro_rules! correction_component {
+/// Lerps `$name`, a newtype of one `f32` with a default, linearly, and diffs it by subtraction, as
+/// correction needs.
+macro_rules! linear_correction {
     ($name:ident) => {
-        #[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq, Reflect)]
-        pub struct $name(pub f32);
-
-        impl Ease for $name {
-            fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
-                FunctionCurve::new(Interval::UNIT, move |t| {
+        impl ::bevy_curve::Ease for $name {
+            fn interpolating_curve_unbounded(
+                start: Self,
+                end: Self,
+            ) -> impl ::bevy_curve::Curve<Self> {
+                ::bevy_curve::FunctionCurve::new(::bevy_curve::Interval::UNIT, move |t| {
                     Self(start.0 + (end.0 - start.0) * t)
                 })
             }
         }
 
-        impl Diffable for $name {
+        impl ::campfire_net_replication::Diffable for $name {
             fn base_value() -> Self {
                 Self::default()
             }
@@ -50,8 +49,16 @@ macro_rules! correction_component {
     };
 }
 
-correction_component!(CompCorr);
-correction_component!(ShownCorr);
+#[cfg(test)]
+pub(crate) use linear_correction;
+
+#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq, Reflect)]
+pub struct CompCorr(pub f32);
+linear_correction!(CompCorr);
+
+#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, PartialEq, Reflect)]
+pub struct ShownCorr(pub f32);
+linear_correction!(ShownCorr);
 
 /// The visual of `CompCorr`: its linear blend between the last two ticks.
 pub fn show_corr(start: &CompCorr, end: &CompCorr, cx: InterpolationSampleCx) -> ShownCorr {

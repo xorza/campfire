@@ -1,6 +1,9 @@
-use campfire_actions::{ActionSlots, SlotKind};
-use campfire_declarations::PerId;
-use campfire_values::UnitType;
+use campfire_actions::{ActionSlots, SlotKind, SlotKindBook};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
+use campfire_script::UnknownName;
+use campfire_values::{Named, UnitType};
+
+use crate::uses_data::UsesData;
 
 /// A user type's use slot, package data and not state: the slot kind of the one empty slot its
 /// units spawn with, which a use fills with its object's action.
@@ -25,4 +28,25 @@ impl UseSlot {
 
 impl PerId<UnitType> for UseSlot {
     const SCRIPTS_ONLY: bool = false;
+}
+
+impl UseSlot {
+    /// The use slot of each user type that stands, of its slot kind; an error for a kind the mode
+    /// does not declare.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let kinds = &cx.book::<SlotKindBook>()?.0;
+        let mut book = ByIdBuilder::default();
+        for unit in cx.standing() {
+            let Some(data) = unit.data.section::<UsesData>() else {
+                continue;
+            };
+            let kind = kinds.names().named(data.kind.as_str()).ok_or_else(|| {
+                let at = BookPlace::UnitType(unit.place());
+                let name = UnknownName::new(SlotKind::NAMES, &data.kind);
+                BookError::unknown(unit.package, at, name)
+            })?;
+            book.set(unit.unit_type, Self::new(kind));
+        }
+        Ok(book.build())
+    }
 }

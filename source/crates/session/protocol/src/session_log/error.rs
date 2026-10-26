@@ -350,11 +350,21 @@ pub enum PublishError {
     Record { at: u64 },
 }
 
-/// Why a published log was not written: its journal does not publish it, or its writer failed.
+/// Why a published log was not written: its journal does not publish it, a walk of the journal
+/// stopped, or its writer failed.
 #[derive(Debug, Error)]
 pub enum PublishWriteError {
     #[error(transparent)]
     Journal(#[from] PublishError),
+    /// A walk of the journal stopped short, whose giver keeps why.
+    #[error("a walk of the journal stopped short")]
+    Walk(#[from] WalkStopped),
     #[error("could not write the published log")]
     Write(#[source] io::Error),
 }
+
+/// A walk of a journal that stopped short, as a read of its file failed: the walk's giver keeps
+/// why, which it knows and the log does not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("a walk of the journal stopped short")]
+pub struct WalkStopped;

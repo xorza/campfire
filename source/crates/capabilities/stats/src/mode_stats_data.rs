@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_values::Stat;
 use serde::Deserialize;
 
@@ -15,4 +16,5 @@ pub struct ModeStatsData(pub BTreeMap<Stat, StatRule>);
 impl Section for ModeStatsData {
     const TABLE: SectionTable = SectionTable::Mode;
     const KEY: &'static str = "stats";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

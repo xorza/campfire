@@ -2,6 +2,7 @@ use std::num::NonZeroU8;
 
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use serde::{Deserialize, Serialize};
 
@@ -28,4 +29,5 @@ impl DataSection for SpawnsData {
 impl Section for SpawnsData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "spawns";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

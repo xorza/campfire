@@ -1,8 +1,3 @@
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` by value"
-)]
-
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Res, ResMut};
 use tracing::warn;

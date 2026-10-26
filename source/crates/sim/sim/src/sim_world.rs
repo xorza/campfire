@@ -214,6 +214,9 @@ pub(crate) mod internals {
         /// Runs ticks until the next is `tick`.
         fn run_until(&mut self, tick: u64);
 
+        /// Runs `count` ticks.
+        fn steps(&mut self, count: u64);
+
         /// Unit `id`'s part `C`; panics when the unit is gone or lacks it.
         fn part<C: Component>(&self, id: StableId) -> &C;
 
@@ -330,6 +333,12 @@ pub(crate) mod internals {
 
         fn run_until(&mut self, tick: u64) {
             while self.now().get() < tick {
+                self.step();
+            }
+        }
+
+        fn steps(&mut self, count: u64) {
+            for _ in 0..count {
                 self.step();
             }
         }

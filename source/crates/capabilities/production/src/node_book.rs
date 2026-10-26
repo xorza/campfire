@@ -1,9 +1,12 @@
 use bevy_ecs::resource::Resource;
-use campfire_declarations::{Book, ById};
-use campfire_script::MatchNames;
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, ById, ByIdBuilder};
+use campfire_players::ResourceBook;
+use campfire_script::{MatchNames, UnknownName};
 use campfire_values::{ResourceId, UnitType};
 
-use crate::node_data::EmptyNode;
+use crate::Production;
+use crate::drop_off_data::DropOffData;
+use crate::node_data::{EmptyNode, NodeData};
 use crate::resource_set::ResourceSet;
 
 /// What each node type holds, and what each drop-off type takes: package data, not state.
@@ -46,4 +49,36 @@ impl Book for NodeBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &mut MatchNames) {}
+}
+
+impl NodeBook {
+    /// The resource each node type that stands holds and what becomes of its node once it runs
+    /// out, and the resources each drop-off type takes; an error for a resource the mode does not
+    /// declare.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let resources = cx.book_if::<ResourceBook>()?;
+        let mut nodes = ByIdBuilder::default();
+        let mut drop_offs = ByIdBuilder::default();
+        for unit in cx.standing() {
+            let unknown =
+                |name| BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), name);
+            if let Some(node) = unit.data.section::<NodeData>() {
+                let resource = Production::resource(resources, &node.resource).map_err(unknown)?;
+                let empty = node.empty;
+                nodes.set(unit.unit_type, NodeSpec { resource, empty });
+            }
+            if let Some(drop_off) = unit.data.section::<DropOffData>() {
+                let taken = drop_off
+                    .resources
+                    .iter()
+                    .map(|name| Production::resource(resources, name));
+                let taken = taken.collect::<Result<ResourceSet, UnknownName>>();
+                drop_offs.set(unit.unit_type, taken.map_err(unknown)?);
+            }
+        }
+        Ok(Self {
+            nodes: nodes.build(),
+            drop_offs: drop_offs.build(),
+        })
+    }
 }

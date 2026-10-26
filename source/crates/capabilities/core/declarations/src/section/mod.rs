@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use campfire_codec::{StructFields, TomlError, TomlValue};
-use campfire_script::{ApiBuilder, DataTable};
+use campfire_script::{ApiBuilder, DataTable, Status};
 use serde::de::DeserializeOwned;
 
 use crate::section::section_readers::SectionReaders;
@@ -21,6 +21,10 @@ pub trait Section: ReadValue + Clone + Eq + Debug + Send + Sync + 'static {
 
     /// Its key in its table.
     const KEY: &'static str;
+
+    /// The release its key runs since, or that refuses it, as a script name's status says
+    /// (06-script-api.md, A name runs since a version).
+    const STATUS: Status;
 }
 
 /// A data table whose keys modules register as their sections.
@@ -104,6 +108,9 @@ pub trait Listed: ReadValue + 'static {
     type Set: ListedSet;
 
     const KEY: &'static str;
+
+    /// The release its key runs since, or that refuses it, as `Section::STATUS` says.
+    const STATUS: Status;
 
     /// The member as its set holds it.
     fn into_listed(self) -> Arc<<Self::Set as ListedSet>::Value>;

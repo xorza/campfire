@@ -1,18 +1,16 @@
 use std::mem;
 
 use campfire_actions::{ActionsData, DeliveryAims, ListHook, Targeting};
-use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, Section};
+use campfire_declarations::{BookCx, BookError, BookPlace, Section};
 use campfire_math::Num;
 use campfire_script::ScriptRole;
 use campfire_stats::MoveSpeedCap;
-use campfire_units::{ScriptBook, UnitTypes};
+use campfire_units::ScriptBook;
 
 use crate::Projectiles;
 use crate::error::{ProjectileDeliveryError, ProjectileError};
 use crate::projectile_data::{ProjectileData, ProjectileHits};
 use crate::projectile_delivery_data::ProjectileDeliveryData;
-use crate::projectile_spec::ProjectileSpec;
-use campfire_values::UnitType;
 
 impl Projectiles {
     /// The rule of every projectile type: a homing one is faster than the mode's move speed cap,
@@ -125,24 +123,5 @@ impl Projectiles {
         }
         aims.0 = by_type.build();
         Ok(())
-    }
-}
-
-impl ProjectileSpec {
-    /// The spec of each projectile type, its filters resolved against the match's tags; an error
-    /// for a tag the match does not have.
-    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
-        let tags = cx.fact::<UnitTypes>()?.tags();
-        let mut book = ByIdBuilder::default();
-        for unit in cx.types() {
-            let Some(projectile) = unit.data.section::<ProjectileData>() else {
-                continue;
-            };
-            let spec = Self::of(projectile, tags, cx.rate()).map_err(|name| {
-                BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), name)
-            })?;
-            book.set(unit.unit_type, spec);
-        }
-        Ok(book.build())
     }
 }

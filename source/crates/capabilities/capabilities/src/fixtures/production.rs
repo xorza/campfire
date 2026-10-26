@@ -8,7 +8,7 @@ use campfire_production::Production;
 use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_units::internals::Spawn;
-use campfire_units::{BodyForm, BodyShape, BuildTarget, GroundPoint, Layer, Owner, SeenBy};
+use campfire_units::{BodyForm, BodyShape, BuildTarget, GroundPoint, Layer, SeenBy};
 use campfire_values::{Team, TeamSet, UnitType};
 
 use crate::fixtures::navigation::NavigationFixtures;
@@ -54,7 +54,7 @@ impl ProductionFixtures for Production {
     fn owned(world: &mut World, unit_type: UnitType, owner: PlayerSlot) -> StableId {
         Spawn::of(unit_type, Vec3::ZERO)
             .team(Team::new(1))
-            .parts(Owner::new(owner))
+            .owner(owner)
             .place(world)
     }
 

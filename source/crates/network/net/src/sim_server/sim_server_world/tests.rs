@@ -86,7 +86,7 @@ fn a_plan_bot_plays_its_script_until_its_slot_changes_hands() {
         OrderScript::parse("[[order]]\ntick = 2\ndirective.orders.move.to = [1, 0]\n").unwrap();
     let script = BotScript::new(&script, &BotNames::new(packages.load_books())).unwrap();
     let plan = [PlayerSlotPlan::Player, PlayerSlotPlan::Bot];
-    let mut fixed = FixedSession::planned(packages, InputRules::LAN, plan).start();
+    let mut fixed = FixedSession::planned(packages, plan).start();
     let player_slot = PlayerSlot::new(1);
     let planned = |fixed: &FixedMatch| {
         let slots = vec![PlayerSlotBot {

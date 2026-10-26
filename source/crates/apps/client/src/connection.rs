@@ -13,9 +13,7 @@ use campfire_net::{
 use campfire_net_endpoint::Endpoint;
 use campfire_net_socket::ClientSocket;
 use campfire_package::ModePackages;
-use campfire_protocol::SessionLog;
 use campfire_sim::MatchRate;
-use campfire_store::InputFile;
 use tracing::error;
 
 use crate::command_line::{Args, PlayedServer};
@@ -92,13 +90,8 @@ impl Connection {
                 ..
             } => {
                 let data = Self::open_dir(data)?;
-                let bytes =
-                    InputFile::read(&report.log(), SessionLog::MAX_FILE_LEN).map_err(|error| {
-                        error!(error = %ErrorReport::of(&error), "the report's log does not read");
-                        ExitCode::from(ExitStatus::Failure)
-                    })?;
-                let log = SessionLog::decode(&bytes).map_err(|error| {
-                    error!(report = %report.path().display(), error = %ErrorReport::of(&error), "the report's log does not decode");
+                let log = report.read_log().map_err(|error| {
+                    error!(report = %report.path().display(), error = %ErrorReport::of(&error), "the report's log does not read");
                     ExitCode::from(ExitStatus::Failure)
                 })?;
                 let session = LocalSession::Replay(Box::new(LocalReplay {

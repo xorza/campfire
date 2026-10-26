@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::unit_entity::UnitEntity;
 
 /// Marks a unit that died and stays for the mode to respawn. A dead unit takes no orders, does not
-/// move and is no target.
+/// move and is no target. A timed life waits while its unit is dead, and comes due again as it
+/// lives again.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dead;
 

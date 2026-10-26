@@ -184,7 +184,7 @@ impl Targets<'_, '_> {
         let (_, _, _, (body, unit_type, held), _, _) = row;
         // The query holds no unit that died.
         let life = self.life(held, body, unit_type);
-        life.lives(false).then(|| Targets::body(row))
+        life.lives(false).then(|| Self::living_unit(row))
     }
 
     /// The unit of `entity`, when a living unit that may be a target.
@@ -193,7 +193,7 @@ impl Targets<'_, '_> {
         let (_, _, _, (body, unit_type, held), _, tags) = row;
         // The query holds no unit that died.
         let life = self.life(held, body, unit_type);
-        Targets::targetable(false, life, tags).then(|| Targets::body(row))
+        Targets::targetable(false, life, tags).then(|| Self::living_unit(row))
     }
 
     /// The volume of `target`, when it is a living unit that may be a target, as `Body::volume`
@@ -217,7 +217,7 @@ impl Targets<'_, '_> {
     }
 
     /// The unit of `row`.
-    fn body((&id, &position, &team, _, body, tags): TargetRow<'_>) -> LivingUnit {
+    fn living_unit((&id, &position, &team, _, body, tags): TargetRow<'_>) -> LivingUnit {
         LivingUnit {
             id,
             position: position.get(),

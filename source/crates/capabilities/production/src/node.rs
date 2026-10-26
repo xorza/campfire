@@ -3,13 +3,15 @@ use std::num::NonZeroU32;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declarations::PerId;
+use campfire_declarations::{BookCx, BookError, ById, ByIdBuilder, PerId};
 use campfire_sim::{SimComponent, StableId};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
+
+use crate::node_data::NodeData;
 
 /// A node workers gather from: what it holds, and the worker that gathers it now, one at a time.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,4 +70,17 @@ impl Replication for Node {
 
 impl PerId<UnitType> for Node {
     const SCRIPTS_ONLY: bool = false;
+}
+
+impl Node {
+    /// What each node type that stands holds as its unit spawns.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
+        for unit in cx.standing() {
+            if let Some(node) = unit.data.section::<NodeData>() {
+                book.set(unit.unit_type, Self::new(node.amount.get()));
+            }
+        }
+        Ok(book.build())
+    }
 }

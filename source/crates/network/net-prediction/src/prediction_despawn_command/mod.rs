@@ -11,7 +11,8 @@ use campfire_net_timeline::LocalTimeline;
 use tracing::debug;
 
 /// Despawns a predicted entity as a rollback can undo: the entity is disabled with
-/// [`PredictionDespawned`] at the current tick, and stays so until confirmed replication resolves
+/// [`PredictionDespawned`] at the tick the fixed schedule simulates, its local timeline's tick
+/// outside it, and stays so until confirmed replication resolves
 /// it or, for a locally predicted entity, until its despawn tick leaves the rollback window. A
 /// rollback to before that tick re-enables it, and the replay may despawn it again. Without
 /// prediction there is no rollback, so the entity is despawned at once.
@@ -33,15 +34,25 @@ impl Command for PredictionDespawnCommand {
             .is_some_and(|networking| {
                 prediction_gate::predicts(world.contains_resource::<PredictionSetup>(), networking)
             });
-        let disabled_at = world
-            .get_resource::<LocalTimeline>()
-            .map(LocalTimeline::tick);
+        let timeline = world.get_resource::<LocalTimeline>();
+        let ticks = timeline.map(|timeline| (timeline.simulated_tick(), timeline.tick()));
         let Ok(mut entity) = world.get_entity_mut(self.entity) else {
             return;
         };
         // Without prediction there is no rollback, so the entity is despawned at once, and its
         // replicated children stay, as their server holds their life.
-        let Some(disabled_at) = disabled_at.filter(|_| predicting) else {
+        let Some((simulated, tick)) = ticks.filter(|_| predicting) else {
+            DespawnReplicated.apply(entity);
+            return;
+        };
+        // A rollback's replay runs only the fixed schedule, so it never despawns again an entity
+        // despawned outside it: a locally predicted one, which this end alone holds, goes at
+        // once, as no rollback must bring it back; one the server holds, or a pre-spawn that
+        // waits for its match or its expiry, waits as inside it.
+        let local_only = entity.contains::<LocallyPredicted>()
+            && !entity.contains::<Predicted>()
+            && !entity.contains::<PreSpawned>();
+        let Some(disabled_at) = simulated.or_else(|| (!local_only).then_some(tick)) else {
             DespawnReplicated.apply(entity);
             return;
         };

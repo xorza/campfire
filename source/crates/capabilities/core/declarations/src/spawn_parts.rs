@@ -1,5 +1,9 @@
+#![expect(
+    unsafe_code,
+    reason = "Bevy's `BundleWriter` spawns a kind's parts by component id, an unsafe call (02-engine-core.md, Unsafe only where an outside API asks)"
+)]
+
 use std::alloc::Layout;
-use std::sync::Mutex;
 use std::{fmt, mem};
 
 use bevy_ecs::bundle::{Bundle, BundleScratch, BundleWriter, NoBundleEffect};
@@ -8,14 +12,21 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::ptr::{OwningPtr, move_as_ptr};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{EntityWorldMut, World};
+use bevy_platform::cell::SyncCell;
 
 /// The scratch in which the parts of a spawning entity are made, then written onto it at once:
 /// one move between archetypes for every part, where Bevy inserts a bundle only of types fixed at
-/// compile time. Its mutex is never locked, as a spawn takes the scratch through the world's
-/// exclusive access: it makes a resource of the scratch, whose allocator is not `Sync`. Not
-/// state.
-#[derive(Resource, Default)]
-pub struct SpawnParts(Mutex<SpawnScratch>);
+/// compile time. A spawn takes the scratch through the world's exclusive access, so its cell is
+/// `Sync` with no lock, as Bevy's system parameters hold their scratch: a resource of the scratch,
+/// whose allocator is not `Sync`. Not state.
+#[derive(Resource)]
+pub struct SpawnParts(SyncCell<SpawnScratch>);
+
+impl Default for SpawnParts {
+    fn default() -> Self {
+        Self(SyncCell::new(SpawnScratch::default()))
+    }
+}
 
 /// What a spawn writes its parts through: the scratch of their values, and the components it
 /// holds.
@@ -56,7 +67,7 @@ impl SpawnParts {
         }
         entity.world_scope(|world| {
             if let Some(mut parts) = world.get_resource_mut::<Self>() {
-                *parts.0.get_mut().expect("no spawn panicked holding it") = scratch;
+                *parts.0.get() = scratch;
             }
         });
     }
@@ -64,8 +75,7 @@ impl SpawnParts {
     /// The match's scratch, which it lends a spawn; none in a world that holds none.
     fn take(world: &mut World) -> Option<SpawnScratch> {
         let mut parts = world.get_resource_mut::<Self>()?;
-        let scratch = parts.0.get_mut().expect("no spawn panicked holding it");
-        Some(mem::take(scratch))
+        Some(mem::take(parts.0.get()))
     }
 }
 

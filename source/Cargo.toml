@@ -370,6 +370,7 @@ unused_import_braces = "warn"
 unused_lifetimes = "warn"
 unused_macro_rules = "warn"
 unused_qualifications = "warn"
+unsafe_code = "warn"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
@@ -393,6 +394,9 @@ unchecked_time_subtraction = "allow"
 struct_field_names = "allow"
 match_same_arms = "allow"
 unused_self = "allow"
+# Bevy systems and observers take `Res`, `Query`, `On` and their kin by value, which most crates
+# write; the lint's other finds do not pay for an exemption at each crate root.
+needless_pass_by_value = "allow"
 absolute_paths = "warn"
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"

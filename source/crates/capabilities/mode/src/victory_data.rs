@@ -1,5 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
@@ -30,4 +31,5 @@ impl DataSection for VictoryData {
 impl Section for VictoryData {
     const TABLE: SectionTable = SectionTable::Mode;
     const KEY: &'static str = "victory";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

@@ -475,11 +475,14 @@ impl<'a> BookCx<'a> {
     }
 
     /// Builds every book and fact declared, in the order of their declarations, each the first
-    /// time it is asked for; an error for the first a build refuses.
+    /// time it is asked for, but a fact the load took, which no book reads; an error for the
+    /// first a build refuses.
     pub fn build_all(&self) -> Result<(), BookError> {
         self.assert_declared();
-        for at in 0..self.cells.len() {
-            self.built(at)?;
+        for (at, cell) in self.cells.iter().enumerate() {
+            if cell.phase.get() != Phase::Taken {
+                self.built(at)?;
+            }
         }
         Ok(())
     }

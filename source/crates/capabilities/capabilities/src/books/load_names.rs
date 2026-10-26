@@ -114,8 +114,8 @@ impl LoadNames {
                 let resources = resources.map_or(&no_resources, |resources| &**resources);
                 CostTarget::named(pools, resources, name).is_some()
             }
-            Armor::NAMES => self.armors.iter().any(|armor| armor.as_str() == name),
-            MarkerTag::NAMES => self.marker_tags.iter().any(|tag| tag.as_str() == name),
+            Armor::NAMES => self.armors.contains(name),
+            MarkerTag::NAMES => self.marker_tags.contains(name),
             ItemId::NAMES => self.items.contains(name),
             ModifierId::NAMES
             | ActionId::NAMES

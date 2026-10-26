@@ -33,8 +33,6 @@ pub struct RemoteEstimate {
     ///
     /// We don't touch the remote estimate directly but only modify the offset.
     offset: TickSpan,
-    /// Indicator for whether this is the first estimate or not
-    first_estimate: bool,
 }
 
 impl Default for RemoteEstimate {
@@ -43,7 +41,6 @@ impl Default for RemoteEstimate {
             received_packet: false,
             last_received: None,
             offset: TickSpan::from(0),
-            first_estimate: true,
         }
     }
 }
@@ -100,7 +97,8 @@ impl RemoteTimeline {
         {
             // only update if the remote tick is newer than the last received tick
             self.state.received_packet = true;
-            self.state.last_received = Some(remote);
+            // The first estimate is the one of no packet received before.
+            let first_estimate = self.state.last_received.replace(remote).is_none();
 
             // we have received the packet now, so the remote must already be at RTT/2 ahead
             let network_delay = TickSpan::from_duration(estimate.rtt() / 2, tick_rate);
@@ -111,10 +109,9 @@ impl RemoteTimeline {
 
             // The first estimate moves the timeline itself, and the offset stays a small
             // correction: an offset from the local origin would saturate past 2^31 ticks.
-            let raw_offset = if self.state.first_estimate {
+            let raw_offset = if first_estimate {
                 self.set_now(new_estimate);
                 self.offset = TickSpan::from(0);
-                self.state.first_estimate = false;
                 None
             } else {
                 Some(new_estimate - ideal_estimate)
@@ -150,10 +147,7 @@ impl RemoteTimeline {
         mut query: Query<'_, '_, &mut Self>,
     ) {
         if let Ok(mut timeline) = query.get_mut(trigger.entity) {
-            timeline.received_packet = false;
-            timeline.offset = TickSpan::from(0);
-            timeline.first_estimate = true;
-            timeline.last_received = None;
+            timeline.state = RemoteEstimate::default();
         }
     }
 
@@ -362,7 +356,6 @@ mod tests {
         let timeline = world.get::<RemoteTimeline>(entity).unwrap();
         assert_eq!(timeline.last_received_tick(), None);
         assert_eq!(timeline.offset, TickSpan::from(0));
-        assert!(timeline.first_estimate);
         assert!(!timeline.has_received_packet());
     }
 }

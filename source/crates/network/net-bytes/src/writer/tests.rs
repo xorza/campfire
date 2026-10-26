@@ -114,20 +114,3 @@ fn a_chunk_left_by_a_crossing_message_is_reused() {
     assert_eq!(next.as_ptr(), base);
     drop(held);
 }
-
-/// `fill` appends the bytes it writes after what the message holds, and leaves the message as it
-/// was when it fails.
-#[test]
-fn fill_appends_what_it_writes_and_nothing_on_failure() {
-    let mut writer = Writer::default();
-    writer.write_bytes(&[1]);
-    writer
-        .fill(3, |out| {
-            assert_eq!(out, [0, 0, 0]);
-            out.copy_from_slice(&[2, 3, 4]);
-            Ok::<(), ()>(())
-        })
-        .unwrap();
-    assert_eq!(writer.fill(2, |_| Err(())), Err(()));
-    assert_eq!(&*writer.take_written(), &[1, 2, 3, 4][..]);
-}

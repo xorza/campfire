@@ -2,7 +2,7 @@ use crate::texture_format::TextureFormat;
 
 /// A 2D texture as a KTX2 file of no supercompression (the Khronos KTX 2.0 specification): its
 /// format, its base size, and its levels from the base down, each `format.level_bytes` of its
-/// size. `TextureLevels` reads what it writes of `TextureFormat::Rgba8`.
+/// size, which `TextureLevels` reads.
 #[derive(Debug)]
 pub struct Ktx2Image<'a> {
     pub format: TextureFormat,
@@ -57,7 +57,18 @@ impl Ktx2Image<'_> {
             );
         };
 
-        let mut out = IDENTIFIER.to_vec();
+        // The levels' places: after the descriptor, the smallest first, each aligned.
+        // Each format's block bytes are a multiple of 4, so they are the lcm.
+        let align = usize::try_from(self.format.block_bytes()).expect("a small block");
+        let mut at = dfd_at + dfd_len as usize;
+        let mut places = vec![0; count];
+        for (level, bytes) in self.levels.iter().enumerate().rev() {
+            at = at.next_multiple_of(align);
+            places[level] = at;
+            at += bytes.len();
+        }
+        let mut out = Vec::with_capacity(at);
+        out.extend_from_slice(&IDENTIFIER);
         for value in [
             self.format.vk_format(),
             1,
@@ -78,16 +89,6 @@ impl Ktx2Image<'_> {
         wide(&mut out, 0);
         wide(&mut out, 0);
 
-        // The levels' places: after the descriptor, the smallest first, each aligned.
-        // Each format's block bytes are a multiple of 4, so they are the lcm.
-        let align = usize::try_from(self.format.block_bytes()).expect("a small block");
-        let mut at = dfd_at + dfd_len as usize;
-        let mut places = vec![0; count];
-        for (level, bytes) in self.levels.iter().enumerate().rev() {
-            at = at.next_multiple_of(align);
-            places[level] = at;
-            at += bytes.len();
-        }
         for (place, bytes) in places.iter().zip(self.levels) {
             wide(&mut out, *place);
             wide(&mut out, bytes.len());
@@ -124,6 +125,7 @@ impl Ktx2Image<'_> {
             out.resize(*place, 0);
             out.extend_from_slice(bytes);
         }
+        debug_assert_eq!(out.len(), at, "the levels end the file");
         out
     }
 }

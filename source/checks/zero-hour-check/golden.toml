@@ -3,8 +3,8 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "2173182c0aff6992517170b7449a1b803b46afa0a9a236bfe7bd1c0b471fe2a5"
-rules = "577d8681cbd157efacd5eef0dd50182e3d86eca380d346aabccb189f47e73e1f"
+game = "25c54ffb4de1e206e5cd718d9249fe8688d8ee24dd3985cd0b8824f3105e3be4"
+rules = "db18bca8292336d666fc24720c9c0fc499e0520a0a0a1b3adff9760c0a9dd04b"
 
 [map]
 heights = [270, 340]
@@ -17,8 +17,20 @@ walls = 286
 
 [terrain]
 overlays = 19041
-copies = 300
-wraps = 19
+decals = 1425
+copies = 304
+wraps = 23
+
+[roads]
+segments = 88
+curves = 61
+miters = 29
+tees = 7
+four_ways = 1
+ys = 5
+hs = 2
+joins = 16
+dropped = [0, 0, 0]
 
 [looks]
 varied = 1324
@@ -103,7 +115,7 @@ farthest_m = 310
 [base]
 ended = 12082
 standing = [0, 8]
-think_ops = 19928
+think_ops = 19920
 stalls = 371
 
 [base.result]
@@ -162,7 +174,7 @@ unusable = 0
 [attack]
 ended = 18630
 standing = [4, 0]
-think_ops = 9093
+think_ops = 9085
 stalls = 259
 
 [attack.result]

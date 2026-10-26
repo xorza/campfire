@@ -2,11 +2,10 @@ use std::io;
 
 use campfire_capabilities::ProbeRefusal;
 use campfire_common::Tick;
-use campfire_host::ReportReadError;
+use campfire_host::{ReportLogError, ReportReadError};
 use campfire_package::LoadError;
-use campfire_protocol::LogError;
 use campfire_runner::{ReplayError, StartError};
-use campfire_store::{DurableDirError, DurableError, PathError, ReadError};
+use campfire_store::{DurableDirError, DurableError, PathError};
 use thiserror::Error;
 
 /// Why a report does not replay, by the step that failed.
@@ -14,11 +13,8 @@ use thiserror::Error;
 pub enum ReportReplayError {
     #[error("the report's facts do not read")]
     Facts(#[source] ReportReadError),
-    /// The log does not read; a remote match's report holds none.
     #[error("the report's log does not read")]
-    ReadLog(#[source] PathError<ReadError>),
-    #[error("the report's log does not decode")]
-    Decode(#[source] LogError),
+    Log(#[source] ReportLogError),
     /// The mode does not load from the directory the facts name.
     #[error("the report's mode does not load")]
     Packages(#[source] LoadError),

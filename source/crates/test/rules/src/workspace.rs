@@ -366,14 +366,14 @@ impl Workspace {
 
     /// The code `view` keeps of each of its crates, in their order: each source's that no crate
     /// nested in its directory holds.
-    pub(crate) fn code_by_crate(&self, view: fn(&SourceFile) -> Option<String>) -> Vec<String> {
+    pub(crate) fn code_by_crate(&self, view: fn(&SourceFile) -> Option<&str>) -> Vec<String> {
         let mut code = vec![String::new(); self.crates.len()];
         for file in self.sources() {
             let Some(at) = holder(&self.crates, &file.path) else {
                 continue;
             };
             if let Some(kept) = view(file) {
-                code[at].push_str(&kept);
+                code[at].push_str(kept);
             }
         }
         code
@@ -383,10 +383,14 @@ impl Workspace {
 /// The index in `crates` of the crate that holds the source file at `path`, under `source/`: the
 /// deepest whose directory holds it.
 pub(crate) fn holder(crates: &[Crate], path: &str) -> Option<usize> {
+    let holds = |krate: &Crate| {
+        path.strip_prefix(krate.path.as_str())
+            .is_some_and(|rest| rest.starts_with('/'))
+    };
     crates
         .iter()
         .enumerate()
-        .filter(|(_, krate)| path.starts_with(&format!("{}/", krate.path)))
+        .filter(|(_, krate)| holds(krate))
         .max_by_key(|(_, krate)| krate.path.len())
         .map(|(at, _)| at)
 }

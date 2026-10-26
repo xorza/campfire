@@ -1,3 +1,8 @@
+#![expect(
+    unsafe_code,
+    reason = "Bevy's `BundleWriter` spawns the restore's entities by component id, an unsafe call (02-engine-core.md, Unsafe only where an outside API asks)"
+)]
+
 use std::alloc::Layout;
 use std::collections::VecDeque;
 use std::fmt;

@@ -14,7 +14,7 @@ use campfire_common::ErrorReport;
 use campfire_common::{ExitStatus, MapName};
 use campfire_import::{Imported, ZeroHour};
 use campfire_logging::Logging;
-use campfire_package::ModePackages;
+use campfire_package::ModeRead;
 use campfire_package_disk::PackageDir;
 use campfire_store::{DirEntries, DurableDir, EntryKind, ReadError};
 use tracing::{error, info};
@@ -101,21 +101,34 @@ fn check(out: &Path, selection: &PlaySelection) -> Result<Vec<CheckFailure>, Che
     };
     let imported = import(out)?;
     let map = MapName::parse(MAP).expect("a map's name");
-    let game = PackageDir::new(out.join(ZeroHour::GAME));
+    // The mode read once, its scripts compiled once, for its check and each play's match.
+    let read =
+        ModeRead::at(&PackageDir::new(out.join(ZeroHour::GAME))).map_err(CheckError::Load)?;
     let mut check = ImportCheck {
         imported: &imported,
-        game: &game,
+        read: &read,
         map: &map,
-        packages: ModePackages::at(&game, Some(&map)).map_err(CheckError::Load)?,
+        packages: read.on(Some(&map)).map_err(CheckError::Load)?,
         golden,
         measured: Measured::default(),
         failures: Vec::new(),
         selection,
     };
-    check.fingerprints(Fingerprints {
+    // The packages the check loaded are the ones it pins, and the ones its import wrote, so a
+    // kept import whose files changed since is caught here.
+    let loaded = Fingerprints {
+        game: check.packages.fingerprint(),
+        rules: (check.packages.dependency_fingerprints().next())
+            .expect("the game names its rules package"),
+    };
+    let written = Fingerprints {
         game: imported.fingerprint,
         rules: imported.rules,
-    });
+    };
+    if loaded != written {
+        return Err(CheckError::Rewritten);
+    }
+    check.fingerprints(loaded);
     check.map()?;
     check.looks()?;
     check.other_maps();

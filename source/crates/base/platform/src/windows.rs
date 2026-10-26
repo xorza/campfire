@@ -1,3 +1,8 @@
+#![expect(
+    unsafe_code,
+    reason = "the `windows` crate's calls are Win32's C API, which Rust calls unsafe (02-engine-core.md, Unsafe only where an outside API asks)"
+)]
+
 use std::fs::{File, OpenOptions};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::{FileExt, MetadataExt, OpenOptionsExt};

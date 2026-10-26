@@ -1,21 +1,19 @@
 use std::pin::pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use bevy::app::App;
-use bevy::asset::io::AssetSourceBuilder;
+use bevy::asset::io::{AssetSourceBuilder, AssetSourceId};
 use bevy::asset::{
-    Asset, AssetApp, AssetLoader, AssetPlugin, AssetServer, Handle, LoadContext, LoadState,
-    RenderAssetUsages,
+    Asset, AssetApp, AssetLoader, AssetServer, Handle, LoadContext, LoadState, RenderAssetUsages,
 };
 use bevy::image::{CompressedImageFormats, Image, ImageSampler, ImageType};
 use bevy::reflect::TypePath;
 use bevy::render::render_resource::TextureFormat;
 use bevy::tasks::{block_on, poll_once};
-use campfire_app_threads::OneThreadPlugins;
 use campfire_store::InputFile;
 use campfire_store::internals::TestDir;
 
 use super::*;
+use crate::test_app;
 use crate::view::package_source::samples::package;
 
 #[test]
@@ -187,12 +185,10 @@ fn bevy_keeps_a_models_reader_and_its_permit_for_the_whole_load() {
     let permits = Arc::clone(&source.models);
     let started = Arc::new(AtomicUsize::new(0));
     let gate = Arc::new(Semaphore::new(0));
-    let mut app = App::new();
-    app.register_asset_source(
-        PackageAssets::NAME,
+    let mut app = test_app::assets_with(
+        AssetSourceId::from(PackageAssets::NAME),
         AssetSourceBuilder::new(move || Box::new(source.clone())),
     );
-    app.add_plugins((OneThreadPlugins, AssetPlugin::default()));
     app.init_asset::<Model>();
     app.register_asset_loader(GatedLoader {
         started: Arc::clone(&started),

@@ -7,7 +7,7 @@ use campfire_harness::{FixedSession, MatchUnits};
 use campfire_mode::{ListEntry, ModeParam, OptionPicks, OptionValue, PlayerSlotPick};
 use campfire_package::ModePackages;
 use campfire_production::Site;
-use campfire_protocol::{InputRules, PlayerSlotPlan};
+use campfire_protocol::PlayerSlotPlan;
 use campfire_sim::Position;
 use campfire_units::{Body, Life, MoveStep, Units, WallBook};
 use campfire_values::{Scalar, UnitType};
@@ -100,7 +100,7 @@ impl BasePlay {
             })
             .map(|pick| pick.parse().expect("a base player slot's pick reads"))
             .collect();
-        let session = FixedSession::planned(packages, InputRules::LAN, [PlayerSlotPlan::Bot; 2])
+        let session = FixedSession::planned(packages, [PlayerSlotPlan::Bot; 2])
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&player_slot_picks);

@@ -1,11 +1,6 @@
 //! The game client, which its binary runs: its command line, its connection, and what its window
 //! draws and takes from the player.
 
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-
 use std::env;
 use std::path;
 use std::process::ExitCode;

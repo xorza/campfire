@@ -6,8 +6,8 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Res, ResMut};
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
-use campfire_host::{Pace, PaceSpeed, SaveCommand};
-use campfire_net::PendingSaves;
+use campfire_host::{JournalCommand, Pace, PaceSpeed};
+use campfire_net::PendingJournalCommands;
 
 use crate::input_map::{Act, InputMap};
 use crate::report::ReportTaken;
@@ -37,7 +37,7 @@ impl LocalKeysPlugin {
     fn press(
         (keys, input): (Res<'_, ButtonInput<KeyCode>>, Res<'_, InputMap>),
         keyed: Res<'_, Keyed>,
-        mut saves: ResMut<'_, PendingSaves>,
+        mut saves: ResMut<'_, PendingJournalCommands>,
     ) {
         let pace = &keyed.0;
         if input.pressed(Act::Pause, &keys) {
@@ -49,17 +49,17 @@ impl LocalKeysPlugin {
             pace.set_speed(Self::stepped(pace.speed(), step));
         }
         if input.pressed(Act::Save, &keys) {
-            saves.push(SaveCommand::Save);
+            saves.push(JournalCommand::Save);
         }
         if input.pressed(Act::Load, &keys) {
-            saves.push(SaveCommand::LoadLatest);
+            saves.push(JournalCommand::LoadLatest);
         }
     }
 
     /// Asks the server to write its log into the report `taken`'s folder once the log reaches
     /// the report's tick.
-    fn report(taken: On<'_, '_, ReportTaken>, mut saves: ResMut<'_, PendingSaves>) {
-        saves.push(SaveCommand::Report(taken.key));
+    fn report(taken: On<'_, '_, ReportTaken>, mut saves: ResMut<'_, PendingJournalCommands>) {
+        saves.push(JournalCommand::Report(taken.key));
     }
 
     /// The speed `step` places from `speed` in `PaceSpeed::ALL`, held at its ends.

@@ -1,4 +1,5 @@
 use campfire_codec::Toml;
+use campfire_script::{ApiVersion, Status};
 use serde::Deserialize;
 
 use super::*;
@@ -15,6 +16,7 @@ struct Turret {
 impl Section for Turret {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "turret";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// A unit type's section of a test that reads no struct.
@@ -24,6 +26,7 @@ struct Tags(Vec<String>);
 impl Section for Tags {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "tags";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// A map's section of a test.
@@ -35,6 +38,7 @@ struct Ground {
 impl Section for Ground {
     const TABLE: SectionTable = SectionTable::Map;
     const KEY: &'static str = "ground";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 fn read(text: &str) -> Result<UnitDefaults, DefaultsError> {

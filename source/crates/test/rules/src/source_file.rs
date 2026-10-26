@@ -56,6 +56,9 @@ pub(crate) struct SourceFile {
     pub(crate) gate: Option<Gate>,
     /// Its text as Rust reads it, once a rule asks for it.
     analysis: OnceLock<Analysis>,
+    /// Its production and its library code, once a rule asks for each.
+    production: OnceLock<Option<String>>,
+    library: OnceLock<Option<String>>,
 }
 
 /// What a file's text is as Rust reads it: its code with each comment blanked, and the bytes of
@@ -74,6 +77,8 @@ impl SourceFile {
             text: text.into(),
             gate: None,
             analysis: OnceLock::new(),
+            production: OnceLock::new(),
+            library: OnceLock::new(),
         }
     }
 
@@ -81,9 +86,12 @@ impl SourceFile {
     /// comment blanked, line for line, so each line keeps its number; none for a gated module's
     /// file, a `tests.rs`, a `bench.rs` or a file of a `tests` directory, which hold tests and
     /// their helpers alone.
-    pub(crate) fn production(&self) -> Option<String> {
-        self.is_production()
-            .then(|| self.blanked(&self.analysis().code, &[Gate::Test, Gate::Internals]))
+    pub(crate) fn production(&self) -> Option<&str> {
+        let production = self.production.get_or_init(|| {
+            self.is_production()
+                .then(|| self.blanked(&self.analysis().code, &[Gate::Test, Gate::Internals]))
+        });
+        production.as_deref()
     }
 
     /// Its production code, as `production` gives it, with its comments kept, as a doc link is
@@ -97,8 +105,16 @@ impl SourceFile {
     /// with each item `#[cfg(test)]` holds and each comment blanked; none for a module's file that
     /// gate holds, a `tests.rs` or a file of a `tests` directory. A `bench.rs` is library code, as
     /// `internals` builds it.
-    pub(crate) fn library(&self) -> Option<String> {
-        (!self.is_test()).then(|| self.blanked(&self.analysis().code, &[Gate::Test]))
+    pub(crate) fn library(&self) -> Option<&str> {
+        let library = self.library.get_or_init(|| {
+            (!self.is_test()).then(|| self.blanked(&self.analysis().code, &[Gate::Test]))
+        });
+        library.as_deref()
+    }
+
+    /// All its code, gated or not, with no comment.
+    pub(crate) fn code(&self) -> &str {
+        &self.analysis().code
     }
 
     /// Its code with no comment, where the whole file is a test's: a module `#[cfg(test)]` holds,
@@ -382,9 +398,7 @@ fn a_test_file_holds_no_production_code_and_a_bench_is_library_code() {
         );
     }
     assert_eq!(
-        SourceFile::new("src/bench.rs", "fn f() {}")
-            .library()
-            .as_deref(),
+        SourceFile::new("src/bench.rs", "fn f() {}").library(),
         Some("fn f() {}")
     );
     assert_eq!(SourceFile::new("src/tests.rs", "fn f() {}").library(), None);
@@ -398,10 +412,7 @@ fn a_test_file_holds_no_production_code_and_a_bench_is_library_code() {
         file
     };
     assert_eq!(gated(Gate::Internals).production(), None);
-    assert_eq!(
-        gated(Gate::Internals).library().as_deref(),
-        Some("fn f() {}")
-    );
+    assert_eq!(gated(Gate::Internals).library(), Some("fn f() {}"));
     assert_eq!(gated(Gate::Test).library(), None);
 }
 
@@ -424,7 +435,8 @@ fn production_code_blanks_each_gated_item_and_keeps_each_line_at_its_number() {
         "struct S {\n    #[cfg(test)]\n    y: u8,\n    z: u8,\n}\n",
         "#[cfg(test)]\nconst RAW: &str = r#\"\n}\nfn hidden() {}\n\"#;\nfn o() {}\n",
     );
-    let code = SourceFile::new("src/a.rs", text).production().unwrap();
+    let file = SourceFile::new("src/a.rs", text);
+    let code = file.production().unwrap();
     let expected = concat!(
         "mod a;\n\n\nmod c;\n",
         "\n\n\n\n\n\n",
@@ -438,10 +450,10 @@ fn production_code_blanks_each_gated_item_and_keeps_each_line_at_its_number() {
         "struct S {\n\n         ,\n    z: u8,\n}\n",
         "\n\n\n\n\nfn o() {}\n",
     );
-    assert_eq!(trimmed(&code), trimmed(expected));
+    assert_eq!(trimmed(code), trimmed(expected));
     assert_eq!(code.lines().count(), text.lines().count());
     // The library keeps what `internals` holds, and blanks the rest alike.
-    let library = SourceFile::new("src/a.rs", text).library().unwrap();
+    let library = file.library().unwrap();
     let expected = concat!(
         "mod a;\n#[cfg(feature = \"internals\")]\nmod b;\nmod c;\n",
         "\n\n\n\n\n\n",
@@ -455,7 +467,7 @@ fn production_code_blanks_each_gated_item_and_keeps_each_line_at_its_number() {
         "struct S {\n\n         ,\n    z: u8,\n}\n",
         "\n\n\n\n\nfn o() {}\n",
     );
-    assert_eq!(trimmed(&library), trimmed(expected));
+    assert_eq!(trimmed(library), trimmed(expected));
 }
 
 #[test]
@@ -463,9 +475,10 @@ fn production_code_holds_no_comment_and_the_view_with_comments_keeps_them() {
     // A line comment, a block comment, a doc comment and a module's doc comment go, and a string
     // that holds `//` stays; each token keeps its column.
     let text = "//! A module.\n/// A doc naming b::f.\nfn f() {\n    g(); // a::h()\n    /* c::i */ let s = \"//\";\n}\n";
-    let code = SourceFile::new("src/a.rs", text).production().unwrap();
+    let file = SourceFile::new("src/a.rs", text);
+    let code = file.production().unwrap();
     assert_eq!(
-        trimmed(&code),
+        trimmed(code),
         [
             "",
             "",

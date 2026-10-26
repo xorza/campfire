@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use campfire_harness::FixedSession;
 use campfire_mode::{OptionPicks, OptionValue, PlayerSlotPick};
 use campfire_package::ModePackages;
-use campfire_protocol::{InputRules, PlayerSlotPlan};
+use campfire_protocol::PlayerSlotPlan;
 
 use crate::failure::CheckFailure;
 use crate::match_play::{MatchPlay, PlayTools, START_MONEY};
@@ -52,7 +52,7 @@ impl AttackPlay {
         let factions: Vec<PlayerSlotPick> = ["0:faction=china", "1:faction=gla"]
             .map(|pick| pick.parse().expect("a player slot's pick reads"))
             .into();
-        let session = FixedSession::planned(packages, InputRules::LAN, [PlayerSlotPlan::Bot; 2])
+        let session = FixedSession::planned(packages, [PlayerSlotPlan::Bot; 2])
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&factions);

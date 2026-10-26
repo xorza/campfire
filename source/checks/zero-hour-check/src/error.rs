@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use campfire_capabilities::ProbeSpecError;
-use campfire_codec::{BinaryError, TomlError};
+use campfire_client_files::ClientFileError;
+use campfire_codec::TomlError;
 use campfire_import::ZeroHourError;
 use campfire_package::LoadError;
 use campfire_package_format::ContentError;
@@ -32,11 +33,16 @@ pub(crate) enum CheckError {
     Import(#[source] ZeroHourError),
     #[error("the imported mode does not load")]
     Load(#[source] LoadError),
+    /// The packages the check loads are not the ones its import wrote, as when a kept import's
+    /// files changed since.
+    #[error("the packages the check loads are not the ones its import wrote")]
+    Rewritten,
     /// A file of the imported package does not read.
     #[error("a file of the imported package does not read")]
     Read(#[from] ContentError),
-    #[error("a grid of the imported package does not decode")]
-    Decode(#[source] BinaryError),
+    /// A client file of the imported package does not decode in its format.
+    #[error("a client file of the imported package does not decode")]
+    ClientFile(#[source] ClientFileError),
     #[error("the golden file does not read")]
     GoldenRead(#[source] PathError<ReadError>),
     /// The golden file's bytes are no UTF-8 text.

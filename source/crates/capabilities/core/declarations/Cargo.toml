@@ -28,6 +28,7 @@ campfire-values = { workspace = true, features = ["ecs"] }
 campfire-visibility.workspace = true
 
 bevy_ecs = { workspace = true, features = ["std"] }
+bevy_platform = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive", "rc", "std"] }
 thiserror = { workspace = true, features = ["std"] }
 

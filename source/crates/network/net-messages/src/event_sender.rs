@@ -1,6 +1,5 @@
 use crate::link_messages::{EndpointList, LinkMessages, ListedEndpoint};
 use crate::message_type_id::MessageTypeId;
-use crate::send_queue::Priority;
 use crate::send_queue::{QueuedSender, SendQueue};
 use bevy_ecs::prelude::*;
 use campfire_net_channels::Channel;
@@ -29,7 +28,7 @@ impl<M: Event> EventSender<M> {
     }
 
     /// Buffers an event with an explicit bandwidth priority.
-    pub fn trigger_with_priority<C: Channel>(&mut self, trigger: M, priority: Priority) {
+    pub fn trigger_with_priority<C: Channel>(&mut self, trigger: M, priority: f32) {
         self.queue.push(trigger, ChannelTypeId::of::<C>(), priority);
     }
 }

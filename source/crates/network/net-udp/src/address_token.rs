@@ -2,6 +2,7 @@
 //! server gives in a handshake for the client's next connection, each usable once
 //! (11-net-stack/udp.md, A server checks an address before it keeps state).
 
+use campfire_common::Secret;
 use campfire_net_core::Instant;
 use core::net::IpAddr;
 use core::time::Duration;
@@ -89,12 +90,9 @@ impl TokenKey {
             TokenKind::Retry => handshake,
             TokenKind::Next => [0; 8],
         };
-        let tag = self.tag(&token[..17], ip, named);
-        let difference = tag
-            .iter()
-            .zip(&token[17..])
-            .fold(0, |difference, (a, b)| difference | (a ^ b));
-        if difference != 0 {
+        // As a `Secret` compares, in a time that does not tell how many bytes matched.
+        let tag = Secret::new(self.tag(&token[..17], ip, named));
+        if tag != Secret::new(token[17..].try_into().expect("16 bytes of tag")) {
             return None;
         }
         let expires = Instant::from_elapsed(Duration::from_nanos(u64::from_be_bytes(

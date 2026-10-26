@@ -302,11 +302,17 @@ fn a_rules_package_s_data_lies_under_the_mode_s_and_its_needs_refuse_a_mode_that
 
 #[test]
 fn a_marker_param_the_rules_declare_loads_on_a_map_whose_markers_lack_it() {
-    // Zero Hour's script reads each start marker's `name`, which its rules data declares: the
-    // skirmish loads on a map whose markers hold no param, and fails with the declaration gone.
+    // Zero Hour's script reads each start marker's `player_slot`, which its rules data declares:
+    // the skirmish loads on a map whose markers hold no param, and fails with the declaration
+    // gone.
     const MAP: &str = "test/engine/modes/skirmish/map/field/map.toml";
     let params: Vec<String> = (1..=3)
-        .map(|n| format!("params = {{ name = \"Player_{n}_Start\" }}\n"))
+        .map(|n| {
+            format!(
+                "params = {{ name = \"Player_{n}_Start\", player_slot = {} }}\n",
+                n - 1
+            )
+        })
         .collect();
     let mut tree = PackageTree::of(TestMode::Skirmish);
     for param in &params {
@@ -315,11 +321,11 @@ fn a_marker_param_the_rules_declare_loads_on_a_map_whose_markers_lack_it() {
     assert!(tree.clone().load().is_ok());
     tree.edit(
         "zero-hour/data/rules.toml",
-        Edit::Replace("marker_params = [\"name\"]\n", ""),
+        Edit::Replace(", \"player_slot\"]", "]"),
     );
     let refused = *tree.load().unwrap_err().problem;
     assert!(
-        matches!(&refused, LoadProblem::Unknown { of: Param::NAMES, name, .. } if name == "name"),
+        matches!(&refused, LoadProblem::Unknown { of: Param::NAMES, name, .. } if name == "player_slot"),
         "{refused:?}"
     );
 }

@@ -2,11 +2,6 @@
 //! channel registry an app fills, the systems that run each link's receive and send steps in the
 //! frame, and the iteration over links that the layers above share.
 
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-
 mod app_channel_ext;
 mod channel_registration;
 mod channel_registry;

@@ -8,8 +8,8 @@ use tracing::warn;
 
 use crate::client::client_layout::ClientLayout;
 use crate::client::report_dir::ReportDir;
-use crate::error::{ReportWriteError, SaveRefusal};
-use crate::messages::save_command::ReportKey;
+use crate::error::{JournalRefusal, ReportWriteError};
+use crate::messages::journal_command::ReportKey;
 
 /// A local server's reports of its log, each a player asked of the tick its client drew: the
 /// data directory of the client whose reports they are, the ticks the log has yet to reach, and
@@ -67,12 +67,12 @@ impl Reports {
 
     /// Takes the report `key`, of the last tick its client ran, which a predicting client runs
     /// before the server; why not, on a server of no reports or of no journal.
-    pub(crate) fn take(world: &mut World, key: ReportKey) -> Result<(), SaveRefusal> {
+    pub(crate) fn take(world: &mut World, key: ReportKey) -> Result<(), JournalRefusal> {
         if !world.contains_resource::<Self>() {
-            return Err(SaveRefusal::NoData);
+            return Err(JournalRefusal::NoData);
         }
         if world.resource::<Session>().journal().is_none() {
-            return Err(SaveRefusal::NoData);
+            return Err(JournalRefusal::NoData);
         }
         world.resource_mut::<Self>().asked.push(key);
         Ok(())

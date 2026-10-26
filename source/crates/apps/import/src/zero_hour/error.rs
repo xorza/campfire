@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use campfire_client_files::{TeamColorsError, TerrainFileError};
+use campfire_client_files::{TeamColorsError, TerrainFileError, UntestedCondition};
 use campfire_common::MapName;
 use campfire_package::LoadError;
 use campfire_package_disk::WriteError;
@@ -114,6 +114,9 @@ pub enum ZeroHourError {
     Languages(Vec<String>),
     #[error(transparent)]
     Name(#[from] NameError),
+    /// A look the import made names a condition of no test, which the client refuses to read.
+    #[error(transparent)]
+    Untested(#[from] UntestedCondition),
     /// A player template a player plays, by its name, names no starting building.
     #[error("player template {0} names no starting building")]
     NoStart(String),
@@ -286,6 +289,10 @@ pub enum NameError {
     /// `DeclaredName::MAX_LEN`.
     #[error("{0} passes the bytes a name holds")]
     TooLong(String),
+    /// The projectile of a weapon of `object` gives the name `name` of the object's own unit
+    /// type.
+    #[error("a projectile of {object} gives {name}, the name of its own unit type")]
+    ProjectileOfType { object: String, name: String },
 }
 
 /// Two objects of the original whose names give one name in the package, a look's or a unit

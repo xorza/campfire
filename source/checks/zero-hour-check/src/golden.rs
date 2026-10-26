@@ -10,12 +10,13 @@ use serde::{Deserialize, Serialize};
 use crate::error::CheckError;
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, Fingerprints, FoughtCounts, LookCounts, MapCounts,
-    MissileTicks, ProducedCounts, RangerLook, SkirmishTicks, SuppliedCounts, SupplyTicks,
-    TerrainCounts, UpgradedCounts,
+    MissileTicks, ProducedCounts, RangerLook, RoadCounts, SkirmishTicks, SuppliedCounts,
+    SupplyTicks, TerrainCounts, UpgradedCounts,
 };
 
 /// What the check measured of the known version and this importer, each a value no closed form
-/// gives: the fingerprints, a run on Linux and a run on macOS alike; Tournament Desert's counts;
+/// gives: the fingerprints, a run on Linux and a run on macOS alike; Tournament Desert's counts and
+/// roads;
 /// the import's looks, trains, builds, researches, upgrades, supply and weapons; the plays' ticks, the supply play's
 /// deliveries, the defense plays' hits and kills and the missile play's shot, hit and kill among
 /// them; the bot's base; and how the base play's and the attack play's matches stood.
@@ -29,6 +30,7 @@ pub(crate) struct Golden {
     pub(crate) fingerprints: Fingerprints,
     pub(crate) map: MapCounts,
     pub(crate) terrain: TerrainCounts,
+    pub(crate) roads: RoadCounts,
     pub(crate) looks: LookCounts,
     pub(crate) ranger: RangerLook,
     pub(crate) produced: ProducedCounts,
@@ -54,6 +56,7 @@ pub(crate) struct Measured {
     pub(crate) fingerprints: Option<Fingerprints>,
     pub(crate) map: Option<MapCounts>,
     pub(crate) terrain: Option<TerrainCounts>,
+    pub(crate) roads: Option<RoadCounts>,
     pub(crate) looks: Option<LookCounts>,
     pub(crate) ranger: Option<RangerLook>,
     pub(crate) produced: Option<ProducedCounts>,
@@ -117,6 +120,7 @@ impl Measured {
             fingerprints: self.fingerprints?,
             map: self.map?,
             terrain: self.terrain?,
+            roads: self.roads?,
             looks: self.looks?,
             ranger: self.ranger?,
             produced: self.produced?,

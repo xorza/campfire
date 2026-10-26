@@ -1,5 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
@@ -18,4 +19,5 @@ impl DataSection for UsesData {
 impl Section for UsesData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "uses";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

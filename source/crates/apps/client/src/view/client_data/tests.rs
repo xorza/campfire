@@ -1,5 +1,7 @@
 use bevy::math::{UVec2, Vec2};
-use campfire_client_files::{GroundQuad, TerrainQuads, TerrainSurface, TerrainTexture};
+use campfire_client_files::{
+    GroundQuad, TerrainDecals, TerrainFileFields, TerrainQuads, TerrainSurface, TerrainTexture,
+};
 use campfire_codec::{Binary, Toml};
 use campfire_geometry::Metric;
 use campfire_math::Num;
@@ -24,13 +26,13 @@ draws = [{ states = [{ sets = [[]], models = [{ model = "client/models/tank.glb"
     data.read_package(PackageIndex::new(2), &broken);
     // The tank's model, with the node it hides; a package with no units has none, as one whose
     // units do not read.
-    let tank = &data.of(PackageIndex::MODE).units.units["tank"].draws[0].states()[0].models[0];
+    let tank = &data.of(PackageIndex::MODE).units.units()["tank"].draws[0].states()[0].models[0];
     assert_eq!(
         (tank.model.as_str(), tank.hide.as_slice()),
         ("client/models/tank.glb", &["tank.flash".to_owned()][..])
     );
-    assert!(data.of(PackageIndex::new(1)).units.units.is_empty());
-    assert!(data.of(PackageIndex::new(2)).units.units.is_empty());
+    assert!(data.of(PackageIndex::new(1)).units.units().is_empty());
+    assert!(data.of(PackageIndex::new(2)).units.units().is_empty());
 }
 
 #[test]
@@ -76,8 +78,8 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
     // The map's lights, and its one oak at (3, −2.5), 1 m up, turned 90°. A night map: the lamp
     // draws its night models, and keeps no variant; the map's conditions are kept, which each
     // unit's look holds.
-    assert_eq!(data.lights.as_ref().unwrap().lights.len(), 1);
-    let lamp = &data.of(PackageIndex::MODE).units.objects["lamp"];
+    assert_eq!(data.lights.as_ref().unwrap().lights().len(), 1);
+    let lamp = &data.of(PackageIndex::MODE).units.objects()["lamp"];
     assert_eq!(lamp.models[0].model.as_str(), "client/models/lit.glb");
     assert!(lamp.variants.is_empty());
     assert_eq!(data.map_conditions, [DeclaredName::new("night").unwrap()]);
@@ -105,7 +107,7 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
             ..ClientLoad::default()
         };
         data.read_map(&files, &map);
-        let lamp = &data.of(PackageIndex::MODE).units.objects["lamp"];
+        let lamp = &data.of(PackageIndex::MODE).units.objects()["lamp"];
         assert_eq!(lamp.models[0].model.as_str(), "client/models/lamp.glb");
         assert!(data.map_conditions.is_empty());
         assert!(data.objects.objects.is_empty());
@@ -150,7 +152,13 @@ fn a_map_keeps_its_terrain_over_its_heights_and_splits_their_cells_as_it_draws_t
             roughness: 1.0,
             specular: 0.0,
         };
-        Binary::encode(&TerrainFile::new(quads, texture, surface).unwrap())
+        let fields = TerrainFileFields {
+            quads,
+            decals: TerrainDecals::default(),
+            texture,
+            surface,
+        };
+        Binary::encode(&TerrainFile::new(fields).unwrap())
     };
     let read = |name: &str, terrain: &[u8]| {
         let files = package(

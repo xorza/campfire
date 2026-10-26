@@ -2,7 +2,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::{ActionKeys, ActionRange, RangeField, Targeting};
-use campfire_client_files::ClientUnits;
+use campfire_client_files::ClientUnit;
 use campfire_codec::{TomlTable, TomlValue};
 use campfire_combat::{
     ArmorShare, AttackData, ClipData, OuterData, PitchData, PreAttackData, PreAttackEach,
@@ -331,19 +331,19 @@ impl CombatImport {
         Ok(())
     }
 
-    /// Gives each projectile type named for its weapon, in `looks`, the look of the object it
-    /// fires, when that object has one; then each type's look its weapons by the places of their
-    /// slots, which its attack conditions test (09-zero-hour.md, A condition is the game's name
-    /// for a test).
-    pub(crate) fn complete_looks(&self, looks: &mut ClientUnits) {
+    /// Gives each projectile type named for its weapon, in the unit looks `looks`, the look of the
+    /// object it fires, when that object has one; then each type's look its weapons by the places
+    /// of their slots, which its attack conditions test (09-zero-hour.md, A condition is the game's
+    /// name for a test).
+    pub(crate) fn complete_looks(&self, looks: &mut BTreeMap<DeclaredName, ClientUnit>) {
         for ProjectileLook { unit_type, object } in &self.projectile_looks {
-            if let Some(look) = looks.units.get(object.declared()) {
+            if let Some(look) = looks.get(object.declared()) {
                 let look = look.clone();
-                looks.units.insert(unit_type.declared().clone(), look);
+                looks.insert(unit_type.declared().clone(), look);
             }
         }
         for (unit_type, slots) in &self.weapon_slots {
-            if let Some(look) = looks.units.get_mut(unit_type.declared()) {
+            if let Some(look) = looks.get_mut(unit_type.declared()) {
                 look.weapons.clone_from(slots);
             }
         }

@@ -1,8 +1,3 @@
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems and observers take their parameters by value"
-)]
-
 use super::*;
 use crate::client_connection_plugin::ClientConnectionPlugin;
 use crate::networking_state::NetworkingState;

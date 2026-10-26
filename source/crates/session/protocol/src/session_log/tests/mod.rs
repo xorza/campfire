@@ -18,7 +18,7 @@ use crate::player_slot_plan::PlayerSlotPlan;
 use crate::seed_chain::SeedChain;
 use crate::server_input::LeaveReason;
 use crate::server_input::error::ServerInputDecodeError;
-use crate::session_log::error::{JournalReplayError, PublishError, PublishWriteError};
+use crate::session_log::error::{JournalReplayError, PublishError, PublishWriteError, WalkStopped};
 use crate::session_log::file::{LOG_TAG, PACKET_ENTRY};
 use crate::session_log::journal::journal_frames::JournalFrames;
 use crate::session_log::journal::tests::MemorySink;
@@ -165,10 +165,14 @@ fn published_from(file: &[u8]) -> Result<Vec<u8>, PublishError> {
         for record in JournalFrames::new(file).unwrap() {
             visit(record);
         }
+        Ok(())
     };
     match SessionLog::publish(&mut walk, &SEED_CHAIN.seed(1), &mut out) {
         Ok(()) => Ok(out),
         Err(PublishWriteError::Journal(error)) => Err(error),
+        Err(PublishWriteError::Walk(stopped)) => {
+            panic!("a walk of bytes in memory ends: {stopped}")
+        }
         Err(PublishWriteError::Write(error)) => panic!("a Vec takes every write: {error}"),
     }
 }

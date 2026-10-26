@@ -10,11 +10,11 @@ use campfire_package::ModePackages;
 use campfire_players::PlayerSlotHolder;
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointBegun, CheckpointError, Controller, Delegation, InputChain,
-    InputError, Journal, LogLoadError, LogReplay, PlayerPacket, PlayerSlotChangeKind,
+    InputError, Journal, LogLoadError, LogReplay, PlayerInput, PlayerPacket, PlayerSlotChangeKind,
     PlayerSlotStart, RecordSink, ResultError, SeedError, ServerInput, ServerInputError, ServerSeed,
     ServerSeeds, SessionLog, SessionResult, Signer, SnapshotFingerprint, Taken,
 };
-use campfire_sim::{MatchRate, SimWorld};
+use campfire_sim::{MatchRate, SimRng, SimWorld, TickInput, TickInputs};
 
 use crate::match_build::MatchBuild;
 use crate::player_slot_rules::PlayerSlotRules;
@@ -56,6 +56,13 @@ pub struct Session {
     replay: Option<LogReplay>,
     /// The log's terms as the mode's rules checked them, once for the session.
     checked: CheckedTerms,
+}
+
+/// What a server's session signs and keeps with: its signer, and its journal once it keeps one.
+#[derive(Debug)]
+struct ServerRole<'r> {
+    signer: &'r Signer,
+    journal: Option<&'r mut Journal>,
 }
 
 /// What a session is to its host: a server's, which signs what it logs with its signer and keeps
@@ -106,9 +113,12 @@ impl SessionRole {
 
     /// The server's signer and journal, which only a server's session signs and keeps with: a
     /// verifier's that serves or records is a logic error.
-    fn server(&mut self) -> (&Signer, Option<&mut Journal>) {
+    fn server(&mut self) -> ServerRole<'_> {
         match self {
-            Self::Server { signer, journal } => (signer, journal.as_mut()),
+            Self::Server { signer, journal } => ServerRole {
+                signer,
+                journal: journal.as_mut(),
+            },
             Self::Verifier => panic!("only a server's session serves and records"),
         }
     }
@@ -237,6 +247,16 @@ impl Session {
         if SnapshotFingerprint::of(snapshot) != record.snapshot {
             return Err(SnapshotCheckError::Fingerprint);
         }
+        Self::restore_hash_checked(world, record, snapshot)
+    }
+
+    /// Restores `snapshot` in `world` as `restore_checked` does, once its caller checked its
+    /// fingerprint, as a load checks a save's before it changes the log.
+    pub(crate) fn restore_hash_checked(
+        world: &mut World,
+        record: &Checkpoint,
+        snapshot: &[u8],
+    ) -> Result<(), SnapshotCheckError> {
         let restored = world
             .restore(snapshot)
             .map_err(SnapshotCheckError::Restore)?;
@@ -330,9 +350,9 @@ impl Session {
         if let Some(change) = serving.change() {
             self.rules.check(change).map_err(ServerInputRefusal::Rule)?;
         }
-        let (server, journal) = self.role.server();
+        let ServerRole { signer, journal } = self.role.server();
         serving
-            .log(server, journal)
+            .log(signer, journal)
             .map_err(ServerInputRefusal::Log)
     }
 
@@ -391,6 +411,31 @@ impl Session {
         *self.role.new_journal() = Some(Journal::resume(&self.log, sink, len));
     }
 
+    /// Starts drawing the sim's random numbers from `segment`'s seed in `world`, the segment the
+    /// session stands in from now on, as a tick crosses into it or a save of it loads.
+    pub(crate) fn draw_from(&mut self, world: &mut World, segment: u32) {
+        let server_seed = self
+            .seeds
+            .seed(segment)
+            .expect("the seeds reach the log's last segment");
+        let seed = self.log.header().segment_seed(segment, server_seed);
+        world.insert_resource(SimRng::new(seed));
+        self.segment = segment;
+    }
+
+    /// Pushes each of `sealed`, a tick's inputs, into `inputs`, which the tick reads.
+    pub(crate) fn push_inputs<'l>(
+        inputs: &mut TickInputs,
+        sealed: impl IntoIterator<Item = PlayerInput<'l>>,
+    ) {
+        for input in sealed {
+            inputs.push(TickInput {
+                player_slot: input.player_slot,
+                payload: input.payload,
+            });
+        }
+    }
+
     /// The server seed of the log's last segment, which a published log reveals: at the session's
     /// end, or as a local server publishes the log so far into a player's report
     /// (08-sessions.md, The log is the local server's, published at the report's tick).
@@ -420,7 +465,7 @@ impl Session {
     }
 
     /// Whether the log may refuse its next entry, its journal's room counted; see
-    /// `SessionLog::full`.
+    /// `SessionLog::is_full`.
     pub fn is_log_full(&self) -> bool {
         self.log.is_full(self.role.journal())
     }
@@ -441,17 +486,17 @@ impl Session {
             .map_err(CheckpointBeginError::Log)
     }
 
-    /// Logs the record of the checkpoint begun, signed in the log by the server; see
+    /// Logs the record of the checkpoint begun, which the server signs; see
     /// `SessionLog::serve_checkpoint`.
-    pub fn record_checkpoint(&mut self, record: Checkpoint) -> Result<(), CheckpointError> {
-        let (server, journal) = self.role.server();
-        self.log.serve_checkpoint(record, server, journal)
+    pub fn serve_checkpoint(&mut self, record: Checkpoint) -> Result<(), CheckpointError> {
+        let ServerRole { signer, journal } = self.role.server();
+        self.log.serve_checkpoint(record, signer, journal)
     }
 
-    /// Logs the result, signed in the log by the server; see `SessionLog::serve_result`.
-    pub fn record_result(&mut self, result: SessionResult) -> Result<(), ResultError> {
-        let (server, journal) = self.role.server();
-        self.log.serve_result(result, server, journal)
+    /// Logs the result, which the server signs; see `SessionLog::serve_result`.
+    pub fn serve_result(&mut self, result: SessionResult) -> Result<(), ResultError> {
+        let ServerRole { signer, journal } = self.role.server();
+        self.log.serve_result(result, signer, journal)
     }
 
     /// Publishes the log by adding the server seed of its last segment, which reveals every

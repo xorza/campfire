@@ -9,7 +9,7 @@ use campfire_actions::ActionProgress;
 use campfire_capabilities::Order;
 use campfire_combat::Respawn;
 use campfire_common::{DeclaredName, PlayerSlot, Tick, Ticks};
-use campfire_harness::ArchetypeWatch;
+use campfire_harness::{ArchetypeWatch, HeroWalk};
 use campfire_host::{InputMessage, InputMessageRefused, JoinState, SessionEnd};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MatchResult, ModeState, ModeWorld};
@@ -48,19 +48,9 @@ const fn move_to(x: i64, z: i64) -> OrdersDirective {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct Hero {
-    position: Vec3,
-    destination: Destination,
-}
-
 /// Where client 0's hero stands and walks to in `end`.
-fn hero(local: &InProcessMatch, end: End) -> Hero {
-    let hero = local.unit(end, local.avatar(0));
-    Hero {
-        position: hero.get::<Position>().unwrap().get(),
-        destination: *hero.get::<Destination>().unwrap(),
-    }
+fn hero(local: &InProcessMatch, end: End) -> HeroWalk {
+    HeroWalk::of(local.unit(end, local.avatar(0)))
 }
 
 /// The ticks the client runs ahead of the server. An order shows on the server `lead + 1` steps
@@ -109,7 +99,7 @@ fn server_and_replay_agree_on_every_tick() {
         }
         watch.assert_kept();
 
-        let arrived = Hero {
+        let arrived = HeroWalk {
             position: Vec3::from((-2, 0, 5)),
             destination: Destination::default(),
         };
@@ -170,7 +160,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         local.step();
         frames += 1;
     }
-    let arrived = Hero {
+    let arrived = HeroWalk {
         position: Vec3::from((-2, 0, 5)),
         destination: Destination::default(),
     };
@@ -261,7 +251,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     for _ in 0..=lead(&local) {
         local.step();
     }
-    let at = |x: i16, z: i16| Hero {
+    let at = |x: i16, z: i16| HeroWalk {
         position: Vec3::from((x, 0, z)),
         destination: Destination::default(),
     };

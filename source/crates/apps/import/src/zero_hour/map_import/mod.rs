@@ -1,9 +1,9 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use bevy_math::Vec3;
 use campfire_client_files::{
-    ClientFile, ClientObject, ClientObjects, ClientUnits, MapConditions, MapLight, MapLights,
-    TerrainFile, TerrainSurface,
+    ClientFile, ClientObject, ClientObjects, MapConditions, MapLight, MapLights, ObjectLook,
+    TerrainFile, TerrainFileFields, TerrainSurface,
 };
 use campfire_codec::{Binary, Toml};
 use campfire_common::DeclaredName;
@@ -13,34 +13,41 @@ use campfire_math::Num;
 use campfire_mode::{MapData, MapPatch, MarkerData, ModeParam, PlacedUnitData};
 use campfire_navigation::MapNavigationData;
 use campfire_units::{BoundsData, CellSplit, CoarseSpan, Ground, GroundData, HeightGrid, MapPoint};
+use campfire_values::Scalar;
 
 use crate::zero_hour::axes;
 use crate::zero_hour::axes::cell_frame::CellFrame;
 use crate::zero_hour::cliff_walls::CliffWalls;
+use crate::zero_hour::dropped_roads::DroppedRoads;
 use crate::zero_hour::error::MapError;
 use crate::zero_hour::format::ini::game_data_ini::TerrainDraw;
 use crate::zero_hour::format::ini::object_ini::PlacedAs;
-use crate::zero_hour::format::look_conditions::LookConditions;
 use crate::zero_hour::format::map::map_file::{MapHeights, ZeroHourMap};
 use crate::zero_hour::format::map::map_object::ObjectPlace;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::import_team::{ImportTeam, SLOTS};
 use crate::zero_hour::imported_type::ImportedType;
-use crate::zero_hour::terrain_atlas::{ClassTexture, TerrainAtlas};
+use crate::zero_hour::map_roads::MapRoads;
+use crate::zero_hour::road_buffer::RoadBuffer;
+use crate::zero_hour::road_mesh::RoadGround;
+use crate::zero_hour::road_pieces::RoadPieces;
+use crate::zero_hour::terrain_atlas::{PackageTexture, TerrainAtlas};
 use crate::zero_hour::terrain_cells::TerrainCells;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin`,
 /// `client/maps/<name>/terrain.bin`, `client/maps/<name>/lights.toml` and
 /// `client/maps/<name>/objects.toml` and `client/maps/<name>/conditions.toml`; how many cells its
-/// terrain draws a tile of with no texture; and the names of the waypoints it dropped, past its
-/// bounds.
+/// terrain draws a tile of with no texture; the road pieces it draws, and those it does not draw
+/// as the game does; and the names of the waypoints it dropped, past its bounds.
 #[derive(Debug)]
 pub(crate) struct MapImport {
     pub(crate) map: String,
     pub(crate) heights: Vec<u8>,
     pub(crate) terrain: Vec<u8>,
     pub(crate) untextured: usize,
+    pub(crate) road_pieces: RoadPieces,
+    pub(crate) dropped_roads: Vec<DroppedRoads>,
     pub(crate) lights: Vec<u8>,
     pub(crate) objects: Vec<u8>,
     pub(crate) conditions: Vec<u8>,
@@ -77,26 +84,29 @@ impl Waypoint {
 }
 
 impl SkirmishPoint {
-    /// Whether it is a point of one of the slots `1..=slots`.
-    const fn of_slots(self, slots: u8) -> bool {
+    /// The number of its player slot, from 1.
+    const fn slot(self) -> u8 {
         let (Self::Start(n) | Self::Rally(n)) = self;
-        n <= slots
+        n
     }
 }
 
 /// What a map import reads and adds to beside its file: the install's rules, of the objects and the
 /// locomotors they name, the names the objects took so far, with the unit types of the maps, the
-/// looks of the package's `client/units.toml`, how many of the map's lights the game draws, and the
-/// settings of `GameData.ini` its terrain is drawn by.
+/// object looks of the package's `client/units.toml`, how many of the map's lights the game draws,
+/// the settings of `GameData.ini` its terrain is drawn by, and its roads.
 #[derive(Debug)]
 pub(crate) struct MapSources<'a, 'r> {
     pub(crate) rules: &'r ZeroHourRules,
     pub(crate) names: &'a mut ImportNames<'r>,
-    pub(crate) looks: &'a ClientUnits,
+    pub(crate) object_looks: &'a BTreeMap<DeclaredName, ObjectLook>,
     pub(crate) lights: usize,
     pub(crate) game: TerrainDraw,
     /// The texture of each of the map's texture classes, in their order.
-    pub(crate) textures: &'a [Option<ClassTexture>],
+    pub(crate) textures: &'a [Option<PackageTexture>],
+    pub(crate) roads: &'a MapRoads,
+    /// The texture of each of the roads' types, in their order, none for one no archive holds.
+    pub(crate) road_textures: &'a [Option<PackageTexture>],
 }
 
 /// The terrain's surface, rough, of no metal or specular, as the import's materials are
@@ -127,21 +137,24 @@ impl MapImport {
     /// as a terrain file, its texture the atlas the game builds of its classes; its objects as a
     /// multiplayer game spawns them (09-zero-hour.md, The multiplayer rule for client objects),
     /// none of a template no INI object names, an optimized tree, a prop and fluff as client
-    /// objects, of a look of `looks`, or none when it has none, and every other as a unit of the
-    /// type `names` gives it, the bridge-like ones first, in the map's order; bounds that hold its
-    /// heights and each unit's body whole; its waypoints within them as markers, and the names of
-    /// those past them, which it drops; the walls of its cliffs within them (09-zero-hour.md,
+    /// objects, of a look of `object_looks`, or none when it has none, and every other as a unit of
+    /// the type `names` gives it, the bridge-like ones first, in the map's order; bounds that hold
+    /// its heights and each unit's body whole; its waypoints within them as markers, and the names
+    /// of those past them, which it drops; the walls of its cliffs within them (09-zero-hour.md,
     /// Cliffs are walls); and its first `lights` object lights, as the game draws
     /// `NumberGlobalLights` of each, which the terrain is lit by too; their ambient color is the
-    /// first light's, as the game takes it.
+    /// first light's, as the game takes it; and its roads as the terrain's decals, after its
+    /// overlays.
     pub(crate) fn new(file: &ZeroHourMap, sources: MapSources<'_, '_>) -> Result<Self, MapError> {
         let MapSources {
             rules,
             names,
-            looks,
+            object_looks,
             lights,
             game,
             textures,
+            roads,
+            road_textures,
         } = sources;
         let ini = &rules.objects;
         let heights = Self::heights(&file.heights)?;
@@ -158,12 +171,22 @@ impl MapImport {
         )
         .ok_or(MapError::LightDirection)?;
         let terrain = &file.terrain;
-        let atlas = TerrainAtlas::new(terrain.fields(), textures);
+        let atlas = TerrainAtlas::new(terrain.fields(), textures, road_textures);
         let cells = TerrainCells::new(terrain.fields(), &file.heights, &atlas, game);
         let untextured = cells.untextured();
         let quads = cells.quads();
-        let terrain = TerrainFile::new(quads, atlas.into_texture(), SURFACE)
-            .map_err(MapError::TerrainFile)?;
+        let road_ground = RoadGround {
+            heights: &file.heights,
+        };
+        let drawn =
+            RoadBuffer::of(roads, &rules.roads).draw(&rules.roads, road_ground, atlas.roads());
+        let terrain = TerrainFile::new(TerrainFileFields {
+            quads,
+            decals: drawn.decals.into_decals(),
+            texture: atlas.into_texture(),
+            surface: SURFACE,
+        })
+        .map_err(MapError::TerrainFile)?;
         let mut low = heights.origin();
         let mut high = heights.far_corner();
         let mut take = |point: [Num; 2]| {
@@ -173,12 +196,7 @@ impl MapImport {
             }
             point
         };
-        let (neutral, waypoint_tag, waypoint_name, start_tag) = (
-            ImportTeam::Neutral.name(),
-            &rules.names.waypoint,
-            &rules.names.waypoint_name,
-            &rules.names.start,
-        );
+        let neutral = ImportTeam::Neutral.name();
         let mut bridges = Vec::new();
         let mut units = Vec::new();
         let mut client = ClientObjects::default();
@@ -220,7 +238,7 @@ impl MapImport {
                 let placed = template.placed_as();
                 if matches!(placed, PlacedAs::Tree | PlacedAs::Prop) {
                     let look = DeclaredName::from(names.take(template)?);
-                    if looks.objects.contains_key(&look) {
+                    if object_looks.contains_key(&look) {
                         client.objects.push(ClientObject {
                             look,
                             position: ground,
@@ -245,7 +263,7 @@ impl MapImport {
                         own = ImportedType::of(template, rules).map_err(typed)?;
                         &own
                     }
-                    None => &placed_type.imported,
+                    None => placed_type.imported,
                 };
                 // The bounds hold its whole body, as a placed box's load needs.
                 if let Some(reach) = body.reach(degrees) {
@@ -254,7 +272,7 @@ impl MapImport {
                     }
                 }
                 let unit = PlacedUnitData {
-                    unit_type: placed_type.name.into(),
+                    unit_type: placed_type.name.declared().clone(),
                     team: neutral.clone(),
                     position: MapPoint::Ground(take(ground)),
                     angle: degrees,
@@ -275,7 +293,8 @@ impl MapImport {
         // camera's point far off does: it is dropped, and reported.
         // The original lists a map as a skirmish's of as many players as it has starts from
         // `Player_1_Start` on in a row, two or more (`WaypointMap::update`), and starts each
-        // player at its slot's: those are its markers of `start`.
+        // player at its slot's: those are its markers of `start`, and their rallies its markers
+        // of `rally`, each with its player slot as scripts count it, from 0.
         let starts = (1..=SLOTS).take_while(|&n| {
             let start = Some(SkirmishPoint::Start(n));
             waypoints
@@ -285,18 +304,27 @@ impl MapImport {
         let slots = starts.last().filter(|&slots| slots >= 2).unwrap_or(0);
         let mut markers = Vec::new();
         let mut dropped_waypoints = Vec::new();
+        let rule_names = &rules.names;
         for waypoint in waypoints {
-            let mut tags = vec![waypoint_tag.clone()];
-            if waypoint
-                .skirmish()
-                .is_some_and(|point| point.of_slots(slots))
-            {
-                tags.push(start_tag.clone());
-            }
+            let point = waypoint.skirmish().filter(|point| point.slot() <= slots);
             let Waypoint { id, name, position } = waypoint;
             if bounds.clamp_ground(position) != position {
                 dropped_waypoints.push(name);
                 continue;
+            }
+            let mut tags = vec![rule_names.waypoint.clone()];
+            let mut params =
+                BTreeMap::from([(rule_names.waypoint_name.clone(), ModeParam::Text(name))]);
+            if let Some(point) = point {
+                tags.push(match point {
+                    SkirmishPoint::Start(_) => rule_names.start.clone(),
+                    SkirmishPoint::Rally(_) => rule_names.rally.clone(),
+                });
+                let player_slot = Scalar::Int(i64::from(point.slot() - 1));
+                params.insert(
+                    rule_names.player_slot.clone(),
+                    ModeParam::Value(player_slot),
+                );
             }
             markers.push(MarkerData {
                 name: DeclaredName::new(&format!("w{id}")).expect("a `w` and digits are a name"),
@@ -304,7 +332,7 @@ impl MapImport {
                 position: Some(MapPoint::Ground(position)),
                 region: None,
                 team: None,
-                params: [(waypoint_name.clone(), ModeParam::Text(name))].into(),
+                params,
             });
         }
         let cliffs: Vec<bool> = file
@@ -334,10 +362,12 @@ impl MapImport {
             heights: Binary::encode(&heights),
             terrain: terrain.encode(),
             untextured,
+            road_pieces: drawn.pieces,
+            dropped_roads: drawn.dropped,
             lights: map_lights.encode(),
             objects: client.encode(),
             conditions: MapConditions {
-                conditions: condition_names(file.conditions),
+                conditions: file.conditions.names(),
             }
             .encode(),
             dropped_waypoints,
@@ -407,16 +437,6 @@ impl MapImport {
     fn flipped<T: Copy>(rows: &[T], width: usize) -> Vec<T> {
         rows.rchunks_exact(width).flatten().copied().collect()
     }
-}
-
-/// The names the package gives `conditions`, `night` and `snow`, in that order.
-pub(crate) fn condition_names(conditions: LookConditions) -> Vec<DeclaredName> {
-    let named = |name| DeclaredName::new(name).expect("the import's own names are declared");
-    [(conditions.night, "night"), (conditions.snow, "snow")]
-        .into_iter()
-        .filter(|&(held, _)| held)
-        .map(|(_, name)| named(name))
-        .collect()
 }
 
 #[cfg(test)]

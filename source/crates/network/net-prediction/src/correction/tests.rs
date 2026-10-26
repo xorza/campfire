@@ -5,10 +5,8 @@ use campfire_net_frame_interpolation::{
 };
 use campfire_net_replication::internals::shared_replicon_app;
 
-use bevy_curve::{Curve, Ease, FunctionCurve, Interval};
 use bevy_ecs::system::RunSystemOnce;
 use campfire_net_interpolation::InterpolationMarkerPlugin;
-use campfire_net_replication::Diffable as ReplicationDiffable;
 use campfire_net_replication::{AppComponentExt, Predicted};
 
 use super::*;
@@ -25,7 +23,7 @@ use campfire_net_timeline::SetTickRate;
 use core::time::Duration;
 
 use crate::fixtures::prediction_stack::PredictionStack;
-use crate::fixtures::protocol::{CompCorr, CompPredictionOnly, ShownCorr};
+use crate::fixtures::protocol::{CompCorr, CompPredictionOnly, ShownCorr, linear_correction};
 use crate::fixtures::steps::trigger_state_rollback;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
@@ -49,27 +47,7 @@ struct CorrectionA(f32);
 #[derive(Component, Clone, Debug, Default, PartialEq)]
 struct ShownA(f32);
 
-impl Ease for ShownA {
-    fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
-        FunctionCurve::new(Interval::UNIT, move |t| {
-            Self(start.0 + (end.0 - start.0) * t)
-        })
-    }
-}
-
-impl ReplicationDiffable<Self> for ShownA {
-    fn base_value() -> Self {
-        Self::default()
-    }
-
-    fn diff(&self, new: &Self) -> Self {
-        Self(new.0 - self.0)
-    }
-
-    fn apply_diff(&mut self, delta: &Self) {
-        self.0 += delta.0;
-    }
-}
+linear_correction!(ShownA);
 
 /// An entity whose archetype the frame rule of `CorrectionA` leaves out.
 #[derive(Component, Debug)]
@@ -426,6 +404,15 @@ fn a_visual_correction_marks_its_visual_changed() {
             FrameInterpolate,
         ))
         .id();
+    // An idle slot of a shown visual is only read: its change tick stays.
+    let idle = app
+        .world_mut()
+        .spawn((
+            CorrectionA(10.0),
+            VisualCorrection::<ShownA>::default(),
+            FrameInterpolate,
+        ))
+        .id();
     show(&mut app);
     app.world_mut().clear_trackers();
     let changed = |app: &App| {
@@ -435,11 +422,19 @@ fn a_visual_correction_marks_its_visual_changed() {
             .unwrap()
             .changed
     };
-    let before = changed(&app);
+    let idle_changed = |app: &App| {
+        app.world()
+            .entity(idle)
+            .get_change_ticks::<VisualCorrection<ShownA>>()
+            .unwrap()
+            .changed
+    };
+    let (before, idle_before) = (changed(&app), idle_changed(&app));
 
     update(&mut app);
 
     assert_ne!(changed(&app), before);
+    assert_eq!(idle_changed(&app), idle_before);
 }
 
 // A capture without its live value (archetype mid-assembly: the value has

@@ -1,3 +1,4 @@
+use campfire_script::{ApiVersion, Status};
 use campfire_units::PoolId;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ pub struct ModePoolsData(pub BTreeMap<DeclaredName, PoolData>);
 impl Section for ModePoolsData {
     const TABLE: SectionTable = SectionTable::Mode;
     const KEY: &'static str = "pools";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 impl ModePoolsData {

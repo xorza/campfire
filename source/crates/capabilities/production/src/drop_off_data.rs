@@ -1,5 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use serde::{Deserialize, Serialize};
 
@@ -18,4 +19,5 @@ impl DataSection for DropOffData {
 impl Section for DropOffData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "drop_off";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

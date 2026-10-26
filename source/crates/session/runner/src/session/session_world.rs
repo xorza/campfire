@@ -8,8 +8,7 @@ use campfire_protocol::{
 };
 use campfire_script::{ScriptFailures, ScriptPrints};
 use campfire_sim::{
-    PlayerSlotEvent, PlayerSlotEventKind, SimRng, SimTick, SimUpdate, SimWorld, TickInput,
-    TickInputs,
+    PlayerSlotEvent, PlayerSlotEventKind, SimTick, SimUpdate, SimWorld, TickInputs,
 };
 
 use crate::events::script_call_failed::ScriptCallFailed;
@@ -101,31 +100,16 @@ impl SessionWorld for World {
                 .segment_starting(next)
                 .filter(|&segment| segment > session.segment)
             {
-                let server_seed = session
-                    .seeds
-                    .seed(segment)
-                    .expect("the seeds reach the log's last segment");
-                let seed = session.log.header().segment_seed(segment, server_seed);
-                world.insert_resource(SimRng::new(seed));
-                session.segment = segment;
+                session.draw_from(world, segment);
             }
             let mut inputs = world.resource_mut::<TickInputs>();
             let session = &mut *session;
             let changes = if let Some(replay) = &mut session.replay {
-                for input in replay.seal_tick(&session.log) {
-                    inputs.push(TickInput {
-                        player_slot: input.player_slot,
-                        payload: input.payload,
-                    });
-                }
+                Session::push_inputs(&mut inputs, replay.seal_tick(&session.log));
                 replay.sealed_changes(&session.log)
             } else {
-                for input in session.log.seal_tick(session.role.journal_mut()) {
-                    inputs.push(TickInput {
-                        player_slot: input.player_slot,
-                        payload: input.payload,
-                    });
-                }
+                let sealed = session.log.seal_tick(session.role.journal_mut());
+                Session::push_inputs(&mut inputs, sealed);
                 session.log.sealed_changes()
             };
             for change in changes {
@@ -202,13 +186,11 @@ impl SessionWorld for World {
             "the state stands at the checkpoint's boundary"
         );
         let state_hash = self.snapshot(snapshot);
-        Some(Checkpoint {
-            segment: begun.segment,
-            tick: begun.tick,
-            state_hash,
-            snapshot: SnapshotFingerprint::of(snapshot),
-            carry: begun.carry.clone(),
-        })
+        Some(
+            begun
+                .clone()
+                .record(state_hash, SnapshotFingerprint::of(snapshot)),
+        )
     }
 
     fn outcome(&self) -> Outcome {
@@ -269,16 +251,10 @@ impl SessionWorld for World {
         self.resource_scope(|world, mut session: Mut<'_, Session>| {
             session.load(at.segment).map_err(SaveLoadError::Log)?;
             Release::clear(world);
-            let server_seed = session
-                .seeds
-                .seed(at.segment)
-                .expect("the seeds reach the log's last segment");
-            let seed = session.log.header().segment_seed(at.segment, server_seed);
-            world.insert_resource(SimRng::new(seed));
-            session.segment = at.segment;
+            session.draw_from(world, at.segment);
             Ok(())
         })?;
-        Session::restore_checked(self, &record, at.snapshot)
+        Session::restore_hash_checked(self, &record, at.snapshot)
             .expect("the session's own save restores to the state its checkpoint records");
         Ok(())
     }

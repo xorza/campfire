@@ -1,3 +1,4 @@
+use bevy_math::UVec2;
 use campfire_client_files::{Ktx2Image, TextureFormat};
 
 use crate::texture::error::TextureError;
@@ -88,6 +89,11 @@ impl<'a> DdsFile<'a> {
             height,
             levels,
         })
+    }
+
+    /// Its base size, in texels.
+    pub(crate) const fn size(&self) -> UVec2 {
+        UVec2::new(self.width, self.height)
     }
 
     /// Its KTX2 file: the same blocks and levels.

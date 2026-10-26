@@ -1,30 +1,21 @@
-use std::collections::BTreeMap;
 use std::error::Error;
 use std::sync::Arc;
 
-use campfire_actions::{
-    ActionBook, ActionKind, ActionsData, LoadedAction, SlotKind, SlotKindBook, Targeting,
-};
-use campfire_common::DeclaredName;
+use campfire_actions::{ActionBook, ActionKind, ActionsData, LoadedAction, Targeting};
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ById, ByIdBuilder, NamesListError, PerId, Section,
+    BookCx, BookError, BookPlace, ById, ByIdBuilder, NamesListError, Section,
 };
-use campfire_script::{Filter, UnknownName};
+use campfire_script::UnknownName;
 use campfire_stats::{LifePool, ModifierBook, StatBook, TypePoolsData, UnitStartError};
 use campfire_units::{PoolId, UnitTypes};
-use campfire_values::{ActionId, DamageKind, Named, Names, NamesError, PackageIndex, UnitType};
+use campfire_values::{ActionId, DamageKind, Names, NamesError, PackageIndex, UnitType};
 
 use crate::Combat;
-use crate::armor::Armor;
 use crate::attack_data::AttackData;
-use crate::combat_book::CombatBook;
 use crate::combat_data::CombatData;
 use crate::error::CombatDataError;
 use crate::mode_combat_data::ModeCombatData;
 use crate::on_death::OnDeath;
-use crate::turret::Turret;
-use crate::turret::turret_data::TurretData;
-use crate::type_armor::{TaggedArmor, TypeArmor};
 use crate::weapon::Weapon;
 use crate::weapon_names::WeaponNames;
 
@@ -94,7 +85,7 @@ impl Combat {
     }
 
     /// The error of `name`, which the mode's `[combat]` names and the mode does not declare.
-    const fn unknown(name: UnknownName) -> BookError {
+    pub(crate) const fn unknown(name: UnknownName) -> BookError {
         BookError::unknown(
             PackageIndex::MODE,
             BookPlace::Section(ModeCombatData::KEY),
@@ -109,20 +100,6 @@ impl Combat {
             BookPlace::Section(ModeCombatData::KEY),
             problem,
         )
-    }
-}
-
-impl CombatBook {
-    /// The mode's `[combat]`, each stat it names resolved; an error for a stat the mode does not
-    /// declare.
-    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
-        let none = ModeCombatData::default();
-        let data = cx.mode_section::<ModeCombatData>().unwrap_or(&none);
-        let stats = cx.book::<StatBook>()?;
-        let at = || BookPlace::Section(ModeCombatData::KEY);
-        Self::new(data, cx.rate(), |stat| {
-            stats.named_in(PackageIndex::MODE, at(), stat)
-        })
     }
 }
 
@@ -158,57 +135,6 @@ impl Weapon {
     }
 }
 
-impl PerId<ActionId> for Weapon {
-    const SCRIPTS_ONLY: bool = false;
-}
-
-impl TypeArmor {
-    /// The armors of each unit type that stands with one, of the mode's armors by name, each
-    /// tagged one by its test of the types' tags; an error for an armor, a damage kind or a tag
-    /// the mode does not declare.
-    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
-        let none = ModeCombatData::default();
-        let data = cx.mode_section::<ModeCombatData>().unwrap_or(&none);
-        let kinds = cx.names_if::<DamageKind>()?;
-        let no_kinds = Names::default();
-        let kinds = kinds.map_or(&no_kinds, |kinds| &**kinds);
-        let armors = data.armors.iter().map(|(name, shares)| {
-            let armor = Armor::of(shares, kinds).map_err(Combat::unknown)?;
-            Ok((name, armor))
-        });
-        let armors = armors.collect::<Result<BTreeMap<_, _>, BookError>>()?;
-        let tags = cx.fact::<UnitTypes>()?.tags();
-        let mut book = ByIdBuilder::default();
-        for unit in cx.standing() {
-            let Some(combat) = unit.data.section::<CombatData>() else {
-                continue;
-            };
-            if combat.armor.is_none() && combat.armors.is_empty() {
-                continue;
-            }
-            let fail = |unknown| {
-                BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), unknown)
-            };
-            let named = |name: &DeclaredName| {
-                let armor = armors.get(name).cloned();
-                armor.ok_or_else(|| fail(UnknownName::new(Armor::NAMES, name)))
-            };
-            let tagged = combat.armors.iter().map(|tagged| {
-                Ok(TaggedArmor {
-                    when: Filter::resolve(tagged.when.filter(), tags).map_err(fail)?,
-                    armor: named(&tagged.armor)?,
-                })
-            });
-            let armor = Self {
-                armor: combat.armor.as_ref().map(named).transpose()?,
-                armors: tagged.collect::<Result<_, BookError>>()?,
-            };
-            book.set(unit.unit_type, armor);
-        }
-        Ok(book.build())
-    }
-}
-
 impl OnDeath {
     /// What each unit type that stands with a `combat` section does at its death, an avatar
     /// staying; an error for a type with `combat` and not the life pool, or the life pool and not
@@ -234,27 +160,6 @@ impl OnDeath {
                 (None, false) => continue,
             };
             book.set(unit.unit_type, on_death);
-        }
-        Ok(book.build())
-    }
-}
-
-impl Turret {
-    /// The turret of each unit type that stands with one, its attacks those of its slot kind; an
-    /// error for a kind the mode does not declare.
-    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
-        let kinds = &cx.book::<SlotKindBook>()?.0;
-        let mut book = ByIdBuilder::default();
-        for unit in cx.standing() {
-            let Some(turret) = unit.data.section::<TurretData>() else {
-                continue;
-            };
-            let slot = kinds.names().named(turret.slot.as_str()).ok_or_else(|| {
-                let at = BookPlace::UnitType(unit.place());
-                let name = UnknownName::new(SlotKind::NAMES, &turret.slot);
-                BookError::unknown(unit.package, at, name)
-            })?;
-            book.set(unit.unit_type, Self::of(turret, slot, cx.rate()));
         }
         Ok(book.build())
     }

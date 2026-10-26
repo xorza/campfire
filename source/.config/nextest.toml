@@ -65,3 +65,15 @@ slow-timeout = { period = "1s", terminate-after = 30 }
 [[profile.ci.overrides]]
 filter = 'test(/(^|::)scripted_match::/)'
 slow-timeout = { period = "15s", terminate-after = 12 }
+
+# The match of each pair of capabilities builds on every core, as the proving sweeps do
+# (02-engine-core.md, A sweep runs on every core).
+[[profile.default.overrides]]
+filter = 'package(campfire-capabilities) & test(/every_pair_of_capabilities/)'
+threads-required = "num-cpus"
+
+# The test packages' tables of flaws load their flaws on every core (02-engine-core.md, A sweep
+# runs on every core).
+[[profile.default.overrides]]
+filter = 'package(campfire-test-packages) & test(/every_flaw_of_/)'
+threads-required = "num-cpus"

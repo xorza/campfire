@@ -134,7 +134,7 @@ impl UnitModelsPlugin {
             let models = match resolved.entry(&object.look) {
                 Entry::Occupied(models) => models.into_mut(),
                 Entry::Vacant(new) => {
-                    let Some(look) = looks.objects.get(&object.look) else {
+                    let Some(look) = looks.objects().get(&object.look) else {
                         let look = object.look.as_str();
                         error!(look, "a client object's look is none of its package's");
                         continue;

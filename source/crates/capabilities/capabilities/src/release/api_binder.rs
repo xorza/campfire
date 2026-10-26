@@ -14,8 +14,8 @@ use campfire_declarations::{
     Scratch, Section,
 };
 use campfire_script::{
-    ApiBuilder, ApiVersion, CallExtension, CallParams, EventPhase, HookDecl, ModeEvents,
-    PlannedCapability, RowReads, Status, ViewColumn,
+    ApiBuilder, CallExtension, CallParams, EventPhase, HookDecl, ModeEvents, PlannedCapability,
+    RowReads, Status, ViewColumn,
 };
 use campfire_sim::{
     Breach, Capability, HostRule, OwnResources, SimComponent, SimResource, TimedProcess,
@@ -75,13 +75,12 @@ impl Declarations for ApiBinder<'_, '_> {
 
     fn section<S: Section>(&mut self) {
         if let Some(table) = S::TABLE.data_table() {
-            self.0.key(table, S::KEY, Status::Runs(ApiVersion::FIRST));
+            self.0.key(table, S::KEY, S::STATUS);
         }
     }
 
     fn listed<L: Listed>(&mut self) {
-        let status = Status::Runs(ApiVersion::FIRST);
-        self.0.key(<L::Set as ListedSet>::TABLE, L::KEY, status);
+        self.0.key(<L::Set as ListedSet>::TABLE, L::KEY, L::STATUS);
         L::api(self.0);
     }
 

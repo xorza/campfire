@@ -121,6 +121,35 @@ impl DataKind {
         }
     }
 
+    /// Whether the kind is a player's own state, on its entity, which its player's client
+    /// receives whatever the audience says of others.
+    pub const fn is_players(self) -> bool {
+        match self {
+            Self::Resources
+            | Self::Supply
+            | Self::PlayerModifiers
+            | Self::Commanded
+            | Self::PlayerStateOwner
+            | Self::PlayerStateTeam
+            | Self::PlayerStateAll => true,
+            Self::Unit
+            | Self::Life
+            | Self::Pools
+            | Self::Modifiers
+            | Self::Cooldowns
+            | Self::Progression
+            | Self::Inventory
+            | Self::Match
+            | Self::ModeState
+            | Self::Queues
+            | Self::Prediction
+            | Self::UnitStateOwner
+            | Self::UnitStateTeam
+            | Self::UnitStateAll
+            | Self::Server => false,
+        }
+    }
+
     /// Its place in `ALL`.
     pub const fn index(self) -> usize {
         self as usize
@@ -142,5 +171,23 @@ mod tests {
         // A kind the server keeps reaches no one, and no mode may send it.
         assert_eq!(DataKind::Server.audience(), Recipients::NONE);
         assert_eq!(DataKind::Server.settable(), Recipients::NONE);
+        // A player's own kinds are those on its entity, its script state of every audience among
+        // them; the match's public state, on each player's entity too, is no player's own.
+        let players: Vec<DataKind> = DataKind::ALL
+            .into_iter()
+            .filter(|kind| kind.is_players())
+            .collect();
+        assert_eq!(
+            players,
+            [
+                DataKind::Resources,
+                DataKind::Supply,
+                DataKind::PlayerModifiers,
+                DataKind::PlayerStateOwner,
+                DataKind::PlayerStateTeam,
+                DataKind::PlayerStateAll,
+                DataKind::Commanded,
+            ]
+        );
     }
 }

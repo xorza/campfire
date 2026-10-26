@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use bevy_ecs::world::World;
-use campfire_protocol::{Checkpoint, CheckpointBegun};
+use campfire_protocol::{Checkpoint, CheckpointBegun, SnapshotFingerprint};
 use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
 use campfire_store::Exchange;
 use campfire_threads::Job;
@@ -147,15 +147,9 @@ impl CheckpointCopy {
     /// The record of `begun`, of the copy as it stands, once its snapshot is written.
     fn take(&mut self, begun: CheckpointBegun) -> Result<Checkpoint, SnapshotWriteError> {
         let state_hash = self.registry.snapshot(&self.world, &mut self.snapshot);
-        let fingerprint = self.snapshots.write(&self.snapshot)?;
-        let record = Checkpoint {
-            segment: begun.segment,
-            tick: begun.tick,
-            state_hash,
-            snapshot: fingerprint,
-            carry: begun.carry,
-        };
-        Ok(record)
+        let fingerprint = SnapshotFingerprint::of(&self.snapshot);
+        self.snapshots.write(&self.snapshot, fingerprint)?;
+        Ok(begun.record(state_hash, fingerprint))
     }
 }
 

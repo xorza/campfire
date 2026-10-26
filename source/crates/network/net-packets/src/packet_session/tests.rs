@@ -430,30 +430,50 @@ fn a_close_carries_its_code_and_answers_for_three_probe_timeouts() {
 }
 
 /// Two ends that close at once each end at the other's close, with their own code, and answer it
-/// with nothing.
+/// with nothing. Under a seal, a close whose bytes changed, as a forger on the path sends one,
+/// ends nothing: the end stays closing and answers it with its own close.
 #[test]
 fn two_ends_that_close_at_once_end_at_each_others_close() {
-    let mut pair = Pair::plain();
-    let codes = [AppCode::new(20), AppCode::new(21)];
-    let closes = [0, 1].map(|end| {
-        let mut out = Vec::new();
-        pair.ends[end]
-            .packet_session
-            .close(at(0), codes[end], &mut out);
-        out.pop().unwrap().datagram
-    });
-    for (end, close) in closes.into_iter().enumerate() {
-        let mut answers = Vec::new();
-        pair.ends[1 - end]
-            .packet_session
-            .receive(at(1), close, Path::Peer, &mut answers);
-        assert!(answers.is_empty());
-    }
-    for (end, code) in codes.into_iter().enumerate() {
-        assert_eq!(
-            pair.ends[end].packet_session.ended(),
-            Some(UnlinkReason::Closed(code))
-        );
+    let sealed = || {
+        Pair::new(
+            || Protection::Sealed(Box::new(TestSeal)),
+            PacketSessionSetup::default(),
+        )
+    };
+    for (seal, mut pair) in [("plain", Pair::plain()), ("sealed", sealed())] {
+        let codes = [AppCode::new(20), AppCode::new(21)];
+        let closes = [0, 1].map(|end| {
+            let mut out = Vec::new();
+            pair.ends[end]
+                .packet_session
+                .close(at(0), codes[end], &mut out);
+            out.pop().unwrap().datagram
+        });
+        if seal == "sealed" {
+            let mut forged = closes[0].clone();
+            let last = forged.len() - 1;
+            forged[last] ^= 1;
+            let mut answers = Vec::new();
+            pair.ends[1]
+                .packet_session
+                .receive(at(1), forged, Path::Peer, &mut answers);
+            assert_eq!(pair.ends[1].packet_session.ended(), None, "{seal}");
+            assert_eq!(answers.len(), 1, "{seal}");
+        }
+        for (end, close) in closes.into_iter().enumerate() {
+            let mut answers = Vec::new();
+            pair.ends[1 - end]
+                .packet_session
+                .receive(at(1), close, Path::Peer, &mut answers);
+            assert!(answers.is_empty(), "{seal}");
+        }
+        for (end, code) in codes.into_iter().enumerate() {
+            assert_eq!(
+                pair.ends[end].packet_session.ended(),
+                Some(UnlinkReason::Closed(code)),
+                "{seal}"
+            );
+        }
     }
 }
 

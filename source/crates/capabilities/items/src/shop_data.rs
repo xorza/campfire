@@ -1,6 +1,7 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{FilterData, Share};
 use serde::de::Error;
@@ -53,4 +54,5 @@ impl DataSection for ShopData {
 impl Section for ShopData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "shop";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

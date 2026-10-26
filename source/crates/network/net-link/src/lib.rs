@@ -2,11 +2,6 @@
 //! session, and a server's links (11-net-stack/packet-session.md, The seam is a set of queues on
 //! `Link`).
 
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-
 mod link;
 mod link_plugin;
 mod link_start;

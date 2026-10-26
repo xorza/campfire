@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, Section, SectionTable, StateFields};
 use campfire_script::UnknownName;
+use campfire_script::{ApiVersion, Status};
 use campfire_units::DeclaredTags;
 use campfire_values::{EngineTag, ModifierId, Named};
 use serde::Deserialize;
@@ -18,6 +19,7 @@ pub struct ModifiersData(pub BTreeMap<DeclaredName, ModifierData>);
 impl Section for ModifiersData {
     const TABLE: SectionTable = SectionTable::Package;
     const KEY: &'static str = "modifiers";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 impl ModifiersData {

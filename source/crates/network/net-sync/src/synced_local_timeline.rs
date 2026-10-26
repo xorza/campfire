@@ -1,3 +1,8 @@
+#![expect(
+    unsafe_code,
+    reason = "Bevy's `SystemParam` is an unsafe trait (02-engine-core.md, Unsafe only where an outside API asks)"
+)]
+
 use crate::local_timeline_sync::LocalTimelineSync;
 use crate::timeline_sync::TimelineSync;
 use bevy_ecs::change_detection::Tick as ChangeTick;

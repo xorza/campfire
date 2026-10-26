@@ -38,14 +38,7 @@ impl ClientHolding {
             Self::Derived => true,
             Self::Of { kind, .. } if predicted => kind.is_sent(),
             Self::Of { kind, .. } => {
-                matches!(kind.audience(), Recipients::ALL)
-                    || matches!(
-                        kind,
-                        DataKind::Resources
-                            | DataKind::Supply
-                            | DataKind::PlayerModifiers
-                            | DataKind::Commanded
-                    )
+                matches!(kind.audience(), Recipients::ALL) || kind.is_players()
             }
         }
     }

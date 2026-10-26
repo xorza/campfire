@@ -37,10 +37,11 @@ use campfire_host::InputLogged;
 use campfire_host::InputMessageRefused;
 use campfire_host::InputMessageUnfit;
 use campfire_host::InputNeverApplied;
+use campfire_host::JournalCommands;
+use campfire_host::JournalRefused;
 use campfire_host::LogFilled;
 use campfire_host::MatchClock;
 use campfire_host::MatchEnded;
-use campfire_host::SaveRefused;
 use campfire_host::ServerFrame;
 use campfire_host::TicksCaughtUp;
 use campfire_host::TimeDropped;
@@ -66,11 +67,11 @@ use crate::sim_server::viewer::Viewer;
 use campfire_host::BotDriver;
 use campfire_host::Checkpoints;
 use campfire_host::InputMessage;
+use campfire_host::JournalCommand;
+use campfire_host::JournalTaken;
 use campfire_host::JournalWatch;
 use campfire_host::PlayerLink;
 use campfire_host::Reports;
-use campfire_host::SaveCommand;
-use campfire_host::SaveTaken;
 use campfire_host::ServerPhase;
 use campfire_host::SessionDir;
 
@@ -276,7 +277,7 @@ impl Plugin for SimServerPlugin {
 /// comes in from outside the session, a restore waiting or a spectator's choice; the door, which
 /// places players, before the match in the lobby and after it at the door; the session's upkeep,
 /// its checkpoints and journal; the receipts of what the journal made durable; and the players'
-/// save commands, last, as a load ends the run. An app's own system of `Update` goes after them.
+/// journal commands, last, as a load ends the run. An app's own system of `Update` goes after them.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ServerFrameSystems {
     Intake,
@@ -291,10 +292,10 @@ pub(crate) enum ServerFrameSystems {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct SimTickSystems;
 
-/// The save commands' links, each with its player.
+/// The journal commands' links, each with its player.
 type SaveLinks = QueryState<(
     &'static PlayerLink,
-    &'static mut MessageReceiver<SaveCommand>,
+    &'static mut MessageReceiver<JournalCommand>,
 )>;
 
 impl SimServerPlugin {
@@ -321,13 +322,13 @@ impl SimServerPlugin {
         }
     }
 
-    /// Takes the save commands of the placed players, as `Checkpoints::take` does, and runs the
-    /// match on from the save a load went back to, as `ServerMatch::follow_load` does; each
-    /// refused one is logged. A load ends the run the commands after it were given in, so the
-    /// frame takes none of them.
+    /// Takes the journal commands of the placed players, as `JournalCommands::take` does, and runs
+    /// the match on from the save a load went back to, as `ServerMatch::follow_load` does; each
+    /// refused one is logged. A load ends the run the commands after it were given in, so the frame
+    /// takes none of them.
     fn take_save_commands(
         world: &mut World,
-        (mut links, mut taken): (Local<'_, SaveLinks>, Local<'_, Vec<SaveCommand>>),
+        (mut links, mut taken): (Local<'_, SaveLinks>, Local<'_, Vec<JournalCommand>>),
     ) {
         for (link, mut receiver) in links.iter_mut(world) {
             if !link.is_refused() {
@@ -335,13 +336,13 @@ impl SimServerPlugin {
             }
         }
         for command in taken.drain(..) {
-            match Checkpoints::take(world, command) {
-                Ok(SaveTaken::Planned | SaveTaken::Failed) => {}
-                Ok(SaveTaken::Loaded) => {
+            match JournalCommands::take(world, command) {
+                Ok(JournalTaken::Planned | JournalTaken::Failed) => {}
+                Ok(JournalTaken::Loaded) => {
                     ServerMatch::follow_load(world);
                     break;
                 }
-                Err(refusal) => SaveRefused { refusal }.log(),
+                Err(refusal) => JournalRefused { refusal }.log(),
             }
         }
     }

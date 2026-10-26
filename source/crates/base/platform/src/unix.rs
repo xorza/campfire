@@ -1,3 +1,8 @@
+#![expect(
+    unsafe_code,
+    reason = "libc's calls are the OS's C API, which Rust calls unsafe (02-engine-core.md, Unsafe only where an outside API asks)"
+)]
+
 use std::fs::{self, DirBuilder, File, Metadata, OpenOptions};
 use std::mem::MaybeUninit;
 use std::os::unix::fs::{DirBuilderExt, FileExt, MetadataExt, OpenOptionsExt};

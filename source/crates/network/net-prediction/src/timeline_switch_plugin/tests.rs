@@ -1,5 +1,6 @@
 use super::*;
 use crate::correction::CorrectionFn;
+use crate::fixtures::protocol::linear_correction;
 use crate::rollback_plugin::RollbackPlugin;
 use campfire_net_replication::internals::shared_replicon_app;
 
@@ -12,7 +13,6 @@ use crate::prediction_registration_ext::PredictionRegistrationExt;
 use crate::previous_visual::PreviousVisual;
 
 use crate::visual_correction::VisualCorrection;
-use bevy_curve::{Curve, Ease, FunctionCurve, Interval};
 use bevy_ecs::system::RunSystemOnce;
 
 use campfire_net_core::NetTick;
@@ -24,8 +24,6 @@ use campfire_net_interpolation::InterpolationMarkerPlugin;
 use campfire_net_timeline::LocalTimeline;
 use core::time::Duration;
 
-use campfire_net_replication::Diffable as ReplicationDiffable;
-
 use campfire_net_replication::{
     AppComponentExt, ComponentRegistry, ConfirmedHistory, HistoryState,
 };
@@ -35,27 +33,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Component, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 struct TestPos(f32);
 
-impl Ease for TestPos {
-    fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
-        FunctionCurve::new(Interval::UNIT, move |t| {
-            Self(start.0 + (end.0 - start.0) * t)
-        })
-    }
-}
-
-impl ReplicationDiffable<Self> for TestPos {
-    fn base_value() -> Self {
-        Self::default()
-    }
-
-    fn diff(&self, new: &Self) -> Self {
-        Self(new.0 - self.0)
-    }
-
-    fn apply_diff(&mut self, delta: &Self) {
-        self.0 += delta.0;
-    }
-}
+linear_correction!(TestPos);
 
 /// The predicted component `TestPos` shows, the visual a correction offsets.
 #[derive(Component, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -79,27 +57,7 @@ struct ShownFrameOnly(f32);
 #[derive(Component, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 struct TestRot(f32);
 
-impl Ease for TestRot {
-    fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
-        FunctionCurve::new(Interval::UNIT, move |t| {
-            Self(start.0 + (end.0 - start.0) * t)
-        })
-    }
-}
-
-impl ReplicationDiffable<Self> for TestRot {
-    fn base_value() -> Self {
-        Self::default()
-    }
-
-    fn diff(&self, new: &Self) -> Self {
-        Self(new.0 - self.0)
-    }
-
-    fn apply_diff(&mut self, delta: &Self) {
-        self.0 += delta.0;
-    }
-}
+linear_correction!(TestRot);
 
 fn switch_app() -> App {
     let mut app = shared_replicon_app();

@@ -67,8 +67,10 @@ impl Plugin for RollbackPlugin {
         // replication's registries, confirmed ticks and pre-spawn receiver.
         app.init_resource::<RollbackCheckState>();
         app.init_resource::<RollbackScan>();
+        app.init_resource::<PredictionCounts>();
         app.init_resource::<TickPeriodHistory>();
         app.add_observer(TickPeriodHistory::shift_with_local_timeline);
+        app.add_observer(RollbackCheckState::shift_with_local_timeline);
         app.add_systems(FixedPostUpdate, TickPeriodHistory::record_tick);
 
         app.configure_sets(
@@ -419,7 +421,7 @@ impl RollbackPlugin {
             "finished rollback"
         );
 
-        let mut counts = world.get_resource_mut::<PredictionCounts>().unwrap();
+        let mut counts = world.resource_mut::<PredictionCounts>();
         counts.rollbacks = counts.rollbacks.saturating_add(1);
         // A start tick after the current tick replays no tick.
         let replayed = rollback_ticks.max(0).unsigned_abs();

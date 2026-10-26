@@ -6,7 +6,6 @@ use bevy::ecs::change_detection::Mut;
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::system::SystemState;
 use bevy::ecs::world::World;
-use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::TimeUpdateStrategy;
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 use campfire_client_files::ClientUnits;
@@ -60,7 +59,6 @@ fn models(world: &World, root: Entity) -> Vec<(String, bool)> {
 /// A view app that draws the looks of `units`, a units file, of the mode's one type `name`, and
 /// that type.
 fn looks_app(units: &str, name: &str) -> (App, UnitType) {
-    IoTaskPool::get_or_init(TaskPool::new);
     let mut app = test_app::view();
     app.add_plugins((ViewPlugin, LookStatesPlugin));
     app.init_asset::<WorldAsset>();

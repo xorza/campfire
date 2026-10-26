@@ -3,11 +3,6 @@
 //! [`TimelinePlugins`] that add them (11-net-stack/layering.md, The vocabulary is plain, and the
 //! clock and the timelines a glue crate of their own).
 
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-
 mod clock;
 mod clock_plugin;
 mod clock_source;

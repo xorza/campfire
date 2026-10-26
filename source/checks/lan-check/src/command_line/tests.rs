@@ -17,12 +17,6 @@ fn read(args: &[&str]) -> Result<Args, clap::Error> {
 #[test]
 fn the_command_line_names_a_mode_and_its_directory() {
     let dir = PathBuf::from("run");
-    assert_eq!(
-        read(&[]).unwrap(),
-        Args::Play {
-            root: default_root()
-        }
-    );
     assert_eq!(read(&["run"]).unwrap(), Args::Play { root: dir.clone() });
     assert_eq!(
         read(&["verify", "run"]).unwrap(),
@@ -54,7 +48,8 @@ fn the_command_line_names_a_mode_and_its_directory() {
     );
     // A second argument after a run root is taken as a subcommand, which a root refuses.
     for (args, kind) in [
-        (&["verify"][..], ErrorKind::MissingRequiredArgument),
+        (&[][..], ErrorKind::MissingRequiredArgument),
+        (&["verify"], ErrorKind::MissingRequiredArgument),
         (&["run", "more"], ErrorKind::ArgumentConflict),
         (&["run", "verify", "other"], ErrorKind::ArgumentConflict),
         (&["verify", "run", "more"], ErrorKind::UnknownArgument),

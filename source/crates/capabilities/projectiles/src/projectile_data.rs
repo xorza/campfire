@@ -1,6 +1,7 @@
 use campfire_declarations::{Section, SectionTable};
 use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{FilterData, RelationSet};
 use serde::de::Error;
@@ -583,6 +584,7 @@ impl DataSection for ProjectileData {
 impl Section for ProjectileData {
     const TABLE: SectionTable = SectionTable::DeliveryType;
     const KEY: &'static str = "projectile";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(feature = "internals")]

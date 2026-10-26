@@ -20,34 +20,27 @@ fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
         top: ModelTop::new(top),
         ..model(path, &[])
     };
-    let units = |entries: Vec<(&str, Vec<ClientModel>)>| ClientUnits {
-        units: entries
+    let units = |entries: Vec<(&str, Vec<ClientModel>)>| -> BTreeMap<_, _> {
+        let units = entries
             .into_iter()
-            .map(|(name, models)| (DeclaredName::new(name).unwrap(), ClientUnit::still(models)))
-            .collect(),
-        ..ClientUnits::default()
+            .map(|(name, models)| (DeclaredName::new(name).unwrap(), ClientUnit::still(models)));
+        units.collect()
     };
-    let mut data = ClientLoad::of_looks([
-        units(vec![
-            (
-                "tank",
-                vec![
-                    model("client/models/tank.glb", &["tank.flash"]),
-                    tall("client/models/tread.glb", 1.5),
-                ],
-            ),
-            ("sound", Vec::new()),
-        ]),
-        units(vec![("tank", vec![model("client/models/other.glb", &[])])]),
+    let looks = |units| ClientUnits::new(units, BTreeMap::new(), BTreeMap::new()).unwrap();
+    let mut mode = units(vec![
+        (
+            "tank",
+            vec![
+                model("client/models/tank.glb", &["tank.flash"]),
+                tall("client/models/tread.glb", 1.5),
+            ],
+        ),
+        ("sound", Vec::new()),
     ]);
     // The mode's tank is placed turned −135°.
-    let tank = DeclaredName::new("tank").unwrap();
-    data.packages[0]
-        .units
-        .units
-        .get_mut(&tank)
-        .unwrap()
-        .placement_angle = Some(Num::int(-135));
+    mode.get_mut("tank").unwrap().placement_angle = Some(Num::int(-135));
+    let other = units(vec![("tank", vec![model("client/models/other.glb", &[])])]);
+    let data = ClientLoad::of_looks([looks(mode), looks(other)]);
     // The mode's tank, package 1's tank, a type no package's units name, and the mode's
     // sound, of a look of no models.
     let origin = |package, name: &str| TypeOrigin {
@@ -154,13 +147,13 @@ fn a_unit_of_a_type_of_variations_draws_its_variations_look_when_the_look_has_as
         ("tank", varied("tank", Vec::new())),
     ];
     let names = looks.each_ref().map(|&(name, _)| name);
-    let data = ClientLoad::of_looks([ClientUnits {
-        units: looks
-            .into_iter()
-            .map(|(name, look)| (DeclaredName::new(name).unwrap(), look))
-            .collect(),
-        ..ClientUnits::default()
-    }]);
+    let units = looks
+        .into_iter()
+        .map(|(name, look)| (DeclaredName::new(name).unwrap(), look));
+    let data =
+        ClientLoad::of_looks([
+            ClientUnits::new(units.collect(), BTreeMap::new(), BTreeMap::new()).unwrap(),
+        ]);
     let origins: TypeOriginBook = names
         .map(|name| TypeOrigin {
             package: PackageIndex::MODE,

@@ -229,7 +229,10 @@ fn a_first_handshake_takes_a_retry_then_seals_a_packet_session_both_ends_bind() 
     };
     let id = server.route.unwrap();
     assert_eq!(client.prefix, Some(id));
-    assert_eq!(client.reset_token, Some(identity().reset_key().token(id)));
+    assert_eq!(
+        client.reset_token,
+        Some(Secret::new(identity().reset_key().token(id)))
+    );
     assert_eq!(client.peer, exchange.server_address);
     assert_eq!(server.peer, exchange.client_address);
     assert!(matches!(client.protection, Protection::Sealed(_)));

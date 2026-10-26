@@ -2,6 +2,8 @@
 //! the token the peer's endpoint gave in its handshake, so an endpoint that holds no packet session
 //! tells its peer at the peer's next packet (RFC 9000 §10.3).
 
+use campfire_common::Secret;
+
 /// The bytes of a reset's token.
 pub const TOKEN_LEN: usize = 16;
 
@@ -10,16 +12,17 @@ pub const TOKEN_LEN: usize = 16;
 pub const MIN_LEN: usize = 1 + 4 + TOKEN_LEN;
 
 /// Whether `datagram` is a reset of `token`: long enough, and its last 16 bytes the token, compared
-/// in a time that does not tell how many bytes matched.
-pub(crate) fn matches(datagram: &[u8], token: &[u8; TOKEN_LEN]) -> bool {
-    if datagram.len() < MIN_LEN {
+/// as a `Secret` compares, in a time that does not tell how many bytes matched.
+pub(crate) fn matches(datagram: &[u8], token: &Secret<TOKEN_LEN>) -> bool {
+    let Some(tail) = datagram
+        .len()
+        .checked_sub(TOKEN_LEN)
+        .filter(|_| datagram.len() >= MIN_LEN)
+    else {
         return false;
-    }
-    datagram[datagram.len() - TOKEN_LEN..]
-        .iter()
-        .zip(token)
-        .fold(0, |difference, (byte, token)| difference | (byte ^ token))
-        == 0
+    };
+    let tail: [u8; TOKEN_LEN] = datagram[tail..].try_into().expect("the token's last bytes");
+    Secret::new(tail) == *token
 }
 
 #[cfg(test)]

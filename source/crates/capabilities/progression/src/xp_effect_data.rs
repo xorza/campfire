@@ -10,6 +10,7 @@ use campfire_math::Num;
 use campfire_script::{
     ApiBuilder, CallError, CapabilityRefusal, Ctx, Frame, MemberDecl, Unit, View,
 };
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_values::{Number, TrackId};
 use serde::Deserialize;
@@ -35,6 +36,8 @@ impl Listed for XpEffectData {
     type Set = ListedEffects;
 
     const KEY: &'static str = "xp";
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn ListedEffect> {
         Arc::new(self)

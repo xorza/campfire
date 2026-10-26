@@ -2,11 +2,6 @@
 //! checkpoints, the client's join state and the inputs it sent, the session's messages, the
 //! clocks both ends read, and the events their logs hold.
 
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-
 mod client;
 mod error;
 mod events;
@@ -38,7 +33,8 @@ pub use crate::client::sent_inputs::SentInputs;
 pub use crate::client::server_pin::ServerPin;
 pub use crate::client::session_signer::SessionSigner;
 pub use crate::error::{
-    JoinError, OrderFileError, ReceiptRefusal, ReportReadError, ReportWriteError, SaveRefusal,
+    JoinError, JournalRefusal, OrderFileError, ReceiptRefusal, ReportLogError, ReportReadError,
+    ReportWriteError,
 };
 pub use crate::events::bot_order_unsent::BotOrderUnsent;
 pub use crate::events::checkpoint_failed::CheckpointFailed;
@@ -51,6 +47,7 @@ pub use crate::events::inputs_discarded::InputsDiscarded;
 pub use crate::events::join_refused::JoinRefused;
 pub use crate::events::journal_cut::JournalCut;
 pub use crate::events::journal_failed::JournalFailed;
+pub use crate::events::journal_refused::JournalRefused;
 pub use crate::events::listening::Listening;
 pub use crate::events::load_failed::LoadFailed;
 pub use crate::events::log_filled::LogFilled;
@@ -60,7 +57,6 @@ pub use crate::events::orders_sent::OrdersSent;
 pub use crate::events::receipt_refused::ReceiptRefused;
 pub use crate::events::receipt_unsaved::ReceiptUnsaved;
 pub use crate::events::save_loaded::SaveLoaded;
-pub use crate::events::save_refused::SaveRefused;
 pub use crate::events::seeds_ran_out::SeedsRanOut;
 pub use crate::events::server_frame::ServerFrame;
 pub use crate::events::session_refused::SessionRefused;
@@ -81,11 +77,11 @@ pub use crate::messages::input_ack::InputAck;
 pub use crate::messages::input_message::InputMessage;
 pub use crate::messages::join::{Join, JoinRole};
 pub use crate::messages::joined::Joined;
+pub use crate::messages::journal_command::{JournalCommand, ReportKey};
 pub use crate::messages::leave_match::LeaveMatch;
 pub use crate::messages::match_loaded::MatchLoaded;
 pub use crate::messages::match_start::{ChainHead, MatchStart, PlayerSlotChain};
 pub use crate::messages::offer::SessionOffer;
-pub use crate::messages::save_command::{ReportKey, SaveCommand};
 pub use crate::messages::watch_start::WatchStart;
 pub use crate::messages::watch_teams::WatchTeams;
 pub use crate::order_file::OrderFile;
@@ -93,8 +89,9 @@ pub use crate::os::Os;
 pub use crate::pace::{Pace, PaceSpeed};
 pub use crate::process_exit::exit_code;
 pub use crate::server::bot_driver::BotDriver;
-pub use crate::server::checkpoints::{Checkpoints, SaveTaken};
+pub use crate::server::checkpoints::{Checkpoints, JournalTaken};
 pub use crate::server::error::MatchBeginError;
+pub use crate::server::journal_commands::JournalCommands;
 pub use crate::server::journal_watch::{JournalFrom, JournalWatch};
 pub use crate::server::player_link::PlayerLink;
 pub use crate::server::player_slot_bot_arg::error::PlayerSlotBotArgError;

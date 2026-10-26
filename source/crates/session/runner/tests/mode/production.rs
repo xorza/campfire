@@ -296,11 +296,11 @@ fn an_income_pays_each_period_from_its_spawn_and_a_capture_once_after_its_first(
     };
     let before = held(&game);
     let mill = Spawn::named(&game, "mill", Vec3::ZERO)
-        .parts(Owner::new(PlayerSlot::new(0)))
+        .owner(PlayerSlot::new(0))
         .place(&mut game);
     let mill = game.unit_entity(mill);
     let second = Spawn::named(&game, "mill", Vec3::ZERO)
-        .parts(Owner::new(PlayerSlot::new(0)))
+        .owner(PlayerSlot::new(0))
         .place(&mut game);
     let second = game.unit_entity(second);
     let mut paid = Vec::new();

@@ -18,11 +18,11 @@ pub(crate) mod error;
 #[derive(Debug)]
 pub struct InputFile;
 
-/// A regular file open to read in pieces, as a walk hashes a file it does not keep: its length,
+/// A regular file open to read in pieces, as a walk hashes a file it does not keep: its stamp,
 /// as its handle's metadata gave it as it opened, and its bytes, as `Read` gives them.
 #[derive(Debug)]
 pub struct InputStream {
-    len: u64,
+    stamp: FileStamp,
     file: File,
 }
 
@@ -42,13 +42,6 @@ pub struct InputRanges {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileStamp {
     pub len: u64,
-    pub modified: SystemTime,
-}
-
-/// A file's bytes and its time of change, both from one open handle.
-#[derive(Debug)]
-pub struct Stamped {
-    pub bytes: Vec<u8>,
     pub modified: SystemTime,
 }
 
@@ -87,25 +80,24 @@ impl InputFile {
             .map_err(|error| PathError::at(path)(ReadError::NotText(error.utf8_error())))
     }
 
-    /// The bytes of the file at `path`, at most `max_len`, and its time of change, both from one
-    /// open handle.
-    pub fn read_stamped(path: &Path, max_len: usize) -> Result<Stamped, PathError<ReadError>> {
-        let read = || {
-            let opened = Self::open(path)?;
-            let modified = opened.metadata.modified().map_err(ReadError::Read)?;
-            let bytes = opened.read(max_len)?;
-            Ok(Stamped { bytes, modified })
-        };
-        read().map_err(PathError::at(path))
-    }
-
     /// The regular file at `path`, open to read in pieces; its reader bounds what it takes.
     pub fn stream(path: &Path) -> Result<InputStream, PathError<ReadError>> {
-        let Opened { file, metadata } = Self::open(path).map_err(PathError::at(path))?;
-        Ok(InputStream {
-            len: metadata.len(),
-            file,
-        })
+        Self::open(path)
+            .and_then(InputStream::of)
+            .map_err(PathError::at(path))
+    }
+
+    /// The regular file at `path`, open to read in pieces, as `stream` opens it, of at most
+    /// `max_len` bytes as it opened; `TooLarge` for a longer one.
+    pub fn stream_within(path: &Path, max_len: usize) -> Result<InputStream, PathError<ReadError>> {
+        let open = || {
+            let opened = Self::open(path)?;
+            if opened.longer_than(max_len) {
+                return Err(ReadError::TooLarge { max: max_len });
+            }
+            InputStream::of(opened)
+        };
+        open().map_err(PathError::at(path))
     }
 
     /// The regular file at `path`, open to read ranges of; each read is bounded by its range.
@@ -157,13 +149,28 @@ impl InputFile {
 }
 
 impl InputStream {
+    /// The stream of the file `opened`, stamped by its metadata.
+    fn of(Opened { file, metadata }: Opened) -> Result<Self, ReadError> {
+        let modified = metadata.modified().map_err(ReadError::Read)?;
+        let stamp = FileStamp {
+            len: metadata.len(),
+            modified,
+        };
+        Ok(Self { stamp, file })
+    }
+
     /// Its length as it opened.
     pub const fn len(&self) -> u64 {
-        self.len
+        self.stamp.len
     }
 
     pub const fn is_empty(&self) -> bool {
-        self.len == 0
+        self.stamp.len == 0
+    }
+
+    /// Its length and time of change as it opened.
+    pub const fn stamp(&self) -> FileStamp {
+        self.stamp
     }
 }
 
@@ -189,10 +196,26 @@ impl InputRanges {
     /// The `len` bytes from `offset`, by a read that moves no cursor, so reads through one handle
     /// need no turn. A range past the length it opened with is `Short` before it reads, and so is
     /// one the file no longer holds as it reads, as when it shrank.
+    /// The range is checked before its buffer is made, so a length the file does not hold, as an
+    /// untrusted header may claim, allocates nothing.
     pub fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>, PathError<ReadError>> {
+        self.holds(offset, len).map_err(PathError::at(&self.path))?;
         let mut bytes = vec![0; len];
         self.read_at_into(offset, &mut bytes)?;
         Ok(bytes)
+    }
+
+    /// Whether the `len` bytes from `offset` lie within the length it opened with; `Short` when
+    /// they do not.
+    fn holds(&self, offset: u64, len: usize) -> Result<(), ReadError> {
+        let wanted = u64::try_from(len).expect("a length fits u64");
+        if offset
+            .checked_add(wanted)
+            .is_none_or(|end| end > self.stamp.len)
+        {
+            return Err(ReadError::Short { offset, len });
+        }
+        Ok(())
     }
 
     /// The bytes from `offset` that fill `bytes`, read as `read_at` reads them, into a buffer
@@ -200,14 +223,8 @@ impl InputRanges {
     pub fn read_at_into(&self, offset: u64, bytes: &mut [u8]) -> Result<(), PathError<ReadError>> {
         let len = bytes.len();
         let short = || ReadError::Short { offset, len };
-        let wanted = u64::try_from(len).expect("a length fits u64");
         let mut read = || {
-            if offset
-                .checked_add(wanted)
-                .is_none_or(|end| end > self.stamp.len)
-            {
-                return Err(short());
-            }
+            self.holds(offset, len)?;
             PositionalRead::exact_at(&self.file, bytes, offset).map_err(|error| {
                 if error.kind() == io::ErrorKind::UnexpectedEof {
                     short()

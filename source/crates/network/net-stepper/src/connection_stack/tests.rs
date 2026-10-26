@@ -36,6 +36,7 @@ impl Harness {
             TimePlugin,
             ClockPlugin,
             LinkPlugin,
+            PacketSessionLinkPlugin,
             EndpointPlugin::<EmulatedWires>::default(),
             ConnectionPlugins,
             ServerConnectionPlugin,

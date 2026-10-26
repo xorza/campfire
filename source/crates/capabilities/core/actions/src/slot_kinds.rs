@@ -1,4 +1,5 @@
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -122,6 +123,7 @@ impl SlotKinds {
 impl Section for SlotKinds {
     const TABLE: SectionTable = SectionTable::Mode;
     const KEY: &'static str = "slots";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(test)]

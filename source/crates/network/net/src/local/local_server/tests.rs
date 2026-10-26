@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use crate::local::local_server::{
     LocalLobby, LocalReplay, LocalServer, LocalServerSetup, LocalSession,
 };
-use crate::sim_client::{PendingSaves, SimClientPlugin};
+use crate::sim_client::{PendingJournalCommands, SimClientPlugin};
 use bevy_app::App;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
@@ -23,10 +23,10 @@ use campfire_host::ClientLayout;
 use campfire_host::Hosting;
 use campfire_host::JoinRole;
 use campfire_host::JoinState;
+use campfire_host::JournalCommand;
 use campfire_host::Os;
 use campfire_host::Pace;
 use campfire_host::ReportKey;
-use campfire_host::SaveCommand;
 use campfire_host::ServerDir;
 use campfire_host::ServerPin;
 use campfire_host::SessionDir;
@@ -116,8 +116,19 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         .insert(server.take_link());
     client.world_mut().trigger(Connect { entity });
     let start = Instant::now();
-    let frame = |client: &mut App| {
-        assert!(start.elapsed() < DEADLINE, "the client did not play on");
+    let frame = |client: &mut App, waits: &str| {
+        let state = client.world().resource::<JoinState>();
+        assert!(
+            start.elapsed() < DEADLINE,
+            "the deadline passed while the client waited for {waits}, its next tick {}: playing \
+             {:?}, watching {:?}, rejoining {}, lost {:?}, refused {:?}",
+            client.world().resource::<SimTick>().start(),
+            state.playing_clock(),
+            state.watching_clock(),
+            state.is_rejoining(),
+            state.loss(),
+            state.refusal(),
+        );
         client.update();
         thread::sleep(FRAME);
     };
@@ -130,7 +141,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     };
     let mut played = 0;
     while played < 30 {
-        frame(&mut client);
+        frame(&mut client, "its play");
         played += usize::from(playing(&client));
     }
 
@@ -139,20 +150,30 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let save = |client: &mut App, command| {
         client
             .world_mut()
-            .resource_mut::<PendingSaves>()
+            .resource_mut::<PendingJournalCommands>()
             .push(command);
     };
-    save(&mut client, SaveCommand::Save);
-    for _ in 0..30 {
-        frame(&mut client);
+    // The save is due at the boundary after the server's next tick, which the server reaches on
+    // its own clock, so the load waits until the save's snapshot is written; a load before it
+    // finds no save and is refused.
+    save(&mut client, JournalCommand::Save);
+    let saved = |test_dir: &TestDir| {
+        let sessions = test_dir.names("data/sessions");
+        sessions.iter().any(|session| {
+            let snapshots = format!("data/sessions/{session}/snapshots");
+            test_dir.exists(&snapshots) && !test_dir.names(snapshots).is_empty()
+        })
+    };
+    while !saved(&test_dir) {
+        frame(&mut client, "the save's snapshot");
     }
-    save(&mut client, SaveCommand::LoadLatest);
+    save(&mut client, JournalCommand::LoadLatest);
     while playing(&client) {
-        frame(&mut client);
+        frame(&mut client, "the load");
     }
     let mut played = 0;
     while played < 30 {
-        frame(&mut client);
+        frame(&mut client, "its play after the load");
         played += usize::from(playing(&client));
     }
 
@@ -162,7 +183,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let tick = (client.world().resource::<SimTick>().start()).after(Ticks::new(6));
     save(
         &mut client,
-        SaveCommand::Report(ReportKey { tick, take: 0 }),
+        JournalCommand::Report(ReportKey { tick, take: 0 }),
     );
     let reported = |test_dir: &TestDir| {
         if !test_dir.exists("client/reports") {
@@ -175,7 +196,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
             .then(|| (folder, test_dir.read(file)))
     };
     let (folder, report) = loop {
-        frame(&mut client);
+        frame(&mut client, "the report");
         if let Some(reported) = reported(&test_dir) {
             break reported;
         }
@@ -268,7 +289,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         .insert(server.take_link());
     watcher.world_mut().trigger(Connect { entity });
     let clock = loop {
-        frame(&mut watcher);
+        frame(&mut watcher, "the watch");
         if let Some(clock) = watcher.world().resource::<JoinState>().watching_clock() {
             break clock;
         }
@@ -279,7 +300,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     // log's end.
     let next = |watcher: &App| watcher.world().resource::<SimTick>().start();
     while next(&watcher) != clock.first() {
-        frame(&mut watcher);
+        frame(&mut watcher, "the held tick");
     }
     assert!(pace.is_paused());
     // A report the watcher takes there holds the log the replay replays, whole.
@@ -288,18 +309,18 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         tick: held,
         take: 0,
     };
-    save(&mut watcher, SaveCommand::Report(again));
+    save(&mut watcher, JournalCommand::Report(again));
     let file = format!(
         "client/reports/{session}-{}/session.campfire-log",
         held.get()
     );
     while !test_dir.exists(&file) {
-        frame(&mut watcher);
+        frame(&mut watcher, "the report of the held tick");
     }
     assert_eq!(test_dir.read(file), report_bytes);
     pace.set_paused(false);
     while !pace.is_paused() || next(&watcher) != end {
-        frame(&mut watcher);
+        frame(&mut watcher, "the replay's end");
     }
     drop(server);
 }

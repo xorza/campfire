@@ -1,4 +1,5 @@
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use std::num::NonZeroU32;
 
 use campfire_common::DeclaredName;
@@ -34,4 +35,5 @@ impl DataSection for NodeData {
 impl Section for NodeData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "node";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

@@ -9,7 +9,8 @@ use crate::error::CheckError;
 
 /// What made the import beside it and what the import gave: the install's version and the
 /// importer's output version, so a run on the same install with an importer of the same output
-/// keeps the import and writes nothing (09-zero-hour.md, A check keeps an unchanged import).
+/// and the same rules package keeps the import and writes nothing (09-zero-hour.md, A check keeps
+/// an unchanged import).
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct ImportStamp {
     install: String,
@@ -24,9 +25,10 @@ impl ImportStamp {
     /// The most bytes the file may hold: far past what an import gives.
     const MAX_LEN: usize = 1 << 22;
 
-    /// What the import in `out` gave, when its stamp names `zero_hour`'s install and this
-    /// importer's output; none for no stamp, one of another install or output, or one an older
-    /// check wrote, which decodes as none.
+    /// What the import in `out` gave, when its stamp names `zero_hour`'s install, this
+    /// importer's output and the rules package it writes, which an edit of the rules' files
+    /// changes with no change of the output's version; none for no stamp, one of another install,
+    /// output or rules, or one an older check wrote, which decodes as none.
     pub(crate) fn kept(out: &Path, zero_hour: &ZeroHour) -> Result<Option<Imported>, CheckError> {
         let bytes = match InputFile::read(&out.join(Self::NAME), Self::MAX_LEN) {
             Ok(bytes) => bytes,
@@ -37,7 +39,8 @@ impl ImportStamp {
             return Ok(None);
         };
         let same = stamp.install == zero_hour.version().name()
-            && stamp.importer == ZeroHour::OUTPUT_VERSION;
+            && stamp.importer == ZeroHour::OUTPUT_VERSION
+            && stamp.imported.rules == ZeroHour::rules_fingerprint();
         Ok(same.then_some(stamp.imported))
     }
 

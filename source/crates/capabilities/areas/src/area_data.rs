@@ -1,6 +1,7 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::FilterData;
 use serde::de::Error;
@@ -79,6 +80,7 @@ impl DataSection for AreaInsideData {
 impl Section for AreaData {
     const TABLE: SectionTable = SectionTable::DeliveryType;
     const KEY: &'static str = "area";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(test)]

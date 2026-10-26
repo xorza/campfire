@@ -28,16 +28,14 @@ impl<Io: DatagramIo> Plugin for EndpointPlugin<Io> {
             Endpoint::<Io>::receive.in_set(LinkSystems::Receive),
         );
         app.add_systems(PostUpdate, Endpoint::<Io>::send.in_set(LinkSystems::Send));
-        if !app.is_plugin_added::<PacketSessionLinkPlugin>() {
-            app.add_plugins(PacketSessionLinkPlugin);
-        }
     }
 }
 
-/// The `PacketSessionLink` observer, which every IO's links share, so the first endpoint plugin
-/// adds it once.
+/// The `PacketSessionLink` observer, which every IO's links share: an app of any endpoint plugin
+/// lists it once (11-net-stack/api.md, One plugin group for each kind of app, and no plugin adds
+/// another).
 #[derive(Debug)]
-struct PacketSessionLinkPlugin;
+pub struct PacketSessionLinkPlugin;
 
 impl Plugin for PacketSessionLinkPlugin {
     fn build(&self, app: &mut App) {

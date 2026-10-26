@@ -1,6 +1,7 @@
 use std::str::Utf8Error;
 
 use campfire_codec::{BinaryError, TomlError};
+use campfire_common::DeclaredName;
 use thiserror::Error;
 
 /// Why a client file of a package does not read.
@@ -15,6 +16,12 @@ pub enum ClientFileError {
     Binary(#[from] BinaryError),
 }
 
+/// A draw of a unit's look names this condition, which the looks give no test, so no client could
+/// tell whether a unit holds it.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("a look's state names the condition `{0}`, of no test")]
+pub struct UntestedCondition(pub DeclaredName);
+
 /// Why a terrain file is none the client draws (02-engine-core.md, Client): a shape, an index, a
 /// number or a rectangle past what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -28,6 +35,12 @@ pub enum TerrainFileError {
     /// A texture coordinate is not finite.
     #[error("a texture coordinate is not finite")]
     Coordinate,
+    /// A decal's point is not finite.
+    #[error("a decal's point is not finite")]
+    Point,
+    /// A decal triangle, by its index, names a vertex past the decals'.
+    #[error("decal triangle {0} names a vertex past the decals'")]
+    Triangle(usize),
     /// A side of its texture is past `TerrainTexture::MOST_SIDE`.
     #[error("a side of its texture is past the longest a terrain texture has")]
     TextureSize,
@@ -56,8 +69,8 @@ pub enum TextureLevelsError {
     /// A field or a level runs past its end.
     #[error("it runs past its end")]
     Short,
-    /// Its format, by its Vulkan number, is not `R8G8B8A8_SRGB`.
-    #[error("its format {0} is not R8G8B8A8_SRGB")]
+    /// Its format, by its Vulkan number, is none of `R8G8B8A8_SRGB` and BC1 to BC3's sRGB.
+    #[error("its format {0} is none of R8G8B8A8_SRGB and BC1 to BC3's sRGB")]
     Format(u32),
     /// It is no 2D texture of texels, one face and no layers, or its data is supercompressed.
     #[error("it is no plain 2D texture")]

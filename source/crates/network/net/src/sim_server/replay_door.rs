@@ -17,12 +17,12 @@ use crate::sim_server::spectators::Spectators;
 use crate::sim_server::viewer::{Viewer, Watching};
 use campfire_host::JoinError;
 use campfire_host::Joined;
+use campfire_host::JournalCommand;
+use campfire_host::JournalRefusal;
+use campfire_host::JournalRefused;
 use campfire_host::MatchClock;
 use campfire_host::PlayerSlots;
 use campfire_host::Reports;
-use campfire_host::SaveCommand;
-use campfire_host::SaveRefusal;
-use campfire_host::SaveRefused;
 use campfire_host::WatchStart;
 
 /// The door of a session that replays a published log (08-sessions.md, The client opens a
@@ -56,20 +56,20 @@ impl ReplayDoor {
         Self { offering }
     }
 
-    /// Takes the save commands of the spectator: a report's writes the log the replay replays
+    /// Takes the journal commands of the spectator: a report's writes the log the replay replays
     /// into the report's folder, so the report replays as the one it opens; a save or a load is
     /// refused, as a replay keeps no save. Each is logged.
     pub(crate) fn take_commands(
-        mut links: Query<'_, '_, &mut MessageReceiver<SaveCommand>, With<Viewer>>,
+        mut links: Query<'_, '_, &mut MessageReceiver<JournalCommand>, With<Viewer>>,
         session: Res<'_, Session>,
         reports: Option<Res<'_, Reports>>,
     ) {
         for mut receiver in &mut links {
             for command in receiver.receive() {
-                let (SaveCommand::Report(key), Some(reports)) = (command, reports.as_deref())
+                let (JournalCommand::Report(key), Some(reports)) = (command, reports.as_deref())
                 else {
-                    SaveRefused {
-                        refusal: SaveRefusal::Replay,
+                    JournalRefused {
+                        refusal: JournalRefusal::Replay,
                     }
                     .log();
                     continue;

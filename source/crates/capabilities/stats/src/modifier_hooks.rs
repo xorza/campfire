@@ -117,7 +117,7 @@ impl ModifierHooks {
             let modifiers = world.get::<Modifiers>(entity)?;
             world.get::<ModifierClocks>(entity)?;
             let at = modifiers.position(heard.id, heard.source)?;
-            let instance = *modifiers.get(heard.id, heard.source)?.instance;
+            let instance = *modifiers.instance_at(at);
             Some(HeardInstance {
                 entity,
                 at,

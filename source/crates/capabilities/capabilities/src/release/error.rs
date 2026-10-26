@@ -1,3 +1,4 @@
+use campfire_declarations::BookError;
 use campfire_sim::Capability;
 use thiserror::Error;
 
@@ -16,4 +17,12 @@ pub enum CapabilityError {
         capability: Capability,
         needs: Capability,
     },
+}
+
+/// Why a checked build of a match's books gave none: its books refused the data, or the caller's
+/// check between the rules and the books failed.
+#[derive(Debug)]
+pub enum CheckedBooksError<E> {
+    Book(BookError),
+    Check(E),
 }

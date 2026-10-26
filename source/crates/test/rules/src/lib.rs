@@ -48,7 +48,6 @@ mod test_support;
 #[cfg(test)]
 mod type_names;
 #[cfg(test)]
-mod unsafe_code;
 #[cfg(test)]
 mod workspace;
 #[cfg(test)]

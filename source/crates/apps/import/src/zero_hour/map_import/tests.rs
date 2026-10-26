@@ -1,14 +1,17 @@
 use std::mem;
 
-use campfire_client_files::ObjectLook;
+use bevy_math::UVec2;
 use campfire_codec::TomlTable;
 use campfire_declarations::SectionReaders;
 use campfire_units::{GroundError, MetricData};
+use campfire_values::PackagePath;
 
 use super::*;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
+use crate::zero_hour::format::ini::roads_ini::samples::ROADS;
+use crate::zero_hour::format::look_conditions::LookConditions;
 use crate::zero_hour::format::map::map_file::samples::map;
 use crate::zero_hour::format::map::terrain::{BlendShape, BlendTile};
 
@@ -75,7 +78,7 @@ fn objects() -> ObjectIni {
 #[derive(Debug)]
 struct MapFixture {
     rules: ZeroHourRules,
-    looks: ClientUnits,
+    object_looks: BTreeMap<DeclaredName, ObjectLook>,
 }
 
 impl MapFixture {
@@ -85,36 +88,50 @@ impl MapFixture {
             ..ZeroHourRules::default()
         };
         rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
-        let objects = ["oak", "rock", "rockred", "bush"].map(|look| {
+        rules.roads.read(ROADS.as_bytes()).unwrap();
+        let object_looks = ["oak", "rock", "rockred", "bush"].map(|look| {
             (
                 DeclaredName::new(look).unwrap(),
                 ObjectLook::new(Vec::new()),
             )
         });
-        let looks = ClientUnits {
-            objects: objects.into(),
-            ..ClientUnits::default()
-        };
-        Self { rules, looks }
+        Self {
+            rules,
+            object_looks: object_looks.into(),
+        }
     }
 
-    /// The import of `file`, its objects named in `names`, drawn in `lights` lights.
+    /// The import of `file`, its objects named in `names`, drawn in `lights` lights, each road
+    /// type's texture of 512 texels a side.
     fn import<'r>(
         &'r self,
         file: &ZeroHourMap,
         names: &mut ImportNames<'r>,
         lights: usize,
     ) -> Result<MapImport, MapError> {
+        let roads = MapRoads::of(&file.objects, &self.rules.roads);
+        let road_textures: Vec<Option<PackageTexture>> = roads
+            .types()
+            .iter()
+            .map(|_| {
+                Some(PackageTexture {
+                    path: PackagePath::parse("client/textures/art/textures/road.ktx2").unwrap(),
+                    size: UVec2::splat(512),
+                })
+            })
+            .collect();
         let sources = MapSources {
             rules: &self.rules,
             names,
-            looks: &self.looks,
+            object_looks: &self.object_looks,
             lights,
             game: TerrainDraw {
                 adjust_cliff_textures: true,
                 three_way_blends: true,
             },
             textures: &vec![None; file.terrain.fields().classes.len()],
+            roads: &roads,
+            road_textures: &road_textures,
         };
         MapImport::new(file, sources)
     }
@@ -135,14 +152,11 @@ fn a_map_s_lights_are_its_time_of_day_s_on_the_engine_s_axes() {
     };
     assert_eq!(
         MapLights::decode(&imported.lights).unwrap(),
-        MapLights {
-            ambient: [2.0, 3.0, 0.0],
-            lights: vec![object_light(3.0), object_light(4.0), object_light(5.0)],
-        }
+        MapLights::new([2.0, 3.0, 0.0], [3.0, 4.0, 5.0].map(object_light)).unwrap()
     );
     // Drawn in two lights, each keeps its first two.
     let two = fixture.import(&file, &mut names, 2).unwrap();
-    assert_eq!(MapLights::decode(&two.lights).unwrap().lights.len(), 2);
+    assert_eq!(MapLights::decode(&two.lights).unwrap().lights().len(), 2);
     // An object light it draws that goes no way is refused; one it does not draw is not.
     file.lights[1].position = [0.0; 3];
     let refused = fixture.import(&file, &mut names, 3).map(drop);
@@ -216,10 +230,46 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
         .map(|overlay| overlay.cell)
         .collect();
     assert_eq!(overlays, [1, 2]);
-    assert!(terrain.texture().copies.is_empty());
-    assert_eq!(terrain.texture().wraps.len(), 2);
+    // The gravel road's texture alone is copied, beside the classes, and wrapped.
+    assert_eq!(terrain.texture().copies.len(), 1);
+    assert_eq!(terrain.texture().copies[0].to, UVec2::new(2052, 4));
+    assert_eq!(terrain.texture().wraps.len(), 3);
+    assert_eq!(terrain.texture().size, UVec2::new(4096, 1024));
     assert_eq!(terrain.surface(), SURFACE);
     assert_eq!(imported.untextured, 6);
+    // The gravel road from the game's (−10, 5) to (20, 5), 15.75 to each side: 4 columns, at x
+    // −10, 0, 10 and 20, of 4 samples across, at y −10.75, −0.25, 10.25 and 20.75, in the cells
+    // of rows 0 and 1 past the border of 1, the last clamped to the map's. Their highest corners:
+    // 20 steps at x −10 and 0, 40 at 10 and 20, the line past each inner column passing 18.75
+    // units there, below it, so every column stays, 3 · 2 triangles of one repeat each. The
+    // first's first corner is the first column's left, 20 · 0.625 + 0.078125 high, on the
+    // engine's axes.
+    assert_eq!(
+        imported.road_pieces,
+        RoadPieces {
+            segments: 1,
+            ..RoadPieces::default()
+        }
+    );
+    assert!(imported.dropped_roads.is_empty());
+    let decals = terrain.decals();
+    assert_eq!((decals.vertices.len(), decals.triangles.len()), (18, 6));
+    assert_eq!(
+        decals.vertices[0].position,
+        Vec3::new(-10.0, 12.578125, -20.75)
+    );
+    let heights: Vec<f32> = decals
+        .vertices
+        .iter()
+        .map(|vertex| vertex.position.y)
+        .collect();
+    assert_eq!(
+        heights[..6],
+        [
+            12.578125, 12.578125, 12.578125, 12.578125, 12.578125, 12.578125
+        ]
+    );
+    assert!(heights[12..].iter().all(|&height| height == 25.078125));
     assert_eq!(
         file.terrain.fields().blends,
         [BlendTile {
@@ -236,7 +286,7 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
     // turned 4.729842 − 2π = −1.5533433 in `f32`, −1,493,172,475.64 steps, so
     // −1,493,172,476. The wall at (10, 0), which the map lists after both, comes first, as the
     // game spawns bridge-like objects before the others. The waypoint at (12.5, 7.5) is marker
-    // `w3`. The road's end is none.
+    // `w3`. The road's start and end are none.
     let map = read_map(&imported.map);
     let decimal = |text: &str| text.parse::<Num>().unwrap();
     let ground = |x: &str, z: &str| MapPoint::Ground([decimal(x), decimal(z)]);
@@ -401,9 +451,9 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
     }
 
     // A map of starts from `Player_1_Start` on in a row, two or more, is a skirmish's: each
-    // start and rally of those slots is tagged `start` too, the count of tags 2. One past a
-    // gap in the row, a map of one start or none of slot 1, and another slot's, case's or
-    // name's waypoint are not: 1.
+    // start of those slots is tagged `start` too, and each rally `rally`, with its player slot
+    // from 0. One past a gap in the row, a map of one start or none of slot 1, and another
+    // slot's, case's or name's waypoint are waypoints alone.
     file.objects[waypoint].position[0] = 12.5;
     let base = file.objects[waypoint].clone();
     let tags = |names: &[&str]| {
@@ -422,24 +472,43 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
                 .map,
         )
         .markers;
-        markers
-            .iter()
-            .map(|marker| marker.tags.len())
-            .collect::<Vec<_>>()
+        let player_slot = DeclaredName::new("player_slot").unwrap();
+        let marked = |marker: &MarkerData| {
+            let tags = marker.tags.iter().map(DeclaredName::as_str);
+            let mut marked = tags.collect::<Vec<_>>().join(" ");
+            if let Some(ModeParam::Value(Scalar::Int(slot))) = marker.params.get(&player_slot) {
+                marked = format!("{marked} {slot}");
+            }
+            marked
+        };
+        markers.iter().map(marked).collect::<Vec<_>>()
     };
+    let [waypoint, start, rally] =
+        ["waypoint", "waypoint start", "waypoint rally"].map(str::to_owned);
     let row = [
         "Player_1_Start",
         "Player_2_Start",
         "Player_2_Rally",
         "Player_4_Start",
     ];
-    assert_eq!(tags(&row), [2, 2, 2, 1]);
-    assert_eq!(tags(&["Player_1_Start", "Player_1_Rally"]), [1, 1]);
-    assert_eq!(tags(&["Player_2_Start", "Player_3_Start"]), [1, 1]);
+    assert_eq!(
+        tags(&row),
+        [
+            format!("{start} 0"),
+            format!("{start} 1"),
+            format!("{rally} 1"),
+            waypoint.clone()
+        ]
+    );
+    let alone = [waypoint.clone(), waypoint.clone()];
+    assert_eq!(tags(&["Player_1_Start", "Player_1_Rally"]), alone);
+    assert_eq!(tags(&["Player_2_Start", "Player_3_Start"]), alone);
     let eight: Vec<String> = (1..=8).map(|n| format!("Player_{n}_Start")).collect();
     let mut all: Vec<&str> = eight.iter().map(String::as_str).collect();
     all.push("Player_8_Rally");
-    assert_eq!(tags(&all), [2; 9]);
+    let mut expected: Vec<String> = (0..8).map(|slot| format!("{start} {slot}")).collect();
+    expected.push(format!("{rally} 7"));
+    assert_eq!(tags(&all), expected);
     let others = [
         "Player_1_Start",
         "Player_2_Start",
@@ -449,7 +518,9 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
         "Player_9_Start",
         "Player_0_Start",
     ];
-    assert_eq!(tags(&others), [2, 2, 1, 1, 1, 1, 1]);
+    let mut expected = vec![format!("{start} 0"), format!("{start} 1")];
+    expected.extend(std::iter::repeat_n(waypoint, 5));
+    assert_eq!(tags(&others), expected);
 }
 
 #[test]

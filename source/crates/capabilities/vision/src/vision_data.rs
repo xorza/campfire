@@ -1,5 +1,6 @@
 use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
@@ -34,4 +35,5 @@ impl DataSection for VisionData {
 impl Section for VisionData {
     const TABLE: SectionTable = SectionTable::AnyType;
     const KEY: &'static str = "vision";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

@@ -1,4 +1,5 @@
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use std::num::NonZeroU8;
 
 use campfire_common::DeclaredName;
@@ -21,4 +22,5 @@ impl DataSection for InventoryData {
 impl Section for InventoryData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "inventory";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

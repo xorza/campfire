@@ -4,14 +4,13 @@ use std::path::Path;
 use bevy::asset::Assets;
 use bevy::asset::io::memory::{Dir, MemoryAssetReader};
 use bevy::asset::io::{AssetSourceBuilder, AssetSourceId};
-use bevy::asset::{Asset, AssetApp, AssetPlugin, LoadState};
+use bevy::asset::{Asset, AssetApp, LoadState};
 use bevy::ecs::world::World;
 use bevy::gltf::{Gltf, GltfPlugin};
 use bevy::math::Vec3;
 use bevy::mesh::MeshPlugin;
 use bevy::mesh::MeshTag;
 use bevy::world_serialization::{WorldAssetRoot, WorldSerializationPlugin};
-use campfire_app_threads::OneThreadPlugins;
 use campfire_client_files::{
     ClientModel, ClientObjects, ClientUnits, ModelScale, ObjectLook, TeamColors,
 };
@@ -77,19 +76,10 @@ fn a_model_s_meshes_take_its_paint_s_tag_and_follow_its_unit_s_team() {
 fn gltf_app(text: &str) -> App {
     let dir = Dir::default();
     dir.insert_asset_text(Path::new("model.gltf"), text);
-    let mut app = App::new();
     let reader = MemoryAssetReader { root: dir };
-    app.register_asset_source(
-        AssetSourceId::Default,
-        AssetSourceBuilder::new(move || Box::new(reader.clone())),
-    );
-    app.add_plugins((
-        OneThreadPlugins,
-        AssetPlugin::default(),
-        WorldSerializationPlugin,
-        MeshPlugin,
-        GltfPlugin::default(),
-    ));
+    let source = AssetSourceBuilder::new(move || Box::new(reader.clone()));
+    let mut app = test_app::assets_with(AssetSourceId::Default, source);
+    app.add_plugins((WorldSerializationPlugin, MeshPlugin, GltfPlugin::default()));
     app.init_asset::<FileMaterial>();
     app.init_asset::<AnimationClip>();
     app.init_asset::<ClipTiming>();
@@ -301,23 +291,20 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
         upgrades: Vec::new(),
     };
     // An oak of two models, one at 1.5 and one hiding its stump; a bush of one.
-    let looks = ClientUnits {
-        objects: [
-            (
-                name("oak"),
-                ObjectLook::new(vec![
-                    model("client/models/oak.glb", 1.5, &[]),
-                    model("client/models/leaves.glb", 1.0, &["leaves.stump"]),
-                ]),
-            ),
-            (
-                name("bush"),
-                ObjectLook::new(vec![model("client/models/bush.glb", 1.0, &[])]),
-            ),
-        ]
-        .into(),
-        ..ClientUnits::default()
-    };
+    let objects = BTreeMap::from([
+        (
+            name("oak"),
+            ObjectLook::new(vec![
+                model("client/models/oak.glb", 1.5, &[]),
+                model("client/models/leaves.glb", 1.0, &["leaves.stump"]),
+            ]),
+        ),
+        (
+            name("bush"),
+            ObjectLook::new(vec![model("client/models/bush.glb", 1.0, &[])]),
+        ),
+    ]);
+    let looks = ClientUnits::new(BTreeMap::new(), BTreeMap::new(), objects).unwrap();
     // The oak at (3, −2), 1 m up, turned 90°; the bush at the origin; and a ghost, whose look
     // the package lacks.
     let object = |look: &str, x: i64, z: i64, height: i64, angle: i64| ClientObject {

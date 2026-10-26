@@ -35,8 +35,8 @@ fn on_input(ctx, player, name, value) {
             (1, input("phase", "")),
         ],
     );
-    let failures = game.resource_mut::<ScriptFailures>().take();
-    let errors: Vec<_> = failures.get().iter().map(|failure| failure.kind).collect();
+    let failures = game.resource_mut::<ScriptFailures>().take_calls();
+    let errors: Vec<_> = failures.iter().map(|failure| failure.kind).collect();
     assert_eq!(errors, [FailureKind::CallLimit, FailureKind::PoolSpent]);
     assert_eq!(inputs(&game), StateValue::Int(1));
     // Every pool starts full in the next tick.

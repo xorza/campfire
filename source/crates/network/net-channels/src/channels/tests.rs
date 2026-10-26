@@ -137,6 +137,7 @@ mod steps {
     use crate::channel_message::ChannelMessage;
     use crate::fragment_count::FragmentCount;
     use crate::fragment_index::FragmentIndex;
+    use crate::gap_store::GapStore;
     use crate::packet::DEFAULT_MAX_PAYLOAD;
     use crate::tick_encoder::LONG_TICK_MARK;
     use bytes::BytesMut;
@@ -501,7 +502,7 @@ mod steps {
 
     /// An ordered channel of 100-byte messages under a budget of two store slots and 200 bytes:
     /// messages 1 and 2 fill it behind the gap of message 0, so the packet with message 3, whose
-    /// store would grow by two slots, is not accepted, and gets no ACK. Once message 0 arrives
+    /// slot does not fit, is not accepted, and gets no ACK. Once message 0 arrives
     /// and the three are read, the same packet is admitted. Of the four payloads the frame read,
     /// it accepts the three it admitted.
     #[test]
@@ -512,7 +513,7 @@ mod steps {
             ..Default::default()
         };
         let mut channels =
-            Channels::default().with_receive_budget(2 * size_of::<ChannelMessage>() + 200);
+            Channels::default().with_receive_budget(2 * GapStore::<ChannelMessage>::SLOT + 200);
         channels.add_channel_receive::<BudgetChannel>(setup, NetId::new(0));
         let mut queues = queues(usize::MAX);
         let mut read = |channels: &mut Channels, payloads: &[OpenedPayload]| {
@@ -599,7 +600,8 @@ mod steps {
                 }
             }
         }
-        // Of the seed's 3 · 2,048 = 6,144 mutations, 3,007 read and 3,137 break.
-        assert_eq!([read, broken], [3007, 3137]);
+        // Of the seed's 3 · 2,048 = 6,144 mutations, 3,006 read and 3,138 break, one of them by a
+        // message id past the sender's window.
+        assert_eq!([read, broken], [3006, 3138]);
     }
 }

@@ -179,7 +179,7 @@ impl SentPackets {
         // A delay past what the header holds would make the sample the delay's own length.
         let rtt_sample = largest_sent_at
             .zip(delay)
-            .map(|(sent_at, delay)| rtt.update(now.saturating_duration_since(sent_at), delay));
+            .map(|(sent_at, delay)| rtt.update(now.saturating_duration_since(sent_at), delay, now));
         self.detect_losses(now, rtt, reno, fates);
         AckReport { rtt_sample }
     }
@@ -222,6 +222,12 @@ impl SentPackets {
                 fates.push(PayloadFate::Lost(token));
             }
             reno.on_lost(packet.bytes(), packet.sent_at, now);
+            if rtt
+                .first_sample()
+                .is_none_or(|first| packet.sent_at <= first)
+            {
+                continue;
+            }
             lost_span = Some(match lost_span {
                 None => LostSpan {
                     first: packet.sent_at,
@@ -237,7 +243,6 @@ impl SentPackets {
         }
         if let Some(span) = lost_span
             && span.contiguous
-            && rtt.has_sample()
             && span.last.saturating_duration_since(span.first) > Self::persistent_congestion(rtt)
         {
             reno.on_persistent_congestion();

@@ -9,7 +9,7 @@ use derive_more::Display;
 
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, FactorySteps, FightSteps, Fingerprints, FoughtCounts,
-    LookCounts, MapCounts, MissileTicks, ProducedCounts, ProductionSteps, RangerLook,
+    LookCounts, MapCounts, MissileTicks, ProducedCounts, ProductionSteps, RangerLook, RoadCounts,
     SuppliedCounts, SupplySteps, TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
 
@@ -24,9 +24,12 @@ pub(crate) enum CheckFailure {
     /// pinned.
     #[display("its map holds {_0}")]
     Map(Box<Differs<MapCounts>>),
-    /// Its terrain file holds other than its expected quads, overlays, copies and wraps.
+    /// Its terrain file holds other than its expected quads, overlays, decals, copies and wraps.
     #[display("its terrain holds {_0}")]
     Terrain(Box<Differs<TerrainDrawn>>),
+    /// Its road pieces drawn by kind, or its segments dropped by cause, differ from the pinned.
+    #[display("its roads draw {_0}")]
+    Roads(Box<Differs<RoadCounts>>),
     /// Cells it draws have a tile with no texture.
     #[display("{_0} of its drawn cells have a tile with no texture")]
     Untextured(usize),

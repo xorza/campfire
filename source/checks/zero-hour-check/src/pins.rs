@@ -5,8 +5,8 @@ use campfire_bots::OrderUnsent;
 use campfire_client_files::{ClientUnits, StateAnimation};
 use campfire_common::{DeclaredName, PackageFingerprint};
 use campfire_import::{
-    AnimationDropCause, ButtonDropCause, StateDropCause, SupplyDropCause, UpgradeDropCause,
-    WeaponDropCause,
+    AnimationDropCause, ButtonDropCause, RoadDropCause, StateDropCause, SupplyDropCause,
+    UpgradeDropCause, WeaponDropCause,
 };
 use campfire_mode::MatchResult;
 use campfire_orders::OrderDropCause;
@@ -68,14 +68,38 @@ pub(crate) struct MapCounts {
     pub(crate) walls: usize,
 }
 
-/// A terrain file's overlays, a copy for each tile its classes' textures load, and a border wrap
-/// for each class's block.
+/// A terrain file's overlays; its decals' triangles; a copy for each tile its classes' textures
+/// load and for each road type's texture; and a border wrap for each class's block and each road
+/// type's texture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TerrainCounts {
     pub(crate) overlays: usize,
+    pub(crate) decals: usize,
     pub(crate) copies: usize,
     pub(crate) wraps: usize,
+}
+
+/// Tournament Desert's road segments, curves, miters, junctions by kind and alpha joins the import
+/// draws, and the segments it drops for each cause, in the order of `RoadDropCause::ALL`
+/// (roads.md, A road is a decal the import meshes).
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    "{segments} segments, {curves} curves, {miters} miters, {tees} tees, {four_ways} four-ways, \
+     {ys} Ys, {hs} Hs, {joins} joins, dropped {:?}",
+    dropped
+)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RoadCounts {
+    pub(crate) segments: usize,
+    pub(crate) curves: usize,
+    pub(crate) miters: usize,
+    pub(crate) tees: usize,
+    pub(crate) four_ways: usize,
+    pub(crate) ys: usize,
+    pub(crate) hs: usize,
+    pub(crate) joins: usize,
+    pub(crate) dropped: [usize; RoadDropCause::ALL.len()],
 }
 
 /// How many unit types' looks have a draw of more than one state, and client objects' looks
@@ -126,7 +150,7 @@ impl RangerLook {
     /// `SetMatch::best` picks each state.
     pub(crate) fn of(looks: &ClientUnits) -> Self {
         let ranger = DeclaredName::new("americainfantryranger").expect("a name");
-        let draw = &looks.units[&ranger].draws[0];
+        let draw = &looks.units()[&ranger].draws[0];
         let clips = |held: &[&str]| -> Vec<String> {
             let state = &draw.states()[draw.best_state(|name| held.contains(&name.as_str()))];
             let clips = state.animation.iter().flat_map(StateAnimation::clips);
@@ -451,7 +475,8 @@ pub(crate) struct UpgradedCounts {
     pub(crate) dropped: [usize; UpgradeDropCause::ALL.len()],
 }
 
-/// How many ground quads, overlays, texture copies and border wraps a terrain file holds.
+/// How many ground quads, overlays, decal triangles, texture copies and border wraps a terrain
+/// file holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TerrainDrawn {
     pub(crate) quads: usize,

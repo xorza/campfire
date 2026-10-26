@@ -110,7 +110,6 @@ impl LocalTimelineSyncPlugin {
 
         if networking.is_changed() {
             sync.reset();
-            sync.set_synced(false);
         }
 
         let NetworkTopology::Client(client) = &networking.topology else {

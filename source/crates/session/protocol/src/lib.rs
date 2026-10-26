@@ -79,11 +79,13 @@ pub use crate::session_log::durable_head::DurableHead;
 pub use crate::session_log::error::{
     CarryFlaw, CheckpointError, HeaderError, InputError, JournalReplayError, LogError,
     LogLoadError, PublishError, PublishWriteError, ResultError, SeedError, ServerInputError,
+    WalkStopped,
 };
 pub use crate::session_log::journal::Journal;
 pub use crate::session_log::journal::error::{JournalStreamError, NotJournal};
 pub use crate::session_log::journal::journal_frames::JournalFrames;
 pub use crate::session_log::journal::record_sink::RecordSink;
+pub use crate::session_log::journal_replay::JournalReplay;
 pub use crate::session_log::log_replay::LogReplay;
 pub use crate::session_log::player_packet::PlayerPacket;
 pub use crate::session_log::session_header::SessionHeader;

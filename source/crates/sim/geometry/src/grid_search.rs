@@ -4,8 +4,8 @@ use std::sync::LazyLock;
 use campfire_math::{Num, Vec3};
 
 /// The order of every search, the grid's steps within `GridSearch::MAX_STEPS` of the center, by
-/// square distance, then by angle: about 51,000 steps, built at the first search, so no search
-/// orders its points again.
+/// square distance, then by angle: about 51,000 steps, built once, as a match that searches
+/// loads, so no search orders its points again and no tick builds it.
 static ORDER: LazyLock<Box<[[i16; 2]]>> = LazyLock::new(GridSearch::order);
 
 /// A search of the ground grid of `gap` round `position`, within `steps` gaps of it, for the
@@ -22,6 +22,12 @@ impl GridSearch {
     /// The most steps of its gap a search reaches: its points, about `π` times its square, stay
     /// within a script call's work.
     pub const MAX_STEPS: u32 = 128;
+
+    /// Builds the order of every search now, as a match that searches loads, so no tick's first
+    /// search pays for it.
+    pub fn prepare() {
+        LazyLock::force(&ORDER);
+    }
 
     /// The nearest point of the grid where `passes` holds; none when no point within the bound of
     /// the world does.

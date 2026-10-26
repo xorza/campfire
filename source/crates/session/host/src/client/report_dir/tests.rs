@@ -1,4 +1,4 @@
-use campfire_common::{MapName, PlayerSlot, Tick, Version};
+use campfire_common::{MapName, PlayerSlot, Tick};
 use campfire_package::PackageName;
 use campfire_protocol::SessionId;
 use campfire_sim::StableId;
@@ -7,7 +7,7 @@ use campfire_store::internals::TestDir;
 use super::*;
 use crate::client::client_layout::{ClientLayout, NewReport};
 use crate::client::report_file::ReportCamera;
-use crate::messages::save_command::ReportKey;
+use crate::messages::journal_command::ReportKey;
 
 #[test]
 fn a_report_s_facts_and_screenshot_read_back_from_its_folder() {
@@ -57,6 +57,17 @@ fn a_report_s_facts_and_screenshot_read_back_from_its_folder() {
     dir.write_facts(&watched).unwrap();
     let read = dir.read_facts().unwrap();
     assert_eq!(read.player_slot, None);
+    // A report of another release is refused before its packages load.
+    let other = Version::new(0, 0, 1);
+    dir.write_facts(&ReportFile {
+        release: other,
+        ..watched.clone()
+    })
+    .unwrap();
+    assert!(
+        matches!(dir.read_facts(), Err(ReportReadError::OtherRelease(release)) if release == other)
+    );
+    dir.write_facts(&watched).unwrap();
     // One red pixel over one white one seen half through.
     let screenshot = RgbaImage {
         width: 1,

@@ -8,6 +8,7 @@ use campfire_capabilities::{Match, Order};
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, OnDeath, Respawn};
 use campfire_common::{PlayerSlot, Ticks};
+use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Vec3};
 use campfire_measure::{AllocAudit, Allowed, CallSite, CountingAllocator};
 use campfire_orders::{Orders, OrdersDirective};
@@ -17,6 +18,7 @@ use campfire_sim::{Capability, SimWorld, StableId};
 use campfire_units::internals::Spawn;
 use campfire_units::{Dead, GroundPoint, MoveStep, Owner, SpawnPoint, Units};
 use campfire_values::Team;
+use campfire_vision::{Sight, Vision};
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator;
@@ -37,17 +39,20 @@ const FRAMES: usize = 256;
 
 /// What a tick allocates: Bevy's `BundleRemover::remove` collects into a `Vec` the components a
 /// removal takes from an archetype that a `Remove` observer watches, as each unit's archetype is,
-/// and no two units of the battle respawn in one tick. bevyengine/bevy#26301 removes it; the
-/// site names the version, so a new Bevy checks the budget again. It is the file of the
-/// remover's caller, `EntityWorldMut::remove_with_caller`, as a macOS build keeps the remover's
-/// own frame with no file.
-const BEVY: [Allowed; 1] = [Allowed {
+/// once for each unit that respawns, and at most two of the battle respawn in one tick.
+/// bevyengine/bevy#26301 removes it; the site names the version, so a new Bevy checks the budget
+/// again. It is the file of the remover's caller, `EntityWorldMut::remove_with_caller`, as a macOS
+/// build keeps the remover's own frame with no file.
+const BEVY: [Allowed; 2] = [RESPAWN_REMOVAL; 2];
+
+/// One respawn's removal of `Dead` and `Respawn`, as `BEVY` names it.
+const RESPAWN_REMOVAL: Allowed = Allowed {
     site: CallSite::File("bevy_ecs-0.20.0/src/world/entity_access/world_mut.rs"),
     why: "the components a respawn's removal of `Dead` and `Respawn` takes",
-}];
+};
 
-/// Two sides of `SIDE` fighters each, 24 m apart, each a player's, and the order of each side to
-/// attack-move to the far side.
+/// Two sides of `SIDE` fighters each, 24 m apart, each a player's and each seeing, and the order of
+/// each side to attack-move to the far side.
 #[derive(Debug)]
 struct Battle {
     game: Match,
@@ -62,13 +67,20 @@ impl Battle {
             Capability::Combat,
             Capability::Navigation,
             Capability::Orders,
+            Capability::Vision,
         ];
         let mut game = Match::builder(&declared).players(2).build();
+        // A grid of 1 m cells over the field, each fighter seeing 6 m: the fog counts what each
+        // walk changes.
+        let edge = Num::int(30);
+        let grid = Grid::new(Num::ONE, Bounds::new([-edge; 2], [edge; 2]).unwrap()).unwrap();
+        Vision::load_grid(&mut game, grid, &[], 2);
         Combat::load_weapon_stats(&mut game);
         let fighter = Armed::melee(Num::int(100), Num::int(2), 1, 5, Num::int(25))
             .on_death(OnDeath::Stay)
             .load(&mut game);
         Units::give_type(&mut game, fighter, MoveStep::new(Num::HALF).unwrap());
+        Units::give_type(&mut game, fighter, Sight::new(Num::int(6)).unwrap());
         Orders::load_acquire(&mut game, fighter, 100, &["enemies"]);
         let mut units = Vec::new();
         let orders = [(0, -12, 16), (1, 12, -16)].map(|(side, from, to)| {

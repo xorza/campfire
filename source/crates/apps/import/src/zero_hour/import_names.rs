@@ -20,8 +20,14 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 #[derive(Debug, Default)]
 pub(crate) struct ImportNames<'r> {
     taken: BTreeMap<TypeName, &'r IniObject>,
-    placed: BTreeMap<TypeName, ImportedType>,
-    fields: BTreeMap<TypeName, &'r IniObject>,
+    types: BTreeMap<TypeName, TypeEntry<'r>>,
+}
+
+/// A unit type made so far: the fields its object gives, and the object that fields it.
+#[derive(Debug)]
+struct TypeEntry<'r> {
+    imported: ImportedType,
+    object: &'r IniObject,
 }
 
 /// The names as production makes the types its command sets make, every placement done, and the
@@ -45,10 +51,10 @@ pub(crate) struct ProjectileNames<'r>(ImportNames<'r>);
 
 /// An object's unit type, by its name, the fields its object gives, and the object that fields
 /// it, which every stage after reads for it.
-#[derive(Debug, Clone)]
-pub(crate) struct NamedType<'r> {
-    pub(crate) name: TypeName,
-    pub(crate) imported: ImportedType,
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NamedType<'n, 'r> {
+    pub(crate) name: &'n TypeName,
+    pub(crate) imported: &'n ImportedType,
     pub(crate) object: &'r IniObject,
 }
 
@@ -75,18 +81,20 @@ impl<'r> ImportNames<'r> {
         &mut self,
         object: &'r IniObject,
         rules: &'r ZeroHourRules,
-    ) -> Result<NamedType<'r>, TypeError> {
+    ) -> Result<NamedType<'_, 'r>, TypeError> {
         let name = self.take(object)?;
-        let imported = match self.placed.entry(name.clone()) {
-            Entry::Occupied(placed) => placed.get().clone(),
-            Entry::Vacant(new) => new.insert(ImportedType::of(object, rules)?).clone(),
-        };
-        let fielded = rules.objects.fielded(object);
-        self.fields.entry(name.clone()).or_insert(fielded);
+        if !self.types.contains_key(&name) {
+            let entry = TypeEntry {
+                imported: ImportedType::of(object, rules)?,
+                object: rules.objects.fielded(object),
+            };
+            self.types.insert(name.clone(), entry);
+        }
+        let (name, entry) = self.types.get_key_value(&name).expect("the type is made");
         Ok(NamedType {
             name,
-            imported,
-            object: fielded,
+            imported: &entry.imported,
+            object: entry.object,
         })
     }
 
@@ -121,34 +129,34 @@ impl<'r> ImportNames<'r> {
         imported: ImportedType,
     ) -> Result<TypeName, NameError> {
         self.claim(&name, object)?;
-        if self.placed.contains_key(&name) {
-            return Err(NameClash {
-                first: object.name.clone(),
-                second: object.name.clone(),
+        match self.types.entry(name.clone()) {
+            Entry::Occupied(_) => Err(NameError::ProjectileOfType {
+                object: object.name.clone(),
+                name: name.to_string(),
+            }),
+            Entry::Vacant(new) => {
+                new.insert(TypeEntry { imported, object });
+                Ok(name)
             }
-            .into());
         }
-        self.placed.insert(name.clone(), imported);
-        self.fields.insert(name.clone(), object);
-        Ok(name)
     }
 
     /// Each unit type so far, in the order of their names.
     fn types(&self) -> impl Iterator<Item = TypedObject<'_, 'r>> {
-        self.placed.iter().map(|(name, imported)| TypedObject {
+        self.types.iter().map(|(name, entry)| TypedObject {
             name,
-            object: self.fields[name],
-            imported,
+            object: entry.object,
+            imported: &entry.imported,
         })
     }
 
     /// The objects of the unit types so far, in the order of their names.
     fn typed_objects(&self) -> Vec<NamedObject<'r>> {
-        let named = |name: &TypeName| NamedObject {
+        let named = |(name, entry): (&TypeName, &TypeEntry<'r>)| NamedObject {
             name: name.clone(),
-            object: self.fields[name],
+            object: entry.object,
         };
-        self.placed.keys().map(named).collect()
+        self.types.iter().map(named).collect()
     }
 }
 
@@ -166,8 +174,8 @@ impl<'r> ProductionNames<'r> {
         &mut self,
         object: &'r IniObject,
         rules: &'r ZeroHourRules,
-    ) -> Result<NamedType<'r>, TypeError> {
-        let typed = TypeName::of(object).is_ok_and(|name| self.names.placed.contains_key(&name));
+    ) -> Result<NamedType<'_, 'r>, TypeError> {
+        let typed = TypeName::of(object).is_ok_and(|name| self.names.types.contains_key(&name));
         let named = self.names.unit_type(object, rules)?;
         if !typed {
             self.fresh.push(NamedObject {
@@ -180,7 +188,7 @@ impl<'r> ProductionNames<'r> {
 
     /// The fields of the unit type `name`, which production typed or a map placed.
     pub(crate) fn imported(&self, name: &TypeName) -> &ImportedType {
-        &self.names.placed[name]
+        &self.names.types[name].imported
     }
 
     /// The objects typed since the last take, in the order they were.
@@ -213,7 +221,8 @@ impl<'r> ProjectileNames<'r> {
 
     /// The closed set of the unit types the stages made, which no stage after adds to.
     pub(crate) fn close(self) -> ImportedTypes {
-        ImportedTypes::new(self.0.placed)
+        let types = self.0.types.into_iter();
+        ImportedTypes::new(types.map(|(name, entry)| (name, entry.imported)).collect())
     }
 }
 
@@ -252,11 +261,17 @@ mod tests {
         // A look alone is no unit type: the file lists the placed types, which neither drive nor
         // block, so no speed bounds them.
         names.take(object("Oak")).unwrap();
-        let file = names
-            .into_production()
-            .into_projectiles()
-            .close()
-            .bare_file();
+        let tank = names.unit_type(object("AmericaTank"), &rules).unwrap();
+        let (name, object, imported) = (tank.name.clone(), tank.object, tank.imported.clone());
+        let mut projectiles = names.into_production().into_projectiles();
+        // A projectile of the tank's that gives the tank's own name is refused, naming both.
+        let own = projectiles.projectile(name, object, imported);
+        let refused = NameError::ProjectileOfType {
+            object: "AmericaTank".to_owned(),
+            name: "americatank".to_owned(),
+        };
+        assert_eq!(own, Err(refused));
+        let file = projectiles.close().bare_file();
         assert_eq!(file.max_speed, None);
         let toml = file.text;
         assert_eq!(toml, "[units.americatank]\n\n[units.rocks1]\n");

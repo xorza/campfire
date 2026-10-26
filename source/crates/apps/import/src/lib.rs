@@ -12,6 +12,7 @@ pub use crate::texture::error::TextureError;
 pub use crate::zero_hour::animation_import::AnimationDropCause;
 pub use crate::zero_hour::archive_path::ArchivePath;
 pub use crate::zero_hour::dropped::Dropped;
+pub use crate::zero_hour::dropped_roads::{DroppedRoads, RoadDropCause};
 pub use crate::zero_hour::error::{
     MapError, ModelError, NameClash, NameError, NoPackagePath, TypeError, VersionDifference,
     ZeroHourError,
@@ -27,6 +28,7 @@ pub use crate::zero_hour::game_version::GameVersion;
 pub use crate::zero_hour::import_loss::ImportLoss;
 pub use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel, StateDropCause};
 pub use crate::zero_hour::production_import::ButtonDropCause;
+pub use crate::zero_hour::road_pieces::RoadPieces;
 pub use crate::zero_hour::supply_import::SupplyDropCause;
 pub use crate::zero_hour::upgrade_import::UpgradeDropCause;
 pub use crate::zero_hour::weapon_drop_cause::WeaponDropCause;

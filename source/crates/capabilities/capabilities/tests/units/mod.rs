@@ -867,4 +867,22 @@ fn a_timed_life_ends_with_the_tick_before_its_end_also_after_a_restore() {
     // Before ticks 1, 2, 3 and 4: alive, alive, gone, gone.
     assert_eq!(lived(false), [true, true, false, false]);
     assert_eq!(lived(true), [true, true, false, false]);
+    // A dead unit's life waits, as its death owns it: dead past its end it stays, and once it
+    // lives again, before tick 3, its life ends as that tick ends.
+    let mut game = units_match();
+    let id = Spawn::named(&game, "unit", (0, 0, 0))
+        .parts((Lifespan::until(Tick::new(3)), Dead))
+        .place(&mut game);
+    let mut alive = Vec::new();
+    for tick in 0..5 {
+        if tick == 3 {
+            let entity = game.unit_entity(id);
+            game.entity_mut(entity).remove::<Dead>();
+        }
+        alive.push(game.entity_of(id).is_some());
+        game.step();
+    }
+    // Before ticks 0 to 4: alive through its end while dead, and gone after the tick it lived
+    // again.
+    assert_eq!(alive, [true, true, true, true, false]);
 }

@@ -208,12 +208,11 @@ fn nearest_enemy_start(ctx, me, from) {
     nearest
 }
 
-// The point of the start waypoint of player slot `player_slot`, `Player_<n>_Start` of slot `n`; `()` on a map
-// with none.
+// The point of the marker of `start` of player slot `player_slot`, `Player_<n>_Start` of slot `n`;
+// `()` on a map with none.
 fn start_point(ctx, player_slot) {
-    let name = `Player_${player_slot + 1}_Start`;
     for marker in ctx.map.markers("start") {
-        if marker.params.name == name {
+        if marker.params.player_slot == player_slot {
             return marker.position;
         }
     }

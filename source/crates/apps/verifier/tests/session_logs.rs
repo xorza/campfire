@@ -14,7 +14,7 @@ use campfire_common::ErrorReport;
 use campfire_common::{
     AfterLeave, PackageFingerprint, PlayerSlot, StateHash, Tick, Ticks, Version,
 };
-use campfire_harness::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
+use campfire_harness::{FixedMatch, FixedSession, HashTrail, HeroWalk, MatchUnits, Moba3v3};
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
 use campfire_orders::OrdersDirective;
@@ -32,7 +32,7 @@ use campfire_runner::{
     ServerInputRefusal, Session, SessionSource, SessionWorld, SnapshotCheckError, StartError,
     TermsError, UncheckedSource,
 };
-use campfire_sim::{EntityIndex, Position, SimWorld, StableId, StateRegistry};
+use campfire_sim::{EntityIndex, SimWorld, StableId, StateRegistry};
 use campfire_store::internals::{PinnedFile, TestDir};
 use campfire_store::{AppendWriter, PathError, ReadError};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
@@ -110,22 +110,12 @@ fn session() -> FixedSession {
         max_payload_len: Release::LEAST_PAYLOAD_LEN,
         max_per_tick: 4,
     };
-    FixedSession::with_rules(packages(), 1, rules)
+    FixedSession::new(packages(), 1).rules(rules)
 }
-#[derive(Debug, PartialEq, Eq)]
-struct Hero {
-    position: Vec3,
-    destination: Destination,
-}
-
 /// Where player `player_slot`'s hero stands and walks to.
-fn hero(game: &Match, player_slot: u32) -> Hero {
+fn hero(game: &Match, player_slot: u32) -> HeroWalk {
     let units = MatchUnits::of(game);
-    let hero = units.unit(units.hero(player_slot));
-    Hero {
-        position: hero.get::<Position>().unwrap().get(),
-        destination: *hero.get::<Destination>().unwrap(),
-    }
+    HeroWalk::of(units.unit(units.hero(player_slot)))
 }
 
 #[derive(Debug)]
@@ -179,7 +169,7 @@ pub(super) fn checkpointed(
     fixed
         .game_mut()
         .session_mut()
-        .record_checkpoint(record)
+        .serve_checkpoint(record)
         .unwrap();
     play(&mut fixed, &orders, 40..72, &mut trail);
     let game = fixed.game_mut();
@@ -188,7 +178,7 @@ pub(super) fn checkpointed(
         outcome: outcome.unwrap_or(ended.outcome),
         ..ended
     };
-    game.session_mut().record_result(result).unwrap();
+    game.session_mut().serve_result(result).unwrap();
     game.session_mut().reveal_seed();
     Run { fixed, trail }
 }
@@ -257,6 +247,7 @@ fn a_matchs_journal_publishes_the_log_its_twin_of_no_journal_holds() {
         for record in JournalFrames::new(&file).unwrap() {
             visit(record);
         }
+        Ok(())
     };
     SessionLog::publish(&mut walk, &session().seed(1), &mut published).unwrap();
     assert_eq!(published, encoded(twin.game().session().log()));
@@ -375,7 +366,7 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
 fn run_and_replay_agree_on_every_tick() {
     let Run { fixed, trail: live } = run(&ORDERS.each_ref(), TICKS);
     let game = fixed.game();
-    let arrived = Hero {
+    let arrived = HeroWalk {
         position: Vec3::from((-2, 0, 5)),
         destination: Destination::default(),
     };
@@ -414,8 +405,8 @@ fn move_order(fixed: &FixedMatch, player_slot: u32, x: i64, z: i64) -> Vec<u8> {
 }
 
 /// The hero standing at (`x`, `z`), with nowhere to walk.
-fn standing(x: i16, z: i16) -> Hero {
-    Hero {
+fn standing(x: i16, z: i16) -> HeroWalk {
+    HeroWalk {
         position: Vec3::from((x, 0, z)),
         destination: Destination::default(),
     }
@@ -476,11 +467,7 @@ fn bot_and_returning_player(fixed: &mut FixedMatch, tick: u64) {
 
 #[test]
 fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hashes() {
-    let session = FixedSession::planned(
-        packages(),
-        InputRules::LAN,
-        [PlayerSlotPlan::Player, PlayerSlotPlan::Bot],
-    );
+    let session = FixedSession::planned(packages(), [PlayerSlotPlan::Player, PlayerSlotPlan::Bot]);
     let mut fixed = session.start();
     let mut live = HashTrail::default();
     for tick in 0..TICKS {

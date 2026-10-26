@@ -1,5 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_values::TagFilterData;
 use serde::{Deserialize, Serialize};
 
@@ -29,4 +30,5 @@ pub struct UpgradeData {
 impl Section for UpgradesData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "upgrades";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

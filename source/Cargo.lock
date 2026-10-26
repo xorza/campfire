@@ -2192,6 +2192,7 @@ dependencies = [
  "campfire-states",
  "campfire-stats",
  "campfire-store",
+ "campfire-threads",
  "campfire-units",
  "campfire-values",
  "campfire-visibility",
@@ -2340,6 +2341,7 @@ name = "campfire-declarations"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
+ "bevy_platform",
  "campfire-codec",
  "campfire-common",
  "campfire-declarations",
@@ -3646,6 +3648,7 @@ dependencies = [
  "campfire-sim",
  "campfire-stats",
  "campfire-store",
+ "campfire-threads",
  "campfire-units",
  "campfire-values",
  "campfire-vision",

@@ -4,6 +4,7 @@ use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, Pipelin
 use campfire_common::DeclaredName;
 use campfire_declarations::Listed;
 use campfire_script::ApiBuilder;
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_values::{Number, Ranked};
 use serde::{Deserialize, Serialize};
@@ -62,6 +63,7 @@ impl KindSection for ResearchData {
 impl Listed for ResearchData {
     type Set = KindSections;
     const KEY: &'static str = ActionKind::Research.name();
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn KindSection> {
         Arc::new(self)

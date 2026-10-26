@@ -390,9 +390,7 @@ fn a_depot_spawned_whole_keeps_its_spawns_and_a_restore_sends_none_again() {
     assert_eq!(at(&mut restored).len(), 2);
     let forge = Shop::spawned(&mut game, shop.forge)[0].id;
     game.drain_life(forge);
-    for _ in 0..7 {
-        game.step();
-    }
+    game.steps(7);
     let grunts = Shop::spawned(&mut game, shop.grunt);
     let living = grunts
         .iter()
@@ -511,9 +509,7 @@ fn a_completed_site_keeps_its_spawns_brings_each_back_and_takes_them_as_it_dies(
     game.drain_life(depot);
     game.step();
     assert_eq!(living(&mut game, shop), 0);
-    for _ in 0..10 {
-        game.step();
-    }
+    game.steps(10);
     assert_eq!(living(&mut game, shop), 0);
 }
 
@@ -580,9 +576,7 @@ fn a_leader_stands_at_its_spawns_centre_passes_them_its_orders_and_dies_with_the
             .iter()
             .all(|&id| game.try_part::<Destination>(id).is_some())
     );
-    for _ in 0..3 {
-        game.step();
-    }
+    game.steps(3);
     assert!(centre(&game).x > before.x);
     assert_eq!(game.part::<Position>(leader).get(), centre(&game));
 
@@ -592,9 +586,7 @@ fn a_leader_stands_at_its_spawns_centre_passes_them_its_orders_and_dies_with_the
     game.drain_life(first[1]);
     game.step();
     assert_eq!(living(&game), [first[0], first[2]]);
-    for _ in 0..5 {
-        game.step();
-    }
+    game.steps(5);
     let back = living(&game);
     assert_eq!(back.len(), 3);
     let new = back[2];
@@ -892,9 +884,7 @@ fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing(
     Production::build_at(&mut game, builder, 0, 0);
     let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
     game.insert_parts(depot, Dead);
-    for _ in 0..4 {
-        game.step();
-    }
+    game.steps(4);
     assert_eq!(
         (shop.gold(&game), Production::site(&game, depot).1),
         (85, Some(Num::ONE))

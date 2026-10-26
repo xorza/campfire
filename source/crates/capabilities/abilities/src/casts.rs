@@ -5,7 +5,7 @@ use std::mem;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryData;
-use bevy_ecs::query::{Has, With, Without};
+use bevy_ecs::query::{Has, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
@@ -85,27 +85,24 @@ impl Casts {
         book: Res<'_, ActionBook>,
         (resources, life): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PoolBook>),
         targets: Targets<'_, '_>,
-        (mut units, present): (
-            Query<
-                '_,
-                '_,
-                (
-                    (Entity, &StableId, &Position),
-                    &Team,
-                    (&ActionSlots, &mut ActionProgress),
-                    &mut SlotTimes,
-                    UnitPoolsReadOnly,
-                    Option<&Owner>,
-                    Option<&Body>,
-                    Option<&UnitTags>,
-                    Has<ForcedMove>,
-                    Option<Walk>,
-                    Option<&UseGroup>,
-                ),
-                Without<Dead>,
-            >,
-            Query<'_, '_, (), With<ActionProgress>>,
-        ),
+        mut units: Query<
+            '_,
+            '_,
+            (
+                (Entity, &StableId, &Position),
+                &Team,
+                (&ActionSlots, &mut ActionProgress),
+                &mut SlotTimes,
+                UnitPoolsReadOnly,
+                Option<&Owner>,
+                Option<&Body>,
+                Option<&UnitTags>,
+                Has<ForcedMove>,
+                Option<Walk>,
+                Option<&UseGroup>,
+            ),
+            Without<Dead>,
+        >,
         (mut indexes, mut held): (ProgressIndexes<'_>, Local<'_, Vec<DueUnit>>),
     ) {
         let now = tick.start();
@@ -113,11 +110,9 @@ impl Casts {
         held.clear();
         indexes.orders(&mut held);
         for &DueUnit { id, entity } in &*held {
-            // A dead unit keeps its order, for when it lives again.
+            // A dead unit keeps its order, for when it lives again; a gone one left the index as
+            // its progress went.
             let Ok(unit) = units.get_mut(entity) else {
-                if !present.contains(entity) {
-                    indexes.forget_order(entity);
-                }
                 continue;
             };
             let (

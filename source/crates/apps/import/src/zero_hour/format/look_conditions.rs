@@ -1,3 +1,5 @@
+use campfire_common::DeclaredName;
+
 /// The conditions of a map that a model's state follows, as the original sets them on every
 /// object with `ForceModelsToFollowTimeOfDay` and `ForceModelsToFollowWeather`: `NIGHT` on a night
 /// map and `SNOW` on a snowy one.
@@ -23,4 +25,14 @@ impl LookConditions {
             snow: true,
         },
     ];
+
+    /// The names the package gives the conditions held, `night` and `snow`, in that order.
+    pub(crate) fn names(self) -> Vec<DeclaredName> {
+        let named = |name| DeclaredName::new(name).expect("the import's own names are declared");
+        [(self.night, "night"), (self.snow, "snow")]
+            .into_iter()
+            .filter(|&(held, _)| held)
+            .map(|(_, name)| named(name))
+            .collect()
+    }
 }

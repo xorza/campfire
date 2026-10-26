@@ -2,7 +2,6 @@ use crate::link_messages::LinkMessages;
 use crate::link_messages::{EndpointList, ListedEndpoint};
 use crate::message::Message;
 use crate::message_type_id::MessageTypeId;
-use crate::send_queue::Priority;
 use crate::send_queue::QueuedSender;
 use crate::send_queue::SendQueue;
 use bevy_ecs::component::Component;
@@ -27,7 +26,7 @@ impl<M: Message> Default for MessageSender<M> {
 
 impl<M: Message> MessageSender<M> {
     /// Buffers a message to be sent over the channel
-    pub fn send_with_priority<C: Channel>(&mut self, message: M, priority: Priority) {
+    pub fn send_with_priority<C: Channel>(&mut self, message: M, priority: f32) {
         self.queue.push(message, ChannelTypeId::of::<C>(), priority);
     }
 

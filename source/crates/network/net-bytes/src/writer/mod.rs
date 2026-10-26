@@ -44,23 +44,6 @@ impl Writer {
         self.arena.is_empty()
     }
 
-    /// Appends `len` bytes that `fill` writes into the slice it is given, which starts zeroed.
-    /// When `fill` fails, the message being written is as it was.
-    pub fn fill<E>(
-        &mut self,
-        len: usize,
-        fill: impl FnOnce(&mut [u8]) -> Result<(), E>,
-    ) -> Result<(), E> {
-        let buffer = self.arena.reserve(len);
-        let start = buffer.len();
-        buffer.resize(start + len, 0);
-        let filled = fill(&mut buffer[start..]);
-        if filled.is_err() {
-            buffer.truncate(start);
-        }
-        filled
-    }
-
     /// Splits the message written so far off as a separate [`Bytes`]. O(1): the message shares
     /// the writer's chunk.
     pub fn take_written(&mut self) -> Bytes {

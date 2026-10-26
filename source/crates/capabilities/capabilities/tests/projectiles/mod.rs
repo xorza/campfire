@@ -203,9 +203,7 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
 
     // Both fire in tick 2. Before tick 5 one target dies and the other despawns: in tick 5 both
     // projectiles end where they were, and neither strikes.
-    for _ in 0..5 {
-        game.step();
-    }
+    game.steps(5);
     assert_eq!(Projectiles::projectiles(&game).len(), 2);
     game.insert_parts(doomed, Dead);
     let entity = game.unit_entity(gone);
@@ -413,9 +411,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
 
     // It launches in tick 0 and flies half a meter a tick from tick 1: 6 m is ticks 1 to 12, and
     // it ends in tick 12, as its range runs out. After tick 11 it is at 5.5 m.
-    for _ in 0..12 {
-        game.step();
-    }
+    game.steps(12);
     assert_eq!(
         Projectiles::projectiles(&game),
         [point(Num::int(5) + Num::HALF, Num::ZERO)]
@@ -464,9 +460,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     });
     let dart = volley.dart;
     Projectiles::fire_line(&mut game, source, dart, ALONG_X);
-    for _ in 0..6 {
-        game.step();
-    }
+    game.steps(6);
     assert_eq!(
         Projectiles::projectiles(&game),
         [point(Num::int(2) + Num::HALF, Num::ZERO)]
@@ -491,9 +485,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
         .team(Team::new(1))
         .place(&mut game);
     Projectiles::fire_line(&mut game, source, dart, ALONG_X);
-    for _ in 0..7 {
-        game.step();
-    }
+    game.steps(7);
     assert_eq!(Projectiles::projectiles(&game), []);
     let healths = [block, dot].map(|id| Stats::health(&game, id));
     assert_eq!(healths, [90, 100]);

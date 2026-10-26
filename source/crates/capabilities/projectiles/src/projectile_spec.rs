@@ -1,15 +1,16 @@
 use std::num::NonZeroI64;
 
 use campfire_common::Ticks;
-use campfire_declarations::PerId;
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_geometry::Radius;
 use campfire_math::{Num, Rounding, SinCos};
 use campfire_script::{Filters, TagNames, UnknownName};
 use campfire_sim::MatchRate;
+use campfire_units::UnitTypes;
+use campfire_values::UnitType;
 
 use crate::projectile_data::{CruiseData, ProjectileData, ProjectileHits};
 use crate::projectile_flight::ProjectileFlight;
-use campfire_values::UnitType;
 
 /// A projectile type as a match runs it: its speed a tick, half its width, the radius of the
 /// circle it flies as, the units it hits, by no filter when it hits nothing, and how it flies.
@@ -186,4 +187,23 @@ impl ProjectileSpec {
 
 impl PerId<UnitType> for ProjectileSpec {
     const SCRIPTS_ONLY: bool = false;
+}
+
+impl ProjectileSpec {
+    /// The spec of each projectile type, its filters resolved against the match's tags; an error
+    /// for a tag the match does not have.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let tags = cx.fact::<UnitTypes>()?.tags();
+        let mut book = ByIdBuilder::default();
+        for unit in cx.types() {
+            let Some(projectile) = unit.data.section::<ProjectileData>() else {
+                continue;
+            };
+            let spec = Self::of(projectile, tags, cx.rate()).map_err(|name| {
+                BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), name)
+            })?;
+            book.set(unit.unit_type, spec);
+        }
+        Ok(book.build())
+    }
 }

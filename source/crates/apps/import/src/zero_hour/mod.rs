@@ -11,7 +11,7 @@ use campfire_common::{MapName, PackageFingerprint};
 use campfire_math::Num;
 use campfire_package::{MapFile, ModeFile, ModeRead, UnitsFile};
 use campfire_package_disk::{PackageDir, PackageWriter, WriteError};
-use campfire_package_format::PackageFiles;
+use campfire_package_format::{FileIndex, PackageFiles};
 use campfire_store::DurableDir;
 use campfire_units::HeightGrid;
 use campfire_values::{PackagePath, Speed};
@@ -32,12 +32,14 @@ use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::install::{Install, TextureKind};
 use crate::zero_hour::look_flags::LookFlags;
 use crate::zero_hour::map_import::{MapImport, MapSources};
+use crate::zero_hour::map_roads::MapRoads;
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
 use crate::zero_hour::production_import::ProductionImport;
+use crate::zero_hour::road_pieces::RoadPieces;
 use crate::zero_hour::rules_package::{ModeImport, RULES_FILES};
 use crate::zero_hour::skirmish_start::SkirmishStart;
-use crate::zero_hour::terrain_atlas::ClassTexture;
+use crate::zero_hour::terrain_atlas::PackageTexture;
 use crate::zero_hour::unit_types::TypeAdditions;
 use crate::zero_hour::upgrade_import::UpgradeImport;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
@@ -49,6 +51,7 @@ pub(crate) mod camera_import;
 pub(crate) mod cliff_walls;
 pub(crate) mod combat_import;
 pub(crate) mod dropped;
+pub(crate) mod dropped_roads;
 pub(crate) mod error;
 pub(crate) mod format;
 pub(crate) mod game_path;
@@ -62,6 +65,7 @@ pub(crate) mod imported_type;
 pub(crate) mod install;
 pub(crate) mod look_flags;
 pub(crate) mod map_import;
+pub(crate) mod map_roads;
 pub(crate) mod model_assets;
 pub(crate) mod model_import;
 pub(crate) mod model_nodes;
@@ -70,6 +74,10 @@ pub(crate) mod object_flight;
 pub(crate) mod pivot_nodes;
 mod press_import;
 pub(crate) mod production_import;
+pub(crate) mod road_buffer;
+pub(crate) mod road_decals;
+pub(crate) mod road_mesh;
+pub(crate) mod road_pieces;
 pub(crate) mod rules_names;
 pub(crate) mod rules_package;
 pub(crate) mod skirmish_start;
@@ -82,8 +90,9 @@ pub(crate) mod upgrade_import;
 pub(crate) mod weapon_drop_cause;
 pub(crate) mod zero_hour_rules;
 
-/// What an import wrote: the packages' fingerprints, each map, by name, which loads, and what
-/// it does not hold of the install, in the order the import met it.
+/// What an import wrote: the packages' fingerprints, each map, by name, which loads, the road
+/// pieces each map draws, and what it does not hold of the install, in the order the import met
+/// it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Imported {
     /// The imported package's.
@@ -91,6 +100,7 @@ pub struct Imported {
     /// The rules package's, beside it.
     pub rules: PackageFingerprint,
     pub maps: Vec<MapName>,
+    pub roads: BTreeMap<MapName, RoadPieces>,
     pub losses: Vec<ImportLoss>,
 }
 
@@ -172,7 +182,9 @@ impl ZeroHour {
         losses.extend(dropped_states.into_iter().map(ImportLoss::States));
         let mut names = BTreeMap::<MapName, ArchivePath>::new();
         let mut maps = Vec::new();
-        let mut class_textures = BTreeMap::new();
+        let mut roads = BTreeMap::new();
+        let mut terrain_textures = BTreeMap::new();
+        let road_assets = ModelAssets::new(&self.install)?;
         for map in self.install.maps() {
             let name = ImportName::of(map.dir.as_bytes()).map()?;
             if let Some(first) = names.insert(name.clone(), map.path.clone()) {
@@ -192,15 +204,26 @@ impl ZeroHour {
                 .fields()
                 .classes
                 .iter()
-                .map(|class| self.class_texture(class, &game.terrain, &mut class_textures))
+                .map(|class| self.class_texture(class, &game.terrain, &mut terrain_textures))
+                .collect::<Result<Vec<_>, _>>()?;
+            let map_roads = MapRoads::of(&file.objects, &game.roads);
+            let road_textures = map_roads
+                .types()
+                .iter()
+                .map(|&road| {
+                    let name = &game.roads[road].texture;
+                    self.road_texture(name, &road_assets, &mut terrain_textures)
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             let sources = MapSources {
                 rules: &game,
                 names: &mut object_names,
-                looks: &looks,
+                object_looks: &looks.objects,
                 lights: game.game_data.global_lights(),
                 game: game.game_data.terrain,
                 textures: &textures,
+                roads: &map_roads,
+                road_textures: &road_textures,
             };
             let imported = MapImport::new(&file, sources).map_err(in_map)?;
             writer.write(MapFile::path(&name), imported.map.as_bytes())?;
@@ -220,18 +243,24 @@ impl ZeroHour {
                 map: name.clone(),
                 waypoint,
             }));
+            let dropped_roads = imported.dropped_roads.into_iter();
+            losses.extend(dropped_roads.map(|dropped| ImportLoss::Road {
+                map: name.clone(),
+                dropped,
+            }));
+            roads.insert(name.clone(), imported.road_pieces);
             maps.push(name);
         }
         // The textures the models and the terrain draw with, each converted once: no other file
         // of the install is drawn.
         let drawn = model_textures
             .into_iter()
-            .chain(class_textures.keys().cloned());
+            .chain(terrain_textures.keys().cloned());
         for (to, path) in texture_files(drawn)? {
             let kind =
                 TextureKind::of(&path).expect("a model's and a terrain's textures are DDS or TGA");
-            // A terrain's TGA was read for its size, and is not read again.
-            let bytes = match class_textures.remove(&path) {
+            // A terrain's texture was read for its size, and is not read again.
+            let bytes = match terrain_textures.remove(&path) {
                 Some(read) => read.bytes,
                 None => self.install.read(&path)?,
             };
@@ -254,10 +283,10 @@ impl ZeroHour {
         let production = ProductionImport::of(&game, &mut object_names);
         let mut object_names = object_names.into_projectiles();
         let combat = CombatImport::of(&game, &mut object_names)?;
-        combat.complete_looks(&mut looks);
+        combat.complete_looks(&mut looks.units);
+        let looks = ClientUnits::new(looks.units, looks.conditions, looks.objects)?;
         let upgrades = UpgradeImport::of(&game, object_names.types(), &production, &combat)?;
-        let text = Toml::write(&looks);
-        writer.write(ClientUnits::path(), text.as_bytes())?;
+        writer.write(ClientUnits::path(), &looks.encode())?;
         // Every unit type is made: the maps', the start's, the command sets' and the projectiles
         // their weapons fire. The stages after read their closed set, and return what they give
         // each.
@@ -317,6 +346,7 @@ impl ZeroHour {
             fingerprint,
             rules,
             maps,
+            roads,
             losses,
         })
     }
@@ -330,15 +360,32 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 14;
+    pub const OUTPUT_VERSION: u32 = 19;
 
-    /// Writes the rules package into the new directory `dir`; its fingerprint.
+    /// Writes the rules package into the new directory `dir`; its fingerprint, which is
+    /// `rules_fingerprint`'s.
     fn write_rules(dir: &Path) -> Result<PackageFingerprint, ZeroHourError> {
         let mut writer = PackageWriter::create(dir)?;
         for (path, bytes) in RULES_FILES {
             writer.write(fixed(path), bytes)?;
         }
-        Ok(writer.finish()?)
+        let written = writer.finish()?;
+        debug_assert_eq!(
+            written,
+            Self::rules_fingerprint(),
+            "the rules' index is its files'"
+        );
+        Ok(written)
+    }
+
+    /// The fingerprint of the rules package this importer writes, read from the index the
+    /// workspace keeps of its files, so a kept import of other rules is known without a write
+    /// (09-zero-hour.md, A check keeps an unchanged import).
+    pub fn rules_fingerprint() -> PackageFingerprint {
+        let index = include_bytes!("../../../../../packages/zero-hour/package.index");
+        FileIndex::decode(index)
+            .expect("the workspace's index of the rules decodes")
+            .fingerprint()
     }
 
     /// The texture of `class`: the TGA `Art\Terrain\` holds by the name its terrain type gives,
@@ -349,7 +396,7 @@ impl ZeroHour {
         class: &TextureClass,
         types: &TerrainIni,
         read: &mut BTreeMap<ArchivePath, TerrainTexture>,
-    ) -> Result<Option<ClassTexture>, ZeroHourError> {
+    ) -> Result<Option<PackageTexture>, ZeroHourError> {
         let Some(file) = types.texture(&class.name) else {
             return Ok(None);
         };
@@ -369,7 +416,41 @@ impl ZeroHour {
             read.insert(path.clone(), TerrainTexture { size, bytes });
             size
         };
-        Ok(Some(ClassTexture {
+        Ok(Some(PackageTexture {
+            path: game_path::texture(&path)?,
+            size,
+        }))
+    }
+
+    /// The texture of a road type, of the file `name` its `Texture` gives, as the game's asset
+    /// manager finds it: its DDS, else its TGA, in `Art\Textures\` of the language's directory,
+    /// then of the archives' (roads.md, A road's type is `Roads.ini`'s), read once into `read`
+    /// with its size, for its conversion; none for one no archive holds.
+    fn road_texture(
+        &self,
+        name: &str,
+        assets: &ModelAssets<'_>,
+        read: &mut BTreeMap<ArchivePath, TerrainTexture>,
+    ) -> Result<Option<PackageTexture>, ZeroHourError> {
+        let Some(path) = assets.texture(name) else {
+            return Ok(None);
+        };
+        let size = if let Some(texture) = read.get(&path) {
+            texture.size
+        } else {
+            let bytes = self.install.read(&path)?;
+            let texture = |error| ZeroHourError::Texture {
+                path: path.clone(),
+                error,
+            };
+            let size = match TextureKind::of(&path) {
+                Some(TextureKind::Dds) => DdsFile::read(&bytes).map_err(texture)?.size(),
+                _ => TgaHeader::read(&bytes).map_err(texture)?.size(),
+            };
+            read.insert(path.clone(), TerrainTexture { size, bytes });
+            size
+        };
+        Ok(Some(PackageTexture {
             path: game_path::texture(&path)?,
             size,
         }))

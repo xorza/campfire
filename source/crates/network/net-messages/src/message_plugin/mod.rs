@@ -418,13 +418,13 @@ impl MessagePlugin {
                     LinkDirection::ServerToClient
                 };
 
-                // A sender that fails is skipped alone; the senders after it still send.
                 for &net_id in senders.iter() {
                     let registered = registry.message(net_id);
                     let fns = registered.send();
                     if !registered.travels(direction) {
                         let dropped = (fns.discard_fn)(&mut endpoints);
-                        debug_assert_eq!(
+                        // A send against the registered direction misuses the public API.
+                        assert_eq!(
                             dropped, 0,
                             "a message is sent {direction:?}, against its registered direction"
                         );

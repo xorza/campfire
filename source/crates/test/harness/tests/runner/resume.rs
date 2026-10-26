@@ -146,7 +146,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
         fixed
             .game_mut()
             .session_mut()
-            .record_checkpoint(record)
+            .serve_checkpoint(record)
             .unwrap();
         snapshot
     };
@@ -243,7 +243,7 @@ fn a_load_drops_the_log_after_its_save_plays_on_as_a_fresh_restore_and_the_publi
     }
     assert_ne!(game.state_hash(), hashes[149]);
     let result = game.session_result();
-    game.session_mut().record_result(result).unwrap();
+    game.session_mut().serve_result(result).unwrap();
     game.session_mut().reveal_seed();
     let mut bytes = Vec::new();
     game.session().log().encode(&mut bytes);

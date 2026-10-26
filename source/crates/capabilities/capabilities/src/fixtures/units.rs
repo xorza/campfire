@@ -7,7 +7,7 @@ use campfire_common::Tick;
 use campfire_script::{Filter, MatchNames, TagNames};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimSystems, SimTick, StableId};
-use campfire_stats::{Applier, CarriedMut, ModifierBook, ModifierData, Modifiers, Stats};
+use campfire_stats::{Applier, CarriedMut, ModifierBook, Modifiers, Stats};
 use campfire_units::internals::TEST_PACKAGE;
 use campfire_units::{PoolId, StatId, StatusTags, TagBook, Units};
 use campfire_values::{
@@ -18,13 +18,6 @@ use crate::release::Release;
 
 /// The test fixtures of `Units` that need a crate above its own.
 pub trait UnitsFixtures {
-    /// Loads the modifiers that grant the test tags, each of its tag's name, in the package
-    /// `TEST_PACKAGE`, after every other, unless the match loaded them.
-    fn load_test_modifiers(world: &mut World);
-
-    /// Whether the match loaded the modifiers that grant the test tags.
-    fn loads_test_modifiers(world: &World) -> bool;
-
     /// Holds on unit `id` the test tags whose effects make `properties`, in place of those it
     /// held, each by the modifier that grants it, as a stun's does; and derives its tags at
     /// once, as the stats derive them.
@@ -50,34 +43,13 @@ pub trait UnitsFixtures {
 }
 
 impl UnitsFixtures for Units {
-    fn load_test_modifiers(world: &mut World) {
-        if Self::loads_test_modifiers(world) {
-            return;
-        }
-        let mut tags = Self::test_tags();
-        tags.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
-        for (name, _) in tags {
-            let grants = ModifierData {
-                tags: vec![name.clone()],
-                ..ModifierData::default()
-            };
-            Stats::load_modifier(world, TEST_PACKAGE, name.as_str(), &grants, None);
-        }
-    }
-
-    fn loads_test_modifiers(world: &World) -> bool {
-        let (first, _) = &Self::test_tags()[0];
-        world.get_resource::<ModifierBook>().is_some()
-            && Stats::modifier(world, TEST_PACKAGE, first.as_str()).is_some()
-    }
-
     fn hold_properties(world: &mut World, id: StableId, properties: TagProperties) {
         let blocks = Block::ALL.map(|block| properties.blocks(block));
         let wanted = blocks
             .into_iter()
             .chain([properties.is_hidden(), properties.detects()]);
         let entity = world.unit_entity(id);
-        Self::load_test_modifiers(world);
+        Release::load_test_modifiers(world);
         for ((name, _), wanted) in Self::test_tags().iter().zip(wanted) {
             let modifier = Stats::modifier(world, TEST_PACKAGE, name.as_str()).unwrap();
             let held = world

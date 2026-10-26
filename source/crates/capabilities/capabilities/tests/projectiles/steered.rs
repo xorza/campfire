@@ -143,9 +143,7 @@ fn a_steered_missile_speeds_up_from_its_launch_and_strikes_its_target() {
     let seven_quarters = three_quarters + Num::ONE;
     assert_eq!(standing(&game), Some(along(seven_quarters)));
     assert_eq!(state(&mut game), flying(seven_quarters, 2, Num::ONE));
-    for _ in 0..7 {
-        game.step();
-    }
+    game.steps(7);
     assert_eq!(standing(&game), Some(along(seven_quarters + Num::int(7))));
     assert_eq!(Stats::health(&game, target), 100);
     game.step();
@@ -171,9 +169,7 @@ fn a_steered_missile_turns_by_at_most_its_bound_after_its_straight_run() {
     };
     let (mut game, target) = flight(2700);
     assert_eq!(standing(&game), Some(Vec3::from((1, 0, 1))));
-    for _ in 0..7 {
-        game.step();
-    }
+    game.steps(7);
     assert_eq!(standing(&game), Some(Vec3::from((1, 0, 8))));
     game.step();
     assert_eq!(standing(&game), None);
@@ -232,9 +228,7 @@ fn a_steered_missile_strikes_a_unit_on_its_way_and_ends_as_its_target_dies() {
         .team(Team::new(1))
         .place(&mut game);
     let target = steering.launch(&mut game, (10, 0, 0));
-    for _ in 0..3 {
-        game.step();
-    }
+    game.steps(3);
     assert_eq!(standing(&game), Some(Vec3::from((3, 0, 0))));
     game.step();
     assert_eq!(standing(&game), None);

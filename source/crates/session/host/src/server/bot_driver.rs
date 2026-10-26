@@ -161,13 +161,14 @@ struct BotServer<'s> {
 }
 
 impl BotSink for BotServer<'_> {
-    /// Logs `payload` as an input of the bot of `player_slot`; one past the session's max length,
-    /// past the ticks up to its max input lead, which the player slot's inputs fill, or past a full
-    /// log, is dropped.
+    /// The longest payload the session's terms take of an input.
     fn max_payload_len(&self) -> u32 {
         self.session.log().header().terms.inputs.max_payload_len
     }
 
+    /// Logs `payload` as an input of the bot of `player_slot`; one past the session's max length,
+    /// past the ticks up to its max input lead, which the player slot's inputs fill, or past a full
+    /// log, is dropped.
     fn send(&mut self, player_slot: PlayerSlot, payload: &[u8]) {
         let Err(cause) = self.session.serve_bot(player_slot, payload) else {
             return;

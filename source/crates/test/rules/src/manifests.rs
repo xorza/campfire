@@ -286,6 +286,10 @@ pub(crate) fn a_version_is_the_workspaces_and_a_feature_its_users(workspace: &Wo
     assert_eq!(own, Vec::<String>::new());
     let manifest = WorkspaceManifest::parse(&read(source().join("Cargo.toml").to_str().unwrap()));
     assert_eq!(manifest.shared_features(), Vec::<&str>::new());
+}
+
+#[test]
+fn a_members_own_dependency_settings_are_not_inherited() {
     // A version, a path or `default-features` of a member's own is not inherited; a feature and
     // `optional` are. The table's dependency with its defaults on, or a feature, shares it.
     let member = CargoManifest::parse(concat!(
@@ -595,8 +599,7 @@ fn unnamed_dependencies<'a>(manifest: &'a CargoManifest, production: &str) -> Ve
 }
 
 /// The optional dependencies of `manifest` that `library`, its crate's library code, names
-/// nowhere: one that only its tests name is a dev-dependency, as cargo's `unused_dependencies`
-/// counts a use by the crate's integration tests.
+/// nowhere: one that only its tests name is a dev-dependency.
 fn tests_only_optional<'a>(manifest: &'a CargoManifest, library: &str) -> Vec<&'a str> {
     manifest
         .dependencies()
@@ -604,6 +607,43 @@ fn tests_only_optional<'a>(manifest: &'a CargoManifest, library: &str) -> Vec<&'
         .map(|(name, _)| name)
         .filter(|name| !source_file::names_crate(library, name))
         .collect()
+}
+
+/// The dev-dependencies of `manifest` that `code`, all its crate's code, names nowhere, the crate
+/// itself aside, which a crate lists to turn its own `internals` on.
+fn unnamed_dev_dependencies<'a>(manifest: &'a CargoManifest, code: &str) -> Vec<&'a str> {
+    manifest
+        .dev_dependencies()
+        .map(|(name, _)| name)
+        .filter(|name| *name != manifest.name() && !source_file::names_crate(code, name))
+        .collect()
+}
+
+pub(crate) fn a_dev_dependency_is_named_by_its_crates_code(workspace: &Workspace) {
+    let code = workspace.code_by_crate(|file| Some(file.code()));
+    let found: Vec<String> = (workspace.crates().iter().zip(&code))
+        .flat_map(|(krate, code)| {
+            unnamed_dev_dependencies(&krate.manifest, code)
+                .into_iter()
+                .map(|name| format!("{} {name}", krate.name))
+        })
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn an_unnamed_dev_dependency_is_found_and_the_crates_own_is_not() {
+    // A dev-dependency no code names is found, and one only a comment names; the crate's own
+    // entry, which turns its `internals` on, and one a test names are not.
+    let manifest = CargoManifest::parse(
+        "[package]\nname = \"a\"\n\n[dev-dependencies]\na = { workspace = true, features = [\"internals\"] }\nb.workspace = true\nc-d.workspace = true\n",
+    );
+    let file = SourceFile::new(
+        "src/a.rs",
+        "/// Uses `b::f`.\n#[cfg(test)]\nmod tests {\n    use c_d::G;\n}\n",
+    );
+    assert_eq!(unnamed_dev_dependencies(&manifest, file.code()), ["b"]);
+    assert_eq!(unnamed_dev_dependencies(&manifest, "use b::X;"), ["c-d"]);
 }
 
 pub(crate) fn a_required_dependency_is_named_by_production_code(workspace: &Workspace) {
@@ -624,6 +664,10 @@ pub(crate) fn a_required_dependency_is_named_by_production_code(workspace: &Work
         }
     }
     assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn an_unnamed_dependency_is_found_where_no_code_names_it() {
     // A plain and an inline dependency are found where no code names them; an optional one, and
     // one a path names, are not, nor one only a comment names.
     let manifest = CargoManifest::parse(
@@ -639,7 +683,7 @@ pub(crate) fn a_required_dependency_is_named_by_production_code(workspace: &Work
         "/// Calls `b::f`.\nfn f() {\n    // c_d::g();\n}\n",
     );
     assert_eq!(
-        unnamed_dependencies(&manifest, &commented.production().unwrap()),
+        unnamed_dependencies(&manifest, commented.production().unwrap()),
         ["b", "c-d"]
     );
 }
@@ -859,7 +903,7 @@ pub(crate) fn an_optional_dependency_is_named_by_library_code(workspace: &Worksp
     );
     let library = |path: &str, text: &str| {
         let file = SourceFile::new(path, text);
-        file.library().unwrap_or_default()
+        file.library().unwrap_or_default().to_owned()
     };
     let gated = "#[cfg(feature = \"internals\")]\nfn f() {\n    c_d::f();\n}\n";
     assert_eq!(

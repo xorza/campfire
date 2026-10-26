@@ -3,10 +3,6 @@
 //! link estimator and the timeline controller stay in `net-sync`).
 
 #![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-#![expect(
     clippy::type_complexity,
     reason = "a Bevy query names its data and its filters in one type"
 )]

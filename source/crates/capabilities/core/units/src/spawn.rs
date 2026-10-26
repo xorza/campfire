@@ -1,5 +1,6 @@
 use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::world::World;
+use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{IdAllocator, StableId};
 use campfire_values::{Team, UnitType};
@@ -8,15 +9,16 @@ use crate::spawn_at::SpawnAt;
 use crate::spawner::Spawner;
 use crate::units::Units;
 
-/// A test's unit to spawn, of a type the match loaded, at a place: on team 0, facing 0 degrees,
-/// with no part of the caller's, unless its setters say otherwise. `place` spawns it with the next
-/// stable id, as the mode's own spawns do, on any match, as a test sets a client's up with the
-/// units the server would send.
+/// A test's unit to spawn, of a type the match loaded, at a place: on team 0, of no owner, facing 0
+/// degrees, with no part of the caller's, unless its setters say otherwise. `place` spawns it with
+/// the next stable id, as the mode's own spawns do, on any match, as a test sets a client's up with
+/// the units the server would send.
 #[derive(Debug, Clone, Copy)]
 pub struct Spawn<P = ()> {
     unit_type: UnitType,
     position: Vec3,
     team: Team,
+    owner: Option<PlayerSlot>,
     angle: Num,
     parts: P,
 }
@@ -28,6 +30,7 @@ impl Spawn {
             unit_type,
             position: position.into(),
             team: Team::new(0),
+            owner: None,
             angle: Num::ZERO,
             parts: (),
         }
@@ -49,6 +52,13 @@ impl<P: Bundle<Effect: NoBundleEffect>> Spawn<P> {
         self
     }
 
+    /// Owned by the player of `slot`.
+    #[must_use]
+    pub const fn owner(mut self, slot: PlayerSlot) -> Self {
+        self.owner = Some(slot);
+        self
+    }
+
     /// Turned `angle` degrees.
     #[must_use]
     pub const fn angle(mut self, angle: Num) -> Self {
@@ -62,6 +72,7 @@ impl<P: Bundle<Effect: NoBundleEffect>> Spawn<P> {
             unit_type: self.unit_type,
             position: self.position,
             team: self.team,
+            owner: self.owner,
             angle: self.angle,
             parts,
         }
@@ -76,7 +87,7 @@ impl<P: Bundle<Effect: NoBundleEffect>> Spawn<P> {
             id,
             unit_type: self.unit_type,
             team: self.team,
-            owner: None,
+            owner: self.owner,
             position: self.position,
             angle: self.angle,
             variation: None,

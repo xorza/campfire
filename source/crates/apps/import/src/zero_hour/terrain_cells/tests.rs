@@ -2,7 +2,7 @@ use campfire_values::PackagePath;
 
 use super::*;
 use crate::zero_hour::format::map::terrain::{CliffUv, TextureClass};
-use crate::zero_hour::terrain_atlas::ClassTexture;
+use crate::zero_hour::terrain_atlas::PackageTexture;
 
 const COLUMNS: usize = 5;
 const ROWS: usize = 4;
@@ -14,7 +14,7 @@ const ROWS: usize = 4;
 struct Fixture {
     fields: TerrainFields,
     heights: MapHeights,
-    textures: Vec<Option<ClassTexture>>,
+    textures: Vec<Option<PackageTexture>>,
 }
 
 impl Fixture {
@@ -33,7 +33,7 @@ impl Fixture {
             cliff: false,
         };
         let sand = class(0, 4, 2, "Sand");
-        let sand_texture = ClassTexture {
+        let sand_texture = PackageTexture {
             path: PackagePath::parse("client/textures/art/terrain/sand.ktx2").unwrap(),
             size: UVec2::splat(128),
         };
@@ -78,7 +78,7 @@ impl Fixture {
     }
 
     fn atlas(&self) -> TerrainAtlas {
-        TerrainAtlas::new(&self.fields, &self.textures)
+        TerrainAtlas::new(&self.fields, &self.textures, &[])
     }
 
     /// What the cell `at` draws, with `game`'s settings.

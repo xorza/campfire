@@ -9,91 +9,13 @@ use std::process::ExitCode;
 
 use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
-use campfire_import::{ImportLoss, Imported, SkipReason, ZeroHour};
+use campfire_import::{Imported, ZeroHour};
 use campfire_logging::Logging;
 use tracing::{error, info, warn};
 
 use crate::command_line::{CommandLine, Game};
 
 mod command_line;
-
-/// Logs `loss` as a warning, with what it is and why.
-fn warn_of(loss: &ImportLoss) {
-    match loss {
-        ImportLoss::Model(skipped) => {
-            let model = &skipped.name;
-            match skipped.reason {
-                SkipReason::Missing => {
-                    warn!(
-                        model,
-                        "an object names a model no file of the install holds"
-                    );
-                }
-                SkipReason::Emitter => warn!(
-                    model,
-                    "an object names a particle emitter, which the importer does not convert"
-                ),
-                SkipReason::Aggregate => warn!(
-                    model,
-                    "a model's HLOD adds an aggregate, which the importer does not convert"
-                ),
-            }
-        }
-        ImportLoss::Animation(dropped) => warn!(
-            animation = dropped.name,
-            cause = ?dropped.cause,
-            "a look's animation is not imported"
-        ),
-        ImportLoss::Texture(texture) => warn!(
-            texture,
-            "a model names a texture no archive holds, and draws the game's MissingTexture"
-        ),
-        ImportLoss::UntexturedCells { map, cells } => {
-            warn!(%map, cells, "a map's terrain draws cells of a tile with no texture");
-        }
-        ImportLoss::Waypoint { map, waypoint } => {
-            warn!(%map, waypoint, "a map's waypoint past its bounds is dropped");
-        }
-        ImportLoss::Button(dropped) => warn!(
-            button = dropped.name,
-            cause = ?dropped.cause,
-            "a command button is not imported"
-        ),
-        ImportLoss::Upgrade(dropped) => warn!(
-            module = dropped.name,
-            cause = ?dropped.cause,
-            "an upgrade module, or an object's sets, are not imported"
-        ),
-        ImportLoss::Supply(dropped) => warn!(
-            object = dropped.name,
-            cause = ?dropped.cause,
-            "an object's supply is not imported"
-        ),
-        ImportLoss::States(dropped) => warn!(
-            object = dropped.object,
-            cause = ?dropped.cause,
-            states = dropped.states,
-            "a look's condition states are not imported"
-        ),
-        ImportLoss::Weapon(dropped) => warn!(
-            weapon = dropped.name,
-            cause = ?dropped.cause,
-            "a weapon is not imported"
-        ),
-        ImportLoss::Unliving(object) => {
-            warn!(object, "an object's body is none the import gives life");
-        }
-        ImportLoss::Wounded(object) => warn!(
-            object,
-            "an object's body starts below its most life, which the engine starts full"
-        ),
-        ImportLoss::Variation(dropped) => warn!(
-            object = dropped.name,
-            cause = ?dropped.cause,
-            "an object's build variations are not imported whole"
-        ),
-    }
-}
 
 fn main() -> ExitCode {
     let _log = Logging {
@@ -120,9 +42,10 @@ fn main() -> ExitCode {
             rules,
             maps,
             losses,
+            ..
         }) => {
             for loss in &losses {
-                warn_of(loss);
+                warn!("{loss}");
             }
             info!(
                 packages = %args.out.display(),

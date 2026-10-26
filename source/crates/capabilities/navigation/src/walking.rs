@@ -203,7 +203,7 @@ impl Walking {
                 && steering.crowded(steered, *last)
             {
                 route.advance();
-                progress.passed_waypoint();
+                progress.restart();
                 continue;
             }
             if !F::PREDICTS {
@@ -487,7 +487,7 @@ impl Walking {
                 left -= at.distance(waypoint);
                 at = waypoint;
                 route.advance();
-                progress.passed_waypoint();
+                progress.restart();
             }
             position.set_if_neq(Position::from(at));
         }

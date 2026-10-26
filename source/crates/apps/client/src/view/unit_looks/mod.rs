@@ -254,7 +254,11 @@ impl UnitLooks {
             let PackageTests {
                 tests: package_tests,
                 known: package_known,
-            } = UnitTests::of(&package.units.conditions, &data.map_conditions, types.names);
+            } = UnitTests::of(
+                package.units.conditions(),
+                &data.map_conditions,
+                types.names,
+            );
             tests.push(package_tests);
             known.push(package_known);
         }
@@ -263,7 +267,7 @@ impl UnitLooks {
             .iter()
             .map(|(unit_type, origin)| {
                 let package = origin.package;
-                let unit = data.of(package).units.units.get(&*origin.name)?;
+                let unit = data.of(package).units.units().get(&*origin.name)?;
                 let known = &known[usize::from(package.get())];
                 let load = |draws: &[LookDraw], turret: Option<&str>| {
                     LookDraws::load(package, draws, turret, known)

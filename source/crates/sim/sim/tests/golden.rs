@@ -2,11 +2,6 @@
 //! workload; a mismatch names the section, which points at the first divergence. The digests
 //! change only when a release changes results on purpose.
 
-#![allow(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-
 use std::fmt::Write;
 use std::num::NonZeroU32;
 

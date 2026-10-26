@@ -5,9 +5,7 @@
 use campfire_common::{AfterLeave, PlayerSlot};
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits, Moba3v3};
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{
-    Delegation, DelegationTerms, InputRules, LeaveReason, PlayerSlotPlan, ServerInput,
-};
+use campfire_protocol::{Delegation, DelegationTerms, LeaveReason, PlayerSlotPlan, ServerInput};
 use campfire_runner::{PlayerSlotFor, SessionWorld};
 use campfire_sim::{SimWorld, StableId};
 use campfire_test_packages::TestMode;
@@ -118,7 +116,6 @@ fn a_joiner_takes_its_player_slot_the_one_it_left_or_one_the_rules_open() {
     // The lane admits no late join: an open player slot takes no new player.
     let lane = FixedSession::planned(
         TestMode::Lane.packages(),
-        InputRules::LAN,
         [PlayerSlotPlan::Player, PlayerSlotPlan::Open],
     )
     .start();

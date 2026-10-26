@@ -8,7 +8,7 @@ use crate::texture_format::TextureFormat;
 /// terrain's among them (02-engine-core.md, The terrain's texture is composed at load): `size`
 /// texels of sRGB red, green, blue and alpha, rows from the top, its first `levels` levels one
 /// after another, the largest first. It reads what the import writes of a TGA, a KTX2 file of
-/// `R8G8B8A8_SRGB`.
+/// `R8G8B8A8_SRGB`, and of a DDS, of BC1 to BC3's sRGB blocks, which it decodes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextureLevels {
     size: UVec2,
@@ -34,8 +34,9 @@ impl TextureLevels {
         texture
     }
 
-    /// The first `levels` levels of a KTX2 file's `bytes`: a 2D texture of `R8G8B8A8_SRGB`, of no
-    /// supercompression, with at least `levels` levels, each of its size's bytes.
+    /// The first `levels` levels of a KTX2 file's `bytes`: a 2D texture of `R8G8B8A8_SRGB` or of
+    /// BC1 to BC3's sRGB blocks, of no supercompression, with at least `levels` levels, each of its
+    /// size's bytes, decoded.
     pub fn of_ktx2(bytes: &[u8], levels: u32) -> Result<Self, TextureLevelsError> {
         debug_assert!(levels > 0, "a level wanted");
         if bytes.get(..IDENTIFIER.len()) != Some(&IDENTIFIER[..]) {
@@ -51,9 +52,8 @@ impl TextureLevels {
             usize::try_from(value).ok().ok_or(TextureLevelsError::Short)
         };
         let format = word(12)?;
-        if format != TextureFormat::Rgba8.vk_format() {
-            return Err(TextureLevelsError::Format(format));
-        }
+        let format =
+            TextureFormat::of_vk_format(format).ok_or(TextureLevelsError::Format(format))?;
         let [width, height] = [word(20)?, word(24)?];
         let [depth, layers, faces, held, supercompression] =
             [word(28)?, word(32)?, word(36)?, word(40)?, word(44)?];
@@ -67,21 +67,22 @@ impl TextureLevels {
                 wanted: levels,
             });
         }
+        let size = UVec2::new(width, height);
         let mut data = Vec::new();
         for level in 0..levels {
             let entry = LEVEL_INDEX + LEVEL_ENTRY * level as usize;
             let [at, len] = [wide(entry)?, wide(entry + 8)?];
-            if Some(len) != Self::level_len(UVec2::new(width, height), level) {
+            let sides = (size >> level).max(UVec2::ONE);
+            // A level's texels fit memory before its blocks are taken for them.
+            Self::level_len(size, level).ok_or(TextureLevelsError::LevelBytes(level))?;
+            if Some(len) != format.level_bytes(sides.x, sides.y) {
                 return Err(TextureLevelsError::LevelBytes(level));
             }
             let end = at.checked_add(len).ok_or(TextureLevelsError::Short)?;
-            data.extend_from_slice(bytes.get(at..end).ok_or(TextureLevelsError::Short)?);
+            let level = bytes.get(at..end).ok_or(TextureLevelsError::Short)?;
+            format.decode(sides, level, &mut data);
         }
-        Ok(Self {
-            size: UVec2::new(width, height),
-            levels,
-            data,
-        })
+        Ok(Self { size, levels, data })
     }
 
     pub const fn size(&self) -> UVec2 {
@@ -160,7 +161,8 @@ mod tests {
         assert_eq!(texture, TextureLevels::new(UVec2::new(8, 4), 3, expected));
         assert_eq!(texture.level(1), [1; 32]);
         assert_eq!(texture.level(2), [2; 8]);
-        // Another format, too few levels, a file cut short, or no KTX2 at all, give none.
+        // BC1 blocks of 8 × 4 texels, endpoints 0 and indices 0, decode to opaque black at each
+        // level, the last cut to 2 × 1 texels of one block.
         let blocks = [16, 8, 8, 8].map(|len| vec![0; len]);
         let blocks: Vec<&[u8]> = blocks.iter().map(Vec::as_slice).collect();
         let bc1 = Ktx2Image {
@@ -169,8 +171,16 @@ mod tests {
             height: 4,
             levels: &blocks,
         };
-        let bc1 = TextureLevels::of_ktx2(&bc1.encode(), 3);
-        assert_eq!(bc1, Err(TextureLevelsError::Format(134)));
+        let bc1 = TextureLevels::of_ktx2(&bc1.encode(), 3).unwrap();
+        let black: Vec<u8> = [0, 0, 0, 255].repeat(32 + 8 + 2);
+        assert_eq!(bc1, TextureLevels::new(UVec2::new(8, 4), 3, black));
+        // Another format, too few levels, a file cut short, or no KTX2 at all, give none.
+        let mut other = TextureLevels::ktx2(UVec2::new(8, 4), 4, numbered);
+        other[12] = 37;
+        assert_eq!(
+            TextureLevels::of_ktx2(&other, 3),
+            Err(TextureLevelsError::Format(37))
+        );
         let two = TextureLevels::of_ktx2(&TextureLevels::ktx2(UVec2::new(8, 4), 2, numbered), 3);
         assert_eq!(two, Err(TextureLevelsError::Levels { held: 2, wanted: 3 }));
         let mut cut = TextureLevels::ktx2(UVec2::new(8, 4), 4, numbered);

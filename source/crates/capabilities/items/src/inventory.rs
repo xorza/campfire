@@ -3,15 +3,17 @@ use std::num::{NonZeroU8, NonZeroU32, NonZeroUsize};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, ProgressDues, SlotsMutItem, UseGroup};
-use campfire_declarations::PerId;
+use campfire_actions::{ActionSlots, ProgressDues, SlotKind, SlotKindBook, SlotsMutItem, UseGroup};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
+use campfire_script::UnknownName;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentOnChange};
 use campfire_units::UnitEntity;
-use campfire_values::{ItemId, ResourceId, UnitType};
+use campfire_values::{ItemId, Named, ResourceId, UnitType};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
+use crate::inventory_data::InventoryData;
 use crate::item_book::ItemBook;
 
 /// What a carrier carries: its inventory's slots, in order, each empty or holding a stack of one
@@ -309,6 +311,38 @@ impl Replication for Inventory {
 
 impl PerId<UnitType> for Inventory {
     const SCRIPTS_ONLY: bool = false;
+}
+
+impl Inventory {
+    /// The inventory of each unit type that stands with one.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
+        for unit in cx.standing() {
+            if let Some(data) = unit.data.section::<InventoryData>() {
+                book.set(unit.unit_type, Self::new(data.slots));
+            }
+        }
+        Ok(book.build())
+    }
+
+    /// The slot kind each unit type's inventory fills; an error for a kind the mode does not
+    /// declare.
+    pub fn groups(cx: &BookCx<'_>) -> Result<ById<UnitType, UseGroup>, BookError> {
+        let kinds = &cx.book::<SlotKindBook>()?.0;
+        let mut book = ByIdBuilder::default();
+        for unit in cx.standing() {
+            let Some(data) = unit.data.section::<InventoryData>() else {
+                continue;
+            };
+            let kind = kinds.names().named(data.kind.as_str()).ok_or_else(|| {
+                let at = BookPlace::UnitType(unit.place());
+                let name = UnknownName::new(SlotKind::NAMES, &data.kind);
+                BookError::unknown(unit.package, at, name)
+            })?;
+            book.set(unit.unit_type, UseGroup::new(kind));
+        }
+        Ok(book.build())
+    }
 }
 
 #[cfg(feature = "internals")]

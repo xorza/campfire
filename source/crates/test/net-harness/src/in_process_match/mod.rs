@@ -464,7 +464,7 @@ impl InProcessMatch {
     }
 
     /// The rate of a match of `packages`: their default.
-    const fn rate(packages: &ModePackages) -> MatchRate {
+    fn rate(packages: &ModePackages) -> MatchRate {
         MatchRate::new(packages.manifest().tick_hz.default())
     }
 

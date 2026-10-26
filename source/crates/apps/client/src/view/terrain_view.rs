@@ -16,8 +16,8 @@ use crate::view::terrain_meshes::TerrainMeshes;
 
 /// Draws a map's terrain, its file as the client data keeps it (02-engine-core.md, Client):
 /// composes its texture of the mode's own package's textures as the client starts, and lays its
-/// ground and its overlays over the map's heights, lit by the map's lights as every model is. A map
-/// with no terrain draws none.
+/// ground, its overlays and its decals over the map's heights, lit by the map's lights as every
+/// model is. A map with no terrain draws none.
 #[derive(Debug)]
 pub(crate) struct TerrainViewPlugin;
 
@@ -44,8 +44,7 @@ impl TerrainViewPlugin {
             };
             let grid = heights.grid();
             let image = TerrainImage::compose(file.texture(), files);
-            let TerrainMeshes { ground, overlay } =
-                TerrainMeshes::of(file.quads(), file.texture().size, grid);
+            let TerrainMeshes { ground, overlay } = TerrainMeshes::of(file, grid);
             let texture = world
                 .resource_mut::<Assets<Image>>()
                 .add(image.into_image());

@@ -10,6 +10,7 @@ use campfire_declarations::{BookError, Listed};
 use campfire_script::{
     ApiBuilder, Applies, CallError, Checked, Ctx, Frame, MemberDecl, ScriptTicks, Unit, View,
 };
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_values::{ModifierId, Number};
 use serde::Deserialize;
@@ -38,6 +39,8 @@ impl Listed for ModifierEffectData {
     type Set = ListedEffects;
 
     const KEY: &'static str = "modifier";
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn ListedEffect> {
         Arc::new(self)

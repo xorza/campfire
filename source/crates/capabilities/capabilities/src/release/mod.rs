@@ -133,7 +133,8 @@ impl Release {
     }
 
     /// The set of a mode's `declared` capabilities; an error when one is `mode`, one is declared
-    /// twice, one is of no module this release builds, or one lacks a capability it builds on.
+    /// twice, or one lacks a capability it builds on. Every capability but `mode` has a module of
+    /// the release, which its rows assert.
     pub fn capability_set(declared: &[Capability]) -> Result<CapabilitySet, CapabilityError> {
         let mut set = CapabilitySet::CORE;
         for &capability in declared {
@@ -400,13 +401,13 @@ pub(crate) mod internals {
         StateCopy, StateRegistry,
     };
     use campfire_states::{Replication, StateTypes};
-    use campfire_stats::ModifierBook;
+    use campfire_stats::{ModifierBook, ModifierData, Stats};
+    use campfire_units::internals::TEST_PACKAGE;
     use campfire_units::{EntityKinds, ScriptBook, UnitTypeBook, UnitTypes, Units};
     use campfire_values::{Speed, TextId};
 
     use crate::books::Books;
     use crate::books::book_input::BookInput;
-    use crate::fixtures::units::UnitsFixtures;
     use crate::release::Release;
     use crate::release::client_holds::ClientHolds;
     use crate::release::installing::{Installing, ModuleWalk};
@@ -493,7 +494,7 @@ pub(crate) mod internals {
                 .tags()
                 .named(first.as_str());
             if world.contains_resource::<ModifierBook>() && declared.is_some() {
-                Units::load_test_modifiers(world);
+                Self::load_test_modifiers(world);
             }
             let facts = sim.world().resource::<MatchFacts>().clone();
             let install = InstallFacts {
@@ -612,6 +613,30 @@ pub(crate) mod internals {
     }
 
     impl Release {
+        /// Loads the modifiers that grant the test tags, each of its tag's name, in the package
+        /// `TEST_PACKAGE`, after every other, unless the match loaded them.
+        pub fn load_test_modifiers(world: &mut World) {
+            if Self::loads_test_modifiers(world) {
+                return;
+            }
+            let mut tags = Units::test_tags();
+            tags.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+            for (name, _) in tags {
+                let grants = ModifierData {
+                    tags: vec![name.clone()],
+                    ..ModifierData::default()
+                };
+                Stats::load_modifier(world, TEST_PACKAGE, name.as_str(), &grants, None);
+            }
+        }
+
+        /// Whether the match loaded the modifiers that grant the test tags.
+        pub fn loads_test_modifiers(world: &World) -> bool {
+            let (first, _) = &Units::test_tags()[0];
+            world.get_resource::<ModifierBook>().is_some()
+                && Stats::modifier(world, TEST_PACKAGE, first.as_str()).is_some()
+        }
+
         /// The rules (10-replication-audiences.md, Prediction reads only what its client holds;
         /// 10-replication-audiences.md, A client writes only what it predicts or derives) for the
         /// reads no access names, an exclusive system's, and for the writes, as GGPO's sync test
@@ -634,9 +659,7 @@ pub(crate) mod internals {
             for (game, holds) in &mut worlds {
                 let parts = holds.parts(game);
                 let since = game.read_change_tick();
-                for _ in 0..ticks {
-                    game.step();
-                }
+                game.steps(ticks);
                 assert_eq!(holds.parts(game), parts, "held units keep their parts");
                 let writes = holds.writes(game, since);
                 assert_eq!(writes, [], "writes of units held as sent");
@@ -669,8 +692,8 @@ pub(crate) mod internals {
         /// and it loads the modifiers of the test tags when `world` did.
         pub fn refusal_into(world: &World, fresh: &mut World) -> Option<SnapshotError> {
             Units::seal_once(fresh);
-            if Units::loads_test_modifiers(world) {
-                Units::load_test_modifiers(fresh);
+            if Self::loads_test_modifiers(world) {
+                Self::load_test_modifiers(fresh);
             }
             Self::clear(fresh);
             let mut snapshot = Vec::new();

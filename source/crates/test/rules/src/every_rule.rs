@@ -11,7 +11,7 @@ use campfire_threads::Parallel;
 use crate::workspace::Workspace;
 use crate::{
     bans, capabilities, citations, cycles, dev_dependencies, errors, manifests, platform,
-    re_exports, suffixes, test_homes, test_modules, test_support, type_names, unsafe_code, world,
+    re_exports, suffixes, test_homes, test_modules, test_support, type_names, world,
 };
 
 /// A rule: its name, the path of its check, and the check, which panics on what breaks it.
@@ -28,7 +28,7 @@ macro_rules! rules {
     };
 }
 
-const RULES: [Rule; 44] = rules![
+const RULES: [Rule; 43] = rules![
     bans::each_banned_call_goes_through_its_proxy_alone,
     bans::a_crates_clippy_toml_is_the_workspaces_with_its_own_entries,
     bans::no_tick_reads_removals_that_age_with_the_app,
@@ -54,6 +54,7 @@ const RULES: [Rule; 44] = rules![
     manifests::each_crates_dir_is_its_package_name_without_the_prefix,
     manifests::a_test_build_turns_internals_on_and_code_has_one_gate_for_it,
     manifests::a_required_dependency_is_named_by_production_code,
+    manifests::a_dev_dependency_is_named_by_its_crates_code,
     manifests::a_dev_dependency_turns_on_internals_that_gate_code,
     manifests::the_default_members_are_the_build_that_ships,
     manifests::each_optional_dependency_is_named_by_dep_and_has_no_implicit_feature,
@@ -66,10 +67,8 @@ const RULES: [Rule; 44] = rules![
     test_homes::a_test_lives_in_the_lowest_crate_that_can_hold_it,
     test_modules::an_inline_test_module_holds_at_most_150_lines_and_40_percent_of_its_file,
     test_support::a_crate_has_one_bench_target_and_its_cases_live_in_bench_files,
-    test_support::a_test_takes_its_files_in_a_test_dir,
     type_names::a_type_name_keeps_one_meaning,
     type_names::a_stack_feature_names_no_campfire_crate,
-    unsafe_code::only_the_listed_files_write_unsafe,
     world::a_free_function_that_takes_a_world_first_is_a_system,
     world::no_trait_is_a_test_trait_on_the_world_or_a_modules_trait_on_a_match,
     world::no_crate_names_another_crates_own_world_trait,

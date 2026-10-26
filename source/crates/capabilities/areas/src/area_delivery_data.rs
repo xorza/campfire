@@ -4,6 +4,7 @@ use campfire_actions::{DeliverySection, DeliverySections, Fan};
 use campfire_common::DeclaredName;
 use campfire_declarations::{Listed, ListedSet};
 use campfire_script::{ApiBuilder, DataSection, DataTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +38,8 @@ impl Listed for AreaDeliveryData {
     type Set = DeliverySections;
 
     const KEY: &'static str = "area";
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn DeliverySection> {
         Arc::new(self)

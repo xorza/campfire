@@ -3,9 +3,9 @@
 
 # What its players earn and spend.
 resources = ["money"]
-# The param of a waypoint's marker, its name, which its script reads of the start markers, and
-# which a map of no waypoint has on no marker.
-marker_params = ["name"]
+# The params of a waypoint's marker: its name, and the player slot of a start or a rally, from 0,
+# which its scripts find a slot's start and rally by; a map of no waypoint has them on no marker.
+marker_params = ["name", "player_slot"]
 
 # The stats its units drive by, the life they live by, and the rate of fire a stage of continuous
 # fire adds to, which a weapon of one divides its period by, plus 1.
@@ -80,9 +80,9 @@ life = "life"
 
 [tags.weapon_upgrade]
 
-# The tag of the markers its players start at.
+# The tags of the markers its players start at and their starting units rally at.
 [navigation]
-spawn_tags = ["start"]
+spawn_tags = ["start", "rally"]
 
 # A skirmish's end, as the original's `VictoryConditions` keeps it: a player whose last living
 # building that counts for victory dies is out of play, and its other units die, as

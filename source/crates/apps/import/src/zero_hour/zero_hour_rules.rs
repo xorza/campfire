@@ -10,6 +10,7 @@ use crate::zero_hour::format::ini::mouse_ini::MouseIni;
 use crate::zero_hour::format::ini::multiplayer_ini::MultiplayerIni;
 use crate::zero_hour::format::ini::object_ini::{ObjectFiles, ObjectIni};
 use crate::zero_hour::format::ini::player_template_ini::PlayerTemplateIni;
+use crate::zero_hour::format::ini::roads_ini::RoadsIni;
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
 use crate::zero_hour::format::ini::upgrade_ini::UpgradeIni;
 use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
@@ -21,6 +22,7 @@ use crate::zero_hour::rules_names::RulesNames;
 #[derive(Debug, Default)]
 pub(crate) struct ZeroHourRules {
     pub(crate) terrain: TerrainIni,
+    pub(crate) roads: RoadsIni,
     pub(crate) game_data: GameDataIni,
     pub(crate) mouse: MouseIni,
     pub(crate) objects: ObjectIni,
@@ -44,6 +46,7 @@ impl ZeroHourRules {
                 .read_inis("Object", ObjectFiles::default(), ObjectFiles::read)?
                 .finish(),
             terrain: install.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?,
+            roads: install.read_inis("Roads", RoadsIni::default(), RoadsIni::read)?,
             game_data: install.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?,
             mouse: install.read_inis("Mouse", MouseIni::default(), MouseIni::read)?,
             locomotors: install.read_inis(

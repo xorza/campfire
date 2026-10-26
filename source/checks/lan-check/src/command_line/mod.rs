@@ -1,4 +1,3 @@
-use std::env;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -23,11 +22,12 @@ pub(crate) enum Args {
 #[command(
     version,
     args_conflicts_with_subcommands = true,
+    subcommand_negates_reqs = true,
     disable_help_subcommand = true
 )]
 pub(crate) struct CommandLine {
-    /// The directory below which each run's directory goes; `campfire-lan-check` in the temporary
-    /// directory by default
+    /// The directory below which each run's directory goes
+    #[arg(required = true)]
     root: Option<PathBuf>,
     #[command(subcommand)]
     command: Option<Command>,
@@ -49,22 +49,18 @@ enum Command {
 }
 
 impl Args {
-    /// The arguments the command line clap read as `line` names: `[<run root>]`, or `verify
+    /// The arguments the command line clap read as `line` names: `<run root>`, or `verify
     /// [--verifier <verifier>] <run directory>`.
     pub(crate) fn of(line: CommandLine) -> Self {
         match line.command {
             Some(Command::Verify { dir, verifier }) => Self::Verify { dir, verifier },
             None => Self::Play {
-                root: line.root.unwrap_or_else(default_root),
+                root: line
+                    .root
+                    .expect("clap requires a run root with no subcommand"),
             },
         }
     }
-}
-
-/// The root of a run whose command line names none: `campfire-lan-check` in the OS's temporary
-/// directory.
-fn default_root() -> PathBuf {
-    env::temp_dir().join("campfire-lan-check")
 }
 
 #[cfg(test)]

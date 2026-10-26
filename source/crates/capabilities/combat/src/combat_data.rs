@@ -1,5 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{PatchError, Patched, Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::TagFilterData;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -62,4 +63,5 @@ impl DataSection for CombatData {
 impl Section for CombatData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "combat";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

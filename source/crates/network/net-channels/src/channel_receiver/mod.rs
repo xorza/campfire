@@ -18,6 +18,7 @@ use crate::fragment_receiver::{FragmentCx, FragmentOutcome, FragmentReceiver, Pa
 use crate::gap_store::GapStore;
 use crate::message_id::MessageId;
 use crate::receive_budget::{ReceiveBudget, Reservation};
+use crate::reliable_send_state::SEND_WINDOW;
 use crate::single_body::SingleBody;
 
 const DISCARD_AFTER: Duration = Duration::from_millis(3000);
@@ -88,6 +89,8 @@ pub(crate) enum BufferOutcome {
 enum MessageAdmission {
     Refuse,
     Admit,
+    /// An id past the window an honest sender keeps ahead of the id this end waits for.
+    Violation,
     /// Admitted as the newest message of a sequenced channel, which supersedes every older one.
     AdmitNewest(MessageId),
 }
@@ -175,16 +178,17 @@ impl ChannelReceiver {
 
     /// Stores a received whole message, of an id when [`Self::single_has_id`], charging what it
     /// leaves undelivered to `budget`; a message the budget has no room for is not stored, and its
-    /// packet must not be acked.
+    /// packet must not be acked. A message no honest peer sends breaks the protocol.
     pub(crate) fn receive_single(
         &mut self,
         single: SingleBody,
         tick: NetTick,
         budget: &mut ReceiveBudget,
-    ) -> BufferOutcome {
+    ) -> Result<BufferOutcome, ReceiveError> {
         let message_id = single.id;
         match self.state.admit(message_id) {
-            MessageAdmission::Refuse => return BufferOutcome::Stored,
+            MessageAdmission::Refuse => return Ok(BufferOutcome::Stored),
+            MessageAdmission::Violation => return Err(ReceiveError::PastWindow),
             MessageAdmission::Admit => {}
             MessageAdmission::AdmitNewest(newest) => self.fragments.discard_older_than(newest),
         }
@@ -202,7 +206,7 @@ impl ChannelReceiver {
         {
             self.fragments.remove(id);
         }
-        outcome
+        Ok(outcome)
     }
 
     /// Stores a received fragment, as [`Self::receive_single`] stores a whole message; a
@@ -216,6 +220,7 @@ impl ChannelReceiver {
         let message_id = Some(fragment.message_id);
         match self.state.admit(message_id) {
             MessageAdmission::Refuse => return Ok(BufferOutcome::Stored),
+            MessageAdmission::Violation => return Err(ReceiveError::PastWindow),
             MessageAdmission::Admit => {}
             MessageAdmission::AdmitNewest(newest) => self.fragments.discard_older_than(newest),
         }
@@ -281,28 +286,39 @@ impl ReceiveState {
         matches!(self, Self::ReliableOrdered { pending, .. } if Some(*pending) == message_id)
     }
 
+    /// Whether a reliable message of `message_id` enters a channel that waits for `pending`: one
+    /// before it, or `held`, came already; one at a distance of `SEND_WINDOW` or more is a claim
+    /// no honest sender makes, as its window of unacked ids starts at or before `pending`.
+    fn reliable(
+        pending: MessageId,
+        message_id: MessageId,
+        held: impl FnOnce(MessageId) -> bool,
+    ) -> MessageAdmission {
+        let distance = message_id - pending;
+        if distance < 0 || held(message_id) {
+            MessageAdmission::Refuse
+        } else if distance.unsigned_abs() >= SEND_WINDOW {
+            MessageAdmission::Violation
+        } else {
+            MessageAdmission::Admit
+        }
+    }
+
     /// Whether a message of `message_id` enters, which a channel of ids always has.
     fn admit(&mut self, message_id: Option<MessageId>) -> MessageAdmission {
-        let admitted = |admit: bool| {
-            if admit {
-                MessageAdmission::Admit
-            } else {
-                MessageAdmission::Refuse
-            }
-        };
         match self {
             Self::UnreliableUnordered { .. } => MessageAdmission::Admit,
             Self::ReliableUnordered {
                 pending, received, ..
             } => {
                 let message_id = message_id.expect("a reliable message has an id");
-                admitted(message_id - *pending >= 0 && !received.contains(*pending, message_id))
+                Self::reliable(*pending, message_id, |id| received.contains(id))
             }
             Self::ReliableOrdered {
                 pending, waiting, ..
             } => {
                 let message_id = message_id.expect("a reliable message has an id");
-                admitted(message_id - *pending >= 0 && !waiting.contains(*pending, message_id))
+                Self::reliable(*pending, message_id, |id| waiting.contains(id))
             }
             Self::Sequenced {
                 ready,
@@ -366,7 +382,7 @@ impl ReceiveState {
                     while received.pop(*pending).is_some() {
                         *pending += 1;
                     }
-                } else if !received.insert(*pending, message_id, reservation, budget) {
+                } else if !received.insert(message_id, reservation, budget) {
                     return BufferOutcome::OverBudget;
                 }
                 ready.push_back(message);
@@ -382,7 +398,7 @@ impl ReceiveState {
                         bytes: Bytes::copy_from_slice(&message.bytes),
                         ..message
                     };
-                    return if waiting.insert(*pending, held, reservation, budget) {
+                    return if waiting.insert(held, reservation, budget) {
                         BufferOutcome::Stored
                     } else {
                         BufferOutcome::OverBudget

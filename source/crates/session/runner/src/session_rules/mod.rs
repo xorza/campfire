@@ -54,17 +54,17 @@ impl<'p> SessionRules<'p> {
     }
 
     /// The mode's options, of which a host picks values.
-    pub const fn options(&self) -> &'p BTreeMap<DeclaredName, OptionData> {
+    pub fn options(&self) -> &'p BTreeMap<DeclaredName, OptionData> {
         &self.packages.data().options
     }
 
     /// The mode's choices, of whose listed values a host picks a player slot's.
-    pub const fn choices(&self) -> &'p BTreeMap<DeclaredName, ChoiceData> {
+    pub fn choices(&self) -> &'p BTreeMap<DeclaredName, ChoiceData> {
         &self.packages.data().choices
     }
 
     /// The mode's visibility, which a session's host may set again where the mode leaves it.
-    pub const fn visibility(&self) -> &'p ModeVisibility {
+    pub fn visibility(&self) -> &'p ModeVisibility {
         &self.packages.data().visibility
     }
 
@@ -153,7 +153,7 @@ impl<'p> SessionRules<'p> {
     }
 
     /// An error when the mode does not run at `tick_hz`.
-    pub const fn runs_at(&self, tick_hz: NonZeroU32) -> Result<(), TermsError> {
+    pub fn runs_at(&self, tick_hz: NonZeroU32) -> Result<(), TermsError> {
         if !self.packages.manifest().tick_hz.contains(tick_hz) {
             return Err(TermsError::TickRate(tick_hz));
         }

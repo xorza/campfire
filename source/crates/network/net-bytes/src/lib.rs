@@ -10,7 +10,6 @@ mod reader;
 mod serialization_error;
 mod to_bytes;
 mod var_int;
-mod wrapping_id;
 mod writer;
 
 pub use crate::byte_arena::ByteArena;

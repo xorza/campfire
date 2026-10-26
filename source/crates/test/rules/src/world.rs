@@ -119,7 +119,7 @@ pub(crate) fn a_free_function_that_takes_a_world_first_is_a_system(workspace: &W
     // free function past its module that takes the world first is a system or a function a table
     // holds, named as a value.
     let sources = workspace.sources();
-    let production: Vec<(&SourceFile, String)> = sources
+    let production: Vec<(&SourceFile, &str)> = sources
         .iter()
         .filter_map(|file| Some((file, file.production()?)))
         .collect();

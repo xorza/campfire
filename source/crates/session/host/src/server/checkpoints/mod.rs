@@ -11,14 +11,12 @@ use campfire_protocol::{
 use campfire_runner::{CheckpointBeginError, ResumeAt, SaveLoadError, Session, SessionWorld};
 use campfire_sim::{SimWorld, StateDelta, StateRegistry};
 
-use crate::error::SaveRefusal;
+use crate::error::JournalRefusal;
 use crate::events::checkpoint_taken::CheckpointTaken;
 use crate::events::seeds_ran_out::SeedsRanOut;
 use crate::faults::WorkerFaults;
 use crate::faults::error::{SnapshotReadError, SnapshotWriteError};
 use crate::faults::fault::Fault;
-use crate::hosting::Hosting;
-use crate::messages::save_command::SaveCommand;
 use crate::server::checkpoint_thread::{CheckpointThread, Returned};
 use crate::server::reports::Reports;
 use crate::server::snapshot_dir::SnapshotDir;
@@ -37,9 +35,9 @@ pub struct Checkpoints {
     snapshots: SnapshotDir,
 }
 
-/// What a player's save command did.
+/// What a player's journal command did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SaveTaken {
+pub enum JournalTaken {
     /// A save: a checkpoint is due.
     Planned,
     /// A load: the match went back to the latest save in place.
@@ -137,44 +135,39 @@ impl Checkpoints {
         })
     }
 
-    /// Takes `command` of a placed player: on a local server, a save makes a checkpoint due at
-    /// the boundary after the next tick, unless the mode alone saves, a load settles the
-    /// checkpoints and loads the latest save in place, as `load` does, and a report waits for
-    /// its log, as `Reports::take` takes it; why not, when it refuses it.
-    pub fn take(world: &mut World, command: SaveCommand) -> Result<SaveTaken, SaveRefusal> {
-        if *world.resource::<Hosting>() != Hosting::Local {
-            return Err(SaveRefusal::NotLocal);
+    /// Takes a placed player's save on a local server, as `JournalCommands::take` routes it: a
+    /// checkpoint due at the boundary after the next tick, unless the mode alone saves; why not,
+    /// when it refuses it.
+    pub(crate) fn save(world: &mut World) -> Result<JournalTaken, JournalRefusal> {
+        if !world.contains_resource::<Self>() {
+            return Err(JournalRefusal::NoData);
         }
-        match command {
-            SaveCommand::Report(key) => {
-                Reports::take(world, key)?;
-                Ok(SaveTaken::Planned)
-            }
-            SaveCommand::Save | SaveCommand::LoadLatest if !world.contains_resource::<Self>() => {
-                Err(SaveRefusal::NoData)
-            }
-            SaveCommand::Save => {
-                let session = world.resource::<Session>();
-                if session.saves().by == SaveBy::Mode {
-                    return Err(SaveRefusal::ByMode);
-                }
-                let next = session.log().next_tick();
-                world.resource_mut::<Self>().request(next.after(Ticks::ONE));
-                Ok(SaveTaken::Planned)
-            }
-            SaveCommand::LoadLatest => {
-                if let Err(error) = Self::settle(world) {
-                    world
-                        .resource_mut::<WorkerFaults>()
-                        .report(Fault::Snapshot(error));
-                    return Ok(SaveTaken::Failed);
-                }
-                let latest = world.resource::<Session>().log().checkpoints().last();
-                let save = latest.ok_or(SaveRefusal::NoSave)?;
-                let (segment, fingerprint) = (save.segment, save.snapshot);
-                Self::load(world, segment, fingerprint)
-            }
+        let session = world.resource::<Session>();
+        if session.saves().by == SaveBy::Mode {
+            return Err(JournalRefusal::ByMode);
         }
+        let next = session.log().next_tick();
+        world.resource_mut::<Self>().request(next.after(Ticks::ONE));
+        Ok(JournalTaken::Planned)
+    }
+
+    /// Takes a placed player's load on a local server, as `JournalCommands::take` routes it: the
+    /// checkpoints settled, and the latest save loaded in place, as `load` does; why not, when it
+    /// refuses it.
+    pub(crate) fn load_latest(world: &mut World) -> Result<JournalTaken, JournalRefusal> {
+        if !world.contains_resource::<Self>() {
+            return Err(JournalRefusal::NoData);
+        }
+        if let Err(error) = Self::settle(world) {
+            world
+                .resource_mut::<WorkerFaults>()
+                .report(Fault::Snapshot(error));
+            return Ok(JournalTaken::Failed);
+        }
+        let latest = world.resource::<Session>().log().checkpoints().last();
+        let save = latest.ok_or(JournalRefusal::NoSave)?;
+        let (segment, fingerprint) = (save.segment, save.snapshot);
+        Self::load(world, segment, fingerprint)
     }
 
     /// Loads in place the save of `segment`, whose snapshot `fingerprint` names, every checkpoint
@@ -185,7 +178,7 @@ impl Checkpoints {
         world: &mut World,
         segment: u32,
         fingerprint: SnapshotFingerprint,
-    ) -> Result<SaveTaken, SaveRefusal> {
+    ) -> Result<JournalTaken, JournalRefusal> {
         let snapshots = world.resource::<Self>().snapshots.clone();
         let snapshot = match snapshots.read(fingerprint) {
             Ok(snapshot) => snapshot,
@@ -197,7 +190,7 @@ impl Checkpoints {
         };
         match world.load_save(at) {
             Ok(()) => {}
-            Err(SaveLoadError::Log(LogLoadError::LogFull)) => return Err(SaveRefusal::LogFull),
+            Err(SaveLoadError::Log(LogLoadError::LogFull)) => return Err(JournalRefusal::LogFull),
             Err(SaveLoadError::Fingerprint) => {
                 return Ok(Self::fail_load(world, SnapshotReadError::Fingerprint));
             }
@@ -210,15 +203,15 @@ impl Checkpoints {
         let mut base = StateDelta::default();
         world.track_again(&mut base);
         Self::start_from(world, base, snapshots);
-        Ok(SaveTaken::Loaded)
+        Ok(JournalTaken::Loaded)
     }
 
     /// Reports the fault of a load whose snapshot did not load.
-    fn fail_load(world: &mut World, error: SnapshotReadError) -> SaveTaken {
+    fn fail_load(world: &mut World, error: SnapshotReadError) -> JournalTaken {
         world
             .resource_mut::<WorkerFaults>()
             .report(Fault::Load(error));
-        SaveTaken::Failed
+        JournalTaken::Failed
     }
 
     /// Takes the checkpoint begun at the boundary before the next tick again, on the main thread,
@@ -239,7 +232,7 @@ impl Checkpoints {
         }
         let mut snapshot = Vec::new();
         let record = world.checkpoint(&mut snapshot).expect("a checkpoint begun");
-        snapshots.write(&snapshot)?;
+        snapshots.write(&snapshot, record.snapshot)?;
         Self::log(&mut world.resource_mut::<Session>(), record);
         Ok(())
     }
@@ -272,7 +265,7 @@ impl Checkpoints {
             tick: record.tick,
         };
         session
-            .record_checkpoint(record)
+            .serve_checkpoint(record)
             .expect("the server's own checkpoint holds");
         taken.log();
     }

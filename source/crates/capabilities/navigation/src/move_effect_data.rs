@@ -11,6 +11,7 @@ use campfire_script::{
     ApiBuilder, ApiError, CallError, Checked, Ctx, Frame, MemberDecl, ScriptLasting,
     ScriptPosition, Unit, View,
 };
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_units::DashTo;
 use campfire_values::Number;
@@ -129,6 +130,8 @@ impl Listed for MoveEffectData {
     type Set = ListedEffects;
 
     const KEY: &'static str = "move";
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn ListedEffect> {
         Arc::new(self)

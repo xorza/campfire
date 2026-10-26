@@ -58,6 +58,7 @@ use campfire_host::Hosting;
 use campfire_host::InputAck;
 use campfire_host::InputMessage;
 use campfire_host::InputsDiscarded;
+use campfire_host::JournalCommand;
 use campfire_host::KnownCommanded;
 use campfire_host::LeaveMatch;
 use campfire_host::MatchEnded;
@@ -69,7 +70,6 @@ use campfire_host::Os;
 use campfire_host::PlayerSigner;
 use campfire_host::ReceiptRefused;
 use campfire_host::ReceiptWriter;
-use campfire_host::SaveCommand;
 use campfire_host::SentInputs;
 use campfire_host::ServerPin;
 use campfire_host::SessionOffer;
@@ -121,12 +121,12 @@ pub struct SimClientPlugin {
 #[derive(Resource, Debug)]
 pub struct LeaveRequest;
 
-/// The player's save commands, which a local server takes, sent while the client plays.
+/// The player's journal commands, which a local server takes, sent while the client plays.
 #[derive(Resource, Debug, Default)]
-pub struct PendingSaves(Vec<SaveCommand>);
+pub struct PendingJournalCommands(Vec<JournalCommand>);
 
-impl PendingSaves {
-    pub fn push(&mut self, command: SaveCommand) {
+impl PendingJournalCommands {
+    pub fn push(&mut self, command: JournalCommand) {
         self.0.push(command);
     }
 }
@@ -330,7 +330,7 @@ impl Plugin for SimClientPlugin {
             }
         }
         app.init_resource::<PendingOrders>();
-        app.init_resource::<PendingSaves>();
+        app.init_resource::<PendingJournalCommands>();
         app.init_resource::<WorkerFaults>();
         app.add_observer(lose_link);
         // The systems on the join state run in the order of a link's life, as one frame may bring
@@ -609,12 +609,12 @@ fn receive_watch_start(
     }
 }
 
-/// Sends the player's save commands while the client plays or watches: a spectator's report asks
+/// Sends the player's journal commands while the client plays or watches: a spectator's report asks
 /// a replay for the log it replays, and a server takes no other command of a spectator.
 fn send_saves(
-    mut sender: Single<'_, '_, &mut MessageSender<SaveCommand>, With<Client>>,
+    mut sender: Single<'_, '_, &mut MessageSender<JournalCommand>, With<Client>>,
     state: Res<'_, JoinState>,
-    mut pending: ResMut<'_, PendingSaves>,
+    mut pending: ResMut<'_, PendingJournalCommands>,
 ) {
     if state.session().is_none() {
         return;

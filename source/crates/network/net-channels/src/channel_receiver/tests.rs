@@ -23,7 +23,7 @@ impl ChannelReceiver {
         budget: &mut ReceiveBudget,
     ) -> Result<BufferOutcome, ReceiveError> {
         match part {
-            Part::Single(single, tick) => Ok(self.receive_single(single, tick, budget)),
+            Part::Single(single, tick) => self.receive_single(single, tick, budget),
             Part::Fragment(fragment, tick) => self.receive_fragment(fragment, tick, budget),
         }
     }
@@ -125,18 +125,31 @@ fn an_ordered_reliable_channel_buffers_across_the_wrap_of_the_message_id() {
 /// leaves the channel holding nothing.
 #[test]
 fn a_message_far_past_the_gap_holds_its_entry_and_a_copy_of_its_bytes() {
+    // The farthest id an honest sender sends, 16,383 past the one this end waits for, holds one
+    // entry; one id farther, in either reliable mode, breaks the protocol.
+    let mut unordered = channel(ChannelMode::UnorderedReliable);
     let mut channel = channel(ChannelMode::OrderedReliable);
     let packet = Bytes::from(vec![7; 64]);
-    let far = Part::Single(
-        SingleBody::new(Some(MessageId(32_767)), packet.slice(10..14)),
-        NetTick(0),
+    let far = |id| {
+        Part::Single(
+            SingleBody::new(Some(MessageId(id)), packet.slice(10..14)),
+            NetTick(0),
+        )
+    };
+    receive(&mut channel, far(16_383)).unwrap();
+    assert_eq!(channel.held(), GapStore::<ChannelMessage>::SLOT + 4);
+    assert_eq!(
+        receive(&mut channel, far(16_384)),
+        Err(ReceiveError::PastWindow)
     );
-    receive(&mut channel, far).unwrap();
-    assert_eq!(channel.held(), size_of::<ChannelMessage>() + 4);
+    assert_eq!(
+        receive(&mut unordered, far(16_384)),
+        Err(ReceiveError::PastWindow)
+    );
     let ReceiveState::ReliableOrdered { waiting, .. } = &mut channel.state else {
         unreachable!("the channel was built in `ReliableOrdered` mode")
     };
-    let held = waiting.pop(MessageId(32_767)).unwrap();
+    let held = waiting.pop(MessageId(16_383)).unwrap();
     assert!(!packet.as_ptr_range().contains(&held.bytes.as_ptr()));
     assert_eq!(held.bytes, packet.slice(10..14));
     assert_eq!(channel.held(), 0);
@@ -371,14 +384,14 @@ fn a_whole_and_a_fragmented_message_of_one_id_deliver_once() {
     }
 }
 
-/// An entry behind a gap costs its bytes and the slots its store grows by. With room for two
-/// slots and 10 bytes on an ordered channel, message 1 waits behind the gap of message 0 and
-/// takes a slot and its 6 bytes; message 2's slot and 5 bytes do not fit the slot and 4 bytes
-/// left and are refused unstored; the head, message 0, is delivered past the room, with message 1
-/// behind it, and the channel holds nothing.
+/// An entry behind a gap costs its bytes and its slot. With room for two slots and 10 bytes on an
+/// ordered channel, message 1 waits behind the gap of message 0 and takes a slot and its 6 bytes;
+/// message 2's slot and 5 bytes do not fit the slot and 4 bytes left and are refused unstored; the
+/// head, message 0, is delivered past the room, with message 1 behind it, and the channel holds
+/// nothing.
 #[test]
 fn ordered_messages_behind_a_gap_hold_budget() {
-    let slot = size_of::<ChannelMessage>();
+    let slot = GapStore::<ChannelMessage>::SLOT;
     let mut channel = channel(ChannelMode::OrderedReliable);
     let mut budget = ReceiveBudget::new(2 * slot + 10);
     let behind = |id, bytes| message(Some(id), 0, bytes);
@@ -453,6 +466,6 @@ fn reassembly_reserves_budget_and_the_head_is_reserved_anyway() {
     ordered.receive_part(second, &mut budget).unwrap();
     assert_eq!(
         ordered.held(),
-        size_of::<ChannelMessage>() + 2 * FRAGMENT_LEN - 1
+        GapStore::<ChannelMessage>::SLOT + 2 * FRAGMENT_LEN - 1
     );
 }

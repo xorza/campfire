@@ -2,7 +2,7 @@ use std::ffi::OsString;
 
 use campfire_codec::TaggedError;
 use campfire_protocol::PublishError;
-use campfire_protocol::{JournalReplayError, JournalStreamError, NotJournal, SessionId};
+use campfire_protocol::{JournalReplayError, JournalStreamError, SessionId};
 use campfire_store::{AppendOpenError, DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
@@ -28,8 +28,9 @@ pub enum RestoreError {
     Read(#[source] PathError<ReadError>),
     #[error("the private record")]
     Private(#[source] TaggedError),
+    /// The journal's file does not stream: it is no journal, or a read of it failed.
     #[error("the journal file")]
-    NotJournal(#[source] NotJournal),
+    Frames(#[source] JournalStreamError),
     #[error("the journal")]
     Journal(#[source] PathError<AppendOpenError>),
     #[error(transparent)]

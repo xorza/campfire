@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{Block, TagProperties};
 use serde::Deserialize;
@@ -56,4 +57,5 @@ pub struct ModeTagsData(pub BTreeMap<DeclaredName, TagData>);
 impl Section for ModeTagsData {
     const TABLE: SectionTable = SectionTable::Mode;
     const KEY: &'static str = "tags";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

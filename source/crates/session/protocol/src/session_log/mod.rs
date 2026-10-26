@@ -50,6 +50,7 @@ mod file;
 mod input_schedule;
 pub(crate) mod journal;
 mod journal_records;
+pub(crate) mod journal_replay;
 mod log_entries;
 pub(crate) mod log_replay;
 pub(crate) mod paged_bytes;
@@ -251,9 +252,9 @@ impl SessionLog {
     /// a file within the bound fits. A match of 30 ticks a second that fills it runs for weeks.
     pub const MAX_FILE_LEN: usize = u32::MAX as usize;
 
-    /// The most bytes a log's journal holds, which a restore reads whole, and which the log
-    /// refuses an entry past. The journal frames each record and seal, and keeps what a load
-    /// dropped, so it grows faster than the file.
+    /// The most bytes a log's journal holds, which a restore streams through a buffer of one
+    /// record, and which the log refuses an entry past. The journal frames each record and seal,
+    /// and keeps what a load dropped, so it grows faster than the file.
     pub const MAX_JOURNAL_LEN: usize = u32::MAX as usize;
 
     /// A log with nothing recorded; an error when the header starts another count of player slots

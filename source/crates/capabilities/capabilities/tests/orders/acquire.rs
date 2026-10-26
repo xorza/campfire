@@ -14,7 +14,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StableId};
 use campfire_stats::Stats;
 use campfire_units::internals::Spawn;
-use campfire_units::{Destination, GroundPoint, MoveStep, Owner, SeenBy, Units};
+use campfire_units::{Destination, GroundPoint, MoveStep, SeenBy, Units};
 use campfire_values::{Relation, Team, TeamSet, UnitType};
 use campfire_vision::Vision;
 
@@ -257,7 +257,7 @@ fn an_attack_move_takes_what_its_scan_finds_on_the_way_and_walks_on() {
     );
     let scanner = Spawn::of(scene.scanner, (0, 0, 0))
         .team(Team::new(0))
-        .parts(Owner::new(PlayerSlot::new(0)))
+        .owner(PlayerSlot::new(0))
         .place(&mut scene.game);
     scene.dummy((2, 0, 3), 2);
     let hostile = scene.dummy((2, 0, 6), 1);

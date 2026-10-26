@@ -13,7 +13,7 @@ fn a_bots_input_the_log_refuses_is_dropped_by_its_cause() {
     // the first, and the 125th is ahead of time.
     let rules = InputRules::LAN;
     let packages = TestMode::Skirmish.packages();
-    let session = FixedSession::planned(packages, rules, [PlayerSlotPlan::Bot; 3]);
+    let session = FixedSession::planned(packages, [PlayerSlotPlan::Bot; 3]).rules(rules);
     let mut fixed = session.each_picked("faction", "base").start();
     let bot = PlayerSlot::new(0);
     let most = usize::try_from(rules.max_payload_len).unwrap();

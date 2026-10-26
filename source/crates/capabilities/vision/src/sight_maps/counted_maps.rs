@@ -15,8 +15,9 @@ pub(crate) struct CountedMaps {
     maps: usize,
     /// Each map's bitmap, map after map.
     bits: Vec<u64>,
-    /// Each map's counts, map after map.
-    counts: Vec<u16>,
+    /// Each map's counts, map after map: 4 bytes, as a count of 2 would let a script's reveals on
+    /// one cell pass 65,535, where 2³² of them would not fit in memory.
+    counts: Vec<u32>,
 }
 
 impl CountedMaps {

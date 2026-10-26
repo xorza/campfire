@@ -377,6 +377,25 @@ impl PacketSession {
         buffer
     }
 
+    /// Whether `datagram` is the peer's close: a close's header, and under a seal, a payload
+    /// that opens, which a forged header does not.
+    fn opens_close(&self, datagram: &mut BytesMut) -> bool {
+        let Ok(header) = Header::read(datagram) else {
+            return false;
+        };
+        if header.packet_type != PacketType::Close {
+            return false;
+        }
+        match &self.protection {
+            Protection::Plain => true,
+            Protection::Sealed(seal) => {
+                let number = self.received.expand(header.number);
+                let (head, sealed) = datagram.split_at_mut(header.len());
+                seal.open(number, head, sealed).is_ok()
+            }
+        }
+    }
+
     /// Reads `datagram`, its IO's prefix taken off, which arrived at `now` on `path`. A close's
     /// answer to it goes to `out`.
     pub(crate) fn receive(
@@ -388,19 +407,17 @@ impl PacketSession {
     ) -> Received {
         match self.state {
             State::Ended(_) => return Received::Dropped,
-            State::Closing {
-                code,
-                ref mut received,
-                ..
-            } => {
-                // The peer's own close ends the closing at once, as it hears no more (RFC 9000
-                // §10.2.2); any other packet may hear the close again.
-                if Header::read(&datagram)
-                    .is_ok_and(|header| header.packet_type == PacketType::Close)
-                {
+            State::Closing { code, .. } => {
+                // The peer's own close ends the closing at once, as it hears no more, once it
+                // opens, as a header alone anyone on the path can forge (RFC 9000 §10.2.2); any
+                // other packet may hear the close again.
+                if self.opens_close(&mut datagram) {
                     self.state = State::Ended(UnlinkReason::Closed(code));
                     return Received::Dropped;
                 }
+                let State::Closing { received, .. } = &mut self.state else {
+                    unreachable!("the session is closing");
+                };
                 *received = received.saturating_add(1);
                 if received.is_power_of_two() {
                     self.send_control(now, PacketType::Close, &code.get().to_be_bytes(), path, out);

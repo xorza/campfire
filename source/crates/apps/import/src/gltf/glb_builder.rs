@@ -135,11 +135,7 @@ impl GlbBuilder {
                 max[axis] = max[axis].max(vector[axis]);
             }
         }
-        let accessor = self.floats(
-            vectors.iter().flatten().copied(),
-            vectors.len(),
-            Elements::VEC3,
-        );
+        let accessor = self.floats(vectors.as_flattened(), vectors.len(), Elements::VEC3);
         let bounds = &mut self.document.accessors[accessor.value()];
         bounds.min = Some(Json::convert(&min).expect("three floats are JSON"));
         bounds.max = Some(Json::convert(&max).expect("three floats are JSON"));
@@ -148,50 +144,40 @@ impl GlbBuilder {
 
     /// An accessor of `vectors`.
     pub(crate) fn vectors(&mut self, vectors: &[[f32; 3]]) -> Index<Accessor> {
-        self.floats(
-            vectors.iter().flatten().copied(),
-            vectors.len(),
-            Elements::VEC3,
-        )
+        self.floats(vectors.as_flattened(), vectors.len(), Elements::VEC3)
     }
 
     pub(crate) fn coordinates(&mut self, coordinates: &[[f32; 2]]) -> Index<Accessor> {
-        let floats = coordinates.iter().flatten().copied();
-        self.floats(floats, coordinates.len(), Elements::VEC2)
+        self.floats(
+            coordinates.as_flattened(),
+            coordinates.len(),
+            Elements::VEC2,
+        )
     }
 
     /// An accessor of colors, each 4 bytes read as 0 to 1.
     pub(crate) fn colors(&mut self, colors: &[[u8; 4]]) -> Index<Accessor> {
-        let bytes = colors.iter().flatten().copied().collect();
-        self.accessor(bytes, colors.len(), Elements::COLORS)
+        self.accessor(colors.iter().copied(), colors.len(), Elements::COLORS)
     }
 
     /// An accessor of each vertex's joints, four indices of a skin's.
     pub(crate) fn joints(&mut self, joints: &[[u16; 4]]) -> Index<Accessor> {
         let bytes = joints
+            .as_flattened()
             .iter()
-            .flatten()
-            .flat_map(|joint| joint.to_le_bytes());
-        self.accessor(bytes.collect(), joints.len(), Elements::JOINTS)
+            .map(|joint| joint.to_le_bytes());
+        self.accessor(bytes, joints.len(), Elements::JOINTS)
     }
 
     /// An accessor of each vertex's weights, one for each of its joints.
     pub(crate) fn weights(&mut self, weights: &[[f32; 4]]) -> Index<Accessor> {
-        self.floats(
-            weights.iter().flatten().copied(),
-            weights.len(),
-            Elements::VEC4,
-        )
+        self.floats(weights.as_flattened(), weights.len(), Elements::VEC4)
     }
 
     /// An accessor of an animation's key times, in seconds, with their bounds, as glTF requires
     /// of a sampler's input.
     pub(crate) fn times(&mut self, times: &[f32]) -> Index<Accessor> {
-        let accessor = self.floats(
-            times.iter().copied(),
-            times.len(),
-            Elements::data(Type::Scalar),
-        );
+        let accessor = self.floats(times, times.len(), Elements::data(Type::Scalar));
         let bounds = &mut self.document.accessors[accessor.value()];
         let [min, max] = [times.first(), times.last()].map(|time| {
             let time = *time.expect("a sampler of a key at least");
@@ -203,27 +189,33 @@ impl GlbBuilder {
 
     /// An accessor of an animation's moves, each a vector.
     pub(crate) fn moves(&mut self, moves: &[[f32; 3]]) -> Index<Accessor> {
-        let floats = moves.iter().flatten().copied();
-        self.floats(floats, moves.len(), Elements::data(Type::Vec3))
+        self.floats(
+            moves.as_flattened(),
+            moves.len(),
+            Elements::data(Type::Vec3),
+        )
     }
 
     /// An accessor of an animation's turns, each a quaternion `x, y, z, w`.
     pub(crate) fn turns(&mut self, turns: &[[f32; 4]]) -> Index<Accessor> {
-        let floats = turns.iter().flatten().copied();
-        self.floats(floats, turns.len(), Elements::data(Type::Vec4))
+        self.floats(
+            turns.as_flattened(),
+            turns.len(),
+            Elements::data(Type::Vec4),
+        )
     }
 
     /// An accessor of matrices, each its columns in order, as a skin's inverse bind matrices.
     pub(crate) fn matrices(&mut self, matrices: &[[f32; 16]]) -> Index<Accessor> {
-        let floats = matrices.iter().flatten().copied();
-        self.floats(floats, matrices.len(), Elements::data(Type::Mat4))
+        self.floats(
+            matrices.as_flattened(),
+            matrices.len(),
+            Elements::data(Type::Mat4),
+        )
     }
 
     pub(crate) fn indices(&mut self, indices: &[u32]) -> Index<Accessor> {
-        let bytes = indices
-            .iter()
-            .flat_map(|index| index.to_le_bytes())
-            .collect();
+        let bytes = indices.iter().map(|index| index.to_le_bytes());
         self.accessor(bytes, indices.len(), Elements::INDICES)
     }
 
@@ -345,12 +337,10 @@ impl GlbBuilder {
             } else {
                 8 + buffer.len()
             };
-        let mut out = [
-            MAGIC.to_le_bytes(),
-            VERSION.to_le_bytes(),
-            word(12 + chunks),
-        ]
-        .concat();
+        let mut out = Vec::with_capacity(12 + chunks);
+        out.extend(MAGIC.to_le_bytes());
+        out.extend(VERSION.to_le_bytes());
+        out.extend(word(12 + chunks));
         out.extend(word(json.len()));
         out.extend(JSON_CHUNK.to_le_bytes());
         out.extend(json);
@@ -359,6 +349,7 @@ impl GlbBuilder {
             out.extend(BIN_CHUNK.to_le_bytes());
             out.extend(buffer);
         }
+        debug_assert_eq!(out.len(), 12 + chunks, "the header counts every byte");
         out
     }
 
@@ -371,20 +362,30 @@ impl GlbBuilder {
         problems
     }
 
-    fn floats(
-        &mut self,
-        floats: impl Iterator<Item = f32>,
-        count: usize,
-        elements: Elements,
-    ) -> Index<Accessor> {
-        let bytes = floats.flat_map(f32::to_le_bytes).collect();
+    fn floats(&mut self, floats: &[f32], count: usize, elements: Elements) -> Index<Accessor> {
+        let bytes = floats.iter().map(|float| float.to_le_bytes());
         self.accessor(bytes, count, elements)
     }
 
-    /// An accessor of `count` `elements`, whose `bytes` its own view holds, at the buffer's end
-    /// aligned to 4, as every accessor's components need. The first adds the one buffer, whose
-    /// length `encode` sets.
-    fn accessor(&mut self, bytes: Vec<u8>, count: usize, elements: Elements) -> Index<Accessor> {
+    /// An accessor of `count` `elements`, whose bytes, `items` in turn, its own view holds, at the
+    /// buffer's end aligned to 4, as every accessor's components need.
+    fn accessor<const N: usize>(
+        &mut self,
+        items: impl ExactSizeIterator<Item = [u8; N]>,
+        count: usize,
+        elements: Elements,
+    ) -> Index<Accessor> {
+        let start = self.view_start();
+        self.buffer.reserve(items.len() * N);
+        for item in items {
+            self.buffer.extend_from_slice(&item);
+        }
+        self.view(start, count, elements)
+    }
+
+    /// Where the next view starts: the buffer's end aligned to 4. The first adds the one buffer,
+    /// whose length `encode` sets.
+    fn view_start(&mut self) -> usize {
         if self.document.buffers.is_empty() {
             self.document.push(Buffer {
                 byte_length: USize64(0),
@@ -395,17 +396,21 @@ impl GlbBuilder {
             });
         }
         self.buffer.resize(self.buffer.len().next_multiple_of(4), 0);
+        self.buffer.len()
+    }
+
+    /// An accessor of `count` `elements`, whose view holds the buffer from `start` to its end.
+    fn view(&mut self, start: usize, count: usize, elements: Elements) -> Index<Accessor> {
         let view = self.document.push(View {
             buffer: Index::new(0),
-            byte_length: USize64::from(bytes.len()),
-            byte_offset: Some(USize64::from(self.buffer.len())),
+            byte_length: USize64::from(self.buffer.len() - start),
+            byte_offset: Some(USize64::from(start)),
             byte_stride: None,
             name: None,
             target: elements.target.map(Checked::Valid),
             extensions: None,
             extras: Extras::default(),
         });
-        self.buffer.extend(bytes);
         self.document.push(Accessor {
             buffer_view: Some(view),
             byte_offset: None,

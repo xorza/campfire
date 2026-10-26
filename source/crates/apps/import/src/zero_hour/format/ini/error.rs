@@ -70,8 +70,8 @@ pub enum IniError {
     /// An object's `Scale` is not positive, or not finite.
     #[error("line {line}: an object's scale is not positive")]
     Scale { line: usize },
-    /// An `Object` or an `ObjectReskin` of a name read before.
-    #[error("line {line}: an object of this name is read before")]
+    /// An `Object`, an `ObjectReskin` or a `Road` of a name read before.
+    #[error("line {line}: a block of this name is read before")]
     Redefined { line: usize },
     /// An `ObjectReskin` of a base not read before it.
     #[error("line {line}: a reskin's base is not read before it")]

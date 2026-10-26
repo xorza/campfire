@@ -22,7 +22,7 @@ use campfire_net_timeline::ClockSource;
 use core::net::SocketAddr;
 use core::time::Duration;
 
-use crate::endpoint_plugin::EndpointPlugin;
+use crate::endpoint_plugin::{EndpointPlugin, PacketSessionLinkPlugin};
 
 /// The time between two frames of each app.
 const FRAME: Duration = Duration::from_millis(10);
@@ -108,6 +108,7 @@ impl Harness {
                 TimePlugin,
                 ClockPlugin,
                 LinkPlugin,
+                PacketSessionLinkPlugin,
                 EndpointPlugin::<EmulatedWires>::default(),
             ));
             app.insert_resource(TimeUpdateStrategy::ManualDuration(FRAME));
@@ -407,6 +408,7 @@ fn a_real_clock_runs_the_pass_on_a_thread() {
             TimePlugin,
             ClockPlugin,
             LinkPlugin,
+            PacketSessionLinkPlugin,
             EndpointPlugin::<EmulatedWires>::default(),
         ));
         app.init_resource::<Inbox>();

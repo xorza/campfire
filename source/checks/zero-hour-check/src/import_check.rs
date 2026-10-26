@@ -3,21 +3,21 @@ use std::num::NonZeroU32;
 
 use campfire_actions::ActionKind;
 use campfire_client_files::{
-    ClientObjects, ClientUnit, ClientUnits, ConditionTest, MapConditions, TerrainFile,
+    ClientFile, ClientObjects, ClientUnit, ClientUnits, ConditionTest, MapConditions, TerrainFile,
 };
-use campfire_codec::Binary;
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
 use campfire_import::{
-    AnimationDropCause, ButtonDropCause, Dropped, ImportLoss, Imported, StateDropCause,
+    AnimationDropCause, ButtonDropCause, ImportLoss, Imported, RoadDropCause, StateDropCause,
     SupplyDropCause, UpgradeDropCause, WeaponDropCause,
 };
 use campfire_math::Num;
 use campfire_navigation::MapNavigationData;
-use campfire_package::ModePackages;
-use campfire_package_disk::PackageDir;
+use campfire_package::{ModePackages, ModeRead};
+use campfire_package_format::PackageReader;
 use campfire_production::{DropOffData, NodeData};
 use campfire_stats::UpgradesData;
+use campfire_values::PackagePath;
 use tracing::info;
 
 use crate::attack_play::AttackPlay;
@@ -30,8 +30,8 @@ use crate::match_play::PlayTools;
 use crate::missile_play::MissilePlay;
 use crate::pins::{
     FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
-    ProducedCounts, ProductionSteps, RangerLook, SkirmishTicks, SuppliedCounts, SupplySteps,
-    TerrainCounts, TerrainDrawn, UpgradeSteps, UpgradedCounts,
+    ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SkirmishTicks, SuppliedCounts,
+    SupplySteps, TerrainCounts, TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
@@ -45,7 +45,8 @@ use crate::supply_play::SupplyPlay;
 #[derive(Debug)]
 pub(crate) struct ImportCheck<'a> {
     pub(crate) imported: &'a Imported,
-    pub(crate) game: &'a PackageDir,
+    /// The mode, read once, which each play's match loads again on the map.
+    pub(crate) read: &'a ModeRead,
     pub(crate) map: &'a MapName,
     pub(crate) packages: ModePackages,
     pub(crate) golden: Option<Golden>,
@@ -69,7 +70,7 @@ impl ImportCheck<'_> {
         self.measured.fingerprints = Some(got);
     }
 
-    /// Tournament Desert's heights, units, client objects, markers, terrain and walls.
+    /// Tournament Desert's heights, units, client objects, markers, terrain, roads and walls.
     pub(crate) fn map(&mut self) -> Result<(), CheckError> {
         let files = &self.packages.mode().package.files;
         let heights = self
@@ -78,7 +79,7 @@ impl ImportCheck<'_> {
             .map_or([0, 0], |grid| [grid.columns(), grid.rows()]);
         let placed = &self.packages.map().units;
         let by_type = tally(placed.iter().map(|unit| unit.unit_type.as_str()));
-        let client: ClientObjects = files.read_data(&ClientObjects::path(self.map))?;
+        let client: ClientObjects = client_file(files, &ClientObjects::path(self.map))?;
         let by_look = tally(client.objects.iter().map(|object| object.look.as_str()));
         info!(units = %listed(&by_type), "Tournament Desert's units by type");
         info!(objects = %listed(&by_look), "Tournament Desert's client objects by look");
@@ -92,12 +93,12 @@ impl ImportCheck<'_> {
             markers: self.packages.map().markers.len(),
             walls: navigation.map_or(0, |navigation| navigation.walls.len()),
         };
-        let terrain = files.read_file(&TerrainFile::path(self.map))?;
-        let terrain = Binary::decode::<TerrainFile>(&terrain).map_err(CheckError::Decode)?;
+        let terrain: TerrainFile = client_file(files, &TerrainFile::path(self.map))?;
         let drawn = TerrainDrawn {
             quads: terrain.quads().ground.len(),
             counts: TerrainCounts {
                 overlays: terrain.quads().overlays.len(),
+                decals: terrain.decals().triangles.len(),
                 copies: terrain.texture().copies.len(),
                 wraps: terrain.texture().wraps.len(),
             },
@@ -119,6 +120,39 @@ impl ImportCheck<'_> {
             .extend(Differs::of(drawn, expected).map(CheckFailure::Terrain));
         self.measured.map = Some(counts);
         self.measured.terrain = Some(drawn.counts);
+        let pieces = self
+            .imported
+            .roads
+            .get(self.map)
+            .copied()
+            .unwrap_or_default();
+        let mut roads = RoadCounts {
+            segments: pieces.segments,
+            curves: pieces.curves,
+            miters: pieces.miters,
+            tees: pieces.tees,
+            four_ways: pieces.four_ways,
+            ys: pieces.ys,
+            hs: pieces.hs,
+            joins: pieces.joins,
+            dropped: [0; RoadDropCause::ALL.len()],
+        };
+        for loss in &self.imported.losses {
+            if let ImportLoss::Road { map, dropped } = loss
+                && map == self.map
+            {
+                info!("{loss}");
+                let at = RoadDropCause::ALL
+                    .iter()
+                    .position(|&cause| cause == dropped.cause);
+                roads.dropped[at.expect("`ALL` holds every cause")] += dropped.count;
+            }
+        }
+        let expected = self.pinned(|golden| golden.roads, roads);
+        self.failures
+            .extend(Differs::of(roads, expected).map(CheckFailure::Roads));
+        self.measured.roads = Some(roads);
+        info!(%roads, "Tournament Desert's roads");
         info!(
             samples = %format!("{} × {}", heights[0], heights[1]),
             units = counts.units,
@@ -128,6 +162,7 @@ impl ImportCheck<'_> {
             markers = counts.markers,
             quads = drawn.quads,
             overlays = drawn.counts.overlays,
+            decals = drawn.counts.decals,
             copies = drawn.counts.copies,
             wraps = drawn.counts.wraps,
             untextured,
@@ -143,42 +178,33 @@ impl ImportCheck<'_> {
     /// dropped, by cause.
     pub(crate) fn looks(&mut self) -> Result<(), CheckError> {
         let files = &self.packages.mode().package.files;
-        let unit_looks: ClientUnits = files.read_data(&ClientUnits::path())?;
+        let unit_looks: ClientUnits = client_file(files, &ClientUnits::path())?;
         let states_of = |look: &ClientUnit| {
             let draws = look.every_draw();
             draws.map(|draw| draw.states().len()).sum::<usize>()
         };
         let varied_units = unit_looks
-            .units
+            .units()
             .values()
             .filter(|look| look.every_draw().any(|draw| draw.states().len() > 1))
             .count();
-        let varied_objects = unit_looks.objects.values();
+        let varied_objects = unit_looks.objects().values();
         let varied = varied_units
             + varied_objects
                 .filter(|look| !look.variants.is_empty())
                 .count();
         let empty = unit_looks
-            .units
+            .units()
             .values()
             .filter(|look| look.draws.is_empty())
             .count();
-        let states = unit_looks.units.values().map(states_of).sum();
+        let states = unit_looks.units().values().map(states_of).sum();
         let never = unit_looks
-            .conditions
+            .conditions()
             .values()
             .filter(|test| **test == ConditionTest::Never)
             .count();
         let [night, snow] = ["night", "snow"].map(|name| DeclaredName::new(name).expect("a name"));
-        let dropped: Vec<&Dropped<AnimationDropCause>> = self
-            .imported
-            .losses
-            .iter()
-            .filter_map(|loss| match loss {
-                ImportLoss::Animation(animation) => Some(animation),
-                _ => None,
-            })
-            .collect();
         let mut drawn = LookCounts {
             varied,
             empty,
@@ -187,11 +213,9 @@ impl ImportCheck<'_> {
             night: 0,
             snowy: 0,
             animations: files.files_under("client/animations").count(),
-            dropped_animations: AnimationDropCause::ALL.map(|cause| {
-                dropped
-                    .iter()
-                    .filter(|animation| animation.cause == cause)
-                    .count()
+            dropped_animations: self.dropped(AnimationDropCause::ALL, |loss| match loss {
+                ImportLoss::Animation(animation) => Some(animation.cause),
+                _ => None,
             }),
             dropped_states: StateDropCause::ALL.map(|cause| {
                 let losses = self.imported.losses.iter();
@@ -203,7 +227,7 @@ impl ImportCheck<'_> {
             }),
         };
         for other in &self.imported.maps {
-            let held: MapConditions = files.read_data(&MapConditions::path(other))?;
+            let held: MapConditions = client_file(files, &MapConditions::path(other))?;
             drawn.night += usize::from(held.conditions.contains(&night));
             drawn.snowy += usize::from(held.conditions.contains(&snow));
         }
@@ -211,13 +235,6 @@ impl ImportCheck<'_> {
         self.failures
             .extend(Differs::of(drawn, expected).map(CheckFailure::Looks));
         self.measured.looks = Some(drawn);
-        for dropped in &dropped {
-            info!(
-                animation = dropped.name,
-                cause = ?dropped.cause,
-                "a look's animation is not imported"
-            );
-        }
         info!(%drawn, "the looks of night and snow, and their animations");
         let ranger = RangerLook::of(&unit_looks);
         let expected = self.pinned(|golden| golden.ranger.clone(), ranger.clone());
@@ -232,8 +249,8 @@ impl ImportCheck<'_> {
     /// mode, as the import's own load checks.
     pub(crate) fn other_maps(&self) {
         for loss in &self.imported.losses {
-            if let ImportLoss::Waypoint { map, waypoint } = loss {
-                info!(%map, waypoint, "a map's waypoint past its bounds is dropped");
+            if let ImportLoss::Waypoint { .. } = loss {
+                info!("{loss}");
             }
         }
         info!(maps = self.imported.maps.len(), "the imported maps loaded");
@@ -241,36 +258,18 @@ impl ImportCheck<'_> {
 
     /// The trains and builds of every command set, and the buttons dropped, by cause.
     pub(crate) fn production(&mut self) {
-        let dropped: Vec<&Dropped<ButtonDropCause>> = self
-            .imported
-            .losses
-            .iter()
-            .filter_map(|loss| match loss {
-                ImportLoss::Button(button) => Some(button),
-                _ => None,
-            })
-            .collect();
         let produced = ProducedCounts {
             trains: self.kind_count(ActionKind::Train),
             builds: self.kind_count(ActionKind::Build),
-            dropped: ButtonDropCause::ALL.map(|cause| {
-                dropped
-                    .iter()
-                    .filter(|button| button.cause == cause)
-                    .count()
+            dropped: self.dropped(ButtonDropCause::ALL, |loss| match loss {
+                ImportLoss::Button(button) => Some(button.cause),
+                _ => None,
             }),
         };
         let expected = self.pinned(|golden| golden.produced, produced);
         self.failures
             .extend(Differs::of(produced, expected).map(CheckFailure::Produced));
         self.measured.produced = Some(produced);
-        for dropped in &dropped {
-            info!(
-                button = dropped.name,
-                cause = ?dropped.cause,
-                "a command button is not imported"
-            );
-        }
         info!(
             trains = produced.trains,
             builds = produced.builds,
@@ -282,15 +281,6 @@ impl ImportCheck<'_> {
     /// The researches of every command set, the upgrade modules the unit types take, and the
     /// modules and objects of sets dropped, by cause.
     pub(crate) fn upgrades(&mut self) {
-        let dropped: Vec<&Dropped<UpgradeDropCause>> = self
-            .imported
-            .losses
-            .iter()
-            .filter_map(|loss| match loss {
-                ImportLoss::Upgrade(module) => Some(module),
-                _ => None,
-            })
-            .collect();
         let units = self.packages.content().units.values();
         let modules = units
             .filter_map(|unit| unit.section::<UpgradesData>())
@@ -299,39 +289,21 @@ impl ImportCheck<'_> {
         let upgraded = UpgradedCounts {
             researches: self.kind_count(ActionKind::Research),
             modules,
-            dropped: UpgradeDropCause::ALL.map(|cause| {
-                dropped
-                    .iter()
-                    .filter(|module| module.cause == cause)
-                    .count()
+            dropped: self.dropped(UpgradeDropCause::ALL, |loss| match loss {
+                ImportLoss::Upgrade(module) => Some(module.cause),
+                _ => None,
             }),
         };
         let expected = self.pinned(|golden| golden.upgraded, upgraded);
         self.failures
             .extend(Differs::of(upgraded, expected).map(CheckFailure::Upgraded));
         self.measured.upgraded = Some(upgraded);
-        for dropped in &dropped {
-            info!(
-                module = dropped.name,
-                cause = ?dropped.cause,
-                "an upgrade module, or an object's sets, are not imported"
-            );
-        }
         info!(%upgraded, "the researches and the upgrade modules");
     }
 
     /// The docks' nodes, the supply centers' drop-offs, the gatherers' gathers, the hackers'
     /// hacks, each action whose channel pays, and the supply dropped, by cause.
     pub(crate) fn supply(&mut self) {
-        let dropped: Vec<&Dropped<SupplyDropCause>> = self
-            .imported
-            .losses
-            .iter()
-            .filter_map(|loss| match loss {
-                ImportLoss::Supply(supply) => Some(supply),
-                _ => None,
-            })
-            .collect();
         let units = self.packages.content().units.values();
         let (nodes, drop_offs) = units.fold((0, 0), |(nodes, drop_offs), unit| {
             (
@@ -353,24 +325,15 @@ impl ImportCheck<'_> {
                     channel.is_some_and(|channel| channel.pays.is_some())
                 })
                 .count(),
-            dropped: SupplyDropCause::ALL.map(|cause| {
-                dropped
-                    .iter()
-                    .filter(|supply| supply.cause == cause)
-                    .count()
+            dropped: self.dropped(SupplyDropCause::ALL, |loss| match loss {
+                ImportLoss::Supply(supply) => Some(supply.cause),
+                _ => None,
             }),
         };
         let expected = self.pinned(|golden| golden.supplied, supplied);
         self.failures
             .extend(Differs::of(supplied, expected).map(CheckFailure::Supplied));
         self.measured.supplied = Some(supplied);
-        for dropped in &dropped {
-            info!(
-                object = dropped.name,
-                cause = ?dropped.cause,
-                "an object's supply is not imported"
-            );
-        }
         info!(
             nodes = supplied.nodes,
             drop_offs = supplied.drop_offs,
@@ -385,21 +348,12 @@ impl ImportCheck<'_> {
     pub(crate) fn combat(&mut self) {
         let combat = self.packages.data().section_or_default::<ModeCombatData>();
         let losses = &self.imported.losses;
-        let dropped: Vec<&Dropped<WeaponDropCause>> = losses
-            .iter()
-            .filter_map(|loss| match loss {
-                ImportLoss::Weapon(weapon) => Some(weapon),
-                _ => None,
-            })
-            .collect();
         let count = |kind: fn(&ImportLoss) -> bool| losses.iter().filter(|loss| kind(loss)).count();
         let fought = FoughtCounts {
             weapons: self.kind_count(ActionKind::Attack),
-            dropped: WeaponDropCause::ALL.map(|cause| {
-                dropped
-                    .iter()
-                    .filter(|weapon| weapon.cause == cause)
-                    .count()
+            dropped: self.dropped(WeaponDropCause::ALL, |loss| match loss {
+                ImportLoss::Weapon(weapon) => Some(weapon.cause),
+                _ => None,
             }),
             armors: combat.armors.len(),
             kinds: combat.damage_kinds.len(),
@@ -410,13 +364,6 @@ impl ImportCheck<'_> {
         self.failures
             .extend(Differs::of(fought, expected).map(CheckFailure::Fought));
         self.measured.fought = Some(fought);
-        for dropped in &dropped {
-            info!(
-                weapon = dropped.name,
-                cause = ?dropped.cause,
-                "a weapon is not imported"
-            );
-        }
         info!(%fought, "the weapons, armors and bodies");
     }
 
@@ -431,7 +378,7 @@ impl ImportCheck<'_> {
         if !self.selection.runs(play) {
             return Ok(None);
         }
-        let packages = ModePackages::at(self.game, Some(self.map)).map_err(CheckError::Load)?;
+        let packages = self.read.on(Some(self.map)).map_err(CheckError::Load)?;
         let tools = Self::tools(self.selection, play, &packages, rate);
         let tools = tools.map_err(|failure| self.failures.push(failure)).ok();
         Ok(tools.map(|tools| (packages, tools)))
@@ -667,6 +614,24 @@ impl ImportCheck<'_> {
         Ok(self.failures)
     }
 
+    /// How many of the losses `kind` picks hold each cause of `all`, in its order, each loss
+    /// logged.
+    fn dropped<C: Copy + PartialEq, const N: usize>(
+        &self,
+        all: [C; N],
+        kind: fn(&ImportLoss) -> Option<C>,
+    ) -> [usize; N] {
+        let mut counts = [0; N];
+        for loss in &self.imported.losses {
+            if let Some(cause) = kind(loss) {
+                info!("{loss}");
+                let at = all.iter().position(|&each| each == cause);
+                counts[at.expect("a cause's `ALL` holds it")] += 1;
+            }
+        }
+        counts
+    }
+
     /// How many actions of `kind` the mode holds.
     fn kind_count(&self, kind: ActionKind) -> usize {
         let actions = self.packages.content().actions().values();
@@ -690,4 +655,10 @@ fn listed(counts: &BTreeMap<&str, usize>) -> String {
         .map(|(name, count)| format!("{name} × {count}"))
         .collect();
     entries.join(", ")
+}
+
+/// The client file `F` at `path` of `files`, read and decoded in the format its type declares, as
+/// the client reads it (02-engine-core.md, A client file declares its format).
+fn client_file<F: ClientFile>(files: &PackageReader, path: &PackagePath) -> Result<F, CheckError> {
+    F::decode(&files.read_file(path)?).map_err(CheckError::ClientFile)
 }

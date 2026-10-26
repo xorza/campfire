@@ -8,7 +8,7 @@ use campfire_codec::Binary;
 use serde::Serialize;
 
 use crate::server_seed::ServerSeed;
-use crate::session_log::error::{PublishError, PublishWriteError};
+use crate::session_log::error::{PublishError, PublishWriteError, WalkStopped};
 use crate::session_log::file::{LOG_TAG, PACKET_ENTRY, SERVER_ENTRY};
 use crate::session_log::journal_records::{
     JOURNAL_CHECKPOINT_BEGUN, JOURNAL_CHECKPOINT_DONE, JOURNAL_HEADER, JOURNAL_LOADED,
@@ -16,8 +16,9 @@ use crate::session_log::journal_records::{
 };
 use crate::session_log::{SessionLog, offset, take};
 
-/// What gives a journal's records in order, each to the function it is given, at each call.
-pub(crate) type JournalWalk<'w> = dyn FnMut(&mut dyn FnMut(&[u8])) + 'w;
+/// What gives a journal's records in order, each to the function it is given, at each call; an
+/// error once it stopped short of the journal's end.
+pub(crate) type JournalWalk<'w> = dyn FnMut(&mut dyn FnMut(&[u8])) -> Result<(), WalkStopped> + 'w;
 
 /// What a first walk of a journal finds of the log it holds, each load's cut applied: the header,
 /// each segment, the entries logged since the last tick was sealed, the result, and the records a
@@ -94,7 +95,8 @@ impl SessionLog {
     /// twice: once to count what the file's counts need, once to write each record the file
     /// keeps, so the memory a publication takes is a record's and the counts'. An error for a
     /// journal that holds no header, a record that does not read, a checkpoint begun with no
-    /// record, and a write that fails.
+    /// record, a walk that stopped short, so no log goes out with records missing, and a write
+    /// that fails.
     pub fn publish(
         walk: &mut JournalWalk<'_>,
         revealed: &ServerSeed,
@@ -139,7 +141,7 @@ impl SessionLog {
             *open -= 1;
             out.byte(entry);
             out.bytes(body);
-        });
+        })?;
         cursor.finish(&shape, out);
         out.put(&Some(revealed));
         match &shape.result {
@@ -157,7 +159,7 @@ impl SessionLog {
 
 impl Shape {
     /// The shape of the log whose journal `walk` gives.
-    fn of(walk: &mut JournalWalk<'_>) -> Result<Self, PublishError> {
+    fn of(walk: &mut JournalWalk<'_>) -> Result<Self, PublishWriteError> {
         let mut shape = Self {
             segments: vec![SegmentShape {
                 begun: None,
@@ -178,12 +180,12 @@ impl Shape {
             if let Err(error) = shape.take(at, record, &mut header) {
                 failed = Some(error);
             }
-        });
+        })?;
         if let Some(error) = failed {
-            return Err(error);
+            return Err(error.into());
         }
         if !header {
-            return Err(PublishError::NoHeader);
+            return Err(PublishError::NoHeader.into());
         }
         if shape
             .segments
@@ -191,7 +193,7 @@ impl Shape {
             .skip(1)
             .any(|segment| segment.record.is_none())
         {
-            return Err(PublishError::Begun);
+            return Err(PublishError::Begun.into());
         }
         Ok(shape)
     }

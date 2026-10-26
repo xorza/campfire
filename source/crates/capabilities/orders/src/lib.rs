@@ -2,10 +2,6 @@
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 #![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-#![expect(
     clippy::type_complexity,
     reason = "a Bevy query names its data and its filters in one type"
 )]
@@ -185,10 +181,10 @@ impl Orders {
 pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::{ActionProgress, InProgress, SlotTimes};
-    use campfire_common::{PlayerSlot, Tick};
+    use campfire_common::Tick;
     use campfire_declarations::ById;
     use campfire_declarations::internals::BookLoad;
-    use campfire_script::{Filters, MatchNames, ScriptFailures, ScriptId};
+    use campfire_script::{Filters, MatchNames, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{MatchRate, StableId};
     use campfire_units::{ScriptBook, UnitTypeCore, Units};
@@ -259,13 +255,6 @@ pub mod internals {
                 Self::load_ai(world, unit_type, &ai, script).unwrap();
             }
             unit_type
-        }
-
-        /// Runs a tick, and checks that no script call failed in it.
-        pub fn think(world: &mut World, inputs: &[(PlayerSlot, &[u8])]) {
-            world.step_with(inputs);
-            let failures = world.resource_mut::<ScriptFailures>().take_calls();
-            assert_eq!(failures, []);
         }
 
         /// When the attack it winds up strikes, if one winds up.

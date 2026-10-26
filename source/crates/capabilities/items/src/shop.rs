@@ -1,7 +1,12 @@
-use campfire_declarations::PerId;
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::Num;
-use campfire_script::Filter;
-use campfire_values::{ItemId, Relation, ResourceId, Share, TagSet, UnitType};
+use campfire_script::{Filter, UnknownName};
+use campfire_units::UnitTypes;
+use campfire_values::{ItemId, Named, Names, Relation, ResourceId, Share, TagSet, UnitType};
+
+use crate::Items;
+use crate::item_book::ItemBook;
+use crate::shop_data::ShopData;
 
 /// A shop type's shop as a match reads it, package data and not state: the item types it sells,
 /// the player resource it takes, how far from its body's edge it serves, the units it serves,
@@ -79,4 +84,43 @@ impl Shop {
 
 impl PerId<UnitType> for Shop {
     const SCRIPTS_ONLY: bool = false;
+}
+
+impl Shop {
+    /// The shop of each unit type that stands and sells, of the mode's item types and resources;
+    /// an error for a name the mode does not have.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let items = cx.book::<ItemBook>()?.names();
+        let no_resources = Names::default();
+        let resources = Items::resources(cx, &no_resources)?;
+        let tags = cx.fact::<UnitTypes>()?.tags();
+        let mut book = ByIdBuilder::default();
+        for unit in cx.standing() {
+            let Some(data) = unit.data.section::<ShopData>() else {
+                continue;
+            };
+            let shop = || {
+                let sells = data.items.iter().map(|name| {
+                    let found = items.named(name.as_str());
+                    found.ok_or_else(|| UnknownName::new(ItemId::NAMES, name))
+                });
+                let sells = sells.collect::<Result<_, UnknownName>>()?;
+                let resource = resources.named(data.resource.as_str());
+                let resource =
+                    resource.ok_or_else(|| UnknownName::new(ResourceId::NAMES, &data.resource))?;
+                let buyers = Filter::resolve(&data.buyers, tags)?;
+                Ok(Self::new(
+                    sells,
+                    resource,
+                    data.reach,
+                    buyers,
+                    data.sell_share,
+                ))
+            };
+            let at = || BookPlace::UnitType(unit.place());
+            let shop = shop().map_err(|name| BookError::unknown(unit.package, at(), name))?;
+            book.set(unit.unit_type, shop);
+        }
+        Ok(book.build())
+    }
 }

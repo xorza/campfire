@@ -36,7 +36,7 @@ impl SceneLights {
             Color::LinearRgba(LinearRgba::from(Srgba::new(red, green, blue, 1.0)))
         };
         let suns = lights
-            .lights
+            .lights()
             .iter()
             .map(|sun| {
                 let way = sun.direction;
@@ -57,7 +57,7 @@ impl SceneLights {
             .collect();
         Self {
             ambient: GlobalAmbientLight {
-                color: color(lights.ambient),
+                color: color(lights.ambient()),
                 brightness: full,
                 ..GlobalAmbientLight::default()
             },
@@ -74,9 +74,9 @@ mod tests {
 
     #[test]
     fn a_light_of_1_gives_a_surface_its_full_color() {
-        let lights = MapLights {
-            ambient: [0.5, 0.0, 1.0],
-            lights: vec![
+        let lights = MapLights::new(
+            [0.5, 0.0, 1.0],
+            [
                 MapLight {
                     color: [1.0, 0.5, 0.0],
                     direction: Vec3::NEG_Y,
@@ -86,7 +86,8 @@ mod tests {
                     direction: Vec3::new(1.0, -1.0, 0.0),
                 },
             ],
-        };
+        )
+        .unwrap();
         let scene = SceneLights::of(&lights);
         // EV100 9.7: an exposure of 2^−9.7 / 1.2, so a full light is 1.2 · 2^9.7 = 998.18.
         let full = 1.2 * 9.7_f32.exp2();

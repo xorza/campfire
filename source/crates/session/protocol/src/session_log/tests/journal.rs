@@ -197,6 +197,27 @@ fn a_journal_publishes_the_file_its_log_writes() {
     drop(journal);
     assert_eq!(published_from(&file.bytes()), Ok(encoded(&minimal())));
 
+    // A walk that stops short of the journal's end in its second pass, as a read of its file
+    // fails after the first, publishes nothing, though its first pass found the log whole.
+    let bytes = file.bytes();
+    let mut walks = 0;
+    let mut walk = |visit: &mut dyn FnMut(&[u8])| {
+        walks += 1;
+        for record in
+            JournalFrames::new(&bytes)
+                .unwrap()
+                .take(if walks == 1 { usize::MAX } else { 2 })
+        {
+            visit(record);
+        }
+        if walks == 1 { Ok(()) } else { Err(WalkStopped) }
+    };
+    let published = SessionLog::publish(&mut walk, &SEED_CHAIN.seed(1), &mut Vec::new());
+    assert!(matches!(
+        published,
+        Err(PublishWriteError::Walk(WalkStopped))
+    ));
+
     // A journal of no record, and one whose last checkpoint has no record yet, publish nothing.
     let empty = MemorySink::new().bytes();
     assert_eq!(published_from(&empty), Err(PublishError::NoHeader));

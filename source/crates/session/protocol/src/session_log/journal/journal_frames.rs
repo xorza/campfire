@@ -61,36 +61,40 @@ impl<'a> JournalFrames<'a> {
     /// each record to `visit`, as the iterator reads them from bytes in memory: the read stops at
     /// the first frame that is short, too long, or whose hash fails. The memory it takes is one
     /// record's and a buffer of `READ_BUFFER` bytes, so a frame's length and its record cost no
-    /// read of their own. An error for a reader that fails, and `NotJournal` for bytes that do not
-    /// start with the journal's tag.
+    /// read of their own. What it gives back is `whole`'s length: the bytes the tag and the
+    /// whole frames take, the length to cut the journal to. An error for a reader that fails, and
+    /// `NotJournal` for bytes that do not start with the journal's tag.
     pub fn stream(
         reader: impl Read,
         visit: &mut dyn FnMut(&[u8]),
-    ) -> Result<(), JournalStreamError> {
+    ) -> Result<u64, JournalStreamError> {
         let mut reader = BufReader::with_capacity(READ_BUFFER, reader);
         let mut tag = [0; Self::TAG.len()];
         if !read_whole(&mut reader, &mut tag)? || tag != *Self::TAG {
             return Err(NotJournal.into());
         }
+        let len_of = |bytes: usize| u64::try_from(bytes).expect("a length fits u64");
+        let mut whole = len_of(Self::TAG.len());
         let mut record = Vec::new();
         loop {
             let mut len = [0; LEN_BYTES];
             if !read_whole(&mut reader, &mut len)? {
-                return Ok(());
+                return Ok(whole);
             }
             let len = usize::try_from(u32::from_le_bytes(len)).expect("u32 fits usize");
             if len > MAX_RECORD {
-                return Ok(());
+                return Ok(whole);
             }
             record.resize(len + HASH_BYTES, 0);
             if !read_whole(&mut reader, &mut record)? {
-                return Ok(());
+                return Ok(whole);
             }
             let (body, written) = record.split_at(len);
             if written != hash(body).as_bytes() {
-                return Ok(());
+                return Ok(whole);
             }
             visit(body);
+            whole += len_of(LEN_BYTES + len + HASH_BYTES);
         }
     }
 }

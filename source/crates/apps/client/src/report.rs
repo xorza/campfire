@@ -9,8 +9,6 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Res, Single};
 use bevy::image::{Image, IntoDynamicImageError};
-use bevy::input::ButtonInput;
-use bevy::input::keyboard::KeyCode;
 use bevy::render::view::window::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::transform::components::Transform;
 use bevy::window::{PrimaryWindow, Window};
@@ -50,7 +48,10 @@ impl Plugin for ReportPlugin {
         app.insert_resource(self.clone());
         app.add_systems(
             Update,
-            Self::press.after(ViewSystems).after(SelectionSystems),
+            Self::press
+                .run_if(InputMap::on(Act::Report))
+                .after(ViewSystems)
+                .after(SelectionSystems),
         );
     }
 }
@@ -60,16 +61,12 @@ impl ReportPlugin {
     /// selection took their frame's state: its facts at once, and its screenshot once the
     /// renderer captured the frame.
     fn press(
-        (keys, input): (Res<'_, ButtonInput<KeyCode>>, Res<'_, InputMap>),
         (reporter, state, tick): (Res<'_, Self>, Res<'_, JoinState>, Res<'_, SimTick>),
         (selection, rig): (Res<'_, Selection>, Res<'_, CameraRig>),
         camera: Single<'_, '_, &Transform, With<Camera3d>>,
         window: Single<'_, '_, &Window, With<PrimaryWindow>>,
         mut commands: Commands<'_, '_>,
     ) {
-        if !input.pressed(Act::Report, &keys) {
-            return;
-        }
         let Some(session) = state.session() else {
             info!("no match to report");
             return;

@@ -4,8 +4,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Changed;
 use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
+use campfire_actions::ActionKind;
 use campfire_common::Tick;
-use campfire_declarations::PerId;
+use campfire_declarations::{BookCx, BookError, ById, ByIdBuilder, PerId};
 use campfire_sim::{DueIndex, SimComponent, TimedKept, TimedProcess, TimedRuns, UnitDues};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::{AtWork, BuildTarget, UnitEntity};
@@ -13,6 +14,7 @@ use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
+use crate::Production;
 use crate::order_dues::{self, StandingOrder};
 
 /// A unit that builds, as one whose slots hold a build: its build order, none while it has none.
@@ -96,4 +98,17 @@ impl Replication for Builder {
 
 impl PerId<UnitType> for Builder {
     const SCRIPTS_ONLY: bool = false;
+}
+
+impl Builder {
+    /// A builder of each unit type that stands and places a build in its slots.
+    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
+        let mut book = ByIdBuilder::default();
+        for unit in cx.standing() {
+            if Production::slots(cx, unit, ActionKind::Build) {
+                book.set(unit.unit_type, Self::default());
+            }
+        }
+        Ok(book.build())
+    }
 }

@@ -122,6 +122,11 @@ disallowed-methods = [
     { path = "bevy_replicon::postcard_utils::entity_to_extend_mut", reason = "encode and decode through campfire_codec" },
     { path = "bevy_replicon::postcard_utils::from_buf", reason = "encode and decode through campfire_codec" },
     { path = "bevy_replicon::postcard_utils::entity_from_buf", reason = "encode and decode through campfire_codec" },
+    # campfire-app-threads alone starts Bevy's task pools (02-engine-core.md, An app's threads are one plan): a pool a test starts itself takes a thread for each core.
+    { path = "bevy_tasks::TaskPool::new", reason = "start an app's pools through campfire_app_threads::OneThreadPlugins" },
+    { path = "bevy_tasks::ComputeTaskPool::get_or_init", reason = "start an app's pools through campfire_app_threads::OneThreadPlugins" },
+    { path = "bevy_tasks::AsyncComputeTaskPool::get_or_init", reason = "start an app's pools through campfire_app_threads::OneThreadPlugins" },
+    { path = "bevy_tasks::IoTaskPool::get_or_init", reason = "start an app's pools through campfire_app_threads::OneThreadPlugins" },
     # campfire-schedule alone sets a schedule's build settings, which can switch off the ambiguity and hierarchy checks, and its executor, which can run its systems on other threads.
     { path = "bevy_ecs::schedule::Schedule::set_build_settings", reason = "build a sim schedule through campfire_schedule::ScheduleExt" },
     { path = "bevy_ecs::schedule::Schedules::configure_schedules", reason = "build a sim schedule through campfire_schedule::ScheduleExt" },
@@ -144,4 +149,6 @@ disallowed-methods = [
     { path = "bevy_ecs::schedule::Schedules::allow_ambiguous_resource", reason = "order the systems instead" },
     { path = "bevy_ecs::world::World::allow_ambiguous_component", reason = "order the systems instead" },
     { path = "bevy_ecs::world::World::allow_ambiguous_resource", reason = "order the systems instead" },
+    # Banned everywhere: the OS's temporary directory, which can lie on another file system than the tests' (02-engine-core.md, A test's files are on the tests' file system).
+    { path = "std::env::temp_dir", reason = "a test's files live in campfire_store::internals::TestDir" },
 ]

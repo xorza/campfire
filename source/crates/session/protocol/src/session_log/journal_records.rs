@@ -1,16 +1,16 @@
 //! The log's journal: the record of each thing the log takes, as it takes it, and the log
 //! rebuilt from them.
 
-use campfire_common::{PlayerSlot, Tick, Version};
+use campfire_common::{PlayerSlot, Tick};
 
 use crate::control::Control;
 use crate::session_log::applied::Applied;
 use crate::session_log::durable_head::DurableHead;
-use crate::session_log::error::{CheckpointError, JournalReplayError, LogError};
+use crate::session_log::error::{CheckpointError, LogError};
 use crate::session_log::journal::Journal;
 use crate::session_log::log_entries::Entry;
 use crate::session_log::segments::{LoggedCheckpoint, SegmentStart};
-use crate::session_log::{LoggedResult, Past, SessionLog, file, put, take};
+use crate::session_log::{LoggedResult, Past, SessionLog, put, take};
 
 /// The bytes that start each kind of journal record.
 pub(super) const JOURNAL_HEADER: u8 = 0;
@@ -69,61 +69,20 @@ pub(super) fn write_loaded(out: &mut Vec<u8>, segment: u32) {
 }
 
 impl SessionLog {
-    /// The log of the session whose journal holds `records`, in order, as the server took them:
-    /// what the server had logged when it wrote the last. An error for a first record that is
-    /// not the header, a header of a release other than `release`, the one that reads it, whose
-    /// records are then not read, as their format is that release's, a record after the result,
-    /// a checkpoint's begin after an entry of its tick, and a record that does not decode or
-    /// that the log refuses.
-    pub fn from_journal<'a>(
-        records: impl IntoIterator<Item = &'a [u8]>,
-        release: Version,
-    ) -> Result<Self, JournalReplayError> {
-        let failed = |record, error| JournalReplayError::Record { record, error };
-        let mut records = records.into_iter();
-        let first = records.next().ok_or(JournalReplayError::NoHeader)?;
-        let mut rest = first
-            .strip_prefix(&[JOURNAL_HEADER])
-            .ok_or(JournalReplayError::NoHeader)?;
-        let header = file::take_header(&mut rest).map_err(|error| failed(0, error))?;
-        if !rest.is_empty() {
-            return Err(failed(0, LogError::Trailing));
-        }
-        if header.terms.release != release {
-            return Err(JournalReplayError::OtherRelease(header.terms.release));
-        }
-        let mut log = Self::new(header).map_err(|error| failed(0, LogError::Header(error)))?;
-        let mut inputs = Vec::new();
-        let mut applied = Vec::new();
-        for (index, record) in (1..).zip(records) {
-            if log.result.is_some() {
-                return Err(JournalReplayError::AfterResult { record: index });
-            }
-            if record.first() == Some(&JOURNAL_CHECKPOINT_BEGUN) && !log.is_at_boundary() {
-                return Err(JournalReplayError::CheckpointMidTick { record: index });
-            }
-            log.apply_journal(record, &mut inputs, &mut applied)
-                .map_err(|error| failed(index, error))?;
-        }
-        Ok(log)
-    }
-
     /// Whether no entry was logged since the last tick was sealed: where a checkpoint may come.
     pub(super) fn is_at_boundary(&self) -> bool {
         self.entries.is_at_boundary()
     }
 
-    /// Takes the journal record `record`, past the header, with `inputs` and `applied` as
-    /// scratch.
-    fn apply_journal<'a>(
+    /// Takes the journal record `record`, past the header, with `applied` as scratch.
+    pub(super) fn apply_journal(
         &mut self,
-        record: &'a [u8],
-        inputs: &mut Vec<(Tick, &'a [u8])>,
+        record: &[u8],
         applied: &mut Vec<Applied>,
     ) -> Result<(), LogError> {
         let (&kind, mut rest) = record.split_first().ok_or(LogError::Truncated)?;
         match kind {
-            JOURNAL_PACKET => self.record_packet(&mut rest, inputs, applied)?,
+            JOURNAL_PACKET => self.record_packet(&mut rest, applied)?,
             JOURNAL_SERVER => self.record_server_input(&mut rest)?,
             JOURNAL_SEALED => drop(self.seal_tick(None)),
             JOURNAL_CHECKPOINT_BEGUN => {

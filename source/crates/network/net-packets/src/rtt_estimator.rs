@@ -2,6 +2,8 @@
 
 use core::time::Duration;
 
+use campfire_net_core::Instant;
+
 use crate::received_window::MAX_ACK_DELAY;
 
 /// The RTT before the first sample (RFC 9002 §6.2.2, `kInitialRtt`).
@@ -19,6 +21,8 @@ pub(crate) struct RttEstimator {
     variance: Duration,
     /// The least sample, `None` before the first.
     min: Option<Duration>,
+    /// When the first sample was taken, `None` before it.
+    first_at: Option<Instant>,
 }
 
 impl Default for RttEstimator {
@@ -29,6 +33,7 @@ impl Default for RttEstimator {
             smoothed: INITIAL_RTT,
             variance: INITIAL_RTT / 2,
             min: None,
+            first_at: None,
         }
     }
 }
@@ -47,20 +52,29 @@ impl RttEstimator {
         self.smoothed.max(self.latest)
     }
 
-    pub(crate) const fn has_sample(&self) -> bool {
-        self.min.is_some()
+    /// When the first sample was taken: a loss of a packet sent before it is no part of a
+    /// persistent congestion, as the timers it was lost by ran on `INITIAL_RTT` (RFC 9002
+    /// §7.6.2); `None` before the first.
+    pub(crate) const fn first_sample(&self) -> Option<Instant> {
+        self.first_at
     }
 
-    /// Takes the sample `latest`, whose acknowledgement waited `ack_delay` at the peer, and
-    /// returns it less that whole delay, as a reader outside the packet session takes it. The first
-    /// sample sets the estimate; each later one moves it by RFC 9002 §5.3's gains, 1/8 and 1/4,
-    /// with the delay capped at `MAX_ACK_DELAY` taken off, unless that would put it below the
-    /// least RTT.
-    pub(crate) fn update(&mut self, latest: Duration, ack_delay: Duration) -> Duration {
+    /// Takes the sample `latest`, taken at `now`, whose acknowledgement waited `ack_delay` at the
+    /// peer, and returns it less that whole delay, as a reader outside the packet session takes it.
+    /// The first sample sets the estimate; each later one moves it by RFC 9002 §5.3's gains, 1/8
+    /// and 1/4, with the delay capped at `MAX_ACK_DELAY` taken off, unless that would put it below
+    /// the least RTT.
+    pub(crate) fn update(
+        &mut self,
+        latest: Duration,
+        ack_delay: Duration,
+        now: Instant,
+    ) -> Duration {
         self.latest = latest;
         let sample = latest.saturating_sub(ack_delay);
         let Some(min) = self.min else {
             self.min = Some(latest);
+            self.first_at = Some(now);
             self.smoothed = latest;
             self.variance = latest / 2;
             return sample;
@@ -102,9 +116,9 @@ mod tests {
     fn samples_move_the_estimate_by_the_rfcs_gains() {
         let mut rtt = RttEstimator::default();
         assert_eq!(rtt.probe_timeout(), ms(1_024));
-        assert_eq!(rtt.update(ms(100), Duration::ZERO), ms(100));
+        assert_eq!(rtt.update(ms(100), Duration::ZERO, Instant::ZERO), ms(100));
         assert_eq!([rtt.smoothed(), rtt.variance()], [ms(100), ms(50)]);
-        assert_eq!(rtt.update(ms(120), ms(8)), ms(112));
+        assert_eq!(rtt.update(ms(120), ms(8), Instant::ZERO), ms(112));
         assert_eq!(rtt.variance(), Duration::from_micros(40_500));
         assert_eq!(rtt.smoothed(), Duration::from_micros(101_500));
         assert_eq!(
@@ -121,10 +135,10 @@ mod tests {
     #[test]
     fn the_estimate_caps_the_delay_and_the_sample_takes_it_whole() {
         let mut rtt = RttEstimator::default();
-        rtt.update(ms(100), Duration::ZERO);
-        assert_eq!(rtt.update(ms(110), ms(30)), ms(80));
+        rtt.update(ms(100), Duration::ZERO, Instant::ZERO);
+        assert_eq!(rtt.update(ms(110), ms(30), Instant::ZERO), ms(80));
         assert_eq!(rtt.smoothed(), Duration::from_micros(101_250));
-        assert_eq!(rtt.update(ms(140), ms(30)), ms(110));
+        assert_eq!(rtt.update(ms(140), ms(30), Instant::ZERO), ms(110));
         assert_eq!(rtt.smoothed(), Duration::from_nanos(102_968_750));
     }
 }

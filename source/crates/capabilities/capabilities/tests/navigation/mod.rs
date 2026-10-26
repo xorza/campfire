@@ -182,9 +182,7 @@ fn bodies_part_and_block_the_way() {
         .circle(half)
         .walks(quarter, Some(Vec3::from((-10, 0, 10))))
         .place(&mut game);
-    for _ in 0..5 {
-        game.step();
-    }
+    game.steps(5);
     assert_eq!(
         [a, b].map(|id| game.part::<Position>(id).get()),
         [Vec3::from((1, 0, 0)), Vec3::from((2, 0, 0))]
@@ -247,9 +245,7 @@ fn a_client_parts_its_units_only_from_held_units_that_cannot_walk() {
     for held in [fixed, resting] {
         game.insert_parts(held, Unpredicted);
     }
-    for _ in 0..16 {
-        game.step();
-    }
+    game.steps(16);
     let places = [blocked, passing, fixed, resting].map(|id| game.part::<Position>(id).get());
     assert_eq!(
         places,
@@ -1223,15 +1219,11 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     game.entity_mut(middle).insert(Dead);
     game.step();
     assert!(game.part::<Route>(walker).is_reached());
-    for _ in 0..4 {
-        game.step();
-    }
+    game.steps(4);
     assert_eq!(game.part::<Position>(walker).get(), goal);
     // The middle tower stands, and the walker arrives short.
     let (mut game, middle, walker) = walled();
-    for _ in 0..3 {
-        game.step();
-    }
+    game.steps(3);
     let short = place(3, 1);
     assert_eq!(game.part::<Position>(walker).get(), short);
     assert_eq!(game.part::<Destination>(walker).get(), None);
@@ -1256,9 +1248,7 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     game.entity_mut(middle).insert(Dead);
     game.step();
     assert_eq!(game.part::<Destination>(walker).get(), Some(goal));
-    for _ in 0..2 {
-        game.step();
-    }
+    game.steps(2);
     assert_eq!(game.part::<Position>(walker).get(), goal);
     assert_eq!(game.part::<Destination>(walker).get(), None);
     assert_eq!(game.part::<Route>(walker).goal(), None);

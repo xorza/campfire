@@ -12,7 +12,7 @@ use crate::thinking_bot::{PacedBot, Think};
 /// the thinks of a tick drawing on one pool, the mode's `think` limit (03-game-scripting.md, The
 /// thinks of a tick share a pool), the player slot that plays first turned each tick, so no player
 /// slot keeps finding the pool spent by those before it. It holds the view the bots read, and their
-/// buffers, kept so no input allocates.
+/// buffers, kept so a tick of no think allocates nothing.
 #[derive(Debug)]
 pub struct TickBots {
     bots: Vec<TickBot>,

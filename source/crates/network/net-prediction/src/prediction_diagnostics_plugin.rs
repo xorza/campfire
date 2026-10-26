@@ -73,7 +73,6 @@ impl Plugin for PredictionDiagnosticsPlugin {
     fn build(&self, app: &mut App) {
         let should_run = on_timer(self.flush_interval);
 
-        app.init_resource::<PredictionCounts>();
         app.add_systems(PostUpdate, Self::flush_measurements.run_if(should_run));
         for (path, suffix) in [
             (Self::ROLLBACKS, "rollbacks"),
@@ -114,6 +113,8 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(PredictionDiagnosticsPlugin::default());
         app.init_resource::<DiagnosticsStore>();
+        // The rollbacks' counts, which the rollback plugin makes and writes.
+        app.init_resource::<PredictionCounts>();
         app.finish();
         let world = app.world_mut();
         // A registered system keeps its `Local` across runs, as a scheduled one does.

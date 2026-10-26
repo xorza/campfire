@@ -78,6 +78,16 @@ impl PackageWalk {
 }
 
 impl HashedFile {
+    /// The size and SHA-256 of `bytes`, a file held whole, which needs no buffer to pass through.
+    pub fn of(bytes: &[u8]) -> Self {
+        let mut hasher = ContentHasher::<ContentHashMeaning>::new();
+        hasher.update(bytes);
+        Self(FileRow {
+            size: u64::try_from(bytes.len()).expect("a length fits u64"),
+            sha256: hasher.finish(),
+        })
+    }
+
     pub const fn sha256(self) -> ContentHash {
         self.0.sha256
     }

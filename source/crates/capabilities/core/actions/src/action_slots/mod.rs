@@ -67,10 +67,7 @@ impl ActionSlot {
     /// Its action's rule of charges at its rank, as `book` gives it; none for a slot with no
     /// action, one not learned, or an action without charges at its rank.
     pub fn charge_rule(self, book: &ActionBook) -> Option<ChargeRule> {
-        let action = book
-            .get(self.action?)
-            .expect("a slot's action is in the book");
-        action.values_at(self.rank?)?.charges
+        self.values_in(book)?.charges
     }
 }
 

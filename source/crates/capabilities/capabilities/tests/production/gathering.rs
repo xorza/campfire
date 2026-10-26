@@ -398,7 +398,7 @@ fn a_gather_whose_when_its_worker_fails_ends_with_no_load_and_starts_again_as_it
     // the tag: its gather ends, and the node frees, as a block of `use` ends it. Once it loses the
     // tag, in tick 3, it takes the node again, its gather running from tick 3.
     let Mining { mut game, mine, .. } = Mining::new();
-    Units::load_test_modifiers(&mut game);
+    Release::load_test_modifiers(&mut game);
     let unmet = Filter::of_match(&game, "all:!test_blocks_move");
     ActionBook::amend(&mut game, |_, book| book.set_when(mine.gather, Some(unmet)));
     let node = mine.mineral(&mut game, halves(0, 12), 100);

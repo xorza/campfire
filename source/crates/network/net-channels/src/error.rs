@@ -15,6 +15,10 @@ pub enum ReceiveError {
     UnknownChannel(NetId),
     #[error("a batch holds no message")]
     EmptyBatch,
+    /// A reliable message's id lies as far as the sender's window or farther ahead of the id this
+    /// end waits for, where the sender keeps every id it sends.
+    #[error("a reliable message's id lies past the sender's window")]
+    PastWindow,
     #[error("fragmented message declared an invalid fragment count: {fragments}")]
     InvalidFragmentCount { fragments: u64 },
     #[error("fragment index {fragment_index} is outside fragment count {fragments}")]

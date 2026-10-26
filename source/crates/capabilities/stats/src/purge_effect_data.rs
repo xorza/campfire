@@ -7,6 +7,7 @@ use campfire_actions::{
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookError, Listed};
 use campfire_script::{ApiBuilder, CallError, Frame, MemberDecl, View};
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_values::{Number, Tag};
 use serde::Deserialize;
@@ -30,6 +31,8 @@ impl Listed for PurgeEffectData {
     type Set = ListedEffects;
 
     const KEY: &'static str = "purge";
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn ListedEffect> {
         Arc::new(self)

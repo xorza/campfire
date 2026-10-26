@@ -47,6 +47,15 @@ const RENAMED: [(&[u8], &[u8]); 2] = [
 /// (`FLAG_ROAD_FLAGS` and `FLAG_BRIDGE_FLAGS`).
 const ROAD_OR_BRIDGE: u32 = 0x36;
 
+/// The flags of a road's ends: its start, its end, a miter at the corner, a tight curve, read on
+/// the start alone, and an alpha join to a road of another type (`FLAG_ROAD_POINT1`,
+/// `FLAG_ROAD_POINT2`, `FLAG_ROAD_CORNER_ANGLED`, `FLAG_ROAD_CORNER_TIGHT` and `FLAG_ROAD_JOIN`).
+const ROAD_START: u32 = 0x02;
+const ROAD_END: u32 = 0x04;
+const CORNER_ANGLED: u32 = 0x08;
+const CORNER_TIGHT: u32 = 0x40;
+const ROAD_JOIN: u32 = 0x80;
+
 /// The heights past which the game drops an object as it reads it: −100 cells and 2,550 height
 /// steps, each exact in `f32`.
 const LOWEST: f32 = -1000.0;
@@ -107,6 +116,31 @@ impl MapObject {
     /// Whether it is a road's or a bridge's end, which the game draws as terrain.
     pub(crate) const fn is_road_or_bridge(&self) -> bool {
         self.flags & ROAD_OR_BRIDGE != 0
+    }
+
+    /// Whether it starts a road's segment, which the object after it ends.
+    pub(crate) const fn is_road_start(&self) -> bool {
+        self.flags & ROAD_START != 0
+    }
+
+    /// Whether it ends a road's segment, which the object before it starts.
+    pub(crate) const fn is_road_end(&self) -> bool {
+        self.flags & ROAD_END != 0
+    }
+
+    /// Whether the corner at it, as a road's end, is a miter, not a curve.
+    pub(crate) const fn is_corner_angled(&self) -> bool {
+        self.flags & CORNER_ANGLED != 0
+    }
+
+    /// Whether a curve at it, as a road's start, is tight.
+    pub(crate) const fn is_corner_tight(&self) -> bool {
+        self.flags & CORNER_TIGHT != 0
+    }
+
+    /// Whether it asks, as a road's end, for an alpha join to a road of another type.
+    pub(crate) const fn is_road_join(&self) -> bool {
+        self.flags & ROAD_JOIN != 0
     }
 
     /// Where it stands on the game's ground, its `x` east and `y` north, exactly; `None` for a

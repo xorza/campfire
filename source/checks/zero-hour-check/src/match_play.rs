@@ -17,7 +17,7 @@ use campfire_navigation::StalledWalkers;
 use campfire_orders::{DroppedOrders, OrdersDirective};
 use campfire_package::ModePackages;
 use campfire_production::Site;
-use campfire_protocol::{InputRules, PlayerSlotPlan};
+use campfire_protocol::PlayerSlotPlan;
 use campfire_runner::SessionWorld;
 use campfire_sim::MatchRate;
 use campfire_sim::{Position, StableId};
@@ -192,7 +192,7 @@ impl AgainstAmerica {
         let plan = [PlayerSlotPlan::Player, PlayerSlotPlan::Bot];
         let player: PlayerSlotPick = self.player.parse().expect("the play's pick");
         let bot: PlayerSlotPick = "1:faction=america".parse().expect("the bot's pick");
-        let session = FixedSession::planned(packages, InputRules::LAN, plan)
+        let session = FixedSession::planned(packages, plan)
             .rate(rate)
             .picked(picks.places())
             .player_slot_picked(&[player, bot]);

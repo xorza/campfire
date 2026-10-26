@@ -3,6 +3,7 @@ use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section, Section
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_script::MatchNames;
+use campfire_script::{ApiVersion, Status};
 use campfire_values::PackageIndex;
 use serde::{Deserialize, Serialize};
 
@@ -129,6 +130,7 @@ pub struct MetricData(pub Metric);
 impl Section for MetricData {
     const TABLE: SectionTable = SectionTable::Map;
     const KEY: &'static str = "metric";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// A map's `[bounds]`, which every map gives.
@@ -139,6 +141,7 @@ pub struct BoundsData(pub Bounds);
 impl Section for BoundsData {
     const TABLE: SectionTable = SectionTable::Map;
     const KEY: &'static str = "bounds";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(test)]

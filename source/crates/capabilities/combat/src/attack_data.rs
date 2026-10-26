@@ -7,6 +7,7 @@ use campfire_declarations::Listed;
 use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
 use campfire_script::ApiBuilder;
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_values::{Number, Ranked, RelationSet, Speed, Stat};
 use serde::de::Error;
@@ -207,6 +208,8 @@ impl Listed for AttackData {
     type Set = KindSections;
 
     const KEY: &'static str = ActionKind::Attack.name();
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn KindSection> {
         Arc::new(self)

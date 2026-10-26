@@ -188,6 +188,7 @@ fn a_map_reads_its_heights_terrain_and_kept_objects_packed_or_not() {
             b"Rocks1",
             b"*Waypoints/Waypoint",
             b"GravelRoad",
+            b"GravelRoad",
             b"Oak",
             b"Rock",
             b"RockRed",
@@ -208,7 +209,8 @@ fn a_map_reads_its_heights_terrain_and_kept_objects_packed_or_not() {
         })
     );
     assert_eq!(read.objects[0].waypoint, None);
-    assert!(read.objects[3].is_road_or_bridge());
+    assert!(read.objects[3].is_road_start() && read.objects[4].is_road_end());
+    assert!(read.objects[3].is_road_or_bridge() && !read.objects[5].is_road_or_bridge());
     // The lights of its time of day, the afternoon, the second: terrain lights 0 to 2 and
     // object lights 3 to 5 of time 2.
     let light = |at: u8| {

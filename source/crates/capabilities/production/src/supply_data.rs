@@ -1,4 +1,5 @@
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
@@ -20,4 +21,5 @@ impl DataSection for SupplyData {
 impl Section for SupplyData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "supply";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }

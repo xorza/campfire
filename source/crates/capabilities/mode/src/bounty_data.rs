@@ -1,6 +1,7 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{FilterData, TagFilterData};
 use serde::de::Error;
@@ -96,6 +97,7 @@ impl DataSection for ModeBountyData {
 impl Section for ModeBountyData {
     const TABLE: SectionTable = SectionTable::Mode;
     const KEY: &'static str = "bounty";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 impl DataSection for BountyData {
@@ -105,6 +107,7 @@ impl DataSection for BountyData {
 impl Section for BountyData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "bounty";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(test)]

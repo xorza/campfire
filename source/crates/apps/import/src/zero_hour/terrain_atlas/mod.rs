@@ -1,9 +1,13 @@
+use std::cmp::Reverse;
+
 use bevy_math::UVec2;
 use campfire_client_files::{BorderWrap, TerrainTexture, TextureCopy};
 
 use campfire_values::PackagePath;
 
-use crate::zero_hour::format::map::terrain::TerrainFields;
+use crate::zero_hour::dropped_roads::RoadDropCause;
+
+use crate::zero_hour::format::map::terrain::{Terrain, TerrainFields};
 
 /// Zero Hour's terrain texture, as `WorldHeightMap` lays it out and `TerrainTextureClass` fills it,
 /// as a terrain file's texture (02-engine-core.md, The terrain's texture is composed at load):
@@ -12,7 +16,10 @@ use crate::zero_hour::format::map::terrain::TerrainFields;
 /// a filtered or stretched sample near a block's edge reads its own class. Its three levels, as the
 /// game keeps three: each texel of a level below covers 2 × 2 of the one above within one tile,
 /// since tiles and borders start on texels divisible by 4, so a tile's level is its texture's own
-/// level of that tile, and the wrap of a level is the level of the wrap.
+/// level of that tile, and the wrap of a level is the level of the wrap. Beside the classes, when
+/// a map draws roads, the texture grows to twice the width, and each road type's texture takes a
+/// place of its own there, wrapped about by a border alike, so a road that repeats its texture
+/// samples its own copy (roads.md, A decal's texture joins the terrain's).
 #[derive(Debug)]
 pub(crate) struct TerrainAtlas {
     /// Each class's block's corner, by the class's index, when the grid had room for it.
@@ -20,7 +27,10 @@ pub(crate) struct TerrainAtlas {
     /// Each source tile's corner, by its index, when its class's texture loaded it and the grid
     /// placed it: the game draws any other as no texture.
     tiles: Vec<Option<UVec2>>,
-    /// Each placed tile copied from its class's texture, then each placed block's border.
+    /// Each road texture's place, by its index, or why it has none.
+    roads: Vec<Result<TexturePlace, RoadDropCause>>,
+    /// Each placed tile copied from its class's texture, then each placed road texture; each
+    /// placed block's border, then each road texture's.
     texture: TerrainTexture,
 }
 
@@ -32,9 +42,24 @@ struct BlockPlaces {
     height: u32,
 }
 
-/// A texture class's texture: the package's file of it, and its size in texels.
+/// Each road texture's corner, by its index, when it has a place; and the height its places
+/// take.
+#[derive(Debug)]
+struct RoadPlaces {
+    corners: Vec<Option<UVec2>>,
+    height: u32,
+}
+
+/// A road texture's copy in the terrain's texture: its top left corner and its size, in texels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TexturePlace {
+    pub(crate) corner: UVec2,
+    pub(crate) size: UVec2,
+}
+
+/// A texture of the package: its file, and its size in texels.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ClassTexture {
+pub(crate) struct PackageTexture {
     pub(crate) path: PackagePath,
     pub(crate) size: UVec2,
 }
@@ -43,10 +68,13 @@ pub(crate) struct ClassTexture {
 /// texture's tiles, rows from the texture's bottom, as the game reads a TGA's rows.
 #[derive(Debug, Clone, Copy)]
 struct TileSource<'a> {
-    texture: &'a ClassTexture,
+    texture: &'a PackageTexture,
     column: u32,
     row: u32,
 }
+
+/// The class width the map format bounds is the one the grid holds.
+const _: () = assert!(TerrainAtlas::CELLS == Terrain::MOST_CLASS_WIDTH as usize);
 
 impl TerrainAtlas {
     pub(crate) const WIDTH: u32 = 2048;
@@ -60,10 +88,15 @@ impl TerrainAtlas {
     /// The most tiles a side of a class's texture gives.
     const MOST_TILES: u32 = 10;
 
-    /// The atlas of `terrain`'s classes and `textures`, the texture of each class in its order;
+    /// The atlas of `terrain`'s classes and `textures`, the texture of each class in its order,
     /// none for a class `Terrain.ini` names none of, or a TGA the install lacks, which the game
-    /// draws as no texture.
-    pub(crate) fn new(terrain: &TerrainFields, textures: &[Option<ClassTexture>]) -> Self {
+    /// draws as no texture; and of `roads`, the textures of a map's road types, none for one no
+    /// archive holds.
+    pub(crate) fn new(
+        terrain: &TerrainFields,
+        textures: &[Option<PackageTexture>],
+        roads: &[Option<PackageTexture>],
+    ) -> Self {
         debug_assert_eq!(
             terrain.classes.len(),
             textures.len(),
@@ -112,7 +145,7 @@ impl TerrainAtlas {
             }
         }
         let tile = Self::TILE;
-        let mut copies = Vec::new();
+        let mut copies = Vec::with_capacity(tiles + roads.len());
         let mut placed = Vec::with_capacity(tiles);
         for (corner, source) in corners.iter().zip(&sources) {
             let (Some(to), Some(source)) = (*corner, *source) else {
@@ -130,7 +163,7 @@ impl TerrainAtlas {
                 size: UVec2::splat(tile),
             });
         }
-        let wraps = terrain
+        let mut wraps: Vec<BorderWrap> = terrain
             .classes
             .iter()
             .zip(&classes)
@@ -142,16 +175,57 @@ impl TerrainAtlas {
                 })
             })
             .collect();
+        let RoadPlaces {
+            corners: road_corners,
+            height: road_height,
+        } = Self::place_roads(roads);
+        for (texture, corner) in roads.iter().zip(&road_corners) {
+            let (Some(texture), Some(at)) = (texture, *corner) else {
+                continue;
+            };
+            copies.push(TextureCopy {
+                texture: texture.path.clone(),
+                from: UVec2::ZERO,
+                to: at,
+                size: texture.size,
+            });
+            wraps.push(BorderWrap {
+                at,
+                size: texture.size,
+                border: Self::BORDER,
+            });
+        }
+        let width = if road_corners.iter().any(Option::is_some) {
+            2 * Self::WIDTH
+        } else {
+            Self::WIDTH
+        };
+        let road_places = roads
+            .iter()
+            .zip(road_corners)
+            .map(|(texture, corner)| {
+                let size = texture.as_ref().ok_or(RoadDropCause::NoTexture)?.size;
+                let corner = corner.ok_or(RoadDropCause::NoPlace)?;
+                Ok(TexturePlace { corner, size })
+            })
+            .collect();
         Self {
             classes,
             tiles: placed,
+            roads: road_places,
             texture: TerrainTexture {
-                size: UVec2::new(Self::WIDTH, height),
+                size: UVec2::new(width, height.max(road_height)),
                 levels: Self::LEVELS,
                 copies,
                 wraps,
             },
         }
+    }
+
+    /// The place of each road texture it was made of, in their order, or why one has none: no
+    /// texture, or no place.
+    pub(crate) fn roads(&self) -> &[Result<TexturePlace, RoadDropCause>] {
+        &self.roads
     }
 
     /// The top left corner of the source tile `tile`, in texels; none for a tile the game draws
@@ -183,6 +257,51 @@ impl TerrainAtlas {
         (1..=Self::MOST_TILES)
             .rev()
             .find(|side| side * side <= tiles)
+    }
+
+    /// Each road texture's corner beside the classes' grid, from `WIDTH` across, in rows: the
+    /// tallest first, then the widest, then in their order, each the next in its row while the
+    /// row has room, the next row under the row's tallest, `OFFSET` between each two and a
+    /// `BORDER` past the outermost. A texture whose sides the levels do not halve to whole
+    /// texels, or one past `TerrainTexture::MOST_SIDE`, has none. The least power of two that
+    /// holds every placed one and its border.
+    fn place_roads(roads: &[Option<PackageTexture>]) -> RoadPlaces {
+        let step = 1 << (Self::LEVELS - 1);
+        let mut order: Vec<(usize, UVec2)> = roads
+            .iter()
+            .enumerate()
+            .filter_map(|(at, texture)| {
+                let size = texture.as_ref()?.size;
+                (size.x.is_multiple_of(step) && size.y.is_multiple_of(step) && size.x > 0)
+                    .then_some((at, size))
+            })
+            .collect();
+        order.sort_by_key(|&(at, size)| (Reverse(size.y), Reverse(size.x), at));
+        let mut corners = vec![None; roads.len()];
+        let [left, right] = [Self::WIDTH, 2 * Self::WIDTH].map(|x| x + Self::BORDER);
+        let right = right - 2 * Self::BORDER;
+        let mut at = UVec2::new(left, Self::BORDER);
+        let mut row_height = 0;
+        let mut used = 0;
+        for (road, size) in order {
+            if at.x + size.x > right && at.x > left {
+                at = UVec2::new(left, at.y + row_height + Self::OFFSET);
+                row_height = 0;
+            }
+            let fits =
+                at.x + size.x <= right && at.y + size.y + Self::BORDER <= TerrainTexture::MOST_SIDE;
+            if !fits {
+                continue;
+            }
+            corners[road] = Some(at);
+            row_height = row_height.max(size.y);
+            used = used.max(at.y + size.y + Self::BORDER);
+            at.x += size.x + Self::OFFSET;
+        }
+        RoadPlaces {
+            corners,
+            height: used.max(1).next_power_of_two(),
+        }
     }
 
     /// Each class's block's corner, as `updateTileTexturePositions` finds room: for each width,

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use campfire_store::internals::TestDir;
@@ -20,18 +21,25 @@ impl SourceFiles {
     pub(crate) fn under(dir: &Path) -> Vec<SourceFile> {
         let mut found = Vec::new();
         Self::walk(dir, "", &mut found);
-        let gated: Vec<(String, Gate)> = Parallel::map(found.len(), |at| found[at].gated_modules())
-            .into_iter()
-            .flatten()
-            .collect();
+        let mut gated: BTreeMap<String, Gate> = BTreeMap::new();
+        let modules = Parallel::map(found.len(), |at| found[at].gated_modules());
+        for (module, gate) in modules.into_iter().flatten() {
+            let held = gated.entry(module).or_insert(gate);
+            if gate == Gate::Test {
+                *held = gate;
+            }
+        }
         for file in &mut found {
-            let holds = |module: &str| {
-                file.path == format!("{module}.rs") || file.path.starts_with(&format!("{module}/"))
-            };
-            let gates = gated.iter().filter(|(module, _)| holds(module));
-            file.gate = gates
-                .map(|&(_, gate)| gate)
-                .min_by_key(|&gate| gate != Gate::Test);
+            // The modules that hold it: its own file's, and each of its directories'.
+            let own = file
+                .path
+                .strip_suffix(".rs")
+                .expect("a source is a `.rs` file");
+            let dirs = file.path.match_indices('/').map(|(at, _)| &file.path[..at]);
+            let gates = dirs
+                .chain([own])
+                .filter_map(|module| gated.get(module).copied());
+            file.gate = gates.min_by_key(|&gate| gate != Gate::Test);
         }
         found
     }

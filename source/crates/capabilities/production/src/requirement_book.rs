@@ -1,9 +1,16 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_declarations::Book;
-use campfire_script::MatchNames;
-use campfire_values::{ActionId, ModifierId, UnitType};
+use campfire_actions::LoadedAction;
+use campfire_common::DeclaredName;
+use campfire_declarations::{Book, BookCx, BookError};
+use campfire_script::{MatchNames, UnknownName};
+use campfire_stats::ModifierBook;
+use campfire_values::{ActionId, ModifierId, Named, TypeScope, UnitType};
+
+use crate::build_data::BuildData;
+use crate::research_data::ResearchData;
+use crate::train_data::TrainData;
 
 /// What each train and build with a `requires` needs its player to hold, by action: entries of unit
 /// types, of one of which it owns a living, complete unit, and player modifiers, one run of each
@@ -92,6 +99,50 @@ impl Book for RequirementBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &mut MatchNames) {}
+}
+
+impl RequirementBook {
+    /// What each train and build that requires anything requires of its caster's player: unit
+    /// types of its package it owns and modifiers of its package it holds; an error for a name the
+    /// package does not have.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let modifiers = cx.book_if::<ModifierBook>()?;
+        let mut book = Self::default();
+        for action in LoadedAction::all(cx)? {
+            let trains = action
+                .section::<TrainData>()
+                .map(|train| train.requires.as_ref());
+            let researches = action
+                .section::<ResearchData>()
+                .map(|research| research.requires.as_ref());
+            let builds = action
+                .section::<BuildData>()
+                .map(|build| build.requires.as_ref());
+            let Some(requires) = trains.or(researches).or(builds).flatten() else {
+                continue;
+            };
+            let scope = TypeScope::of_package(action.package);
+            let resolve = |name: &DeclaredName| {
+                let unit_type = cx.unit_type(scope, name.as_str());
+                unit_type.ok_or_else(|| UnknownName::new(UnitType::NAMES, name))
+            };
+            let units = requires.units.iter().map(|entry| {
+                let types = entry.names().iter().map(resolve);
+                types.collect::<Result<Vec<UnitType>, UnknownName>>()
+            });
+            let units = units.collect::<Result<Vec<Vec<UnitType>>, UnknownName>>();
+            let units = units.map_err(|name| action.unknown(name))?;
+            let held = requires.modifiers.iter().map(|name| {
+                let modifier = modifiers
+                    .and_then(|modifiers| modifiers.names().named((action.package, name.as_str())));
+                modifier.ok_or_else(|| UnknownName::new(ModifierId::NAMES, name))
+            });
+            let held = held.collect::<Result<Vec<ModifierId>, UnknownName>>();
+            let held = held.map_err(|name| action.unknown(name))?;
+            book.push(action.action, units, held);
+        }
+        Ok(book)
+    }
 }
 
 #[cfg(test)]

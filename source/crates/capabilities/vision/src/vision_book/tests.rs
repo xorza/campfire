@@ -52,4 +52,15 @@ fn a_brush_loads_only_as_a_simple_polygon_within_the_bounds() {
         VisionBook::of(&map, &grid, 65),
         Err(VisionDataError::TooManyTeams)
     );
+    // 2²³ cells times teams are the most: a grid of 2²¹ cells, 2,048 by 1,024 of them, holds
+    // four teams, and refuses a fifth.
+    let wide = MapBook {
+        space: MapSpace::default(),
+        bounds: Bounds::new([Num::ZERO; 2], [Num::int(2_048), Num::int(1_024)]).unwrap(),
+    };
+    assert!(VisionBook::of(&wide, &grid, 4).is_ok());
+    assert_eq!(
+        VisionBook::of(&wide, &grid, 5),
+        Err(VisionDataError::TooLarge)
+    );
 }

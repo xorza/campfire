@@ -10,7 +10,6 @@ use bevy::camera::primitives::MeshAabb;
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::world::World;
 use bevy::math::Vec3A;
-use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::TimeUpdateStrategy;
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 use campfire_actions::ShotDamage;
@@ -323,7 +322,6 @@ fn a_position_stands_on_the_drawn_ground_of_a_planar_map_and_is_its_own_point_on
 
 #[test]
 fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() {
-    IoTaskPool::get_or_init(TaskPool::new);
     let mut app = view();
     app.add_plugins(LookStatesPlugin);
     app.init_asset::<AnimationClip>();
@@ -360,16 +358,14 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         draws: vec![LookDraw::still(vec![model(name, &[], Some(top))])],
         turret: None,
     };
-    let mut looks = ClientUnits {
-        units: names
-            .into_iter()
-            .zip(models)
-            .map(|(name, models)| (DeclaredName::new(name).unwrap(), ClientUnit::still(models)))
-            .collect(),
-        ..ClientUnits::default()
-    };
-    let technical = looks.units.get_mut("technical").unwrap();
+    let mut units: BTreeMap<_, _> = names
+        .into_iter()
+        .zip(models)
+        .map(|(name, models)| (DeclaredName::new(name).unwrap(), ClientUnit::still(models)))
+        .collect();
+    let technical = units.get_mut("technical").unwrap();
     technical.variations = vec![variation("chassis_one", 0.5), variation("chassis_two", 1.5)];
+    let looks = ClientUnits::new(units, BTreeMap::new(), BTreeMap::new()).unwrap();
     let data = ClientLoad::of_looks([looks]);
     app.insert_resource(GroundHeights::of(grid, None));
     let origins: TypeOriginBook = names
@@ -487,7 +483,6 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
 
 #[test]
 fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as_a_ball() {
-    IoTaskPool::get_or_init(TaskPool::new);
     let mut app = view();
     app.init_asset::<WorldAsset>();
     let shell = ClientUnit::still(vec![ClientModel {
@@ -497,12 +492,9 @@ fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as
         top: None,
         upgrades: Vec::new(),
     }]);
-    let data = ClientLoad::of_looks([ClientUnits {
-        units: [(DeclaredName::new("shell").unwrap(), shell)]
-            .into_iter()
-            .collect(),
-        ..ClientUnits::default()
-    }]);
+    let units = BTreeMap::from([(DeclaredName::new("shell").unwrap(), shell)]);
+    let data =
+        ClientLoad::of_looks([ClientUnits::new(units, BTreeMap::new(), BTreeMap::new()).unwrap()]);
     let origins: TypeOriginBook = ["shell", "bolt"]
         .map(|name| TypeOrigin {
             package: PackageIndex::MODE,

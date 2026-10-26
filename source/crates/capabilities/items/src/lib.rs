@@ -1,10 +1,6 @@
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::SystemSet;
@@ -116,11 +112,10 @@ impl Module for Items {
         d.part::<BodyUnit, UseGroup>(|at| at.of_type::<UseGroup>().copied());
     }
 
-    /// Adds items to a match, on stats: an empty item book until the mode's books fill it, the
-    /// inventories its units carry, as state, and the modifiers their items hold, as each tick
-    /// starts once the trades are in, and in Resolve once a use may have spent an item. On the
-    /// server, the tick's orders trade in Inputs, as a trade pays and refunds the server's
-    /// resources; a client predicts no trade.
+    /// Adds items to a match, on stats: the inventories its units carry, as state, and the
+    /// modifiers their items hold, as each tick starts once the trades are in, and in Resolve once
+    /// a use may have spent an item. On the server, the tick's orders trade in Inputs, as a trade
+    /// pays and refunds the server's resources; a client predicts no trade.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.add(ItemsSystems::HoldAtInputs, ItemHolds::want_items);
         cx.add(ItemsSystems::Want, ItemHolds::want_items);

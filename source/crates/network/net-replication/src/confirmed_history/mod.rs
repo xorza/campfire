@@ -153,13 +153,6 @@ impl<C> ConfirmedHistory<C> {
         self.entries.clear();
         self.explicit.clear();
     }
-
-    /// Shift all stored ticks by `delta`. Entries that would saturate at tick 0 together keep only
-    /// the newest, which takes the newest explicit state among them.
-    pub fn shift(&mut self, delta: i32) {
-        self.entries.shift(delta, |(), ()| {});
-        self.explicit.shift(delta, |_, _| {});
-    }
 }
 
 impl<C: PartialEq> ConfirmedHistory<C> {

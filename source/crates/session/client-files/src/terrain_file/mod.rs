@@ -1,4 +1,4 @@
-use bevy_math::{UVec2, Vec2};
+use bevy_math::{UVec2, Vec2, Vec3};
 use campfire_common::MapName;
 use campfire_values::PackagePath;
 use serde::de::Error;
@@ -10,13 +10,21 @@ use crate::error::TerrainFileError;
 
 /// A map's terrain, `client/maps/<name>/terrain.bin`, through `Binary` (02-engine-core.md, Client):
 /// a ground quad for each cell of the map's height grid and the overlays drawn over them, each with
-/// its own coordinates in its texture; the texture, composed of package textures as the client
-/// loads it; and the surface it is lit as. It names no rule of a game.
+/// its own coordinates in its texture; the decals drawn over both; the texture, composed of package
+/// textures as the client loads it; and the surface it is lit as. It names no rule of a game.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(transparent)]
 pub struct TerrainFile {
-    quads: TerrainQuads,
-    texture: TerrainTexture,
-    surface: TerrainSurface,
+    fields: TerrainFileFields,
+}
+
+/// A terrain file's fields, which `TerrainFile::new` checks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TerrainFileFields {
+    pub quads: TerrainQuads,
+    pub decals: TerrainDecals,
+    pub texture: TerrainTexture,
+    pub surface: TerrainSurface,
 }
 
 /// The quads over a height grid of `columns` samples a row: a ground quad for each of its cells,
@@ -46,6 +54,23 @@ pub struct Overlay {
     pub uv: [Vec2; 4],
     pub alpha: [u8; 4],
     pub flip: bool,
+}
+
+/// Triangles drawn over the terrain after its overlays, in their order, each blended by its
+/// texture's alpha: their vertices, each with its point on the engine's axes and its coordinates
+/// in the texture, in texels of its first level, `u` right and `v` down; and each triangle's
+/// vertices, by their indices, counter-clockwise seen from above.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TerrainDecals {
+    pub vertices: Vec<DecalVertex>,
+    pub triangles: Vec<[u32; 3]>,
+}
+
+/// A decal's vertex: its point and its texture coordinates.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct DecalVertex {
+    pub position: Vec3,
+    pub uv: Vec2,
 }
 
 /// The terrain's texture: `size` texels at its first level, `levels` levels, each half the one
@@ -91,15 +116,17 @@ pub struct TerrainSurface {
 }
 
 impl TerrainFile {
-    /// The terrain of `quads`, `texture` and `surface`; an error unless its ground quads fill
-    /// whole rows of its grid's cells, every overlay names one of them, every coordinate is
-    /// finite, every copy and border wrap lies within the texture, each place and size on texels
-    /// each level halves to, and every factor of its surface is from 0 to 1.
-    pub fn new(
-        quads: TerrainQuads,
-        texture: TerrainTexture,
-        surface: TerrainSurface,
-    ) -> Result<Self, TerrainFileError> {
+    /// The terrain of `fields`; an error unless its ground quads fill whole rows of its grid's
+    /// cells, every overlay names one of them, every coordinate and point is finite, every decal
+    /// triangle names its vertices, every copy and border wrap lies within the texture, each place
+    /// and size on texels each level halves to, and every factor of its surface is from 0 to 1.
+    pub fn new(fields: TerrainFileFields) -> Result<Self, TerrainFileError> {
+        let TerrainFileFields {
+            quads,
+            decals,
+            texture,
+            surface,
+        } = &fields;
         let cells = quads.columns.checked_sub(1).filter(|&cells| cells > 0);
         let Some(cells) = cells.map(|cells| cells as usize) else {
             return Err(TerrainFileError::Shape);
@@ -119,31 +146,33 @@ impl TerrainFile {
         if !uvs
             .chain(quads.overlays.iter().map(|overlay| &overlay.uv))
             .all(finite)
+            || !decals.vertices.iter().all(|vertex| vertex.uv.is_finite())
         {
             return Err(TerrainFileError::Coordinate);
         }
+        decals.check()?;
         texture.check()?;
         let factors = [surface.metallic, surface.roughness, surface.specular];
         if !factors.iter().all(|factor| (0.0..=1.0).contains(factor)) {
             return Err(TerrainFileError::Surface);
         }
-        Ok(Self {
-            quads,
-            texture,
-            surface,
-        })
+        Ok(Self { fields })
     }
 
     pub const fn quads(&self) -> &TerrainQuads {
-        &self.quads
+        &self.fields.quads
+    }
+
+    pub const fn decals(&self) -> &TerrainDecals {
+        &self.fields.decals
     }
 
     pub const fn texture(&self) -> &TerrainTexture {
-        &self.texture
+        &self.fields.texture
     }
 
     pub const fn surface(&self) -> TerrainSurface {
-        self.surface
+        self.fields.surface
     }
 
     /// The file of the map `map`.
@@ -158,6 +187,25 @@ impl TerrainQuads {
     pub const fn fits(&self, columns: u32, rows: u32) -> bool {
         let cells = (columns as usize - 1) * (rows as usize - 1);
         self.columns == columns && self.ground.len() == cells
+    }
+}
+
+impl TerrainDecals {
+    /// An error unless every point is finite and every triangle names vertices it holds.
+    fn check(&self) -> Result<(), TerrainFileError> {
+        if !self
+            .vertices
+            .iter()
+            .all(|vertex| vertex.position.is_finite())
+        {
+            return Err(TerrainFileError::Point);
+        }
+        let held = self.vertices.len();
+        let past = |triangle: &[u32; 3]| triangle.iter().any(|&at| at as usize >= held);
+        match self.triangles.iter().position(past) {
+            Some(at) => Err(TerrainFileError::Triangle(at)),
+            None => Ok(()),
+        }
     }
 }
 
@@ -215,18 +263,7 @@ impl TerrainTexture {
 /// A package's file is untrusted, so a terrain `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for TerrainFile {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Debug, Deserialize)]
-        struct Fields {
-            quads: TerrainQuads,
-            texture: TerrainTexture,
-            surface: TerrainSurface,
-        }
-        let Fields {
-            quads,
-            texture,
-            surface,
-        } = Fields::deserialize(deserializer)?;
-        Self::new(quads, texture, surface).map_err(D::Error::custom)
+        Self::new(TerrainFileFields::deserialize(deserializer)?).map_err(D::Error::custom)
     }
 }
 

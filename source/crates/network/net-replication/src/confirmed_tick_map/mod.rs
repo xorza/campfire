@@ -204,11 +204,7 @@ impl ConfirmedTickMap {
                 replicon_tick,
                 tick,
             };
-            if best.is_none_or(|existing: ConfirmedTick| {
-                candidate.tick > existing.tick
-                    || (candidate.tick == existing.tick
-                        && replicon_tick.is_newer(existing.replicon_tick))
-            }) {
+            if best.is_none_or(|existing| candidate.is_newer_than(existing)) {
                 best = Some(candidate);
             }
         }
@@ -234,13 +230,10 @@ impl ConfirmedTickMap {
             replicon_tick,
             tick,
         };
-        if self.last_confirmed.is_none_or(|existing| {
-            confirmed_tick.tick > existing.tick
-                || (confirmed_tick.tick == existing.tick
-                    && confirmed_tick
-                        .replicon_tick
-                        .is_newer(existing.replicon_tick))
-        }) {
+        if self
+            .last_confirmed
+            .is_none_or(|existing| confirmed_tick.is_newer_than(existing))
+        {
             self.last_confirmed = Some(confirmed_tick);
         }
         Some(confirmed_tick)

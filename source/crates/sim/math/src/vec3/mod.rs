@@ -168,18 +168,21 @@ impl Vec3 {
         self.ground().within(other.ground(), radius)
     }
 
+    /// Its components' bits, widened; `None` for one past ±2⁴⁷ bits, 2²³ m, beyond any offset of
+    /// two places.
+    fn wide_axes(self) -> Option<[i128; 3]> {
+        let vector = [self.x, self.y, self.z].map(|component| i128::from(component.to_bits()));
+        let narrow =
+            |component: &i128| component.unsigned_abs() < coordinate::WIDEST.unsigned_abs();
+        vector.iter().all(narrow).then_some(vector)
+    }
+
     /// The unit vector in this direction, each component the true unit's rounded once to the
     /// nearest 2⁻²⁴, so within 2⁻²⁵ of it, whatever the vector's length; `None` for the zero
     /// vector, and for one with a component past ±2⁴⁷ bits, 2²³ m, beyond any offset of two
     /// places.
     pub fn normalized(self) -> Option<Self> {
-        let vector = [self.x, self.y, self.z].map(|component| i128::from(component.to_bits()));
-        if vector
-            .iter()
-            .any(|component| component.unsigned_abs() >= coordinate::WIDEST.unsigned_abs())
-        {
-            return None;
-        }
+        let vector = self.wide_axes()?;
         let direction = Direction::of(vector)?;
         let square = self.length_squared_bits();
         let [x, y, z] = direction.unit();
@@ -206,14 +209,7 @@ impl Vec3 {
             return Some(target);
         }
         let offset = target.checked_sub(self)?;
-        let vector =
-            [offset.x, offset.y, offset.z].map(|component| i128::from(component.to_bits()));
-        if vector
-            .iter()
-            .any(|component| component.unsigned_abs() >= coordinate::WIDEST.unsigned_abs())
-        {
-            return None;
-        }
+        let vector = offset.wide_axes()?;
         // The exact distance is above `step`, so each move is below its offset.
         let direction = Direction::of(vector).expect("an offset past the step is no zero vector");
         let square = offset.length_squared_bits();

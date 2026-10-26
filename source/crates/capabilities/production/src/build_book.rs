@@ -1,14 +1,19 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_actions::{ActionBook, ActionSlots};
-use campfire_declarations::Book;
+use campfire_actions::{ActionBook, ActionSlots, LoadedAction};
+use campfire_declarations::{Book, BookCx, BookError, ById};
 use campfire_math::Num;
-use campfire_script::{Filter, MatchNames};
-use campfire_units::{BodyForm, Owner};
-use campfire_values::{ActionId, Share, UnitType};
+use campfire_script::{Filter, MatchNames, UnknownName};
+use campfire_units::{BodyForm, Owner, UnitTypes};
+use campfire_values::{ActionId, Named, Share, TypeScope, UnitType};
 
+use crate::book_builders;
+use crate::build_data::BuildData;
 use crate::build_start::BuildStart;
+use crate::construct_data::ConstructData;
+use crate::error::ProductionDataError;
+use crate::placement_data::{PlacementData, PlacementRule};
 
 /// What each build places, when it starts and how its site grows, by action, its rates and its
 /// placement's rules one run after another: package data, not state.
@@ -204,6 +209,72 @@ impl Book for BuildBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &mut MatchNames) {}
+}
+
+impl BuildBook {
+    /// The build of each action that constructs: its style, the body of its building, a type of its
+    /// package that stands, its life and refund at the start, and its placement rules; an error for
+    /// a name the match does not have, a building of no body (04-capabilities/production.md, A
+    /// building may stand on a circle), or a start of no life for a building that lives.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let tags = cx.fact::<UnitTypes>()?.tags();
+        let bodies = cx.book::<ById<UnitType, BodyForm>>()?;
+        let mut book = Self::default();
+        for action in LoadedAction::all(cx)? {
+            let Some(data) = action.section::<BuildData>() else {
+                continue;
+            };
+            let check = |rule: &PlacementRule| {
+                Ok(PlacementCheck {
+                    filter: Filter::resolve(&rule.filter, tags)?,
+                    distance: rule.distance.get(),
+                })
+            };
+            let rules = |of: fn(&PlacementData) -> &[PlacementRule]| {
+                let placement = data.placement.as_ref();
+                placement.map_or_else(
+                    || Ok(Vec::new()),
+                    |placement| of(placement).iter().map(check).collect(),
+                )
+            };
+            let style = match &data.construct {
+                ConstructData::Alone => Style::Alone,
+                ConstructData::Builder => Style::Builder,
+                ConstructData::Builders(rates) => Style::Builders(rates),
+            };
+            let building = &data.unit_type;
+            let scope = TypeScope::of_package(action.package);
+            let unit_type = cx.unit_type(scope, building.as_str());
+            let unit_type = unit_type.filter(|&unit_type| cx.type_of(unit_type).stands());
+            let unit_type = unit_type
+                .ok_or_else(|| action.unknown(UnknownName::new(UnitType::NAMES, building)))?;
+            let form = bodies.get(unit_type).copied();
+            let form = form.filter(|form| form.shape().circle_radius() != Some(Num::ZERO));
+            let form = form.ok_or_else(|| action.broken(ProductionDataError::NoBody))?;
+            let alive = book_builders::lives(cx, unit_type)?;
+            let start_life = data.start_life;
+            let starts = start_life.is_some_and(|share| !share.is_zero());
+            if (alive && !starts) || start_life.is_some_and(Share::is_zero) {
+                return Err(action.broken(ProductionDataError::StartLife));
+            }
+            let near = rules(|placement| &placement.near).map_err(|name| action.unknown(name))?;
+            let away = rules(|placement| &placement.away).map_err(|name| action.unknown(name))?;
+            book.push(
+                action.action,
+                NewBuild {
+                    unit_type,
+                    form,
+                    start: data.start,
+                    style,
+                    start_life,
+                    refund: data.cancel_refund.unwrap_or(Share::ALL),
+                    near,
+                    away,
+                },
+            );
+        }
+        Ok(book)
+    }
 }
 
 #[cfg(test)]

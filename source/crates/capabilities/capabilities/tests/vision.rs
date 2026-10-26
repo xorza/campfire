@@ -99,9 +99,9 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // true sight, beyond: team 1 alone sees it. The ward steps to (−3, 0), √6.5 ≈ 2.55 m off:
     // its true sight shows the sneak to team 0.
     let sneak = Vision::spawn_seer(&mut game, -1, 0, Team::new(1), None);
-    Vision::set_properties(&mut game, sneak, TagProperties::default().with_hidden());
+    Units::hold_properties(&mut game, sneak, TagProperties::default().with_hidden());
     let ward = Vision::spawn_seer(&mut game, -4, 0, Team::new(0), Some(3));
-    Vision::set_properties(&mut game, ward, TagProperties::default().with_detects());
+    Units::hold_properties(&mut game, ward, TagProperties::default().with_detects());
     game.step();
     assert_eq!(Vision::seen_by(&game, sneak), team(1));
     let entity = game.unit_entity(ward);
@@ -193,7 +193,7 @@ fn a_reveal_shows_its_cells_to_the_caster_group_alone_for_its_time_and_no_hidden
     let caster = Vision::spawn_seer(&mut game, -9, -9, Team::new(0), Some(1));
     let target = Vision::spawn_seer(&mut game, 5, 0, Team::new(1), None);
     let sneak = Vision::spawn_seer(&mut game, 5, 1, Team::new(1), None);
-    Vision::set_properties(&mut game, sneak, TagProperties::default().with_hidden());
+    Units::hold_properties(&mut game, sneak, TagProperties::default().with_hidden());
     let beyond = Vision::spawn_seer(&mut game, 7, 0, Team::new(1), None);
     Vision::spawn_seer(&mut game, -9, 9, Team::new(2), Some(1));
     game.step();
@@ -332,12 +332,12 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     assert_eq!(Vision::seen_by(&game, building), team(1));
     // Hidden, it is seen only by detection: a detector of team 0 at (-1, 0), seeing 4 m, detects
     // the edge's cells, and the seer, which does not detect, back there too, does not.
-    Vision::set_properties(&mut game, building, TagProperties::default().with_hidden());
+    Units::hold_properties(&mut game, building, TagProperties::default().with_hidden());
     *game.get_mut::<Position>(entity).unwrap() = Position::from((-1, 0, 0));
     game.step();
     assert_eq!(Vision::seen_by(&game, building), team(1));
     let ward = Vision::spawn_seer(&mut game, -1, 1, Team::new(0), Some(4));
-    Vision::set_properties(&mut game, ward, TagProperties::default().with_detects());
+    Units::hold_properties(&mut game, ward, TagProperties::default().with_detects());
     game.step();
     assert_eq!(Vision::seen_by(&game, building), team(1).with(Team::new(0)));
 }

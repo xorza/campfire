@@ -178,9 +178,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
 
         // Over the next 29 ticks the regen adds the rest of the second: 30 ticks gain exactly
         // 1.5.
-        for _ in 0..29 {
-            game.step();
-        }
+        game.steps(29);
         let health = (Num::int(1592) + sixteenths(24), Num::int(1672));
         assert_eq!(pools(&game)[0], health, "{bound}");
 
@@ -198,9 +196,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
                 .unwrap()
                 .take(MANA, Num::int(250));
             *game.get_mut::<Level>(unit).unwrap() = Level::new(18).unwrap();
-            for _ in 0..30 {
-                game.step();
-            }
+            game.steps(30);
             let spent = [(Num::ZERO, Num::int(1672)), (Num::int(765), Num::int(1015))];
             assert_eq!(pools(&game), spent);
         }

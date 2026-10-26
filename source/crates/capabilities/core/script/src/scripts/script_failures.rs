@@ -174,14 +174,18 @@ pub(crate) mod internals {
         pub kind: FailureKind,
     }
 
-    impl ScriptFailures {
-        /// Takes the failures of the last tick, with their texts, as a test or a harness that
-        /// expects them does.
-        #[must_use]
-        pub fn take(&mut self) -> Self {
-            std::mem::take(self)
+    /// A match dropped after a tick whose failed calls nothing took fails its test, as its next
+    /// tick's start would (02-engine-core.md, A test fails on a script failure it does not take).
+    impl Drop for ScriptFailures {
+        fn drop(&mut self) {
+            assert!(
+                self.failures.is_empty() || std::thread::panicking(),
+                "script calls failed in the last tick: {self:?}; a test that makes them takes them"
+            );
         }
+    }
 
+    impl ScriptFailures {
         /// Takes the failed calls of the last tick, as a test that expects them does.
         pub fn take_calls(&mut self) -> Vec<FailedCall> {
             let calls = self
@@ -207,18 +211,20 @@ mod tests {
     use crate::scripts::error::ApiError;
     use crate::scripts::script_role::ScriptRole;
 
+    /// The hook of the failures the tests record.
+    const THINK: Hook = Hook {
+        name: "on_think",
+        role: ScriptRole::Ai,
+        param_names: &["ctx", "unit"],
+        param_kinds: &[None, None],
+    };
+
     #[test]
     fn a_failure_keeps_its_kind_and_each_message_of_its_errors_chain() {
         // A refused call is the API's refusal, whose own message is its source's.
         let error = CallError::Api(ApiError::NegativeRadius);
         let mut failures = ScriptFailures::default();
-        let think = Hook {
-            name: "on_think",
-            role: ScriptRole::Ai,
-            param_names: &["ctx", "unit"],
-            param_kinds: &[None, None],
-        };
-        failures.record(None, think, &error);
+        failures.record(None, THINK, &error);
         let [failure] = failures.get() else {
             panic!("one failure");
         };
@@ -228,9 +234,9 @@ mod tests {
         let report = format!("{error}: {}", ApiError::NegativeRadius);
         assert_eq!(text.to_string(), report);
         // A second failure's text follows the first's; moved into a list it keeps it.
-        failures.record(None, think, &CallError::Api(ApiError::PureCall));
+        failures.record(None, THINK, &CallError::Api(ApiError::PureCall));
         let mut kept = ScriptFailures::default();
-        kept.record(None, think, &error);
+        kept.record(None, THINK, &error);
         failures.move_into(&mut kept);
         assert!(failures.is_empty());
         let texts: Vec<String> = kept
@@ -241,10 +247,11 @@ mod tests {
         let pure = CallError::Api(ApiError::PureCall);
         let pure = format!("{pure}: {}", ApiError::PureCall);
         assert_eq!(texts, [report.clone(), report, pure]);
+        kept.forget();
         failures.clear();
         assert!(failures.get().is_empty());
         // A host that logged them forgets them, and the next tick begins clean.
-        failures.record(None, think, &error);
+        failures.record(None, THINK, &error);
         failures.forget();
         failures.clear();
     }
@@ -253,13 +260,15 @@ mod tests {
     #[should_panic(expected = "script calls failed in the last tick")]
     fn a_tick_that_begins_over_a_failure_no_host_took_fails_the_test() {
         let mut failures = ScriptFailures::default();
-        let think = Hook {
-            name: "on_think",
-            role: ScriptRole::Ai,
-            param_names: &["ctx", "unit"],
-            param_kinds: &[None, None],
-        };
-        failures.record(None, think, &CallError::Api(ApiError::PureCall));
+        failures.record(None, THINK, &CallError::Api(ApiError::PureCall));
         failures.clear();
+    }
+
+    #[test]
+    #[should_panic(expected = "script calls failed in the last tick")]
+    fn a_match_dropped_over_a_failure_no_host_took_fails_the_test() {
+        let mut failures = ScriptFailures::default();
+        failures.record(None, THINK, &CallError::Api(ApiError::PureCall));
+        drop(failures);
     }
 }

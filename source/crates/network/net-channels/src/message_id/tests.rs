@@ -7,8 +7,6 @@ use crate::fragment_index::FragmentIndex;
 use crate::single_body::SingleBody;
 use bytes::Bytes;
 
-use campfire_net_bytes::ToBytes;
-
 #[test]
 fn a_message_id_wraps_at_u16_max() {
     let last = MessageId(u16::MAX);
@@ -22,6 +20,13 @@ fn a_message_id_wraps_at_u16_max() {
     assert_eq!(first - 1, last);
     assert_eq!(first - last, 1);
     assert_eq!(MessageId(1) - first, 1);
+    // Half the space less one, 32,767, is still a forward distance; an id takes two bytes.
+    assert_eq!(MessageId(i16::MAX.cast_unsigned()) - first, i16::MAX);
+    let mut writer = campfire_net_bytes::Writer::default();
+    MessageId(513).to_bytes(&mut writer);
+    assert_eq!(MessageId(513).bytes_len(), 2);
+    let mut reader = Reader::from(writer.take_written());
+    assert_eq!(MessageId::from_bytes(&mut reader).unwrap(), MessageId(513));
 }
 
 /// A message with no id takes its length and bytes: 1 + 10; one with an id takes 2 more, with no

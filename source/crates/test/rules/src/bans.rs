@@ -11,6 +11,7 @@ use campfire_store::internals::PinnedFile;
 
 use crate::allowlist::Allowlist;
 use crate::named_path::NamedPath;
+use crate::source_file::SourceFile;
 use crate::workspace::{Workspace, read, sim_closure, source};
 
 /// A proxy crate: the one crate that makes the calls of its group of `clippy.toml`'s bans, through
@@ -103,6 +104,14 @@ const THREAD_METHODS: [&str; 5] = [
 /// plugin and the options that size Bevy's task pools.
 const APP_THREAD_TYPES: [&str; 2] = ["bevy_app::TaskPoolPlugin", "bevy_app::TaskPoolOptions"];
 
+/// The calls that start Bevy's task pools, which only the plugin of `app-threads` makes.
+const APP_THREAD_METHODS: [&str; 4] = [
+    "bevy_tasks::TaskPool::new",
+    "bevy_tasks::ComputeTaskPool::get_or_init",
+    "bevy_tasks::AsyncComputeTaskPool::get_or_init",
+    "bevy_tasks::IoTaskPool::get_or_init",
+];
+
 /// The types only `store` holds, each banned whole so every method of it is.
 const STORAGE_TYPES: [&str; 10] = [
     "std::fs::File",
@@ -119,31 +128,42 @@ const STORAGE_TYPES: [&str; 10] = [
 
 /// The calls only `codec` makes (02-engine-core.md, Serialization): each format's own encodes and
 /// decodes, and replicon's helpers over postcard.
-const CODEC_METHODS: [&str; 24] = [
+const CODEC_METHODS: [&str; 35] = [
     "postcard::to_allocvec",
+    "postcard::to_allocvec_cobs",
     "postcard::to_stdvec",
+    "postcard::to_stdvec_cobs",
     "postcard::to_extend",
     "postcard::to_io",
     "postcard::to_slice",
+    "postcard::to_slice_cobs",
     "postcard::serialize_with_flavor",
     "postcard::from_bytes",
+    "postcard::from_bytes_cobs",
     "postcard::take_from_bytes",
+    "postcard::take_from_bytes_cobs",
     "postcard::from_io",
     "toml::from_str",
+    "toml::from_slice",
     "toml::to_string",
     "toml::to_string_pretty",
     "serde_json::from_str",
     "serde_json::from_slice",
     "serde_json::from_reader",
     "serde_json::to_string",
+    "serde_json::to_string_pretty",
     "serde_json::to_vec",
+    "serde_json::to_vec_pretty",
     "serde_json::to_writer",
+    "serde_json::to_writer_pretty",
     "serde_json::from_value",
     "serde_json::to_value",
     "toml::Value::try_into",
     "toml::map::Map::try_into",
     "bevy_replicon::postcard_utils::to_extend_mut",
     "bevy_replicon::postcard_utils::from_buf",
+    "bevy_replicon::postcard_utils::entity_to_extend_mut",
+    "bevy_replicon::postcard_utils::entity_from_buf",
 ];
 
 /// The types only `codec` holds, each banned whole so every method of it is: a value type among
@@ -258,7 +278,7 @@ pub(crate) const PROXIES: [Proxy; 7] = [
     Proxy {
         dir: "base/app-threads",
         lints: &[LINTS[1]],
-        methods: &[],
+        methods: &APP_THREAD_METHODS,
         types: &APP_THREAD_TYPES,
         dependencies: &["bevy_app", "bevy_ecs", "bevy_tasks", "campfire-schedule"],
         names: &["TaskPoolPlugin", "TaskPoolOptions"],
@@ -317,11 +337,17 @@ pub(crate) const PROXIES: [Proxy; 7] = [
 ];
 
 /// The bans with no proxy, which nothing may exempt: each lets two conflicting sim systems run in
-/// either order, runs a system's work on the compute pool, or seeds a map at random.
-const UNOWNED_METHODS: [&str; 12] = [
+/// either order, runs a system's work on the compute pool, seeds a map at random, draws the OS's
+/// random bytes past the one source, or names the OS's temporary directory.
+const UNOWNED_METHODS: [&str; 17] = [
+    "std::env::temp_dir",
     "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with",
+    "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with_all",
     "bevy_ecs::schedule::Schedule::ignore_ambiguity",
+    "bevy_ecs::schedule::Schedules::ignore_ambiguity",
     "bevy_ecs::schedule::Schedules::allow_ambiguous_component",
+    "bevy_ecs::schedule::Schedules::allow_ambiguous_resource",
+    "bevy_ecs::world::World::allow_ambiguous_component",
     "bevy_ecs::world::World::allow_ambiguous_resource",
     "bevy_ecs::system::Query::par_iter",
     "bevy_ecs::system::Query::par_iter_mut",
@@ -332,7 +358,8 @@ const UNOWNED_METHODS: [&str; 12] = [
     "bevy_ecs::query::QueryState::par_iter",
     "bevy_ecs::query::QueryState::par_iter_mut",
 ];
-const UNOWNED_TYPES: [&str; 5] = [
+const UNOWNED_TYPES: [&str; 6] = [
+    "ring::rand::SystemRandom",
     "std::collections::HashMap",
     "std::collections::HashSet",
     "std::hash::RandomState",
@@ -342,7 +369,9 @@ const UNOWNED_TYPES: [&str; 5] = [
 
 /// What names a call of no proxy's group in source, which no proxy's source holds, as its
 /// exemption would cover it.
-const UNOWNED_NAMES: [&str; 8] = [
+const UNOWNED_NAMES: [&str; 10] = [
+    "SystemRandom",
+    "temp_dir",
     "ambiguous_with",
     "ignore_ambiguity",
     "allow_ambiguous",
@@ -359,7 +388,8 @@ const UNOWNED_NAMES: [&str; 8] = [
 const THREAD_LOCAL: &str = "std::thread::LocalKey";
 
 /// What names a banned type in source, other than the thread-local one.
-const TYPE_NAMES: [&str; 12] = [
+const TYPE_NAMES: [&str; 13] = [
+    "SystemRandom",
     "std::fs",
     "tempfile::",
     "TaskPool",
@@ -374,15 +404,30 @@ const TYPE_NAMES: [&str; 12] = [
     "bevy_utils::Parallel",
 ];
 
-/// The paths of `rules` that the list `list`, `disallowed-methods` or `disallowed-types`, of
-/// `clippy`, a `clippy.toml`, does not name.
-fn unlisted<'a>(clippy: &str, list: &str, rules: &[&'a str]) -> Vec<&'a str> {
-    let list = clippy
+/// The text of the list `list`, `disallowed-methods` or `disallowed-types`, of `clippy`, a
+/// `clippy.toml`.
+fn list_text<'a>(clippy: &'a str, list: &str) -> &'a str {
+    clippy
         .split_once(&format!("{list} = ["))
         .and_then(|(_, rest)| rest.split_once("\n]"))
-        .map_or("", |(list, _)| list);
+        .map_or("", |(list, _)| list)
+}
+
+/// The paths of `rules` that the list `list` of `clippy` does not name.
+fn unlisted<'a>(clippy: &str, list: &str, rules: &[&'a str]) -> Vec<&'a str> {
+    let list = list_text(clippy, list);
     let named = |path: &&str| list.contains(&format!("path = \"{path}\""));
     rules.iter().copied().filter(|path| !named(path)).collect()
+}
+
+/// The paths the list `list` of `clippy` names that `rules` does not hold, so a ban added to the
+/// file and to no group fails as one deleted does.
+fn ungrouped<'a>(clippy: &'a str, list: &str, rules: &[&str]) -> Vec<&'a str> {
+    let paths = list_text(clippy, list)
+        .split("path = \"")
+        .skip(1)
+        .filter_map(|entry| entry.split_once('"').map(|(path, _)| path));
+    paths.filter(|path| !rules.contains(path)).collect()
 }
 
 /// The lines of `text`, the source at `path` under `source/`, whose attribute exempts code from
@@ -545,6 +590,25 @@ pub(crate) fn each_banned_call_goes_through_its_proxy_alone(workspace: &Workspac
     assert_eq!(types, Vec::<&str>::new());
     assert_eq!(
         unlisted(&clippy, "disallowed-types", &[THREAD_LOCAL]),
+        Vec::<&str>::new()
+    );
+    let grouped = |list: fn(&Proxy) -> &'static [&'static str], unowned: &[&'static str]| {
+        let proxied = PROXIES.iter().filter(|proxy| proxy.crates.is_none());
+        let mut rules: Vec<&str> = proxied.flat_map(list).copied().collect();
+        rules.extend(unowned);
+        rules
+    };
+    let methods = grouped(|proxy| proxy.methods, &UNOWNED_METHODS);
+    let types = grouped(
+        |proxy| proxy.types,
+        &[&UNOWNED_TYPES[..], &[THREAD_LOCAL]].concat(),
+    );
+    assert_eq!(
+        ungrouped(&clippy, "disallowed-methods", &methods),
+        Vec::<&str>::new()
+    );
+    assert_eq!(
+        ungrouped(&clippy, "disallowed-types", &types),
         Vec::<&str>::new()
     );
     // A thread-local module's exemption covers every banned type, so each has a name it shows.
@@ -814,19 +878,15 @@ fn the_ban_checks_fail_on_what_breaks_them() {
 /// (02-engine-core.md, A tick's removals are the tick's).
 const TICK_CRATES: [&str; 2] = ["crates/sim/", "crates/capabilities/"];
 
-/// The line of each place where the code of `text` that every build holds, not a comment nor a
-/// test module, names Bevy's `RemovedComponents`.
-fn app_removals(text: &str) -> Vec<usize> {
-    let built = text
-        .split("\n#[cfg(test)]\nmod tests")
-        .next()
-        .unwrap_or(text);
+/// The line of each place where the production code of `file`, not a comment nor a gated item,
+/// names Bevy's `RemovedComponents`.
+fn app_removals(file: &SourceFile) -> Vec<usize> {
+    let Some(code) = file.production() else {
+        return Vec::new();
+    };
     (1..)
-        .zip(built.lines())
-        .filter(|(_, line)| {
-            let code = line.split_once("//").map_or(*line, |(code, _)| code);
-            code.contains("RemovedComponents")
-        })
+        .zip(code.lines())
+        .filter(|(_, line)| line.contains("RemovedComponents"))
         .map(|(at, _)| at)
         .collect()
 }
@@ -838,12 +898,16 @@ pub(crate) fn no_tick_reads_removals_that_age_with_the_app(workspace: &Workspace
         .filter(|file| file.gate.is_none())
         .filter(|file| TICK_CRATES.iter().any(|dir| file.path.starts_with(dir)))
         .flat_map(|file| {
-            app_removals(&file.text)
+            app_removals(file)
                 .into_iter()
                 .map(move |line| format!("{}:{line}", file.path))
         })
         .collect();
     assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn a_tick_s_removal_reader_is_found_in_production_code_alone() {
     // A reader in code is found; a mention in a comment, and a test's reader, are not.
     let sample = concat!(
         "/// Unlike `RemovedComponents`.\n",
@@ -852,7 +916,10 @@ pub(crate) fn no_tick_reads_removals_that_age_with_the_app(workspace: &Workspace
         "    fn g(gone: RemovedComponents<'_, '_, A>) {}\n",
         "}\n",
     );
-    assert_eq!(app_removals(sample), [2]);
+    assert_eq!(
+        app_removals(&SourceFile::new("crates/sim/a/src/a.rs", sample)),
+        [2]
+    );
 }
 
 /// The line of a crate's root that bans floats from the sim, as clippy's `float_arithmetic` is
@@ -883,28 +950,34 @@ pub(crate) fn each_crate_a_match_runs_on_bans_floats(workspace: &Workspace) {
     assert_eq!(checked, reached.len());
 }
 
-/// The calls and types that read the wall clock, which no crate a match runs on names
-/// (02-engine-core.md, Determinism rules): a match runs the same on a server, a client and a
-/// verifier only on its ticks.
+/// The calls, the constant and Bevy's clocks of `Time<_>` that read the wall clock, which no crate
+/// a match runs on names (02-engine-core.md, Determinism rules): a match runs the same on a server,
+/// a client and a verifier only on its ticks.
 const WALL_CLOCK: [&str; 5] = [
     "Instant::now",
     "SystemTime::now",
     "UNIX_EPOCH",
-    "Time<Real>",
-    "Time<Virtual>",
+    "Real",
+    "Virtual",
 ];
 
 /// The one module of a match's crates that reads the wall clock: the stage probes, which time each
 /// stage of a real tick from outside the state (02-engine-core.md, Stage probes keep the hashes).
 const WALL_CLOCK_READERS: [&str; 1] = ["crates/sim/sim/src/sim_update/stage_clock/"];
 
-/// The wall clock reads `code` names, of `WALL_CLOCK`.
+/// The wall clock reads `code` names, of `WALL_CLOCK`, each a path or a path's last segments.
 fn wall_clock_reads(code: &str) -> Vec<&'static str> {
-    WALL_CLOCK
-        .iter()
-        .filter(|read| code.contains(*read))
-        .copied()
-        .collect()
+    if !WALL_CLOCK.iter().any(|read| code.contains(read)) {
+        return Vec::new();
+    }
+    let paths = NamedPath::of(code);
+    let names = |read: &&&str| {
+        let tail = format!("::{read}");
+        paths
+            .iter()
+            .any(|path| path.text == **read || path.text.ends_with(&tail))
+    };
+    WALL_CLOCK.iter().filter(names).copied().collect()
 }
 
 pub(crate) fn no_crate_a_match_runs_on_reads_the_wall_clock(workspace: &Workspace) {
@@ -921,7 +994,7 @@ pub(crate) fn no_crate_a_match_runs_on_reads_the_wall_clock(workspace: &Workspac
             let Some(code) = file.library() else {
                 continue;
             };
-            let reads = wall_clock_reads(&code);
+            let reads = wall_clock_reads(code);
             if !reads.is_empty() && !readers.allows(|dir| file.path.starts_with(dir)) {
                 found.push(format!("{}: {}", file.path, reads.join(", ")));
             }
@@ -929,11 +1002,20 @@ pub(crate) fn no_crate_a_match_runs_on_reads_the_wall_clock(workspace: &Workspac
     }
     assert_eq!(found, Vec::<String>::new());
     assert_eq!(readers.unused(), Vec::<&&str>::new());
+}
+
+#[test]
+fn a_wall_clock_read_is_found_by_the_paths_code_names() {
     // A read of the OS's time, by a call or by Bevy's real time, is found; a clock of the match's
-    // own is not.
+    // own is not, nor a string's mention.
     assert_eq!(
         wall_clock_reads("let t = Instant::now(); let r: Res<Time<Real>>;"),
-        ["Instant::now", "Time<Real>"]
+        ["Instant::now", "Real"]
+    );
+    assert_eq!(
+        wall_clock_reads("let t = std::time::SystemTime::now();"),
+        ["SystemTime::now"]
     );
     assert!(wall_clock_reads("let t = clock.now(); let f: Res<Time<Fixed>>;").is_empty());
+    assert!(wall_clock_reads("let s = \"Instant::now\";").is_empty());
 }

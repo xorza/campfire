@@ -32,7 +32,6 @@ use core::time::Duration;
 use tracing::{debug, trace};
 
 use crate::channel::Channel;
-use campfire_net_payload::SendPayload;
 
 use crate::channel_setup::ChannelSetup;
 use crate::unsettled_packets::{SentMessage, UnsettledPackets};
@@ -136,7 +135,7 @@ fn receive_packet(
                 "received channel message bytes"
             );
             receiver.received_bytes.add(single_body.bytes.len());
-            if receiver.receive_single(single_body, tick, &mut budget) == BufferOutcome::OverBudget
+            if receiver.receive_single(single_body, tick, &mut budget)? == BufferOutcome::OverBudget
             {
                 return Ok(PacketOutcome::OverBudget);
             }
@@ -382,7 +381,7 @@ impl Channels {
     /// with a hole: `refused` says why, and the transport unlinks
     /// (11-net-stack/transport.md, A link's queued bytes have a budget). A channel the transport
     /// does not send on is a logic error.
-    pub fn send(&mut self, channel_id: NetId, bytes: SendPayload, priority: f32) {
+    pub fn send(&mut self, channel_id: NetId, bytes: Bytes, priority: f32) {
         let reliable = self
             .senders
             .get(channel_id)
@@ -444,12 +443,7 @@ impl Channels {
 
     /// Buffers bytes in the sender of `channel_id`, a channel this transport sends on, of a size
     /// its bound was checked against at staging.
-    fn buffer_send(
-        &mut self,
-        channel_id: NetId,
-        bytes: SendPayload,
-        priority: f32,
-    ) -> Option<MessageId> {
+    fn buffer_send(&mut self, channel_id: NetId, bytes: Bytes, priority: f32) -> Option<MessageId> {
         debug_assert!(
             bytes.len() <= self.senders[channel_id].max_message_len(),
             "a message is checked against its bound before it is buffered"
@@ -741,8 +735,8 @@ pub(crate) mod internals {
     use crate::channels::Channels;
     use crate::error::SendRefusal;
     use crate::message_id::MessageId;
+    use bytes::Bytes;
     use campfire_net_core::NetId;
-    use campfire_net_payload::SendPayload;
     use core::ops::{Add, Sub};
 
     /// A reading of one channel's bench counters on a [`Channels`].
@@ -842,7 +836,7 @@ pub(crate) mod internals {
         pub fn send_mut(
             &mut self,
             channel_id: NetId,
-            bytes: SendPayload,
+            bytes: Bytes,
             priority: f32,
         ) -> Result<Option<MessageId>, SendRefusal> {
             self.check_send(channel_id, bytes.len())?;

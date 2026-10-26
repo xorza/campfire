@@ -19,10 +19,10 @@ use campfire_host::InputAck;
 use campfire_host::InputMessage;
 use campfire_host::Join;
 use campfire_host::Joined;
+use campfire_host::JournalCommand;
 use campfire_host::LeaveMatch;
 use campfire_host::MatchLoaded;
 use campfire_host::MatchStart;
-use campfire_host::SaveCommand;
 use campfire_host::SessionOffer;
 use campfire_host::WatchStart;
 use campfire_host::WatchTeams;
@@ -96,7 +96,7 @@ impl Plugin for NetProtocolPlugin {
             .add_direction(LinkDirection::ServerToClient);
         app.register_message::<Join>()
             .add_direction(LinkDirection::ClientToServer);
-        app.register_message::<SaveCommand>()
+        app.register_message::<JournalCommand>()
             .add_direction(LinkDirection::ClientToServer);
         app.register_message::<LeaveMatch>()
             .add_direction(LinkDirection::ClientToServer);

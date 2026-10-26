@@ -1,10 +1,11 @@
 use bevy_ecs::resource::Resource;
 use campfire_common::Ticks;
-use campfire_declarations::Book;
+use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_script::MatchNames;
 use campfire_sim::MatchRate;
+use campfire_stats::StatBook;
 use campfire_units::StatId;
-use campfire_values::Stat;
+use campfire_values::{PackageIndex, Stat};
 
 use crate::mode_combat_data::ModeCombatData;
 
@@ -44,6 +45,20 @@ impl Book for CombatBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &mut MatchNames) {}
+}
+
+impl CombatBook {
+    /// The mode's `[combat]`, each stat it names resolved; an error for a stat the mode does not
+    /// declare.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let none = ModeCombatData::default();
+        let data = cx.mode_section::<ModeCombatData>().unwrap_or(&none);
+        let stats = cx.book::<StatBook>()?;
+        let at = || BookPlace::Section(ModeCombatData::KEY);
+        Self::new(data, cx.rate(), |stat| {
+            stats.named_in(PackageIndex::MODE, at(), stat)
+        })
+    }
 }
 
 #[cfg(feature = "internals")]

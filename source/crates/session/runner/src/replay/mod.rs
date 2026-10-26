@@ -34,20 +34,9 @@ impl<'p> Replay<'p> {
     /// name; an error when the log does not reveal the server seed its header commits to, or its
     /// match does not start on `packages`.
     pub fn of(published: SessionLog, packages: &'p ModePackages) -> Result<Self, StartError> {
-        let seeds = published
-            .revealed_seeds()
-            .ok_or(StartError::Seed(SeedError::NotRevealed))?;
         let ticks = published.next_tick();
         Ok(Replay {
-            game: Session::start_match(
-                SessionSource::check(UncheckedSource {
-                    log: published,
-                    seeds,
-                    packages,
-                    signer: None,
-                })
-                .map_err(StartError::Terms)?,
-            )?,
+            game: Session::start_match(Self::source(published, packages)?)?,
             target: None,
             packages,
             ticks,
@@ -65,23 +54,33 @@ impl<'p> Replay<'p> {
         at: ResumeAt<'_>,
         packages: &'p ModePackages,
     ) -> Result<Self, ResumeError> {
-        let seeds = published
-            .revealed_seeds()
-            .ok_or(ResumeError::Start(StartError::Seed(SeedError::NotRevealed)))?;
         let ticks = published.next_tick();
-        let source = SessionSource::check(UncheckedSource {
-            log: published,
-            seeds,
-            packages,
-            signer: None,
-        })
-        .map_err(|error| ResumeError::Start(StartError::Terms(error)))?;
+        let source = Self::source(published, packages).map_err(ResumeError::Start)?;
         Ok(Replay {
             game: Session::resume_match(source, at)?,
             target: None,
             packages,
             ticks,
         })
+    }
+
+    /// The session source of `published`, which signs nothing, on `packages`, its terms checked;
+    /// an error when the log does not reveal the server seed its header commits to, or its terms
+    /// do not hold on `packages`.
+    fn source(
+        published: SessionLog,
+        packages: &'p ModePackages,
+    ) -> Result<SessionSource<'p>, StartError> {
+        let seeds = published
+            .revealed_seeds()
+            .ok_or(StartError::Seed(SeedError::NotRevealed))?;
+        SessionSource::check(UncheckedSource {
+            log: published,
+            seeds,
+            packages,
+            signer: None,
+        })
+        .map_err(StartError::Terms)
     }
 
     /// Runs every tick the log holds after those that ran.
@@ -93,20 +92,6 @@ impl<'p> Replay<'p> {
     /// world after each.
     pub fn run_each(&mut self, ran: impl FnMut(&World)) -> Result<(), ReplayError> {
         self.run_to(self.ticks, ran)
-    }
-
-    /// Runs the ticks of the segment the replay stands in, as `run_each` runs them: to the
-    /// boundary where the next starts, whose checkpoint it checks, or after the last, to the
-    /// log's end and its result. So the segments of one log replay apart, each from its own
-    /// checkpoint, as a verifier on many threads replays them.
-    pub fn run_segment_each(&mut self, ran: impl FnMut(&World)) -> Result<(), ReplayError> {
-        let start = self.game.session().next_tick();
-        let log = self.game.session().log();
-        let next = log
-            .checkpoints()
-            .map(|record| record.tick)
-            .find(|&tick| tick > start);
-        self.run_to(next.unwrap_or(self.ticks), ran)
     }
 
     /// Runs the ticks the log holds before `end`, after those that ran, giving `ran` the world
@@ -179,6 +164,8 @@ impl<'p> Replay<'p> {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
     use crate::replay::Replay;
     use crate::replay::error::ReplayError;
     use crate::session::session_world::SessionWorld;
@@ -195,6 +182,20 @@ pub(crate) mod internals {
             }
             self.game.run_tick_alone();
             Ok(true)
+        }
+
+        /// Runs the ticks of the segment the replay stands in, as `run_each` runs them: to the
+        /// boundary where the next starts, whose checkpoint it checks, or after the last, to the
+        /// log's end and its result. So the segments of one log replay apart, each from its own
+        /// checkpoint, as a test replays a long log's segments on many threads.
+        pub fn run_segment_each(&mut self, ran: impl FnMut(&World)) -> Result<(), ReplayError> {
+            let start = self.game.session().next_tick();
+            let log = self.game.session().log();
+            let next = log
+                .checkpoints()
+                .map(|record| record.tick)
+                .find(|&tick| tick > start);
+            self.run_to(next.unwrap_or(self.ticks), ran)
         }
     }
 }

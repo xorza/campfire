@@ -10,7 +10,7 @@ use campfire_package_disk::PackageDir;
 use campfire_protocol::SessionLog;
 use campfire_runner::Replay;
 use campfire_sim::MatchRate;
-use campfire_store::{DurableDir, DurableFile, InputFile};
+use campfire_store::{DurableDir, DurableFile};
 use campfire_units::UnitTypeBook;
 use tracing::info;
 
@@ -70,9 +70,7 @@ impl ReportReplay {
     /// load.
     pub(crate) fn open(dir: &ReportDir) -> Result<Self, ReportReplayError> {
         let facts = dir.read_facts().map_err(ReportReplayError::Facts)?;
-        let bytes = InputFile::read(&dir.log(), SessionLog::MAX_FILE_LEN)
-            .map_err(ReportReplayError::ReadLog)?;
-        let log = SessionLog::decode(&bytes).map_err(ReportReplayError::Decode)?;
+        let log = dir.read_log().map_err(ReportReplayError::Log)?;
         let packages = ModePackages::at(&PackageDir::new(&facts.mode_dir), Some(&facts.map))
             .map_err(ReportReplayError::Packages)?;
         Ok(Self {

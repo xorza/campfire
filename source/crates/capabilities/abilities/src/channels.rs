@@ -9,7 +9,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionCall, ActionProgress, ActionSlot, ActionSlots, Caster, ChannelCall,
-    ChannelStep, ProgressDues, ProgressIndexes, UseGroup,
+    ChannelStep, InProgress, ProgressDues, ProgressIndexes, UseGroup,
 };
 use campfire_common::{Tick, Ticks};
 use campfire_players::PlayersWorld;
@@ -174,7 +174,7 @@ impl Channeling {
         let book = world.resource::<ActionBook>();
         let channel = Self::channel(slots, progress);
         let blocked = Caster::of(unit.get(), Motion::of(forced), unit.get()).blocked(channel, book);
-        let tick = Self::channel_tick(book, channel);
+        let tick = Self::channel_tick(book, progress);
         let step = ProgressDues::change(world, id, entity, |progress, dues| {
             if blocked {
                 progress.cut_channel(dues);
@@ -264,7 +264,7 @@ impl Channeling {
             let dues = &mut indexes.of(id, entity);
             let channel = Self::channel(slots, &progress);
             let blocked = Caster::of(tags, Motion::of(forced), used).blocked(channel, &book);
-            let tick = Self::channel_tick(&book, channel);
+            let tick = Self::channel_tick(&book, &progress);
             if blocked {
                 progress.cut_channel(dues);
             }
@@ -283,10 +283,13 @@ impl Channeling {
         slots.slot(progress.channeling()?)
     }
 
-    /// The time between the ticks of the channel of `channel`, if one runs.
-    fn channel_tick(book: &ActionBook, channel: Option<ActionSlot>) -> Ticks {
-        channel
-            .and_then(|slot| slot.values_in(book)?.channel)
+    /// The time between the ticks of the channel `progress` runs, if one runs, at the action and
+    /// rank it began with, as its hooks and its hold run, whatever its slot learned since.
+    fn channel_tick(book: &ActionBook, progress: &ActionProgress) -> Ticks {
+        progress
+            .in_progress()
+            .and_then(InProgress::channel_call)
+            .and_then(|call| book.get(call.action)?.values_at(call.rank)?.channel)
             .map_or(Ticks::ZERO, |rule| rule.tick)
     }
 }

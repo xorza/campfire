@@ -6,7 +6,7 @@ use campfire_store::{DurableDir, DurableDirCreateError};
 
 use crate::client::report_dir::ReportDir;
 use crate::error::ReportWriteError;
-use crate::messages::save_command::ReportKey;
+use crate::messages::journal_command::ReportKey;
 
 /// The paths of a client's data directory, the one place they are named: the newest receipt of
 /// each session, `receipts/<session id>.receipt`; its local server's data directory, `server`, a

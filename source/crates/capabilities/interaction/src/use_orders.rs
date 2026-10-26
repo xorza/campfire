@@ -18,10 +18,6 @@ impl UseOrders {
     /// The observer that starts a use as it is ordered: the object's action, in the use slot its
     /// users give the unit, filled afresh unless the slot holds it, ordered as a slot's cast. A
     /// use by a unit with no use slot, or that the object's users do not select, is dropped.
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "an observer takes its event and its params by value"
-    )]
     pub(crate) fn ordered(
         ordered: On<'_, '_, UnitOrdered>,
         mut units: ParamSet<'_, '_, (Using<'_, '_>, UserSlots<'_, '_>)>,

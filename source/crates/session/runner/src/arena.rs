@@ -146,3 +146,10 @@ impl Arena {
 /// Every script failure since an arena's match began; `ScriptFailures` keeps only the last tick's.
 #[derive(Debug, Default)]
 struct ArenaFailures(ScriptFailures);
+
+/// The failures are the arena's log, which its test reads and need not take.
+impl Drop for ArenaFailures {
+    fn drop(&mut self) {
+        self.0.forget();
+    }
+}

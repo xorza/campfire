@@ -31,9 +31,12 @@ pub(crate) struct RulesNames {
     pub(crate) armor_upgraded: TagFilterData,
     pub(crate) weapon_upgraded: TagFilterData,
     pub(crate) weapon_unupgraded: TagFilterData,
-    /// The tag of the markers the players start at, which a map's `Player_<n>_Start` waypoints
-    /// carry (09-zero-hour.md, A skirmish starts with the faction's start objects).
+    /// The tags of the markers the players start at and their starting units rally at, which a
+    /// map's `Player_<n>_Start` and `Player_<n>_Rally` waypoints carry, and their param, the
+    /// player slot, from 0 (09-zero-hour.md, A skirmish starts with the faction's start objects).
     pub(crate) start: DeclaredName,
+    pub(crate) rally: DeclaredName,
+    pub(crate) player_slot: DeclaredName,
     /// The tag of a marker made from a waypoint, which the mode's scripts find the waypoints by,
     /// and its param, the waypoint's name.
     pub(crate) waypoint: DeclaredName,
@@ -91,6 +94,8 @@ impl Default for RulesNames {
             base_defense: name("base_defense"),
             infantry: name("infantry"),
             start: name("start"),
+            rally: name("rally"),
+            player_slot: name("player_slot"),
             waypoint: name("waypoint"),
             waypoint_name: name("name"),
             weapon_slot: name("weapon"),

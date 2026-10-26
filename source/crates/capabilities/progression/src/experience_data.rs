@@ -1,6 +1,7 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{FilterData, TagFilterData};
 use serde::de::Error;
@@ -115,6 +116,7 @@ impl DataSection for ModeExperienceData {
 impl Section for ModeExperienceData {
     const TABLE: SectionTable = SectionTable::Mode;
     const KEY: &'static str = "experience";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 impl DataSection for ExperienceData {
@@ -124,6 +126,7 @@ impl DataSection for ExperienceData {
 impl Section for ExperienceData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "experience";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(test)]

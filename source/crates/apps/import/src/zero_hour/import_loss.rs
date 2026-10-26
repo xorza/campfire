@@ -1,10 +1,13 @@
+use std::fmt::{self, Display, Formatter};
+
 use campfire_common::MapName;
 use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::animation_import::AnimationDropCause;
 use crate::zero_hour::dropped::Dropped;
+use crate::zero_hour::dropped_roads::DroppedRoads;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
-use crate::zero_hour::model_writer::{DroppedStates, SkippedModel};
+use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel};
 use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::supply_import::SupplyDropCause;
 use crate::zero_hour::upgrade_import::UpgradeDropCause;
@@ -26,6 +29,9 @@ pub enum ImportLoss {
     UntexturedCells { map: MapName, cells: usize },
     /// A waypoint of a map past its bounds, by its name, which the import drops.
     Waypoint { map: MapName, waypoint: String },
+    /// A map's road segments of a type the import does not draw (roads.md, A road's type is
+    /// `Roads.ini`'s).
+    Road { map: MapName, dropped: DroppedRoads },
     /// A command button the import does not convert (09-zero-hour.md, Every command set's
     /// trains and builds are imported).
     Button(Dropped<ButtonDropCause>),
@@ -50,4 +56,80 @@ pub enum ImportLoss {
     /// The condition states of an object's draw module, or of its whole look, the import does not
     /// convert (09-zero-hour.md, A look's draws are its draw modules).
     States(DroppedStates),
+}
+
+/// What the loss is, then the part of the install it is of, and why.
+impl Display for ImportLoss {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Model(skipped) => {
+                let what = match skipped.reason {
+                    SkipReason::Missing => "an object names a model no file of the install holds",
+                    SkipReason::Emitter => {
+                        "an object names a particle emitter, which the importer does not convert"
+                    }
+                    SkipReason::Aggregate => {
+                        "a model's HLOD adds an aggregate, which the importer does not convert"
+                    }
+                };
+                write!(f, "{what}: {}", skipped.name)
+            }
+            Self::Animation(animation) => {
+                write!(f, "a look's animation is not imported: {animation}")
+            }
+            Self::Texture(texture) => write!(
+                f,
+                "a model names a texture no archive holds, and draws the game's MissingTexture: \
+                 {texture}"
+            ),
+            Self::UntexturedCells { map, cells } => write!(
+                f,
+                "a map's terrain draws cells of a tile with no texture: {map}, {cells} cells"
+            ),
+            Self::Waypoint { map, waypoint } => write!(
+                f,
+                "a map's waypoint past its bounds is dropped: {map}, {waypoint}"
+            ),
+            Self::Road { map, dropped } => {
+                write!(f, "a map's road segments are not drawn: {map}, {dropped}")
+            }
+            Self::Button(button) => {
+                write!(f, "a command button is not imported: {button}")
+            }
+            Self::Supply(supply) => {
+                write!(f, "an object's supply is not imported: {supply}")
+            }
+            Self::Upgrade(module) => {
+                write!(
+                    f,
+                    "an upgrade module, or an object's sets, are not imported: {module}"
+                )
+            }
+            Self::Weapon(weapon) => {
+                write!(f, "a weapon is not imported: {weapon}")
+            }
+            Self::Unliving(object) => {
+                write!(
+                    f,
+                    "an object's body is none the import gives life: {object}"
+                )
+            }
+            Self::Wounded(object) => write!(
+                f,
+                "an object's body starts below its most life, which the engine starts full: \
+                 {object}"
+            ),
+            Self::Variation(variation) => {
+                write!(
+                    f,
+                    "an object's build variations are not imported whole: {variation}"
+                )
+            }
+            Self::States(states) => write!(
+                f,
+                "a look's condition states are not imported: {} ({:?}), {} states",
+                states.object, states.cause, states.states
+            ),
+        }
+    }
 }

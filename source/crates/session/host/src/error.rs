@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use campfire_bots::OrderScriptError;
 use campfire_codec::TomlError;
-use campfire_protocol::{ConnectError, DelegationError};
+use campfire_common::Version;
+use campfire_protocol::{ConnectError, DelegationError, LogError};
 use campfire_runner::ServerInputRefusal;
 use campfire_store::{DurableDirCreateError, DurableDirError, DurableError, PathError, ReadError};
 use serde::{Deserialize, Serialize};
@@ -52,9 +53,9 @@ pub enum ReceiptRefusal {
     Older,
 }
 
-/// Why a server refused a player's save command.
+/// Why a server refused a player's journal command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
-pub enum SaveRefusal {
+pub enum JournalRefusal {
     /// Only a local server takes a player's saves and loads.
     #[error("only a local server takes a player's saves and loads")]
     NotLocal,
@@ -95,6 +96,18 @@ pub enum ReportReadError {
     File(#[from] PathError<ReadError>),
     #[error(transparent)]
     Toml(#[from] TomlError),
+    /// The report is of another release, whose packages and log this one need not read.
+    #[error("the report is of release {0}")]
+    OtherRelease(Version),
+}
+
+/// Why a report's log does not read: a remote match's report holds none.
+#[derive(Debug, Error)]
+pub enum ReportLogError {
+    #[error(transparent)]
+    File(#[from] PathError<ReadError>),
+    #[error("the report's log does not decode")]
+    Decode(#[from] LogError),
 }
 
 /// Why a file of a player's report was not written, by its step, each of which its path's error

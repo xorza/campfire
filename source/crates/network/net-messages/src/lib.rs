@@ -4,10 +4,6 @@
     clippy::type_complexity,
     reason = "a Bevy query names its data and its filters in one type"
 )]
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
 
 mod app_event_ext;
 mod app_message_ext;
@@ -67,7 +63,6 @@ pub use crate::remote_entity_map::RemoteEntityMap;
 pub use crate::remote_event::RemoteEvent;
 pub use crate::send_entity_map::SendEntityMap;
 pub use crate::send_map_view::SendMapView;
-pub use crate::send_queue::Priority;
 pub use crate::wire_entity::WireEntity;
 
 /// What the tests and benches of the layers above share: this layer's stack, test protocol,

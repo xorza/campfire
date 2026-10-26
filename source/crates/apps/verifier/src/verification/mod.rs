@@ -2,11 +2,12 @@ use std::path::Path;
 
 use campfire_common::ErrorReport;
 use campfire_common::StateHash;
+use campfire_host::SnapshotDir;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageStore;
 use campfire_protocol::{Checkpoint, SessionLog, SessionTerms, SnapshotFingerprint};
 use campfire_runner::{Replay, ResumeAt, SessionRules, SessionWorld};
-use campfire_sim::{SimWorld, StateRegistry};
+use campfire_sim::SimWorld;
 use campfire_store::InputFile;
 use tracing::warn;
 
@@ -31,18 +32,13 @@ impl SnapshotSource for () {
     }
 }
 
-/// The snapshots of a directory, each named by its fingerprint in hex.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct SnapshotFiles<'p>(pub &'p Path);
-
-impl SnapshotSource for SnapshotFiles<'_> {
+/// The snapshots of a session's directory, each named by its fingerprint in hex.
+impl SnapshotSource for SnapshotDir {
     fn snapshot(
         &mut self,
         fingerprint: SnapshotFingerprint,
     ) -> Option<Result<Vec<u8>, VerifyError>> {
-        let file = self.0.join(fingerprint.to_string());
-        let read = InputFile::read(&file, StateRegistry::MAX_SNAPSHOT_LEN);
-        Some(read.map_err(VerifyError::ReadSnapshot))
+        Some(self.read(fingerprint).map_err(VerifyError::ReadSnapshot))
     }
 }
 
@@ -61,7 +57,7 @@ pub fn verify_file(
     }
     let bytes = InputFile::read(log, SessionLog::MAX_FILE_LEN).map_err(VerifyError::ReadLog)?;
     match snapshots {
-        Some(dir) => verify_log(&bytes, &store, &mut SnapshotFiles(dir)),
+        Some(dir) => verify_log(&bytes, &store, &mut SnapshotDir::at(dir.to_owned())),
         None => verify_log(&bytes, &store, &mut ()),
     }
 }

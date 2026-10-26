@@ -1,5 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::Stat;
 use serde::de::Error;
@@ -74,6 +75,7 @@ impl DataSection for IncomeData {
 impl Section for IncomeData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "income";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(test)]

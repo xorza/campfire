@@ -4,6 +4,7 @@ use campfire_common::DeclaredName;
 use campfire_declarations::{BookError, Listed};
 use campfire_math::Num;
 use campfire_script::{ApiBuilder, CallError, Frame, View};
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_units::{CollisionData, SpawnAt};
 use campfire_values::{Named, Number, TypeScope, UnitType};
@@ -41,6 +42,8 @@ impl Listed for SpawnEffectData {
     type Set = ListedEffects;
 
     const KEY: &'static str = "spawn";
+
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 
     fn into_listed(self) -> Arc<dyn ListedEffect> {
         Arc::new(self)

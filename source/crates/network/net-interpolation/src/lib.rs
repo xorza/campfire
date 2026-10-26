@@ -5,10 +5,6 @@
     clippy::type_complexity,
     reason = "a Bevy query names its data and its filters in one type"
 )]
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
 
 mod app_interpolation_ext;
 #[cfg(feature = "internals")]

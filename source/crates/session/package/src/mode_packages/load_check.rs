@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::{ActionData, ActionKind};
-use campfire_capabilities::{Books, LoadNames, PackageContent, Release};
+use campfire_capabilities::{Books, CheckedBooksError, LoadNames, PackageContent, Release};
 use campfire_common::DeclaredName;
 use campfire_declarations::{
     BookError, BookPlace, ScriptParams, SectionReaders, SectionTable, TypePlace,
@@ -59,34 +59,38 @@ impl<'a> LoadCheck<'a> {
     /// Checks `packages` against the script API `api`; the books it built of them, at the fastest
     /// rate.
     pub(crate) fn run(packages: &'a ModePackages, api: &'a ScriptApi) -> Result<Books, LoadError> {
-        let manifest = &packages.manifest;
+        let manifest = &packages.base.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
         Self::sections_owned(packages, &Release::sections())?;
         let engine = Release::engine_tags();
         let rate = MatchRate::new(manifest.tick_hz.fastest());
         let input = packages.book_input(rate, &engine);
         // The modules' rules of their data come first, so a script that names what a broken rule
-        // leaves out shows the rule.
-        let names = Release::check_rules(&input).map_err(|error| book_error(packages, error))?;
-        let check = LoadCheck {
-            packages,
-            names: &names,
-            api,
-        };
-        check.mode().map_err(fail)?;
-        check.planned_data().map_err(fail)?;
-        check.loadout()?;
-        for (view, dependent) in packages.packages().skip(1).zip(&packages.dependencies) {
-            check
-                .dependent(view, dependent)
-                .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
-        }
-        check.list()?;
-        let books = Release::books(&input).map_err(|error| book_error(packages, error))?;
+        // leaves out shows the rule; the books come of the same build.
+        let checked = Release::checked_books(&input, |names| {
+            let check = LoadCheck {
+                packages,
+                names,
+                api,
+            };
+            check.mode().map_err(fail)?;
+            check.planned_data().map_err(fail)?;
+            check.loadout()?;
+            for (view, dependent) in packages.packages().skip(1).zip(&packages.base.dependencies) {
+                check
+                    .dependent(view, dependent)
+                    .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
+            }
+            check.list()
+        });
+        let books = checked.map_err(|error| match error {
+            CheckedBooksError::Book(error) => book_error(packages, error),
+            CheckedBooksError::Check(error) => error,
+        })?;
         // A name is the client's alone, so it is checked last: a train or a build whose other
         // problems the checks above find shows those.
-        shown_named(packages.content.actions()).map_err(fail)?;
-        for dependent in &packages.dependencies {
+        shown_named(packages.base.content.actions()).map_err(fail)?;
+        for dependent in &packages.base.dependencies {
             shown_named(dependent.content.actions())
                 .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
@@ -112,6 +116,7 @@ impl<'a> LoadCheck<'a> {
         }
         let mut names = PackageNames::new(view.package, view.content);
         let mode_params: Vec<&str> = packages
+            .base
             .data
             .param_names()
             .map(DeclaredName::as_str)
@@ -120,6 +125,7 @@ impl<'a> LoadCheck<'a> {
             names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
         }
         for (_, bot) in packages
+            .base
             .bots
             .iter()
             .filter(|(_, bot)| view.holds(&bot.script))
@@ -151,7 +157,7 @@ impl<'a> LoadCheck<'a> {
     fn list(&self) -> Result<(), LoadError> {
         let packages = self.packages;
         let mut pure = Vec::new();
-        for (at, source) in packages.list.iter().enumerate() {
+        for (at, source) in packages.base.list.iter().enumerate() {
             let view = packages.packages().find(|view| view.holds(source));
             let view = view.expect("the load checked the package of each listed script");
             let script = view.package.script(source.path());
@@ -163,7 +169,7 @@ impl<'a> LoadCheck<'a> {
                 };
                 LoadError::of(&view.package.header.name, problem)
             };
-            if at != packages.list.mode().index() {
+            if at != packages.base.list.mode().index() {
                 let own = script.facts.ctx_names.iter().find(|used| {
                     let member = self.api.member(ApiHolder::CTX, &used.name);
                     member.is_some_and(|member| member.decl.own_script)
@@ -192,15 +198,15 @@ impl<'a> LoadCheck<'a> {
     /// message its own language's file gives, and every team has one.
     fn names(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
-        let (data, mode) = (&packages.data, &packages.mode);
+        let (data, mode) = (&packages.base.data, &packages.base.mode);
         text(mode, &data.name, &Place::Mode)?;
-        for team in &packages.manifest.teams {
+        for team in &packages.base.manifest.teams {
             let Some(named) = data.teams.get(&team.name) else {
                 return Err(LoadProblem::UnnamedTeam(team.name.clone()));
             };
             text(mode, &named.name, &Place::Team(team.name.clone()))?;
         }
-        let manifest = &packages.manifest.teams;
+        let manifest = &packages.base.manifest.teams;
         if let Some(name) = data
             .teams
             .keys()
@@ -221,7 +227,7 @@ impl<'a> LoadCheck<'a> {
     /// No entry id is held by two loadout packages, as players choose loadout entries by id.
     fn loadout(&self) -> Result<(), LoadError> {
         let mut seen = BTreeSet::new();
-        for dependent in &self.packages.dependencies {
+        for dependent in &self.packages.base.dependencies {
             if !matches!(dependent.kind, DependentKind::Loadout) {
                 continue;
             }
@@ -370,8 +376,13 @@ impl<'a> LoadCheck<'a> {
                 self.script_name(&named, names, path)?;
             }
             let declared = |field: &&String| {
-                self.packages.data.state.contains_key(field.as_str())
-                    || self.packages.data.player_state.contains_key(field.as_str())
+                self.packages.base.data.state.contains_key(field.as_str())
+                    || self
+                        .packages
+                        .base
+                        .data
+                        .player_state
+                        .contains_key(field.as_str())
                     || self.names.state_fields().has(field)
             };
             if let Some(field) = facts.state_fields.iter().find(|field| !declared(field)) {
@@ -484,7 +495,14 @@ impl<'a> LoadCheck<'a> {
                 continue;
             }
             match member.decl.capability {
-                Some(capability) if !self.packages.manifest.capabilities.contains(capability) => {
+                Some(capability)
+                    if !self
+                        .packages
+                        .base
+                        .manifest
+                        .capabilities
+                        .contains(capability) =>
+                {
                     undeclared.get_or_insert(capability);
                 }
                 _ => return Ok(None),
@@ -509,7 +527,7 @@ impl<'a> LoadCheck<'a> {
             name: named.name.clone(),
         };
         let packages = self.packages;
-        let data = &packages.data;
+        let data = &packages.base.data;
         let name = named.name.as_str();
         let known = match self.names.has(named.kind, name) {
             Some(known) => known,
@@ -543,7 +561,7 @@ impl<'a> LoadCheck<'a> {
             packages,
             readers,
             SectionTable::Mode,
-            packages.data.sections.keys(),
+            packages.base.data.sections.keys(),
         );
         let mode = mode.map(|found| undeclared(found, Place::Section));
         let map = || {
@@ -556,7 +574,7 @@ impl<'a> LoadCheck<'a> {
             map.map(|found| undeclared(found, Place::MapSection))
         };
         if let Some(problem) = mode.or_else(map) {
-            return Err(LoadError::of(&packages.manifest.header.name, problem));
+            return Err(LoadError::of(&packages.base.manifest.header.name, problem));
         }
         for view in packages.packages() {
             let content = Self::undeclared(
@@ -601,7 +619,7 @@ impl<'a> LoadCheck<'a> {
         table: SectionTable,
         keys: impl IntoIterator<Item = &'static str>,
     ) -> Option<(&'static str, Capability)> {
-        let declared = &packages.manifest.capabilities;
+        let declared = &packages.base.manifest.capabilities;
         keys.into_iter().find_map(|key| {
             let capability = readers.capability(table, key);
             let capability = capability.filter(|&capability| !declared.runs(Some(capability)))?;
@@ -618,7 +636,7 @@ impl<'a> LoadCheck<'a> {
             })
         };
         let packages = self.packages;
-        if packages.data.state_version.is_some() && planned(DataTable::MODE, "state_version") {
+        if packages.base.data.state_version.is_some() && planned(DataTable::MODE, "state_version") {
             return Err(LoadProblem::Planned {
                 field: "state_version",
                 at: Place::Mode,
@@ -628,7 +646,13 @@ impl<'a> LoadCheck<'a> {
     }
 
     fn require(&self, capability: Capability, at: &Place) -> Result<(), LoadProblem> {
-        if self.packages.manifest.capabilities.contains(capability) {
+        if self
+            .packages
+            .base
+            .manifest
+            .capabilities
+            .contains(capability)
+        {
             return Ok(());
         }
         Err(LoadProblem::Undeclared {

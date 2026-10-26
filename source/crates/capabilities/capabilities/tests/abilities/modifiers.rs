@@ -84,9 +84,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     // the 270th after it.
     Abilities::cast(&mut game, caster, ActionTarget::None);
     assert_eq!(shield(&game), None);
-    for _ in 0..269 {
-        game.step();
-    }
+    game.steps(269);
     assert_eq!(shield(&game), None);
     game.step();
     assert_eq!(shield(&game), Some(Num::int(100)));

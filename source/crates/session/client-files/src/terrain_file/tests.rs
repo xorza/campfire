@@ -2,9 +2,9 @@ use campfire_codec::{Binary, BinaryError};
 
 use super::*;
 
-/// A grid of 3 × 2 samples, two cells, with an overlay over the second; a texture of 8 × 8
-/// texels at two levels, of one copy and its border.
-fn parts() -> (TerrainQuads, TerrainTexture, TerrainSurface) {
+/// A grid of 3 × 2 samples, two cells, with an overlay over the second and a decal triangle; a
+/// texture of 8 × 8 texels at two levels, of one copy and its border.
+fn fields() -> TerrainFileFields {
     let quad = |[left, right]: [f32; 2], flip: bool| GroundQuad {
         uv: [
             Vec2::new(left, 0.0),
@@ -44,108 +44,134 @@ fn parts() -> (TerrainQuads, TerrainTexture, TerrainSurface) {
         roughness: 1.0,
         specular: 0.0,
     };
-    (quads, texture, surface)
+    let decals = TerrainDecals {
+        vertices: [([0.0, 0.0], 0.0), ([10.0, 0.0], 1.0), ([10.0, 10.0], 1.0)]
+            .map(|([x, z], u)| DecalVertex {
+                position: Vec3::new(x, 1.0, z),
+                uv: Vec2::new(u, 2.0),
+            })
+            .to_vec(),
+        triangles: vec![[0, 2, 1]],
+    };
+    TerrainFileFields {
+        quads,
+        decals,
+        texture,
+        surface,
+    }
 }
 
 #[test]
 fn a_terrain_reads_back_what_it_writes_and_each_flaw_is_refused() {
-    let (quads, texture, surface) = parts();
-    let file = TerrainFile::new(quads, texture, surface).unwrap();
+    let file = TerrainFile::new(fields()).unwrap();
     let read: TerrainFile = Binary::decode(&Binary::encode(&file)).unwrap();
     assert_eq!(read, file);
     // Its two cells are those of a grid of 3 × 2 samples, not of 3 × 3 or of 2 × 2.
     assert!(file.quads().fits(3, 2));
     assert!(!file.quads().fits(3, 3));
     assert!(!file.quads().fits(2, 2));
-    let refused = |change: fn(&mut TerrainQuads, &mut TerrainTexture, &mut TerrainSurface)| {
-        let (mut quads, mut texture, mut surface) = parts();
-        change(&mut quads, &mut texture, &mut surface);
-        TerrainFile::new(quads, texture, surface).unwrap_err()
+    let refused = |change: fn(&mut TerrainFileFields)| {
+        let mut fields = fields();
+        change(&mut fields);
+        TerrainFile::new(fields).unwrap_err()
     };
     // A grid of one column has no cell; three quads fill no whole rows of two cells.
-    assert_eq!(refused(|q, _, _| q.columns = 1), TerrainFileError::Shape);
+    assert_eq!(refused(|f| f.quads.columns = 1), TerrainFileError::Shape);
     assert_eq!(
-        refused(|q, _, _| q.ground.push(q.ground[0])),
+        refused(|f| f.quads.ground.push(f.quads.ground[0])),
         TerrainFileError::Shape
     );
-    assert_eq!(refused(|q, _, _| q.ground.clear()), TerrainFileError::Shape);
+    assert_eq!(refused(|f| f.quads.ground.clear()), TerrainFileError::Shape);
     // An overlay of cell 2, past the two.
     assert_eq!(
-        refused(|q, _, _| q.overlays[0].cell = 2),
+        refused(|f| f.quads.overlays[0].cell = 2),
         TerrainFileError::Cell(0)
     );
     assert_eq!(
-        refused(|q, _, _| q.overlays[0].uv[3].y = f32::NAN),
+        refused(|f| f.quads.overlays[0].uv[3].y = f32::NAN),
         TerrainFileError::Coordinate
     );
     assert_eq!(
-        refused(|q, _, _| q.ground[1].uv[0].x = f32::INFINITY),
+        refused(|f| f.quads.ground[1].uv[0].x = f32::INFINITY),
         TerrainFileError::Coordinate
+    );
+    // A decal's coordinate or point not finite, and a triangle of its vertex 3, past the three.
+    assert_eq!(
+        refused(|f| f.decals.vertices[1].uv.y = f32::NAN),
+        TerrainFileError::Coordinate
+    );
+    assert_eq!(
+        refused(|f| f.decals.vertices[2].position.y = f32::INFINITY),
+        TerrainFileError::Point
+    );
+    assert_eq!(
+        refused(|f| f.decals.triangles[0][1] = 3),
+        TerrainFileError::Triangle(0)
     );
     // A side past 8192 texels, the most a texture has, and the side of 8192 at once.
     assert_eq!(
-        refused(|_, t, _| t.size.x = TerrainTexture::MOST_SIDE + 1),
+        refused(|f| f.texture.size.x = TerrainTexture::MOST_SIDE + 1),
         TerrainFileError::TextureSize
     );
     assert_eq!(
-        refused(|_, t, _| t.size.y = u32::MAX),
+        refused(|f| f.texture.size.y = u32::MAX),
         TerrainFileError::TextureSize
     );
     // No level; five levels of a side of 8, which halves to 1 at the fourth and 0 at the fifth.
-    assert_eq!(refused(|_, t, _| t.levels = 0), TerrainFileError::Texture);
-    assert_eq!(refused(|_, t, _| t.levels = 5), TerrainFileError::Texture);
+    assert_eq!(refused(|f| f.texture.levels = 0), TerrainFileError::Texture);
+    assert_eq!(refused(|f| f.texture.levels = 5), TerrainFileError::Texture);
     // A copy past the texture's 8 texels, of no texels, or of a place or a size off the even
     // texels the second level halves to; its source corner may be on any texel.
     assert_eq!(
-        refused(|_, t, _| t.copies[0].to.x = 6),
+        refused(|f| f.texture.copies[0].to.x = 6),
         TerrainFileError::Copy(0)
     );
     assert_eq!(
-        refused(|_, t, _| t.copies[0].size.y = 0),
+        refused(|f| f.texture.copies[0].size.y = 0),
         TerrainFileError::Copy(0)
     );
     assert_eq!(
-        refused(|_, t, _| t.copies[0].to.y = 1),
+        refused(|f| f.texture.copies[0].to.y = 1),
         TerrainFileError::Copy(0)
     );
     assert_eq!(
-        refused(|_, t, _| t.copies[0].size.x = 3),
+        refused(|f| f.texture.copies[0].size.x = 3),
         TerrainFileError::Copy(0)
     );
-    let (quads, mut texture, surface) = parts();
-    texture.copies[0].from = UVec2::new(1, 3);
-    assert!(TerrainFile::new(quads, texture, surface).is_ok());
+    let mut moved = fields();
+    moved.texture.copies[0].from = UVec2::new(1, 3);
+    assert!(TerrainFile::new(moved).is_ok());
     // A border past the texture's edge, wider than its rectangle, or off the even texels.
     assert_eq!(
-        refused(|_, t, _| t.wraps[0].at.x = 0),
+        refused(|f| f.texture.wraps[0].at.x = 0),
         TerrainFileError::Wrap(0)
     );
     assert_eq!(
-        refused(|_, t, _| t.wraps[0].border = 4),
+        refused(|f| f.texture.wraps[0].border = 4),
         TerrainFileError::Wrap(0)
     );
     assert_eq!(
-        refused(|_, t, _| t.wraps[0].border = 1),
+        refused(|f| f.texture.wraps[0].border = 1),
         TerrainFileError::Wrap(0)
     );
     // A rectangle so wide that its border's end passes `u32`: 2³² − 2 + 2.
     assert_eq!(
-        refused(|_, t, _| t.wraps[0].size.x = u32::MAX - 1),
+        refused(|f| f.texture.wraps[0].size.x = u32::MAX - 1),
         TerrainFileError::Wrap(0)
     );
     // A factor past 1, or not a number.
     assert_eq!(
-        refused(|_, _, s| s.roughness = 1.5),
+        refused(|f| f.surface.roughness = 1.5),
         TerrainFileError::Surface
     );
     assert_eq!(
-        refused(|_, _, s| s.specular = f32::NAN),
+        refused(|f| f.surface.specular = f32::NAN),
         TerrainFileError::Surface
     );
     // A file read is checked as one made is.
     let bytes = Binary::encode(&file);
     let mut bad = file;
-    bad.quads.overlays[0].cell = 9;
+    bad.fields.quads.overlays[0].cell = 9;
     assert_eq!(
         Binary::decode::<TerrainFile>(&Binary::encode(&bad)).err(),
         Some(BinaryError::REFUSED)

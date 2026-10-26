@@ -5,6 +5,7 @@ use bevy_ecs::resource::Resource;
 use campfire_codec::{Toml, TomlTable};
 use campfire_common::DeclaredName;
 use campfire_script::MatchNames;
+use campfire_script::{ApiVersion, Status};
 use serde::Deserialize;
 
 use super::*;
@@ -52,6 +53,7 @@ struct Shell {
 impl Section for Shell {
     const TABLE: SectionTable = SectionTable::DeliveryType;
     const KEY: &'static str = "shell";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// A book of a test that reads itself through `Doubled`.

@@ -231,7 +231,7 @@ impl SupplyImport {
             };
             match names.unit_type(spawned, rules) {
                 Ok(typed) => freed.push(NamedObject {
-                    name: typed.name,
+                    name: typed.name.clone(),
                     object: typed.object,
                 }),
                 Err(_) => self.drop(spawned, SupplyDropCause::NoType),
@@ -287,7 +287,7 @@ impl SupplyImport {
                 return Vec::new();
             }
             units.push(NamedObject {
-                name: typed.name,
+                name: typed.name.clone(),
                 object: typed.object,
             });
         }

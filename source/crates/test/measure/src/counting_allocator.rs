@@ -1,4 +1,8 @@
 #![expect(
+    unsafe_code,
+    reason = "`GlobalAlloc` is an unsafe trait (02-engine-core.md, Unsafe only where an outside API asks)"
+)]
+#![expect(
     clippy::disallowed_types,
     reason = "a global allocator gets no state of its caller, so a thread's exclusion is its own"
 )]

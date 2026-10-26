@@ -6,7 +6,7 @@ use crate::connection_id::ConnectionId;
 use crate::datagram_io::{Datagram, Outbound};
 use crate::protection::Protection;
 use crate::stateless_reset;
-use campfire_common::ChannelBinding;
+use campfire_common::{ChannelBinding, Secret};
 
 /// How an endpoint makes its packet sessions: at once and plain in-process, or by a handshake that
 /// gives the seal over a network. The endpoint calls it with the datagrams that are not a
@@ -89,7 +89,7 @@ pub struct Established {
     /// The connection ID that starts each of the peer's datagrams to this end, which routes them.
     pub route: Option<ConnectionId>,
     /// The token of the peer's stateless reset.
-    pub reset_token: Option<[u8; stateless_reset::TOKEN_LEN]>,
+    pub reset_token: Option<Secret<{ stateless_reset::TOKEN_LEN }>>,
     /// The binding of the TLS packet session that made the packet session.
     pub binding: Option<ChannelBinding>,
     /// The peer's datagrams that came before the packet session was made, in the order they came,

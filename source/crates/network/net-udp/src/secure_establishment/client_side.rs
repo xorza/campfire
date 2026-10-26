@@ -6,7 +6,7 @@ use core::time::Duration;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use campfire_common::ChannelBinding;
+use campfire_common::{ChannelBinding, Secret};
 use campfire_net_core::Instant;
 use campfire_net_core::Random;
 use campfire_net_packets::{
@@ -198,7 +198,7 @@ impl ClientSide {
                     protection: Protection::Sealed(Box::new(RustlsSeal::new(done.keys))),
                     prefix: Some(done.params.id),
                     route: None,
-                    reset_token: Some(done.params.reset_token),
+                    reset_token: Some(Secret::new(done.params.reset_token)),
                     binding: Some(done.binding),
                     early: Vec::new(),
                 });

@@ -1,6 +1,7 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, Section, SectionTable, SourceType};
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable, UnknownName};
 use campfire_values::Named;
 use serde::de::Error;
@@ -111,6 +112,7 @@ impl CollisionData {
 impl Section for CollisionData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "collision";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 /// A unit type's `variations`: each a body, of its own `collision`, one of which every spawn of the
@@ -134,6 +136,7 @@ impl DataSection for VariationsData {
 impl Section for VariationsData {
     const TABLE: SectionTable = SectionTable::UnitType;
     const KEY: &'static str = "variations";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(test)]

@@ -22,7 +22,7 @@ use crate::packet_session::{PacketSession, PathOutcome, Received};
 use crate::packet_session_setup::PacketSessionSetup;
 use crate::stateless_reset;
 use crate::transmit::{Path, Transmit};
-use campfire_common::ChannelBinding;
+use campfire_common::{ChannelBinding, Secret};
 
 /// A packet session's slot in its endpoint's table, and its id, which no later packet session in
 /// the slot shares.
@@ -93,7 +93,7 @@ struct Peer<C> {
     key: PeerKey,
     /// The token of the peer's stateless reset, which ends the packet session with no packet it
     /// opens.
-    reset_token: Option<[u8; stateless_reset::TOKEN_LEN]>,
+    reset_token: Option<Secret<{ stateless_reset::TOKEN_LEN }>>,
     address: SocketAddr,
     /// The local address the peer's datagrams came to, which the packet session's leave from.
     local: Option<IpAddr>,
@@ -474,7 +474,8 @@ impl<C: Carrier> EndpointCore<C> {
             .expect("a slot that routes holds a peer");
         if peer
             .reset_token
-            .is_some_and(|token| stateless_reset::matches(&payload, &token))
+            .as_ref()
+            .is_some_and(|token| stateless_reset::matches(&payload, token))
         {
             peer.packet_session.reset();
             Self::schedule(peer, &mut self.timers, now);

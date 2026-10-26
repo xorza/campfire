@@ -117,14 +117,19 @@ impl BotApi {
         payer.ok_or_else(|| ApiError::NotForRole.fail().into())
     }
 
-    /// Queues the order `directive` to `units`; a list with a value that is no unit, or a table
-    /// that reads as no directive, fails the call.
+    /// Queues the order `directive` to `units`; a list with a value that is no unit, a unit that
+    /// is not the bot's own, as `may_start` and `idle` refuse one, or a table that reads as no
+    /// directive, fails the call.
     fn order(ctx: &Ctx, units: &ScriptList, directive: ScriptMap) -> Checked<()> {
         let units = units
             .iter()
-            .map(|value| value.clone().try_cast::<Unit>().map(|unit| unit.id))
+            .map(|value| value.clone().try_cast::<Unit>())
             .collect::<Option<Vec<_>>>()
             .ok_or_else(|| ApiError::NotAUnit.fail())?;
+        for unit in &units {
+            Self::own(ctx, unit)?;
+        }
+        let units = units.iter().map(|unit| unit.id).collect();
         let value = ScriptValue::of(directive);
         let directive = TomlValue::try_of(&value)
             .ok()

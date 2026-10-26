@@ -63,7 +63,10 @@ fn named_code(workspace: &Workspace, naming: impl Fn(&Crate) -> Option<Naming>) 
                 Naming::FromSrc => within.to_owned(),
                 Naming::Under(name) => format!("{name}/{within}"),
             };
-            found.push(NamedCode { path, code });
+            found.push(NamedCode {
+                path,
+                code: code.to_owned(),
+            });
         }
     }
     found

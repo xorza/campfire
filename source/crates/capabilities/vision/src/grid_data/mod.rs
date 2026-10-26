@@ -1,5 +1,6 @@
 use campfire_declarations::{Section, SectionTable};
 use campfire_math::Num;
+use campfire_script::{ApiVersion, Status};
 use campfire_units::MapPoint;
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +23,7 @@ pub struct BrushData {
 impl Section for GridData {
     const TABLE: SectionTable = SectionTable::Map;
     const KEY: &'static str = "grid";
+    const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
 #[cfg(test)]

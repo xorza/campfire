@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use campfire_common::PackageFingerprint;
-use campfire_package_format::{ContentError, ContentHash, FileIndex, PackageWalk};
+use campfire_package_format::{ContentError, ContentHash, FileIndex, HashedFile, PackageWalk};
 use campfire_store::{DurableDir, DurableFile, OutputFile};
 use campfire_values::PackagePath;
 
@@ -44,7 +44,7 @@ impl PackageWriter {
         if self.rows.contains(&path) {
             return Err(WriteError::Package(ContentError::Repeated(path)));
         }
-        let hashed = self.rows.hash(bytes).expect("a slice reads");
+        let hashed = HashedFile::of(bytes);
         if !self.written.contains(&hashed.sha256()) {
             let at = path
                 .as_str()

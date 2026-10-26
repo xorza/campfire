@@ -1,5 +1,5 @@
 use super::*;
-use crate::zero_hour::format::map::terrain::{Terrain, TerrainCell, TextureClass};
+use crate::zero_hour::format::map::terrain::{TerrainCell, TextureClass};
 
 /// A class of `width` tiles a side and `tiles` tiles from `first_tile`.
 fn class(first_tile: u32, tiles: u32, width: u32) -> TextureClass {
@@ -12,8 +12,8 @@ fn class(first_tile: u32, tiles: u32, width: u32) -> TextureClass {
 }
 
 /// A class's texture of `side` × `side` texels at `path`.
-fn texture(path: &str, side: u32) -> ClassTexture {
-    ClassTexture {
+fn texture(path: &str, side: u32) -> PackageTexture {
+    PackageTexture {
         path: PackagePath::parse(path).unwrap(),
         size: UVec2::splat(side),
     }
@@ -89,7 +89,7 @@ fn classes_take_the_grid_widest_first_and_one_with_no_room_has_none() {
 fn a_class_s_tiles_lie_upright_in_its_block_wrapped_by_its_border() {
     const SAND: &str = "client/textures/art/terrain/sand.ktx2";
     let sand = class(0, 4, 2);
-    let atlas = TerrainAtlas::new(&terrain([sand]), &[Some(texture(SAND, 128))]);
+    let atlas = TerrainAtlas::new(&terrain([sand]), &[Some(texture(SAND, 128))], &[]);
     assert_eq!(atlas.class(0), UVec2::new(4, 4));
     // The game reads a TGA's rows from its bottom: tile 0 is the bottom left, which the block's
     // bottom left holds, and tile 2 the top left.
@@ -126,7 +126,7 @@ fn a_class_loads_the_largest_square_of_its_tiles_that_its_texture_holds() {
     // Three tiles load a square of one: the bottom left, at the block's bottom left; tiles 1 and
     // 2 have no texture.
     let three = class(0, 3, 2);
-    let atlas = TerrainAtlas::new(&terrain([three]), &[Some(texture(SAND, 128))]);
+    let atlas = TerrainAtlas::new(&terrain([three]), &[Some(texture(SAND, 128))], &[]);
     assert_eq!(atlas.tile(0), Some(UVec2::new(4, 68)));
     assert_eq!(atlas.tile(1), None);
     assert_eq!(atlas.tile(2), None);
@@ -137,6 +137,7 @@ fn a_class_loads_the_largest_square_of_its_tiles_that_its_texture_holds() {
     let atlas = TerrainAtlas::new(
         &terrain([four, class(4, 1, 1)]),
         &[Some(texture(SAND, 64)), None],
+        &[],
     );
     assert_eq!(
         (0..5).map(|tile| atlas.tile(tile)).collect::<Vec<_>>(),
@@ -161,4 +162,99 @@ fn a_class_the_terrain_holds_fits_the_atlas_grid() {
     );
     let widest = TerrainAtlas::place(&terrain([class(0, 28 * 28, 28)]));
     assert_eq!(widest.corners, [Some(UVec2::new(4, 4))]);
+}
+
+#[test]
+fn road_textures_take_rows_beside_the_classes_the_tallest_first_each_wrapped_by_its_border() {
+    const SAND: &str = "client/textures/art/terrain/sand.ktx2";
+    const ROAD: &str = "client/textures/art/textures/trtwolane.ktx2";
+    const WALK: &str = "client/textures/art/textures/trsidewalk.ktx2";
+    let odd = PackageTexture {
+        size: UVec2::new(256, 258),
+        ..texture(WALK, 256)
+    };
+    let roads = [
+        Some(texture(ROAD, 512)),
+        Some(texture(WALK, 256)),
+        None,
+        Some(texture(ROAD, 512)),
+        Some(odd),
+    ];
+    let atlas = TerrainAtlas::new(
+        &terrain([class(0, 4, 2)]),
+        &[Some(texture(SAND, 128))],
+        &roads,
+    );
+    // The two of 512 first, in their order, then the one of 256, from 2,048 + 4 across, each
+    // 8 past the last: 2,052, 2,052 + 520 = 2,572 and 2,572 + 520 = 3,092. One of no texture,
+    // and one 258 high, which the third level does not halve to whole texels, have none.
+    let place = |x: u32, side: u32| {
+        Ok(TexturePlace {
+            corner: UVec2::new(x, 4),
+            size: UVec2::splat(side),
+        })
+    };
+    assert_eq!(
+        atlas.roads(),
+        [
+            place(2052, 512),
+            place(3092, 256),
+            Err(RoadDropCause::NoTexture),
+            place(2572, 512),
+            Err(RoadDropCause::NoPlace)
+        ]
+    );
+    // The texture is twice as wide, and as high as the tallest's 4 + 512 + 4 = 520 takes, 1,024;
+    // each road texture is copied whole after the tiles, and its border wrapped after the
+    // class's.
+    let composed = atlas.into_texture();
+    assert_eq!(composed.size, UVec2::new(4096, 1024));
+    assert_eq!(
+        composed.copies[4..],
+        [
+            TextureCopy {
+                texture: PackagePath::parse(ROAD).unwrap(),
+                from: UVec2::ZERO,
+                to: UVec2::new(2052, 4),
+                size: UVec2::splat(512),
+            },
+            TextureCopy {
+                texture: PackagePath::parse(WALK).unwrap(),
+                from: UVec2::ZERO,
+                to: UVec2::new(3092, 4),
+                size: UVec2::splat(256),
+            },
+            TextureCopy {
+                texture: PackagePath::parse(ROAD).unwrap(),
+                from: UVec2::ZERO,
+                to: UVec2::new(2572, 4),
+                size: UVec2::splat(512),
+            },
+        ]
+    );
+    assert_eq!(
+        composed.wraps[1..],
+        [(2052, 512), (3092, 256), (2572, 512)].map(|(x, side)| BorderWrap {
+            at: UVec2::new(x, 4),
+            size: UVec2::splat(side),
+            border: 4,
+        })
+    );
+
+    // Three of 1,024 a row each, as a second ends past 4,096 − 4: rows at 4, 4 + 1,024 + 8 =
+    // 1,036 and 2,068, so 2,068 + 1,024 + 4 = 3,096 high, 4,096; one of 8,192 passes the most
+    // side with its borders, and has none. A map of no road's texture keeps the classes' width.
+    let tall = [1024, 1024, 8192, 1024].map(|side| Some(texture(ROAD, side)));
+    let atlas = TerrainAtlas::new(&terrain([]), &[], &tall);
+    let row = |y: u32| Some(UVec2::new(2052, y));
+    let corners: Vec<Option<UVec2>> = atlas
+        .roads()
+        .iter()
+        .map(|place| place.ok().map(|place| place.corner))
+        .collect();
+    assert_eq!(corners, [row(4), row(1036), None, row(2068)]);
+    assert_eq!(atlas.into_texture().size, UVec2::new(4096, 4096));
+    let none = TerrainAtlas::new(&terrain([]), &[], &[None]);
+    assert_eq!(none.roads(), [Err(RoadDropCause::NoTexture)]);
+    assert_eq!(none.into_texture().size.x, 2048);
 }
