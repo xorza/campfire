@@ -351,12 +351,17 @@ fn a_missile_converts_to_a_steered_projectile_with_its_rings_and_minimum_or_drop
     ] {
         assert_eq!(dropped(name), Some(cause), "{name}");
     }
-    // A clip of one shot fires each reload, its delay never counting: 2,000 ms, 60 frames, and
-    // 1,000 ms, 30, of no clip.
-    for (name, period) in [("OneShot", 2000), ("RandomShot", 1000)] {
+    // A clip of one shot stays a clip, of its reload, 2,000 ms, 60 frames, and 1,000 ms, 30, its
+    // period the reload, as no shot of it waits for its delay, of 0 ms or drawn from a range.
+    let own = ImportedWeapon::own;
+    for (name, reload) in [("OneShot", 2000), ("RandomShot", 1000)] {
         let attack = of(name).unwrap().weapon.attack;
-        let rate = WeaponValue::Own(ImportedWeapon::own(period));
-        assert_eq!((attack.rate, attack.clip), (rate, None), "{name}");
+        let clip = ClipData {
+            shots: own(1),
+            reload_ms: own(reload),
+        };
+        let expected = (WeaponValue::Own(own(reload)), Some(clip));
+        assert_eq!((attack.rate, attack.clip), expected, "{name}");
     }
 }
 

@@ -82,6 +82,9 @@ fn a_clip_lacks_its_fired_shots_and_every_round_as_it_reloads_until_ready() {
         slot.reloads = true;
         slot.ready_at = Some(Tick::new(12));
     }
+    fn one(slot: &mut SlotAttack) {
+        slot.clip_shots = NonZeroU16::new(1);
+    }
     let attack = SlotAttack {
         attacking: false,
         striking: false,
@@ -112,6 +115,23 @@ fn a_clip_lacks_its_fired_shots_and_every_round_as_it_reloads_until_ready() {
         lack(|slot| {
             reloading(slot);
             slot.clip_shots = None;
+        }),
+        lacks(0, false)
+    );
+    // A clip of one, which each shot empties, lacks its round as it reloads, until ready at tick
+    // 12, and none once ready at tick 10.
+    assert_eq!(
+        lack(|slot| {
+            reloading(slot);
+            one(slot);
+        }),
+        lacks(1, true)
+    );
+    assert_eq!(
+        lack(|slot| {
+            one(slot);
+            slot.reloads = true;
+            slot.ready_at = Some(Tick::new(10));
         }),
         lacks(0, false)
     );

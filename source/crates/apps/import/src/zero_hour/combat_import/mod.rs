@@ -451,11 +451,10 @@ impl ImportedWeapon {
             return Err(WeaponDropCause::UpgradeBonus);
         }
         let bonus = Self::damage_bonus(weapon.upgrade.damage())?;
-        // A clip of one shot reloads after each shot from the shot, so its delay never counts, and
-        // its reload is its period (09-zero-hour.md, A clip of one shot is a period).
-        let one_shot = weapon.clip_size == 1;
+        // Each shot of a clip of one empties it, so no shot waits for its delay, and its period is
+        // its reload (09-zero-hour.md, A clip of one shot is a clip).
         let period = match weapon.delay {
-            _ if one_shot => weapon.clip_reload_ms,
+            _ if weapon.clip_size == 1 => weapon.clip_reload_ms,
             ShotDelay::Fixed(delay) => delay,
             ShotDelay::Random => return Err(WeaponDropCause::RandomDelay),
         };
@@ -497,7 +496,7 @@ impl ImportedWeapon {
         };
         let clip = match weapon.clip_size {
             ..0 => return Err(WeaponDropCause::BadNumber),
-            0 | 1 => None,
+            0 => None,
             size => Some(ClipData {
                 shots: Self::own(i64::from(size)),
                 reload_ms: ms(game_time::of_ms(weapon.clip_reload_ms)?)?,

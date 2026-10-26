@@ -4,13 +4,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Looks of the report of 2026-10-26
 
-Three faults a player's report showed (2026-10-26, report `1e38d2c4…-945` and its session's log to tick 5711, on Tournament Desert): a Humvee drew its gun's muzzle flash at all times; a Tomahawk kept its missile on its rail after each launch, where Zero Hour's comes back after its reload; and China's Gattling tank, attacking a Crusader from tick 5505, did not spin its barrels. Each cause is found; L1 is a batch of its own, as it changes the import's weapons alone, and L2 and L3 one, as both change the import's looks and the client's look states.
-
-### L1. A clip of one shot is a clip
-
-Touches the import's weapons; it stands first, as the rounds of the last batch wait for it.
-
-- [ ] A weapon of `ClipSize = 1` converts to a period of its reload and no clip (09-zero-hour.md, A clip of one shot is a period), exact for its timing, where Zero Hour holds such a weapon in `RELOADING_CLIP` after each shot, which its draw reads: the Tomahawk's `TomahawkMissileWeapon` "uses a clip of one to get the Reloading modelcondition", and its model shows its missile from the clip's remaining ammo (`doHideShowProjectileObjects`); so the client sees no clip, draws no reload and never hides the missile on the rail. The import keeps a clip of one shot as a clip of its reload, its period the same, and the decision goes. Direction: the importer takes a game's data as it is. Checks: the import's tests convert a clip of one shot to a clip; the Zero Hour check's pins hold, its fights alike; the client's tests hide a round of a clip of one while it reloads.
+Two faults a player's report showed (2026-10-26, report `1e38d2c4…-945` and its session's log to tick 5711, on Tournament Desert): a Humvee drew its gun's muzzle flash at all times; and China's Gattling tank, attacking a Crusader from tick 5505, did not spin its barrels. Each cause is found; L2 and L3 are one batch, as both change the import's looks and the client's look states.
 
 ### L2. An attacking unit draws its attacking state
 
