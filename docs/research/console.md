@@ -26,6 +26,10 @@ The revision of 2026-07-28 ([changelog](https://modelcontextprotocol.io/specific
 - **A fixed order of tools.** Servers "SHOULD return tools from `tools/list` in a deterministic order", for clients' caches and prompt caches.
 - **The stdio framing.** The stdio binding is "newline-delimited messages over the standard streams of a client-launched subprocess", and a custom transport over a byte stream "SHOULD reuse the stdio framing" ([transports](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports)).
 - **A local server's access.** A server meant to run locally "SHOULD" use the `stdio` transport, or, over HTTP, require an authorization token or use Unix domain sockets ([security best practices](https://modelcontextprotocol.io/specification/2026-07-28/basic/security_best_practices)).
+- **The stdio lifecycle.** A message must not hold a newline, and a server must write nothing else to its standard output; to stop a server, the client closes its input, waits, then terminates it, and servers "SHOULD exit promptly when their standard input is closed", "the only portable" graceful signal; a cancel is `notifications/cancelled`, after which the server "MUST NOT send any further messages" for the request ([stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio)).
+- **Two kinds of error.** An unknown tool or a malformed request is a JSON-RPC error, which models are "less likely" to fix; a failure of the call, a value out of range among them, is a result with `isError: true`, which clients "SHOULD" give the model so it can correct itself ([tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)).
+- **Structured results.** A result's `structuredContent` must match the tool's `outputSchema` when it declares one, and "SHOULD" come with its JSON in a text block too ([tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)).
+- **Handles.** A handle should be opaque, its lifetime stated in the description of the tool that makes it, and a call on an unknown one should fail as a result that says so ([tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)).
 - **The official Rust SDK.** `rmcp` serves stdio and Streamable HTTP, derives a tool's input schema through `schemars`, and supports the tasks extension ([rmcp](https://docs.rs/rmcp)).
 
 ## Claude Code
@@ -36,6 +40,10 @@ From its MCP documentation ([MCP](https://code.claude.com/docs/en/mcp)).
 - **Limits of a result.** A warning past 10,000 tokens of output, a cut at 25,000, which `MAX_MCP_OUTPUT_TOKENS` changes; a text result past 50,000 characters goes to a file, unless the tool's `_meta["anthropic/maxResultSizeChars"]` raises its threshold, up to 500,000; a result with an image keeps the token limit.
 - **Images.** A PNG, JPEG, GIF or WebP shows inline, scaled down or compressed to fit the model's limits, and its bytes are kept in a file.
 - **Tasks.** In public beta, from v2.1.304, on revision 2026-07-28: a call moves to the background after two minutes. A user's report of 15 October 2026 says the extension does not yet work ([issue](https://claudeissues.com/issue/102347-feature-support-the-mcp-tasks-extension-io-modelcontextprotocol-tasks-spec-2026)).
+- **Hints.** A tool of `readOnlyHint` changes nothing, and Claude Code runs its calls in parallel with other read-only calls; one of `idempotentHint` is safe to call twice, and Claude Code repeats it once over a new connection to an HTTP server.
+- **Instructions.** With tool search, only the tools' names and the server's instructions load as a session starts; the instructions and an upfront tool's description are cut at 4,096 characters, a searched tool's at 16,384, and the search reads the shorter part.
+- **Approval.** `_meta["anthropic/requiresUserInteraction"]` asks the user at every call of the tool, in every permission mode.
+- **Structured results in practice.** Users' reports through 2026 say Claude Code drops a result's text or image blocks when `structuredContent` is also present, or shows the JSON in place of the text ([text dropped](https://claudeissues.com/issue/55677-mcp-tool-result-content-text-dropped-from-model-when-structuredcontent-is-also-p), [images dropped](https://claudeissues.com/issue/54737-bug-mcp-tool-results-image-content-blocks-dropped-when-structuredcontent-is-also), [JSON shown](https://claudeissues.com/issue/45575-tool-responses-with-both-content-text-and-structuredcontent-text-is-hidden)), and that only the first text block of an HTTP server's result reaches the model ([first block](https://claudeissues.com/issue/89630-mcp-http-tool-results-only-the-first-text-content-block-reaches-the-model-additi)).
 - **A stdio server.** Claude Code sets `CLAUDE_PROJECT_DIR` in its environment, stops it after 30 minutes idle, and in an interactive session fetches the tool list again at `tools/list_changed`; a project's `.mcp.json` asks for approval once.
 
 ## Claude's images
@@ -46,6 +54,12 @@ From the vision guide ([Vision](https://platform.claude.com/docs/en/build-with-c
 - **The limits by model.** Claude 4.7 and later take a long edge of 2,576 px and 4,784 visual tokens, other models 1,568 px and 1,568; a larger image is scaled down, its aspect kept.
 - **Many images.** A request of more than 20 images, those of earlier turns and of tool results among them, holds each image to a stricter limit, and rejects one past it; the guide advises no side past 2,000 px.
 - **Formats.** JPEG, PNG, GIF and WebP; a lossy format's artifacts can hurt what the model reads.
+- **Coordinates.** "Claude returns absolute pixel coordinates relative to the image it processes after resizing."
+
+## Windows that draw no frame
+
+- **A compositor stops a hidden window's frames.** Under Wayland, a window that is hidden or wholly covered stops receiving frame callbacks: Weston gives an occluded client none, Mutter blocks them as a window is occluded and marks it suspended 3 s later, and Qt's client filled its socket with requests no callback answered ([Qt Wayland](https://invent.kde.org/qt/qt/qtwayland/-/merge_requests/16), [Weston](https://gitlab.freedesktop.org/wayland/weston/-/merge_requests/1524), [Chromium](https://chromium.googlesource.com/chromium/src/+/69f60ea35d33ea693ae1ed6f65659943348101d7)).
+- **`bevy_brp_mcp` says the same of its screenshots:** a minimized or hidden window may give a black image ([bevy_brp_mcp](https://docs.rs/bevy_brp_mcp/latest/bevy_brp_mcp/)).
 
 ## Tool design
 
