@@ -6,6 +6,12 @@ use super::*;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
 
+/// A type of no weapon.
+const NO_WEAPONS: TypeWeapons<'static> = TypeWeapons {
+    all: &[],
+    by_slot: &[],
+};
+
 /// The objects of each kind the import's rule of bodies tells apart.
 const BODIES: &str = "Object Tank
   KindOf = VEHICLE
@@ -285,7 +291,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     let wide_reach = wide.unwrap().shape.circle_radius().unwrap();
     assert_eq!(rig.reach(Num::ZERO), Some([wide_reach; 2]));
     let mut writer = SectionWriter::default();
-    rig.write(&mut writer, None);
+    rig.write(&mut writer, None, NO_WEAPONS);
     let written = Toml::write(&writer.into_table());
     assert!(
         written.contains("[[variations]]") && !written.contains("[collision]"),
@@ -516,23 +522,29 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
             "{name}"
         );
     }
-    // The gunner's turret turns 60° a second; a turret of no weapon, or of no turn, is none.
+    // The gunner's turret turns 60° a second, and carries its `SECONDARY` slot; a turret of no
+    // weapon, or of no turn, is none.
     let turret = TurretPatch {
         turn_rate: Some(Num::int(60)),
         ..TurretPatch::default()
     };
-    assert_eq!(of("Gunner").turret, Some(turret.clone()));
-    assert_eq!((of("Idle").turret, of("Fixed").turret), (None, None));
+    let turret_of = |name: &str| of(name).turret.map(|turret| turret.patch);
+    assert_eq!(turret_of("Gunner"), Some(turret.clone()));
+    assert_eq!(
+        of("Gunner").turret.map(|turret| turret.slots),
+        Some([false, true, false])
+    );
+    assert_eq!((turret_of("Idle"), turret_of("Fixed")), (None, None));
     // The launcher's pitches 30° a second to its fire pitch of 70°, back to its rest of 10°, no
     // lower than level; the aimer's, of no fire pitch, at 0.01 radians a frame, 17.19° a second,
     // toward its target no lower than −20°; a pitch of no rate is none.
     let pitch = |turret: Option<TurretPatch>| turret?.pitch;
     let launcher = TurretPitchData::new(Num::int(30), Some(Num::int(70)), Num::ZERO, Num::int(10));
-    assert_eq!(pitch(of("Launcher").turret), launcher);
+    assert_eq!(pitch(turret_of("Launcher")), launcher);
     let rate = num(0.01 * 30.0 / (std::f32::consts::PI / 180.0)).unwrap();
     let aimer = TurretPitchData::new(rate, None, Num::int(-20), Num::ZERO);
-    assert_eq!(pitch(of("Aimer").turret), aimer);
-    assert_eq!(of("Stiff").turret, Some(turret));
+    assert_eq!(pitch(turret_of("Aimer")), aimer);
+    assert_eq!(turret_of("Stiff"), Some(turret));
     // Written with its model's bones, the launcher's turret turns about its turret bone's pivot,
     // and pitches about its pitch bone's.
     let point = |[x, y, z]: [i64; 3]| UnitOffset::new([x, y, z].map(Num::int)).unwrap();
@@ -542,12 +554,39 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         ..ModelBones::default()
     };
     let mut writer = SectionWriter::default();
-    of("Launcher").write(&mut writer, Some(&bones));
+    of("Launcher").write(&mut writer, Some(&bones), NO_WEAPONS);
     let written = Toml::write(&writer.into_table());
     let turret = "[turret]\npivot = [\"1\", \"2\", \"3\"]\nturn_rate = \"60\"\n\n\
                   [turret.pitch]\nfire_deg = \"70\"\nleast_deg = \"0\"\npivot = [\"0\", \"4\", \"0\"]\n\
                   rest_deg = \"10\"\nturn_rate = \"30\"\n";
     assert!(written.contains(turret), "{written}");
+    // Of weapons `a` and `c` in `PRIMARY` and `b` in `SECONDARY`, the gunner's turret carries
+    // `b` alone, at place 1, as it controls `SECONDARY`; of `b` alone in both, every weapon, so no
+    // place is written; of none, its places are none of them.
+    let names =
+        |names: &[&str]| -> Vec<DeclaredName> { names.iter().map(|name| declared(name)).collect() };
+    let places = |all: &[&str], by_slot: &[&[&str]]| {
+        let (all, by_slot) = (
+            names(all),
+            by_slot.iter().map(|slot| names(slot)).collect::<Vec<_>>(),
+        );
+        let mut writer = SectionWriter::default();
+        let weapons = TypeWeapons {
+            all: &all,
+            by_slot: &by_slot,
+        };
+        of("Gunner").write(&mut writer, None, weapons);
+        Toml::write(&writer.into_table())
+            .lines()
+            .find(|line| line.starts_with("places"))
+            .map(str::to_owned)
+    };
+    assert_eq!(
+        places(&["a", "b", "c"], &[&["a", "c"], &["b"]]),
+        Some("places = [1]".to_owned())
+    );
+    assert_eq!(places(&["b"], &[&["b"], &["b"]]), None);
+    assert_eq!(places(&["a"], &[&["a"]]), Some("places = []".to_owned()));
     // The gunner scans each 250 ms, ⌈250 × 0.03⌉ = 8 frames, written as ⌊8 × 100 / 3⌋ = 266 ms,
     // for every hostile unit, as it attacks buildings; the idle turret each 2,000 ms, 60 frames,
     // by default, and for the targets of the rules data's defaults; a `No` scans for none.

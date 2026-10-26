@@ -6,17 +6,21 @@ use campfire_script::{DataSection, DataTable};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::turret::Turret;
 use crate::unit_offset::UnitOffset;
 
 /// A unit type's `turret` section (04-capabilities/combat.md, A unit type may have a turret):
-/// its attacks of the slot kind `slot` turn with a turret about the vertical through `pivot`,
-/// `turn_rate` degrees a second, and start within `tolerance_deg` of their target's bearing; with
-/// `pitch`, the turret also pitches them (04-capabilities/combat.md, A turret may pitch).
+/// its attacks of the slot kind `slot`, at the `places` among its unit's slots of that kind or
+/// at every one, turn with a turret about the vertical through `pivot`, `turn_rate` degrees a
+/// second, and start within `tolerance_deg` of their target's bearing; with `pitch`, the turret
+/// also pitches them (04-capabilities/combat.md, A turret may pitch).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TurretData {
     pub(crate) turn_rate: Num,
     pub(crate) tolerance_deg: Num,
     pub(crate) slot: DeclaredName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) places: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "UnitOffset::is_origin")]
     pub(crate) pivot: UnitOffset,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -48,8 +52,20 @@ impl TurretData {
             turn_rate,
             tolerance_deg,
             slot,
+            places: None,
             pivot: UnitOffset::ORIGIN,
             pitch: None,
+        })
+    }
+
+    /// The same turret, which carries the attacks of the slots at `places` among its unit's
+    /// slots of its kind alone; `None` for a place past the last a turret holds,
+    /// `Turret::MOST_PLACES`.
+    pub fn carrying(self, places: Vec<u8>) -> Option<Self> {
+        let held = places.iter().all(|&place| place < Turret::MOST_PLACES);
+        held.then_some(Self {
+            places: Some(places),
+            ..self
         })
     }
 
@@ -142,13 +158,15 @@ pub struct TurretPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub slot: Option<DeclaredName>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub places: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pivot: Option<UnitOffset>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pitch: Option<TurretPitchData>,
 }
 
-/// Data is untrusted, so a turn rate that is not positive, or a tolerance outside 0 to 180
-/// degrees, fails to read.
+/// Data is untrusted, so a turn rate that is not positive, a tolerance outside 0 to 180 degrees,
+/// or a place past the last a turret holds, fails to read.
 impl Patched for TurretData {
     type Patch = TurretPatch;
 
@@ -161,6 +179,12 @@ impl Patched for TurretData {
         let turret = Self::new(turn_rate, tolerance_deg, slot).ok_or(PatchError::Refused(
             "a turret's turn rate is positive, and its tolerance from 0 to 180 degrees",
         ))?;
+        let turret = match patch.places {
+            Some(places) => turret.carrying(places).ok_or(PatchError::Refused(
+                "a turret's places are among its unit's first 64 slots of its kind",
+            ))?,
+            None => turret,
+        };
         let turret = turret.about(patch.pivot.unwrap_or_default());
         Ok(match patch.pitch {
             Some(pitch) => turret.pitched(pitch),

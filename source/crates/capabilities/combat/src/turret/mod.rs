@@ -1,6 +1,6 @@
 use std::num::NonZeroI64;
 
-use campfire_actions::{SlotKind, SlotKindBook};
+use campfire_actions::{ActionSlots, SlotKind, SlotKindBook};
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::{Num, Rounding, SinCos, Vec3};
 use campfire_script::UnknownName;
@@ -19,14 +19,15 @@ pub(crate) mod turret_data;
 /// A unit type's turret as a match runs it (04-capabilities/combat.md, A unit type may have a
 /// turret): how far it turns a tick toward its target, and back toward its rest at half that,
 /// how near its target's bearing and pitch it lets an attack start, the kind of slot whose
-/// attacks it carries, the point of its unit's frame it turns about, and its pitch, if it
-/// pitches.
+/// attacks it carries and its places among its unit's slots of that kind, by their bits, the
+/// point of its unit's frame it turns about, and its pitch, if it pitches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Turret {
     pub(crate) turn: TurnStep,
     pub(crate) back: TurnStep,
     pub(crate) tolerance: Num,
     pub(crate) slot: SlotKind,
+    pub(crate) places: u64,
     pub(crate) pivot: Vec3,
     pub(crate) pitch: Option<Pitching>,
 }
@@ -46,15 +47,22 @@ pub(crate) struct Pitching {
 }
 
 impl Turret {
-    /// The turret of `data`, its attacks those of the slot kind `slot`, its turns a tick at
-    /// `rate`, each rounded once and at least a bit, so a turret always turns.
+    /// The places among its unit's slots of its kind a turret may carry, as their bits.
+    pub const MOST_PLACES: u8 = 64;
+
+    /// The turret of `data`, its attacks those of the slot kind `slot` at its places, its turns a
+    /// tick at `rate`, each rounded once and at least a bit, so a turret always turns.
     pub fn of(data: &TurretData, slot: SlotKind, rate: MatchRate) -> Self {
         let [turn, back] = Self::steps(data.turn_rate, rate);
+        let places = data.places.as_ref().map_or(u64::MAX, |places| {
+            places.iter().fold(0, |bits, &place| bits | (1 << place))
+        });
         Self {
             turn,
             back,
             tolerance: data.tolerance_deg,
             slot,
+            places,
             pivot: data.pivot.get(),
             pitch: data.pitch.map(|pitch| Pitching::of(&pitch, rate)),
         }
@@ -74,6 +82,20 @@ impl Turret {
 }
 
 impl Turret {
+    /// Whether it carries the attacks of the slot `slot` of `slots`: one of its kind, at one of
+    /// its places among the slots of that kind, as Zero Hour's turret aims the weapon slots its
+    /// `ControlledWeaponSlots` names (`AIUpdateInterface::getWhichTurretForWeaponSlot`).
+    pub(crate) fn carries(&self, slots: &ActionSlots, slot: u8) -> bool {
+        let Some(held) = slots.slot(slot) else {
+            return false;
+        };
+        let before = slots.iter().take(usize::from(slot));
+        let place = before.filter(|other| other.kind == held.kind).count();
+        held.kind == self.slot
+            && place < usize::from(Self::MOST_PLACES)
+            && (self.places >> place) & 1 == 1
+    }
+
     /// `barrel` as the turret at `aim` carries it in its unit's frame: pitched by the aim's pitch
     /// about the level axis across the unit through its pitch's pivot, then turned by the aim's
     /// angle about the vertical through its pivot, as `Weapon::calcProjectileLaunchPosition`

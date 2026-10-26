@@ -286,7 +286,7 @@ impl Attacks {
                     let held_slot = slots.slot(slot).expect("a weapon's slot");
                     let turret = turrets
                         .get(unit_type)
-                        .filter(|turret| turret.slot == held_slot.kind);
+                        .filter(|turret| turret.carries(slots, slot));
                     let weapon = held_slot.action.and_then(|action| weapons.get(action));
                     let body_aim = weapon.and_then(|weapon| weapon.aim);
                     if let (Some(turret), Some(&facing), Some(&aim)) =

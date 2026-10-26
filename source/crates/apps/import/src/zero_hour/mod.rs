@@ -341,6 +341,7 @@ impl ZeroHour {
             barrels: &barrels,
             bones: &looks_bones,
             weapon: &combat.weapons,
+            weapon_slots: &combat.weapon_slots,
             command: &production.commands,
             production: &production.sections,
             nodes: &production.supply.nodes,

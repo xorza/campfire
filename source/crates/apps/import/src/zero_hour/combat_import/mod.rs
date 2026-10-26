@@ -53,7 +53,7 @@ pub(crate) struct CombatImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedWeapon>,
     pub(crate) modifiers: BTreeMap<DeclaredName, StageModifier>,
     pub(crate) weapons: BTreeMap<TypeName, Vec<DeclaredName>>,
-    weapon_slots: BTreeMap<TypeName, Vec<Vec<DeclaredName>>>,
+    pub(crate) weapon_slots: BTreeMap<TypeName, Vec<Vec<DeclaredName>>>,
     /// The types a weapon of their starting set arms.
     armed: BTreeSet<TypeName>,
     pub(crate) bonuses: BTreeMap<Stat, Number>,

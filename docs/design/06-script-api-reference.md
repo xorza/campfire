@@ -530,6 +530,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `turn_rate` | combat | since 1.0 |
 | `tolerance_deg` | combat | since 1.0 |
 | `slot` | combat | since 1.0 |
+| `places` | combat | since 1.0 |
 | `pivot` | combat | since 1.0 |
 | `pitch` | combat | since 1.0 |
 

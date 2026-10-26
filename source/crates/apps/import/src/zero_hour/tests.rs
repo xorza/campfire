@@ -567,8 +567,9 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         Some(all_declared(&["infantry"]))
     );
     assert_eq!(tags("americatankcrusader"), None);
-    // The crusader's turret turns 180° a second, and starts an attack within the original's
-    // 0.035 radians of its aim, 2.00535… degrees, 33,644,228 · 2⁻²⁴; its shell, of no life or
+    // The crusader's turret turns 180° a second, starts an attack within the original's 0.035
+    // radians of its aim, 2.00535… degrees, 33,644,228 · 2⁻²⁴, and carries its `PRIMARY` cannon
+    // alone, at place 0, not its `SECONDARY` rifle; its shell, of no life or
     // body, flies at its cannon's 400 m/s, 2 m wide, on its curve of 50% and 90%, 10 m up,
     // detonating on what is no player's own structure and on walls, for 10 s.
     assert_eq!(
@@ -578,6 +579,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             Num::from_bits(33_644_228),
             declared("weapon")
         )
+        .and_then(|turret| turret.carrying(vec![0]))
         .as_ref()
     );
     assert_eq!(life("tankshell"), (None, None, None));
@@ -925,6 +927,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let types = names.close();
     let additions = TypeAdditions {
         weapon: &combat.weapons,
+        weapon_slots: &combat.weapon_slots,
         command: &production.commands,
         production: &production.sections,
         nodes: &production.supply.nodes,

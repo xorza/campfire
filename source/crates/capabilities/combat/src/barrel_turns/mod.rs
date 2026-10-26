@@ -92,9 +92,12 @@ impl BarrelTurns {
                 continue;
             }
             let barrel = of_weapon[turns.turn(action, of_weapon.len())];
-            let slot = slots.iter().find(|slot| slot.action == Some(action));
-            let kind = slot.expect("a weapon that fired is in a slot").kind;
-            let turret = turrets.get(unit_type).filter(|turret| turret.slot == kind);
+            let slot = slots.iter().position(|slot| slot.action == Some(action));
+            let slot = u8::try_from(slot.expect("a weapon that fired is in a slot"))
+                .expect("a unit's slots fit u8");
+            let turret = turrets
+                .get(unit_type)
+                .filter(|turret| turret.carries(slots, slot));
             let barrel = match turret.zip(aim) {
                 Some((turret, &aim)) => turret.carried(aim, barrel),
                 None => barrel,

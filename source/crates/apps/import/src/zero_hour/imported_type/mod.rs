@@ -64,8 +64,9 @@ pub(crate) struct ImportedType {
     /// The armor of its starting armor set, and of its upgrade's, the fields of its `combat` the
     /// install gives; the engine's own load completes it from the rules data's defaults.
     combat: Option<CombatPatch>,
-    /// Its turn rate, the one field of its `turret` the install gives, completed as `combat` is.
-    turret: Option<TurretPatch>,
+    /// Its `turret`, of the fields the install gives, completed as `combat` is, and the weapon
+    /// slots it carries.
+    turret: Option<ImportedTurret>,
     bounty: Option<BountyData>,
     income: Option<IncomeData>,
     projectile: Option<ProjectileData>,
@@ -76,6 +77,22 @@ pub(crate) struct ImportedType {
     /// buildings, as the install gives them, completed from the rules data's defaults, for a type
     /// of a weapon (09-zero-hour.md, A scan follows `AutoAcquireEnemiesWhenIdle`).
     acquire: Option<AcquirePatch>,
+}
+
+/// A type's turret: the fields of its `turret` the install gives, and the weapon slots it carries,
+/// `ControlledWeaponSlots`, by their places, `PRIMARY` first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ImportedTurret {
+    patch: TurretPatch,
+    slots: [bool; 3],
+}
+
+/// A type's weapons, as its slots of the kind `weapon` hold them, `all`, and as each of its weapon
+/// sets' slots does, `PRIMARY` first, `by_slot`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TypeWeapons<'a> {
+    pub(crate) all: &'a [DeclaredName],
+    pub(crate) by_slot: &'a [Vec<DeclaredName>],
 }
 
 /// The widest a driving type's circle is, 25 m: the original's largest pathfinding footprint, 2
@@ -230,11 +247,15 @@ impl ImportedType {
                     .then(|| Self::pitch(turret.pitch))
                     .transpose()?
                     .flatten();
+                let patch = TurretPatch {
+                    turn_rate: Some(turn_rate),
+                    pitch,
+                    ..TurretPatch::default()
+                };
                 turns
-                    .then(|| TurretPatch {
-                        turn_rate: Some(turn_rate),
-                        pitch,
-                        ..TurretPatch::default()
+                    .then_some(ImportedTurret {
+                        patch,
+                        slots: turret.slots,
                     })
                     .ok_or(TypeError::Turret)
             })
@@ -351,6 +372,26 @@ impl ImportedType {
     }
 
     /// Its idle scan, which a type of a weapon gives.
+    /// The places among `weapons` of those of the weapon slots `slots` names, as Zero Hour's
+    /// turret aims the slots its `ControlledWeaponSlots` names
+    /// (`AIUpdateInterface::getWhichTurretForWeaponSlot`); none when they are every one, as a
+    /// turret carries every slot of its kind by default (04-capabilities/combat.md, A unit type may
+    /// have a turret). A weapon of a slot it names and of one it does not is carried.
+    fn places(slots: [bool; 3], weapons: TypeWeapons<'_>) -> Option<Vec<u8>> {
+        let carried = |weapon: &DeclaredName| {
+            let named = weapons.by_slot.iter().zip(slots);
+            named
+                .into_iter()
+                .any(|(of_slot, named)| named && of_slot.contains(weapon))
+        };
+        let places: Vec<u8> = (0_u8..)
+            .zip(weapons.all)
+            .filter(|(_, weapon)| carried(weapon))
+            .map(|(place, _)| place)
+            .collect();
+        (places.len() < weapons.all.len()).then_some(places)
+    }
+
     pub(crate) const fn acquire(&self) -> Option<&AcquirePatch> {
         self.acquire.as_ref()
     }
@@ -358,7 +399,12 @@ impl ImportedType {
     /// Writes each section it gives into `writer`, a unit type's table: whole, or the patch of
     /// what the install gives, its turret turning and pitching about the pivots of `bones`, the
     /// bones its model gives.
-    pub(crate) fn write(&self, writer: &mut SectionWriter, bones: Option<&ModelBones>) {
+    pub(crate) fn write(
+        &self,
+        writer: &mut SectionWriter,
+        bones: Option<&ModelBones>,
+        weapons: TypeWeapons<'_>,
+    ) {
         if let Some(pools) = &self.pools {
             writer.section(pools);
         }
@@ -377,15 +423,16 @@ impl ImportedType {
         if let Some(combat) = &self.combat {
             writer.patch::<CombatData>(combat);
         }
-        if let Some(turret) = &self.turret {
+        if let Some(ImportedTurret { patch, slots }) = &self.turret {
             let pivot = bones.and_then(|bones| bones.pivot);
             let pitch_pivot = bones.and_then(|bones| bones.pitch_pivot);
             let turret = TurretPatch {
                 pivot,
-                pitch: turret
+                pitch: patch
                     .pitch
                     .map(|pitch| pitch.about(pitch_pivot.unwrap_or_default())),
-                ..turret.clone()
+                places: Self::places(*slots, weapons),
+                ..patch.clone()
             };
             writer.patch::<TurretData>(&turret);
         }

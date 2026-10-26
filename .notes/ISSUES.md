@@ -10,4 +10,5 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
-- **Combat.** **Plan: I2.** A turret carries every weapon of its slot kind, where Zero Hour's turret carries only the slots its `ControlledWeaponSlots` names (`AIUpdateInterface::getWhichTurretForWeaponSlot`), and the import reads only an AI module's first `Turret`, where Zero Hour also aims the slots of its `AltTurret`: a weapon of another slot of a Zero Hour unit with a turret waits for the turret's aim, and its shots leave its barrels turned and pitched with the turret. In the import of 2026-10-26, no converted weapon stands in a slot its unit's turrets do not control; the four `AmericaVehicleBattleShip` types fire one weapon from `PRIMARY` and `SECONDARY`, which their `AltTurret` aims.
+- **Combat.** A turret turns toward its unit's attack target whatever weapon the unit attacks with (`Aiming::aim`), where Zero Hour's turret aims only while the current weapon is of a slot it controls (`AIUpdateInterface::getWhichTurretForCurrentWeapon`): a unit that attacks with a weapon its turret does not carry turns its turret toward the target all the same. No converted unit of the import of 2026-10-26 has such a weapon.
+

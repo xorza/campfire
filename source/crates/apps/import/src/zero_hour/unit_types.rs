@@ -11,7 +11,7 @@ use campfire_package::UnitsFile;
 use campfire_production::{DropOffData, NodeData, ProductionData, SpawnsData};
 use campfire_stats::UpgradesData;
 
-use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::imported_type::{ImportedType, TypeWeapons};
 use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::type_name::TypeName;
@@ -34,6 +34,9 @@ pub(crate) struct ImportedTypes {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TypeAdditions<'a> {
     pub(crate) weapon: &'a BTreeMap<TypeName, Vec<DeclaredName>>,
+    /// The weapons of each of its weapon sets' slots, `PRIMARY` first, which its turret carries
+    /// by.
+    pub(crate) weapon_slots: &'a BTreeMap<TypeName, Vec<Vec<DeclaredName>>>,
     pub(crate) command: &'a BTreeMap<TypeName, Vec<DeclaredName>>,
     pub(crate) production: &'a BTreeMap<TypeName, ProductionData>,
     pub(crate) nodes: &'a BTreeMap<TypeName, NodeData>,
@@ -70,7 +73,14 @@ impl ImportedTypes {
             .iter()
             .map(|(name, imported)| {
                 let mut writer = SectionWriter::default();
-                imported.write(&mut writer, additions.bones.get(name));
+                let weapons = TypeWeapons {
+                    all: additions.weapon.get(name).map_or(&[][..], Vec::as_slice),
+                    by_slot: additions
+                        .weapon_slots
+                        .get(name)
+                        .map_or(&[][..], Vec::as_slice),
+                };
+                imported.write(&mut writer, additions.bones.get(name), weapons);
                 let slots: BTreeMap<DeclaredName, Vec<DeclaredName>> = [
                     (&names.weapon_slot, additions.weapon),
                     (&names.command_slot, additions.command),
@@ -134,6 +144,7 @@ pub(crate) mod reach_in {
         pub(crate) fn bare_file(&self) -> WrittenUnits {
             let additions = TypeAdditions {
                 weapon: &BTreeMap::new(),
+                weapon_slots: &BTreeMap::new(),
                 command: &BTreeMap::new(),
                 production: &BTreeMap::new(),
                 nodes: &BTreeMap::new(),
