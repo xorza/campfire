@@ -5,6 +5,7 @@
 
 use std::io::{self, ErrorKind, IoSliceMut};
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use campfire_common::ErrorReport;
@@ -34,12 +35,15 @@ pub(crate) struct UdpPort {
 }
 
 /// The app's wake of the thread: a byte it sends from one loopback datagram socket to the other,
-/// which the poller watches, as the self-pipe trick does. `polling`'s own `notify` allocates on
-/// each call where it runs on kqueue, as on macOS, and a frame that sends wakes the thread.
+/// which the poller watches, as the self-pipe trick does, and only while no byte is pending, so
+/// one byte at most is ever in flight (11-net-stack/udp.md, A wake sends one byte until a wait
+/// takes it). `polling`'s own `notify` allocates on each call where it runs on kqueue, as on
+/// macOS, and a frame that sends wakes the thread.
 #[derive(Debug)]
 struct Wake {
     sender: UdpSocket,
     receiver: UdpSocket,
+    pending: AtomicBool,
 }
 
 impl UdpPort {
@@ -97,7 +101,7 @@ impl UdpPort {
         // A wake that came is drained, and only then: in level mode an undrained wake would end
         // the next wait at once, and in oneshot mode the wait arms it anew.
         if events.iter().any(|event| event.key == WAKE) {
-            self.wake.drain();
+            self.wake.take();
         }
         Ok(())
     }
@@ -105,14 +109,7 @@ impl UdpPort {
     /// Ends the thread's wait, or its next one. A wake allocates nothing, as each frame that
     /// sends calls it.
     pub(crate) fn wake(&self) {
-        match self.wake.sender.send(&[0]) {
-            // A full buffer holds wakes the thread has yet to take.
-            Ok(_) => {}
-            Err(error) if error.kind() == ErrorKind::WouldBlock => {}
-            Err(error) => {
-                warn!(error = %ErrorReport::of(&error), "the IO thread's wake failed");
-            }
-        }
+        self.wake.send();
     }
 
     /// Reads one batch; `WouldBlock` when none waits. A peer's ICMP refusal, which Windows
@@ -146,13 +143,37 @@ impl Wake {
         receiver.connect(sender.local_addr()?)?;
         receiver.set_nonblocking(true)?;
         sender.set_nonblocking(true)?;
-        Ok(Self { sender, receiver })
+        Ok(Self {
+            sender,
+            receiver,
+            pending: AtomicBool::new(false),
+        })
     }
 
-    /// Takes every wake that came, so the next wait waits until another.
-    fn drain(&self) {
+    /// Sends a byte, unless one is pending. A send that fails leaves none pending, so the next
+    /// wake sends again.
+    fn send(&self) {
+        if self.pending.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        match self.sender.send(&[0]) {
+            Ok(_) => {}
+            // A full buffer holds bytes the thread has yet to take.
+            Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+            Err(error) => {
+                self.pending.store(false, Ordering::Release);
+                warn!(error = %ErrorReport::of(&error), "the IO thread's wake failed");
+            }
+        }
+    }
+
+    /// Takes the pending byte, so the next wait waits until another wake. The byte is drained
+    /// before the flag clears, so a wake sends its byte only after the last one left the socket;
+    /// a wake between the two sends none, and the pass after this wait reads what it brought.
+    fn take(&self) {
         let mut byte = [0; 1];
         while self.receiver.recv(&mut byte).is_ok() {}
+        self.pending.store(false, Ordering::Release);
     }
 }
 
@@ -175,13 +196,15 @@ mod tests {
         let port = UdpPort::bind((Ipv4Addr::LOCALHOST, 0).into()).unwrap();
         let mut events = Events::new();
         let woke = |events: &Events| events.iter().any(|event| event.key == WAKE);
-        // Two wakes before a wait: it ends at once on the wake, and takes both.
+        // Two wakes before a wait: it ends on the wake, and takes both, as the second sent no
+        // byte; a loopback datagram may reach its socket a moment after its send, as on macOS,
+        // which a second byte in flight would end the next wait with.
         port.wake();
         port.wake();
         port.wait(&mut events, None).unwrap();
         assert!(woke(&events));
         // None since: a wait of no time finds nothing. A wake then ends a wait, which waits for
-        // it: a loopback datagram may reach its socket a moment after its send, as on macOS.
+        // its byte.
         port.wait(&mut events, Some(Duration::ZERO)).unwrap();
         assert!(!woke(&events));
         port.wake();
