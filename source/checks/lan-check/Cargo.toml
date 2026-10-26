@@ -34,6 +34,7 @@ thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
+campfire-log = { workspace = true, features = ["internals"] }
 campfire-net-core.workspace = true
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-threads = { workspace = true, features = ["internals"] }

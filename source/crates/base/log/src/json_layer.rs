@@ -212,12 +212,23 @@ pub(crate) mod internals {
     /// The JSON lines, as `Logging` writes them to its file, of every event `f` logs on this
     /// thread.
     pub fn capture(f: impl FnOnce()) -> Vec<String> {
+        capture_named("trace", f)
+    }
+
+    /// The JSON lines, as `Logging` writes them to its file, of every event `f` logs on this
+    /// thread that `targets` enables, by tracing's targets syntax, as a file filter of those
+    /// directives keeps them.
+    pub fn capture_named(targets: &str, f: impl FnOnce()) -> Vec<String> {
+        let targets: Targets = targets
+            .parse()
+            .unwrap_or_else(|error| panic!("{targets:?} names no targets: {error}"));
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let writer = {
             let buffer = Arc::clone(&buffer);
             move || Captured(Arc::clone(&buffer))
         };
-        subscriber::with_default(tracing_subscriber::registry().with(json_lines(writer)), f);
+        let layer = json_lines(writer).with_filter(targets);
+        subscriber::with_default(tracing_subscriber::registry().with(layer), f);
         let bytes = buffer.lock().unwrap().clone();
         String::from_utf8(bytes)
             .unwrap()

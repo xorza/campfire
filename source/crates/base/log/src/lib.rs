@@ -14,5 +14,7 @@ pub use crate::log_line::{LogLevel, LogLine};
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::json_layer::internals::{LogCheck, Scoped, capture, capture_layer, round_trip};
+    pub use crate::json_layer::internals::{
+        LogCheck, Scoped, capture, capture_layer, capture_named, round_trip,
+    };
 }

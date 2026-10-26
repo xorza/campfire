@@ -111,3 +111,10 @@ socket: its handshake, its trust, and how a server guards itself. The packet ses
   byte for each wake, which a macOS loopback datagram still in flight after its `send` lets outlive
   a wait's drain and end the next wait for nothing; `Poller::notify`, which allocates on each call
   on kqueue. Source: [UDP research](../../research/udp.md#a-wake-in-flight).
+- **A wake that fails ends the process.** A wake's send that would block leaves its wake pending,
+  as the full buffer holds a byte the thread has yet to take; an interrupted send sends again; any
+  other failure panics, and only a wait's drain clears the flag, as tokio's I/O driver panics on a
+  failed wake and libuv's async handle aborts. Refused: the flag cleared after a failure, which
+  loses a wake that came during the send and found the flag set, so an idle wait of no timeout
+  stalls; the flag kept set after a failure, as `polling`'s `Poller::notify` keeps it, which stalls
+  the thread the same way. Source: [UDP research](../../research/udp.md#a-wake-that-fails).

@@ -19,6 +19,14 @@ Measured on 26 October 2026, on an M5 Mac and on the Linux workstation, with a p
 - **One byte while a flag is pending** (commit `ff9e1346`): none of 180,000 rounds failed on the M5. With the flag cleared by an exchange that acquires and releases, none of 20,000 rounds failed at rest and none of 100,000 under load, twelve `yes` processes on its ten cores.
 - **Others coalesce.** libuv's `uv__async_io` (`src/unix/async.c`, branch `v1.x`, read the same day) reads its pipe, outside Linux, and then clears each handle's `pending` by an atomic `fetch_and`, which its comment pairs with the sequentially consistent compare-and-swap of `uv_async_send`. `polling` 3.11.0's `Poller::notify` notifies only when a sequentially consistent compare-exchange of its `notified` finds it clear, and `Poller::wait` clears it by a sequentially consistent swap after its wait.
 
+## A wake that fails
+
+Read on 26 October 2026.
+
+- **tokio** (`tokio/src/runtime/io/driver.rs`, branch `master`): `Handle::unpark` calls `self.waker.wake().expect("failed to wake I/O driver")`, so a failed wake of the I/O driver panics; no other call wakes its `mio` waker.
+- **libuv** (`src/unix/async.c`, branch `v1.x`): `uv__async_send` writes to its eventfd on Linux, and on a full counter drains it and writes again; triggers an `EVFILT_USER` event where kqueue has it; and elsewhere writes one byte to its pipe, again while the write fails with `EINTR`, and returns on `EAGAIN` or `EWOULDBLOCK`. Any other failure reaches `abort()`.
+- **polling** (`src/lib.rs`, branch `master`): `Poller::notify` sets `notified` by a compare-exchange and only then calls the backend's notify, returning its error with `notified` still set; `wait_impl` clears it by a swap. A failed notify so leaves every later notify a no-op until a wait ends by other means.
+
 ## `rustls` 0.23.45
 
 Read on 11 October 2026.

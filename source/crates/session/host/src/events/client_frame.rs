@@ -10,11 +10,16 @@ pub struct ClientFrame {
     pub tick: Tick,
 }
 
+impl ClientFrame {
+    /// The target it logs at, which a filter names to keep it.
+    pub const TARGET: &'static str = module_path!();
+}
+
 impl LogEvent for ClientFrame {
     const MESSAGE: &'static str = "a client frame starts";
 
     fn log(&self) {
-        trace!(tick = self.tick.get(), "{}", Self::MESSAGE);
+        trace!(target: ClientFrame::TARGET, tick = self.tick.get(), "{}", Self::MESSAGE);
     }
 }
 

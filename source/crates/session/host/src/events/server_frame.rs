@@ -10,11 +10,16 @@ pub struct ServerFrame {
     pub tick: Tick,
 }
 
+impl ServerFrame {
+    /// The target it logs at, which a filter names to keep it.
+    pub const TARGET: &'static str = module_path!();
+}
+
 impl LogEvent for ServerFrame {
     const MESSAGE: &'static str = "a server frame starts";
 
     fn log(&self) {
-        trace!(tick = self.tick.get(), "{}", Self::MESSAGE);
+        trace!(target: ServerFrame::TARGET, tick = self.tick.get(), "{}", Self::MESSAGE);
     }
 }
 

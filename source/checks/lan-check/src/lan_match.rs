@@ -7,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use campfire_common::{Bytes32, PlayerSlot, Tick};
-use campfire_host::{InputLogged, Listening, MatchStarted};
+use campfire_host::{ClientFrame, InputLogged, Listening, MatchStarted, ServerFrame};
 use campfire_store::OutputFile;
 
 use crate::binaries::Binaries;
@@ -36,11 +36,6 @@ pub(crate) const RESTARTED: usize = 1;
 /// The check stops the server once it logged an input of this stamp or a later one, which the
 /// second orders of the scripts are, and starts it again on its data directory.
 const SERVER_STOP: Tick = Tick::new(50);
-/// What each process's JSON file holds beyond its own file filter: the start of every frame of
-/// the server and of each client, which their filters leave out, so a failed order shows when
-/// each end ran each frame between its send, its receipt and its tick.
-const LOG_EXTRA: &str =
-    "campfire_net::events::server_frame=trace,campfire_net::events::client_frame=trace";
 
 /// A match of the real server and one bot per script, each a process on `127.0.0.1`, each
 /// logging JSON to a file in the run's directory; beside them, an impostor bot that pins the
@@ -357,6 +352,18 @@ impl<'a> LanMatch<'a> {
     }
 }
 
+/// What each process's JSON file holds beyond its own file filter: the start of every frame of
+/// the server and of each client, which their filters leave out, so a failed order shows when
+/// each end ran each frame between its send, its receipt and its tick. It names the targets the
+/// events log at, so a move of an event moves its directive.
+fn log_extra() -> String {
+    format!(
+        "{}=trace,{}=trace",
+        ServerFrame::TARGET,
+        ClientFrame::TARGET
+    )
+}
+
 /// Starts `command` as `process`, in the run's directory `dir`, logging JSON to its file and text
 /// to a file beside it. Its file filter is the binary's own, whatever the check's environment says,
 /// as the verdict reads its events at Debug.
@@ -367,7 +374,7 @@ fn start(dir: &Path, process: Process, command: &mut Command) -> Result<Child, C
         .current_dir(dir)
         .env("CAMPFIRE_LOG", process.log_path(dir))
         .env_remove("CAMPFIRE_LOG_FILTER")
-        .env("CAMPFIRE_LOG_FILTER_EXTRA", LOG_EXTRA)
+        .env("CAMPFIRE_LOG_FILTER_EXTRA", log_extra())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(text)
@@ -377,7 +384,35 @@ fn start(dir: &Path, process: Process, command: &mut Command) -> Result<Child, C
 
 #[cfg(test)]
 mod tests {
+    use campfire_log::internals::capture_named;
+    use campfire_log::{LogEvent, LogLine};
+    use tracing::trace;
+
     use super::*;
+
+    #[test]
+    fn the_extra_filter_keeps_each_frames_start_and_reads_it_back() {
+        // A server frame of tick 20 and a client frame of tick 21 log under the filter and read
+        // back; an event at Trace of another target does not log.
+        let (server, client) = (
+            ServerFrame {
+                tick: Tick::new(20),
+            },
+            ClientFrame {
+                tick: Tick::new(21),
+            },
+        );
+        let lines = capture_named(&log_extra(), || {
+            server.log();
+            trace!("a frame of no check");
+            client.log();
+        });
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        let read = |line: &str| LogLine::parse(line).unwrap();
+        let server_read = read(&lines[0]).read::<ServerFrame>().unwrap().ok();
+        let client_read = read(&lines[1]).read::<ClientFrame>().unwrap().ok();
+        assert_eq!((server_read, client_read), (Some(server), Some(client)));
+    }
 
     #[test]
     fn cis_profile_scales_the_deadline() {

@@ -6,18 +6,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 A fix of the issue log's Net items, found 2026-10-26. It stands first, as N2 makes each CI run after it keep the frames N3 measures.
 
-### N1. A wake that fails ends the process
-
-Touches the net socket's wake, one batch.
-
-- [ ] A wake whose send fails, other than for a full buffer, clears the pending flag (`udp_port.rs:155`, `Wake::send`), so a wake of another thread that came during that send found the flag set, sent no byte, and is lost: no byte is in flight to end the wait. No order of the flag's operations mends it. tokio's I/O driver calls `waker.wake().expect("failed to wake I/O driver")`, and libuv's `uv__async_send` calls `abort()` on any write error but `EAGAIN`. A send that would block stays a wake, as its buffer holds a byte; an interrupted send sends again; any other error panics; the flag clears only in `take`. `udp.md` gains the decision, its refused option the flag kept set after a failure, as `polling`'s `Poller::notify` keeps it, which stalls the thread the same way; `research/udp.md` gains tokio's and libuv's code, read 2026-10-26. Direction: what can be forgotten is a type, and a logic error crashes. Checks: the wake's test passes; no test makes a loopback send fail, so the panic is held by review.
-
-### N2. The LAN check's logs hold each frame's start
-
-Touches the LAN check, one batch.
-
-- [ ] `LOG_EXTRA` (`lan_match.rs:42`) names the targets `campfire_net::events::server_frame` and `campfire_net::events::client_frame`, where `ServerFrame` and `ClientFrame` log at `campfire_host::events::…`, so no artifact holds a frame's start, and the research of a late input cannot tell a bot's lead. The filter names the targets the two events log at, so a move of an event cannot leave it empty. Direction: a name is resolved once. Checks: a test of the LAN check logs each event under the filter and reads it back; the LAN check passes.
-
 ### N3. The lead of a bot's first order is measured
 
 Touches `docs/research/lan-late-input.md` and the issue log; it stands after N2, as it reads the frames N2 keeps.

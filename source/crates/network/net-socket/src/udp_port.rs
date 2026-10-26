@@ -150,19 +150,20 @@ impl Wake {
         })
     }
 
-    /// Sends a byte, unless one is pending. A send that fails leaves none pending, so the next
-    /// wake sends again.
+    /// Sends a byte, unless one is pending. A send that would block leaves the wake pending, as
+    /// the full buffer holds a byte the thread has yet to take, and an interrupted one sends
+    /// again; any other failure panics, as no flag can keep a wake it lost from stalling the
+    /// thread (11-net-stack/udp.md, A wake that fails ends the process).
     fn send(&self) {
         if self.pending.swap(true, Ordering::AcqRel) {
             return;
         }
-        match self.sender.send(&[0]) {
-            Ok(_) => {}
-            // A full buffer holds bytes the thread has yet to take.
-            Err(error) if error.kind() == ErrorKind::WouldBlock => {}
-            Err(error) => {
-                self.pending.store(false, Ordering::Release);
-                warn!(error = %ErrorReport::of(&error), "the IO thread's wake failed");
+        loop {
+            match self.sender.send(&[0]) {
+                Ok(_) => return,
+                Err(error) if error.kind() == ErrorKind::WouldBlock => return,
+                Err(error) if error.kind() == ErrorKind::Interrupted => {}
+                Err(error) => panic!("the IO thread's wake failed: {}", ErrorReport::of(&error)),
             }
         }
     }
