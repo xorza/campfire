@@ -1,3 +1,5 @@
+use campfire_client_files::GroundQuad;
+
 use super::*;
 
 /// Heights of `width` samples a row, rows from the south, of no border.
@@ -8,6 +10,22 @@ fn heights(width: usize, rows: &[&[u8]]) -> MapHeights {
         border: 0,
         boundary: None,
         samples: rows.concat(),
+    }
+}
+
+/// The terrain's quads over the cells of `heights`, each split as `flip`, the file's, says.
+fn quads(heights: &MapHeights, flip: bool) -> TerrainQuads {
+    let cells = (heights.width - 1) * (heights.depth - 1);
+    TerrainQuads {
+        columns: u32::try_from(heights.width).unwrap(),
+        ground: vec![
+            GroundQuad {
+                uv: [Vec2::ZERO; 4],
+                flip,
+            };
+            cells
+        ],
+        overlays: Vec::new(),
     }
 }
 
@@ -31,93 +49,133 @@ fn piece(start: Vec2, end: Vec2, scale: f32) -> RoadPiece {
 }
 
 #[test]
-fn a_column_stands_at_the_highest_corner_under_its_samples_plus_an_eighth_of_a_step() {
-    // A road 20 wide from (0, 10) to (20, 10): 20 / 10 + 1 = 3 columns, at x 0, 10 and 20, each
-    // of 20 / 10 + 1 = 3 samples across, at y 0, 10 and 20, in the cells of rows 0, 1 and 2.
-    // Column 0's cells hold no height; column 1's right sample, in the cell of columns 1 and 2
-    // and rows 0 and 1, finds 8 steps at (2, 1), 5 units; column 2's left sample, in the cell of
-    // columns 2 and 3 and rows 2 and 3, finds 12 at (3, 3), 7.5. The line from column 0 to 2
-    // passes 3.75 at column 1, below its 5, so it stays.
-    let rows: [&[u8]; 4] = [&[0, 0, 0, 0], &[0, 0, 8, 0], &[0, 0, 0, 0], &[0, 0, 0, 12]];
-    let heights = heights(4, &rows);
+fn a_piece_lies_on_the_triangles_its_cells_ground_quads_split_them_in() {
+    // One cell, its north-east corner 16 steps high, 10 units, the rest 0. A road 10 wide from
+    // (0, 5) to (10, 5) covers it whole, as the triangles north-west, south-west, south-east,
+    // and north-west, south-east, north-east.
+    let heights = heights(2, &[&[0, 0], &[0, 16]]);
+    let road = piece(Vec2::new(0.0, 5.0), Vec2::new(10.0, 5.0), 10.0);
     let mut mesh = RoadMesh::default();
-    let road = piece(Vec2::new(0.0, 10.0), Vec2::new(20.0, 10.0), 20.0);
-    mesh.float(&road, RoadGround { heights: &heights });
-    // Each column's right then left vertex, 1/8 of 0.625 = 0.078125 over its height.
+
+    // A quad the file flips not meets on the game's diagonal from south-east to north-west, as
+    // the road's own: the road's first triangle lies on the cell's south-west one, of height 0
+    // at each corner, and its second on the north-east one, 10 at its north-east corner. The
+    // other triangle of each has no area, and drops.
+    let unflipped = quads(&heights, false);
+    mesh.lay(
+        &road,
+        RoadGround {
+            heights: &heights,
+            quads: &unflipped,
+        },
+    );
+    let float = 0.078125;
     assert_eq!(
         mesh.points,
         [
-            [0.0, 0.0, 0.078125],
-            [0.0, 20.0, 0.078125],
-            [10.0, 0.0, 5.078125],
-            [10.0, 20.0, 5.078125],
-            [20.0, 0.0, 7.578125],
-            [20.0, 20.0, 7.578125],
+            [0.0, 10.0, float],
+            [0.0, 0.0, float],
+            [10.0, 0.0, float],
+            [0.0, 10.0, float],
+            [10.0, 0.0, float],
+            [10.0, 10.0, 10.0 + float],
         ]
         .map(Vec3::from_array)
     );
-    // A repeat is 4 · 20 = 80 long: `u` is x / 80, and `v` 85 / 512 less the left offset over
-    // 80, 85 / 512 ± 64 / 512.
-    let [right, left] = [149.0 / 512.0, 21.0 / 512.0];
+    assert_eq!(mesh.triangles, [[0, 1, 2], [3, 4, 5]]);
+    // A repeat is 4 · 10 = 40 long: `u` is x / 40, and `v` 85 / 512 less (y − 5) / 40, so
+    // 85 / 512 ± 64 / 512 at the road's sides.
+    let [south, north] = [149.0 / 512.0, 21.0 / 512.0];
     assert_eq!(
         mesh.uvs,
         [
-            [0.0, right],
-            [0.0, left],
-            [0.125, right],
-            [0.125, left],
-            [0.25, right],
-            [0.25, left],
+            [0.0, north],
+            [0.0, south],
+            [0.25, south],
+            [0.0, north],
+            [0.25, south],
+            [0.25, north],
         ]
         .map(Vec2::from_array)
     );
-    assert_eq!(mesh.triangles, [[1, 0, 2], [1, 2, 3], [3, 2, 4], [3, 4, 5]]);
+
+    // A quad the file flips meets on the diagonal from south-west to north-east, which cuts
+    // each of the road's triangles at the cell's middle, (5, 5): each part lies on its cell
+    // triangle, the south-east one 16 · y / 10 steps high, the north-west one 16 · x / 10, so
+    // the middle stands 8 steps, 5 units, high, where the first split laid it at 0.
+    let flipped = quads(&heights, true);
+    mesh.lay(
+        &road,
+        RoadGround {
+            heights: &heights,
+            quads: &flipped,
+        },
+    );
+    assert_eq!(
+        mesh.points,
+        [
+            [0.0, 0.0, float],
+            [10.0, 0.0, float],
+            [5.0, 5.0, 5.0 + float],
+            [0.0, 10.0, float],
+            [0.0, 0.0, float],
+            [5.0, 5.0, 5.0 + float],
+            [5.0, 5.0, 5.0 + float],
+            [10.0, 0.0, float],
+            [10.0, 10.0, 10.0 + float],
+            [0.0, 10.0, float],
+            [5.0, 5.0, 5.0 + float],
+            [10.0, 10.0, 10.0 + float],
+        ]
+        .map(Vec3::from_array)
+    );
+    assert_eq!(
+        mesh.triangles,
+        [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]]
+    );
+    assert_eq!(mesh.uvs[2], Vec2::new(0.125, 85.0 / 512.0));
     for triangle in &mesh.triangles {
         let [a, b, c] = triangle.map(|at| mesh.points[at as usize]);
         assert!((b - a).cross(c - a).z > 0.0, "{triangle:?} faces up");
     }
-
-    // Past the map, a point's cell is clamped to the last: a road 10 long beyond the east edge,
-    // of the least two columns, stands on the last cells' highest corner, 7.5.
-    let far = piece(Vec2::new(100.0, 10.0), Vec2::new(110.0, 10.0), 20.0);
-    mesh.float(&far, RoadGround { heights: &heights });
-    assert_eq!(mesh.points.len(), 4);
-    assert!(mesh.points.iter().all(|point| point.z == 7.578125));
 }
 
 #[test]
-fn a_column_the_line_past_it_passes_close_above_is_dropped_its_ends_weighed_as_the_game_does() {
-    // A road 8 wide from (0, 5) to (40, 5): 5 columns, at x 0 to 40, each of 2 samples, at y 1
-    // and 9, in row 0's cells. Column k's height is the higher of samples k and k + 1: 0, 0,
-    // 1.25, 2.5 and 2.5.
-    let row: &[u8] = &[0, 0, 0, 2, 4, 0];
-    let heights = heights(6, &[row, row]);
+fn a_piece_over_a_slope_lies_on_it_and_past_the_grid_on_its_edge() {
+    // Two cells east, the ground climbing 8 steps, 5 units, a cell: 0.5 · x high. A road 4
+    // wide from (5, 5) to (25, 5) runs over both cells' triangles, then 5 units past the
+    // grid's east edge, where the ground keeps the edge's 10.
+    let heights = heights(3, &[&[0, 8, 16], &[0, 8, 16]]);
+    let road = piece(Vec2::new(5.0, 5.0), Vec2::new(25.0, 5.0), 4.0);
     let mut mesh = RoadMesh::default();
-    let road = piece(Vec2::new(0.0, 5.0), Vec2::new(40.0, 5.0), 8.0);
-    mesh.float(&road, RoadGround { heights: &heights });
-    // Column 1: the line from column 0 to 2 passes 0.625 there, at or above its 0 and within
-    // 0.6875, so it is dropped. Column 2: the game weighs column 0 by its distance 2 and column
-    // 3 by 1, (0 · 2 + 2.5 · 1) / 3 = 0.83, below its 1.25, so it stays, where a line would pass
-    // (0 · 1 + 2.5 · 2) / 3 = 1.67, within 0.6875 above it. Column 3: (1.25 + 2.5) / 2 = 1.875,
-    // below its 2.5.
-    let kept: Vec<[f32; 2]> = mesh
-        .points
-        .iter()
-        .step_by(2)
-        .map(|point| [point.x, point.z])
-        .collect();
-    assert_eq!(
-        kept,
-        [
-            [0.0, 0.078125],
-            [20.0, 1.328125],
-            [30.0, 2.578125],
-            [40.0, 2.578125]
-        ]
-    );
-    // A repeat of 32: `u` 20 / 32 = 0.625, 30 / 32 and 40 / 32, past one repeat.
-    let u: Vec<f32> = mesh.uvs.iter().step_by(2).map(|uv| uv.x).collect();
-    assert_eq!(u, [0.0, 0.625, 0.9375, 1.25]);
-    assert_eq!(mesh.triangles.len(), 6);
-    assert_eq!(mesh.triangles[4], [5, 4, 6]);
+    for flip in [false, true] {
+        let quads = quads(&heights, flip);
+        mesh.lay(
+            &road,
+            RoadGround {
+                heights: &heights,
+                quads: &quads,
+            },
+        );
+        // A crossing of the road's diagonal falls between `f32`'s points, so its height may
+        // round an ulp or two off the slope's, at most 2⁻²⁰ at heights from 8 to 16.
+        for point in &mesh.points {
+            let ground = 0.5 * point.x.min(20.0) + 0.078125;
+            assert!((point.z - ground).abs() <= 2.0_f32.powi(-20), "{point}");
+        }
+        // The parts cover the road's 20 · 4 = 80 once.
+        let area: f32 = mesh
+            .triangles
+            .iter()
+            .map(|triangle| {
+                let [a, b, c] = triangle.map(|at| mesh.points[at as usize].truncate());
+                (b - a).perp_dot(c - a) / 2.0
+            })
+            .sum();
+        assert_eq!(area, 80.0);
+        // Past the edge, the first triangle's part keeps its corner (25, 3), and the second's
+        // its corners (25, 3) and (25, 7).
+        let past = mesh.points.iter().filter(|point| point.x > 20.0).count();
+        assert_eq!(past, 3);
+    }
 }

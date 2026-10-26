@@ -29,6 +29,8 @@ pub(crate) struct GameDataIni {
     /// below which an object is damaged and really damaged (`calcDamageState`).
     pub(crate) damaged_threshold: f32,
     pub(crate) really_damaged_threshold: f32,
+    /// `MaxParticleCount`: the most particles alive at once.
+    pub(crate) max_particles: u32,
 }
 
 /// What the terrain's conversion reads of `GameData.ini`.
@@ -61,6 +63,7 @@ impl Default for GameDataIni {
             box_value: NonZeroU32::new(100).expect("100 is no zero"),
             damaged_threshold: 0.5,
             really_damaged_threshold: 0.1,
+            max_particles: 0,
         }
     }
 }
@@ -93,6 +96,10 @@ impl GameDataIni {
                     "valuepersupplybox" => {
                         let value = u32::try_from(line.int()?).ok().and_then(NonZeroU32::new);
                         self.box_value = value.ok_or(IniError::Range { line: line.number })?;
+                    }
+                    "maxparticlecount" => {
+                        let count = u32::try_from(line.int()?).ok();
+                        self.max_particles = count.ok_or(IniError::Range { line: line.number })?;
                     }
                     word => {
                         let field = match word {

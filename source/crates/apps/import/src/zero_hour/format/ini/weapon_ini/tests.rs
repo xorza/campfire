@@ -34,12 +34,20 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
             projectile: None,
             stream: false,
             detonation_objects: false,
+            fire_fx: None,
+            detonation_fx: None,
+            exhaust: None,
         }
     );
     // The cannon's shell detonates on structures and walls, and its radius damages every
     // relation but its own unit; its pitch is read in degrees.
     let cannon = ini.get("TankCannon").unwrap();
     assert_eq!(cannon.projectile.as_deref(), Some("TankShell"));
+    // Its effects: its fire's and its hit's lists, and no exhaust, of `NONE`.
+    assert_eq!(
+        [&cannon.fire_fx, &cannon.detonation_fx, &cannon.exhaust].map(Option::as_deref),
+        [Some("FX_TankFire"), Some("FX_TankHit"), None]
+    );
     assert_eq!(cannon.pitch, [-15.0, 15.0]);
     let collides = CollideMask {
         walls: true,

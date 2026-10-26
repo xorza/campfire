@@ -4,11 +4,13 @@ use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::ini::armor_ini::ArmorIni;
 use crate::zero_hour::format::ini::command_button_ini::CommandButtonIni;
 use crate::zero_hour::format::ini::command_set_ini::CommandSetIni;
+use crate::zero_hour::format::ini::fx_list_ini::FxListIni;
 use crate::zero_hour::format::ini::game_data_ini::GameDataIni;
 use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
 use crate::zero_hour::format::ini::mouse_ini::MouseIni;
 use crate::zero_hour::format::ini::multiplayer_ini::MultiplayerIni;
 use crate::zero_hour::format::ini::object_ini::{ObjectFiles, ObjectIni};
+use crate::zero_hour::format::ini::particle_system_ini::ParticleSystemIni;
 use crate::zero_hour::format::ini::player_template_ini::PlayerTemplateIni;
 use crate::zero_hour::format::ini::roads_ini::RoadsIni;
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
@@ -34,6 +36,8 @@ pub(crate) struct ZeroHourRules {
     pub(crate) multiplayer: MultiplayerIni,
     pub(crate) weapons: WeaponIni,
     pub(crate) armors: ArmorIni,
+    pub(crate) particles: ParticleSystemIni,
+    pub(crate) effects: FxListIni,
     pub(crate) strings: StringTable,
     pub(crate) names: RulesNames,
 }
@@ -73,6 +77,12 @@ impl ZeroHourRules {
             )?,
             weapons: install.read_inis("Weapon", WeaponIni::default(), WeaponIni::read)?,
             armors: install.read_inis("Armor", ArmorIni::default(), ArmorIni::read)?,
+            particles: install.read_inis(
+                "ParticleSystem",
+                ParticleSystemIni::default(),
+                ParticleSystemIni::read,
+            )?,
+            effects: install.read_inis("FXList", FxListIni::default(), FxListIni::read)?,
             strings: Self::string_table(install)?,
             names: RulesNames::default(),
         })

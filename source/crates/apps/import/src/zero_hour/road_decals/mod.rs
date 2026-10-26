@@ -1,6 +1,7 @@
 use bevy_math::{Vec2, Vec3};
 use campfire_client_files::{DecalVertex, TerrainDecals};
 
+use crate::zero_hour::convex_clip::ConvexClip;
 use crate::zero_hour::road_mesh::RoadMesh;
 use crate::zero_hour::terrain_atlas::TexturePlace;
 
@@ -11,9 +12,8 @@ use crate::zero_hour::terrain_atlas::TexturePlace;
 #[derive(Debug, Default)]
 pub(crate) struct RoadDecals {
     decals: TerrainDecals,
-    /// The polygon being clipped, and the one each clip writes, swapped after it.
-    polygon: Vec<Corner>,
-    clipped: Vec<Corner>,
+    /// A triangle clipped to the repeat in turn.
+    polygon: ConvexClip<Corner>,
 }
 
 /// A corner of a polygon being clipped: its point on the game's axes and its coordinates in
@@ -81,46 +81,21 @@ impl RoadDecals {
 
     /// Clips `triangle` into `polygon` to the repeat from `repeat` to `repeat + 1` on both axes.
     fn clip(&mut self, triangle: &[Corner; 3], repeat: Vec2) {
-        self.polygon.clear();
-        self.polygon.extend_from_slice(triangle);
-        let bounds = [0, 1].into_iter().flat_map(|axis| {
-            [(repeat[axis], true), (repeat[axis] + 1.0, false)].map(|(at, above)| Bound {
-                axis,
-                at,
-                above,
-            })
-        });
-        for bound in bounds {
-            self.clipped.clear();
-            let count = self.polygon.len();
-            for at in 0..count {
-                let from = self.polygon[at];
-                let to = self.polygon[(at + 1) % count];
-                let [inside_from, inside_to] = [from, to].map(|corner| bound.holds(corner));
-                if inside_from {
-                    self.clipped.push(from);
-                }
-                if inside_from != inside_to {
-                    self.clipped.push(bound.cross(from, to));
-                }
+        self.polygon.start(triangle);
+        for axis in 0..2 {
+            for (at, above) in [(repeat[axis], true), (repeat[axis] + 1.0, false)] {
+                Bound { axis, at, above }.clip(&mut self.polygon);
             }
-            std::mem::swap(&mut self.polygon, &mut self.clipped);
         }
     }
 
     /// Adds the clipped polygon of the repeat at `repeat`, its texture's copy at `corner` and of
     /// `size` texels, as a fan of triangles from its first corner; none when it has no area.
     fn fan(&mut self, repeat: Vec2, corner: Vec2, size: Vec2) {
-        let polygon = &self.polygon;
-        let area: f32 = (0..polygon.len())
-            .map(|at| {
-                let [from, to] = [polygon[at].uv, polygon[(at + 1) % polygon.len()].uv];
-                from.perp_dot(to)
-            })
-            .sum();
-        if polygon.len() < 3 || area == 0.0 {
+        if !self.polygon.has_area(|corner| corner.uv) {
             return;
         }
+        let polygon = self.polygon.corners();
         let first = u32::try_from(self.decals.vertices.len()).expect("a map's decals fit u32");
         self.decals
             .vertices
@@ -136,27 +111,27 @@ impl RoadDecals {
 }
 
 impl Bound {
-    /// Whether `corner` lies on the kept side, or on the bound.
-    fn holds(self, corner: Corner) -> bool {
-        let at = corner.uv[self.axis];
-        if self.above {
-            at >= self.at
-        } else {
-            at <= self.at
-        }
-    }
-
-    /// The corner where the edge from `from` to `to`, one on each side, crosses the bound, its
-    /// coordinate on the bound's axis the bound's exactly.
-    fn cross(self, from: Corner, to: Corner) -> Corner {
-        let [start, end] = [from.uv[self.axis], to.uv[self.axis]];
-        let share = (self.at - start) / (end - start);
-        let mut uv = from.uv + (to.uv - from.uv) * share;
-        uv[self.axis] = self.at;
-        Corner {
-            point: from.point + (to.point - from.point) * share,
-            uv,
-        }
+    /// Clips `polygon` to the kept side, each crossing's coordinate on the bound's axis the
+    /// bound's exactly.
+    fn clip(self, polygon: &mut ConvexClip<Corner>) {
+        polygon.clip(
+            |corner| {
+                let at = corner.uv[self.axis];
+                if self.above {
+                    at - self.at
+                } else {
+                    self.at - at
+                }
+            },
+            |from, to, share| {
+                let mut uv = from.uv + (to.uv - from.uv) * share;
+                uv[self.axis] = self.at;
+                Corner {
+                    point: from.point + (to.point - from.point) * share,
+                    uv,
+                }
+            },
+        );
     }
 }
 

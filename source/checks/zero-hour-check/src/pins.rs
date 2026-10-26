@@ -5,8 +5,8 @@ use campfire_bots::OrderUnsent;
 use campfire_client_files::{ClientUnits, StateAnimation};
 use campfire_common::{DeclaredName, PackageFingerprint};
 use campfire_import::{
-    AnimationDropCause, ButtonDropCause, RoadDropCause, StateDropCause, SupplyDropCause,
-    UpgradeDropCause, WeaponDropCause,
+    AnimationDropCause, ButtonDropCause, EffectDropCause, RoadDropCause, StateDropCause,
+    SupplyDropCause, UpgradeDropCause, WeaponDropCause,
 };
 use campfire_mode::MatchResult;
 use campfire_orders::OrderDropCause;
@@ -449,6 +449,31 @@ pub(crate) struct SuppliedCounts {
     pub(crate) gathers: usize,
     pub(crate) hacks: usize,
     pub(crate) dropped: [usize; SupplyDropCause::ALL.len()],
+}
+
+/// How many particle systems and effect lists the import converts, how many textures the
+/// systems draw; how many actions name a fire effect and a hit effect, how many unit looks a
+/// trail, an end and a death effect, and how many look states a weapon slot's fire bone; and how many
+/// systems and lists it drops one or more parts of for each cause, in the order of
+/// `EffectDropCause::ALL` (effects.md, What the slice leaves).
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    "{systems} systems, {lists} lists, {textures} textures, {fires} fires, {hits} hits, \
+     {trails} trails, {ends} ends, {deaths} deaths, {bones} states of fire bones, dropped {:?}",
+    dropped
+)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct EffectCounts {
+    pub(crate) systems: usize,
+    pub(crate) lists: usize,
+    pub(crate) textures: usize,
+    pub(crate) fires: usize,
+    pub(crate) hits: usize,
+    pub(crate) trails: usize,
+    pub(crate) ends: usize,
+    pub(crate) deaths: usize,
+    pub(crate) bones: usize,
+    pub(crate) dropped: [usize; EffectDropCause::ALL.len()],
 }
 
 /// How many trains and builds the import converts from every command set, and how many buttons it

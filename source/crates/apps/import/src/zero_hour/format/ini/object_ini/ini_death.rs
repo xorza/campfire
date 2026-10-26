@@ -1,15 +1,17 @@
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::IniLine;
 
-/// An object's `SlowDeathBehavior`, as its module data and its `DieMuxData` read it: the time its
-/// object stays dead before it is destroyed, its `DestructionDelay` in milliseconds; its weight
-/// among the slow deaths a death may take, its `ProbabilityModifier`; and, each as its last line
-/// says, whether its `DeathTypes` hold `NORMAL`, its `VeterancyLevels` hold `REGULAR`, and its
-/// `RequiredStatus` names a status.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// An object's `SlowDeathBehavior` or `FXListDie`, as its module data and its `DieMuxData` read
+/// it: the time its object stays dead before it is destroyed, its `DestructionDelay` in
+/// milliseconds; its weight among the slow deaths a death may take, its `ProbabilityModifier`;
+/// the effect list an `FXListDie` plays, its `DeathFX`, empty for none, and none for a slow
+/// death; and, each as its last line says, whether its `DeathTypes` hold `NORMAL`, its
+/// `VeterancyLevels` hold `REGULAR`, and its `RequiredStatus` names a status.
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IniDeath {
     pub(crate) delay_ms: f32,
     pub(crate) weight: i32,
+    pub(crate) effect: Option<String>,
     normal: bool,
     regular: bool,
     requires: bool,
@@ -44,18 +46,24 @@ impl IniDeath {
     const VETERANCY_LEVELS: [&str; 4] = ["regular", "veteran", "elite", "heroic"];
 
     /// The module a `Behavior` line of the class `class`, of either case, opens, as the game
-    /// makes it: no delay, a weight of 10, every death, level and status; none for a class
-    /// that is no `SlowDeathBehavior`.
-    pub(crate) fn module(class: &str) -> Option<Self> {
-        class
-            .eq_ignore_ascii_case("slowdeathbehavior")
-            .then_some(Self {
-                delay_ms: 0.0,
-                weight: 10,
-                normal: true,
-                regular: true,
-                requires: false,
-            })
+    /// makes it: no delay, a weight of 10, no effect, every death, level and status; none for a
+    /// class that is neither a `SlowDeathBehavior` nor an `FXListDie`.
+    pub(crate) const fn module(class: &str) -> Option<Self> {
+        let effect = if class.eq_ignore_ascii_case("slowdeathbehavior") {
+            None
+        } else if class.eq_ignore_ascii_case("fxlistdie") {
+            Some(String::new())
+        } else {
+            return None;
+        };
+        Some(Self {
+            delay_ms: 0.0,
+            weight: 10,
+            effect,
+            normal: true,
+            regular: true,
+            requires: false,
+        })
     }
 
     /// Whether it applies to a normal death of an object of the first veterancy that holds no
@@ -70,6 +78,11 @@ impl IniDeath {
         match word {
             "destructiondelay" => self.delay_ms = at.real()?,
             "probabilitymodifier" => self.weight = at.int()?,
+            "deathfx" => {
+                if let Some(effect) = &mut self.effect {
+                    at.value()?.clone_into(effect);
+                }
+            }
             "deathtypes" => self.normal = Self::holds(at, &Self::DEATH_TYPES, "normal")?,
             "veterancylevels" => {
                 self.regular = Self::holds(at, &Self::VETERANCY_LEVELS, "regular")?;

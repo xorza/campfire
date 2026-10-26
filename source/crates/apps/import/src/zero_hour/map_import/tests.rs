@@ -237,13 +237,12 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
     assert_eq!(terrain.texture().size, UVec2::new(4096, 1024));
     assert_eq!(terrain.surface(), SURFACE);
     assert_eq!(imported.untextured, 6);
-    // The gravel road from the game's (−10, 5) to (20, 5), 15.75 to each side: 4 columns, at x
-    // −10, 0, 10 and 20, of 4 samples across, at y −10.75, −0.25, 10.25 and 20.75, in the cells
-    // of rows 0 and 1 past the border of 1, the last clamped to the map's. Their highest corners:
-    // 20 steps at x −10 and 0, 40 at 10 and 20, the line past each inner column passing 18.75
-    // units there, below it, so every column stays, 3 · 2 triangles of one repeat each. The
-    // first's first corner is the first column's left, 20 · 0.625 + 0.078125 high, on the
-    // engine's axes.
+    // The gravel road from the game's (−10, 5) to (20, 5), 15.75 to each side, covers the
+    // grid's 3 × 2 cells and runs 0.75 past its south and north edges and 10.75 past them: its
+    // parts cover its 30 · 31.5 = 945 square units once. Each sample is a corner of the parts
+    // around it, at its height and 0.078125 over it, on the engine's axes, `z` the game's `−y`;
+    // past the edges, a corner stands on the edge's nearest sample, as (−10, −10.75) on 0 steps
+    // and (20, 20.75) on 40.
     assert_eq!(
         imported.road_pieces,
         RoadPieces {
@@ -253,23 +252,36 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
     );
     assert!(imported.dropped_roads.is_empty());
     let decals = terrain.decals();
-    assert_eq!((decals.vertices.len(), decals.triangles.len()), (18, 6));
-    assert_eq!(
-        decals.vertices[0].position,
-        Vec3::new(-10.0, 12.578125, -20.75)
-    );
-    let heights: Vec<f32> = decals
-        .vertices
+    let area: f32 = decals
+        .triangles
         .iter()
-        .map(|vertex| vertex.position.y)
-        .collect();
-    assert_eq!(
-        heights[..6],
-        [
-            12.578125, 12.578125, 12.578125, 12.578125, 12.578125, 12.578125
-        ]
-    );
-    assert!(heights[12..].iter().all(|&height| height == 25.078125));
+        .map(|triangle| {
+            let [a, b, c] = triangle.map(|at| decals.vertices[at as usize].position);
+            (b - a).cross(c - a).y / 2.0
+        })
+        .sum();
+    // The corners where the road's diagonal crosses the cells' round to `f32`, which moves the
+    // sum by thousandths, where a part missed or laid twice moves it by a part's area.
+    assert!((area - 945.0).abs() < 1e-3, "{area}");
+    let rows: [[u8; 4]; 3] = [[0, 1, 2, 3], [16, 5, 6, 7], [8, 20, 10, 40]];
+    let samples = rows.iter().zip([-10.0, 0.0, 10.0]).flat_map(|(row, y)| {
+        row.iter()
+            .zip([-10.0, 0.0, 10.0, 20.0])
+            .map(move |(&steps, x)| Vec3::new(x, f32::from(steps) * 0.625 + 0.078125, -y))
+    });
+    let past = [
+        Vec3::new(-10.0, 0.078125, 10.75),
+        Vec3::new(20.0, 25.078125, -20.75),
+    ];
+    for corner in samples.chain(past) {
+        assert!(
+            decals
+                .vertices
+                .iter()
+                .any(|vertex| vertex.position == corner),
+            "{corner}"
+        );
+    }
     assert_eq!(
         file.terrain.fields().blends,
         [BlendTile {

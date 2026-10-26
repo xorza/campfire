@@ -1,14 +1,15 @@
 //! The client's data files of a package, which the sim never reads, and which only the import, that
 //! writes them, and the client, that draws them, depend on: how its camera moves, which keys do
 //! what, which units show their bars, how the pointer picks its units, its teams' colors, how its
-//! unit types and its maps' client objects look, what its models' materials and animations say
-//! past glTF's own, the light its maps are drawn in, their terrain and its ground heights, and the
-//! objects of each map the client alone draws.
+//! unit types and its maps' client objects look, the effects they play, what its models' materials
+//! and animations say past glTF's own, the light its maps are drawn in, their terrain and its
+//! ground heights, and the objects of each map the client alone draws.
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
+mod action_look;
 mod animation_extras;
 mod camera_file;
 mod client_file;
@@ -18,6 +19,8 @@ mod client_path;
 mod client_unit;
 mod client_units;
 mod condition_test;
+mod effect_list;
+mod effects_file;
 mod error;
 mod hud_file;
 mod keys_file;
@@ -26,26 +29,32 @@ mod map_conditions;
 mod map_lights;
 mod material_extras;
 mod object_look;
+mod particle_system;
 mod picking_file;
 mod set_match;
+mod spread;
 mod state_animation;
 mod team_colors;
 mod terrain_file;
 mod texture_format;
 mod texture_levels;
 
+pub use crate::action_look::ActionLook;
 pub use crate::animation_extras::{AnimationExtras, HiddenFrames};
 pub use crate::camera_file::{CameraFile, CameraHeight};
 pub use crate::client_file::{ClientFile, ClientFormat};
 pub use crate::client_model::{ClientModel, ModelScale, ModelTop, NodeUpgrade};
 pub use crate::client_objects::{ClientObject, ClientObjects};
 pub use crate::client_unit::{
-    ClientUnit, LookDraw, LookShown, LookState, LookTransition, LookVariation,
+    ClientUnit, FireBone, LookDraw, LookShown, LookState, LookTransition, LookVariation,
 };
 pub use crate::client_units::ClientUnits;
 pub use crate::condition_test::{AttackPhase, ConditionTest, LifeShare, SiteStage};
+pub use crate::effect_list::{EffectList, ListedSystem};
+pub use crate::effects_file::EffectsFile;
 pub use crate::error::{
-    ClientFileError, TeamColorsError, TerrainFileError, TextureLevelsError, UntestedCondition,
+    ClientFileError, EffectsError, TeamColorsError, TerrainFileError, TextureLevelsError,
+    UntestedCondition,
 };
 pub use crate::hud_file::{HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};
@@ -54,8 +63,12 @@ pub use crate::map_conditions::MapConditions;
 pub use crate::map_lights::{MapLight, MapLights};
 pub use crate::material_extras::{Blend, MaterialExtras, TeamPaint};
 pub use crate::object_look::{LookVariant, ObjectLook};
+pub use crate::particle_system::{
+    AlphaKey, ColorKey, EmissionVelocity, EmissionVolume, ParticleSystem, SlaveSystem,
+};
 pub use crate::picking_file::{PickingFile, PixelRadius};
 pub use crate::set_match::SetMatch;
+pub use crate::spread::Spread;
 pub use crate::state_animation::{
     AnimationMode, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
 };

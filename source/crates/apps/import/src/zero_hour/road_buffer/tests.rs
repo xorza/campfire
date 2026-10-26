@@ -1,18 +1,11 @@
 use bevy_math::Vec2;
 
 use super::*;
-use crate::zero_hour::format::ini::roads_ini::samples::ROADS;
 use crate::zero_hour::map_roads::RoadEnd;
 use crate::zero_hour::road_buffer::buffer_road::{CURVE_UV, SEGMENT_UV};
 
-/// The sample roads: the gravel road 35 wide and 0.9 of its texture across, 15.75 to each side.
-fn types() -> RoadsIni {
-    let mut types = RoadsIni::default();
-    types.read(ROADS.as_bytes()).unwrap();
-    types
-}
-
-/// A segment of the gravel road from `start` to `end`, its start's corner `angled`.
+/// A segment of the sample gravel road, 35 wide and 0.9 of its texture across, 15.75 to each
+/// side, from `start` to `end`, its start's corner `angled`.
 fn segment(start: [f32; 2], end: [f32; 2], angled: bool) -> RoadSegment {
     let end_of = |point: [f32; 2], angled: bool| RoadEnd {
         point: Vec2::from(point),
@@ -21,6 +14,8 @@ fn segment(start: [f32; 2], end: [f32; 2], angled: bool) -> RoadSegment {
     };
     RoadSegment {
         road: RoadId(0),
+        width: 35.0,
+        width_in_texture: 0.9,
         start: end_of(start, angled),
         end: end_of(end, false),
         tight: false,
@@ -35,24 +30,23 @@ fn near(found: Vec2, expected: [f32; 2]) -> bool {
 
 #[test]
 fn two_segments_that_meet_chain_back_along_the_list_and_turn_by_a_curve() {
-    let types = types();
     // A from (0, 0) east to (100, 0), then B on north-east to (200, 100): B is put before A, as
     // a chain runs back along the list, and B's start and A's end meet alone.
     let forward = [
         segment([0.0, 0.0], [100.0, 0.0], false),
         segment([100.0, 0.0], [200.0, 100.0], false),
     ];
-    let buffer = RoadBuffer::chained(&forward, &types);
+    let buffer = RoadBuffer::chained(&forward);
     // B given the other way meets A's end with its own, so it is flipped to run on: the same.
     let reversed = [forward[0], segment([200.0, 100.0], [100.0, 0.0], false)];
-    assert_eq!(RoadBuffer::chained(&reversed, &types).roads, buffer.roads);
+    assert_eq!(RoadBuffer::chained(&reversed).roads, buffer.roads);
     // A segment given again, either way, is dropped.
     let twice = [
         forward[0],
         forward[1],
         segment([100.0, 0.0], [0.0, 0.0], false),
     ];
-    assert_eq!(RoadBuffer::chained(&twice, &types).roads, buffer.roads);
+    assert_eq!(RoadBuffer::chained(&twice).roads, buffer.roads);
 
     // The turn is 45°, 1.5 steps of 30°, to the left, so the game's lines run from A's end back
     // to its start and from B's end back to its start. A curve 1.5 · 35 = 52.5 from both: its
@@ -95,8 +89,35 @@ fn two_segments_that_meet_chain_back_along_the_list_and_turn_by_a_curve() {
 }
 
 #[test]
+fn a_segment_of_no_type_chains_to_the_type_it_is_given_at_its_own_width() {
+    // A as in the first test, then B of a template no type names, which the map's roads give
+    // the gravel road, 8 wide and all its texture across: of one type, they chain and turn by
+    // curves, of B's width, as B leaves the corner. The curve 1.5 · 8 = 12 from both lines:
+    // its centre on y = 12 and on y = x − 100 + 12 · √2, at x = 112 − 16.971 = 95.029, where A
+    // is cut back.
+    let untyped = RoadSegment {
+        width: 8.0,
+        width_in_texture: 1.0,
+        ..segment([100.0, 0.0], [200.0, 100.0], false)
+    };
+    let buffer = RoadBuffer::chained(&[segment([0.0, 0.0], [100.0, 0.0], false), untyped]);
+    let roads = &buffer.roads;
+    let kinds: Vec<PieceKind> = roads.iter().map(|road| road.kind).collect();
+    let [segment, curve] = [PieceKind::Segment, PieceKind::Curve];
+    assert_eq!(kinds, [segment, segment, curve, curve]);
+    let widths: Vec<f32> = roads.iter().map(|road| road.width).collect();
+    assert_eq!(widths, [8.0, 35.0, 8.0, 8.0]);
+    assert!(roads.iter().all(|road| road.road == RoadId(0)));
+    assert!(near(
+        roads[1].end.point,
+        [112.0 - 12.0 * 2.0_f32.sqrt(), 0.0]
+    ));
+    // B's piece spans its 8 across: 4 to each side.
+    assert!((roads[0].piece().normal.length() - 4.0).abs() < 1e-4);
+}
+
+#[test]
 fn an_angled_corner_meets_its_sides_at_their_crossings() {
-    let types = types();
     // B's start, at the corner, is angled: a miter. A's top side is y = 15.75 and B's runs from
     // (100, 0) moved 15.75 to its left, (88.863, 11.137), at 45°, so they cross at x = 88.863 +
     // 4.613 = 93.476; their bottoms, at y = −15.75 and from (111.137, −11.137), at 106.524.
@@ -104,7 +125,7 @@ fn an_angled_corner_meets_its_sides_at_their_crossings() {
         segment([0.0, 0.0], [100.0, 0.0], false),
         segment([100.0, 0.0], [200.0, 100.0], true),
     ];
-    let buffer = RoadBuffer::chained(&segments, &types);
+    let buffer = RoadBuffer::chained(&segments);
     let [b, a] = [buffer.roads[0], buffer.roads[1]];
     assert_eq!(buffer.roads.len(), 2);
     assert!(near(a.end.top, [93.476_14, 15.75]));
@@ -129,7 +150,7 @@ fn junction(ends: &[[f32; 2]]) -> (Vec<BufferRoad>, Vec<f32>) {
         .iter()
         .map(|&end| segment([0.0, 0.0], end, false))
         .collect();
-    let buffer = RoadBuffer::chained(&segments, &types());
+    let buffer = RoadBuffer::chained(&segments);
     let junctions = buffer
         .roads
         .iter()
@@ -213,18 +234,21 @@ fn three_ends_none_near_a_line_meet_at_a_y_and_four_at_a_four_way() {
 
 #[test]
 fn an_end_that_asks_for_a_join_fades_into_the_road_it_meets_and_stacks_over_it() {
-    let types = types();
     let sidewalk = RoadId(1);
     // A sidewalk from (−100, 0) ends at (0, 0), asking for a join, on a gravel road from
     // (0, −100) to (0, 100): within the road's box, 17.5 past its line, and on its line, within
     // 0.55 of its 35. The join runs along the gravel road turned a right angle towards the
     // sidewalk, (−200, 0), cut square, 24 · 0.95 = 22.8 across as the sidewalk is, so its scale
     // across is the sidewalk's 24; the sidewalk stacks over the gravel road.
-    let mut walk = segment([-100.0, 0.0], [0.0, 0.0], false);
-    walk.road = sidewalk;
+    let mut walk = RoadSegment {
+        road: sidewalk,
+        width: 24.0,
+        width_in_texture: 0.95,
+        ..segment([-100.0, 0.0], [0.0, 0.0], false)
+    };
     walk.end.join = true;
     let road = segment([0.0, -100.0], [0.0, 100.0], false);
-    let buffer = RoadBuffer::chained(&[walk, road], &types);
+    let buffer = RoadBuffer::chained(&[walk, road]);
     let joins: Vec<BufferRoad> = buffer
         .roads
         .iter()
@@ -240,7 +264,7 @@ fn an_end_that_asks_for_a_join_fades_into_the_road_it_meets_and_stacks_over_it()
     // The sidewalk, listed first as read last, draws after the gravel road it stacks over.
     let listed = RoadBuffer {
         types: vec![sidewalk, RoadId(0)],
-        ..RoadBuffer::chained(&[walk, road], &types)
+        ..RoadBuffer::chained(&[walk, road])
     };
     assert_eq!(listed.drawing_order(), [1, 0]);
     assert_eq!(buffer.pieces().joins, 1);
@@ -253,11 +277,11 @@ fn an_end_that_asks_for_a_join_fades_into_the_road_it_meets_and_stacks_over_it()
 
     // Alone, the join runs 100 back along its own road, and stacks nothing; a gravel road's
     // end there asks for none.
-    let buffer = RoadBuffer::chained(&[walk], &types);
+    let buffer = RoadBuffer::chained(&[walk]);
     let join = buffer.roads[1];
     assert_eq!(join.kind, PieceKind::AlphaJoin);
     assert!(near(join.end.point, [-100.0, 0.0]));
     assert!(buffer.stacks.is_empty());
-    let alone = RoadBuffer::chained(&[road], &types);
+    let alone = RoadBuffer::chained(&[road]);
     assert_eq!(alone.roads.len(), 1);
 }

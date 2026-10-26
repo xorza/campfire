@@ -1,15 +1,16 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroU32;
 
 use campfire_actions::ActionKind;
 use campfire_client_files::{
-    ClientFile, ClientObjects, ClientUnit, ClientUnits, ConditionTest, MapConditions, TerrainFile,
+    ActionLook, ClientFile, ClientObjects, ClientUnit, ClientUnits, ConditionTest, EffectsFile,
+    LookDraw, MapConditions, TerrainFile,
 };
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
 use campfire_import::{
-    AnimationDropCause, ButtonDropCause, ImportLoss, Imported, RoadDropCause, StateDropCause,
-    SupplyDropCause, UpgradeDropCause, WeaponDropCause,
+    AnimationDropCause, ButtonDropCause, EffectDropCause, ImportLoss, Imported, RoadDropCause,
+    StateDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause,
 };
 use campfire_math::Num;
 use campfire_navigation::MapNavigationData;
@@ -22,6 +23,7 @@ use tracing::info;
 
 use crate::attack_play::AttackPlay;
 use crate::base_play::BasePlay;
+use crate::decal_ground::DecalGround;
 use crate::defense_play::DefensePlay;
 use crate::error::CheckError;
 use crate::failure::{CheckFailure, Differs};
@@ -29,7 +31,7 @@ use crate::golden::{Golden, Measured};
 use crate::match_play::PlayTools;
 use crate::missile_play::MissilePlay;
 use crate::pins::{
-    FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
+    EffectCounts, FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
     ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SkirmishTicks, SuppliedCounts,
     SupplySteps, TerrainCounts, TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
@@ -110,6 +112,17 @@ impl ImportCheck<'_> {
         let untextured = untextured.unwrap_or(0);
         if untextured > 0 {
             self.failures.push(CheckFailure::Untextured(untextured));
+        }
+        if let Some(grid) = self.packages.heights() {
+            let decals = DecalGround::of(grid, &terrain);
+            info!(
+                off = decals.off,
+                most = decals.most,
+                "Tournament Desert's decals on the ground"
+            );
+            if decals.off > 0 {
+                self.failures.push(CheckFailure::OffGround(decals));
+            }
         }
         let pinned = self.pinned(|golden| golden.map, counts);
         self.failures
@@ -246,12 +259,22 @@ impl ImportCheck<'_> {
     }
 
     /// The waypoints the import dropped of every map it wrote, which loads in the imported
-    /// mode, as the import's own load checks.
-    pub(crate) fn other_maps(&self) {
+    /// mode, as the import's own load checks, and its road segments of no type, which the
+    /// install's road of id 1 takes (roads.md, A road's type is `Roads.ini`'s).
+    pub(crate) fn other_maps(&mut self) {
+        let mut untyped = 0;
         for loss in &self.imported.losses {
-            if let ImportLoss::Waypoint { .. } = loss {
-                info!("{loss}");
+            match loss {
+                ImportLoss::Waypoint { .. } => info!("{loss}"),
+                ImportLoss::Road { dropped, .. } if dropped.cause == RoadDropCause::NoType => {
+                    info!("{loss}");
+                    untyped += dropped.count;
+                }
+                _ => {}
             }
+        }
+        if untyped > 0 {
+            self.failures.push(CheckFailure::UntypedRoads(untyped));
         }
         info!(maps = self.imported.maps.len(), "the imported maps loaded");
     }
@@ -342,6 +365,47 @@ impl ImportCheck<'_> {
             dropped = ?supplied.dropped,
             "the docks, supply centers, gatherers and hackers"
         );
+    }
+
+    /// The particle systems and effect lists, the textures they draw, the effects the actions, the
+    /// looks and their states name, and the effects dropped, by cause.
+    pub(crate) fn effects(&mut self) -> Result<(), CheckError> {
+        let files = &self.packages.mode().package.files;
+        let file: EffectsFile = client_file(files, &EffectsFile::path())?;
+        let textures: BTreeSet<_> = file
+            .systems()
+            .values()
+            .map(|system| &system.texture)
+            .collect();
+        let units: ClientUnits = client_file(files, &ClientUnits::path())?;
+        let actions = units.actions().values();
+        let named = |of: fn(&ActionLook) -> bool| actions.clone().filter(|look| of(look)).count();
+        let looks = units.units().values();
+        let states = looks
+            .clone()
+            .flat_map(ClientUnit::every_draw)
+            .flat_map(LookDraw::states);
+        let effects = EffectCounts {
+            systems: file.systems().len(),
+            lists: file.lists().len(),
+            textures: textures.len(),
+            fires: named(|look| look.fire.is_some()),
+            hits: named(|look| look.hit.is_some()),
+            trails: looks.clone().filter(|look| look.trail.is_some()).count(),
+            ends: looks.clone().filter(|look| look.end.is_some()).count(),
+            deaths: looks.filter(|look| look.death.is_some()).count(),
+            bones: states.filter(|state| !state.fire_bones.is_empty()).count(),
+            dropped: self.dropped(EffectDropCause::ALL, |loss| match loss {
+                ImportLoss::Effect(effect) => Some(effect.cause),
+                _ => None,
+            }),
+        };
+        let expected = self.pinned(|golden| golden.effects, effects);
+        self.failures
+            .extend(Differs::of(effects, expected).map(CheckFailure::Effects));
+        self.measured.effects = Some(effects);
+        info!(%effects, "the particle systems and effect lists");
+        Ok(())
     }
 
     /// The weapons, the armors, the damage kinds and the bodies of no life or a wounded start.

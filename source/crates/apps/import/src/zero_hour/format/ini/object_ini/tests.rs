@@ -945,4 +945,34 @@ fn an_object_keeps_the_slow_death_a_normal_death_most_likely_takes() {
             "{wrong}"
         );
     }
+
+    // An `FXListDie` is no slow death; a normal death plays the list of its first that applies
+    // and names one: not the crush's, nor one of `NONE`, but the blast's.
+    let effect = |modules: &str| {
+        let text = format!("Object A\n{modules}End\n");
+        let mut files = ObjectFiles::default();
+        files.read(text.as_bytes()).unwrap();
+        let object = files.objects().next().unwrap();
+        (
+            object.death_effect().map(str::to_owned),
+            object.slow_death().is_some(),
+        )
+    };
+    let fx = |fields: &str| format!("  Behavior = FXListDie M\n{fields}  End\n");
+    let modules = [
+        fx("    DeathTypes = NONE +CRUSHED\n    DeathFX = FX_Crush\n"),
+        fx("    DeathFX = NONE\n"),
+        fx("    DeathFX = FX_Blast\n"),
+        fx("    DeathFX = FX_Later\n"),
+    ]
+    .concat();
+    assert_eq!(effect(&modules), (Some("FX_Blast".to_owned()), false));
+    let modules = [
+        fx("    DeathTypes = NONE +CRUSHED\n    DeathFX = FX_Crush\n"),
+        fx("    DeathFX = FX_Blast\n"),
+        fx("    DeathFX = FX_Later\n"),
+        module(""),
+    ]
+    .concat();
+    assert_eq!(effect(&modules), (Some("FX_Blast".to_owned()), true));
 }

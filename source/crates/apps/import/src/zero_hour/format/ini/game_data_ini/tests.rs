@@ -25,6 +25,11 @@ fn a_field_keeps_the_default_until_a_file_sets_it_and_the_last_file_wins() {
     ini.read(b"GameData\n  ValuePerSupplyBox = 75\nEnd\n")
         .unwrap();
     assert_eq!(ini.box_value.get(), 75);
+    // No particle lives by default, the shipped 2,500 once it reads.
+    assert_eq!(ini.max_particles, 0);
+    ini.read(b"GameData\n  MaxParticleCount = 2500\nEnd\n")
+        .unwrap();
+    assert_eq!(ini.max_particles, 2500);
     // The damage thresholds, 0.5 and 0.1 by default, the shipped 0.7 and 0.35 once they read.
     let thresholds = |ini: &GameDataIni| [ini.damaged_threshold, ini.really_damaged_threshold];
     assert_eq!(thresholds(&ini), [0.5, 0.1]);
@@ -77,6 +82,10 @@ End
         let text = format!("GameData\n ValuePerSupplyBox = {value}\nEnd\n");
         assert_eq!(fails(text.as_bytes()), IniError::Range { line: 2 });
     }
+    assert_eq!(
+        fails(b"GameData\n MaxParticleCount = -1\nEnd\n"),
+        IniError::Range { line: 2 }
+    );
     assert_eq!(fails(b"MapName = A.map\n"), IniError::NotBlock { line: 1 });
     assert_eq!(fails(b"End\n"), IniError::StrayEnd { line: 1 });
     assert_eq!(

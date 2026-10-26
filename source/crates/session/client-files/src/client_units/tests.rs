@@ -3,6 +3,7 @@ use campfire_math::Num;
 
 use super::*;
 use crate::client_model::{ModelScale, ModelTop};
+use crate::client_unit::FireBone;
 use crate::condition_test::{LifeShare, SiteStage};
 use crate::state_animation::{AnimationMode, SpeedRange, StartFrame};
 
@@ -16,8 +17,14 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
                 { model = "client/models/avhumflag.glb", top = 3.25 },
                 { model = "client/models/avhumfx.glb" },
             ] },
-            { sets = [["damaged"], ["damaged", "night"]], models = [{ model = "client/models/avhummer_d.glb" }] },
+            { sets = [["damaged"], ["damaged", "night"]], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, bone = "MuzzleFX01" }] },
         ] }]
+        death = "fx_humvee_death"
+
+        [units.humvee_shell]
+        draws = []
+        end = "fx_shell_hit"
+        trail = "smoke_trail"
 
         [units.lamp]
         draws = [{ states = [{ sets = [[], ["night"]], models = [] }], ignore = ["night"] }]
@@ -41,12 +48,41 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
 
         [objects.tree]
         models = [{ model = "client/models/ptxbirch04.glb", scale = 1.25 }]
+
+        [actions.humvee_gun]
+        fire = "fx_gun_fire"
     "#;
     let units: ClientUnits = Toml::parse(text).unwrap();
     let states = units.units["humvee"].draws[0].states();
     let humvee = &states[0].models[0];
     assert_eq!(humvee.model.as_str(), "client/models/avhummer.glb");
     assert_eq!(humvee.hide, ["turretup01", "muzzlefx01"]);
+    // The damaged state's fire bone, of the first slot; the look's death; the gun's fire, of no
+    // hit; the shell's end and trail; none of what a look does not name, which it does not write.
+    let name = |text: &str| DeclaredName::new(text).unwrap();
+    assert_eq!(
+        states[1].fire_bones,
+        [FireBone {
+            slot: 0,
+            bone: "MuzzleFX01".to_owned()
+        }]
+    );
+    assert_eq!(states[0].fire_bones, []);
+    assert_eq!(units.units["humvee"].death, Some(name("fx_humvee_death")));
+    assert_eq!(units.units["lamp"].death, None);
+    let gun = &units.actions()[&name("humvee_gun")];
+    assert_eq!((&gun.fire, &gun.hit), (&Some(name("fx_gun_fire")), &None));
+    let shell = &units.units["humvee_shell"];
+    assert_eq!(
+        (&shell.end, &shell.trail),
+        (&Some(name("fx_shell_hit")), &Some(name("smoke_trail")))
+    );
+    let written = Toml::write(&units);
+    assert_eq!(
+        ["fire_bones", "death =", "hit =", "end =", "trail ="]
+            .map(|field| written.matches(field).count()),
+        [1, 1, 0, 1, 1]
+    );
     // A state's sets, its own and its aliases'.
     let damaged = DeclaredName::new("damaged").unwrap();
     let night = DeclaredName::new("night").unwrap();

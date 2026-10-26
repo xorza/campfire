@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use campfire_client_files::{TeamColorsError, TerrainFileError, UntestedCondition};
+use campfire_client_files::{EffectsError, TeamColorsError, TerrainFileError, UntestedCondition};
 use campfire_common::MapName;
 use campfire_package::LoadError;
 use campfire_package_disk::WriteError;
@@ -117,6 +117,9 @@ pub enum ZeroHourError {
     /// A look the import made names a condition of no test, which the client refuses to read.
     #[error(transparent)]
     Untested(#[from] UntestedCondition),
+    /// A particle system or an effect list holds a number the client refuses, one not finite.
+    #[error(transparent)]
+    Effects(#[from] EffectsError),
     /// A player template a player plays, by its name, names no starting building.
     #[error("player template {0} names no starting building")]
     NoStart(String),

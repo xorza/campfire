@@ -36,6 +36,7 @@ use crate::use_click::UseClickPlugin;
 use crate::view::ViewPlugin;
 use crate::view::area_view::AreaViewPlugin;
 use crate::view::client_data::ClientFilesPlugin;
+use crate::view::effects::EffectsPlugin;
 use crate::view::look_states::LookStatesPlugin;
 use crate::view::package_source::PackageAssets;
 use crate::view::player_camera::PlayerCameraPlugin;
@@ -62,6 +63,7 @@ pub(crate) enum ClientModule {
     UnitModels,
     LookStates,
     TerrainView,
+    Effects,
     Hud,
     Selecting,
     Orders,
@@ -137,6 +139,7 @@ impl ClientModule {
             | Self::UnitModels
             | Self::LookStates
             | Self::TerrainView
+            | Self::Effects
             | Self::Hud
             | Self::Selecting
             | Self::Orders => &[],
@@ -158,6 +161,7 @@ impl ClientModule {
             | Self::UnitModels
             | Self::LookStates
             | Self::TerrainView
+            | Self::Effects
             | Self::Hud
             | Self::Selecting
             | Self::Orders
@@ -298,6 +302,9 @@ impl ClientModule {
             Self::TerrainView => {
                 app.add_plugins(TerrainViewPlugin);
             }
+            Self::Effects => {
+                app.add_plugins(EffectsPlugin);
+            }
             Self::Hud => {
                 app.add_plugins(HudPlugin);
             }
@@ -402,6 +409,7 @@ mod tests {
             ClientModule::UnitModels,
             ClientModule::LookStates,
             ClientModule::TerrainView,
+            ClientModule::Effects,
             ClientModule::Hud,
             ClientModule::Selecting,
             ClientModule::Orders,

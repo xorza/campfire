@@ -177,9 +177,9 @@ impl MapImport {
         let quads = cells.quads();
         let road_ground = RoadGround {
             heights: &file.heights,
+            quads: &quads,
         };
-        let drawn =
-            RoadBuffer::of(roads, &rules.roads).draw(&rules.roads, road_ground, atlas.roads());
+        let drawn = RoadBuffer::of(roads).draw(&rules.roads, road_ground, atlas.roads());
         let terrain = TerrainFile::new(TerrainFileFields {
             quads,
             decals: drawn.decals.into_decals(),

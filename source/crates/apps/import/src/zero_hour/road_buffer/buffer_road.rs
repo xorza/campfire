@@ -1,11 +1,11 @@
 use bevy_math::Vec2;
 use campfire_common::EnumAll;
 
-use crate::zero_hour::format::ini::roads_ini::{RoadId, RoadsIni};
+use crate::zero_hour::format::ini::roads_ini::RoadId;
 use crate::zero_hour::map_roads::{RoadEnd, RoadSegment};
 use crate::zero_hour::road_mesh::{PieceCorners, RoadPiece};
 
-/// A piece of the buffer: its type, its kind, its two points, its type's width and the share of
+/// A piece of the buffer: its type, its kind, its two points, its width and the share of
 /// it its texture draws, and whether a curve at its start is tight.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct BufferRoad {
@@ -70,9 +70,8 @@ const CURVE_RADIUS: f32 = 1.5;
 const TIGHT_CURVE_RADIUS: f32 = 0.5;
 
 impl BufferRoad {
-    /// The segment `segment` as the buffer takes it, of its type's width.
-    pub(super) fn of(segment: RoadSegment, types: &RoadsIni) -> Self {
-        let road = &types[segment.road];
+    /// The segment `segment` as the buffer takes it.
+    pub(super) fn of(segment: RoadSegment) -> Self {
         let point = |end: RoadEnd| BufferPoint {
             point: end.point,
             top: end.point,
@@ -86,8 +85,8 @@ impl BufferRoad {
             kind: PieceKind::Segment,
             start: point(segment.start),
             end: point(segment.end),
-            width: road.width,
-            width_in_texture: road.width_in_texture,
+            width: segment.width,
+            width_in_texture: segment.width_in_texture,
             tight: segment.tight,
         }
     }

@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "25c54ffb4de1e206e5cd718d9249fe8688d8ee24dd3985cd0b8824f3105e3be4"
+game = "028a2bf644fe336a8af02d17cd03bda299c426d03635c9a9f4abd3f9e837d75c"
 rules = "db18bca8292336d666fc24720c9c0fc499e0520a0a0a1b3adff9760c0a9dd04b"
 
 [map]
@@ -17,7 +17,7 @@ walls = 286
 
 [terrain]
 overlays = 19041
-decals = 1425
+decals = 33226
 copies = 304
 wraps = 23
 
@@ -65,6 +65,18 @@ drop_offs = 15
 gathers = 12
 hacks = 5
 dropped = [0, 0, 5, 6, 0, 0, 0, 5, 5, 5, 5, 5, 4, 0]
+
+[effects]
+systems = 555
+lists = 318
+textures = 46
+fires = 47
+hits = 0
+trails = 3
+ends = 22
+deaths = 596
+bones = 3622
+dropped = [35, 0, 8, 2, 7, 292, 0, 18, 65, 139, 46, 5]
 
 [fought]
 weapons = 88

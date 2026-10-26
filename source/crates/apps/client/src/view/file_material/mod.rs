@@ -1,6 +1,7 @@
 use bevy::app::{App, Plugin};
 use bevy::asset::{Asset, Handle, embedded_asset};
 use bevy::gltf::GltfMaterial;
+use bevy::image::Image;
 use bevy::material::AlphaMode;
 use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{
@@ -110,15 +111,7 @@ impl FileBlend {
     /// `gltf` with, its depth bias the extras', in the render phase their blend draws in; and the
     /// extras' blend and team paint, over the match's colors.
     pub(crate) fn material(gltf: &GltfMaterial, extras: MaterialExtras) -> FileMaterial {
-        let (alpha_mode, factors, cutoff) = match extras.blend {
-            Blend::Opaque => (AlphaMode::Opaque, Factors::Replace, 0.0),
-            Blend::Mask { cutoff } => (AlphaMode::Mask(cutoff), Factors::Replace, cutoff),
-            Blend::Alpha => (AlphaMode::Blend, Factors::Alpha, 0.0),
-            Blend::AlphaMask { cutoff } => (AlphaMode::Blend, Factors::Alpha, cutoff),
-            Blend::Add => (AlphaMode::Blend, Factors::Add, 0.0),
-            Blend::Multiply => (AlphaMode::Blend, Factors::Multiply, 0.0),
-            Blend::Screen => (AlphaMode::Blend, Factors::Screen, 0.0),
-        };
+        let (alpha_mode, factors, cutoff) = Self::blend(extras.blend);
         ExtendedMaterial {
             base: StandardMaterial {
                 depth_bias: extras.depth_bias as f32,
@@ -133,6 +126,43 @@ impl FileBlend {
                 factors,
                 depth_write: extras.depth_write,
             },
+        }
+    }
+
+    /// The material particles of `texture` draw in, in `blend` (effects.md, Particles run on
+    /// the CPU and draw as billboards of the one material): the texture tinted by each vertex's
+    /// color, unlit, of both faces, writing no depth, and painted by no team.
+    pub(crate) fn particles(texture: Handle<Image>, blend: Blend) -> FileMaterial {
+        let (alpha_mode, factors, cutoff) = Self::blend(blend);
+        ExtendedMaterial {
+            base: StandardMaterial {
+                base_color_texture: Some(texture),
+                unlit: true,
+                double_sided: true,
+                cull_mode: None,
+                alpha_mode,
+                ..StandardMaterial::default()
+            },
+            extension: Self {
+                cutoff,
+                team: 0,
+                colors: MatchColors::BUFFER,
+                factors,
+                depth_write: false,
+            },
+        }
+    }
+
+    /// The alpha mode, the factors and the alpha test of `blend`.
+    const fn blend(blend: Blend) -> (AlphaMode, Factors, f32) {
+        match blend {
+            Blend::Opaque => (AlphaMode::Opaque, Factors::Replace, 0.0),
+            Blend::Mask { cutoff } => (AlphaMode::Mask(cutoff), Factors::Replace, cutoff),
+            Blend::Alpha => (AlphaMode::Blend, Factors::Alpha, 0.0),
+            Blend::AlphaMask { cutoff } => (AlphaMode::Blend, Factors::Alpha, cutoff),
+            Blend::Add => (AlphaMode::Blend, Factors::Add, 0.0),
+            Blend::Multiply => (AlphaMode::Blend, Factors::Multiply, 0.0),
+            Blend::Screen => (AlphaMode::Blend, Factors::Screen, 0.0),
         }
     }
 

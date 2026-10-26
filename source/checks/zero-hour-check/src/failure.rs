@@ -7,10 +7,11 @@ use campfire_mode::PickError;
 use campfire_orders::OrdersDirective;
 use derive_more::Display;
 
+use crate::decal_ground::DecalGround;
 use crate::pins::{
-    BotBase, BotMatchEnd, DefenseTicks, FactorySteps, FightSteps, Fingerprints, FoughtCounts,
-    LookCounts, MapCounts, MissileTicks, ProducedCounts, ProductionSteps, RangerLook, RoadCounts,
-    SuppliedCounts, SupplySteps, TerrainDrawn, UpgradeSteps, UpgradedCounts,
+    BotBase, BotMatchEnd, DefenseTicks, EffectCounts, FactorySteps, FightSteps, Fingerprints,
+    FoughtCounts, LookCounts, MapCounts, MissileTicks, ProducedCounts, ProductionSteps, RangerLook,
+    RoadCounts, SuppliedCounts, SupplySteps, TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -30,6 +31,12 @@ pub(crate) enum CheckFailure {
     /// Its road pieces drawn by kind, or its segments dropped by cause, differ from the pinned.
     #[display("its roads draw {_0}")]
     Roads(Box<Differs<RoadCounts>>),
+    /// Decal vertices of its terrain stand off the ground plus the float.
+    #[display("{} of its decal vertices stand off the ground, by up to {}", _0.off, _0.most)]
+    OffGround(DecalGround),
+    /// Road segments of its maps are of no type.
+    #[display("{_0} road segments of its maps are of no type")]
+    UntypedRoads(usize),
     /// Cells it draws have a tile with no texture.
     #[display("{_0} of its drawn cells have a tile with no texture")]
     Untextured(usize),
@@ -52,6 +59,10 @@ pub(crate) enum CheckFailure {
     /// pinned.
     #[display("it supplied {_0}")]
     Supplied(Box<Differs<SuppliedCounts>>),
+    /// The import's particle systems, effect lists, their textures and the effects dropped by
+    /// cause differ from the pinned.
+    #[display("it converted effects as {_0}")]
+    Effects(Box<Differs<EffectCounts>>),
     /// The imported mode has no unit type a play reads.
     #[display("the imported mode has no unit type {_0}")]
     NoType(&'static str),

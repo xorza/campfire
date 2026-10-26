@@ -38,7 +38,8 @@ fn a_start_and_the_end_after_it_are_a_segment_of_the_type_its_template_names() {
         // A start and an end at one point: the end moved 0.25 along `x`.
         object("Sidewalk", [10.0, 10.0], START | TIGHT),
         object("Sidewalk", [10.0, 10.0], END | JOIN),
-        // A template no type names: its segment is dropped, and counted.
+        // A template no type names: the type of id 1, the gravel road, 8 wide and all its
+        // texture across.
         object("Nope", [1.0, 1.0], START),
         object("Nope", [2.0, 2.0], END),
         object("GravelRoad", [40.0, 0.0], START),
@@ -58,38 +59,65 @@ fn a_start_and_the_end_after_it_are_a_segment_of_the_type_its_template_names() {
         angled,
         join,
     };
+    // A segment takes its type's width and share of it across, the gravel road's 35 and 0.9 and
+    // the sidewalk's 24 and 0.95.
     assert_eq!(
-        map.segments[..3],
+        map.segments[..4],
         [
             RoadSegment {
                 road: gravel,
+                width: 35.0,
+                width_in_texture: 0.9,
                 start: end([0.0, 0.0], true, false),
                 end: end([40.0, 0.0], false, true),
                 tight: false,
             },
             RoadSegment {
                 road: sidewalk,
+                width: 24.0,
+                width_in_texture: 0.95,
                 start: end([10.0, 10.0], false, false),
                 end: end([10.25, 10.0], false, true),
                 tight: true,
             },
             RoadSegment {
                 road: gravel,
+                width: 8.0,
+                width_in_texture: 1.0,
+                start: end([1.0, 1.0], false, false),
+                end: end([2.0, 2.0], false, false),
+                tight: false,
+            },
+            RoadSegment {
+                road: gravel,
+                width: 35.0,
+                width_in_texture: 0.9,
                 start: end([40.0, 0.0], false, false),
                 end: end([40.0, 30.0], false, false),
                 tight: false,
             },
         ]
     );
-    assert_eq!(map.segments.len(), 6);
+    assert_eq!(map.segments.len(), 7);
     // The sidewalk, read last, draws first.
     assert_eq!(map.types(), [sidewalk, gravel]);
+    assert_eq!(map.untyped().count(), 0);
+
+    // Where the type of id 1 is a bridge, a segment of no type is dropped, and counted, as the
+    // sidewalk is, of these types none.
+    let mut bridge_first = RoadsIni::default();
+    bridge_first
+        .read(b"Bridge B\nEnd\nRoad GravelRoad\nEnd\n")
+        .unwrap();
+    let map = MapRoads::of(&objects, &bridge_first);
+    assert_eq!(map.segments.len(), 5);
+    let dropped = |road: &str| DroppedRoads {
+        road: road.to_owned(),
+        cause: RoadDropCause::NoType,
+        count: 1,
+    };
     assert_eq!(
         map.untyped().collect::<Vec<_>>(),
-        [DroppedRoads {
-            road: "Nope".to_owned(),
-            cause: RoadDropCause::NoType,
-            count: 1,
-        }]
+        [dropped("Nope"), dropped("Sidewalk")]
     );
 }

@@ -2,17 +2,22 @@ use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{BlockKinds, IniText};
 
 /// The road types of Zero Hour's `Roads.ini` files, as `TerrainRoadCollection` reads them, in the
-/// order they are read; its bridges, which the import places as units, it passes over.
+/// order they are read; its bridges, which the import places as units, it counts in the ids and
+/// passes over.
 #[derive(Debug, Default)]
 pub(crate) struct RoadsIni {
     roads: Vec<RoadIni>,
+    /// The roads and bridges read, whose count numbers the next.
+    read: u32,
 }
 
-/// A road type: its name, as the INI writes it, which a map's road names exactly; its texture's
-/// file; `RoadWidth`, in world units; and `RoadWidthInTexture`, the share of its width the texture
-/// draws across it.
+/// A road type: its id, the game's, counting the roads and bridges from 1 in the order they are
+/// read (`TerrainRoadCollection::m_idCounter`); its name, as the INI writes it, which a map's road
+/// names exactly; its texture's file; `RoadWidth`, in world units; and `RoadWidthInTexture`, the
+/// share of its width the texture draws across it.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RoadIni {
+    pub(crate) id: u32,
     pub(crate) name: String,
     pub(crate) texture: String,
     pub(crate) width: f32,
@@ -25,6 +30,9 @@ pub(crate) struct RoadId(pub(crate) usize);
 
 /// The type whose fields a new type starts with.
 const DEFAULT: &str = "DefaultRoad";
+/// The id of the type the game gives a segment before it looks its template up
+/// (`W3DRoadBuffer::addMapObjects`).
+const UNTYPED: u32 = 1;
 
 impl RoadsIni {
     /// Reads one INI file, adding its road types to those read before: a new one starts with
@@ -33,8 +41,13 @@ impl RoadsIni {
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
         for block in IniText::of(bytes).lines().blocks(BlockKinds::Any) {
             let block = block?;
-            if block.head.word() != "road" {
-                continue;
+            match block.head.word() {
+                "road" => {}
+                "bridge" => {
+                    self.read += 1;
+                    continue;
+                }
+                _ => continue,
             }
             let name = block.name()?;
             if self.named(name).is_some() {
@@ -42,8 +55,10 @@ impl RoadsIni {
                     line: block.head.number,
                 });
             }
+            self.read += 1;
             let mut road = self.named(DEFAULT).map_or_else(
                 || RoadIni {
+                    id: 0,
                     name: String::new(),
                     texture: String::new(),
                     width: 0.0,
@@ -51,6 +66,7 @@ impl RoadsIni {
                 },
                 |id| self[id].clone(),
             );
+            road.id = self.read;
             name.clone_into(&mut road.name);
             for line in &block.fields {
                 match line.word() {
@@ -70,6 +86,15 @@ impl RoadsIni {
     pub(crate) fn road(&self, template: &[u8]) -> Option<RoadId> {
         let name: String = template.iter().map(|&byte| char::from(byte)).collect();
         self.named(&name)
+    }
+
+    /// The type the game gives a map's road whose template no type names, the one of id 1
+    /// (roads.md, A road's type is `Roads.ini`'s); none when that is a bridge, or no type.
+    pub(crate) fn untyped(&self) -> Option<RoadId> {
+        self.roads
+            .iter()
+            .position(|road| road.id == UNTYPED)
+            .map(RoadId)
     }
 
     fn named(&self, name: &str) -> Option<RoadId> {
@@ -112,13 +137,18 @@ mod tests {
         assert_eq!(
             ini[gravel],
             RoadIni {
+                id: 1,
                 name: "GravelRoad".to_owned(),
                 texture: "TRGravelRoad.tga".to_owned(),
                 width: 35.0,
                 width_in_texture: 0.9,
             }
         );
-        assert_eq!(ini[ini.road(b"Sidewalk").unwrap()].width_in_texture, 0.95);
+        // The bridge read between them takes id 2, so the sidewalk 3.
+        let sidewalk = &ini[ini.road(b"Sidewalk").unwrap()];
+        assert_eq!((sidewalk.id, sidewalk.width_in_texture), (3, 0.95));
+        // A road of no type is the type of id 1, the gravel road.
+        assert_eq!(ini.untyped(), Some(gravel));
         // Names match of their case; a bridge is no road.
         assert_eq!(ini.road(b"gravelroad"), None);
         assert_eq!(ini.road(b"Wooden"), None);
@@ -134,6 +164,14 @@ mod tests {
         };
         assert_eq!(fields(b"Before"), ("", 0.0, 0.0));
         assert_eq!(fields(b"After"), ("D.tga", 30.0, 0.8));
+        // Of a second file, the ids count on from the first's: 4 and 5.
+        ini.read(b"Bridge B\nEnd\nRoad Later\nEnd\n").unwrap();
+        assert_eq!(ini[ini.road(b"Later").unwrap()].id, 5);
+
+        // A bridge first leaves no road of id 1.
+        let mut ini = RoadsIni::default();
+        ini.read(b"Bridge B\nEnd\nRoad R\nEnd\n").unwrap();
+        assert_eq!(ini.untyped(), None);
 
         let fails = |text: &[u8]| RoadsIni::default().read(text).unwrap_err();
         assert_eq!(

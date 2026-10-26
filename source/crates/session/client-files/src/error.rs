@@ -22,6 +22,24 @@ pub enum ClientFileError {
 #[error("a look's state names the condition `{0}`, of no test")]
 pub struct UntestedCondition(pub DeclaredName);
 
+/// Why an effects file is none the client plays (effects.md, Effects are a format of the
+/// engine).
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum EffectsError {
+    /// Its step is not above 0, or not finite.
+    #[error("its step is not a length of time")]
+    Step,
+    /// The system of this name holds a number not finite, or keys out of order, or none.
+    #[error("the particle system `{0}` holds a number not finite or keys out of order")]
+    System(DeclaredName),
+    /// An entry of the list of this name holds a number not finite.
+    #[error("an entry of the effect `{0}` holds a number not finite")]
+    List(DeclaredName),
+    /// A list or a system names a system of this name, which the file does not hold.
+    #[error("the particle system `{0}` is named and not held")]
+    Unknown(DeclaredName),
+}
+
 /// Why a terrain file is none the client draws (02-engine-core.md, Client): a shape, an index, a
 /// number or a rectangle past what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]

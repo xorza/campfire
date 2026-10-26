@@ -1,6 +1,8 @@
 use std::iter;
 use std::ops::Range;
 
+use campfire_client_files::Spread;
+
 use crate::zero_hour::format::ini::error::IniError;
 
 /// An INI file's text, as the game reads it: bytes as Latin-1 chars, each kept as one, and the
@@ -344,6 +346,31 @@ impl<'a> IniLine<'a> {
         };
         if taken {
             Ok(())
+        } else {
+            Err(IniError::NotListed { line: self.number })
+        }
+    }
+
+    /// The value of a field of a random variable, as `INI::parseGameClientRandomVariable` reads
+    /// it: its low, its high, and its distribution, uniform when it names none; one the game
+    /// draws as 0, `GAUSSIAN`, `TRIANGULAR`, `LOW_BIAS` or `HIGH_BIAS`, is 0
+    /// (`GameClientRandomVariable::getValue`).
+    pub(crate) fn random(&self) -> Result<Spread, IniError> {
+        let spread = Spread {
+            low: self.real_at(1)?,
+            high: self.real_at(2)?,
+        };
+        let Some(distribution) = self.tokens.get(3) else {
+            return Ok(spread);
+        };
+        let drawn = |name: &str| distribution.eq_ignore_ascii_case(name);
+        if ["CONSTANT", "UNIFORM"].into_iter().any(drawn) {
+            Ok(spread)
+        } else if ["GAUSSIAN", "TRIANGULAR", "LOW_BIAS", "HIGH_BIAS"]
+            .into_iter()
+            .any(drawn)
+        {
+            Ok(Spread::ZERO)
         } else {
             Err(IniError::NotListed { line: self.number })
         }

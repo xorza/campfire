@@ -3,11 +3,11 @@ use std::path::Path;
 
 use bevy_math::UVec2;
 use campfire_client_files::{
-    CameraFile, ClientFile, ClientObjects, ClientUnits, HudFile, KeysFile, MapConditions,
-    MapLights, PickingFile, PixelRadius, ShownBars, TeamColors, TerrainFile,
+    CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, HudFile, KeysFile,
+    MapConditions, MapLights, PickingFile, PixelRadius, ShownBars, TeamColors, TerrainFile,
 };
 use campfire_codec::Toml;
-use campfire_common::{MapName, PackageFingerprint};
+use campfire_common::{DeclaredName, MapName, PackageFingerprint};
 use campfire_math::Num;
 use campfire_package::{MapFile, ModeFile, ModeRead, UnitsFile};
 use campfire_package_disk::{PackageDir, PackageWriter, WriteError};
@@ -21,6 +21,7 @@ use crate::texture::dds_file::DdsFile;
 use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::combat_import::CombatImport;
+use crate::zero_hour::effects_import::{EffectSources, EffectsImport, WeaponShot};
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
 use crate::zero_hour::format::map::map_file::ZeroHourMap;
@@ -50,8 +51,11 @@ pub(crate) mod axes;
 pub(crate) mod camera_import;
 pub(crate) mod cliff_walls;
 pub(crate) mod combat_import;
+pub(crate) mod convex_clip;
 pub(crate) mod dropped;
 pub(crate) mod dropped_roads;
+pub(crate) mod effect_drop_cause;
+pub(crate) mod effects_import;
 pub(crate) mod error;
 pub(crate) mod format;
 pub(crate) mod game_path;
@@ -251,14 +255,37 @@ impl ZeroHour {
             roads.insert(name.clone(), imported.road_pieces);
             maps.push(name);
         }
-        // The textures the models and the terrain draw with, each converted once: no other file
-        // of the install is drawn.
+        let start = SkirmishStart::of(&game, &mut object_names)?;
+        let money = game.multiplayer.money()?;
+        let mut object_names = object_names.into_production();
+        let production = ProductionImport::of(&game, &mut object_names);
+        let mut object_names = object_names.into_projectiles();
+        let combat = CombatImport::of(&game, &mut object_names)?;
+        // The systems the projectiles of the weapons the import converts carry.
+        let mut trails = Vec::new();
+        for (name, weapon) in game.weapons.weapons() {
+            let fired = combat.actions.get(&ImportName::latin(name).id("weapon")?);
+            if fired.is_some_and(|fired| fired.delivery.is_some()) {
+                trails.extend(weapon.exhaust.as_deref());
+            }
+        }
+        let effects = EffectsImport::of(EffectSources {
+            systems: &game.particles,
+            lists: &game.effects,
+            trails: &trails,
+            cap: game.game_data.max_particles,
+            texture: |name: &str| road_assets.texture(name),
+        })?;
+        writer.write(EffectsFile::path(), &effects.file.encode())?;
+        losses.extend(effects.dropped.iter().cloned().map(ImportLoss::Effect));
+        // The textures the models, the terrain and the effects draw with, each converted once: no
+        // other file of the install is drawn.
         let drawn = model_textures
             .into_iter()
-            .chain(terrain_textures.keys().cloned());
+            .chain(terrain_textures.keys().cloned())
+            .chain(effects.textures.iter().cloned());
         for (to, path) in texture_files(drawn)? {
-            let kind =
-                TextureKind::of(&path).expect("a model's and a terrain's textures are DDS or TGA");
+            let kind = TextureKind::of(&path).expect("a drawn texture is DDS or TGA");
             // A terrain's texture was read for its size, and is not read again.
             let bytes = match terrain_textures.remove(&path) {
                 Some(read) => read.bytes,
@@ -277,14 +304,20 @@ impl ZeroHour {
             };
             writer.write(to, &ktx2)?;
         }
-        let start = SkirmishStart::of(&game, &mut object_names)?;
-        let money = game.multiplayer.money()?;
-        let mut object_names = object_names.into_production();
-        let production = ProductionImport::of(&game, &mut object_names);
-        let mut object_names = object_names.into_projectiles();
-        let combat = CombatImport::of(&game, &mut object_names)?;
+        effects.name_deaths(&game.objects, &mut looks.units)?;
         combat.complete_looks(&mut looks.units);
-        let looks = ClientUnits::new(looks.units, looks.conditions, looks.objects)?;
+        let delivery = |action: &DeclaredName| match combat.actions.get(action) {
+            None => WeaponShot::Dropped,
+            Some(weapon) => weapon
+                .delivery
+                .as_ref()
+                .map_or(WeaponShot::Shot, |delivery| {
+                    WeaponShot::Projectile(&delivery.projectile)
+                }),
+        };
+        let actions = effects.action_looks(&game.weapons, delivery, &mut looks.units)?;
+        let looks =
+            ClientUnits::new(looks.units, looks.conditions, looks.objects)?.with_actions(actions);
         let upgrades = UpgradeImport::of(&game, object_names.types(), &production, &combat)?;
         writer.write(ClientUnits::path(), &looks.encode())?;
         // Every unit type is made: the maps', the start's, the command sets' and the projectiles
@@ -360,7 +393,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 19;
+    pub const OUTPUT_VERSION: u32 = 26;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

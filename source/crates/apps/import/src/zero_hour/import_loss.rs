@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::zero_hour::animation_import::AnimationDropCause;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::dropped_roads::DroppedRoads;
+use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
 use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel};
 use crate::zero_hour::production_import::ButtonDropCause;
@@ -56,6 +57,9 @@ pub enum ImportLoss {
     /// The condition states of an object's draw module, or of its whole look, the import does not
     /// convert (09-zero-hour.md, A look's draws are its draw modules).
     States(DroppedStates),
+    /// A particle system, a part of one, or a nugget of an effect list, by the system's or the
+    /// list's name, the import does not convert (effects.md, What the slice leaves).
+    Effect(Dropped<EffectDropCause>),
 }
 
 /// What the loss is, then the part of the install it is of, and why.
@@ -130,6 +134,7 @@ impl Display for ImportLoss {
                 "a look's condition states are not imported: {} ({:?}), {} states",
                 states.object, states.cause, states.states
             ),
+            Self::Effect(effect) => write!(f, "an effect is not imported: {effect}"),
         }
     }
 }

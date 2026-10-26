@@ -5,6 +5,7 @@ use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::action_look::ActionLook;
 use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
 use crate::client_unit::{ClientUnit, LookDraw};
@@ -13,9 +14,10 @@ use crate::error::UntestedCondition;
 use crate::object_look::ObjectLook;
 
 /// A package's `client/units.toml`: how each unit type looks, `[units.<type>]`; what each
-/// condition its looks' states name tests of a unit, `[conditions.<name>]`; and each look its
+/// condition its looks' states name tests of a unit, `[conditions.<name>]`; each look its
 /// maps' client objects name, `[objects.<look>]`, which a game may draw otherwise than its units
-/// (09-zero-hour.md, The multiplayer rule for client objects).
+/// (09-zero-hour.md, The multiplayer rule for client objects); and what each action plays,
+/// `[actions.<action>]`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct ClientUnits {
     units: BTreeMap<DeclaredName, ClientUnit>,
@@ -23,6 +25,8 @@ pub struct ClientUnits {
     conditions: BTreeMap<DeclaredName, ConditionTest>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     objects: BTreeMap<DeclaredName, ObjectLook>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    actions: BTreeMap<DeclaredName, ActionLook>,
 }
 
 impl ClientUnits {
@@ -38,6 +42,7 @@ impl ClientUnits {
             units,
             conditions,
             objects,
+            actions: BTreeMap::new(),
         };
         match looks.untested() {
             Some(name) => Err(UntestedCondition(name.clone())),
@@ -55,6 +60,16 @@ impl ClientUnits {
 
     pub const fn objects(&self) -> &BTreeMap<DeclaredName, ObjectLook> {
         &self.objects
+    }
+
+    pub const fn actions(&self) -> &BTreeMap<DeclaredName, ActionLook> {
+        &self.actions
+    }
+
+    /// The looks, each action playing as `actions` says.
+    #[must_use]
+    pub fn with_actions(self, actions: BTreeMap<DeclaredName, ActionLook>) -> Self {
+        Self { actions, ..self }
     }
 
     /// Settles each object look on the map's `conditions`, which hold for the whole match.
@@ -96,13 +111,17 @@ impl<'de> Deserialize<'de> for ClientUnits {
             conditions: BTreeMap<DeclaredName, ConditionTest>,
             #[serde(default)]
             objects: BTreeMap<DeclaredName, ObjectLook>,
+            #[serde(default)]
+            actions: BTreeMap<DeclaredName, ActionLook>,
         }
         let Fields {
             units,
             conditions,
             objects,
+            actions,
         } = Fields::deserialize(deserializer)?;
-        Self::new(units, conditions, objects).map_err(D::Error::custom)
+        let looks = Self::new(units, conditions, objects).map_err(D::Error::custom)?;
+        Ok(looks.with_actions(actions))
     }
 }
 

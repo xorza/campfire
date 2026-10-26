@@ -875,15 +875,27 @@ impl IniObject {
         &self.fight
     }
 
-    /// Its upgrade modules, in the order it gives them.
     /// The slow death a normal death of it most likely takes, as `SlowDeathBehavior::onDie` draws
     /// one by weight among those that apply: of the most weight, the first of a tie; none when
     /// none applies, as it is then destroyed at once.
     pub(crate) fn slow_death(&self) -> Option<&IniDeath> {
-        let applies = self.deaths.iter().filter(|death| death.applies());
+        let applies = self
+            .deaths
+            .iter()
+            .filter(|death| death.effect.is_none() && death.applies());
         applies.rev().max_by_key(|death| death.weight)
     }
 
+    /// The effect list a normal death of it plays: the `DeathFX` of its first `FXListDie` that
+    /// applies and names one (effects.md, What the slice leaves); none when none does.
+    pub(crate) fn death_effect(&self) -> Option<&str> {
+        let effects = self.deaths.iter().filter(|death| death.applies());
+        effects
+            .filter_map(|death| death.effect.as_deref())
+            .find(|effect| !effect.is_empty() && !effect.eq_ignore_ascii_case("none"))
+    }
+
+    /// Its upgrade modules, in the order it gives them.
     pub(crate) fn upgrades(&self) -> &[IniUpgradeModule] {
         &self.upgrades
     }

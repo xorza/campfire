@@ -14,7 +14,6 @@ use campfire_combat::{
     ArmorShare, AttackData, ClipData, CombatData, ModeCombatData, OnDeath, PitchData, ScatterData,
     SplashData, TurretData, WeaponValue,
 };
-use campfire_common::DeclaredName;
 use campfire_mode::{ChoiceData, ListEntry, ModeParam, Offers, OptionData, RelationData};
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AcquireData;

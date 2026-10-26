@@ -13,6 +13,7 @@ pub use crate::zero_hour::animation_import::AnimationDropCause;
 pub use crate::zero_hour::archive_path::ArchivePath;
 pub use crate::zero_hour::dropped::Dropped;
 pub use crate::zero_hour::dropped_roads::{DroppedRoads, RoadDropCause};
+pub use crate::zero_hour::effect_drop_cause::EffectDropCause;
 pub use crate::zero_hour::error::{
     MapError, ModelError, NameClash, NameError, NoPackagePath, TypeError, VersionDifference,
     ZeroHourError,

@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CheckError;
 use crate::pins::{
-    BotBase, BotMatchEnd, DefenseTicks, Fingerprints, FoughtCounts, LookCounts, MapCounts,
-    MissileTicks, ProducedCounts, RangerLook, RoadCounts, SkirmishTicks, SuppliedCounts,
+    BotBase, BotMatchEnd, DefenseTicks, EffectCounts, Fingerprints, FoughtCounts, LookCounts,
+    MapCounts, MissileTicks, ProducedCounts, RangerLook, RoadCounts, SkirmishTicks, SuppliedCounts,
     SupplyTicks, TerrainCounts, UpgradedCounts,
 };
 
@@ -36,6 +36,7 @@ pub(crate) struct Golden {
     pub(crate) produced: ProducedCounts,
     pub(crate) upgraded: UpgradedCounts,
     pub(crate) supplied: SuppliedCounts,
+    pub(crate) effects: EffectCounts,
     pub(crate) fought: FoughtCounts,
     pub(crate) skirmish: SkirmishTicks,
     pub(crate) supply: SupplyTicks,
@@ -62,6 +63,7 @@ pub(crate) struct Measured {
     pub(crate) produced: Option<ProducedCounts>,
     pub(crate) upgraded: Option<UpgradedCounts>,
     pub(crate) supplied: Option<SuppliedCounts>,
+    pub(crate) effects: Option<EffectCounts>,
     pub(crate) fought: Option<FoughtCounts>,
     pub(crate) skirmish: Option<SkirmishTicks>,
     pub(crate) supply: Option<SupplyTicks>,
@@ -126,6 +128,7 @@ impl Measured {
             produced: self.produced?,
             upgraded: self.upgraded?,
             supplied: self.supplied?,
+            effects: self.effects?,
             fought: self.fought?,
             skirmish: self.skirmish?,
             supply: self.supply?,

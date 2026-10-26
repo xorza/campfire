@@ -31,6 +31,16 @@ pub struct ClientUnit {
     /// slot A in each of its sets (09-zero-hour.md, A condition is the game's name for a test).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub weapons: Vec<Vec<DeclaredName>>,
+    /// The effect a unit of its type plays as it dies, by its name in the effects file
+    /// (effects.md, An effect is the client's, from the state it holds).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub death: Option<DeclaredName>,
+    /// The effect a projectile of its type plays where it ends, and the particle system it
+    /// carries as it flies, each by its name in the effects file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end: Option<DeclaredName>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trail: Option<DeclaredName>,
 }
 
 /// The look of one of a type's variations: its draws, and the name of the node its models turn
@@ -73,6 +83,19 @@ pub struct LookState {
     pub key: Option<DeclaredName>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waits_for: Option<DeclaredName>,
+    /// The node of its models a weapon slot's fire effect plays at, by the slot's place among
+    /// the look's weapons, none for a slot whose effect plays at its unit's place
+    /// (effects.md, A shot's effect at its barrel).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fire_bones: Vec<FireBone>,
+}
+
+/// The node `bone` of a state's models, which the fire effect of the weapon slot `slot` plays at.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FireBone {
+    pub slot: u8,
+    pub bone: String,
 }
 
 /// What a draw draws between a state of the key `from` and one of the key `to`, as Zero Hour's
@@ -105,6 +128,9 @@ impl ClientUnit {
             placement_angle: None,
             turret: None,
             weapons: Vec::new(),
+            death: None,
+            end: None,
+            trail: None,
         }
     }
 
@@ -215,6 +241,7 @@ impl LookState {
             rise: None,
             key: None,
             waits_for: None,
+            fire_bones: Vec::new(),
         }
     }
 

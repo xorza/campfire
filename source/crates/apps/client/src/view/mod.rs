@@ -50,6 +50,7 @@ pub(crate) mod camera_rig;
 pub(crate) mod client_data;
 pub(crate) mod clip_clock;
 pub(crate) mod drawing;
+pub(crate) mod effects;
 pub(crate) mod file_material;
 pub(crate) mod float_num;
 pub(crate) mod footing;

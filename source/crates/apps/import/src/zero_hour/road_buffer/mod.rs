@@ -52,21 +52,21 @@ const LEAST_LEFT: f32 = 0.5;
 const LEAST_CURVE: f32 = 0.9;
 
 impl RoadBuffer {
-    /// The pieces of `map`'s segments, of the types of `types`, as the game builds them: each
+    /// The pieces of `map`'s segments, as the game builds them: each
     /// segment added in turn, counting the ends it meets, then each added again in the list's
     /// order, keeping its counts (`addMapObjects`); the ends counted again
     /// (`updateCountsAndFlags`); the junctions inserted (`insertTeeIntersections`); the curves
     /// (`insertCurveSegments`); then the alpha joins (`insertCrossTypeJoins`).
-    pub(crate) fn of(map: &MapRoads, types: &RoadsIni) -> Self {
+    pub(crate) fn of(map: &MapRoads) -> Self {
         Self {
             types: map.types().to_vec(),
             untyped: map.untyped().collect(),
-            ..Self::chained(map.segments(), types)
+            ..Self::chained(map.segments())
         }
     }
 
-    /// The pieces of `segments`, of the types of `types`, as `of` builds them, of no map's types.
-    fn chained(segments: &[RoadSegment], types: &RoadsIni) -> Self {
+    /// The pieces of `segments`, as `of` builds them, of no map's types.
+    fn chained(segments: &[RoadSegment]) -> Self {
         let mut buffer = Self {
             roads: Vec::with_capacity(segments.len()),
             miters: 0,
@@ -75,7 +75,7 @@ impl RoadBuffer {
             untyped: Vec::new(),
         };
         for segment in segments {
-            let road = BufferRoad::of(*segment, types);
+            let road = BufferRoad::of(*segment);
             buffer.add(road, Counting::Count);
         }
         for road in std::mem::take(&mut buffer.roads) {
@@ -120,7 +120,7 @@ impl RoadBuffer {
             };
             for kind in PieceKind::ALL {
                 for piece in of_type().filter(|piece| piece.kind == kind) {
-                    mesh.float(&piece.piece(), ground);
+                    mesh.lay(&piece.piece(), ground);
                     decals.add(&mesh, place);
                 }
             }

@@ -2,9 +2,9 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_client_files::{
-    AnimationMode, ClientModel, ClientUnit, ConditionTest, LookDraw, LookShown, LookState,
-    LookTransition, LookVariant, LookVariation, ModelScale, ModelTop, NodeUpgrade, ObjectLook,
-    SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
+    AnimationMode, ClientModel, ClientUnit, ConditionTest, FireBone, LookDraw, LookShown,
+    LookState, LookTransition, LookVariant, LookVariation, ModelScale, ModelTop, NodeUpgrade,
+    ObjectLook, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
 };
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_package_disk::PackageWriter;
@@ -168,12 +168,13 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
     }
 }
 
-/// The models a look draws on a map of some conditions, and whether the package lacks a model
-/// it names.
+/// The models a look draws on a map of some conditions, whether the package lacks a model it
+/// names, and the bones its weapon slots' fire effects play at.
 #[derive(Debug)]
 struct LookModels {
     models: Vec<ClientModel>,
     skipped: bool,
+    fire_bones: Vec<FireBone>,
 }
 
 /// An object's `SubObjectsUpgrade`: the tag its modifier gives, and the sub-objects it shows,
@@ -349,6 +350,7 @@ impl ModelWriter<'_, '_> {
                     waits_for: (animation.waits_for.as_deref())
                         .map(|key| keys.key(key))
                         .transpose()?,
+                    fire_bones: looked.fire_bones,
                 });
             }
             if states.iter().all(|state| state.models.is_empty()) {
@@ -536,6 +538,7 @@ impl ModelWriter<'_, '_> {
         let mut looked = LookModels {
             models: Vec::new(),
             skipped: false,
+            fire_bones: Vec::new(),
         };
         for DrawnState { model, look } in drawn {
             let Some(model) = model else {
@@ -543,6 +546,26 @@ impl ModelWriter<'_, '_> {
             };
             match self.model(model)? {
                 WrittenModel::Nodes { nodes, bounds } => {
+                    // A slot's fire effect plays at its first barrel's bone, its name and 01, or
+                    // at its bare name for a single barrel (`validateWeaponBarrelInfo`), of the
+                    // first model that holds it.
+                    for (slot, bones) in (0_u8..).zip(&look.weapons) {
+                        let Some(prefix) = &bones.fire_fx else {
+                            continue;
+                        };
+                        if looked.fire_bones.iter().any(|bone| bone.slot == slot) {
+                            continue;
+                        }
+                        let bone = nodes
+                            .pivot_name(&format!("{prefix}01"))
+                            .or_else(|| nodes.pivot_name(prefix));
+                        if let Some(bone) = bone {
+                            looked.fire_bones.push(FireBone {
+                                slot,
+                                bone: bone.to_owned(),
+                            });
+                        }
+                    }
                     let hide = nodes.hidden(look);
                     let top = bounds
                         .top(&hide)

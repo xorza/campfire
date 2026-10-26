@@ -53,6 +53,12 @@ pub(crate) struct IniWeapon {
     /// It names a `ProjectileDetonationOCL`, the objects its projectile creates where it
     /// detonates.
     pub(crate) detonation_objects: bool,
+    /// The effect list it plays as it fires, its `FireFX`; the one where its projectile
+    /// detonates or its shot of no projectile strikes, its `ProjectileDetonationFX`; and the
+    /// particle system its projectile carries, its `ProjectileExhaust`; each none for `NONE`.
+    pub(crate) fire_fx: Option<String>,
+    pub(crate) detonation_fx: Option<String>,
+    pub(crate) exhaust: Option<String>,
 }
 
 /// How a weapon fires faster as it keeps firing, as `FiringTracker` reads its template: the shots
@@ -210,6 +216,9 @@ impl Default for IniWeapon {
             projectile: None,
             stream: false,
             detonation_objects: false,
+            fire_fx: None,
+            detonation_fx: None,
+            exhaust: None,
         }
     }
 }
@@ -237,6 +246,11 @@ impl WeaponIni {
     /// The weapon `name`; none for a name no file defines.
     pub(crate) fn get(&self, name: &str) -> Option<&IniWeapon> {
         self.weapons.get(name)
+    }
+
+    /// Its weapons, by their names.
+    pub(crate) const fn weapons(&self) -> &BTreeMap<String, IniWeapon> {
+        &self.weapons
     }
 }
 
@@ -291,6 +305,9 @@ impl IniWeapon {
             "projectileobject" => self.projectile = none(at.value()?),
             "projectilestreamname" => self.stream = none(at.value()?).is_some(),
             "projectiledetonationocl" => self.detonation_objects = none(at.value()?).is_some(),
+            "firefx" => self.fire_fx = none(at.value()?),
+            "projectiledetonationfx" => self.detonation_fx = none(at.value()?),
+            "projectileexhaust" => self.exhaust = none(at.value()?),
             _ => {}
         }
         Ok(())
@@ -494,6 +511,9 @@ Weapon TankCannon\r
   WeaponSpeed = 400\r
   DelayBetweenShots = 2000\r
   ProjectileObject = TankShell\r
+  FireFX = FX_TankFire\r
+  ProjectileDetonationFX = FX_TankHit\r
+  ProjectileExhaust = NONE\r
   RadiusDamageAffects = ALLIES ENEMIES NEUTRALS\r
   ProjectileCollidesWith = STRUCTURES WALLS\r
 End\r

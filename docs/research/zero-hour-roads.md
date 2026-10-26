@@ -33,6 +33,7 @@ Measured on 26 October 2026, after a player's report of a road hanging in the ai
 - **The game lifts a column whole.** `loadFloat4PtSection` takes, for each column along a piece, the highest cell corner at each sample across it, then sets both of the column's vertices to the highest of them (its `if (true)` branch collapses every column), plus `MAP_HEIGHT_SCALE / 8`. A piece across a slope floats at its low side by the ground's rise across its width.
 - **Tournament Desert.** Of the 3,635 decal vertices, the 25 highest above the ground under them stand 7.0 to 9.9 units above it. The report's: a `DirtRoad` junction, 52 units wide, near game point (1,490, 1,348), where the ground rises about 1.25 units for each 10 across the road; its low vertex stands at 30.08, the ground under it at 20.68, the highest corner of its own cell at 21.88.
 - **The original draws the same.** Its code holds no other path for a road's height, so the original's road hangs there too; its camera, steeper and nearer the ground, shows less of it.
+- **On the ground's triangles.** With each piece split along the cells' sides and diagonals, measured the same day by the Zero Hour check against the ground the client draws: Tournament Desert's decal vertices stand at most 3.4 · 10⁻⁵ off the ground plus the float, where 2,219 of them stood off it before, by up to 9.84; its decal triangles grow from 1,425 to 33,226.
 
 ## The engine
 

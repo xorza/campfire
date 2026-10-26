@@ -33,6 +33,7 @@ mod base_play;
 #[cfg(feature = "internals")]
 pub mod bench;
 mod command_line;
+mod decal_ground;
 mod defense_play;
 mod error;
 mod failure;
@@ -135,6 +136,7 @@ fn check(out: &Path, selection: &PlaySelection) -> Result<Vec<CheckFailure>, Che
     check.production();
     check.upgrades();
     check.supply();
+    check.effects()?;
     check.combat();
     check.plays()
 }

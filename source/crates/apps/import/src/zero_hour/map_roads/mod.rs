@@ -8,10 +8,9 @@ use crate::zero_hour::format::map::map_object::MapObject;
 
 /// A map's roads, as `W3DRoadBuffer::addMapObjects` reads them from its objects, in `f32` as the
 /// game computes them: each object that starts a road and the one after it, when that one ends
-/// it, a segment; those of a type `Roads.ini` names, in the map's order, the types they are, each
-/// once, in the order the game draws them, the last read first, and the count of those of no type
-/// by their template, which the game draws only in a build of test assets (roads.md, A road's
-/// type is `Roads.ini`'s).
+/// it, a segment; those of a type, in the map's order, the types they are, each once, in the
+/// order the game draws them, the last read first, and the count of those of no type by their
+/// template (roads.md, A road's type is `Roads.ini`'s).
 #[derive(Debug)]
 pub(crate) struct MapRoads {
     segments: Vec<RoadSegment>,
@@ -19,11 +18,13 @@ pub(crate) struct MapRoads {
     untyped: BTreeMap<Vec<u8>, usize>,
 }
 
-/// A segment of road: its type, its start and its end, and whether a curve at its start is
-/// tight.
+/// A segment of road: its type, its width in world units and the share of it its texture draws
+/// across, its start and its end, and whether a curve at its start is tight.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct RoadSegment {
     pub(crate) road: RoadId,
+    pub(crate) width: f32,
+    pub(crate) width_in_texture: f32,
     pub(crate) start: RoadEnd,
     pub(crate) end: RoadEnd,
     pub(crate) tight: bool,
@@ -41,9 +42,13 @@ pub(crate) struct RoadEnd {
 /// How far the game moves a segment's end along `x` off its start's point when the two meet
 /// (`addMapObjects`).
 const APART: f32 = 0.25;
+/// The width the game gives a segment before it looks its template up (`DEFAULT_ROAD_SCALE`).
+const UNTYPED_WIDTH: f32 = 8.0;
 
 impl MapRoads {
-    /// The roads of `objects`, a map's, of the types of `roads`.
+    /// The roads of `objects`, a map's, of the types of `roads`: a segment whose template no type
+    /// names is of `roads`' untyped type, `UNTYPED_WIDTH` wide and all its texture across, as the
+    /// game sets every segment before it looks its template up; of no type when there is none.
     pub(crate) fn of(objects: &[MapObject], roads: &RoadsIni) -> Self {
         let mut segments = Vec::new();
         let mut untyped = BTreeMap::new();
@@ -60,7 +65,11 @@ impl MapRoads {
                 continue;
             }
             at += 1;
-            let Some(road) = roads.road(&start.template) else {
+            let (road, width, width_in_texture) = if let Some(road) = roads.road(&start.template) {
+                (road, roads[road].width, roads[road].width_in_texture)
+            } else if let Some(road) = roads.untyped() {
+                (road, UNTYPED_WIDTH, 1.0)
+            } else {
                 *untyped.entry(start.template.clone()).or_insert(0) += 1;
                 continue;
             };
@@ -71,6 +80,8 @@ impl MapRoads {
             }
             segments.push(RoadSegment {
                 road,
+                width,
+                width_in_texture,
                 start: RoadEnd {
                     point: from,
                     angled: start.is_corner_angled(),
@@ -104,7 +115,8 @@ impl MapRoads {
         &self.types
     }
 
-    /// Its segments of no type, by their template, as the import's losses name them.
+    /// Its segments of no type, by their template, as the import's losses name them: none but
+    /// where the types hold no untyped type.
     pub(crate) fn untyped(&self) -> impl Iterator<Item = DroppedRoads> {
         self.untyped.iter().map(|(template, &count)| DroppedRoads {
             road: template.iter().map(|&byte| char::from(byte)).collect(),
