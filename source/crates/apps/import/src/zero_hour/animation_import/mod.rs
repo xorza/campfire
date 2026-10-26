@@ -11,6 +11,7 @@ use gltf_json::{Accessor, Animation, Extras, Index, Node};
 use serde::{Deserialize, Serialize};
 
 use crate::gltf::glb_builder::GlbBuilder;
+use crate::pose::RigidPose;
 use crate::quaternion::Quaternion;
 use crate::zero_hour::axes;
 use crate::zero_hour::error::ZeroHourError;
@@ -32,11 +33,24 @@ pub enum AnimationDropCause {
     NoPivot,
 }
 
-/// What an animation's name gives: its glTF, or why the import drops it.
+/// What an animation's name gives: its glTF and its poses at its ends, or why the import drops
+/// it.
 #[derive(Debug)]
 pub(crate) enum ConvertedAnimation {
-    Glb(Box<GlbBuilder>),
+    Glb {
+        glb: Box<GlbBuilder>,
+        ends: AnimationEnds,
+    },
     Dropped(AnimationDropCause),
+}
+
+/// The pose of each pivot of an animation's hierarchy in its parent's frame, at the animation's
+/// first frame and at its last, as `Anim_Update` places it, which a model's bones at rest read
+/// (`ModelConditionInfo::validateCachedBones`).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct AnimationEnds {
+    pub(crate) first: Vec<RigidPose>,
+    pub(crate) last: Vec<RigidPose>,
 }
 
 /// An animation's glTF as it is built: the animation, its key times by the frames they hold, each
@@ -79,8 +93,12 @@ impl ConvertedAnimation {
         if hierarchy.pivots.len() < 2 {
             return Ok(Self::Dropped(AnimationDropCause::NoPivot));
         }
+        let ends = AnimationEnds::of(&animation, hierarchy);
         let glb = AnimationBuilder::new(&animation).build(hierarchy);
-        Ok(Self::Glb(Box::new(glb)))
+        Ok(Self::Glb {
+            glb: Box::new(glb),
+            ends,
+        })
     }
 }
 
@@ -149,17 +167,9 @@ impl<'a> AnimationBuilder<'a> {
             key_frames.extend(keys.key_frames(frames));
         }
         let key_frames: Vec<u32> = key_frames.into_iter().collect();
-        let pose = pivot.pose();
         let moves: Vec<[f32; 3]> = key_frames
             .iter()
-            .map(|&frame| {
-                let along = channels
-                    .moves
-                    .each_ref()
-                    .map(|keys| keys.as_ref().map_or(0.0, |keys| keys.move_at(frame)));
-                let moved = pose.translation + pose.rotation.rotate(Vec3::from_array(along));
-                axes::y_up(moved.to_array())
-            })
+            .map(|&frame| axes::y_up(moved(pivot, channels, frame).to_array()))
             .collect();
         let output = self.glb.moves(&moves);
         self.track(key_frames, output, target(node, Property::Translation));
@@ -172,15 +182,9 @@ impl<'a> AnimationBuilder<'a> {
             || BTreeSet::from([0, frames - 1]).into_iter().collect(),
             |keys| keys.key_frames(frames),
         );
-        let rotation = pivot.pose().rotation;
         let turns: Vec<[f32; 4]> = key_frames
             .iter()
-            .map(|&frame| {
-                let turn = channels.turn.as_ref().map_or(Quaternion::IDENTITY, |keys| {
-                    Quaternion::from_array(keys.turn_at(frame))
-                });
-                axes::y_up_rotation((rotation * turn).to_array())
-            })
+            .map(|&frame| axes::y_up_rotation(turned(pivot, channels, frame).to_array()))
             .collect();
         let output = self.glb.turns(&turns);
         self.track(key_frames, output, target(node, Property::Rotation));
@@ -212,6 +216,52 @@ impl<'a> AnimationBuilder<'a> {
 }
 
 /// The target of `node`'s `property`.
+impl AnimationEnds {
+    /// The poses of `hierarchy`'s pivots at `animation`'s first frame and at its last: the
+    /// root's own, which `Anim_Update` never moves, and each other's moved and turned by its
+    /// channels.
+    fn of(animation: &W3dAnimation, hierarchy: &Hierarchy) -> Self {
+        let still = PivotChannels::default();
+        let at = |frame: u32| -> Vec<RigidPose> {
+            let pivots = hierarchy.pivots.iter().enumerate();
+            pivots
+                .map(|(at, pivot)| {
+                    let channels = animation.pivots.get(&at).filter(|_| at > 0);
+                    let channels = channels.unwrap_or(&still);
+                    RigidPose {
+                        translation: moved(pivot, channels, frame),
+                        rotation: turned(pivot, channels, frame),
+                    }
+                })
+                .collect()
+        };
+        Self {
+            first: at(0),
+            last: at(animation.frames - 1),
+        }
+    }
+}
+
+/// `pivot`'s place in its parent's frame at `frame`, as `Anim_Update` moves it: its pose's, then
+/// `channels`' move along its own axes.
+fn moved(pivot: &Pivot, channels: &PivotChannels, frame: u32) -> Vec3 {
+    let pose = pivot.pose();
+    let along = channels
+        .moves
+        .each_ref()
+        .map(|keys| keys.as_ref().map_or(0.0, |keys| keys.move_at(frame)));
+    pose.translation + pose.rotation.rotate(Vec3::from_array(along))
+}
+
+/// `pivot`'s turn in its parent's frame at `frame`, a key of `channels`' turn or past its last:
+/// its pose's, then the channels' turn.
+fn turned(pivot: &Pivot, channels: &PivotChannels, frame: u32) -> Quaternion {
+    let turn = channels.turn.as_ref().map_or(Quaternion::IDENTITY, |keys| {
+        Quaternion::from_array(keys.turn_at(frame))
+    });
+    pivot.pose().rotation * turn
+}
+
 fn target(node: Index<Node>, property: Property) -> Target {
     Target {
         extensions: None,

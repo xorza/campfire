@@ -357,6 +357,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let variation = |name: &str, top: f32| LookVariation {
         draws: vec![LookDraw::still(vec![model(name, &[], Some(top))])],
         turret: None,
+        turret_pitch: None,
     };
     let mut units: BTreeMap<_, _> = names
         .into_iter()
@@ -455,6 +456,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         Some(&LookNodes {
             hide: ["tank.flash".to_owned()].into(),
             turret: None,
+            turret_pitch: None,
         })
     );
     let transform = model.get::<Transform>().unwrap();

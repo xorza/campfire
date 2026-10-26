@@ -1,11 +1,14 @@
+use bevy_math::Vec3;
 use campfire_client_files::FireBarrel;
 
+use crate::pose::RigidPose;
+use crate::zero_hour::axes;
 use crate::zero_hour::format::ini::object_ini::{HideShow, StateLook, WeaponBones};
 
 /// What a model's default look reads of it: its sub-objects, in the HLOD's order, each with its
 /// full name, its pivot, whether the model has a node of it, and whether its mesh is hidden by
-/// its flag; and its pivots' names and parents. Names are lowercase.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// its flag; and its pivots' names, parents and poses. Names are lowercase.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct ModelNodes {
     pub(crate) sub_objects: Vec<LookSubObject>,
     pub(crate) pivots: Vec<PivotName>,
@@ -27,10 +30,20 @@ pub(crate) struct NodeChanges {
     pub(crate) hide: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PivotName {
     pub(crate) name: String,
     pub(crate) parent: Option<usize>,
+    /// Its pose in its parent's frame, on W3D's axes.
+    pub(crate) pose: RigidPose,
+}
+
+/// Where a barrel's shot leaves its model at rest: the point of the model's frame where it starts,
+/// and the way it leaves along, its launch bone's `x`, a unit, each on glTF's axes, `y` up.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ModelBarrel {
+    pub(crate) at: Vec3,
+    pub(crate) way: Vec3,
 }
 
 impl ModelNodes {
@@ -152,6 +165,53 @@ impl ModelNodes {
             barrels.push(bone(weapon).as_ref().and_then(|bare| self.pivot(bare)));
         }
         barrels
+    }
+
+    /// The pose of each of its pivots in its model's frame, as `validateCachedBones` places its
+    /// pristine bones: each pivot's pose in its parent's of `animated`, an animation's at one of
+    /// its ends, when it holds one for each pivot, else its own, down its parents.
+    pub(crate) fn pristine(&self, animated: Option<&[RigidPose]>) -> Vec<RigidPose> {
+        let animated = animated.filter(|animated| animated.len() == self.pivots.len());
+        let mut poses: Vec<RigidPose> = Vec::with_capacity(self.pivots.len());
+        for (at, pivot) in self.pivots.iter().enumerate() {
+            let local = animated.map_or(pivot.pose, |animated| animated[at]);
+            let pose = match pivot.parent {
+                Some(parent) => poses[parent].then(local),
+                None => local,
+            };
+            poses.push(pose);
+        }
+        poses
+    }
+
+    /// The launches of a weapon slot's barrels, in the order its shots take them, of each
+    /// barrel's launch bone of the poses `pristine`, or the model's place along its `x` for a
+    /// barrel of none, as `validateWeaponBarrelInfo` keeps the identity for it; none when no
+    /// barrel has one.
+    pub(crate) fn launches(
+        &self,
+        weapon: &WeaponBones,
+        pristine: &[RigidPose],
+    ) -> Vec<ModelBarrel> {
+        let barrels = self.barrel_pivots(weapon, |weapon| &weapon.launch);
+        if barrels.iter().all(Option::is_none) {
+            return Vec::new();
+        }
+        let placed = |pose: RigidPose| ModelBarrel {
+            at: axes::y_up(pose.translation.to_array()).into(),
+            way: axes::y_up(pose.rotation.rotate(Vec3::X).to_array()).into(),
+        };
+        barrels
+            .into_iter()
+            .map(|pivot| placed(pivot.map_or(RigidPose::IDENTITY, |pivot| pristine[pivot])))
+            .collect()
+    }
+
+    /// The point of its pivot `name`, of either case, of the poses `pristine`, on glTF's axes;
+    /// none for a name of no pivot.
+    pub(crate) fn pivot_point(&self, name: &str, pristine: &[RigidPose]) -> Option<Vec3> {
+        let pose = pristine[self.pivot(name)?];
+        Some(axes::y_up(pose.translation.to_array()).into())
     }
 
     /// The name of its pivot `name`, of either case, as its node is named.

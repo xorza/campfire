@@ -1,3 +1,4 @@
+use campfire_combat::{BarrelData, UnitOffset};
 use campfire_projectiles::{CruiseData, ProjectileHits, SteerData};
 use campfire_values::FilterData;
 
@@ -101,7 +102,8 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
     };
     let weapon = |name: &str| of(name).map(|converted| converted.weapon);
     // The rifle's 100 ms are ⌈100 × 0.03⌉ = 3 frames, written back as ⌊3 × 100 / 3⌋ = 100;
-    // its reload's 700 ms are 21 frames, 700.
+    // its reload's 700 ms are 21 frames, 700; of no aim delta, it aims within the least, 0.035
+    // radians.
     let own = ImportedWeapon::own;
     let decimal = |value: i64| Ranked::One(Number::Value(Scalar::Decimal(Num::int(value))));
     let range = |meters: i64| Ranked::One(RangeField::Range(ActionRange::meters(Num::int(meters))));
@@ -127,6 +129,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
             speed: None,
             streak: None,
             pre_attack: None,
+            aim_deg: Some(ImportedWeapon::least_aim()),
         },
         delivery: None,
     };
@@ -134,7 +137,8 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
     assert!(of("RangerRifle").unwrap().fired.is_none());
     // The cannon fires its shell, which deals its damage within 5 m of where it ends to
     // every relation, its own unit spared, of no `SELF`; it scatters 10 m more at infantry,
-    // and reaches from 15° below to 15° above. Its 2,000 ms are 60 frames, 2,000.
+    // reaches from 15° below to 15° above, and aims within 30°. Its 2,000 ms are 60 frames,
+    // 2,000.
     let cannon = of("TankCannon").unwrap();
     assert_eq!(
         cannon.weapon,
@@ -159,6 +163,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
                 speed: None,
                 streak: None,
                 pre_attack: None,
+                aim_deg: Some(Num::int(30)),
             },
             delivery: None,
         }
@@ -684,4 +689,62 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
         Err(ZeroHourError::Name(NameError::Clash(NameClash { first, second })))
             if first == "TankShell_Cannon" && second == "TankShell"
     ));
+}
+
+#[test]
+fn a_types_weapons_that_fire_a_projectile_take_their_slots_barrels() {
+    // The hunter's primary slot fires the Tank Hunter's missile, then the buggy's rocket of its
+    // upgraded set; its secondary a weapon of no projectile, then the Tank Hunter's again. The
+    // primary's one barrel goes to both of its weapons; the secondary's to none, as its first
+    // weapon fires no projectile and its second takes the primary's already. A type its model
+    // gives no bones takes none.
+    let mut ini = WeaponIni::default();
+    ini.read(MISSILE_WEAPONS.as_bytes()).unwrap();
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[DEFAULT_OBJECTS, MISSILES]),
+        ..ZeroHourRules::default()
+    };
+    rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+    let id = |name: &str| DeclaredName::new(&format!("weapon_{}", name.to_lowercase())).unwrap();
+    let delivered = |name: &str, delivers: bool| {
+        let mut weapon = ImportedWeapon::of(ini.get(name).unwrap(), &rules, &id(name))
+            .unwrap()
+            .weapon;
+        weapon.delivery =
+            delivers.then(|| ProjectileDeliveryData::one(DeclaredName::new("missile").unwrap()));
+        (id(name), weapon)
+    };
+    let slots = vec![
+        vec![id("TankHunter"), id("BuggyRocket")],
+        vec![id("OneShot"), id("TankHunter")],
+    ];
+    let combat = CombatImport {
+        actions: BTreeMap::from([
+            delivered("TankHunter", true),
+            delivered("BuggyRocket", true),
+            delivered("OneShot", false),
+        ]),
+        weapon_slots: BTreeMap::from([
+            (TypeName::named("hunter"), slots.clone()),
+            (TypeName::named("bare"), slots),
+        ]),
+        ..CombatImport::default()
+    };
+    let barrel = |x: i64| {
+        let at = UnitOffset::new([x, 2, 0].map(Num::int)).unwrap();
+        BarrelData::new(at, [Num::ONE, Num::ZERO, Num::ZERO]).unwrap()
+    };
+    let bones = ModelBones {
+        barrels: [vec![barrel(1)], vec![barrel(2)], vec![barrel(3)]],
+        ..ModelBones::default()
+    };
+    let barrels = combat.barrels(&BTreeMap::from([(TypeName::named("hunter"), bones)]));
+    let hunter = BarrelsData(BTreeMap::from([
+        (id("BuggyRocket"), vec![barrel(1)]),
+        (id("TankHunter"), vec![barrel(1)]),
+    ]));
+    assert_eq!(
+        barrels,
+        BTreeMap::from([(TypeName::named("hunter"), hunter)])
+    );
 }

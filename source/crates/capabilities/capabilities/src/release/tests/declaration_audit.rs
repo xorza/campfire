@@ -14,7 +14,7 @@ use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, CastSpends};
-use campfire_combat::{ClipShots, ShotStreak};
+use campfire_combat::{BarrelTurns, ClipShots, ShotStreak};
 use campfire_common::EnumAll;
 use campfire_declarations::{
     Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
@@ -501,14 +501,14 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     // six parts of a player, its bounty share and its commanded units among them, the mode's
     // three of the match, the 38 of a unit, the core's `Variation` and `Leaving`, production's
     // `Leader`, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
-    // production's `StatusTags`, combat's `TurretAngle`, navigation's `ArrivedAt`, `AsideDepth`
-    // and `Hemmed`, and the mode's `IncomeClock` among them, and the 67 books, 15 of the core's,
-    // its variations among them, interaction's two, combat's armors, turrets and weapons, navigation's walkers, unit types'
+    // production's `StatusTags`, combat's `TurretAim`, navigation's `ArrivedAt`, `AsideDepth`
+    // and `Hemmed`, and the mode's `IncomeClock` among them, and the 68 books, 15 of the core's,
+    // its variations among them, interaction's two, combat's armors, turrets, barrels and weapons, navigation's walkers, unit types'
     // navigation and crowd rule, orders' scans, production's trains, researches, gathers and spawns, stats' type upgrades, the
     // mode's victory, bounty, incomes and inputs, and progression's experience among them.
     assert_eq!(audit.kinds.len(), 4);
     assert_eq!(audit.parts.len(), 50);
-    assert_eq!(audit.books.len(), 67);
+    assert_eq!(audit.books.len(), 68);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 15);
     // The observers, the runs out of the schedule and the parts a server derives, which the
@@ -572,6 +572,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
         server,
         [
             (type_name::<Experience>(), type_name::<TrackLevels>()),
+            (type_name::<ActionSlots>(), type_name::<BarrelTurns>()),
             (type_name::<ActionSlots>(), type_name::<ClipShots>()),
             (type_name::<ActionSlots>(), type_name::<ShotStreak>()),
             (type_name::<UnitEntity>(), type_name::<SeenBy>()),

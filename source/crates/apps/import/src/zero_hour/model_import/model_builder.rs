@@ -74,6 +74,7 @@ impl ModelBuilder {
                 .map(|pivot| PivotName {
                     name: pivot.name.clone(),
                     parent: pivot.parent,
+                    pose: pivot.pose(),
                 })
                 .collect(),
         };

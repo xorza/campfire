@@ -71,6 +71,7 @@ pub(crate) mod look_flags;
 pub(crate) mod map_import;
 pub(crate) mod map_roads;
 pub(crate) mod model_assets;
+pub(crate) mod model_bones;
 pub(crate) mod model_import;
 pub(crate) mod model_nodes;
 pub(crate) mod model_writer;
@@ -316,6 +317,7 @@ impl ZeroHour {
                 }),
         };
         let actions = effects.action_looks(&game.weapons, delivery, &mut looks.units)?;
+        let looks_bones = looks.bones;
         let looks =
             ClientUnits::new(looks.units, looks.conditions, looks.objects)?.with_actions(actions);
         let upgrades = UpgradeImport::of(&game, object_names.types(), &production, &combat)?;
@@ -332,7 +334,10 @@ impl ZeroHour {
             start_money: &money,
         };
         writer.write(ModeFile::path(), rules_package::mode_data(mode).as_bytes())?;
+        let barrels = combat.barrels(&looks_bones);
         let additions = TypeAdditions {
+            barrels: &barrels,
+            bones: &looks_bones,
             weapon: &combat.weapons,
             command: &production.commands,
             production: &production.sections,
@@ -393,7 +398,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 28;
+    pub const OUTPUT_VERSION: u32 = 32;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

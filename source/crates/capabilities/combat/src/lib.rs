@@ -31,6 +31,8 @@ use crate::volley::{GoingOff, Volley};
 mod armor;
 mod attack_data;
 mod attacks;
+mod barrel_turns;
+mod barrels;
 mod clip_shots;
 mod combat_api;
 mod combat_book;
@@ -64,6 +66,7 @@ mod streak_shots;
 mod turret;
 mod type_armor;
 mod unanswered_deaths;
+mod unit_offset;
 mod volley;
 mod weapon;
 mod weapon_names;
@@ -76,6 +79,9 @@ pub use crate::attack_data::{
     SplashData, StageData, StreakData, WeaponValue,
 };
 pub use crate::attacks::Attacks;
+pub use crate::barrel_turns::BarrelTurns;
+pub use crate::barrels::Barrels;
+pub use crate::barrels::barrels_data::{BarrelData, BarrelsData};
 pub use crate::clip_shots::ClipShots;
 pub use crate::combat_api::CombatApi;
 pub use crate::combat_book::CombatBook;
@@ -100,10 +106,11 @@ pub use crate::recent_attackers::RecentAttackers;
 pub use crate::respawn::Respawn;
 pub use crate::shot_streak::ShotStreak;
 pub use crate::turret::Turret;
-pub use crate::turret::turret_angle::TurretAngle;
-pub use crate::turret::turret_data::{TurretData, TurretPatch};
+pub use crate::turret::turret_aim::TurretAim;
+pub use crate::turret::turret_data::{TurretData, TurretPatch, TurretPitchData};
 pub use crate::type_armor::{TaggedArmor, TypeArmor};
 pub use crate::unanswered_deaths::{DeathCall, OnUnitDeath, UnansweredDeaths};
+pub use crate::unit_offset::UnitOffset;
 pub use crate::weapon::{
     ClipRule, OuterRing, Pitch, PreAttackRule, Rate, Scatter, Splash, Streak, Weapon, WeaponDamage,
 };
@@ -183,10 +190,16 @@ impl Module for Combat {
         d.section::<CombatData>();
         d.section::<TurretData>();
         d.section::<ModeCombatData>();
-        d.component::<TurretAngle>();
-        d.timed::<TurretAngle>();
+        d.component::<TurretAim>();
+        d.timed::<TurretAim>();
         d.book::<ById<UnitType, Turret>>(Turret::book);
-        d.part::<BodyUnit, TurretAngle>(|at| at.of_type::<Turret>().map(|_| TurretAngle::REST));
+        d.part::<BodyUnit, TurretAim>(|at| at.of_type::<Turret>().map(TurretAim::rest));
+        d.section::<BarrelsData>();
+        d.book::<ById<UnitType, Barrels>>(Barrels::book);
+        d.component::<BarrelTurns>();
+        // A unit with slots turns the barrels of its weapons on a server, which alone launches;
+        // a client never holds it.
+        d.server_part::<ActionSlots, BarrelTurns>();
         d.component::<Kept>();
         d.component::<Life>();
         d.component::<RecentAttackers>();
@@ -258,9 +271,10 @@ impl Module for Combat {
     /// damage, death and despawn, its attackers, its toggles' pay and its streak are the
     /// server's: a predicting client deals no damage, as its pools and its deaths come from the
     /// server, despawns no unit, forgets no attacker it never held, pays no toggle and counts no
-    /// streak; it predicts a respawn that is due. The turrets' aim, the slow weapons' hits, the
-    /// pay of toggles that cost an attack and the streaks install only in a match whose books
-    /// have them (02-engine-core.md, Books before the install).
+    /// streak; it predicts a respawn that is due. The server gives each shot of a weapon of
+    /// barrels its launch once it struck. The turrets' aim, the slow weapons' hits, the pay of
+    /// toggles that cost an attack, the barrels and the streaks install only in a match whose
+    /// books have them (02-engine-core.md, Books before the install).
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         let turrets = cx
             .book::<ById<UnitType, Turret>>()
@@ -268,6 +282,9 @@ impl Module for Combat {
         let slow = cx
             .book::<ById<ActionId, Weapon>>()
             .is_some_and(|weapons| weapons.values().any(|weapon| weapon.speed.is_some()));
+        let barrels = cx
+            .book::<ById<UnitType, Barrels>>()
+            .is_some_and(|barrels| !barrels.is_empty());
         let streaks = cx
             .book::<ById<ActionId, Weapon>>()
             .is_some_and(|weapons| weapons.values().any(|weapon| weapon.streak.is_some()));
@@ -317,6 +334,12 @@ impl Module for Combat {
             cx.server(
                 CombatSystems::Hits,
                 Attacks::land_held.before(Attacks::take_hits),
+            );
+        }
+        if barrels {
+            cx.server(
+                CombatSystems::Strike,
+                BarrelTurns::launch.after(Attacks::strike::<ServerForm>),
             );
         }
         if streaks {
@@ -377,8 +400,8 @@ pub mod internals {
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
     /// homing projectile it fires, if it fires one, where its rate and its damage come from, the
     /// stat that speeds its own period, its clip, its cost in pools and in a player resource, and
-    /// its splash, its scatter's radius, its bound of pitch, its speed and its streak, at its one
-    /// rank.
+    /// its splash, its scatter's radius, its bound of pitch, its speed, its streak, its pre-attack
+    /// and the bearing its attacker aims within, at its one rank.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct TestWeapon {
         pub aim: Filter,
@@ -399,6 +422,7 @@ pub mod internals {
         pub speed: Option<Speed>,
         pub streak: Option<Streak>,
         pub pre_attack: Option<PreAttackRule>,
+        pub aim_deg: Option<Num>,
     }
 
     impl TestWeapon {
@@ -424,6 +448,7 @@ pub mod internals {
                 speed: None,
                 streak: None,
                 pre_attack: None,
+                aim_deg: None,
             }
         }
     }
@@ -467,6 +492,7 @@ pub mod internals {
                         speed: weapon.speed,
                         streak: weapon.streak,
                         pre_attack: weapon.pre_attack,
+                        aim: weapon.aim_deg,
                     },
                 );
             });
@@ -558,6 +584,7 @@ pub mod internals {
         scatter: Option<Num>,
         pitch: Option<[Num; 2]>,
         speed: Option<Speed>,
+        aim: Option<Num>,
     }
 
     /// A test unit's combat values: the life pool it starts with, whether it stays when it dies,
@@ -592,6 +619,7 @@ pub mod internals {
                 scatter: None,
                 pitch: None,
                 speed: None,
+                aim: None,
             }
         }
 
@@ -615,6 +643,7 @@ pub mod internals {
                 scatter: self.scatter,
                 pitch: self.pitch.map(|[low, high]| Pitch::of(low, high)),
                 speed: self.speed,
+                aim_deg: self.aim,
                 min_range: self.min_range.map(|meters| Distance::new(meters).unwrap()),
                 ..TestWeapon::new(
                     Filter::of_match_relations(world, RelationSet::Enemies),
@@ -733,6 +762,20 @@ pub mod internals {
             Self {
                 arms: Some(Arms {
                     pitch: Some([low, high]),
+                    ..arms
+                }),
+                ..self
+            }
+        }
+
+        /// The same unit, which turns toward its weapon's target until it faces it within `aim`
+        /// degrees.
+        #[must_use]
+        pub fn aiming(self, aim: Num) -> Self {
+            let arms = self.arms.expect("an aiming unit is armed");
+            Self {
+                arms: Some(Arms {
+                    aim: Some(aim),
                     ..arms
                 }),
                 ..self

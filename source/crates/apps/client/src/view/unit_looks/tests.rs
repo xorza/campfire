@@ -81,6 +81,7 @@ fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
     let look_nodes = |hide: &[&str]| LookNodes {
         hide: hide.iter().map(|&name| name.to_owned()).collect(),
         turret: None,
+        turret_pitch: None,
     };
     assert_eq!(
         paths(types[0]).unwrap(),
@@ -125,6 +126,7 @@ fn a_unit_of_a_type_of_variations_draws_its_variations_look_when_the_look_has_as
     let variation = |name: &str, top: f32, turret: Option<&str>| LookVariation {
         draws: vec![LookDraw::still(vec![model(name, top)])],
         turret: turret.map(str::to_owned),
+        turret_pitch: turret.map(|turret| format!("{turret}.elevation")),
     };
     let varied = |own: &str, variations: Vec<LookVariation>| ClientUnit {
         variations,
@@ -191,12 +193,14 @@ fn a_unit_of_a_type_of_variations_draws_its_variations_look_when_the_look_has_as
     assert_eq!(drawn(technical, Some(1)), drawn_as("two", 2.0));
     assert_eq!(drawn(technical, None), drawn_as("technical", 0.5));
     assert_eq!(drawn(technical, Some(2)), drawn_as("technical", 0.5));
-    // The first variation turns its own node, and the second none.
+    // The first variation turns and pitches its own nodes, and the second none.
     let turret = |place| {
         let models = looks.look(technical, Some(Variation::new(place))).unwrap();
-        models[0].nodes.turret.as_deref().map(str::to_owned)
+        let nodes = &models[0].nodes;
+        [&nodes.turret, &nodes.turret_pitch].map(|node| node.as_deref().map(str::to_owned))
     };
-    assert_eq!([turret(0), turret(1)], [Some("gun".to_owned()), None]);
+    let gun = ["gun", "gun.elevation"].map(|node| Some(node.to_owned()));
+    assert_eq!([turret(0), turret(1)], [gun, [None, None]]);
     // The jeep's three looks of two variations, and the truck's two of none, are logged, and
     // each of their units draws its own; the tank's look, which does not vary, is its every
     // variation's.
@@ -403,7 +407,7 @@ fn a_models_upgrade_shows_and_hides_its_nodes_over_its_states_while_its_unit_hol
     ]);
     let source = ModelSource {
         package: PackageIndex::MODE,
-        turret: None,
+        turret: TurretNames::of(None, None),
         known: Some(&known),
     };
     let [model] = <[LookModel; 1]>::try_from(LookModel::all(source, &[tank])).unwrap();

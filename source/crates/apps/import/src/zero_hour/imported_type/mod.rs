@@ -1,6 +1,8 @@
 use std::num::NonZeroU32;
 
-use campfire_combat::{CombatData, CombatPatch, OnDeath, TaggedArmorData, TurretData, TurretPatch};
+use campfire_combat::{
+    CombatData, CombatPatch, OnDeath, TaggedArmorData, TurretData, TurretPatch, TurretPitchData,
+};
 use campfire_common::DeclaredName;
 use campfire_declarations::SectionWriter;
 use campfire_geometry::BodyBox;
@@ -15,11 +17,12 @@ use campfire_values::{EngineStat, Stat};
 
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::format::game_float;
-use crate::zero_hour::format::ini::object_ini::fight_data::BodyKind;
+use crate::zero_hour::format::ini::object_ini::fight_data::{BodyKind, IniTurretPitch};
 use crate::zero_hour::format::ini::object_ini::ini_supply::IniSpawn;
 use crate::zero_hour::format::ini::object_ini::{GeometryShape, IniObject};
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
+use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
@@ -222,9 +225,15 @@ impl ImportedType {
             .map(|turret| {
                 let turn_rate = num(turret.turn_rate)?;
                 let turns = turn_rate > Num::ZERO;
+                let pitch = turret
+                    .allows_pitch
+                    .then(|| Self::pitch(turret.pitch))
+                    .transpose()?
+                    .flatten();
                 turns
                     .then(|| TurretPatch {
                         turn_rate: Some(turn_rate),
+                        pitch,
                         ..TurretPatch::default()
                     })
                     .ok_or(TypeError::Turret)
@@ -327,14 +336,29 @@ impl ImportedType {
         }))
     }
 
+    /// The pitch of a turret of `AllowsPitch` (04-capabilities/combat.md, A turret may pitch):
+    /// its fire pitch when above 0, as `TurretAIAimTurretState::update` takes one; none for a
+    /// pitch rate not above 0, which never turns the pitch; an error for an angle past a quarter
+    /// turn either way.
+    fn pitch(pitch: IniTurretPitch) -> Result<Option<TurretPitchData>, TypeError> {
+        if pitch.rate <= 0.0 {
+            return Ok(None);
+        }
+        let fire = (pitch.fire > 0.0).then(|| num(pitch.fire)).transpose()?;
+        let data =
+            TurretPitchData::new(num(pitch.rate)?, fire, num(pitch.least)?, num(pitch.rest)?);
+        data.map(Some).ok_or(TypeError::Turret)
+    }
+
     /// Its idle scan, which a type of a weapon gives.
     pub(crate) const fn acquire(&self) -> Option<&AcquirePatch> {
         self.acquire.as_ref()
     }
 
     /// Writes each section it gives into `writer`, a unit type's table: whole, or the patch of
-    /// what the install gives.
-    pub(crate) fn write(&self, writer: &mut SectionWriter) {
+    /// what the install gives, its turret turning and pitching about the pivots of `bones`, the
+    /// bones its model gives.
+    pub(crate) fn write(&self, writer: &mut SectionWriter, bones: Option<&ModelBones>) {
         if let Some(pools) = &self.pools {
             writer.section(pools);
         }
@@ -354,7 +378,16 @@ impl ImportedType {
             writer.patch::<CombatData>(combat);
         }
         if let Some(turret) = &self.turret {
-            writer.patch::<TurretData>(turret);
+            let pivot = bones.and_then(|bones| bones.pivot);
+            let pitch_pivot = bones.and_then(|bones| bones.pitch_pivot);
+            let turret = TurretPatch {
+                pivot,
+                pitch: turret
+                    .pitch
+                    .map(|pitch| pitch.about(pitch_pivot.unwrap_or_default())),
+                ..turret.clone()
+            };
+            writer.patch::<TurretData>(&turret);
         }
         if let Some(bounty) = &self.bounty {
             writer.section(bounty);

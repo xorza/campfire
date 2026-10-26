@@ -1,8 +1,12 @@
+use campfire_actions::{ActionSlots, SlotKind};
 use campfire_capabilities::Match;
 use campfire_combat::internals::Armed;
-use campfire_combat::{Combat, OnDeath};
+use campfire_combat::{Barrels, Combat, OnDeath, Turret, TurretData, TurretPitchData, UnitOffset};
+use campfire_common::DeclaredName;
+use campfire_declarations::ById;
 use campfire_math::{Num, Vec3};
 use campfire_projectiles::*;
+use campfire_sim::MatchRate;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_stats::Stats;
@@ -325,4 +329,84 @@ fn a_missile_that_tracks_no_target_flies_to_where_it_stood_and_ends_there() {
     game.step();
     assert_eq!(standing(&game), None);
     assert_eq!(Stats::health(&game, target), 100);
+}
+
+#[test]
+fn a_steered_missile_leaves_its_next_barrel_as_its_turret_pitches_and_turns_it() {
+    // A shooter facing 0° at the origin, of a turret turning 6° a tick about (1, 0, 0) and
+    // pitching 30° a tick to its fire pitch of 45° about (0, 2, 0), at a target 10 m along −z, 90°
+    // round. Its first barrel, at (1, 2, 0) along `x`, pitched 45° about its pivot: (c, 2 + s, 0),
+    // c = s = √½; turned 90° about the turret's: (c − 1, 2 + s, 0) to (0, 2 + s, 1 − c), so
+    // (1, 2 + s, 1 − c) = (1, 2.7071068, 0.2928932), along (0, s, −c), up and toward the target,
+    // which lies below it, so no climb raises it. The second barrel, (1, 2, 1), leaves 1 m along
+    // `x` from the first after the turn, at (2, 2.7071068, 0.2928932), with the next shot.
+    let data = missile(steer(1350).straight(Num::int(100)).build().unwrap());
+    let mut game = volley_match();
+    let missile_type = Units::load_type(
+        &mut game,
+        TypeScope::Mode,
+        "missile",
+        &UnitTypeCore::default(),
+    );
+    Projectiles::load_type(&mut game, missile_type, &data);
+    let shooter = Armed::melee(Num::int(100), Num::int(20), 2, 4, Num::int(30))
+        .ranged(missile_type)
+        .on_death(OnDeath::Stay)
+        .load(&mut game);
+    let rate = *game.resource::<MatchRate>();
+    let pitch = TurretPitchData::new(Num::int(900), Some(Num::int(45)), Num::ZERO, Num::ZERO)
+        .unwrap()
+        .about(UnitOffset::new([0, 2, 0].map(Num::int)).unwrap());
+    let turret = TurretData::new(
+        Num::int(180),
+        Num::int(2),
+        DeclaredName::new("weapon").unwrap(),
+    )
+    .unwrap()
+    .about(UnitOffset::new([1, 0, 0].map(Num::int)).unwrap())
+    .pitched(pitch);
+    Units::give_type(
+        &mut game,
+        shooter,
+        Turret::of(&turret, SlotKind::new(0), rate),
+    );
+    let slots = game
+        .resource::<ById<UnitType, ActionSlots>>()
+        .get(shooter)
+        .unwrap();
+    let weapon = slots.slot(0).unwrap().action.unwrap();
+    let barrel = |x: i32, y: i32, z: i32| [Vec3::from((x, y, z)), Vec3::from((1, 0, 0))];
+    let barrels = Barrels::of_weapon(weapon, &[barrel(1, 2, 0), barrel(1, 2, 1)]);
+    Units::give_type(&mut game, shooter, barrels);
+    let round = target().load(&mut game);
+    let shooter = Spawn::of(shooter, (0, 0, 0)).place(&mut game);
+    let target = Spawn::of(round, (0, 0, -10))
+        .team(Team::new(1))
+        .place(&mut game);
+    Combat::attack(&mut game, shooter, target);
+    let launched = |game: &mut Match, count: usize| {
+        let mut ticks = 0;
+        while Projectiles::projectiles(game).len() < count {
+            game.step();
+            ticks += 1;
+            assert!(ticks < 30, "no missile launched");
+        }
+        *Projectiles::projectiles(game).last().unwrap()
+    };
+    // Each coordinate within 2⁻²⁰ of its decimals, past the rounding of the two turns' sines.
+    let first = launched(&mut game, 1);
+    assert!(
+        near(first, ["1", "2.7071068", "0.2928932"], 1 << 4),
+        "{first:?}"
+    );
+    let heading = state(&mut game).3;
+    assert!(
+        near(heading, ["0", "0.7071068", "-0.7071068"], 1 << 4),
+        "{heading:?}"
+    );
+    let second = launched(&mut game, 2);
+    assert!(
+        near(second, ["2", "2.7071068", "0.2928932"], 1 << 4),
+        "{second:?}"
+    );
 }

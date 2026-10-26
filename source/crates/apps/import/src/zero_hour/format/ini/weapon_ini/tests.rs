@@ -17,6 +17,7 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
             range: 100.0,
             speed: IniWeapon::INSTANT,
             pitch: [-180.0, 180.0],
+            aim_delta: 0.0,
             laser: false,
             anti_ground: true,
             affects: RadiusAffects::DEFAULT,
@@ -40,7 +41,7 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
         }
     );
     // The cannon's shell detonates on structures and walls, and its radius damages every
-    // relation but its own unit; its pitch is read in degrees.
+    // relation but its own unit; its pitch and its aim are read in degrees.
     let cannon = ini.get("TankCannon").unwrap();
     assert_eq!(cannon.projectile.as_deref(), Some("TankShell"));
     // Its effects: its fire's and its hit's lists, and no exhaust, of `NONE`.
@@ -48,7 +49,7 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
         [&cannon.fire_fx, &cannon.detonation_fx, &cannon.exhaust].map(Option::as_deref),
         [Some("FX_TankFire"), Some("FX_TankHit"), None]
     );
-    assert_eq!(cannon.pitch, [-15.0, 15.0]);
+    assert_eq!((cannon.pitch, cannon.aim_delta), ([-15.0, 15.0], 30.0));
     let collides = CollideMask {
         walls: true,
         ..CollideMask::DEFAULT

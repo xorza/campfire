@@ -14,7 +14,6 @@ use bevy::world_serialization::{WorldAssetRoot, WorldSerializationPlugin};
 use campfire_client_files::{
     ClientModel, ClientObjects, ClientUnits, ModelScale, ObjectLook, TeamColors,
 };
-use campfire_math::Num;
 use campfire_units::HeightGrid;
 use campfire_values::PackagePath;
 
@@ -142,6 +141,7 @@ fn a_model_that_replaces_another_shows_as_it_is_dressed_and_a_new_state_hides_ag
     let nodes = |hide: &[&str]| LookNodes {
         hide: hide.iter().map(|&name| name.to_owned()).collect(),
         turret: None,
+        turret_pitch: None,
     };
     // A model of the state before, shown, and the one of the new state, hidden as it loads.
     let world = app.world_mut();
@@ -353,6 +353,7 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
     let look_nodes = |hide: &[&str]| LookNodes {
         hide: hide.iter().map(|&node| node.to_owned()).collect(),
         turret: None,
+        turret_pitch: None,
     };
     let scaled = |scale: f32| Transform::from_scale(Vec3::splat(scale));
     assert_eq!(placed.len(), 2);
@@ -376,15 +377,17 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
 #[test]
 fn a_dressing_hides_the_named_nodes_and_finds_the_turret() {
     let mut world = World::new();
-    let [turret, flash, hull, other] = [(); 4].map(|()| world.spawn_empty().id());
-    // It hides the flash and a decal, and turns the turret.
+    let [turret, elevation, flash, hull, other] = [(); 5].map(|()| world.spawn_empty().id());
+    // It hides the flash and a decal, turns the turret and pitches its elevation.
     let look_nodes = LookNodes {
         hide: ["tank.decal".to_owned(), "tank.flash".to_owned()].into(),
         turret: Some("tank.turret".into()),
+        turret_pitch: Some("tank.elevation".into()),
     };
     let node = |entity, name| Node { entity, name };
     let nodes = [
         node(turret, Some("tank.turret")),
+        node(elevation, Some("tank.elevation")),
         node(flash, Some("tank.flash")),
         node(hull, Some("tank.hull")),
         node(other, None),
@@ -394,29 +397,54 @@ fn a_dressing_hides_the_named_nodes_and_finds_the_turret() {
         Dressing {
             hidden: vec![flash],
             turret: Some(turret),
+            turret_pitch: Some(elevation),
         }
     );
     // A look of no turret turns none.
     let still = LookNodes {
         turret: None,
+        turret_pitch: None,
         ..look_nodes
     };
-    assert_eq!(Dressing::of(&still, nodes.into_iter()).turret, None);
+    let dressing = Dressing::of(&still, nodes.into_iter());
+    assert_eq!([dressing.turret, dressing.turret_pitch], [None, None]);
 }
 
 #[test]
-fn a_turret_node_turns_about_the_models_up_from_its_rest() {
-    // A node at rest tilted 10° about x, turned 90°: the tilt, then a quarter turn about up,
-    // so its forward along −z points along −x.
-    let rest = Quat::from_rotation_x(10_f32.to_radians());
-    let node = TurretNode {
-        node: Entity::PLACEHOLDER,
-        rest,
+fn a_turrets_nodes_turn_about_their_own_up_and_side_from_their_rest() {
+    // A turret node at rest tilted 10° about x, turned 90°: a quarter turn about its own up
+    // after the tilt, so its forward, +x, points along the tilted −z. Its elevation at rest
+    // turned 90° about up, raised 30°: about its own side, its forward rises 30° along −z.
+    let tilt = Quat::from_rotation_x(10_f32.to_radians());
+    let quarter = Quat::from_rotation_y(FRAC_PI_2);
+    let mut world = World::new();
+    let [turret, elevation] = [(); 2].map(|()| world.spawn_empty().id());
+    let nodes = TurretNodes {
+        angle: Some(TurretNode {
+            node: turret,
+            rest: tilt,
+        }),
+        pitch: Some(TurretNode {
+            node: elevation,
+            rest: quarter,
+        }),
     };
-    let turned = node.rotation(TurretAngle::of(Num::int(90)));
-    assert!(turned.abs_diff_eq(Quat::from_rotation_y(FRAC_PI_2) * rest, 1e-6));
-    assert!((turned * rest.inverse() * Vec3::NEG_Z).abs_diff_eq(Vec3::NEG_X, 1e-6));
-    assert_eq!(node.rotation(TurretAngle::REST), rest);
+    let rotations: Vec<(Entity, Quat)> = nodes
+        .rotations(TurretAim::of(Num::int(90), Num::int(30)))
+        .collect();
+    let [(at_turret, turned), (at_elevation, raised)] = rotations[..] else {
+        panic!("a turret's two nodes turn");
+    };
+    assert_eq!([at_turret, at_elevation], [turret, elevation]);
+    assert!((turned * Vec3::X).abs_diff_eq(tilt * Vec3::NEG_Z, 1e-6));
+    let (sin, cos) = 30_f32.to_radians().sin_cos();
+    assert!((raised * Vec3::X).abs_diff_eq(Vec3::new(0.0, sin, -cos), 1e-6));
+    // At rest, each node keeps its rest.
+    let rest: Vec<Quat> = nodes
+        .rotations(TurretAim::of(Num::ZERO, Num::ZERO))
+        .map(|(_, rotation)| rotation)
+        .collect();
+    assert_eq!(rest, [tilt, quarter]);
 }
 
 #[test]

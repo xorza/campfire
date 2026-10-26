@@ -17,8 +17,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// The section of an action of kind `attack`, a weapon: where its rate and its damage come from,
 /// the stat that speeds its own period, the kind of damage it deals, its clip, its projectile's
 /// splash and scatter, its bound of pitch, the speed that delays the hit of a weapon of no
-/// projectile, its shot streak, and its pre-attack (04-capabilities/actions.md, Each kind owns
-/// its section).
+/// projectile, its shot streak, its pre-attack, and the bearing its attacker aims within
+/// (04-capabilities/actions.md, Each kind owns its section).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttackData {
     /// Its attacks a second, a stat `rate`, or its own time from one attack's start to the next,
@@ -42,6 +42,9 @@ pub struct AttackData {
     pub speed: Option<Speed>,
     pub streak: Option<StreakData>,
     pub pre_attack: Option<PreAttackData>,
+    /// The degrees from its target's bearing within which its attacker, turning toward it, starts
+    /// it, when no turret carries it (04-capabilities/combat.md, An attacker aims its body).
+    pub aim_deg: Option<Num>,
 }
 
 /// Where a value of a weapon comes from, as its data gives it: a stat of its attacker, or its own
@@ -63,7 +66,7 @@ impl WeaponValue {
 }
 
 /// Data is untrusted, so a weapon of both or neither of a stat and its own value, for its rate or
-/// its damage, fails to read.
+/// its damage, or of an aim outside 0 to 180 degrees, fails to read.
 impl<'de> Deserialize<'de> for AttackData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
@@ -83,8 +86,17 @@ impl<'de> Deserialize<'de> for AttackData {
             speed: Option<Speed>,
             streak: Option<StreakData>,
             pre_attack: Option<PreAttackData>,
+            aim_deg: Option<Num>,
         }
         let fields = Fields::deserialize(deserializer)?;
+        if fields
+            .aim_deg
+            .is_some_and(|aim| !(Num::ZERO..=Num::int(180)).contains(&aim))
+        {
+            return Err(D::Error::custom(
+                "a weapon's aim is from 0 to 180 degrees of its target's bearing",
+            ));
+        }
         let value = |stat, own, message| match (stat, own) {
             (Some(stat), None) => Ok(WeaponValue::Stat(stat)),
             (None, Some(own)) => Ok(WeaponValue::Own(own)),
@@ -111,6 +123,7 @@ impl<'de> Deserialize<'de> for AttackData {
             speed: fields.speed,
             streak: fields.streak,
             pre_attack: fields.pre_attack,
+            aim_deg: fields.aim_deg,
         })
     }
 }
@@ -155,6 +168,9 @@ impl Serialize for AttackData {
         }
         if let Some(streak) = &self.streak {
             map.serialize_entry("streak", streak)?;
+        }
+        if let Some(aim) = &self.aim_deg {
+            map.serialize_entry("aim_deg", aim)?;
         }
         map.end()
     }

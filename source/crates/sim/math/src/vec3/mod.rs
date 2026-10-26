@@ -258,6 +258,28 @@ impl Vec3 {
         }
     }
 
+    /// Turned about the z axis by the angle of `turn`, from x towards y, so a positive angle
+    /// raises x; each component rounded once from the exact sum of products.
+    pub const fn checked_rotated_z(self, turn: SinCos) -> Option<Self> {
+        let (x, y) = (self.x.to_bits() as i128, self.y.to_bits() as i128);
+        let (sin, cos) = (turn.sin.to_bits() as i128, turn.cos.to_bits() as i128);
+        match (
+            Num::from_raw_products(x * cos - y * sin),
+            Num::from_raw_products(x * sin + y * cos),
+        ) {
+            (Some(x), Some(y)) => Some(Self::new(x, y, self.z)),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn rotated_z(self, turn: SinCos) -> Self {
+        match self.checked_rotated_z(turn) {
+            Some(turned) => turned,
+            None => panic!("Vec3 overflow in rotated_z"),
+        }
+    }
+
     /// A vector when all three components exist.
     const fn from_axes(x: Option<Num>, y: Option<Num>, z: Option<Num>) -> Option<Self> {
         match (x, y, z) {

@@ -62,12 +62,14 @@ pub enum Flight {
     },
 }
 
-/// Where a curve or a steered projectile launches: from its source's center to its target's or
-/// its point, points in space, and the unit it aims at, if one.
+/// Where a curve or a steered projectile launches: from its weapon's barrel or its source's
+/// center to its target's center or its point, points in space, the way its barrel leaves along,
+/// a unit, if it has one, and the unit it aims at, if one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LaunchAim {
     pub(crate) from: Vec3,
     pub(crate) to: Vec3,
+    pub(crate) way: Option<Vec3>,
     pub(crate) aimed: Option<StableId>,
 }
 
@@ -79,7 +81,9 @@ impl Flight {
     /// The curve of `spec`, whose type flies one, as `aim` launches it over the ground of `map`:
     /// its count of points at the type's speed, ⌈length ÷ speed⌉.
     fn curve(aim: LaunchAim, spec: &ProjectileSpec, map: &MapBook) -> Self {
-        let LaunchAim { from, to, aimed } = aim;
+        let LaunchAim {
+            from, to, aimed, ..
+        } = aim;
         let shape = spec.curve().expect("a curve's type has a curve");
         let curve = Curve::new(from, to, &shape, map.highest_along(from, to));
         Self::Curve {
@@ -92,17 +96,26 @@ impl Flight {
 
     /// The flight `aim` launches of a type of `spec` that flies at an aim, over the ground of
     /// `map`: steered toward the unit it aims at, when its type tracks one, or to its point,
-    /// leaving toward it (04-capabilities/actions.md, A steered flight leaves toward its target);
-    /// or on its curve.
+    /// leaving along its barrel's way, or toward its target with none (04-capabilities/actions.md,
+    /// A steered flight leaves along its barrel); or on its curve.
     pub(crate) fn aimed(aim: LaunchAim, spec: &ProjectileSpec, map: &MapBook) -> Self {
         let Some(steer) = spec.steer() else {
             return Self::curve(aim, spec, map);
         };
-        let LaunchAim { from, to, aimed } = aim;
+        let LaunchAim {
+            from,
+            to,
+            way,
+            aimed,
+        } = aim;
+        let heading = way.map_or_else(
+            || Heading::toward(from, to),
+            |way| Heading::launched(way, from, to),
+        );
         Self::Steered {
             tracks: aimed.filter(|_| steer.tracks),
             to,
-            heading: Heading::toward(from, to),
+            heading,
         }
     }
 

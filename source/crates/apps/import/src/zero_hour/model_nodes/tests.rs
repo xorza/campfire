@@ -1,23 +1,43 @@
 use super::*;
+use crate::quaternion::Quaternion;
 
-/// A tank's pivots, each with its parent: the root; the turret; two numbered flashes, a
-/// barrel and a bare flash on the turret; and on the root, a bare flash and a slot's
-/// numbered fire bones beside a bare flash of its own.
+/// A quarter turn about W3D's `y`, `−y` by the right hand, which raises `x` to `z`, up.
+const RAISED: [f32; 4] = [
+    0.0,
+    -std::f32::consts::FRAC_1_SQRT_2,
+    0.0,
+    std::f32::consts::FRAC_1_SQRT_2,
+];
+
+/// A tank's pivots, each with its parent and its pose in its parent's frame: the root; the
+/// turret, 3 m up; two numbered flashes, a barrel and a bare flash on the turret; on the root, a
+/// bare flash and a slot's numbered fire bones beside a bare flash of its own; and on the turret,
+/// a rail, 2 m forward and 1 m up, turned to point up, whose number 02 the model lacks.
 fn tank() -> ModelNodes {
+    let at = |translation: [f32; 3]| RigidPose {
+        translation: translation.into(),
+        rotation: Quaternion::IDENTITY,
+    };
+    let rail = RigidPose {
+        translation: [2.0, 0.0, 1.0].into(),
+        rotation: Quaternion::from_array(RAISED),
+    };
     let pivots = [
-        ("roottransform", None),
-        ("turret", Some(0)),
-        ("muzzlefx01", Some(1)),
-        ("muzzlefx02", Some(1)),
-        ("barrel", Some(1)),
-        ("solo", Some(0)),
-        ("flash", Some(0)),
-        ("fire01", Some(0)),
-        ("fire02", Some(0)),
+        ("roottransform", None, RigidPose::IDENTITY),
+        ("turret", Some(0), at([0.0, 0.0, 3.0])),
+        ("muzzlefx01", Some(1), RigidPose::IDENTITY),
+        ("muzzlefx02", Some(1), RigidPose::IDENTITY),
+        ("barrel", Some(1), RigidPose::IDENTITY),
+        ("solo", Some(0), RigidPose::IDENTITY),
+        ("flash", Some(0), RigidPose::IDENTITY),
+        ("fire01", Some(0), RigidPose::IDENTITY),
+        ("fire02", Some(0), RigidPose::IDENTITY),
+        ("rail01", Some(1), rail),
     ]
-    .map(|(name, parent)| PivotName {
+    .map(|(name, parent, pose)| PivotName {
         name: name.to_owned(),
         parent,
+        pose,
     });
     let sub_object = |name: &str, pivot, drawn, hidden| LookSubObject {
         name: name.to_owned(),
@@ -156,4 +176,54 @@ fn a_slot_fires_at_each_barrel_any_of_its_bones_numbers_or_at_its_bare_bone() {
     // of no bone, so none at all; one numbered for both gives each its own.
     assert!(barrels("solo", "MuzzleFX").is_empty());
     assert_eq!(barrels("fire", "MuzzleFX"), named(&["fire01", "fire02"]));
+}
+
+#[test]
+fn a_slots_barrels_launch_from_their_launch_bones_or_the_models_place() {
+    // At rest, the rail stands on the turret 3 m up, at 2 m forward and 4 m up, turned up. Its
+    // barrels, numbered as its fire bones number them: 01 at the rail, on glTF's axes
+    // `(x, z, −y)`; 02, of no rail, at the model's place along its `x`. The rail alone numbers one
+    // barrel; a launch bone the model lacks, none. The way is within 2⁻²² of up, as the turn's
+    // `f32` steps round a half of √2 squared.
+    let tank = tank();
+    let rest = tank.pristine(None);
+    let rail = |fire_fx: Option<&str>, pristine: &[RigidPose]| {
+        let bones = WeaponBones {
+            fire_fx: fire_fx.map(str::to_owned),
+            launch: Some("Rail".to_owned()),
+            ..WeaponBones::default()
+        };
+        tank.launches(&bones, pristine)
+    };
+    let barrels = rail(Some("fire"), &rest);
+    assert_eq!(barrels.len(), 2);
+    assert_eq!(barrels[0].at, Vec3::new(2.0, 4.0, 0.0));
+    assert!(barrels[0].way.abs_diff_eq(Vec3::Y, 1.0 / 4_194_304.0));
+    assert_eq!(
+        barrels[1],
+        ModelBarrel {
+            at: Vec3::ZERO,
+            way: Vec3::X,
+        }
+    );
+    assert_eq!(rail(None, &rest).len(), 1);
+    let missing = WeaponBones {
+        fire_fx: Some("fire".to_owned()),
+        launch: Some("missing".to_owned()),
+        ..WeaponBones::default()
+    };
+    assert!(tank.launches(&missing, &rest).is_empty());
+    // The turret's pivot, 3 m up; none for a name of no pivot.
+    assert_eq!(
+        tank.pivot_point("TURRET", &rest),
+        Some(Vec3::new(0.0, 3.0, 0.0))
+    );
+    assert_eq!(tank.pivot_point("turretel", &rest), None);
+    // An animation that lifts the turret to 5 m lifts the rail on it to 6 m; one of another
+    // count of pivots places none, and the model stands at rest.
+    let mut lifted: Vec<RigidPose> = tank.pivots.iter().map(|pivot| pivot.pose).collect();
+    lifted[1].translation = Vec3::new(0.0, 0.0, 5.0);
+    let animated = tank.pristine(Some(&lifted));
+    assert_eq!(rail(None, &animated)[0].at, Vec3::new(2.0, 6.0, 0.0));
+    assert_eq!(tank.pristine(Some(&lifted[1..])), rest);
 }

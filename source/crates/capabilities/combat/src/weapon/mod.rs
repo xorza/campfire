@@ -29,6 +29,7 @@ pub struct Weapon {
     pub speed: Option<Speed>,
     pub streak: Option<Streak>,
     pub(crate) pre_attack: Option<PreAttackRule>,
+    pub(crate) aim: Option<Num>,
 }
 
 /// A weapon's pre-attack as the match runs it (04-capabilities/combat.md, A pre-attack): its

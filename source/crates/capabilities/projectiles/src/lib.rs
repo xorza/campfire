@@ -182,6 +182,7 @@ impl Projectiles {
             let aim = LaunchAim {
                 from: Body::center(body, from, map),
                 to,
+                way: None,
                 aimed: target.unit(),
             };
             let launch = map.position(aim.from);
@@ -357,6 +358,7 @@ pub mod internals {
             let aim = LaunchAim {
                 from,
                 to,
+                way: None,
                 aimed: Some(target),
             };
             let flight = Flight::aimed(aim, spec, map);

@@ -15,6 +15,7 @@ DefaultConditionState\r
   WeaponLaunchBone = PRIMARY None\r
   WeaponFireFXBone = SECONDARY Fire ; a slot's bones need not name a flash\r
   Turret = Turret\r
+  TurretPitch = Barrel\r
   Animation = TANK.TANK_AIM\r
   TransitionKey = Rest\r
 End\r

@@ -332,6 +332,10 @@ pub enum ModelError {
     /// A mesh it draws has no triangle.
     #[error("mesh {0} has no triangle")]
     Empty(String),
+    /// A bone a unit's turret or weapon reads lies past the bound of the engine's frame of a
+    /// unit.
+    #[error("a bone of a turret or a weapon lies past the engine's bound")]
+    Bound,
     /// Two nodes have one name, so a default look cannot hide one of them alone.
     #[error("two nodes are named {0}")]
     NodeName(String),

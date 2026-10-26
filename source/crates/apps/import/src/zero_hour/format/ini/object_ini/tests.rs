@@ -1,7 +1,9 @@
 use campfire_math::Num;
 
 use super::*;
-use crate::zero_hour::format::ini::object_ini::fight_data::{IniShell, IniTurret, WeaponSet};
+use crate::zero_hour::format::ini::object_ini::fight_data::{
+    IniShell, IniTurret, IniTurretPitch, WeaponSet,
+};
 use crate::zero_hour::format::ini::object_ini::ini_animation::{AnimationFlag, IniClip, IniMode};
 use crate::zero_hour::format::ini::object_ini::ini_build::{Prerequisite, ProductionExit};
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSpawn, SupplyDock, SupplyGatherer};
@@ -75,6 +77,7 @@ fn draws_of(ini: &ObjectFiles, name: &str) -> Vec<DrawModule> {
         model: draw.model.clone(),
         look: draw.look.clone(),
         turret: draw.turret.clone(),
+        turret_pitch: draw.turret_pitch.clone(),
         ..DrawModule::new(draw.kind)
     };
     ini.named(name)
@@ -118,8 +121,8 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
         ]
     );
     // The tank's default state: its model; its hides and shows, the second of `Barrel`
-    // changing the first in its place; its weapon bones, a bone `None` none; the bone its turret
-    // turns, `Turret`; and the debris draw module names no model.
+    // changing the first in its place; its weapon bones, a bone `None` none; the bones its turret
+    // turns and pitches, `Turret` and `Barrel`; and the debris draw module names no model.
     let model = |model: &str, look| DrawModule {
         model: Some(model.to_owned()),
         look,
@@ -149,6 +152,7 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
     };
     let tank_draw = DrawModule {
         turret: Some("Turret".to_owned()),
+        turret_pitch: Some("Barrel".to_owned()),
         ..model("tank", tank_look)
     };
     let tank = [tank_draw, DrawModule::new(DrawKind::Other)];
@@ -736,6 +740,11 @@ Object Gun
     Turret
       TurretTurnRate = 60
       ControlledWeaponSlots = PRIMARY TERTIARY
+      AllowsPitch = Yes
+      TurretPitchRate = 30
+      FirePitch = 70
+      MinPhysicalPitch = -20
+      NaturalTurretPitch = 45
     End
     AltTurret
       TurretTurnRate = 90
@@ -770,25 +779,39 @@ fn an_object_gives_combat_its_shells_curve_and_its_first_turret() {
             lifespan_ms: 5000,
         })
     );
-    // The AI module's first turret, of its slots; the death module's block and the second
-    // turret are none of it.
+    // The AI module's first turret, of its slots and its pitch; the death module's block and
+    // the second turret are none of it.
     assert_eq!(
         fight("Gun").turret,
         Some(IniTurret {
             turn_rate: 60.0,
             slots: [true, false, true],
+            allows_pitch: true,
+            pitch: IniTurretPitch {
+                rate: 30.0,
+                fire: 70.0,
+                least: -20.0,
+                rest: 45.0,
+            },
         })
     );
     assert_eq!(fight("Gun").shell, None);
-    // Of no field, a shell lives 10 s on a straight curve, and a turret turns 0.01 radians a
-    // frame, 0.01 × 30 ÷ (π ÷ 180) a second, each step in `f32`: 0.3 ÷ 0.017453292 =
-    // 17.188732147216797, of the bits 0x41898286, with no weapon.
+    // Of no field, a shell lives 10 s on a straight curve, and a turret turns and pitches 0.01
+    // radians a frame, 0.01 × 30 ÷ (π ÷ 180) a second, each step in `f32`: 0.3 ÷ 0.017453292 =
+    // 17.188732147216797, of the bits 0x41898286, with no weapon; it does not pitch, its pitches
+    // level.
     let plain = fight("Plain");
     assert_eq!(plain.shell, Some(IniShell::DEFAULT));
     assert_eq!(plain.shell.unwrap().lifespan_ms, 10_000);
     let turret = plain.turret.unwrap();
     assert_eq!(turret.slots, [false; 3]);
     assert_eq!(turret.turn_rate.to_bits(), 0x4189_8286);
+    assert_eq!(turret.pitch.rate.to_bits(), 0x4189_8286);
+    assert!(!turret.allows_pitch);
+    assert_eq!(
+        [turret.pitch.fire, turret.pitch.least, turret.pitch.rest],
+        [0.0; 3]
+    );
     // A slot the game does not name is refused at its line.
     let mut bad = ObjectFiles::default();
     let text = "Object A\n Behavior = AIUpdateInterface M\n  Turret\n   ControlledWeaponSlots = \

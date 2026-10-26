@@ -17,11 +17,12 @@ use campfire_values::UnitType;
 pub struct Launching;
 
 impl Launching {
-    /// Makes each of the tick's shots a launch: homing on its target from where its attacker stood,
-    /// or for a type that flies a curve or is steered, from its attacker's center to its target's,
-    /// none when its target no longer lives, or to the point it scattered to
-    /// (04-capabilities/actions.md, A projectile may fly a curve; 04-capabilities/actions.md, A
-    /// projectile may be steered).
+    /// Makes each of the tick's shots a launch, from its barrel when it leaves one, else homing on
+    /// its target from where its attacker stood, or for a type that flies a curve or is steered,
+    /// from its attacker's center: at its target's center, none when its target no longer lives,
+    /// or at the point it scattered to (04-capabilities/actions.md, A projectile may fly a curve;
+    /// 04-capabilities/actions.md, A projectile may be steered; 04-capabilities/combat.md, A shot
+    /// leaves its weapon's barrel).
     pub(super) fn take_shots(
         (mut shots, mut launches): (ResMut<'_, Shots>, ResMut<'_, ProjectileLaunches>),
         specs: Res<'_, ById<UnitType, ProjectileSpec>>,
@@ -34,8 +35,8 @@ impl Launching {
                 .get(shot.unit_type)
                 .expect("a shot's projectile type has a spec");
             let map = targets.map();
-            // A curve and a steered projectile launch from their attacker's center to their
-            // target's or their point.
+            // A curve and a steered projectile launch from their barrel or their attacker's
+            // center to their target's or their point.
             let aim = || {
                 let (to, aimed) = match shot.target {
                     ActionTarget::Unit(target) => {
@@ -44,18 +45,32 @@ impl Launching {
                     ActionTarget::Point(at) => (map.point(at), None),
                     ActionTarget::None => panic!("a shot aims at a unit or a point"),
                 };
-                let body = index
-                    .get(shot.source)
-                    .and_then(|source| bodies.get(source).ok());
-                let from = Body::center(body, shot.from, map);
-                Some(LaunchAim { from, to, aimed })
+                let from = shot.launch.map_or_else(
+                    || {
+                        let body = index
+                            .get(shot.source)
+                            .and_then(|source| bodies.get(source).ok());
+                        Body::center(body, shot.from, map)
+                    },
+                    |launch| launch.at,
+                );
+                let way = shot.launch.map(|launch| launch.way);
+                Some(LaunchAim {
+                    from,
+                    to,
+                    way,
+                    aimed,
+                })
             };
             let (flight, from) = match spec.flight() {
                 ProjectileFlight::Homing | ProjectileFlight::Line => {
                     let ActionTarget::Unit(target) = shot.target else {
                         panic!("a homing shot aims at a unit");
                     };
-                    (Flight::homing(target), shot.from)
+                    let from = shot
+                        .launch
+                        .map_or(shot.from, |launch| map.position(launch.at));
+                    (Flight::homing(target), from)
                 }
                 ProjectileFlight::Curve | ProjectileFlight::Steered => {
                     let Some(aim) = aim() else {

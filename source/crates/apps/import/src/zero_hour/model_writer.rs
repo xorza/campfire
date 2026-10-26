@@ -1,20 +1,22 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
+use bevy_math::Vec3;
 use campfire_client_files::{
     AnimationMode, ClientModel, ClientUnit, ConditionTest, FireBone, LookDraw, LookShown,
     LookState, LookTransition, LookVariant, LookVariation, ModelScale, ModelTop, NodeUpgrade,
     ObjectLook, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
 };
+use campfire_combat::{BarrelData, UnitOffset};
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_package_disk::PackageWriter;
 use serde::{Deserialize, Serialize};
 
 use crate::gltf::model_bounds::ModelBounds;
-use crate::zero_hour::animation_import::{AnimationDropCause, ConvertedAnimation};
+use crate::zero_hour::animation_import::{AnimationDropCause, AnimationEnds, ConvertedAnimation};
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::dropped::Dropped;
-use crate::zero_hour::error::{NameClash, NameError, ZeroHourError};
+use crate::zero_hour::error::{ModelError, NameClash, NameError, ZeroHourError};
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::object_ini::ini_animation::{
     AnimationFlag, IniAnimation, IniMode,
@@ -29,8 +31,10 @@ use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::look_flags::{FlagCondition, LookFlags};
 use crate::zero_hour::model_assets::ModelAssets;
+use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_nodes::{ModelNodes, NodeChanges};
+use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::upgrade_import;
 
 /// A model the objects name that the package lacks, and why.
@@ -78,8 +82,8 @@ pub enum SkipReason {
 pub(crate) struct ModelWriter<'i, 'w> {
     converter: Converter<'i, 'w>,
     written: BTreeMap<String, WrittenModel>,
-    /// Each animation a written state names, whether it converted.
-    animations: BTreeMap<String, bool>,
+    /// Each animation a written state names, its poses at its ends when it converted.
+    animations: BTreeMap<String, Option<AnimationEnds>>,
     conditions: BTreeMap<DeclaredName, ConditionTest>,
     dropped_states: Vec<DroppedStates>,
 }
@@ -110,12 +114,13 @@ struct Converter<'i, 'w> {
 }
 
 /// The looks of an import's `client/units.toml`, which later stages complete before the import
-/// writes them.
+/// writes them, and the bones each unit type's turret and weapons read of its model.
 #[derive(Debug)]
 pub(crate) struct ImportedLooks {
     pub(crate) units: BTreeMap<DeclaredName, ClientUnit>,
     pub(crate) conditions: BTreeMap<DeclaredName, ConditionTest>,
     pub(crate) objects: BTreeMap<DeclaredName, ObjectLook>,
+    pub(crate) bones: BTreeMap<TypeName, ModelBones>,
 }
 
 /// What the models and the animations of an import lacked and drew with: the models the package
@@ -206,6 +211,7 @@ impl ModelWriter<'_, '_> {
     ) -> Result<ImportedLooks, ZeroHourError> {
         let mut units = BTreeMap::new();
         let mut objects = BTreeMap::new();
+        let mut bones = BTreeMap::new();
         let shown = StateLook::default();
         for object in ini.objects() {
             let scale = object.scale();
@@ -216,7 +222,14 @@ impl ModelWriter<'_, '_> {
             let mut unit_look = ClientUnit::new(own);
             // A preview of its build stands at the angle the original's cursor shows it at.
             unit_look.placement_angle = object.build().placement_angle;
-            unit_look.turret = self.turret(draws)?;
+            unit_look.turret = self.node(draws, |draw| draw.turret.as_deref())?;
+            unit_look.turret_pitch = self.node(draws, |draw| draw.turret_pitch.as_deref())?;
+            // A type of build variations is its first variation's, its bones too.
+            let boned = ini
+                .variations_of(object)
+                .and_then(|mut of_parent| of_parent.next())
+                .unwrap_or(object);
+            let of_model = self.bones(boned.draws(), boned.scale())?;
             if let Some(of_parent) = ini.variations_of(object) {
                 let mut looks = Vec::with_capacity(of_parent.len());
                 for variation in of_parent {
@@ -224,7 +237,8 @@ impl ModelWriter<'_, '_> {
                 }
                 unit_look.variations = looks;
             }
-            let declared = DeclaredName::from(names.take(object)?);
+            let type_name = names.take(object)?;
+            let declared = type_name.declared().clone();
             // A tree draws its module's model whatever the map; a prop the model of its first
             // module's best state, all of it shown, as `W3DTerrainVisual::addProp` draws it.
             let unhidden = |model| DrawnState {
@@ -250,12 +264,16 @@ impl ModelWriter<'_, '_> {
             {
                 objects.insert(declared.clone(), object_look);
             }
+            if of_model != ModelBones::default() {
+                bones.insert(type_name, of_model);
+            }
             units.insert(declared, unit_look);
         }
         Ok(ImportedLooks {
             units,
             conditions: std::mem::take(&mut self.conditions),
             objects,
+            bones,
         })
     }
 
@@ -271,11 +289,13 @@ impl ModelWriter<'_, '_> {
         let look = match self.unit_draws(variation, flags)? {
             Some(own) => LookVariation {
                 draws: own,
-                turret: self.turret(draws)?,
+                turret: self.node(draws, |draw| draw.turret.as_deref())?,
+                turret_pitch: self.node(draws, |draw| draw.turret_pitch.as_deref())?,
             },
             None => LookVariation {
                 draws: parent.draws.clone(),
                 turret: parent.turret.clone(),
+                turret_pitch: parent.turret_pitch.clone(),
             },
         };
         Ok(look)
@@ -450,12 +470,17 @@ impl ModelWriter<'_, '_> {
     /// Whether the animation `name` converts, which it converts and writes the first time a
     /// written state names it.
     fn animation(&mut self, name: &str) -> Result<bool, ZeroHourError> {
-        if let Some(&converted) = self.animations.get(name) {
-            return Ok(converted);
-        }
-        let converted = self.converter.animation(name)?;
-        self.animations.insert(name.to_owned(), converted);
-        Ok(converted)
+        Ok(self.animation_ends(name)?.is_some())
+    }
+
+    /// The poses at its ends of the animation `name`, which it converts and writes the first time
+    /// a written state names it; none when it does not convert.
+    fn animation_ends(&mut self, name: &str) -> Result<Option<&AnimationEnds>, ZeroHourError> {
+        let ends = match self.animations.entry(name.to_owned()) {
+            Entry::Occupied(known) => known.into_mut(),
+            Entry::Vacant(new) => new.insert(self.converter.animation(name)?),
+        };
+        Ok(ends.as_ref())
     }
 
     /// The condition of `flag`, whose test `flags` gives, written to the conditions once.
@@ -474,12 +499,16 @@ impl ModelWriter<'_, '_> {
         Ok(name)
     }
 
-    /// The node the turret of `draws` turns: the pivot of the first module's model that its
-    /// default state's `Turret` names, of either case, as `W3DModelDraw` finds the bone; none when
-    /// no module names one its model has.
-    fn turret(&mut self, draws: &[DrawModule]) -> Result<Option<String>, ZeroHourError> {
+    /// The node of `draws` that `bone` names, as its turret turns or pitches it: the pivot of the
+    /// first module's model that its default state's `Turret` or `TurretPitch` names, of either
+    /// case, as `W3DModelDraw` finds the bone; none when no module names one its model has.
+    fn node(
+        &mut self,
+        draws: &[DrawModule],
+        bone: fn(&DrawModule) -> Option<&str>,
+    ) -> Result<Option<String>, ZeroHourError> {
         for draw in draws {
-            let (Some(model), Some(bone)) = (&draw.model, &draw.turret) else {
+            let (Some(model), Some(bone)) = (&draw.model, bone(draw)) else {
                 continue;
             };
             if let WrittenModel::Nodes { nodes, .. } = self.model(model)?
@@ -489,6 +518,67 @@ impl ModelWriter<'_, '_> {
             }
         }
         Ok(None)
+    }
+
+    /// The bones a unit of `draws`, at `scale`, reads of its model: of its first module of the
+    /// `W3DModelDraw` family, its default state's model as its first animation places it, its
+    /// turret's and its pitch's pivots, and each weapon slot's barrels of its launch bones; none of
+    /// a model the package lacks. An error for a bone past the engine's bound.
+    fn bones(
+        &mut self,
+        draws: &[DrawModule],
+        scale: ModelScale,
+    ) -> Result<ModelBones, ZeroHourError> {
+        let drawn = draws.iter().find(|draw| draw.kind == DrawKind::Family);
+        let Some((draw, model)) = drawn.and_then(|draw| Some((draw, draw.model.as_ref()?))) else {
+            return Ok(ModelBones::default());
+        };
+        // The bones stand as the state's first animation places them at its first frame, or its
+        // last of `PRISTINE_BONE_POS_IN_FINAL_FRAME`, as `validateCachedBones` sets them.
+        let animation = draw
+            .states()
+            .next()
+            .expect("a module has its default state")
+            .animation;
+        let ends = match animation.clips.first() {
+            Some(clip) => self.animation_ends(&clip.name)?,
+            None => None,
+        };
+        let last = animation.flags.holds(AnimationFlag::PristineFinal);
+        let animated = ends.map(|ends| {
+            let end = if last { &ends.last } else { &ends.first };
+            end.clone()
+        });
+        let WrittenModel::Nodes { nodes, .. } = self.model(model)? else {
+            return Ok(ModelBones::default());
+        };
+        let pristine = nodes.pristine(animated.as_deref());
+        let beyond = || ZeroHourError::Model {
+            model: model.clone(),
+            error: ModelError::Bound,
+        };
+        let number = |value: f32| game_float::to_num(value).map_err(|_| beyond());
+        let point = |at: Vec3| {
+            let [x, y, z] = (at * scale.get()).to_array().map(number);
+            UnitOffset::new([x?, y?, z?]).ok_or_else(beyond)
+        };
+        let pivot = |bone: Option<&String>| {
+            let at = bone.and_then(|bone| nodes.pivot_point(bone, &pristine));
+            at.map(point).transpose()
+        };
+        let mut barrels: [Vec<BarrelData>; 3] = Default::default();
+        for (of_slot, weapon) in barrels.iter_mut().zip(&draw.look.weapons) {
+            for barrel in nodes.launches(weapon, &pristine) {
+                let [x, y, z] = barrel.way.to_array().map(number);
+                let data = BarrelData::new(point(barrel.at)?, [x?, y?, z?]);
+                of_slot.push(data.ok_or_else(beyond)?);
+            }
+        }
+        Ok(ModelBones {
+            pivot: pivot(draw.turret.as_ref())?,
+            pitch_pivot: pivot(draw.turret_pitch.as_ref())?,
+            barrels,
+        })
     }
 
     /// The look of a client object of what `drawn` draws on a map of each conditions, at `scale`:
@@ -648,21 +738,21 @@ impl DrawKeys {
 }
 
 impl Converter<'_, '_> {
-    /// Converts the animation `name` and writes its file; whether it converted, and
-    /// `dropped_animations` gaining one the package lacks.
-    fn animation(&mut self, name: &str) -> Result<bool, ZeroHourError> {
+    /// Converts the animation `name` and writes its file; its poses at its ends when it
+    /// converted, and `dropped_animations` gaining one the package lacks.
+    fn animation(&mut self, name: &str) -> Result<Option<AnimationEnds>, ZeroHourError> {
         match ConvertedAnimation::of(name, &mut self.assets)? {
-            ConvertedAnimation::Glb(glb) => {
+            ConvertedAnimation::Glb { glb, ends } => {
                 self.writer
                     .write(game_path::animation(name)?, &glb.encode())?;
-                Ok(true)
+                Ok(Some(ends))
             }
             ConvertedAnimation::Dropped(cause) => {
                 self.dropped_animations.push(Dropped {
                     name: name.to_owned(),
                     cause,
                 });
-                Ok(false)
+                Ok(None)
             }
         }
     }

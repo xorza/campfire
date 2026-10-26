@@ -1,10 +1,11 @@
-data_version 71
+data_version 72
 actions.progress 91dd90cbde2fd145
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
 actions.use_group 0f977a41bb13e2a2
 areas.area ef43b96412883a9f
 areas.area_trigger ff4ce9e93a2759bd
+combat.barrel_turns 130bbc25e5957965
 combat.clip_shots 121b28f318bff088
 combat.decay c7e7ff63db8ef8ec
 combat.held_hits 9c6bc985a7690c7a
@@ -13,7 +14,7 @@ combat.next_damage 29a4914780f75863
 combat.recent_attackers 2d636b06899c6163
 combat.respawn b5032795d09dab8f
 combat.shot_streak cd7a931082f365b1
-combat.turret_angle 1a258096863e9ae5
+combat.turret_aim fa45bc37a1eb10aa
 deliveries.dash_delivering 776ca8dc66220523
 items.inventory 8652b58008c7aed2
 mode.bounty_share fc2b4ee1c2c504db

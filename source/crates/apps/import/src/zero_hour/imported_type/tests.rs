@@ -1,4 +1,5 @@
 use campfire_codec::Toml;
+use campfire_combat::UnitOffset;
 use campfire_values::FilterData;
 
 use super::*;
@@ -284,7 +285,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     let wide_reach = wide.unwrap().shape.circle_radius().unwrap();
     assert_eq!(rig.reach(Num::ZERO), Some([wide_reach; 2]));
     let mut writer = SectionWriter::default();
-    rig.write(&mut writer);
+    rig.write(&mut writer, None);
     let written = Toml::write(&writer.into_table());
     assert!(
         written.contains("[[variations]]") && !written.contains("[collision]"),
@@ -334,6 +335,38 @@ Object Gunner
     End
     AutoAcquireEnemiesWhenIdle = Yes ATTACK_BUILDINGS
     MoodAttackCheckRate = 250
+  End
+End
+Object Launcher
+  Behavior = AIUpdateInterface ModuleTag_07
+    Turret
+      TurretTurnRate = 60
+      TurretPitchRate = 30
+      AllowsPitch = Yes
+      FirePitch = 70
+      NaturalTurretPitch = 10
+      ControlledWeaponSlots = PRIMARY
+    End
+  End
+End
+Object Aimer
+  Behavior = AIUpdateInterface ModuleTag_07
+    Turret
+      TurretTurnRate = 60
+      AllowsPitch = Yes
+      MinPhysicalPitch = -20
+      ControlledWeaponSlots = PRIMARY
+    End
+  End
+End
+Object Stiff
+  Behavior = AIUpdateInterface ModuleTag_07
+    Turret
+      TurretTurnRate = 60
+      TurretPitchRate = 0
+      AllowsPitch = Yes
+      ControlledWeaponSlots = PRIMARY
+    End
   End
 End
 Object Idle
@@ -488,8 +521,33 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         turn_rate: Some(Num::int(60)),
         ..TurretPatch::default()
     };
-    assert_eq!(of("Gunner").turret, Some(turret));
+    assert_eq!(of("Gunner").turret, Some(turret.clone()));
     assert_eq!((of("Idle").turret, of("Fixed").turret), (None, None));
+    // The launcher's pitches 30° a second to its fire pitch of 70°, back to its rest of 10°, no
+    // lower than level; the aimer's, of no fire pitch, at 0.01 radians a frame, 17.19° a second,
+    // toward its target no lower than −20°; a pitch of no rate is none.
+    let pitch = |turret: Option<TurretPatch>| turret?.pitch;
+    let launcher = TurretPitchData::new(Num::int(30), Some(Num::int(70)), Num::ZERO, Num::int(10));
+    assert_eq!(pitch(of("Launcher").turret), launcher);
+    let rate = num(0.01 * 30.0 / (std::f32::consts::PI / 180.0)).unwrap();
+    let aimer = TurretPitchData::new(rate, None, Num::int(-20), Num::ZERO);
+    assert_eq!(pitch(of("Aimer").turret), aimer);
+    assert_eq!(of("Stiff").turret, Some(turret));
+    // Written with its model's bones, the launcher's turret turns about its turret bone's pivot,
+    // and pitches about its pitch bone's.
+    let point = |[x, y, z]: [i64; 3]| UnitOffset::new([x, y, z].map(Num::int)).unwrap();
+    let bones = ModelBones {
+        pivot: Some(point([1, 2, 3])),
+        pitch_pivot: Some(point([0, 4, 0])),
+        ..ModelBones::default()
+    };
+    let mut writer = SectionWriter::default();
+    of("Launcher").write(&mut writer, Some(&bones));
+    let written = Toml::write(&writer.into_table());
+    let turret = "[turret]\npivot = [\"1\", \"2\", \"3\"]\nturn_rate = \"60\"\n\n\
+                  [turret.pitch]\nfire_deg = \"70\"\nleast_deg = \"0\"\npivot = [\"0\", \"4\", \"0\"]\n\
+                  rest_deg = \"10\"\nturn_rate = \"30\"\n";
+    assert!(written.contains(turret), "{written}");
     // The gunner scans each 250 ms, ⌈250 × 0.03⌉ = 8 frames, written as ⌊8 × 100 / 3⌋ = 266 ms,
     // for every hostile unit, as it attacks buildings; the idle turret each 2,000 ms, 60 frames,
     // by default, and for the targets of the rules data's defaults; a `No` scans for none.

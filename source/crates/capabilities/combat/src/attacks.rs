@@ -1,5 +1,6 @@
 use std::ops::ControlFlow;
 
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryEntityError, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
@@ -17,7 +18,7 @@ use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_script::ScriptsWorld;
 use campfire_sim::{DueUnit, EntityIndex, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{ModifierEvents, PoolBook, UnitPools, UnitPoolsReadOnly, UnitStats};
-use campfire_units::{Body, Dead, Due, Facing, ForcedMove, MapBook, Owner, UnitsNear};
+use campfire_units::{Body, Dead, Due, Facing, ForcedMove, MapBook, Owner, TurnStep, UnitsNear};
 use campfire_values::{ActionId, Allegiance, Block, Motion, TagSet, Team, UnitTags, UnitType};
 
 use crate::attack_data::PreAttackEach;
@@ -28,7 +29,8 @@ use crate::held_hits::HeldHits;
 use crate::pass_queue::PassQueue;
 use crate::streak_shots::{FiredShot, StreakShot, StreakShots};
 use crate::turret::Turret;
-use crate::turret::turret_angle::TurretAngle;
+use crate::turret::aiming::Aiming;
+use crate::turret::turret_aim::TurretAim;
 use crate::volley::{GoingOff, Volley};
 use crate::weapon::Weapon;
 use crate::wielded::Wielded;
@@ -181,9 +183,9 @@ impl Attacks {
     /// in Act, when it has nothing under way, and forgets each gone or with no target: with
     /// the first weapon whose filter selects the target, once that weapon passes its checks, the
     /// target is within its reach, and, for a weapon of its turret's slot kind, the turret lies
-    /// within its tolerance of the target's bearing (04-capabilities/combat.md, A unit type may
-    /// have a turret), and the weapon's pre-attack, if it has one, is done
-    /// (04-capabilities/combat.md, A pre-attack). An attack in its windup stops when the unit's
+    /// within its tolerance of the target's bearing and pitch (04-capabilities/combat.md, A unit
+    /// type may have a turret; 04-capabilities/combat.md, A turret may pitch), and the weapon's
+    /// pre-attack, if it has one, is done (04-capabilities/combat.md, A pre-attack). An attack in its windup stops when the unit's
     /// tags keep it from attacking, or it lives no more, and such a unit starts none. An attack
     /// target that is no living enemy any more is dropped, with the attack on it.
     pub(super) fn start_attacks(
@@ -207,7 +209,13 @@ impl Attacks {
                 Option<&Body>,
                 Option<&UnitTags>,
                 Has<ForcedMove>,
-                (&UnitType, Option<&Facing>, Option<&TurretAngle>, &ClipShots),
+                (
+                    &UnitType,
+                    Option<&mut Facing>,
+                    Option<&TurnStep>,
+                    Option<&TurretAim>,
+                    &ClipShots,
+                ),
             ),
             Without<Dead>,
         >,
@@ -228,7 +236,7 @@ impl Attacks {
                 body,
                 tags,
                 forced,
-                (&unit_type, facing, turret_angle, clips),
+                (&unit_type, mut facing, turn, turret_aim, clips),
             )) = units.get_mut(entity).map_err(|error| {
                 if matches!(error, QueryEntityError::NotSpawned(_)) {
                     indexes.forget_attacker(entity);
@@ -279,13 +287,39 @@ impl Attacks {
                     let turret = turrets
                         .get(unit_type)
                         .filter(|turret| turret.slot == held_slot.kind);
-                    if let (Some(turret), Some(&facing), Some(&angle)) =
-                        (turret, facing, turret_angle)
+                    let weapon = held_slot.action.and_then(|action| weapons.get(action));
+                    let body_aim = weapon.and_then(|weapon| weapon.aim);
+                    if let (Some(turret), Some(&facing), Some(&aim)) =
+                        (turret, facing.as_deref(), turret_aim)
                     {
-                        let aim = TurretAngle::toward(facing, position.get(), unit.position);
-                        if !aim.is_some_and(|aim| angle.within(aim, turret.tolerance)) {
+                        let map = targets.map();
+                        let top = Aiming::top(body, position.get(), map);
+                        let toward =
+                            TurretAim::toward(turret, facing, top, map.point(unit.position));
+                        if !toward.is_some_and(|toward| aim.within(toward, turret.tolerance)) {
                             progress.end_pre_attack();
                             continue;
+                        }
+                    } else if let (Some(aim), Some(facing)) = (body_aim, facing.as_mut()) {
+                        // A weapon no turret carries turns its attacker toward its target in its
+                        // reach (04-capabilities/combat.md, An attacker aims its body).
+                        let values = held_slot.values_in(&book).expect("a held weapon's values");
+                        let fit = targets.reach(
+                            Placed::new(position.get(), Body::shape_of(body)),
+                            values.range,
+                            values.min_range,
+                            Placed::new(unit.position, unit.shape),
+                        );
+                        let from = position.get();
+                        let way =
+                            Facing::along([unit.position.x - from.x, unit.position.z - from.z]);
+                        if let Some(way) = way.filter(|_| fit == RangeFit::Within) {
+                            let turned = facing.toward(way, turn.copied()).facing;
+                            facing.set_if_neq(turned);
+                            if turned.apart(way) > aim {
+                                progress.end_pre_attack();
+                                continue;
+                            }
                         }
                     }
                     let aim = SlotAim {
@@ -309,7 +343,6 @@ impl Attacks {
                         relation,
                         living: |id| targets.target(id),
                     };
-                    let weapon = held_slot.action.and_then(|action| weapons.get(action));
                     let pitch = weapon.and_then(|weapon| weapon.pitch);
                     // A weapon's bound of pitch is a bound of its reach, which its start tests
                     // past the range (04-capabilities/combat.md, An attack may bound its pitch).
@@ -485,7 +518,8 @@ impl Attacks {
     /// client that predicts the attack only makes the weapon ready again and counts its clip, as
     /// the damage, the launch and the cost come from the server, so it holds no held hits, which
     /// the server alone computes. An attacker that lives no more strikes nothing, as one its tags
-    /// keep from attacking.
+    /// keep from attacking. A shot of a weapon of barrels takes its launch after the strike, on
+    /// the server (04-capabilities/combat.md, A shot leaves its weapon's barrel).
     pub(super) fn strike<F: RoleForm>(
         (clock, rng, (book, weapons), life): (
             TickClock<'_>,
@@ -632,6 +666,7 @@ impl Attacks {
                 fired.fire(Shot {
                     source,
                     from: from.get(),
+                    launch: None,
                     target: scattered.map_or(ActionTarget::Unit(target), ActionTarget::Point),
                     unit_type,
                     damage: ShotDamage {

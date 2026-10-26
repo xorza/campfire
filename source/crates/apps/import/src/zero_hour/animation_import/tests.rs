@@ -143,6 +143,45 @@ fn a_raw_animation_keys_each_frame_on_its_pivots_and_its_visibility_in_its_extra
 }
 
 #[test]
+fn an_animations_ends_place_each_pivot_at_its_first_frame_and_its_last() {
+    // The head moves 1 along its parent's `x` each frame, turned by its half turn about `z` to
+    // (−1, 0, 0.5), and turns a half turn about `x` at frame 3 only, of its 4: its own half turn
+    // about `z` at frame 0, `(0, 0, 1, 0) · (1, 0, 0, 0)`, a half turn about `y`, at frame 3. The
+    // pelvis's move keys frames 1 and 2 alone, so both ends stand at its pose; the root and the
+    // gun, of no channel, at theirs.
+    let half_x = [1.0, 0.0, 0.0, 0.0];
+    let identity = [0.0, 0.0, 0.0, 1.0];
+    let turns = [identity, identity, identity, half_x].concat();
+    let bytes = raw(
+        "Man_Wave",
+        "Man_SKL",
+        4,
+        &[
+            channel(1, 0, 1, 1, &[1.0, 2.0]),
+            channel(2, 0, 1, 0, &[1.0; 4]),
+            channel(2, 6, 4, 0, &turns),
+        ],
+    );
+    let chunk = W3dChunks::of(&bytes).next().unwrap().unwrap();
+    let ends = AnimationEnds::of(&W3dAnimation::read(chunk).unwrap(), &man());
+    let pose = |translation: [f32; 3], rotation: [f32; 4]| RigidPose {
+        translation: Vec3::from_array(translation),
+        rotation: Quaternion::from_array(rotation),
+    };
+    let still = [pose([0.0; 3], identity), pose([0.0, 0.0, 1.0], identity)];
+    let gun = pose([1.0, 0.0, 0.0], identity);
+    let head = |rotation| pose([-1.0, 0.0, 0.5], rotation);
+    assert_eq!(
+        ends.first,
+        [still[0], still[1], head([0.0, 0.0, 1.0, 0.0]), gun]
+    );
+    assert_eq!(
+        ends.last,
+        [still[0], still[1], head([0.0, 1.0, 0.0, 0.0]), gun]
+    );
+}
+
+#[test]
 fn a_time_coded_animation_keys_the_frames_of_its_channels_keys() {
     // The pelvis moves along `y` to 2 at frame 4 and 3 at frame 6, and along `z` to 2.5 at
     // frame 5: one track keyed at each frame either keys, and at its last frame, 9. Along
@@ -184,7 +223,7 @@ fn an_animation_is_found_by_its_name_and_dropped_without_a_hierarchy_or_a_pivot_
     } = FixtureInstall::new();
     let mut assets = ModelAssets::new(&install).unwrap();
     let mut cause = |name| match ConvertedAnimation::of(name, &mut assets).unwrap() {
-        ConvertedAnimation::Glb(_) => None,
+        ConvertedAnimation::Glb { .. } => None,
         ConvertedAnimation::Dropped(cause) => Some(cause),
     };
     // Its file holds an animation of its full name, of either case, which converts once.

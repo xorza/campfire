@@ -33,6 +33,8 @@ pub(crate) struct IniWeapon {
     pub(crate) range: f32,
     pub(crate) speed: f32,
     pub(crate) pitch: [f32; 2],
+    /// Its `AcceptableAimDelta` in degrees, 0 by default.
+    pub(crate) aim_delta: f32,
     pub(crate) laser: bool,
     pub(crate) anti_ground: bool,
     pub(crate) affects: RadiusAffects,
@@ -199,6 +201,7 @@ impl Default for IniWeapon {
             range: 0.0,
             speed: Self::INSTANT,
             pitch: [-180.0, 180.0],
+            aim_delta: 0.0,
             laser: false,
             anti_ground: true,
             affects: RadiusAffects::DEFAULT,
@@ -273,6 +276,7 @@ impl IniWeapon {
             "weaponspeed" => self.speed = at.real()?,
             "mintargetpitch" => self.pitch[0] = at.real()?,
             "maxtargetpitch" => self.pitch[1] = at.real()?,
+            "acceptableaimdelta" => self.aim_delta = at.real()?,
             "lasername" => self.laser = at.tokens.len() > 1,
             "antiground" => self.anti_ground = at.yes()?,
             "radiusdamageaffects" => at.set_flags(&mut self.affects)?,
@@ -481,7 +485,8 @@ impl FlagSet for CollideMask {
 #[cfg(test)]
 pub(crate) mod samples {
     /// `Data\INI\Weapon.ini` of the fixture install: a rifle that fires a clip of 3 at once, a
-    /// cannon that fires a shell of a radius, a scatter at infantry and a bound pitch, a launcher
+    /// cannon that fires a shell of a radius, a scatter at infantry, a bound pitch and an aim of
+    /// 30°, a launcher
     /// of a rocket, a phantom of a projectile no file defines, a lobber whose radius spares its own
     /// kind, a popper whose shell detonates on shrubbery, a flamer of a radius, a knife that waits
     /// before it strikes, a mortar of a minimum range, a pistol of a random delay, a marker of no
@@ -507,6 +512,7 @@ Weapon TankCannon\r
   AttackRange = 150\r
   MinTargetPitch = -15\r
   MaxTargetPitch = 15\r
+  AcceptableAimDelta = 30\r
   DamageType = ARMOR_PIERCING\r
   WeaponSpeed = 400\r
   DelayBetweenShots = 2000\r

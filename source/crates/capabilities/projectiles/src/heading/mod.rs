@@ -14,24 +14,28 @@ pub struct Heading(Vec3);
 const UNIT_SLACK: u128 = 1 << 27;
 
 impl Heading {
-    /// The first heading of a flight from `from` toward `to`, points in space: along the ground
-    /// toward `to`, raised by twice its climb over the ground's distance, of at least 1 m, as Zero
-    /// Hour raises a missile over its launcher's facing (`projectileFireAtObjectOrPosition`);
-    /// along the first axis toward a point straight above or below.
-    pub(crate) fn toward(from: Vec3, to: Vec3) -> Self {
-        let ground = from.ground_offset(to);
-        let distance = ground.length();
-        let along = ground
-            .normalized()
-            .unwrap_or(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO));
+    /// The first heading of a flight from `from` toward `to`, points in space, that leaves along
+    /// `way`, a unit: the way, raised by twice the climb to `to` over the ground's distance, of
+    /// at least 1 m, as Zero Hour raises a missile over its launch bone's `x`
+    /// (`projectileFireAtObjectOrPosition`); the way itself where the raise leaves no length.
+    pub(crate) fn launched(way: Vec3, from: Vec3, to: Vec3) -> Self {
+        let distance = from.ground_offset(to).length();
         let climb = (to.y - from.y).max(Num::ZERO);
         let up = (climb * Num::int(2)) / distance.max(Num::ONE);
-        let raised = Vec3::new(along.x, up, along.z);
-        Self(
-            raised
-                .normalized()
-                .expect("a way of a unit along the ground has a length"),
-        )
+        let raised = Vec3::new(way.x, way.y + up, way.z);
+        Self(raised.normalized().unwrap_or(way))
+    }
+
+    /// The first heading of a flight from `from` toward `to`, points in space, that leaves along
+    /// the ground toward `to`, or along the first axis toward a point straight above or below,
+    /// raised as `launched` raises it.
+    pub(crate) fn toward(from: Vec3, to: Vec3) -> Self {
+        let along = from.ground_offset(to).normalized().unwrap_or(Vec3::new(
+            Num::ONE,
+            Num::ZERO,
+            Num::ZERO,
+        ));
+        Self::launched(along, from, to)
     }
 
     /// It turned toward `toward`, a way in space, by at most `turn`, all the way with none; it

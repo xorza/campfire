@@ -117,6 +117,7 @@ impl WeaponNames<'_> {
             speed: data.speed,
             streak: streak.transpose()?,
             pre_attack: pre_attack.transpose()?,
+            aim: data.aim_deg,
         })
     }
 

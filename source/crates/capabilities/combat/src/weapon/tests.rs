@@ -28,6 +28,7 @@ fn own(periods: [u64; 2], amounts: [i64; 2]) -> Weapon {
         speed: None,
         streak: None,
         pre_attack: None,
+        aim: None,
     }
 }
 

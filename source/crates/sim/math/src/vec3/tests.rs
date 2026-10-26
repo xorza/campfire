@@ -204,6 +204,18 @@ fn rotated_y_turns_on_the_ground_plane() {
 }
 
 #[test]
+fn rotated_z_raises_x_toward_y() {
+    let quarter = Num::FRAC_PI_2.sin_cos();
+    let half = Num::PI.sin_cos();
+    // (x, y) → (x cos − y sin, x sin + y cos): a quarter turn sends +x to +y and +y to −x; z
+    // never changes.
+    assert_eq!(v(1, 0, 7).rotated_z(quarter), v(0, 1, 7));
+    assert_eq!(v(0, 1, 7).rotated_z(quarter), v(-1, 0, 7));
+    assert_eq!(v(2, -3, 5).rotated_z(half), v(-2, 3, 5));
+    assert_eq!(v(2, -3, 5).rotated_z(Num::ZERO.sin_cos()), v(2, -3, 5));
+}
+
+#[test]
 fn serializes_as_three_nums() {
     let a = raw(1, -2, i64::MIN);
     let encoded = Binary::encode(&a);

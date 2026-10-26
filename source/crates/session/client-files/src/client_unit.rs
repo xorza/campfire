@@ -9,8 +9,8 @@ use crate::state_animation::{AnimationMode, StateAnimation};
 
 /// A unit type's look: its draws, each of which draws its own state at its unit's place, all of
 /// them; the look of each of its type's variations; the angle in degrees a client's preview of a
-/// build places it at, 0 when it gives none; and the node its models turn by its unit's turret
-/// angle.
+/// build places it at, 0 when it gives none; and the nodes its models turn by its unit's turret
+/// angle and pitch.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientUnit {
@@ -26,6 +26,10 @@ pub struct ClientUnit {
     /// (04-capabilities/combat.md, A unit type may have a turret).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turret: Option<String>,
+    /// The name of the node its models pitch by the unit's turret pitch
+    /// (04-capabilities/combat.md, A turret may pitch).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turret_pitch: Option<String>,
     /// The groups of its type's weapons, by their actions' names, each of which an attack's
     /// condition tests by its place, as Zero Hour's `FIRING_A` tests the weapon of its object's
     /// slot A in each of its sets (09-zero-hour.md, A condition is the game's name for a test).
@@ -43,14 +47,16 @@ pub struct ClientUnit {
     pub trail: Option<DeclaredName>,
 }
 
-/// The look of one of a type's variations: its draws, and the name of the node its models turn
-/// by the unit's turret angle, as each variation's models name their own.
+/// The look of one of a type's variations: its draws, and the names of the nodes its models turn
+/// by the unit's turret angle and pitch, as each variation's models name their own.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LookVariation {
     pub draws: Vec<LookDraw>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turret: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turret_pitch: Option<String>,
 }
 
 /// One of a look's draws, as a Zero Hour object draws each of its draw modules: its states, of
@@ -137,6 +143,7 @@ impl ClientUnit {
             variations: Vec::new(),
             placement_angle: None,
             turret: None,
+            turret_pitch: None,
             weapons: Vec::new(),
             death: None,
             end: None,

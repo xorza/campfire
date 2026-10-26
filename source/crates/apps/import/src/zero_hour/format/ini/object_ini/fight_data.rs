@@ -65,12 +65,25 @@ pub(crate) struct IniMissile {
 }
 
 /// An AI module's `Turret`, as `TurretAIData` reads it: its `TurretTurnRate` in degrees a second,
-/// 0.01 radians a frame by default, and the weapon slots it carries, `ControlledWeaponSlots`, none
-/// by default.
+/// 0.01 radians a frame by default, the weapon slots it carries, `ControlledWeaponSlots`, none by
+/// default, and its pitch, when it `AllowsPitch`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct IniTurret {
     pub(crate) turn_rate: f32,
     pub(crate) slots: [bool; 3],
+    pub(crate) allows_pitch: bool,
+    pub(crate) pitch: IniTurretPitch,
+}
+
+/// A turret's pitch, as `TurretAIData` reads it: its `TurretPitchRate` in degrees a second, 0.01
+/// radians a frame by default; and in degrees, its `FirePitch`, which it fires at when above 0,
+/// its `MinPhysicalPitch` and its `NaturalTurretPitch`, each 0 by default.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct IniTurretPitch {
+    pub(crate) rate: f32,
+    pub(crate) fire: f32,
+    pub(crate) least: f32,
+    pub(crate) rest: f32,
 }
 
 /// An object's `Body` module: its kind, its `MaxHealth` and its `InitialHealth`, 0 when absent,
@@ -212,7 +225,7 @@ impl IniMissile {
 
 impl IniTurret {
     /// `DEFAULT_TURN_RATE`, 0.01 radians a frame at 30 frames a second, in degrees a second, each
-    /// step in the game's `f32`.
+    /// step in the game's `f32`; `DEFAULT_PITCH_RATE` is the same.
     fn default_turn_rate() -> f32 {
         0.01 * 30.0 / (std::f32::consts::PI / 180.0)
     }
@@ -349,10 +362,26 @@ impl FightData {
                 self.turret = Some(IniTurret {
                     turn_rate: IniTurret::default_turn_rate(),
                     slots: [false; 3],
+                    allows_pitch: false,
+                    pitch: IniTurretPitch {
+                        rate: IniTurret::default_turn_rate(),
+                        fire: 0.0,
+                        least: 0.0,
+                        rest: 0.0,
+                    },
                 });
                 return Ok(Some(FightBlock::Turret));
             }
             (FightBlock::Turret, "turretturnrate") => self.turret_mut().turn_rate = at.real()?,
+            (FightBlock::Turret, "allowspitch") => self.turret_mut().allows_pitch = at.yes()?,
+            (FightBlock::Turret, "turretpitchrate") => self.turret_mut().pitch.rate = at.real()?,
+            (FightBlock::Turret, "firepitch") => self.turret_mut().pitch.fire = at.real()?,
+            (FightBlock::Turret, "minphysicalpitch") => {
+                self.turret_mut().pitch.least = at.real()?;
+            }
+            (FightBlock::Turret, "naturalturretpitch") => {
+                self.turret_mut().pitch.rest = at.real()?;
+            }
             (FightBlock::Turret, "controlledweaponslots") => {
                 let mut slots = [false; 3];
                 for slot in &at.tokens[1..] {

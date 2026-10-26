@@ -5,11 +5,11 @@ use campfire_actions::{ActionKeys, ActionRange, RangeField, Targeting};
 use campfire_client_files::ClientUnit;
 use campfire_codec::{TomlTable, TomlValue};
 use campfire_combat::{
-    ArmorShare, AttackData, ClipData, OuterData, PitchData, PreAttackData, PreAttackEach,
-    ScatterData, SplashData, StageData, StreakData, WeaponValue,
+    ArmorShare, AttackData, BarrelsData, ClipData, OuterData, PitchData, PreAttackData,
+    PreAttackEach, ScatterData, SplashData, StageData, StreakData, WeaponValue,
 };
 use campfire_common::DeclaredName;
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_values::{Number, Ranked, RelationSet, Scalar, Speed, Stat};
 
@@ -23,6 +23,7 @@ use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::{ProjectileNames, TypedObject};
 use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::object_flight::ObjectFlight;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
@@ -348,6 +349,40 @@ impl CombatImport {
             }
         }
     }
+
+    /// The barrels of each type's weapons that fire a projectile: of each weapon slot of the type,
+    /// the barrels its model's bones give the slot, as Zero Hour launches the slot's weapon of
+    /// each set from them (04-capabilities/combat.md, A shot leaves its weapon's barrel); a weapon
+    /// in two slots takes the first's.
+    pub(crate) fn barrels(
+        &self,
+        bones: &BTreeMap<TypeName, ModelBones>,
+    ) -> BTreeMap<TypeName, BarrelsData> {
+        let mut barrels = BTreeMap::new();
+        for (unit_type, slots) in &self.weapon_slots {
+            let Some(bones) = bones.get(unit_type) else {
+                continue;
+            };
+            let mut of_type = BarrelsData::default();
+            let slotted = slots.iter().zip(&bones.barrels);
+            for (weapons, of_slot) in slotted.filter(|(_, of_slot)| !of_slot.is_empty()) {
+                let launches = |weapon: &&DeclaredName| {
+                    let fired = self.actions.get(*weapon);
+                    fired.is_some_and(|weapon| weapon.delivery.is_some())
+                };
+                for weapon in weapons.iter().filter(launches) {
+                    of_type
+                        .0
+                        .entry(weapon.clone())
+                        .or_insert_with(|| of_slot.clone());
+                }
+            }
+            if !of_type.0.is_empty() {
+                barrels.insert(unit_type.clone(), of_type);
+            }
+        }
+        barrels
+    }
 }
 
 impl FiredProjectile<'_> {
@@ -536,6 +571,15 @@ impl ImportedWeapon {
         } else {
             None
         };
+        // Its attacker turns toward its target until it lies within its acceptable delta, of at
+        // least 0.035 radians, as `AIAttackAimAtTargetState::update` aims; a delta of a half turn
+        // needs no turn.
+        let aim_deg = if weapon.aim_delta < 180.0 {
+            let delta = number(weapon.aim_delta)?;
+            Some(delta.max(Self::least_aim()))
+        } else {
+            None
+        };
         let enemies = rules.names.enemies.clone();
         Ok(ConvertedWeapon {
             weapon: Self {
@@ -557,6 +601,7 @@ impl ImportedWeapon {
                     speed,
                     streak: stages.as_ref().map(|stages| stages.streak.clone()),
                     pre_attack,
+                    aim_deg,
                 },
                 delivery: None,
             },
@@ -564,6 +609,14 @@ impl ImportedWeapon {
             modifiers: stages.map_or_else(Vec::new, |stages| stages.modifiers),
             bonus,
         })
+    }
+
+    /// The least aim of a weapon, `AIAttackAimAtTargetState`'s 0.035 radians, in degrees.
+    fn least_aim() -> Num {
+        let radians: Num = "0.035".parse().expect("a decimal");
+        radians
+            .checked_mul_div(Num::int(180), Num::PI, Rounding::NearestEven)
+            .expect("a small angle in degrees fits")
     }
 
     /// The damage bonus of `factor`, a weapon's of `PLAYER_UPGRADE`: none for a factor of 1, which

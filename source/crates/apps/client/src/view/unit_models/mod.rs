@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::sync::Arc;
 
 use bevy::animation::{AnimatedBy, AnimationClip, AnimationPlayer, AnimationTargetId};
 use bevy::app::{App, Plugin, Startup, Update};
@@ -26,9 +27,10 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldInstanceReady;
 use campfire_client_files::{AnimationExtras, ClientObject, MaterialExtras};
-use campfire_combat::TurretAngle;
+use campfire_combat::TurretAim;
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
+use campfire_math::Num;
 use campfire_script::MatchNames;
 use campfire_sim::Unpredicted;
 use campfire_units::{TypeOriginBook, Variations};
@@ -169,30 +171,32 @@ impl UnitModelsPlugin {
         Transform::from_xyz(x, y, z).with_rotation(turn)
     }
 
-    /// Turns the turret node of each drawing by its unit's turret angle, as the sim last gave it:
-    /// of each unit whose angle changed, and of each drawing whose model was just dressed, so a
-    /// node is written only when its angle or its node is new.
+    /// Turns the turret nodes of each drawing by its unit's turret aim, as the sim last gave it:
+    /// of each unit whose aim changed, and of each drawing whose model was just dressed, so a
+    /// node is written only when its aim or its node is new.
     fn turn_turrets(
         changed: TurnedTurrets<'_, '_>,
-        dressed: Query<'_, '_, (&DrawingOf, &TurretNode), Added<TurretNode>>,
-        (angles, turrets): (
-            Query<'_, '_, &TurretAngle, Allow<Unpredicted>>,
-            Query<'_, '_, &TurretNode>,
+        dressed: Query<'_, '_, (&DrawingOf, &TurretNodes), Added<TurretNodes>>,
+        (aims, turrets): (
+            Query<'_, '_, &TurretAim, Allow<Unpredicted>>,
+            Query<'_, '_, &TurretNodes>,
         ),
         mut nodes: Query<'_, '_, &mut Transform>,
     ) {
-        let changed = changed.iter().filter_map(|(&angle, drawing)| {
+        let changed = changed.iter().filter_map(|(&aim, drawing)| {
             turrets
                 .get(drawing.root())
                 .ok()
-                .map(|&turret| (angle, turret))
+                .map(|&turret| (aim, turret))
         });
         let dressed = dressed.iter().filter_map(|(&DrawingOf(unit), &turret)| {
-            angles.get(unit).ok().map(|&angle| (angle, turret))
+            aims.get(unit).ok().map(|&aim| (aim, turret))
         });
-        for (angle, turret) in changed.chain(dressed) {
-            if let Ok(mut node) = nodes.get_mut(turret.node) {
-                node.rotation = turret.rotation(angle);
+        for (aim, turret) in changed.chain(dressed) {
+            for (node, rotation) in turret.rotations(aim) {
+                if let Ok(mut node) = nodes.get_mut(node) {
+                    node.rotation = rotation;
+                }
             }
         }
     }
@@ -272,7 +276,11 @@ impl UnitModelsPlugin {
             entity: node,
             name: names.get(node).ok().map(Name::as_str),
         });
-        let Dressing { hidden, turret } = Dressing::of(look_nodes, spawned);
+        let Dressing {
+            hidden,
+            turret,
+            turret_pitch,
+        } = Dressing::of(look_nodes, spawned);
         for &node in &hidden {
             commands.entity(node).insert(Visibility::Hidden);
         }
@@ -297,14 +305,20 @@ impl UnitModelsPlugin {
             .entity(ready.entity)
             .remove::<Redress>()
             .insert(Dressed { hidden, pivots });
-        // A model is a child of its unit's drawing, which the turret's node turns with.
-        if let Some(node) = turret
-            && let (Ok(root), Ok(rest)) = (parents.get(ready.entity), transforms.get(node))
+        // A model is a child of its unit's drawing, which the turret's nodes turn with.
+        let at_rest = |node: Option<Entity>| {
+            let node = node?;
+            let rest = transforms.get(node).ok()?.rotation;
+            Some(TurretNode { node, rest })
+        };
+        let nodes = TurretNodes {
+            angle: at_rest(turret),
+            pitch: at_rest(turret_pitch),
+        };
+        if (nodes.angle.is_some() || nodes.pitch.is_some())
+            && let Ok(root) = parents.get(ready.entity)
         {
-            commands.entity(root.parent()).insert(TurretNode {
-                node,
-                rest: rest.rotation,
-            });
+            commands.entity(root.parent()).insert(nodes);
         }
     }
 
@@ -503,14 +517,10 @@ impl GltfExtensionHandler for ExtrasHandler {
 type Recolored<'w, 's> =
     Query<'w, 's, (&'static Team, &'static Drawing), (Changed<Team>, Allow<Unpredicted>)>;
 
-/// The units whose turret angle changed, the client's own and those it only receives, each with
+/// The units whose turret aim changed, the client's own and those it only receives, each with
 /// its drawing.
-type TurnedTurrets<'w, 's> = Query<
-    'w,
-    's,
-    (&'static TurretAngle, &'static Drawing),
-    (Changed<TurretAngle>, Allow<Unpredicted>),
->;
+type TurnedTurrets<'w, 's> =
+    Query<'w, 's, (&'static TurretAim, &'static Drawing), (Changed<TurretAim>, Allow<Unpredicted>)>;
 
 /// A node of a spawned model: its entity, and its name.
 #[derive(Debug, Clone, Copy)]
@@ -562,27 +572,46 @@ struct ModelTree<'q, 'w, 's> {
     meshes: &'q Query<'w, 's, (), With<Mesh3d>>,
 }
 
-/// What a spawned model's dressing does: the nodes it hides, and the node its unit's turret angle
-/// turns.
+/// What a spawned model's dressing does: the nodes it hides, and the nodes its unit's turret
+/// angle and pitch turn.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Dressing {
     hidden: Vec<Entity>,
     turret: Option<Entity>,
+    turret_pitch: Option<Entity>,
 }
 
-/// On a unit's drawing: the node of its model its turret angle turns, and that node's rotation
-/// at rest, as its model holds it.
+/// On a unit's drawing: the nodes of its model its turret angle and its turret pitch turn, each
+/// if it has one.
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
-pub(crate) struct TurretNode {
+pub(crate) struct TurretNodes {
+    angle: Option<TurretNode>,
+    pitch: Option<TurretNode>,
+}
+
+/// A node of a model a turret turns, and its rotation at rest, as its model holds it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TurretNode {
     node: Entity,
     rest: Quat,
 }
 
-impl TurretNode {
-    /// The node's rotation at `angle`: its rest turned about the model's up by the angle, as the
-    /// drawing turns by its unit's facing.
-    fn rotation(&self, angle: TurretAngle) -> Quat {
-        Quat::from_rotation_y(angle.degrees().float().to_radians()) * self.rest
+impl TurretNodes {
+    /// Each node's rotation at `aim`: its rest turned about its own up by the angle, and about
+    /// its own side by the pitch, raising its forward, as Zero Hour's `W3DModelDraw` controls a
+    /// turret's bones in their own frames (02-engine-core.md, The client draws a projectile with
+    /// its look).
+    fn rotations(&self, aim: TurretAim) -> impl Iterator<Item = (Entity, Quat)> {
+        let radians = |degrees: Num| degrees.float().to_radians();
+        let angle = self.angle.map(|turret| {
+            let turn = Quat::from_rotation_y(radians(aim.angle()));
+            (turret.node, turret.rest * turn)
+        });
+        let pitch = self.pitch.map(|turret| {
+            let raise = Quat::from_rotation_z(radians(aim.pitch()));
+            (turret.node, turret.rest * raise)
+        });
+        angle.into_iter().chain(pitch)
     }
 }
 
@@ -598,9 +627,14 @@ impl Dressing {
             {
                 dressing.hidden.push(node.entity);
             }
-            let turret = look_nodes.turret.as_deref();
-            if dressing.turret.is_none() && node.name.is_some_and(|name| Some(name) == turret) {
+            let named = |name: &Option<Arc<str>>| {
+                node.name.is_some_and(|node| Some(node) == name.as_deref())
+            };
+            if dressing.turret.is_none() && named(&look_nodes.turret) {
                 dressing.turret = Some(node.entity);
+            }
+            if dressing.turret_pitch.is_none() && named(&look_nodes.turret_pitch) {
+                dressing.turret_pitch = Some(node.entity);
             }
         }
         dressing

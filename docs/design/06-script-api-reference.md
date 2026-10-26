@@ -307,6 +307,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `experience` | progression | since 1.0 |
 | `combat` | combat | since 1.0 |
 | `turret` | combat | since 1.0 |
+| `barrels` | combat | since 1.0 |
 | `navigation` | navigation | since 1.0 |
 | `vision` | vision | since 1.0 |
 | `projectile` | projectiles | since 1.0 |
@@ -436,6 +437,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `speed` | combat | since 1.0 |
 | `streak` | combat | since 1.0 |
 | `pre_attack` | combat | since 1.0 |
+| `aim_deg` | combat | since 1.0 |
 | `unit_type` | production | since 1.0 |
 | `requires` | production | since 1.0 |
 | `construct` | production | since 1.0 |
@@ -528,6 +530,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `turn_rate` | combat | since 1.0 |
 | `tolerance_deg` | combat | since 1.0 |
 | `slot` | combat | since 1.0 |
+| `pivot` | combat | since 1.0 |
+| `pitch` | combat | since 1.0 |
 
 ### The mode's `[navigation]`
 

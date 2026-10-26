@@ -222,22 +222,30 @@ struct ModelUpgrade {
     hide: Box<[String]>,
 }
 
-/// Where a look's models come from: their package, the node they turn by their unit's turret
-/// angle, and their package's conditions, which their upgrades name, none for models no unit
-/// draws.
+/// Where a look's models come from: their package, the nodes they turn by their unit's turret,
+/// and their package's conditions, which their upgrades name, none for models no unit draws.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ModelSource<'a> {
     package: PackageIndex,
-    turret: Option<&'a str>,
+    turret: TurretNames<'a>,
     known: Option<&'a BTreeMap<DeclaredName, Known>>,
 }
 
+/// The names of the nodes a look turns by its unit's turret: by its angle and by its pitch, each
+/// if it has one.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TurretNames<'a> {
+    angle: Option<&'a str>,
+    pitch: Option<&'a str>,
+}
+
 /// What a drawn model needs once its scene is spawned: the names of the nodes its look hides, and
-/// the name of the node its look turns by its unit's turret angle, if it has one.
+/// the names of the nodes its look turns by its unit's turret angle and pitch, if it has them.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LookNodes {
     pub(crate) hide: Arc<[String]>,
     pub(crate) turret: Option<Arc<str>>,
+    pub(crate) turret_pitch: Option<Arc<str>>,
 }
 
 impl UnitLooks {
@@ -271,7 +279,7 @@ impl UnitLooks {
                 let package = origin.package;
                 let unit = data.of(package).units.units().get(&*origin.name)?;
                 let known = &known[usize::from(package.get())];
-                let load = |draws: &[LookDraw], turret: Option<&str>| {
+                let load = |draws: &[LookDraw], turret: TurretNames<'_>| {
                     LookDraws::load(package, draws, turret, known)
                 };
                 let of_type = types.variations.and_then(|book| book.get(unit_type));
@@ -284,9 +292,18 @@ impl UnitLooks {
                 let variations = unit.variations.iter().filter(|_| fits);
                 Some(TypeLook {
                     package,
-                    own: load(&unit.draws, unit.turret.as_deref()),
+                    own: load(
+                        &unit.draws,
+                        TurretNames::of(unit.turret.as_deref(), unit.turret_pitch.as_deref()),
+                    ),
                     variations: variations
-                        .map(|variation| load(&variation.draws, variation.turret.as_deref()))
+                        .map(|variation| {
+                            let turret = TurretNames::of(
+                                variation.turret.as_deref(),
+                                variation.turret_pitch.as_deref(),
+                            );
+                            load(&variation.draws, turret)
+                        })
                         .collect(),
                     placement_angle: unit.placement_angle.unwrap_or(Num::ZERO),
                     weapons: unit
@@ -368,12 +385,12 @@ impl UnitLooks {
 }
 
 impl LookDraws {
-    /// The draws of `draws`, a look of the package at `package` whose models turn `turret` by
-    /// their unit's turret angle, each set against the package's conditions `known`.
+    /// The draws of `draws`, a look of the package at `package` whose models turn the nodes of
+    /// `turret` by their unit's turret, each set against the package's conditions `known`.
     fn load(
         package: PackageIndex,
         draws: &[LookDraw],
-        turret: Option<&str>,
+        turret: TurretNames<'_>,
         known: &BTreeMap<DeclaredName, Known>,
     ) -> Self {
         let mut top: Option<ModelTop> = None;
@@ -417,7 +434,7 @@ impl DrawStates {
     fn load(
         package: PackageIndex,
         draw: &LookDraw,
-        turret: Option<&str>,
+        turret: TurretNames<'_>,
         known: &BTreeMap<DeclaredName, Known>,
     ) -> Self {
         let ignored = |name: &DeclaredName| draw.ignore().contains(name);
@@ -680,13 +697,19 @@ impl Known {
     }
 }
 
+impl<'a> TurretNames<'a> {
+    pub(crate) const fn of(angle: Option<&'a str>, pitch: Option<&'a str>) -> Self {
+        Self { angle, pitch }
+    }
+}
+
 impl ModelSource<'_> {
     /// The source of models of the package at `package` no unit draws, of no turret, whose
     /// upgrades none holds.
     pub(crate) const fn still(package: PackageIndex) -> Self {
         Self {
             package,
-            turret: None,
+            turret: TurretNames::of(None, None),
             known: None,
         }
     }
@@ -753,7 +776,7 @@ impl LookModel {
         }
         LookNodes {
             hide: hide.into(),
-            turret: self.nodes.turret.clone(),
+            ..self.nodes.clone()
         }
     }
 
@@ -800,7 +823,8 @@ impl LookModel {
                     .from_asset(PackageAssets::asset_path(package, &model.model)),
                 nodes: LookNodes {
                     hide: model.hide.as_slice().into(),
-                    turret: turret.map(Arc::from),
+                    turret: turret.angle.map(Arc::from),
+                    turret_pitch: turret.pitch.map(Arc::from),
                 },
                 scale: model.scale.get(),
             })

@@ -58,6 +58,7 @@ impl Effect for ProjectilesEffect {
                 let aim = LaunchAim {
                     from: map.point(from),
                     to,
+                    way: None,
                     aimed: Some(target),
                 };
                 Flight::aimed(aim, spec, map)
@@ -67,6 +68,7 @@ impl Effect for ProjectilesEffect {
                 let aim = LaunchAim {
                     from: map.point(from),
                     to: map.point(map.bounds.clamp(to)),
+                    way: None,
                     aimed: None,
                 };
                 Flight::aimed(aim, spec, map)

@@ -147,7 +147,7 @@ pub use crate::rank_toggle::{RankToggle, TogglePer};
 pub use crate::rank_values::{ChannelRule, ChargeRule, LoadedRanks, RankValues};
 pub use crate::reached::Reached;
 pub use crate::shot_damage::ShotDamage;
-pub use crate::shots::{Shot, Shots};
+pub use crate::shots::{Shot, ShotLaunch, Shots};
 pub use crate::slot_aim::SlotAim;
 pub use crate::slot_claims::{SlotClaim, SlotClaims};
 pub use crate::slot_kind::SlotKind;

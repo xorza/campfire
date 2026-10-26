@@ -12,8 +12,9 @@ use campfire_client_files::{
 };
 use campfire_combat::{
     ArmorShare, AttackData, ClipData, CombatData, ModeCombatData, OnDeath, PitchData, ScatterData,
-    SplashData, TurretData, WeaponValue,
+    SplashData, TurretData, UnitOffset, WeaponValue,
 };
+use campfire_math::Rounding;
 use campfire_mode::{ChoiceData, ListEntry, ModeParam, Offers, OptionData, RelationData};
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AcquireData;
@@ -54,8 +55,9 @@ use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATE
 use crate::zero_hour::format::ini::upgrade_ini::samples::UPGRADES;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::format::map::map_file::samples::map;
-use crate::zero_hour::install::samples::{fixture, packed_map};
+use crate::zero_hour::install::samples::{FixtureInstall, fixture, packed_map};
 use crate::zero_hour::look_flags::FlagCondition;
+use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel, StateDropCause};
 use crate::zero_hour::object_flight::samples::shell_projectile;
@@ -305,6 +307,9 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         WeaponValue::Own(Ranked::One(amount))
     };
     let enemies = Targeting::Unit(FilterData::parse("enemies").unwrap());
+    // Each aims within the least of 0.035 radians, 0.035 × 180 ÷ π degrees, but the cannon's 30°.
+    let radians: Num = "0.035".parse().unwrap();
+    let least = radians.checked_mul_div(Num::int(180), Num::PI, Rounding::NearestEven);
     let rifle = AttackData {
         rate: WeaponValue::Own(one(100)),
         rate_bonus: None,
@@ -321,6 +326,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         speed: None,
         streak: None,
         pre_attack: None,
+        aim_deg: least,
     };
     let mut rifle = ActionData::of(enemies.clone(), rifle);
     rifle.keys.range = meters(100);
@@ -342,6 +348,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         speed: None,
         streak: None,
         pre_attack: None,
+        aim_deg: Some(Num::int(30)),
     };
     let mut cannon = ActionData::of(enemies.clone(), cannon);
     cannon.keys.range = meters(150);
@@ -362,6 +369,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         speed: Speed::new(Num::int(2400)),
         streak: None,
         pre_attack: None,
+        aim_deg: least,
     };
     let mut bolt = ActionData::of(enemies, bolt);
     bolt.keys.range = meters(100);
@@ -923,6 +931,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         drop_offs: &production.supply.drop_offs,
         spawns: &production.supply.spawns,
         upgrades: &upgrades.types,
+        barrels: &BTreeMap::new(),
+        bones: &BTreeMap::new(),
     };
     let units = types.units_file(additions, &rules.names);
     assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);
@@ -1093,7 +1103,8 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         test_dir.names("one/game/client/animations"),
         ["tank.tank_aim.glb"]
     );
-    let Ok(ConvertedAnimation::Glb(aim)) = ConvertedAnimation::of("tank.tank_aim", &mut assets)
+    let Ok(ConvertedAnimation::Glb { glb: aim, .. }) =
+        ConvertedAnimation::of("tank.tank_aim", &mut assets)
     else {
         panic!("the tank's aim converts");
     };
@@ -1339,10 +1350,12 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                         LookVariation {
                             draws: tank().draws,
                             turret: tank().turret,
+                            turret_pitch: tank().turret_pitch,
                         },
                         LookVariation {
                             draws: unit(armored(vec![model("tank", &[])])).draws,
                             turret: None,
+                            turret_pitch: None,
                         },
                     ],
                     ..empty()
@@ -1415,4 +1428,33 @@ fn each_drawn_texture_goes_once_and_two_that_share_a_file_clash() {
         ZeroHourError::TextureClash { first, second }
             if first == path("art\\x.dds") && second == path("art\\x.tga")
     ));
+}
+
+#[test]
+fn a_types_bones_stand_as_its_first_variations_first_animation_places_them() {
+    // The tank's turret bone, `(1, 2, 3)` turned a half turn about `z`, which its aim's first
+    // frame leaves as it is: on glTF's axes `(x, z, −y)`, `(1, 3, −2)`. It names no `Barrel`
+    // pivot, its pitch bone, and no launch bone, so no barrels. The pair of variations takes its
+    // first's, the reskin's, which are the tank's; the red reskin's draw names no turret.
+    let FixtureInstall { test_dir, install } = FixtureInstall::new();
+    let rules = ZeroHourRules::read(&install).unwrap();
+    let mut writer = PackageWriter::create(&test_dir.path("bones")).unwrap();
+    let mut models = ModelWriter::new(ModelAssets::new(&install).unwrap(), &mut writer);
+    let flags = LookFlags::of(&rules.game_data, &rules.names, &rules.objects).unwrap();
+    let looks = models
+        .units(&rules.objects, &mut ImportNames::default(), &flags)
+        .unwrap();
+    let tank = ModelBones {
+        pivot: UnitOffset::new([1, 3, -2].map(Num::int)),
+        ..ModelBones::default()
+    };
+    let bones: Vec<(&str, &ModelBones)> = looks
+        .bones
+        .iter()
+        .map(|(name, bones)| (name.declared().as_str(), bones))
+        .collect();
+    assert_eq!(
+        bones,
+        [("tank", &tank), ("tankcamo", &tank), ("tankpair", &tank)]
+    );
 }

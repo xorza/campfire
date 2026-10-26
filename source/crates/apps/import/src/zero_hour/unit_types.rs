@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_actions::TypeSlotsData;
 use campfire_codec::{Toml, TomlTable};
+use campfire_combat::BarrelsData;
 use campfire_common::DeclaredName;
 use campfire_declarations::SectionWriter;
 use campfire_math::Num;
@@ -11,6 +12,7 @@ use campfire_production::{DropOffData, NodeData, ProductionData, SpawnsData};
 use campfire_stats::UpgradesData;
 
 use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::type_name::TypeName;
 
@@ -38,6 +40,9 @@ pub(crate) struct TypeAdditions<'a> {
     pub(crate) drop_offs: &'a BTreeMap<TypeName, DropOffData>,
     pub(crate) spawns: &'a BTreeMap<TypeName, SpawnsData>,
     pub(crate) upgrades: &'a BTreeMap<TypeName, UpgradesData>,
+    pub(crate) barrels: &'a BTreeMap<TypeName, BarrelsData>,
+    /// The bones each type's turret reads of its model.
+    pub(crate) bones: &'a BTreeMap<TypeName, ModelBones>,
 }
 
 /// The package's `data/units.toml`, and the largest speed of its types, when one drives.
@@ -65,7 +70,7 @@ impl ImportedTypes {
             .iter()
             .map(|(name, imported)| {
                 let mut writer = SectionWriter::default();
-                imported.write(&mut writer);
+                imported.write(&mut writer, additions.bones.get(name));
                 let slots: BTreeMap<DeclaredName, Vec<DeclaredName>> = [
                     (&names.weapon_slot, additions.weapon),
                     (&names.command_slot, additions.command),
@@ -98,6 +103,9 @@ impl ImportedTypes {
                 }
                 if let Some(upgrades) = additions.upgrades.get(name) {
                     writer.section(upgrades);
+                }
+                if let Some(barrels) = additions.barrels.get(name) {
+                    writer.section(barrels);
                 }
                 (name.declared().clone(), writer.into_table())
             })
@@ -132,6 +140,8 @@ pub(crate) mod reach_in {
                 drop_offs: &BTreeMap::new(),
                 spawns: &BTreeMap::new(),
                 upgrades: &BTreeMap::new(),
+                barrels: &BTreeMap::new(),
+                bones: &BTreeMap::new(),
             };
             self.units_file(additions, &RulesNames::default())
         }

@@ -56,6 +56,7 @@ pub(crate) enum AnimationFlag {
     StartFrameFirst = 1,
     StartFrameLast = 2,
     AdjustHeight = 3,
+    PristineFinal = 4,
     MaintainFrame = 5,
     RestartWhenComplete = 6,
     MaintainFrame2 = 7,

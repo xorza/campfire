@@ -133,9 +133,10 @@ pub(crate) enum PlacedAs {
 }
 
 /// A draw module: how it names its model, the model of its default state, if it draws one, that
-/// state's look and animation, and the bone its turret turns, its `Turret`; the sets of flags its
-/// default state is drawn for, none and its aliases'; its other condition states, in order; the
-/// map conditions it ignores (`IgnoreConditionStates`); and its transition states.
+/// state's look and animation, and the bones its turret turns and pitches, its `Turret` and its
+/// `TurretPitch`; the sets of flags its default state is drawn for, none and its aliases'; its
+/// other condition states, in order; the map conditions it ignores (`IgnoreConditionStates`);
+/// and its transition states.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DrawModule {
     pub(crate) kind: DrawKind,
@@ -144,6 +145,7 @@ pub(crate) struct DrawModule {
     pub(crate) look: StateLook,
     animation: IniAnimation,
     pub(crate) turret: Option<String>,
+    pub(crate) turret_pitch: Option<String>,
     sets: Vec<ConditionSet>,
     states: Vec<DrawState>,
     ignored: ConditionSet,
@@ -635,6 +637,7 @@ impl DrawModule {
             model: None,
             look: StateLook::default(),
             turret: None,
+            turret_pitch: None,
             animation: IniAnimation::default(),
             sets: vec![ConditionSet::default()],
             states: Vec::new(),
@@ -700,10 +703,13 @@ impl DrawModule {
 
     /// A field of its default state that the look reads.
     fn default_field(&mut self, word: &str, tokens: &[&str], line: usize) -> Result<(), IniError> {
-        if word == "turret"
-            && let Some(bone) = tokens.get(1)
-        {
-            self.turret = Some((*bone).to_owned());
+        let bone = match word {
+            "turret" => Some(&mut self.turret),
+            "turretpitch" => Some(&mut self.turret_pitch),
+            _ => None,
+        };
+        if let (Some(bone), Some(named)) = (bone, tokens.get(1)) {
+            *bone = Some((*named).to_owned());
         }
         state_field(&mut self.model, &mut self.look, word, tokens, line)
     }

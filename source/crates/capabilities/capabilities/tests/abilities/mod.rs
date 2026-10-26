@@ -113,6 +113,7 @@ fn stat_attack() -> AttackData {
         speed: None,
         streak: None,
         pre_attack: None,
+        aim_deg: None,
     }
 }
 

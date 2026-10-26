@@ -34,6 +34,25 @@ fn a_flight_leaves_along_the_ground_raised_by_twice_its_climb() {
 }
 
 #[test]
+fn a_flight_leaves_along_its_launch_way_raised_by_twice_its_climb() {
+    let from = Vec3::ZERO;
+    // Along −z, a target along x 5 m up over 10 m: (0, 1, −1) / √2, whatever the target's way.
+    // Up, a target below: up still. Straight down, raised by 2 · 5 / 10 = 1 to no length: the
+    // way itself.
+    let half = "0.7071067812";
+    let launched = Heading::launched(at(0, 0, -1), from, at(10, 5, 0));
+    assert!(near(launched, ["0", half, "-0.7071067812"]));
+    assert_eq!(
+        Heading::launched(at(0, 1, 0), from, at(10, -5, 0)).get(),
+        at(0, 1, 0)
+    );
+    assert_eq!(
+        Heading::launched(at(0, -1, 0), from, at(10, 5, 0)).get(),
+        at(0, -1, 0)
+    );
+}
+
+#[test]
 fn a_heading_turns_toward_its_way_by_at_most_its_bound() {
     let x = Heading(at(1, 0, 0));
     let turn = |degrees: i64| Some(SinCos::of_degrees(Num::int(degrees)));
