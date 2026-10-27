@@ -33,6 +33,7 @@ Object Raptor
   Behavior = JetAIUpdate ModuleTag_09
     TakeoffPause = 500
     ReturnToBaseIdleTime = 10000
+    OutOfAmmoDamagePerSecond = 10%
   End
   Geometry = CYLINDER
   GeometryMajorRadius = 6.5
@@ -268,7 +269,8 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     assert_eq!(heli, hovers);
     // The Raptor's wings fly as the helicopter's rotors do, of the same lift and height, at 175
     // m and 120° a second, at least 60 m a second round a circle of 100 m; its sortie waits its
-    // 500 ms, taxis at its taxi locomotor's 50 m a second and goes home after its 10,000 ms idle.
+    // 500 ms, taxis at its taxi locomotor's 50 m a second, goes home after its 10,000 ms idle, and
+    // stranded loses 10% of its life a second, the game's `f32` of 0.1, as unresistable damage.
     let raptor = ImportedType::of(shipped.objects.object(b"Raptor").unwrap(), &shipped).unwrap();
     let wings = WingsData::new(int(60), int(100)).unwrap();
     let mut flies = drives(int(175), int(120), half(13), int(20), Gait::Step);
@@ -281,6 +283,10 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         pause_ms: 500,
         taxi_speed: int(50),
         idle_ms: Some(10_000),
+        stranded: Some(StrandedData {
+            share: game_float::to_num(0.1).unwrap(),
+            kind: declared("unresistable"),
+        }),
     });
     assert_eq!(raptor, flies);
     // A jet of no taxi locomotor has no speed on the ground, so its sortie is none.

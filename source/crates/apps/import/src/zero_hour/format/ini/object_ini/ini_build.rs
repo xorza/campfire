@@ -4,13 +4,15 @@ use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::IniLine;
 
-/// An airfield's `ParkingPlaceBehavior`: its `NumRows` and `NumCols` of places, 0 by default, and
-/// whether it `ParkInHangars`, as the module's data starts.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// An airfield's `ParkingPlaceBehavior`: its `NumRows` and `NumCols` of places, whether it
+/// `ParkInHangars`, and its `HealAmountPerSecond`, each 0 or no by default, as the module's data
+/// starts.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct IniParking {
     pub(crate) rows: u8,
     pub(crate) cols: u8,
     pub(crate) hangars: bool,
+    pub(crate) heal: f32,
 }
 
 /// What an object gives production, as `ThingTemplate` and its modules read it: its `BuildCost`,
@@ -143,6 +145,9 @@ impl IniBuild {
             }
             (ProductionModule::Parking, "parkinhangars") => {
                 self.parking.get_or_insert_default().hangars = at.yes()?;
+            }
+            (ProductionModule::Parking, "healamountpersecond") => {
+                self.parking.get_or_insert_default().heal = at.real()?;
             }
             _ => {}
         }

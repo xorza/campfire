@@ -1,6 +1,8 @@
 use std::num::NonZeroI64;
 
-use campfire_airfields::{AirfieldData, AirfieldPlace, RunwayData, Runways, Sortie, SortieSpec};
+use campfire_airfields::{
+    AirfieldData, AirfieldPlace, RunwayData, Runways, Sortie, SortieSpec, StrandedLoss,
+};
 use campfire_navigation::{FlightData, Navigation, WingsData};
 use campfire_sim::MatchRate;
 use campfire_sim::Position;
@@ -8,11 +10,13 @@ use std::num::NonZeroU16;
 
 use campfire_actions::ActionRange;
 use campfire_combat::internals::{Armed, TestWeapon};
-use campfire_combat::{ClipRefill, ClipRule, ClipShots, Combat, OnDeath, Rate, WeaponDamage};
+use campfire_combat::{
+    ClipRefill, ClipRule, ClipShots, Combat, DamageCause, OnDeath, Rate, WeaponDamage,
+};
 use campfire_script::MatchNames;
 use campfire_stats::Stats;
 use campfire_units::FlightGoal;
-use campfire_values::FilterData;
+use campfire_values::{DamageKind, FilterData};
 
 use super::*;
 
@@ -46,6 +50,7 @@ fn places(game: &mut Match, shop: Shop, idle: Option<Ticks>) {
         pause: Ticks::new(2),
         taxi_step: Num::HALF,
         idle,
+        stranded: None,
     };
     Shop::give(game, shop.grunt, sortie);
 }
@@ -65,6 +70,7 @@ fn airfield(game: &mut Match, shop: Shop, idle: Option<Ticks>) {
             start: frame(4, 0),
             end: frame(14, 0),
         }],
+        heal: None,
     };
     Shop::give(game, shop.barracks, airfield);
 }
@@ -170,7 +176,13 @@ fn a_jet_of_a_producer_of_no_runways_flies_from_its_place() {
     for _ in 0..3 {
         game.step();
     }
-    assert_eq!(game.part::<Sortie>(jet), &Sortie::FLYING);
+    // Idle in the air since it was made, as no order holds it.
+    assert_eq!(
+        game.part::<Sortie>(jet),
+        &Sortie::Flying {
+            idle_since: Some(Tick::new(1))
+        }
+    );
     assert_eq!(game.part::<FlightGoal>(jet), &FlightGoal::Height);
     assert_eq!(game.part::<Position>(jet).get().y, Num::int(3));
     assert_eq!(game.part::<HeldPlaces>(barracks).holder(0), Some(jet));
@@ -486,4 +498,218 @@ fn a_jet_whose_airfield_is_gone_goes_home_to_another_of_its_team() {
     );
     assert_eq!(game.part::<HeldPlaces>(second).holder(0), Some(jet));
     assert_eq!(game.part::<Position>(jet).get(), Vec3::from((-30, 0, 4)));
+}
+
+/// A match of stats, combat, orders, production, navigation and airfields, with the shop's
+/// barracks an airfield that heals `heal` life a tick, and its grunt a jet of twice a second's
+/// ticks of life, 60 at 30 ticks a second, that goes home after `idle` ticks idle and stranded
+/// loses half its life a second, 1 a tick; and that life.
+fn kept_airfield_match(heal: Option<i64>, idle: Option<Ticks>) -> (Match, Shop, i64) {
+    let mut game = shop_match_of(&[
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Orders,
+        Capability::Production,
+        Capability::Navigation,
+        Capability::Airfields,
+    ]);
+    Combat::load_weapon_stats(&mut game);
+    let shop = Shop::place(&mut game);
+    airfield(&mut game, shop, idle);
+    let hz = NonZeroI64::from(game.resource::<MatchRate>().hz()).get();
+    let mut airfield = game
+        .resource::<ById<UnitType, AirfieldData>>()
+        .get(shop.barracks)
+        .unwrap()
+        .clone();
+    airfield.heal = heal.map(|heal| Num::int(heal * hz));
+    Shop::regive(&mut game, shop.barracks, airfield);
+    let mut sortie = *game
+        .resource::<ById<UnitType, SortieSpec>>()
+        .get(shop.grunt)
+        .unwrap();
+    sortie.stranded = Some(StrandedLoss {
+        share: Num::HALF,
+        kind: DamageKind::new(0),
+    });
+    Shop::regive(&mut game, shop.grunt, sortie);
+    Armed {
+        life: Num::int(2 * hz),
+        on_death: OnDeath::Despawn,
+        arms: None,
+    }
+    .give(&mut game, shop.grunt);
+    (game, shop, 2 * hz)
+}
+
+#[test]
+fn an_airfield_heals_the_jets_that_rest_at_it_and_kills_them_as_it_dies() {
+    // Two jets parked at an airfield that heals 2 life a tick. The first, dealt 9 of its 60 in
+    // tick 1, heals from tick 2, as the airfield sees its loss the tick after, to 53, 55, 57, 59
+    // and its whole 60 in tick 6, then no more. The second, ordered away in tick 1, is in the air
+    // by tick 27; the airfield dies after tick 30, and kills the first, parked, in tick 31, which
+    // the deaths find in tick 32, but not the second, which flies (jets.md, A jet goes home).
+    let (mut game, shop, life) = kept_airfield_match(Some(2), None);
+    let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
+    let barracks = Production::allocate_id(&mut game);
+    shop.producer(
+        &mut game,
+        barracks,
+        10,
+        Team::new(0),
+        None,
+        train,
+        queue(train, &[0, 0]),
+    );
+    game.step();
+    let jets: Vec<StableId> = Shop::spawned(&mut game, shop.grunt)
+        .iter()
+        .map(|spawn| spawn.id)
+        .collect();
+    let [first, second] = jets[..] else {
+        panic!("two jets made: {jets:?}");
+    };
+    assert_eq!(Stats::health(&game, first), life);
+    Combat::damage(&mut game, None, first, 9, DamageCause::Effect);
+    *game.part_mut::<Destination>(second) = Destination::to(Some(Vec3::from((80, 0, 0))));
+    let mut healths = Vec::new();
+    for _ in 1..=7 {
+        game.step();
+        healths.push(Stats::health(&game, first));
+    }
+    assert_eq!(healths, [51, 53, 55, 57, 59, 60, 60]);
+    for _ in 8..=30 {
+        game.step();
+    }
+    assert_eq!(game.part::<Sortie>(first), &Sortie::Parked);
+    assert!(game.part::<Sortie>(second).flies());
+    game.insert_parts(barracks, Dead);
+    game.step();
+    assert_eq!(Stats::health(&game, first), 0);
+    game.step();
+    assert!(game.try_part::<Dead>(first).is_some());
+    assert!(game.try_part::<Dead>(second).is_none());
+    assert_eq!(Stats::health(&game, second), life);
+}
+
+#[test]
+fn a_stranded_jet_circles_where_it_stands_and_loses_its_life_until_an_airfield_takes_it() {
+    // A jet of an airfield that dies in tick 30, idle in the air from tick 39, goes home in tick
+    // 49 to no airfield: stranded, it circles where it stands, losing 1 of its 60 a tick, 59 at
+    // the end of tick 49 and 48 at the end of tick 60. Its team's airfield at x = −30, spawned
+    // then, takes it in tick 61, and it goes home there, losing no more (jets.md, A jet goes
+    // home).
+    let (mut game, shop, _) = kept_airfield_match(None, Some(Ticks::new(10)));
+    let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
+    let [first, second] = [(); 2].map(|()| Production::allocate_id(&mut game));
+    shop.producer(
+        &mut game,
+        first,
+        10,
+        Team::new(0),
+        None,
+        train,
+        queue(train, &[0]),
+    );
+    game.step();
+    let jet = Shop::spawned(&mut game, shop.grunt)[0].id;
+    *game.part_mut::<Destination>(jet) = Destination::to(Some(Vec3::from((40, 0, 0))));
+    for _ in 1..30 {
+        game.step();
+    }
+    game.insert_parts(first, Dead);
+    for _ in 30..49 {
+        game.step();
+    }
+    assert!(matches!(game.part::<Sortie>(jet), Sortie::Flying { .. }));
+    game.step();
+    assert!(matches!(game.part::<Sortie>(jet), Sortie::Stranded { .. }));
+    assert_eq!(Stats::health(&game, jet), 59);
+    for _ in 50..=60 {
+        game.step();
+    }
+    assert!(matches!(game.part::<Sortie>(jet), Sortie::Stranded { .. }));
+    assert_eq!(Stats::health(&game, jet), 48);
+    shop.producer(
+        &mut game,
+        second,
+        -30,
+        Team::new(0),
+        None,
+        train,
+        queue(train, &[]),
+    );
+    game.step();
+    assert_eq!(game.part::<Sortie>(jet), &Sortie::Home);
+    assert_eq!(
+        game.part::<MadeAt>(jet),
+        &MadeAt {
+            producer: second,
+            place: 0
+        }
+    );
+    for _ in 0..5 {
+        game.step();
+    }
+    assert_eq!(Stats::health(&game, jet), 48);
+}
+
+/// The jet `shop`'s barracks at x = 10 of `game` makes at its first place, after tick 0.
+fn parked_jet(game: &mut Match, shop: Shop) -> StableId {
+    let train = Production::add_train_at_place(game, shop.grunt, Ticks::ZERO);
+    let barracks = Production::allocate_id(game);
+    shop.producer(
+        game,
+        barracks,
+        10,
+        Team::new(0),
+        None,
+        train,
+        queue(train, &[0]),
+    );
+    game.step();
+    Shop::spawned(game, shop.grunt)[0].id
+}
+
+#[test]
+fn an_order_takes_a_jet_off_its_way_home_and_waits_while_it_lands() {
+    // The idle jet of `an_idle_jet_flies_home_lands_and_taxis_back_to_its_place` goes home in tick
+    // 49; ordered to (80, 0, 0) in tick 50, it takes the order and flies again, as it still holds
+    // its shots.
+    let (mut game, shop) = idle_airfield_match(Some(Ticks::new(10)));
+    let jet = parked_jet(&mut game, shop);
+    let to = |x: i32| Destination::to(Some(Vec3::from((x, 0, 0))));
+    *game.part_mut::<Destination>(jet) = to(40);
+    for _ in 1..=49 {
+        game.step();
+    }
+    assert_eq!(game.part::<Sortie>(jet), &Sortie::Home);
+    *game.part_mut::<Destination>(jet) = to(80);
+    game.step();
+    assert_eq!(game.part::<Sortie>(jet), &Sortie::FLYING);
+    assert_eq!(
+        game.part::<Destination>(jet).get(),
+        Some(Vec3::from((80, 0, 0)))
+    );
+    // A second jet, home at the same ticks and ordered to (80, 0, 0) in tick 60 as it sinks to
+    // the runway, holds the order as it lands, taxis back and parks in tick 93, as the idle one
+    // does, then goes for its runway in tick 94 and takes off with it as the first of
+    // `jets_take_off_down_their_runway_one_at_a_time` does, 93 ticks later.
+    let (mut game, shop) = idle_airfield_match(Some(Ticks::new(10)));
+    let jet = parked_jet(&mut game, shop);
+    *game.part_mut::<Destination>(jet) = to(40);
+    for _ in 1..60 {
+        game.step();
+    }
+    assert_eq!(game.part::<Sortie>(jet), &Sortie::Descent);
+    *game.part_mut::<Destination>(jet) = to(80);
+    let (phases, _) = phases(&mut game, jet, 50);
+    let ticks: Vec<u64> = phases.iter().map(|&(tick, _)| tick + 59).collect();
+    assert_eq!(ticks, [60, 70, 80, 89, 93, 94, 95, 99, 108]);
+    assert_eq!(phases[4].1, Sortie::Parked);
+    assert_eq!(phases[5].1, Sortie::Waiting);
+    assert_eq!(
+        game.part::<Destination>(jet).get(),
+        Some(Vec3::from((80, 0, 0)))
+    );
 }

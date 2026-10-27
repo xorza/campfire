@@ -21,11 +21,13 @@ pub(crate) struct FightData {
 }
 
 /// A `JetAIUpdate`'s sortie: its `TakeoffPause` and its `ReturnToBaseIdleTime`, each in
-/// milliseconds, 0 by default, as the module's data starts.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// milliseconds, and its `OutOfAmmoDamagePerSecond`, a percent as a fraction of 1, each 0 by
+/// default, as the module's data starts.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct IniJet {
     pub(crate) takeoff_pause_ms: i32,
     pub(crate) idle_ms: i32,
+    pub(crate) out_of_ammo_damage: f32,
 }
 
 /// An AI module's idle scan, as `AIUpdateModuleData` reads it: whether `AutoAcquireEnemiesWhenIdle`
@@ -371,6 +373,9 @@ impl FightData {
             }
             (FightBlock::Ai, "returntobaseidletime") if self.jet.is_some() => {
                 self.jet_mut().idle_ms = at.int()?;
+            }
+            (FightBlock::Ai, "outofammodamagepersecond") if self.jet.is_some() => {
+                self.jet_mut().out_of_ammo_damage = percent(at.real()?);
             }
             // `parseTurret` reads the first turret; an `AltTurret` is a second, which the import
             // leaves.

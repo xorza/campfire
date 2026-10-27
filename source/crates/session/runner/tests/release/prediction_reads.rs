@@ -175,6 +175,8 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     let (client, server) = (system_names(&mut world), server_only_systems(&server));
     let own = [
         "campfire_abilities::toggles::Toggles::run_toggles",
+        "campfire_airfields::sorties::Sorties::kill_held",
+        "campfire_airfields::sorties::Sorties::upkeep",
         "campfire_areas::area_life::AreaLife::land",
         "campfire_areas::area_life::AreaLife::land",
         "campfire_areas::area_life::AreaLife::trigger",

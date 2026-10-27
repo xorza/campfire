@@ -56,6 +56,8 @@ pub(crate) struct ProductionImport {
     /// trains leave from, and each airfield's places and runways, which its jets take.
     helipads: BTreeMap<DeclaredName, [f32; 2]>,
     airfield_bones: BTreeMap<DeclaredName, AirfieldBones>,
+    /// The `HealAmountPerSecond` of each producer of a `ParkingPlaceBehavior` it visits.
+    heals: BTreeMap<TypeName, f32>,
     /// The `airfield` of each airfield whose production makes its jets at places (jets.md, The
     /// import flies a winged locomotor).
     pub(crate) airfields: BTreeMap<TypeName, AirfieldData>,
@@ -271,6 +273,9 @@ impl ProductionImport {
         // A type is visited once, by its name, as several parents may field one variation.
         let mut seen: BTreeSet<TypeName> = queued.iter().map(|named| named.name.clone()).collect();
         while let Some(producer) = queued.pop_front() {
+            if let Some(parking) = producer.object.build().parking {
+                import.heals.insert(producer.name.clone(), parking.heal);
+            }
             let set = producer.object.build().command_set.as_deref();
             let buttons = set.and_then(|set| rules.sets.buttons(set));
             let mut made: Vec<NamedObject<'r>> = buttons
@@ -598,8 +603,11 @@ impl ProductionImport {
                 angle: game_float::to_num(place.angle).ok()?,
             })
         };
-        let parked = (points.airfield)
-            .filter(|airfield| build.parking.is_some() && Self::airfield(airfield).is_some());
+        let parked = (points.airfield).filter(|airfield| {
+            build
+                .parking
+                .is_some_and(|parking| Self::airfield(airfield, parking.heal).is_some())
+        });
         let places: Option<Vec<PlaceData>> =
             parked.and_then(|airfield| airfield.places.iter().map(place).collect());
         Some(ProductionData {
@@ -630,10 +638,11 @@ impl ProductionImport {
         FramePoint::new(axes::ground([x?, y?])?)
     }
 
-    /// The `airfield` of `bones`: each place's prep point and runway, and each runway's start and
-    /// end, in the engine's frame; none when a point is past what the engine holds, so its
-    /// production makes no unit at a place either.
-    fn airfield(bones: &AirfieldBones) -> Option<AirfieldData> {
+    /// The `airfield` of `bones` and of `heal`, its `HealAmountPerSecond`: each place's prep point
+    /// and runway, each runway's start and end, in the engine's frame, and its heal, none of 0 or
+    /// less; none when a point or the heal is past what the engine holds, so its production makes
+    /// no unit at a place either.
+    fn airfield(bones: &AirfieldBones, heal: f32) -> Option<AirfieldData> {
         let places = bones.places.iter().map(|place| {
             Some(AirfieldPlace {
                 prep: Self::frame(place.prep)?,
@@ -646,9 +655,14 @@ impl ProductionImport {
                 end: Self::frame(end)?,
             })
         });
+        let heal = match game_float::to_num(heal).ok()? {
+            heal if heal > Num::ZERO => Some(heal),
+            _ => None,
+        };
         Some(AirfieldData {
             places: places.collect::<Option<_>>()?,
             runways: runways.collect::<Option<_>>()?,
+            heal,
         })
     }
 
@@ -661,7 +675,8 @@ impl ProductionImport {
         parks
             .filter_map(|(name, _)| {
                 let bones = self.airfield_bones.get(name.declared())?;
-                Some((name.clone(), Self::airfield(bones)?))
+                let heal = self.heals.get(name).copied().unwrap_or_default();
+                Some((name.clone(), Self::airfield(bones, heal)?))
             })
             .collect()
     }

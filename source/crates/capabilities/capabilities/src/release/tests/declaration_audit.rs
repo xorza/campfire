@@ -598,7 +598,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "drop_off",
             "gathering",
             "being_built",
-            "grounded"
+            "airfield_held"
         ]
     );
 }

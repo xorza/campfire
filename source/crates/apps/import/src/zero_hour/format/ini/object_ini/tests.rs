@@ -2,10 +2,12 @@ use campfire_math::Num;
 
 use super::*;
 use crate::zero_hour::format::ini::object_ini::fight_data::{
-    IniShell, IniTurret, IniTurretPitch, WeaponSet,
+    IniJet, IniShell, IniTurret, IniTurretPitch, WeaponSet,
 };
 use crate::zero_hour::format::ini::object_ini::ini_animation::{AnimationFlag, IniClip, IniMode};
-use crate::zero_hour::format::ini::object_ini::ini_build::{Prerequisite, ProductionExit};
+use crate::zero_hour::format::ini::object_ini::ini_build::{
+    IniParking, Prerequisite, ProductionExit,
+};
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSpawn, SupplyDock, SupplyGatherer};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{HealthChange, UpgradeEffect};
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
@@ -699,6 +701,32 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
         [Prerequisite::Science("SCIENCE_AMERICA".to_owned())]
     );
     assert_eq!(build(&ini, "AmericaFireBase"), IniBuild::default());
+    // An airfield's parking, its rows, columns, hangars and heal a second; a jet's AI, its pause,
+    // its idle time and its stranded loss of 10%, a fraction of 1.
+    ini.read(
+        b"Object Field\n Behavior = ParkingPlaceBehavior M\n  NumRows = 2\n  NumCols = 3\n  \
+          ParkInHangars = Yes\n  HealAmountPerSecond = 10\n End\nEnd\n\
+          Object Jet\n Behavior = JetAIUpdate M\n  TakeoffPause = 500\n  \
+          ReturnToBaseIdleTime = 10000\n  OutOfAmmoDamagePerSecond = 10%\n End\nEnd\n",
+    )
+    .unwrap();
+    assert_eq!(
+        build(&ini, "Field").parking,
+        Some(IniParking {
+            rows: 2,
+            cols: 3,
+            hangars: true,
+            heal: 10.0,
+        })
+    );
+    assert_eq!(
+        ini.named("Jet").unwrap().fight().jet,
+        Some(IniJet {
+            takeoff_pause_ms: 500,
+            idle_ms: 10_000,
+            out_of_ammo_damage: 10.0 / 100.0,
+        })
+    );
     // A reskin keeps its base's, as its table sets none of them; a second `Prerequisites` block
     // starts the list again.
     ini.read(

@@ -577,9 +577,11 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
         ]
     );
     let name = TypeName::named("airfield");
+    // It heals its module's 10 life a second.
     let import = ProductionImport {
         sections: BTreeMap::from([(name.clone(), section)]),
         airfield_bones: BTreeMap::from([(name.declared().clone(), bones)]),
+        heals: BTreeMap::from([(name.clone(), 10.0)]),
         ..ProductionImport::default()
     };
     let prep = |z: i64| AirfieldPlace {
@@ -594,6 +596,7 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
                 start: frame(40, 0),
                 end: frame(140, 0),
             }],
+            heal: Some(Num::int(10)),
         }
     );
     let plain = IniBuild {

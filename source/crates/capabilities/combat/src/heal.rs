@@ -16,10 +16,12 @@ pub struct Heal {
     pub depth: u8,
 }
 
-/// What gave a heal: an ability's or a modifier's effect, or the source's leech, by the life a
-/// damage of it took.
+/// What gave a heal: an ability's or a modifier's effect; the source's leech, by the life a
+/// damage of it took; or the upkeep of a capability above combat, as an airfield's heal of the
+/// units that rest at it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HealCause {
     Effect,
     Leech,
+    Upkeep,
 }

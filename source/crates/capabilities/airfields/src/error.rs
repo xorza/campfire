@@ -13,4 +13,10 @@ pub enum AirfieldError {
     /// A type of a sortie has no flight, so nothing flies it.
     #[error("its sortie's type does not fly")]
     SortieFlight,
+    /// It heals no life a second.
+    #[error("its airfield heals no life")]
+    Heal,
+    /// Its sortie's stranded loss is no share of a life above 0 to 1 a second.
+    #[error("its sortie's stranded loss lies above 0 to its whole life a second")]
+    StrandedShare,
 }

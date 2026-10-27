@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_airfields::SortieData;
+use campfire_airfields::{SortieData, StrandedData};
 use campfire_combat::{
     CombatData, CombatPatch, OnDeath, TaggedArmorData, TurretData, TurretPatch, TurretPitchData,
 };
@@ -18,6 +18,7 @@ use campfire_values::{EngineStat, Stat};
 
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::ini::damage_type::DamageType;
 use crate::zero_hour::format::ini::locomotor_ini::Locomotor;
 use crate::zero_hour::format::ini::object_ini::fight_data::{BodyKind, IniTurretPitch};
 use crate::zero_hour::format::ini::object_ini::ini_supply::IniSpawn;
@@ -347,8 +348,10 @@ impl ImportedType {
     }
 
     /// The sortie of the jet `object`: its `JetAIUpdate`'s `TakeoffPause` and
-    /// `ReturnToBaseIdleTime`, none for 0, and the speed of its first taxi locomotor that drives
-    /// (jets.md, The import flies a winged locomotor); an error for a jet of none.
+    /// `ReturnToBaseIdleTime`, none for 0, its `OutOfAmmoDamagePerSecond` as `unresistable`
+    /// damage, as Zero Hour deals it, none for 0, and the speed of its first taxi locomotor that
+    /// drives (jets.md, The import flies a winged locomotor); an error for a jet of none, or of a
+    /// loss past its whole life a second.
     fn sortie_of(object: &IniObject, rules: &ZeroHourRules) -> Result<SortieData, TypeError> {
         let jet = object.fight().jet.expect("a jet has its AI's sortie");
         let taxi = object
@@ -358,10 +361,19 @@ impl ImportedType {
             .find(|locomotor| locomotor.drives())
             .ok_or(TypeError::Sortie)?;
         let ms = |ms: i32| u32::try_from(ms).map_err(|_| TypeError::Sortie);
+        let stranded = match num(jet.out_of_ammo_damage)? {
+            share if share <= Num::ZERO => None,
+            share if share <= Num::ONE => Some(StrandedData {
+                share,
+                kind: DamageType::Unresistable.kind(),
+            }),
+            _ => return Err(TypeError::Sortie),
+        };
         Ok(SortieData {
             pause_ms: ms(jet.takeoff_pause_ms)?,
             taxi_speed: num(taxi.speed)?,
             idle_ms: Some(ms(jet.idle_ms)?).filter(|&ms| ms > 0),
+            stranded,
         })
     }
 

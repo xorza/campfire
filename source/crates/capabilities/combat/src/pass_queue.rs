@@ -119,6 +119,14 @@ impl PassEntry {
             Self::Heal(heal) => heal.source,
         }
     }
+
+    /// The unit it reaches.
+    pub const fn target(self) -> StableId {
+        match self {
+            Self::Damage(damage) => damage.target,
+            Self::Heal(heal) => heal.target,
+        }
+    }
 }
 
 impl Scratch for PassQueue {

@@ -1,6 +1,7 @@
 use campfire_declarations::{
     BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId, Section, SectionTable,
 };
+use campfire_math::Num;
 use campfire_production::{FramePoint, ProductionData};
 use campfire_script::{ApiVersion, DataSection, DataTable, Status};
 use campfire_values::UnitType;
@@ -9,14 +10,17 @@ use serde::{Deserialize, Serialize};
 use crate::error::AirfieldError;
 
 /// A unit type's `airfield` section: for each of its production's places, in their order, the
-/// point its unit waits at for its runway and the runway it takes; and its runways, each from its
+/// point its unit waits at for its runway and the runway it takes; its runways, each from its
 /// start to its end, every point in its own frame (jets.md, A jet takes off and lands on its
-/// runway).
+/// runway); and the life a second it heals each unit that rests at it, none for none (jets.md, A
+/// jet goes home).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AirfieldData {
     pub places: Vec<AirfieldPlace>,
     pub runways: Vec<RunwayData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heal: Option<Num>,
 }
 
 /// A place's point it waits at for its runway, and that runway's index.
@@ -37,7 +41,8 @@ pub struct RunwayData {
 
 impl AirfieldData {
     /// The airfield of each unit type that stands with an `airfield` section; an error for one
-    /// whose places are not its production's, or that names a runway it does not have.
+    /// whose places are not its production's, that names a runway it does not have, or that heals
+    /// no life.
     pub(crate) fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let mut book = ByIdBuilder::default();
         for unit in cx.standing() {
@@ -58,6 +63,9 @@ impl AirfieldData {
                 .any(|place| usize::from(place.runway) >= data.runways.len())
             {
                 return Err(BookError::rule(unit.package, at(), AirfieldError::Runway));
+            }
+            if data.heal.is_some_and(|heal| heal <= Num::ZERO) {
+                return Err(BookError::rule(unit.package, at(), AirfieldError::Heal));
             }
             book.set(unit.unit_type, data.clone());
         }

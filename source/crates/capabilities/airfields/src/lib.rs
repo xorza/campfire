@@ -25,7 +25,7 @@ pub use crate::airfield_data::{AirfieldData, AirfieldPlace, RunwayData};
 pub use crate::error::AirfieldError;
 pub use crate::runways::Runways;
 pub use crate::sortie::Sortie;
-pub use crate::sortie_data::{SortieData, SortieSpec};
+pub use crate::sortie_data::{SortieData, SortieSpec, StrandedData, StrandedLoss};
 
 /// The `airfields` capability: a building's places and runways, and the sorties of the units it
 /// parks there; it needs production, whose places it reads, and navigation, which flies its
@@ -60,7 +60,7 @@ impl Module for Airfields {
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<AirfieldData>();
         d.section::<SortieData>();
-        d.engine_tags(&[Self::GROUNDED]);
+        d.engine_tags(&[Self::HELD]);
         d.book::<ById<UnitType, AirfieldData>>(AirfieldData::book);
         d.book::<ById<UnitType, SortieSpec>>(SortieSpec::book);
         d.component::<Runways>();
@@ -75,21 +75,30 @@ impl Module for Airfields {
 
     /// Adds airfields to a match: in Act, after the trains start and before the units move, the
     /// runways of the units that died go free, and each unit of a sortie steps its way from its
-    /// place into the air and back, on the server and in a predicting client alike.
+    /// place into the air and back, on the server and in a predicting client alike; then, on the
+    /// server, the units an airfield that died held die with it, and each airfield heals the units
+    /// that rest at it while each stranded unit loses its life.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.add(
             AirfieldsSystems::Sorties,
             (Sorties::free_runways, Sorties::step).chain(),
         );
+        cx.server(
+            AirfieldsSystems::Sorties,
+            (Sorties::kill_held, Sorties::upkeep)
+                .chain()
+                .after(Sorties::step),
+        );
     }
 }
 
 impl Airfields {
-    /// The engine tag of a unit its airfield holds on the ground, from its place to its runway's
-    /// end: it blocks its walk and its attacks, so its orders wait for the air.
-    pub const GROUNDED: EngineTag = EngineTag::new(
+    /// The engine tag of a unit its airfield holds, from its runway's approach as it lands to its
+    /// runway's end as it takes off: it blocks its walk and its attacks, so its orders wait for
+    /// the air.
+    pub const HELD: EngineTag = EngineTag::new(
         11,
-        "grounded",
+        "airfield_held",
         TagProperties::NONE
             .with_block(Block::Move)
             .with_block(Block::Attack),

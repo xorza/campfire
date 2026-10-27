@@ -23,7 +23,8 @@ pub struct Damage {
 }
 
 /// What dealt a damage: an attack, with the roll it drew as its windup ended; an extra attack,
-/// from `ctx.attack_hit`, which draws none; or an ability's or modifier's effect. An attack names
+/// from `ctx.attack_hit`, which draws none; an ability's or modifier's effect; or the upkeep of a
+/// capability above combat, as an airfield's toll on a unit it cannot take in. An attack names
 /// the rank of its weapon's slot, at which the weapon's `on_hit` list reads its params, and its
 /// attacker's allegiance as it struck, which the list acts for once the attacker is gone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +39,7 @@ pub enum DamageCause {
         allegiance: Allegiance,
     },
     Effect,
+    Upkeep,
 }
 
 /// The weapon an attack dealt a damage with: its slot's rank, and the attacker's allegiance.
@@ -74,7 +76,7 @@ impl DamageCause {
     pub const fn roll(self) -> Option<Num> {
         match self {
             Self::Attack { roll, .. } => Some(roll),
-            Self::ExtraAttack { .. } | Self::Effect => None,
+            Self::ExtraAttack { .. } | Self::Effect | Self::Upkeep => None,
         }
     }
 
@@ -85,7 +87,7 @@ impl DamageCause {
                 rank, allegiance, ..
             }
             | Self::ExtraAttack { rank, allegiance } => Some(WeaponHit { rank, allegiance }),
-            Self::Effect => None,
+            Self::Effect | Self::Upkeep => None,
         }
     }
 }

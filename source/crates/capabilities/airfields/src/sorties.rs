@@ -6,7 +6,9 @@ use bevy_ecs::query::{Added, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlots, ProgressIndexes};
-use campfire_combat::{ClipRefill, ClipShots, Weapon};
+use campfire_combat::{
+    ClipRefill, ClipShots, Damage, DamageCause, DamagePass, Heal, HealCause, PassEntry, Weapon,
+};
 use campfire_common::{Tick, Ticks};
 use campfire_declarations::ById;
 use campfire_math::{Num, Rounding, Vec3};
@@ -14,7 +16,8 @@ use campfire_navigation::FlightData;
 use campfire_production::{FramePoint, HeldPlaces, MadeAt, ProducerSpec};
 use campfire_sim::{EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId};
 use campfire_units::{
-    DashTo, Dead, Destination, Facing, FlightGoal, ForcedMove, MoveStep, StatusTags,
+    DashTo, Dead, Destination, Facing, FlightGoal, ForcedMove, Life, MoveStep, StatusTags,
+    UnitsWorld,
 };
 use campfire_values::{ActionId, Team, UnitType};
 
@@ -74,6 +77,20 @@ type Sortied<'w, 's> = Query<
 type DeadSorties<'w, 's> =
     Query<'w, 's, (&'static StableId, &'static MadeAt), (Added<Dead>, With<Sortie>)>;
 
+/// The units of a sortie their airfields keep: each one's id, type, sortie, airfield and life.
+type KeptUnits<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static StableId,
+        &'static UnitType,
+        &'static Sortie,
+        &'static MadeAt,
+        &'static Life,
+    ),
+    Without<Dead>,
+>;
+
 /// The books a sortie reads: the airfields', the sorties', the producers' places, the flights and
 /// the weapons.
 type SortieBooks<'w> = (
@@ -119,23 +136,24 @@ impl Sorties {
             *goal = FlightGoal::Ground;
         }
         if let Some(mut status) = unit.get_mut::<StatusTags>() {
-            *status = status.turned(Airfields::GROUNDED, true);
+            *status = status.turned(Airfields::HELD, true);
         }
     }
 
     /// Steps each unit of a sortie, by stable id, before the units move (jets.md, A jet takes off
-    /// and lands on its runway; jets.md, A jet goes home). One ordered away from its place waits
-    /// for its runway, holds it, taxis to its prep point and its start at its taxi speed, waits its
-    /// pause, rolls to the runway's end at its speed, lets the runway go and climbs, its orders its
-    /// own. In the air, one whose clips that refill at home are all empty, or that stood idle its
-    /// idle time, drops its orders and flies home to its runway's approach, past the runway's end
-    /// as far as it flies while it sinks from its height; it circles there until it holds the
-    /// runway, sinks to its end, rolls to its start, lets it go, taxis back to its place and
-    /// reloads its clips, all in the longest time a clip's reload takes for the share it lacks, its
-    /// shots back as the time goes. One whose airfield is gone takes the nearest airfield of its
-    /// team with a free place, and with none flies on as it is; one on the ground of a gone
-    /// airfield stays. It is grounded, its walk and its attacks blocked, from its runway's end to
-    /// its end.
+    /// and lands on its runway; jets.md, A jet goes home; jets.md, An order waits for the air).
+    /// One ordered away from its place waits for its runway, holds it, taxis to its prep point and
+    /// its start at its taxi speed, waits its pause, rolls to the runway's end at its speed, lets
+    /// the runway go and climbs, its orders its own. In the air, one whose clips that refill at
+    /// home are all empty, or that stood idle its idle time, drops its attack and flies home to its
+    /// runway's approach, past the runway's end as far as it flies while it sinks from its height;
+    /// an order on the way takes one that still holds a shot back to the air. At the approach it
+    /// circles until it holds the runway, sinks to its end, rolls to its start, lets it go, taxis
+    /// back to its place and reloads its clips, all in the longest time a clip's reload takes for
+    /// the share it lacks, its shots back as the time goes. One whose airfield is gone takes the
+    /// nearest airfield of its team with a free place; with none, as it goes home it circles
+    /// where it stands, stranded, until one takes it. It is held, its walk and its attacks
+    /// blocked, from its runway's approach to its runway's end as it takes off.
     pub(crate) fn step(
         (tick, rate, index): (Res<'_, SimTick>, Res<'_, MatchRate>, Res<'_, EntityIndex>),
         books: SortieBooks<'_>,
@@ -172,6 +190,28 @@ impl Sorties {
                     .into_iter()
                     .flat_map(|((clips, slots), weapons)| clips.at_home(slots, weapons))
             };
+            let aims = progress
+                .as_ref()
+                .is_some_and(|progress| progress.attack_target().is_some());
+            let ordered = destination.get().is_some() || aims;
+            let empty = {
+                let mut at_home = home_clips().peekable();
+                at_home.peek().is_some() && at_home.all(|home| home.fired >= home.clip.shots.get())
+            };
+            let idle_since = match *sortie {
+                Sortie::Flying { .. } if ordered => None,
+                Sortie::Flying { idle_since } => idle_since.or(Some(now)),
+                _ => None,
+            };
+            let idled = spec
+                .idle
+                .zip(idle_since)
+                .is_some_and(|(idle, since)| now >= since.after(idle));
+            let mut drop_target = || {
+                if let Some(progress) = progress.as_mut() {
+                    progress.set_attack_target(None, &mut indexes.of(id, entity));
+                }
+            };
             let producer = index.get(made.producer);
             let mut home = producer.filter(|&field| fields.contains(field));
             // A unit of a gone airfield that flies takes another of its team's with a free place;
@@ -197,9 +237,36 @@ impl Sorties {
                 }
             }
             let Some(home) = home else {
-                if matches!(*sortie, Sortie::Home | Sortie::Approach) {
-                    sortie.set_if_neq(Sortie::FLYING);
-                }
+                // With no airfield to go to, one that goes home circles where it stands, losing
+                // life, as Zero Hour's jet circles its dead airfield
+                // (`JetOrHeliCirclingDeadAirfieldState`); one of a living producer of no runways
+                // flies on.
+                let ground = at.ground();
+                let going = destination.get();
+                let mut strand = || {
+                    drop_target();
+                    Destination::route_to(&mut destination, Some(ground));
+                    Sortie::Stranded { at: ground }
+                };
+                let next = match *sortie {
+                    Sortie::Flying { .. } if gone && (empty || idled) => strand(),
+                    Sortie::Home => strand(),
+                    // An order takes one that still holds a shot back to the air; one whose clips
+                    // are empty circles on where it stands.
+                    Sortie::Stranded { at: circled } => {
+                        let away = aims || going.is_some_and(|to| to != circled);
+                        match (away, empty) {
+                            (false, _) => *sortie,
+                            (true, false) => Sortie::FLYING,
+                            (true, true) => strand(),
+                        }
+                    }
+                    Sortie::Flying { .. } => Sortie::Flying { idle_since },
+                    held => held,
+                };
+                sortie.set_if_neq(next);
+                let held = status.turned(Airfields::HELD, next.held());
+                status.set_if_neq(held);
                 continue;
             };
             let ((_, &field_at, field_facing), (&field_type, _), (mut runways, _)) =
@@ -217,50 +284,31 @@ impl Sorties {
                 .get(field_type)
                 .expect("an airfield produces")
                 .places[usize::from(made.place)];
-            let ordered = destination.get().is_some()
-                || progress
-                    .as_ref()
-                    .is_some_and(|progress| progress.attack_target().is_some());
+            let flight = flights.get(unit_type).expect("a sortie's type flies");
+            let approach = Self::approach(field, runway.start, runway.end, flight, *step, hz);
             let mut dash = |facing: &mut Mut<'_, Facing>, to: Vec3, step: Num| {
                 Self::dash(&mut commands, entity, facing, at, to, step);
             };
             let next = match *sortie {
-                Sortie::Flying { idle_since } => {
-                    let idle_since = if ordered {
-                        None
-                    } else {
-                        idle_since.or(Some(now))
-                    };
-                    let mut clips = home_clips().peekable();
-                    let empty = clips.peek().is_some()
-                        && clips.all(|home| home.fired >= home.clip.shots.get());
-                    let idled = spec
-                        .idle
-                        .zip(idle_since)
-                        .is_some_and(|(idle, since)| now >= since.after(idle));
-                    if empty || idled {
-                        if let Some(progress) = progress.as_mut() {
-                            progress.set_attack_target(None, &mut indexes.of(id, entity));
-                        }
-                        let flight = flights.get(unit_type).expect("a sortie's type flies");
-                        let approach =
-                            Self::approach(field, runway.start, runway.end, flight, *step, hz);
-                        Destination::route_to(&mut destination, Some(approach));
-                        Sortie::Home
-                    } else {
-                        Sortie::Flying { idle_since }
-                    }
+                Sortie::Flying { .. } if !empty && !idled => Sortie::Flying { idle_since },
+                // One empty or idle goes home, and so does one stranded that has a home again.
+                Sortie::Flying { .. } | Sortie::Stranded { .. } => {
+                    drop_target();
+                    Destination::route_to(&mut destination, Some(approach));
+                    Sortie::Home
                 }
+                // On its way home, an order takes one that still holds a shot back to the air, as
+                // Zero Hour's jet takes a command on its return (`JetAIUpdate::aiDoCommand`); one
+                // whose clips are empty heeds none and flies on to its approach, where it
+                // arrives as its walk there ends.
                 Sortie::Home => {
-                    // On its way home it heeds no order, and arrives at its approach as its walk
-                    // there ends.
-                    let flight = flights.get(unit_type).expect("a sortie's type flies");
-                    let approach =
-                        Self::approach(field, runway.start, runway.end, flight, *step, hz);
+                    let away = aims || destination.get().is_some_and(|to| to != approach);
                     match destination.get() {
+                        _ if away && !empty => Sortie::FLYING,
                         None => Sortie::Approach,
                         Some(to) if to == approach => Sortie::Home,
                         Some(_) => {
+                            drop_target();
                             Destination::route_to(&mut destination, Some(approach));
                             Sortie::Home
                         }
@@ -343,8 +391,8 @@ impl Sorties {
                 held => held,
             };
             sortie.set_if_neq(next);
-            let grounded = status.turned(Airfields::GROUNDED, next.grounded());
-            status.set_if_neq(grounded);
+            let held = status.turned(Airfields::HELD, next.held());
+            status.set_if_neq(held);
         }
     }
 
@@ -369,6 +417,78 @@ impl Sorties {
             if runways.holder(runway) == Some(unit) {
                 runways.release(runway, unit);
             }
+        }
+    }
+
+    /// Kills each unit an airfield that died held, as it dies, from its runway's approach as it
+    /// lands to its runway's end as it takes off, with no killer, as Zero Hour's airfield kills
+    /// the jets parked at it, landing or taking off (`ParkingPlaceBehavior::killAllParkedUnits`;
+    /// jets.md, A jet goes home).
+    pub(crate) fn kill_held(
+        dead: Query<'_, '_, &StableId, (Added<Dead>, With<Runways>)>,
+        units: Query<'_, '_, (&StableId, &MadeAt, &Sortie), Without<Dead>>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        for &field in &dead {
+            for (&unit, made, sortie) in &units {
+                if made.producer == field && sortie.held() {
+                    commands.queue(move |world: &mut World| world.drain_life(unit));
+                }
+            }
+        }
+    }
+
+    /// Heals each unit that rests at its airfield below its whole life by its airfield's heal,
+    /// and deals each stranded unit its sortie's stranded loss, a tick's share of each, through
+    /// combat's pass, by the stable id of the unit each reaches (jets.md, A jet goes home).
+    pub(crate) fn upkeep(
+        (rate, index): (Res<'_, MatchRate>, Res<'_, EntityIndex>),
+        airfields: Res<'_, ById<UnitType, AirfieldData>>,
+        sorties: Res<'_, ById<UnitType, SortieSpec>>,
+        units: KeptUnits<'_, '_>,
+        fields: Query<'_, '_, &UnitType, (With<Runways>, Without<Dead>)>,
+        (mut commands, mut kept): (Commands<'_, '_>, Local<'_, Vec<PassEntry>>),
+    ) {
+        let hz = NonZeroI64::from(rate.hz()).get();
+        let tick_of = |per_second: Num| {
+            per_second
+                .checked_div_int(hz, Rounding::NearestEven)
+                .expect("an amount over a rate fits")
+        };
+        kept.clear();
+        kept.extend(units.iter().filter_map(
+            |(&id, &unit_type, &sortie, made, life)| match sortie {
+                Sortie::Stranded { .. } => {
+                    let loss = sorties.get(unit_type)?.stranded?;
+                    Some(PassEntry::Damage(Damage {
+                        source: None,
+                        target: id,
+                        amount: tick_of(loss.share * life.max()),
+                        kind: loss.kind,
+                        cause: DamageCause::Upkeep,
+                        action: None,
+                        depth: 0,
+                        hit: None,
+                    }))
+                }
+                _ if sortie.rests() && life.current() < life.max() => {
+                    let &field_type = fields.get(index.get(made.producer)?).ok()?;
+                    let heal = airfields.get(field_type)?.heal?;
+                    Some(PassEntry::Heal(Heal {
+                        source: Some(made.producer),
+                        target: id,
+                        amount: tick_of(heal),
+                        cause: HealCause::Upkeep,
+                        action: None,
+                        depth: 0,
+                    }))
+                }
+                _ => None,
+            },
+        ));
+        kept.sort_unstable_by_key(|&entry| entry.target());
+        for &entry in &*kept {
+            commands.queue(move |world: &mut World| DamagePass::queue(world, entry));
         }
     }
 
