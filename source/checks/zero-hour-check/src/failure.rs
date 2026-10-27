@@ -10,7 +10,7 @@ use derive_more::Display;
 use crate::decal_ground::DecalGround;
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, EffectCounts, FactorySteps, FightSteps, Fingerprints,
-    FoughtCounts, HelicopterSteps, LookCounts, MapCounts, MissileTicks, ProducedCounts,
+    FoughtCounts, HelicopterSteps, JetTicks, LookCounts, MapCounts, MissileTicks, ProducedCounts,
     ProductionSteps, RangerLook, RoadCounts, SuppliedCounts, SupplySteps, TerrainDrawn,
     UpgradeSteps, UpgradedCounts,
 };
@@ -149,6 +149,12 @@ pub(crate) enum CheckFailure {
     /// The Comanche did not climb to its height within the limit.
     #[display("the Comanche did not climb to its height within the limit")]
     NoClimb,
+    /// The jet play's sortie did not reach this step within the limit.
+    #[display("the Raptor's sortie did not reach {_0} within the limit")]
+    NoJetStep(&'static str),
+    /// The jet play's ticks or the target's life differ from the pinned.
+    #[display("it flew a sortie as {_0}")]
+    Jet(Box<Differs<JetTicks>>),
     /// The Chinook brought no load home within the limit.
     #[display("the Chinook brought no load home within the limit")]
     NoLoad,

@@ -226,9 +226,13 @@ pub enum TypeError {
     #[error("its slow death's delay is no time the engine holds")]
     DeathDelay,
     /// It hovers by a lift no greater than the game's gravity, or to no height, so it never
-    /// climbs, or at a number the engine's flight does not hold.
+    /// climbs, or at a number the engine's flight, or its wings, do not hold.
     #[error("its flight is none the engine holds")]
     Flight,
+    /// It is a jet of no taxi locomotor that drives, or of a takeoff pause or an idle time the
+    /// engine does not hold.
+    #[error("its sortie is none the engine holds")]
+    Sortie,
 }
 
 /// How an install's archive differs from a version's.

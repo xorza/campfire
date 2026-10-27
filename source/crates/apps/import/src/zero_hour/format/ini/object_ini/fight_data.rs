@@ -6,7 +6,8 @@ use crate::zero_hour::format::ini::object_ini::SLOTS;
 /// none, its weapon sets and armor sets in the order it gives them, each appended as
 /// `parseWeaponTemplateSet` and `parseArmorTemplateSet` append them, its shell's flight, of a
 /// `DumbProjectileBehavior`, its missile's, of a `MissileAIUpdate`, and the first turret and the
-/// idle scan of its AI module. A reskin keeps its base's, as its table sets none of them.
+/// idle scan of its AI module, and its `JetAIUpdate`'s sortie, none for another AI. A reskin keeps
+/// its base's, as its table sets none of them.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct FightData {
     pub(crate) body: Option<IniBody>,
@@ -16,6 +17,15 @@ pub(crate) struct FightData {
     pub(crate) missile: Option<IniMissile>,
     pub(crate) turret: Option<IniTurret>,
     pub(crate) scan: IniScan,
+    pub(crate) jet: Option<IniJet>,
+}
+
+/// A `JetAIUpdate`'s sortie: its `TakeoffPause` and its `ReturnToBaseIdleTime`, each in
+/// milliseconds, 0 by default, as the module's data starts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct IniJet {
+    pub(crate) takeoff_pause_ms: i32,
+    pub(crate) idle_ms: i32,
 }
 
 /// An AI module's idle scan, as `AIUpdateModuleData` reads it: whether `AutoAcquireEnemiesWhenIdle`
@@ -44,8 +54,8 @@ pub(crate) struct IniShell {
 
 /// A projectile object's `MissileAIUpdate`, as `MissileAIUpdateModuleData` reads it, each its
 /// default when absent: whether it follows its victim, `TryToFollowTarget`, yes by default; its
-/// `FuelLifetime` and `IgnitionDelay` in milliseconds, 0 by default, a fuel of 0 lasting for
-/// ever; its `InitialVelocity` in units a second; its `DistanceToTravelBeforeTurning`, its
+/// `FuelLifetime` in milliseconds, 0 by default, a fuel of 0 lasting for ever; its
+/// `InitialVelocity` in units a second; its `DistanceToTravelBeforeTurning`, its
 /// `DistanceToTargetBeforeDiving` and its `DistanceToTargetForLock`, 75 by default; whether it
 /// flies at its weapon's `WeaponSpeed`, `UseWeaponSpeed`; whether it detonates as its fuel runs
 /// out, `DetonateOnNoFuel`; and whether it kills units garrisoned in what it strikes, a
@@ -54,7 +64,6 @@ pub(crate) struct IniShell {
 pub(crate) struct IniMissile {
     pub(crate) follow: bool,
     pub(crate) fuel_ms: i32,
-    pub(crate) ignition_ms: i32,
     pub(crate) initial_velocity: f32,
     pub(crate) straight: f32,
     pub(crate) dive: f32,
@@ -212,7 +221,6 @@ impl IniMissile {
     pub(super) const DEFAULT: Self = Self {
         follow: true,
         fuel_ms: 0,
-        ignition_ms: 0,
         initial_velocity: 0.0,
         straight: 0.0,
         dive: 0.0,
@@ -276,6 +284,9 @@ impl FightData {
                     self.missile = Some(IniMissile::DEFAULT);
                     Some(FightBlock::Missile)
                 } else if module.ends_with("aiupdate") || module.ends_with("aiupdateinterface") {
+                    if module == "jetaiupdate" {
+                        self.jet = Some(IniJet::default());
+                    }
                     Some(FightBlock::Ai)
                 } else {
                     None
@@ -343,7 +354,6 @@ impl FightData {
                 match field {
                     "trytofollowtarget" => missile.follow = at.yes()?,
                     "fuellifetime" => missile.fuel_ms = at.int()?,
-                    "ignitiondelay" => missile.ignition_ms = at.int()?,
                     "initialvelocity" => missile.initial_velocity = at.real()?,
                     "distancetotravelbeforeturning" => missile.straight = at.real()?,
                     "distancetotargetbeforediving" => missile.dive = at.real()?,
@@ -356,6 +366,12 @@ impl FightData {
             }
             (FightBlock::Ai, "autoacquireenemieswhenidle") => at.set_flags(&mut self.scan)?,
             (FightBlock::Ai, "moodattackcheckrate") => self.scan.check_rate_ms = at.int()?,
+            (FightBlock::Ai, "takeoffpause") if self.jet.is_some() => {
+                self.jet_mut().takeoff_pause_ms = at.int()?;
+            }
+            (FightBlock::Ai, "returntobaseidletime") if self.jet.is_some() => {
+                self.jet_mut().idle_ms = at.int()?;
+            }
             // `parseTurret` reads the first turret; an `AltTurret` is a second, which the import
             // leaves.
             (FightBlock::Ai, "turret") if at.tokens.len() == 1 && self.turret.is_none() => {
@@ -395,6 +411,11 @@ impl FightData {
             _ => {}
         }
         Ok(None)
+    }
+
+    /// Its `JetAIUpdate`'s sortie, which the module's line opened.
+    const fn jet_mut(&mut self) -> &mut IniJet {
+        self.jet.as_mut().expect("a jet's field follows its module")
     }
 
     const fn turret_mut(&mut self) -> &mut IniTurret {

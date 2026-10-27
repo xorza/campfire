@@ -20,6 +20,7 @@ pub enum Capability {
     Production,
     Items,
     Interaction,
+    Airfields,
 }
 
 /// Written and read as serde's derive does a unit variant: a binary format, as the wire and the

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use bevy_ecs::world::World;
 use campfire_abilities::Abilities;
 use campfire_actions::Actions;
+use campfire_airfields::Airfields;
 use campfire_areas::Areas;
 use campfire_codec::{TomlError, TomlValue};
 use campfire_combat::Combat;
@@ -110,6 +111,7 @@ impl Release {
         v.module::<Areas>();
         v.module::<Abilities>();
         v.module::<Production>();
+        v.module::<Airfields>();
         v.module::<Items>();
         v.module::<Interaction>();
         v.module::<Orders>();

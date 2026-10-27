@@ -1,5 +1,6 @@
 use std::num::NonZeroU32;
 
+use campfire_airfields::SortieData;
 use campfire_combat::{
     CombatData, CombatPatch, OnDeath, TaggedArmorData, TurretData, TurretPatch, TurretPitchData,
 };
@@ -8,7 +9,7 @@ use campfire_declarations::SectionWriter;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Vec3};
 use campfire_mode::{BountyData, IncomeData, IncomePays, Pays};
-use campfire_navigation::{FlightData, Gait, UnitNavigationData};
+use campfire_navigation::{FlightData, Gait, UnitNavigationData, WingsData};
 use campfire_orders::AcquirePatch;
 use campfire_projectiles::ProjectileData;
 use campfire_stats::{StatValue, StatsData, TypePoolsData};
@@ -76,6 +77,9 @@ pub(crate) struct ImportedType {
     /// The flight of a type whose locomotor hovers (helicopters.md, The import flies a hovering
     /// locomotor).
     flight: Option<FlightData>,
+    /// The sortie of a jet, which an airfield parks (jets.md, The import flies a winged
+    /// locomotor).
+    sortie: Option<SortieData>,
     /// Whether it leads its spawns, so it has no weapon, body, walk or life of its own.
     leads: bool,
     /// The period of its AI module's idle scan, and every hostile unit for one that attacks
@@ -150,13 +154,18 @@ impl ImportedType {
                 .locomotors
                 .get(name)
                 .ok_or_else(|| TypeError::NoLocomotor(name.clone()))?;
-            if drive.is_none() && (locomotor.drives() || locomotor.hovers()) {
+            let jet = locomotor.wings() && object.fight().jet.is_some();
+            if drive.is_none() && (locomotor.drives() || locomotor.hovers() || jet) {
                 drive = Some(locomotor);
             }
         }
         let flight = drive
-            .filter(|locomotor| locomotor.hovers())
+            .filter(|locomotor| locomotor.hovers() || locomotor.wings())
             .map(|locomotor| Self::flight(locomotor, rules.game_data.gravity))
+            .transpose()?;
+        let sortie = drive
+            .filter(|locomotor| locomotor.wings())
+            .map(|_| Self::sortie_of(object, rules))
             .transpose()?;
         if drive.is_some() && object.supply().kept().is_some_and(IniSpawn::leads) {
             return Ok(Self::leader(object, names));
@@ -303,6 +312,7 @@ impl ImportedType {
             projectile: None,
             navigation,
             flight,
+            sortie,
             acquire,
             leads: false,
         })
@@ -327,7 +337,32 @@ impl ImportedType {
             Some(airborne) => num(airborne as f32)?,
             None => Vec3::BOUND,
         };
-        FlightData::new(num(height)?, num(climb)?, airborne).ok_or(TypeError::Flight)
+        let flight =
+            FlightData::new(num(height)?, num(climb)?, airborne).ok_or(TypeError::Flight)?;
+        if !locomotor.wings() {
+            return Ok(flight);
+        }
+        let wings = WingsData::new(num(locomotor.min_speed)?, num(locomotor.circling_radius)?);
+        Ok(flight.winged(wings.ok_or(TypeError::Flight)?))
+    }
+
+    /// The sortie of the jet `object`: its `JetAIUpdate`'s `TakeoffPause` and
+    /// `ReturnToBaseIdleTime`, none for 0, and the speed of its first taxi locomotor that drives
+    /// (jets.md, The import flies a winged locomotor); an error for a jet of none.
+    fn sortie_of(object: &IniObject, rules: &ZeroHourRules) -> Result<SortieData, TypeError> {
+        let jet = object.fight().jet.expect("a jet has its AI's sortie");
+        let taxi = object
+            .taxi_locomotors()
+            .iter()
+            .filter_map(|name| rules.locomotors.get(name))
+            .find(|locomotor| locomotor.drives())
+            .ok_or(TypeError::Sortie)?;
+        let ms = |ms: i32| u32::try_from(ms).map_err(|_| TypeError::Sortie);
+        Ok(SortieData {
+            pause_ms: ms(jet.takeoff_pause_ms)?,
+            taxi_speed: num(taxi.speed)?,
+            idle_ms: Some(ms(jet.idle_ms)?).filter(|&ms| ms > 0),
+        })
     }
 
     /// The type of `object`, a walker that leads its spawns: its tags alone, as it has no life,
@@ -348,6 +383,7 @@ impl ImportedType {
             projectile: None,
             navigation: None,
             flight: None,
+            sortie: None,
             acquire: None,
             leads: true,
         }
@@ -483,6 +519,9 @@ impl ImportedType {
         if let Some(navigation) = &self.navigation {
             writer.section(navigation);
         }
+        if let Some(sortie) = &self.sortie {
+            writer.section(sortie);
+        }
         if let Some(flight) = &self.flight {
             writer.section(flight);
         }
@@ -504,6 +543,7 @@ impl ImportedType {
             projectile: Some(projectile),
             navigation: None,
             flight: None,
+            sortie: None,
             acquire: None,
             leads: false,
         }
@@ -559,6 +599,11 @@ impl ImportedType {
         bodies
             .map(reach)
             .reduce(|far, reach| [0, 1].map(|axis| far[axis].max(reach[axis])))
+    }
+
+    /// Its sortie, of a jet an airfield parks.
+    pub(crate) const fn sortie(&self) -> Option<&SortieData> {
+        self.sortie.as_ref()
     }
 
     /// Whether its units walk: it drives, so it has a `move_speed`.

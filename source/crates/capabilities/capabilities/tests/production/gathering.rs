@@ -889,6 +889,7 @@ fn a_producer_that_starts_its_gatherers_sends_each_to_the_nearest_free_node_with
             rally: None,
             gathers,
             free: Box::new([]),
+            places: Box::new([]),
         };
         Shop::regive(&mut game, shop.barracks, spec);
         let train = Production::add_train(&mut game, worker_type, Ticks::ZERO, None);

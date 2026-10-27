@@ -2095,6 +2095,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-airfields"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+ "campfire-actions",
+ "campfire-airfields",
+ "campfire-combat",
+ "campfire-common",
+ "campfire-declarations",
+ "campfire-math",
+ "campfire-navigation",
+ "campfire-production",
+ "campfire-script",
+ "campfire-sim",
+ "campfire-states",
+ "campfire-units",
+ "campfire-values",
+ "campfire-visibility",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "campfire-app-threads"
 version = "0.1.0"
 dependencies = [
@@ -2167,6 +2190,7 @@ dependencies = [
  "bevy_ecs",
  "campfire-abilities",
  "campfire-actions",
+ "campfire-airfields",
  "campfire-areas",
  "campfire-capabilities",
  "campfire-codec",
@@ -2486,6 +2510,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_math",
  "campfire-actions",
+ "campfire-airfields",
  "campfire-client-files",
  "campfire-codec",
  "campfire-combat",
@@ -3808,6 +3833,7 @@ name = "campfire-zero-hour-check"
 version = "0.1.0"
 dependencies = [
  "campfire-actions",
+ "campfire-airfields",
  "campfire-bots",
  "campfire-capabilities",
  "campfire-client-files",

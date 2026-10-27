@@ -5,7 +5,7 @@ use campfire_actions::{
 };
 use campfire_geometry::Placed;
 use campfire_sim::{DueUnit, Position};
-use campfire_units::{Body, Dead, Walk};
+use campfire_units::{Body, Dead, OnWings, StatusTags, Walk};
 use campfire_values::{TagSet, Team, UnitTags};
 
 /// The destinations units walk to on their own: after their attack targets.
@@ -16,11 +16,12 @@ impl Destinations {
     /// Walks each unit that can move to its attack target while out of the range of the weapon it
     /// attacks it with, and straight away from it to halfway between the weapon's minimum and its
     /// range while nearer than its minimum, of those the index of the attack targets holds, and
-    /// stops it in reach or in its windup; a cast that walks in range walks the unit instead. A
-    /// unit whose target is gone, dead, no longer an enemy or one no weapon of it selects drops it
-    /// and stops, and so does one, that walks or stands, whose scan gave it a target out of that
-    /// reach, which it does not chase (04-capabilities/control.md, A scanned target holds only in
-    /// reach; 04-capabilities/actions.md, An action may keep a minimum range).
+    /// stops it in reach or in its windup, but a unit on wings, which flies on at its target; a
+    /// cast that walks in range walks the unit instead. A unit whose target is gone, dead, no
+    /// longer an enemy or one no weapon of it selects drops it and stops, and so does one, that
+    /// walks or stands, whose scan gave it a target out of that reach, which it does not chase
+    /// (04-capabilities/control.md, A scanned target holds only in reach;
+    /// 04-capabilities/actions.md, An action may keep a minimum range).
     pub(super) fn chase(
         book: Res<'_, ActionBook>,
         targets: Targets<'_, '_>,
@@ -32,7 +33,7 @@ impl Destinations {
                 &Team,
                 (&ActionSlots, &mut ActionProgress),
                 Option<Walk>,
-                (Option<&Body>, Option<&UnitTags>),
+                (Option<&Body>, Option<&UnitTags>, Option<&StatusTags>),
             ),
             Without<Dead>,
         >,
@@ -41,7 +42,7 @@ impl Destinations {
         held.clear();
         indexes.attackers(&mut held);
         for &DueUnit { id, entity } in &*held {
-            let Ok((&position, &team, (slots, mut progress), mut walk, (body, tags))) =
+            let Ok((&position, &team, (slots, mut progress), mut walk, (body, tags, status))) =
                 chasers.get_mut(entity)
             else {
                 continue;
@@ -63,6 +64,9 @@ impl Destinations {
             let to = if let Some((unit, values)) = aimed {
                 let to = Placed::new(unit.position, unit.shape);
                 match targets.reach(from, values.range, values.min_range, to) {
+                    // A unit on wings flies on at its target in reach, to pass it and come round
+                    // (jets.md, A jet aims by flying).
+                    RangeFit::Within if OnWings::holds(status) => Some(unit.position),
                     RangeFit::Within => None,
                     _ if progress.target_source() == Some(TargetSource::Scan) => {
                         progress.set_attack_target(None, &mut indexes.of(id, entity));

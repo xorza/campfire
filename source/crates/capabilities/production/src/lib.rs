@@ -45,9 +45,11 @@ mod gather_data;
 mod gather_loop;
 mod gather_spec;
 mod gatherer;
+mod held_places;
 mod holdings;
 mod kept_spawns;
 mod leaders;
+mod made_at;
 mod mode_supply_data;
 mod node;
 mod node_book;
@@ -101,6 +103,8 @@ pub use crate::gather_loop::GatherLoop;
 pub use crate::gather_loop::gather_view::GatherView;
 pub use crate::gather_spec::GatherSpec;
 pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
+pub use crate::held_places::HeldPlaces;
+pub use crate::made_at::MadeAt;
 pub use crate::mode_supply_data::ModeSupplyData;
 pub use crate::node::Node;
 pub use crate::node_book::{NodeBook, NodeSpec};
@@ -111,7 +115,7 @@ pub use crate::player_supply::PlayerSupply;
 pub use crate::producer_spec::ProducerSpec;
 pub use crate::production_api::ProductionApi;
 pub use crate::production_column::ProductionColumn;
-pub use crate::production_data::ProductionData;
+pub use crate::production_data::{PlaceData, ProductionData};
 pub use crate::production_directive::ProductionDirective;
 pub use crate::production_orders::ProductionOrders;
 pub use crate::rally::Rally;
@@ -212,6 +216,8 @@ impl Module for Production {
         d.derived_sent::<PlayerSupply>();
         d.server_part::<Player, PlayerSupply>();
         d.component::<Rally>();
+        d.component::<HeldPlaces>();
+        d.component::<MadeAt>();
         d.component::<Builder>();
         d.timed::<Builder>();
         d.derived::<AtWork>();
@@ -263,6 +269,12 @@ impl Module for Production {
             at.of_type::<ProducerSpec>().map(|_| TrainQueue::default())
         });
         d.part::<BodyUnit, Rally>(|at| at.of_type::<ProducerSpec>().map(|_| Rally::default()));
+        // A producer of places holds each of them for the unit it makes there (jets.md, A jet
+        // holds a place).
+        d.part::<BodyUnit, HeldPlaces>(|at| {
+            let spec = at.of_type::<ProducerSpec>()?;
+            (!spec.places.is_empty()).then(|| HeldPlaces::free_of(spec.places.len()))
+        });
         d.part::<BodyUnit, Builder>(|at| at.of_type::<Builder>().copied());
         d.part::<BodyUnit, Node>(|at| at.of_type::<Node>().copied());
         d.part::<BodyUnit, Gatherer>(|at| at.of_type::<Gatherer>().copied());
@@ -276,12 +288,13 @@ impl Module for Production {
     /// Adds production to a match: in Inputs, the tick's orders cancel trains and builds, and, on
     /// the server, set rally points to points or the units its vision sees; in Act, after the other
     /// orders start, ordered trains pass their checks, pay, and join their unit's queue; in Mode,
-    /// before the mode's hooks, the trains whose time ended spawn. With navigation, which tests a
-    /// box for room and walks a worker, construction and gathering too: in Inputs, the build and
-    /// gather orders that changed are checked; in Act, after the trains, builds start and workers
-    /// run their loops; in Mode, before the trains finish, sites grow; as the tick ends, the nodes
-    /// that ran out despawn, and each leader stands at its spawns' centre, a predicting client's
-    /// too. A player's supply, a node's end, and the units trains and builds spawn are the
+    /// before the mode's hooks, the places of the units that died free, and the trains whose time
+    /// ended spawn, a train of a producer of places waiting for a free one. With navigation, which
+    /// tests a box for room and walks a worker, construction and gathering too: in Inputs, the
+    /// build and gather orders that changed are checked; in Act, after the trains, builds start and
+    /// workers run their loops; in Mode, before the trains finish, sites grow; as the tick ends,
+    /// the nodes that ran out despawn, and each leader stands at its spawns' centre, a predicting
+    /// client's too. A player's supply, a node's end, and the units trains and builds spawn are the
     /// server's: a predicting client derives none, as it holds only the units its team sees, and
     /// its unit comes back by replication. A build's placement tests the units the server's vision
     /// sees, or, on a predicting client, the units it holds. On the server, a player spawns with
@@ -305,7 +318,10 @@ impl Module for Production {
                 Trains::start_trains::<ServerForm>,
                 Trains::start_trains::<ClientForm>,
             );
-            cx.server(ProductionSystems::Finish, Trains::finish_trains);
+            cx.server(
+                ProductionSystems::Finish,
+                (Trains::free_places, Trains::finish_trains).chain(),
+            );
             return;
         }
         cx.by_role(
@@ -325,7 +341,9 @@ impl Module for Production {
         );
         cx.server(
             ProductionSystems::Finish,
-            Trains::finish_trains.after(Construction::progress_sites::<ServerForm>),
+            (Trains::free_places, Trains::finish_trains)
+                .chain()
+                .after(Construction::progress_sites::<ServerForm>),
         );
         cx.server(
             ProductionSystems::Finish,
@@ -343,7 +361,7 @@ impl Production {
     /// The engine tag of a site, a building under construction: it blocks its attacks, casts and
     /// uses, so no action of its starts.
     pub const CONSTRUCTING: EngineTag = EngineTag::new(
-        5,
+        6,
         "constructing",
         TagProperties::NONE
             .with_block(Block::Attack)
@@ -352,14 +370,14 @@ impl Production {
             .with_block(Block::Produce),
     );
     /// The engine tag of node types, which workers gather from.
-    pub const NODE: EngineTag = EngineTag::new(6, "node", TagProperties::NONE);
+    pub const NODE: EngineTag = EngineTag::new(7, "node", TagProperties::NONE);
     /// The engine tag of drop-off types, which workers take their loads to.
-    pub const DROP_OFF: EngineTag = EngineTag::new(7, "drop_off", TagProperties::NONE);
+    pub const DROP_OFF: EngineTag = EngineTag::new(8, "drop_off", TagProperties::NONE);
     /// The engine tag of a worker in its gather loop, which another such worker passes through.
     pub const GATHERING: EngineTag =
-        EngineTag::new(8, "gathering", TagProperties::NONE.with_passes());
+        EngineTag::new(9, "gathering", TagProperties::NONE.with_passes());
     /// The engine tag of a site that grew in the tick, as a builder builds it.
-    pub const BEING_BUILT: EngineTag = EngineTag::new(9, "being_built", TagProperties::NONE);
+    pub const BEING_BUILT: EngineTag = EngineTag::new(10, "being_built", TagProperties::NONE);
 
     /// The checks of build and gather orders, each placement testing the units `S` sees.
     fn check_builds<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
@@ -385,6 +403,8 @@ impl Production {
 
 #[cfg(feature = "internals")]
 pub mod internals {
+    use std::mem;
+
     use bevy_ecs::world::World;
     use campfire_actions::internals::TestAction;
     use campfire_actions::{
@@ -444,9 +464,31 @@ pub mod internals {
             };
             let id = Actions::add(world, "train", action);
             if world.contains_resource::<ById<ActionId, TrainSpec>>() {
-                let spec = TrainSpec { unit_type };
+                let spec = TrainSpec {
+                    unit_type,
+                    at_place: false,
+                };
                 ById::<ActionId, TrainSpec>::amend(world, |_, book| book.set(id, spec));
             }
+            id
+        }
+
+        /// Adds a train of `unit_type` that takes `time`, as `add_train` adds one, that makes its
+        /// unit at a free place of its producer.
+        pub fn add_train_at_place(world: &mut World, unit_type: UnitType, time: Ticks) -> ActionId {
+            let id = Self::add_train(world, unit_type, time, None);
+            ById::<ActionId, TrainSpec>::amend(world, |_, book| {
+                let mut built = mem::take(book).reopen();
+                built.take(id);
+                built.set(
+                    id,
+                    TrainSpec {
+                        unit_type,
+                        at_place: true,
+                    },
+                );
+                *book = built.build();
+            });
             id
         }
 
@@ -489,6 +531,7 @@ pub mod internals {
             };
             let spec = TrainSpec {
                 unit_type: named(&train.unit_type),
+                at_place: train.at_place,
             };
             ById::<ActionId, TrainSpec>::amend(world, |_, book| book.set(action, spec));
         }

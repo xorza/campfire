@@ -1,0 +1,48 @@
+[package]
+name = "campfire-airfields"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.campfire]
+kind = "glue"
+
+[features]
+internals = [
+    "campfire-actions/internals",
+    "campfire-combat/internals",
+    "campfire-declarations/internals",
+    "campfire-math/internals",
+    "campfire-navigation/internals",
+    "campfire-production/internals",
+    "campfire-script/internals",
+    "campfire-sim/internals",
+    "campfire-states/internals",
+    "campfire-units/internals",
+    "campfire-values/internals",
+]
+
+[dependencies]
+campfire-actions.workspace = true
+campfire-combat.workspace = true
+campfire-common.workspace = true
+campfire-declarations.workspace = true
+campfire-math.workspace = true
+campfire-navigation.workspace = true
+campfire-production.workspace = true
+campfire-script.workspace = true
+campfire-sim.workspace = true
+campfire-states.workspace = true
+campfire-units.workspace = true
+campfire-values = { workspace = true, features = ["ecs"] }
+campfire-visibility.workspace = true
+
+bevy_ecs = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "rc", "std"] }
+thiserror = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+campfire-airfields = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

@@ -1,6 +1,9 @@
+use std::num::NonZeroU16;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_actions::ActionSlots;
 use campfire_declarations::ById;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentPredicted};
@@ -10,6 +13,7 @@ use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::attack_data::ClipRefill;
 use crate::weapon::ClipRule;
 use crate::weapon::Weapon;
 
@@ -22,6 +26,14 @@ use crate::weapon::Weapon;
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct ClipShots(Vec<Fired>);
+
+/// A clip that refills at home: its weapon, its clip, and the shots it fired since it was full.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HomeClip {
+    pub action: ActionId,
+    pub clip: ClipRule,
+    pub fired: u16,
+}
 
 /// A weapon's shots since its clip was last full, at least one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,21 +56,61 @@ impl ClipShots {
         at.map_or(0, |at| self.0[at].shots)
     }
 
-    /// Counts a shot of `action`, of `clip` at its rank: whether the shot emptied the clip, which
-    /// is then full again, so the weapon reloads.
+    /// Counts a shot of `action`, of `clip` at its rank: whether the shot emptied a clip that
+    /// refills by time, which is then full again, so the weapon reloads. A clip that refills at
+    /// home stays empty, its shots counted, until its home refills it (jets.md, A clip may reload
+    /// at home).
     pub(crate) fn shoot(&mut self, action: ActionId, clip: ClipRule) -> bool {
+        let shots = self.fired(action) + 1;
+        let reloads = shots >= clip.shots.get() && clip.refill == ClipRefill::Time;
+        self.set(action, if reloads { 0 } else { shots });
+        reloads
+    }
+
+    /// Whether the clip of `action`, of `shots`, is empty: it fired them all, as a clip that
+    /// refills at home stays until its home refills it.
+    pub fn is_empty(&self, action: ActionId, shots: NonZeroU16) -> bool {
+        self.fired(action) >= shots.get()
+    }
+
+    /// Refills the clip of `action` to `fired` shots fired since it was full, none for a full
+    /// clip: the contract by which a unit's home refills a clip that refills there, as its reload
+    /// goes (jets.md, A clip may reload at home).
+    pub fn refill(&mut self, action: ActionId, fired: u16) {
+        debug_assert!(fired <= self.fired(action), "a refill gives shots back");
+        self.set(action, fired);
+    }
+
+    /// The clips of the weapons in `slots` that refill at home, each of `weapons`, at its slot's
+    /// rank, its reload unsped, with the shots it fired: what a unit's home reloads (jets.md, A
+    /// clip may reload at home).
+    pub fn at_home<'a>(
+        &'a self,
+        slots: &'a ActionSlots,
+        weapons: &'a ById<ActionId, Weapon>,
+    ) -> impl Iterator<Item = HomeClip> + 'a {
+        slots.iter().filter_map(move |slot| {
+            let action = slot.action?;
+            let clip = weapons.get(action)?.clip(&[], slot.rank?)?;
+            (clip.refill == ClipRefill::Home).then(|| HomeClip {
+                action,
+                clip,
+                fired: self.fired(action),
+            })
+        })
+    }
+
+    /// Sets the shots `action` fired since its clip was full, removing a full clip's.
+    fn set(&mut self, action: ActionId, shots: u16) {
         let at = self.0.binary_search_by_key(&action, |fired| fired.action);
-        let shots = at.map_or(0, |at| self.0[at].shots) + 1;
-        let emptied = shots >= clip.shots.get();
-        match (at, emptied) {
-            (Ok(at), true) => {
+        match (at, shots) {
+            (Ok(at), 0) => {
                 self.0.remove(at);
             }
-            (Ok(at), false) => self.0[at].shots = shots,
-            (Err(_), true) => {}
-            (Err(at), false) => self.0.insert(at, Fired { action, shots }),
+            (Ok(at), _) => self.0[at].shots = shots,
+            (Err(_), 0) => {}
+            (Err(at), _) => self.0.insert(at, Fired { action, shots }),
         }
-        emptied
     }
 }
 
@@ -81,14 +133,19 @@ impl SimComponent for ClipShots {
     type Host = UnitEntity;
 
     // A weapon the book lacks, or one whose clip holds no more shots than it fired at every rank,
-    // has no clip to count.
+    // has no clip to count; a clip that refills at home may stay empty.
     fn check(&self, world: &World, _: Entity) -> bool {
         let weapons = world.resource::<ById<ActionId, Weapon>>();
         self.0.iter().all(|fired| {
             let clips = weapons
                 .get(fired.action)
                 .and_then(|weapon| weapon.clip.as_deref());
-            clips.is_some_and(|clips| clips.iter().any(|clip| fired.shots < clip.shots.get()))
+            clips.is_some_and(|clips| {
+                clips.iter().any(|clip| match clip.refill {
+                    ClipRefill::Time => fired.shots < clip.shots.get(),
+                    ClipRefill::Home => fired.shots <= clip.shots.get(),
+                })
+            })
         })
     }
 }

@@ -72,8 +72,10 @@ pub(crate) struct IniObject {
     scale: ModelScale,
     is_bridge: bool,
     geometry: Geometry,
-    /// The locomotors of its `SET_NORMAL`, in the order its line names them.
+    /// The locomotors of its `SET_NORMAL`, in the order its line names them, and of its
+    /// `SET_TAXIING`, by which a jet moves on the ground.
     locomotors: Vec<String>,
+    taxi_locomotors: Vec<String>,
     build: IniBuild,
     supply: IniSupply,
     fight: FightData,
@@ -268,8 +270,9 @@ const INFANTRY: &str = "infantry";
 const VEHICLE: &str = "vehicle";
 const HULK: &str = "hulk";
 
-/// The locomotor set an object moves by, of `TheLocomotorSetNames`.
+/// The locomotor set an object moves by, and the one a jet taxis by, of `TheLocomotorSetNames`.
 const SET_NORMAL: &str = "set_normal";
+const SET_TAXIING: &str = "set_taxiing";
 
 /// The keywords that open a block wherever they start a line.
 const OPEN_WITH_VALUE: [&str; 8] = [
@@ -458,6 +461,7 @@ impl ObjectFiles {
                 is_bridge: false,
                 geometry: Geometry::DEFAULT,
                 locomotors: Vec::new(),
+                taxi_locomotors: Vec::new(),
                 build: IniBuild::default(),
                 supply: IniSupply::default(),
                 fight: FightData::default(),
@@ -869,6 +873,7 @@ impl IniObject {
             && self.fence_width == other.fence_width
             && self.is_bridge == other.is_bridge
             && self.locomotors == other.locomotors
+            && self.taxi_locomotors == other.taxi_locomotors
             && self.build == other.build
             && self.supply == other.supply
             && self.fight == other.fight
@@ -899,6 +904,11 @@ impl IniObject {
     /// The names of the locomotors it moves by, its `SET_NORMAL`'s.
     pub(crate) fn locomotors(&self) -> &[String] {
         &self.locomotors
+    }
+
+    /// The names of the locomotors it taxis by, its `SET_TAXIING`'s.
+    pub(crate) fn taxi_locomotors(&self) -> &[String] {
+        &self.taxi_locomotors
     }
 
     /// What it gives production: its cost, time, command set, prerequisites and modules.
@@ -1425,11 +1435,14 @@ impl Reading {
                     "locomotor" => {
                         let set = at.value()?;
                         // `scanIndexList` finds a set of either case.
+                        let names = tokens[2..]
+                            .iter()
+                            .filter(|name| !name.eq_ignore_ascii_case("none"))
+                            .map(|&name| name.to_owned());
                         if set.eq_ignore_ascii_case(SET_NORMAL) {
-                            let names = tokens[2..]
-                                .iter()
-                                .filter(|name| !name.eq_ignore_ascii_case("none"));
-                            object.locomotors = names.map(|&name| name.to_owned()).collect();
+                            object.locomotors = names.collect();
+                        } else if set.eq_ignore_ascii_case(SET_TAXIING) {
+                            object.taxi_locomotors = names.collect();
                         }
                     }
                     "scale" => {

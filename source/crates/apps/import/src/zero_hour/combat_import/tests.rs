@@ -121,6 +121,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
             clip: Some(ClipData {
                 shots: own(3),
                 reload_ms: own(700),
+                refill: ClipRefill::Time,
             }),
             splash: None,
             scatter: None,
@@ -223,6 +224,10 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
         Ok(Targeting::Unit(names.enemies_in_air))
     );
     assert_eq!(weapon("Interceptor"), Err(WeaponDropCause::NoTarget));
+    // A clip that returns to base refills at home; the rifle's refills by its time.
+    let refill = |name| weapon(name).map(|weapon| weapon.attack.clip.map(|clip| clip.refill));
+    assert_eq!(refill("JetMissile"), Ok(Some(ClipRefill::Home)));
+    assert_eq!(refill("RangerRifle"), Ok(Some(ClipRefill::Time)));
     assert_eq!(weapon("Blast"), Err(WeaponDropCause::Suicide));
     assert_eq!(weapon("Pulse"), Err(WeaponDropCause::AtSelf));
     // The minigun's 250 ms are ⌈7.5⌉ = 8 frames, 266 ms; past 1 and 5 shots in a row, its
@@ -364,12 +369,29 @@ fn a_missile_converts_to_a_steered_projectile_with_its_rings_and_minimum_or_drop
     let buggy = of("BuggyRocket").unwrap();
     let scatter = ScatterData::new(int(10), [].into());
     assert_eq!(buggy.weapon.attack.scatter, scatter);
+    // A missile that ignites late converts as one that ignites at once: its locomotor's, the
+    // default launch of 0 u/s and lock, and its 1,000 ms of fuel, 30 frames, 1,000 ms, striking
+    // structures on its way.
+    let steer = SteerData::builder(int(100), 1000)
+        .launch_speed(int(0))
+        .acceleration(int(675))
+        .lock(int(75))
+        .point_lock(int(75) / 2)
+        .build()
+        .unwrap();
+    let structures = vec![FilterData::parse("enemies:structure").unwrap()];
+    let ignited = ProjectileData::builder(int(225))
+        .width(int(2))
+        .hits(ProjectileHits::Units(structures))
+        .steer(steer)
+        .build()
+        .unwrap();
+    assert_eq!(of("Igniter").unwrap().fired.unwrap().projectile, ignited);
     // Each other drops by its own cause.
     let dropped = |name: &str| of(name).map(|converted| converted.weapon).err();
     for (name, cause) in [
         ("Torch", WeaponDropCause::Stream),
         ("Poisoner", WeaponDropCause::DetonationObjects),
-        ("Igniter", WeaponDropCause::Ignition),
         ("Endless", WeaponDropCause::NoFuel),
         ("Puffer", WeaponDropCause::Sprayer),
         ("Burster", WeaponDropCause::FuelBurst),
@@ -388,6 +410,7 @@ fn a_missile_converts_to_a_steered_projectile_with_its_rings_and_minimum_or_drop
         let clip = ClipData {
             shots: own(1),
             reload_ms: own(reload),
+            refill: ClipRefill::Time,
         };
         let expected = (WeaponValue::Own(own(reload)), Some(clip));
         assert_eq!((attack.rate, attack.clip), expected, "{name}");

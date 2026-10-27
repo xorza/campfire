@@ -102,14 +102,13 @@ pub(crate) struct RoadCounts {
     pub(crate) dropped: [usize; RoadDropCause::ALL.len()],
 }
 
-/// How many unit types' looks have a draw of more than one state, and client objects' looks
-/// night or snow variants; how many unit types' looks have no draws, of objects that draw
-/// nothing; how many states the unit types' looks hold, and how many of their sets count
-/// conditions no test says (02-engine-core.md, A set counts the conditions no test says); how many maps are night maps and
-/// snowy maps; how many animations the looks name the import converts, and drops for each
-/// cause, in the order of `AnimationDropCause::ALL` (09-zero-hour.md, An animation is a glTF
-/// file of its own); and how many states it drops for each cause, in the order of
-/// `StateDropCause::ALL`.
+/// How many unit types' looks have a draw of more than one state, and client objects' looks night
+/// or snow variants; how many unit types' looks have no draws, of objects that draw nothing; how
+/// many states the unit types' looks hold, and how many of their sets count conditions no test says
+/// (02-engine-core.md, A set counts the conditions no test says); how many maps are night maps and
+/// snowy maps; how many animations the looks name the import converts, and drops for each cause, in
+/// the order of `AnimationDropCause::ALL` (09-zero-hour.md, An animation is a glTF file of its
+/// own); and how many states it drops for each cause, in the order of `StateDropCause::ALL`.
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     "{varied} varied looks, {empty} empty looks, {states} states, {untested} untested sets, \
@@ -366,6 +365,23 @@ pub(crate) struct HelicopterTicks {
     pub(crate) shot_down: u64,
 }
 
+/// The ticks of the jet play's steps no closed form gives, each from the one before: the Raptor's
+/// train, from its order; its takeoff, from its order to fly over the target; its flight there;
+/// its first hit, from its attack's order; its way home;
+/// its landing, at its place; and its reload; and the target's life after them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct JetTicks {
+    pub(crate) trained: u64,
+    pub(crate) took_off: u64,
+    pub(crate) over: u64,
+    pub(crate) hit: u64,
+    pub(crate) home: u64,
+    pub(crate) parked: u64,
+    pub(crate) reloaded: u64,
+    pub(crate) target_life: i64,
+}
+
 /// The supply play's steps: the ticks of the power plant and the supply center, each from its
 /// order to its whole building, and the money left; and each of the free truck's first
 /// `DELIVERIES` deliveries.
@@ -472,11 +488,11 @@ pub(crate) struct SuppliedCounts {
     pub(crate) dropped: [usize; SupplyDropCause::ALL.len()],
 }
 
-/// How many particle systems and effect lists the import converts, how many textures the
-/// systems draw; how many actions name a fire effect and a hit effect, how many unit looks a
-/// trail, an end and a death effect, and how many look states a weapon slot's fire bone; and how many
-/// systems and lists it drops one or more parts of for each cause, in the order of
-/// `EffectDropCause::ALL` (effects.md, What the slice leaves).
+/// How many particle systems and effect lists the import converts, how many textures the systems
+/// draw; how many actions name a fire effect and a hit effect, how many unit looks a trail, an end
+/// and a death effect, and how many look states a weapon slot's fire bone; and how many systems and
+/// lists it drops one or more parts of for each cause, in the order of `EffectDropCause::ALL`
+/// (effects.md, What the slice leaves).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     "{systems} systems, {lists} lists, {textures} textures, {fires} fires, {hits} hits, \

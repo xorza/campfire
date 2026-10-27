@@ -72,6 +72,7 @@ impl WeaponNames<'_> {
                         .and_then(NonZeroU16::new)
                         .ok_or(CombatDataError::Clip)?,
                     reload: self.ticks(whole(&clip.reload_ms).ok_or(CombatDataError::Clip)?)?,
+                    refill: clip.refill,
                 })
             })
         });

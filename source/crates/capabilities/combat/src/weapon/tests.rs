@@ -94,6 +94,7 @@ fn a_weapon_of_its_own_period_and_amount_reads_them_at_its_rank_and_no_stat() {
     let clips = [3, 5].map(|shots| ClipRule {
         shots: NonZeroU16::new(shots).unwrap(),
         reload: Ticks::new(21),
+        refill: ClipRefill::Time,
     });
     let clipped = Weapon {
         clip: Some(Box::new(clips)),
@@ -112,6 +113,7 @@ fn a_rate_bonus_divides_its_own_period_and_reload_by_one_more_than_it_rounded_do
     let clip = ClipRule {
         shots: NonZeroU16::new(3).unwrap(),
         reload: Ticks::new(21),
+        refill: ClipRefill::Time,
     };
     let weapon = Weapon {
         rate_bonus: Some(StatId::new(0)),

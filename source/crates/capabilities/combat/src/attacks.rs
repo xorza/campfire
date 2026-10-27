@@ -18,7 +18,9 @@ use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_script::ScriptsWorld;
 use campfire_sim::{DueUnit, EntityIndex, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{ModifierEvents, PoolBook, UnitPools, UnitPoolsReadOnly, UnitStats};
-use campfire_units::{Body, Dead, Due, Facing, ForcedMove, MapBook, Owner, TurnStep, UnitsNear};
+use campfire_units::{
+    Body, Dead, Due, Facing, ForcedMove, MapBook, OnWings, Owner, StatusTags, TurnStep, UnitsNear,
+};
 use campfire_values::{ActionId, Allegiance, Block, Motion, TagSet, Team, UnitTags, UnitType};
 
 use crate::armed::Armed;
@@ -216,6 +218,7 @@ impl Attacks {
                     Option<&TurnStep>,
                     Option<&TurretAim>,
                     &ClipShots,
+                    Option<&StatusTags>,
                 ),
             ),
             Without<Dead>,
@@ -237,7 +240,7 @@ impl Attacks {
                 body,
                 tags,
                 forced,
-                (&unit_type, mut facing, turn, turret_aim, clips),
+                (&unit_type, mut facing, turn, turret_aim, clips, status),
             )) = units.get_mut(entity).map_err(|error| {
                 if matches!(error, QueryEntityError::NotSpawned(_)) {
                     indexes.forget_attacker(entity);
@@ -294,6 +297,19 @@ impl Attacks {
                         .filter(|turret| turret.carries(slots, slot));
                     let weapon = held_slot.action.and_then(|action| weapons.get(action));
                     let body_aim = weapon.and_then(|weapon| weapon.aim);
+                    // A clip that refills at home starts nothing once empty, until its home
+                    // refills it (jets.md, A clip may reload at home).
+                    let shots = weapon
+                        .zip(held_slot.rank)
+                        .and_then(|(weapon, rank)| weapon.clip_shots(rank));
+                    let empty = held_slot
+                        .action
+                        .zip(shots)
+                        .is_some_and(|(action, shots)| clips.is_empty(action, shots));
+                    if empty {
+                        progress.end_pre_attack();
+                        continue;
+                    }
                     if let (Some(turret), Some(&facing), Some(&aim)) =
                         (turret, facing.as_deref(), turret_aim)
                     {
@@ -319,7 +335,13 @@ impl Attacks {
                         let way =
                             Facing::along([unit.position.x - from.x, unit.position.z - from.z]);
                         if let Some(way) = way.filter(|_| fit == RangeFit::Within) {
-                            let turned = facing.toward(way, turn.copied()).facing;
+                            // A unit on wings turns by its flight alone, at its target (jets.md, A
+                            // jet aims by flying).
+                            let turned = if OnWings::holds(status) {
+                                **facing
+                            } else {
+                                facing.toward(way, turn.copied()).facing
+                            };
                             facing.set_if_neq(turned);
                             if turned.apart(way) > aim {
                                 progress.end_pre_attack();

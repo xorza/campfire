@@ -318,6 +318,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `supply` | production | since 1.0 |
 | `node` | production | since 1.0 |
 | `drop_off` | production | since 1.0 |
+| `airfield` | airfields | since 1.0 |
+| `sortie` | airfields | since 1.0 |
 | `inventory` | items | since 1.0 |
 | `shop` | items | since 1.0 |
 | `use` | interaction | since 1.0 |
@@ -441,6 +443,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `aim_deg` | combat | since 1.0 |
 | `unit_type` | production | since 1.0 |
 | `requires` | production | since 1.0 |
+| `at_place` | production | since 1.0 |
 | `construct` | production | since 1.0 |
 | `start` | production | since 1.0 |
 | `start_life` | production | since 1.0 |
@@ -600,6 +603,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `rally` | production | since 1.0 |
 | `gathers` | production | since 1.0 |
 | `free` | production | since 1.0 |
+| `places` | production | since 1.0 |
 
 ### A unit type's `supply`
 

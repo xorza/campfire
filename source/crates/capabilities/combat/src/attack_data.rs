@@ -234,13 +234,36 @@ impl Listed for AttackData {
     fn api(_: &mut ApiBuilder<'_>) {}
 }
 
-/// A weapon's `clip`: the shots it fires before it reloads, and the time it reloads for, from
-/// the shot that empties it, in place of its period.
+/// A weapon's `clip`: the shots it fires before it reloads, the time it reloads for, and how it
+/// refills: by that time from the shot that empties it, in place of its period, or at its unit's
+/// home alone (04-capabilities/combat.md, Clips; jets.md, A clip may reload at home).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClipData {
     pub shots: Ranked<Number>,
     pub reload_ms: Ranked<Number>,
+    #[serde(default, skip_serializing_if = "ClipRefill::is_time")]
+    pub refill: ClipRefill,
+}
+
+/// How a clip refills once empty: by its reload's time, or only at its unit's home, where the
+/// capability that keeps the home refills it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClipRefill {
+    #[default]
+    Time,
+    Home,
+}
+
+impl ClipRefill {
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde's test of a field to skip takes it by reference"
+    )]
+    const fn is_time(&self) -> bool {
+        matches!(self, Self::Time)
+    }
 }
 
 /// A weapon's `pre_attack` (04-capabilities/combat.md, A pre-attack): the time its unit aims

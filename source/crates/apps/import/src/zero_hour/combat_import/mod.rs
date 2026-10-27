@@ -5,8 +5,8 @@ use campfire_actions::{ActionKeys, ActionRange, RangeField, Targeting};
 use campfire_client_files::ClientUnit;
 use campfire_codec::{TomlTable, TomlValue};
 use campfire_combat::{
-    ArmorShare, AttackData, BarrelsData, ClipData, FallData, OuterData, PitchData, PreAttackData,
-    PreAttackEach, ScatterData, SplashData, StageData, StreakData, WeaponValue,
+    ArmorShare, AttackData, BarrelsData, ClipData, ClipRefill, FallData, OuterData, PitchData,
+    PreAttackData, PreAttackEach, ScatterData, SplashData, StageData, StreakData, WeaponValue,
 };
 use campfire_common::DeclaredName;
 use campfire_math::{Num, Rounding};
@@ -517,6 +517,11 @@ impl ImportedWeapon {
             size => Some(ClipData {
                 shots: Self::own(i64::from(size)),
                 reload_ms: ms(game_time::of_ms(weapon.clip_reload_ms)?)?,
+                refill: if weapon.reloads_at_home {
+                    ClipRefill::Home
+                } else {
+                    ClipRefill::Time
+                },
             }),
         };
         // Damage within a secondary radius past the primary is an outer ring; one no farther

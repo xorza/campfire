@@ -1,6 +1,6 @@
 use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{QueryFilter, QueryState, Without};
+use bevy_ecs::query::{Added, QueryFilter, QueryState, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
@@ -25,7 +25,9 @@ use crate::frame_point::FramePoint;
 use crate::gather_loop::GatherLoop;
 use crate::gather_spec::GatherSpec;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
+use crate::held_places::HeldPlaces;
 use crate::holdings::{Holdings, OwnedUnits};
+use crate::made_at::MadeAt;
 use crate::node_book::NodeBook;
 use crate::producer_spec::ProducerSpec;
 use crate::production_books::{ProductionBooks, TrainAdmission, TrainAsk};
@@ -323,7 +325,25 @@ impl Trains {
             {
                 let trains = world.resource::<ById<ActionId, TrainSpec>>();
                 if let Some(&spec) = trains.get(head.action) {
-                    let unit = Self::leave(world, entity, spec.unit_type);
+                    // A train at a place makes its unit at a free one of its producer, and waits
+                    // while each holds a unit (jets.md, A jet holds a place).
+                    let places = world.get::<HeldPlaces>(entity).filter(|_| spec.at_place);
+                    let unit = match places.map(HeldPlaces::free) {
+                        None => Self::leave(world, entity, spec.unit_type),
+                        Some(Some(place)) => Self::leave_at(world, entity, spec.unit_type, place),
+                        Some(None) => {
+                            // Due again at once, it is looked at each tick until a place frees.
+                            world.resource_scope(
+                                |world, mut index: Mut<'_, DueIndex<TrainQueue>>| {
+                                    let queue =
+                                        world.get::<TrainQueue>(entity).expect("a producer");
+                                    UnitDues::new(&mut index, trainer, entity)
+                                        .push(queue.head_done());
+                                },
+                            );
+                            break;
+                        }
+                    };
                     world.resource_mut::<TrainedUnits>().0.extend([Trained {
                         unit,
                         producer: trainer,
@@ -388,6 +408,58 @@ impl Trains {
         let unit = Spawner::spawn(world, exit.at, ());
         Self::send_on(world, entity, unit, exit);
         exit.at.id
+    }
+
+    /// Spawns a unit of `unit_type` at the free place `place` of the producer of `entity`, facing
+    /// as the place turns with the producer, of its team and player, through the mode's spawner,
+    /// and holds the place for it; it stays there, as no rally sends it on. Its id.
+    fn leave_at(world: &mut World, entity: Entity, unit_type: UnitType, place: u8) -> StableId {
+        let producer = world.entity(entity);
+        let position = producer.get::<Position>().expect("a producer stands").get();
+        let angle = producer
+            .get::<Facing>()
+            .map_or(Num::ZERO, |facing| facing.degrees());
+        let id = *producer.get::<StableId>().expect("a producer has an id");
+        let producer_type = *producer.get::<UnitType>().expect("a producer has a type");
+        let spec = world
+            .resource::<ById<UnitType, ProducerSpec>>()
+            .get(producer_type);
+        let data = spec
+            .expect("a producer of places has its production")
+            .places[usize::from(place)];
+        let mut at = Self::spawn_at(world, entity, unit_type, data.at.placed(position, angle));
+        at.angle = angle + data.angle;
+        let made = at.id;
+        Spawner::spawn(
+            world,
+            at,
+            MadeAt {
+                producer: id,
+                place,
+            },
+        );
+        let mut places = world
+            .get_mut::<HeldPlaces>(entity)
+            .expect("a producer of places");
+        places.hold(place, made);
+        made
+    }
+
+    /// Frees the place each unit made at one held, as it dies, for its producer's next train
+    /// (jets.md, A jet holds a place).
+    pub(super) fn free_places(
+        index: Res<'_, EntityIndex>,
+        dead: Query<'_, '_, (&StableId, &MadeAt), Added<Dead>>,
+        mut producers: Query<'_, '_, &mut HeldPlaces>,
+    ) {
+        for (&unit, &MadeAt { producer, place }) in &dead {
+            let held = index
+                .get(producer)
+                .and_then(|producer| producers.get_mut(producer).ok());
+            if let Some(mut held) = held {
+                held.release(place, unit);
+            }
+        }
     }
 
     /// Where a unit of `unit_type` leaves the producer of `entity`: of its team and player, at

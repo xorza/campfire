@@ -26,6 +26,24 @@ Object Jet
   Geometry = SPHERE
   GeometryMajorRadius = 12.0
 End
+Object Raptor
+  KindOf = VEHICLE AIRCRAFT
+  Locomotor = SET_NORMAL RaptorWings
+  Locomotor = SET_TAXIING JetTaxi
+  Behavior = JetAIUpdate ModuleTag_09
+    TakeoffPause = 500
+    ReturnToBaseIdleTime = 10000
+  End
+  Geometry = CYLINDER
+  GeometryMajorRadius = 6.5
+  GeometryHeight = 20.0
+End
+Object Untaxied
+  KindOf = VEHICLE AIRCRAFT
+  Locomotor = SET_NORMAL RaptorWings
+  Behavior = JetAIUpdate ModuleTag_09
+  End
+End
 Object Heli
   KindOf = VEHICLE AIRCRAFT
   Locomotor = SET_NORMAL HeliRotors
@@ -179,6 +197,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         projectile: None,
         navigation: UnitNavigationData::new(gait, radius * radius),
         flight: None,
+        sortie: None,
         acquire: None,
         leads: false,
     };
@@ -196,6 +215,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         projectile: None,
         navigation: None,
         flight: None,
+        sortie: None,
         acquire: None,
         leads: false,
     };
@@ -246,6 +266,26 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     });
     hovers.flight = Some(flight);
     assert_eq!(heli, hovers);
+    // The Raptor's wings fly as the helicopter's rotors do, of the same lift and height, at 175
+    // m and 120° a second, at least 60 m a second round a circle of 100 m; its sortie waits its
+    // 500 ms, taxis at its taxi locomotor's 50 m a second and goes home after its 10,000 ms idle.
+    let raptor = ImportedType::of(shipped.objects.object(b"Raptor").unwrap(), &shipped).unwrap();
+    let wings = WingsData::new(int(60), int(100)).unwrap();
+    let mut flies = drives(int(175), int(120), half(13), int(20), Gait::Step);
+    flies.collision = Some(CollisionData {
+        shape,
+        layer: Some(declared("air")),
+    });
+    flies.flight = Some(flight.winged(wings));
+    flies.sortie = Some(SortieData {
+        pause_ms: 500,
+        taxi_speed: int(50),
+        idle_ms: Some(10_000),
+    });
+    assert_eq!(raptor, flies);
+    // A jet of no taxi locomotor has no speed on the ground, so its sortie is none.
+    let untaxied = shipped.objects.object(b"Untaxied").unwrap();
+    assert_eq!(ImportedType::of(untaxied, &shipped), Err(TypeError::Sortie));
     // A train's box bounds a circle of √(112² + 10²) ≈ 112.4 m, past the original's widest
     // pathfinding footprint: its circle is that footprint's 25 m.
     assert_eq!(
@@ -493,6 +533,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         projectile: None,
         navigation: None,
         flight: None,
+        sortie: None,
         acquire: None,
         leads: false,
     };

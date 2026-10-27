@@ -49,6 +49,7 @@ use crate::zero_hour::wreck_import::WreckImport;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 use campfire_client_files::{SpeedScale, TrackMarks, TreadDust, WreckGround};
 
+mod airfield_bones;
 pub(crate) mod animation_import;
 pub(crate) mod archive_path;
 pub(crate) mod axes;
@@ -273,7 +274,12 @@ impl ZeroHour {
         let start = SkirmishStart::of(&game, &mut object_names)?;
         let money = game.multiplayer.money()?;
         let mut object_names = object_names.into_production();
-        let production = ProductionImport::of(&game, &mut object_names, looks.helipads.clone());
+        let production = ProductionImport::of(
+            &game,
+            &mut object_names,
+            looks.helipads.clone(),
+            looks.airfields.clone(),
+        );
         let mut object_names = object_names.into_projectiles();
         let combat = CombatImport::of(&game, &mut object_names)?;
         // The systems the projectiles of the weapons the import converts carry.
@@ -415,6 +421,7 @@ impl ZeroHour {
             weapon_slots: &combat.weapon_slots,
             command: &production.commands,
             production: &production.sections,
+            airfields: &production.airfields,
             nodes: &production.supply.nodes,
             drop_offs: &production.supply.drop_offs,
             spawns: &production.supply.spawns,
@@ -472,7 +479,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 45;
+    pub const OUTPUT_VERSION: u32 = 48;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

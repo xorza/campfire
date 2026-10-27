@@ -29,6 +29,7 @@ use crate::error::CheckError;
 use crate::failure::{CheckFailure, Differs};
 use crate::golden::{Golden, Measured};
 use crate::helicopter_play::HelicopterPlay;
+use crate::jet_play::JetPlay;
 use crate::match_play::PlayTools;
 use crate::missile_play::MissilePlay;
 use crate::pins::{
@@ -575,6 +576,18 @@ impl ImportCheck<'_> {
                 load = helicopter.load,
                 "player 1's Comanche climbed, its Chinook delivered a load, and GLA's base shot the \
                  Comanche down"
+            );
+        }
+        if let Some((played, tools)) = self.played(Play::Jet, rate)?
+            && let Some(jet) = JetPlay::run(played, rate, tools, &mut self.failures)
+        {
+            let expected = self.pinned(|golden| golden.jet, jet);
+            self.failures
+                .extend(Differs::of(jet, expected).map(CheckFailure::Jet));
+            self.measured.jet = Some(jet);
+            info!(
+                ticks = ?jet,
+                "player 1's Raptor took off, struck GLA's command center, landed and reloaded"
             );
         }
         if let Some((played, tools)) = self.played(Play::Gattling, rate)?

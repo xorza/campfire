@@ -9,6 +9,7 @@ use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
+use crate::zero_hour::format::ini::object_ini::ini_build::IniParking;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::supply_import::{ImportedGather, SupplyDropCause};
 
@@ -32,6 +33,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         made: MadeSection::Train(TrainData {
             unit_type: name(unit),
             requires: None,
+            at_place: false,
         }),
     };
     let build = |unit: &str| ImportedAction {
@@ -294,7 +296,12 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         let object = rules.objects.object(placed.as_bytes()).unwrap();
         names.unit_type(object, &rules).unwrap();
     }
-    let import = ProductionImport::of(&rules, &mut names.into_production(), BTreeMap::new());
+    let import = ProductionImport::of(
+        &rules,
+        &mut names.into_production(),
+        BTreeMap::new(),
+        BTreeMap::new(),
+    );
     let supply = &import.supply;
     let name = |name: &str| TypeName::new(&ImportName::of(name.as_bytes())).unwrap();
     let declared = |name: &str| DeclaredName::new(name).unwrap();
@@ -504,7 +511,12 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
     let mut names = ImportNames::default();
     let center = rules.objects.object(b"Center").unwrap();
     names.unit_type(center, &rules).unwrap();
-    let import = ProductionImport::of(&rules, &mut names.into_production(), BTreeMap::new());
+    let import = ProductionImport::of(
+        &rules,
+        &mut names.into_production(),
+        BTreeMap::new(),
+        BTreeMap::new(),
+    );
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     for train in ["train_jeep", "train_rover", "train_wisp", "train_ghost"] {
         assert!(
@@ -521,22 +533,73 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
 }
 
 #[test]
-fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad() {
+fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at_its_places() {
     // A queue and a parking, of no exit module: its helipad at (5, 10) on the game's axes is its
-    // exit, (5, −10) on the engine's, with no rally of its own; a producer of no parking has no
-    // helipad (helicopters.md, A helipad is an exit).
+    // exit, (5, −10) on the engine's, with no rally of its own; its places, at (20, 30) facing 90°
+    // and (20, −30) facing −90°, are at (20, −30) and (20, 30) on the engine's axes, facing alike,
+    // and its airfield's prep points and runway turn the same way; a producer of no parking has
+    // neither (helicopters.md, A helipad is an exit; jets.md, The import flies a winged
+    // locomotor).
     let airfield = IniBuild {
         queue: Some(1),
-        parking: true,
+        parking: Some(IniParking::default()),
         ..IniBuild::default()
     };
-    let section = ProductionImport::section(&airfield, Some([5.0, 10.0])).unwrap();
-    assert_eq!(section.exit, FramePoint::new([Num::int(5), Num::int(-10)]));
+    let place = |y: f32, angle: f32| PlaceBones {
+        at: [20.0, y],
+        angle,
+        prep: [25.0, y],
+        runway: 0,
+    };
+    let bones = AirfieldBones {
+        places: vec![place(30.0, 90.0), place(-30.0, -90.0)],
+        runways: vec![[[40.0, 0.0], [140.0, 0.0]]],
+    };
+    let points = ExitPoints {
+        helipad: Some([5.0, 10.0]),
+        airfield: Some(bones.clone()),
+    };
+    let section = ProductionImport::section(&airfield, points.clone()).unwrap();
+    let frame = |x: i64, z: i64| FramePoint::new([Num::int(x), Num::int(z)]).unwrap();
+    assert_eq!(section.exit, Some(frame(5, -10)));
     assert_eq!(section.rally, None);
+    assert_eq!(
+        section.places,
+        [
+            PlaceData {
+                at: frame(20, -30),
+                angle: Num::int(90)
+            },
+            PlaceData {
+                at: frame(20, 30),
+                angle: Num::int(-90)
+            },
+        ]
+    );
+    let name = TypeName::named("airfield");
+    let import = ProductionImport {
+        sections: BTreeMap::from([(name.clone(), section)]),
+        airfield_bones: BTreeMap::from([(name.declared().clone(), bones)]),
+        ..ProductionImport::default()
+    };
+    let prep = |z: i64| AirfieldPlace {
+        prep: frame(25, z),
+        runway: 0,
+    };
+    assert_eq!(
+        import.airfields()[&name],
+        AirfieldData {
+            places: vec![prep(-30), prep(30)],
+            runways: vec![RunwayData {
+                start: frame(40, 0),
+                end: frame(140, 0),
+            }],
+        }
+    );
     let plain = IniBuild {
-        parking: false,
+        parking: None,
         ..airfield
     };
-    let section = ProductionImport::section(&plain, Some([5.0, 10.0])).unwrap();
-    assert_eq!(section.exit, None);
+    let section = ProductionImport::section(&plain, points).unwrap();
+    assert_eq!((section.exit, section.places), (None, Vec::new()));
 }

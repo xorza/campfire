@@ -11,7 +11,8 @@ use campfire_sim::{
     Unpredicted,
 };
 use campfire_units::{
-    AtWork, Body, Dead, Destination, Facing, ForcedMove, Leaving, MapBook, MoveStep, TurnStep,
+    AtWork, Body, Dead, Destination, Facing, FlightGoal, ForcedMove, Leaving, MapBook, MoveStep,
+    OnWings, StatusTags, TurnStep,
 };
 use campfire_values::{Block, Motion, Team, UnitTags, UnitType};
 
@@ -84,6 +85,7 @@ type Steerers<'w, 's> = Query<
             &'static Position,
             Option<&'static Team>,
             Has<Altitude>,
+            (Option<&'static StatusTags>, Option<&'static FlightGoal>),
         ),
         &'static mut Destination,
         &'static MoveStep,
@@ -165,11 +167,14 @@ impl Walking {
         let ask_ticks = Progress::ask_after(*rate);
         let ordered = walkers
             .iter()
-            .filter(|(_, _, destination, _, _, route, _, tags, forced)| {
-                Self::walks(Some(destination), *tags, Motion::of(*forced))
-                    && route.asked().is_none()
-                    && !route.read().ahead().is_empty()
-            })
+            .filter(
+                |(_, (.., (status, goal)), destination, _, _, route, _, tags, forced)| {
+                    !Self::held(*status, *goal)
+                        && Self::walks(Some(destination), *tags, Motion::of(*forced))
+                        && route.asked().is_none()
+                        && !route.read().ahead().is_empty()
+                },
+            )
             .map(|(entity, (&id, ..), ..)| Keyed { id, entity });
         asides.clear();
         passages.clear();
@@ -177,7 +182,7 @@ impl Walking {
         for &Keyed { entity, .. } in order.sort(ordered) {
             let (
                 _,
-                (&id, &at, team, flies),
+                (&id, &at, team, flies, _),
                 mut destination,
                 step,
                 body,
@@ -272,7 +277,7 @@ impl Walking {
             };
             let (
                 _,
-                (&id, position, team, _),
+                (&id, position, team, ..),
                 mut destination,
                 _,
                 body,
@@ -440,6 +445,7 @@ impl Walking {
             '_,
             (
                 (&mut Position, &mut Facing, Has<Altitude>),
+                (Option<&StatusTags>, Option<&FlightGoal>),
                 &mut Destination,
                 RouteMut,
                 (
@@ -457,6 +463,7 @@ impl Walking {
     ) {
         for (
             (mut position, mut facing, flies),
+            (status, goal),
             mut destination,
             mut route,
             (mut progress, arrived, depth, hemmed),
@@ -465,7 +472,9 @@ impl Walking {
             forced,
         ) in &mut units
         {
-            if !Self::walks(Some(&destination), tags, Motion::of(forced)) {
+            if Self::held(status, goal)
+                || !Self::walks(Some(&destination), tags, Motion::of(forced))
+            {
                 continue;
             }
             let mut arrived = arrived.expect("a walker carries the goal it arrived at");
@@ -725,6 +734,13 @@ impl Walking {
 
     /// Whether a unit walks this tick: it has a destination, and neither its tags nor its
     /// `motion`, when forced, stop it. One they stop stands, to the units round it as to itself.
+    /// Whether a unit's own walk leaves it be: one on wings in the air, which its wings fly, or a
+    /// flier its airfield holds on the ground, which moves only as it is forced (jets.md, A jet
+    /// flies on wings; jets.md, A jet takes off and lands on its runway).
+    fn held(status: Option<&StatusTags>, goal: Option<&FlightGoal>) -> bool {
+        OnWings::holds(status) || goal == Some(&FlightGoal::Ground)
+    }
+
     fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, motion: Motion) -> bool {
         destination.is_some_and(|destination| destination.get().is_some())
             && !tags

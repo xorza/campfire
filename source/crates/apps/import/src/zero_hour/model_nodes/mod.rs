@@ -253,6 +253,16 @@ impl ModelNodes {
         Some(axes::y_up(pose.translation.to_array()).into())
     }
 
+    /// The point of its pivot `name`, of either case, of the poses `pristine`, and the way its `x`
+    /// axis points, each on glTF's axes; none for a name of no pivot.
+    pub(crate) fn pivot_pose(&self, name: &str, pristine: &[RigidPose]) -> Option<[Vec3; 2]> {
+        let pose = pristine[self.pivot(name)?];
+        Some([
+            axes::y_up(pose.translation.to_array()).into(),
+            axes::y_up(pose.rotation.rotate(Vec3::X).to_array()).into(),
+        ])
+    }
+
     /// The span between its treads' bones, `TREADFX01` and `TREADFX02`, of the poses `pristine`,
     /// as `computeTrackSpacing` measures it; none when it lacks either.
     pub(crate) fn tread_span(&self, pristine: &[RigidPose]) -> Option<f32> {

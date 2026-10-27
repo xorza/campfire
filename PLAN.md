@@ -46,51 +46,25 @@ It stands last, as the player's check is of the whole slice.
 
 The slice of [Jets](docs/design/jets.md): a player of a Zero Hour skirmish trains a Raptor or a MiG at an airfield, which waits at its parking place, taxis to its runway, takes off down it, strikes a target in passes, comes back to land and reload, and falls when shot down. Its facts are [Zero Hour's jets](docs/research/zero-hour-jets.md); its checks are that document's. It stands after Helicopters, whose fliers it extends, and waits for no player's check of a slice before it.
 
-### J1. A flier on wings
-
-Touches navigation; it stands first, as every later step flies a jet.
-
-- [ ] No flier keeps moving (jets.md, A jet flies on wings): a flier walks as a walker does, standing while it turns toward its leg (`walking.rs:477`) and standing at its goal, so a jet would hover. A unit type's `flight` gains `wings`, its least speed and its circling radius; a winged flier in the air moves along its facing each tick at its speed and turns toward its goal at its turn rate as it moves, and with no goal circles the place it holds at its circling radius, on the server and in a predicting client alike; on the ground, below its airborne height, it walks as now. Builds: a part of the winged fliers alone, declared once, and a pass that visits only them. Checks: navigation's tests fly a winged flier to a goal behind it, pinning each tick of its turn and its pass, never standing in the air; circle it round its held place with no goal at its radius; and walk it on the ground as a walker.
-
-### J2. A winged aim and a clip that reloads at home
-
-Touches combat; it stands after J1, whose wings it aims with.
-
-- [ ] An attacker turns in place to aim (jets.md, A jet aims by flying): a weapon no turret carries turns its attacker toward its target in reach and starts within `aim_deg` (`attacks.rs:308`). A winged attacker in the air turns no facing of its own: it keeps the target as its walk's goal and starts within `aim_deg` of the target's bearing. Checks: combat's test flies a winged attacker of a 30° aim at a target and pins the ticks of its starts, each within its aim, through a pass and a turn back, and a ground attacker's aim as before.
-- [ ] A clip reloads only by time (jets.md, A clip may reload at home): a clip is ready its reload after its last shot (`attacks.rs:626`). A clip's `reload` of `home` stays empty until the airfields' reload refills it, through a contract of combat that airfields call, its shots back in proportion to the reload's time. Checks: combat's tests empty a clip of `home` and show no start after its reload's time, then refill it by the contract over a reload of half the clip in half its time.
-
-### J3. An airfield holds its jets
-
-Touches a new capability, `airfields`, and production; it stands after J2, as its jets fire clips that reload at home.
-
-- [ ] No unit has a place to land (jets.md, An airfield is a capability; jets.md, A jet holds a place): a producer makes each unit at its one exit (`trains.rs:387`), and nothing holds a unit's place. The capability `airfields` declares a unit type's `airfield`, its places of a parking point, a facing, a prep point and a hangar each, and a runway each column of a start and an end, its approach height and its heal a second, and a unit type's `sortie`, its takeoff pause, idle time and out-of-ammunition share a second; an airfield's train of a sortie waits while no place is free, holds one as it is queued, and makes the unit at its place, or its hangar, which stays the unit's own while it lives. Builds: a module of its own, its parts declared on its kinds, and a contract with production for the exit. Checks: the airfields' tests train sorties into a two-place airfield, the third waiting until the first dies, each made at its own place.
-- [ ] No unit takes off (jets.md, A jet takes off and lands on its runway): a jet ordered away from its place waits for its column's runway, taxis to its prep point, waits its takeoff pause, rolls from the runway's start to its end and climbs, one jet a runway, the next in line taking it as the first leaves. Checks: the airfields' tests take off two jets of one column, pinning each one's ticks at its prep point, at the runway's start and end, and in the air, the second only after the first leaves the runway.
-
-### J4. A jet goes home
-
-Touches airfields, combat's reload contract and the orders' idle; it stands after J3, whose places and runways it lands on.
-
-- [ ] No unit lands, reloads or comes home (jets.md, A jet takes off and lands on its runway; jets.md, A jet goes home): a jet whose clips that reload at home are all empty, or that stands idle in the air for its sortie's idle time, returns to its airfield, waits for its runway, flies to its approach point at the airfield's approach height, lands from the runway's end to its start, taxis to its place, reloads its clips over the longest share of their reload times, and heals at the airfield's heal a second; a jet whose airfield is gone takes the nearest airfield of its player with a free place, and with none circles where its airfield stood, losing its share of life a second. Checks: the airfields' tests empty a jet's clip and pin its ticks home, on the runway, at its place and full again; return an idle one after its idle time; heal one parked; and move one to a second airfield, or circle one losing life, as its own dies.
-
-### J5. The import flies Zero Hour's jets
-
-Touches the import, the Zero Hour rules package and the golden; it stands after J4, whose parts it writes.
-
-- [ ] The import flies no jet (jets.md, The import flies a winged locomotor): a type moves by its first normal locomotor that drives or hovers (`imported_type/mod.rs:153`), so a jet does not move, its train is dropped (`production_import/mod.rs:376`), a weapon's `AutoReloadsClip` is not read, and an airfield's `ParkingPlaceBehavior` gives only its helipad (`ini_build.rs:101`). An object of a `WINGS` normal locomotor and a `JetAIUpdate` becomes a flier of wings and a sortie, its taxi locomotor's speed its speed on the ground; an airfield's places and runways are read from its model's bones with its `ApproachHeight` and `HealAmountPerSecond`; a weapon of `RETURN_TO_BASE` reloads at home; and the afterburners, countermeasures, lock-on, sneaky offset, ejection, carrier decks, the Aurora's bomb, the Stealth Fighter's stealth, the Comanche's landing and a jet's pitch and roll are counted as losses. Checks: the import's tests convert the Raptor's and the MiG's locomotors and sorties, an airfield's places and runways from a fixture's bones, and a clip that returns to base, each loss once; the Zero Hour check's golden moves only by the jets' types, trains, weapons and losses and the bot matches they join, each change read.
-
-### J6. A sortie in the check
-
-Touches the Zero Hour check; it stands after J5, as it plays the import.
-
-- [ ] No play flies a jet (jets.md, Checks): a play of the check gives an American player an airfield that trains a Raptor, orders it at a target structure, and pins the ticks of its takeoff, its first hit, its landing and its full clip again, and the target's life. Checks: the play passes, and its record replays.
-
 ### End of the slice
 
 It stands last, as the player's check is of the whole slice.
 
-- [ ] An agent runs a Tournament Desert skirmish through the console and screenshots a jet on its runway, in a pass over its target and parked again, each fault it sees going to a step before the player's check; then a player sees a jet taxi, take off down its runway, strike in passes, land and reload, and fall when shot down, in the client; then the slice's decisions fold into `04-capabilities/navigation.md`, `04-capabilities/combat.md`, a new `04-capabilities/airfields.md` and `09-zero-hour.md`, and `jets.md` goes.
+- [ ] An agent runs a Tournament Desert skirmish through the console and screenshots a jet on its runway, in a pass over its target and parked again, each fault it sees going to a step before the player's check (a question: [PLAN_QUESTIONS.md](PLAN_QUESTIONS.md#jets-end-of-the-slice)); then a player sees a jet taxi, take off down its runway, strike in passes, land and reload, and fall when shot down, in the client; then the slice's decisions fold into `04-capabilities/navigation.md`, `04-capabilities/combat.md`, a new `04-capabilities/airfields.md` and `09-zero-hour.md`, and `jets.md` goes.
 
 ## Changed
+
+- J6's Raptor flies over GLA's command center before its attack order, as an attack aims only at what its team sees; the play pins its train and that flight too. A missile of an `IgnitionDelay` now converts, igniting at once, as `09-zero-hour.md` decides, since the drop left the Raptor and the Stealth Fighter with no weapon.
+
+- J5 reads an airfield's places and runways from its model's bones as the import reads a helipad, a train that makes a jet makes it at a place, `at_place`, so a helicopter of the same airfield leaves by its helipad; a base start and a bot's army leave the jets out, as a base start's units stand at their rally and not at an airfield's place, and a bot does not fly sorties; the airfield's `ApproachHeight` and `HealAmountPerSecond` are not converted, as J4 lands by its own sink and heals nothing. The losses go to `09-zero-hour.md` as the slice folds.
+
+- J4 lands a jet from an approach past its runway's end as far as it flies while it sinks from its height at its climb, not from the airfield's `ApproachHeight`, as the flight holds no height between; a jet drops its orders as it goes home and takes none up after its reload, where Zero Hour resumes its last; a jet's heal at its place and the life a jet with no airfield loses are left out, as no contract of combat lets a capability above it deal a heal or a damage, and a jet on the ground of a gone airfield stays, where Zero Hour kills it: each goes to the issue log. A jet with no airfield flies on as it is.
+
+- J3's places are production's, a producer's `places` that its `HeldPlaces` hold for the units each made there by `MadeAt`, and the airfield's own section gives each place's prep point and runway: production makes the unit and lands nothing, so the place is its exit; a train waits at its end, looked at each tick, while each place holds a unit, where Zero Hour holds a place as the train is queued, as the queue's due time reads no book. A jet taxis and rolls by forced dashes along the airfield's points, facing each leg, with the units core's `FlightGoal` holding it on the ground, which navigation leaves to its forced moves, and the engine tag `grounded` blocking its walk and its attacks; the sorties go after production's starts in Act.
+
+- J2's winged aim reads a status tag of the units core, `on_wings`, which navigation turns with `air_target`, as combat and orders depend on no navigation of their own and a contract below them holds what both read; it shifts the engine tags after `air_target` by one. A clip's home reload is its `refill = "home"`, beside its `reload_ms`, which stays its time; an empty clip of home starts nothing, so its weapon gives way to no other. The orders' chase keeps a unit on wings flying at its target in reach.
+
+- J1's winged flier passes a waypoint, and arrives, once it lies within its circling radius, as a wing cannot meet a point it turns round; its test pins the walk on the ground, the arrival, the first turns of the circle and a tick across it, and bounds each other tick by its step's rounding, as each step's sine and cosine round apart.
 
 - H3's play starts America and GLA from base starts, not a builder and an attacker: America's base start holds its Chinooks and Comanches, and GLA's every building its workers build, so the play orders only the gather, a stop of the other Chinooks, which their supply center sends to gather, and the flight, and the Comanche falls to every weapon of GLA's base that hits the air, not to a Stinger site alone. The Comanche's climb is pinned too, to the height its flight data gives.
 

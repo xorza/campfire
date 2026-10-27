@@ -1,5 +1,3 @@
-use std::num::NonZeroU16;
-
 use campfire_codec::{Binary, BinaryError};
 use campfire_common::Ticks;
 
@@ -10,6 +8,7 @@ fn a_clip_of_three_empties_at_its_third_shot_and_a_full_clip_is_not_held() {
     let clip = ClipRule {
         shots: NonZeroU16::new(3).unwrap(),
         reload: Ticks::new(21),
+        refill: ClipRefill::Time,
     };
     let (rifle, pistol) = (ActionId::new(4), ActionId::new(2));
     let mut shots = ClipShots::default();
@@ -37,10 +36,31 @@ fn a_clip_of_three_empties_at_its_third_shot_and_a_full_clip_is_not_held() {
     let one = ClipRule {
         shots: NonZeroU16::MIN,
         reload: Ticks::new(21),
+        refill: ClipRefill::Time,
     };
     let mut single = ClipShots::default();
     assert!(single.shoot(rifle, one));
     assert_eq!(single, ClipShots::default());
+    // A clip of two that refills at home stays empty after its second shot, its two shots kept,
+    // and its home refills it: to one shot fired, then full, which leaves the list.
+    let home = ClipRule {
+        shots: NonZeroU16::new(2).unwrap(),
+        reload: Ticks::new(21),
+        refill: ClipRefill::Home,
+    };
+    let mut jet = ClipShots::default();
+    assert!(!jet.shoot(rifle, home));
+    assert!(!jet.is_empty(rifle, home.shots));
+    assert!(!jet.shoot(rifle, home));
+    assert!(jet.is_empty(rifle, home.shots));
+    assert_eq!(jet.fired(rifle), 2);
+    jet.refill(rifle, 1);
+    assert_eq!(
+        (jet.fired(rifle), jet.is_empty(rifle, home.shots)),
+        (1, false)
+    );
+    jet.refill(rifle, 0);
+    assert_eq!(jet, ClipShots::default());
     // A snapshot out of order, or of a weapon of no shot, does not decode.
     let encode = |fired: &[(u32, u16)]| {
         let fired: Vec<Fired> = fired

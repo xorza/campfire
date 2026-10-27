@@ -620,8 +620,8 @@ fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
 #[test]
 fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     // The 3v3 names 25 tags: the 10 of its `[tags]`, 6 of its heroes' classes, 8 more of its unit
-    // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 10, so 221
-    // layers, each a tag, fill the 256 a match holds, and 222 are past it.
+    // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 12, so 219
+    // layers, each a tag, fill the 256 a match holds, and 220 are past it.
     let tags = |packages: &ModePackages| packages.tag_names().len();
     let packages = load(&edited([])).unwrap();
     assert_eq!(tags(&packages), 25);
@@ -658,10 +658,10 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
             "ward",
         ]
     );
-    let [(path, layers)] = <[_; 1]>::try_from(layers(221)).unwrap();
+    let [(path, layers)] = <[_; 1]>::try_from(layers(219)).unwrap();
     let edit = Edit::Set(&path, &layers);
     let packages = load(&edited([(MODE_DATA, edit)])).unwrap();
-    assert_eq!(tags(&packages), 246);
+    assert_eq!(tags(&packages), 244);
     // The mode's `[tags]` may give an engine tag properties, and that names no tag of its own.
     let edit = Edit::Replace(
         "[tags.stunned]",
@@ -699,10 +699,10 @@ struct LimitCase {
 #[test]
 fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
     let cases = [
-        // The 3v3's 25 tags and the engine's 10 leave 221 of the 256 a match holds for layers.
+        // The 3v3's 25 tags and the engine's 12 leave 219 of the 256 a match holds for layers.
         LimitCase {
             more: layers,
-            allowed: 221,
+            allowed: 219,
             refused: |problem| rule(problem, &TypesError::TooManyTags),
         },
         // `level` and 31 more fill the 32 tracks a unit holds.

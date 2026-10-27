@@ -13,6 +13,7 @@ use campfire_package_disk::PackageWriter;
 use serde::{Deserialize, Serialize};
 
 use crate::gltf::model_bounds::ModelBounds;
+use crate::zero_hour::airfield_bones::{AirfieldBones, PlaceBones};
 use crate::zero_hour::animation_import::{AnimationDropCause, AnimationEnds, ConvertedAnimation};
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::barrel_recoil::BarrelRecoil;
@@ -23,6 +24,7 @@ use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::object_ini::ini_animation::{
     AnimationFlag, IniAnimation, IniMode,
 };
+use crate::zero_hour::format::ini::object_ini::ini_build::IniParking;
 use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
 use crate::zero_hour::format::ini::object_ini::{
@@ -129,16 +131,19 @@ pub(crate) struct ImportedLooks {
     pub(crate) bones: BTreeMap<TypeName, ModelBones>,
     pub(crate) track_widths: BTreeMap<DeclaredName, f32>,
     pub(crate) helipads: BTreeMap<DeclaredName, [f32; 2]>,
+    pub(crate) airfields: BTreeMap<DeclaredName, AirfieldBones>,
 }
 
 /// What a unit reads of its model at rest: its turret's and weapons' bones, the width of the
-/// track its treads lay, when its model names their bones, and its helipad, its `HeliPark01`
-/// bone's point on the ground, the game's axes, when its model names it.
+/// track its treads lay, when its model names their bones, its helipad, its `HeliPark01` bone's
+/// point on the ground, the game's axes, when its model names it, and an airfield's places and
+/// runways.
 #[derive(Debug)]
 struct ModelRest {
     bones: ModelBones,
     track_width: Option<f32>,
     helipad: Option<[f32; 2]>,
+    airfield: Option<AirfieldBones>,
 }
 
 /// The bone an airfield makes a helicopter at (`ParkingPlaceBehavior::exitObjectViaDoor`).
@@ -250,6 +255,7 @@ impl ModelWriter<'_, '_> {
         let mut bones = BTreeMap::new();
         let mut track_widths = BTreeMap::new();
         let mut helipads = BTreeMap::new();
+        let mut airfields = BTreeMap::new();
         let shown = StateLook::default();
         for object in ini.objects() {
             let scale = object.scale();
@@ -271,7 +277,8 @@ impl ModelWriter<'_, '_> {
                 bones: of_model,
                 track_width,
                 helipad,
-            } = self.bones(boned.draws(), boned.scale())?;
+                airfield,
+            } = self.bones(boned.draws(), boned.scale(), object.build().parking)?;
             if let Some(of_parent) = ini.variations_of(object) {
                 let mut looks = Vec::with_capacity(of_parent.len());
                 for variation in of_parent {
@@ -315,6 +322,9 @@ impl ModelWriter<'_, '_> {
             if let Some(helipad) = helipad {
                 helipads.insert(declared.clone(), helipad);
             }
+            if let Some(airfield) = airfield {
+                airfields.insert(declared.clone(), airfield);
+            }
             units.insert(declared, unit_look);
         }
         Ok(ImportedLooks {
@@ -324,6 +334,7 @@ impl ModelWriter<'_, '_> {
             bones,
             track_widths,
             helipads,
+            airfields,
         })
     }
 
@@ -612,11 +623,13 @@ impl ModelWriter<'_, '_> {
         &mut self,
         draws: &[DrawModule],
         scale: ModelScale,
+        parking: Option<IniParking>,
     ) -> Result<ModelRest, ZeroHourError> {
         let none = ModelRest {
             bones: ModelBones::default(),
             track_width: None,
             helipad: None,
+            airfield: None,
         };
         let drawn = draws.iter().find(|draw| draw.kind == DrawKind::Family);
         let Some((draw, model)) = drawn.and_then(|draw| Some((draw, draw.model.as_ref()?))) else {
@@ -666,8 +679,38 @@ impl ModelWriter<'_, '_> {
         let track_width =
             (nodes.tread_span(&pristine)).map(|span| span * scale.get() + TREAD_WIDTH);
         // A pivot's point is on the engine's axes, its `z` the game's `−y`.
-        let helipad = (nodes.pivot_point(HELIPAD, &pristine))
-            .map(|at| [at.x * scale.get(), -at.z * scale.get()]);
+        let ground = |at: Vec3| [at.x * scale.get(), -at.z * scale.get()];
+        let helipad = (nodes.pivot_point(HELIPAD, &pristine)).map(ground);
+        let airfield = parking.and_then(|parking| {
+            let point = |name: String| nodes.pivot_point(&name, &pristine).map(ground);
+            let mut places = Vec::new();
+            for row in 1..=parking.rows {
+                for col in 1..=parking.cols {
+                    let parked = if parking.hangars {
+                        format!("Runway{col}Park{row}Han")
+                    } else {
+                        format!("Runway{col}Parking{row}")
+                    };
+                    let [at, way] = nodes.pivot_pose(&parked, &pristine)?;
+                    places.push(PlaceBones {
+                        at: ground(at),
+                        angle: (-way.z).atan2(way.x).to_degrees(),
+                        prep: point(format!("Runway{col}Prep{row}"))?,
+                        runway: col - 1,
+                    });
+                }
+            }
+            let runways = (1..=parking.cols).map(|col| {
+                Some([
+                    point(format!("RunwayStart{col}"))?,
+                    point(format!("RunwayEnd{col}"))?,
+                ])
+            });
+            Some(AirfieldBones {
+                places,
+                runways: runways.collect::<Option<_>>()?,
+            })
+        });
         Ok(ModelRest {
             bones: ModelBones {
                 pivot: pivot(draw.turret.as_ref())?,
@@ -676,6 +719,7 @@ impl ModelWriter<'_, '_> {
             },
             track_width,
             helipad,
+            airfield,
         })
     }
 

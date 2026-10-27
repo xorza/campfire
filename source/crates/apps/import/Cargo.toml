@@ -10,6 +10,7 @@ kind = "app"
 [features]
 internals = [
     "campfire-actions/internals",
+    "campfire-airfields/internals",
     "campfire-client-files/internals",
     "campfire-codec/internals",
     "campfire-combat/internals",
@@ -36,6 +37,7 @@ internals = [
 
 [dependencies]
 campfire-actions.workspace = true
+campfire-airfields.workspace = true
 campfire-client-files.workspace = true
 campfire-codec.workspace = true
 campfire-combat.workspace = true

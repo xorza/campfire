@@ -136,6 +136,7 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
             Capability::Production,
             Capability::Combat,
             Capability::Projectiles,
+            Capability::Airfields,
         ],
         tick_hz: TickRange::new(logic_frames, logic_frames, logic_frames)
             .expect("a range of one rate holds it"),

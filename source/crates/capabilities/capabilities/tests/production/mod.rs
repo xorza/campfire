@@ -78,6 +78,7 @@ impl Shop {
             rally: None,
             gathers: false,
             free: Box::new([]),
+            places: Box::new([]),
         };
         Self::give(game, barracks, production.clone());
         let frame = |x: i64| FramePoint::new([Num::int(x), Num::ZERO]);
@@ -503,5 +504,6 @@ fn a_train_queue_is_state_and_restores() {
 mod construction;
 mod gathering;
 mod orders;
+mod places;
 mod research;
 mod supply;

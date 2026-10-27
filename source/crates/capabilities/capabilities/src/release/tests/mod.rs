@@ -181,10 +181,10 @@ fn every_pair_of_capabilities_with_only_what_they_need_orders_every_pair_of_thei
             .build();
         game.step();
     });
-    // 12 capabilities a manifest declares: 12 alone and 12 * 11 / 2 = 66 pairs, three matches
+    // 13 capabilities a manifest declares: 13 alone and 13 * 12 / 2 = 78 pairs, three matches
     // each.
-    assert_eq!(built.len(), 12);
-    assert_eq!(stepped.len(), (12 + 66) * 3);
+    assert_eq!(built.len(), 13);
+    assert_eq!(stepped.len(), (13 + 78) * 3);
 }
 
 #[test]

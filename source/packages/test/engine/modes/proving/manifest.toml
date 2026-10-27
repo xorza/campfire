@@ -6,7 +6,7 @@ version = "0.1.0"
 api = "1.0"
 language = "en"
 kind = "mode"
-capabilities = ["combat", "stats", "abilities", "projectiles", "areas", "orders", "navigation", "vision", "progression", "production", "items", "interaction"]
+capabilities = ["combat", "stats", "abilities", "projectiles", "areas", "orders", "navigation", "vision", "progression", "production", "items", "interaction", "airfields"]
 tick_hz = { min = 20, max = 20, default = 20 }
 teams = [{ name = "north", player_slots = 1 }, { name = "south", player_slots = 1 }, { name = "camps", player_slots = 0 }]
 max_move_speed = "7.5"

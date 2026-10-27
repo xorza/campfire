@@ -666,7 +666,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
                 rally: [60.0, 35.0],
                 starts_gatherers: false,
             }),
-            parking: false,
+            parking: None,
             placement_angle: Some(Num::int(-135)),
             variations: Vec::new(),
         }

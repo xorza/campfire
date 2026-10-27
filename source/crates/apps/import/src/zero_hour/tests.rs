@@ -11,8 +11,8 @@ use campfire_client_files::{
     NodeUpgrade, ObjectLook, Press, StateAnimation, StateClip, StatePlay,
 };
 use campfire_combat::{
-    ArmorShare, AttackData, ClipData, CombatData, ModeCombatData, OnDeath, PitchData, ScatterData,
-    SplashData, TurretData, UnitOffset, WeaponValue,
+    ArmorShare, AttackData, ClipData, ClipRefill, CombatData, ModeCombatData, OnDeath, PitchData,
+    ScatterData, SplashData, TurretData, UnitOffset, WeaponValue,
 };
 use campfire_math::Rounding;
 use campfire_mode::{ChoiceData, ListEntry, ModeParam, Offers, OptionData, RelationData};
@@ -268,6 +268,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         let train = TrainData {
             unit_type: declared(unit_type),
             requires,
+            at_place: false,
         };
         ActionData::of(Targeting::None, train)
     };
@@ -319,6 +320,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         clip: Some(ClipData {
             shots: one(3),
             reload_ms: one(700),
+            refill: ClipRefill::Time,
         }),
         splash: None,
         scatter: None,
@@ -630,6 +632,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         rally,
         gathers: false,
         free: Vec::new(),
+        places: Vec::new(),
     };
     let production = |name: &str| unit(name).section::<ProductionData>();
     assert_eq!(
@@ -920,7 +923,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // weapons, and the shell the crusader's cannon fires.
     SkirmishStart::of(&rules, &mut names).unwrap();
     let mut names = names.into_production();
-    let production = ProductionImport::of(&rules, &mut names, BTreeMap::new());
+    let production = ProductionImport::of(&rules, &mut names, BTreeMap::new(), BTreeMap::new());
     let mut names = names.into_projectiles();
     let combat = CombatImport::of(&rules, &mut names).unwrap();
     let upgrades = UpgradeImport::of(&rules, names.types(), &production, &combat).unwrap();
@@ -930,6 +933,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         weapon_slots: &combat.weapon_slots,
         command: &production.commands,
         production: &production.sections,
+        airfields: &production.airfields,
         nodes: &production.supply.nodes,
         drop_offs: &production.supply.drop_offs,
         spawns: &production.supply.spawns,

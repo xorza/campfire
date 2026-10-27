@@ -7,10 +7,12 @@ use campfire_values::{ActionId, Named, TypeScope, UnitType};
 use crate::train_data::TrainData;
 
 /// What a train action runs: the unit type it makes, whose spawn draws its variation when it varies
-/// (04-capabilities/00-overview.md, A unit type may vary its units).
+/// (04-capabilities/00-overview.md, A unit type may vary its units), and whether it makes it at a
+/// place of its producer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TrainSpec {
     pub unit_type: UnitType,
+    pub at_place: bool,
 }
 
 impl PerId<ActionId> for TrainSpec {
@@ -32,6 +34,7 @@ impl TrainSpec {
             };
             let spec = Self {
                 unit_type: resolve(&data.unit_type)?,
+                at_place: data.at_place,
             };
             book.set(action.action, spec);
         }

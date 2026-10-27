@@ -2,16 +2,18 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::num::NonZeroU8;
 
 use campfire_actions::{ActionKeys, ActionKind, ActionRange, RangeField, Targeting};
+use campfire_airfields::{AirfieldData, AirfieldPlace, RunwayData};
 use campfire_codec::TomlTable;
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::{Num, Rounding};
 use campfire_production::{
-    BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiredUnit, RequiresData,
-    ResearchData, ResearchHolder, TrainData,
+    BuildData, BuildStart, ConstructData, FramePoint, PlaceData, ProductionData, RequiredUnit,
+    RequiresData, ResearchData, ResearchHolder, TrainData,
 };
 use campfire_values::{Number, Ranked, Share, TextId};
 use serde::{Deserialize, Serialize};
 
+use crate::zero_hour::airfield_bones::{AirfieldBones, PlaceBones};
 use crate::zero_hour::axes;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::dropped::Losses;
@@ -51,8 +53,19 @@ pub(crate) struct ProductionImport {
     /// The docks, supply centers, gatherers and free units of the types it visits.
     pub(crate) supply: SupplyImport,
     /// The helipad of each type whose model names one, by its type's name, which an airfield's
-    /// trains leave from.
+    /// trains leave from, and each airfield's places and runways, which its jets take.
     helipads: BTreeMap<DeclaredName, [f32; 2]>,
+    airfield_bones: BTreeMap<DeclaredName, AirfieldBones>,
+    /// The `airfield` of each airfield whose production makes its jets at places (jets.md, The
+    /// import flies a winged locomotor).
+    pub(crate) airfields: BTreeMap<TypeName, AirfieldData>,
+}
+
+/// Where a producer's units leave it: its helipad, and its airfield's places and runways.
+#[derive(Debug, Clone, Default)]
+struct ExitPoints {
+    helipad: Option<[f32; 2]>,
+    airfield: Option<AirfieldBones>,
 }
 
 /// A faction's base, which a player slot that starts with one gets beside its start
@@ -218,7 +231,8 @@ impl ProductionImport {
         })
     }
 
-    /// The unit types the actions of `kind` of `producer`'s command set make, in its order.
+    /// The unit types the actions of `kind` of `producer`'s command set make, in its order, but a
+    /// jet, made at a place of its airfield, which a base start does not hold.
     fn made<'a>(
         &'a self,
         producer: &DeclaredName,
@@ -230,7 +244,9 @@ impl ProductionImport {
             .flatten()
             .filter_map(|id| self.actions.get(id))
             .filter_map(move |action| match (&action.made, kind) {
-                (MadeSection::Train(train), ActionKind::Train) => Some(&train.unit_type),
+                (MadeSection::Train(train), ActionKind::Train) if !train.at_place => {
+                    Some(&train.unit_type)
+                }
                 (MadeSection::Build(build), ActionKind::Build) => Some(&build.unit_type),
                 _ => None,
             })
@@ -244,9 +260,11 @@ impl ProductionImport {
         rules: &'r ZeroHourRules,
         names: &mut ProductionNames<'r>,
         helipads: BTreeMap<DeclaredName, [f32; 2]>,
+        airfield_bones: BTreeMap<DeclaredName, AirfieldBones>,
     ) -> Self {
         let mut import = Self {
             helipads,
+            airfield_bones,
             ..Self::default()
         };
         let mut queued: VecDeque<NamedObject<'r>> = names.typed_objects().into();
@@ -268,6 +286,7 @@ impl ProductionImport {
                 }
             }
         }
+        import.airfields = import.airfields();
         import
     }
 
@@ -303,7 +322,7 @@ impl ProductionImport {
         let kept = supply.kept().is_some() && spawning == Spawning::ByExit;
         if (kept || supply.one_shots().next().is_some())
             && !self.sections.contains_key(name)
-            && let Some(section) = Self::section(producer.build(), self.helipad(name))
+            && let Some(section) = Self::section(producer.build(), self.points(name))
         {
             self.sections.insert(name.clone(), section);
         }
@@ -337,7 +356,7 @@ impl ProductionImport {
         names: &mut ProductionNames<'r>,
     ) -> Option<NamedObject<'r>> {
         // A button in several sets is reported once for each cause it drops by.
-        let helipad = self.helipad(&producer.name);
+        let points = self.points(&producer.name);
         let mut drop = |cause| {
             self.dropped.drop(button_name, cause);
             None
@@ -379,7 +398,7 @@ impl ProductionImport {
             _ => {}
         }
         let section = match making {
-            Making::Train => match Self::section(producer.object.build(), helipad) {
+            Making::Train => match Self::section(producer.object.build(), points) {
                 Some(section) => Some(section),
                 None => return drop(ButtonDropCause::NoQueue),
             },
@@ -421,6 +440,8 @@ impl ProductionImport {
             Making::Train => MadeSection::Train(TrainData {
                 unit_type: typed.name.declared().clone(),
                 requires,
+                // A jet is made at a place of its airfield (jets.md, A jet holds a place).
+                at_place: typed.imported.sortie().is_some(),
             }),
             Making::Build => MadeSection::Build(BuildData {
                 start_life: typed.imported.life().map(Self::one_life),
@@ -486,8 +507,8 @@ impl ProductionImport {
         if button.science {
             return self.dropped.drop(button_name, ButtonDropCause::Science);
         }
-        let helipad = self.helipad(&producer.name);
-        let Some(section) = Self::section(producer.object.build(), helipad) else {
+        let points = self.points(&producer.name);
+        let Some(section) = Self::section(producer.object.build(), points) else {
             return self.dropped.drop(button_name, ButtonDropCause::NoQueue);
         };
         let Ok(windup_ms) = game_time::of_build_seconds(upgrade.time) else {
@@ -561,15 +582,26 @@ impl ProductionImport {
     /// engine does not hold or a point past its bound, and whether its exit starts its gatherers;
     /// none for no `ProductionUpdate`, or a queue past 1 to 255; an airfield of no exit module
     /// makes its units at its `helipad`, with no rally point of its own (helicopters.md, A
-    /// helipad is an exit). The supply's conversion gives it its free units.
-    fn section(build: &IniBuild, helipad: Option<[f32; 2]>) -> Option<ProductionData> {
+    /// helipad is an exit), and its jets at its places, each facing as its bone does, none when one
+    /// is past what the engine holds (jets.md, The import flies a winged locomotor). The supply's
+    /// conversion gives it its free units.
+    fn section(build: &IniBuild, points: ExitPoints) -> Option<ProductionData> {
         let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;
-        let frame = |point: [f32; 2]| {
-            let [x, y] = point.map(|axis| game_float::to_num(axis).ok());
-            FramePoint::new(axes::ground([x?, y?])?)
-        };
+        let frame = Self::frame;
         let exit = build.exit;
-        let helipad = helipad.filter(|_| build.parking && exit.is_none());
+        let helipad = points
+            .helipad
+            .filter(|_| build.parking.is_some() && exit.is_none());
+        let place = |place: &PlaceBones| {
+            Some(PlaceData {
+                at: frame(place.at)?,
+                angle: game_float::to_num(place.angle).ok()?,
+            })
+        };
+        let parked = (points.airfield)
+            .filter(|airfield| build.parking.is_some() && Self::airfield(airfield).is_some());
+        let places: Option<Vec<PlaceData>> =
+            parked.and_then(|airfield| airfield.places.iter().map(place).collect());
         Some(ProductionData {
             queue,
             exit: match helipad {
@@ -579,12 +611,59 @@ impl ProductionImport {
             rally: exit.and_then(|exit| frame(exit.rally)),
             gathers: exit.is_some_and(|exit| exit.starts_gatherers),
             free: Vec::new(),
+            places: places.unwrap_or_default(),
         })
     }
 
-    /// The helipad of the airfield `name`, none for another.
-    fn helipad(&self, name: &TypeName) -> Option<[f32; 2]> {
-        self.helipads.get(name.declared()).copied()
+    /// The helipad and the places of the airfield `name`, none for another.
+    fn points(&self, name: &TypeName) -> ExitPoints {
+        ExitPoints {
+            helipad: self.helipads.get(name.declared()).copied(),
+            airfield: self.airfield_bones.get(name.declared()).cloned(),
+        }
+    }
+
+    /// The point `point` of an object's frame, the game's axes, in the engine's, none past what the
+    /// engine holds.
+    fn frame(point: [f32; 2]) -> Option<FramePoint> {
+        let [x, y] = point.map(|axis| game_float::to_num(axis).ok());
+        FramePoint::new(axes::ground([x?, y?])?)
+    }
+
+    /// The `airfield` of `bones`: each place's prep point and runway, and each runway's start and
+    /// end, in the engine's frame; none when a point is past what the engine holds, so its
+    /// production makes no unit at a place either.
+    fn airfield(bones: &AirfieldBones) -> Option<AirfieldData> {
+        let places = bones.places.iter().map(|place| {
+            Some(AirfieldPlace {
+                prep: Self::frame(place.prep)?,
+                runway: place.runway,
+            })
+        });
+        let runways = bones.runways.iter().map(|&[start, end]| {
+            Some(RunwayData {
+                start: Self::frame(start)?,
+                end: Self::frame(end)?,
+            })
+        });
+        Some(AirfieldData {
+            places: places.collect::<Option<_>>()?,
+            runways: runways.collect::<Option<_>>()?,
+        })
+    }
+
+    /// The `airfield` of each producer whose production makes units at places, of its bones.
+    fn airfields(&self) -> BTreeMap<TypeName, AirfieldData> {
+        let parks = self
+            .sections
+            .iter()
+            .filter(|(_, data)| !data.places.is_empty());
+        parks
+            .filter_map(|(name, _)| {
+                let bones = self.airfield_bones.get(name.declared())?;
+                Some((name.clone(), Self::airfield(bones)?))
+            })
+            .collect()
     }
 
     /// The share of a life of `most` that is 1 life, as the original's site starts at 1 hit point

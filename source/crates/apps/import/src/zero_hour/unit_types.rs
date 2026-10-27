@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_actions::TypeSlotsData;
+use campfire_airfields::AirfieldData;
 use campfire_codec::{Toml, TomlTable};
 use campfire_combat::BarrelsData;
 use campfire_common::DeclaredName;
@@ -39,6 +40,7 @@ pub(crate) struct TypeAdditions<'a> {
     pub(crate) weapon_slots: &'a BTreeMap<TypeName, Vec<Vec<DeclaredName>>>,
     pub(crate) command: &'a BTreeMap<TypeName, Vec<DeclaredName>>,
     pub(crate) production: &'a BTreeMap<TypeName, ProductionData>,
+    pub(crate) airfields: &'a BTreeMap<TypeName, AirfieldData>,
     pub(crate) nodes: &'a BTreeMap<TypeName, NodeData>,
     pub(crate) drop_offs: &'a BTreeMap<TypeName, DropOffData>,
     pub(crate) spawns: &'a BTreeMap<TypeName, SpawnsData>,
@@ -102,6 +104,9 @@ impl ImportedTypes {
                 if let Some(production) = additions.production.get(name) {
                     writer.section(production);
                 }
+                if let Some(airfield) = additions.airfields.get(name) {
+                    writer.section(airfield);
+                }
                 if let Some(node) = additions.nodes.get(name) {
                     writer.section(node);
                 }
@@ -147,6 +152,7 @@ pub(crate) mod reach_in {
                 weapon_slots: &BTreeMap::new(),
                 command: &BTreeMap::new(),
                 production: &BTreeMap::new(),
+                airfields: &BTreeMap::new(),
                 nodes: &BTreeMap::new(),
                 drop_offs: &BTreeMap::new(),
                 spawns: &BTreeMap::new(),

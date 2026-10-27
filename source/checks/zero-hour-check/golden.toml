@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "fc8fa8f0a57a29a4faf498e78a7fc5bf90546320d1b2d75960b5d6c62a6a54e5"
+game = "7d2371cc759719aba0a0df361f1b985094ca9fff0b591be260a7296f98c4a2f2"
 rules = "9aabd428a67064d385ccb39c254610d8041fbabc5b54f32dc14b115f49b11ee4"
 
 [map]
@@ -50,14 +50,14 @@ fires = ["airngr_skl.airngr_ata"]
 dies = ["airngr_skl.airngr_dta", "airngr_skl.airngr_dtb"]
 
 [produced]
-trains = 206
+trains = 223
 builds = 160
-dropped = [0, 23, 17, 6, 4, 0, 0, 0]
+dropped = [0, 23, 0, 6, 4, 0, 0, 0]
 
 [upgraded]
 researches = 69
-modules = 359
-dropped = [290, 0, 0, 7, 0, 12, 0, 116]
+modules = 369
+dropped = [301, 0, 0, 7, 0, 14, 0, 116]
 
 [supplied]
 nodes = 4
@@ -73,14 +73,14 @@ textures = 46
 fires = 53
 hits = 0
 trails = 3
-ends = 22
+ends = 24
 deaths = 866
 bones = 2243
 dropped = [35, 0, 8, 2, 7, 292, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0]
 
 [fought]
-weapons = 105
-dropped = [0, 0, 13, 0, 2, 0, 1, 0, 11, 9, 0, 1, 3, 0, 1, 0, 0, 0, 0, 4, 1, 6, 0, 2, 0]
+weapons = 110
+dropped = [0, 0, 13, 0, 0, 1, 2, 11, 9, 0, 1, 3, 0, 1, 0, 0, 0, 0, 4, 1, 6, 0, 2, 0]
 armors = 53
 kinds = 38
 unliving = 34
@@ -102,6 +102,16 @@ deliveries = [447, 901, 1355]
 climbed = 77
 delivered = 605
 shot_down = 322
+
+[jet]
+trained = 600
+took_off = 91
+over = 312
+hit = 107
+home = 228
+parked = 457
+reloaded = 240
+target_life = 4600
 
 [defense]
 built = [482, 1050]

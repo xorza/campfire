@@ -19,8 +19,6 @@ pub enum WeaponDropCause {
     /// Its missile's fuel lasts a frame at most, so it bursts where it leaves, as the toxin
     /// truck's contamination.
     Sprayer,
-    /// Its missile ignites after an `IgnitionDelay`.
-    Ignition,
     /// Its missile detonates as its fuel runs out, `DetonateOnNoFuel`.
     FuelBurst,
     /// Its missile kills units garrisoned in what it strikes, a `GarrisonHitKillCount`.

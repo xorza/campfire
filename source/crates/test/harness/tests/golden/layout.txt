@@ -1,8 +1,10 @@
-data_version 74
+data_version 78
 actions.progress 91dd90cbde2fd145
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
 actions.use_group 0f977a41bb13e2a2
+airfields.runways 021548d9d9b6cef3
+airfields.sortie 1b41a218aa4787a3
 areas.area ef43b96412883a9f
 areas.area_trigger ff4ce9e93a2759bd
 combat.barrel_turns 130bbc25e5957965
@@ -34,6 +36,7 @@ mode.victory_holders 0a042fbbe0f1bd88
 navigation.altitude 56d74ab1b4bb0bc5
 navigation.arrived_at bfab885d353d14c5
 navigation.aside_depth cf0ec24e2894148c
+navigation.held_place 79c5cb1de4352fb0
 navigation.hemmed bf9a630f236a8e4f
 navigation.on_path daf5e41f0755038d
 navigation.path_arrivals b6628fe8a1512fc6
@@ -56,9 +59,11 @@ players.resources f26b1f61542b2e51
 production.builder 26e6fd92ccae1e7e
 production.completed_sites a418e571afbca2f9
 production.gatherer d610187bdebae0ad
+production.held_places 4232d80591188070
 production.kept_spawns a547cf3f5ad273a6
 production.leader 38f27f78ec03c9db
 production.living_spawns e605f0bdccbdac4b
+production.made_at d632a7e80fb6f481
 production.node 024f1723ff67fb73
 production.rally 3dfad42e3fcd1064
 production.site cdbba5f2eae6c68f
@@ -87,6 +92,7 @@ units.body_unit 38f27f78ec03c9db
 units.dead 38f27f78ec03c9db
 units.destination c4bce0c70722e851
 units.facing a90d70522fa19de5
+units.flight_goal a23e026ae9172f36
 units.forced_move 518abbeb1ee1727b
 units.leaving 631977ddad03a1fb
 units.lifespan 0db406d8bacb40e8

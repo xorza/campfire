@@ -19,8 +19,8 @@ use campfire_math::{Num, Vec3};
 use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, Layer, MapBook, MoveStep, OpenCellAsk, OpenCellRun,
-    SpawnCallbacks, UnitTracker, UnitsSystems, WallBook,
+    BodyUnit, Dead, DeclaredTags, FlightGoal, Layer, MapBook, MoveStep, OnWings, OpenCellAsk,
+    OpenCellRun, SpawnCallbacks, UnitTracker, UnitsSystems, WallBook,
 };
 use campfire_values::{EngineTag, PathId, TagProperties, UnitType};
 
@@ -30,6 +30,7 @@ use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::Walkable;
 use crate::terrain::WallGrid;
+use crate::wings::Wings;
 
 mod altitude;
 mod arrived_at;
@@ -47,6 +48,7 @@ mod flight_data;
 mod forced_moves;
 mod gait;
 mod group_box;
+mod held_place;
 mod hemmed;
 mod map_navigation_data;
 mod map_paths_data;
@@ -87,6 +89,7 @@ mod walker_book;
 mod walker_kinds;
 mod walker_on_path;
 mod walking;
+mod wings;
 
 pub use crate::altitude::Altitude;
 pub use crate::arrived_at::ArrivedAt;
@@ -95,10 +98,11 @@ pub use crate::body_index::{BodyIndex, IndexedBody};
 pub use crate::collider::Collider;
 pub use crate::crowd_book::CrowdBook;
 pub use crate::error::{MapProblem, NavigationDataError, NavigationRefusal};
-pub use crate::flight_data::FlightData;
+pub use crate::flight_data::{FlightData, WingsData};
 pub use crate::forced_moves::ForcedMoves;
 pub use crate::gait::Gait;
 pub use crate::group_box::GroupBox;
+pub use crate::held_place::HeldPlace;
 pub use crate::hemmed::Hemmed;
 pub use crate::map_navigation_data::{MapNavigationData, WallData};
 pub use crate::map_paths_data::{MapPathsData, PathData};
@@ -191,7 +195,7 @@ impl Module for Navigation {
         d.section::<MapPathsData>();
         d.section::<UnitNavigationData>();
         d.section::<FlightData>();
-        d.engine_tags(&[Self::AIR_TARGET]);
+        d.engine_tags(&[Self::AIR_TARGET, OnWings::TAG]);
         d.removals::<Dead>();
         d.callback::<SpawnCallbacks>(Capability::Navigation, Self::make_room);
         d.component::<PathWalker>();
@@ -230,6 +234,8 @@ impl Module for Navigation {
         d.book::<ById<UnitType, UnitNavigationData>>(UnitNavigationData::book);
         d.book::<ById<UnitType, FlightData>>(FlightData::book);
         d.component::<Altitude>();
+        d.component::<HeldPlace>();
+        d.component::<FlightGoal>();
         d.book::<CrowdBook>(CrowdBook::build);
         d.names::<Layer>(Self::layer_names);
         d.extend::<DeclaredTags>(Self::layer_tags);
@@ -255,14 +261,22 @@ impl Module for Navigation {
             let point = map.map_or(position, |map| map.point(position));
             Some(Altitude::new(point.y))
         });
+        // A flier flies to its height until the capability that parks it holds it on the ground
+        // (jets.md, A jet takes off and lands on its runway).
+        d.part::<BodyUnit, FlightGoal>(|at| at.of_type::<FlightData>().map(|_| FlightGoal::Height));
+        // A flier on wings holds the place it spawns at (jets.md, A jet flies on wings).
+        d.part::<BodyUnit, HeldPlace>(|at| {
+            at.of_type::<FlightData>()?.wings?;
+            Some(HeldPlace::new(at.position()?))
+        });
     }
 
     /// Adds navigation to a match, with no paths, the world for bounds, and a static index for
     /// walkers as wide as a body may be, until the mode sets its map's: in Act, before units chase
-    /// their targets, path walkers walk their paths; in Move, units walk their
-    /// routes to their destinations, straight lines until the map gives a pathing grid, then the
-    /// forced moves move theirs; in Collide, overlapping living bodies part, each unit that walks
-    /// stands within the bounds again, and fliers fly to their heights.
+    /// their targets, path walkers walk their paths; in Move, units walk their routes to their
+    /// destinations, straight lines until the map gives a pathing grid, winged fliers in the air
+    /// fly, then the forced moves move theirs; in Collide, overlapping living bodies part, each
+    /// unit that walks stands within the bounds again, and fliers fly to their heights.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.add(
             NavigationSystems::TrackStatics,
@@ -282,6 +296,7 @@ impl Module for Navigation {
                 Routing::plan_routes,
                 Walking::steer::<ServerForm>,
                 Walking::move_units,
+                Wings::fly,
                 ForcedMoves::force_units,
             )
                 .chain(),
@@ -292,6 +307,7 @@ impl Module for Navigation {
                 Routing::plan_routes,
                 Walking::steer::<ClientForm>,
                 Walking::move_units,
+                Wings::fly,
                 ForcedMoves::force_units,
             )
                 .chain(),

@@ -181,6 +181,7 @@ fn rifle_fight(
         clip: Some(ClipRule {
             shots: NonZeroU16::new(3).unwrap(),
             reload: Ticks::new(21),
+            refill: ClipRefill::Time,
         }),
         pre_attack,
         ..TestWeapon::new(
@@ -1652,3 +1653,4 @@ fn a_read_of_what_the_client_lacks_fails_the_sync_test() {
 mod slow_weapons;
 mod streaks;
 mod turrets;
+mod wings;

@@ -49,6 +49,9 @@ pub(crate) struct IniWeapon {
     pub(crate) delay: ShotDelay,
     pub(crate) clip_size: i32,
     pub(crate) clip_reload_ms: i32,
+    /// Whether its `AutoReloadsClip` is `RETURN_TO_BASE`: its clip reloads at its unit's home
+    /// alone.
+    pub(crate) reloads_at_home: bool,
     pub(crate) pre_attack_ms: i32,
     pub(crate) pre_attack_type: PrefireType,
     pub(crate) projectile: Option<String>,
@@ -217,6 +220,7 @@ impl Default for IniWeapon {
             delay: ShotDelay::default(),
             clip_size: 0,
             clip_reload_ms: 0,
+            reloads_at_home: false,
             pre_attack_ms: 0,
             pre_attack_type: PrefireType::Shot,
             projectile: None,
@@ -305,6 +309,9 @@ impl IniWeapon {
             }
             "clipsize" => self.clip_size = at.int()?,
             "clipreloadtime" => self.clip_reload_ms = at.int()?,
+            "autoreloadsclip" => {
+                self.reloads_at_home = at.value()?.eq_ignore_ascii_case("return_to_base");
+            }
             "preattackdelay" => self.pre_attack_ms = at.int()?,
             "preattacktype" => {
                 self.pre_attack_type =
@@ -611,6 +618,14 @@ Weapon Stinger\r
   AntiGround = No\r
   AntiAirborneVehicle = Yes\r
   DelayBetweenShots = 1000\r
+End\r
+Weapon JetMissile\r
+  PrimaryDamage = 100\r
+  AttackRange = 320\r
+  DelayBetweenShots = 150\r
+  ClipSize = 4\r
+  ClipReloadTime = 8000\r
+  AutoReloadsClip = RETURN_TO_BASE\r
 End\r
 Weapon Interceptor\r
   PrimaryDamage = 10\r

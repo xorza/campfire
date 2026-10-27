@@ -5,6 +5,7 @@ members = [
     "crates/sim/*",
     "crates/capabilities/capabilities",
     "crates/capabilities/abilities",
+    "crates/capabilities/airfields",
     "crates/capabilities/areas",
     "crates/capabilities/combat",
     "crates/capabilities/interaction",
@@ -42,6 +43,7 @@ default-members = [
     "crates/base/store",
     "crates/base/threads",
     "crates/capabilities/abilities",
+    "crates/capabilities/airfields",
     "crates/capabilities/areas",
     "crates/capabilities/capabilities",
     "crates/capabilities/combat",
@@ -194,6 +196,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 campfire-capabilities = { path = "crates/capabilities/capabilities" }
 campfire-abilities = { path = "crates/capabilities/abilities" }
+campfire-airfields = { path = "crates/capabilities/airfields" }
 campfire-actions = { path = "crates/capabilities/core/actions" }
 campfire-areas = { path = "crates/capabilities/areas" }
 campfire-bots = { path = "crates/session/bots" }

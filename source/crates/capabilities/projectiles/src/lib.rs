@@ -138,7 +138,7 @@ impl Module for Projectiles {
 impl Projectiles {
     /// The engine tag of projectile types: a filter selects their units only when it names it.
     pub const TAG: EngineTag =
-        EngineTag::new(3, "projectile", TagProperties::NONE.with_named_only());
+        EngineTag::new(4, "projectile", TagProperties::NONE.with_named_only());
 
     /// ProjectileLaunches the fan of `launcher`, which aimed at `target` from `from`: a homing projectile
     /// at a unit for a homing type; a curve or a steered projectile from its caster's center to

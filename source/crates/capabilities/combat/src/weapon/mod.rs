@@ -9,7 +9,7 @@ use campfire_values::{
     ActionId, DamageKind, ModifierId, NameId, Rank, RelationSet, Speed, Tag, TagSet,
 };
 
-use crate::attack_data::PreAttackEach;
+use crate::attack_data::{ClipRefill, PreAttackEach};
 
 /// What makes an action of kind `attack` a weapon, as the match runs it: where its rate and its
 /// damage come from, the stat that speeds its own period, the kind of damage it deals, its clip
@@ -102,12 +102,13 @@ pub enum WeaponDamage {
     Amount(Box<[Num]>),
 }
 
-/// A weapon's clip at one rank: the shots it fires before it reloads, and the ticks from the shot
-/// that empties it to the next.
+/// A weapon's clip at one rank: the shots it fires before it reloads, the ticks of its reload,
+/// and how it refills.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClipRule {
     pub shots: NonZeroU16,
     pub reload: Ticks,
+    pub refill: ClipRefill,
 }
 
 /// How far from its target's ground point a weapon's projectile may aim

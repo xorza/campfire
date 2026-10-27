@@ -41,6 +41,7 @@ mod golden;
 mod helicopter_play;
 mod import_check;
 mod import_stamp;
+mod jet_play;
 mod match_play;
 mod missile_play;
 mod pins;

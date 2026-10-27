@@ -9,6 +9,8 @@ pub(crate) enum Play {
     Supply,
     /// America's Chinook delivers supply, and its Comanche falls to GLA's base.
     Helicopter,
+    /// America's Raptor takes off, strikes, lands and reloads.
+    Jet,
     /// A Gattling Cannon kills a dozer.
     Gattling,
     /// A Patriot battery kills a dozer.
@@ -32,6 +34,7 @@ impl Play {
             Self::Skirmish => "skirmish",
             Self::Supply => "supply",
             Self::Helicopter => "helicopter",
+            Self::Jet => "jet",
             Self::Gattling => "gattling",
             Self::Patriot => "patriot",
             Self::Stinger => "stinger",

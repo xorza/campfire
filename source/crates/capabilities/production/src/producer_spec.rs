@@ -6,11 +6,12 @@ use campfire_values::UnitType;
 
 use crate::book_builders;
 use crate::frame_point::FramePoint;
-use crate::production_data::ProductionData;
+use crate::production_data::{PlaceData, ProductionData};
 
 /// A producer type's `production` with its names resolved: the most entries its train queue
 /// holds, its exit and default rally points, whether the gatherers that leave its exit start to
-/// gather, and the unit types that leave its exit once, as its site completes.
+/// gather, the unit types that leave its exit once, as its site completes, and the places its
+/// trains are made at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProducerSpec {
     pub queue: NonZeroU8,
@@ -18,6 +19,7 @@ pub struct ProducerSpec {
     pub rally: Option<FramePoint>,
     pub gathers: bool,
     pub free: Box<[UnitType]>,
+    pub places: Box<[PlaceData]>,
 }
 
 impl PerId<UnitType> for ProducerSpec {
@@ -48,6 +50,7 @@ impl ProducerSpec {
                 rally: data.rally,
                 gathers: data.gathers,
                 free: free.collect::<Result<_, _>>()?,
+                places: data.places.iter().copied().collect(),
             };
             book.set(unit.unit_type, spec);
         }

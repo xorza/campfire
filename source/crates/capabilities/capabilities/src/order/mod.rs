@@ -72,7 +72,8 @@ impl Directive {
             | Capability::Navigation
             | Capability::Vision
             | Capability::Mode
-            | Capability::Interaction => None,
+            | Capability::Interaction
+            | Capability::Airfields => None,
         }
     }
 

@@ -77,14 +77,14 @@ mod wielded;
 
 pub use crate::armor::{Armor, ArmorShare};
 pub use crate::attack_data::{
-    AttackData, ClipData, FallData, OuterData, PitchData, PreAttackData, PreAttackEach,
+    AttackData, ClipData, ClipRefill, FallData, OuterData, PitchData, PreAttackData, PreAttackEach,
     ScatterData, SplashData, StageData, StreakData, WeaponValue,
 };
 pub use crate::attacks::Attacks;
 pub use crate::barrel_turns::BarrelTurns;
 pub use crate::barrels::Barrels;
 pub use crate::barrels::barrels_data::{BarrelData, BarrelsData};
-pub use crate::clip_shots::ClipShots;
+pub use crate::clip_shots::{ClipShots, HomeClip};
 pub use crate::combat_api::CombatApi;
 pub use crate::combat_book::CombatBook;
 pub use crate::combat_column::CombatColumn;

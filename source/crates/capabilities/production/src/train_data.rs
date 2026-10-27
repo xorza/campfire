@@ -11,15 +11,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::requires_data::RequiresData;
 
-/// The section of an action of kind `train`: the unit type of its package it makes, and what its
+/// The section of an action of kind `train`: the unit type of its package it makes, what its
 /// player must hold for it to join a queue (04-capabilities/actions.md, Each kind owns its
-/// section).
+/// section), and whether it makes its unit at a free place of its producer, which it holds while it
+/// lives, where its producer names places (jets.md, A jet holds a place).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TrainData {
     pub unit_type: DeclaredName,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requires: Option<RequiresData>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub at_place: bool,
 }
 
 impl KindSection for TrainData {

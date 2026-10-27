@@ -4,11 +4,20 @@ use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::IniLine;
 
+/// An airfield's `ParkingPlaceBehavior`: its `NumRows` and `NumCols` of places, 0 by default, and
+/// whether it `ParkInHangars`, as the module's data starts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct IniParking {
+    pub(crate) rows: u8,
+    pub(crate) cols: u8,
+    pub(crate) hangars: bool,
+}
+
 /// What an object gives production, as `ThingTemplate` and its modules read it: its `BuildCost`,
 /// its `BuildTime` in seconds, its `CommandSet`, its `Prerequisites`, its `ProductionUpdate`'s
 /// `MaxQueueEntries` when it has the module, the points of its exit module when it has one that
-/// names them, whether it has a `ParkingPlaceBehavior`, an airfield's, which makes a helicopter at
-/// its model's helipad bone, and its `PlacementViewAngle`.
+/// names them, its `ParkingPlaceBehavior`, an airfield's, which makes a helicopter at its model's
+/// helipad bone and parks its jets, and its `PlacementViewAngle`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IniBuild {
     pub(crate) cost: u16,
@@ -17,7 +26,7 @@ pub(crate) struct IniBuild {
     pub(crate) prerequisites: Vec<Prerequisite>,
     pub(crate) queue: Option<i32>,
     pub(crate) exit: Option<ProductionExit>,
-    pub(crate) parking: bool,
+    pub(crate) parking: Option<IniParking>,
     /// Its `PlacementViewAngle` in degrees, the angle the cursor's building shows at as a player
     /// places it, none when it gives none; a value that is not a number is refused.
     pub(crate) placement_angle: Option<Num>,
@@ -99,7 +108,7 @@ impl IniBuild {
                 Some(ProductionModule::Exit)
             }
             "parkingplacebehavior" => {
-                self.parking = true;
+                self.parking = Some(IniParking::default());
                 Some(ProductionModule::Parking)
             }
             _ => None,
@@ -114,6 +123,10 @@ impl IniBuild {
         at: &IniLine<'_>,
     ) -> Result<(), IniError> {
         let point = || at.coord(["X", "Y", "Z"]).map(|[x, y, _]| [x, y]);
+        let count = || {
+            let count = at.int()?;
+            u8::try_from(count).map_err(|_| IniError::Range { line: at.number })
+        };
         match (module, word) {
             (ProductionModule::Queue, "maxqueueentries") => self.queue = Some(at.int()?),
             (ProductionModule::Exit, "unitcreatepoint") => {
@@ -121,6 +134,15 @@ impl IniBuild {
             }
             (ProductionModule::Exit, "naturalrallypoint") => {
                 self.exit.get_or_insert_default().rally = point()?;
+            }
+            (ProductionModule::Parking, "numrows") => {
+                self.parking.get_or_insert_default().rows = count()?;
+            }
+            (ProductionModule::Parking, "numcols") => {
+                self.parking.get_or_insert_default().cols = count()?;
+            }
+            (ProductionModule::Parking, "parkinhangars") => {
+                self.parking.get_or_insert_default().hangars = at.yes()?;
             }
             _ => {}
         }
@@ -157,7 +179,7 @@ impl Default for IniBuild {
             prerequisites: Vec::new(),
             queue: None,
             exit: None,
-            parking: false,
+            parking: None,
             placement_angle: None,
             variations: Vec::new(),
         }

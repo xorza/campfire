@@ -34,6 +34,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `abilities` | built | glue | The `abilities` capability |
 | `progression` | built | glue | The `progression` capability |
 | `production` | built | glue | The `production` capability |
+| `airfields` | built | glue | The `airfields` capability |
 | `interaction` | built | glue | The `interaction` capability |
 | `items` | built | glue | The `items` capability |
 | `orders` | built | glue | The `orders` capability |

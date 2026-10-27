@@ -31,6 +31,7 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
             delay: ShotDelay::Fixed(100),
             clip_size: 3,
             clip_reload_ms: 700,
+            reloads_at_home: false,
             pre_attack_ms: 0,
             pre_attack_type: PrefireType::Shot,
             projectile: None,

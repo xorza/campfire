@@ -77,9 +77,6 @@ impl<'l> ObjectFlight<'l> {
                     .map_err(|_| WeaponDropCause::BadNumber);
             }
         };
-        if missile.ignition_ms > 0 {
-            return Err(WeaponDropCause::Ignition);
-        }
         if missile.detonate_on_no_fuel {
             return Err(WeaponDropCause::FuelBurst);
         }
