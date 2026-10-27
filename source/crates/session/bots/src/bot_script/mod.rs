@@ -2,6 +2,7 @@ use bevy_ecs::resource::Resource;
 use campfire_capabilities::{Directive, NamedRefs, Order, OrderPayloads, ThinkOrder};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
+use campfire_orders::OrdersDirective;
 use campfire_players::OrderUnits;
 use campfire_production::PlaceSearch;
 use campfire_script::Filter;
@@ -83,11 +84,14 @@ pub struct BotBuffers {
     pub(crate) given: Vec<ThinkOrder>,
 }
 
-/// The buffers of the orders a due one gives: its units, and each with the place of its slot.
+/// The buffers of the orders a due one gives: its units, each with the place of its slot, and
+/// those of an attack that may attack its target and those that attack-move to it.
 #[derive(Debug, Default)]
 pub struct OrderScratch {
     units: Vec<StableId>,
     slotted: Vec<(u8, StableId)>,
+    attacking: Vec<StableId>,
+    moving: Vec<StableId>,
 }
 
 /// The units of its player a bot's order commands.
@@ -261,8 +265,11 @@ impl BotOrder {
 
     /// Puts in `out` the orders it gives for the player of `player_slot`, for its units as `view`
     /// holds them now: one, or for an action of a slot one for each place among their slots its
-    /// units hold the action at, each to the units that hold it there, in increasing stable id; and
-    /// why it goes unsent to all of its units or to some, the first cause of several.
+    /// units hold the action at, each to the units that hold it there, in increasing stable id, or
+    /// for an attack one to the units that may attack its target and one that sends the others to
+    /// attack-move to the target's place (04-capabilities/control.md, An attack goes to the units
+    /// that may attack its target); and why it goes unsent to all of its units or to some, the
+    /// first cause of several.
     pub fn orders<S: TeamSight>(
         &self,
         player_slot: PlayerSlot,
@@ -270,7 +277,13 @@ impl BotOrder {
         scratch: &mut OrderScratch,
         out: &mut Vec<Order>,
     ) -> Option<OrderUnsent> {
-        let OrderScratch { units, slotted } = scratch;
+        let OrderScratch {
+            units,
+            slotted,
+            attacking,
+            moving,
+        } = scratch;
+        let mut split = AttackSplit { attacking, moving };
         units.clear();
         match &self.units {
             BotUnits::Avatar => match view.avatar(player_slot) {
@@ -284,35 +297,73 @@ impl BotOrder {
             return Some(OrderUnsent::NoUnit);
         }
         let Some(name) = &self.slot else {
-            return self.give(units, None, view, out).err();
+            return self.give(units, None, view, &mut split, out).err();
         };
         let missing = by_slot(units, |id| view.slot_of(id, name), slotted);
         let mut unsent = missing.then_some(OrderUnsent::NoSlot);
         for run in slotted.chunk_by(|a, b| a.0 == b.0) {
             units.clear();
             units.extend(run.iter().map(|&(_, id)| id));
-            if let Err(cause) = self.give(units, Some(run[0].0), view, out) {
+            if let Err(cause) = self.give(units, Some(run[0].0), view, &mut split, out) {
                 unsent.get_or_insert(cause);
             }
         }
         unsent
     }
 
-    /// Puts in `out` its order to `units`, its slot at `slot` among theirs when it names one;
-    /// why it has none.
+    /// Puts in `out` its order to `units`, its slot at `slot` among theirs when it names one, an
+    /// attack split by `split` into those that may attack its target and those that attack-move
+    /// to it; why it has none.
     fn give<S: TeamSight>(
         &self,
         units: &[StableId],
         slot: Option<u8>,
         view: &BotView<'_, '_, S>,
+        split: &mut AttackSplit<'_>,
         out: &mut Vec<Order>,
     ) -> Result<(), OrderUnsent> {
         let mut refs = DueRefs { view, units, slot };
         let directive = self.directive.clone().map_refs(&mut refs)?;
-        let units = OrderUnits::new(units).expect("an order commands a unit at least");
-        out.push(Order { units, directive });
+        let Directive::Orders(OrdersDirective::Attack { target }) = directive else {
+            let units = OrderUnits::new(units).expect("an order commands a unit at least");
+            out.push(Order { units, directive });
+            return Ok(());
+        };
+        split.attacking.clear();
+        split.moving.clear();
+        for &unit in units {
+            if view.may_attack(unit, target) {
+                split.attacking.push(unit);
+            } else {
+                split.moving.push(unit);
+            }
+        }
+        let attackers = OrderUnits::new(split.attacking)
+            .expect("the search finds a target one of the units may attack");
+        out.push(Order {
+            units: attackers,
+            directive,
+        });
+        if let Some(movers) = OrderUnits::new(split.moving) {
+            let to = view
+                .ground_of(target)
+                .expect("the search finds a target its view holds");
+            let directive = Directive::Orders(OrdersDirective::AttackMove { to });
+            out.push(Order {
+                units: movers,
+                directive,
+            });
+        }
         Ok(())
     }
+}
+
+/// The buffers an attack splits its units into: those that may attack its target, and those that
+/// attack-move to it.
+#[derive(Debug)]
+struct AttackSplit<'s> {
+    attacking: &'s mut Vec<StableId>,
+    moving: &'s mut Vec<StableId>,
 }
 
 /// Puts in `slotted` each of `units` that `slot_of` gives a place of the action among its slots,

@@ -23,7 +23,7 @@ use bevy::time::Time;
 use bevy::transform::components::Transform;
 use bevy::window::{PrimaryWindow, Window};
 use campfire_actions::{ActionBook, ActionProgress, ActionSlots, SlotCharges, SlotTimes};
-use campfire_client_files::ShownBars;
+use campfire_client_files::{HitMark, ShownBars};
 use campfire_progression::{Learning, Points};
 use campfire_sim::{EntityIndex, SimTick, StableId, Unpredicted};
 use campfire_stats::{Level, Pools};
@@ -338,7 +338,7 @@ impl Plugin for HudPlugin {
                 Self::add_gauges,
                 Self::show_selected_bars.run_if(Self::shows_selected),
                 Self::face_camera,
-                Self::mark_hits,
+                Self::mark_hits.run_if(Self::marks_hits),
                 Self::fill_gauges,
                 Self::widen_rings,
                 Self::mark_rings,
@@ -537,6 +537,12 @@ impl HudPlugin {
     /// Whether the mode's HUD file shows the bars of the selected and the pointed units alone.
     fn shows_selected(hud: Res<'_, MatchHud>) -> bool {
         hud.0.bars == ShownBars::Selected
+    }
+
+    /// Whether the mode's HUD file marks a hit with a ring (02-engine-core.md, The mode chooses its
+    /// hit mark).
+    fn marks_hits(hud: Res<'_, MatchHud>) -> bool {
+        hud.0.hit_mark == HitMark::Ring
     }
 
     /// Shows the bars of the units the player selected and of the one under the cursor alone,

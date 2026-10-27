@@ -1,18 +1,18 @@
 use std::num::{NonZeroU8, NonZeroU32};
 use std::sync::Arc;
 
-use campfire_actions::{ActionBook, ActionTarget};
+use campfire_actions::{ActionBook, ActionSlots, ActionTarget};
 use campfire_capabilities::Books;
 use campfire_common::DeclaredName;
 use campfire_items::{Inventory, ItemStack};
 use campfire_mode::InputType;
-use campfire_orders::OrdersDirective;
 use campfire_script::UnknownName;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{IdAllocator, SimWorld};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
+use campfire_units::internals::Spawn;
 use campfire_units::{BuildTarget, Life, MapPointError, UnitTypeBook};
-use campfire_values::{ActionId, FilterData};
+use campfire_values::{ActionId, FilterData, Team};
 
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
 
@@ -347,6 +347,50 @@ fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_go
     let fourth = step(&fixed, 3);
     assert_eq!(fourth.sent, [cast]);
     assert_eq!(fourth.unsent, [OrderUnsent::NoTarget]);
+}
+
+#[test]
+fn an_attack_goes_to_the_units_that_may_attack_its_target_and_the_others_attack_move_to_it() {
+    // The walker and a creep of its player that holds no weapon, after the first Vision stage:
+    // the walker's attack selects the runner, so it attacks it, and the creep attack-moves to
+    // the runner's place (04-capabilities/control.md, An attack goes to the units that may attack
+    // its target).
+    let session = FixedSession::new(TestMode::Lane.packages(), 2);
+    let mut fixed = session.start();
+    let units = MatchUnits::of(fixed.game());
+    let [walker, runner] = [0, 1].map(|slot| units.hero(slot));
+    let team = *units.unit(walker).get::<Team>().unwrap();
+    let unarmed = Spawn::named(fixed.game(), "creep", (0, 0, 0))
+        .team(team)
+        .owner(PlayerSlot::new(0))
+        .place(fixed.game_mut());
+    let entity = fixed.game().entity_of(unarmed).unwrap();
+    fixed.game_mut().entity_mut(entity).remove::<ActionSlots>();
+    fixed.step();
+    let books = session.packages().load_books();
+    let names = BotNames::new(books);
+    let think = ThinkOrder {
+        units: vec![unarmed, walker],
+        directive: Directive::Orders(OrdersDirective::Attack {
+            target: FilterData::parse("enemies:avatar").unwrap(),
+        }),
+    };
+    let order = BotOrder::of_think(think, Tick::new(1), &names).unwrap();
+    let mut view = HeldBotView::new(fixed.game_mut());
+    let mut heard = Heard::default();
+    let view = view.get(fixed.game());
+    order.send(
+        PlayerSlot::new(0),
+        &view,
+        &mut BotBuffers::default(),
+        &mut heard,
+    );
+    let at = MatchUnits::of(fixed.game()).position(runner);
+    let to = GroundPoint { x: at.x, z: at.z };
+    let attack = Order::one(walker, OrdersDirective::Attack { target: runner });
+    let walk = Order::one(unarmed, OrdersDirective::AttackMove { to });
+    assert_eq!(heard.sent, [attack, walk]);
+    assert_eq!(heard.unsent, []);
 }
 
 #[test]

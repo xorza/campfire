@@ -214,6 +214,19 @@ impl<S: TeamSight> BotView<'_, '_, S> {
         })
     }
 
+    /// Whether one of the weapons of the unit `unit` selects `target`, as its attack order's test
+    /// does.
+    pub(crate) fn may_attack(&self, unit: StableId, target: StableId) -> bool {
+        self.takes(unit, UnitRole::Attacked, target)
+    }
+
+    /// Where on the ground the unit `id` stands; none for a unit the view does not hold.
+    pub(crate) fn ground_of(&self, id: StableId) -> Option<GroundPoint> {
+        let (_, position, ..) = self.units.get(self.index.get(id)?).ok()?;
+        let at = position.get();
+        Some(GroundPoint { x: at.x, z: at.z })
+    }
+
     /// Whether an order of the unit `unit` takes `target` as `role`, by the test of the order's
     /// capability; none of a capability the match does not run.
     fn takes(&self, unit: StableId, role: UnitRole, target: StableId) -> bool {

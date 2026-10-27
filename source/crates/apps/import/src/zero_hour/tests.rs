@@ -949,7 +949,10 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     };
     assert_eq!(keys.press, press);
     let hud = Toml::parse::<HudFile>(&test_dir.read_text("one/game/client/hud.toml")).unwrap();
-    assert_eq!(hud.bars, ShownBars::Selected);
+    assert_eq!(
+        (hud.bars, hud.hit_mark),
+        (ShownBars::Selected, HitMark::Hidden)
+    );
     let picking = test_dir.read_text("one/game/client/picking.toml");
     assert_eq!(
         picking,

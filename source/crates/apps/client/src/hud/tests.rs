@@ -5,6 +5,7 @@ use campfire_actions::internals::TestAction;
 use campfire_actions::{
     ActionKind, ActionRange, Actions, Aim, SlotKind, SlotKindBook, SlotKindData, SlotKinds,
 };
+use campfire_client_files::HudFile;
 use campfire_common::DeclaredName;
 use campfire_common::Ticks;
 use campfire_math::Num;
@@ -99,6 +100,15 @@ fn a_ring_marks_each_drop_of_life_where_the_unit_is_drawn() {
     app.world_mut().entity_mut(unit).insert(life(500));
     app.update();
     assert_eq!(app.world().get::<Gauge>(gauge).unwrap().kind, shown(500));
+    assert_eq!(rings.iter(app.world()).count(), 1);
+    // A mode whose HUD file hides the hit mark marks no drop, to 300.
+    let hidden = HudFile {
+        hit_mark: HitMark::Hidden,
+        ..HudFile::default()
+    };
+    app.insert_resource(MatchHud(hidden));
+    app.world_mut().entity_mut(unit).insert(life(300));
+    app.update();
     assert_eq!(rings.iter(app.world()).count(), 1);
 
     // As the own avatar, its gauges made for one slot of no ranks and no charges: a change of

@@ -65,7 +65,7 @@ pub use crate::error::{
     ClientFileError, EffectsError, TeamColorsError, TerrainFileError, TextureLevelsError,
     UntestedCondition,
 };
-pub use crate::hud_file::{HudFile, ShownBars};
+pub use crate::hud_file::{HitMark, HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};
 pub use crate::ktx2_image::Ktx2Image;
 pub use crate::map_conditions::MapConditions;

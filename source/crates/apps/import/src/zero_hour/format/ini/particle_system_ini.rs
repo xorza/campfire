@@ -42,6 +42,7 @@ pub(crate) struct IniParticleSystem {
     pub(crate) alpha: [IniKey<Spread>; KEYS],
     /// `Color1` to `Color8`, each its color and its frame.
     pub(crate) color: [IniKey<[f32; 3]>; KEYS],
+    /// `ColorScale`: what each channel gains a frame.
     pub(crate) color_scale: Spread,
     pub(crate) burst_delay: Spread,
     pub(crate) burst_count: Spread,
@@ -282,7 +283,15 @@ impl IniParticleSystem {
             "startsizerate" => self.start_size_rate = line.random()?,
             "sizerate" => self.size_rate = line.random()?,
             "sizeratedamping" => self.size_rate_damping = line.random()?,
-            "colorscale" => self.color_scale = line.random()?,
+            "colorscale" => {
+                // In 255ths of a channel, as a color key's, which the system divides as it starts
+                // (`ParticleSystem::ParticleSystem`).
+                let scale = line.random()?;
+                self.color_scale = Spread {
+                    low: scale.low / 255.0,
+                    high: scale.high / 255.0,
+                };
+            }
             "burstdelay" => self.burst_delay = line.random()?,
             "burstcount" => self.burst_count = line.random()?,
             "initialdelay" => self.initial_delay = line.random()?,
@@ -425,7 +434,7 @@ pub(crate) mod samples {
   Alpha4 = 0.00 0.00 0
   Color1 = R:255 G:128 B:0 0
   Color2 = R:0 G:0 B:51 20
-  ColorScale = 0.00 0.00
+  ColorScale = -5.10 2.55
   BurstDelay = 2.00 4.00
   BurstCount = 1.00 1.00
   InitialDelay = 0.00 0.00 GAUSSIAN
@@ -505,6 +514,14 @@ mod tests {
             IniKey {
                 value: [0.0, 0.0, 0.2],
                 frame: 20
+            }
+        );
+        // A color scale in 255ths of a channel a frame: −5.1 / 255 and 2.55 / 255.
+        assert_eq!(
+            smoke.color_scale,
+            Spread {
+                low: -5.1 / 255.0,
+                high: 2.55 / 255.0
             }
         );
         // A distribution the game draws as 0.

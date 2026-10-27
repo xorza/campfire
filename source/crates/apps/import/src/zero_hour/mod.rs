@@ -3,7 +3,7 @@ use std::path::Path;
 
 use bevy_math::UVec2;
 use campfire_client_files::{
-    CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, HudFile, KeysFile,
+    CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, HitMark, HudFile, KeysFile,
     MapConditions, MapLights, PickingFile, PixelRadius, ShownBars, TeamColors, TerrainFile,
 };
 use campfire_codec::Toml;
@@ -158,9 +158,11 @@ impl ZeroHour {
         let keys = press_import::keys_file(&game.mouse);
         writer.write(KeysFile::path(), &keys.encode())?;
         // The game draws a bar only over a unit selected or under the cursor
-        // (`Drawable::drawHealthBar`).
+        // (`Drawable::drawHealthBar`), and marks no hit (02-engine-core.md, The mode chooses its
+        // hit mark).
         let hud = HudFile {
             bars: ShownBars::Selected,
+            hit_mark: HitMark::Hidden,
         };
         writer.write(HudFile::path(), &hud.encode())?;
         // Units before structures, each widened to a radius of at least 10 pixels, where the game
@@ -470,7 +472,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 44;
+    pub const OUTPUT_VERSION: u32 = 45;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.
