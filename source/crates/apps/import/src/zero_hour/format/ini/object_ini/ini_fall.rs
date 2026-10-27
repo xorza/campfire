@@ -5,7 +5,10 @@ use crate::zero_hour::format::ini::ini_text::IniLine;
 /// `HelicopterSlowDeathBehavior`, as their module data read them: its share of gravity,
 /// `FallHowFast`; a jet's `RollRate`, in radians a frame; a helicopter's spiral, its
 /// `SpiralOrbitTurnRate` in degrees a second, its `SpiralOrbitForwardSpeed` in world units a
-/// second, and its `MinSelfSpin` and `MaxSelfSpin` in degrees a second; what it plays as it starts,
+/// second, its `SpiralOrbitForwardSpeedDamping`, 1 by default, its `MaxBraking` in world units a
+/// second squared, 99,999 by default, its `MinSelfSpin` and `MaxSelfSpin` in degrees a second,
+/// its `SelfSpinUpdateAmount` in degrees and its `SelfSpinUpdateDelay` in milliseconds; what it
+/// plays as it starts,
 /// as it hits the ground, as it blows up after `blow_up_ms`, and a jet as it dies on the ground;
 /// and what it plays that the import leaves, a jet's secondary and a helicopter's blade.
 #[derive(Debug, Clone, PartialEq)]
@@ -15,7 +18,11 @@ pub(crate) struct IniFall {
     pub(crate) roll: f32,
     pub(crate) turn: f32,
     pub(crate) speed: f32,
+    pub(crate) damping: f32,
+    pub(crate) braking: f32,
     pub(crate) spin: [f32; 2],
+    pub(crate) spin_change: f32,
+    pub(crate) spin_delay_ms: f32,
     pub(crate) start: FallMoment,
     pub(crate) hit: FallMoment,
     pub(crate) blow_up_ms: f32,
@@ -55,7 +62,11 @@ impl IniFall {
             roll: 0.0,
             turn: 0.0,
             speed: 0.0,
+            damping: 1.0,
+            braking: 99_999.0,
             spin: [0.0; 2],
+            spin_change: 0.0,
+            spin_delay_ms: 0.0,
             start: FallMoment::default(),
             hit: FallMoment::default(),
             blow_up_ms: 0.0,
@@ -77,6 +88,10 @@ impl IniFall {
             "rollrate" if jet => self.roll = at.real()?,
             "spiralorbitturnrate" if !jet => self.turn = at.real()?,
             "spiralorbitforwardspeed" if !jet => self.speed = at.real()?,
+            "spiralorbitforwardspeeddamping" if !jet => self.damping = at.real()?,
+            "maxbraking" if !jet => self.braking = at.real()?,
+            "selfspinupdateamount" if !jet => self.spin_change = at.real()?,
+            "selfspinupdatedelay" if !jet => self.spin_delay_ms = at.real()?,
             "minselfspin" if !jet => self.spin[0] = at.real()?,
             "maxselfspin" if !jet => self.spin[1] = at.real()?,
             "fxinitialdeath" if jet => self.start.effect = named()?,

@@ -20,6 +20,15 @@ impl StepClock {
         self.owed -= steps * step;
         steps as u32
     }
+
+    /// The share of a step of `step` seconds owed past the last whole step taken.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a share of a step from 0 to 1"
+    )]
+    pub(crate) fn fraction(&self, step: f32) -> f32 {
+        (self.owed / f64::from(step)) as f32
+    }
 }
 
 #[cfg(test)]
@@ -36,5 +45,9 @@ mod tests {
         // A frame of 1.1 s takes 4 steps, and at steps of 1/8 s the same time takes 8.
         assert_eq!(StepClock::default().take(1.1, 0.25), 4);
         assert_eq!(StepClock::default().take(1.1, 0.125), 8);
+        // After 1.1 s at steps of 1/4 s, 0.1 s is owed: 0.4 of a step.
+        let mut clock = StepClock::default();
+        clock.take(1.1, 0.25);
+        assert!((clock.fraction(0.25) - 0.4).abs() < 1e-6);
     }
 }

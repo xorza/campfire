@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::f32::consts::PI;
 
 use campfire_client_files::{
-    ClientUnit, DeathFall, DeathWrecks, FallStage, GroundDeath, Spiral, Wreck, WreckLaunch,
-    WreckList, WreckSink,
+    ClientUnit, DeathFall, DeathWrecks, FallStage, GroundDeath, SelfSpin, Spiral, Wreck,
+    WreckLaunch, WreckList, WreckSink,
 };
 use campfire_common::DeclaredName;
 use campfire_math::Num;
@@ -15,6 +15,7 @@ use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::creation_list_ini::{Creation, CreationListIni, CreationNugget};
+use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
 use crate::zero_hour::format::ini::object_ini::ini_fall::{FallKind, IniFall};
 use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectIni};
 use crate::zero_hour::game_path;
@@ -29,6 +30,7 @@ use crate::zero_hour::import_name::ImportName;
 pub(crate) struct WreckImport<'a> {
     objects: &'a ObjectIni,
     lists: &'a CreationListIni,
+    locomotors: &'a LocomotorIni,
     /// How a piece of debris sinks once it rests, as the game's `GenericDebris` does.
     debris: WreckSink,
     /// How high above the ground a jet dies on it, as `Thing::isSignificantlyAboveTerrain`
@@ -48,11 +50,12 @@ struct Converted {
 const DEBRIS: &str = "GenericDebris";
 
 impl<'a> WreckImport<'a> {
-    /// The import of the deaths of `objects`, of the creation lists `lists`, under the game's
-    /// `gravity` in world units a second squared.
+    /// The import of the deaths of `objects`, of the creation lists `lists`, whose aircraft fly by
+    /// `locomotors`, under the game's `gravity` in world units a second squared.
     pub(crate) fn new(
         objects: &'a ObjectIni,
         lists: &'a CreationListIni,
+        locomotors: &'a LocomotorIni,
         gravity: f32,
     ) -> Result<Self, ZeroHourError> {
         let generic = objects.named(DEBRIS).and_then(IniObject::slow_death);
@@ -74,6 +77,7 @@ impl<'a> WreckImport<'a> {
         Ok(Self {
             objects,
             lists,
+            locomotors,
             debris,
             ground_height: Self::num("GameData", -9.0 * frame)?,
             losses: Losses::default(),
@@ -102,22 +106,23 @@ impl<'a> WreckImport<'a> {
                 wrecks.end = self.lists(&object.name, end, written, &mut converted)?;
             }
             if let Some(fall) = object.fall() {
-                look.death.fall = Some(self.fall(&object.name, fall, written, &mut converted)?);
+                look.death.fall = Some(self.fall(object, fall, written, &mut converted)?);
             }
             look.death.wrecks = wrecks;
         }
         Ok(self.losses.into_iter().collect())
     }
 
-    /// The fall of `fall`, of the object `name`, its stages' wrecks alone, their effects named
-    /// after.
+    /// The fall of `fall`, of `object`, its stages' wrecks alone, their effects named after; a
+    /// helicopter's spiral of its first normal locomotor that hovers, which brakes it as it falls.
     fn fall(
         &mut self,
-        name: &str,
+        object: &IniObject,
         fall: &IniFall,
         written: &mut dyn FnMut(&str) -> Result<bool, ZeroHourError>,
         converted: &mut Converted,
     ) -> Result<DeathFall, ZeroHourError> {
+        let name = object.name.as_str();
         if fall.left.effect.is_some() || fall.left.objects.is_some() {
             self.losses.drop(name, EffectDropCause::FallMoment);
         }
@@ -139,14 +144,9 @@ impl<'a> WreckImport<'a> {
             }),
             FallKind::Helicopter => None,
         };
-        let per_second = |degrees: f32| degrees.to_radians();
         let spiral = match fall.kind {
             FallKind::Jet => None,
-            FallKind::Helicopter => Some(Spiral {
-                turn: Self::num(name, per_second(fall.turn))?,
-                speed: Self::num(name, fall.speed)?,
-                spin: Self::num(name, per_second(f32::midpoint(fall.spin[0], fall.spin[1])))?,
-            }),
+            FallKind::Helicopter => Some(self.spiral(object, fall)?),
         };
         Ok(DeathFall {
             gravity: Self::num(name, fall.gravity)?,
@@ -157,6 +157,43 @@ impl<'a> WreckImport<'a> {
             blow_up_after: Self::num(name, fall.blow_up_ms / 1000.0)?,
             blow_up,
             ground,
+        })
+    }
+
+    /// The spiral of the helicopter `object`'s `fall`, as `HelicopterSlowDeathBehavior` pushes it
+    /// (02-engine-core.md, An aircraft's death falls as a wreck): its push, a velocity a frame
+    /// over its `Mass` each frame, as `PhysicsBehavior::applyForce` takes a force, in metres a
+    /// second squared; its turn and its spin's rates in radians a second, its spin's change in
+    /// radians a second, as each change adds its amount over the frames of a second, and its delay
+    /// in seconds; its fade a frame, the effects' step; and its hover's brake, the least of the
+    /// locomotor's `Braking` and the death's `MaxBraking`, and its `AccelerationDamaged`, as a
+    /// dead unit's body is past every damage state, none of no locomotor that hovers.
+    fn spiral(&self, object: &IniObject, fall: &IniFall) -> Result<Spiral, ZeroHourError> {
+        let name = object.name.as_str();
+        let hover = object
+            .locomotors()
+            .iter()
+            .filter_map(|locomotor| self.locomotors.get(locomotor))
+            .find(|locomotor| locomotor.hovers());
+        let (braking, acceleration) = hover.map_or((0.0, 0.0), |hover| {
+            (
+                hover.braking().min(fall.braking),
+                hover.acceleration_damaged(),
+            )
+        });
+        let radians = |degrees: f32| Self::num(name, degrees.to_radians());
+        Ok(Spiral {
+            push: Self::num(name, fall.speed * FRAMES_PER_SECOND / object.mass())?,
+            turn: radians(fall.turn)?,
+            fade: Self::num(name, fall.damping)?,
+            braking: Self::num(name, braking)?,
+            acceleration: Self::num(name, acceleration)?,
+            spin: SelfSpin {
+                least: radians(fall.spin[0])?,
+                most: radians(fall.spin[1])?,
+                change: radians(fall.spin_change)?,
+                every: Self::num(name, fall.spin_delay_ms / 1000.0)?,
+            },
         })
     }
 

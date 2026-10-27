@@ -42,13 +42,38 @@ pub(crate) struct GroundPlay {
     pub(crate) moment: MomentPlay,
 }
 
-/// A helicopter's spiral: its turn about its path and its speed along it, and its own spin, in
-/// radians and metres a second.
+/// A helicopter's spiral, as the effects file's `Spiral` gives it: its push and the way it
+/// turns, its fade, its hover's brake forward and backward, and its own spin, in metres, radians
+/// and seconds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct SpiralPlay {
+    pub(crate) push: f32,
     pub(crate) turn: f32,
-    pub(crate) speed: f32,
-    pub(crate) spin: f32,
+    pub(crate) fade: f32,
+    pub(crate) braking: f32,
+    pub(crate) acceleration: f32,
+    pub(crate) spin: SpinPlay,
+}
+
+/// A spiral's own spin: its least and most rate and its change, in radians a second, and the
+/// seconds that pass between its changes, at least.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SpinPlay {
+    pub(crate) least: f32,
+    pub(crate) most: f32,
+    pub(crate) change: f32,
+    pub(crate) every: f32,
+}
+
+/// Where a spiral stands: the way it pushes, in radians about the vertical from `x`, its push,
+/// its own spin's rate, whether that rate rises, and the steps since it last changed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Orbit {
+    way: f32,
+    push: f32,
+    spin: f32,
+    rising: bool,
+    since: u32,
 }
 
 /// What a moment of a fall plays: its lists, of which it plays one drawn at random, and its
@@ -59,8 +84,8 @@ pub(crate) struct MomentPlay {
     pub(crate) wrecks: Vec<Vec<WreckPlay>>,
 }
 
-/// A drawing that falls: its root, its type, where it stands, its velocity and its turn, its age,
-/// and the age it met the ground at, once it did.
+/// A drawing that falls: its root, its type, where it stands, its velocity and its turn, its
+/// spiral's orbit, its age, and the age it met the ground at, once it did.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Falling {
     pub(crate) root: Entity,
@@ -68,6 +93,7 @@ pub(crate) struct Falling {
     pub(crate) at: Vec3,
     pub(crate) velocity: Vec3,
     pub(crate) turn: Quat,
+    orbit: Option<Orbit>,
     age: f32,
     down: Option<f32>,
 }
@@ -106,9 +132,10 @@ pub(crate) enum FallStart<'p> {
 }
 
 impl FallRun {
-    /// Starts the fall of `from` by `play`, over ground `ground` high under it: a helicopter
-    /// along its facing at its spiral's speed, a jet on at its velocity, as its locomotor keeps
-    /// its speed and turns no more (`JetSlowDeathBehavior::beginSlowDeath`); a jet at most its
+    /// Starts the fall of `from` by `play`, over ground `ground` high under it, on at its
+    /// velocity: a jet's locomotor keeps its speed and turns no more
+    /// (`JetSlowDeathBehavior::beginSlowDeath`), and a helicopter's spiral pushes it from its
+    /// facing at its least spin (`HelicopterSlowDeathBehavior::beginSlowDeath`); a jet at most its
     /// ground death's height above the ground falls not.
     pub(crate) fn start<'p>(
         &mut self,
@@ -122,19 +149,23 @@ impl FallRun {
         {
             return FallStart::OnGround(&on_ground.moment);
         }
-        let velocity = match play.spiral {
-            Some(spiral) => {
-                let forward = turn * Vec3::X;
-                Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero() * spiral.speed
+        let orbit = play.spiral.map(|spiral| {
+            let forward = turn * Vec3::X;
+            Orbit {
+                way: (-forward.z).atan2(forward.x),
+                push: spiral.push,
+                spin: spiral.spin.least,
+                rising: true,
+                since: u32::MAX,
             }
-            None => from.velocity,
-        };
+        });
         self.falls.push(Falling {
             root: from.root,
             unit_type: from.unit_type,
             at,
-            velocity,
+            velocity: from.velocity,
             turn,
+            orbit,
             age: 0.0,
             down: None,
         });
@@ -198,9 +229,17 @@ impl FallPlay {
             gravity: fall.gravity.float(),
             roll: fall.roll.float(),
             spiral: fall.spiral.map(|spiral| SpiralPlay {
+                push: spiral.push.float(),
                 turn: spiral.turn.float(),
-                speed: spiral.speed.float(),
-                spin: spiral.spin.float(),
+                fade: spiral.fade.float(),
+                braking: spiral.braking.float(),
+                acceleration: spiral.acceleration.float(),
+                spin: SpinPlay {
+                    least: spiral.spin.least.float(),
+                    most: spiral.spin.most.float(),
+                    change: spiral.spin.change.float(),
+                    every: spiral.spin.every.float(),
+                },
             }),
             start: moment(&fall.start),
             hit: moment(&fall.hit),
@@ -216,8 +255,8 @@ impl FallPlay {
 
 impl Falling {
     /// Steps it `step` seconds by `play` at `gravity` times its share over the ground `ground`
-    /// high: falling, it rolls about its facing or turns its path and spins, and meets the ground,
-    /// a hit; down, it waits its blow-up's delay, a blow-up.
+    /// high: falling, it rolls about its facing or spirals, and meets the ground, a hit; down, it
+    /// waits its blow-up's delay, a blow-up.
     pub(crate) fn step(
         &mut self,
         step: f32,
@@ -234,11 +273,16 @@ impl Falling {
             };
         }
         self.velocity.y += gravity * play.gravity * step;
-        if let Some(spiral) = play.spiral {
-            let path = Quat::from_rotation_y(spiral.turn * step);
-            let flat = path * Vec3::new(self.velocity.x, 0.0, self.velocity.z);
-            self.velocity = Vec3::new(flat.x, self.velocity.y, flat.z);
-            self.turn = Quat::from_rotation_y(spiral.spin * step) * self.turn;
+        if let (Some(spiral), Some(orbit)) = (play.spiral, self.orbit.as_mut()) {
+            self.turn = Quat::from_rotation_y(orbit.spin * step) * self.turn;
+            orbit.spin_on(spiral.spin, step);
+            let forward = self.turn * Vec3::X;
+            let facing = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
+            self.velocity += facing * Orbit::brake(spiral, self.velocity.dot(facing), step);
+            let way = Vec3::new(orbit.way.cos(), 0.0, -orbit.way.sin());
+            self.velocity += way * (orbit.push * step);
+            orbit.way += spiral.turn * step;
+            orbit.push *= spiral.fade;
         }
         self.turn *= Quat::from_rotation_x(play.roll * step);
         self.at += self.velocity * step;
@@ -254,6 +298,55 @@ impl Falling {
     /// Where it stands and how it turns.
     pub(crate) const fn transform(&self) -> Transform {
         Transform::from_translation(self.at).with_rotation(self.turn)
+    }
+}
+
+impl Orbit {
+    /// Changes its spin by `spin`'s change once more than its `every` passed since its last
+    /// change, rounded to whole `step`s, as the client steps, toward its most while it rises and
+    /// its least after, as `HelicopterSlowDeathBehavior::update` changes it, its first change in
+    /// its first step; a spin of no `every` changes never, as the game's delay of 0 turns its
+    /// changes off.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a spin's wait is a few steps of no sign"
+    )]
+    fn spin_on(&mut self, spin: SpinPlay, step: f32) {
+        if spin.every <= 0.0 {
+            return;
+        }
+        self.since = self.since.saturating_add(1);
+        let due = (spin.every / step).round() as u32;
+        if self.since <= due {
+            return;
+        }
+        self.since = 0;
+        if self.rising {
+            self.spin += spin.change;
+            if self.spin > spin.most {
+                self.spin = spin.most;
+                self.rising = false;
+            }
+        } else {
+            self.spin -= spin.change;
+            if self.spin < spin.least {
+                self.spin = spin.least;
+                self.rising = true;
+            }
+        }
+    }
+
+    /// The change of a step of `step` seconds in a speed of `along` along its facing, by its
+    /// hover's brake, which takes it toward none: by up to `spiral`'s braking a second forward and
+    /// its acceleration backward, as `Locomotor::maintainCurrentPositionHover` holds a hover's
+    /// place.
+    fn brake(spiral: SpiralPlay, along: f32, step: f32) -> f32 {
+        if along > 0.0 {
+            -(spiral.braking * step).min(along)
+        } else {
+            (spiral.acceleration * step).min(-along)
+        }
     }
 }
 

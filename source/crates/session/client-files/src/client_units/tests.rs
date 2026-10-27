@@ -5,7 +5,7 @@ use super::*;
 use crate::client_model::{ModelScale, ModelTop};
 use crate::client_unit::{BarrelFlash, DeathLook, FireBarrel, FireBone};
 use crate::condition_test::{LifeShare, SiteStage};
-use crate::death_fall::{DeathFall, FallStage, GroundDeath, Spiral};
+use crate::death_fall::{DeathFall, FallStage, GroundDeath, SelfSpin, Spiral};
 use crate::state_animation::{AnimationMode, SpeedRange, StartFrame};
 use crate::state_set::StateSet;
 use crate::tread_look::{TrackLook, TreadLook};
@@ -35,7 +35,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
 
         [units.comanche]
         draws = []
-        death = { start = ["fx_heli_hit"], fall = { gravity = "0.4", roll = "0", spiral = { turn = "2", speed = "40", spin = "6" }, hit = { effects = ["fx_heli_crash"] }, blow_up_after = "0.5", blow_up = { effects = ["fx_heli_blast"] } } }
+        death = { start = ["fx_heli_hit"], fall = { gravity = "0.4", roll = "0", spiral = { push = "210", turn = "2", fade = "0.99", braking = "190", acceleration = "50", spin = { least = "1.5", most = "5", change = "0.25", every = "0.1" } }, hit = { effects = ["fx_heli_crash"] }, blow_up_after = "0.5", blow_up = { effects = ["fx_heli_blast"] } } }
 
         [units.raptor]
         draws = []
@@ -77,8 +77,9 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     let humvee = &states[0].models[0];
     assert_eq!(humvee.model.as_str(), "client/models/avhummer.glb");
     assert_eq!(humvee.hide, ["turretup01", "muzzlefx01"]);
-    // The damaged state's fire bone and flash, of the first slot; the look's death; the gun's fire, of no
-    // hit; the shell's end and trail; none of what a look does not name, which it does not write.
+    // The damaged state's fire bone and flash, of the first slot; the look's death; the gun's fire,
+    // of no hit; the shell's end and trail; none of what a look does not name, which it does not
+    // write.
     let name = |text: &str| DeclaredName::new(text).unwrap();
     assert_eq!(
         states[1].fire_bones,
@@ -156,9 +157,17 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
             gravity: num("0.4"),
             roll: Num::ZERO,
             spiral: Some(Spiral {
+                push: num("210"),
                 turn: num("2"),
-                speed: num("40"),
-                spin: num("6"),
+                fade: num("0.99"),
+                braking: num("190"),
+                acceleration: num("50"),
+                spin: SelfSpin {
+                    least: num("1.5"),
+                    most: num("5"),
+                    change: num("0.25"),
+                    every: num("0.1"),
+                },
             }),
             start: FallStage::default(),
             hit: FallStage {

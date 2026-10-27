@@ -186,6 +186,10 @@ pub enum ZeroHourError {
     /// what a number holds.
     #[error("a number of the wreck of {name} is not finite, or past what a number holds")]
     Wreck { name: String },
+    /// A spring of the chassis of an object of this name is not finite, or past what a number
+    /// holds.
+    #[error("a spring of the chassis of {name} is not finite, or past what a number holds")]
+    Chassis { name: String },
     /// The width of an object's track is not finite, or past what a number holds.
     #[error("the width of the track of {name} is not finite, or past what a number holds")]
     Track { name: String },

@@ -14,7 +14,7 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
-use bevy::math::{EulerRot, Quat, Vec3};
+use bevy::math::{Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::shape::{Capsule3d, Cuboid, Plane3d, Sphere};
@@ -32,6 +32,7 @@ use campfire_values::{Team, UnitType};
 use crate::engine_text::{EngineMessage, EngineText};
 use crate::view::client_data::ClientLoad;
 use crate::view::drawing::{Drawing, DrawingOf, Drawn, Undrawn};
+use crate::view::effects::chassis_run::Tilts;
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
 use crate::view::glide::{Follows, FrameClock, Glide, Spot};
@@ -586,7 +587,9 @@ impl ViewPlugin {
         }
     }
 
-    /// Starts a glide to each received unit's new sim place and facing.
+    /// Starts a glide to each received unit's new sim place and facing, from where its drawing
+    /// stands and the way it faces: the yaw of its facing, its model's `x`, on the ground, which a
+    /// chassis's pitch and roll leave as they are.
     fn follow(
         time: Res<'_, Time>,
         units: MovedUnits<'_, '_>,
@@ -596,9 +599,10 @@ impl ViewPlugin {
         let heights = lifts.get();
         for (&position, facing, drawing) in &units {
             if let Ok((transform, mut glide)) = roots.get_mut(drawing.root()) {
+                let forward = transform.rotation * Vec3::X;
                 let drawn = Spot {
                     point: transform.translation,
-                    yaw: transform.rotation.to_euler(EulerRot::YXZ).0,
+                    yaw: (-forward.z).atan2(forward.x),
                 };
                 let to = Spot {
                     point: ground(position, heights),
@@ -614,20 +618,21 @@ impl ViewPlugin {
     fn glide(
         time: Res<'_, Time>,
         fixed: Res<'_, Time<Fixed>>,
-        mut roots: Query<'_, '_, (&Glide, &mut Transform, Has<Turns>)>,
+        mut roots: Query<'_, '_, (&Glide, &mut Transform, Has<Turns>, Has<Tilts>)>,
     ) {
         let clock = FrameClock {
             timestep: fixed.timestep(),
             fraction: fixed.overstep_fraction(),
         };
-        for (glide, mut transform, turns) in &mut roots {
+        for (glide, mut transform, turns, tilts) in &mut roots {
             let spot = glide.at(time.elapsed(), clock);
             // A drawing at rest keeps its transform, unchanged, until it glides again.
             if transform.translation != spot.point {
                 transform.translation = spot.point;
             }
             let rotation = Quat::from_rotation_y(spot.yaw);
-            if turns && transform.rotation != rotation {
+            // A root its chassis tilts its chassis turns.
+            if turns && !tilts && transform.rotation != rotation {
                 transform.rotation = rotation;
             }
         }

@@ -5,6 +5,7 @@ use campfire_script::MatchNames;
 use campfire_units::TypeOriginBook;
 use campfire_values::{ActionId, PackageIndex, PackagePath, UnitType};
 
+use crate::view::effects::chassis_run::ChassisPlay;
 use crate::view::effects::effect_book::{EffectBook, ListId, SystemId};
 use crate::view::effects::fall_run::FallPlay;
 use crate::view::effects::wreck_run::WreckPlay;
@@ -12,14 +13,15 @@ use crate::view::float_num::FloatNum;
 
 /// What the match's unit types and actions play, of the mode's own package's looks, each name
 /// resolved once to the book's list or system (02-engine-core.md, An effect is the client's, from
-/// the state it holds): a type's death and its fall, its projectile's end and trail, and its
-/// treads; an action's fire and its hit; and the textures of the tracks, each once, by their
+/// the state it holds): a type's death and its fall, its projectile's end and trail, its treads and
+/// its chassis; an action's fire and its hit; and the textures of the tracks, each once, by their
 /// groups.
 #[derive(Debug, Default)]
 pub(crate) struct EffectPlays {
     pub(crate) deaths: BTreeMap<UnitType, DeathPlays>,
     pub(crate) falls: BTreeMap<UnitType, FallPlay>,
     pub(crate) treads: BTreeMap<UnitType, TreadPlay>,
+    pub(crate) chassis: BTreeMap<UnitType, ChassisPlay>,
     pub(crate) track_textures: Vec<PackagePath>,
     pub(crate) ends: BTreeMap<UnitType, ListId>,
     pub(crate) trails: BTreeMap<UnitType, SystemId>,
@@ -130,6 +132,9 @@ impl EffectPlays {
             };
             if tread != TreadPlay::default() {
                 plays.treads.insert(unit_type, tread);
+            }
+            if let Some(chassis) = &look.chassis {
+                plays.chassis.insert(unit_type, ChassisPlay::of(chassis));
             }
         }
         for (name, look) in looks.actions() {

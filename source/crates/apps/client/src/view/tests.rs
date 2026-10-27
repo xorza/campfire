@@ -32,6 +32,7 @@ use super::*;
 use crate::test_app;
 use crate::view::area_view::{AREA_LIFT, AreaViewPlugin};
 use crate::view::drawing::TearOff;
+use crate::view::effects::chassis_run::Tilt;
 use crate::view::look_states::LookStatesPlugin;
 use crate::view::map_metric::MapMetric;
 use crate::view::match_colors::Paint;
@@ -175,6 +176,27 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     };
     assert_eq!(from.point, Vec3::new(1.0, 0.0, 0.0));
     assert_eq!((to.point, to.yaw), (Vec3::new(2.0, 0.0, 0.0), FRAC_PI_2));
+
+    // Its root turned to π/4, then pitched 0.2 and rolled 0.3 by a chassis, its next glide starts
+    // from the yaw of its facing, π/4, which the tilt leaves as it is.
+    let tilted = root(app.world(), received).0;
+    app.world_mut()
+        .get_mut::<Transform>(tilted)
+        .unwrap()
+        .rotation = Quat::from_rotation_y(FRAC_PI_4)
+        * Tilt {
+            pitch: 0.2,
+            roll: 0.3,
+        }
+        .turn();
+    app.world_mut()
+        .entity_mut(received)
+        .insert(Position::from((3, 0, 0)));
+    app.update();
+    let Glide::Timed { from, .. } = root(app.world(), received).1 else {
+        panic!("a received unit's glide is timed");
+    };
+    assert!((from.yaw - FRAC_PI_4).abs() < 1e-6, "{from:?}");
 
     // Gone, a unit takes its whole drawing along.
     app.world_mut().despawn(predicted);
@@ -516,6 +538,18 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let path = scene.path().unwrap().to_string();
     assert_eq!(path, "package://0/client/models/chassis_two.glb#Scene0");
     assert_eq!(height(technical), 1.5);
+
+    // Its glide turns a turned root back to its yaw, but one its chassis tilts it leaves to the
+    // chassis.
+    let leaned = Quat::from_rotation_y(FRAC_PI_2) * Quat::from_rotation_x(0.25);
+    let turn_by_hand = |app: &mut App| {
+        app.world_mut().get_mut::<Transform>(root).unwrap().rotation = leaned;
+        app.update();
+        app.world().get::<Transform>(root).unwrap().rotation
+    };
+    assert!(turn_by_hand(&mut app).abs_diff_eq(turn, 1e-6));
+    app.world_mut().entity_mut(root).insert(Tilts);
+    assert_eq!(turn_by_hand(&mut app), leaned);
 }
 
 #[test]

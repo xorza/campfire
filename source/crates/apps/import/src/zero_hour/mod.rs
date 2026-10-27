@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::texture::dds_file::DdsFile;
 use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
 use crate::zero_hour::archive_path::ArchivePath;
+use crate::zero_hour::chassis_import::ChassisImport;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::effects_import::{EffectSources, EffectsImport, WeaponShot};
 use crate::zero_hour::error::ZeroHourError;
@@ -55,6 +56,7 @@ pub(crate) mod archive_path;
 pub(crate) mod axes;
 pub(crate) mod barrel_recoil;
 pub(crate) mod camera_import;
+pub(crate) mod chassis_import;
 pub(crate) mod cliff_walls;
 pub(crate) mod combat_import;
 pub(crate) mod convex_clip;
@@ -182,11 +184,17 @@ impl ZeroHour {
         let mut object_names = ImportNames::default();
         let flags = LookFlags::of(&game.game_data, &game.names, &game.objects)?;
         let mut looks = models.units(&game.objects, &mut object_names, &flags)?;
-        let wrecks = WreckImport::new(&game.objects, &game.creation_lists, game.game_data.gravity)?;
+        let wrecks = WreckImport::new(
+            &game.objects,
+            &game.creation_lists,
+            &game.locomotors,
+            game.game_data.gravity,
+        )?;
         let wreck_losses = wrecks.name(
             &mut |model: &str| Ok(matches!(models.model(model)?, WrittenModel::Nodes { .. })),
             &mut looks.units,
         )?;
+        ChassisImport::name(&game.objects, &game.locomotors, &mut looks.units)?;
         let ModelReport {
             skipped,
             dropped_states,
@@ -479,7 +487,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 49;
+    pub const OUTPUT_VERSION: u32 = 50;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

@@ -54,11 +54,19 @@ Object Jet
   End
 End
 Object Heli
+  Locomotor = SET_NORMAL Rotors
+  Behavior = PhysicsBehavior P
+    Mass = 50.0
+  End
   Behavior = HelicopterSlowDeathBehavior H
     SpiralOrbitTurnRate = 140.0
     SpiralOrbitForwardSpeed = 350.0
+    SpiralOrbitForwardSpeedDamping = .9999
+    MaxBraking = 190
     MinSelfSpin = 100
     MaxSelfSpin = 300
+    SelfSpinUpdateDelay = 100
+    SelfSpinUpdateAmount = 10
     FallHowFast = 12.0%
     DelayFromGroundToFinalDeath = 1500
     OCLBlade = OCL_Turret
@@ -100,6 +108,17 @@ ObjectCreationList OCL_Turret
 End
 ";
 
+/// The helicopter's hover, which brakes harder than its death's `MaxBraking` and accelerates
+/// less damaged.
+const LOCOMOTORS: &str = "Locomotor Rotors
+  Surfaces = AIR
+  Acceleration = 60
+  AccelerationDamaged = 50
+  Braking = 240
+  Appearance = HOVER
+End
+";
+
 fn num(value: f32) -> Num {
     game_float::to_num(value).unwrap()
 }
@@ -121,7 +140,9 @@ fn a_death_throws_its_lists_hulks_and_debris_and_an_aircraft_falls() {
         .into();
     // Every model writes but `gxbroken`.
     let mut written = |model: &str| Ok(model != "gxbroken");
-    let losses = WreckImport::new(&objects, &lists, -64.0)
+    let mut locomotors = LocomotorIni::default();
+    locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+    let losses = WreckImport::new(&objects, &lists, &locomotors, -64.0)
         .unwrap()
         .name(&mut written, &mut looks)
         .unwrap();
@@ -220,8 +241,11 @@ fn a_death_throws_its_lists_hulks_and_debris_and_an_aircraft_falls() {
             }),
         })
     );
-    // The helicopter spirals at 140° a second, at 350 a second, spinning at the mean of 100° and
-    // 300° a second, falls at 12 % of gravity, and blows up 1.5 s after it hits.
+    // The helicopter spirals by a push of 350 a frame over its mass of 50 each frame, 350 × 30 ÷
+    // 50 = 210 a second squared, along a way that turns 140° a second, kept 0.9999 each step; its
+    // hover brakes by the least of its 240 and its death's 190, and accelerates by its damaged 50;
+    // it spins from 100° to 300° a second by 10° each 0.1 s, falls at 12 % of gravity, and blows
+    // up 1.5 s after it hits.
     let heli = &looks[&name("heli")].death;
     assert_eq!(
         heli.fall,
@@ -229,9 +253,17 @@ fn a_death_throws_its_lists_hulks_and_debris_and_an_aircraft_falls() {
             gravity: num(12.0 / 100.0),
             roll: Num::ZERO,
             spiral: Some(Spiral {
+                push: num(210.0),
                 turn: num(140.0_f32.to_radians()),
-                speed: num(350.0),
-                spin: num(200.0_f32.to_radians()),
+                fade: num(0.9999),
+                braking: num(190.0),
+                acceleration: num(50.0),
+                spin: SelfSpin {
+                    least: num(100.0_f32.to_radians()),
+                    most: num(300.0_f32.to_radians()),
+                    change: num(10.0_f32.to_radians()),
+                    every: num(100.0 / 1000.0),
+                },
             }),
             start: stage(Vec::new()),
             hit: stage(Vec::new()),

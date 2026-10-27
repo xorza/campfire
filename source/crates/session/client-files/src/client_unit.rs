@@ -3,6 +3,7 @@ use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::chassis::Chassis;
 use crate::client_model::{ClientModel, ModelTop};
 use crate::death_fall::DeathFall;
 use crate::set_match::SetMatch;
@@ -51,6 +52,9 @@ pub struct ClientUnit {
     pub trail: Option<DeclaredName>,
     #[serde(default, skip_serializing_if = "TreadLook::is_empty")]
     pub tread: TreadLook,
+    /// The springs its drawing pitches and rolls on, of a tracked or wheeled type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chassis: Option<Chassis>,
 }
 
 /// What a unit of a type plays as it dies, each effect by its name in the effects file: as it dies,
@@ -235,6 +239,7 @@ impl ClientUnit {
                 systems: Vec::new(),
                 track: None,
             },
+            chassis: None,
         }
     }
 

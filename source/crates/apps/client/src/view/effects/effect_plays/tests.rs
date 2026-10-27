@@ -73,6 +73,7 @@ fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds()
         ] }]
         death = { start = ["fizzle"] }
         tread = { systems = ["smoke", "dirt"], track = { texture = "client/tracks/tank.ktx2", width = "14.5" } }
+        chassis = { pitch_stiffness = "0.0625", roll_stiffness = "0.03125", pitch_damping = "0.75", roll_damping = "0.25", axial_damping = "1", forward_pitch = "0.5", lateral_roll = "0.25", accelerating = "0.0625", braking = "0.125" }
         [units.jeep]
         draws = []
         tread = { track = { texture = "client/tracks/tire.ktx2", width = "6" } }
@@ -150,6 +151,24 @@ fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds()
             (jeep, laid(1, 6.0)),
             (truck, laid(1, 8.0)),
         ])
+    );
+    // The tank's chassis alone, its springs in floats, each exact in binary.
+    assert_eq!(
+        plays.chassis,
+        BTreeMap::from([(
+            tank,
+            ChassisPlay {
+                pitch_stiffness: 0.0625,
+                roll_stiffness: 0.03125,
+                pitch_damping: 0.75,
+                roll_damping: 0.25,
+                axial_damping: 1.0,
+                forward_pitch: 0.5,
+                lateral_roll: 0.25,
+                accelerating: 0.0625,
+                braking: 0.125,
+            }
+        )])
     );
     let texture = |path| PackagePath::parse(path).unwrap();
     assert_eq!(

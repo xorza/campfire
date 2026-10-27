@@ -12,6 +12,7 @@
 mod action_look;
 mod animation_extras;
 mod camera_file;
+mod chassis;
 mod client_file;
 mod client_model;
 mod client_objects;
@@ -49,6 +50,7 @@ mod wreck_ground;
 pub use crate::action_look::ActionLook;
 pub use crate::animation_extras::{AnimationExtras, HiddenFrames};
 pub use crate::camera_file::{CameraFile, CameraHeight};
+pub use crate::chassis::Chassis;
 pub use crate::client_file::{ClientFile, ClientFormat};
 pub use crate::client_model::{ClientModel, ClipRounds, ModelScale, ModelTop, NodeUpgrade};
 pub use crate::client_objects::{ClientObject, ClientObjects};
@@ -58,7 +60,7 @@ pub use crate::client_unit::{
 };
 pub use crate::client_units::ClientUnits;
 pub use crate::condition_test::{AttackPhase, ConditionTest, LifeShare, SiteStage};
-pub use crate::death_fall::{DeathFall, FallStage, GroundDeath, Spiral};
+pub use crate::death_fall::{DeathFall, FallStage, GroundDeath, SelfSpin, Spiral};
 pub use crate::effect_list::{EffectList, ListedSystem};
 pub use crate::effects_file::EffectsFile;
 pub use crate::error::{

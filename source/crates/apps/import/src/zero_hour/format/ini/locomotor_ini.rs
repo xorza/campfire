@@ -13,8 +13,10 @@ pub(crate) struct LocomotorIni {
 /// What the import reads of a locomotor (`LocomotorTemplate`): the surfaces it moves on, its
 /// `Speed` and `MinSpeed` in units a second, its `TurnRate` in degrees a second, its
 /// `Acceleration` and its `Lift` in units a second each second, and its `CirclingRadius` and its
-/// `PreferredHeight` in units, each 0 when absent, as the template starts; its `Appearance`; and
-/// its `AirborneTargetingHeight`, none for the template's `INT_MAX`.
+/// `PreferredHeight` in units, each 0 when absent, as the template starts; its `Appearance`; its
+/// `AirborneTargetingHeight`, none for the template's `INT_MAX`; and its `AccelerationDamaged`,
+/// none for its `Acceleration`, and its `Braking`, none for the template's 99,999, in units a
+/// second each second.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct Locomotor {
     surfaces: Surfaces,
@@ -27,10 +29,13 @@ pub(crate) struct Locomotor {
     pub(crate) preferred_height: f32,
     pub(crate) appearance: Appearance,
     pub(crate) airborne_height: Option<i32>,
+    acceleration_damaged: Option<f32>,
+    braking: Option<f32>,
+    pub(crate) chassis: IniChassis,
 }
 
 /// A locomotor's `Appearance`, of those the import tells apart: a missile's `THRUST`, a
-/// helicopter's `HOVER`, a jet's `WINGS`, or another.
+/// helicopter's `HOVER`, a jet's `WINGS`, a tank's `TREADS`, a car's `FOUR_WHEELS`, or another.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum Appearance {
     #[default]
@@ -38,6 +43,42 @@ pub(crate) enum Appearance {
     Thrust,
     Hover,
     Wings,
+    Treads,
+    Wheels,
+}
+
+/// The springs a locomotor's chassis pitches and rolls on, as `LocomotorTemplate` reads them: its
+/// `PitchStiffness` and `RollStiffness`, 0.1 by default, its `PitchDamping` and `RollDamping`, 0.9
+/// by default, its `UniformAxialDamping`, 1 by default, its `ForwardAccelerationPitchFactor` and
+/// `LateralAccelerationRollFactor`, 0 by default, and its `AccelerationPitchLimit` and
+/// `DecelerationPitchLimit` in degrees, 0 by default.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct IniChassis {
+    pub(crate) pitch_stiffness: f32,
+    pub(crate) roll_stiffness: f32,
+    pub(crate) pitch_damping: f32,
+    pub(crate) roll_damping: f32,
+    pub(crate) axial_damping: f32,
+    pub(crate) forward_pitch: f32,
+    pub(crate) lateral_roll: f32,
+    pub(crate) accelerating: f32,
+    pub(crate) braking: f32,
+}
+
+impl Default for IniChassis {
+    fn default() -> Self {
+        Self {
+            pitch_stiffness: 0.1,
+            roll_stiffness: 0.1,
+            pitch_damping: 0.9,
+            roll_damping: 0.9,
+            axial_damping: 1.0,
+            forward_pitch: 0.0,
+            lateral_roll: 0.0,
+            accelerating: 0.0,
+            braking: 0.0,
+        }
+    }
 }
 
 /// The surfaces of a locomotor's `Surfaces`, a bit each in the order of
@@ -92,6 +133,24 @@ impl Locomotor {
         self.surfaces.0 & (1 << AIR) != 0 && self.appearance == Appearance::Wings
     }
 
+    /// Its acceleration while damaged past the game's `MovementPenaltyDamageState`, as a dead
+    /// unit's body always is, its `Acceleration` when it names none, as
+    /// `LocomotorTemplate::validate` takes it.
+    pub(crate) fn acceleration_damaged(&self) -> f32 {
+        self.acceleration_damaged.unwrap_or(self.acceleration)
+    }
+
+    /// Its chassis's springs, of a tank's `TREADS` or a car's `FOUR_WHEELS`, whose drawing pitches
+    /// and rolls on them; none of another appearance.
+    pub(crate) fn chassis(&self) -> Option<&IniChassis> {
+        matches!(self.appearance, Appearance::Treads | Appearance::Wheels).then_some(&self.chassis)
+    }
+
+    /// Its braking, the template's 99,999 when it names none.
+    pub(crate) fn braking(&self) -> f32 {
+        self.braking.unwrap_or(99_999.0)
+    }
+
     /// Takes the line of `word`, a field the import reads or another.
     fn field(&mut self, word: &str, at: &IniLine<'_>) -> Result<(), IniError> {
         match word {
@@ -99,6 +158,17 @@ impl Locomotor {
             "speed" => self.speed = at.real()?,
             "turnrate" => self.turn_rate = at.real()?,
             "acceleration" => self.acceleration = at.real()?,
+            "accelerationdamaged" => self.acceleration_damaged = Some(at.real()?),
+            "braking" => self.braking = Some(at.real()?),
+            "pitchstiffness" => self.chassis.pitch_stiffness = at.real()?,
+            "rollstiffness" => self.chassis.roll_stiffness = at.real()?,
+            "pitchdamping" => self.chassis.pitch_damping = at.real()?,
+            "rolldamping" => self.chassis.roll_damping = at.real()?,
+            "uniformaxialdamping" => self.chassis.axial_damping = at.real()?,
+            "forwardaccelerationpitchfactor" => self.chassis.forward_pitch = at.real()?,
+            "lateralaccelerationrollfactor" => self.chassis.lateral_roll = at.real()?,
+            "accelerationpitchlimit" => self.chassis.accelerating = at.real()?,
+            "decelerationpitchlimit" => self.chassis.braking = at.real()?,
             "lift" => self.lift = at.real()?,
             "minspeed" => self.min_speed = at.real()?,
             "circlingradius" => self.circling_radius = at.real()?,
@@ -112,6 +182,10 @@ impl Locomotor {
                     Appearance::Hover
                 } else if value.eq_ignore_ascii_case("wings") {
                     Appearance::Wings
+                } else if value.eq_ignore_ascii_case("treads") {
+                    Appearance::Treads
+                } else if value.eq_ignore_ascii_case("four_wheels") {
+                    Appearance::Wheels
                 } else {
                     Appearance::Other
                 };

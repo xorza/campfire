@@ -30,6 +30,13 @@ pub(crate) struct GroundHeights {
     highest: f32,
 }
 
+/// A triangle of the ground at a point: its height there, and its rise a metre along `x` and `z`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Plane {
+    height: f32,
+    slope: Vec2,
+}
+
 impl GroundHeights {
     /// The heights of `grid`, each cell split as `quads` draw it, a terrain's quads over the
     /// grid's cells; with none, each from its first sample to the one across.
@@ -68,13 +75,26 @@ impl GroundHeights {
     }
 
     /// The ground's height beneath the engine's `x` and `z`.
+    pub(crate) fn at(&self, x: f32, z: f32) -> f32 {
+        self.plane(x, z).height
+    }
+
+    /// The normal of the ground's triangle beneath the engine's `x` and `z`, of unit length, its
+    /// `y` up, as Zero Hour's `getLayerHeight` gives the normal of its terrain's triangle there.
+    pub(crate) fn normal(&self, x: f32, z: f32) -> Vec3 {
+        let Plane { slope, .. } = self.plane(x, z);
+        Vec3::new(-slope.x, 1.0, -slope.y).normalize()
+    }
+
+    /// The ground's triangle beneath the engine's `x` and `z`, of the cell that holds the point
+    /// clamped to the grid.
     #[expect(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         reason = "a grid's columns and rows lie far below 2²⁴, and a clamped point's floor within them"
     )]
-    pub(crate) fn at(&self, x: f32, z: f32) -> f32 {
+    fn plane(&self, x: f32, z: f32) -> Plane {
         let point = (Vec2::new(x, z) - self.origin) / self.cell;
         let last = Vec2::new((self.columns - 1) as f32, (self.rows - 1) as f32);
         let point = point.clamp(Vec2::ZERO, last);
@@ -84,9 +104,9 @@ impl GroundHeights {
         self.in_cell(column, row, point - corner)
     }
 
-    /// The height in the cell of `column` and `row`, at the fractions `along` of its side, on
-    /// the triangle of its split that holds them.
-    fn in_cell(&self, column: usize, row: usize, along: Vec2) -> f32 {
+    /// The triangle of the cell of `column` and `row` that holds the fractions `along` of its
+    /// side, of its split: its height there and its slope.
+    fn in_cell(&self, column: usize, row: usize, along: Vec2) -> Plane {
         let [h0, h1, h2, h3] = [
             self.sample(column, row),
             self.sample(column + 1, row),
@@ -94,18 +114,23 @@ impl GroundHeights {
             self.sample(column, row + 1),
         ];
         let Vec2 { x: fu, y: fv } = along;
-        let height = if self.flips[row * (self.columns - 1) + column] {
+        // Its height there and its rise along each side, in samples.
+        let (height, du, dv) = if self.flips[row * (self.columns - 1) + column] {
             if fu + fv <= 1.0 {
-                h0 + fu * (h1 - h0) + fv * (h3 - h0)
+                (h0 + fu * (h1 - h0) + fv * (h3 - h0), h1 - h0, h3 - h0)
             } else {
-                h2 + (1.0 - fu) * (h3 - h2) + (1.0 - fv) * (h1 - h2)
+                let height = h2 + (1.0 - fu) * (h3 - h2) + (1.0 - fv) * (h1 - h2);
+                (height, h2 - h3, h2 - h1)
             }
         } else if fu >= fv {
-            h0 + fu * (h1 - h0) + fv * (h2 - h1)
+            (h0 + fu * (h1 - h0) + fv * (h2 - h1), h1 - h0, h2 - h1)
         } else {
-            h0 + fv * (h3 - h0) + fu * (h2 - h3)
+            (h0 + fv * (h3 - h0) + fu * (h2 - h3), h2 - h3, h3 - h0)
         };
-        height * self.step
+        Plane {
+            height: height * self.step,
+            slope: Vec2::new(du, dv) * (self.step / self.cell),
+        }
     }
 
     /// Where the ray from `origin` along `direction` first meets the ground, walking the cells it
@@ -259,6 +284,17 @@ mod tests {
         // 0.25 · 0 = 5.
         assert_eq!(unflipped.at(-5.0, -7.5), 2.5);
         assert_eq!(flipped.at(-5.0, -7.5), 5.0);
+        // Their triangles' normals: the lower rises 10 m along x and falls 10 m along z over the
+        // cell's 10 m, (−1, 1, 1)/√3; that of corner 0 rises along x alone, (−1, 1, 0)/√2.
+        let normal = |heights: &GroundHeights, expected: Vec3| {
+            let normal = heights.normal(-5.0, -7.5);
+            assert!(
+                (normal - expected.normalize()).length() < 1e-6,
+                "{normal:?}"
+            );
+        };
+        normal(&unflipped, Vec3::new(-1.0, 1.0, 1.0));
+        normal(&flipped, Vec3::new(-1.0, 1.0, 0.0));
         // At (−2.5, −2.5), fractions 0.75 and 0.75: on the diagonal from 0 to 2, 0 + 7.5 + 0.75
         // · (0 − 10) = 0; past the diagonal from 1 to 3, 0 + 0.25 · 0 + 0.25 · (10 − 0) = 2.5.
         assert_eq!(unflipped.at(-2.5, -2.5), 0.0);

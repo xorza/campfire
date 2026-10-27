@@ -37,14 +37,33 @@ pub struct GroundDeath {
     pub stage: FallStage,
 }
 
-/// A helicopter's spiral down: it turns about its path at `turn` radians a second at `speed`
-/// metres a second, and spins at `spin` radians a second.
+/// A helicopter's spiral down, as Zero Hour's `HelicopterSlowDeathBehavior` pushes it: from the
+/// velocity it died with, each step a push of `push` metres a second squared along a way that
+/// starts at its facing and turns left `turn` radians a second, the push kept `fade` of itself
+/// each step; its hover's brake along its facing, by up to `braking` metres a second squared
+/// forward and `acceleration` backward, as a hover with no goal holds its place; and its own spin,
+/// `spin` (02-engine-core.md, An aircraft's death falls as a wreck).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Spiral {
+    pub push: Num,
     pub turn: Num,
-    pub speed: Num,
-    pub spin: Num,
+    pub fade: Num,
+    pub braking: Num,
+    pub acceleration: Num,
+    pub spin: SelfSpin,
+}
+
+/// A spiral's own spin, in radians a second: it starts at `least` and changes by `change` each
+/// time more than `every` seconds passed since its last change, toward `most`, then back toward
+/// `least` once it reaches it, and on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelfSpin {
+    pub least: Num,
+    pub most: Num,
+    pub change: Num,
+    pub every: Num,
 }
 
 /// What a moment of a fall plays: its effects, of which it plays one drawn at random, each by its

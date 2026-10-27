@@ -12,7 +12,7 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
-use bevy::math::Affine3A;
+use bevy::math::{Affine3A, Quat, Vec3};
 use bevy::mesh::{Indices, Mesh, Mesh3d, PrimitiveTopology, VertexAttributeValues};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::picking::Pickable;
@@ -33,6 +33,7 @@ use campfire_values::{PackageIndex, UnitType};
 
 use crate::view::client_data::ClientLoad;
 use crate::view::drawing::{Drawing, TearOff, Undrawn};
+use crate::view::effects::chassis_run::{ChassisRun, Ride, Tilts};
 use crate::view::effects::effect_book::{EffectBook, GroupId};
 use crate::view::effects::effect_plays::{EffectPlays, PlaySources};
 use crate::view::effects::fall_run::{FallEvent, FallFrom, FallRun, FallStart, MomentPlay};
@@ -56,6 +57,7 @@ use crate::view::unit_looks::UnitLooks;
 use crate::view::unit_models::DressSystems;
 use crate::view::{DrawSystems, ViewSystems};
 
+pub(crate) mod chassis_run;
 pub(crate) mod effect_book;
 pub(crate) mod effect_plays;
 pub(crate) mod fall_run;
@@ -80,6 +82,7 @@ pub(crate) struct MatchEffects {
     falls: FallRun,
     treads: TreadRun,
     tracks: TrackRun,
+    chassis: ChassisRun,
     /// How the wrecks meet the ground, as the effects file says.
     ground: WreckGround,
     plays: EffectPlays,
@@ -315,6 +318,7 @@ impl MatchEffects {
             falls: FallRun::default(),
             treads: TreadRun::new(file.treads()),
             tracks: TrackRun::new(file.tracks(), plays.track_textures.len()),
+            chassis: ChassisRun::default(),
             ground: file.wrecks(),
             plays,
             clock: StepClock::default(),
@@ -612,11 +616,12 @@ impl MatchEffects {
         });
     }
 
-    /// Gives each new drawing of a type whose treads play their systems and their track, then
-    /// runs, scales or stops each drawing's tread systems by its speed and lays its track as it
-    /// moves, each of a drawing gone going (02-engine-core.md, A tread throws dust while it drives;
-    /// 02-engine-core.md, A tread lays track marks). A drawing's root stands in the world, so its
-    /// transform is its place already in the frame it is spawned.
+    /// Gives each new drawing of a type whose treads play their systems and their track, and of a
+    /// type of a chassis its chassis, then runs, scales or stops each drawing's tread systems by
+    /// its speed and lays its track as it moves, each of a drawing gone going (02-engine-core.md, A
+    /// tread throws dust while it drives; 02-engine-core.md, A tread lays track marks;
+    /// 02-engine-core.md, A chassis follows the ground on springs). A drawing's root stands in the
+    /// world, so its transform is its place already in the frame it is spawned.
     fn drive(
         effects: Option<ResMut<'_, Self>>,
         (time, fixed, heights): (
@@ -626,6 +631,7 @@ impl MatchEffects {
         ),
         drawn: NewDrawings<'_, '_>,
         roots: Query<'_, '_, (&Transform, &Glide)>,
+        mut commands: Commands<'_, '_>,
     ) {
         let Some(mut effects) = effects else {
             return;
@@ -635,15 +641,25 @@ impl MatchEffects {
             run,
             treads,
             tracks,
+            chassis,
             plays,
             ..
         } = &mut *effects;
+        let now = time.elapsed();
+        let clock = FrameClock {
+            timestep: fixed.timestep(),
+            fraction: fixed.overstep_fraction(),
+        };
         for (unit_type, drawing) in &drawn {
-            let Some(tread) = plays.treads.get(unit_type) else {
+            let root = drawing.root();
+            let Ok((place, glide)) = roots.get(root) else {
                 continue;
             };
-            let root = drawing.root();
-            let Ok((place, _)) = roots.get(root) else {
+            if let Some(&play) = plays.chassis.get(unit_type) {
+                chassis.add(root, play, glide.velocity(now, clock));
+                commands.entity(root).insert(Tilts);
+            }
+            let Some(tread) = plays.treads.get(unit_type) else {
                 continue;
             };
             if !tread.systems.is_empty() {
@@ -657,11 +673,6 @@ impl MatchEffects {
                 tracks.bind(root, track.group, track.width);
             }
         }
-        let now = time.elapsed();
-        let clock = FrameClock {
-            timestep: fixed.timestep(),
-            fraction: fixed.overstep_fraction(),
-        };
         treads.drive(run, |root| {
             let (place, glide) = roots.get(root).ok()?;
             Some(Driven {
@@ -706,13 +717,14 @@ impl MatchEffects {
     }
 
     /// Runs the steps the frame's time owes, each of the book's length, over the ground's
-    /// heights, or level ground at 0 on a map of none: the particles, the wrecks, and the falls,
-    /// each hit and blow-up played where it happens, a blown up drawing gone.
+    /// heights, or level ground at 0 on a map of none: the chassis, the particles, the wrecks, and
+    /// the falls, each hit and blow-up played where it happens, a blown up drawing gone; then turns
+    /// each drawing of a chassis by its yaw and its tilt between its last two steps.
     fn step(
-        time: Res<'_, Time>,
+        (time, fixed): (Res<'_, Time>, Res<'_, Time<Fixed>>),
         effects: Option<ResMut<'_, Self>>,
         heights: Option<Res<'_, GroundHeights>>,
-        mut places: Query<'_, '_, &mut Transform>,
+        (mut places, glides): (Query<'_, '_, &mut Transform>, Query<'_, '_, &Glide>),
         (mut commands, mut scenes, assets): WreckSpawns<'_, '_>,
         (mut gone, mut events): (Local<'_, Vec<Entity>>, Local<'_, Vec<FallEvent>>),
     ) {
@@ -724,6 +736,7 @@ impl MatchEffects {
             run,
             wrecks,
             falls,
+            chassis,
             ground: physics,
             plays,
             clock,
@@ -732,11 +745,29 @@ impl MatchEffects {
         let step = book.step();
         let steps = clock.take(time.delta_secs_f64(), step);
         let ground = Self::ground(heights.as_deref());
+        let now = time.elapsed();
+        let frame = FrameClock {
+            timestep: fixed.timestep(),
+            fraction: fixed.overstep_fraction(),
+        };
+        let ride = |root| {
+            let glide = glides.get(root).ok()?;
+            let spot = glide.at(now, frame);
+            let normal = heights.as_deref().map_or(Vec3::Y, |heights| {
+                heights.normal(spot.point.x, spot.point.z)
+            });
+            Some(Ride {
+                yaw: spot.yaw,
+                velocity: glide.velocity(now, frame),
+                normal,
+            })
+        };
         let mut spawn = |scene: &AssetPath<'static>, place: Transform| {
             let scene = WorldAssetRoot(scenes.scene(scene, &assets));
             commands.spawn((scene, place, Paint::default())).id()
         };
         for _ in 0..steps {
+            chassis.step(step, ride);
             run.step(book, &ground);
             wrecks.step(step, *physics, &ground, &mut gone);
             falls.step(step, physics.gravity, &plays.falls, &ground, &mut events);
@@ -757,6 +788,15 @@ impl MatchEffects {
         }
         for entity in gone.drain(..) {
             commands.entity(entity).despawn();
+        }
+        for (root, turn) in chassis.turns(clock.fraction(step)) {
+            let (Ok(glide), Ok(mut place)) = (glides.get(root), places.get_mut(root)) else {
+                continue;
+            };
+            let rotation = Quat::from_rotation_y(glide.at(now, frame).yaw) * turn;
+            if place.rotation != rotation {
+                place.rotation = rotation;
+            }
         }
         if steps > 0 {
             for piece in wrecks.pieces() {
