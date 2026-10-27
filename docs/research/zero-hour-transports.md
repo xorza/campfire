@@ -35,4 +35,4 @@ What the released source (GeneralsX, read as a specification) and the install's 
 
 ## OpenRA
 
-- **Cargo.** A `Cargo` trait holds its passengers as actors out of the world, by `MaxWeight` against each `Passenger`'s `Weight`; `Types` against the passenger's `CargoType` choose who enters; `UnloadCargo` lets them out at the actor's exits; `InitialUnits` fill it as it is made. `AttackGarrisoned` lets a `Cargo`'s passengers fire from its `FirePorts`, each a point and a cone of the actor's.
+- **Cargo.** `RideTransport` loads its passenger into the transport's `Cargo` and removes it from the world (`World.Remove`) at the frame's end, and a `Cargo` trait holds its passengers as live actors out of the world, killing them as it dies unless `EjectOnDeath`, by `MaxWeight` against each `Passenger`'s `Weight`; `Types` against the passenger's `CargoType` choose who enters; `UnloadCargo` lets them out at the actor's exits; `InitialUnits` fill it as it is made. `AttackGarrisoned` lets a `Cargo`'s passengers fire from its `FirePorts`, each a point and a cone of the actor's.
