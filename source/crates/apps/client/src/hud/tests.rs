@@ -241,11 +241,15 @@ fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selecti
 #[test]
 fn a_unit_shows_its_bars_while_selected_when_the_hud_shows_the_selected_alone() {
     // Two units, each gauged on a stand, and none under the mouse, so the selection alone shows
-    // bars: the first's, then the second's.
+    // bars: the first's, then the second's; then the second's drawing, torn off its unit, takes
+    // its gauges down.
     let mut app = test_app::view();
     app.init_resource::<HoverMap>();
     app.init_resource::<UnderMouse>();
-    app.add_systems(Update, HudPlugin::show_selected_bars);
+    app.add_systems(
+        Update,
+        (HudPlugin::take_down_torn, HudPlugin::show_selected_bars).chain(),
+    );
     let world = app.world_mut();
     world.spawn((Window::default(), PrimaryWindow));
     world.spawn(Camera3d::default());
@@ -254,17 +258,19 @@ fn a_unit_shows_its_bars_while_selected_when_the_hud_shows_the_selected_alone() 
         let id = ids.allocate();
         let unit = world.spawn(id).id();
         let stand = world.spawn((GaugeStand, Visibility::Inherited)).id();
-        world.spawn((
-            DrawingOf(unit),
-            Gauged {
-                stand: Some(stand),
-                slots: None,
-            },
-        ));
-        (id, stand)
+        let root = world
+            .spawn((
+                DrawingOf(unit),
+                Gauged {
+                    stand: Some(stand),
+                    slots: None,
+                },
+            ))
+            .id();
+        (id, stand, root)
     });
     let shown = |app: &App| {
-        [first, second].map(|(_, stand)| {
+        [first, second].map(|(_, stand, _)| {
             *app.world().get::<Visibility>(stand).unwrap() == Visibility::Inherited
         })
     };
@@ -278,6 +284,13 @@ fn a_unit_shows_its_bars_while_selected_when_the_hud_shows_the_selected_alone() 
         .pick(&[second.0], |_| None);
     app.update();
     assert_eq!(shown(&app), [false, true]);
+    let (_, stand, root) = second;
+    app.world_mut().entity_mut(root).remove::<DrawingOf>();
+    app.update();
+    let world = app.world();
+    assert!(world.get_entity(stand).is_err());
+    assert!(world.get::<Gauged>(root).is_none());
+    assert!(world.get::<Gauged>(first.2).is_some());
 }
 
 #[test]

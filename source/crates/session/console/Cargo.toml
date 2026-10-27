@@ -1,0 +1,19 @@
+[package]
+name = "campfire-console"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.campfire]
+kind = "problem"
+
+[dependencies]
+campfire-codec.workspace = true
+
+blake3 = { workspace = true, features = ["std"] }
+schemars = { workspace = true, features = ["derive", "std"] }
+serde = { workspace = true, features = ["derive", "std"] }
+strsim.workspace = true
+
+[lints]
+workspace = true

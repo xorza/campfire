@@ -4,6 +4,7 @@ use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::ini::armor_ini::ArmorIni;
 use crate::zero_hour::format::ini::command_button_ini::CommandButtonIni;
 use crate::zero_hour::format::ini::command_set_ini::CommandSetIni;
+use crate::zero_hour::format::ini::creation_list_ini::CreationListIni;
 use crate::zero_hour::format::ini::fx_list_ini::FxListIni;
 use crate::zero_hour::format::ini::game_data_ini::GameDataIni;
 use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
@@ -38,6 +39,7 @@ pub(crate) struct ZeroHourRules {
     pub(crate) armors: ArmorIni,
     pub(crate) particles: ParticleSystemIni,
     pub(crate) effects: FxListIni,
+    pub(crate) creation_lists: CreationListIni,
     pub(crate) strings: StringTable,
     pub(crate) names: RulesNames,
 }
@@ -83,6 +85,11 @@ impl ZeroHourRules {
                 ParticleSystemIni::read,
             )?,
             effects: install.read_inis("FXList", FxListIni::default(), FxListIni::read)?,
+            creation_lists: install.read_inis(
+                "ObjectCreationList",
+                CreationListIni::default(),
+                CreationListIni::read,
+            )?,
             strings: Self::string_table(install)?,
             names: RulesNames::default(),
         })

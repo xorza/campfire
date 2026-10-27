@@ -2,6 +2,7 @@ use campfire_codec::Toml;
 
 use super::*;
 use crate::spread::Spread;
+use crate::tread_dust::SpeedScale;
 
 /// A file of a smoke system with a spark slave and a list that starts it twice.
 const SMOKE: &str = r#"
@@ -127,4 +128,79 @@ fn effects_write_and_read_back_and_a_name_of_no_system_is_refused() {
     assert!(refused("gravity = -0.01", "gravity = nan").contains("`smoke`"));
     assert!(refused("radius = [0.0, 3.0]", "radius = [0.0, inf]").contains("`tank_hit`"));
     assert!(refused("step = 0.033333335", "step = 0.0").contains("step"));
+    // A file names how its wrecks meet the ground, none when it does not; one whose gravity
+    // pulls up, or whose share passes 1, is refused.
+    assert!(file.wrecks().is_none());
+    let ground = "step = 0.033333335\nwrecks = { gravity = -64.0, stiffness = 0.8, friction = 0.15, rest = 15.0 }";
+    let falls = SMOKE.replacen("step = 0.033333335", ground, 1);
+    let falls = EffectsFile::decode(falls.as_bytes()).unwrap();
+    assert_eq!(
+        falls.wrecks(),
+        WreckGround {
+            gravity: -64.0,
+            stiffness: 0.8,
+            friction: 0.15,
+            rest: 15.0,
+        }
+    );
+    assert_eq!(EffectsFile::decode(&falls.encode()).unwrap(), falls);
+    let up = refused("step = 0.033333335", &ground.replace("-64.0", "1.0"));
+    assert!(up.contains("ground"), "{up}");
+    let past = refused("step = 0.033333335", &ground.replace("0.8", "1.5"));
+    assert!(past.contains("ground"), "{past}");
+    // A file names how its treads throw their dust and lay their tracks, none when it does not;
+    // a scale below 0, a track of one edge or more opaque edges than all are refused.
+    assert!(file.treads().is_none() && file.tracks().is_none());
+    let treads = "step = 0.033333335\n\
+                  treads = { moving = 0.1, across = { base = 0.1, per_speed = 0.0167, most = 1.0 }, \
+                  rise = { base = 0.1, per_speed = 0.0333, most = 1.0 }, \
+                  count = { base = 0.1, per_speed = 0.0333, most = 1.0 } }\n\
+                  tracks = { spacing = 10.0, lift = 2.0, edges = 100, opaque = 25, fade = 300.0, tracks = 100 }";
+    let driven = SMOKE.replacen("step = 0.033333335", treads, 1);
+    let driven = EffectsFile::decode(driven.as_bytes()).unwrap();
+    let scale = |per_speed| SpeedScale {
+        base: 0.1,
+        per_speed,
+        most: 1.0,
+    };
+    assert_eq!(
+        driven.treads(),
+        TreadDust {
+            moving: 0.1,
+            across: scale(0.0167),
+            rise: scale(0.0333),
+            count: scale(0.0333),
+        }
+    );
+    assert_eq!(
+        driven.tracks(),
+        TrackMarks {
+            spacing: 10.0,
+            lift: 2.0,
+            edges: 100,
+            opaque: 25,
+            fade: 300.0,
+            tracks: 100,
+        }
+    );
+    assert_eq!(EffectsFile::decode(&driven.encode()).unwrap(), driven);
+    // At 16 m a second, 0.125 + 16/32 = 0.625; at 64, 2.125, past its most of 1.
+    let exact = SpeedScale {
+        base: 0.125,
+        per_speed: 1.0 / 32.0,
+        most: 1.0,
+    };
+    assert_eq!([exact.at(16.0), exact.at(64.0)], [0.625, 1.0]);
+    let below = refused("step = 0.033333335", &treads.replacen("0.1", "-0.1", 1));
+    assert!(below.contains("dust"), "{below}");
+    let single = refused(
+        "step = 0.033333335",
+        &treads.replace("edges = 100", "edges = 1"),
+    );
+    assert!(single.contains("tracks"), "{single}");
+    let opaque = refused(
+        "step = 0.033333335",
+        &treads.replace("opaque = 25", "opaque = 101"),
+    );
+    assert!(opaque.contains("tracks"), "{opaque}");
 }

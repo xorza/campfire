@@ -1,12 +1,12 @@
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::ExitCode;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bevy::app::App;
 use bevy::ecs::entity::Entity;
 use campfire_common::{ErrorReport, ExitStatus};
-use campfire_host::{ClientDir, Hosting, JoinRole, Os, Pace, PlayerSlotBotArg, ServerPin};
+use campfire_host::{ClientDir, Hosting, JoinRole, LogSeen, Os, Pace, PlayerSlotBotArg, ServerPin};
 use campfire_net::{
     LocalLobby, LocalPacePlugin, LocalReplay, LocalServer, LocalServerSetup, LocalSession, UdpLinks,
 };
@@ -43,6 +43,7 @@ impl Connection {
         args: &Args,
         role: JoinRole,
         packages: &Arc<ModePackages>,
+        console: Option<&Arc<Mutex<LogSeen>>>,
     ) -> Result<Self, ExitCode> {
         match &args.server {
             PlayedServer::Remote {
@@ -81,7 +82,7 @@ impl Connection {
                     options: options.clone(),
                     player_slot_picks: player_slot_picks.clone(),
                 });
-                Self::open_local(&data, packages, session)
+                Self::open_local(&data, packages, session, console)
             }
             PlayedServer::Replay {
                 report,
@@ -98,17 +99,19 @@ impl Connection {
                     log,
                     through: *through,
                 }));
-                Self::open_local(&data, packages, session)
+                Self::open_local(&data, packages, session, console)
             }
         }
     }
 
     /// The local server of the mode `packages` holds, opening `session`, its data in the
-    /// client's data directory `data`, at a pace of its own; the exit code when it does not start.
+    /// client's data directory `data`, at a pace of its own, answering the client's `console`
+    /// when it has one; the exit code when it does not start.
     fn open_local(
         data: &Arc<ClientDir>,
         packages: &Arc<ModePackages>,
         session: LocalSession,
+        console: Option<&Arc<Mutex<LogSeen>>>,
     ) -> Result<Self, ExitCode> {
         let pace = Arc::new(Pace::default());
         let reports = data.layout().clone();
@@ -119,6 +122,7 @@ impl Connection {
             pace: Arc::clone(&pace),
             os: Os::SYSTEM,
             reports,
+            console: console.map(Arc::clone),
         })
         .map_err(|error| {
             error!(error = %ErrorReport::of(&error), "the local server does not start");

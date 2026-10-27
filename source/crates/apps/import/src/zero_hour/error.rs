@@ -182,6 +182,13 @@ pub enum ZeroHourError {
     },
     #[error(transparent)]
     NoPackagePath(#[from] NoPackagePath),
+    /// A number of the wreck of an object or a creation list of this name is not finite, or past
+    /// what a number holds.
+    #[error("a number of the wreck of {name} is not finite, or past what a number holds")]
+    Wreck { name: String },
+    /// The width of an object's track is not finite, or past what a number holds.
+    #[error("the width of the track of {name} is not finite, or past what a number holds")]
+    Track { name: String },
     /// The game's `Multiplayer.ini` gives no team colors the engine takes.
     #[error("the game's team colors are none the engine takes")]
     TeamColors(#[from] TeamColorsError),

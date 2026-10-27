@@ -7,7 +7,7 @@ use campfire_common::MapName;
 use campfire_host::{OrderFile, OrderFileError, PlannedBot, PlayerSlotBotArg, SessionTimes};
 use campfire_mode::{OptionValue, PlayerSlotPick};
 use campfire_visibility::{HostVisibility, SettingValue};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 /// What the command line names: the data directory, how long after its journal's last write a
 /// session a stop ended restores, the server's bots, the mode to open and its map, what the host
@@ -26,6 +26,14 @@ pub(crate) struct Args {
     pub(crate) player_slot_picks: Vec<PlayerSlotPick>,
     pub(crate) address: SocketAddr,
     pub(crate) port_map: bool,
+    pub(crate) console: Option<ConsoleArg>,
+}
+
+/// Where a game's console reads its requests and writes its replies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ConsoleArg {
+    /// Its standard input and output, a JSON line each, its log staying on standard error.
+    Stdio,
 }
 
 /// Opens a session of a mode on an address, runs its match, and writes its session log once the
@@ -75,6 +83,10 @@ pub(crate) struct CommandLine {
     /// forwards by hand
     #[arg(long)]
     no_port_map: bool,
+    /// Answer a tool's requests over a console, as the tool that started the server asks; the
+    /// end of its input stops the server
+    #[arg(long, value_name = "STREAMS")]
+    console: Option<ConsoleArg>,
     /// The mode's package directory
     mode: PathBuf,
     /// The address to listen on, as 0.0.0.0:4433
@@ -106,6 +118,7 @@ impl From<CommandLine> for Args {
             player_slot_picks: line.player_slot_picks,
             address: line.address,
             port_map: !line.no_port_map,
+            console: line.console,
         }
     }
 }

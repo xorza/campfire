@@ -29,6 +29,7 @@ default-members = [
     "checks/lan-check",
     "crates/apps/client",
     "crates/apps/import",
+    "crates/apps/mcp",
     "crates/apps/server",
     "crates/apps/verifier",
     "crates/base/app-threads",
@@ -88,6 +89,7 @@ default-members = [
     "crates/network/net-udp",
     "crates/session/bots",
     "crates/session/client-files",
+    "crates/session/console",
     "crates/session/host",
     "crates/session/package",
     "crates/session/package-disk",
@@ -120,6 +122,8 @@ reads = [
     { member = "campfire-rules", paths = [".", "../docs/design", "../docs/research", "../AGENTS.md"] },
     # The script API's reference and the overview's decisions.
     { member = "campfire-capabilities", paths = ["../docs/design"] },
+    # The project's MCP file, and the driver's command that builds the server it names.
+    { member = "campfire-mcp", paths = ["../.mcp.json", "Cargo.toml"] },
 ]
 
 # The one test that compares each workspace package with its `package.index` writes the index
@@ -168,6 +172,18 @@ steps = [{ cargo = "run --profile release-dev -p campfire-client", args = true }
 
 [workspace.metadata.drive.commands.server]
 steps = [{ cargo = "run --profile release-dev -p campfire-server", args = true }]
+
+# The MCP server, which Claude Code starts from the repository's `.mcp.json`, and the games its
+# `game_start` builds before it starts one, fast or with the dev profile's asserts
+# (console.md, The MCP server never builds itself).
+[workspace.metadata.drive.commands.mcp]
+steps = [{ build = "build --profile release-dev -p campfire-mcp" }]
+
+[workspace.metadata.drive.commands.games]
+steps = [{ build = "build --profile release-dev -p campfire-client -p campfire-server" }]
+
+[workspace.metadata.drive.commands.games-dev]
+steps = [{ build = "build -p campfire-client -p campfire-server" }]
 
 [workspace.package]
 version = "0.1.0"
@@ -236,6 +252,7 @@ campfire-net-timeline = { path = "crates/network/net-timeline" }
 campfire-net-transport = { path = "crates/network/net-transport" }
 campfire-net-udp = { path = "crates/network/net-udp" }
 campfire-client-files = { path = "crates/session/client-files" }
+campfire-console = { path = "crates/session/console" }
 campfire-host = { path = "crates/session/host" }
 campfire-package = { path = "crates/session/package" }
 campfire-package-disk = { path = "crates/session/package-disk" }
@@ -255,6 +272,7 @@ campfire-zero-hour-check = { path = "checks/zero-hour-check" }
 arrayvec = { version = "=0.7.8", default-features = false }
 async-lock = { version = "=3.4.2", default-features = false }
 backtrace = { version = "=0.3.76", default-features = false }
+base64 = { version = "=0.23.1", default-features = false }
 bevy = { version = "=0.20.0", default-features = false }
 bevy_app = { version = "=0.20.0", default-features = false }
 bevy_curve = { version = "=0.20.0", default-features = false }
@@ -293,8 +311,10 @@ proptest = { version = "=1.12.0", default-features = false }
 quinn-udp = { version = "=0.6.3", default-features = false }
 quote = { version = "=1.0.47", default-features = false }
 rhai = { version = "=1.27.0", default-features = false }
+rmcp = { version = "=3.5.1", default-features = false }
 ring = { version = "=0.17.14", default-features = false }
 rustls = { version = "=0.23.46", default-features = false }
+schemars = { version = "=1.2.3", default-features = false }
 # The version nostr builds on, as a key passes between the two.
 secp256k1 = { version = "=0.30.0", default-features = false }
 serde = { version = "=1.0.229", default-features = false }
@@ -303,9 +323,11 @@ sha2 = { version = "=0.11.1", default-features = false }
 signal-hook = { version = "=0.4.5", default-features = false }
 smallvec = { version = "=1.16.4", default-features = false }
 socket2 = { version = "=0.6.5", default-features = false }
+strsim = { version = "=0.11.1", default-features = false }
 syn = { version = "=3.0.9", default-features = false }
 tempfile = { version = "=3.27.0", default-features = false }
 thiserror = { version = "=2.0.21", default-features = false }
+tokio = { version = "=1.53.3", default-features = false }
 toml = { version = "=1.1.8", default-features = false }
 tracing = { version = "=0.1.44", default-features = false }
 tracing-subscriber = { version = "=0.3.23", default-features = false }

@@ -13,17 +13,40 @@ use crate::thread_name::ThreadName;
 #[derive(Debug)]
 pub struct Worker {
     thread: Option<JoinHandle<()>>,
+    end: WorkerEnd,
+}
+
+/// What a worker's drop does with its thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkerEnd {
+    /// Joins it, once its holder told its job to close.
+    Joined,
+    /// Leaves it to the process's exit, as no holder can wake its wait.
+    Left,
 }
 
 impl Worker {
     /// Starts the thread `name`, a job's, which runs `run`.
     pub fn start(name: impl Into<ThreadName>, run: impl FnOnce() + Send + 'static) -> Self {
+        Self::spawn(name.into(), Box::new(run), WorkerEnd::Joined)
+    }
+
+    /// Starts the thread `name`, a job's, which runs `run`, a wait that no holder can wake, as a
+    /// read of the standard input, which no OS wakes portably: its drop leaves the thread
+    /// blocked, to end with the process (console.md, A reader of the standard input is left to
+    /// the exit).
+    pub fn start_left(name: impl Into<ThreadName>, run: impl FnOnce() + Send + 'static) -> Self {
+        Self::spawn(name.into(), Box::new(run), WorkerEnd::Left)
+    }
+
+    fn spawn(name: ThreadName, run: Box<dyn FnOnce() + Send>, end: WorkerEnd) -> Self {
         let thread = thread::Builder::new()
-            .name(name.into().as_str().to_owned())
+            .name(name.as_str().to_owned())
             .spawn(run)
             .expect("the OS starts a thread");
         Self {
             thread: Some(thread),
+            end,
         }
     }
 
@@ -52,7 +75,7 @@ impl Drop for Worker {
         let Some(thread) = self.thread.take() else {
             return;
         };
-        if thread::panicking() {
+        if thread::panicking() || self.end == WorkerEnd::Left {
             return;
         }
         if let Err(payload) = thread.join() {

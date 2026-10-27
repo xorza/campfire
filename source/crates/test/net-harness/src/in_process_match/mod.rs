@@ -14,15 +14,15 @@ use campfire_harness::HashTrail;
 use campfire_host::internals::SimClientWorldInternals;
 use campfire_host::internals::TickHashes;
 use campfire_host::{
-    ClientDir, JoinState, MatchClock, Os, Pace, PlannedBot, ServerBots, ServerDir, ServerSetup,
-    SessionDir, SessionTimes, UnixClock,
+    ClientDir, JoinState, MatchClock, MatchConsole, Os, Pace, PlannedBot, ServerBots, ServerDir,
+    ServerSetup, SessionDir, SessionTimes, UnixClock,
 };
 use campfire_log::internals::LogCheck;
 use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
-    Lobby, LobbyOpening, LobbySetup, LobbyStart, PendingOrders, PendingRestore, SessionOpening,
-    SimServerWorld, UdpLinks, UncheckedRestore,
+    ClientConsole, Lobby, LobbyOpening, LobbySetup, LobbyStart, PendingOrders, PendingRestore,
+    SessionOpening, SimServerWorld, UdpLinks, UncheckedRestore,
 };
 use campfire_net_connection::Connected;
 use campfire_net_core::LinkDirection;
@@ -1035,6 +1035,16 @@ impl InProcessMatch {
     /// The pause and the speed every end follows.
     pub fn pace(&self) -> &Pace {
         &self.pace
+    }
+
+    /// Opens a console on the match: its server's answers what the console of `client`
+    /// forwards, which a test queues and reads through the client's `ClientConsole`.
+    pub fn open_console(&mut self, client: usize) {
+        let console = MatchConsole::new(Some(Arc::clone(&self.pace)), Arc::default());
+        self.stepper.server_world_mut().insert_resource(console);
+        self.stepper
+            .client_world_mut(client)
+            .init_resource::<ClientConsole>();
     }
 
     /// The events at Warn and Error that the match logged and no test took yet.

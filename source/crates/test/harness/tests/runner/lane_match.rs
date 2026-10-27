@@ -7,7 +7,10 @@ use std::num::NonZeroU64;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
-use campfire_capabilities::{Directive, MatchProbe, Order, ProbeRefusal, ProbeSpec, ProbeUnits};
+use campfire_capabilities::{
+    Directive, MatchProbe, Order, ProbeColumns, ProbePage, ProbeRefusal, ProbeRows, ProbeSpec,
+    ProbeState, ProbeUnits,
+};
 use campfire_combat::{Combat, DamageCause};
 use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick};
 use campfire_harness::{
@@ -520,11 +523,43 @@ id  type         slot  team   x     z  doing  target  destination  goal  stuck  
         (ProbeUnits::Type(creep), &[3, 4, 5, 6]),
         // In any order, each once.
         (ProbeUnits::Ids(vec![hero, tower, hero]), &[0, 2]),
+        // The towers stand; the walker and the creeps walk, none stuck yet.
+        (ProbeUnits::State(ProbeState::Idle), &[0, 1]),
+        (ProbeUnits::State(ProbeState::Walking), &[2, 3, 4, 5, 6]),
+        (ProbeUnits::State(ProbeState::Stuck), &[]),
+        (ProbeUnits::State(ProbeState::Fighting), &[]),
     ] {
         let mut probe = MatchProbe::new(every, units.clone());
         probe.record(world);
         assert_eq!(probed(&probe), ids, "{units:?}");
     }
+
+    // A page of the creeps, the second and third of four, in the concise columns, counts the
+    // creeps each player slot owns, none here, as creeps have no owner.
+    let mut probe = MatchProbe::new(every, ProbeUnits::Type(creep));
+    let page = ProbePage {
+        columns: ProbeColumns::Concise,
+        first: 1,
+        limit: Some(2),
+    };
+    let rows = probe.page(world, page);
+    assert_eq!(
+        rows,
+        ProbeRows {
+            selected: 4,
+            shown: 2
+        }
+    );
+    assert_eq!(
+        probe.text(),
+        "\
+tick 31, 1 s and 1 ticks
+id  type   slot        x  z  doing     life
+ 4  creep     -  -11.775  0  walk   300/300
+ 5  creep     -   11.775  0  walk   300/300
+
+"
+    );
     drop(fixed);
     let read = InputFile::read_text(&file, 1 << 16).unwrap();
     assert_eq!(read, written);

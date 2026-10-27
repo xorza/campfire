@@ -26,3 +26,15 @@ fn a_check_passes_on_the_panic_of_a_worker_that_ended_and_does_nothing_while_it_
     let passed = panic::catch_unwind(AssertUnwindSafe(|| worker.check())).unwrap_err();
     assert_eq!(passed.downcast_ref::<u32>(), Some(&9));
 }
+
+#[test]
+fn a_left_worker_drops_while_its_thread_waits() {
+    // The thread waits for a word that never comes, as a read of an input that stays open; the
+    // drop returns, and the thread ends with the test's process.
+    let (word, wait) = mpsc::channel::<()>();
+    let worker = Worker::start_left(ThreadName::fixture("left"), move || {
+        wait.recv().ok();
+    });
+    drop(worker);
+    drop(word);
+}

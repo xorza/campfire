@@ -72,11 +72,12 @@ impl<'ast> Visit<'ast> for Declared {
 
 /// The shapes that each crate declares one of, with one meaning in each (02-engine-core.md, A
 /// shared shape keeps its name in each crate).
-const ONE_MEANING: [&str; 8] = [
+const ONE_MEANING: [&str; 9] = [
     "Args",
     "CheckError",
     "CheckFailure",
     "CommandLine",
+    "ConsoleArg",
     "Golden",
     "Iter",
     "RowReads",

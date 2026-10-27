@@ -4,6 +4,7 @@ use bevy::ecs::resource::Resource;
 use bevy::math::{Quat, Vec2, Vec3};
 use bevy::transform::components::Transform;
 use campfire_client_files::{CameraFile, CameraHeight, Press};
+use campfire_console::CameraPose;
 use campfire_host::ReportCamera;
 
 /// The player's camera: it looks down at a pitch at a point of the ground, its pivot, from a
@@ -162,6 +163,32 @@ impl CameraRig {
         self.yaw = camera.yaw;
         self.pitch = camera.pitch;
         self.height = camera.height;
+    }
+
+    /// The rig as a console gives it.
+    pub(crate) const fn pose(&self) -> CameraPose {
+        CameraPose {
+            pivot: self.pivot.to_array(),
+            yaw: self.yaw,
+            pitch: self.pitch,
+            height: self.height,
+        }
+    }
+
+    /// Sets the rig as a console asks, `pose`, within its limits: the pivot within the map, the
+    /// pitch between `PITCH_LEAST` and `PITCH_MOST`, and the height between its file's least and
+    /// most.
+    pub(crate) fn set_pose(&mut self, pose: CameraPose) {
+        let CameraHeight { least, most } = self.file.height;
+        self.pivot = self.bounded(Vec2::from_array(pose.pivot));
+        self.yaw = pose.yaw;
+        self.pitch = pose.pitch.clamp(PITCH_LEAST, PITCH_MOST);
+        self.height = pose.height.clamp(least, most);
+    }
+
+    /// Looks at `point` of the ground, `[x, z]`, within the map, as it otherwise stands.
+    pub(crate) fn look_at(&mut self, point: Vec2) {
+        self.pivot = self.bounded(point);
     }
 
     /// Its vertical field of view, in radians, on a screen `aspect` times as wide as tall.

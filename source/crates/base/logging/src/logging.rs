@@ -10,13 +10,14 @@ use campfire_store::StreamWriter;
 use campfire_threads::Job;
 use clap::Parser;
 use tracing::{error, warn};
-use tracing_subscriber::filter::Directive;
+use tracing_subscriber::filter::{self, Directive, FilterExt};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer, fmt};
 
 use crate::error::FilterRefused;
 use crate::log_file::{LogFile, LogLines};
+use crate::log_tap::{LogTap, TapLines};
 use campfire_common::ErrorReport;
 
 /// Where a binary logs: to standard error, as text colored only on a terminal, by `RUST_LOG`;
@@ -36,6 +37,14 @@ pub struct Logging {
 /// many frames of a busy server's events, so a thread waits only when the disk falls far behind.
 const LOG_BUFFER: usize = 1 << 20;
 
+/// What a binary holds of its log to the end of `main`: the log file, and the tap a console
+/// starts.
+#[derive(Debug)]
+pub struct LogOutputs {
+    pub file: LogFile,
+    pub tap: LogTap,
+}
+
 /// A filter from an environment variable: its own, or the binary's default when it is not set or
 /// holds none, with why it holds none.
 #[derive(Debug)]
@@ -45,10 +54,11 @@ struct ChosenFilter {
 }
 
 impl Logging {
-    /// Installs the process's subscriber, and gives the log file, which the binary holds to the
-    /// end of `main`. A log file that cannot be created is logged, and the binary runs on
-    /// without it.
-    pub fn start(self) -> LogFile {
+    /// Installs the process's subscriber, and gives the log file and the tap, which the binary
+    /// holds to the end of `main`. A log file that cannot be created is logged, and the binary
+    /// runs on without it. The tap takes the events the file's filter passes, whether a file is
+    /// written or not.
+    pub fn start(self) -> LogOutputs {
         let terminal_filter = ChosenFilter::of(env::var(EnvFilter::DEFAULT_ENV), self.terminal);
         let mut file_filter = ChosenFilter::of(env::var("CAMPFIRE_LOG_FILTER"), self.file);
         let extra_refused = file_filter.add(env::var("CAMPFIRE_LOG_FILTER_EXTRA"));
@@ -69,6 +79,17 @@ impl Logging {
             Ok(writer) => (writer, None),
             Err(error) => (None, Some(error)),
         };
+        // The tap's own copy of the file's filter, whose refusals the file's report.
+        let mut tap_filter = ChosenFilter::of(env::var("CAMPFIRE_LOG_FILTER"), self.file);
+        let _ = tap_filter.add(env::var("CAMPFIRE_LOG_FILTER_EXTRA"));
+        let tap = LogTap::default();
+        let tap_layer = json_lines(TapLines(tap.clone())).with_filter(
+            filter::filter_fn({
+                let tap = tap.clone();
+                move |_| tap.is_started()
+            })
+            .and(tap_filter.filter),
+        );
         let file = writer
             .as_ref()
             .map(|writer| json_lines(LogLines(writer.sender())).with_filter(file_filter.filter));
@@ -76,6 +97,7 @@ impl Logging {
             .with(check_layer())
             .with(terminal)
             .with(file)
+            .with(tap_layer)
             .init();
         if let Some(error) = failed {
             error!(error = %ErrorReport::of(&error), "CAMPFIRE_LOG names a file that cannot be created");
@@ -88,7 +110,10 @@ impl Logging {
         if let Some(refused) = extra_refused {
             warn!(variable = "CAMPFIRE_LOG_FILTER_EXTRA", error = %ErrorReport::of(&refused), "the variable holds no directives, so it adds none");
         }
-        writer.map_or_else(LogFile::default, LogFile::of)
+        LogOutputs {
+            file: writer.map_or_else(LogFile::default, LogFile::of),
+            tap,
+        }
     }
 
     /// The command line `args`, the program first, as `P` reads it; else the status the binary

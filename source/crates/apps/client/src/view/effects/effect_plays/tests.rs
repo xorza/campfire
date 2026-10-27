@@ -3,7 +3,12 @@ use campfire_codec::Toml;
 use campfire_common::DeclaredName;
 use campfire_units::TypeOrigin;
 
+use bevy::asset::AssetPath;
+use bevy::math::Vec3;
+use campfire_client_files::WreckLaunch;
+
 use super::*;
+use crate::view::effects::wreck_run::WreckEnd;
 
 #[test]
 fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds() {
@@ -60,13 +65,20 @@ fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds()
         r#"
         [units.bunker]
         draws = []
-        death = { start = ["blast"], end = ["fizzle", "blast"] }
+        death = { start = ["blast"], end = ["fizzle", "blast"], wrecks = { end = [[{ models = ["client/models/hulk.glb"], count = 1, offset = ["0", "0", "0"], launch = "still", spin = "0", sink = { delay = "1", rate = "1", gone = "2" } }]] } }
         [units.tank]
         draws = [{ states = [
             { sets = [[]], models = [] },
             { sets = [["damaged"]], models = [], fire_bones = [{ slot = 1, barrels = [{ bone = "MuzzleFX01" }] }] },
         ] }]
         death = { start = ["fizzle"] }
+        tread = { systems = ["smoke", "dirt"], track = { texture = "client/tracks/tank.ktx2", width = "14.5" } }
+        [units.jeep]
+        draws = []
+        tread = { track = { texture = "client/tracks/tire.ktx2", width = "6" } }
+        [units.truck]
+        draws = []
+        tread = { track = { texture = "client/tracks/tire.ktx2", width = "8" } }
         [units.shell]
         draws = []
         end = "blast"
@@ -77,7 +89,7 @@ fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds()
     )
     .unwrap();
     let book = EffectBook::new(&effects);
-    let origins: TypeOriginBook = ["bunker", "tank", "shell"]
+    let origins: TypeOriginBook = ["bunker", "tank", "shell", "jeep", "truck"]
         .map(|name| TypeOrigin {
             package: PackageIndex::MODE,
             name: name.into(),
@@ -90,16 +102,61 @@ fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds()
         origins: &origins,
         names: &MatchNames::default(),
     });
-    let [bunker, _, shell] = [0, 1, 2].map(|at| origins.iter().nth(at).unwrap().0);
+    let [bunker, tank, shell, jeep, truck] =
+        [0, 1, 2, 3, 4].map(|at| origins.iter().nth(at).unwrap().0);
     let blast = book.list_id(&DeclaredName::new("blast").unwrap()).unwrap();
     let smoke = book.id(&DeclaredName::new("smoke").unwrap()).unwrap();
+    // Its end throws its hulk, of the mode's model's scene.
+    let hulk = WreckPlay {
+        scenes: vec![AssetPath::from("package://0/client/models/hulk.glb#Scene0")],
+        count: 1,
+        offset: Vec3::ZERO,
+        launch: WreckLaunch::Still,
+        spin: 0.0,
+        end: WreckEnd {
+            life: None,
+            delay: 1.0,
+            rate: 1.0,
+            gone: 2.0,
+        },
+    };
     let bunker_death = DeathPlays {
         start: vec![blast],
         middle: Vec::new(),
         end: vec![blast],
+        wrecks: [Vec::new(), Vec::new(), vec![vec![hulk]]],
     };
     assert_eq!(plays.deaths, BTreeMap::from([(bunker, bunker_death)]));
     assert_eq!(plays.ends, BTreeMap::from([(shell, blast)]));
     assert_eq!(plays.trails, BTreeMap::from([(shell, smoke)]));
     assert!(plays.fires.is_empty() && plays.hits.is_empty());
+    // The tank's treads run the smoke, not the dirt the book lacks, and lay its track; the jeep
+    // and the truck lay theirs of one texture, so of one group.
+    let track = |group, width| TrackPlay { group, width };
+    let laid = |group, width| TreadPlay {
+        systems: Vec::new(),
+        track: Some(track(group, width)),
+    };
+    assert_eq!(
+        plays.treads,
+        BTreeMap::from([
+            (
+                tank,
+                TreadPlay {
+                    systems: vec![smoke],
+                    track: Some(track(0, 14.5)),
+                }
+            ),
+            (jeep, laid(1, 6.0)),
+            (truck, laid(1, 8.0)),
+        ])
+    );
+    let texture = |path| PackagePath::parse(path).unwrap();
+    assert_eq!(
+        plays.track_textures,
+        [
+            texture("client/tracks/tank.ktx2"),
+            texture("client/tracks/tire.ktx2")
+        ]
+    );
 }

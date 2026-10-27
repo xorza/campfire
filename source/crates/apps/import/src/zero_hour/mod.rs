@@ -23,9 +23,11 @@ use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::effects_import::{EffectSources, EffectsImport, WeaponShot};
 use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
 use crate::zero_hour::format::map::map_file::ZeroHourMap;
 use crate::zero_hour::format::map::terrain::TextureClass;
+use crate::zero_hour::game_time::FRAMES_PER_SECOND;
 use crate::zero_hour::game_version::GameVersion;
 use crate::zero_hour::import_loss::ImportLoss;
 use crate::zero_hour::import_name::ImportName;
@@ -35,7 +37,7 @@ use crate::zero_hour::look_flags::LookFlags;
 use crate::zero_hour::map_import::{MapImport, MapSources};
 use crate::zero_hour::map_roads::MapRoads;
 use crate::zero_hour::model_assets::ModelAssets;
-use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
+use crate::zero_hour::model_writer::{ModelReport, ModelWriter, WrittenModel};
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::road_pieces::RoadPieces;
 use crate::zero_hour::rules_package::{ModeImport, RULES_FILES};
@@ -43,7 +45,9 @@ use crate::zero_hour::skirmish_start::SkirmishStart;
 use crate::zero_hour::terrain_atlas::PackageTexture;
 use crate::zero_hour::unit_types::TypeAdditions;
 use crate::zero_hour::upgrade_import::UpgradeImport;
+use crate::zero_hour::wreck_import::WreckImport;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
+use campfire_client_files::{SpeedScale, TrackMarks, TreadDust, WreckGround};
 
 pub(crate) mod animation_import;
 pub(crate) mod archive_path;
@@ -95,6 +99,7 @@ pub(crate) mod type_name;
 pub(crate) mod unit_types;
 pub(crate) mod upgrade_import;
 pub(crate) mod weapon_drop_cause;
+pub(crate) mod wreck_import;
 pub(crate) mod zero_hour_rules;
 
 /// What an import wrote: the packages' fingerprints, each map, by name, which loads, the road
@@ -174,6 +179,11 @@ impl ZeroHour {
         let mut object_names = ImportNames::default();
         let flags = LookFlags::of(&game.game_data, &game.names, &game.objects)?;
         let mut looks = models.units(&game.objects, &mut object_names, &flags)?;
+        let wrecks = WreckImport::new(&game.objects, &game.creation_lists, game.game_data.gravity)?;
+        let wreck_losses = wrecks.name(
+            &mut |model: &str| Ok(matches!(models.model(model)?, WrittenModel::Nodes { .. })),
+            &mut looks.units,
+        )?;
         let ModelReport {
             skipped,
             dropped_states,
@@ -272,6 +282,10 @@ impl ZeroHour {
                 trails.extend(weapon.exhaust.as_deref());
             }
         }
+        // And the systems the treads throw, which a look names as it names a trail
+        // (wrecks.md, A tread throws dust while it drives).
+        let treads = game.objects.objects().flat_map(IniObject::draws);
+        trails.extend(treads.flat_map(|draw| draw.tread_dust.iter().flatten().map(String::as_str)));
         let mut effects = EffectsImport::of(EffectSources {
             systems: &game.particles,
             lists: &game.effects,
@@ -279,7 +293,62 @@ impl ZeroHour {
             cap: game.game_data.max_particles,
             texture: |name: &str| road_assets.texture(name),
         })?;
+        // The wrecks fall by the game's gravity and meet its ground (wrecks.md, Wrecks move by
+        // the client's step): an object's friction on the ground, `DEFAULT_FORWARD_FRICTION` and
+        // `DEFAULT_LATERAL_FRICTION`, takes 0.15 of its speed a frame, and it rests below
+        // `STUN_RELIEF_EPSILON`, half a world unit a frame.
+        let ground = WreckGround {
+            gravity: game.game_data.gravity,
+            stiffness: game.game_data.ground_stiffness,
+            friction: 0.15,
+            rest: 0.5 * FRAMES_PER_SECOND,
+        };
+        effects.file = effects.file.clone().with_wrecks(ground)?;
+        // A tread's dust runs while its unit moves faster than the game's `DEBRIS_THRESHOLD`, a
+        // squared speed of 0.00001 a frame, scaled across by half its speed a frame and a tenth,
+        // and up and in count by its speed a frame and a tenth, each up to 1
+        // (`W3DTankDraw::doDrawModule`). A track lays an edge each cell of 10 it moves, 0.2 of a
+        // cell above the ground, up to `GlobalData`'s 100 edges, of which the newest 25 stay
+        // opaque, each fading over 300 s (`W3DModelDraw`, `W3DTerrainTracks.cpp`), when the game
+        // makes track marks.
+        let per_frame = |scale: f32| scale / FRAMES_PER_SECOND;
+        let dust = TreadDust {
+            moving: 0.00001_f32.sqrt() * FRAMES_PER_SECOND,
+            across: SpeedScale {
+                base: 0.1,
+                per_speed: per_frame(0.5),
+                most: 1.0,
+            },
+            rise: SpeedScale {
+                base: 0.1,
+                per_speed: per_frame(1.0),
+                most: 1.0,
+            },
+            count: SpeedScale {
+                base: 0.1,
+                per_speed: per_frame(1.0),
+                most: 1.0,
+            },
+        };
+        let tracks = if game.game_data.track_marks {
+            TrackMarks {
+                spacing: 10.0,
+                lift: 0.2 * 10.0,
+                edges: 100,
+                opaque: 25,
+                fade: 300.0,
+                tracks: game.game_data.most_tracks,
+            }
+        } else {
+            TrackMarks::NONE
+        };
+        effects.file = effects.file.clone().with_treads(dust, tracks)?;
         writer.write(EffectsFile::path(), &effects.file.encode())?;
+        effects.name_deaths(
+            &game.objects,
+            |name: &str| road_assets.texture(name),
+            &mut looks,
+        )?;
         // The textures the models, the terrain and the effects draw with, each converted once: no
         // other file of the install is drawn.
         let drawn = model_textures
@@ -306,8 +375,8 @@ impl ZeroHour {
             };
             writer.write(to, &ktx2)?;
         }
-        effects.name_deaths(&game.objects, &mut looks.units)?;
         losses.extend(effects.dropped.iter().cloned().map(ImportLoss::Effect));
+        losses.extend(wreck_losses.into_iter().map(ImportLoss::Effect));
         combat.complete_looks(&mut looks.units);
         let delivery = |action: &DeclaredName| match combat.actions.get(action) {
             None => WeaponShot::Dropped,
@@ -401,7 +470,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 39;
+    pub const OUTPUT_VERSION: u32 = 43;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

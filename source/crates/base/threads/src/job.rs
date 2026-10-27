@@ -23,6 +23,8 @@ pub enum Job {
     PortMap,
     /// Converts and hashes an import's files on one core of each.
     Import,
+    /// Reads the lines of a game's console from its standard input.
+    Console,
 }
 
 impl Job {
@@ -40,7 +42,7 @@ mod tests {
     #[test]
     fn each_job_has_its_own_name_whole() {
         let names: Vec<&str> = Job::ALL.iter().map(|job| job.name()).collect();
-        assert_eq!(names.len(), 8);
+        assert_eq!(names.len(), 9);
         let long: Vec<&str> = (names.iter().copied())
             .filter(|name| name.len() > Job::MAX_NAME)
             .collect();

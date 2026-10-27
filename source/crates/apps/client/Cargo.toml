@@ -57,6 +57,7 @@ campfire-client-files.workspace = true
 campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
+campfire-console.workspace = true
 campfire-declarations.workspace = true
 campfire-geometry.workspace = true
 campfire-host.workspace = true

@@ -3,65 +3,9 @@ use std::f32::consts::FRAC_PI_2;
 
 use bevy::math::Quat;
 use campfire_client_files::{EffectList, EffectsFile, ListedSystem, SlaveSystem};
-use campfire_common::DeclaredName;
-use campfire_values::PackagePath;
 
 use super::*;
-
-/// A system of one particle a burst, every step, each living 100 steps at rest, of size 1, opaque
-/// white, of no drift, damping or gravity.
-fn system() -> ParticleSystem {
-    ParticleSystem {
-        rank: Some(0),
-        blend: Blend::Alpha,
-        texture: PackagePath::parse("client/textures/spark.ktx2").unwrap(),
-        ground_aligned: false,
-        up_towards_emitter: false,
-        above_ground_only: false,
-        angle: Spread::ZERO,
-        angular_rate: Spread::ZERO,
-        angular_damping: Spread::of(1.0),
-        velocity_damping: Spread::of(1.0),
-        gravity: 0.0,
-        drift: Vec3::ZERO,
-        lifetime: Spread::of(100.0),
-        system_lifetime: 0,
-        size: Spread::of(1.0),
-        start_size_rate: Spread::ZERO,
-        size_rate: Spread::ZERO,
-        size_rate_damping: Spread::of(1.0),
-        alpha: vec![AlphaKey {
-            alpha: Spread::of(1.0),
-            at: 0,
-        }],
-        color: vec![ColorKey {
-            color: [1.0; 3],
-            at: 0,
-        }],
-        color_scale: Spread::ZERO,
-        burst_delay: Spread::ZERO,
-        burst_count: Spread::of(1.0),
-        initial_delay: Spread::ZERO,
-        velocity: EmissionVelocity::Still,
-        volume: EmissionVolume::Point,
-        hollow: false,
-        slave: None,
-        attached: None,
-    }
-}
-
-fn name(text: &str) -> DeclaredName {
-    DeclaredName::new(text).unwrap()
-}
-
-/// The book of `systems`, by their names, of a cap of `cap` particles.
-fn book(cap: u32, systems: impl IntoIterator<Item = (&'static str, ParticleSystem)>) -> EffectBook {
-    let systems: BTreeMap<_, _> = systems
-        .into_iter()
-        .map(|(text, system)| (name(text), system))
-        .collect();
-    EffectBook::new(&EffectsFile::new(1.0 / 30.0, cap, systems, BTreeMap::new()).unwrap())
-}
+use crate::view::effects::particle_run::samples::{book, name, system};
 
 /// Starts the system `text` of `book` at `at`.
 fn start(run: &mut ParticleRun, book: &EffectBook, text: &str, at: Vec3) -> SystemKey {
@@ -126,6 +70,38 @@ fn a_burst_comes_after_the_system_s_delay_then_every_burst_delay_and_a_step() {
         .collect();
     assert_eq!(alive, [1, 2, 1, 0, 0, 0]);
     assert!(run.order.is_empty());
+
+    // A stopped system emits none until it resumes; scaled, a burst of 4 by 0.5 makes 2, each of
+    // the velocity (1, 2, 4) by (0.5, 0.25, 0.5), (0.5, 0.5, 2); by 0.3, 1.2, truncated to 1.
+    let dust = book(
+        100,
+        [(
+            "dust",
+            ParticleSystem {
+                burst_count: Spread::of(4.0),
+                velocity: EmissionVelocity::Ortho {
+                    x: Spread::of(1.0),
+                    y: Spread::of(2.0),
+                    z: Spread::of(4.0),
+                },
+                ..system()
+            },
+        )],
+    );
+    let mut run = ParticleRun::new(1);
+    let key = start(&mut run, &dust, "dust", Vec3::ZERO);
+    run.stop(key);
+    run.step(&dust, level);
+    assert_eq!(run.alive, 0);
+    run.resume(key);
+    run.scale(key, Vec3::new(0.5, 0.25, 0.5), 0.5);
+    run.step(&dust, level);
+    assert_eq!(run.alive, 2);
+    let scaled = Vec3::new(0.5, 0.5, 2.0);
+    assert!(run.particles().all(|particle| particle.velocity == scaled));
+    run.scale(key, Vec3::ONE, 0.3);
+    run.step(&dust, level);
+    assert_eq!(run.alive, 3);
 }
 
 #[test]
@@ -441,6 +417,12 @@ fn a_list_starts_its_systems_turned_and_offset_as_its_source_and_delayed_as_it_s
         Vec3::X
     );
     assert_eq!(run.attached().len(), 2);
+    // Of no list, one plays nothing; of one, it plays that list: its 3 systems again.
+    let hit = book.list_id(&name("hit")).unwrap();
+    run.play_one(&book, &[], source, |_, _| 5.0);
+    assert_eq!(run.order.len(), 3);
+    run.play_one(&book, &[hit], source, |_, _| 5.0);
+    assert_eq!(run.order.len(), 6);
 }
 
 #[test]

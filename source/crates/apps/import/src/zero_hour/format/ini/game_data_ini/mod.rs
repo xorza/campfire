@@ -31,6 +31,16 @@ pub(crate) struct GameDataIni {
     pub(crate) really_damaged_threshold: f32,
     /// `MaxParticleCount`: the most particles alive at once.
     pub(crate) max_particles: u32,
+    /// `Gravity`: the acceleration a falling object takes, in world units a second squared, as
+    /// `parseAccelerationReal` reads it; the game's default is −1 a frame squared.
+    pub(crate) gravity: f32,
+    /// `GroundStiffness`: the share of a falling object's speed down the ground takes as it
+    /// lands (`PhysicsBehavior::handleBounce`).
+    pub(crate) ground_stiffness: f32,
+    /// `MakeTrackMarks`: whether a tread lays a track.
+    pub(crate) track_marks: bool,
+    /// `MaxTerrainTracks`: the most tracks laid at once.
+    pub(crate) most_tracks: u16,
 }
 
 /// What the terrain's conversion reads of `GameData.ini`.
@@ -64,6 +74,10 @@ impl Default for GameDataIni {
             damaged_threshold: 0.5,
             really_damaged_threshold: 0.1,
             max_particles: 0,
+            gravity: -(30.0 * 30.0),
+            ground_stiffness: 0.5,
+            track_marks: false,
+            most_tracks: 0,
         }
     }
 }
@@ -97,6 +111,11 @@ impl GameDataIni {
                         let value = u32::try_from(line.int()?).ok().and_then(NonZeroU32::new);
                         self.box_value = value.ok_or(IniError::Range { line: line.number })?;
                     }
+                    "maketrackmarks" => self.track_marks = line.yes()?,
+                    "maxterraintracks" => {
+                        let count = u16::try_from(line.int()?).ok();
+                        self.most_tracks = count.ok_or(IniError::Range { line: line.number })?;
+                    }
                     "maxparticlecount" => {
                         let count = u32::try_from(line.int()?).ok();
                         self.max_particles = count.ok_or(IniError::Range { line: line.number })?;
@@ -113,6 +132,8 @@ impl GameDataIni {
                             "keyboardcamerarotatespeed" => &mut self.rotate_speed,
                             "unitdamagedthreshold" => &mut self.damaged_threshold,
                             "unitreallydamagedthreshold" => &mut self.really_damaged_threshold,
+                            "gravity" => &mut self.gravity,
+                            "groundstiffness" => &mut self.ground_stiffness,
                             _ => continue,
                         };
                         *field = line.real()?;

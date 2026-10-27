@@ -33,12 +33,21 @@ pub enum EffectDropCause {
     /// An object's slow death names a phase's FX lists past its first, of which the game draws
     /// one at random and the import takes the first.
     DeathChoice,
-    /// An object's slow death creates objects in a phase, as a hulk or thrown debris.
-    DeathObject,
     /// An object's slow death fires a weapon in a phase.
     DeathWeapon,
-    /// An object's draw throws tread dust as it moves.
-    TreadDust,
-    /// An object's draw lays track marks on the terrain as it moves.
-    TrackMarks,
+    /// A death names an object creation list no list holds.
+    NoCreationList,
+    /// A creation list makes an object of gameplay, no hulk.
+    CreationObject,
+    /// A creation list's nugget delivers a payload, applies a force, fires a weapon or attacks.
+    CreationNugget,
+    /// A wreck's model writes nothing.
+    WreckModel,
+    /// A wreck floats, whirls or inherits its unit's velocity, which its launch leaves.
+    WreckLaunch,
+    /// An aircraft's fall plays a jet's secondary, a helicopter's blade or its pilot's ejection.
+    FallMoment,
+    /// An aircraft's slow death names an FX list, an object creation list or a weapon of a phase,
+    /// which its fall leaves.
+    FallPhase,
 }

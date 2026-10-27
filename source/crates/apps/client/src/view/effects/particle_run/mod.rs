@@ -51,7 +51,8 @@ struct SystemSlot {
 /// for a moving system's particles of a burst to spread along its move, whether it rides a
 /// particle or follows its object, the steps left of its
 /// delay, of its burst's and of its life, the system it emits into, that emits into it, and the
-/// particle it rides, how much a burst's sizes grew, and how many particles it holds.
+/// particle it rides, how much a burst's sizes grew, how many particles it holds, whether it was
+/// stopped, and the scales of its particles' velocity, on its own axes, and of its bursts' counts.
 #[derive(Debug)]
 struct LiveSystem {
     id: SystemId,
@@ -69,6 +70,9 @@ struct LiveSystem {
     rider: Option<u32>,
     size_bonus: f32,
     particles: u32,
+    stopped: bool,
+    velocity_scale: Vec3,
+    count_scale: f32,
 }
 
 /// A particle: the system it is of, the order it was made in, the step it was made at, its rank
@@ -144,6 +148,22 @@ impl ParticleRun {
             made: 0,
             now: 0,
         }
+    }
+
+    /// Plays one of `lists`, drawn at random, as `play` plays it; none of no list.
+    pub(crate) fn play_one(
+        &mut self,
+        book: &EffectBook,
+        lists: &[ListId],
+        source: Affine3A,
+        ground: impl Fn(f32, f32) -> f32,
+    ) {
+        let count = u64::try_from(lists.len()).expect("a count fits u64");
+        if count == 0 {
+            return;
+        }
+        let at = usize::try_from(self.below(count)).expect("an index below the count");
+        self.play(book, lists[at], source, ground);
     }
 
     /// Plays the list `list` of `book` from `source`, the place and the turn of what plays it
@@ -234,6 +254,31 @@ impl ParticleRun {
         }
     }
 
+    /// Stops the system of `key` from emitting until it resumes, if it is still alive; it keeps
+    /// its particles and its life (`ParticleSystem::stop`).
+    pub(crate) fn stop(&mut self, key: SystemKey) {
+        if let Some(system) = self.live_mut(key) {
+            system.stopped = true;
+        }
+    }
+
+    /// Lets the system of `key` emit again, if it is still alive (`ParticleSystem::start`).
+    pub(crate) fn resume(&mut self, key: SystemKey) {
+        if let Some(system) = self.live_mut(key) {
+            system.stopped = false;
+        }
+    }
+
+    /// Scales the velocity of the particles the system of `key` makes by `velocity`, on its own
+    /// axes, and its bursts' counts by `count`, if it is still alive (`setVelocityMultiplier`,
+    /// `setBurstCountMultiplier`).
+    pub(crate) fn scale(&mut self, key: SystemKey, velocity: Vec3, count: f32) {
+        if let Some(system) = self.live_mut(key) {
+            system.velocity_scale = velocity;
+            system.count_scale = count;
+        }
+    }
+
     /// The particles alive, in no order.
     pub(crate) fn particles(&self) -> impl Iterator<Item = &Particle> {
         self.particles.iter().filter(|particle| particle.alive)
@@ -293,16 +338,24 @@ impl ParticleRun {
         let system = self.system(slot);
         let spec = &book.system(system.id).spec;
         let emits = !system.destroyed
+            && !system.stopped
             && (system.forever || system.life_left > 0)
             && system.master.is_none();
         if !emits {
             return;
         }
+        let count_scale = system.count_scale;
         if system.burst_left > 0 {
             self.system_mut(slot).burst_left -= 1;
             return;
         }
         let count = Self::whole(self.draw(spec.burst_count));
+        // The game truncates the drawn count, then its product by the scale.
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "a burst's count lies far below 2²⁴"
+        )]
+        let count = Self::whole(count as f32 * count_scale);
         let rank = spec.rank;
         let above_ground_only = spec.above_ground_only;
         for number in 0..count {
@@ -342,7 +395,7 @@ impl ParticleRun {
     ) -> ParticleStart {
         let spec = &book.system(self.system(slot).id).spec;
         let local = self.volume_point(spec);
-        let velocity = self.velocity(spec, local);
+        let velocity = self.velocity(spec, local) * self.system(slot).velocity_scale;
         let system = self.system(slot);
         let placement = system.placement;
         let now = Vec3::from(placement.translation);
@@ -728,6 +781,9 @@ impl ParticleRun {
             rider: None,
             size_bonus: 0.0,
             particles: 0,
+            stopped: false,
+            velocity_scale: Vec3::ONE,
+            count_scale: 1.0,
         };
         let slot = if let Some(free) = self.free_systems.pop() {
             self.systems[Self::index(free)].system = Some(system);
@@ -921,6 +977,79 @@ impl ParticleRun {
 
     fn index(slot: u32) -> usize {
         usize::try_from(slot).expect("a u32 fits usize")
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod samples {
+    use std::collections::BTreeMap;
+
+    use bevy::math::Vec3;
+    use campfire_client_files::{
+        AlphaKey, Blend, ColorKey, EffectsFile, EmissionVelocity, EmissionVolume, ParticleSystem,
+        Spread,
+    };
+    use campfire_common::DeclaredName;
+    use campfire_values::PackagePath;
+
+    use crate::view::effects::effect_book::EffectBook;
+
+    /// A system of one particle a burst, every step, each living 100 steps at rest, of size 1, opaque
+    /// white, of no drift, damping or gravity.
+    pub(crate) fn system() -> ParticleSystem {
+        ParticleSystem {
+            rank: Some(0),
+            blend: Blend::Alpha,
+            texture: PackagePath::parse("client/textures/spark.ktx2").unwrap(),
+            ground_aligned: false,
+            up_towards_emitter: false,
+            above_ground_only: false,
+            angle: Spread::ZERO,
+            angular_rate: Spread::ZERO,
+            angular_damping: Spread::of(1.0),
+            velocity_damping: Spread::of(1.0),
+            gravity: 0.0,
+            drift: Vec3::ZERO,
+            lifetime: Spread::of(100.0),
+            system_lifetime: 0,
+            size: Spread::of(1.0),
+            start_size_rate: Spread::ZERO,
+            size_rate: Spread::ZERO,
+            size_rate_damping: Spread::of(1.0),
+            alpha: vec![AlphaKey {
+                alpha: Spread::of(1.0),
+                at: 0,
+            }],
+            color: vec![ColorKey {
+                color: [1.0; 3],
+                at: 0,
+            }],
+            color_scale: Spread::ZERO,
+            burst_delay: Spread::ZERO,
+            burst_count: Spread::of(1.0),
+            initial_delay: Spread::ZERO,
+            velocity: EmissionVelocity::Still,
+            volume: EmissionVolume::Point,
+            hollow: false,
+            slave: None,
+            attached: None,
+        }
+    }
+
+    pub(crate) fn name(text: &str) -> DeclaredName {
+        DeclaredName::new(text).unwrap()
+    }
+
+    /// The book of `systems`, by their names, of a cap of `cap` particles.
+    pub(crate) fn book(
+        cap: u32,
+        systems: impl IntoIterator<Item = (&'static str, ParticleSystem)>,
+    ) -> EffectBook {
+        let systems: BTreeMap<_, _> = systems
+            .into_iter()
+            .map(|(text, system)| (name(text), system))
+            .collect();
+        EffectBook::new(&EffectsFile::new(1.0 / 30.0, cap, systems, BTreeMap::new()).unwrap())
     }
 }
 

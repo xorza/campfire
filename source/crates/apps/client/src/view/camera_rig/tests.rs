@@ -215,3 +215,51 @@ fn scrolling_moves_the_pivot_across_and_along_the_screen_within_the_map() {
     rig.scroll(0.0, 1.0, 2.0);
     assert_eq!(rig.pivot().y, -1000.0);
 }
+
+#[test]
+fn a_console_sets_the_pose_within_the_rigs_limits_and_reads_it_back() {
+    let bounds = [Vec2::new(-100.0, -50.0), Vec2::new(100.0, 50.0)];
+    let mut rig = CameraRig::new(SHIPPED, Vec2::ZERO, Some(bounds));
+    let pose = CameraPose {
+        pivot: [10.0, -20.0],
+        yaw: 1.5,
+        pitch: 0.5,
+        height: 200.0,
+    };
+    rig.set_pose(pose);
+    assert_eq!(rig.pose(), pose);
+    // Past its limits: the pivot to the map's corner, the pitch to 10° and 89°, the height to
+    // 120 m and 310 m.
+    rig.set_pose(CameraPose {
+        pivot: [500.0, -500.0],
+        yaw: -1.0,
+        pitch: 0.0,
+        height: 1000.0,
+    });
+    assert_eq!(
+        rig.pose(),
+        CameraPose {
+            pivot: [100.0, -50.0],
+            yaw: -1.0,
+            pitch: PITCH_LEAST,
+            height: 310.0,
+        }
+    );
+    rig.set_pose(CameraPose {
+        pitch: 2.0,
+        height: 0.0,
+        ..pose
+    });
+    assert_eq!((rig.pose().pitch, rig.pose().height), (PITCH_MOST, 120.0));
+    // A look at a point moves the pivot alone, within the map.
+    rig.look_at(Vec2::new(30.0, 80.0));
+    assert_eq!(
+        rig.pose(),
+        CameraPose {
+            pivot: [30.0, 50.0],
+            pitch: PITCH_MOST,
+            height: 120.0,
+            ..pose
+        }
+    );
+}

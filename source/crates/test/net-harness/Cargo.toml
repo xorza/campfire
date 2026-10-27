@@ -55,6 +55,7 @@ criterion = { workspace = true, features = ["cargo_bench_support"] }
 [dev-dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
 campfire-combat = { workspace = true, features = ["internals"] }
+campfire-console.workspace = true
 campfire-navigation = { workspace = true, features = ["internals"] }
 campfire-net-messages = { workspace = true, features = ["internals"] }
 campfire-net-timeline = { workspace = true, features = ["internals"] }

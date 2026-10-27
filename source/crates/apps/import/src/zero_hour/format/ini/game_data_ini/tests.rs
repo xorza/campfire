@@ -30,6 +30,26 @@ fn a_field_keeps_the_default_until_a_file_sets_it_and_the_last_file_wins() {
     ini.read(b"GameData\n  MaxParticleCount = 2500\nEnd\n")
         .unwrap();
     assert_eq!(ini.max_particles, 2500);
+    // Gravity: −1 a frame squared by default, −900 a second squared at 30 frames a second; the
+    // shipped −64 once it reads.
+    assert_eq!(ini.gravity, -900.0);
+    ini.read(b"GameData\n  Gravity = -64.0\nEnd\n").unwrap();
+    assert_eq!(ini.gravity, -64.0);
+    // No track by default, of none at once; the shipped 100 once they read, and a count past a
+    // `u16` refused.
+    assert_eq!((ini.track_marks, ini.most_tracks), (false, 0));
+    ini.read(b"GameData\n  MakeTrackMarks = Yes\n  MaxTerrainTracks = 100\nEnd\n")
+        .unwrap();
+    assert_eq!((ini.track_marks, ini.most_tracks), (true, 100));
+    assert!(
+        ini.read(b"GameData\n  MaxTerrainTracks = 70000\nEnd\n")
+            .is_err()
+    );
+    // The ground's stiffness: 0.5 by default, the shipped 0.8 once it reads.
+    assert_eq!(ini.ground_stiffness, 0.5);
+    ini.read(b"GameData\n  GroundStiffness = 0.8\nEnd\n")
+        .unwrap();
+    assert_eq!(ini.ground_stiffness, 0.8);
     // The damage thresholds, 0.5 and 0.1 by default, the shipped 0.7 and 0.35 once they read.
     let thresholds = |ini: &GameDataIni| [ini.damaged_threshold, ini.really_damaged_threshold];
     assert_eq!(thresholds(&ini), [0.5, 0.1]);

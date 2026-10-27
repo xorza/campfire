@@ -13,6 +13,7 @@
 )]
 
 mod appended;
+mod base64;
 mod batch;
 mod binary;
 mod compare;
@@ -30,9 +31,11 @@ mod toml_document;
 mod toml_table;
 mod toml_value;
 
+pub use crate::base64::Base64;
 pub use crate::binary::{Binary, Decoded};
 pub use crate::error::{
-    BinaryError, JsonError, Malformed, PngError, TaggedError, TomlError, TomlWriteError,
+    Base64Error, BinaryError, JsonError, Malformed, PngError, TaggedError, TomlError,
+    TomlWriteError,
 };
 pub use crate::json::Json;
 pub use crate::json_value::JsonValue;

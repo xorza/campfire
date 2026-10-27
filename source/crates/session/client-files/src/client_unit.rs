@@ -4,9 +4,12 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::client_model::{ClientModel, ModelTop};
+use crate::death_fall::DeathFall;
 use crate::set_match::SetMatch;
 use crate::state_animation::{AnimationMode, StateAnimation};
 use crate::state_set::StateSet;
+use crate::tread_look::TreadLook;
+use crate::wreck::WreckList;
 
 /// A unit type's look: its draws, each of which draws its own state at its unit's place, all of
 /// them; the look of each of its type's variations; the angle in degrees a client's preview of a
@@ -45,12 +48,15 @@ pub struct ClientUnit {
     pub end: Option<DeclaredName>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trail: Option<DeclaredName>,
+    #[serde(default, skip_serializing_if = "TreadLook::is_empty")]
+    pub tread: TreadLook,
 }
 
 /// What a unit of a type plays as it dies, each effect by its name in the effects file: as it
 /// dies, at the middle of the time its type keeps it dead, and as it goes, as Zero Hour's slow
 /// death plays an FX list in its `INITIAL`, `MIDPOINT` and `FINAL` phases (effects.md, A death
-/// plays its phases).
+/// plays its phases); the wrecks each phase throws; and an aircraft's fall (wrecks.md, A death
+/// names its wrecks by phase; wrecks.md, An aircraft's death falls as a wreck).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeathLook {
@@ -60,6 +66,22 @@ pub struct DeathLook {
     pub middle: Vec<DeclaredName>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub end: Vec<DeclaredName>,
+    #[serde(default, skip_serializing_if = "DeathWrecks::is_empty")]
+    pub wrecks: DeathWrecks,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fall: Option<DeathFall>,
+}
+
+/// The wrecks each phase of a death throws, of each a list drawn at random.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeathWrecks {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub start: Vec<WreckList>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub middle: Vec<WreckList>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub end: Vec<WreckList>,
 }
 
 impl DeathLook {
@@ -68,9 +90,28 @@ impl DeathLook {
         start: Vec::new(),
         middle: Vec::new(),
         end: Vec::new(),
+        wrecks: DeathWrecks::NONE,
+        fall: None,
     };
 
     /// Whether it plays nothing.
+    pub const fn is_empty(&self) -> bool {
+        self.start.is_empty()
+            && self.middle.is_empty()
+            && self.end.is_empty()
+            && self.wrecks.is_empty()
+            && self.fall.is_none()
+    }
+}
+
+impl DeathWrecks {
+    /// No wreck.
+    pub const NONE: Self = Self {
+        start: Vec::new(),
+        middle: Vec::new(),
+        end: Vec::new(),
+    };
+
     pub const fn is_empty(&self) -> bool {
         self.start.is_empty() && self.middle.is_empty() && self.end.is_empty()
     }
@@ -189,6 +230,10 @@ impl ClientUnit {
             death: DeathLook::NONE,
             end: None,
             trail: None,
+            tread: TreadLook {
+                systems: Vec::new(),
+                track: None,
+            },
         }
     }
 

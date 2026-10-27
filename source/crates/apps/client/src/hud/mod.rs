@@ -213,6 +213,16 @@ struct Gauged {
     slots: Option<Vec<SlotRows>>,
 }
 
+impl Gauged {
+    /// Takes the gauges of the drawing `root` down: its stand, and its mark of gauges.
+    fn take_down(&self, root: Entity, commands: &mut Commands<'_, '_>) {
+        if let Some(stand) = self.stand {
+            commands.entity(stand).despawn();
+        }
+        commands.entity(root).remove::<Self>();
+    }
+}
+
 /// The gauges of each drawing's root.
 type Roots<'w, 's> = Query<'w, 's, &'static Gauged>;
 
@@ -322,6 +332,7 @@ impl Plugin for HudPlugin {
         app.add_systems(
             Update,
             (
+                Self::take_down_torn,
                 Self::regauge,
                 Self::reside,
                 Self::add_gauges,
@@ -481,10 +492,7 @@ impl HudPlugin {
             if scratch.slots == *rows {
                 continue;
             }
-            if let Some(stand) = gauged.stand {
-                commands.entity(stand).despawn();
-            }
-            commands.entity(drawing.root()).remove::<Gauged>();
+            gauged.take_down(drawing.root(), &mut commands);
         }
     }
 
@@ -497,13 +505,9 @@ impl HudPlugin {
         mut commands: Commands<'_, '_>,
     ) {
         let mut take_down = |root: Entity| {
-            let Ok(gauged) = roots.get(root) else {
-                return;
-            };
-            if let Some(stand) = gauged.stand {
-                commands.entity(stand).despawn();
+            if let Ok(gauged) = roots.get(root) {
+                gauged.take_down(root, &mut commands);
             }
-            commands.entity(root).remove::<Gauged>();
         };
         if relations.is_empty() {
             for drawing in &moved {
@@ -512,6 +516,20 @@ impl HudPlugin {
         } else {
             for root in &gauged {
                 take_down(root);
+            }
+        }
+    }
+
+    /// Takes down the gauges of each drawing torn off its unit, as an aircraft's falls as a wreck
+    /// of its own (wrecks.md, An aircraft's death falls as a wreck).
+    fn take_down_torn(
+        mut torn: RemovedComponents<'_, '_, DrawingOf>,
+        roots: Roots<'_, '_>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        for root in torn.read() {
+            if let Ok(gauged) = roots.get(root) {
+                gauged.take_down(root, &mut commands);
             }
         }
     }

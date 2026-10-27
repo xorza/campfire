@@ -1,8 +1,9 @@
 //! A session's host, apart from the network stack: the server's phase, player slots, bots, data and
 //! checkpoints, the client's join state and the inputs it sent, the session's messages, the
-//! clocks both ends read, and the events their logs hold.
+//! clocks both ends read, the events their logs hold, and a game's console.
 
 mod client;
+mod console;
 mod error;
 mod events;
 mod faults;
@@ -34,6 +35,9 @@ pub use crate::client::sent_inputs::SentInputs;
 pub use crate::client::server_pin::ServerPin;
 pub use crate::client::session_signer::SessionSigner;
 pub use crate::client::tick_run::TickRun;
+pub use crate::console::console_stdio::ConsoleStdio;
+pub use crate::console::log_seen::LogSeen;
+pub use crate::console::match_console::MatchConsole;
 pub use crate::error::{
     JoinError, JournalRefusal, OrderFileError, ReceiptRefusal, ReportLogError, ReportReadError,
     ReportWriteError,

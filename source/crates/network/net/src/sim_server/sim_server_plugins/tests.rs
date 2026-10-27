@@ -30,7 +30,7 @@ fn every_schedule_of_the_server_runs_on_the_thread_that_updates_it() {
     app.init_resource::<Ran>();
     app.add_systems(First, record)
         .add_systems(PreUpdate, record)
-        .add_systems(Update, record.after(ServerFrameSystems::Saves))
+        .add_systems(Update, record.after(ServerFrameSystems::Console))
         .add_systems(PostUpdate, record)
         .add_systems(Last, record);
     app.finish();

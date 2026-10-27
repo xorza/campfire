@@ -6,6 +6,7 @@ use bevy_ecs::observer::On;
 use bevy_ecs::query::Allow;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut};
+use campfire_combat::Decay;
 use campfire_harness::MatchUnits;
 use campfire_math::Num;
 use campfire_navigation::Progress;
@@ -70,8 +71,19 @@ fn a_death_reaches_the_client_through_the_servers_longest_frame() {
     let ran = local.server().world().resource::<SimTick>().start().get() - before.get();
     assert_eq!(ran, SimTick::FRAME_MOST.get());
     assert!(local.unit(End::Server, id).contains::<Dead>());
+    let decay = local.unit(End::Server, id).get::<Decay>().copied();
+    assert_eq!(
+        decay.map(|decay| decay.at),
+        Some(before.after(SimTick::FRAME_MOST))
+    );
     local.step();
     assert_eq!(local.client(0).world().resource::<SeenDead>().0, [id]);
+    // Its decay reaches the client with its death, so the client tells its end from its leaving
+    // the client's sight (04-capabilities/combat.md, A death's decay reaches its clients).
+    assert_eq!(
+        local.unit(End::Client(0), id).get::<Decay>().copied(),
+        decay
+    );
     // It goes at the end of the 9th tick after its death, on the server and then on the client.
     local.step();
     assert!(local.server().world().entity_of(id).is_none());

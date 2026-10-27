@@ -52,6 +52,7 @@ campfire-app-threads.workspace = true
 campfire-bots.workspace = true
 campfire-capabilities.workspace = true
 campfire-common.workspace = true
+campfire-console.workspace = true
 campfire-declarations.workspace = true
 campfire-host.workspace = true
 campfire-log.workspace = true

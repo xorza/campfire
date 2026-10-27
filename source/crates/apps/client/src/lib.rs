@@ -9,9 +9,10 @@ use std::sync::Arc;
 use bevy::app::App;
 use campfire_bots::{BotNames, BotScript};
 use campfire_common::{ErrorReport, ExitStatus};
-use campfire_host::{KeyFile, OrderFile, Os, SessionSigner, exit_code};
+use campfire_console::GameRole;
+use campfire_host::{ConsoleStdio, KeyFile, OrderFile, Os, SessionSigner, exit_code};
 use campfire_logging::Logging;
-use campfire_net::SimClientPlugin;
+use campfire_net::{ClientConsole, SimClientPlugin};
 use campfire_net_connection::Connect;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
@@ -20,7 +21,7 @@ use campfire_store::SecretFile;
 use tracing::error;
 
 use crate::client_module::ClientEnd;
-use crate::command_line::{Args, CommandLine};
+use crate::command_line::{Args, CommandLine, ConsoleArg};
 use crate::connection::Connection;
 use crate::link_watch::LinkWatchPlugin;
 
@@ -70,7 +71,7 @@ const FILE_FILTER: &str = "info,campfire_client=debug,campfire_host=debug,campfi
 
 /// Runs the client as its command line asks, and gives the exit code it ends with.
 pub fn run() -> ExitCode {
-    let _log = Logging {
+    let log = Logging {
         terminal: TERMINAL_FILTER,
         file: FILE_FILTER,
     }
@@ -115,7 +116,12 @@ pub fn run() -> ExitCode {
             return ExitCode::from(ExitStatus::Usage);
         }
     };
-    let mut connection = match Connection::open(&args, role, &packages) {
+    // Opened before the server, so its tool hears the client at once.
+    let stdio = args
+        .console
+        .map(|ConsoleArg::Stdio| ConsoleStdio::open(GameRole::Client, &log.tap));
+    let seen = stdio.as_ref().map(ConsoleStdio::seen);
+    let mut connection = match Connection::open(&args, role, &packages, seen) {
         Ok(connection) => connection,
         Err(code) => return code,
     };
@@ -151,6 +157,10 @@ pub fn run() -> ExitCode {
     let mut app = App::new();
     end.add(&mut app, &packages);
     app.add_plugins((sim_client, LinkWatchPlugin));
+    if let Some(stdio) = stdio {
+        app.insert_resource(stdio);
+        app.init_resource::<ClientConsole>();
+    }
     let client = SimClientPlugin::spawn(app.world_mut());
     if let Err(code) = connection.link(&mut app, client) {
         return code;

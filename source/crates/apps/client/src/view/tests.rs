@@ -31,6 +31,7 @@ use campfire_values::{ActionId, DamageKind, PackageIndex, PackagePath, Rank};
 use super::*;
 use crate::test_app;
 use crate::view::area_view::{AREA_LIFT, AreaViewPlugin};
+use crate::view::drawing::TearOff;
 use crate::view::look_states::LookStatesPlugin;
 use crate::view::map_metric::MapMetric;
 use crate::view::match_colors::Paint;
@@ -182,6 +183,38 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     let world = app.world_mut();
     assert_eq!(world.query::<&DrawingOf>().iter(world).count(), 0);
     assert_eq!(world.query::<&Figure>().iter(world).count(), 0);
+
+    // A drawing torn off its unit stands where it stood, glides no more and outlives the unit,
+    // which is drawn no more (wrecks.md, An aircraft's death falls as a wreck).
+    let unit = app
+        .world_mut()
+        .spawn((
+            ids.allocate(),
+            BodyUnit,
+            Position::from((1, 0, 0)),
+            team,
+            UNDRAWN,
+        ))
+        .id();
+    app.update();
+    let (torn, _, at) = root(app.world(), unit);
+    app.world_mut()
+        .commands()
+        .queue(TearOff { unit, root: torn });
+    *app.world_mut().get_mut::<Position>(unit).unwrap() = Position::from((5, 0, 0));
+    app.update();
+    let world = app.world_mut();
+    assert_eq!(world.query::<&DrawingOf>().iter(world).count(), 0);
+    assert!(world.get::<Undrawn>(unit).is_some());
+    assert!(world.get::<Glide>(torn).is_none());
+    assert_eq!(world.get::<Transform>(torn).unwrap().translation, at);
+    world.despawn(unit);
+    app.update();
+    assert!(
+        app.world()
+            .get::<Figure>(app.world().get::<Look>(torn).unwrap().figure)
+            .is_some()
+    );
 }
 
 #[test]

@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use bevy_app::{App, AppExit, Update};
 use bevy_ecs::bundle::Bundle;
@@ -28,6 +28,7 @@ use campfire_host::Listening;
 use campfire_host::Pace;
 use campfire_host::Reports;
 use campfire_host::ServerDir;
+use campfire_host::{ConsoleStdio, LogSeen, MatchConsole};
 
 /// What a server's app is built from: the session it opens, its data directory, which it holds
 /// locked, its end `endpoint` of its transport, which starts with the app, and how it runs.
@@ -43,19 +44,26 @@ pub struct ServerAppSetup<E> {
 #[derive(Debug)]
 pub enum ServerRun {
     /// It logs `listening` once its transport listens, and exits once its session ends, or at a
-    /// signal `stop` caught, with its code, the session left in its journal for the next start
-    /// to restore (08-sessions.md, A stop is an exit, not a crash).
+    /// signal `stop` caught or the end of its console's input, with its code, the session left in
+    /// its journal for the next start to restore (08-sessions.md, A stop is an exit, not a
+    /// crash; console.md, A game stops as its console's input ends). Its `console`, when it has
+    /// one, answers between its ticks.
     Dedicated {
         stop: StopSignals,
         listening: Listening,
+        console: Option<Box<ConsoleStdio>>,
     },
     /// It follows its client's `pace`, exits once its session ends, as its client asks by
     /// `stop`, and writes its log into its client's reports, of the data directory `reports`
-    /// (08-sessions.md, The log is the local server's, published at the report's tick).
+    /// (08-sessions.md, The log is the local server's, published at the report's tick). With a
+    /// console, its client's, which `seen` the tap of, it answers the requests its client
+    /// forwards, and holds the match paused after its first tick (console.md, A console's local
+    /// match starts paused).
     Local {
         stop: Arc<AtomicBool>,
         pace: Arc<Pace>,
         reports: ClientLayout,
+        console: Option<Arc<Mutex<LogSeen>>>,
     },
 }
 
@@ -88,7 +96,11 @@ impl<E: Bundle> ServerAppSetup<E> {
             PacedRunnerPlugin,
         ));
         match run {
-            ServerRun::Dedicated { stop, listening } => {
+            ServerRun::Dedicated {
+                stop,
+                listening,
+                console,
+            } => {
                 app.add_observer(
                     move |added: On<'_, '_, Add<Linked>>,
                           servers: Query<'_, '_, (), With<Server>>| {
@@ -97,22 +109,35 @@ impl<E: Bundle> ServerAppSetup<E> {
                         }
                     },
                 );
+                if let Some(stdio) = console {
+                    app.insert_resource(MatchConsole::new(None, Arc::clone(stdio.seen())));
+                    app.insert_resource(*stdio);
+                }
                 app.add_systems(
                     Update,
                     (ServerRun::exit_due, move |world: &mut World| {
-                        if stop.is_received() {
+                        let ended = world
+                            .get_resource::<ConsoleStdio>()
+                            .is_some_and(ConsoleStdio::is_ended);
+                        if stop.is_received() || ended {
                             world.write_message(AppExit::from_code(ExitStatus::Interrupted.code()));
                         }
                     })
                         .chain()
-                        .after(ServerFrameSystems::Saves),
+                        .after(ServerFrameSystems::Console),
                 );
             }
             ServerRun::Local {
                 stop,
                 pace,
                 reports,
+                console,
             } => {
+                if let Some(seen) = console {
+                    let console = MatchConsole::new(Some(Arc::clone(&pace)), seen);
+                    console.hold_first_tick();
+                    app.insert_resource(console);
+                }
                 app.add_plugins(LocalPacePlugin {
                     pace,
                     tick_rate: MatchRate::new(tick_hz).rate(),
@@ -121,7 +146,7 @@ impl<E: Bundle> ServerAppSetup<E> {
                 app.insert_resource(Reports::new(reports));
                 app.add_systems(
                     Update,
-                    ServerRun::exit_local.after(ServerFrameSystems::Saves),
+                    ServerRun::exit_local.after(ServerFrameSystems::Console),
                 );
             }
         }

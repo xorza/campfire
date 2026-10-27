@@ -10,6 +10,7 @@ use crate::zero_hour::format::ini::object_ini::fight_data::{FightBlock, FightDat
 use crate::zero_hour::format::ini::object_ini::ini_animation::IniAnimation;
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, ProductionModule};
 use crate::zero_hour::format::ini::object_ini::ini_death::IniDeath;
+use crate::zero_hour::format::ini::object_ini::ini_fall::IniFall;
 use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::IniUpgradeModule;
@@ -20,6 +21,7 @@ pub(crate) mod fight_data;
 pub(crate) mod ini_animation;
 pub(crate) mod ini_build;
 pub(crate) mod ini_death;
+pub(crate) mod ini_fall;
 pub(crate) mod ini_recoil;
 pub(crate) mod ini_supply;
 pub(crate) mod ini_upgrade_module;
@@ -77,6 +79,10 @@ pub(crate) struct IniObject {
     fight: FightData,
     upgrades: Vec<IniUpgradeModule>,
     deaths: Vec<IniDeath>,
+    /// Its `PhysicsBehavior`'s `Mass`, 1 when it has none, as `DEFAULT_MASS`.
+    mass: f32,
+    /// Its `LifetimeUpdate`'s `MinLifetime` and `MaxLifetime`, in milliseconds.
+    lifetime_ms: Option<[f32; 2]>,
 }
 
 /// The kinds of an object's `KindOf` that the import reads: those that decide who draws its placed
@@ -99,6 +105,7 @@ pub(crate) struct ObjectKinds {
     fs_base_defense: bool,
     infantry: bool,
     vehicle: bool,
+    hulk: bool,
 }
 
 /// An object's geometry as the game reads it (`GeometryInfo`): its shape, its radii and its
@@ -152,11 +159,12 @@ pub(crate) struct DrawModule {
     /// `ProjectileBoneFeedbackEnabledSlots`.
     pub(crate) rounds_shown: [bool; 3],
     pub(crate) recoil: IniRecoil,
-    /// Whether it throws tread dust as its object moves, as a `W3DTankDraw`, the
-    /// `W3DOverlordTankDraw` that extends it and a `W3DTankTruckDraw` do, `TrackDebrisDirtLeft` and `TrackDebrisDirtRight` when they name
-    /// none; and whether it lays track marks, as a `TrackMarks` texture names them.
-    pub(crate) tread_dust: bool,
-    pub(crate) track_marks: bool,
+    /// The particle systems its treads throw as its object moves, as a `W3DTankDraw`, the
+    /// `W3DOverlordTankDraw` that extends it and a `W3DTankTruckDraw` do, `TreadDebrisLeft` and
+    /// `TreadDebrisRight`, `TrackDebrisDirtLeft` and `TrackDebrisDirtRight` when they name none;
+    /// and the texture of the track marks it lays, its `TrackMarks`.
+    pub(crate) tread_dust: Option<[String; 2]>,
+    pub(crate) track_marks: Option<String>,
     sets: Vec<ConditionSet>,
     states: Vec<DrawState>,
     ignored: ConditionSet,
@@ -258,6 +266,7 @@ const MP_COUNT_FOR_VICTORY: &str = "mp_count_for_victory";
 const FS_BASE_DEFENSE: &str = "fs_base_defense";
 const INFANTRY: &str = "infantry";
 const VEHICLE: &str = "vehicle";
+const HULK: &str = "hulk";
 
 /// The locomotor set an object moves by, of `TheLocomotorSetNames`.
 const SET_NORMAL: &str = "set_normal";
@@ -342,6 +351,10 @@ enum Block {
     Supply(SupplyModule),
     /// An upgrade module, the object's last.
     Upgrade,
+    /// A `PhysicsBehavior`, whose mass a wreck reads.
+    Physics,
+    /// A `LifetimeUpdate`, whose lifetime a wreck reads.
+    Lifetime,
     /// A slow death module, the object's last.
     Death,
     Other,
@@ -450,6 +463,8 @@ impl ObjectFiles {
                 fight: FightData::default(),
                 upgrades: Vec::new(),
                 deaths: Vec::new(),
+                mass: 1.0,
+                lifetime_ms: None,
             },
             Some(base) => IniObject {
                 id,
@@ -557,6 +572,7 @@ impl ObjectKinds {
             FS_BASE_DEFENSE => &mut self.fs_base_defense,
             INFANTRY => &mut self.infantry,
             VEHICLE => &mut self.vehicle,
+            HULK => &mut self.hulk,
             _ => return,
         };
         *kind = set;
@@ -653,8 +669,8 @@ impl DrawModule {
             turret_pitch: None,
             rounds_shown: [false; 3],
             recoil: IniRecoil::default(),
-            tread_dust: false,
-            track_marks: false,
+            tread_dust: None,
+            track_marks: None,
             animation: IniAnimation::default(),
             sets: vec![ConditionSet::default()],
             states: Vec::new(),
@@ -907,8 +923,21 @@ impl IniObject {
         let applies = self
             .deaths
             .iter()
-            .filter(|death| death.effect.is_none() && death.applies());
+            .filter(|death| death.effect.is_none() && death.fall.is_none() && death.applies());
         applies.rev().max_by_key(|death| death.weight)
+    }
+
+    /// The fall a normal death of it takes, its first aircraft's slow death that applies; none
+    /// when none does.
+    pub(crate) fn fall(&self) -> Option<&IniFall> {
+        self.fall_death()?.fall.as_ref()
+    }
+
+    /// The aircraft's slow death a normal death of it takes, its first that applies; none when
+    /// none does.
+    pub(crate) fn fall_death(&self) -> Option<&IniDeath> {
+        let mut applies = self.deaths.iter().filter(|death| death.applies());
+        applies.find(|death| death.fall.is_some())
     }
 
     /// The effect list a normal death of it plays: the `DeathFX` of its first `FXListDie` that
@@ -949,6 +978,22 @@ impl IniObject {
     /// Whether it is a vehicle, of `KindOf`.
     pub(crate) const fn is_vehicle(&self) -> bool {
         self.kinds.vehicle
+    }
+
+    /// Whether it is a hulk, of `KindOf`: a wreck of a death, which no rule reads.
+    pub(crate) const fn is_hulk(&self) -> bool {
+        self.kinds.hulk
+    }
+
+    /// Its mass, its `PhysicsBehavior`'s, which a force pushes it by.
+    pub(crate) const fn mass(&self) -> f32 {
+        self.mass
+    }
+
+    /// The least and the most of its lifetime in milliseconds, its `LifetimeUpdate`'s; none for
+    /// an object of none.
+    pub(crate) const fn lifetime_ms(&self) -> Option<[f32; 2]> {
+        self.lifetime_ms
     }
 
     /// Whether it is a wall, which a projectile of `WALLS` detonates on: a fence, of a
@@ -1020,6 +1065,8 @@ impl Reading {
             | Block::Production(_)
             | Block::Supply(_)
             | Block::Upgrade
+            | Block::Physics
+            | Block::Lifetime
             | Block::Death
             | Block::Other => Ok(None),
         }
@@ -1131,7 +1178,14 @@ impl Reading {
                         module.rounds_shown = shown;
                     }
                     "trackmarks" if *kind == DrawKind::Family => {
-                        module.track_marks = !at.value()?.eq_ignore_ascii_case("none");
+                        let texture = at.value()?;
+                        module.track_marks =
+                            (!texture.eq_ignore_ascii_case("none")).then(|| texture.to_owned());
+                    }
+                    "treaddebrisleft" | "treaddebrisright" if module.tread_dust.is_some() => {
+                        let side = usize::from(word == "treaddebrisright");
+                        let systems = module.tread_dust.as_mut().expect("a tank draw's");
+                        at.value()?.clone_into(&mut systems[side]);
                     }
                     "modelname" if matches!(*kind, DrawKind::Tree | DrawKind::Prop) => {
                         module.model = ObjectFiles::model(tokens);
@@ -1187,10 +1241,12 @@ impl Reading {
                     _ => DrawKind::Other,
                 };
                 let mut draw = DrawModule::new(kind);
-                draw.tread_dust = matches!(
+                let tank = matches!(
                     module.as_str(),
                     "w3dtankdraw" | "w3doverlordtankdraw" | "w3dtanktruckdraw"
                 );
+                draw.tread_dust = tank
+                    .then(|| ["TrackDebrisDirtLeft", "TrackDebrisDirtRight"].map(str::to_owned));
                 self.draw = Some(draw);
                 self.stack.push(Block::Draw {
                     kind,
@@ -1227,6 +1283,20 @@ impl Reading {
                     .field(word, at)?;
                 if ObjectFiles::opens(word, tokens) {
                     self.stack.push(Block::Other);
+                }
+            }
+            Block::Physics | Block::Lifetime => {
+                let lifetime = matches!(self.stack.last(), Some(Block::Lifetime));
+                let open = self.object.as_mut().expect("a module is an object's");
+                let object = &mut open.object;
+                match word {
+                    "mass" if !lifetime => object.mass = at.real()?,
+                    "minlifetime" | "maxlifetime" if lifetime => {
+                        let ms = object.lifetime_ms.get_or_insert([0.0; 2]);
+                        ms[usize::from(word == "maxlifetime")] = at.real()?;
+                    }
+                    _ if ObjectFiles::opens(word, tokens) => self.stack.push(Block::Other),
+                    _ => {}
                 }
             }
             Block::Death => {
@@ -1282,6 +1352,16 @@ impl Reading {
                 {
                     open.object.upgrades.push(module);
                     self.stack.push(Block::Upgrade);
+                    return Ok(());
+                }
+                if word == "behavior"
+                    && let Some(block) = module.as_deref().and_then(|module| match module {
+                        "physicsbehavior" => Some(Block::Physics),
+                        "lifetimeupdate" => Some(Block::Lifetime),
+                        _ => None,
+                    })
+                {
+                    self.stack.push(block);
                     return Ok(());
                 }
                 if word == "behavior"

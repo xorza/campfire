@@ -68,6 +68,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
             entropy: Entropy::Fixed(7),
         },
         reports: ClientLayout::at(test_dir.path("client")),
+        console: None,
     })
     .unwrap();
 
@@ -265,6 +266,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
             entropy: Entropy::Fixed(7),
         },
         reports: ClientLayout::at(test_dir.path("client")),
+        console: None,
     })
     .unwrap();
     assert!(pace.is_paused());

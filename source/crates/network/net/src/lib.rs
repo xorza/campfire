@@ -23,6 +23,7 @@ pub use crate::local::local_server::{
 pub use crate::local_pace::LocalPacePlugin;
 pub use crate::net_protocol::{InputChannel, NetProtocolPlugin};
 pub use crate::paced_runner::PacedRunnerPlugin;
+pub use crate::sim_client::client_console::ClientConsole;
 pub use crate::sim_client::{LeaveRequest, PendingJournalCommands, PendingOrders, SimClientPlugin};
 pub use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
 pub use crate::sim_server::lobby::{Lobby, LobbyOpening, LobbySetup, LobbyStart};

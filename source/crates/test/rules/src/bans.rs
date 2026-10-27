@@ -128,7 +128,7 @@ const STORAGE_TYPES: [&str; 10] = [
 
 /// The calls only `codec` makes (02-engine-core.md, Serialization): each format's own encodes and
 /// decodes, and replicon's helpers over postcard.
-const CODEC_METHODS: [&str; 35] = [
+const CODEC_METHODS: [&str; 37] = [
     "postcard::to_allocvec",
     "postcard::to_allocvec_cobs",
     "postcard::to_stdvec",
@@ -158,6 +158,8 @@ const CODEC_METHODS: [&str; 35] = [
     "serde_json::to_writer_pretty",
     "serde_json::from_value",
     "serde_json::to_value",
+    "base64::Engine::encode",
+    "base64::Engine::decode",
     "toml::Value::try_into",
     "toml::map::Map::try_into",
     "bevy_replicon::postcard_utils::to_extend_mut",
@@ -291,6 +293,7 @@ pub(crate) const PROXIES: [Proxy; 7] = [
         types: &CODEC_TYPES,
         dependencies: &[
             "arrayvec",
+            "base64",
             "png",
             "postcard",
             "serde",
@@ -299,6 +302,7 @@ pub(crate) const PROXIES: [Proxy; 7] = [
             "toml",
         ],
         names: &[
+            "base64::",
             "postcard::",
             "serde_json::",
             "toml::",
@@ -432,14 +436,17 @@ fn ungrouped<'a>(clippy: &'a str, list: &str, rules: &[&str]) -> Vec<&'a str> {
 
 /// The lines of `text`, the source at `path` under `source/`, whose attribute exempts code from
 /// either lint other than as the proxies let it: only an `expect`, at a proxy's crate root, of a
-/// lint that proxy exempts, or of the types' lint at the head of a module that holds a
-/// `thread_local!` and names no other banned type, the proxy's under a `cfg_attr` too, as the
-/// platform's calls differ by OS; never `allow`, a group that holds the lint, or an attribute on
-/// an item or a statement, so a stale one fails where it applies and none hides.
+/// lint that proxy exempts; of the types' lint at the head of a module that holds a
+/// `thread_local!` and names no other banned type; or of the methods' lint at the head of a
+/// module that derives `JsonSchema` and names no banned call, as `schemars`' derive writes its
+/// schema through `serde_json::to_value`; the proxy's under a `cfg_attr` too, as the platform's
+/// calls differ by OS; never `allow`, a group that holds the lint, or an attribute on an item or
+/// a statement, so a stale one fails where it applies and none hides.
 fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
     struct Exemptions<'a> {
         path: &'a str,
         thread_module: bool,
+        schema_module: bool,
         found: Vec<usize>,
     }
     impl Exemptions<'_> {
@@ -460,7 +467,9 @@ fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
                     .iter()
                     .any(|proxy| proxy.root() == self.path && proxy.lints.contains(&name));
                 let thread_state = name == LINTS[1] && self.thread_module;
-                let allowed = inner && level == "expect" && (proxied || thread_state && !gated);
+                let schema = name == LINTS[0] && self.schema_module;
+                let allowed =
+                    inner && level == "expect" && (proxied || (thread_state || schema) && !gated);
                 if !allowed {
                     let at = lint.segments.first().expect("a lint has a name");
                     self.found.push(at.ident.span().start().line);
@@ -499,10 +508,15 @@ fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
         && !TYPE_NAMES
             .iter()
             .any(|banned| NamedPath::holds(&paths, banned));
+    let schema_module = NamedPath::holds(&paths, "JsonSchema")
+        && !(PROXIES.iter().flat_map(|proxy| proxy.names))
+            .chain(&UNOWNED_NAMES)
+            .any(|banned| NamedPath::holds(&paths, banned));
     let file = syn::parse_file(text).expect("a workspace source parses");
     let mut exemptions = Exemptions {
         path,
         thread_module,
+        schema_module,
         found: Vec::new(),
     };
     exemptions.visit_file(&file);
@@ -806,6 +820,26 @@ fn the_ban_checks_fail_on_what_breaks_them() {
             format!(
                 "{}use std::{{\n    collections::HashMap,\n}};\nthread_local! {{}}\n",
                 inner(types)
+            ),
+            vec![1],
+        ),
+        // A module that derives a JSON schema: an `expect` of the methods' lint at its head,
+        // while it names no banned call; of the types' lint, or with a banned call, it is found.
+        (
+            "crates/x/src/a.rs",
+            format!("{}#[derive(JsonSchema)]\nstruct A;\n", inner(methods)),
+            vec![],
+        ),
+        (
+            "crates/x/src/a.rs",
+            format!("{}#[derive(JsonSchema)]\nstruct A;\n", inner(types)),
+            vec![1],
+        ),
+        (
+            "crates/x/src/a.rs",
+            format!(
+                "{}#[derive(JsonSchema)]\nstruct A;\nfn f() {{\n    serde_json::to_string(&1);\n}}\n",
+                inner(methods)
             ),
             vec![1],
         ),

@@ -3,7 +3,9 @@
 //! directory, which it holds locked while it runs, keeps its key. Ctrl-C, `SIGTERM` or `SIGHUP`,
 //! each unless its start ignored it, stops it by an exit with code 130: its links close and its
 //! port mapping goes, and its session waits in the journal for the next start to restore; a
-//! second signal ends it at once.
+//! second signal ends it at once. With `--console stdio`, it answers a tool's requests on its
+//! standard streams and sends its log's events there, and the end of its input stops it as the
+//! first signal does.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info` by default). With `CAMPFIRE_LOG` set
 //! to a path, they also go there as JSON lines, filtered by `CAMPFIRE_LOG_FILTER` (Campfire's
@@ -16,12 +18,13 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use campfire_common::ErrorReport;
+use campfire_console::GameRole;
 use campfire_host::{
-    JournalFailed, KeyFile, Listening, Os, Publisher, RestoredSession, ServerBots, ServerDir,
-    ServerSetup, exit_code,
+    ConsoleStdio, JournalFailed, KeyFile, Listening, Os, Publisher, RestoredSession, ServerBots,
+    ServerDir, ServerSetup, exit_code,
 };
 use campfire_log::LogEvent;
-use campfire_logging::Logging;
+use campfire_logging::{LogTap, Logging};
 use campfire_net::{LobbyOpenError, ServerAppSetup, ServerRun, SessionOpening, UdpLinks};
 use campfire_net_core::TlsKey;
 use campfire_net_endpoint::Endpoint;
@@ -32,7 +35,7 @@ use campfire_package_disk::PackageDir;
 use campfire_platform::StopSignals;
 use tracing::{error, info};
 
-use crate::command_line::{Args, CommandLine};
+use crate::command_line::{Args, CommandLine, ConsoleArg};
 use crate::error::LaunchError;
 use crate::opening::error::OpeningError;
 use crate::opening::{Opening, OpeningSetup, RestoreWindow};
@@ -49,12 +52,12 @@ const FILE_FILTER: &str = "info,campfire_server=debug,campfire_host=debug,campfi
                            campfire_script=debug,campfire_net_prediction=debug";
 
 fn main() -> ExitCode {
-    let _log = Logging {
+    let log = Logging {
         terminal: TERMINAL_FILTER,
         file: FILE_FILTER,
     }
     .start();
-    match run() {
+    match run(&log.tap) {
         Ok(code) => code,
         Err(error) => {
             refused(&error);
@@ -63,13 +66,19 @@ fn main() -> ExitCode {
     }
 }
 
-/// Starts the server and runs it: the exit code of its end, or the refusal that ended its start.
-fn run() -> Result<ExitCode, LaunchError> {
+/// Starts the server and runs it, its console's events taken from `tap`: the exit code of its
+/// end, or the refusal that ended its start.
+fn run(tap: &LogTap) -> Result<ExitCode, LaunchError> {
     // Caught first, so a signal during the start stops the server at its first frame.
     let stop = StopSignals::catch()?;
     let line =
         Logging::command_line::<CommandLine>(env::args_os()).map_err(LaunchError::CommandLine)?;
     let args = Args::from(line);
+    // Opened before the load, so its tool hears the server at once; its requests wait for the
+    // first frame, as its input's end does.
+    let console = args
+        .console
+        .map(|ConsoleArg::Stdio| Box::new(ConsoleStdio::open(GameRole::Server, tap)));
     let scripts = args.bot_scripts()?;
     let Args {
         data,
@@ -127,7 +136,11 @@ fn run() -> Result<ExitCode, LaunchError> {
         opening: opening.session,
         data,
         endpoint: Endpoint::from(socket.serve(admission)),
-        run: ServerRun::Dedicated { stop, listening },
+        run: ServerRun::Dedicated {
+            stop,
+            listening,
+            console,
+        },
     }
     .build();
     let exit = session.in_scope(|| app.run());

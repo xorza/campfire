@@ -67,6 +67,7 @@ fn a_death_under_way_plays_its_middle_once_its_time_came_and_its_end_as_its_unit
             unit_type: UnitType::new(3),
             root,
             place: at(1.0),
+            decay: Some(Tick::new(40)),
         },
         middle: Some(second),
     };
@@ -80,8 +81,25 @@ fn a_death_under_way_plays_its_middle_once_its_time_came_and_its_end_as_its_unit
     assert_eq!(way.death.place, at(2.0));
     assert_eq!(way.step(UnitNow::Dead, None, second), DeathStep::Middle);
     assert_eq!(way.step(UnitNow::Dead, None, second * 2), DeathStep::Waits);
-    assert_eq!(way.step(UnitNow::Gone, None, second * 2), DeathStep::End);
+    assert_eq!(way.step(UnitNow::Decayed, None, second * 2), DeathStep::End);
     assert_eq!(way.death.place, at(2.0));
+    // Its unit despawned at the end of tick 40 went as it decayed when the client holds the state
+    // of tick 40 or a later one, which stands before tick 41; before, it left the client's sight,
+    // and plays no end, as does a unit of no decay.
+    let went = |received: Option<u64>| way.went(received.map(Tick::new));
+    assert_eq!(
+        [Some(41), Some(45), Some(40), None].map(went),
+        [
+            UnitNow::Decayed,
+            UnitNow::Decayed,
+            UnitNow::Left,
+            UnitNow::Left
+        ]
+    );
+    assert_eq!(way.step(UnitNow::Left, None, second * 2), DeathStep::Ends);
+    let mut staying = way;
+    staying.death.decay = None;
+    assert_eq!(staying.went(Some(Tick::new(100))), UnitNow::Left);
     // A unit that lives again plays no more of its death.
     way.middle = Some(second);
     assert_eq!(way.step(UnitNow::Living, None, second), DeathStep::Ends);

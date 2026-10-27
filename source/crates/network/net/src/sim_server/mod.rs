@@ -61,6 +61,7 @@ use crate::sim_server::pending_replay::{PendingReplay, ReplayEnd};
 use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::receipts::Receipts;
 use crate::sim_server::replay_door::ReplayDoor;
+use crate::sim_server::server_console::ServerConsole;
 use crate::sim_server::server_match::ServerMatch;
 use crate::sim_server::sim_server_world::SimServerWorld;
 use crate::sim_server::spectators::Spectators;
@@ -68,10 +69,12 @@ use crate::sim_server::team_rooms::TeamRooms;
 use crate::sim_server::viewer::Viewer;
 use campfire_host::BotDriver;
 use campfire_host::Checkpoints;
+use campfire_host::ConsoleStdio;
 use campfire_host::InputMessage;
 use campfire_host::JournalCommand;
 use campfire_host::JournalTaken;
 use campfire_host::JournalWatch;
+use campfire_host::MatchConsole;
 use campfire_host::PlayerLink;
 use campfire_host::Reports;
 use campfire_host::ServerPhase;
@@ -88,6 +91,7 @@ pub(crate) mod pending_restore;
 pub(crate) mod receipts;
 pub(crate) mod replay_door;
 pub(crate) mod server_app_setup;
+pub(crate) mod server_console;
 pub(crate) mod server_match;
 pub(crate) mod sim_server_plugins;
 pub(crate) mod sim_server_world;
@@ -135,6 +139,7 @@ impl Plugin for SimServerPlugin {
                 ServerFrameSystems::SessionUpkeep,
                 ServerFrameSystems::Receipts,
                 ServerFrameSystems::Saves,
+                ServerFrameSystems::Console,
             )
                 .chain(),
         );
@@ -207,6 +212,23 @@ impl Plugin for SimServerPlugin {
                 .run_if(session_running)
                 .in_set(ServerFrameSystems::Saves),
         );
+        // The console answers between the ticks, after the frame's own steps, and holds a run's
+        // end after each tick and as each frame starts its time (console.md, A console's local
+        // match starts paused).
+        app.add_systems(
+            Update,
+            (
+                ServerConsole::take_stdio.run_if(resource_exists::<ConsoleStdio>),
+                ServerConsole::take_links.run_if(ServerConsole::is_local),
+                MatchConsole::answer,
+                MatchConsole::hold,
+                ServerConsole::send_stdio.run_if(resource_exists::<ConsoleStdio>),
+                ServerConsole::send_links.run_if(ServerConsole::is_local),
+            )
+                .chain()
+                .distributive_run_if(resource_exists::<MatchConsole>)
+                .in_set(ServerFrameSystems::Console),
+        );
         app.add_systems(
             Last,
             SessionDir::publish_reports
@@ -244,6 +266,7 @@ impl Plugin for SimServerPlugin {
                 Self::at_boundary.run_if(in_state(ServerPhase::Running)),
                 report_deaths,
                 report_end,
+                MatchConsole::hold.run_if(resource_exists::<MatchConsole>),
             )
                 .chain()
                 .in_set(SimTickSystems),
@@ -291,8 +314,9 @@ impl Plugin for SimServerPlugin {
 /// The steps of the server's frame in `Update`, in their order, after the network stack's: what
 /// comes in from outside the session, a restore waiting or a spectator's choice; the door, which
 /// places players, before the match in the lobby and after it at the door; the session's upkeep,
-/// its checkpoints and journal; the receipts of what the journal made durable; and the players'
-/// journal commands, last, as a load ends the run. An app's own system of `Update` goes after them.
+/// its checkpoints and journal; the receipts of what the journal made durable; the players'
+/// journal commands, as a load ends the run; and the console, last, which reads the frame's
+/// world as it ends. An app's own system of `Update` goes after them.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ServerFrameSystems {
     Intake,
@@ -300,6 +324,7 @@ pub(crate) enum ServerFrameSystems {
     SessionUpkeep,
     Receipts,
     Saves,
+    Console,
 }
 
 /// The systems of a fixed tick that runs a sim tick, whose condition is checked once, before the

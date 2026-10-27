@@ -253,6 +253,13 @@ impl ModelNodes {
         Some(axes::y_up(pose.translation.to_array()).into())
     }
 
+    /// The span between its treads' bones, `TREADFX01` and `TREADFX02`, of the poses `pristine`,
+    /// as `computeTrackSpacing` measures it; none when it lacks either.
+    pub(crate) fn tread_span(&self, pristine: &[RigidPose]) -> Option<f32> {
+        let left = self.pivot_point("TREADFX01", pristine)?;
+        Some(left.distance(self.pivot_point("TREADFX02", pristine)?))
+    }
+
     /// The drawn sub-objects that show each round of a weapon slot's clip, in the order its clip
     /// fires them, as `doHideShowProjectileObjects` hides them: those its `WeaponHideShowBone`
     /// touches, one round for the whole clip; else, for each number from 01, those of its launch

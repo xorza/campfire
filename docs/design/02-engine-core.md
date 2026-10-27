@@ -80,12 +80,14 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `net-stack` | built | glue | The plugin groups that install the network stack's crates in the order they need |
 | `log` | built | problem | The events a tool reads back, the layer of their JSON lines, and the log check |
 | `logging` | built | problem | A binary's log output on the terminal and into its JSON file, and its command line's refusals |
+| `console` | built | problem | A game's console: the requests and lines a tool and the game exchange over its standard streams, their schema's fingerprint, and the names nearest one it lacks |
 | `platform` | built | proxy | The OS's promises behind one interface: no-follow opens, user-only files, durable names, shared ports and the stop's signals, a proxy crate ([Platform](#platform)) |
 | `store` | built | proxy | Files and data directories, a proxy crate ([Storage](#storage)) |
 | `threads` | built | proxy | The engine's own threads, each a job of one list, a proxy crate ([Storage](#storage)) |
 | `launcher` | planned | — | Fetches, checks and starts the engine release a server names |
 | `client` | built | app | The Bevy client |
 | `import` | built | app | Writes one reproducible package from a game's install ([Zero Hour](09-zero-hour.md)) |
+| `mcp` | built | app | The MCP server Claude Code starts, which builds and starts the games with their consoles and serves the tools that drive them |
 | `content` | planned | — | Package signatures, pinning, Blossom fetch |
 | `editor` | planned | — | Map and content editors |
 | `identity` | planned | — | Nostr keys, listings, reputation |

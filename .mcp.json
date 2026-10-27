@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "campfire": {
+      "command": "${CLAUDE_PROJECT_DIR:-.}/source/target/release-dev/campfire-mcp"
+    }
+  }
+}

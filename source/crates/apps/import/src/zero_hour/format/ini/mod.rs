@@ -3,6 +3,7 @@
 pub(crate) mod armor_ini;
 pub(crate) mod command_button_ini;
 pub(crate) mod command_set_ini;
+pub(crate) mod creation_list_ini;
 pub(crate) mod damage_type;
 pub(crate) mod error;
 pub(crate) mod fx_list_ini;

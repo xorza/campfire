@@ -175,6 +175,15 @@ impl FileBlend {
         }
     }
 
+    /// The material a ground's marks draw in over it and its overlays, of `base`, blended by its
+    /// alpha: as the overlays, but after them and before every other blended mesh, its depth
+    /// biased by `bias` over the ground's quads.
+    pub(crate) fn marks(base: StandardMaterial, bias: i32) -> FileMaterial {
+        let mut marks = Self::ground(base, bias);
+        marks.base.depth_bias = f32::MIN / 2.0;
+        marks
+    }
+
     /// The material particles of `texture` draw in, in `blend` (effects.md, Particles run on
     /// the CPU and draw as billboards of the one material): the texture tinted by each vertex's
     /// color, unlit, of both faces, writing no depth, and painted by no team.

@@ -116,6 +116,8 @@ disallowed-methods = [
     { path = "serde_json::to_writer_pretty", reason = "encode and decode through campfire_codec" },
     { path = "serde_json::from_value", reason = "encode and decode through campfire_codec" },
     { path = "serde_json::to_value", reason = "encode and decode through campfire_codec" },
+    { path = "base64::Engine::encode", reason = "encode through campfire_codec::Base64" },
+    { path = "base64::Engine::decode", reason = "decode through campfire_codec::Base64" },
     { path = "toml::Value::try_into", reason = "encode and decode through campfire_codec" },
     { path = "toml::map::Map::try_into", reason = "encode and decode through campfire_codec" },
     { path = "bevy_replicon::postcard_utils::to_extend_mut", reason = "encode and decode through campfire_codec" },

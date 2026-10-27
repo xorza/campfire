@@ -42,6 +42,7 @@ use crate::view::package_source::PackageAssets;
 use crate::view::player_camera::PlayerCameraPlugin;
 use crate::view::terrain_view::TerrainViewPlugin;
 use crate::view::unit_models::UnitModelsPlugin;
+use crate::view::view_console::ViewConsolePlugin;
 
 /// A part of a window's end, one entry of the client's one list: the matches it joins, the
 /// capabilities a mode holds for it, and the plugin it adds, so a client of any mode adds what the
@@ -285,10 +286,14 @@ impl ClientModule {
             Self::AreaView => {
                 app.add_plugins(AreaViewPlugin);
             }
+            // The camera answers a console's view, its screenshots and its moves.
             Self::PlayerCamera => {
-                app.add_plugins(PlayerCameraPlugin {
-                    start: cx.camera.copied(),
-                });
+                app.add_plugins((
+                    PlayerCameraPlugin {
+                        start: cx.camera.copied(),
+                    },
+                    ViewConsolePlugin,
+                ));
             }
             Self::UnitPicking => {
                 app.add_plugins(UnitPickingPlugin);

@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bevy_math::{Quat, Vec3};
 use campfire_client_files::{
-    ActionLook, AlphaKey, Blend, ClientUnit, ColorKey, DeathLook, EffectList, EffectsFile,
-    EmissionVelocity, EmissionVolume, ListedSystem, ParticleSystem, SlaveSystem, Spread,
+    ActionLook, AlphaKey, Blend, ClientUnit, ColorKey, EffectList, EffectsFile, EmissionVelocity,
+    EmissionVolume, ListedSystem, ParticleSystem, SlaveSystem, Spread, TrackLook, TreadLook,
 };
 use campfire_common::DeclaredName;
 use campfire_values::PackagePath;
@@ -13,8 +13,10 @@ use crate::zero_hour::axes;
 use crate::zero_hour::dropped::{Dropped, Losses};
 use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::error::{NameClash, NameError, ZeroHourError};
+use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::fx_list_ini::{FxListIni, FxNugget, NuggetKind, ParticleNugget};
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
+use crate::zero_hour::format::ini::object_ini::ini_death::DeathPhase;
 use crate::zero_hour::format::ini::particle_system_ini::{
     IniKey, IniParticleSystem, KEYS, ParticleKind, ParticlePriority, ParticleShader,
     ParticleSystemIni, VelocityKind, VolumeKind, WindMotion,
@@ -23,6 +25,7 @@ use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
 use crate::zero_hour::format::w3d::w3d_mesh::CUTOFF;
 use crate::zero_hour::game_path;
 use crate::zero_hour::import_name::ImportName;
+use crate::zero_hour::model_writer::ImportedLooks;
 
 /// The install's particle systems and effect lists as the engine's effects file
 /// (effects.md, Effects are a format of the engine; effects.md, The import hands the client
@@ -64,6 +67,10 @@ const STEP: f32 = 1.0 / 30.0;
 const STEPS_PER_MS: f32 = 30.0 / 1000.0;
 
 impl EffectsImport {
+    /// The width of a track whose model names no tread bones, 1.4 cells of 10
+    /// (`W3DTerrainTracks.cpp`, `DEFAULT_TRACK_SPACING`).
+    const TRACK_WIDTH: f32 = 14.0;
+
     /// The effects of `sources`; an error for two systems or two lists whose names give one, a
     /// texture of a name no package path holds, or a number not finite.
     pub(crate) fn of<F: Fn(&str) -> Option<ArchivePath>>(
@@ -178,17 +185,28 @@ impl EffectsImport {
     /// of the lists it holds: at its start the `DeathFX` of its first `FXListDie` that applies and
     /// the first FX list of the `INITIAL` phase of the slow death a normal death most likely
     /// takes, and at its middle and its end that death's `MIDPOINT` and `FINAL` (effects.md, A
-    /// death plays its phases). It counts what it leaves of each: a phase's other lists, the
-    /// objects and the weapons of its phases, and its draws' tread dust and track marks. An error
-    /// for an object of no name a package holds.
+    /// death plays its phases); an aircraft's fall's, of the fall the wrecks' import named; and
+    /// what its treads do, their particle systems of the file and their track: its marks'
+    /// texture, which `texture` finds and the import converts, of the look's width, or the
+    /// game's `DEFAULT_TRACK_SPACING` for a model of no tread bones (wrecks.md, A tread throws
+    /// dust while it drives; wrecks.md, A tread lays track marks). It counts what it leaves of each: a phase's
+    /// other lists and its weapons, a tread's system the file lacks and a texture no archive
+    /// holds. An error for an object of no name a package holds.
     pub(crate) fn name_deaths(
         &mut self,
         objects: &ObjectIni,
-        looks: &mut BTreeMap<DeclaredName, ClientUnit>,
-    ) -> Result<(), NameError> {
+        texture: impl Fn(&str) -> Option<ArchivePath>,
+        looks: &mut ImportedLooks,
+    ) -> Result<(), ZeroHourError> {
+        let ImportedLooks {
+            units: looks,
+            track_widths,
+            ..
+        } = looks;
         let mut losses = Losses::default();
         for object in objects.objects() {
-            let Some(look) = looks.get_mut(&ImportName::object(object).declared()?) else {
+            let declared = ImportName::object(object).declared()?;
+            let Some(look) = looks.get_mut(&declared) else {
                 continue;
             };
             let phases = object.slow_death().map(|death| &death.phases);
@@ -198,31 +216,67 @@ impl EffectsImport {
                     .map(|phase| phase.effects.first().map(String::as_str))
             });
             let [initial, midpoint, last] = firsts.unwrap_or_default();
-            look.death = DeathLook {
-                start: self.lists(object.death_effect().into_iter().chain(initial))?,
-                middle: self.lists(midpoint)?,
-                end: self.lists(last)?,
-            };
+            let death = &mut look.death;
+            death.start = self.lists(object.death_effect().into_iter().chain(initial))?;
+            death.middle = self.lists(midpoint)?;
+            death.end = self.lists(last)?;
+            if let (Some(falls), Some(fall)) = (&mut death.fall, object.fall()) {
+                falls.start.effects = self.lists(fall.start.effect.as_deref())?;
+                falls.hit.effects = self.lists(fall.hit.effect.as_deref())?;
+                falls.blow_up.effects = self.lists(fall.blow_up.effect.as_deref())?;
+                if let Some(ground) = &mut falls.ground {
+                    ground.stage.effects = self.lists(fall.ground.effect.as_deref())?;
+                }
+            }
             let name = &object.name;
+            let fall_phases = object.fall_death().map(|death| &death.phases);
+            if fall_phases
+                .is_some_and(|phases| phases.iter().any(|phase| *phase != DeathPhase::NONE))
+            {
+                losses.drop(name, EffectDropCause::FallPhase);
+            }
             for phase in phases.into_iter().flatten() {
                 if phase.effects.len() > 1 {
                     losses.drop(name, EffectDropCause::DeathChoice);
-                }
-                if phase.objects > 0 {
-                    losses.drop(name, EffectDropCause::DeathObject);
                 }
                 if phase.weapons > 0 {
                     losses.drop(name, EffectDropCause::DeathWeapon);
                 }
             }
+            let mut tread = TreadLook::default();
             for draw in object.draws() {
-                if draw.tread_dust {
-                    losses.drop(name, EffectDropCause::TreadDust);
+                for system in draw.tread_dust.iter().flatten() {
+                    let named = ImportName::latin(system).declared()?;
+                    if self.file.systems().contains_key(&named) {
+                        if !tread.systems.contains(&named) {
+                            tread.systems.push(named);
+                        }
+                    } else {
+                        losses.drop(name, EffectDropCause::NoSystem);
+                    }
                 }
-                if draw.track_marks {
-                    losses.drop(name, EffectDropCause::TrackMarks);
+                if let Some(track) = &draw.track_marks
+                    && tread.track.is_none()
+                {
+                    match texture(track) {
+                        Some(path) => {
+                            let width = track_widths.get(&declared).copied();
+                            let width = width.unwrap_or(Self::TRACK_WIDTH);
+                            let width =
+                                game_float::to_num(width).map_err(|_| ZeroHourError::Track {
+                                    name: object.name.clone(),
+                                })?;
+                            tread.track = Some(TrackLook {
+                                texture: game_path::texture(&path)?,
+                                width,
+                            });
+                            self.textures.insert(path);
+                        }
+                        None => losses.drop(name, EffectDropCause::Texture),
+                    }
                 }
             }
+            look.tread = tread;
         }
         self.dropped.extend(losses);
         Ok(())

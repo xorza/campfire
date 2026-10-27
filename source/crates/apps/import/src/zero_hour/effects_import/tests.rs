@@ -1,5 +1,8 @@
 use std::f32::consts::FRAC_PI_2;
 
+use campfire_client_files::{DeathFall, DeathLook, FallStage, GroundDeath};
+use campfire_math::Num;
+
 use super::*;
 use crate::zero_hour::format::ini::fx_list_ini::samples::FX_LISTS;
 use crate::zero_hour::format::ini::object_ini::ObjectFiles;
@@ -334,43 +337,112 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
     // A tank's death plays at its start its first `FXListDie`'s list and its slow death's first
     // `INITIAL` list, at its middle its `MIDPOINT`'s, which the file lacks, and at its end the
     // first of its two `FINAL` lists, each the file holds; a look of no object, or an object of
-    // no look, names none. The phase's other list, its hulk, its weapon and its draw's tread dust
-    // and track marks are counted, once each.
+    // no look, names none. Its tread throws the game's dirt, which the file lacks, and lays the
+    // track marks of a texture an archive holds, which the import converts. The phase's other
+    // list, its weapon and its tread's systems are counted, once each; its hulk is the wrecks'
+    // import's. A jet's death plays at its start its `FXListDie`'s list alone, and its fall,
+    // which the wrecks' import named, plays its own at its start, its hit and on the ground; its
+    // slow death's own phase is counted.
     let tank = "Object Tank\n  Draw = W3DTankDraw D\n    TrackMarks = EXTnkTrack.tga\n  End\n  \
                 Behavior = FXListDie M\n    DeathFX = FX_TankHit\n  End\n  \
                 Behavior = SlowDeathBehavior S\n    FX = INITIAL FX_TankHit\n    \
                 FX = MIDPOINT FX_Missing\n    OCL = MIDPOINT OCL_Hulk\n    OCL = FINAL OCL_Turret\n    \
                 FX = FINAL FX_TankHit\n    FX = FINAL FX_Other\n    Weapon = FINAL Blast\n  End\nEnd\n";
+    let jet = "Object Jet\n  Behavior = FXListDie M\n    DeathFX = FX_TankHit\n  End\n  \
+               Behavior = JetSlowDeathBehavior J\n    FXInitialDeath = FX_TankHit\n    \
+               FXHitGround = FX_TankHit\n    FXOnGroundDeath = FX_TankHit\n    \
+               FX = INITIAL FX_TankHit\n  End\nEnd\n";
+    let rock =
+        "Object Rock\n  Draw = W3DModelDraw D\n    TrackMarks = EXTnkTrack.tga\n  End\nEnd\n";
     let mut objects = ObjectFiles::default();
     objects
-        .read(format!("{tank}Object Rock\nEnd\n").as_bytes())
+        .read(format!("{tank}{jet}{rock}").as_bytes())
         .unwrap();
     let objects = objects.finish();
-    let mut units = BTreeMap::from([
+    let units = BTreeMap::from([
         (name("tank"), ClientUnit::new(Vec::new())),
         (name("rock"), ClientUnit::new(Vec::new())),
+        (name("jet"), ClientUnit::new(Vec::new())),
     ]);
+    let mut looks = ImportedLooks {
+        units,
+        conditions: BTreeMap::new(),
+        objects: BTreeMap::new(),
+        bones: BTreeMap::new(),
+        track_widths: BTreeMap::from([(name("tank"), 17.5)]),
+    };
+    let units = &mut looks.units;
+    let fall = DeathFall {
+        gravity: Num::ONE,
+        roll: Num::ZERO,
+        spiral: None,
+        start: FallStage::default(),
+        hit: FallStage::default(),
+        blow_up_after: Num::ZERO,
+        blow_up: FallStage::default(),
+        ground: Some(GroundDeath {
+            height: Num::ONE,
+            stage: FallStage::default(),
+        }),
+    };
+    units.get_mut(&name("jet")).unwrap().death.fall = Some(fall.clone());
     let before = effects.dropped.len();
-    effects.name_deaths(&objects, &mut units).unwrap();
+    let track = ArchivePath::of("art\\textures\\extnktrack.tga");
+    let found = |name: &str| (name == "EXTnkTrack.tga").then(|| track.clone());
+    effects.name_deaths(&objects, found, &mut looks).unwrap();
+    let units = &looks.units;
+    assert!(effects.textures.contains(&track));
+    // The tank's track is as wide as its model's tread bones say; the rock's, of none, the
+    // game's 14.
+    let laid = |width: &str| TreadLook {
+        systems: Vec::new(),
+        track: Some(TrackLook {
+            texture: game_path::texture(&track).unwrap(),
+            width: width.parse().unwrap(),
+        }),
+    };
+    assert_eq!(units[&name("tank")].tread, laid("17.5"));
+    assert_eq!(units[&name("rock")].tread, laid("14"));
     let hit = name("fx_tankhit");
     assert_eq!(
         units[&name("tank")].death,
         DeathLook {
             start: vec![hit.clone(), hit.clone()],
-            middle: Vec::new(),
-            end: vec![hit],
+            end: vec![hit.clone()],
+            ..DeathLook::NONE
+        }
+    );
+    let played = FallStage {
+        effects: vec![hit.clone()],
+        wrecks: Vec::new(),
+    };
+    assert_eq!(
+        units[&name("jet")].death,
+        DeathLook {
+            start: vec![hit],
+            fall: Some(DeathFall {
+                start: played.clone(),
+                hit: played.clone(),
+                ground: Some(GroundDeath {
+                    height: Num::ONE,
+                    stage: played,
+                }),
+                ..fall
+            }),
+            ..DeathLook::NONE
         }
     );
     assert!(units[&name("rock")].death.is_empty());
-    assert_eq!(
-        effects.dropped[before..],
-        [
-            EffectDropCause::DeathObject,
-            EffectDropCause::DeathChoice,
-            EffectDropCause::DeathWeapon,
-            EffectDropCause::TreadDust,
-            EffectDropCause::TrackMarks,
-        ]
-        .map(|cause| dropped("Tank", cause))
-    );
+    let tank_losses = [
+        EffectDropCause::DeathChoice,
+        EffectDropCause::DeathWeapon,
+        EffectDropCause::NoSystem,
+    ]
+    .map(|cause| dropped("Tank", cause));
+    let mut losses = vec![dropped("Jet", EffectDropCause::FallPhase)];
+    losses.extend(tank_losses);
+    let mut seen = effects.dropped[before..].to_vec();
+    seen.sort();
+    losses.sort();
+    assert_eq!(seen, losses);
 }

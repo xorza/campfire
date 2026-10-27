@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "d0c3c4e0e45311e7742cf25f34fc9fcd73e4d8ce1eb75f3570fe3b943a18ca1f"
+game = "cd7f049cd24ca897f9ae53e8e9dbab5b9283d75d14a0f72f70644ffb7d647c57"
 rules = "004eaedb6b71376e8fe7ec2eeaeec98cef3227d89749f7b5f90a10d0c25d0c84"
 
 [map]
@@ -67,16 +67,16 @@ hacks = 5
 dropped = [0, 0, 5, 6, 0, 0, 0, 5, 5, 5, 5, 5, 4, 0]
 
 [effects]
-systems = 555
+systems = 559
 lists = 318
 textures = 46
 fires = 47
 hits = 0
 trails = 3
 ends = 22
-deaths = 806
+deaths = 866
 bones = 2243
-dropped = [35, 0, 8, 2, 7, 292, 0, 18, 65, 139, 46, 5, 0, 194, 42, 87, 192]
+dropped = [35, 0, 8, 2, 7, 292, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0]
 
 [fought]
 weapons = 88

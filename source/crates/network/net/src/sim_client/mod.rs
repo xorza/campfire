@@ -50,9 +50,11 @@ use crate::close_code::CloseCode;
 use crate::events::link_lost::{LinkLossCause, LinkLost};
 use crate::net_protocol::{InputChannel, JoinChannel, NetProtocolPlugin};
 use crate::sim_client::bot_leave::BotLeave;
+use crate::sim_client::client_console::ClientConsole;
 use campfire_host::BotOrderUnsent;
 use campfire_host::ClientDir;
 use campfire_host::ClientFrame;
+use campfire_host::ConsoleStdio;
 use campfire_host::Dismissed;
 use campfire_host::Hosting;
 use campfire_host::InputAck;
@@ -85,6 +87,7 @@ use campfire_host::{Join, JoinRole};
 use campfire_host::{JoinState, Joining, LinkLoss, Retry, StartEffect};
 
 pub(crate) mod bot_leave;
+pub(crate) mod client_console;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
 const PREDICTION_SEED: SegmentSeed = SegmentSeed::ZERO;
@@ -369,6 +372,21 @@ impl Plugin for SimClientPlugin {
             )
                 .chain()
                 .after(InterpolationSystems::All),
+        );
+        // A console's requests go out and its replies come in after the frame's own steps; a
+        // run's waits for the state the frame received.
+        app.add_systems(
+            Update,
+            (
+                ClientConsole::take_stdio.run_if(resource_exists::<ConsoleStdio>),
+                ClientConsole::forward,
+                ClientConsole::receive,
+                ClientConsole::release,
+                ClientConsole::send_stdio.run_if(resource_exists::<ConsoleStdio>),
+            )
+                .chain()
+                .distributive_run_if(resource_exists::<ClientConsole>)
+                .after(WorkerFaults::watch),
         );
         app.add_systems(
             Last,

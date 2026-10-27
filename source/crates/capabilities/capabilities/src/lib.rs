@@ -29,7 +29,9 @@ pub use crate::bot::bot_api::OnBotThink;
 pub use crate::bot::bot_call::{BotCall, BotFacts, ThinkOrder};
 pub use crate::match_probe::error::{ProbeRefusal, ProbeSpecError};
 pub use crate::match_probe::probe_spec::{ProbeSpec, ProbeUnitsSpec};
-pub use crate::match_probe::{MatchProbe, ProbeUnits};
+pub use crate::match_probe::{
+    MatchProbe, ProbeColumns, ProbePage, ProbeRows, ProbeState, ProbeUnits,
+};
 pub use crate::order::location::{GroundLocation, Location, MarkerLocation, NearLocation};
 pub use crate::order::named_refs::NamedRefs;
 pub use crate::order::{Directive, Order, OrderPayloads, OrderPayloadsIter};

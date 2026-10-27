@@ -49,6 +49,21 @@ impl Pace {
     pub fn set_speed(&self, speed: PaceSpeed) {
         self.speed.store(speed as u8, Ordering::Relaxed);
     }
+
+    /// Starts a console's run: plays on at the fastest speed, and gives the speed before, which
+    /// the run's end sets again (console.md, A run plays at the pace's fastest speed).
+    pub fn start_run(&self) -> PaceSpeed {
+        let before = self.speed();
+        self.set_speed(PaceSpeed::Quadruple);
+        self.set_paused(false);
+        before
+    }
+
+    /// Ends a console's run: pauses, at the speed `before` it.
+    pub fn end_run(&self, before: PaceSpeed) {
+        self.set_paused(true);
+        self.set_speed(before);
+    }
 }
 
 impl PaceSpeed {
@@ -98,5 +113,14 @@ mod tests {
             PaceSpeed::ALL.map(|speed| speed.rate(rate(21, 1))),
             [rate(21, 2), rate(21, 1), rate(42, 1), rate(84, 1)]
         );
+        // A run plays at four times, and its end pauses at the speed before it.
+        pace.set_speed(PaceSpeed::Half);
+        assert_eq!(pace.start_run(), PaceSpeed::Half);
+        assert_eq!(
+            (pace.is_paused(), pace.speed()),
+            (false, PaceSpeed::Quadruple)
+        );
+        pace.end_run(PaceSpeed::Half);
+        assert_eq!((pace.is_paused(), pace.speed()), (true, PaceSpeed::Half));
     }
 }

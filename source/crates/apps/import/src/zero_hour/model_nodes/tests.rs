@@ -14,7 +14,7 @@ const RAISED: [f32; 4] = [
 /// turret, 3 m up; two numbered flashes, a barrel and a bare flash on the turret; on the root, a
 /// bare flash and a slot's numbered fire bones beside a bare flash of its own; on the turret, a
 /// rail, 2 m forward and 1 m up, turned to point up, whose number 02 the model lacks; and on the
-/// root, a spark bone numbered 01 alone.
+/// root, a spark bone numbered 01 alone, and two treads' bones 3 m and 4 m to either side.
 fn tank() -> ModelNodes {
     let at = |translation: [f32; 3]| RigidPose {
         translation: translation.into(),
@@ -36,6 +36,8 @@ fn tank() -> ModelNodes {
         ("fire02", Some(0), RigidPose::IDENTITY),
         ("rail01", Some(1), rail),
         ("spark01", Some(0), RigidPose::IDENTITY),
+        ("treadfx01", Some(0), at([0.0, 3.0, 0.0])),
+        ("treadfx02", Some(0), at([0.0, -4.0, 0.0])),
     ]
     .map(|(name, parent, pose)| PivotName {
         name: name.to_owned(),
@@ -280,6 +282,11 @@ fn a_slots_barrels_launch_from_their_launch_bones_or_the_models_place() {
         Some(Vec3::new(0.0, 3.0, 0.0))
     );
     assert_eq!(tank.pivot_point("turretel", &rest), None);
+    // Its treads' bones span 3 + 4 = 7 m; a model of no second bone spans none.
+    assert_eq!(tank.tread_span(&rest), Some(7.0));
+    let mut single = tank.clone();
+    single.pivots.pop();
+    assert_eq!(single.tread_span(&rest[..rest.len() - 1]), None);
     // An animation that lifts the turret to 5 m lifts the rail on it to 6 m; one of another
     // count of pivots places none, and the model stands at rest.
     let mut lifted: Vec<RigidPose> = tank.pivots.iter().map(|pivot| pivot.pose).collect();

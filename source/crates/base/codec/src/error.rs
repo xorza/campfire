@@ -95,6 +95,11 @@ pub(crate) mod internals {
     }
 }
 
+/// Why a text gives no bytes as base64.
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct Base64Error(#[from] base64::DecodeError);
+
 /// Why a PNG file gives no image of 8-bit RGBA pixels.
 #[derive(Debug, Error)]
 pub enum PngError {

@@ -29,6 +29,17 @@ pub enum EffectsError {
     /// Its step is not above 0, or not finite.
     #[error("its step is not a length of time")]
     Step,
+    /// Its wrecks' gravity pulls up, a share of their ground is past 0 to 1, or a number is not
+    /// finite.
+    #[error("its wrecks' ground does not hold")]
+    Wrecks,
+    /// Its treads' speed or a scale of their dust is below 0, or a number is not finite.
+    #[error("its treads' dust does not hold")]
+    Treads,
+    /// Its tracks' spacing or fade is not above 0, they hold fewer than two edges or more opaque
+    /// than all, or a number is not finite.
+    #[error("its tracks do not hold")]
+    Tracks,
     /// The system of this name holds a number not finite, or keys out of order, or none.
     #[error("the particle system `{0}` holds a number not finite or keys out of order")]
     System(DeclaredName),

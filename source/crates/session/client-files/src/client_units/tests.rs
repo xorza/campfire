@@ -5,8 +5,11 @@ use super::*;
 use crate::client_model::{ModelScale, ModelTop};
 use crate::client_unit::{BarrelFlash, DeathLook, FireBarrel, FireBone};
 use crate::condition_test::{LifeShare, SiteStage};
+use crate::death_fall::{DeathFall, FallStage, GroundDeath, Spiral};
 use crate::state_animation::{AnimationMode, SpeedRange, StartFrame};
 use crate::state_set::StateSet;
+use crate::tread_look::{TrackLook, TreadLook};
+use crate::wreck::{Wreck, WreckLaunch, WreckSink};
 
 #[test]
 fn units_write_and_read_back_their_states_conditions_and_models() {
@@ -21,6 +24,22 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
             { sets = [["damaged"], ["damaged", "night"], { names = ["damaged"], untested = 2 }], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, barrels = [{ bone = "MuzzleFX01", flash = { node = "avhummer_d.muzzlefx01", ms = 100 } }, {}] }] },
         ] }]
         death = { start = ["fx_humvee_death"], end = ["fx_humvee_blast"] }
+
+        [units.crusader]
+        draws = []
+        tread = { systems = ["tread_dust"], track = { texture = "client/tracks/extnktrack.ktx2", width = "17.5" } }
+
+        [units.crusader.death.wrecks]
+        middle = [[{ models = ["client/models/avleopard_d1.glb"], count = 1, offset = ["0", "0", "0"], launch = { fling = { across = "1.2", up = ["0.297", "0.9"] } }, spin = "0.3", sink = { life = "1.5", delay = "1.5", rate = "2", gone = "8" } }]]
+        end = [[{ models = ["client/models/avleopard_d2.glb", "client/models/avleopard_d3.glb"], count = 2, offset = ["0.5", "0", "7.7"], launch = { force = { speed = ["60", "90"], pitch = ["1.48", "1.57"] } }, spin = "5.2", sink = { delay = "1", rate = "1", gone = "2" } }]]
+
+        [units.comanche]
+        draws = []
+        death = { start = ["fx_heli_hit"], fall = { gravity = "0.4", roll = "0", spiral = { turn = "2", speed = "40", spin = "6" }, hit = { effects = ["fx_heli_crash"] }, blow_up_after = "0.5", blow_up = { effects = ["fx_heli_blast"] } } }
+
+        [units.raptor]
+        draws = []
+        death = { fall = { gravity = "0.6", roll = "1.5", start = { effects = ["fx_jet_start"] }, blow_up_after = "1", ground = { height = "0.64", stage = { effects = ["fx_jet_ground"] } } } }
 
         [units.humvee_shell]
         draws = []
@@ -80,10 +99,101 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     assert_eq!(states[0].fire_bones, []);
     let humvee_death = DeathLook {
         start: vec![name("fx_humvee_death")],
-        middle: Vec::new(),
         end: vec![name("fx_humvee_blast")],
+        ..DeathLook::NONE
     };
     assert_eq!(units.units["humvee"].death, humvee_death);
+    // A tank's tread, its hulk at the death's middle and its turret's two pieces at its end.
+    let num = |text: &str| text.parse::<Num>().unwrap();
+    let path = |text: &str| PackagePath::parse(text).unwrap();
+    let crusader = &units.units["crusader"];
+    assert_eq!(
+        crusader.tread,
+        TreadLook {
+            systems: vec![name("tread_dust")],
+            track: Some(TrackLook {
+                texture: path("client/tracks/extnktrack.ktx2"),
+                width: num("17.5"),
+            }),
+        }
+    );
+    let wrecks = &crusader.death.wrecks;
+    assert_eq!(
+        (wrecks.start.len(), wrecks.middle.len(), wrecks.end.len()),
+        (0, 1, 1)
+    );
+    assert_eq!(
+        wrecks.middle[0].0,
+        [Wreck {
+            models: vec![path("client/models/avleopard_d1.glb")],
+            count: 1,
+            offset: [Num::ZERO; 3],
+            launch: WreckLaunch::Fling {
+                across: num("1.2"),
+                up: [num("0.297"), num("0.9")],
+            },
+            spin: num("0.3"),
+            sink: WreckSink {
+                life: Some(num("1.5")),
+                delay: num("1.5"),
+                rate: num("2"),
+                gone: num("8"),
+            },
+        }]
+    );
+    assert_eq!(
+        wrecks.end[0].0[0].launch,
+        WreckLaunch::Force {
+            speed: [num("60"), num("90")],
+            pitch: [num("1.48"), num("1.57")],
+        }
+    );
+    assert_eq!(wrecks.end[0].0[0].sink.life, None);
+    // A helicopter's fall, which spirals and blows up after it hits.
+    assert_eq!(
+        units.units["comanche"].death.fall,
+        Some(DeathFall {
+            gravity: num("0.4"),
+            roll: Num::ZERO,
+            spiral: Some(Spiral {
+                turn: num("2"),
+                speed: num("40"),
+                spin: num("6"),
+            }),
+            start: FallStage::default(),
+            hit: FallStage {
+                effects: vec![name("fx_heli_crash")],
+                wrecks: Vec::new(),
+            },
+            blow_up_after: num("0.5"),
+            blow_up: FallStage {
+                effects: vec![name("fx_heli_blast")],
+                wrecks: Vec::new(),
+            },
+            ground: None,
+        })
+    );
+    // A jet's fall, which rolls, and its death on the ground, played as it stands low.
+    let stage = |effect| FallStage {
+        effects: vec![name(effect)],
+        wrecks: Vec::new(),
+    };
+    assert_eq!(
+        units.units["raptor"].death.fall,
+        Some(DeathFall {
+            gravity: num("0.6"),
+            roll: num("1.5"),
+            spiral: None,
+            start: stage("fx_jet_start"),
+            hit: FallStage::default(),
+            blow_up_after: num("1"),
+            blow_up: FallStage::default(),
+            ground: Some(GroundDeath {
+                height: num("0.64"),
+                stage: stage("fx_jet_ground"),
+            }),
+        })
+    );
     assert!(units.units["lamp"].death.is_empty());
     let gun = &units.actions()[&name("humvee_gun")];
     assert_eq!((&gun.fire, &gun.hit), (&Some(name("fx_gun_fire")), &None));
@@ -98,7 +208,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
             "slot =", "node =", "start =", "middle =", "hit =", "end =", "trail ="
         ]
         .map(|field| written.matches(field).count()),
-        [1, 1, 1, 0, 0, 2, 1]
+        [1, 1, 2, 1, 0, 3, 1]
     );
     // A state's sets, its own and its aliases', the last of two untested conditions.
     let damaged = DeclaredName::new("damaged").unwrap();

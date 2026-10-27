@@ -35,6 +35,8 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
         "--option",
         "start_money=50000",
         "--no-port-map",
+        "--console",
+        "stdio",
     ])
     .unwrap();
     assert_eq!(args.data, PathBuf::from("d"));
@@ -63,12 +65,14 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
     assert_eq!(args.options, ["start_money=50000".parse().unwrap()]);
     assert_eq!(args.address, SocketAddr::from(([0, 0, 0, 0], 4433)));
     assert!(!args.port_map);
+    assert_eq!(args.console, Some(ConsoleArg::Stdio));
     // The defaults, with no flag but `--data`.
     let plain = read(&["--data", "d", "mode", "0.0.0.0:4433"]).unwrap();
     assert_eq!(plain.times, SessionTimes::DEFAULT);
     assert!(plain.bots.is_empty() && plain.takeover.is_none() && plain.map.is_none());
     assert!(plain.options.is_empty());
     assert!(plain.port_map);
+    assert_eq!(plain.console, None);
 
     let refused = |args: &[&str]| read(args).unwrap_err();
     for (args, kind) in [
@@ -97,6 +101,10 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
         (
             &["--data", "d", "mode", "0.0.0.0:4433", "x"],
             ErrorKind::UnknownArgument,
+        ),
+        (
+            &["--data", "d", "--console", "socket", "mode", "0.0.0.0:4433"],
+            ErrorKind::InvalidValue,
         ),
     ] {
         assert_eq!(refused(args).kind(), kind, "{args:?}");

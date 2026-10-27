@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use bevy_app::AppExit;
 use campfire_common::{PlayerSlot, Tick};
@@ -22,6 +22,7 @@ use crate::sim_server::sim_server_world::SessionOpening;
 use crate::udp_links::{LocalPair, UdpLinks};
 use campfire_host::JoinRole;
 use campfire_host::KeyFile;
+use campfire_host::LogSeen;
 use campfire_host::Os;
 use campfire_host::Pace;
 use campfire_host::ServerDir;
@@ -60,6 +61,9 @@ pub struct LocalServerSetup {
     pub os: Os,
     /// Its client's data directory, whose reports it writes its log into.
     pub reports: ClientLayout,
+    /// What the tap of its client's console saw, with a console: it then answers the requests
+    /// the client forwards, and holds the match paused after its first tick.
+    pub console: Option<Arc<Mutex<LogSeen>>>,
 }
 
 /// The session a local server opens: a new one, or the replay of a player's report.
@@ -105,6 +109,7 @@ impl LocalServer {
             pace,
             os,
             reports,
+            console,
         } = setup;
         let dir = ServerDir::open(&data).map_err(LocalServerError::Data)?;
         let signer = KeyFile::read_or_create(&dir.layout().key_file(), os.entropy)
@@ -147,6 +152,7 @@ impl LocalServer {
                 stop: Arc::clone(&stop),
                 pace,
                 reports,
+                console,
             },
         };
         let worker = Worker::start(Job::LocalServer, move || {

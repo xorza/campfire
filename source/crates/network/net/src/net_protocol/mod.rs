@@ -14,6 +14,7 @@ use campfire_protocol::SignedReceipt;
 use campfire_sim::{SimResource, StableId};
 use campfire_states::{Declared, Replication, Sending, SendingWays, StateTypes};
 
+use campfire_console::{Reply, Request};
 use campfire_host::Dismissed;
 use campfire_host::InputAck;
 use campfire_host::InputMessage;
@@ -104,6 +105,12 @@ impl Plugin for NetProtocolPlugin {
             .add_direction(LinkDirection::ServerToClient);
         app.register_message::<WatchTeams>()
             .add_direction(LinkDirection::ClientToServer);
+        // A local client's console asks its server, and the server answers it (console.md, A
+        // game's console is its standard streams).
+        app.register_message::<Request>()
+            .add_direction(LinkDirection::ClientToServer);
+        app.register_message::<Reply>()
+            .add_direction(LinkDirection::ServerToClient);
 
         // A unit's identity, which no state type holds: the entity list holds it.
         app.register_component::<StableId>().replicate_once();

@@ -19,6 +19,7 @@ mod client_path;
 mod client_unit;
 mod client_units;
 mod condition_test;
+mod death_fall;
 mod effect_list;
 mod effects_file;
 mod error;
@@ -39,6 +40,11 @@ mod team_colors;
 mod terrain_file;
 mod texture_format;
 mod texture_levels;
+mod track_marks;
+mod tread_dust;
+mod tread_look;
+mod wreck;
+mod wreck_ground;
 
 pub use crate::action_look::ActionLook;
 pub use crate::animation_extras::{AnimationExtras, HiddenFrames};
@@ -47,11 +53,12 @@ pub use crate::client_file::{ClientFile, ClientFormat};
 pub use crate::client_model::{ClientModel, ClipRounds, ModelScale, ModelTop, NodeUpgrade};
 pub use crate::client_objects::{ClientObject, ClientObjects};
 pub use crate::client_unit::{
-    BarrelFlash, ClientUnit, DeathLook, FireBarrel, FireBone, LookDraw, LookShown, LookState,
-    LookTransition, LookVariation,
+    BarrelFlash, ClientUnit, DeathLook, DeathWrecks, FireBarrel, FireBone, LookDraw, LookShown,
+    LookState, LookTransition, LookVariation,
 };
 pub use crate::client_units::ClientUnits;
 pub use crate::condition_test::{AttackPhase, ConditionTest, LifeShare, SiteStage};
+pub use crate::death_fall::{DeathFall, FallStage, GroundDeath, Spiral};
 pub use crate::effect_list::{EffectList, ListedSystem};
 pub use crate::effects_file::EffectsFile;
 pub use crate::error::{
@@ -82,3 +89,8 @@ pub use crate::terrain_file::{
 };
 pub use crate::texture_format::TextureFormat;
 pub use crate::texture_levels::TextureLevels;
+pub use crate::track_marks::TrackMarks;
+pub use crate::tread_dust::{SpeedScale, TreadDust};
+pub use crate::tread_look::{TrackLook, TreadLook};
+pub use crate::wreck::{Wreck, WreckLaunch, WreckList, WreckSink};
+pub use crate::wreck_ground::WreckGround;

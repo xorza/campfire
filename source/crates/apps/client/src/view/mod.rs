@@ -31,7 +31,7 @@ use campfire_values::{Team, UnitType};
 
 use crate::engine_text::{EngineMessage, EngineText};
 use crate::view::client_data::ClientLoad;
-use crate::view::drawing::{Drawing, DrawingOf, Drawn};
+use crate::view::drawing::{Drawing, DrawingOf, Drawn, Undrawn};
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
 use crate::view::glide::{Follows, FrameClock, Glide, Spot};
@@ -70,6 +70,7 @@ pub(crate) mod pixel_scale;
 pub(crate) mod player_camera;
 pub(crate) mod scene_lights;
 pub(crate) mod shot_dress;
+pub(crate) mod shot_frame;
 pub(crate) mod shot_stand_ins;
 pub(crate) mod slot_shots;
 pub(crate) mod terrain_image;
@@ -77,6 +78,7 @@ pub(crate) mod terrain_meshes;
 pub(crate) mod terrain_view;
 pub(crate) mod unit_looks;
 pub(crate) mod unit_models;
+pub(crate) mod view_console;
 
 /// Draws the match: the map's lights, its ground as a plane over its bounds where no terrain draws
 /// it, a capsule for every unit the client holds, colored by team, a projectile's models turned
@@ -135,7 +137,8 @@ enum Standing {
 #[derive(Component, Debug)]
 struct Figure;
 
-/// The units not drawn yet, projectiles and areas apart: where each stands, its team, whether it
+/// The units not drawn yet, projectiles, areas and units whose drawings were torn off apart:
+/// where each stands, its team, whether it
 /// walks, whether it is a player's avatar, whether it is dead, whether the client only receives
 /// it, else it is the client's own, which it predicts, its body, its type and the way it faces.
 type NewUnits<'w, 's> = Query<
@@ -154,7 +157,12 @@ type NewUnits<'w, 's> = Query<
         Option<&'static Variation>,
         Option<&'static Facing>,
     ),
-    (With<BodyUnit>, Without<Drawing>, Allow<Unpredicted>),
+    (
+        With<BodyUnit>,
+        Without<Drawing>,
+        Without<Undrawn>,
+        Allow<Unpredicted>,
+    ),
 >;
 
 /// The drawn units the client only receives whose sim place or facing changed.

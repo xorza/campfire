@@ -1,0 +1,31 @@
+[package]
+name = "campfire-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.campfire]
+kind = "app"
+
+[dependencies]
+campfire-codec.workspace = true
+campfire-common.workspace = true
+campfire-console.workspace = true
+campfire-logging.workspace = true
+campfire-store.workspace = true
+
+rmcp = { workspace = true, features = ["schemars", "server", "transport-io"] }
+schemars = { workspace = true, features = ["derive", "std"] }
+serde = { workspace = true, features = ["derive", "std"] }
+thiserror = { workspace = true, features = ["std"] }
+tracing = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["io-std", "io-util", "macros", "process", "rt", "sync", "time"] }
+
+[dev-dependencies]
+campfire-store = { workspace = true, features = ["internals"] }
+campfire-test-packages.workspace = true
+# The tests call the server through rmcp's own client, over a pipe in the process.
+rmcp = { workspace = true, features = ["client", "transport-async-rw"] }
+
+[lints]
+workspace = true

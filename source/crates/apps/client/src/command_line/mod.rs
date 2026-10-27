@@ -8,7 +8,7 @@ use campfire_mode::{OptionValue, PlayerSlotPick};
 use campfire_net_core::TlsKey;
 use campfire_package::ModePackages;
 use campfire_values::{Team, TeamSet};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use secp256k1::XOnlyPublicKey;
 
 use crate::command_line::error::{ArgsError, ServerAddressError, TeamNameError, UnknownTeam};
@@ -27,6 +27,14 @@ pub(crate) struct Args {
     pub(crate) mode: PathBuf,
     pub(crate) map: Option<MapName>,
     pub(crate) server: PlayedServer,
+    pub(crate) console: Option<ConsoleArg>,
+}
+
+/// Where a game's console reads its requests and writes its replies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ConsoleArg {
+    /// Its standard input and output, a JSON line each, its log staying on standard error.
+    Stdio,
 }
 
 /// Whether the player plays or watches, with the names of the teams a spectator watches, which
@@ -141,6 +149,11 @@ pub(crate) struct CommandLine {
     /// one
     #[arg(long, value_name = "NAME")]
     map: Option<MapName>,
+    /// Answer a tool's requests over a console, as the tool that started the client asks; a local
+    /// match starts paused after its first tick, and the end of the console's input stops the
+    /// client
+    #[arg(long, value_name = "STREAMS")]
+    console: Option<ConsoleArg>,
     /// The mode's package directory
     #[arg(required = true)]
     mode: Option<PathBuf>,
@@ -228,6 +241,7 @@ impl TryFrom<CommandLine> for Args {
                 .expect("clap takes a mode unless the line opens a report"),
             map: line.map,
             server,
+            console: line.console,
         })
     }
 }
@@ -256,6 +270,7 @@ impl Args {
                 camera: facts.camera,
                 data,
             },
+            console: None,
         })
     }
 }

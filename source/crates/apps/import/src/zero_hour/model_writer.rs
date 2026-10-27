@@ -117,14 +117,28 @@ struct Converter<'i, 'w> {
 }
 
 /// The looks of an import's `client/units.toml`, which later stages complete before the import
-/// writes them, and the bones each unit type's turret and weapons read of its model.
+/// writes them, the bones each unit type's turret and weapons read of its model, and the width
+/// of the track each look's treads lay, of the looks whose model names its treads' bones.
 #[derive(Debug)]
 pub(crate) struct ImportedLooks {
     pub(crate) units: BTreeMap<DeclaredName, ClientUnit>,
     pub(crate) conditions: BTreeMap<DeclaredName, ConditionTest>,
     pub(crate) objects: BTreeMap<DeclaredName, ObjectLook>,
     pub(crate) bones: BTreeMap<TypeName, ModelBones>,
+    pub(crate) track_widths: BTreeMap<DeclaredName, f32>,
 }
+
+/// What a unit reads of its model at rest: its turret's and weapons' bones, and the width of
+/// the track its treads lay, when its model names their bones.
+#[derive(Debug)]
+struct ModelRest {
+    bones: ModelBones,
+    track_width: Option<f32>,
+}
+
+/// The width of one tread, which the game adds to the span of a model's tread bones for its
+/// track's width (`W3DTerrainTracks.cpp`, `DEFAULT_TRACK_WIDTH`).
+const TREAD_WIDTH: f32 = 4.0;
 
 /// What the models and the animations of an import lacked and drew with: the models the package
 /// lacks, the animations it drops, the textures no archive holds, and the files of those the
@@ -226,6 +240,7 @@ impl ModelWriter<'_, '_> {
         let mut units = BTreeMap::new();
         let mut objects = BTreeMap::new();
         let mut bones = BTreeMap::new();
+        let mut track_widths = BTreeMap::new();
         let shown = StateLook::default();
         for object in ini.objects() {
             let scale = object.scale();
@@ -243,7 +258,10 @@ impl ModelWriter<'_, '_> {
                 .variations_of(object)
                 .and_then(|mut of_parent| of_parent.next())
                 .unwrap_or(object);
-            let of_model = self.bones(boned.draws(), boned.scale())?;
+            let ModelRest {
+                bones: of_model,
+                track_width,
+            } = self.bones(boned.draws(), boned.scale())?;
             if let Some(of_parent) = ini.variations_of(object) {
                 let mut looks = Vec::with_capacity(of_parent.len());
                 for variation in of_parent {
@@ -281,6 +299,9 @@ impl ModelWriter<'_, '_> {
             if of_model != ModelBones::default() {
                 bones.insert(type_name, of_model);
             }
+            if let Some(width) = track_width {
+                track_widths.insert(declared.clone(), width);
+            }
             units.insert(declared, unit_look);
         }
         Ok(ImportedLooks {
@@ -288,6 +309,7 @@ impl ModelWriter<'_, '_> {
             conditions: std::mem::take(&mut self.conditions),
             objects,
             bones,
+            track_widths,
         })
     }
 
@@ -566,18 +588,24 @@ impl ModelWriter<'_, '_> {
         Ok(None)
     }
 
-    /// The bones a unit of `draws`, at `scale`, reads of its model: of its first module of the
+    /// What a unit of `draws`, at `scale`, reads of its model: of its first module of the
     /// `W3DModelDraw` family, its default state's model as its first animation places it, its
-    /// turret's and its pitch's pivots, and each weapon slot's barrels of its launch bones; none of
-    /// a model the package lacks. An error for a bone past the engine's bound.
+    /// turret's and its pitch's pivots, each weapon slot's barrels of its launch bones, and its
+    /// track's width, the span of its `TREADFX01` and `TREADFX02` bones and one tread's, as
+    /// `computeTrackSpacing` measures it; none of a model the package lacks. An error for a bone
+    /// past the engine's bound.
     fn bones(
         &mut self,
         draws: &[DrawModule],
         scale: ModelScale,
-    ) -> Result<ModelBones, ZeroHourError> {
+    ) -> Result<ModelRest, ZeroHourError> {
+        let none = ModelRest {
+            bones: ModelBones::default(),
+            track_width: None,
+        };
         let drawn = draws.iter().find(|draw| draw.kind == DrawKind::Family);
         let Some((draw, model)) = drawn.and_then(|draw| Some((draw, draw.model.as_ref()?))) else {
-            return Ok(ModelBones::default());
+            return Ok(none);
         };
         // The bones stand as the state's first animation places them at its first frame, or its
         // last of `PRISTINE_BONE_POS_IN_FINAL_FRAME`, as `validateCachedBones` sets them.
@@ -596,7 +624,7 @@ impl ModelWriter<'_, '_> {
             end.clone()
         });
         let WrittenModel::Nodes { nodes, .. } = self.model(model)? else {
-            return Ok(ModelBones::default());
+            return Ok(none);
         };
         let pristine = nodes.pristine(animated.as_deref());
         let beyond = || ZeroHourError::Model {
@@ -620,10 +648,15 @@ impl ModelWriter<'_, '_> {
                 of_slot.push(data.ok_or_else(beyond)?);
             }
         }
-        Ok(ModelBones {
-            pivot: pivot(draw.turret.as_ref())?,
-            pitch_pivot: pivot(draw.turret_pitch.as_ref())?,
-            barrels,
+        let track_width =
+            (nodes.tread_span(&pristine)).map(|span| span * scale.get() + TREAD_WIDTH);
+        Ok(ModelRest {
+            bones: ModelBones {
+                pivot: pivot(draw.turret.as_ref())?,
+                pitch_pivot: pivot(draw.turret_pitch.as_ref())?,
+                barrels,
+            },
+            track_width,
         })
     }
 

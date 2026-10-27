@@ -35,6 +35,44 @@ pub enum ProbeUnits {
     Type(UnitType),
     /// In any order.
     Ids(Vec<StableId>),
+    State(ProbeState),
+}
+
+/// What a unit does, as a probe reads it, which a probe selects by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbeState {
+    Idle,
+    /// Walks, stuck or not.
+    Walking,
+    /// Walks, and its walk made no progress for longer than steering waits.
+    Stuck,
+    Working,
+    Fighting,
+    Acting,
+}
+
+/// The columns of a probe's table: each, or a unit's id, type, player slot, place, what it does
+/// and its life.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbeColumns {
+    Concise,
+    Detailed,
+}
+
+/// The part of a table a probe writes: its columns, and its rows from the row `first`, counted
+/// from 0, at most `limit` of them, every row after `first` when none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProbePage {
+    pub columns: ProbeColumns,
+    pub first: usize,
+    pub limit: Option<usize>,
+}
+
+/// The rows of a table: of the units its probe selects, and of those it wrote.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProbeRows {
+    pub selected: usize,
+    pub shown: usize,
 }
 
 /// What a unit does, as a probe reads it: it fights while it holds an attack target or attacks,
@@ -77,6 +115,12 @@ const COLUMNS: [(&str, bool); 12] = [
     ("life", true),
 ];
 
+/// Whether a concise table holds each column: the id, the type, the player slot, the place, what
+/// the unit does and its life.
+const CONCISE: [bool; COLUMNS.len()] = [
+    true, true, true, false, true, true, true, false, false, false, false, true,
+];
+
 impl MatchProbe {
     /// A probe of `units` every `every` ticks, from tick 0.
     pub fn new(every: NonZeroU64, units: ProbeUnits) -> Self {
@@ -107,19 +151,24 @@ impl MatchProbe {
             return;
         };
         if ran % self.every == 0 {
-            self.write(world, Some(ran));
+            self.write(world, Some(ran), ProbePage::WHOLE);
         }
     }
 
     /// Writes the table of `world` as it stands, whatever the period, as a report's replay
     /// tables the tick its client drew.
     pub fn table(&mut self, world: &World) {
-        let ran = world.resource::<SimTick>().start().get().checked_sub(1);
-        self.write(world, ran);
+        self.page(world, ProbePage::WHOLE);
     }
 
-    /// Writes the table of `world` after the tick `ran`, or before its first.
-    fn write(&mut self, world: &World, ran: Option<u64>) {
+    /// Writes the part `page` of the table of `world` as it stands, as a console asks for it.
+    pub fn page(&mut self, world: &World, page: ProbePage) -> ProbeRows {
+        let ran = world.resource::<SimTick>().start().get().checked_sub(1);
+        self.write(world, ran, page)
+    }
+
+    /// Writes the part `page` of the table of `world` after the tick `ran`, or before its first.
+    fn write(&mut self, world: &World, ran: Option<u64>, page: ProbePage) -> ProbeRows {
         let rate = *world.resource::<MatchRate>();
         let stuck_after = Progress::stuck_after(rate);
         let names = world
@@ -127,13 +176,18 @@ impl MatchProbe {
             .map(UnitTypeBook::types);
         let mut counts: Vec<(PlayerSlot, Counts)> = Vec::new();
         let mut rows: Vec<[String; COLUMNS.len()]> = Vec::new();
+        let mut selected = 0;
         for (id, entity) in world.resource::<EntityIndex>().iter() {
-            let unit = world.entity(entity);
-            if !id.is_allocated() || !self.selects(id, &unit) {
+            if !id.is_allocated() {
                 continue;
             }
+            let unit = world.entity(entity);
             let doing = Self::doing(&unit);
             let stuck = unit.get::<Progress>().map(Progress::stuck_ticks);
+            let walks_stuck = Self::walks_stuck(doing, stuck, stuck_after);
+            if !self.selects(id, &unit, doing, walks_stuck) {
+                continue;
+            }
             if let Some(owner) = unit.get::<Owner>() {
                 let slot = owner.player_slot();
                 let at = counts.iter().position(|&(of, _)| of == slot);
@@ -141,10 +195,12 @@ impl MatchProbe {
                     counts.push((slot, Counts::default()));
                     counts.len() - 1
                 });
-                let stuck = doing == Doing::Walking && stuck.is_some_and(|s| s >= stuck_after);
-                counts[at].1.count(doing, stuck);
+                counts[at].1.count(doing, walks_stuck);
             }
-            rows.push(Self::row(id, &unit, doing, stuck, names));
+            if page.shows(selected) {
+                rows.push(Self::row(id, &unit, doing, stuck, names));
+            }
+            selected += 1;
         }
         counts.sort_unstable_by_key(|&(slot, _)| slot);
         let hz = NonZeroU64::from(rate.hz());
@@ -159,12 +215,16 @@ impl MatchProbe {
         for (slot, counts) in &counts {
             writeln!(self.text, "player slot {}: {counts}", slot.get()).expect("text writes");
         }
-        self.write_table(&rows);
+        self.write_table(&rows, page.columns);
         self.text.push('\n');
+        ProbeRows {
+            selected,
+            shown: rows.len(),
+        }
     }
 
-    /// Whether it prints the unit `id`.
-    fn selects(&self, id: StableId, unit: &EntityRef<'_>) -> bool {
+    /// Whether it prints the unit `id`, which does `doing`, a walker stuck when `walks_stuck`.
+    fn selects(&self, id: StableId, unit: &EntityRef<'_>, doing: Doing, walks_stuck: bool) -> bool {
         match &self.units {
             ProbeUnits::All => true,
             &ProbeUnits::Owner(slot) => unit
@@ -173,7 +233,14 @@ impl MatchProbe {
             ProbeUnits::Team(team) => unit.get::<Team>() == Some(team),
             ProbeUnits::Type(unit_type) => unit.get::<UnitType>() == Some(unit_type),
             ProbeUnits::Ids(ids) => ids.binary_search(&id).is_ok(),
+            &ProbeUnits::State(state) => state.is(doing, walks_stuck),
         }
+    }
+
+    /// Whether a unit that does `doing`, stuck for `stuck` ticks, walks stuck: past
+    /// `stuck_after`.
+    fn walks_stuck(doing: Doing, stuck: Option<u32>, stuck_after: u32) -> bool {
+        doing == Doing::Walking && stuck.is_some_and(|stuck| stuck >= stuck_after)
     }
 
     fn doing(unit: &EntityRef<'_>) -> Doing {
@@ -290,8 +357,9 @@ impl MatchProbe {
         format!("{:?}, {:?}", at.x, at.z)
     }
 
-    /// Writes `rows` under the columns' names, each column as wide as its widest cell.
-    fn write_table(&mut self, rows: &[[String; COLUMNS.len()]]) {
+    /// Writes the cells of `columns` of `rows` under the columns' names, each column as wide as
+    /// its widest cell.
+    fn write_table(&mut self, rows: &[[String; COLUMNS.len()]], columns: ProbeColumns) {
         let mut widths = COLUMNS.map(|(name, _)| name.chars().count());
         for row in rows {
             for (width, cell) in widths.iter_mut().zip(row) {
@@ -299,9 +367,14 @@ impl MatchProbe {
             }
         }
         let names = COLUMNS.map(|(name, _)| name.to_owned());
+        let shown = match columns {
+            ProbeColumns::Concise => CONCISE,
+            ProbeColumns::Detailed => [true; COLUMNS.len()],
+        };
         for row in std::iter::once(&names).chain(rows) {
             let mut line = String::new();
-            for ((cell, width), (_, right)) in row.iter().zip(widths).zip(COLUMNS) {
+            let cells = row.iter().zip(widths).zip(COLUMNS).zip(shown);
+            for (((cell, width), (_, right)), _) in cells.filter(|&(_, shown)| shown) {
                 if !line.is_empty() {
                     line.push_str("  ");
                 }
@@ -314,6 +387,47 @@ impl MatchProbe {
             self.text.push_str(line.trim_end());
             self.text.push('\n');
         }
+    }
+}
+
+impl ProbeState {
+    /// Whether the unit `id` of `world` is in it, as a probe reads it; false for a unit the
+    /// match lacks.
+    pub fn holds(self, world: &World, id: StableId) -> bool {
+        let Some(entity) = world.resource::<EntityIndex>().get(id) else {
+            return false;
+        };
+        let unit = world.entity(entity);
+        let doing = MatchProbe::doing(&unit);
+        let stuck = unit.get::<Progress>().map(Progress::stuck_ticks);
+        let stuck_after = Progress::stuck_after(*world.resource::<MatchRate>());
+        self.is(doing, MatchProbe::walks_stuck(doing, stuck, stuck_after))
+    }
+
+    /// Whether a unit that does `doing`, a walker stuck when `walks_stuck`, is in it.
+    fn is(self, doing: Doing, walks_stuck: bool) -> bool {
+        match self {
+            Self::Idle => doing == Doing::Idle,
+            Self::Walking => doing == Doing::Walking,
+            Self::Stuck => walks_stuck,
+            Self::Working => doing == Doing::Working,
+            Self::Fighting => doing == Doing::Fighting,
+            Self::Acting => doing == Doing::Acting,
+        }
+    }
+}
+
+impl ProbePage {
+    /// Every column and every row.
+    pub const WHOLE: Self = Self {
+        columns: ProbeColumns::Detailed,
+        first: 0,
+        limit: None,
+    };
+
+    /// Whether it shows the row `row` of a table.
+    fn shows(self, row: usize) -> bool {
+        row >= self.first && self.limit.is_none_or(|limit| row - self.first < limit)
     }
 }
 
