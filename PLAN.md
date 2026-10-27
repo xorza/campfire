@@ -10,7 +10,7 @@ The slice of [Effects](docs/design/effects.md): a player of a Zero Hour skirmish
 
 Touches combat's replication and the client's effects; it stands before the end of the slice, which sees it.
 
-- [ ] A client takes a unit's despawn for its death's end, so a dying unit that leaves its sight plays its end explosion in the fog ([Zero Hour's deaths](docs/research/zero-hour-deaths.md#what-the-engine-shows)); a dead unit's `Decay` goes once to the clients that hold it, and the client plays the end only on a despawn with the state of the decay's tick (04-capabilities/combat.md, A death's decay reaches its clients, planned). Checks: an in-process test destroys a unit a client sees, and holds its end played at its decay and none for a dying unit that leaves the client's sight first; the sim's golden moves by `Decay`'s sending alone.
+- [ ] A client takes a unit's despawn for its death's end, so a dying unit that leaves its sight plays its end explosion in the fog ([Zero Hour's deaths](docs/research/zero-hour-deaths.md#what-the-engine-shows)); a dead unit's `Decay` goes once to the clients that hold it, and the client plays the end only on a despawn with the state of the decay's tick (04-capabilities/combat.md, A death's decay reaches its clients, planned). Checks: an in-process test destroys a unit a client sees and holds its `Decay` on the client and its end played at its decay, and none for a dying unit that leaves the client's sight first; no golden moves.
 
 ### End of the slice
 
@@ -18,43 +18,9 @@ It stands last, as the player's check is of the whole slice.
 
 - [ ] A player sees Tournament Desert's shots, hits, trails and deaths in the client as the game draws them ([question](PLAN_QUESTIONS.md#effects-end-of-the-slice)); then the slice's decisions fold into the documents of their systems, `02-engine-core.md` for the format and the client's particles and `09-zero-hour.md` for what the import converts and loses, the code's citations of `effects.md` with them, and `effects.md` goes.
 
-## Wrecks
-
-The slice of [Wrecks](docs/design/wrecks.md): a player of a Zero Hour skirmish sees a destroyed tank's hulk and debris, and a tank's tread dust and track marks. Its facts are [Zero Hour's deaths](docs/research/zero-hour-deaths.md); its checks are that document's. It stands after Effects, whose deaths it extends.
-
-### W1. A death names its wrecks, and a tread its dust and marks
-
-Touches `client-files` and the import; it stands first, as the client reads what it writes.
-
-- [ ] A look's death names effects alone, and a tank draw's dust and marks are counted losses ([Zero Hour's deaths](docs/research/zero-hour-deaths.md#what-the-engine-shows)); a look's death names the hulk and the debris of each phase, and a look its tread systems and its track texture (wrecks.md, A death names its wrecks by phase; A tread throws dust while it drives; A tread lays track marks), converted from a slow death's `OCL`s of `HULK` objects and `CreateDebris`, and from `W3DTankDraw`'s `TreadDebris` and `TrackMarks`, the rest counted. Checks: the import's tests of each disposition and each loss; the Zero Hour check pins them.
-
-### W2. Wrecks fall, bounce and sink
-
-Touches the client's effects; it stands after W1.
-
-- [ ] The client draws no wreck (wrecks.md, A wreck is the client's; Wrecks move by the client's step): a death's phase spawns its hulk and debris at its unit's drawing, each stepped at the file's step by gravity, bounced on the drawn ground, spun, rested, sunk and gone. Checks: a client test steps a hulk and a debris piece to hand-computed places through each stage.
-
-### W3. A tread throws dust and lays marks
-
-Touches the client's effects and the ground's drawing; it stands after W2, apart from it.
-
-- [ ] A moving tank throws no dust and lays no mark (wrecks.md, A tread throws dust while it drives; A tread lays track marks): its tread systems run on its drawing while it moves, scaled by its speed, and its track lays a strip of fading quads among the ground's overlays. Checks: a client test runs and stops the systems and lays, fades and drops a track's edges.
-
-### W4. An aircraft's death falls
-
-Touches `client-files`, the import and the client's effects; it stands after W3, as it falls on what W2 moves.
-
-- [ ] A `JetSlowDeathBehavior`, a `HelicopterSlowDeathBehavior`, a `BattleBusSlowDeathBehavior` and a `NeutronMissileSlowDeathBehavior` are read as no death, so a Comanche, a Helix or a Raptor vanishes 9 ticks after its death with no effect, and none is counted ([Zero Hour's deaths](docs/research/zero-hour-deaths.md)); the import reads the jet's and the helicopter's deaths, their effects, wrecks, rates and delays, and a keep of their longest fall, and counts the bus's and the missile's with their objects; the client draws the fall (wrecks.md, An aircraft's death falls, planned). Checks: the import's tests of each kind; a client test falls a jet and a helicopter to hand-computed places, their hit and blow-up at their times; the Zero Hour check pins the deaths.
-
-### End of the slice
-
-It stands last, as the player's check is of the whole slice.
-
-- [ ] A player sees Tournament Desert's hulks, debris, dust and track marks, and an aircraft's fall, in the client as the game draws them; then the slice's decisions fold into `02-engine-core.md` and `09-zero-hour.md`, and `wrecks.md` goes.
-
 ## Console
 
-The slice of [Console](docs/design/console.md): an agent in Claude Code starts a local match of the MOBA test mode in the client, runs it paused to a tick, tables its units and shows a screenshot of one of them, while the user watches the window. Its facts are [The console](docs/research/console.md); its checks are that document's. It stands after Effects, whose end the user plays first.
+The slice of [Console](docs/design/console.md): an agent in Claude Code starts a local match of the MOBA test mode in the client, runs it paused to a tick, tables its units and shows a screenshot of one of them, while the user watches the window. Its facts are [The console](docs/research/console.md); its checks are that document's. It stands after Effects' steps, and waits for no player's check of a slice before it. Its new dependencies, `schemars`, `strsim`, `rmcp`, `tokio` and `base64`, were approved on 2026-10-27, each added in the batch that names it.
 
 ### C1. The console's protocol and the server's console
 
@@ -88,5 +54,39 @@ Touches the client, `codec` and the workspace's dependencies, `base64` among the
 It stands last, as the user's check is of the whole slice.
 
 - [ ] Claude Code, after `cargo drive run mcp` and the approval of the project's `.mcp.json`, connects and lists the tools; the user watches the agent start a local match of the MOBA test mode, run it to a tick, table its units and show a screenshot of one; in a local Zero Hour skirmish of bots alone, the agent finds the walkers stuck at a tick with the tools alone; then the slice's decisions fold into the documents of their systems, `02-engine-core.md` for the console, the MCP server and the view, and `08-sessions.md` for the run, the planned ones into `03-game-scripting.md`, `05-protocol-spec.md` and `06-script-api.md`, and `console.md` goes.
+
+## Wrecks
+
+The slice of [Wrecks](docs/design/wrecks.md): a player of a Zero Hour skirmish sees a destroyed tank's hulk and debris, a destroyed aircraft's fall, and a tank's tread dust and track marks. Its facts are [Zero Hour's deaths](docs/research/zero-hour-deaths.md); its checks are that document's. It stands after Console, whose screenshots let an agent see its wrecks before the player's check, and extends Effects' deaths; it waits for no player's check of a slice before it.
+
+### W1. A death names its wrecks and its fall, and a tread its dust and marks
+
+Touches `client-files` and the import; it stands first, as the client reads what it writes, and holds every format and import change of the slice, so the import's output and the Zero Hour check's golden move once.
+
+- [ ] A look's death names effects alone, a tank draw's dust and marks are counted losses, and a jet's, a helicopter's, a battle bus's and a neutron missile's deaths are read as no death and counted as none ([Zero Hour's deaths](docs/research/zero-hour-deaths.md#what-the-engine-shows)); a look's death names the hulk and the debris of each phase and an aircraft's fall, and a look its tread systems and its track texture (wrecks.md, A death names its wrecks by phase; wrecks.md, An aircraft's death falls; wrecks.md, A tread throws dust while it drives; wrecks.md, A tread lays track marks). The import gains a reader of `ObjectCreationList.ini`, converts a slow death's `OCL`s of `HULK` objects and `CreateDebris` with their models, the jet's and the helicopter's deaths with a keep of their fall, `W3DTankDraw`'s `TreadDebris` systems, kept in the effects file as a trail is, and its `TrackMarks` textures, and counts the rest. The import's `OUTPUT_VERSION` rises. Checks: the import's tests of each disposition, of each aircraft's death and keep, of a tread's systems and texture, and of each loss; the Zero Hour check pins them, blessed.
+
+### W2. Wrecks fall, bounce and sink
+
+Touches the client's effects; it stands after W1.
+
+- [ ] The client draws no wreck (wrecks.md, A wreck is the client's; wrecks.md, Wrecks move by the client's step): a death's phase spawns its hulk and debris at its unit's drawing, each stepped at the file's step by gravity, bounced on the drawn ground, spun, rested, sunk and gone. Checks: a client test steps a hulk and a debris piece to hand-computed places through each stage, and one of each launch to its first step's velocity.
+
+### W3. An aircraft's death falls
+
+Touches the client's effects; it stands after W2, whose step and ground it falls by.
+
+- [ ] A dead aircraft's drawing stays where it died until its unit goes (wrecks.md, An aircraft's death falls): the client falls its drawing by its share of gravity, rolls or spirals it at its rates, plays its hit's effects and wrecks as it meets the drawn ground and its blow-up after its delay, and a jet dead on the ground its ground death. Checks: a client test falls a jet and a helicopter to hand-computed places, their hit and blow-up at their times, and a jet dead on the ground plays its ground death alone.
+
+### W4. A tread throws dust and lays marks
+
+Touches the client's effects and the ground's drawing; it stands after W3, apart from it.
+
+- [ ] A moving tank throws no dust and lays no mark (wrecks.md, A tread throws dust while it drives; wrecks.md, A tread lays track marks): its tread systems run on its drawing while it moves on the ground, their velocity and count scaled by its speed, and its track lays a strip of fading quads drawn with the ground's overlays. Checks: a client test runs, scales and stops the systems, and lays, fades and drops a track's edges at hand-computed places.
+
+### End of the slice
+
+It stands last, as the player's check is of the whole slice.
+
+- [ ] An agent runs a Tournament Desert skirmish through the console and screenshots a destroyed Crusader, a destroyed Comanche and a driving tank, each fault it sees going to a step before the player's check; then a player sees the hulks, debris, dust and track marks, and an aircraft's fall, in the client as the game draws them ([question](PLAN_QUESTIONS.md#wrecks-end-of-the-slice)); then the slice's decisions fold into `02-engine-core.md` and `09-zero-hour.md`, and `wrecks.md` goes.
 
 ## Foundations
