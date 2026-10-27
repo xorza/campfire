@@ -318,6 +318,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `supply` | production | since 1.0 |
 | `node` | production | since 1.0 |
 | `drop_off` | production | since 1.0 |
+| `sell` | production | since 1.0 |
 | `airfield` | airfields | since 1.0 |
 | `sortie` | airfields | since 1.0 |
 | `inventory` | items | since 1.0 |

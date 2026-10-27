@@ -9,6 +9,7 @@ use crate::zero_hour::dropped_roads::DroppedRoads;
 use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
 use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel};
+use crate::zero_hour::panel_drop_cause::PanelDropCause;
 use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::supply_import::SupplyDropCause;
 use crate::zero_hour::upgrade_import::UpgradeDropCause;
@@ -60,6 +61,9 @@ pub enum ImportLoss {
     /// A particle system, a part of one, or a nugget of an effect list, by the system's or the
     /// list's name, the import does not convert (09-zero-hour.md, Particles and effects).
     Effect(Dropped<EffectDropCause>),
+    /// A command set's button, or a part of one, the panel does not show (09-zero-hour.md, The
+    /// panel).
+    Panel(Dropped<PanelDropCause>),
 }
 
 /// What the loss is, then the part of the install it is of, and why.
@@ -135,6 +139,7 @@ impl Display for ImportLoss {
                 states.object, states.cause, states.states
             ),
             Self::Effect(effect) => write!(f, "an effect is not imported: {effect}"),
+            Self::Panel(button) => write!(f, "a panel's button is not shown whole: {button}"),
         }
     }
 }

@@ -325,8 +325,8 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
         BTreeMap::from([(
             name("weapon_tankcannon"),
             ActionLook {
-                fire: None,
                 hit: Some(name("fx_tankhit")),
+                ..ActionLook::default()
             }
         )])
     );

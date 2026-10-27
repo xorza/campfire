@@ -1,11 +1,15 @@
 use campfire_codec::Toml;
 use campfire_math::Num;
 
+use std::num::NonZeroU8;
+
 use super::*;
 use crate::client_model::{ModelScale, ModelTop};
 use crate::client_unit::{BarrelFlash, DeathLook, FireBarrel, FireBone};
 use crate::condition_test::{LifeShare, SiteStage};
 use crate::death_fall::{DeathFall, FallStage, GroundDeath, SelfSpin, Spiral};
+use crate::keys_file::Key;
+use crate::panel_place::{PanelButton, PanelCommand, PanelPlace};
 use crate::state_animation::{AnimationMode, SpeedRange, StartFrame};
 use crate::state_set::StateSet;
 use crate::tread_look::{TrackLook, TreadLook};
@@ -55,6 +59,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
         [units.barracks]
         draws = []
         placement_angle = "-135"
+        panel = [{ place = 14, command = "sell" }, { place = 1, action = "humvee_gun" }]
 
         [conditions]
         night = { test = "map" }
@@ -71,6 +76,8 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
 
         [actions.humvee_gun]
         fire = "fx_gun_fire"
+        icon = { texture = "client/textures/sauserinterface512_005.ktx2", rect = [63, 301, 123, 349] }
+        key = "KeyG"
     "#;
     let units: ClientUnits = Toml::parse(text).unwrap();
     let states = units.units["humvee"].draws[0].states();
@@ -206,6 +213,48 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     assert!(units.units["lamp"].death.is_empty());
     let gun = &units.actions()[&name("humvee_gun")];
     assert_eq!((&gun.fire, &gun.hit), (&Some(name("fx_gun_fire")), &None));
+    // The gun's button: its icon, 60 by 48 pixels of its atlas, and its key; the barracks' panel,
+    // its places in order whatever the file's.
+    let icon = gun.icon.as_ref().unwrap();
+    assert_eq!(
+        (icon.texture.as_str(), icon.rect.edges(), gun.key),
+        (
+            "client/textures/sauserinterface512_005.ktx2",
+            [63, 301, 123, 349],
+            Some(Key::KeyG)
+        )
+    );
+    let place = |place: u8, button| PanelPlace {
+        place: NonZeroU8::new(place).unwrap(),
+        button,
+    };
+    assert_eq!(
+        units.units["barracks"]
+            .panel
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>(),
+        [
+            place(1, PanelButton::Action(name("humvee_gun"))),
+            place(14, PanelButton::Command(PanelCommand::Sell)),
+        ]
+    );
+    assert!(units.units["humvee"].panel.is_empty());
+    // Two buttons at one place, a place of both an action and a command or of neither, and a place
+    // 0, each fail to read.
+    let refused = |panel: &str| {
+        let text = format!("[units.barracks]\ndraws = []\npanel = {panel}");
+        Toml::parse::<ClientUnits>(&text).is_err()
+    };
+    assert!(refused(
+        r#"[{ place = 2, command = "stop" }, { place = 2, action = "a" }]"#
+    ));
+    assert!(refused(
+        r#"[{ place = 2, command = "stop", action = "a" }]"#
+    ));
+    assert!(refused("[{ place = 2 }]"));
+    assert!(refused(r#"[{ place = 0, command = "stop" }]"#));
+    assert!(!refused(r#"[{ place = 2, command = "attack_move" }]"#));
     let shell = &units.units["humvee_shell"];
     assert_eq!(
         (&shell.end, &shell.trail),

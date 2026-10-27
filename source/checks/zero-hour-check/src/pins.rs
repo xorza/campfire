@@ -5,8 +5,8 @@ use campfire_bots::OrderUnsent;
 use campfire_client_files::{ClientUnits, StateAnimation};
 use campfire_common::{DeclaredName, PackageFingerprint};
 use campfire_import::{
-    AnimationDropCause, ButtonDropCause, EffectDropCause, RoadDropCause, StateDropCause,
-    SupplyDropCause, UpgradeDropCause, WeaponDropCause,
+    AnimationDropCause, ButtonDropCause, EffectDropCause, PanelDropCause, RoadDropCause,
+    StateDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause,
 };
 use campfire_mode::MatchResult;
 use campfire_orders::OrderDropCause;
@@ -32,6 +32,9 @@ const FACTORY_MONEY: i64 = PRODUCTION_MONEY[2] - 800 - 2000 - 2000;
 /// researches' 2,000, 1,000, 800 and 500.
 const UPGRADES_MONEY: i64 = FACTORY_MONEY - CRUSADERS_COST - 2500 - (2000 + 1000 + 800 + 500);
 
+/// What the power plant's sale gives back: its 800 times `GameData.ini`'s `SellPercentage` of 50 %,
+/// as it gives no `RefundValue` (04-capabilities/production.md, A building may be sold).
+const SALE_REFUND: i64 = 800 / 2;
 /// What `CRUSADERS` crusaders' trains cost, 900 each.
 const CRUSADERS_COST: i64 = CRUSADERS as i64 * 900;
 
@@ -319,6 +322,14 @@ impl DroppedCounts {
     }
 }
 
+/// The sale step's measures: the ticks from the power plant's sale's order to the plant gone, the
+/// order's own among them, and the money it gave back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SaleSteps {
+    pub(crate) ticks: u64,
+    pub(crate) refund: i64,
+}
+
 /// The fight's steps: the ticks from the first train to the last crusader trained, and from the
 /// attack's order to the first shell's launch, to the first damage to the bot's command center,
 /// and to its death; player 1's money as the attack is ordered; and how the match ended by then,
@@ -513,15 +524,39 @@ pub(crate) struct EffectCounts {
     pub(crate) dropped: [usize; EffectDropCause::ALL.len()],
 }
 
-/// How many trains and builds the import converts from every command set, and how many buttons it
-/// drops for each cause, in the order of `ButtonDropCause::ALL` (09-zero-hour.md, Every command
-/// set's trains and builds are imported).
+/// How many actions the import gives an icon and a key, how many unit looks place buttons on
+/// their panels and how many buttons they place, how many commands the grid gives an icon, and
+/// how many buttons it drops or shows in part for each cause, in the order of
+/// `PanelDropCause::ALL` (02-engine-core.md, A look places its buttons).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[display("{trains} trains, {builds} builds, dropped {:?}", dropped)]
+#[display(
+    "{icons} icons, {keys} keys, {panels} panels, {places} places, {commands} commands, \
+     dropped {:?}",
+    dropped
+)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PanelCounts {
+    pub(crate) icons: usize,
+    pub(crate) keys: usize,
+    pub(crate) panels: usize,
+    pub(crate) places: usize,
+    pub(crate) commands: usize,
+    pub(crate) dropped: [usize; PanelDropCause::ALL.len()],
+}
+
+/// How many trains and builds the import converts from every command set, how many unit types it
+/// gives a sale, and how many buttons it drops for each cause, in the order of
+/// `ButtonDropCause::ALL` (09-zero-hour.md, Every command set's trains and builds are imported).
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    "{trains} trains, {builds} builds, {sells} sales, dropped {:?}",
+    dropped
+)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ProducedCounts {
     pub(crate) trains: usize,
     pub(crate) builds: usize,
+    pub(crate) sells: usize,
     pub(crate) dropped: [usize; ButtonDropCause::ALL.len()],
 }
 
@@ -613,17 +648,28 @@ impl FactorySteps {
     }
 }
 
+impl SaleSteps {
+    /// The sale's measures: its 6 s, which start in its order's tick and end as the tick at their
+    /// end runs, so the plant goes a tick past them; and `SALE_REFUND`, paid as it goes.
+    pub(crate) const fn expected() -> Self {
+        Self {
+            ticks: 6 * HZ + 1,
+            refund: SALE_REFUND,
+        }
+    }
+}
+
 impl FightSteps {
     /// The fight of `ticks`: `CRUSADERS` trains of 10 s one after another; the money after the
-    /// upgrades; and no end of the match, as the bot's other buildings count for its victory
-    /// (09-zero-hour.md, Defeat by the last building that counts).
+    /// upgrades and the sale; and no end of the match, as the bot's other buildings count for its
+    /// victory (09-zero-hour.md, Defeat by the last building that counts).
     pub(crate) fn expected(ticks: SkirmishTicks) -> Self {
         Self {
             train_ticks: u64::from(CRUSADERS) * 10 * HZ,
             shot_ticks: ticks.shot,
             hit_ticks: ticks.hit,
             fight_ticks: ticks.fight,
-            money: UPGRADES_MONEY,
+            money: UPGRADES_MONEY + SALE_REFUND,
             result: None,
         }
     }

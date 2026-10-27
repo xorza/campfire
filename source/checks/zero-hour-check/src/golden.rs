@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::CheckError;
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, EffectCounts, Fingerprints, FoughtCounts, HelicopterTicks,
-    JetTicks, LookCounts, MapCounts, MissileTicks, ProducedCounts, RangerLook, RoadCounts,
-    SkirmishTicks, SuppliedCounts, SupplyTicks, TerrainCounts, UpgradedCounts,
+    JetTicks, LookCounts, MapCounts, MissileTicks, PanelCounts, ProducedCounts, RangerLook,
+    RoadCounts, SkirmishTicks, SuppliedCounts, SupplyTicks, TerrainCounts, UpgradedCounts,
 };
 
 /// What the check measured of the known version and this importer, each a value no closed form
@@ -37,6 +37,7 @@ pub(crate) struct Golden {
     pub(crate) upgraded: UpgradedCounts,
     pub(crate) supplied: SuppliedCounts,
     pub(crate) effects: EffectCounts,
+    pub(crate) panel: PanelCounts,
     pub(crate) fought: FoughtCounts,
     pub(crate) skirmish: SkirmishTicks,
     pub(crate) supply: SupplyTicks,
@@ -66,6 +67,7 @@ pub(crate) struct Measured {
     pub(crate) upgraded: Option<UpgradedCounts>,
     pub(crate) supplied: Option<SuppliedCounts>,
     pub(crate) effects: Option<EffectCounts>,
+    pub(crate) panel: Option<PanelCounts>,
     pub(crate) fought: Option<FoughtCounts>,
     pub(crate) skirmish: Option<SkirmishTicks>,
     pub(crate) supply: Option<SupplyTicks>,
@@ -133,6 +135,7 @@ impl Measured {
             upgraded: self.upgraded?,
             supplied: self.supplied?,
             effects: self.effects?,
+            panel: self.panel?,
             fought: self.fought?,
             skirmish: self.skirmish?,
             supply: self.supply?,

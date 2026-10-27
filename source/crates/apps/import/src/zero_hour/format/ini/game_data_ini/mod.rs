@@ -41,6 +41,9 @@ pub(crate) struct GameDataIni {
     pub(crate) track_marks: bool,
     /// `MaxTerrainTracks`: the most tracks laid at once.
     pub(crate) most_tracks: u16,
+    /// `SellPercentage`, as `parsePercentToReal` reads it, a fraction of 1: the share of its cost
+    /// a sold object of no `RefundValue` gives back.
+    pub(crate) sell_share: f32,
 }
 
 /// What the terrain's conversion reads of `GameData.ini`.
@@ -78,6 +81,7 @@ impl Default for GameDataIni {
             ground_stiffness: 0.5,
             track_marks: false,
             most_tracks: 0,
+            sell_share: 1.0,
         }
     }
 }
@@ -120,6 +124,7 @@ impl GameDataIni {
                         let count = u32::try_from(line.int()?).ok();
                         self.max_particles = count.ok_or(IniError::Range { line: line.number })?;
                     }
+                    "sellpercentage" => self.sell_share = line.real()? / 100.0,
                     word => {
                         let field = match word {
                             "camerapitch" => &mut self.camera_pitch,

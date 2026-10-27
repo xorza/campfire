@@ -256,11 +256,12 @@ const fn variant(directive: &Directive) -> usize {
             ProductionDirective::CancelTrain { .. } => 8,
             ProductionDirective::Rally { .. } => 9,
             ProductionDirective::CancelBuild => 10,
+            ProductionDirective::Sell => 11,
         },
         Directive::Items(directive) => match directive {
-            ItemsDirective::Buy { .. } => 11,
-            ItemsDirective::Sell { .. } => 12,
-            ItemsDirective::Swap { .. } => 13,
+            ItemsDirective::Buy { .. } => 12,
+            ItemsDirective::Sell { .. } => 13,
+            ItemsDirective::Swap { .. } => 14,
         },
     }
 }
@@ -308,6 +309,7 @@ fn the_largest_order_to_one_unit_is_51_bytes_within_the_least_payload_length() {
         }
         .into(),
         ProductionDirective::CancelBuild.into(),
+        ProductionDirective::Sell.into(),
         ItemsDirective::Buy { item, shop: unit }.into(),
         ItemsDirective::Sell {
             stack: u8::MAX,
@@ -321,7 +323,7 @@ fn the_largest_order_to_one_unit_is_51_bytes_within_the_least_payload_length() {
         .into(),
     ];
     let listed: Vec<usize> = directives.iter().map(variant).collect();
-    assert_eq!(listed, (0..14).collect::<Vec<_>>());
+    assert_eq!(listed, (0..15).collect::<Vec<_>>());
     let mut payloads = OrderPayloads::default();
     let lengths: Vec<usize> = directives
         .into_iter()

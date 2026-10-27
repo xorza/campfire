@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "9ac3e167e8280799ac85eb64831f980aa5e4d00db83648c90558c87fb522e4e0"
+game = "3e45b5822b893be0e13704b0519a327398b4de53458fd86f9d5841b5935b91d4"
 rules = "c19289ecee64026c3f4c8a52958c108743e98e5e97357b8be3e67d69422fd33d"
 
 [map]
@@ -52,6 +52,7 @@ dies = ["airngr_skl.airngr_dta", "airngr_skl.airngr_dtb"]
 [produced]
 trains = 223
 builds = 160
+sells = 173
 dropped = [0, 23, 0, 6, 4, 0, 0, 0]
 
 [upgraded]
@@ -77,6 +78,14 @@ ends = 24
 deaths = 866
 bones = 2243
 dropped = [35, 0, 8, 2, 7, 292, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0]
+
+[panel]
+icons = 449
+keys = 449
+panels = 538
+places = 1702
+commands = 4
+dropped = [1, 113, 2, 0, 0, 3]
 
 [fought]
 weapons = 110

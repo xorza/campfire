@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::chassis::Chassis;
 use crate::client_model::{ClientModel, ModelTop};
 use crate::death_fall::DeathFall;
+use crate::panel_place::PanelPlaces;
 use crate::set_match::SetMatch;
 use crate::state_animation::{AnimationMode, StateAnimation};
 use crate::state_set::StateSet;
@@ -55,6 +56,10 @@ pub struct ClientUnit {
     /// The springs its drawing pitches and rolls on, of a tracked or wheeled type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chassis: Option<Chassis>,
+    /// The buttons its unit's command panel places, none for a panel that lays its actions in
+    /// slot order (02-engine-core.md, A look places its buttons).
+    #[serde(default, skip_serializing_if = "PanelPlaces::is_empty")]
+    pub panel: PanelPlaces,
 }
 
 /// What a unit of a type plays as it dies, each effect by its name in the effects file: as it dies,
@@ -240,6 +245,7 @@ impl ClientUnit {
                 track: None,
             },
             chassis: None,
+            panel: PanelPlaces::EMPTY,
         }
     }
 

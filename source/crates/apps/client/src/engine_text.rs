@@ -1,6 +1,7 @@
 use std::fmt;
 
 use bevy::ecs::resource::Resource;
+use campfire_client_files::PanelCommand;
 use fluent_bundle::FluentResource;
 use fluent_bundle::concurrent::FluentBundle;
 use unic_langid::LanguageIdentifier;
@@ -19,6 +20,10 @@ pub(crate) enum EngineMessage {
     Victory,
     Defeat,
     MatchEnded,
+    Sell,
+    Stop,
+    AttackMove,
+    Rally,
 }
 
 /// The engine's English file.
@@ -26,7 +31,25 @@ const ENGLISH: &str = include_str!("../locale/en.ftl");
 
 impl EngineMessage {
     #[cfg(test)]
-    const ALL: [Self; 3] = [Self::Victory, Self::Defeat, Self::MatchEnded];
+    const ALL: [Self; 7] = [
+        Self::Victory,
+        Self::Defeat,
+        Self::MatchEnded,
+        Self::Sell,
+        Self::Stop,
+        Self::AttackMove,
+        Self::Rally,
+    ];
+
+    /// The name of the panel's `command`.
+    pub(crate) const fn of(command: PanelCommand) -> Self {
+        match command {
+            PanelCommand::Sell => Self::Sell,
+            PanelCommand::Stop => Self::Stop,
+            PanelCommand::AttackMove => Self::AttackMove,
+            PanelCommand::Rally => Self::Rally,
+        }
+    }
 
     /// Its id in the engine's file.
     const fn id(self) -> &'static str {
@@ -34,6 +57,10 @@ impl EngineMessage {
             Self::Victory => "match-victory",
             Self::Defeat => "match-defeat",
             Self::MatchEnded => "match-ended",
+            Self::Sell => "command-sell",
+            Self::Stop => "command-stop",
+            Self::AttackMove => "command-attack-move",
+            Self::Rally => "command-rally",
         }
     }
 }
@@ -88,7 +115,11 @@ mod tests {
             [
                 "Campfire: victory",
                 "Campfire: defeat",
-                "Campfire: the match ended"
+                "Campfire: the match ended",
+                "Sell",
+                "Stop",
+                "Attack move",
+                "Set rally point",
             ]
         );
         let resource = FluentResource::try_new(ENGLISH.to_owned()).unwrap();

@@ -37,10 +37,15 @@ impl CommandSetIni {
         Ok(())
     }
 
-    /// The buttons of the set `name`, in the order of their places; none for a name no file
-    /// defines.
-    pub(crate) fn buttons(&self, name: &str) -> Option<impl Iterator<Item = &str>> {
-        Some(self.sets.get(name)?.values().map(String::as_str))
+    /// The buttons of the set `name`, each at its place, in the order of their places; none for
+    /// a name no file defines.
+    pub(crate) fn buttons(&self, name: &str) -> Option<impl Iterator<Item = (u8, &str)>> {
+        Some(
+            self.sets
+                .get(name)?
+                .iter()
+                .map(|(&place, button)| (place, button.as_str())),
+        )
     }
 }
 

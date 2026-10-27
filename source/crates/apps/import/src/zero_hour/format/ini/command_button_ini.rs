@@ -11,14 +11,15 @@ pub(crate) struct CommandButtonIni {
 }
 
 /// What the import reads of a button: its command, the object it makes, the upgrade it
-/// researches, the label of its text in the string table, and whether it needs a science, as a
-/// `Science` line of a science names one.
+/// researches, the label of its text in the string table, its `ButtonImage`, a mapped image's
+/// name, and whether it needs a science, as a `Science` line of a science names one.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct CommandButton {
     pub(crate) command: ButtonCommand,
     pub(crate) object: Option<String>,
     pub(crate) upgrade: Option<String>,
     pub(crate) label: Option<String>,
+    pub(crate) image: Option<String>,
     pub(crate) science: bool,
 }
 
@@ -33,6 +34,14 @@ pub(crate) enum ButtonCommand {
     PlayerUpgrade,
     /// `OBJECT_UPGRADE`: its producer researches its upgrade for itself.
     ObjectUpgrade,
+    /// `SELL`: its building is sold.
+    Sell,
+    /// `STOP`: its units stop.
+    Stop,
+    /// `ATTACK_MOVE`: its units attack-move to the point the next click picks.
+    AttackMove,
+    /// `SET_RALLY_POINT`: its producers rally to the point the next click picks.
+    SetRallyPoint,
     /// Any other, which the import leaves.
     #[default]
     Other,
@@ -56,6 +65,10 @@ impl CommandButtonIni {
                             "DOZER_CONSTRUCT" => ButtonCommand::DozerConstruct,
                             "PLAYER_UPGRADE" => ButtonCommand::PlayerUpgrade,
                             "OBJECT_UPGRADE" => ButtonCommand::ObjectUpgrade,
+                            "SELL" => ButtonCommand::Sell,
+                            "STOP" => ButtonCommand::Stop,
+                            "ATTACK_MOVE" => ButtonCommand::AttackMove,
+                            "SET_RALLY_POINT" => ButtonCommand::SetRallyPoint,
                             _ => ButtonCommand::Other,
                         };
                     }
@@ -71,6 +84,7 @@ impl CommandButtonIni {
                                 .any(|token| token.eq_ignore_ascii_case("none"));
                     }
                     "textlabel" => button.label = Some(line.value()?.to_owned()),
+                    "buttonimage" => button.image = Some(line.value()?.to_owned()),
                     _ => {}
                 }
             }
@@ -92,6 +106,7 @@ pub(crate) mod samples {
   Command = UNIT_BUILD\r
   Object = AmericaVehicleDozer\r
   TextLabel = CONTROLBAR:ConstructAmericaDozer\r
+  ButtonImage = SACDozer\r
 End\r
 CommandButton Command_SetRallyPoint\r
   Command = SET_RALLY_POINT\r
@@ -171,13 +186,14 @@ mod tests {
             object: Some("AmericaVehicleDozer".to_owned()),
             upgrade: None,
             label: Some("CONTROLBAR:ConstructAmericaDozer".to_owned()),
+            image: Some("SACDozer".to_owned()),
             science: false,
         };
         assert_eq!(ini.get("Command_ConstructAmericaDozer"), Some(&dozer));
         let rally = ini.get("Command_SetRallyPoint").unwrap();
         assert_eq!(
             (rally.command, &rally.object),
-            (ButtonCommand::Other, &None)
+            (ButtonCommand::SetRallyPoint, &None)
         );
         assert_eq!(
             ini.get("Command_ConstructAmericaBarracks").unwrap().command,

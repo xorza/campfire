@@ -10,7 +10,7 @@ use campfire_mode::{MatchEnd, OptionPicks, OptionValue};
 use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
 use campfire_players::{OrderUnits, PlayersWorld};
-use campfire_production::{Site, TrainQueue};
+use campfire_production::{ProductionDirective, Site, TrainQueue};
 use campfire_projectiles::Projectile;
 use campfire_protocol::PlayerSlotPlan;
 use campfire_sim::StableId;
@@ -24,7 +24,8 @@ use crate::match_play::{
     STEP_LIMIT,
 };
 use crate::pins::{
-    BOT_TYPES, BotBase, CRUSADERS, FactorySteps, FightSteps, ProductionSteps, UpgradeSteps,
+    BOT_TYPES, BotBase, CRUSADERS, FactorySteps, FightSteps, ProductionSteps, SaleSteps,
+    UpgradeSteps,
 };
 
 /// The unit types the play makes beside the start's.
@@ -100,24 +101,25 @@ const FACTORY_CHAIN: [PlannedBuilding; 3] = [
 const BUILDER: &str = include_str!("../fixtures/builder.toml");
 
 /// The skirmish on Tournament Desert of `START_MONEY` against the builder bot (designs 18 and 19;
-/// 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
-/// slow weapons): player 1's command center trains a dozer, its start dozer builds a barracks,
-/// and the barracks trains a ranger; then the dozer builds a power plant, a supply center and a
-/// war factory, the factory trains `CRUSADERS`, the dozer builds a strategy center, the player
-/// researches `RESEARCHES`, and the crusaders' shells destroy the bot's command center, which ends
-/// no match, as the bot's other buildings count for its victory. The bot
-/// builds its base and trains its units meanwhile, and orders no attack.
+/// 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and slow weapons):
+/// player 1's command center trains a dozer, its start dozer builds a barracks, and the barracks
+/// trains a ranger; then the dozer builds a power plant, a supply center and a war factory, the
+/// factory trains `CRUSADERS`, the dozer builds a strategy center, the player researches
+/// `RESEARCHES` and sells its power plant, and the crusaders' shells destroy the bot's command
+/// center, which ends no match, as the bot's other buildings count for its victory. The bot builds
+/// its base and trains its units meanwhile, and orders no attack.
 #[derive(Debug)]
 pub(crate) struct SkirmishPlay;
 
 /// What the play measures: its production steps, its factory's, the strategy center's ticks, its
-/// upgrades, its fight, and the bot's base.
+/// upgrades, its sale, its fight, and the bot's base.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SkirmishSteps {
     pub(crate) production: ProductionSteps,
     pub(crate) factory: FactorySteps,
     pub(crate) strategy_center: u64,
     pub(crate) upgrades: UpgradeSteps,
+    pub(crate) sale: SaleSteps,
     pub(crate) fight: FightSteps,
     pub(crate) bot: BotBase,
 }
@@ -246,6 +248,7 @@ impl Play<'_> {
         let train_ticks = self.train_crusaders(play)?;
         let strategy_center = play.build(self.packages, builder, STRATEGY_CENTER)?;
         let upgrades = self.upgrades(play)?;
+        let sale = self.sell(play)?;
         let built = Self::bot_built(play)?;
         let fight = self.attack(play, train_ticks)?;
         let farthest = play.bot_farthest().expect("the play drives its bot");
@@ -258,9 +261,29 @@ impl Play<'_> {
             factory,
             strategy_center,
             upgrades,
+            sale,
             fight,
             bot,
         })
+    }
+
+    /// Player 1 sells its power plant in `play`, its research done; the step's measures.
+    fn sell(&self, play: &mut MatchPlay<'_>) -> Result<SaleSteps, CheckFailure> {
+        let [plant] = play.owned(POWER_PLANT, 0)?[..] else {
+            return Err(CheckFailure::ProductionStart);
+        };
+        let before = play.money(self.money);
+        play.order(&[Order::one(plant, ProductionDirective::Sell)]);
+        for ticks in 1..=STEP_LIMIT {
+            play.step();
+            if play.owned(POWER_PLANT, 0)?.is_empty() {
+                return Ok(SaleSteps {
+                    ticks,
+                    refund: play.money(self.money) - before,
+                });
+            }
+        }
+        Err(CheckFailure::NoSale)
     }
 
     /// Orders each of `RESEARCHES` in `play`, the strategy center's second a tick after the

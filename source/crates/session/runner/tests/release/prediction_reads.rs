@@ -161,10 +161,9 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     // The server builds each system that computes its own state, and the client none: the pay of
     // ability and attack toggles, the slow weapons' hits, the hits, the damage and the deaths,
     // the forgetting of attackers, the despawns of the dead and of empty nodes, the trades, the
-    // idle scans, the supply's count, the rallies, the trains' finish and the places freed, the
-    // levels shown, the sight, the areas'
-    // landings, at their two places, and triggers, and the projectiles' shots, launches and
-    // flight.
+    // idle scans, the supply's count, the rallies, the sales' start and end, the trains' finish
+    // and the places freed, the levels shown, the sight, the areas' landings, at their two
+    // places, and triggers, and the projectiles' shots, launches and flight.
     let mut server = World::new();
     Release::build(
         &mut server,
@@ -197,6 +196,8 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_production::kept_spawns::KeptSpawns::follow_deaths",
         "campfire_production::player_supply::PlayerSupply::refresh",
         "campfire_production::production_orders::ProductionOrders::set_rallies",
+        "campfire_production::sales::Sales::end_sales",
+        "campfire_production::sales::Sales::start_sales",
         "campfire_production::trains::Trains::finish_trains",
         "campfire_production::trains::Trains::free_places",
         "campfire_progression::experience::Experience::show_levels",

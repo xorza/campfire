@@ -15,6 +15,8 @@ pub enum ProductionDirective<R: OrderRefs = Ids> {
     Rally { target: Option<RallyTarget<R>> },
     /// Cancel a site of the player's building.
     CancelBuild,
+    /// Sell a building of the player's (04-capabilities/production.md, A building may be sold).
+    Sell,
 }
 
 impl Copy for ProductionDirective {}
@@ -35,6 +37,7 @@ impl<R: OrderRefs> ProductionDirective<R> {
                 target: target.map(|target| target.map_refs(refs)).transpose()?,
             },
             Self::CancelBuild => ProductionDirective::CancelBuild,
+            Self::Sell => ProductionDirective::Sell,
         })
     }
 }

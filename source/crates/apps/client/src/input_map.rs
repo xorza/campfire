@@ -89,6 +89,11 @@ impl InputMap {
         chord.modifiers == held_modifiers(keys) && keys.just_pressed(code(chord.key))
     }
 
+    /// Whether `chord` went down this frame, which then no other reader of the frame sees go down.
+    pub(crate) fn take_pressed(chord: Chord, keys: &mut ButtonInput<KeyCode>) -> bool {
+        Self::chord_pressed(chord, keys) && keys.clear_just_pressed(code(chord.key))
+    }
+
     /// Whether the modifiers that orbit the camera are exactly the ones held.
     pub(crate) fn orbits(&self, keys: &ButtonInput<KeyCode>) -> bool {
         held_modifiers(keys) == self.file.orbit

@@ -16,13 +16,15 @@ pub(crate) struct IniParking {
 }
 
 /// What an object gives production, as `ThingTemplate` and its modules read it: its `BuildCost`,
-/// its `BuildTime` in seconds, its `CommandSet`, its `Prerequisites`, its `ProductionUpdate`'s
+/// its `RefundValue`, 0 when it gives none, as `BuildAssistant::update` reads it, its `BuildTime`
+/// in seconds, its `CommandSet`, its `Prerequisites`, its `ProductionUpdate`'s
 /// `MaxQueueEntries` when it has the module, the points of its exit module when it has one that
 /// names them, its `ParkingPlaceBehavior`, an airfield's, which makes a helicopter at its model's
 /// helipad bone and parks its jets, and its `PlacementViewAngle`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IniBuild {
     pub(crate) cost: u16,
+    pub(crate) refund: u16,
     pub(crate) time: f32,
     pub(crate) command_set: Option<String>,
     pub(crate) prerequisites: Vec<Prerequisite>,
@@ -71,10 +73,8 @@ impl IniBuild {
     /// Takes an object's field `word` the build reads; whether it was one.
     pub(crate) fn field(&mut self, word: &str, at: &IniLine<'_>) -> Result<bool, IniError> {
         match word {
-            "buildcost" => {
-                let cost = at.int()?;
-                self.cost = u16::try_from(cost).map_err(|_| IniError::Range { line: at.number })?;
-            }
+            "buildcost" => self.cost = Self::unsigned_short(at)?,
+            "refundvalue" => self.refund = Self::unsigned_short(at)?,
             "buildtime" => self.time = at.real()?,
             "commandset" => self.command_set = Some(at.value()?.to_owned()),
             // `parseAsciiStringVector` takes each name of the line, in place of the last line's.
@@ -90,6 +90,11 @@ impl IniBuild {
             _ => return Ok(false),
         }
         Ok(true)
+    }
+
+    /// The value of a field of an unsigned short, as `INI::parseUnsignedShort` reads it.
+    fn unsigned_short(at: &IniLine<'_>) -> Result<u16, IniError> {
+        u16::try_from(at.int()?).map_err(|_| IniError::Range { line: at.number })
     }
 
     /// Opens the behavior module `module`, of the name its line gives in lowercase: the one of
@@ -174,11 +179,12 @@ impl IniBuild {
 }
 
 impl Default for IniBuild {
-    /// As `ThingTemplate` starts: free, a second to build, of no command set, prerequisite,
-    /// production module or variation.
+    /// As `ThingTemplate` starts: free, of no refund, a second to build, of no command set,
+    /// prerequisite, production module or variation.
     fn default() -> Self {
         Self {
             cost: 0,
+            refund: 0,
             time: 1.0,
             command_set: None,
             prerequisites: Vec::new(),

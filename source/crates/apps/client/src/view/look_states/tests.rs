@@ -398,4 +398,37 @@ fn a_rising_states_models_sink_by_the_share_of_their_site_not_yet_built() {
         .remove::<(Site, SiteProgress)>();
     step(&mut app, 0);
     assert_eq!(sunk(&app), 0.0);
+    // Sold at tick 10 over 4 ticks, it sinks as its sale runs: at tick 10 at its place; at tick
+    // 11, a quarter run, 1 m below; at tick 14 and past, all 4 m.
+    let sold = Sold::new(Tick::new(10), Ticks::new(4));
+    app.world_mut().entity_mut(unit).insert(sold);
+    let at = |app: &mut App, tick: u64| {
+        app.insert_resource(SimTick::new(Tick::new(tick)));
+        step(app, 0);
+        sunk(app)
+    };
+    assert_eq!(
+        [10, 11, 14, 20].map(|tick| at(&mut app, tick)),
+        [0.0, -1.0, -4.0, -4.0]
+    );
+}
+
+#[test]
+fn a_sales_share_runs_from_its_start_to_its_end_through_each_tick() {
+    // A sale of 180 ticks from tick 10: half run at tick 100; 179.5 of 180 halfway through tick
+    // 189; all at 190 and past; and of no time, all at once.
+    let sold = Sold::new(Tick::new(10), Ticks::new(180));
+    let share = |tick, fraction| sold_share(sold, Tick::new(tick), fraction);
+    assert_eq!(
+        [
+            share(10, 0.0),
+            share(100, 0.0),
+            share(189, 0.5),
+            share(190, 0.0),
+            share(400, 0.9)
+        ],
+        [0.0, 0.5, 179.5 / 180.0, 1.0, 1.0]
+    );
+    let none = Sold::new(Tick::new(10), Ticks::ZERO);
+    assert_eq!(sold_share(none, Tick::new(10), 0.0), 1.0);
 }

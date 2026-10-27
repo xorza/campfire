@@ -9,7 +9,7 @@ use campfire_declarations::SectionWriter;
 use campfire_math::Num;
 use campfire_orders::AcquireData;
 use campfire_package::UnitsFile;
-use campfire_production::{DropOffData, NodeData, ProductionData, SpawnsData};
+use campfire_production::{DropOffData, NodeData, ProductionData, SellData, SpawnsData};
 use campfire_stats::UpgradesData;
 
 use crate::zero_hour::imported_type::{ImportedType, TypeWeapons};
@@ -27,11 +27,11 @@ pub(crate) struct ImportedTypes {
 
 /// What the stages give each unit type, by its name: the actions of its slot kinds `weapon`, in its
 /// starting weapon set's order, and `command`, in its command set's order, its gather last; its
-/// `production` section when it trains; and its `node` when it is a dock and its `drop_off` when it
-/// is a supply center; and its `upgrades` (09-zero-hour.md, Every command set's trains and builds
-/// are imported; 09-zero-hour.md, A weapon converts when it hits one target at once;
-/// 09-zero-hour.md, A box is money; 04-capabilities/stats.md, A unit type takes modifiers by
-/// upgrades).
+/// `production` section when it trains; its `sell` when its command set sells it; and its `node`
+/// when it is a dock and its `drop_off` when it is a supply center; and its `upgrades`
+/// (09-zero-hour.md, Every command set's trains and builds are imported; 09-zero-hour.md, A weapon
+/// converts when it hits one target at once; 09-zero-hour.md, A box is money;
+/// 04-capabilities/stats.md, A unit type takes modifiers by upgrades).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TypeAdditions<'a> {
     pub(crate) weapon: &'a BTreeMap<TypeName, Vec<DeclaredName>>,
@@ -40,6 +40,7 @@ pub(crate) struct TypeAdditions<'a> {
     pub(crate) weapon_slots: &'a BTreeMap<TypeName, Vec<Vec<DeclaredName>>>,
     pub(crate) command: &'a BTreeMap<TypeName, Vec<DeclaredName>>,
     pub(crate) production: &'a BTreeMap<TypeName, ProductionData>,
+    pub(crate) sells: &'a BTreeMap<TypeName, SellData>,
     pub(crate) airfields: &'a BTreeMap<TypeName, AirfieldData>,
     pub(crate) nodes: &'a BTreeMap<TypeName, NodeData>,
     pub(crate) drop_offs: &'a BTreeMap<TypeName, DropOffData>,
@@ -104,6 +105,9 @@ impl ImportedTypes {
                 if let Some(production) = additions.production.get(name) {
                     writer.section(production);
                 }
+                if let Some(sell) = additions.sells.get(name) {
+                    writer.section(sell);
+                }
                 if let Some(airfield) = additions.airfields.get(name) {
                     writer.section(airfield);
                 }
@@ -152,6 +156,7 @@ pub(crate) mod reach_in {
                 weapon_slots: &BTreeMap::new(),
                 command: &BTreeMap::new(),
                 production: &BTreeMap::new(),
+                sells: &BTreeMap::new(),
                 airfields: &BTreeMap::new(),
                 nodes: &BTreeMap::new(),
                 drop_offs: &BTreeMap::new(),

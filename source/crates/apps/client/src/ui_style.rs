@@ -68,8 +68,8 @@ pub(crate) struct PanelRow {
 const PANEL_INSET: f32 = 12.0;
 
 impl<P: Send + Sync + 'static> Panel<P> {
-    /// Spawns the panel of `P`, `width` pixels wide in the window's `corner`.
-    pub(crate) fn spawn(commands: &mut Commands<'_, '_>, corner: Corner, width: f32) {
+    /// Spawns the panel of `P`, `width` pixels wide in the window's `corner`; its root.
+    pub(crate) fn spawn(commands: &mut Commands<'_, '_>, corner: Corner, width: f32) -> Entity {
         let inset = Val::Px(PANEL_INSET);
         let (top, bottom) = match corner {
             Corner::TopRight => (inset, Val::Auto),
@@ -107,6 +107,7 @@ impl<P: Send + Sync + 'static> Panel<P> {
             ..Node::default()
         };
         commands.spawn((rows, ChildOf(root), PanelRows::<P>(PhantomData)));
+        root
     }
 }
 

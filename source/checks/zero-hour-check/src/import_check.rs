@@ -3,20 +3,20 @@ use std::num::NonZeroU32;
 
 use campfire_actions::ActionKind;
 use campfire_client_files::{
-    ActionLook, ClientFile, ClientObjects, ClientUnit, ClientUnits, EffectsFile, LookDraw,
+    ActionLook, ClientFile, ClientObjects, ClientUnit, ClientUnits, EffectsFile, HudFile, LookDraw,
     MapConditions, TerrainFile,
 };
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
 use campfire_import::{
-    AnimationDropCause, ButtonDropCause, EffectDropCause, ImportLoss, Imported, RoadDropCause,
-    StateDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause,
+    AnimationDropCause, ButtonDropCause, EffectDropCause, ImportLoss, Imported, PanelDropCause,
+    RoadDropCause, StateDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause,
 };
 use campfire_math::Num;
 use campfire_navigation::MapNavigationData;
 use campfire_package::{ModePackages, ModeRead};
 use campfire_package_format::PackageReader;
-use campfire_production::{DropOffData, NodeData};
+use campfire_production::{DropOffData, NodeData, SellData};
 use campfire_stats::UpgradesData;
 use campfire_values::PackagePath;
 use tracing::info;
@@ -34,8 +34,9 @@ use crate::match_play::PlayTools;
 use crate::missile_play::MissilePlay;
 use crate::pins::{
     EffectCounts, FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, HelicopterSteps,
-    LookCounts, MapCounts, ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SkirmishTicks,
-    SuppliedCounts, SupplySteps, TerrainCounts, TerrainDrawn, UpgradeSteps, UpgradedCounts,
+    LookCounts, MapCounts, PanelCounts, ProducedCounts, ProductionSteps, RangerLook, RoadCounts,
+    SaleSteps, SkirmishTicks, SuppliedCounts, SupplySteps, TerrainCounts, TerrainDrawn,
+    UpgradeSteps, UpgradedCounts,
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
@@ -283,11 +284,15 @@ impl ImportCheck<'_> {
         info!(maps = self.imported.maps.len(), "the imported maps loaded");
     }
 
-    /// The trains and builds of every command set, and the buttons dropped, by cause.
+    /// The trains and builds of every command set, the unit types that sell, and the buttons
+    /// dropped, by cause.
     pub(crate) fn production(&mut self) {
+        let units = self.packages.content().units.values();
+        let sells = units.filter(|unit| unit.section::<SellData>().is_some());
         let produced = ProducedCounts {
             trains: self.kind_count(ActionKind::Train),
             builds: self.kind_count(ActionKind::Build),
+            sells: sells.count(),
             dropped: self.dropped(ButtonDropCause::ALL, |loss| match loss {
                 ImportLoss::Button(button) => Some(button.cause),
                 _ => None,
@@ -300,8 +305,9 @@ impl ImportCheck<'_> {
         info!(
             trains = produced.trains,
             builds = produced.builds,
+            sells = produced.sells,
             dropped = ?produced.dropped,
-            "the command sets' trains and builds"
+            "the command sets' trains, builds and sales"
         );
     }
 
@@ -369,6 +375,35 @@ impl ImportCheck<'_> {
             dropped = ?supplied.dropped,
             "the docks, supply centers, gatherers and hackers"
         );
+    }
+
+    /// The panel: the actions' icons and keys, the looks' places, the grid's commands of an icon,
+    /// and the buttons dropped or shown in part, by cause.
+    pub(crate) fn panel(&mut self) -> Result<(), CheckError> {
+        let files = &self.packages.mode().package.files;
+        let units: ClientUnits = client_file(files, &ClientUnits::path())?;
+        let hud: HudFile = client_file(files, &HudFile::path())?;
+        let actions = units.actions().values();
+        let looks = units.units().values().filter(|look| !look.panel.is_empty());
+        let panel = PanelCounts {
+            icons: actions.clone().filter(|look| look.icon.is_some()).count(),
+            keys: actions.filter(|look| look.key.is_some()).count(),
+            panels: looks.clone().count(),
+            places: looks.map(|look| look.panel.iter().count()).sum(),
+            commands: (hud.panel.commands.values())
+                .filter(|look| look.icon.is_some())
+                .count(),
+            dropped: self.dropped(PanelDropCause::ALL, |loss| match loss {
+                ImportLoss::Panel(button) => Some(button.cause),
+                _ => None,
+            }),
+        };
+        let expected = self.pinned(|golden| golden.panel, panel);
+        self.failures
+            .extend(Differs::of(panel, expected).map(CheckFailure::Panel));
+        self.measured.panel = Some(panel);
+        info!(%panel, "the command panel");
+        Ok(())
     }
 
     /// The particle systems and effect lists, the textures they draw, the effects the actions, the
@@ -480,6 +515,7 @@ impl ImportCheck<'_> {
                 factory,
                 strategy_center,
                 upgrades,
+                sale,
                 fight,
                 bot,
             }) = SkirmishPlay::run(played, rate, tools, &mut self.failures)
@@ -523,6 +559,13 @@ impl ImportCheck<'_> {
                 ranger_weapons = ?upgrades.ranger_weapons,
                 rods = upgrades.rods,
                 "player 1 built a strategy center and researched its upgrades"
+            );
+            self.failures
+                .extend(Differs::of(sale, SaleSteps::expected()).map(CheckFailure::Sale));
+            info!(
+                ticks = sale.ticks,
+                refund = sale.refund,
+                "player 1 sold its power plant"
             );
             let expected = FightSteps::expected(pinned);
             self.failures

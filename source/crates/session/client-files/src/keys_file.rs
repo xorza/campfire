@@ -368,6 +368,20 @@ impl<'de> Deserialize<'de> for Chord {
     }
 }
 
+impl Serialize for Key {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.name())
+    }
+}
+
+/// A package's file is untrusted, so a key of no name fails to read.
+impl<'de> Deserialize<'de> for Key {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Self::parse(&text).ok_or_else(|| D::Error::custom("a key by its `KeyboardEvent.code` name"))
+    }
+}
+
 impl Serialize for KeyModifiers {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_str(self)

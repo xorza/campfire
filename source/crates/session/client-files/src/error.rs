@@ -1,3 +1,4 @@
+use std::num::NonZeroU8;
 use std::str::Utf8Error;
 
 use campfire_codec::{BinaryError, TomlError};
@@ -123,3 +124,8 @@ pub enum TeamColorsError {
     #[error("it gives {0} colors, more than 256")]
     TooMany(usize),
 }
+
+/// A place of the command panel given two buttons.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("the panel's place {0} holds two buttons")]
+pub struct CrowdedPlace(pub NonZeroU8);

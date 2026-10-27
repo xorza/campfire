@@ -28,6 +28,7 @@ use crate::holdings::Holdings;
 use crate::kept_spawns::KeptSpawns;
 use crate::leaders::Leaders;
 use crate::production_column::RowReads;
+use crate::sales::Sales;
 
 mod book_builders;
 mod build_book;
@@ -72,7 +73,10 @@ mod requires_data;
 mod research_data;
 mod research_spec;
 mod resource_set;
+mod sales;
+mod sell_data;
 mod site;
+mod sold;
 mod spawn_spec;
 mod spawns_data;
 mod start_checks;
@@ -125,7 +129,9 @@ pub use crate::requires_data::{RequiredUnit, RequiresData};
 pub use crate::research_data::{ResearchData, ResearchHolder};
 pub use crate::research_spec::ResearchSpec;
 pub use crate::resource_set::ResourceSet;
+pub use crate::sell_data::{SellData, SellSpec};
 pub use crate::site::{Progressed, Site, SiteProgress, SiteStart};
+pub use crate::sold::Sold;
 pub use crate::spawn_spec::SpawnSpec;
 pub use crate::spawns_data::SpawnsData;
 pub use crate::start_checks::StartChecks;
@@ -224,6 +230,9 @@ impl Module for Production {
         d.server_part::<Builder, AtWork>();
         d.component::<Site>();
         d.component::<SiteProgress>();
+        d.component::<Sold>();
+        d.section::<SellData>();
+        d.book::<ById<UnitType, SellSpec>>(SellSpec::book);
         d.component::<KeptSpawns>();
         d.timed::<KeptSpawns>();
         d.state::<BodyUnit, KeptSpawns>();
@@ -286,20 +295,21 @@ impl Module for Production {
     }
 
     /// Adds production to a match: in Inputs, the tick's orders cancel trains and builds, and, on
-    /// the server, set rally points to points or the units its vision sees; in Act, after the other
-    /// orders start, ordered trains pass their checks, pay, and join their unit's queue; in Mode,
-    /// before the mode's hooks, the places of the units that died free, and the trains whose time
-    /// ended spawn, a train of a producer of places waiting for a free one. With navigation, which
-    /// tests a box for room and walks a worker, construction and gathering too: in Inputs, the
-    /// build and gather orders that changed are checked; in Act, after the trains, builds start and
-    /// workers run their loops; in Mode, before the trains finish, sites grow; as the tick ends,
-    /// the nodes that ran out despawn, and each leader stands at its spawns' centre, a predicting
-    /// client's too. A player's supply, a node's end, and the units trains and builds spawn are the
-    /// server's: a predicting client derives none, as it holds only the units its team sees, and
-    /// its unit comes back by replication. A build's placement tests the units the server's vision
-    /// sees, or, on a predicting client, the units it holds. On the server, a player spawns with
-    /// its supply, which the refresh of a mode that counts supply writes in place; a client
-    /// receives its own player's.
+    /// the server, set rally points to points or the units its vision sees and start sales; in Act,
+    /// after the other orders start, ordered trains pass their checks, pay, and join their unit's
+    /// queue; in Mode, before the mode's hooks, the places of the units that died free, and the
+    /// trains whose time ended spawn, a train of a producer of places waiting for a free one, and
+    /// the sales whose time ended pay and remove their buildings, on the server. With navigation,
+    /// which tests a box for room and walks a worker, construction and gathering too: in Inputs,
+    /// the build and gather orders that changed are checked; in Act, after the trains, builds start
+    /// and workers run their loops; in Mode, before the trains finish, sites grow; as the tick
+    /// ends, the nodes that ran out despawn, and each leader stands at its spawns' centre, a
+    /// predicting client's too. A player's supply, a node's end, and the units trains and builds
+    /// spawn are the server's: a predicting client derives none, as it holds only the units its
+    /// team sees, and its unit comes back by replication. A build's placement tests the units the
+    /// server's vision sees, or, on a predicting client, the units it holds. On the server, a
+    /// player spawns with its supply, which the refresh of a mode that counts supply writes in
+    /// place; a client receives its own player's.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.by_role(
             ProductionSystems::Commands,
@@ -307,6 +317,14 @@ impl Module for Production {
             ProductionOrders::apply_cancels::<ByHolding>,
         );
         cx.server(ProductionSystems::Commands, ProductionOrders::set_rallies);
+        cx.server(
+            ProductionSystems::Commands,
+            Sales::start_sales.after(ProductionOrders::apply_cancels::<ByVision>),
+        );
+        cx.server(
+            ProductionSystems::Finish,
+            Sales::end_sales.before(Trains::finish_trains),
+        );
         if cx.book::<SupplyBook>().is_some_and(|book| book.counts()) {
             cx.server(ProductionSystems::Supply, PlayerSupply::refresh);
         }

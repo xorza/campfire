@@ -481,30 +481,35 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
 /// one variation, the scout, fields each, and whose set trains the wisp, a command of both; the
 /// wisp needs the lab, which no button makes and no map places, and whose set trains the ghost.
 #[test]
-fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
+fn a_variation_and_a_prerequisite_convert_their_own_command_sets_and_a_sale_its_refund() {
     const OBJECTS: &str = "\
-        Object Center\n CommandSet = CenterSet\n Behavior = ProductionUpdate M1\n End\nEnd\n\
+        Object Center\n BuildCost = 1001\n CommandSet = CenterSet\n\
+         Behavior = ProductionUpdate M1\n End\nEnd\n\
         Object Jeep\n BuildCost = 500\n BuildTime = 5.0\n BuildVariations = Scout\nEnd\n\
         Object Rover\n BuildCost = 600\n BuildTime = 5.0\n BuildVariations = Scout\nEnd\n\
         Object Scout\n Locomotor = SET_NORMAL TankTreads\n CommandSet = ScoutSet\n\
          Behavior = ProductionUpdate M1\n End\nEnd\n\
         Object Wisp\n Locomotor = SET_NORMAL TankTreads\n BuildCost = 100\n BuildTime = 1.0\n\
          Prerequisites\n  Object = Lab\n End\nEnd\n\
-        Object Lab\n CommandSet = LabSet\n Behavior = ProductionUpdate M1\n End\nEnd\n\
+        Object Lab\n BuildCost = 1001\n RefundValue = 300\n CommandSet = LabSet\n\
+         Behavior = ProductionUpdate M1\n End\nEnd\n\
         Object Ghost\n Locomotor = SET_NORMAL TankTreads\n BuildCost = 100\n BuildTime = 1.0\n\
         End\n";
-    const SETS: &str = "CommandSet CenterSet\n 1 = Command_Jeep\n 2 = Command_Rover\nEnd\n\
+    const SETS: &str = "CommandSet CenterSet\n 1 = Command_Jeep\n 2 = Command_Rover\n\
+                         14 = Command_Sell\nEnd\n\
                         CommandSet ScoutSet\n 1 = Command_Wisp\nEnd\n\
-                        CommandSet LabSet\n 1 = Command_Ghost\nEnd\n";
+                        CommandSet LabSet\n 1 = Command_Ghost\n 14 = Command_Sell\nEnd\n";
     const BUTTONS: &str = "\
         CommandButton Command_Jeep\n Command = UNIT_BUILD\n Object = Jeep\nEnd\n\
         CommandButton Command_Rover\n Command = UNIT_BUILD\n Object = Rover\nEnd\n\
         CommandButton Command_Wisp\n Command = UNIT_BUILD\n Object = Wisp\nEnd\n\
-        CommandButton Command_Ghost\n Command = UNIT_BUILD\n Object = Ghost\nEnd\n";
+        CommandButton Command_Ghost\n Command = UNIT_BUILD\n Object = Ghost\nEnd\n\
+        CommandButton Command_Sell\n Command = SELL\nEnd\n";
     let mut rules = ZeroHourRules {
         objects: ObjectIni::of(&[OBJECTS]),
         ..ZeroHourRules::default()
     };
+    rules.game_data.sell_share = 0.5;
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     rules.sets.read(SETS.as_bytes()).unwrap();
     rules.buttons.read(BUTTONS.as_bytes()).unwrap();
@@ -530,6 +535,19 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
     for parent in ["jeep", "rover"] {
         assert_eq!(import.commands[&TypeName::named(parent)], wisp, "{parent}");
     }
+    // The center's sale gives back half of its 1001, 500.5 rounded down to 500; the lab's its
+    // refund of 300, whatever its cost; each over 6 seconds. The scout's set holds no sale.
+    let sale = |refund: u32| SellData {
+        refund: BTreeMap::from([(rules.names.money.clone(), refund)]),
+        time_ms: 6_000,
+    };
+    assert_eq!(
+        import.sells,
+        BTreeMap::from([
+            (TypeName::named("center"), sale(500)),
+            (TypeName::named("lab"), sale(300)),
+        ])
+    );
 }
 
 #[test]

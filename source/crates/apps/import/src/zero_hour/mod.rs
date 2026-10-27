@@ -3,8 +3,9 @@ use std::path::Path;
 
 use bevy_math::UVec2;
 use campfire_client_files::{
-    CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, HitMark, HudFile, KeysFile,
-    MapConditions, MapLights, PickingFile, PixelRadius, ShownBars, TeamColors, TerrainFile,
+    ButtonLook, CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, HitMark, HudFile,
+    KeysFile, MapConditions, MapLights, PanelPlaces, PickingFile, PixelRadius, ShownBars,
+    TeamColors, TerrainFile,
 };
 use campfire_codec::Toml;
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
@@ -22,6 +23,7 @@ use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::chassis_import::ChassisImport;
 use crate::zero_hour::combat_import::CombatImport;
+use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::effects_import::{EffectSources, EffectsImport, WeaponShot};
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::ini::object_ini::IniObject;
@@ -39,6 +41,7 @@ use crate::zero_hour::map_import::{MapImport, MapSources};
 use crate::zero_hour::map_roads::MapRoads;
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_writer::{ModelReport, ModelWriter, WrittenModel};
+use crate::zero_hour::panel_import::PanelImport;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::road_pieces::RoadPieces;
 use crate::zero_hour::rules_package::{ModeImport, RULES_FILES};
@@ -85,6 +88,8 @@ pub(crate) mod model_import;
 pub(crate) mod model_nodes;
 pub(crate) mod model_writer;
 pub(crate) mod object_flight;
+pub(crate) mod panel_drop_cause;
+pub(crate) mod panel_import;
 pub(crate) mod pivot_nodes;
 mod press_import;
 pub(crate) mod production_import;
@@ -160,14 +165,6 @@ impl ZeroHour {
         writer.write(CameraFile::path(), &camera.encode())?;
         let keys = press_import::keys_file(&game.mouse);
         writer.write(KeysFile::path(), &keys.encode())?;
-        // The game draws a bar only over a unit selected or under the cursor
-        // (`Drawable::drawHealthBar`), and marks no hit (02-engine-core.md, The mode chooses its
-        // hit mark).
-        let hud = HudFile {
-            bars: ShownBars::Selected,
-            hit_mark: HitMark::Hidden,
-        };
-        writer.write(HudFile::path(), &hud.encode())?;
         // Units before structures, each widened to a radius of at least 10 pixels, where the game
         // picks the nearest triangle alone (09-zero-hour.md, Zero Hour's units come before its
         // structures).
@@ -288,6 +285,30 @@ impl ZeroHour {
             looks.helipads.clone(),
             looks.airfields.clone(),
         );
+        // The panel's icons and keys, its grid, and the atlases its icons draw from
+        // (02-engine-core.md, A button's look is its action's).
+        let mut panel_dropped = Losses::default();
+        let panel = PanelImport::of(
+            &production.panel,
+            &game.images,
+            |name| road_assets.texture(name),
+            &mut panel_dropped,
+        )?;
+        for (producer, places) in &production.panel.places {
+            if let Some(look) = looks.units.get_mut(producer.declared()) {
+                look.panel = PanelPlaces::try_from(places.clone())
+                    .expect("a command set gives each place one button");
+            }
+        }
+        // The game draws a bar only over a unit selected or under the cursor
+        // (`Drawable::drawHealthBar`), and marks no hit (02-engine-core.md, The mode chooses its
+        // hit mark).
+        let hud = HudFile {
+            bars: ShownBars::Selected,
+            hit_mark: HitMark::Hidden,
+            panel: panel.grid.clone(),
+        };
+        writer.write(HudFile::path(), &hud.encode())?;
         let mut object_names = object_names.into_projectiles();
         let combat = CombatImport::of(&game, &mut object_names)?;
         // The systems the projectiles of the weapons the import converts carry.
@@ -370,7 +391,8 @@ impl ZeroHour {
         let drawn = model_textures
             .into_iter()
             .chain(terrain_textures.keys().cloned())
-            .chain(effects.textures.iter().cloned());
+            .chain(effects.textures.iter().cloned())
+            .chain(panel.textures.iter().cloned());
         for (to, path) in texture_files(drawn)? {
             let kind = TextureKind::of(&path).expect("a drawn texture is DDS or TGA");
             // A terrain's texture was read for its size, and is not read again.
@@ -403,7 +425,15 @@ impl ZeroHour {
                     WeaponShot::Projectile(&delivery.projectile)
                 }),
         };
-        let actions = effects.action_looks(&game.weapons, delivery, &mut looks.units)?;
+        let mut actions = effects.action_looks(&game.weapons, delivery, &mut looks.units)?;
+        for (action, button) in panel.actions {
+            if button == ButtonLook::default() {
+                continue;
+            }
+            let look = actions.entry(action).or_default();
+            look.icon = button.icon;
+            look.key = button.key;
+        }
         let looks_bones = looks.bones;
         let looks =
             ClientUnits::new(looks.units, looks.conditions, looks.objects)?.with_actions(actions);
@@ -429,6 +459,7 @@ impl ZeroHour {
             weapon_slots: &combat.weapon_slots,
             command: &production.commands,
             production: &production.sections,
+            sells: &production.sells,
             airfields: &production.airfields,
             nodes: &production.supply.nodes,
             drop_offs: &production.supply.drop_offs,
@@ -463,6 +494,8 @@ impl ZeroHour {
             }
         }
         losses.extend(production.dropped.into_iter().map(ImportLoss::Button));
+        let panel_losses = production.panel.dropped.into_iter().chain(panel_dropped);
+        losses.extend(panel_losses.map(ImportLoss::Panel));
         losses.extend(upgrades.dropped.into_iter().map(ImportLoss::Upgrade));
         let supply = production.supply.dropped.into_iter();
         losses.extend(supply.map(ImportLoss::Supply));
@@ -487,7 +520,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 50;
+    pub const OUTPUT_VERSION: u32 = 52;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

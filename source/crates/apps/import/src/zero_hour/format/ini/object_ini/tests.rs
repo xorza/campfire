@@ -659,6 +659,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
         build(&ini, "AmericaCommandCenter"),
         IniBuild {
             cost: 2000,
+            refund: 0,
             time: 45.0,
             command_set: Some("AmericaCommandCenterCommandSet".to_owned()),
             prerequisites: Vec::new(),
@@ -728,27 +729,31 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
         })
     );
     // A reskin keeps its base's, as its table sets none of them; a second `Prerequisites` block
-    // starts the list again.
+    // starts the list again. A refund gives its value.
     ini.read(
         b"ObjectReskin CenterRed AmericaCommandCenter\n BuildCost = 1\n CommandSet = Other\nEnd\n\
-          Object Twice\n Prerequisites\n  Object = A\n End\n Prerequisites\n  Object = B\n End\nEnd\n",
+          Object Twice\n Prerequisites\n  Object = A\n End\n Prerequisites\n  Object = B\n End\nEnd\n\
+          Object Refunded\n RefundValue = 300\nEnd\n",
     )
     .unwrap();
+    assert_eq!(build(&ini, "Refunded").refund, 300);
     assert_eq!(
         build(&ini, "CenterRed"),
         build(&ini, "AmericaCommandCenter")
     );
     assert_eq!(build(&ini, "Twice").prerequisites, [line(&["B"])]);
-    // A cost past an unsigned short, and a point that lacks a label, are refused.
+    // A cost or a refund past an unsigned short, and a point that lacks a label, are refused.
     let fails = |text: &str| ObjectFiles::default().read(text.as_bytes()).unwrap_err();
     assert_eq!(
         fails("Object A\n PlacementViewAngle = 1e40\nEnd\n"),
         IniError::Range { line: 2 }
     );
-    assert_eq!(
-        fails("Object A\n BuildCost = 65536\nEnd\n"),
-        IniError::Range { line: 2 }
-    );
+    for field in ["BuildCost", "RefundValue"] {
+        assert_eq!(
+            fails(&format!("Object A\n {field} = 65536\nEnd\n")),
+            IniError::Range { line: 2 }
+        );
+    }
     assert_eq!(
         fails(
             "Object A\n Behavior = DefaultProductionExitUpdate M\n  UnitCreatePoint = 1 2 3\n End\nEnd\n"

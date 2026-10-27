@@ -139,6 +139,7 @@ fn check(out: &Path, selection: &PlaySelection) -> Result<Vec<CheckFailure>, Che
     check.upgrades();
     check.supply();
     check.effects()?;
+    check.panel()?;
     check.combat();
     check.plays()
 }

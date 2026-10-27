@@ -17,9 +17,10 @@ use bevy::transform::components::Transform;
 use campfire_actions::{ActionProgress, ActionSlots, SlotTimes};
 use campfire_client_files::{FireBarrel, SiteStage};
 use campfire_combat::{ClipShots, Weapon};
+use campfire_common::{Tick, Ticks};
 use campfire_declarations::ById;
 use campfire_math::Num;
-use campfire_production::{Site, SiteProgress};
+use campfire_production::{Site, SiteProgress, Sold};
 use campfire_sim::{Position, SimTick, Unpredicted};
 use campfire_units::{Dead, Destination, Life, Variation};
 use campfire_values::{ActionId, Team, UnitTags, UnitType};
@@ -435,14 +436,20 @@ impl LookStatesPlugin {
     /// Moves the clip of each draw of each drawing by the frame's time, its drawing's walk setting
     /// the rate of a clip of a stride, and poses its models by it: each model's player plays the
     /// clip's graph, held at the clip's time, and each pivot's own meshes the clip hides at its
-    /// frame are hidden, but those its look hides. A state that rises sinks its models by its
-    /// rise times the share of its unit's site not yet built, as Zero Hour's
+    /// frame are hidden, but those its look hides. A state that rises sinks its models by its rise
+    /// times the share of its unit's site not yet built, or of its sale run, as Zero Hour's
     /// `ADJUST_HEIGHT_BY_CONSTRUCTION_PERCENT` does, and any other draws them at their place
-    /// (04-capabilities/production.md, A building rises with its site).
+    /// (04-capabilities/production.md, A building rises with its site;
+    /// 04-capabilities/production.md, A building may be sold).
     fn play(
-        (time, fixed, looks): (Res<'_, Time>, Res<'_, Time<Fixed>>, Res<'_, UnitLooks>),
+        (time, fixed, looks, tick): (
+            Res<'_, Time>,
+            Res<'_, Time<Fixed>>,
+            Res<'_, UnitLooks>,
+            Res<'_, SimTick>,
+        ),
         (mut scenes, mut clips, timings, mut graphs, assets): ShowAssets<'_>,
-        units: UnitParts<'_, '_>,
+        (units, sales): (UnitParts<'_, '_>, Query<'_, '_, &Sold, Allow<Unpredicted>>),
         (replacing, mut roots): (
             Query<'_, '_, &'static Replaces>,
             Query<'_, '_, PlayedRoot<'static>>,
@@ -460,9 +467,11 @@ impl LookStatesPlugin {
             let Ok((_, _, _, site, _, &team)) = units.get(unit) else {
                 continue;
             };
-            let unbuilt = site.map_or(0.0, |(site, progress)| {
-                (Num::ONE - progress.share(site)).float()
-            });
+            let unbuilt = match (site, sales.get(unit)) {
+                (Some((site, progress)), _) => (Num::ONE - progress.share(site)).float(),
+                (None, Ok(&sold)) => sold_share(sold, tick.start(), clock.fraction),
+                (None, Err(_)) => 0.0,
+            };
             let Some(draws) = looks.draws(states.unit_type, states.variation) else {
                 continue;
             };
@@ -586,6 +595,21 @@ impl ClipHiding<'_, '_, '_> {
         }
         hidden.meshes.clone_from(self.scratch);
     }
+}
+
+/// The share of `sold`'s sale run at `fraction` of the way through the tick `now`, from 0 as it
+/// starts to 1 as it ends; 1 for a sale of no time.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a sale's ticks are far below 2²⁴, exact in f32"
+)]
+fn sold_share(sold: Sold, now: Tick, fraction: f32) -> f32 {
+    let total = sold.until().since(sold.since()).map_or(0, Ticks::get);
+    if total == 0 {
+        return 1.0;
+    }
+    let run = now.since(sold.since()).map_or(0, Ticks::get) as f32 + fraction;
+    (run / total as f32).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]

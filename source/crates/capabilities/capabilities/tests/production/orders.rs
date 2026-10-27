@@ -2,8 +2,8 @@ use crate::halves;
 use campfire_declarations::ByIdBuilder;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Gait, Navigation, UnitNavigationData, UnpartedPairs, Walker};
-use campfire_sim::Position;
-use campfire_units::{GroundPoint, Leaving, LivingSpawns, MapBook, SeenBy};
+use campfire_sim::{EntityIndex, Position};
+use campfire_units::{Deaths, GroundPoint, Leaving, LivingSpawns, MapBook, SeenBy};
 use campfire_values::TeamSet;
 use campfire_vision::Vision;
 
@@ -445,4 +445,104 @@ fn a_predicting_clients_train_reads_only_what_it_holds() {
         Production::tick_ordering(game, 0, producer, rally);
         Production::order_train(game, producer);
     });
+}
+
+#[test]
+fn a_sale_refunds_its_queue_at_once_then_its_refund_at_its_end_and_removes_it_with_no_death() {
+    // Player 0 holds 0 gold; its barracks, which sells for 40 gold over 3 ticks, queues two
+    // trains of 4 ticks that paid 10 and 20 gold.
+    let mut game = ordering_match();
+    let shop = Shop::place(&mut game);
+    let gold = ResourceId::new(0);
+    Players::spawn(&mut game, 1, 1);
+    let sale = SellSpec {
+        refund: Box::new([ResourceAmount {
+            resource: gold,
+            amount: 40,
+        }]),
+        time: Ticks::new(3),
+    };
+    Shop::give(&mut game, shop.barracks, sale);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::new(4), None);
+    let mut queue = TrainQueue::default();
+    for paid in [10, 20] {
+        let queued = Queued {
+            action: train,
+            rank: Rank::FIRST,
+            time: Ticks::new(4),
+            paid: 1,
+        };
+        let amount = ResourceAmount {
+            resource: gold,
+            amount: paid,
+        };
+        queue.push(queued, &[amount], Tick::new(0), &mut UnitDues::loose());
+    }
+    let player = PlayerSlot::new(0);
+    let producer = Production::allocate_id(&mut game);
+    shop.producer(
+        &mut game,
+        producer,
+        10,
+        Team::new(1),
+        Some(player),
+        train,
+        queue,
+    );
+    let held = |game: &Match| game.player_resources(player).unwrap().amount(gold);
+    // Tick 0: another player's sale does nothing. Tick 1: player 0's gives back the queue's 10
+    // and 20 at once, and marks the barracks sold from tick 1 to tick 4, its tag `constructing`
+    // on. Tick 2: a sale of a sold building does nothing.
+    Production::tick_ordering(&mut game, 1, producer, ProductionDirective::Sell);
+    assert_eq!(game.try_part::<Sold>(producer), None);
+    Production::tick_ordering(&mut game, 0, producer, ProductionDirective::Sell);
+    let sold = Sold::new(Tick::new(1), Ticks::new(3));
+    assert_eq!((sold.since(), sold.until()), (Tick::new(1), Tick::new(4)));
+    assert_eq!(held(&game), 30);
+    assert_eq!(game.try_part::<Sold>(producer), Some(&sold));
+    assert!(game.part::<TrainQueue>(producer).entries().is_empty());
+    let tags = StatusTags::from([Production::CONSTRUCTING]);
+    assert_eq!(game.part::<StatusTags>(producer), &tags);
+    Production::tick_ordering(&mut game, 0, producer, ProductionDirective::Sell);
+    assert_eq!(game.try_part::<Sold>(producer), Some(&sold));
+    // Tick 3 runs before the sale's end: the barracks stands. Tick 4 ends it: player 0 gets its
+    // 40, and the barracks goes with no death.
+    game.step();
+    assert_eq!(
+        (held(&game), game.try_part::<Sold>(producer)),
+        (30, Some(&sold))
+    );
+    game.step();
+    assert_eq!(held(&game), 70);
+    assert_eq!(game.resource::<EntityIndex>().get(producer), None);
+    assert!(game.resource::<Deaths>().is_empty());
+
+    // A dead building, and one of a type of no sale, sell nothing.
+    let dead = Production::allocate_id(&mut game);
+    let queue = TrainQueue::default();
+    shop.producer(
+        &mut game,
+        dead,
+        20,
+        Team::new(1),
+        Some(player),
+        train,
+        queue,
+    );
+    game.insert_parts(dead, Dead);
+    Production::tick_ordering(&mut game, 0, dead, ProductionDirective::Sell);
+    assert_eq!(game.try_part::<Sold>(dead), None);
+    let gate = Production::allocate_id(&mut game);
+    let at = SpawnAt {
+        id: gate,
+        unit_type: shop.gate,
+        team: Team::new(1),
+        position: Vec3::new(Num::int(-10), Num::ZERO, Num::ZERO),
+        owner: Some(player),
+        angle: Num::ZERO,
+        variation: None,
+    };
+    Spawner::place_any(&mut game, at, ());
+    Production::tick_ordering(&mut game, 0, gate, ProductionDirective::Sell);
+    assert_eq!(game.try_part::<Sold>(gate), None);
 }

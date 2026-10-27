@@ -1,4 +1,4 @@
-data_version 79
+data_version 80
 actions.progress 91dd90cbde2fd145
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
@@ -68,6 +68,7 @@ production.node 024f1723ff67fb73
 production.rally 3dfad42e3fcd1064
 production.site cdbba5f2eae6c68f
 production.site_progress e458cddc4fb70b3b
+production.sold ffc96ab57b36357e
 production.spawn_of a94eded38a67aa2d
 production.train_queue eddf577bb3fa6bed
 production.trained_units 2fde87a764f18cfd

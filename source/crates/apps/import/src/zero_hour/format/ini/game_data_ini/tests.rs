@@ -62,6 +62,11 @@ End
     )
     .unwrap();
     assert_eq!(thresholds(&ini), [0.7, 0.35]);
+    // A sale gives back all of its cost by default, the shipped 50 % once it reads.
+    assert_eq!(ini.sell_share, 1.0);
+    ini.read(b"GameData\n  SellPercentage = 50%\nEnd\n")
+        .unwrap();
+    assert_eq!(ini.sell_share, 0.5);
 
     // The shipped camera's fields, which the camera's conversion reads.
     let mut shipped = GameDataIni::default();

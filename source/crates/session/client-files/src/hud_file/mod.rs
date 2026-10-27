@@ -3,15 +3,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
+use crate::hud_file::panel_grid::PanelGrid;
 
-/// A mode's `client/hud.toml`: which units show their bars, and how a hit shows; a mode of no
-/// file, or a field the file does not give, shows every unit's bars and a ring for each hit
-/// (02-engine-core.md, Bars in screen space; 02-engine-core.md, The mode chooses its hit mark).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// A mode's `client/hud.toml`: which units show their bars, how a hit shows, and the command
+/// panel's grid; a mode of no file, or a field the file does not give, shows every unit's bars, a
+/// ring for each hit and the default grid (02-engine-core.md, Bars in screen space;
+/// 02-engine-core.md, The mode chooses its hit mark; 02-engine-core.md, A look places its buttons).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HudFile {
     pub bars: ShownBars,
     pub hit_mark: HitMark,
+    pub panel: PanelGrid,
 }
 
 /// Which units show their bars: all of them, as a MOBA shows them; or those the player selected
@@ -44,6 +47,8 @@ impl HudFile {
 impl ClientFile for HudFile {
     const FORMAT: ClientFormat = ClientFormat::Toml;
 }
+
+pub(crate) mod panel_grid;
 
 #[cfg(test)]
 mod tests;

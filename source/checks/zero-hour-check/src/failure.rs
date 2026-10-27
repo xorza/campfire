@@ -10,9 +10,9 @@ use derive_more::Display;
 use crate::decal_ground::DecalGround;
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, EffectCounts, FactorySteps, FightSteps, Fingerprints,
-    FoughtCounts, HelicopterSteps, JetTicks, LookCounts, MapCounts, MissileTicks, ProducedCounts,
-    ProductionSteps, RangerLook, RoadCounts, SuppliedCounts, SupplySteps, TerrainDrawn,
-    UpgradeSteps, UpgradedCounts,
+    FoughtCounts, HelicopterSteps, JetTicks, LookCounts, MapCounts, MissileTicks, PanelCounts,
+    ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SaleSteps, SuppliedCounts,
+    SupplySteps, TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -60,6 +60,9 @@ pub(crate) enum CheckFailure {
     /// pinned.
     #[display("it supplied {_0}")]
     Supplied(Box<Differs<SuppliedCounts>>),
+    /// The import's panel: its icons, keys, places, commands and drops by cause.
+    #[display("it converted the panel as {_0}")]
+    Panel(Box<Differs<PanelCounts>>),
     /// The import's particle systems, effect lists, their textures and the effects dropped by
     /// cause differ from the pinned.
     #[display("it converted effects as {_0}")]
@@ -89,6 +92,12 @@ pub(crate) enum CheckFailure {
     /// expected.
     #[display("it upgraded as {_0}")]
     Upgrades(Box<Differs<UpgradeSteps>>),
+    /// The power plant's sale does not end within its limit.
+    #[display("the power plant's sale does not end")]
+    NoSale,
+    /// The sale's ticks or refund differ from the expected.
+    #[display("it sold the power plant as {_0}")]
+    Sale(Box<Differs<SaleSteps>>),
     /// The factory's chain's ticks or money differ from the expected.
     #[display("it built the factory's chain as {_0}")]
     Factory(Box<Differs<FactorySteps>>),

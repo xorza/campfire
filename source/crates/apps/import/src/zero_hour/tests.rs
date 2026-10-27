@@ -6,9 +6,10 @@ use campfire_actions::{
     TypeSlotsData,
 };
 use campfire_client_files::{
-    AnimationMode, BarrelFlash, ClientModel, ClientUnit, ClipRounds, ConditionTest, FireBarrel,
-    FireBone, LookDraw, LookShown, LookState, LookTransition, LookVariation, ModelScale, ModelTop,
-    NodeUpgrade, ObjectLook, Press, StateAnimation, StateClip, StatePlay,
+    ActionLook, AnimationMode, BarrelFlash, ClientModel, ClientUnit, ClipRounds, ConditionTest,
+    FireBarrel, FireBone, Key, LookDraw, LookShown, LookState, LookTransition, LookVariation,
+    ModelScale, ModelTop, NodeUpgrade, ObjectLook, PanelButton, PanelCommand, PanelPlace, Press,
+    StateAnimation, StateClip, StatePlay,
 };
 use campfire_combat::{
     ArmorShare, AttackData, ClipData, ClipRefill, CombatData, ModeCombatData, OnDeath, PitchData,
@@ -933,6 +934,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         weapon_slots: &combat.weapon_slots,
         command: &production.commands,
         production: &production.sections,
+        sells: &production.sells,
         airfields: &production.airfields,
         nodes: &production.supply.nodes,
         drop_offs: &production.supply.drop_offs,
@@ -1342,14 +1344,44 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             .collect(),
         ..empty()
     };
+    // The panels of the sets: each converted button at its place, the command center's rally at
+    // its 13, its research's science and the barracks' wall left out (02-engine-core.md, A look
+    // places its buttons).
+    let declared = |name: &str| DeclaredName::new(name).unwrap();
+    let panel = |places: &[(u8, &str)]| {
+        let places = places.iter().map(|&(place, button)| PanelPlace {
+            place: NonZeroU8::new(place).unwrap(),
+            button: match button {
+                "rally" => PanelButton::Command(PanelCommand::Rally),
+                action => PanelButton::Action(declared(action)),
+            },
+        });
+        PanelPlaces::try_from(places.collect::<Vec<_>>()).unwrap()
+    };
     let expected = ClientUnits::new(
         looks(vec![
-            ("americabarracks", empty()),
+            (
+                "americabarracks",
+                ClientUnit {
+                    panel: panel(&[
+                        (1, "train_americainfantryranger"),
+                        (2, "train_americainfantrypathfinder"),
+                        (7, "research_upgrade_americarangerflashbang"),
+                        (8, "research_upgrade_americabarrackswalls"),
+                    ]),
+                    ..empty()
+                },
+            ),
             (
                 "americacommandcenter",
                 ClientUnit {
                     placement_angle: Some(Num::int(-135)),
                     turret: None,
+                    panel: panel(&[
+                        (1, "train_americavehicledozer"),
+                        (2, "research_upgrade_americacompositearmor"),
+                        (13, "rally"),
+                    ]),
                     ..empty()
                 },
             ),
@@ -1367,7 +1399,13 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                 "americatankcrusader",
                 armed(&["weapon_tankcannon", "weapon_rangerrifle"]),
             ),
-            ("americavehicledozer", empty()),
+            (
+                "americavehicledozer",
+                ClientUnit {
+                    panel: panel(&[(3, "build_americabarracks")]),
+                    ..empty()
+                },
+            ),
             ("bush", unit(hidden())),
             ("crate", empty()),
             ("fortresswall", empty()),
@@ -1427,7 +1465,25 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         .map(|(name, look)| (DeclaredName::new(name).unwrap(), look))
         .collect(),
     )
-    .unwrap();
+    .unwrap()
+    // The buttons' keys, the letters their labels mark, the dozer's `d` and the barracks' `r`; the
+    // fixture maps no image, so none has an icon.
+    .with_actions(BTreeMap::from([
+        (
+            declared("build_americabarracks"),
+            ActionLook {
+                key: Some(Key::KeyR),
+                ..ActionLook::default()
+            },
+        ),
+        (
+            declared("train_americavehicledozer"),
+            ActionLook {
+                key: Some(Key::KeyD),
+                ..ActionLook::default()
+            },
+        ),
+    ]));
     assert_eq!(
         Toml::parse::<ClientUnits>(&test_dir.read_text("one/game/client/units.toml")).unwrap(),
         expected

@@ -31,6 +31,8 @@ mod map_conditions;
 mod map_lights;
 mod material_extras;
 mod object_look;
+mod panel_icon;
+mod panel_place;
 mod particle_system;
 mod picking_file;
 mod set_match;
@@ -64,9 +66,10 @@ pub use crate::death_fall::{DeathFall, FallStage, GroundDeath, SelfSpin, Spiral}
 pub use crate::effect_list::{EffectList, ListedSystem};
 pub use crate::effects_file::EffectsFile;
 pub use crate::error::{
-    ClientFileError, EffectsError, TeamColorsError, TerrainFileError, TextureLevelsError,
-    UntestedCondition,
+    ClientFileError, CrowdedPlace, EffectsError, TeamColorsError, TerrainFileError,
+    TextureLevelsError, UntestedCondition,
 };
+pub use crate::hud_file::panel_grid::{ButtonLook, GridCell, PanelGrid, PlaceOrder};
 pub use crate::hud_file::{HitMark, HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};
 pub use crate::ktx2_image::Ktx2Image;
@@ -74,6 +77,8 @@ pub use crate::map_conditions::MapConditions;
 pub use crate::map_lights::{MapLight, MapLights};
 pub use crate::material_extras::{Blend, MaterialExtras, TeamPaint};
 pub use crate::object_look::{LookVariant, ObjectLook};
+pub use crate::panel_icon::{IconRect, PanelIcon};
+pub use crate::panel_place::{PanelButton, PanelCommand, PanelPlace, PanelPlaces};
 pub use crate::particle_system::{
     AlphaKey, ColorKey, EmissionVelocity, EmissionVolume, ParticleSystem, SlaveSystem,
 };

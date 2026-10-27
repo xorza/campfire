@@ -4,7 +4,7 @@ use crate::zero_hour::format::ini::command_set_ini::samples::COMMAND_SETS;
 #[test]
 fn a_set_lists_its_buttons_by_place_a_later_file_over_the_places_it_names() {
     fn buttons<'a>(ini: &'a CommandSetIni, name: &str) -> Option<Vec<&'a str>> {
-        Some(ini.buttons(name)?.collect())
+        Some(ini.buttons(name)?.map(|(_, button)| button).collect())
     }
     let mut ini = CommandSetIni::default();
     ini.read(COMMAND_SETS.as_bytes()).unwrap();
@@ -19,6 +19,11 @@ fn a_set_lists_its_buttons_by_place_a_later_file_over_the_places_it_names() {
         ]
     );
     assert!(buttons(&ini, "americadozercommandset").is_none());
+    // Each at its place: the dozer's at 1, 3, 4 and 5.
+    let places: Vec<u8> = (ini.buttons("AmericaDozerCommandSet").unwrap())
+        .map(|(place, _)| place)
+        .collect();
+    assert_eq!(places, [1, 3, 4, 5]);
     ini.read(b"CommandSet AmericaCommandCenterCommandSet\n 1 = Other\n 2 = Second\nEnd\n")
         .unwrap();
     assert_eq!(

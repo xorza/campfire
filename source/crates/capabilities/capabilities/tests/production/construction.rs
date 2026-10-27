@@ -857,18 +857,27 @@ fn a_sites_life_ends_its_gain_above_its_start_less_the_damage_it_took() {
 }
 
 #[test]
-fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing() {
-    // The build paid 15 of 100 gold. Player 1's cancel does nothing; player 0's gives back 0.5 of
-    // 15, 7.5 rounded down to 7, and despawns the site.
+fn a_cancel_refunds_its_share_rounded_down_a_site_sells_nothing_and_one_that_dies_refunds_nothing()
+{
+    // The build paid 15 of 100 gold. A sale of the site, of a depot that sells, does nothing.
+    // Player 1's cancel does nothing; player 0's gives back 0.5 of 15, 7.5 rounded down to 7, and
+    // despawns the site.
     let Building {
         mut game,
         shop,
         yard,
     } = Building::new(Rules::of(Style::Alone));
+    let sale = SellSpec {
+        refund: Box::new([]),
+        time: Ticks::new(1),
+    };
+    Shop::give(&mut game, shop.depot, sale);
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
     assert_eq!(shop.gold(&game), 85);
+    Production::tick_ordering(&mut game, 0, depot, ProductionDirective::Sell);
+    assert_eq!(game.try_part::<Sold>(depot), None);
     Production::tick_ordering(&mut game, 1, depot, ProductionDirective::CancelBuild);
     assert!(game.try_part::<Site>(depot).is_some());
     Production::tick_ordering(&mut game, 0, depot, ProductionDirective::CancelBuild);

@@ -8,6 +8,7 @@ use crate::zero_hour::format::ini::creation_list_ini::CreationListIni;
 use crate::zero_hour::format::ini::fx_list_ini::FxListIni;
 use crate::zero_hour::format::ini::game_data_ini::GameDataIni;
 use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
+use crate::zero_hour::format::ini::mapped_image_ini::MappedImageIni;
 use crate::zero_hour::format::ini::mouse_ini::MouseIni;
 use crate::zero_hour::format::ini::multiplayer_ini::MultiplayerIni;
 use crate::zero_hour::format::ini::object_ini::{ObjectFiles, ObjectIni};
@@ -33,6 +34,7 @@ pub(crate) struct ZeroHourRules {
     pub(crate) templates: PlayerTemplateIni,
     pub(crate) sets: CommandSetIni,
     pub(crate) buttons: CommandButtonIni,
+    pub(crate) images: MappedImageIni,
     pub(crate) upgrades: UpgradeIni,
     pub(crate) multiplayer: MultiplayerIni,
     pub(crate) weapons: WeaponIni,
@@ -71,6 +73,7 @@ impl ZeroHourRules {
                 CommandButtonIni::default(),
                 CommandButtonIni::read,
             )?,
+            images: Self::images(install)?,
             upgrades: install.read_inis("Upgrade", UpgradeIni::default(), UpgradeIni::read)?,
             multiplayer: install.read_inis(
                 "Multiplayer",
@@ -93,6 +96,17 @@ impl ZeroHourRules {
             strings: Self::string_table(install)?,
             names: RulesNames::default(),
         })
+    }
+
+    /// The install's mapped images, those of its textures of 512 pixels, then those made by hand,
+    /// as `ImageCollection::load` reads them at the game's full detail.
+    fn images(install: &Install) -> Result<MappedImageIni, ZeroHourError> {
+        let sized = install.read_inis(
+            "MappedImages\\TextureSize_512",
+            MappedImageIni::default(),
+            MappedImageIni::read,
+        )?;
+        install.read_inis("MappedImages\\HandCreated", sized, MappedImageIni::read)
     }
 
     /// The install's string table, `Data\<language>\generals.csf`, as the game reads its

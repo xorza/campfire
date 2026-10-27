@@ -3,7 +3,7 @@ use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
-use bevy::ecs::query::With;
+use bevy::ecs::query::{Allow, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::SystemCondition;
@@ -17,7 +17,8 @@ use bevy::state::condition::in_state;
 use bevy::ui::{BackgroundColor, BorderColor, Node, PositionType, UiRect, Val};
 use campfire_client_files::Press;
 use campfire_mode::PlayerControl;
-use campfire_sim::{EntityIndex, StableId};
+use campfire_production::Sold;
+use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_units::{Leader, SpawnOf};
 
 use crate::input_map::InputMap;
@@ -28,12 +29,13 @@ use crate::selection::{Selection, SelectionSystems};
 use crate::view::ViewSystems;
 
 /// Keeps the selection of the player's own units (02-engine-core.md, A selection of the player's
-/// own units): each frame, a unit the client no longer holds leaves it, and an empty selection
-/// takes the avatar. In a mode of `PlayerControl::Units` (02-engine-core.md, The mode says what a
+/// own units): each frame, a unit the client no longer holds or that its player sold leaves it, and
+/// an empty selection takes the avatar. In a mode of `PlayerControl::Units` (02-engine-core.md, The mode says what a
 /// player selects), the left button selects: a click on one of them selects it alone, and a drag
 /// selects each whose ground point shows within the rectangle it draws; a click or a drag that
-/// meets none of them leaves the selection as it is, and a press while the player places a build
-/// is the preview's.
+/// meets none of them leaves the selection as it is, a sold one selected by neither, as Zero Hour
+/// makes a sold building unselectable; and a press while the player places a build or aims a
+/// command is theirs.
 #[derive(Debug)]
 pub(crate) struct SelectingPlugin {
     pub(crate) control: PlayerControl,
@@ -51,6 +53,9 @@ struct HeldPress {
 /// The press the left button holds; none while it is up, or held from over the UI.
 #[derive(Resource, Debug, Default)]
 struct Held(Option<HeldPress>);
+
+/// The units their players sold, which no selection holds.
+type Unselectable<'w, 's> = Query<'w, 's, (), (With<Sold>, Allow<Unpredicted>)>;
 
 /// The rectangle a drag draws, a node of the UI that takes no clicks.
 #[derive(Component, Debug)]
@@ -106,15 +111,15 @@ impl SelectingPlugin {
         ));
     }
 
-    /// Drops from the selection each unit the client no longer holds; an empty selection takes
-    /// the avatar. A selection that stays as it was is not marked changed.
+    /// Drops from the selection each unit the client no longer holds or that its player sold; an
+    /// empty selection takes the avatar. A selection that stays as it was is not marked changed.
     fn keep(
-        index: Res<'_, EntityIndex>,
+        (index, sold): (Res<'_, EntityIndex>, Unselectable<'_, '_>),
         own: OwnPlayer<'_, '_>,
         mut selection: ResMut<'_, Selection>,
     ) {
         let avatar = own.avatar().map(|avatar| avatar.id);
-        let held = |unit: StableId| index.get(unit).is_some();
+        let held = |unit: StableId| index.get(unit).is_some_and(|unit| !sold.contains(unit));
         if selection.bypass_change_detection().keep(held, avatar) {
             selection.set_changed();
         }
@@ -149,6 +154,7 @@ impl SelectingPlugin {
             Query<'_, '_, &SpawnOf>,
             Query<'_, '_, (), With<Leader>>,
         ),
+        sold: Unselectable<'_, '_>,
         mut held: ResMut<'_, Held>,
         mut selection: ResMut<'_, Selection>,
         mut picked: Local<'_, Vec<StableId>>,
@@ -163,6 +169,7 @@ impl SelectingPlugin {
             let unit = pointer.own_unit_under();
             picked.extend(unit);
         }
+        picked.retain(|&unit| index.get(unit).is_none_or(|unit| !sold.contains(unit)));
         let led_by = |unit: StableId| {
             let spawner = spawns.get(index.get(unit)?).ok()?.spawner();
             leaders.contains(index.get(spawner)?).then_some(spawner)

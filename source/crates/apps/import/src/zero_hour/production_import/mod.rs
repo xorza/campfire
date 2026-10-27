@@ -8,7 +8,7 @@ use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::{Num, Rounding};
 use campfire_production::{
     BuildData, BuildStart, ConstructData, FramePoint, PlaceData, ProductionData, RequiredUnit,
-    RequiresData, ResearchData, ResearchHolder, TrainData,
+    RequiresData, ResearchData, ResearchHolder, SellData, TrainData,
 };
 use campfire_values::{Number, Ranked, Share, TextId};
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,7 @@ use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::{NamedObject, ProductionNames};
 use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::panel_import::PanelButtons;
 use crate::zero_hour::skirmish_start::FactionStart;
 use crate::zero_hour::supply_import::{DOCK_RANGE, Spawning, SupplyImport};
 use crate::zero_hour::type_name::TypeName;
@@ -50,8 +51,12 @@ pub(crate) struct ProductionImport {
     pub(crate) commands: BTreeMap<TypeName, Vec<DeclaredName>>,
     /// Each producer's `production` section, by its type's name.
     pub(crate) sections: BTreeMap<TypeName, ProductionData>,
+    /// The `sell` section of each type whose command set holds a sale, by its type's name.
+    pub(crate) sells: BTreeMap<TypeName, SellData>,
     /// The docks, supply centers, gatherers and free units of the types it visits.
     pub(crate) supply: SupplyImport,
+    /// The places of each producer's buttons on its panel, and their faces.
+    pub(crate) panel: PanelButtons,
     /// The helipad of each type whose model names one, by its type's name, which an airfield's
     /// trains leave from, and each airfield's places and runways, which its jets take.
     helipads: BTreeMap<DeclaredName, [f32; 2]>,
@@ -206,6 +211,11 @@ enum Making {
 }
 
 impl ProductionImport {
+    /// A sale's milliseconds, as `BuildAssistant::update` runs one at the game's 30 frames a
+    /// second: 45 frames of scaffold, then its construction percent down from 99.9 by 100 over
+    /// 90 frames until −50, 135 frames, 180 in all.
+    const SELL_MS: u32 = 6_000;
+
     /// Whether `unit`'s command set holds a gather.
     fn gathers(&self, unit: &DeclaredName) -> bool {
         let commands = self.commands.get(unit);
@@ -278,11 +288,29 @@ impl ProductionImport {
             }
             let set = producer.object.build().command_set.as_deref();
             let buttons = set.and_then(|set| rules.sets.buttons(set));
-            let mut made: Vec<NamedObject<'r>> = buttons
-                .into_iter()
-                .flatten()
-                .filter_map(|button_name| import.button(rules, &producer, button_name, names))
-                .collect();
+            let mut made: Vec<NamedObject<'r>> = Vec::new();
+            for (place, button_name) in buttons.into_iter().flatten() {
+                let converted =
+                    |import: &Self| import.commands.get(&producer.name).map_or(0, Vec::len);
+                let before = converted(&import);
+                made.extend(import.button(rules, &producer, button_name, names));
+                // The action the button made, when it made one its producer did not hold.
+                let action = (converted(&import) > before)
+                    .then(|| import.commands[&producer.name].last().cloned())
+                    .flatten();
+                if let Some(button) = rules.buttons.get(button_name) {
+                    if button.command == ButtonCommand::Sell {
+                        import.sell(rules, &producer);
+                    }
+                    import.panel.place(
+                        &rules.strings,
+                        &producer.name,
+                        (place, button_name),
+                        button,
+                        action,
+                    );
+                }
+            }
             made.extend(import.supply_of(rules, &producer, names));
             made.extend(names.take_fresh());
             for named in made {
@@ -293,6 +321,29 @@ impl ProductionImport {
         }
         import.airfields = import.airfields();
         import
+    }
+
+    /// Gives `seller`, whose command set holds a sale, its `sell` section: its `RefundValue` of
+    /// money, or else its cost times the game's `SellPercentage`, rounded down, as
+    /// `BuildAssistant::update` pays it, over `SELL_MS` (04-capabilities/production.md, A building
+    /// may be sold).
+    fn sell(&mut self, rules: &ZeroHourRules, seller: &NamedObject<'_>) {
+        let build = seller.object.build();
+        #[expect(
+            clippy::cast_sign_loss,
+            reason = "`REAL_TO_UNSIGNEDINT` truncates, and a share below 0 gives back nothing"
+        )]
+        let refund = if build.refund == 0 {
+            (f32::from(build.cost) * rules.game_data.sell_share) as u32
+        } else {
+            u32::from(build.refund)
+        };
+        let money = (refund > 0).then(|| (rules.names.money.clone(), refund));
+        let sale = SellData {
+            refund: money.into_iter().collect(),
+            time_ms: Self::SELL_MS,
+        };
+        self.sells.insert(seller.name.clone(), sale);
     }
 
     /// Converts the supply of `producer`, a unit type of `names`, its buttons converted: its
@@ -376,7 +427,12 @@ impl ProductionImport {
                 self.research(rules, producer, button_name, button);
                 return None;
             }
-            ButtonCommand::Other => return None,
+            // The panel's commands make nothing; the panel places them.
+            ButtonCommand::Sell
+            | ButtonCommand::Stop
+            | ButtonCommand::AttackMove
+            | ButtonCommand::SetRallyPoint
+            | ButtonCommand::Other => return None,
         };
         let made = button
             .object

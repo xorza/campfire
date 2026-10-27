@@ -503,14 +503,14 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     // `Leader`, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
     // the core's `StatusTags`, combat's `TurretAim`, navigation's `ArrivedAt`, `AsideDepth`,
     // `Hemmed`, `Altitude`, `FlightGoal` and `HeldPlace`, production's `HeldPlaces`, airfields'
-    // `Runways` and `Sortie`, and the mode's `IncomeClock` among them, and the 71 books, 15 of the
+    // `Runways` and `Sortie`, and the mode's `IncomeClock` among them, and the 72 books, 15 of the
     // core's, its variations among them, interaction's two, combat's armors, turrets, barrels and
     // weapons, navigation's walkers, unit types' navigation and flight and crowd rule, orders'
-    // scans, production's trains, researches, gathers and spawns, stats' type upgrades, the
+    // scans, production's trains, researches, gathers, spawns and sales, stats' type upgrades, the
     // mode's victory, bounty, incomes and inputs, and progression's experience among them.
     assert_eq!(audit.kinds.len(), 4);
     assert_eq!(audit.parts.len(), 56);
-    assert_eq!(audit.books.len(), 71);
+    assert_eq!(audit.books.len(), 72);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 15);
     // The observers, the runs out of the schedule and the parts a server derives, which the

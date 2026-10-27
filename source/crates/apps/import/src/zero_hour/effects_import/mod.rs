@@ -300,7 +300,11 @@ impl EffectsImport {
             let hit = list(&weapon.detonation_fx).transpose()?.flatten();
             let look = match delivery(&id) {
                 WeaponShot::Dropped => continue,
-                WeaponShot::Shot => ActionLook { fire, hit },
+                WeaponShot::Shot => ActionLook {
+                    fire,
+                    hit,
+                    ..ActionLook::default()
+                },
                 WeaponShot::Projectile(projectile) => {
                     let trail = weapon.exhaust.as_deref().map(|name| {
                         let name = ImportName::latin(name).declared()?;
@@ -314,7 +318,10 @@ impl EffectsImport {
                         look.end = hit;
                         look.trail = trail;
                     }
-                    ActionLook { fire, hit: None }
+                    ActionLook {
+                        fire,
+                        ..ActionLook::default()
+                    }
                 }
             };
             if look != ActionLook::default() {
