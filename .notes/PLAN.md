@@ -144,4 +144,38 @@ It stands last, as the player's check is of the whole slice.
 
 - [ ] A player of Tournament Desert right-clicks a Humvee with Rangers selected and sees them get in, fires from it, lets one out from the panel and evacuates the rest, flies a Chinook with a tank across the map, and garrisons a building and sees it turn their colour, in the client; then the slice's decisions fold into `04-capabilities/interaction.md`, `04-capabilities/combat.md`, `04-capabilities/navigation.md`, `02-engine-core.md` and `09-zero-hour.md`, its losses into `09-zero-hour.md`'s, and `transports.md` goes.
 
+## Driving
+
+The slice of [Driving](../docs/design/driving.md): a player of a Zero Hour skirmish sees its vehicles and infantry speed up, brake and turn as they move, as the release game's locomotors drive them. Its facts are [Zero Hour's ground locomotors](../docs/research/zero-hour-locomotors.md); its checks are that document's. It stands after Transports and garrisons, as every later play's goldens move with it, and a slice before it would see them move twice.
+
+### DR1. A movement model in the engine
+
+Touches navigation and units; it stands first, as the models of DR2 plug into it.
+
+- [ ] Every walker turns and steps alike (driving.md, A type moves by its movement model; driving.md, A mover keeps a velocity; driving.md, The route feeds the mover): `Walking::move_units` turns a walker toward its leg and steps it along the leg (`walking.rs:442`), and the jets' flight is a pass of its own (`wings.rs:41`). A type's movement model, an enum of `step`, today's, and `wings`, today's jet, each given the route's next waypoint and the length left to its end; a model that moves by physics keeps a `Velocity` on the ground plane, a part of each of its units, saved, restored and predicted. Checks: the 3v3's, the lane's and the Zero Hour check's goldens do not move; a velocity survives a save and a restore and a client's rollback. Builds: What can be forgotten is a type or a trait method with no default.
+
+### DR2. Zero Hour's locomotors
+
+Touches navigation; it stands after DR1, whose interface its models fill.
+
+- [ ] No model drives as the release game (driving.md, The release game's forward speed; driving.md, Each appearance moves as its mover; driving.md, A turn moves the body round its pivot; driving.md, A wheel's arc is tested on the pathing grid; driving.md, A braking mover lands on its waypoint): a walker's speed is its step from the first tick, and it turns in place before it steps (`facing/mod.rs:79`). `navigation::zero_hour` gives the model of a type's `locomotor = { zero_hour = { appearance, braking, min_turn_speed, pivot, backwards, lateral_friction } }`, its speed, turn rate and acceleration its stats: its velocity integrated each tick, its forward speed the release game's, `TREADS` and `TWO_LEGS` slowed by their turn, `FOUR_WHEELS` and `MOTORCYCLE` held to their turning speed, backing and turning in three points, the turn about its pivot, the arc tested on the walker's pathing grid, and the braking that lands it on its route's end. Checks: the navigation tests drive each appearance from a stop, through a turn and into its goal, on an axis and on a diagonal, each tick's place, facing and velocity against values worked by hand, turn a tread in place past 45°, swing a wheel round its pivot, back one to a goal behind it, turn it in three points, turn one in place before an arc into a wall, and land a braking mover on its waypoint; a client predicts its mover as its server drives it. Builds: A capability serves every game.
+
+### DR3. A hurt modifier
+
+Touches stats; it stands after DR2, as the import of DR4 writes both.
+
+- [ ] A type moves alike at any life (driving.md, A hurt type may hold a modifier): stats holds a type's modifiers by its passives and upgrades alone. A type's `hurt = { below, modifier }` holds the modifier while its life share is at most `below`, held as a passive is, by the pass that visits what changed; the mode gains a stat `acceleration` for the models that read it. Checks: the modifier holds at the share and below and goes above it, and the stats of a unit that heals past it come back the tick it does. Builds: A pass visits what changed.
+
+### DR4. Zero Hour's movers
+
+Touches the Zero Hour import, its check and its benches; it stands last of the code, as it writes what the batches before read.
+
+- [ ] The import writes a speed and a turn rate alone (driving.md, Each appearance moves as its mover; driving.md, A hurt type may hold a modifier): `LocomotorIni` reads `Braking` (`locomotor_ini.rs:162`) and passes over `SpeedDamaged`, `TurnRateDamaged`, `AccelerationDamaged`, `MinTurnSpeed`, `TurnPivotOffset` and `CanMoveBackwards`, and a type gets a gait alone (`imported_type/mod.rs:186`). Each type of a `TREADS`, `TWO_LEGS`, `FOUR_WHEELS` or `MOTORCYCLE` locomotor gets its `locomotor`, its `acceleration` stat, and a `hurt` of `UnitReallyDamagedThreshold` whose modifier adds its damaged numbers less its own, shared among the types of one difference; its `PhysicsBehavior`'s `LateralFriction`, 0.15 with none. Checks: the import's tests give a Crusader, a Humvee and a Ranger their locomotors and the Humvee its hurt modifier of `move_speed` −30; the Zero Hour check pins the movers of each appearance, its goldens move, each move named, and its benches measure the sim's worst tick before and after; its bots' match still ends. Builds: The importer takes a game's data as it is; the engine reads it as it should be.
+
+### End of the slice
+
+It stands last, as the player's check is of the whole slice.
+
+- [ ] A player of Tournament Desert drives a Humvee round a corner, an Overlord into its goal and a damaged tank home, and sees each move as the release game's, in the client; then the slice's decisions fold into `04-capabilities/navigation.md`, `04-capabilities/stats.md` and `09-zero-hour.md`, its losses into `09-zero-hour.md`'s, and `driving.md` goes.
+
 ## Foundations
