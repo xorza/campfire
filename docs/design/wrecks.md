@@ -1,6 +1,6 @@
 # Wrecks
 
-A slice's proposal. At its end, a player of a Zero Hour skirmish sees a destroyed tank leave its burning hulk, which sinks and goes, throw its turret and its debris, which fly, bounce and sink, a destroyed helicopter or jet fall and blow up, and a tank drive with dust at its treads and lay track marks that fade, as the game's death objects and tank draws show them. Its plan is `PLAN.md`'s Wrecks; when the slice ends, its lasting decisions fold into `02-engine-core.md` for the formats and the client and `09-zero-hour.md` for what the import converts and loses, and this document goes. Its facts are [Zero Hour's deaths](../research/zero-hour-deaths.md).
+A slice's proposal. At its end, a player of a Zero Hour skirmish sees a destroyed tank leave its burning hulk, which sinks and goes, throw its turret and its debris, which fly, bounce and sink, a destroyed helicopter or jet fall and blow up, and a tank drive with dust at its treads and lay track marks that fade, as the game's death objects and tank draws show them. Its plan is `.notes/PLAN.md`'s Wrecks; when the slice ends, its lasting decisions fold into `02-engine-core.md` for the formats and the client and `09-zero-hour.md` for what the import converts and loses, and this document goes. Its facts are [Zero Hour's deaths](../research/zero-hour-deaths.md).
 
 ## Decisions
 

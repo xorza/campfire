@@ -1,10 +1,10 @@
 # Plan
 
-The open steps, in the order they are done, and the foundations. The rules are in [AGENTS.md](AGENTS.md#workflow).
+The open steps, in the order they are done, and the foundations. The rules are in [AGENTS.md](../AGENTS.md#workflow).
 
 ## Effects
 
-The slice of [Effects](docs/design/effects.md): a player of a Zero Hour skirmish sees each shot's fire effect at its barrel, each projectile's exhaust, each hit's burst and each death's explosion, as the game's FX lists and particle systems draw them. Its facts are [Zero Hour's effects](docs/research/zero-hour-effects.md); its checks are that document's.
+The slice of [Effects](../docs/design/effects.md): a player of a Zero Hour skirmish sees each shot's fire effect at its barrel, each projectile's exhaust, each hit's burst and each death's explosion, as the game's FX lists and particle systems draw them. Its facts are [Zero Hour's effects](../docs/research/zero-hour-effects.md); its checks are that document's.
 
 ### End of the slice
 
@@ -14,7 +14,7 @@ It stands last, as the player's check is of the whole slice.
 
 ## Console
 
-The slice of [Console](docs/design/console.md): an agent in Claude Code starts a local match of the MOBA test mode in the client, runs it paused to a tick, tables its units and shows a screenshot of one of them, while the user watches the window. Its facts are [The console](docs/research/console.md); its checks are that document's. It stands after Effects' steps, and waits for no player's check of a slice before it. Its new dependencies, `schemars`, `strsim`, `rmcp`, `tokio` and `base64`, were approved on 2026-10-27, each added in the batch that names it.
+The slice of [Console](../docs/design/console.md): an agent in Claude Code starts a local match of the MOBA test mode in the client, runs it paused to a tick, tables its units and shows a screenshot of one of them, while the user watches the window. Its facts are [The console](../docs/research/console.md); its checks are that document's. It stands after Effects' steps, and waits for no player's check of a slice before it. Its new dependencies, `schemars`, `strsim`, `rmcp`, `tokio` and `base64`, were approved on 2026-10-27, each added in the batch that names it.
 
 ### End of the slice
 
@@ -24,7 +24,7 @@ It stands last, as the user's check is of the whole slice.
 
 ## Wrecks
 
-The slice of [Wrecks](docs/design/wrecks.md): a player of a Zero Hour skirmish sees a destroyed tank's hulk and debris, a destroyed aircraft's fall, and a tank's tread dust and track marks. Its facts are [Zero Hour's deaths](docs/research/zero-hour-deaths.md); its checks are that document's. It stands after Console, whose screenshots let an agent see its wrecks before the player's check, and extends Effects' deaths; it waits for no player's check of a slice before it.
+The slice of [Wrecks](../docs/design/wrecks.md): a player of a Zero Hour skirmish sees a destroyed tank's hulk and debris, a destroyed aircraft's fall, and a tank's tread dust and track marks. Its facts are [Zero Hour's deaths](../docs/research/zero-hour-deaths.md); its checks are that document's. It stands after Console, whose screenshots let an agent see its wrecks before the player's check, and extends Effects' deaths; it waits for no player's check of a slice before it.
 
 ### End of the slice
 
@@ -34,7 +34,7 @@ It stands last, as the player's check is of the whole slice.
 
 ## Helicopters
 
-The slice of [Helicopters](docs/design/helicopters.md): a USA player of a Zero Hour skirmish trains a Chinook that gathers supplies by air and a Comanche that flies over cliffs and fights, which only weapons that hit the air reach in flight, and which falls when shot down. Its facts are [Zero Hour's helicopters](docs/research/zero-hour-helicopters.md); its checks are that document's. It stands after Wrecks, whose aircraft falls it shows, and waits for no player's check of a slice before it.
+The slice of [Helicopters](../docs/design/helicopters.md): a USA player of a Zero Hour skirmish trains a Chinook that gathers supplies by air and a Comanche that flies over cliffs and fights, which only weapons that hit the air reach in flight, and which falls when shot down. Its facts are [Zero Hour's helicopters](../docs/research/zero-hour-helicopters.md); its checks are that document's. It stands after Wrecks, whose aircraft falls it shows, and waits for no player's check of a slice before it.
 
 ### End of the slice
 
@@ -44,7 +44,7 @@ It stands last, as the player's check is of the whole slice.
 
 ## Jets
 
-The slice of [Jets](docs/design/jets.md): a player of a Zero Hour skirmish trains a Raptor or a MiG at an airfield, which waits at its parking place, taxis to its runway, takes off down it, strikes a target in passes, comes back to land and reload, and falls when shot down. Its facts are [Zero Hour's jets](docs/research/zero-hour-jets.md); its checks are that document's. It stands after Helicopters, whose fliers it extends, and waits for no player's check of a slice before it.
+The slice of [Jets](../docs/design/jets.md): a player of a Zero Hour skirmish trains a Raptor or a MiG at an airfield, which waits at its parking place, taxis to its runway, takes off down it, strikes a target in passes, comes back to land and reload, and falls when shot down. Its facts are [Zero Hour's jets](../docs/research/zero-hour-jets.md); its checks are that document's. It stands after Helicopters, whose fliers it extends, and waits for no player's check of a slice before it.
 
 ### End of the slice
 

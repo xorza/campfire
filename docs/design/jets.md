@@ -1,6 +1,6 @@
 # Jets
 
-A slice's proposal. At its end, a player of a Zero Hour skirmish on Tournament Desert trains a Raptor or a MiG at an airfield, which waits at its parking place, taxis to its runway, takes off down it, strikes a target in passes, comes back to land and reload, and falls when shot down. Its plan is `PLAN.md`'s Jets; when the slice ends, its lasting decisions fold into `04-capabilities/navigation.md` for wings, `04-capabilities/combat.md` for the aim and the clip, a new `04-capabilities/airfields.md` for the airfield, and `09-zero-hour.md` for what the import converts and loses, and this document goes. Its facts are [Zero Hour's jets](../research/zero-hour-jets.md).
+A slice's proposal. At its end, a player of a Zero Hour skirmish on Tournament Desert trains a Raptor or a MiG at an airfield, which waits at its parking place, taxis to its runway, takes off down it, strikes a target in passes, comes back to land and reload, and falls when shot down. Its plan is `.notes/PLAN.md`'s Jets; when the slice ends, its lasting decisions fold into `04-capabilities/navigation.md` for wings, `04-capabilities/combat.md` for the aim and the clip, a new `04-capabilities/airfields.md` for the airfield, and `09-zero-hour.md` for what the import converts and loses, and this document goes. Its facts are [Zero Hour's jets](../research/zero-hour-jets.md).
 
 ## Decisions
 

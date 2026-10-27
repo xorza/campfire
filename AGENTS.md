@@ -6,7 +6,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
 
 - `docs/design/` — the design: the decisions every change follows ([Documents](#documents)). Read the documents of the systems a change touches before you change them. `06-script-api-reference.md` is generated from the registry by a test, never edited by hand.
 - `docs/research/` — what the design is taken from: measurements and sources read, facts only.
-- `PLAN.md` — the one plan: every open step, in the order it is done, in batches of one commit each, and the foundations ([Workflow](#workflow)). It lists open items only.
+- `.notes/PLAN.md` — the one plan: every open step, in the order it is done, in batches of one commit each, and the foundations ([Workflow](#workflow)). It lists open items only.
 - `.notes/ISSUES.md` — the issue log: every open problem ([Issue log](#issue-log)).
 - `source/` — engine and game code ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, by game: `engine/` the generic heroes, modes and rules, `moba/` the MOBA test content; `source/packages/<game>/` an imported game's rules package, its bot scripts among its scripts.
 - `../GeneralsX/` — beside this repository, not in it: [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS: the reference for Zero Hour's formats and rules. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/09-zero-hour.md#decisions)).
@@ -47,7 +47,7 @@ Work goes in vertical slices. A slice ends with something new that the user play
 
 1. **Decide** the slice: what the player does or sees at its end, in one or two sentences.
 2. **Investigate** the code it touches, and how established engines and games solve the problem and why.
-3. **Propose** its design in a document of its own under `docs/design/` ([Documents](#documents)), and its plan in `PLAN.md`, naming every system it changes, for review.
+3. **Propose** its design in a document of its own under `docs/design/` ([Documents](#documents)), and its plan in `.notes/PLAN.md`, naming every system it changes, for review.
 4. **Implement** the plan as reviewed, step by step, each step ending with `cargo drive check` and `cargo drive test` passing. The slice ends when the user plays it in the client and a scripted match keeps it working; its decisions then fold into the system documents.
 
 No changes to systems outside the plan along the way: a problem outside the slice, or depth it does not need, goes to the issue log.
@@ -64,7 +64,7 @@ The issue log is `.notes/ISSUES.md`, every open problem of the project.
 - **Sections,** in this order, each item in the one of its next step: **Decide**, the options are known and the user chooses, the item naming the question and its options; **Research**, the cause or the right fix is not known; **Ready**, the fix is known and waits for its turn.
 - **Items.** One bullet each: its system, then what is wrong, not how to fix it. An item a plan step takes carries its tag after its system, `**Net.** **Plan: F3.**`. Within a section, items go by their systems' names.
 - **Life.** A fixed item is deleted, with no history; a section with no items stays.
-- **Foundations.** A problem whose cause is in the architecture or a format, as several items show one cause, also has an entry in `PLAN.md`'s Foundations: its cause, what it limits and the items it holds. The entry goes when its cause is fixed.
+- **Foundations.** A problem whose cause is in the architecture or a format, as several items show one cause, also has an entry in `.notes/PLAN.md`'s Foundations: its cause, what it limits and the items it holds. The entry goes when its cause is fixed.
 
 ## Checks
 

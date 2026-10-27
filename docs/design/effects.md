@@ -1,6 +1,6 @@
 # Effects
 
-A slice's proposal. At its end, a player of a Zero Hour skirmish sees each shot's fire effect at its barrel, each projectile's exhaust as it flies, a hit's burst where a projectile detonates or a weapon of no projectile strikes, and each death's explosion, as the game's FX lists and particle systems draw them. Its plan is `PLAN.md`'s Effects; when the slice ends, its lasting decisions fold into `02-engine-core.md` and `09-zero-hour.md`, and this document goes. The facts are [Zero Hour's effects](../research/zero-hour-effects.md).
+A slice's proposal. At its end, a player of a Zero Hour skirmish sees each shot's fire effect at its barrel, each projectile's exhaust as it flies, a hit's burst where a projectile detonates or a weapon of no projectile strikes, and each death's explosion, as the game's FX lists and particle systems draw them. Its plan is `.notes/PLAN.md`'s Effects; when the slice ends, its lasting decisions fold into `02-engine-core.md` and `09-zero-hour.md`, and this document goes. The facts are [Zero Hour's effects](../research/zero-hour-effects.md).
 
 ## Decisions
 

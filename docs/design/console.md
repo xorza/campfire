@@ -1,6 +1,6 @@
 # Console
 
-A slice's proposal. At its end, an agent in Claude Code starts a local match of the MOBA test mode in the client, runs it paused to a tick, tables its units and shows a screenshot of one of them, while the user watches the window. Its plan is `PLAN.md`'s Console; when the slice ends, its lasting decisions fold into `02-engine-core.md` and `08-sessions.md`, its planned ones into `03-game-scripting.md`, `05-protocol-spec.md` and `06-script-api.md`, and this document goes. The facts are [The console](../research/console.md).
+A slice's proposal. At its end, an agent in Claude Code starts a local match of the MOBA test mode in the client, runs it paused to a tick, tables its units and shows a screenshot of one of them, while the user watches the window. Its plan is `.notes/PLAN.md`'s Console; when the slice ends, its lasting decisions fold into `02-engine-core.md` and `08-sessions.md`, its planned ones into `03-game-scripting.md`, `05-protocol-spec.md` and `06-script-api.md`, and this document goes. The facts are [The console](../research/console.md).
 
 ## Decisions
 
