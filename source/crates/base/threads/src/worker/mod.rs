@@ -32,9 +32,9 @@ impl Worker {
     }
 
     /// Starts the thread `name`, a job's, which runs `run`, a wait that no holder can wake, as a
-    /// read of the standard input, which no OS wakes portably: its drop leaves the thread
-    /// blocked, to end with the process (console.md, A reader of the standard input is left to
-    /// the exit).
+    /// read of the standard input, which no OS wakes portably: its drop leaves the thread blocked,
+    /// to end with the process (02-engine-core.md, A reader of the standard input is left to the
+    /// exit).
     pub fn start_left(name: impl Into<ThreadName>, run: impl FnOnce() + Send + 'static) -> Self {
         Self::spawn(name.into(), Box::new(run), WorkerEnd::Left)
     }

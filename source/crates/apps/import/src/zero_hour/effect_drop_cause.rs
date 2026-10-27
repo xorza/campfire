@@ -2,8 +2,8 @@ use campfire_common::EnumAll;
 use serde::{Deserialize, Serialize};
 
 /// Why the import drops a particle system, a part of one, a nugget of an effect list, or a part
-/// of an object's death or its draw's marks on the ground (effects.md, What the slice leaves;
-/// effects.md, The import hands the client consistent effects).
+/// of an object's death or its draw's marks on the ground (09-zero-hour.md, Particles and effects;
+/// 09-zero-hour.md, The import hands the client consistent effects).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 pub enum EffectDropCause {
     /// A system of streak, volume or drawable particles, or of none, which draws nothing.

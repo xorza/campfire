@@ -17,9 +17,10 @@ use crate::wreck_ground::WreckGround;
 /// A package's `client/effects.toml`: the particle systems and the effects of lists of them that
 /// its looks name, by name; the length of the step every system counts in, in seconds; the most
 /// particles alive at once, past which a new one removes the oldest of a lower rank
-/// (effects.md, Effects are a format of the engine); how a wreck meets the ground (wrecks.md,
-/// Wrecks move by the client's step); and how a tread throws its dust and lays its track
-/// (wrecks.md, A tread throws dust while it drives; wrecks.md, A tread lays track marks).
+/// (02-engine-core.md, Effects are a format of the engine); how a wreck meets the ground
+/// (02-engine-core.md, Wrecks move by the client's step); and how a tread throws its dust and lays
+/// its track (02-engine-core.md, A tread throws dust while it drives; 02-engine-core.md, A tread
+/// lays track marks).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EffectsFile {
     step: f32,

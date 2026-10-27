@@ -269,8 +269,8 @@ impl Module for Production {
             at.of_type::<ProducerSpec>().map(|_| TrainQueue::default())
         });
         d.part::<BodyUnit, Rally>(|at| at.of_type::<ProducerSpec>().map(|_| Rally::default()));
-        // A producer of places holds each of them for the unit it makes there (jets.md, A jet
-        // holds a place).
+        // A producer of places holds each of them for the unit it makes there
+        // (04-capabilities/production.md, A jet holds a place).
         d.part::<BodyUnit, HeldPlaces>(|at| {
             let spec = at.of_type::<ProducerSpec>()?;
             (!spec.places.is_empty()).then(|| HeldPlaces::free_of(spec.places.len()))

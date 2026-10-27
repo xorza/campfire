@@ -104,7 +104,8 @@ fn airfield_match() -> (Match, Shop) {
 fn a_producer_of_places_makes_each_unit_at_a_free_one_and_its_next_waits_for_one() {
     // Three trains of no time at the barracks of two places, at x = 10: the first two are made in
     // tick 0 at the places, (10, 0, 4) and (10, 0, −4), and the third waits until the first dies
-    // after tick 2, then is made at its place in tick 3 (jets.md, A jet holds a place).
+    // after tick 2, then is made at its place in tick 3 (04-capabilities/production.md, A jet holds
+    // a place).
     let (mut game, shop) = airfield_match();
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
     let barracks = Production::allocate_id(&mut game);
@@ -157,7 +158,7 @@ fn a_producer_of_places_makes_each_unit_at_a_free_one_and_its_next_waits_for_one
 fn a_jet_of_a_producer_of_no_runways_flies_from_its_place() {
     // The barracks of two places but no airfield makes a jet at (10, 0, 4) in tick 0; with no
     // runway to take off down, it is not parked but climbs its meter a tick from there, and keeps
-    // its place, as its producer lives (jets.md, A jet holds a place).
+    // its place, as its producer lives (04-capabilities/production.md, A jet holds a place).
     let (mut game, shop) = sortie_match();
     places(&mut game, shop, None);
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
@@ -202,7 +203,7 @@ fn jets_take_off_down_their_runway_one_at_a_time() {
     // off, in 4 ticks, then to the runway's start at (14, 0, 0), √20 ≈ 4.47 m off, in 9; waits 2
     // ticks; rolls a meter a tick to the end at (24, 0, 0) in 10; and climbs from tick 27. The
     // second waits at its place until the first lets the runway go in tick 27, then goes as it
-    // did, 26 ticks later (jets.md, A jet takes off and lands on its runway).
+    // did, 26 ticks later (04-capabilities/airfields.md, A jet takes off and lands on its runway).
     let (mut game, shop) = airfield_match();
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
     let barracks = Production::allocate_id(&mut game);
@@ -256,7 +257,8 @@ fn a_jet_that_dies_on_its_runway_lets_it_go() {
     // The two jets of `jets_take_off_down_their_runway_one_at_a_time`; the first dies as tick 20
     // starts, as it rolls, holding the runway, so the second takes it in tick 20, 18 ticks after
     // the first took it in tick 2, and goes as the first did, 18 ticks later, where it took the
-    // runway in tick 27 as the first lived (jets.md, A jet takes off and lands on its runway).
+    // runway in tick 27 as the first lived (04-capabilities/airfields.md, A jet takes off and lands
+    // on its runway).
     let (mut game, shop) = airfield_match();
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
     let barracks = Production::allocate_id(&mut game);
@@ -317,10 +319,10 @@ fn an_idle_jet_flies_home_lands_and_taxis_back_to_its_place() {
     // A jet sent to (40, 0, 0) takes off as the first of `jets_take_off_down_their_runway_one_at_a_
     // time` does, arrives within its 4 m of its goal in tick 39, stands idle in the air its 10
     // ticks and goes home in tick 49: to its approach past the runway's end, as far as it flies
-    // while it sinks its 8 m at a meter a tick, (32, 0, 0). It arrives and takes the runway in
-    // tick 57, sinks to the runway's end, on the ground there in tick 69, rolls to its start in
-    // tick 79, lets it go and taxis back to its place, parked in tick 93 (jets.md, A jet goes
-    // home).
+    // while it sinks its 8 m at a meter a tick, (32, 0, 0). It arrives and takes the runway in tick
+    // 57, sinks to the runway's end, on the ground there in tick 69, rolls to its start in tick 79,
+    // lets it go and taxis back to its place, parked in tick 93 (04-capabilities/airfields.md, A
+    // jet goes home).
     let (mut game, shop) = idle_airfield_match(Some(Ticks::new(10)));
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
     let barracks = Production::allocate_id(&mut game);
@@ -352,12 +354,12 @@ fn an_idle_jet_flies_home_lands_and_taxis_back_to_its_place() {
 
 #[test]
 fn an_empty_jet_flies_home_and_reloads_its_clip_at_its_place() {
-    // A jet of a clip of 2 that refills at home in 20 ticks, ordered to attack a dummy at
-    // (50, 0, 0): it takes off as an idle one does, fires its 2 shots, for 5 each, in ticks 47
-    // and 50, and goes home empty in tick 52, its order dropped. It lands and taxis back to its
-    // place by tick 100, and reloads both shots in 20 ticks, its first back after 10, half the
-    // time, its second at the end, then stands parked, as no order takes it away (jets.md, A jet
-    // goes home; jets.md, A clip may reload at home).
+    // A jet of a clip of 2 that refills at home in 20 ticks, ordered to attack a dummy at (50, 0,
+    // 0): it takes off as an idle one does, fires its 2 shots, for 5 each, in ticks 47 and 50, and
+    // goes home empty in tick 52, its order dropped. It lands and taxis back to its place by tick
+    // 100, and reloads both shots in 20 ticks, its first back after 10, half the time, its second
+    // at the end, then stands parked, as no order takes it away (04-capabilities/airfields.md, A
+    // jet goes home; 04-capabilities/combat.md, A clip may reload at home).
     let mut game = shop_match_of(&[
         Capability::Stats,
         Capability::Combat,
@@ -446,9 +448,9 @@ fn an_empty_jet_flies_home_and_reloads_its_clip_at_its_place() {
 
 #[test]
 fn a_jet_whose_airfield_is_gone_goes_home_to_another_of_its_team() {
-    // A jet of the airfield at x = 10 takes off as an idle one does; its airfield dies in tick
-    // 30, so it takes the free place 0 of its team's other airfield, at x = −30, and, as it goes
-    // home after its idle time, lands and parks there (jets.md, A jet goes home).
+    // A jet of the airfield at x = 10 takes off as an idle one does; its airfield dies in tick 30,
+    // so it takes the free place 0 of its team's other airfield, at x = −30, and, as it goes home
+    // after its idle time, lands and parks there (04-capabilities/airfields.md, A jet goes home).
     let (mut game, shop) = idle_airfield_match(Some(Ticks::new(10)));
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
     let [first, second] = [(); 2].map(|()| Production::allocate_id(&mut game));
@@ -544,11 +546,12 @@ fn kept_airfield_match(heal: Option<i64>, idle: Option<Ticks>) -> (Match, Shop, 
 
 #[test]
 fn an_airfield_heals_the_jets_that_rest_at_it_and_kills_them_as_it_dies() {
-    // Two jets parked at an airfield that heals 2 life a tick. The first, dealt 9 of its 60 in
-    // tick 1, heals from tick 2, as the airfield sees its loss the tick after, to 53, 55, 57, 59
-    // and its whole 60 in tick 6, then no more. The second, ordered away in tick 1, is in the air
-    // by tick 27; the airfield dies after tick 30, and kills the first, parked, in tick 31, which
-    // the deaths find in tick 32, but not the second, which flies (jets.md, A jet goes home).
+    // Two jets parked at an airfield that heals 2 life a tick. The first, dealt 9 of its 60 in tick
+    // 1, heals from tick 2, as the airfield sees its loss the tick after, to 53, 55, 57, 59 and its
+    // whole 60 in tick 6, then no more. The second, ordered away in tick 1, is in the air by tick
+    // 27; the airfield dies after tick 30, and kills the first, parked, in tick 31, which the
+    // deaths find in tick 32, but not the second, which flies (04-capabilities/airfields.md, A jet
+    // goes home).
     let (mut game, shop, life) = kept_airfield_match(Some(2), None);
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
     let barracks = Production::allocate_id(&mut game);
@@ -594,11 +597,11 @@ fn an_airfield_heals_the_jets_that_rest_at_it_and_kills_them_as_it_dies() {
 
 #[test]
 fn a_stranded_jet_circles_where_it_stands_and_loses_its_life_until_an_airfield_takes_it() {
-    // A jet of an airfield that dies in tick 30, idle in the air from tick 39, goes home in tick
-    // 49 to no airfield: stranded, it circles where it stands, losing 1 of its 60 a tick, 59 at
-    // the end of tick 49 and 48 at the end of tick 60. Its team's airfield at x = −30, spawned
-    // then, takes it in tick 61, and it goes home there, losing no more (jets.md, A jet goes
-    // home).
+    // A jet of an airfield that dies in tick 30, idle in the air from tick 39, goes home in tick 49
+    // to no airfield: stranded, it circles where it stands, losing 1 of its 60 a tick, 59 at the
+    // end of tick 49 and 48 at the end of tick 60. Its team's airfield at x = −30, spawned then,
+    // takes it in tick 61, and it goes home there, losing no more (04-capabilities/airfields.md, A
+    // jet goes home).
     let (mut game, shop, _) = kept_airfield_match(None, Some(Ticks::new(10)));
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
     let [first, second] = [(); 2].map(|()| Production::allocate_id(&mut game));

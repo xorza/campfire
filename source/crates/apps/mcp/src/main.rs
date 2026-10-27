@@ -1,7 +1,7 @@
 //! Campfire's MCP server: Claude Code starts it from the repository's `.mcp.json`, and it serves
 //! the tools that start the workspace's games, each with its console, and read and drive their
-//! matches, over MCP's stdio on a runtime of one thread (console.md, One MCP server starts the
-//! games). It finds the workspace by its own binary, built in the target directory's
+//! matches, over MCP's stdio on a runtime of one thread (02-engine-core.md, One MCP server starts
+//! the games). It finds the workspace by its own binary, built in the target directory's
 //! `release-dev`. Its log goes to standard error, filtered by `RUST_LOG` (`info` by default).
 
 use std::env;

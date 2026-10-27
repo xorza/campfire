@@ -30,7 +30,7 @@ use crate::server::server_phase::ServerPhase;
 /// A match's console: the requests its transport queued, which the frame answers between two
 /// ticks as the world stands, and the replies the transport sends; and a local match's run, which
 /// plays at the pace's fastest speed and pauses after the tick it ends at, as the local server
-/// holds it after each tick (console.md, A console's local match starts paused). Its transport,
+/// holds it after each tick (08-sessions.md, A console's local match starts paused). Its transport,
 /// the standard streams or the client's link, fills and drains its queues.
 #[derive(Resource, Debug)]
 pub struct MatchConsole {
@@ -96,7 +96,8 @@ impl MatchConsole {
     }
 
     /// Holds the match paused after its first tick, as a console's local match starts
-    /// (console.md, A console's local match starts paused); a run asked before replaces the hold.
+    /// (08-sessions.md, A console's local match starts paused); a run asked before replaces the
+    /// hold.
     pub fn hold_first_tick(&self) {
         let pace = self
             .pace
@@ -123,7 +124,7 @@ impl MatchConsole {
 
     /// Answers each request queued, in its order, as the world stands between two ticks; a run
     /// starts, and its reply comes as it ends. A system of read-only parameters, so a read moves
-    /// no change tick (console.md, A read changes nothing).
+    /// no change tick (08-sessions.md, A read changes nothing).
     pub fn answer(world: &World) {
         let console = world.resource::<Self>();
         let mut queues = console.queues();

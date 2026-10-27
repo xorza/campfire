@@ -38,6 +38,7 @@
 - **Stopped, not dropped.** A block keeps the order behind it, and the action runs again when it ends, as League of Legends buffers input; an interrupted windup starts again from nothing, as Dota 2's cast point.
 - **Immunity suppresses, not refuses,** as tags are derived: a suppressed modifier takes effect again when the immunity ends, and no order of modifiers changes the result.
 - **The engine's tags hold the first places,** each declared by its module, so they are numbered the same in every match.
+- **Airborne is a tag of height.** A flier holds the engine's tag `air_target` while its height above the ground passes its airborne height, granted and taken as it crosses it, as Zero Hour marks `OBJECT_STATUS_AIRBORNE_TARGET` and OpenRA grants its `AirborneCondition`; a weapon picks air or ground targets by it; its name says what it serves, as `airborne` is a game's own word, the test MOBA's knock-up. Refused: the tag of the type's layer, fixed per type, under which a helicopter on its pad is immune to ground weapons.
 
 ## Levels
 

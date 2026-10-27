@@ -22,7 +22,7 @@ pub enum ClientFileError {
 #[error("a look's state names the condition `{0}`, of no test")]
 pub struct UntestedCondition(pub DeclaredName);
 
-/// Why an effects file is none the client plays (effects.md, Effects are a format of the
+/// Why an effects file is none the client plays (02-engine-core.md, Effects are a format of the
 /// engine).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum EffectsError {

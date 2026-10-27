@@ -39,7 +39,8 @@ pub struct ClientUnit {
     /// slot A in each of its sets (09-zero-hour.md, A condition is the game's name for a test).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub weapons: Vec<Vec<DeclaredName>>,
-    /// The effects a unit of its type plays as it dies (effects.md, A death plays its phases).
+    /// The effects a unit of its type plays as it dies (02-engine-core.md, A death plays its
+    /// phases).
     #[serde(default, skip_serializing_if = "DeathLook::is_empty")]
     pub death: DeathLook,
     /// The effect a projectile of its type plays where it ends, and the particle system it
@@ -52,11 +53,11 @@ pub struct ClientUnit {
     pub tread: TreadLook,
 }
 
-/// What a unit of a type plays as it dies, each effect by its name in the effects file: as it
-/// dies, at the middle of the time its type keeps it dead, and as it goes, as Zero Hour's slow
-/// death plays an FX list in its `INITIAL`, `MIDPOINT` and `FINAL` phases (effects.md, A death
-/// plays its phases); the wrecks each phase throws; and an aircraft's fall (wrecks.md, A death
-/// names its wrecks by phase; wrecks.md, An aircraft's death falls as a wreck).
+/// What a unit of a type plays as it dies, each effect by its name in the effects file: as it dies,
+/// at the middle of the time its type keeps it dead, and as it goes, as Zero Hour's slow death
+/// plays an FX list in its `INITIAL`, `MIDPOINT` and `FINAL` phases (02-engine-core.md, A death
+/// plays its phases); the wrecks each phase throws; and an aircraft's fall (02-engine-core.md, A
+/// death names its wrecks by phase; 02-engine-core.md, An aircraft's death falls as a wreck).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeathLook {
@@ -161,7 +162,7 @@ pub struct LookState {
     pub waits_for: Option<DeclaredName>,
     /// The barrels of its models' weapon slots, where a shot's fire effect plays and which flash
     /// it shows, by the slot's place among the look's weapons, none for a slot of no barrel,
-    /// whose effect plays at its unit's place (effects.md, A shot's effect at its barrel;
+    /// whose effect plays at its unit's place (02-engine-core.md, A shot's effect at its barrel;
     /// 02-engine-core.md, A shot shows its barrel's flash).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fire_bones: Vec<FireBone>,

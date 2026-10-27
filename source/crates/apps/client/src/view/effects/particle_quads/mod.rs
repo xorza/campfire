@@ -6,7 +6,7 @@ use crate::view::effects::effect_book::{EffectBook, GroupId};
 use crate::view::effects::particle_run::ParticleRun;
 
 /// The quads the particles alive draw as, one list for each of a book's draw groups
-/// (effects.md, Particles run on the CPU and draw as billboards of the one material): each
+/// (02-engine-core.md, Particles run on the CPU and draw as billboards of the one material): each
 /// particle a square of its size about its place, turned by its angle, facing the camera or lying
 /// on the ground, its texture whole across it, tinted by its color and its alpha. Its lists are
 /// the scratch of each frame in turn.

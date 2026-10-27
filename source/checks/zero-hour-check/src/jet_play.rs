@@ -22,7 +22,7 @@ const RAPTOR: &str = "americajetraptor";
 const TRAIN: &str = "train_americajetraptor";
 const TARGET: &str = "glacommandcenter";
 
-/// A Raptor's sortie on Tournament Desert (jets.md, Checks): player 1, America, from its base
+/// A Raptor's sortie on Tournament Desert: player 1, America, from its base
 /// start, and player 2, GLA, from its standard start, ordered nothing but the play's orders.
 /// Player 1's airfield trains a Raptor, made at its place; sent over GLA's command center, it takes
 /// off down its runway and flies there, and ordered to attack the center, as it sees it, strikes

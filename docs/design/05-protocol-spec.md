@@ -130,6 +130,7 @@ SessionLog
 ### Server inputs
 
 - **The log knows each player slot's controller.** It records each player slot's controller at every tick, from the player slot starts and the server inputs, with no package, and refuses a player packet for a player slot whose player is not the packet's. A server input is signed over `"campfire/server-input/v1" ‖ session id ‖ u64 tick ‖ u32 index ‖ input`.
+- **A change is an `Admin` input of Rhai, planned.** `sim_eval` with a change logs its source as a server input, run in a role `admin` that holds the mode's calls and the admin verbs the registry lists, so a replay, the verifier and a report's replay run it again (02-engine-core.md, Everything outside is a recorded input); the session's terms say they admit admin changes, a ranked server refuses such terms, and a listing marks the session, as OpenRA's lobby option admits its dev orders and Factorio marks a save. Refused: typed admin orders, as OpenRA's 16, each a decoder beside a verb the script API holds; both, two ways to one change; writes into the world, which no log replays.
 
 | Input | Fields | Effect |
 | --- | --- | --- |

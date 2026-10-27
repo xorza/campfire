@@ -6,8 +6,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// A table of the units `units` selects, at `detail`, of at most `limit` rows from the row
-/// `first`, counted from 0, so a match of many units comes in pages (console.md, A table comes in
+/// A table of the units `units` selects, at `detail`, of at most `limit` rows from the row `first`,
+/// counted from 0, so a match of many units comes in pages (02-engine-core.md, A table comes in
 /// pages).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct UnitsAsk {

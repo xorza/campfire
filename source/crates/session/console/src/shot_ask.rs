@@ -6,7 +6,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// A screenshot of the client's window, of `region` (console.md, A pixel is the screenshot's).
+/// A screenshot of the client's window, of `region` (02-engine-core.md, A pixel is the
+/// screenshot's).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ShotAsk {
     pub region: ShotRegion,

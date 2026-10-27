@@ -196,8 +196,8 @@ impl Walking {
             let depth = *walk;
             let goal = route.goal().expect("a walker with a way ahead has a goal");
             let stuck_for = progress.track(at.get(), route.read().ahead()[0], step.get());
-            // A flier steers in the plane of its route, as it walks (helicopters.md, A flier walks
-            // in the plane).
+            // A flier steers in the plane of its route, as it walks (04-capabilities/navigation.md,
+            // A flier walks in the plane).
             let position = at.get();
             let position = if flies {
                 Vec3::new(position.x, goal.y, position.z)
@@ -513,7 +513,7 @@ impl Walking {
                     break;
                 };
                 // A flier walks in the plane at its height, which its flight alone writes
-                // (helicopters.md, A flier walks in the plane).
+                // (04-capabilities/navigation.md, A flier walks in the plane).
                 let waypoint = if flies {
                     Vec3::new(waypoint.x, at.y, waypoint.z)
                 } else {
@@ -732,11 +732,12 @@ impl Walking {
         Direction::of([i128::from(cos.to_bits()), -i128::from(sin.to_bits())])
     }
 
-    /// Whether a unit walks this tick: it has a destination, and neither its tags nor its
-    /// `motion`, when forced, stop it. One they stop stands, to the units round it as to itself.
-    /// Whether a unit's own walk leaves it be: one on wings in the air, which its wings fly, or a
-    /// flier its airfield holds on the ground, which moves only as it is forced (jets.md, A jet
-    /// flies on wings; jets.md, A jet takes off and lands on its runway).
+    /// Whether a unit walks this tick: it has a destination, and neither its tags nor its `motion`,
+    /// when forced, stop it. One they stop stands, to the units round it as to itself. Whether a
+    /// unit's own walk leaves it be: one on wings in the air, which its wings fly, or a flier its
+    /// airfield holds on the ground, which moves only as it is forced
+    /// (04-capabilities/navigation.md, A jet flies on wings; 04-capabilities/airfields.md, A jet
+    /// takes off and lands on its runway).
     fn held(status: Option<&StatusTags>, goal: Option<&FlightGoal>) -> bool {
         OnWings::holds(status) || goal == Some(&FlightGoal::Ground)
     }

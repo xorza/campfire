@@ -4,9 +4,9 @@ use campfire_client_files::TreadDust;
 
 use crate::view::effects::particle_run::{ParticleRun, SystemKey};
 
-/// The dust each drawn unit's treads throw (wrecks.md, A tread throws dust while it drives): its
-/// tread's systems on its drawing, which run while it drives along the ground, scaled by its
-/// speed as the effects file's dust says, and stop as it stands.
+/// The dust each drawn unit's treads throw (02-engine-core.md, A tread throws dust while it
+/// drives): its tread's systems on its drawing, which run while it drives along the ground, scaled
+/// by its speed as the effects file's dust says, and stop as it stands.
 #[derive(Debug)]
 pub(crate) struct TreadRun {
     dust: TreadDust,

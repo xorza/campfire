@@ -22,8 +22,9 @@ impl Fliers {
     /// the ground under it plus its type's height, or toward the ground for one its `FlightGoal`
     /// holds there, by its climb a tick, never below the ground, and its position takes the height
     /// above the ground that gives; it holds the engine tag `air_target` while that height passes
-    /// its type's airborne height, and a winged flier `on_wings` too (helicopters.md, A flier holds
-    /// a height; helicopters.md, Airborne is a tag of height; jets.md, A jet flies on wings).
+    /// its type's airborne height, and a winged flier `on_wings` too
+    /// (04-capabilities/navigation.md, A flier holds a height; 04-capabilities/stats.md, Airborne
+    /// is a tag of height; 04-capabilities/navigation.md, A jet flies on wings).
     pub(crate) fn fly(
         (map, rate, book): (
             Res<'_, MapBook>,

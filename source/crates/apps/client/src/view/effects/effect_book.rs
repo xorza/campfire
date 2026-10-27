@@ -4,8 +4,8 @@ use campfire_client_files::{Blend, EffectsFile, ListedSystem, ParticleSystem};
 use campfire_common::DeclaredName;
 use campfire_values::PackagePath;
 
-/// An effects file as the client plays it (effects.md, Effects are a format of the engine): its
-/// step and its cap, each system by its id, the systems it names and the group it draws in
+/// An effects file as the client plays it (02-engine-core.md, Effects are a format of the engine):
+/// its step and its cap, each system by its id, the systems it names and the group it draws in
 /// resolved once, as the file loads, and each list by its id, each entry's system resolved.
 #[derive(Debug)]
 pub(crate) struct EffectBook {

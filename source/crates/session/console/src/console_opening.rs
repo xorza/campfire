@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::fingerprint::Fingerprint;
 
 /// A console's first line: the game's role and the fingerprint of its console's types, which a
-/// tool of other types refuses (console.md, A console opens with its fingerprint).
+/// tool of other types refuses (02-engine-core.md, A console opens with its fingerprint).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ConsoleOpening {
     pub role: GameRole,

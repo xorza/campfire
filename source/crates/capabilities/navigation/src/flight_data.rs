@@ -8,8 +8,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// A unit type's `flight` section: the height above the ground its units fly at, the meters a
 /// second they climb or sink toward it, and the height above the ground past which they are
 /// airborne, each in meters, and its `wings` for a type that never stands in the air
-/// (helicopters.md, A flier holds a height; helicopters.md, Airborne is a tag of height; jets.md,
-/// A jet flies on wings).
+/// (04-capabilities/navigation.md, A flier holds a height; 04-capabilities/stats.md, Airborne is a
+/// tag of height; 04-capabilities/navigation.md, A jet flies on wings).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct FlightData {
     pub(crate) height: Num,

@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-/// How a tread's particle systems follow its unit's drive (wrecks.md, A tread throws dust while it
-/// drives): they run while the unit moves along the ground faster than `moving` metres a second,
-/// and stop as it stands; their particles' velocity across and up, and their bursts' counts, each
-/// scaled by its speed.
+/// How a tread's particle systems follow its unit's drive (02-engine-core.md, A tread throws dust
+/// while it drives): they run while the unit moves along the ground faster than `moving` metres a
+/// second, and stop as it stands; their particles' velocity across and up, and their bursts'
+/// counts, each scaled by its speed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TreadDust {

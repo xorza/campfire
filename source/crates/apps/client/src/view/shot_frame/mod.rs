@@ -4,7 +4,7 @@ use campfire_codec::RgbaImage;
 /// A screenshot's region of the window's frame, in the frame's pixels, and the size of the image
 /// it gives: the largest whose sides pass no 2,000 px and whose visual tokens,
 /// `⌈width / 28⌉ × ⌈height / 28⌉`, pass no 4,784, so Claude reads it at its own pixels and
-/// names a point in them (console.md, A pixel is the screenshot's).
+/// names a point in them (02-engine-core.md, A pixel is the screenshot's).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ShotFrame {
     region: URect,

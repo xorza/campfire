@@ -326,7 +326,7 @@ impl Trains {
                 let trains = world.resource::<ById<ActionId, TrainSpec>>();
                 if let Some(&spec) = trains.get(head.action) {
                     // A train at a place makes its unit at a free one of its producer, and waits
-                    // while each holds a unit (jets.md, A jet holds a place).
+                    // while each holds a unit (04-capabilities/production.md, A jet holds a place).
                     let places = world.get::<HeldPlaces>(entity).filter(|_| spec.at_place);
                     let unit = match places.map(HeldPlaces::free) {
                         None => Self::leave(world, entity, spec.unit_type),
@@ -446,7 +446,7 @@ impl Trains {
     }
 
     /// Frees the place each unit made at one held, as it dies, for its producer's next train
-    /// (jets.md, A jet holds a place).
+    /// (04-capabilities/production.md, A jet holds a place).
     pub(super) fn free_places(
         index: Res<'_, EntityIndex>,
         dead: Query<'_, '_, (&StableId, &MadeAt), Added<Dead>>,

@@ -27,11 +27,11 @@ use crate::zero_hour::game_path;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::model_writer::ImportedLooks;
 
-/// The install's particle systems and effect lists as the engine's effects file
-/// (effects.md, Effects are a format of the engine; effects.md, The import hands the client
-/// consistent effects): each list of the systems its nuggets start, and each system a list or
-/// another system starts, those of what the slice leaves dropped and counted, each name resolved
-/// to a system it holds; and the textures its systems draw, each once, for the import to convert.
+/// The install's particle systems and effect lists as the engine's effects file (02-engine-core.md,
+/// Effects are a format of the engine; 09-zero-hour.md, The import hands the client consistent
+/// effects): each list of the systems its nuggets start, and each system a list or another system
+/// starts, those of its losses dropped and counted, each name resolved to a system it
+/// holds; and the textures its systems draw, each once, for the import to convert.
 #[derive(Debug)]
 pub(crate) struct EffectsImport {
     pub(crate) file: EffectsFile,
@@ -181,17 +181,17 @@ impl EffectsImport {
         })
     }
 
-    /// Names, in `looks`, the effects each unit type of an object of `objects` plays as it dies,
-    /// of the lists it holds: at its start the `DeathFX` of its first `FXListDie` that applies and
-    /// the first FX list of the `INITIAL` phase of the slow death a normal death most likely
-    /// takes, and at its middle and its end that death's `MIDPOINT` and `FINAL` (effects.md, A
-    /// death plays its phases); an aircraft's fall's, of the fall the wrecks' import named; and
-    /// what its treads do, their particle systems of the file and their track: its marks'
-    /// texture, which `texture` finds and the import converts, of the look's width, or the
-    /// game's `DEFAULT_TRACK_SPACING` for a model of no tread bones (wrecks.md, A tread throws
-    /// dust while it drives; wrecks.md, A tread lays track marks). It counts what it leaves of each: a phase's
-    /// other lists and its weapons, a tread's system the file lacks and a texture no archive
-    /// holds. An error for an object of no name a package holds.
+    /// Names, in `looks`, the effects each unit type of an object of `objects` plays as it dies, of
+    /// the lists it holds: at its start the `DeathFX` of its first `FXListDie` that applies and the
+    /// first FX list of the `INITIAL` phase of the slow death a normal death most likely takes, and
+    /// at its middle and its end that death's `MIDPOINT` and `FINAL` (02-engine-core.md, A death
+    /// plays its phases); an aircraft's fall's, of the fall the wrecks' import named; and what its
+    /// treads do, their particle systems of the file and their track: its marks' texture, which
+    /// `texture` finds and the import converts, of the look's width, or the game's
+    /// `DEFAULT_TRACK_SPACING` for a model of no tread bones (02-engine-core.md, A tread throws
+    /// dust while it drives; 02-engine-core.md, A tread lays track marks). It counts what it leaves
+    /// of each: a phase's other lists and its weapons, a tread's system the file lacks and a
+    /// texture no archive holds. An error for an object of no name a package holds.
     pub(crate) fn name_deaths(
         &mut self,
         objects: &ObjectIni,

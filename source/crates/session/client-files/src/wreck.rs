@@ -3,15 +3,16 @@ use campfire_values::PackagePath;
 use serde::{Deserialize, Serialize};
 
 /// The wrecks a death's phase throws, of one of the game's creation lists, of which a death
-/// throws one list drawn at random (wrecks.md, A death names its wrecks by phase).
+/// throws one list drawn at random (02-engine-core.md, A death names its wrecks by phase).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct WreckList(pub Vec<Wreck>);
 
-/// Wrecks of one kind a phase throws: `count` pieces, each of one of its `models` drawn at
-/// random, from `offset` of its unit's drawing, in metres along its facing, across it and up,
-/// launched by `launch`, spun at most `spin` radians a second about each axis, and sunk as `sink`
-/// says (wrecks.md, A wreck is the client's; wrecks.md, Wrecks move by the client's step).
+/// Wrecks of one kind a phase throws: `count` pieces, each of one of its `models` drawn at random,
+/// from `offset` of its unit's drawing, in metres along its facing, across it and up, launched by
+/// `launch`, spun at most `spin` radians a second about each axis, and sunk as `sink` says
+/// (02-engine-core.md, A wreck is the client's; 02-engine-core.md, Wrecks move by the client's
+/// step).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Wreck {

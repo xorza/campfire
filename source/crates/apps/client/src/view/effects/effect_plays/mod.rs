@@ -11,9 +11,10 @@ use crate::view::effects::wreck_run::WreckPlay;
 use crate::view::float_num::FloatNum;
 
 /// What the match's unit types and actions play, of the mode's own package's looks, each name
-/// resolved once to the book's list or system (effects.md, An effect is the client's, from the
-/// state it holds): a type's death and its fall, its projectile's end and trail, and its treads;
-/// an action's fire and its hit; and the textures of the tracks, each once, by their groups.
+/// resolved once to the book's list or system (02-engine-core.md, An effect is the client's, from
+/// the state it holds): a type's death and its fall, its projectile's end and trail, and its
+/// treads; an action's fire and its hit; and the textures of the tracks, each once, by their
+/// groups.
 #[derive(Debug, Default)]
 pub(crate) struct EffectPlays {
     pub(crate) deaths: BTreeMap<UnitType, DeathPlays>,
@@ -26,9 +27,10 @@ pub(crate) struct EffectPlays {
     pub(crate) hits: BTreeMap<ActionId, ListId>,
 }
 
-/// The lists a type's death plays, of those the book holds: as its unit dies, at the middle of
-/// its keep, and as it goes (effects.md, A death plays its phases); and the wrecks each of those
-/// phases throws, of each one list drawn at random (wrecks.md, A death names its wrecks by phase).
+/// The lists a type's death plays, of those the book holds: as its unit dies, at the middle of its
+/// keep, and as it goes (02-engine-core.md, A death plays its phases); and the wrecks each of those
+/// phases throws, of each one list drawn at random (02-engine-core.md, A death names its wrecks by
+/// phase).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct DeathPlays {
     pub(crate) start: Vec<ListId>,
@@ -37,8 +39,9 @@ pub(crate) struct DeathPlays {
     pub(crate) wrecks: [Vec<Vec<WreckPlay>>; 3],
 }
 
-/// What a type's treads play (wrecks.md, A tread throws dust while it drives; wrecks.md, A tread
-/// lays track marks): their systems, of those the book holds, and their track.
+/// What a type's treads play (02-engine-core.md, A tread throws dust while it drives;
+/// 02-engine-core.md, A tread lays track marks): their systems, of those the book holds, and their
+/// track.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct TreadPlay {
     pub(crate) systems: Vec<SystemId>,

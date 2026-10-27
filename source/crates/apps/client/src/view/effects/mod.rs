@@ -188,7 +188,7 @@ struct DrawnGroup {
     entity: Entity,
 }
 
-/// Steps and draws the match's effects (effects.md, Particles run on the CPU and draw as
+/// Steps and draws the match's effects (02-engine-core.md, Particles run on the CPU and draw as
 /// billboards of the one material).
 #[derive(Debug)]
 pub(crate) struct EffectsPlugin;
@@ -328,10 +328,10 @@ impl MatchEffects {
 
     /// Plays each shot the client saw at its unit's barrel, the next of those its type's state
     /// names for the shot's weapon slot: its fire effect at the barrel's bone, or at its unit's
-    /// drawing for a barrel of none or a slot of no barrel, as the game's weapon plays one its
-    /// draw does not (`Weapon.cpp`); the barrel's muzzle flash; and its hit of a weapon of no
-    /// projectile at its target's drawing (effects.md, A shot's effect at its barrel). Each shot
-    /// it triggers as `ShotSeen` besides; a shot of a unit gone plays nothing, and a match of no
+    /// drawing for a barrel of none or a slot of no barrel, as the game's weapon plays one its draw
+    /// does not (`Weapon.cpp`); the barrel's muzzle flash; and its hit of a weapon of no projectile
+    /// at its target's drawing (02-engine-core.md, A shot's effect at its barrel). Each shot it
+    /// triggers as `ShotSeen` besides; a shot of a unit gone plays nothing, and a match of no
     /// effects shows the flashes alone.
     fn play_fires(
         mut effects: Option<ResMut<'_, Self>>,
@@ -409,15 +409,15 @@ impl MatchEffects {
     }
 
     /// Tears each aircraft's drawing off its unit as its death starts and falls it, playing its
-    /// fall's start, or plays a jet's ground death on the ground (wrecks.md, An aircraft's death
-    /// falls as a wreck), and gives a unit that lives again its drawing back. Plays each unit
-    /// type's death in its phases (effects.md, A death plays its phases): its
-    /// start where its unit's drawing stood as the unit died, the unit despawned since or not;
-    /// its middle at the middle of the time its type keeps it dead, and its end as it decays,
-    /// each where its drawing stands then, or stood last; a unit that leaves the client's sight
-    /// first plays no more of it (04-capabilities/combat.md, A death's decay reaches its clients). A rollback across a predicted death,
-    /// which takes `Dead` away and gives it back in one frame from a unit that stays, plays none
-    /// again, and a unit that lives again plays no more of its death.
+    /// fall's start, or plays a jet's ground death on the ground (02-engine-core.md, An aircraft's
+    /// death falls as a wreck), and gives a unit that lives again its drawing back. Plays each unit
+    /// type's death in its phases (02-engine-core.md, A death plays its phases): its start where
+    /// its unit's drawing stood as the unit died, the unit despawned since or not; its middle at
+    /// the middle of the time its type keeps it dead, and its end as it decays, each where its
+    /// drawing stands then, or stood last; a unit that leaves the client's sight first plays no
+    /// more of it (04-capabilities/combat.md, A death's decay reaches its clients). A rollback
+    /// across a predicted death, which takes `Dead` away and gives it back in one frame from a unit
+    /// that stays, plays none again, and a unit that lives again plays no more of its death.
     fn play_deaths(
         effects: Option<ResMut<'_, Self>>,
         (heights, time, rate, on_death, received): DeathTimes<'_>,
@@ -614,8 +614,8 @@ impl MatchEffects {
 
     /// Gives each new drawing of a type whose treads play their systems and their track, then
     /// runs, scales or stops each drawing's tread systems by its speed and lays its track as it
-    /// moves, each of a drawing gone going (wrecks.md, A tread throws dust while it drives;
-    /// wrecks.md, A tread lays track marks). A drawing's root stands in the world, so its
+    /// moves, each of a drawing gone going (02-engine-core.md, A tread throws dust while it drives;
+    /// 02-engine-core.md, A tread lays track marks). A drawing's root stands in the world, so its
     /// transform is its place already in the frame it is spawned.
     fn drive(
         effects: Option<ResMut<'_, Self>>,

@@ -6,7 +6,7 @@ use campfire_net_messages::{MessageReceiver, MessageSender};
 use crate::net_protocol::MatchChannel;
 
 /// The transports of a server's console: a dedicated server's standard streams, and a local
-/// server's link to its client, whose console forwards its requests (console.md, A game's
+/// server's link to its client, whose console forwards its requests (02-engine-core.md, A game's
 /// console is its standard streams).
 #[derive(Debug)]
 pub(crate) struct ServerConsole;

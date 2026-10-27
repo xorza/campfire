@@ -1,4 +1,4 @@
-//! The server's console (console.md, A game's console is its standard streams): started with
+//! The server's console (02-engine-core.md, A game's console is its standard streams): started with
 //! `--console stdio`, it opens with its fingerprint, answers each request with its id and the
 //! tick it read, sends its log's events between, and stops as its input ends, as a stop's signal
 //! stops it.

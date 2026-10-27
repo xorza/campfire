@@ -262,9 +262,10 @@ impl Module for Navigation {
             Some(Altitude::new(point.y))
         });
         // A flier flies to its height until the capability that parks it holds it on the ground
-        // (jets.md, A jet takes off and lands on its runway).
+        // (04-capabilities/airfields.md, A jet takes off and lands on its runway).
         d.part::<BodyUnit, FlightGoal>(|at| at.of_type::<FlightData>().map(|_| FlightGoal::Height));
-        // A flier on wings holds the place it spawns at (jets.md, A jet flies on wings).
+        // A flier on wings holds the place it spawns at (04-capabilities/navigation.md, A jet flies
+        // on wings).
         d.part::<BodyUnit, HeldPlace>(|at| {
             at.of_type::<FlightData>()?.wings?;
             Some(HeldPlace::new(at.position()?))
@@ -331,7 +332,7 @@ impl Module for Navigation {
 
 impl Navigation {
     /// The engine tag of a flier whose height above the ground passes its type's airborne height
-    /// (helicopters.md, Airborne is a tag of height).
+    /// (04-capabilities/stats.md, Airborne is a tag of height).
     pub const AIR_TARGET: EngineTag = EngineTag::new(2, "air_target", TagProperties::NONE);
 
     /// Gives `world` its map's pathing grid, when the map has one, for the kinds of walker its

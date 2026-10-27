@@ -14,7 +14,7 @@ use crate::flight_data::FlightData;
 
 /// A flier's height in the world as it last flew, which its next flight moves toward the ground
 /// under it plus its type's height, so a step of the ground under it changes its height above the
-/// ground until it climbs or sinks back (helicopters.md, A flier holds a height).
+/// ground until it climbs or sinks back (04-capabilities/navigation.md, A flier holds a height).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Altitude(Num);

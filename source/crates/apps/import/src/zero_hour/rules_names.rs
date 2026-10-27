@@ -45,7 +45,7 @@ pub(crate) struct RulesNames {
     /// and its param, the waypoint's name.
     pub(crate) waypoint: DeclaredName,
     pub(crate) waypoint_name: DeclaredName,
-    /// The layer a flier's body moves on (helicopters.md, Fliers share a layer).
+    /// The layer a flier's body moves on (04-capabilities/navigation.md, Fliers share a layer).
     pub(crate) air: DeclaredName,
     /// The slot kinds of a type's weapons and of its trains, builds and gather.
     pub(crate) weapon_slot: DeclaredName,
@@ -57,7 +57,7 @@ pub(crate) struct RulesNames {
     /// Every unit its own team may attack.
     pub(crate) enemies: FilterData,
     /// Every unit its own team may attack that is, or is not, an air target, the engine's tag
-    /// (helicopters.md, A weapon's anti flags are its targets).
+    /// (09-zero-hour.md, A weapon's anti flags are its targets).
     pub(crate) enemies_in_air: FilterData,
     pub(crate) enemies_on_ground: FilterData,
     /// Every unit of a team the unit's own regards as friendly.

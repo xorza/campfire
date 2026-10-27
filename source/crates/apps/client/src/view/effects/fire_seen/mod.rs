@@ -27,9 +27,9 @@ pub(crate) struct ShotSeen {
 pub(crate) struct SeenShots(pub(crate) Vec<ShotSeen>);
 
 /// On a unit's drawing's root: the latest tick the client saw each slot of its unit ready at, a
-/// rise past which is a shot (02-engine-core.md, The client derives an attack's phase), a
-/// rollback that sets a slot back and fires it again playing no second shot; the barrel of its
-/// look each weapon slot of its look fires its next shot from (effects.md, A shot's effect at its
+/// rise past which is a shot (02-engine-core.md, The client derives an attack's phase), a rollback
+/// that sets a slot back and fires it again playing no second shot; the barrel of its look each
+/// weapon slot of its look fires its next shot from (02-engine-core.md, A shot's effect at its
 /// barrel); and the barrel of its type each of its unit's slots launches its next projectile from
 /// (02-engine-core.md, A predicted shot draws a stand-in).
 #[derive(Component, Debug, Default)]

@@ -183,14 +183,14 @@ impl Attacks {
     }
 
     /// Starts the attack of each unit the index of the attack targets holds on its attack target,
-    /// in Act, when it has nothing under way, and forgets each gone or with no target: with
-    /// the first weapon whose filter selects the target, once that weapon passes its checks, the
-    /// target is within its reach, and, for a weapon of its turret's slot kind, the turret lies
-    /// within its tolerance of the target's bearing and pitch (04-capabilities/combat.md, A unit
-    /// type may have a turret; 04-capabilities/combat.md, A turret may pitch), and the weapon's
-    /// pre-attack, if it has one, is done (04-capabilities/combat.md, A pre-attack). An attack in its windup stops when the unit's
-    /// tags keep it from attacking, or it lives no more, and such a unit starts none. An attack
-    /// target that is no living enemy any more is dropped, with the attack on it.
+    /// in Act, when it has nothing under way, and forgets each gone or with no target: with the
+    /// first weapon whose filter selects the target, once that weapon passes its checks, the target
+    /// is within its reach, and, for a weapon of its turret's slot kind, the turret lies within its
+    /// tolerance of the target's bearing and pitch (04-capabilities/combat.md, A unit type may have
+    /// a turret; 04-capabilities/combat.md, A turret may pitch), and the weapon's pre-attack, if it
+    /// has one, is done (04-capabilities/combat.md, A pre-attack). An attack in its windup stops
+    /// when the unit's tags keep it from attacking, or it lives no more, and such a unit starts
+    /// none. An attack target that is no living enemy any more is dropped, with the attack on it.
     pub(super) fn start_attacks(
         (tick, (book, weapons), turrets): (
             Res<'_, SimTick>,
@@ -298,7 +298,7 @@ impl Attacks {
                     let weapon = held_slot.action.and_then(|action| weapons.get(action));
                     let body_aim = weapon.and_then(|weapon| weapon.aim);
                     // A clip that refills at home starts nothing once empty, until its home
-                    // refills it (jets.md, A clip may reload at home).
+                    // refills it (04-capabilities/combat.md, A clip may reload at home).
                     let shots = weapon
                         .zip(held_slot.rank)
                         .and_then(|(weapon, rank)| weapon.clip_shots(rank));
@@ -335,8 +335,8 @@ impl Attacks {
                         let way =
                             Facing::along([unit.position.x - from.x, unit.position.z - from.z]);
                         if let Some(way) = way.filter(|_| fit == RangeFit::Within) {
-                            // A unit on wings turns by its flight alone, at its target (jets.md, A
-                            // jet aims by flying).
+                            // A unit on wings turns by its flight alone, at its target
+                            // (04-capabilities/combat.md, A jet aims by flying).
                             let turned = if OnWings::holds(status) {
                                 **facing
                             } else {

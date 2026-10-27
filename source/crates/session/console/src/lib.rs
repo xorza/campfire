@@ -1,6 +1,7 @@
-//! The console's protocol (console.md): the lines a game and the tool that started it exchange
-//! over the game's standard streams, a JSON object each, with the fingerprint of their types. It
-//! holds no engine, so a tool builds it without the sim.
+//! The console's protocol (02-engine-core.md, One console protocol, in a problem crate): the lines
+//! a game and the tool that started it exchange over the game's standard streams, a JSON object
+//! each, with the fingerprint of their types. It holds no engine, so a tool builds it without the
+//! sim.
 
 mod camera_ask;
 mod console_event;

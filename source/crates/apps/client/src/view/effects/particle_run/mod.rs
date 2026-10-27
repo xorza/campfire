@@ -9,11 +9,11 @@ use campfire_math::SplitMix64;
 use crate::view::effects::effect_book::{EffectBook, GroupId, ListId, SystemId};
 
 /// The particle systems alive and their particles, stepped in whole steps of the book's length
-/// (effects.md, A system steps as its file says; effects.md, A cap by priority, from the file),
-/// as Zero Hour's `ParticleSystemManager` updates its systems each logic frame
+/// (02-engine-core.md, A system steps as its file says; 02-engine-core.md, A cap by priority, from
+/// the file), as Zero Hour's `ParticleSystemManager` updates its systems each logic frame
 /// (`ParticleSystem::update`, `Particle::update` and `Particle::draw` at a frame's time scale of 1,
-/// as GeneralsX gives them). Each slot of a system or a particle is reused once its own goes;
-/// a step allocates nothing once the slots grew to the most alive at once.
+/// as GeneralsX gives them). Each slot of a system or a particle is reused once its own goes; a
+/// step allocates nothing once the slots grew to the most alive at once.
 #[derive(Debug)]
 pub(crate) struct ParticleRun {
     rng: SplitMix64,
@@ -994,8 +994,8 @@ pub(crate) mod samples {
 
     use crate::view::effects::effect_book::EffectBook;
 
-    /// A system of one particle a burst, every step, each living 100 steps at rest, of size 1, opaque
-    /// white, of no drift, damping or gravity.
+    /// A system of one particle a burst, every step, each living 100 steps at rest, of size 1,
+    /// opaque white, of no drift, damping or gravity.
     pub(crate) fn system() -> ParticleSystem {
         ParticleSystem {
             rank: Some(0),

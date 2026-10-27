@@ -23,13 +23,13 @@ const COMANCHE: &str = "americavehiclecomanche";
 const GATHER: &str = "gather_americavehiclechinook";
 const DOCK: &str = "supplydock";
 
-/// Zero Hour's helicopters on Tournament Desert (helicopters.md, A flying gatherer docks over its
-/// dock; helicopters.md, Airborne is a tag of height): player 1, America, and player 2, GLA,
-/// each from its base start, at `Player_1_Start` and `Player_2_Start`, ordered nothing but the
-/// play's orders. Player 1's first Chinook gathers at the dock nearest it and brings a full load
-/// home, its other Chinooks standing, as its first Comanche climbs from the ground to its height;
-/// then the Comanche flies to GLA's start, where the weapons of GLA's base that hit the air shoot
-/// it down.
+/// Zero Hour's helicopters on Tournament Desert (04-capabilities/production.md, A flying gatherer
+/// docks over its dock; 04-capabilities/stats.md, Airborne is a tag of height): player 1, America,
+/// and player 2, GLA, each from its base start, at `Player_1_Start` and `Player_2_Start`, ordered
+/// nothing but the play's orders. Player 1's first Chinook gathers at the dock nearest it and
+/// brings a full load home, its other Chinooks standing, as its first Comanche climbs from the
+/// ground to its height; then the Comanche flies to GLA's start, where the weapons of GLA's base
+/// that hit the air shoot it down.
 #[derive(Debug)]
 pub(crate) struct HelicopterPlay;
 

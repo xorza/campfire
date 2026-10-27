@@ -3,8 +3,9 @@ use campfire_values::{EngineTag, TagProperties};
 use crate::status_tags::StatusTags;
 
 /// The status of a unit that flies on wings in the air, which never stands and aims by flying at
-/// its target: a contract the capability that flies it turns, and those that aim and chase with
-/// it read (jets.md, A jet flies on wings; jets.md, A jet aims by flying).
+/// its target: a contract the capability that flies it turns, and those that aim and chase with it
+/// read (04-capabilities/navigation.md, A jet flies on wings; 04-capabilities/combat.md, A jet aims
+/// by flying).
 #[derive(Debug)]
 pub struct OnWings;
 

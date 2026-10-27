@@ -17,7 +17,8 @@ use crate::held_place::HeldPlace;
 use crate::progress::Progress;
 use crate::route::RouteMut;
 
-/// Navigation's winged fliers in the air, which never stand (jets.md, A jet flies on wings).
+/// Navigation's winged fliers in the air, which never stand (04-capabilities/navigation.md, A jet
+/// flies on wings).
 #[derive(Debug)]
 pub(crate) struct Wings;
 

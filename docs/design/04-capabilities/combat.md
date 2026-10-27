@@ -32,6 +32,9 @@
 - **A stage's modifier by a hold of its own.** The streak's grant holds the modifier as an item's holds its own, from the unit itself, under a hold no passive and no item shares, so neither releases the other's. Refused: a timed application refreshed at each shot, which needs its own removal at each fall.
 - **The streak is the server's.** Only a role that computes state counts, after the strike, from the shots it lists; a predicting client derives its stats from the modifiers the server sends, so its own attacks' period follows a stage a tick late and corrects. Refused: a predicted streak, whose stage would need the server's targets as they are, not as the client holds them.
 - **A secret roll.** An attack draws one number on the secret stream as its windup ends, and no client learns it before the server applies it; `calc_damage` gives it its meaning.
+- **Range stays flat.** A weapon reaches a flier by its planar range, as Zero Hour measures every attack's range in 2D, and its projectile flies to the flier's volume at its height.
+- **A jet aims by flying.** A winged attacker, which holds the units core's status tag `on_wings` in the air, never turns in place: with its target in its reach it keeps the target as its goal and starts its attack within `aim_deg` of the target's bearing, passes it and comes round for the next, as `AIAttackAimAtTargetState` keeps a unit of non-zero `MinSpeed` flying at its victim and OpenRA's fixed-wing aircraft attacks in runs. Refused: a turn in place, which no wing makes.
+- **A clip may reload at home.** A clip's `refill` of `home` refills only while its unit stands at its place at its airfield, over its reload time times the share of the clip it lacks, its shots back as the time goes, as `JetOrHeliReloadAmmoState` refills a clip. Refused: a reload in the air by time, which keeps a jet out for ever.
 
 ## Damage and heals
 

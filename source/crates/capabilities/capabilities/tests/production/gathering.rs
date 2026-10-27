@@ -234,7 +234,7 @@ fn a_flier_gathers_as_a_walker_does_at_its_height() {
     // The scene of the walker's first trips, its worker a flier of the air layer, of a flight at
     // 8 m that climbs a meter a tick: it reaches the mineral and the hall by its reach on the
     // ground between them, whatever its height, so its trips take the walker's ticks: 5 gold in
-    // tick 6, 10 in tick 13 (helicopters.md, A flying gatherer docks over its dock).
+    // tick 6, 10 in tick 13 (04-capabilities/production.md, A flying gatherer docks over its dock).
     let Mining {
         mut game,
         shop,

@@ -492,7 +492,7 @@ pub(crate) struct SuppliedCounts {
 /// draw; how many actions name a fire effect and a hit effect, how many unit looks a trail, an end
 /// and a death effect, and how many look states a weapon slot's fire bone; and how many systems and
 /// lists it drops one or more parts of for each cause, in the order of `EffectDropCause::ALL`
-/// (effects.md, What the slice leaves).
+/// (09-zero-hour.md, Particles and effects).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     "{systems} systems, {lists} lists, {textures} textures, {fires} fires, {hits} hits, \

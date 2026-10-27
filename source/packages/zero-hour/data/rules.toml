@@ -89,7 +89,7 @@ life = "life"
 [tags.continuous_fire_slow]
 
 # The tags of the markers its players start at and their starting units rally at; and its layers,
-# the ground and the air its helicopters fly in (helicopters.md, Fliers share a layer).
+# the ground and the air its helicopters fly in (04-capabilities/navigation.md, Fliers share a layer).
 [navigation]
 spawn_tags = ["start", "rally"]
 layers = ["ground", "air"]

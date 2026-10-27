@@ -25,7 +25,7 @@ The engine has no genres. It has **capabilities**, each one mechanism; a package
 | `progression` | built | Experience, levels, points | [Progression](progression.md) |
 | `quests` | planned | Quests, objectives, dialogue | [Quests](quests.md) |
 | `interaction` | built | The `use` action on objects | [Interaction](interaction.md) |
-| `airfields` | built | A building's places and runways, and the sorties of the units it parks | [Jets](../jets.md) |
+| `airfields` | built | A building's places and runways, and the sorties of the units it parks | [Airfields](airfields.md) |
 | `production` | built | Train, build and gather; construction, supply, tech | [Production](production.md) |
 | `physics` | planned | Vehicles and rigid bodies | [Physics](physics.md) |
 | `world` | planned | Large worlds | [World](world.md) |

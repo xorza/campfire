@@ -9,13 +9,13 @@ use campfire_units::UnitEntity;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-/// Where a unit an airfield parks stands in its sortie (jets.md, A jet takes off and lands on its
-/// runway; jets.md, A jet goes home): in the air, idle since a tick; at its place; waiting there
-/// for its runway; taxiing to its prep point, then to its runway's start; waiting there until
-/// `until`; rolling down its runway; flying home to its runway's approach; circling there for its
-/// runway; sinking to its runway's end; rolling to its start; taxiing to its prep point, then to
-/// its place; reloading there from `from` until `until`; or circling `at`, where it stood as it
-/// went home to no airfield.
+/// Where a unit an airfield parks stands in its sortie (04-capabilities/airfields.md, A jet takes
+/// off and lands on its runway; 04-capabilities/airfields.md, A jet goes home): in the air, idle
+/// since a tick; at its place; waiting there for its runway; taxiing to its prep point, then to its
+/// runway's start; waiting there until `until`; rolling down its runway; flying home to its
+/// runway's approach; circling there for its runway; sinking to its runway's end; rolling to its
+/// start; taxiing to its prep point, then to its place; reloading there from `from` until `until`;
+/// or circling `at`, where it stood as it went home to no airfield.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Sortie {
     Flying { idle_since: Option<Tick> },

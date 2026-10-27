@@ -108,7 +108,7 @@ fn a_winged_flier_never_stands_in_the_air_and_circles_the_place_it_holds() {
     // From the origin, facing x, to (10, 0, 0) ahead: on the ground it walks as a walker, a meter
     // a tick, and climbs a meter a tick, an air target after tick 4, so on its wings from tick 5;
     // it reaches its goal within its circling radius of 4 m at x = 6 in tick 6, holds that place
-    // and circles it at half a meter a tick (jets.md, A jet flies on wings).
+    // and circles it at half a meter a tick (04-capabilities/navigation.md, A jet flies on wings).
     let mut game = walk_match();
     let id = winged(&mut game, (0, 0, 0), Some(Vec3::from((10, 0, 0))));
     let mut places = vec![Vec3::ZERO];

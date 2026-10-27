@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-/// How a wreck meets the ground as it falls (wrecks.md, Wrecks move by the client's step): the
-/// gravity it falls by, in metres a second squared, none above 0; the share of its speed down
-/// the ground takes as it lands, its stiffness; the share of its speed along the ground and of
-/// its spin each step on the ground takes, its friction; and the speed, in metres a second, below
-/// which a wreck on the ground rests.
+/// How a wreck meets the ground as it falls (02-engine-core.md, Wrecks move by the client's step):
+/// the gravity it falls by, in metres a second squared, none above 0; the share of its speed down
+/// the ground takes as it lands, its stiffness; the share of its speed along the ground and of its
+/// spin each step on the ground takes, its friction; and the speed, in metres a second, below which
+/// a wreck on the ground rests.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WreckGround {

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// How a tread lays its track (wrecks.md, A tread lays track marks): an edge each `spacing`
+/// How a tread lays its track (02-engine-core.md, A tread lays track marks): an edge each `spacing`
 /// metres it moves, its ends `lift` metres above the drawn ground, up to `edges` edges, past
 /// which the oldest goes; the oldest edges past the newest `opaque` fade by their place, and each
 /// fades over `fade` seconds; at most `tracks` tracks at once, a unit past them laying none.

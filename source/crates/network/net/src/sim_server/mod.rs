@@ -213,7 +213,7 @@ impl Plugin for SimServerPlugin {
                 .in_set(ServerFrameSystems::Saves),
         );
         // The console answers between the ticks, after the frame's own steps, and holds a run's
-        // end after each tick and as each frame starts its time (console.md, A console's local
+        // end after each tick and as each frame starts its time (08-sessions.md, A console's local
         // match starts paused).
         app.add_systems(
             Update,

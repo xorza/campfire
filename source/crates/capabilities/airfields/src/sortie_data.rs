@@ -16,8 +16,8 @@ use crate::error::AirfieldError;
 /// A unit type's `sortie` section, a unit an airfield parks: the milliseconds it waits at its
 /// runway's start before it rolls, its speed in meters a second on the ground as it taxis, the
 /// milliseconds it stands idle in the air before it goes home, none for never, and what it loses
-/// stranded, none for nothing (jets.md, A jet takes off and lands on its runway; jets.md, A jet
-/// goes home).
+/// stranded, none for nothing (04-capabilities/airfields.md, A jet takes off and lands on its
+/// runway; 04-capabilities/airfields.md, A jet goes home).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SortieData {

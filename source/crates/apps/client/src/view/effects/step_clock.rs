@@ -1,6 +1,6 @@
 /// The time owed to the effects' steps: each frame adds its time, and takes the whole steps it
-/// holds, so a system steps at the file's rate at any frame rate (effects.md, A system steps as
-/// its file says).
+/// holds, so a system steps at the file's rate at any frame rate (02-engine-core.md, A system steps
+/// as its file says).
 #[derive(Debug, Default)]
 pub(crate) struct StepClock {
     owed: f64,

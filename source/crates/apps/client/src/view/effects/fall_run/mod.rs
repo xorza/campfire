@@ -10,10 +10,10 @@ use crate::view::effects::effect_book::{EffectBook, ListId};
 use crate::view::effects::wreck_run::WreckPlay;
 use crate::view::float_num::FloatNum;
 
-/// The aircraft that fall as wrecks, the client's alone (wrecks.md, An aircraft's death falls as
-/// a wreck): each drawing torn off its unit as its death started, falling at its type's share of
-/// the effects' gravity, rolling or spiralling, which plays its hit as it meets the drawn ground
-/// and its blow-up its delay after, then goes.
+/// The aircraft that fall as wrecks, the client's alone (02-engine-core.md, An aircraft's death
+/// falls as a wreck): each drawing torn off its unit as its death started, falling at its type's
+/// share of the effects' gravity, rolling or spiralling, which plays its hit as it meets the drawn
+/// ground and its blow-up its delay after, then goes.
 #[derive(Debug, Default)]
 pub(crate) struct FallRun {
     falls: Vec<Falling>,

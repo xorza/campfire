@@ -25,7 +25,7 @@ use crate::process_exit::ProcessExit;
 
 /// A game this server started, with its console on the game's standard streams: the requests it
 /// sends, each answered by id; the latest events of the game's log, in a ring; and how the game
-/// ended, once it did (console.md, A game's end answers its calls).
+/// ended, once it did (02-engine-core.md, A game's end answers its calls).
 #[derive(Debug)]
 pub(crate) struct GameProcess {
     input: sync::Mutex<Option<ChildStdin>>,
@@ -127,7 +127,7 @@ impl GameProcess {
 
     /// Sends `ask` and gives the game's reply, as `ask` does, until `cancelled` comes: the game
     /// is then asked to end the run `ask` started, and the reply is given up, as MCP's cancel
-    /// asks (console.md, A cancel pauses the run).
+    /// asks (08-sessions.md, A cancel pauses the run).
     pub(crate) async fn ask_until(
         &self,
         ask: ConsoleAsk,
@@ -225,8 +225,8 @@ impl GameProcess {
         }
     }
 
-    /// Reads the game's output to its end: the opening, each reply to its request, each event
-    /// into the ring; a stray line, as a dependency's print, goes to the log (console.md, A line
+    /// Reads the game's output to its end: the opening, each reply to its request, each event into
+    /// the ring; a stray line, as a dependency's print, goes to the log (02-engine-core.md, A line
     /// that is no reply is logged). At the end, the game's exit fails each request it did not
     /// answer.
     async fn read(

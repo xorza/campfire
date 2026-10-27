@@ -185,7 +185,7 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     assert_eq!(world.query::<&Figure>().iter(world).count(), 0);
 
     // A drawing torn off its unit stands where it stood, glides no more and outlives the unit,
-    // which is drawn no more (wrecks.md, An aircraft's death falls as a wreck).
+    // which is drawn no more (02-engine-core.md, An aircraft's death falls as a wreck).
     let unit = app
         .world_mut()
         .spawn((

@@ -1,5 +1,5 @@
 //! Airfields: the places and runways of the buildings that park units, and each parked unit's
-//! sortie from its place into the air (jets.md, An airfield is a capability).
+//! sortie from its place into the air (04-capabilities/airfields.md, An airfield is a capability).
 
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
@@ -29,7 +29,7 @@ pub use crate::sortie_data::{SortieData, SortieSpec, StrandedData, StrandedLoss}
 
 /// The `airfields` capability: a building's places and runways, and the sorties of the units it
 /// parks there; it needs production, whose places it reads, and navigation, which flies its
-/// units (jets.md, An airfield is a capability).
+/// units (04-capabilities/airfields.md, An airfield is a capability).
 #[derive(Debug)]
 pub struct Airfields;
 

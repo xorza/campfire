@@ -8,7 +8,7 @@ use crate::reply::Reply;
 use crate::request::Request;
 
 /// A line a game writes to its console: its opening, first; a reply to a request; or an event of
-/// its log, as it logs it (console.md, Events come over the console).
+/// its log, as it logs it (02-engine-core.md, Events come over the console).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Output {

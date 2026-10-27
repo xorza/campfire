@@ -484,7 +484,7 @@ fn a_ground_weapon_selects_a_flier_on_its_pad_and_an_air_weapon_once_it_flies() 
     // A unit of a ground weapon, of the enemies no air target, at place 1, 10, and an air weapon,
     // of the air targets, at place 2, 25, each of 5 m and a windup of a tick, at a period of 5
     // ticks; a flier 1 m off, of a flight at 8 m that climbs a meter a tick from the ground and
-    // is an air target past 3 m (helicopters.md, Airborne is a tag of height).
+    // is an air target past 3 m (04-capabilities/stats.md, Airborne is a tag of height).
     let mut game = Match::builder(&[
         Capability::Stats,
         Capability::Combat,

@@ -34,7 +34,7 @@ use crate::view::shot_frame::ShotFrame;
 
 /// The client's view answers its console: a screenshot of its window, a rectangle of it or the
 /// box round units on the screen, scaled to Claude's bounds and carried as a PNG in base64, and
-/// a read or a move of its camera (console.md, A pixel is the screenshot's). Its screenshots
+/// a read or a move of its camera (02-engine-core.md, A pixel is the screenshot's). Its screenshots
 /// wait a second for their frame.
 #[derive(Debug)]
 pub(crate) struct ViewConsolePlugin;
@@ -79,8 +79,8 @@ struct ViewReads<'w, 's> {
     places: Query<'w, 's, &'static GlobalTransform>,
 }
 
-/// How long a screenshot waits for its frame: 60 frames at 60 Hz (console.md, A capture waits
-/// one second for its frame).
+/// How long a screenshot waits for its frame: 60 frames at 60 Hz (02-engine-core.md, A capture
+/// waits one second for its frame).
 const FRAME_WAIT: Duration = Duration::from_secs(1);
 
 impl Plugin for ViewConsolePlugin {

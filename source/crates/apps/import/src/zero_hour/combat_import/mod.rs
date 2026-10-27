@@ -46,8 +46,8 @@ use crate::zero_hour::combat_import::weapon_gate::{GatedWeapon, WeaponGate};
 /// each cause, in the order the types are read; the objects whose body the import gives no life,
 /// and those whose body starts below its most life; each type's actions of the slot kind `weapon`,
 /// by its name, which it returns, and the same actions by the place of their slot in its sets,
-/// which its look's attack conditions test; the projectile types of a weapon's own, each with the object
-/// whose look it takes; and the modifiers of the weapons' stages of continuous fire.
+/// which its look's attack conditions test; the projectile types of a weapon's own, each with the
+/// object whose look it takes; and the modifiers of the weapons' stages of continuous fire.
 #[derive(Debug, Default)]
 pub(crate) struct CombatImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedWeapon>,
@@ -449,7 +449,7 @@ impl ImportedWeapon {
             .then(|| Self::relations(weapon.affects).ok_or(WeaponDropCause::Affects))
             .transpose()?;
         // A weapon's anti flags pick its targets: on the ground, the units that are no air
-        // target, in the air, those that are (helicopters.md, A weapon's anti flags are its
+        // target, in the air, those that are (09-zero-hour.md, A weapon's anti flags are its
         // targets).
         let targets = match (weapon.anti_ground, weapon.anti_air) {
             (true, true) => &rules.names.enemies,

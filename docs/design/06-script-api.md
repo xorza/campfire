@@ -22,6 +22,7 @@ The rules of the script API. Every name, with its roles, capability and status, 
 - **Randomness only from the secret streams.** `ctx.chance` and `ctx.pick` draw from one sequence for each acting unit and tick, so draws follow the call order, the same on every machine, and the server alone runs them.
 - **Time rounds so nothing happens early.** A wait rounds up to whole ticks, a cut off a wait rounds down, and each kind of time is its own argument type.
 - **Vectors and numbers are exact.** Vector sums and scales round once; a place past the world's bound fails the call ([Numbers](03-game-scripting.md#numbers)).
+- **A read is a script of the query role, planned.** `sim_eval` with a query runs in a role `query`, whose viewer is the whole match, as a local spectator sees every unit, and enters no log.
 
 ## One source
 

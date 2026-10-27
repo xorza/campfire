@@ -34,7 +34,7 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// structures have bodies; 09-zero-hour.md, Life is the original's; 09-zero-hour.md, Defeat by the
 /// last building that counts): the speed and the turn rate of its first normal locomotor that
 /// drives on the ground or hovers, and of one that hovers its flight on the air layer
-/// (helicopters.md, The import flies a hovering locomotor); its body: a circle of its bounding
+/// (09-zero-hour.md, The import flies a hovering locomotor); its body: a circle of its bounding
 /// radius, at most `MAX_WALKER`, when it drives, or, when it is a structure that is not small, a
 /// box of twice its radii for a box geometry, else a circle of its radius, of its geometry's height
 /// (04-capabilities/00-overview.md, A body has a height); the life of an active or a structure
@@ -75,10 +75,10 @@ pub(crate) struct ImportedType {
     income: Option<IncomeData>,
     projectile: Option<ProjectileData>,
     navigation: Option<UnitNavigationData>,
-    /// The flight of a type whose locomotor hovers (helicopters.md, The import flies a hovering
+    /// The flight of a type whose locomotor hovers (09-zero-hour.md, The import flies a hovering
     /// locomotor).
     flight: Option<FlightData>,
-    /// The sortie of a jet, which an airfield parks (jets.md, The import flies a winged
+    /// The sortie of a jet, which an airfield parks (09-zero-hour.md, The import flies a winged
     /// locomotor).
     sortie: Option<SortieData>,
     /// Whether it leads its spawns, so it has no weapon, body, walk or life of its own.
@@ -324,7 +324,7 @@ impl ImportedType {
     /// `AirborneTargetingHeight`, or never for none, and climbing at the mean speed of its climb
     /// from rest to that height, its lift net of gravity lifting it and gravity braking it, as
     /// `Locomotor::calcLiftToUseAtPt` solves the equation of motion: √(h ÷ 2(1/a + 1/g)), so it
-    /// reaches its height in the original's time (helicopters.md, The import flies a hovering
+    /// reaches its height in the original's time (09-zero-hour.md, The import flies a hovering
     /// locomotor).
     fn flight(locomotor: &Locomotor, gravity: f32) -> Result<FlightData, TypeError> {
         let height = locomotor.preferred_height;
@@ -348,9 +348,9 @@ impl ImportedType {
     }
 
     /// The sortie of the jet `object`: its `JetAIUpdate`'s `TakeoffPause` and
-    /// `ReturnToBaseIdleTime`, none for 0, its `OutOfAmmoDamagePerSecond` as `unresistable`
-    /// damage, as Zero Hour deals it, none for 0, and the speed of its first taxi locomotor that
-    /// drives (jets.md, The import flies a winged locomotor); an error for a jet of none, or of a
+    /// `ReturnToBaseIdleTime`, none for 0, its `OutOfAmmoDamagePerSecond` as `unresistable` damage,
+    /// as Zero Hour deals it, none for 0, and the speed of its first taxi locomotor that drives
+    /// (09-zero-hour.md, The import flies a winged locomotor); an error for a jet of none, or of a
     /// loss past its whole life a second.
     fn sortie_of(object: &IniObject, rules: &ZeroHourRules) -> Result<SortieData, TypeError> {
         let jet = object.fight().jet.expect("a jet has its AI's sortie");

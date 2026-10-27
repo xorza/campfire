@@ -58,8 +58,8 @@ impl ClipShots {
 
     /// Counts a shot of `action`, of `clip` at its rank: whether the shot emptied a clip that
     /// refills by time, which is then full again, so the weapon reloads. A clip that refills at
-    /// home stays empty, its shots counted, until its home refills it (jets.md, A clip may reload
-    /// at home).
+    /// home stays empty, its shots counted, until its home refills it (04-capabilities/combat.md, A
+    /// clip may reload at home).
     pub(crate) fn shoot(&mut self, action: ActionId, clip: ClipRule) -> bool {
         let shots = self.fired(action) + 1;
         let reloads = shots >= clip.shots.get() && clip.refill == ClipRefill::Time;
@@ -75,15 +75,15 @@ impl ClipShots {
 
     /// Refills the clip of `action` to `fired` shots fired since it was full, none for a full
     /// clip: the contract by which a unit's home refills a clip that refills there, as its reload
-    /// goes (jets.md, A clip may reload at home).
+    /// goes (04-capabilities/combat.md, A clip may reload at home).
     pub fn refill(&mut self, action: ActionId, fired: u16) {
         debug_assert!(fired <= self.fired(action), "a refill gives shots back");
         self.set(action, fired);
     }
 
     /// The clips of the weapons in `slots` that refill at home, each of `weapons`, at its slot's
-    /// rank, its reload unsped, with the shots it fired: what a unit's home reloads (jets.md, A
-    /// clip may reload at home).
+    /// rank, its reload unsped, with the shots it fired: what a unit's home reloads
+    /// (04-capabilities/combat.md, A clip may reload at home).
     pub fn at_home<'a>(
         &'a self,
         slots: &'a ActionSlots,

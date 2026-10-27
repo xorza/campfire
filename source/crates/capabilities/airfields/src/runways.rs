@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::airfield_data::AirfieldData;
 
 /// The unit each of an airfield's runways holds, by runway: one at a time, as it takes off or
-/// lands (jets.md, A jet takes off and lands on its runway).
+/// lands (04-capabilities/airfields.md, A jet takes off and lands on its runway).
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Runways(Box<[Option<StableId>]>);

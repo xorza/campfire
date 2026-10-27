@@ -7,9 +7,9 @@ use campfire_client_files::TrackMarks;
 
 use crate::view::effects::particle_quads::GroupQuads;
 
-/// The tracks the match's treads lay (wrecks.md, A tread lays track marks): each a strip of edges
-/// its drawing left behind it as it moved, laid, faded and dropped as the effects file's marks
-/// say, as `W3DTerrainTracks` lays them, and the quads of each of their textures' groups.
+/// The tracks the match's treads lay (02-engine-core.md, A tread lays track marks): each a strip of
+/// edges its drawing left behind it as it moved, laid, faded and dropped as the effects file's
+/// marks say, as `W3DTerrainTracks` lays them, and the quads of each of their textures' groups.
 #[derive(Debug)]
 pub(crate) struct TrackRun {
     marks: TrackMarks,

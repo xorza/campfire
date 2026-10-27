@@ -8,7 +8,7 @@ use crate::wreck::WreckList;
 /// falls at `gravity` times the effects' gravity, rolling at `roll` radians a second, or
 /// spiralling as `spiral` says; it plays `hit` as it meets the ground and `blow_up`
 /// `blow_up_after` seconds after; a jet that dies on the ground falls not and plays its `ground`
-/// death alone (wrecks.md, An aircraft's death falls as a wreck).
+/// death alone (02-engine-core.md, An aircraft's death falls as a wreck).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeathFall {

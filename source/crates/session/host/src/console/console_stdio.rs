@@ -19,11 +19,11 @@ use tracing::warn;
 
 use crate::console::log_seen::LogSeen;
 
-/// A game's console on its standard streams (console.md, A game's console is its standard
+/// A game's console on its standard streams (02-engine-core.md, A game's console is its standard
 /// streams): its opening line first; a reader on a thread of its own queues each line of the
 /// standard input, and each event of the log goes to the standard output as it is logged, beside
-/// the replies. Its input's end stops its game as a stop's signal does (console.md, A game stops
-/// as its console's input ends).
+/// the replies. Its input's end stops its game as a stop's signal does (02-engine-core.md, A game
+/// stops as its console's input ends).
 #[derive(Resource, Debug)]
 pub struct ConsoleStdio {
     lines: Mutex<Receiver<String>>,

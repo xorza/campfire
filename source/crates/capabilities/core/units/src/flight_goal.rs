@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use crate::unit_entity::UnitEntity;
 
 /// Where a flier's flight takes it: up to its type's height, or down to the ground, where the
-/// capability that parks it holds it. State of `navigation`'s fliers, kept here, as
-/// `Destination` is, for the capabilities above navigation to write (jets.md, A jet takes off and
-/// lands on its runway).
+/// capability that parks it holds it. State of `navigation`'s fliers, kept here, as `Destination`
+/// is, for the capabilities above navigation to write (04-capabilities/airfields.md, A jet takes
+/// off and lands on its runway).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FlightGoal {
     #[default]

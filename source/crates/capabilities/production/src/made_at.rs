@@ -7,8 +7,8 @@ use campfire_units::UnitEntity;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-/// The producer and its place a unit was made at, which it holds while it lives (jets.md, A jet
-/// holds a place).
+/// The producer and its place a unit was made at, which it holds while it lives
+/// (04-capabilities/production.md, A jet holds a place).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MadeAt {
     pub producer: StableId,

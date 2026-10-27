@@ -45,8 +45,8 @@ pub struct ServerAppSetup<E> {
 pub enum ServerRun {
     /// It logs `listening` once its transport listens, and exits once its session ends, or at a
     /// signal `stop` caught or the end of its console's input, with its code, the session left in
-    /// its journal for the next start to restore (08-sessions.md, A stop is an exit, not a
-    /// crash; console.md, A game stops as its console's input ends). Its `console`, when it has
+    /// its journal for the next start to restore (08-sessions.md, A stop is an exit, not a crash;
+    /// 02-engine-core.md, A game stops as its console's input ends). Its `console`, when it has
     /// one, answers between its ticks.
     Dedicated {
         stop: StopSignals,
@@ -57,7 +57,7 @@ pub enum ServerRun {
     /// `stop`, and writes its log into its client's reports, of the data directory `reports`
     /// (08-sessions.md, The log is the local server's, published at the report's tick). With a
     /// console, its client's, which `seen` the tap of, it answers the requests its client
-    /// forwards, and holds the match paused after its first tick (console.md, A console's local
+    /// forwards, and holds the match paused after its first tick (08-sessions.md, A console's local
     /// match starts paused).
     Local {
         stop: Arc<AtomicBool>,

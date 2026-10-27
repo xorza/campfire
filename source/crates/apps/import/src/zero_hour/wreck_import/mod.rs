@@ -21,10 +21,10 @@ use crate::zero_hour::game_path;
 use crate::zero_hour::game_time::FRAMES_PER_SECOND;
 use crate::zero_hour::import_name::ImportName;
 
-/// The wrecks of the install's deaths, as each look names them (wrecks.md, A death names its
-/// wrecks by phase; wrecks.md, An aircraft's death falls as a wreck): the hulks and the debris
-/// of the creation lists each phase of a slow death names, and an aircraft's fall with its own;
-/// each model a wreck draws converted as a look's; and what it leaves, counted.
+/// The wrecks of the install's deaths, as each look names them (02-engine-core.md, A death names
+/// its wrecks by phase; 02-engine-core.md, An aircraft's death falls as a wreck): the hulks and the
+/// debris of the creation lists each phase of a slow death names, and an aircraft's fall with its
+/// own; each model a wreck draws converted as a look's; and what it leaves, counted.
 #[derive(Debug)]
 pub(crate) struct WreckImport<'a> {
     objects: &'a ObjectIni,
@@ -269,7 +269,7 @@ impl<'a> WreckImport<'a> {
     }
 
     /// The wreck of `creation` of the models `models`, of `mass`, ending by `sink`; none of no
-    /// model. A launch the slice leaves is counted, and the rest of the creation kept.
+    /// model. A launch the import leaves is counted, and the rest of the creation kept.
     fn wreck(
         &mut self,
         name: &str,

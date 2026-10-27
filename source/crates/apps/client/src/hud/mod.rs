@@ -521,7 +521,7 @@ impl HudPlugin {
     }
 
     /// Takes down the gauges of each drawing torn off its unit, as an aircraft's falls as a wreck
-    /// of its own (wrecks.md, An aircraft's death falls as a wreck).
+    /// of its own (02-engine-core.md, An aircraft's death falls as a wreck).
     fn take_down_torn(
         mut torn: RemovedComponents<'_, '_, DrawingOf>,
         roots: Roots<'_, '_>,

@@ -29,9 +29,9 @@ impl Drawing {
 pub(crate) struct Undrawn;
 
 /// Tears the drawing `root` off its unit `unit`, as an aircraft's falls as a wreck of its own
-/// (wrecks.md, An aircraft's death falls as a wreck): the drawing stands where it stood, follows
-/// its unit no more and outlives it, and the unit is drawn no more, as Unreal's `TearOff` hands a
-/// dying actor to its client.
+/// (02-engine-core.md, An aircraft's death falls as a wreck): the drawing stands where it stood,
+/// follows its unit no more and outlives it, and the unit is drawn no more, as Unreal's `TearOff`
+/// hands a dying actor to its client.
 #[derive(Debug)]
 pub(crate) struct TearOff {
     pub(crate) unit: Entity,

@@ -54,8 +54,7 @@ pub enum SupplyDropCause {
     NoBoxes,
     /// A number past what the engine holds.
     BadNumber,
-    /// A gatherer, or a unit a building spawns, that does not walk, as the USA's Chinook flies
-    /// (09-zero-hour.md, The USA's income waits for aircraft).
+    /// A gatherer, or a unit a building spawns, that does not move.
     NoWalker,
     /// A unit a building of no production spawns, which has no exit to leave.
     NoExit,
@@ -67,7 +66,7 @@ pub enum SupplyDropCause {
     /// name holds.
     LongName,
     /// An `OCLUpdate`, which creates objects over time, as America's supply drop zone sends a
-    /// cargo plane of crates (09-zero-hour.md, The USA's income waits for aircraft).
+    /// cargo plane of crates (09-zero-hour.md, A supply drop zone's crates are lost).
     ObjectsOverTime,
     /// A hack's cash at a veterancy past regular that is not its regular cash, as the import
     /// gives no unit a veterancy.

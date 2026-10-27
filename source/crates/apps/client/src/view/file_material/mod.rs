@@ -184,7 +184,7 @@ impl FileBlend {
         marks
     }
 
-    /// The material particles of `texture` draw in, in `blend` (effects.md, Particles run on
+    /// The material particles of `texture` draw in, in `blend` (02-engine-core.md, Particles run on
     /// the CPU and draw as billboards of the one material): the texture tinted by each vertex's
     /// color, unlit, of both faces, writing no depth, and painted by no team.
     pub(crate) fn particles(texture: Handle<Image>, blend: Blend) -> FileMaterial {

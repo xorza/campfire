@@ -12,10 +12,11 @@ use campfire_values::PackageIndex;
 use crate::view::float_num::FloatNum;
 use crate::view::package_source::PackageAssets;
 
-/// The wrecks of the match's deaths, the client's alone (wrecks.md, A wreck is the client's): each
-/// piece thrown from its unit's drawing, stepped at the effects' step by their gravity, landing on
-/// the drawn ground, resting, sinking and gone (wrecks.md, Wrecks move by the client's step); and
-/// the client's own random sequence its throws draw from, as nothing of them is state.
+/// The wrecks of the match's deaths, the client's alone (02-engine-core.md, A wreck is the
+/// client's): each piece thrown from its unit's drawing, stepped at the effects' step by their
+/// gravity, landing on the drawn ground, resting, sinking and gone (02-engine-core.md, Wrecks move
+/// by the client's step); and the client's own random sequence its throws draw from, as nothing of
+/// them is state.
 #[derive(Debug)]
 pub(crate) struct WreckRun {
     pieces: Vec<WreckPiece>,

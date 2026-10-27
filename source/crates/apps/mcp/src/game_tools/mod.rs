@@ -31,15 +31,15 @@ use crate::tool_params::{
     UnitsParams,
 };
 
-/// The tools that start, read and drive this workspace's games, over MCP (console.md, Tools by
-/// outcome, by what they act on): `game_` acts on the processes, `sim_` on the match.
+/// The tools that start, read and drive this workspace's games, over MCP (02-engine-core.md, Tools
+/// by outcome, by what they act on): `game_` acts on the processes, `sim_` on the match.
 #[derive(Debug, Clone)]
 pub(crate) struct GameTools {
     games: Arc<Games>,
 }
 
 /// What a call gives the agent: its text, and a screenshot's PNG, in base64, when it shows one
-/// (console.md, A result is one text block, and an image when it shows one).
+/// (02-engine-core.md, A result is one text block, and an image when it shows one).
 #[derive(Debug)]
 struct CallOutput {
     text: String,
@@ -63,7 +63,7 @@ enum ToolEffect {
     Changes,
 }
 
-/// The server's instructions, which Claude Code loads as a session starts (console.md, The
+/// The server's instructions, which Claude Code loads as a session starts (02-engine-core.md, The
 /// instructions say the loop).
 const INSTRUCTIONS: &str = "Campfire's games, run and read by an agent. The loop: start a game \
 with game_start, a local match of the client (`--local --data <dir> <mode dir>`), which starts \
@@ -251,7 +251,7 @@ impl GameTools {
                 let params: RunParams = Self::read(&arguments)?;
                 let game = self.games.get(params.handle).await?;
                 // A count of ticks becomes its tick as the call starts, so a repeat runs no
-                // further (console.md, A console's local match starts paused).
+                // further (08-sessions.md, A console's local match starts paused).
                 let to = match params.to {
                     RunTo::Ticks(ticks) => {
                         let read = game.ask(ConsoleAsk::Status).await?;
@@ -396,8 +396,8 @@ impl GameTools {
         text
     }
 
-    /// A table, with the rows it left when it is cut, and how to read them (console.md, A table
-    /// comes in pages).
+    /// A table, with the rows it left when it is cut, and how to read them (02-engine-core.md, A
+    /// table comes in pages).
     fn table_text(table: &UnitTable) -> String {
         let mut text = table.text.trim_end().to_owned();
         if table.shown < table.selected {

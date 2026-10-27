@@ -51,7 +51,7 @@ impl Pace {
     }
 
     /// Starts a console's run: plays on at the fastest speed, and gives the speed before, which
-    /// the run's end sets again (console.md, A run plays at the pace's fastest speed).
+    /// the run's end sets again (08-sessions.md, A run plays at the pace's fastest speed).
     pub fn start_run(&self) -> PaceSpeed {
         let before = self.speed();
         self.set_speed(PaceSpeed::Quadruple);

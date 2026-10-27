@@ -236,7 +236,8 @@ impl Listed for AttackData {
 
 /// A weapon's `clip`: the shots it fires before it reloads, the time it reloads for, and how it
 /// refills: by that time from the shot that empties it, in place of its period, or at its unit's
-/// home alone (04-capabilities/combat.md, Clips; jets.md, A clip may reload at home).
+/// home alone (04-capabilities/combat.md, Clips; 04-capabilities/combat.md, A clip may reload at
+/// home).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClipData {

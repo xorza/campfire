@@ -19,7 +19,7 @@ use crate::process_exit::ProcessExit;
 
 /// The games this server started, each by its handle, and where their builds are: the
 /// workspace's source directory, which the driver builds in, and its target directory
-/// (console.md, The MCP server never builds itself).
+/// (02-engine-core.md, The MCP server never builds itself).
 #[derive(Debug)]
 pub(crate) struct Games {
     source: PathBuf,
@@ -148,8 +148,8 @@ impl Games {
         Ok(GameStopped { handle, status })
     }
 
-    /// Stops every game, as this server stops (console.md, A game stops as its console's input
-    /// ends).
+    /// Stops every game, as this server stops (02-engine-core.md, A game stops as its console's
+    /// input ends).
     pub(crate) async fn stop_all(&self) {
         let games = std::mem::take(&mut *self.games.lock().await);
         for game in games.into_values() {

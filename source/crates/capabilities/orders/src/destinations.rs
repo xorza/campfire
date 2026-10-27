@@ -65,7 +65,7 @@ impl Destinations {
                 let to = Placed::new(unit.position, unit.shape);
                 match targets.reach(from, values.range, values.min_range, to) {
                     // A unit on wings flies on at its target in reach, to pass it and come round
-                    // (jets.md, A jet aims by flying).
+                    // (04-capabilities/combat.md, A jet aims by flying).
                     RangeFit::Within if OnWings::holds(status) => Some(unit.position),
                     RangeFit::Within => None,
                     _ if progress.target_source() == Some(TargetSource::Scan) => {

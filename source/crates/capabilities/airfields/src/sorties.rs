@@ -117,8 +117,9 @@ impl Field {
 
 impl Sorties {
     /// Parks a unit of a sortie its airfield made at one of its places, as it spawns: on the
-    /// ground, grounded, until it is ordered away (jets.md, A jet holds a place). One made at a
-    /// place of a producer of no runways flies from there, as nothing would take it off.
+    /// ground, grounded, until it is ordered away (04-capabilities/production.md, A jet holds a
+    /// place). One made at a place of a producer of no runways flies from there, as nothing would
+    /// take it off.
     pub(crate) fn park(world: &mut World, entity: Entity) {
         let Some(&MadeAt { producer, .. }) = world.get::<MadeAt>(entity) else {
             return;
@@ -140,19 +141,20 @@ impl Sorties {
         }
     }
 
-    /// Steps each unit of a sortie, by stable id, before the units move (jets.md, A jet takes off
-    /// and lands on its runway; jets.md, A jet goes home; jets.md, An order waits for the air).
-    /// One ordered away from its place waits for its runway, holds it, taxis to its prep point and
-    /// its start at its taxi speed, waits its pause, rolls to the runway's end at its speed, lets
-    /// the runway go and climbs, its orders its own. In the air, one whose clips that refill at
-    /// home are all empty, or that stood idle its idle time, drops its attack and flies home to its
-    /// runway's approach, past the runway's end as far as it flies while it sinks from its height;
-    /// an order on the way takes one that still holds a shot back to the air. At the approach it
-    /// circles until it holds the runway, sinks to its end, rolls to its start, lets it go, taxis
-    /// back to its place and reloads its clips, all in the longest time a clip's reload takes for
-    /// the share it lacks, its shots back as the time goes. One whose airfield is gone takes the
-    /// nearest airfield of its team with a free place; with none, as it goes home it circles
-    /// where it stands, stranded, until one takes it. It is held, its walk and its attacks
+    /// Steps each unit of a sortie, by stable id, before the units move
+    /// (04-capabilities/airfields.md, A jet takes off and lands on its runway;
+    /// 04-capabilities/airfields.md, A jet goes home; 04-capabilities/airfields.md, An order waits
+    /// for the air). One ordered away from its place waits for its runway, holds it, taxis to its
+    /// prep point and its start at its taxi speed, waits its pause, rolls to the runway's end at
+    /// its speed, lets the runway go and climbs, its orders its own. In the air, one whose clips
+    /// that refill at home are all empty, or that stood idle its idle time, drops its attack and
+    /// flies home to its runway's approach, past the runway's end as far as it flies while it sinks
+    /// from its height; an order on the way takes one that still holds a shot back to the air. At
+    /// the approach it circles until it holds the runway, sinks to its end, rolls to its start,
+    /// lets it go, taxis back to its place and reloads its clips, all in the longest time a clip's
+    /// reload takes for the share it lacks, its shots back as the time goes. One whose airfield is
+    /// gone takes the nearest airfield of its team with a free place; with none, as it goes home it
+    /// circles where it stands, stranded, until one takes it. It is held, its walk and its attacks
     /// blocked, from its runway's approach to its runway's end as it takes off.
     pub(crate) fn step(
         (tick, rate, index): (Res<'_, SimTick>, Res<'_, MatchRate>, Res<'_, EntityIndex>),
@@ -397,7 +399,7 @@ impl Sorties {
     }
 
     /// Frees the runway each unit of a sortie that died held, as it dies, so the next unit of its
-    /// airfield takes it (jets.md, A jet takes off and lands on its runway).
+    /// airfield takes it (04-capabilities/airfields.md, A jet takes off and lands on its runway).
     pub(crate) fn free_runways(
         (index, airfields): (Res<'_, EntityIndex>, Res<'_, ById<UnitType, AirfieldData>>),
         dead: DeadSorties<'_, '_>,
@@ -423,7 +425,7 @@ impl Sorties {
     /// Kills each unit an airfield that died held, as it dies, from its runway's approach as it
     /// lands to its runway's end as it takes off, with no killer, as Zero Hour's airfield kills
     /// the jets parked at it, landing or taking off (`ParkingPlaceBehavior::killAllParkedUnits`;
-    /// jets.md, A jet goes home).
+    /// 04-capabilities/airfields.md, A jet goes home).
     pub(crate) fn kill_held(
         dead: Query<'_, '_, &StableId, (Added<Dead>, With<Runways>)>,
         units: Query<'_, '_, (&StableId, &MadeAt, &Sortie), Without<Dead>>,
@@ -438,9 +440,10 @@ impl Sorties {
         }
     }
 
-    /// Heals each unit that rests at its airfield below its whole life by its airfield's heal,
-    /// and deals each stranded unit its sortie's stranded loss, a tick's share of each, through
-    /// combat's pass, by the stable id of the unit each reaches (jets.md, A jet goes home).
+    /// Heals each unit that rests at its airfield below its whole life by its airfield's heal, and
+    /// deals each stranded unit its sortie's stranded loss, a tick's share of each, through
+    /// combat's pass, by the stable id of the unit each reaches (04-capabilities/airfields.md, A
+    /// jet goes home).
     pub(crate) fn upkeep(
         (rate, index): (Res<'_, MatchRate>, Res<'_, EntityIndex>),
         airfields: Res<'_, ById<UnitType, AirfieldData>>,

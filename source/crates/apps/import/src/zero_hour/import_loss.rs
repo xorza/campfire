@@ -58,7 +58,7 @@ pub enum ImportLoss {
     /// convert (09-zero-hour.md, A look's draws are its draw modules).
     States(DroppedStates),
     /// A particle system, a part of one, or a nugget of an effect list, by the system's or the
-    /// list's name, the import does not convert (effects.md, What the slice leaves).
+    /// list's name, the import does not convert (09-zero-hour.md, Particles and effects).
     Effect(Dropped<EffectDropCause>),
 }
 

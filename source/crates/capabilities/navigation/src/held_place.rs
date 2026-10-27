@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::flight_data::FlightData;
 
-/// The place on the ground a winged flier holds, which it circles in the air with no goal: where
-/// it spawned, then the goal it last arrived at (jets.md, A jet flies on wings).
+/// The place on the ground a winged flier holds, which it circles in the air with no goal: where it
+/// spawned, then the goal it last arrived at (04-capabilities/navigation.md, A jet flies on wings).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct HeldPlace(Vec3);

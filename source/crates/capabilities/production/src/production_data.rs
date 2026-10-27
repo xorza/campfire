@@ -10,14 +10,14 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::frame_point::FramePoint;
 
-/// A unit type's `production` section: the most entries its train queue holds; where its
-/// trained units come out, and where they go with no rally point set, each in its own frame
-/// (04-capabilities/production.md, A producer may name its exit and rally); whether each
-/// gatherer that leaves its exit starts to gather (04-capabilities/production.md, A producer may
-/// start its gatherers); the unit types of its package that leave its exit once, as its site
-/// completes (04-capabilities/production.md, A building may come with its units); and its places,
-/// where each unit it trains is made and which it holds while it lives (jets.md, A jet holds a
-/// place).
+/// A unit type's `production` section: the most entries its train queue holds; where its trained
+/// units come out, and where they go with no rally point set, each in its own frame
+/// (04-capabilities/production.md, A producer may name its exit and rally); whether each gatherer
+/// that leaves its exit starts to gather (04-capabilities/production.md, A producer may start its
+/// gatherers); the unit types of its package that leave its exit once, as its site completes
+/// (04-capabilities/production.md, A building may come with its units); and its places, where each
+/// unit it trains is made and which it holds while it lives (04-capabilities/production.md, A jet
+/// holds a place).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionData {

@@ -15,7 +15,7 @@ use crate::net_protocol::JoinChannel;
 /// match it forwards to its local server over their link, as its journal commands go, and their
 /// replies, a run's held until the client received
 /// the state of the tick it paused at and drew a frame of it, so a view after the reply shows
-/// that tick (console.md, A console's local match starts paused). A client of a remote server
+/// that tick (08-sessions.md, A console's local match starts paused). A client of a remote server
 /// refuses them. Its transport, the standard streams or a test, fills and drains its queues.
 #[derive(Resource, Debug, Default)]
 pub struct ClientConsole {
@@ -130,7 +130,7 @@ impl ClientConsole {
     }
 
     /// Writes the replies to the standard output; the input's end stops the client, as a stop's
-    /// signal does (console.md, A game stops as its console's input ends).
+    /// signal does (02-engine-core.md, A game stops as its console's input ends).
     pub(crate) fn send_stdio(
         mut console: ResMut<'_, Self>,
         stdio: Res<'_, ConsoleStdio>,

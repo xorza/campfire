@@ -58,10 +58,10 @@ fn rockets(game: &Match) -> TestWeapon {
 #[test]
 fn a_winged_attacker_aims_by_flying_at_its_target_and_comes_round_for_the_next() {
     // The jet flies along x at the dummy at (20, 0, 0), a meter a tick from tick 0: 6 m from it,
-    // straight at it, it starts in tick 14 and strikes for 5. It flies on over it and turns its
-    // 15° a tick round, as it never turns in place, and comes back: in tick 41, at
-    // (17.46, −1.47) facing 300°, the dummy bears 330°, 30° off, within its aim, and it starts
-    // again; through its turn its facing is never the bearing (jets.md, A jet aims by flying).
+    // straight at it, it starts in tick 14 and strikes for 5. It flies on over it and turns its 15°
+    // a tick round, as it never turns in place, and comes back: in tick 41, at (17.46, −1.47)
+    // facing 300°, the dummy bears 330°, 30° off, within its aim, and it starts again; through its
+    // turn its facing is never the bearing (04-capabilities/combat.md, A jet aims by flying).
     let mut game = wings_match();
     let weapon = rockets(&game);
     let jet_type = jet_type(&mut game, weapon);
@@ -94,7 +94,7 @@ fn a_winged_attacker_aims_by_flying_at_its_target_and_comes_round_for_the_next()
 fn a_clip_that_refills_at_home_starts_nothing_once_empty_until_its_home_refills_it() {
     // A clip of 2 that reloads in 21 ticks at home, every 3 ticks: it starts in ticks 0 and 3,
     // then stays empty well past its reload's time; refilled by its home's contract in tick 40,
-    // it starts again in tick 40 (jets.md, A clip may reload at home).
+    // it starts again in tick 40 (04-capabilities/combat.md, A clip may reload at home).
     let mut game = fight_match();
     let aim = game
         .resource::<MatchNames>()

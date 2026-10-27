@@ -177,7 +177,7 @@ steps = [{ cargo = "run --profile release-dev -p campfire-server", args = true }
 
 # The MCP server, which Claude Code starts from the repository's `.mcp.json`, and the games its
 # `game_start` builds before it starts one, fast or with the dev profile's asserts
-# (console.md, The MCP server never builds itself).
+# (02-engine-core.md, The MCP server never builds itself).
 [workspace.metadata.drive.commands.mcp]
 steps = [{ build = "build --profile release-dev -p campfire-mcp" }]
 

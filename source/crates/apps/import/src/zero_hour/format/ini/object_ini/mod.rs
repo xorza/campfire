@@ -145,9 +145,9 @@ pub(crate) enum PlacedAs {
 
 /// A draw module: how it names its model, the model of its default state, if it draws one, that
 /// state's look and animation, and the bones its turret turns and pitches, its `Turret` and its
-/// `TurretPitch`; its barrels' recoil; the sets of flags its default state is drawn for, none and its aliases'; its
-/// other condition states, in order; the map conditions it ignores (`IgnoreConditionStates`);
-/// and its transition states.
+/// `TurretPitch`; its barrels' recoil; the sets of flags its default state is drawn for, none and
+/// its aliases'; its other condition states, in order; the map conditions it ignores
+/// (`IgnoreConditionStates`); and its transition states.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DrawModule {
     pub(crate) kind: DrawKind,
@@ -951,7 +951,7 @@ impl IniObject {
     }
 
     /// The effect list a normal death of it plays: the `DeathFX` of its first `FXListDie` that
-    /// applies and names one (effects.md, What the slice leaves); none when none does.
+    /// applies and names one (09-zero-hour.md, Particles and effects); none when none does.
     pub(crate) fn death_effect(&self) -> Option<&str> {
         let effects = self.deaths.iter().filter(|death| death.applies());
         effects

@@ -105,7 +105,7 @@ impl Plugin for NetProtocolPlugin {
             .add_direction(LinkDirection::ServerToClient);
         app.register_message::<WatchTeams>()
             .add_direction(LinkDirection::ClientToServer);
-        // A local client's console asks its server, and the server answers it (console.md, A
+        // A local client's console asks its server, and the server answers it (02-engine-core.md, A
         // game's console is its standard streams).
         app.register_message::<Request>()
             .add_direction(LinkDirection::ClientToServer);

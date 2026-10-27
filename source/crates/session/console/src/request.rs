@@ -13,7 +13,7 @@ use crate::shot_ask::ShotAsk;
 use crate::units_ask::UnitsAsk;
 
 /// A line a tool writes to a game's console: what it asks, under an id its reply carries, so
-/// replies come in any order (console.md, A request carries its id, and a reply its tick).
+/// replies come in any order (02-engine-core.md, A request carries its id, and a reply its tick).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Request {
     pub id: RequestId,

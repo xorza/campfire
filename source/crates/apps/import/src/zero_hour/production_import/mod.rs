@@ -58,8 +58,8 @@ pub(crate) struct ProductionImport {
     airfield_bones: BTreeMap<DeclaredName, AirfieldBones>,
     /// The `HealAmountPerSecond` of each producer of a `ParkingPlaceBehavior` it visits.
     heals: BTreeMap<TypeName, f32>,
-    /// The `airfield` of each airfield whose production makes its jets at places (jets.md, The
-    /// import flies a winged locomotor).
+    /// The `airfield` of each airfield whose production makes its jets at places (09-zero-hour.md,
+    /// The import flies a winged locomotor).
     pub(crate) airfields: BTreeMap<TypeName, AirfieldData>,
 }
 
@@ -445,7 +445,8 @@ impl ProductionImport {
             Making::Train => MadeSection::Train(TrainData {
                 unit_type: typed.name.declared().clone(),
                 requires,
-                // A jet is made at a place of its airfield (jets.md, A jet holds a place).
+                // A jet is made at a place of its airfield (04-capabilities/production.md, A jet
+                // holds a place).
                 at_place: typed.imported.sortie().is_some(),
             }),
             Making::Build => MadeSection::Build(BuildData {
@@ -586,9 +587,9 @@ impl ProductionImport {
     /// engine's frame, the game's `y` its `−z`, as a map's places turn, each none for a number the
     /// engine does not hold or a point past its bound, and whether its exit starts its gatherers;
     /// none for no `ProductionUpdate`, or a queue past 1 to 255; an airfield of no exit module
-    /// makes its units at its `helipad`, with no rally point of its own (helicopters.md, A
-    /// helipad is an exit), and its jets at its places, each facing as its bone does, none when one
-    /// is past what the engine holds (jets.md, The import flies a winged locomotor). The supply's
+    /// makes its units at its `helipad`, with no rally point of its own (09-zero-hour.md, A helipad
+    /// is an exit), and its jets at its places, each facing as its bone does, none when one is past
+    /// what the engine holds (09-zero-hour.md, The import flies a winged locomotor). The supply's
     /// conversion gives it its free units.
     fn section(build: &IniBuild, points: ExitPoints) -> Option<ProductionData> {
         let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;

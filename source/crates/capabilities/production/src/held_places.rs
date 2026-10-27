@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::producer_spec::ProducerSpec;
 
 /// The unit each of a producer's places holds, by place: the unit its train made there, while it
-/// lives (jets.md, A jet holds a place).
+/// lives (04-capabilities/production.md, A jet holds a place).
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct HeldPlaces(Box<[Option<StableId>]>);
@@ -35,7 +35,8 @@ impl HeldPlaces {
     }
 
     /// Holds the free place `place` for `unit`, a unit of another producer that lost its own: the
-    /// contract by which an airfield takes in a unit of a gone one (jets.md, A jet goes home).
+    /// contract by which an airfield takes in a unit of a gone one (04-capabilities/airfields.md, A
+    /// jet goes home).
     pub fn hold_for(&mut self, place: u8, unit: StableId) {
         self.hold(place, unit);
     }
