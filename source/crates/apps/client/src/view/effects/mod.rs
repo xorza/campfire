@@ -28,8 +28,8 @@ use campfire_host::ReceivedTick;
 use campfire_projectiles::Projectile;
 use campfire_script::MatchNames;
 use campfire_sim::{EntityIndex, MatchRate, Unpredicted};
-use campfire_units::{Dead, TypeOriginBook};
-use campfire_values::{PackageIndex, UnitType};
+use campfire_units::{Dead, Owner, TypeOriginBook};
+use campfire_values::{PackageIndex, Team, UnitType};
 
 use crate::view::client_data::ClientLoad;
 use crate::view::drawing::{Drawing, TearOff, Undrawn};
@@ -40,7 +40,7 @@ use crate::view::effects::fall_run::{FallEvent, FallFrom, FallRun, FallStart, Mo
 use crate::view::effects::fire_seen::{FireSeen, SeenShots};
 use crate::view::effects::muzzle_flashes::{FlashParts, MuzzleFlashes};
 use crate::view::effects::particle_quads::{GroupQuads, ParticleQuads, ViewAxes};
-use crate::view::effects::particle_run::{ParticleRun, SystemKey};
+use crate::view::effects::particle_run::{HeardAt, ParticleRun, SoundSource, SystemKey};
 use crate::view::effects::seen_deaths::{DeathStep, DeathUnderWay, SeenDeaths, UnitNow};
 use crate::view::effects::step_clock::StepClock;
 use crate::view::effects::track_run::TrackRun;
@@ -157,11 +157,18 @@ type NewShots<'w, 's> = Query<
     (With<Projectile>, Added<Drawing>, Allow<Unpredicted>),
 >;
 
-/// A unit as its shot plays: its type, its attack and its drawing.
+/// A unit as its shot plays: its type, its attack, its drawing, and its player, whose relation
+/// says who hears its fire.
 type Shooters<'w, 's> = Query<
     'w,
     's,
-    (&'static UnitType, &'static ActionProgress, &'static Drawing),
+    (
+        &'static UnitType,
+        &'static ActionProgress,
+        &'static Drawing,
+        Option<&'static Owner>,
+        &'static Team,
+    ),
     Allow<Unpredicted>,
 >;
 
@@ -364,7 +371,7 @@ impl MatchEffects {
             now: time.elapsed(),
         };
         for shot in shots.0.drain(..) {
-            let Ok((&unit_type, progress, drawing)) = shooters.get(shot.unit) else {
+            let Ok((&unit_type, progress, drawing, owner, &team)) = shooters.get(shot.unit) else {
                 continue;
             };
             let root = drawing.root();
@@ -388,6 +395,18 @@ impl MatchEffects {
             let Some(effects) = effects.as_deref_mut() else {
                 continue;
             };
+            if let Some(&sound) = effects.plays.fire_sounds.get(&action)
+                && let Ok(place) = places.get(root)
+            {
+                effects.run.hear(HeardAt {
+                    sound,
+                    at: place.translation(),
+                    source: Some(SoundSource {
+                        owner: owner.map(|owner| owner.player_slot()),
+                        team,
+                    }),
+                });
+            }
             if let Some(&fire) = effects.plays.fires.get(&action) {
                 let bone = barrel.and_then(|barrel| barrel.bone.as_deref());
                 let at = bone

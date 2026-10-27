@@ -23,6 +23,7 @@ fn a_skirmish_starts_each_playable_faction_with_its_objects_and_offset() {
         building: name("americacommandcenter"),
         units: vec![name("americavehicledozer")],
         offset: Num::int(25) / Num::int(2),
+        base_side: Some("USA".to_owned()),
     };
     assert_eq!(
         start(PLAYER_TEMPLATES).unwrap(),

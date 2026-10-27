@@ -4,13 +4,14 @@ use std::num::NonZeroU32;
 use campfire_actions::ActionKind;
 use campfire_client_files::{
     ActionLook, ClientFile, ClientObjects, ClientUnit, ClientUnits, EffectsFile, HudFile, LookDraw,
-    MapConditions, TerrainFile,
+    MapConditions, SoundFile, TerrainFile,
 };
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
 use campfire_import::{
     AnimationDropCause, ButtonDropCause, EffectDropCause, ImportLoss, Imported, PanelDropCause,
-    RoadDropCause, StateDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause,
+    RoadDropCause, SoundDropCause, StateDropCause, SupplyDropCause, UpgradeDropCause,
+    WeaponDropCause,
 };
 use campfire_math::Num;
 use campfire_navigation::MapNavigationData;
@@ -35,8 +36,8 @@ use crate::missile_play::MissilePlay;
 use crate::pins::{
     EffectCounts, FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, HelicopterSteps,
     LookCounts, MapCounts, PanelCounts, ProducedCounts, ProductionSteps, RangerLook, RoadCounts,
-    SaleSteps, SkirmishTicks, SuppliedCounts, SupplySteps, TerrainCounts, TerrainDrawn,
-    UpgradeSteps, UpgradedCounts,
+    SaleSteps, SkirmishTicks, SoundCounts, SuppliedCounts, SupplySteps, TerrainCounts,
+    TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
@@ -403,6 +404,39 @@ impl ImportCheck<'_> {
             .extend(Differs::of(panel, expected).map(CheckFailure::Panel));
         self.measured.panel = Some(panel);
         info!(%panel, "the command panel");
+        Ok(())
+    }
+
+    /// The sounds, the lists, the fires and the looks that name them, the files of the sounds and
+    /// of the music, the playlists, and the sounds dropped, by cause.
+    pub(crate) fn sounds(&mut self) -> Result<(), CheckError> {
+        let files = &self.packages.mode().package.files;
+        let effects: EffectsFile = client_file(files, &EffectsFile::path())?;
+        let units: ClientUnits = client_file(files, &ClientUnits::path())?;
+        let sound: SoundFile = client_file(files, &SoundFile::path())?;
+        let lists = effects.lists().values();
+        let sounds = SoundCounts {
+            sounds: effects.sounds().len(),
+            lists: lists.filter(|list| !list.sounds.is_empty()).count(),
+            fires: (units.actions().values())
+                .filter(|look| look.fire_sound.is_some())
+                .count(),
+            voiced: (units.units().values())
+                .filter(|look| !look.voices.is_empty())
+                .count(),
+            files: files.files_under("client/sounds").count(),
+            tracks: files.files_under("client/music").count(),
+            playlists: sound.music.map_or(0, |music| music.playlists.len()),
+            dropped: self.dropped(SoundDropCause::ALL, |loss| match loss {
+                ImportLoss::Sound(event) => Some(event.cause),
+                _ => None,
+            }),
+        };
+        let expected = self.pinned(|golden| golden.sounds, sounds);
+        self.failures
+            .extend(Differs::of(sounds, expected).map(CheckFailure::Sounds));
+        self.measured.sounds = Some(sounds);
+        info!(%sounds, "the sounds");
         Ok(())
     }
 

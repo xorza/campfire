@@ -3,7 +3,7 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "3e45b5822b893be0e13704b0519a327398b4de53458fd86f9d5841b5935b91d4"
+game = "f2ea29ce6617c4c10ab81e94680b5a7bf4205cab327e3f873dbe9f66704b014e"
 rules = "c19289ecee64026c3f4c8a52958c108743e98e5e97357b8be3e67d69422fd33d"
 
 [map]
@@ -69,15 +69,15 @@ dropped = [0, 0, 0, 6, 0, 0, 0, 5, 5, 5, 5, 5, 4, 0]
 
 [effects]
 systems = 559
-lists = 318
+lists = 398
 textures = 46
 fires = 53
 hits = 0
 trails = 3
 ends = 24
-deaths = 866
+deaths = 1252
 bones = 2243
-dropped = [35, 0, 8, 2, 7, 292, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0]
+dropped = [35, 0, 8, 2, 7, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0]
 
 [panel]
 icons = 449
@@ -86,6 +86,16 @@ panels = 538
 places = 1702
 commands = 4
 dropped = [1, 113, 2, 0, 0, 3]
+
+[sounds]
+sounds = 458
+lists = 278
+fires = 64
+voiced = 631
+files = 1584
+tracks = 33
+playlists = 13
+dropped = [2, 7, 0, 0, 32, 0, 7, 11, 161, 0]
 
 [fought]
 weapons = 110

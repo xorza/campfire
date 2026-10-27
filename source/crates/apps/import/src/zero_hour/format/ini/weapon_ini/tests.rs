@@ -40,6 +40,8 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
             fire_fx: None,
             detonation_fx: None,
             exhaust: None,
+            fire_sound: None,
+            fire_sound_loop_ms: 0,
         }
     );
     // The cannon's shell detonates on structures and walls, and its radius damages every
@@ -50,6 +52,11 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
     assert_eq!(
         [&cannon.fire_fx, &cannon.detonation_fx, &cannon.exhaust].map(Option::as_deref),
         [Some("FX_TankFire"), Some("FX_TankHit"), None]
+    );
+    // Its fire's sound, looped over 80 ms as it fires again.
+    assert_eq!(
+        (cannon.fire_sound.as_deref(), cannon.fire_sound_loop_ms),
+        (Some("TankCannonFire"), 80)
     );
     assert_eq!((cannon.pitch, cannon.aim_delta), ([-15.0, 15.0], 30.0));
     let collides = CollideMask {

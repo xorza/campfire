@@ -14,6 +14,7 @@ use crate::zero_hour::format::ini::object_ini::ini_fall::IniFall;
 use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::IniUpgradeModule;
+use crate::zero_hour::format::ini::object_ini::ini_voices::IniVoices;
 use crate::zero_hour::format::look_conditions::LookConditions;
 
 pub(crate) mod build_variations;
@@ -25,6 +26,7 @@ pub(crate) mod ini_fall;
 pub(crate) mod ini_recoil;
 pub(crate) mod ini_supply;
 pub(crate) mod ini_upgrade_module;
+pub(crate) mod ini_voices;
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
 /// draw modules show by default, and their build variations, resolved once every file is read, as
@@ -85,6 +87,7 @@ pub(crate) struct IniObject {
     mass: f32,
     /// Its `LifetimeUpdate`'s `MinLifetime` and `MaxLifetime`, in milliseconds.
     lifetime_ms: Option<[f32; 2]>,
+    voices: IniVoices,
 }
 
 /// The kinds of an object's `KindOf` that the import reads: those that decide who draws its placed
@@ -360,6 +363,8 @@ enum Block {
     Lifetime,
     /// A slow death module, the object's last.
     Death,
+    /// An object's `UnitSpecificSounds`.
+    UnitSounds,
     Other,
 }
 
@@ -469,6 +474,7 @@ impl ObjectFiles {
                 deaths: Vec::new(),
                 mass: 1.0,
                 lifetime_ms: None,
+                voices: IniVoices::default(),
             },
             Some(base) => IniObject {
                 id,
@@ -926,6 +932,11 @@ impl IniObject {
         &self.fight
     }
 
+    /// The voices it answers with.
+    pub(crate) const fn voices(&self) -> &IniVoices {
+        &self.voices
+    }
+
     /// The slow death a normal death of it most likely takes, as `SlowDeathBehavior::onDie` draws
     /// one by weight among those that apply: of the most weight, the first of a tie; none when
     /// none applies, as it is then destroyed at once.
@@ -1078,6 +1089,7 @@ impl Reading {
             | Block::Physics
             | Block::Lifetime
             | Block::Death
+            | Block::UnitSounds
             | Block::Other => Ok(None),
         }
     }
@@ -1385,6 +1397,13 @@ impl Reading {
                     self.stack.push(Block::Fight(block));
                     return Ok(());
                 }
+                if open.object.voices.field(word, at)? {
+                    return Ok(());
+                }
+                if word == "unitspecificsounds" && tokens.len() == 1 {
+                    self.stack.push(Block::UnitSounds);
+                    return Ok(());
+                }
                 if word == "prerequisites" && tokens.len() == 1 {
                     // `parsePrerequisites` starts the list again.
                     build.prerequisites.clear();
@@ -1398,6 +1417,10 @@ impl Reading {
                     return Ok(());
                 }
                 self.object_field(word, at)?;
+            }
+            Block::UnitSounds => {
+                let open = self.object.as_mut().expect("a block is an object's");
+                open.object.voices.unit_specific(word, at)?;
             }
             Block::Object => self.object_field(word, at)?,
             Block::Other if ObjectFiles::opens(word, tokens) => self.stack.push(Block::Other),

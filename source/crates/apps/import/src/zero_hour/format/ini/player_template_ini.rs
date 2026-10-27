@@ -13,11 +13,13 @@ pub(crate) struct PlayerTemplateIni {
 }
 
 /// What the import reads of a player template: whether a player may play it, its
-/// `PlayableSide`, and the objects a skirmish starts its player with, its `StartingBuilding` and
-/// its `StartingUnit0` to `StartingUnit9`, each none or no when absent, as the template starts.
+/// `PlayableSide`, its `BaseSide`, and the objects a skirmish starts its player with, its
+/// `StartingBuilding` and its `StartingUnit0` to `StartingUnit9`, each none or no when absent, as
+/// the template starts.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct PlayerTemplate {
     pub(crate) playable: bool,
+    pub(crate) base_side: Option<String>,
     pub(crate) building: Option<String>,
     units: [Option<String>; Self::UNITS],
 }
@@ -70,6 +72,7 @@ impl PlayerTemplate {
             .and_then(|digit| digit.parse::<usize>().ok());
         match (word, unit) {
             ("playableside", _) => self.playable = at.yes()?,
+            ("baseside", _) => self.base_side = Some(at.value()?.to_owned()),
             ("startingbuilding", _) => self.building = Some(at.value()?.to_owned()),
             (_, Some(index)) => self.units[index] = Some(at.value()?.to_owned()),
             _ => {}
@@ -89,6 +92,7 @@ pub(crate) mod samples {
 End\r
 PlayerTemplate FactionAmerica\r
   Side = America\r
+  BaseSide = USA\r
   PlayableSide = Yes\r
   StartingBuilding = AmericaCommandCenter\r
   StartingUnit0 = AmericaVehicleDozer ; the builder\r
@@ -108,6 +112,7 @@ mod tests {
         let america = &ini.templates["FactionAmerica"];
         assert_eq!(america.building.as_deref(), Some("AmericaCommandCenter"));
         assert_eq!(america.units().collect::<Vec<_>>(), ["AmericaVehicleDozer"]);
+        assert_eq!(america.base_side.as_deref(), Some("USA"));
         assert_eq!(ini.templates["FactionObserver"], PlayerTemplate::default());
         // Only America is played.
         let played: Vec<&str> = ini.playable().map(|(name, _)| name).collect();

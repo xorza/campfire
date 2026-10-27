@@ -10,6 +10,7 @@ use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
+use bevy::ecs::message::MessageWriter;
 use bevy::ecs::observer::On;
 use bevy::ecs::query::{Allow, With, Without};
 use bevy::ecs::resource::Resource;
@@ -58,7 +59,7 @@ use crate::orders::OrderSystems;
 use crate::own_player::OwnPlayer;
 use crate::placing::Placing;
 use crate::pointer::Pointer;
-use crate::selection::{Selection, SelectionSystems};
+use crate::selection::{Selection, SelectionSystems, SelectionVoice};
 use crate::ui_style::{self, Corner, DIMMED, Panel, PanelFunds, PanelRow, PanelRows, TEXT};
 use crate::view::client_data::ClientLoad;
 use crate::view::float_num;
@@ -603,7 +604,7 @@ impl CommandPanelPlugin {
         ),
         pointer: Pointer<'_, '_>,
         (aiming, selection): (Res<'_, AimedCommand>, Res<'_, Selection>),
-        mut orders: ResMut<'_, PendingOrders>,
+        (mut orders, mut voices): (ResMut<'_, PendingOrders>, MessageWriter<'_, SelectionVoice>),
         mut mode: ResMut<'_, NextState<InputMode>>,
     ) {
         if buttons.just_pressed(MouseButton::Right) || input.pressed(Act::DropBuild, &keys) {
@@ -618,6 +619,10 @@ impl CommandPanelPlugin {
         };
         if let Some(order) = selection.order(aiming.directive(to)) {
             orders.push(order);
+            // An attack move answers as a move does (`pickAndPlayUnitVoiceResponse`).
+            if *aiming == AimedCommand::AttackMove {
+                voices.write(SelectionVoice::Move);
+            }
         }
         mode.set_if_different(InputMode::Select);
     }

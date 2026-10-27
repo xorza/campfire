@@ -55,6 +55,9 @@ pub struct JoinState {
     /// Whether the server holds the spectator's choice of teams: its join carried it, or the
     /// client told it since.
     teams_told: bool,
+    /// The places of each player slot's picks, as the offered session's terms carry them, none
+    /// before an offer (08-sessions.md, The terms hold each player slot's picks).
+    player_slot_picks: Vec<u8>,
 }
 
 /// The steps of a session, each holding what the next one needs.
@@ -217,7 +220,14 @@ impl JoinState {
             player,
             step: Step::Waiting,
             teams_told: false,
+            player_slot_picks: Vec::new(),
         }
+    }
+
+    /// The places of each player slot's picks of the session it answered, as its terms carry
+    /// them; none before it answered an offer.
+    pub fn player_slot_picks(&self) -> &[u8] {
+        &self.player_slot_picks
     }
 
     /// The clock of the match the player plays; `None` while it does not.
@@ -406,6 +416,10 @@ impl JoinState {
             role: self.player.role,
         };
         self.teams_told = true;
+        offer
+            .terms
+            .player_slot_picks
+            .clone_into(&mut self.player_slot_picks);
         self.step = Step::Answered(answered);
         Some(Ok(join))
     }

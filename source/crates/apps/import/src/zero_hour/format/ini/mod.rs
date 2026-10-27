@@ -1,6 +1,7 @@
 //! The game's INI files.
 
 pub(crate) mod armor_ini;
+pub(crate) mod audio_ini;
 pub(crate) mod command_button_ini;
 pub(crate) mod command_set_ini;
 pub(crate) mod creation_list_ini;

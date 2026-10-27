@@ -6,7 +6,7 @@ use campfire_units::TypeOriginBook;
 use campfire_values::{ActionId, PackageIndex, PackagePath, UnitType};
 
 use crate::view::effects::chassis_run::ChassisPlay;
-use crate::view::effects::effect_book::{EffectBook, ListId, SystemId};
+use crate::view::effects::effect_book::{EffectBook, ListId, SoundId, SystemId};
 use crate::view::effects::fall_run::FallPlay;
 use crate::view::effects::wreck_run::WreckPlay;
 use crate::view::float_num::FloatNum;
@@ -27,6 +27,7 @@ pub(crate) struct EffectPlays {
     pub(crate) trails: BTreeMap<UnitType, SystemId>,
     pub(crate) fires: BTreeMap<ActionId, ListId>,
     pub(crate) hits: BTreeMap<ActionId, ListId>,
+    pub(crate) fire_sounds: BTreeMap<ActionId, SoundId>,
 }
 
 /// The lists a type's death plays, of those the book holds: as its unit dies, at the middle of its
@@ -146,6 +147,13 @@ impl EffectPlays {
             }
             if let Some(hit) = look.hit.as_ref().and_then(|name| book.list_id(name)) {
                 plays.hits.insert(action, hit);
+            }
+            if let Some(sound) = look
+                .fire_sound
+                .as_ref()
+                .and_then(|name| book.sound_id(name))
+            {
+                plays.fire_sounds.insert(action, sound);
             }
         }
         plays

@@ -6,7 +6,7 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::Commands;
 use campfire_client_files::{
     CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, HudFile, KeysFile,
-    MapConditions, MapLights, PickingFile, TeamColors, TerrainFile,
+    MapConditions, MapLights, PickingFile, SoundFile, TeamColors, TerrainFile,
 };
 use campfire_common::{DeclaredName, ErrorReport, MapName};
 use campfire_package::ModePackages;
@@ -40,6 +40,8 @@ pub(crate) struct ClientLoad {
     pub(crate) camera: Option<CameraFile>,
     /// The mode's own package's effects, `client/effects.toml`, none for a package of none.
     pub(crate) effects: Option<EffectsFile>,
+    /// The mode's own package's sound, `client/sound.toml`, its default for a package of none.
+    pub(crate) sound: SoundFile,
     /// The map's lights, which its units are drawn in.
     pub(crate) lights: Option<MapLights>,
     /// The map's client objects, none when it has no file of them.
@@ -148,7 +150,7 @@ impl ClientLoad {
     }
 
     /// Drops the start's files once the start ran: no frame reads them.
-    fn drop(mut commands: Commands<'_, '_>) {
+    pub(crate) fn drop(mut commands: Commands<'_, '_>) {
         commands.remove_resource::<Self>();
     }
 
@@ -158,6 +160,7 @@ impl ClientLoad {
     fn read_map(&mut self, mode: &PackageReader, map: &MapName) {
         self.camera = Self::file(mode, &CameraFile::path());
         self.effects = Self::file(mode, &EffectsFile::path());
+        self.sound = Self::file(mode, &SoundFile::path()).unwrap_or_default();
         self.lights = Self::file(mode, &MapLights::path(map));
         self.objects = Self::file(mode, &ClientObjects::path(map)).unwrap_or_default();
         // The map's conditions are fixed for the match, so each object's look takes its variant

@@ -40,6 +40,7 @@ use crate::view::effects::EffectsPlugin;
 use crate::view::look_states::LookStatesPlugin;
 use crate::view::package_source::PackageAssets;
 use crate::view::player_camera::PlayerCameraPlugin;
+use crate::view::sounds::SoundsPlugin;
 use crate::view::terrain_view::TerrainViewPlugin;
 use crate::view::unit_models::UnitModelsPlugin;
 use crate::view::view_console::ViewConsolePlugin;
@@ -65,6 +66,7 @@ pub(crate) enum ClientModule {
     LookStates,
     TerrainView,
     Effects,
+    Sounds,
     Hud,
     Selecting,
     Orders,
@@ -141,6 +143,7 @@ impl ClientModule {
             | Self::LookStates
             | Self::TerrainView
             | Self::Effects
+            | Self::Sounds
             | Self::Hud
             | Self::Selecting
             | Self::Orders => &[],
@@ -163,6 +166,7 @@ impl ClientModule {
             | Self::LookStates
             | Self::TerrainView
             | Self::Effects
+            | Self::Sounds
             | Self::Hud
             | Self::Selecting
             | Self::Orders
@@ -310,6 +314,11 @@ impl ClientModule {
             Self::Effects => {
                 app.add_plugins(EffectsPlugin);
             }
+            Self::Sounds => {
+                app.add_plugins(SoundsPlugin {
+                    packages: Arc::clone(packages),
+                });
+            }
             Self::Hud => {
                 app.add_plugins(HudPlugin);
             }
@@ -415,6 +424,7 @@ mod tests {
             ClientModule::LookStates,
             ClientModule::TerrainView,
             ClientModule::Effects,
+            ClientModule::Sounds,
             ClientModule::Hud,
             ClientModule::Selecting,
             ClientModule::Orders,

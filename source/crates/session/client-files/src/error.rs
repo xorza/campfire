@@ -50,6 +50,31 @@ pub enum EffectsError {
     /// A list or a system names a system of this name, which the file does not hold.
     #[error("the particle system `{0}` is named and not held")]
     Unknown(DeclaredName),
+    /// The sound of this name holds no file, a volume, a share or a pitch past its bounds, or a
+    /// range whose silence is not past its full volume.
+    #[error("the sound `{0}` does not hold")]
+    Sound(DeclaredName),
+    /// A list names a sound of this name, which the file does not hold.
+    #[error("the sound `{0}` is named and not held")]
+    UnknownSound(DeclaredName),
+}
+
+/// Why a sound file is none the client plays (02-engine-core.md, The listener is the game's
+/// microphone; 02-engine-core.md, Music by a choice).
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum SoundFileError {
+    /// A class's volume is past 0 to 1.
+    #[error("a volume is past 0 to 1")]
+    Volume,
+    /// The listener's height is below 0 or not finite, or its share past 0 to 1.
+    #[error("the listener's place does not hold")]
+    Listener,
+    /// The zoom's far is not past its near, its near below 0, or its boost past 0 to 1.
+    #[error("the zoom's boost does not hold")]
+    Zoom,
+    /// The playlist of this value holds no track.
+    #[error("the playlist of `{0}` holds no track")]
+    Playlist(DeclaredName),
 }
 
 /// Why a terrain file is none the client draws (02-engine-core.md, Client): a shape, an index, a

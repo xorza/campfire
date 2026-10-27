@@ -140,6 +140,7 @@ fn check(out: &Path, selection: &PlaySelection) -> Result<Vec<CheckFailure>, Che
     check.supply();
     check.effects()?;
     check.panel()?;
+    check.sounds()?;
     check.combat();
     check.plays()
 }

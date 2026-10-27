@@ -4,24 +4,49 @@ use campfire_client_files::{DeathFall, DeathLook, FallStage, GroundDeath};
 use campfire_math::Num;
 
 use super::*;
+use crate::zero_hour::format::ini::audio_ini::AudioIni;
 use crate::zero_hour::format::ini::fx_list_ini::samples::FX_LISTS;
 use crate::zero_hour::format::ini::object_ini::ObjectFiles;
 use crate::zero_hour::format::ini::particle_system_ini::samples::PARTICLE_SYSTEMS;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
+use crate::zero_hour::format::wav::samples::wav;
 
-/// The effects of the systems of `systems` and the lists of `lists`, of a cap of 2,500, each
-/// texture in `Art\Textures\` but those of names starting `Lost`.
-fn effects(systems: &str, lists: &str) -> EffectsImport {
-    carried(systems, lists, &[])
+/// The audio of the sounds the samples name: the quiet list's hush and the cannon's fire, each a
+/// file of its own.
+const AUDIO: &str = "AudioEvent Hush\n  Sounds = hush\n  Volume = 50\n  PitchShift = 0 0\n  MinRange = 175\n  MaxRange = 800\n  Type = world everyone\nEnd\n\
+                     AudioEvent TankCannonFire\n  Sounds = cannon\n  Volume = 100\n  PitchShift = 0 0\n  MinRange = 175\n  MaxRange = 800\n  Type = world everyone\nEnd\n";
+
+/// The archives' files of the sounds of `AUDIO`, each a PCM WAV.
+fn sound_file(path: &ArchivePath) -> Option<Vec<u8>> {
+    let held = [
+        "data\\audio\\sounds\\hush.wav",
+        "data\\audio\\sounds\\cannon.wav",
+    ];
+    let pcm = wav([1, 1, 2, 16], 22_050, None, &[0, 0]);
+    held.contains(&path.as_str()).then_some(pcm)
 }
 
-/// The effects of `effects`', the systems of `trails` carried by projectiles.
-fn carried(systems: &str, lists: &str, trails: &[&str]) -> EffectsImport {
+/// The effects of the systems of `systems` and the lists of `lists`, of a cap of 2,500, each
+/// texture in `Art\Textures\` but those of names starting `Lost`, of no sound.
+fn effects(systems: &str, lists: &str) -> EffectsImport {
+    let audio = AudioIni::default();
+    let mut sounds = SoundImport::new(&audio, None, |path: &ArchivePath| Ok(sound_file(path)));
+    carried(systems, lists, &[], &mut sounds)
+}
+
+/// The effects of `effects`', the systems of `trails` carried by projectiles, the lists' sounds
+/// of `sounds`.
+fn carried<R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>>(
+    systems: &str,
+    lists: &str,
+    trails: &[&str],
+    sounds: &mut SoundImport<'_, R>,
+) -> EffectsImport {
     let mut particles = ParticleSystemIni::default();
     particles.read(systems.as_bytes()).unwrap();
     let mut effects = FxListIni::default();
     effects.read(lists.as_bytes()).unwrap();
-    EffectsImport::of(EffectSources {
+    let sources = EffectSources {
         systems: &particles,
         lists: &effects,
         trails,
@@ -29,8 +54,8 @@ fn carried(systems: &str, lists: &str, trails: &[&str]) -> EffectsImport {
         texture: |name: &str| {
             (!name.starts_with("Lost")).then(|| ArchivePath::of(&format!("art\\textures\\{name}")))
         },
-    })
-    .unwrap()
+    };
+    EffectsImport::of(sources, sounds).unwrap()
 }
 
 fn name(text: &str) -> DeclaredName {
@@ -49,18 +74,26 @@ fn a_list_s_systems_convert_on_the_engine_s_axes_and_what_the_slice_leaves_is_co
     let effects = effects(PARTICLE_SYSTEMS, FX_LISTS);
     let file = &effects.file;
     assert_eq!((file.step(), file.cap()), (1.0 / 30.0, 2500));
-    // The quiet list holds a sound alone, so it goes; the hit's shake is counted.
+    // The quiet list holds a sound of no event alone, so it goes; the hit's shake is counted.
     assert_eq!(
         effects.dropped,
-        [
-            dropped("FX_Quiet", EffectDropCause::Sound),
-            dropped("FX_TankHit", EffectDropCause::ViewShake),
-        ]
+        [dropped("FX_TankHit", EffectDropCause::ViewShake)]
     );
     assert_eq!(
         file.lists().keys().collect::<Vec<_>>(),
         [&name("fx_tankhit")]
     );
+    // Of its event, the quiet list plays its sound alone, which the file holds.
+    let mut audio = AudioIni::default();
+    audio.read(AUDIO.as_bytes()).unwrap();
+    let mut sounds = SoundImport::new(&audio, None, |path: &ArchivePath| Ok(sound_file(path)));
+    let heard = carried(PARTICLE_SYSTEMS, FX_LISTS, &[], &mut sounds);
+    let quiet = &heard.file.lists()[&name("fx_quiet")];
+    assert_eq!(
+        (quiet.systems.len(), &*quiet.sounds),
+        (0, &[name("hush")][..])
+    );
+    assert_eq!(heard.file.sounds()[&name("hush")].volume, 0.5);
     let hit = &file.lists()[&name("fx_tankhit")].systems;
     assert_eq!(hit.len(), 2);
     assert_eq!(
@@ -289,7 +322,10 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
     );
     let trimmed = effects(&exhaust, FX_LISTS);
     assert!(!trimmed.file.systems().contains_key(&name("exhaust")));
-    let mut effects = carried(&exhaust, FX_LISTS, &["Exhaust"]);
+    let mut audio = AudioIni::default();
+    audio.read(AUDIO.as_bytes()).unwrap();
+    let mut sounds = SoundImport::new(&audio, None, |path: &ArchivePath| Ok(sound_file(path)));
+    let mut effects = carried(&exhaust, FX_LISTS, &["Exhaust"], &mut sounds);
     assert!(effects.file.systems().contains_key(&name("exhaust")));
 
     // The cannon fires `FX_TankFire`, which the lists do not hold, and its shell hits with
@@ -307,9 +343,15 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
     };
     let mut units = BTreeMap::new();
     let looks = effects
-        .action_looks(&weapons, projectile, &mut units)
+        .action_looks(&weapons, projectile, &mut sounds, &mut units)
         .unwrap();
-    assert!(looks.is_empty());
+    // The cannon's fire plays its sound, whose loop over 80 ms is counted.
+    let cannon = |look: ActionLook| BTreeMap::from([(name("weapon_tankcannon"), look)]);
+    let fired = ActionLook {
+        fire_sound: Some(name("tankcannonfire")),
+        ..ActionLook::default()
+    };
+    assert_eq!(looks, cannon(fired.clone()));
     assert_eq!(
         (&units[&shell].end, &units[&shell].trail),
         (&Some(name("fx_tankhit")), &None)
@@ -318,21 +360,26 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
     // convert names none.
     let mut units = BTreeMap::new();
     let looks = effects
-        .action_looks(&weapons, |_| WeaponShot::Shot, &mut units)
+        .action_looks(&weapons, |_| WeaponShot::Shot, &mut sounds, &mut units)
         .unwrap();
     assert_eq!(
         looks,
-        BTreeMap::from([(
-            name("weapon_tankcannon"),
-            ActionLook {
-                hit: Some(name("fx_tankhit")),
-                ..ActionLook::default()
-            }
-        )])
+        cannon(ActionLook {
+            hit: Some(name("fx_tankhit")),
+            ..fired
+        })
     );
     assert!(units.is_empty());
-    let none = effects.action_looks(&weapons, |_| WeaponShot::Dropped, &mut units);
+    let none = effects.action_looks(&weapons, |_| WeaponShot::Dropped, &mut sounds, &mut units);
     assert!(none.unwrap().is_empty());
+    let sounded = sounds.finish().dropped;
+    assert_eq!(
+        sounded,
+        [Dropped {
+            name: "TankCannonFire".to_owned(),
+            cause: SoundDropCause::Loop,
+        }]
+    );
 
     // A tank's death plays at its start its first `FXListDie`'s list and its slow death's first
     // `INITIAL` list, at its middle its `MIDPOINT`'s, which the file lacks, and at its end the

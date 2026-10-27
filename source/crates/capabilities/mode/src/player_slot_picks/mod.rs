@@ -118,9 +118,37 @@ impl PlayerSlotPicks {
         Ok(Self(places.into()))
     }
 
+    /// `places`, as a session's terms carry them, the picks of `choices` for as many player
+    /// slots as they hold rows of picks, as `checked` checks them; an error for a count of no
+    /// whole rows.
+    pub fn of_places(
+        choices: &BTreeMap<DeclaredName, ChoiceData>,
+        places: &[u8],
+    ) -> Result<Self, PlayerSlotPickError> {
+        let width = Self::listed(choices).count().max(1);
+        Self::checked(choices, places.len() / width, places)
+    }
+
     /// The places, as a session's terms carry them.
     pub fn places(&self) -> &[u8] {
         &self.0
+    }
+
+    /// The value of the choice `choice` of `choices` that `player_slot` picked; none for a choice
+    /// of no listed values, a player slot past its picks, or no pick.
+    pub fn value<'c>(
+        &self,
+        choices: &'c BTreeMap<DeclaredName, ChoiceData>,
+        player_slot: PlayerSlot,
+        choice: &DeclaredName,
+    ) -> Option<&'c DeclaredName> {
+        let width = Self::listed(choices).count();
+        let (listed, (_, data)) = Self::listed(choices)
+            .enumerate()
+            .find(|(_, (name, _))| *name == choice)?;
+        let slot = usize::try_from(player_slot.get()).ok()?;
+        let place = *self.0.get(slot.checked_mul(width)? + listed)?;
+        (place != Self::NONE).then(|| &data.values[usize::from(place)])
     }
 
     /// Each pick of `choices`, the ones it was made of, player slot by player slot, each player

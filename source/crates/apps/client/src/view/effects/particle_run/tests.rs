@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::f32::consts::FRAC_PI_2;
 
 use bevy::math::Quat;
-use campfire_client_files::{EffectList, EffectsFile, ListedSystem, SlaveSystem};
+use campfire_client_files::{EffectList, EffectSets, EffectsFile, ListedSystem, SlaveSystem};
 
 use super::*;
 use crate::view::effects::particle_run::samples::{book, name, system};
@@ -365,9 +365,15 @@ fn a_list_starts_its_systems_turned_and_offset_as_its_source_and_delayed_as_it_s
         name("hit"),
         EffectList {
             systems: vec![smoke, flash],
+            sounds: Vec::new(),
         },
     )]);
-    let book = EffectBook::new(&EffectsFile::new(1.0 / 30.0, 100, systems, lists).unwrap());
+    let sets = EffectSets {
+        systems,
+        sounds: BTreeMap::new(),
+        lists,
+    };
+    let book = EffectBook::new(&EffectsFile::new(1.0 / 30.0, 100, sets).unwrap());
     let mut run = ParticleRun::new(2);
     // The source at (10, 0, 0), turned a right angle about `y`: its `x` the world's `−z`.
     let source = Affine3A::from_rotation_translation(

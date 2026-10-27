@@ -36,6 +36,8 @@ mod panel_place;
 mod particle_system;
 mod picking_file;
 mod set_match;
+mod sound_event;
+mod sound_file;
 mod spread;
 mod state_animation;
 mod state_set;
@@ -58,15 +60,15 @@ pub use crate::client_model::{ClientModel, ClipRounds, ModelScale, ModelTop, Nod
 pub use crate::client_objects::{ClientObject, ClientObjects};
 pub use crate::client_unit::{
     BarrelFlash, ClientUnit, DeathLook, DeathWrecks, FireBarrel, FireBone, LookDraw, LookShown,
-    LookState, LookTransition, LookVariation,
+    LookState, LookTransition, LookVariation, UnitVoices,
 };
 pub use crate::client_units::ClientUnits;
 pub use crate::condition_test::{AttackPhase, ConditionTest, LifeShare, SiteStage};
 pub use crate::death_fall::{DeathFall, FallStage, GroundDeath, SelfSpin, Spiral};
 pub use crate::effect_list::{EffectList, ListedSystem};
-pub use crate::effects_file::EffectsFile;
+pub use crate::effects_file::{EffectSets, EffectsFile};
 pub use crate::error::{
-    ClientFileError, CrowdedPlace, EffectsError, TeamColorsError, TerrainFileError,
+    ClientFileError, CrowdedPlace, EffectsError, SoundFileError, TeamColorsError, TerrainFileError,
     TextureLevelsError, UntestedCondition,
 };
 pub use crate::hud_file::panel_grid::{ButtonLook, GridCell, PanelGrid, PlaceOrder};
@@ -84,6 +86,8 @@ pub use crate::particle_system::{
 };
 pub use crate::picking_file::{PickingFile, PixelRadius};
 pub use crate::set_match::SetMatch;
+pub use crate::sound_event::{Hearers, SoundEvent, SoundLimit, SoundPick, SoundRange};
+pub use crate::sound_file::{Listener, Music, SoundFile, SoundVolumes, ZoomBoost};
 pub use crate::spread::Spread;
 pub use crate::state_animation::{
     AnimationMode, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,

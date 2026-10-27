@@ -39,6 +39,9 @@ const BASE_COUNT: i64 = 2;
 /// The name of the rules package, and of its directory in an import.
 pub(crate) const RULES: &str = "zero-hour";
 
+/// The mode's choice of a player's faction, whose value names the player's music.
+pub(crate) const FACTION: &str = "faction";
+
 /// Zero Hour's rules package as the importer ships it, `source/packages/zero-hour/`: each file but
 /// its index, by its path, which the import writes beside the imported package.
 pub(crate) const RULES_FILES: [(&str, &[u8]); 4] = [
@@ -279,7 +282,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         params: Some(params),
         options: Some(BTreeMap::from([(declared("start_money"), money)])),
         choices: Some(BTreeMap::from([
-            (declared("faction"), faction),
+            (declared(FACTION), faction),
             (declared("start"), start_choice),
         ])),
         ..ModePatch::default()

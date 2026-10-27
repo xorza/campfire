@@ -4,9 +4,11 @@ use bevy::math::{Affine3A, Vec2, Vec3};
 use campfire_client_files::{
     AlphaKey, Blend, ColorKey, EmissionVelocity, EmissionVolume, ParticleSystem, Spread,
 };
+use campfire_common::PlayerSlot;
 use campfire_math::SplitMix64;
+use campfire_values::Team;
 
-use crate::view::effects::effect_book::{EffectBook, GroupId, ListId, SystemId};
+use crate::view::effects::effect_book::{EffectBook, GroupId, ListId, SoundId, SystemId};
 
 /// The particle systems alive and their particles, stepped in whole steps of the book's length
 /// (02-engine-core.md, A system steps as its file says; 02-engine-core.md, A cap by priority, from
@@ -30,6 +32,25 @@ pub(crate) struct ParticleRun {
     made: u64,
     /// The steps run.
     now: u64,
+    /// The sounds the effects played since the sounds last took them, each at its place.
+    heard: Vec<HeardAt>,
+}
+
+/// A sound an effect, a fire or a voice played: its id, the place it plays at, and the player and
+/// the team of the unit that played it, which say who hears it, none for an effect of no unit's
+/// (02-engine-core.md, A sound is an effect).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct HeardAt {
+    pub(crate) sound: SoundId,
+    pub(crate) at: Vec3,
+    pub(crate) source: Option<SoundSource>,
+}
+
+/// The unit a sound plays for: its player, none for no player's, and its team.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SoundSource {
+    pub(crate) owner: Option<PlayerSlot>,
+    pub(crate) team: Team,
 }
 
 /// A started system, by its slot and the slot's generation, which a later system of the slot
@@ -147,7 +168,18 @@ impl ParticleRun {
             attached: Vec::new(),
             made: 0,
             now: 0,
+            heard: Vec::new(),
         }
+    }
+
+    /// Plays `heard`, beside the sounds of the lists it plays.
+    pub(crate) fn hear(&mut self, heard: HeardAt) {
+        self.heard.push(heard);
+    }
+
+    /// The sounds played since the last take, in the order they played, which the take empties.
+    pub(crate) fn take_heard(&mut self) -> impl Iterator<Item = HeardAt> + '_ {
+        self.heard.drain(..)
     }
 
     /// Plays one of `lists`, drawn at random, as `play` plays it; none of no list.
@@ -172,7 +204,8 @@ impl ParticleRun {
     /// angle drawn about the vertical, at its height above, or on the ground, which `ground`
     /// gives; turned by its rotation, after the source's turn when it orients to it; its delay,
     /// rounded up, in place of the system's own, when it has one and draws one not below 0.
-    /// The systems that follow their object are its `attached` until the next play.
+    /// The systems that follow their object are its `attached` until the next play. Its sounds
+    /// play at the source's place.
     pub(crate) fn play(
         &mut self,
         book: &EffectBook,
@@ -182,6 +215,12 @@ impl ParticleRun {
     ) {
         self.attached.clear();
         let (_, turn, place) = source.to_scale_rotation_translation();
+        let heard = book.list_sounds(list).iter().map(|&sound| HeardAt {
+            sound,
+            at: place,
+            source: None,
+        });
+        self.heard.extend(heard);
         for entry in book.list(list) {
             let spec = &entry.spec;
             let offset = turn * spec.offset;
@@ -986,8 +1025,8 @@ pub(crate) mod samples {
 
     use bevy::math::Vec3;
     use campfire_client_files::{
-        AlphaKey, Blend, ColorKey, EffectsFile, EmissionVelocity, EmissionVolume, ParticleSystem,
-        Spread,
+        AlphaKey, Blend, ColorKey, EffectSets, EffectsFile, EmissionVelocity, EmissionVolume,
+        ParticleSystem, Spread,
     };
     use campfire_common::DeclaredName;
     use campfire_values::PackagePath;
@@ -1049,7 +1088,11 @@ pub(crate) mod samples {
             .into_iter()
             .map(|(text, system)| (name(text), system))
             .collect();
-        EffectBook::new(&EffectsFile::new(1.0 / 30.0, cap, systems, BTreeMap::new()).unwrap())
+        let sets = EffectSets {
+            systems,
+            ..EffectSets::default()
+        };
+        EffectBook::new(&EffectsFile::new(1.0 / 30.0, cap, sets).unwrap())
     }
 }
 

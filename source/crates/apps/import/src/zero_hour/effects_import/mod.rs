@@ -2,8 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bevy_math::{Quat, Vec3};
 use campfire_client_files::{
-    ActionLook, AlphaKey, Blend, ClientUnit, ColorKey, EffectList, EffectsFile, EmissionVelocity,
-    EmissionVolume, ListedSystem, ParticleSystem, SlaveSystem, Spread, TrackLook, TreadLook,
+    ActionLook, AlphaKey, Blend, ClientUnit, ColorKey, EffectList, EffectSets, EffectsFile,
+    EmissionVelocity, EmissionVolume, ListedSystem, ParticleSystem, SlaveSystem, Spread, TrackLook,
+    TreadLook,
 };
 use campfire_common::DeclaredName;
 use campfire_values::PackagePath;
@@ -26,6 +27,8 @@ use crate::zero_hour::format::w3d::w3d_mesh::CUTOFF;
 use crate::zero_hour::game_path;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::model_writer::ImportedLooks;
+use crate::zero_hour::sound_drop_cause::SoundDropCause;
+use crate::zero_hour::sound_import::SoundImport;
 
 /// The install's particle systems and effect lists as the engine's effects file (02-engine-core.md,
 /// Effects are a format of the engine; 09-zero-hour.md, The import hands the client consistent
@@ -71,11 +74,17 @@ impl EffectsImport {
     /// (`W3DTerrainTracks.cpp`, `DEFAULT_TRACK_SPACING`).
     const TRACK_WIDTH: f32 = 14.0;
 
-    /// The effects of `sources`; an error for two systems or two lists whose names give one, a
-    /// texture of a name no package path holds, or a number not finite.
-    pub(crate) fn of<F: Fn(&str) -> Option<ArchivePath>>(
+    /// The effects of `sources`, each list's sounds of `sounds` (02-engine-core.md, A sound is an
+    /// effect); an error for two systems or two lists whose names give one, a texture of a name no
+    /// package path holds, or a number not finite.
+    pub(crate) fn of<F, R>(
         sources: EffectSources<'_, F>,
-    ) -> Result<Self, ZeroHourError> {
+        sounds: &mut SoundImport<'_, R>,
+    ) -> Result<Self, ZeroHourError>
+    where
+        F: Fn(&str) -> Option<ArchivePath>,
+        R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>,
+    {
         let mut losses = Losses::default();
         let names = Self::names(sources.systems.systems().keys())?;
         let mut drawn = BTreeMap::new();
@@ -99,9 +108,14 @@ impl EffectsImport {
         let list_names = Self::names(sources.lists.lists().keys())?;
         for (name, nuggets) in sources.lists.lists() {
             let mut systems = Vec::new();
+            let mut heard = Vec::new();
             for nugget in nuggets {
                 let particles = match nugget {
                     FxNugget::ParticleSystem(particles) => particles,
+                    FxNugget::Sound(sound) => {
+                        heard.extend(sounds.event(sound)?);
+                        continue;
+                    }
                     FxNugget::Other(kind) => {
                         losses.drop(name, Self::nugget_cause(*kind));
                         continue;
@@ -118,8 +132,12 @@ impl EffectsImport {
                     systems.push(entry);
                 }
             }
-            if !systems.is_empty() {
-                lists.insert(list_names[name.as_str()].clone(), EffectList { systems });
+            if !systems.is_empty() || !heard.is_empty() {
+                let list = EffectList {
+                    systems,
+                    sounds: heard,
+                };
+                lists.insert(list_names[name.as_str()].clone(), list);
             }
         }
         open.extend(
@@ -173,7 +191,12 @@ impl EffectsImport {
         }
         // The import resolves every name and orders every key, so the file refuses a number of
         // the install's alone, one not finite.
-        let file = EffectsFile::new(STEP, sources.cap, systems, lists)?;
+        let sets = EffectSets {
+            systems,
+            sounds: sounds.events().clone(),
+            lists,
+        };
+        let file = EffectsFile::new(STEP, sources.cap, sets)?;
         Ok(Self {
             file,
             textures,
@@ -283,26 +306,42 @@ impl EffectsImport {
     }
 
     /// What each action of a weapon of `weapons` plays, as `delivery` gives each by its id:
-    /// its fire's list, and, of a shot of no projectile, its hit's; and, in `units`, what the
-    /// type of its projectile plays, its hit's list where it ends and its exhaust as it flies;
-    /// each of those the file holds. None for an action that plays nothing.
-    pub(crate) fn action_looks<'d>(
+    /// its fire's list and its fire's sound of `sounds`, a loop of it counted, and, of a shot of
+    /// no projectile, its hit's list; and, in `units`, what the type of its projectile plays, its
+    /// hit's list where it ends and its exhaust as it flies; each of those the file holds. None for
+    /// an action that plays nothing.
+    pub(crate) fn action_looks<'d, R>(
         &self,
         weapons: &WeaponIni,
         delivery: impl Fn(&DeclaredName) -> WeaponShot<'d>,
+        sounds: &mut SoundImport<'_, R>,
         units: &mut BTreeMap<DeclaredName, ClientUnit>,
-    ) -> Result<BTreeMap<DeclaredName, ActionLook>, NameError> {
+    ) -> Result<BTreeMap<DeclaredName, ActionLook>, ZeroHourError>
+    where
+        R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>,
+    {
         let mut looks = BTreeMap::new();
         for (name, weapon) in weapons.weapons() {
             let id = ImportName::latin(name).id("weapon")?;
             let list = |name: &Option<String>| name.as_deref().map(|name| self.list(name));
             let fire = list(&weapon.fire_fx).transpose()?.flatten();
             let hit = list(&weapon.detonation_fx).transpose()?.flatten();
-            let look = match delivery(&id) {
+            let shot = delivery(&id);
+            let fire_sound = match (&weapon.fire_sound, shot) {
+                (_, WeaponShot::Dropped) | (None, _) => None,
+                (Some(sound), _) => {
+                    if weapon.fire_sound_loop_ms > 0 {
+                        sounds.drop(sound, SoundDropCause::Loop);
+                    }
+                    sounds.event(sound)?
+                }
+            };
+            let look = match shot {
                 WeaponShot::Dropped => continue,
                 WeaponShot::Shot => ActionLook {
                     fire,
                     hit,
+                    fire_sound,
                     ..ActionLook::default()
                 },
                 WeaponShot::Projectile(projectile) => {
@@ -320,6 +359,7 @@ impl EffectsImport {
                     }
                     ActionLook {
                         fire,
+                        fire_sound,
                         ..ActionLook::default()
                     }
                 }
@@ -371,7 +411,6 @@ impl EffectsImport {
     /// The cause of a nugget of `kind`.
     const fn nugget_cause(kind: NuggetKind) -> EffectDropCause {
         match kind {
-            NuggetKind::Sound => EffectDropCause::Sound,
             NuggetKind::RayEffect => EffectDropCause::RayEffect,
             NuggetKind::Tracer => EffectDropCause::Tracer,
             NuggetKind::LightPulse => EffectDropCause::LightPulse,

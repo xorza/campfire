@@ -3,7 +3,8 @@ use std::f32::consts::FRAC_PI_2;
 
 use bevy::math::Affine3A;
 use campfire_client_files::{
-    AlphaKey, ColorKey, EffectsFile, EmissionVelocity, EmissionVolume, ParticleSystem, Spread,
+    AlphaKey, ColorKey, EffectSets, EffectsFile, EmissionVelocity, EmissionVolume, ParticleSystem,
+    Spread,
 };
 use campfire_common::DeclaredName;
 use campfire_values::PackagePath;
@@ -79,8 +80,11 @@ fn each_group_s_quads_face_the_view_or_lie_on_the_ground_turned_and_tinted() {
             ),
         ),
     ]);
-    let book =
-        EffectBook::new(&EffectsFile::new(1.0 / 30.0, 10, systems, BTreeMap::new()).unwrap());
+    let sets = EffectSets {
+        systems,
+        ..EffectSets::default()
+    };
+    let book = EffectBook::new(&EffectsFile::new(1.0 / 30.0, 10, sets).unwrap());
     let mut run = ParticleRun::new(1);
     for (text, at) in [("smoke", Vec3::ZERO), ("scorch", Vec3::new(10.0, 0.0, 0.0))] {
         run.start(

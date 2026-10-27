@@ -11,6 +11,7 @@ use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCa
 use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel};
 use crate::zero_hour::panel_drop_cause::PanelDropCause;
 use crate::zero_hour::production_import::ButtonDropCause;
+use crate::zero_hour::sound_drop_cause::SoundDropCause;
 use crate::zero_hour::supply_import::SupplyDropCause;
 use crate::zero_hour::upgrade_import::UpgradeDropCause;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
@@ -64,6 +65,9 @@ pub enum ImportLoss {
     /// A command set's button, or a part of one, the panel does not show (09-zero-hour.md, The
     /// panel).
     Panel(Dropped<PanelDropCause>),
+    /// An audio event, by its name, or a part of how the game plays it, the import does not
+    /// convert (09-zero-hour.md, Sound).
+    Sound(Dropped<SoundDropCause>),
 }
 
 /// What the loss is, then the part of the install it is of, and why.
@@ -140,6 +144,7 @@ impl Display for ImportLoss {
             ),
             Self::Effect(effect) => write!(f, "an effect is not imported: {effect}"),
             Self::Panel(button) => write!(f, "a panel's button is not shown whole: {button}"),
+            Self::Sound(event) => write!(f, "a sound is not played whole: {event}"),
         }
     }
 }

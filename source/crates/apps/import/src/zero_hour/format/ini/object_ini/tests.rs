@@ -733,10 +733,24 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
     ini.read(
         b"ObjectReskin CenterRed AmericaCommandCenter\n BuildCost = 1\n CommandSet = Other\nEnd\n\
           Object Twice\n Prerequisites\n  Object = A\n End\n Prerequisites\n  Object = B\n End\nEnd\n\
-          Object Refunded\n RefundValue = 300\nEnd\n",
+          Object Refunded\n RefundValue = 300\nEnd\n\
+          Object Voiced\n VoiceSelect = RangerVoiceSelect\n VoiceMove = NONE\n VoiceCreated = Made\n\
+           UnitSpecificSounds\n  VoiceCreate = RangerVoiceCreate\n  VoiceEnter = In\n End\nEnd\n\
+          ObjectReskin VoicedRed Voiced\n VoiceSelect = Other\nEnd\n",
     )
     .unwrap();
     assert_eq!(build(&ini, "Refunded").refund, 300);
+    // An object's voices, `NONE` none, and its unit-specific `VoiceCreate`; a reskin's table
+    // sets none of them, so it keeps its base's.
+    let voiced = IniVoices {
+        select: Some("RangerVoiceSelect".to_owned()),
+        walk: None,
+        attack: None,
+        created: Some("Made".to_owned()),
+        create: Some("RangerVoiceCreate".to_owned()),
+    };
+    assert_eq!(*ini.named("Voiced").unwrap().voices(), voiced);
+    assert_eq!(*ini.named("VoicedRed").unwrap().voices(), voiced);
     assert_eq!(
         build(&ini, "CenterRed"),
         build(&ini, "AmericaCommandCenter")

@@ -21,6 +21,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
             building: name("center"),
             units: vec![name("dozer")],
             offset: Num::int(2),
+            base_side: None,
         }],
     };
     let money = MoneyChoices {

@@ -11,8 +11,8 @@ use crate::decal_ground::DecalGround;
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, EffectCounts, FactorySteps, FightSteps, Fingerprints,
     FoughtCounts, HelicopterSteps, JetTicks, LookCounts, MapCounts, MissileTicks, PanelCounts,
-    ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SaleSteps, SuppliedCounts,
-    SupplySteps, TerrainDrawn, UpgradeSteps, UpgradedCounts,
+    ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SaleSteps, SoundCounts,
+    SuppliedCounts, SupplySteps, TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -63,6 +63,10 @@ pub(crate) enum CheckFailure {
     /// The import's panel: its icons, keys, places, commands and drops by cause.
     #[display("it converted the panel as {_0}")]
     Panel(Box<Differs<PanelCounts>>),
+    /// The import's sounds: its events, what names them, its files, its music and its drops by
+    /// cause.
+    #[display("it converted the sounds as {_0}")]
+    Sounds(Box<Differs<SoundCounts>>),
     /// The import's particle systems, effect lists, their textures and the effects dropped by
     /// cause differ from the pinned.
     #[display("it converted effects as {_0}")]

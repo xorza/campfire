@@ -5,11 +5,15 @@ use serde::{Deserialize, Serialize};
 use crate::spread::Spread;
 
 /// An effect a weapon or a death plays: the particle systems it starts, each as its entry says,
-/// in their order.
+/// in their order, and the sounds it plays at its place, each by its name in the effects file
+/// (02-engine-core.md, A sound is an effect).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EffectList {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub systems: Vec<ListedSystem>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sounds: Vec<DeclaredName>,
 }
 
 /// A particle system an effect starts, `count` times: each at the effect's point plus `offset`,

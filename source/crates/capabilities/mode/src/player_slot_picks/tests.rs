@@ -45,10 +45,32 @@ fn player_slot_picks_are_a_place_of_each_choice_of_values_player_slot_by_player_
         .map(|picked| (picked.player_slot.get(), picked.listed, picked.place))
         .collect();
     assert_eq!(picked, [(0, 0, 1), (1, 1, 2)]);
+    // Player slot 1's faction is GLA, player slot 0's none; its color blue; a choice of avatars, a
+    // choice the mode lacks and a player slot past the picks give none.
+    let value = |player_slot, choice: &str| {
+        picks
+            .value(&choices, PlayerSlot::new(player_slot), &name(choice))
+            .cloned()
+    };
+    assert_eq!(
+        [value(1, "faction"), value(0, "faction"), value(0, "color")],
+        [Some(name("gla")), None, Some(name("blue"))]
+    );
+    assert_eq!(
+        [value(0, "hero"), value(0, "side"), value(2, "faction")],
+        [None, None, None]
+    );
     assert_eq!(
         PlayerSlotPicks::checked(&choices, 2, picks.places()),
-        Ok(picks)
+        Ok(picks.clone())
     );
+    // Of the places alone, two whole rows of two choices are two player slots; three places are
+    // no whole rows.
+    assert_eq!(
+        PlayerSlotPicks::of_places(&choices, picks.places()),
+        Ok(picks.clone())
+    );
+    assert!(PlayerSlotPicks::of_places(&choices, &[1, n, n]).is_err());
     // Refused by name: a player slot past the session's, a choice of avatars or none, a value the
     // choice lacks, a choice picked twice, and one value of a unique choice for two player slots.
     let refused =

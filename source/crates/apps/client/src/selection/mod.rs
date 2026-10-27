@@ -1,3 +1,4 @@
+use bevy::ecs::message::Message;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::SystemSet;
 use campfire_capabilities::{Directive, Order};
@@ -10,6 +11,17 @@ use campfire_sim::StableId;
 /// selection takes the avatar, so a MOBA's player orders their avatar as before.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct Selection(Vec<StableId>);
+
+/// What the player's pick of a selection, or an order to it, asks it to answer with, as the voice
+/// of its first unit of one (02-engine-core.md, A look names its voices): the selection's own pick
+/// asks it, as Zero Hour answers a selection the player makes, never one a death or a despawn
+/// changes.
+#[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SelectionVoice {
+    Select,
+    Move,
+    Attack,
+}
 
 /// The systems that change the selection, which the orders and the selection's rings read after.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]

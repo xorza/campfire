@@ -5,7 +5,7 @@ use bevy_math::UVec2;
 use campfire_client_files::{
     ButtonLook, CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, HitMark, HudFile,
     KeysFile, MapConditions, MapLights, PanelPlaces, PickingFile, PixelRadius, ShownBars,
-    TeamColors, TerrainFile,
+    SoundFile, TeamColors, TerrainFile,
 };
 use campfire_codec::Toml;
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
@@ -44,8 +44,9 @@ use crate::zero_hour::model_writer::{ModelReport, ModelWriter, WrittenModel};
 use crate::zero_hour::panel_import::PanelImport;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::road_pieces::RoadPieces;
-use crate::zero_hour::rules_package::{ModeImport, RULES_FILES};
+use crate::zero_hour::rules_package::{FACTION, ModeImport, RULES_FILES};
 use crate::zero_hour::skirmish_start::SkirmishStart;
+use crate::zero_hour::sound_import::SoundImport;
 use crate::zero_hour::terrain_atlas::PackageTexture;
 use crate::zero_hour::unit_types::TypeAdditions;
 use crate::zero_hour::upgrade_import::UpgradeImport;
@@ -100,6 +101,8 @@ pub(crate) mod road_pieces;
 pub(crate) mod rules_names;
 pub(crate) mod rules_package;
 pub(crate) mod skirmish_start;
+pub(crate) mod sound_drop_cause;
+pub(crate) mod sound_import;
 pub(crate) mod supply_import;
 pub(crate) mod terrain_atlas;
 pub(crate) mod terrain_cells;
@@ -323,13 +326,25 @@ impl ZeroHour {
         // (02-engine-core.md, A tread throws dust while it drives).
         let treads = game.objects.objects().flat_map(IniObject::draws);
         trails.extend(treads.flat_map(|draw| draw.tread_dust.iter().flatten().map(String::as_str)));
-        let mut effects = EffectsImport::of(EffectSources {
+        // Each sound a weapon, an effect or a look names, its files read once and held until the
+        // package is written (09-zero-hour.md, A sound is PCM, the music the game's MP3).
+        let language = self.install.language()?;
+        let install = &self.install;
+        let mut sounds = SoundImport::new(&game.audio, language.as_deref(), |path| {
+            if install.contains(path) {
+                install.read(path).map(Some)
+            } else {
+                Ok(None)
+            }
+        });
+        let sources = EffectSources {
             systems: &game.particles,
             lists: &game.effects,
             trails: &trails,
             cap: game.game_data.max_particles,
             texture: |name: &str| road_assets.texture(name),
-        })?;
+        };
+        let mut effects = EffectsImport::of(sources, &mut sounds)?;
         // The wrecks fall by the game's gravity and meet its ground (02-engine-core.md, Wrecks move
         // by the client's step): an object's friction on the ground, `DEFAULT_FORWARD_FRICTION` and
         // `DEFAULT_LATERAL_FRICTION`, takes 0.15 of its speed a frame, and it rests below
@@ -380,7 +395,6 @@ impl ZeroHour {
             TrackMarks::NONE
         };
         effects.file = effects.file.clone().with_treads(dust, tracks)?;
-        writer.write(EffectsFile::path(), &effects.file.encode())?;
         effects.name_deaths(
             &game.objects,
             |name: &str| road_assets.texture(name),
@@ -425,7 +439,31 @@ impl ZeroHour {
                     WeaponShot::Projectile(&delivery.projectile)
                 }),
         };
-        let mut actions = effects.action_looks(&game.weapons, delivery, &mut looks.units)?;
+        let mut actions =
+            effects.action_looks(&game.weapons, delivery, &mut sounds, &mut looks.units)?;
+        // Each look's voices, and the music of each faction's base side (02-engine-core.md, A look
+        // names its voices; 02-engine-core.md, Music by a choice).
+        for object in game.objects.objects() {
+            let declared = ImportName::object(object).declared()?;
+            if let Some(look) = looks.units.get_mut(&declared) {
+                look.voices = sounds.voices(object.voices())?;
+            }
+        }
+        let factions = start.factions.iter().filter_map(|faction| {
+            let side = faction.base_side.as_deref()?;
+            Some((faction.name.clone(), side))
+        });
+        let choice = DeclaredName::new(FACTION).expect("the faction's choice is a declared name");
+        let music = sounds.music(choice, factions)?;
+        let sound_file = sounds.sound_file(Some(music));
+        let sounded = sounds.finish();
+        effects.file = effects.file.clone().with_sounds(sounded.events)?;
+        writer.write(EffectsFile::path(), &effects.file.encode())?;
+        writer.write(SoundFile::path(), &sound_file.encode())?;
+        for (to, bytes) in &sounded.files {
+            writer.write(to.clone(), bytes)?;
+        }
+        losses.extend(sounded.dropped.into_iter().map(ImportLoss::Sound));
         for (action, button) in panel.actions {
             if button == ButtonLook::default() {
                 continue;
@@ -520,7 +558,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 52;
+    pub const OUTPUT_VERSION: u32 = 53;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

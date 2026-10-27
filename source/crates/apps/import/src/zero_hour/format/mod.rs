@@ -11,3 +11,4 @@ pub(crate) mod look_conditions;
 pub(crate) mod map;
 pub(crate) mod ref_pack;
 pub(crate) mod w3d;
+pub(crate) mod wav;

@@ -127,6 +127,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         building: name("center"),
         units: units.iter().map(|&unit| name(unit)).collect(),
         offset: Num::ZERO,
+        base_side: None,
     };
     let base = FactionBase::of(&import, &combat, &start(&["dozer", "worker"]));
     let names = |names: &[&str]| names.iter().map(|&text| name(text)).collect::<Vec<_>>();

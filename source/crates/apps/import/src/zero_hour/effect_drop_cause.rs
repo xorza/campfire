@@ -16,8 +16,6 @@ pub enum EffectDropCause {
     Wind,
     /// A list's nugget, a system's slave or its particles' system, of a name no system has.
     NoSystem,
-    /// A list's nugget of a sound.
-    Sound,
     /// A list's nugget of a ray effect.
     RayEffect,
     /// A list's nugget of a tracer.

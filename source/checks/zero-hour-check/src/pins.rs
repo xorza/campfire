@@ -6,7 +6,7 @@ use campfire_client_files::{ClientUnits, StateAnimation};
 use campfire_common::{DeclaredName, PackageFingerprint};
 use campfire_import::{
     AnimationDropCause, ButtonDropCause, EffectDropCause, PanelDropCause, RoadDropCause,
-    StateDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause,
+    SoundDropCause, StateDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause,
 };
 use campfire_mode::MatchResult;
 use campfire_orders::OrderDropCause;
@@ -542,6 +542,28 @@ pub(crate) struct PanelCounts {
     pub(crate) places: usize,
     pub(crate) commands: usize,
     pub(crate) dropped: [usize; PanelDropCause::ALL.len()],
+}
+
+/// How many sounds the import converts, how many effect lists, actions' fires and looks name
+/// them, how many files the sounds and the music play, how many playlists the music holds, and how
+/// many events it drops or plays in part for each cause, in the order of `SoundDropCause::ALL`
+/// (02-engine-core.md, An event is the game's, as data).
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    "{sounds} sounds, {lists} lists, {fires} fires, {voiced} voiced looks, {files} files, \
+     {tracks} tracks, {playlists} playlists, dropped {:?}",
+    dropped
+)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SoundCounts {
+    pub(crate) sounds: usize,
+    pub(crate) lists: usize,
+    pub(crate) fires: usize,
+    pub(crate) voiced: usize,
+    pub(crate) files: usize,
+    pub(crate) tracks: usize,
+    pub(crate) playlists: usize,
+    pub(crate) dropped: [usize; SoundDropCause::ALL.len()],
 }
 
 /// How many trains and builds the import converts from every command set, how many unit types it

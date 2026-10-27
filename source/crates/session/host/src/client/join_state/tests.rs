@@ -128,18 +128,21 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
 
     // A fitting offer: the delegation names the offered session, lets session key 2 sign until a
     // day after now, and carries the contribution the entropy gave; the answer passes the
-    // server's check.
+    // server's check. The client keeps the terms' picks, none before it answers.
     let mut state = waiting(TICK_HZ);
     assert_eq!(
         state.start(START, Hosting::Remote),
         StartEffect::No,
         "no match starts before the answer"
     );
+    assert!(state.player_slot_picks().is_empty());
     let offer = offer(|_| {});
     let join = state
         .answer(&offer, &BINDING, &mut signer, TestKey::NOW)
         .unwrap()
         .unwrap();
+    // The lane mode lists no choice of values, so its terms hold no pick.
+    assert_eq!(state.player_slot_picks(), offer.terms.player_slot_picks);
     assert_eq!(
         state.answer(&offer, &BINDING, &mut signer, TestKey::NOW),
         None,

@@ -1,6 +1,9 @@
+use std::num::NonZeroU16;
+
 use campfire_codec::Toml;
 
 use super::*;
+use crate::sound_event::{Hearers, SoundLimit, SoundPick, SoundRange};
 use crate::spread::Spread;
 use crate::tread_dust::SpeedScale;
 
@@ -203,4 +206,86 @@ fn effects_write_and_read_back_and_a_name_of_no_system_is_refused() {
         &treads.replace("opaque = 25", "opaque = 101"),
     );
     assert!(opaque.contains("tracks"), "{opaque}");
+}
+
+#[test]
+fn a_list_plays_its_sounds_and_a_sound_that_does_not_hold_or_is_not_held_is_refused() {
+    // The tank's hit plays its smoke and a sound of three files drawn in turn, 60 % loud, losing
+    // up to 15 % of it a play, 2 % lower to 2 % higher, at most 3 at once, the fourth stopping the
+    // oldest, full to 175 m and silent at 800, for everyone.
+    let sound = r#"
+        [sounds.tank_boom]
+        files = ["client/sounds/a.wav", "client/sounds/b.wav", "client/sounds/c.wav"]
+        pick = "in_turn"
+        volume = 0.6
+        loss = 0.15
+        pitch = [0.98, 1.02]
+        limit = { count = 3, interrupt = true }
+        range = { full = 175.0, silent = 800.0 }
+        heard_by = "everyone"
+
+        [sounds.click]
+        files = ["client/sounds/click.wav"]
+        volume = 1.0
+        heard_by = "owner"
+    "#;
+    let text = format!("{SMOKE}\n    [lists.tank_hit]\n    sounds = [\"tank_boom\"]\n{sound}");
+    let file = EffectsFile::decode(text.as_bytes()).unwrap();
+    let name = |text: &str| DeclaredName::new(text).unwrap();
+    assert_eq!(file.lists()[&name("tank_hit")].sounds, [name("tank_boom")]);
+    let path = |text: &str| PackagePath::parse(text).unwrap();
+    assert_eq!(
+        file.sounds()[&name("tank_boom")],
+        SoundEvent {
+            files: vec![
+                path("client/sounds/a.wav"),
+                path("client/sounds/b.wav"),
+                path("client/sounds/c.wav"),
+            ],
+            pick: SoundPick::InTurn,
+            volume: 0.6,
+            loss: 0.15,
+            pitch: [0.98, 1.02],
+            limit: Some(SoundLimit {
+                count: NonZeroU16::new(3).unwrap(),
+                interrupt: true,
+            }),
+            range: Some(SoundRange {
+                full: 175.0,
+                silent: 800.0,
+            }),
+            heard_by: Hearers::Everyone,
+        }
+    );
+    // A sound of no field it may leave out draws at random, loses nothing, plays at its own
+    // pitch with no limit, and flat.
+    assert_eq!(
+        file.sounds()[&name("click")],
+        SoundEvent {
+            files: vec![path("client/sounds/click.wav")],
+            pick: SoundPick::Random,
+            volume: 1.0,
+            loss: 0.0,
+            pitch: [1.0, 1.0],
+            limit: None,
+            range: None,
+            heard_by: Hearers::Owner,
+        }
+    );
+    assert_eq!(EffectsFile::decode(&file.encode()).unwrap(), file);
+
+    // A list's sound the file lacks, a sound of no file, a volume past 1, a pitch out of order
+    // or of no rate, and a range whose silence is not past its full volume are refused.
+    let refused = |from: &str, to: &str| {
+        let text = text.replacen(from, to, 1);
+        Toml::parse::<EffectsFile>(&text).unwrap_err().to_string()
+    };
+    assert!(refused("sounds = [\"tank_boom\"]", "sounds = [\"thud\"]").contains("`thud`"));
+    let files = "files = [\"client/sounds/click.wav\"]";
+    assert!(refused(files, "files = []").contains("`click`"));
+    assert!(refused("volume = 1.0", "volume = 1.5").contains("`click`"));
+    assert!(refused("[0.98, 1.02]", "[1.02, 0.98]").contains("`tank_boom`"));
+    assert!(refused("[0.98, 1.02]", "[0.0, 1.02]").contains("`tank_boom`"));
+    assert!(refused("silent = 800.0", "silent = 175.0").contains("`tank_boom`"));
+    assert!(refused("full = 175.0", "full = -1.0").contains("`tank_boom`"));
 }

@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 
-use campfire_client_files::{Blend, EffectsFile, ListedSystem, ParticleSystem};
+use campfire_client_files::{Blend, EffectsFile, ListedSystem, ParticleSystem, SoundEvent};
 use campfire_common::DeclaredName;
 use campfire_values::PackagePath;
 
 /// An effects file as the client plays it (02-engine-core.md, Effects are a format of the engine):
 /// its step and its cap, each system by its id, the systems it names and the group it draws in
-/// resolved once, as the file loads, and each list by its id, each entry's system resolved.
+/// resolved once, as the file loads, each sound by its id, and each list by its id, each entry's
+/// system and each of its sounds resolved (02-engine-core.md, A sound is an effect).
 #[derive(Debug)]
 pub(crate) struct EffectBook {
     step: f32,
@@ -14,7 +15,10 @@ pub(crate) struct EffectBook {
     systems: Vec<BookSystem>,
     ids: BTreeMap<DeclaredName, SystemId>,
     groups: Vec<DrawGroup>,
+    sounds: Vec<SoundEvent>,
+    sound_ids: BTreeMap<DeclaredName, SoundId>,
     lists: Vec<Vec<BookEntry>>,
+    list_sounds: Vec<Vec<SoundId>>,
     list_ids: BTreeMap<DeclaredName, ListId>,
 }
 
@@ -49,6 +53,10 @@ pub(crate) struct DrawGroup {
 /// A system's place among a book's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct SystemId(u32);
+
+/// A sound's place among a book's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct SoundId(u32);
 
 /// A draw group's place among a book's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -86,6 +94,17 @@ impl EffectBook {
                 }
             })
             .collect();
+        let sound_ids: BTreeMap<DeclaredName, SoundId> = file
+            .sounds()
+            .keys()
+            .enumerate()
+            .map(|(at, name)| (name.clone(), SoundId::at(at)))
+            .collect();
+        let list_sounds = file
+            .lists()
+            .values()
+            .map(|list| list.sounds.iter().map(|name| sound_ids[name]).collect())
+            .collect();
         let lists = file
             .lists()
             .values()
@@ -112,9 +131,33 @@ impl EffectBook {
             systems,
             ids,
             groups,
+            sounds: file.sounds().values().cloned().collect(),
+            sound_ids,
             lists,
+            list_sounds,
             list_ids,
         }
+    }
+
+    /// The id of the sound of `name`; none for a name the file does not hold.
+    pub(crate) fn sound_id(&self, name: &DeclaredName) -> Option<SoundId> {
+        self.sound_ids.get(name).copied()
+    }
+
+    /// The sound of `id`.
+    pub(crate) fn sound(&self, id: SoundId) -> &SoundEvent {
+        &self.sounds[id.index()]
+    }
+
+    /// Its sounds, by their ids' order.
+    pub(crate) fn sounds(&self) -> &[SoundEvent] {
+        &self.sounds
+    }
+
+    /// The sounds the list `id` plays.
+    pub(crate) fn list_sounds(&self, id: ListId) -> &[SoundId] {
+        let ListId(at) = id;
+        &self.list_sounds[usize::try_from(at).expect("a u32 fits usize")]
     }
 
     /// The id of the list of `name`; none for a name the file does not hold.
@@ -157,6 +200,16 @@ impl EffectBook {
 impl SystemId {
     fn at(at: usize) -> Self {
         Self(u32::try_from(at).expect("a book's systems fit u32"))
+    }
+
+    pub(crate) fn index(self) -> usize {
+        usize::try_from(self.0).expect("a u32 fits usize")
+    }
+}
+
+impl SoundId {
+    fn at(at: usize) -> Self {
+        Self(u32::try_from(at).expect("a book's sounds fit u32"))
     }
 
     pub(crate) fn index(self) -> usize {

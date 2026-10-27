@@ -12,18 +12,18 @@ pub(crate) struct FxListIni {
     lists: BTreeMap<String, Vec<FxNugget>>,
 }
 
-/// A nugget of a list: a particle system it starts, or a nugget of another kind, which the
-/// import does not read past its kind.
+/// A nugget of a list: a particle system it starts, the audio event a sound plays, by its `Name`
+/// (`SoundFXNugget`), or a nugget of another kind, which the import does not read past its kind.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum FxNugget {
     ParticleSystem(ParticleNugget),
+    Sound(String),
     Other(NuggetKind),
 }
 
-/// A kind of nugget past a particle system's (`TheFXListFieldParse`).
+/// A kind of nugget past a particle system's and a sound's (`TheFXListFieldParse`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum NuggetKind {
-    Sound,
     RayEffect,
     Tracer,
     LightPulse,
@@ -51,10 +51,12 @@ pub(crate) struct ParticleNugget {
     pub(crate) callers_radius: bool,
 }
 
-/// A nugget being read: a particle system's, or one of another kind, which skips its fields.
+/// A nugget being read: a particle system's, a sound's and the name it reads, or one of another
+/// kind, which skips its fields.
 #[derive(Debug)]
 enum Open {
     Particles(ParticleNugget),
+    Sound(String),
     Other(NuggetKind),
 }
 
@@ -87,6 +89,7 @@ impl FxListIni {
                     Some(Open::Particles(particles)) => {
                         nuggets.push(FxNugget::ParticleSystem(particles));
                     }
+                    Some(Open::Sound(name)) => nuggets.push(FxNugget::Sound(name)),
                     Some(Open::Other(kind)) => nuggets.push(FxNugget::Other(kind)),
                     None => {
                         let (name, nuggets) = list.take().expect("a list is open");
@@ -98,7 +101,8 @@ impl FxListIni {
             match &mut nugget {
                 None => nugget = Some(Self::open(word, &line)?),
                 Some(Open::Particles(particles)) => particles.set(&line)?,
-                Some(Open::Other(_)) => {}
+                Some(Open::Sound(name)) if word == "name" => line.value()?.clone_into(name),
+                Some(Open::Sound(_) | Open::Other(_)) => {}
             }
         }
         if list.is_some() {
@@ -116,7 +120,7 @@ impl FxListIni {
     fn open(word: &str, line: &IniLine<'_>) -> Result<Open, IniError> {
         Ok(match word {
             "particlesystem" => Open::Particles(ParticleNugget::new()),
-            "sound" => Open::Other(NuggetKind::Sound),
+            "sound" => Open::Sound(String::new()),
             "rayeffect" => Open::Other(NuggetKind::RayEffect),
             "tracer" => Open::Other(NuggetKind::Tracer),
             "lightpulse" => Open::Other(NuggetKind::LightPulse),
@@ -226,7 +230,7 @@ mod tests {
         assert_eq!(ini.lists().len(), 2);
         assert_eq!(
             ini.lists()["FX_Quiet"],
-            [FxNugget::Other(NuggetKind::Sound)]
+            [FxNugget::Sound("Hush".to_owned())]
         );
         let hit = &ini.lists()["FX_TankHit"];
         assert_eq!(hit.len(), 3);
@@ -253,10 +257,14 @@ mod tests {
             )
         );
 
-        // The first definition's fields, read before the second replaced it.
+        // The first definition's fields, read before the second replaced it, its sound among them.
         let mut first = FxListIni::default();
         let end = FX_LISTS.find("FXList FX_Quiet").unwrap();
         first.read(&FX_LISTS.as_bytes()[..end]).unwrap();
+        assert_eq!(
+            first.lists()["FX_TankHit"][1],
+            FxNugget::Sound("ExplosionSmall".to_owned())
+        );
         let FxNugget::ParticleSystem(smoke) = &first.lists()["FX_TankHit"][0] else {
             panic!("the first is a particle system's");
         };

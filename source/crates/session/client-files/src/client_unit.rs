@@ -60,6 +60,38 @@ pub struct ClientUnit {
     /// slot order (02-engine-core.md, A look places its buttons).
     #[serde(default, skip_serializing_if = "PanelPlaces::is_empty")]
     pub panel: PanelPlaces,
+    #[serde(default, skip_serializing_if = "UnitVoices::is_empty")]
+    pub voices: UnitVoices,
+}
+
+/// The voices a unit of a type answers with, each by its sound's name in the effects file, none
+/// where it gives none (02-engine-core.md, A look names its voices): as a selection takes it, as it
+/// is ordered to move and to attack, and as its player trains it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UnitVoices {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub select: Option<DeclaredName>,
+    #[serde(default, rename = "move", skip_serializing_if = "Option::is_none")]
+    pub walk: Option<DeclaredName>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attack: Option<DeclaredName>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<DeclaredName>,
+}
+
+impl UnitVoices {
+    /// No voice.
+    pub const NONE: Self = Self {
+        select: None,
+        walk: None,
+        attack: None,
+        created: None,
+    };
+
+    pub fn is_empty(&self) -> bool {
+        *self == Self::NONE
+    }
 }
 
 /// What a unit of a type plays as it dies, each effect by its name in the effects file: as it dies,
@@ -246,6 +278,7 @@ impl ClientUnit {
             },
             chassis: None,
             panel: PanelPlaces::EMPTY,
+            voices: UnitVoices::NONE,
         }
     }
 

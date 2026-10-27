@@ -31,6 +31,8 @@ pub(crate) struct FactionStart {
     pub(crate) building: DeclaredName,
     pub(crate) units: Vec<DeclaredName>,
     pub(crate) offset: Num,
+    /// Its template's `BaseSide`, whose music the skirmish scripts play, none for one of none.
+    pub(crate) base_side: Option<String>,
 }
 
 impl SkirmishStart {
@@ -89,6 +91,7 @@ impl FactionStart {
                 .map(|name| unit_type(object(name)?))
                 .collect::<Result<_, _>>()?,
             offset,
+            base_side: template.base_side.clone(),
         })
     }
 

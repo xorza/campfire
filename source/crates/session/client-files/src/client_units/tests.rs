@@ -5,7 +5,7 @@ use std::num::NonZeroU8;
 
 use super::*;
 use crate::client_model::{ModelScale, ModelTop};
-use crate::client_unit::{BarrelFlash, DeathLook, FireBarrel, FireBone};
+use crate::client_unit::{BarrelFlash, DeathLook, FireBarrel, FireBone, UnitVoices};
 use crate::condition_test::{LifeShare, SiteStage};
 use crate::death_fall::{DeathFall, FallStage, GroundDeath, SelfSpin, Spiral};
 use crate::keys_file::Key;
@@ -60,6 +60,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
         draws = []
         placement_angle = "-135"
         panel = [{ place = 14, command = "sell" }, { place = 1, action = "humvee_gun" }]
+        voices = { select = "barracks_select", move = "barracks_move" }
 
         [conditions]
         night = { test = "map" }
@@ -240,6 +241,18 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
         ]
     );
     assert!(units.units["humvee"].panel.is_empty());
+    // The barracks' voices of a selection and of a move, and none of an attack or a train; the
+    // humvee's none.
+    assert_eq!(
+        units.units["barracks"].voices,
+        UnitVoices {
+            select: Some(name("barracks_select")),
+            walk: Some(name("barracks_move")),
+            attack: None,
+            created: None,
+        }
+    );
+    assert!(units.units["humvee"].voices.is_empty());
     // Two buttons at one place, a place of both an action and a command or of neither, and a place
     // 0, each fail to read.
     let refused = |panel: &str| {

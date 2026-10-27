@@ -31,6 +31,7 @@ pub use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel
 pub use crate::zero_hour::panel_drop_cause::PanelDropCause;
 pub use crate::zero_hour::production_import::ButtonDropCause;
 pub use crate::zero_hour::road_pieces::RoadPieces;
+pub use crate::zero_hour::sound_drop_cause::SoundDropCause;
 pub use crate::zero_hour::supply_import::SupplyDropCause;
 pub use crate::zero_hour::upgrade_import::UpgradeDropCause;
 pub use crate::zero_hour::weapon_drop_cause::WeaponDropCause;

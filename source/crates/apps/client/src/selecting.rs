@@ -3,6 +3,7 @@ use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
+use bevy::ecs::message::MessageWriter;
 use bevy::ecs::query::{Allow, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
@@ -25,17 +26,17 @@ use crate::input_map::InputMap;
 use crate::input_mode::InputMode;
 use crate::own_player::OwnPlayer;
 use crate::pointer::Pointer;
-use crate::selection::{Selection, SelectionSystems};
+use crate::selection::{Selection, SelectionSystems, SelectionVoice};
 use crate::view::ViewSystems;
 
 /// Keeps the selection of the player's own units (02-engine-core.md, A selection of the player's
 /// own units): each frame, a unit the client no longer holds or that its player sold leaves it, and
-/// an empty selection takes the avatar. In a mode of `PlayerControl::Units` (02-engine-core.md, The mode says what a
-/// player selects), the left button selects: a click on one of them selects it alone, and a drag
-/// selects each whose ground point shows within the rectangle it draws; a click or a drag that
-/// meets none of them leaves the selection as it is, a sold one selected by neither, as Zero Hour
-/// makes a sold building unselectable; and a press while the player places a build or aims a
-/// command is theirs.
+/// an empty selection takes the avatar. In a mode of `PlayerControl::Units` (02-engine-core.md, The
+/// mode says what a player selects), the left button selects: a click on one of them selects it
+/// alone, and a drag selects each whose ground point shows within the rectangle it draws; a click
+/// or a drag that meets none of them leaves the selection as it is, a sold one selected by neither,
+/// as Zero Hour makes a sold building unselectable; and a press while the player places a build or
+/// aims a command is theirs.
 #[derive(Debug)]
 pub(crate) struct SelectingPlugin {
     pub(crate) control: PlayerControl,
@@ -68,6 +69,7 @@ const BOX_FILL: Color = Color::srgba(0.3, 0.95, 0.4, 0.12);
 impl Plugin for SelectingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Selection>();
+        app.add_message::<SelectionVoice>();
         app.init_state::<InputMode>();
         app.add_systems(
             Update,
@@ -156,7 +158,7 @@ impl SelectingPlugin {
         ),
         sold: Unselectable<'_, '_>,
         mut held: ResMut<'_, Held>,
-        mut selection: ResMut<'_, Selection>,
+        (mut selection, mut voices): (ResMut<'_, Selection>, MessageWriter<'_, SelectionVoice>),
         mut picked: Local<'_, Vec<StableId>>,
     ) {
         let Some(press) = held.0.take() else {
@@ -176,6 +178,7 @@ impl SelectingPlugin {
         };
         if selection.bypass_change_detection().pick(&picked, led_by) {
             selection.set_changed();
+            voices.write(SelectionVoice::Select);
         }
     }
 

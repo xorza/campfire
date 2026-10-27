@@ -2,6 +2,7 @@ use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::ini::armor_ini::ArmorIni;
+use crate::zero_hour::format::ini::audio_ini::AudioIni;
 use crate::zero_hour::format::ini::command_button_ini::CommandButtonIni;
 use crate::zero_hour::format::ini::command_set_ini::CommandSetIni;
 use crate::zero_hour::format::ini::creation_list_ini::CreationListIni;
@@ -42,6 +43,7 @@ pub(crate) struct ZeroHourRules {
     pub(crate) particles: ParticleSystemIni,
     pub(crate) effects: FxListIni,
     pub(crate) creation_lists: CreationListIni,
+    pub(crate) audio: AudioIni,
     pub(crate) strings: StringTable,
     pub(crate) names: RulesNames,
 }
@@ -93,6 +95,7 @@ impl ZeroHourRules {
                 CreationListIni::default(),
                 CreationListIni::read,
             )?,
+            audio: Self::audio(install)?,
             strings: Self::string_table(install)?,
             names: RulesNames::default(),
         })
@@ -107,6 +110,15 @@ impl ZeroHourRules {
             MappedImageIni::read,
         )?;
         install.read_inis("MappedImages\\HandCreated", sized, MappedImageIni::read)
+    }
+
+    /// The install's audio events, of its sound effects and its voices, its music, and its
+    /// settings, as `AudioManager::init` reads them.
+    fn audio(install: &Install) -> Result<AudioIni, ZeroHourError> {
+        let audio = install.read_inis("SoundEffects", AudioIni::default(), AudioIni::read)?;
+        let audio = install.read_inis("Voice", audio, AudioIni::read)?;
+        let audio = install.read_inis("Music", audio, AudioIni::read)?;
+        install.read_inis("AudioSettings", audio, AudioIni::read_settings)
     }
 
     /// The install's string table, `Data\<language>\generals.csf`, as the game reads its

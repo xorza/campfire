@@ -10,17 +10,18 @@ use crate::client_path;
 use crate::effect_list::EffectList;
 use crate::error::EffectsError;
 use crate::particle_system::ParticleSystem;
+use crate::sound_event::SoundEvent;
 use crate::track_marks::TrackMarks;
 use crate::tread_dust::TreadDust;
 use crate::wreck_ground::WreckGround;
 
-/// A package's `client/effects.toml`: the particle systems and the effects of lists of them that
-/// its looks name, by name; the length of the step every system counts in, in seconds; the most
-/// particles alive at once, past which a new one removes the oldest of a lower rank
-/// (02-engine-core.md, Effects are a format of the engine); how a wreck meets the ground
-/// (02-engine-core.md, Wrecks move by the client's step); and how a tread throws its dust and lays
-/// its track (02-engine-core.md, A tread throws dust while it drives; 02-engine-core.md, A tread
-/// lays track marks).
+/// A package's `client/effects.toml`: the particle systems, the sounds and the effects of lists of
+/// them that its looks name, by name (02-engine-core.md, A sound is an effect); the length of the
+/// step every system counts in, in seconds; the most particles alive at once, past which a new one
+/// removes the oldest of a lower rank (02-engine-core.md, Effects are a format of the engine); how
+/// a wreck meets the ground (02-engine-core.md, Wrecks move by the client's step); and how a tread
+/// throws its dust and lays its track (02-engine-core.md, A tread throws dust while it drives;
+/// 02-engine-core.md, A tread lays track marks).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EffectsFile {
     step: f32,
@@ -32,20 +33,30 @@ pub struct EffectsFile {
     tracks: TrackMarks,
     cap: u32,
     systems: BTreeMap<DeclaredName, ParticleSystem>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    sounds: BTreeMap<DeclaredName, SoundEvent>,
     lists: BTreeMap<DeclaredName, EffectList>,
 }
 
+/// What an effects file names: its particle systems, its sounds and its lists, each by name.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct EffectSets {
+    pub systems: BTreeMap<DeclaredName, ParticleSystem>,
+    pub sounds: BTreeMap<DeclaredName, SoundEvent>,
+    pub lists: BTreeMap<DeclaredName, EffectList>,
+}
+
 impl EffectsFile {
-    /// The effects of `systems` and `lists`, each step `step` seconds long, of at most `cap`
-    /// particles; refused for a step not above 0 or not finite, a system or a list's entry of a
-    /// number not finite or of keys out of order, or a name of a system it does not hold, as a
-    /// read refuses it.
-    pub fn new(
-        step: f32,
-        cap: u32,
-        systems: BTreeMap<DeclaredName, ParticleSystem>,
-        lists: BTreeMap<DeclaredName, EffectList>,
-    ) -> Result<Self, EffectsError> {
+    /// The effects of `sets`, each step `step` seconds long, of at most `cap` particles; refused
+    /// for a step not above 0 or not finite, a system or a list's entry of a number not finite or
+    /// of keys out of order, a sound that does not hold, or a name of a system or a sound it does
+    /// not hold, as a read refuses it.
+    pub fn new(step: f32, cap: u32, sets: EffectSets) -> Result<Self, EffectsError> {
+        let EffectSets {
+            systems,
+            sounds,
+            lists,
+        } = sets;
         if !(step > 0.0 && step.is_finite()) {
             return Err(EffectsError::Step);
         }
@@ -67,6 +78,13 @@ impl EffectsFile {
         if let Some(name) = named.into_iter().find(|name| !systems.contains_key(*name)) {
             return Err(EffectsError::Unknown(name.clone()));
         }
+        if let Some((name, _)) = sounds.iter().find(|(_, sound)| !sound.holds()) {
+            return Err(EffectsError::Sound(name.clone()));
+        }
+        let heard = lists.values().flat_map(|list| &list.sounds);
+        if let Some(name) = heard.into_iter().find(|name| !sounds.contains_key(*name)) {
+            return Err(EffectsError::UnknownSound(name.clone()));
+        }
         Ok(Self {
             step,
             wrecks: WreckGround::NONE,
@@ -74,6 +92,7 @@ impl EffectsFile {
             tracks: TrackMarks::NONE,
             cap,
             systems,
+            sounds,
             lists,
         })
     }
@@ -85,6 +104,19 @@ impl EffectsFile {
             return Err(EffectsError::Wrecks);
         }
         self.wrecks = wrecks;
+        Ok(self)
+    }
+
+    /// It, holding `sounds` beside its own, one of a name it holds in that one's place; refused
+    /// for one that does not hold.
+    pub fn with_sounds(
+        mut self,
+        sounds: BTreeMap<DeclaredName, SoundEvent>,
+    ) -> Result<Self, EffectsError> {
+        if let Some((name, _)) = sounds.iter().find(|(_, sound)| !sound.holds()) {
+            return Err(EffectsError::Sound(name.clone()));
+        }
+        self.sounds.extend(sounds);
         Ok(self)
     }
 
@@ -140,6 +172,10 @@ impl EffectsFile {
         &self.systems
     }
 
+    pub const fn sounds(&self) -> &BTreeMap<DeclaredName, SoundEvent> {
+        &self.sounds
+    }
+
     pub const fn lists(&self) -> &BTreeMap<DeclaredName, EffectList> {
         &self.lists
     }
@@ -166,6 +202,8 @@ impl<'de> Deserialize<'de> for EffectsFile {
             #[serde(default)]
             systems: BTreeMap<DeclaredName, ParticleSystem>,
             #[serde(default)]
+            sounds: BTreeMap<DeclaredName, SoundEvent>,
+            #[serde(default)]
             lists: BTreeMap<DeclaredName, EffectList>,
         }
         let Fields {
@@ -175,9 +213,15 @@ impl<'de> Deserialize<'de> for EffectsFile {
             tracks,
             cap,
             systems,
+            sounds,
             lists,
         } = Fields::deserialize(deserializer)?;
-        let file = Self::new(step, cap, systems, lists).map_err(D::Error::custom)?;
+        let sets = EffectSets {
+            systems,
+            sounds,
+            lists,
+        };
+        let file = Self::new(step, cap, sets).map_err(D::Error::custom)?;
         let file = file.with_wrecks(wrecks).map_err(D::Error::custom)?;
         file.with_treads(treads, tracks).map_err(D::Error::custom)
     }

@@ -1,6 +1,7 @@
 use std::slice;
 
 use bevy::app::{App, Plugin, Update};
+use bevy::ecs::message::MessageWriter;
 use bevy::ecs::query::Allow;
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Query, Res, ResMut};
@@ -23,7 +24,7 @@ use crate::input_mode::InputMode;
 use crate::own_player::OwnPlayer;
 use crate::pointer::Pointer;
 use crate::right_click::{ClickAt, ClickSystems, RightClick};
-use crate::selection::{Selection, SelectionSystems};
+use crate::selection::{Selection, SelectionSystems, SelectionVoice};
 use crate::view::float_num;
 
 /// Turns the player's clicks and keys into orders: reads each right click on the ground, which the
@@ -105,16 +106,21 @@ impl OrdersPlugin {
         selection: Res<'_, Selection>,
         mut click: ResMut<'_, RightClick>,
         mut orders: ResMut<'_, PendingOrders>,
+        mut voices: MessageWriter<'_, SelectionVoice>,
     ) {
         let Some(at) = click.get() else {
             return;
         };
         click.take();
         let relation = |team| own.relation_to(team);
-        let order =
-            Self::click_directive(at, relation).and_then(|directive| selection.order(directive));
-        if let Some(order) = order {
+        let directive = Self::click_directive(at, relation);
+        let voice = match directive {
+            Some(Directive::Orders(OrdersDirective::Attack { .. })) => SelectionVoice::Attack,
+            _ => SelectionVoice::Move,
+        };
+        if let Some(order) = directive.and_then(|directive| selection.order(directive)) {
             orders.push(order);
+            voices.write(voice);
         }
     }
 

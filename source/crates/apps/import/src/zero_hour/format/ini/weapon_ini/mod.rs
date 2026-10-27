@@ -66,6 +66,11 @@ pub(crate) struct IniWeapon {
     pub(crate) fire_fx: Option<String>,
     pub(crate) detonation_fx: Option<String>,
     pub(crate) exhaust: Option<String>,
+    /// The audio event it plays as it fires, its `FireSound`, none for `NONE`; and its
+    /// `FireSoundLoopTime`, in milliseconds, over which a weapon that fires again loops it, 0 for
+    /// none.
+    pub(crate) fire_sound: Option<String>,
+    pub(crate) fire_sound_loop_ms: i32,
 }
 
 /// How a weapon fires faster as it keeps firing, as `FiringTracker` reads its template: the shots
@@ -228,6 +233,8 @@ impl Default for IniWeapon {
             detonation_objects: false,
             fire_fx: None,
             detonation_fx: None,
+            fire_sound: None,
+            fire_sound_loop_ms: 0,
             exhaust: None,
         }
     }
@@ -323,6 +330,8 @@ impl IniWeapon {
             "firefx" => self.fire_fx = none(at.value()?),
             "projectiledetonationfx" => self.detonation_fx = none(at.value()?),
             "projectileexhaust" => self.exhaust = none(at.value()?),
+            "firesound" => self.fire_sound = none(at.value()?),
+            "firesoundlooptime" => self.fire_sound_loop_ms = at.int()?,
             _ => {}
         }
         Ok(())
@@ -529,6 +538,8 @@ Weapon TankCannon\r
   DelayBetweenShots = 2000\r
   ProjectileObject = TankShell\r
   FireFX = FX_TankFire\r
+  FireSound = TankCannonFire\r
+  FireSoundLoopTime = 80\r
   ProjectileDetonationFX = FX_TankHit\r
   ProjectileExhaust = NONE\r
   RadiusDamageAffects = ALLIES ENEMIES NEUTRALS\r
