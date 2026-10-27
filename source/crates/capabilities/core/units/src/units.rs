@@ -192,6 +192,8 @@ impl Module for Units {
         // A unit faces its spawn's angle, which its body turns by.
         d.part::<BodyUnit, Facing>(|at| Some(Facing::of(Facing::angle_of(at))));
         d.part::<BodyUnit, SpawnPoint>(|at| at.position().map(SpawnPoint::new));
+        // Every unit holds the engine tags its capabilities turn for what it is now.
+        d.part::<BodyUnit, StatusTags>(|_| Some(StatusTags::default()));
         d.part::<BodyUnit, Variation>(Variation::of);
         // A unit of a type that varies takes its variation's body, of the one draw its spawn made;
         // a restored unit of a place past its type's has none, which its variation's check refuses.

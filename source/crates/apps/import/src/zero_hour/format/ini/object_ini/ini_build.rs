@@ -7,7 +7,8 @@ use crate::zero_hour::format::ini::ini_text::IniLine;
 /// What an object gives production, as `ThingTemplate` and its modules read it: its `BuildCost`,
 /// its `BuildTime` in seconds, its `CommandSet`, its `Prerequisites`, its `ProductionUpdate`'s
 /// `MaxQueueEntries` when it has the module, the points of its exit module when it has one that
-/// names them, and its `PlacementViewAngle`.
+/// names them, whether it has a `ParkingPlaceBehavior`, an airfield's, which makes a helicopter at
+/// its model's helipad bone, and its `PlacementViewAngle`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IniBuild {
     pub(crate) cost: u16,
@@ -16,6 +17,7 @@ pub(crate) struct IniBuild {
     pub(crate) prerequisites: Vec<Prerequisite>,
     pub(crate) queue: Option<i32>,
     pub(crate) exit: Option<ProductionExit>,
+    pub(crate) parking: bool,
     /// Its `PlacementViewAngle` in degrees, the angle the cursor's building shows at as a player
     /// places it, none when it gives none; a value that is not a number is refused.
     pub(crate) placement_angle: Option<Num>,
@@ -48,6 +50,7 @@ pub(crate) struct ProductionExit {
 pub(crate) enum ProductionModule {
     Queue,
     Exit,
+    Parking,
 }
 
 impl IniBuild {
@@ -94,6 +97,10 @@ impl IniBuild {
                     ..ProductionExit::default()
                 });
                 Some(ProductionModule::Exit)
+            }
+            "parkingplacebehavior" => {
+                self.parking = true;
+                Some(ProductionModule::Parking)
             }
             _ => None,
         }
@@ -150,6 +157,7 @@ impl Default for IniBuild {
             prerequisites: Vec::new(),
             queue: None,
             exit: None,
+            parking: false,
             placement_angle: None,
             variations: Vec::new(),
         }

@@ -28,12 +28,13 @@ use crate::defense_play::DefensePlay;
 use crate::error::CheckError;
 use crate::failure::{CheckFailure, Differs};
 use crate::golden::{Golden, Measured};
+use crate::helicopter_play::HelicopterPlay;
 use crate::match_play::PlayTools;
 use crate::missile_play::MissilePlay;
 use crate::pins::{
-    EffectCounts, FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
-    ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SkirmishTicks, SuppliedCounts,
-    SupplySteps, TerrainCounts, TerrainDrawn, UpgradeSteps, UpgradedCounts,
+    EffectCounts, FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, HelicopterSteps,
+    LookCounts, MapCounts, ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SkirmishTicks,
+    SuppliedCounts, SupplySteps, TerrainCounts, TerrainDrawn, UpgradeSteps, UpgradedCounts,
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
@@ -558,6 +559,22 @@ impl ImportCheck<'_> {
                 money = supply.built_money,
                 deliveries = ?supply.deliveries,
                 "player 1 built a supply center as China, and its free truck delivered its loads"
+            );
+        }
+        if let Some((played, tools)) = self.played(Play::Helicopter, rate)?
+            && let Some(helicopter) = HelicopterPlay::run(played, rate, tools, &mut self.failures)
+        {
+            let ticks = helicopter.ticks;
+            let expected =
+                HelicopterSteps::expected(self.pinned(|golden| golden.helicopter, ticks));
+            self.failures
+                .extend(Differs::of(helicopter, expected).map(CheckFailure::Helicopters));
+            self.measured.helicopter = Some(ticks);
+            info!(
+                ticks = ?helicopter.ticks,
+                load = helicopter.load,
+                "player 1's Comanche climbed, its Chinook delivered a load, and GLA's base shot the \
+                 Comanche down"
             );
         }
         if let Some((played, tools)) = self.played(Play::Gattling, rate)?

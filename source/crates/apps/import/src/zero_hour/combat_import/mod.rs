@@ -448,9 +448,15 @@ impl ImportedWeapon {
         let affects = splashes
             .then(|| Self::relations(weapon.affects).ok_or(WeaponDropCause::Affects))
             .transpose()?;
-        if !weapon.anti_ground {
-            return Err(WeaponDropCause::NotGround);
-        }
+        // A weapon's anti flags pick its targets: on the ground, the units that are no air
+        // target, in the air, those that are (helicopters.md, A weapon's anti flags are its
+        // targets).
+        let targets = match (weapon.anti_ground, weapon.anti_air) {
+            (true, true) => &rules.names.enemies,
+            (true, false) => &rules.names.enemies_on_ground,
+            (false, true) => &rules.names.enemies_in_air,
+            (false, false) => return Err(WeaponDropCause::NoTarget),
+        };
         if weapon.affects.suicide {
             return Err(WeaponDropCause::Suicide);
         }
@@ -590,13 +596,13 @@ impl ImportedWeapon {
         } else {
             None
         };
-        let enemies = rules.names.enemies.clone();
+        let targets = targets.clone();
         Ok(ConvertedWeapon {
             weapon: Self {
                 keys: ActionKeys {
                     range: Some(Ranked::One(range)),
                     min_range,
-                    ..ActionKeys::new(Targeting::Unit(enemies))
+                    ..ActionKeys::new(Targeting::Unit(targets))
                 },
                 attack: AttackData {
                     rate: WeaponValue::Own(ms(period_ms)?),

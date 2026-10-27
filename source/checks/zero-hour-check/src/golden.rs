@@ -9,19 +9,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CheckError;
 use crate::pins::{
-    BotBase, BotMatchEnd, DefenseTicks, EffectCounts, Fingerprints, FoughtCounts, LookCounts,
-    MapCounts, MissileTicks, ProducedCounts, RangerLook, RoadCounts, SkirmishTicks, SuppliedCounts,
-    SupplyTicks, TerrainCounts, UpgradedCounts,
+    BotBase, BotMatchEnd, DefenseTicks, EffectCounts, Fingerprints, FoughtCounts, HelicopterTicks,
+    LookCounts, MapCounts, MissileTicks, ProducedCounts, RangerLook, RoadCounts, SkirmishTicks,
+    SuppliedCounts, SupplyTicks, TerrainCounts, UpgradedCounts,
 };
 
 /// What the check measured of the known version and this importer, each a value no closed form
 /// gives: the fingerprints, a run on Linux and a run on macOS alike; Tournament Desert's counts and
-/// roads;
-/// the import's looks, trains, builds, researches, upgrades, supply and weapons; the plays' ticks, the supply play's
-/// deliveries, the defense plays' hits and kills and the missile play's shot, hit and kill among
-/// them; the bot's base; and how the base play's and the attack play's matches stood.
-/// A run pins them, and a run that blesses writes them again (09-zero-hour.md, The check's
-/// measures are a golden file).
+/// roads; the import's looks, trains, builds, researches, upgrades, supply and weapons; the plays'
+/// ticks, the supply play's deliveries, the helicopter play's climb, load and fall, the defense
+/// plays' hits and kills and the missile play's shot, hit and kill among them; the bot's base; and
+/// how the base play's and the attack play's matches stood. A run pins them, and a run that blesses
+/// writes them again (09-zero-hour.md, The check's measures are a golden file).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Golden {
@@ -40,6 +39,7 @@ pub(crate) struct Golden {
     pub(crate) fought: FoughtCounts,
     pub(crate) skirmish: SkirmishTicks,
     pub(crate) supply: SupplyTicks,
+    pub(crate) helicopter: HelicopterTicks,
     pub(crate) defense: DefenseTicks,
     pub(crate) patriot: DefenseTicks,
     pub(crate) stinger: DefenseTicks,
@@ -67,6 +67,7 @@ pub(crate) struct Measured {
     pub(crate) fought: Option<FoughtCounts>,
     pub(crate) skirmish: Option<SkirmishTicks>,
     pub(crate) supply: Option<SupplyTicks>,
+    pub(crate) helicopter: Option<HelicopterTicks>,
     pub(crate) defense: Option<DefenseTicks>,
     pub(crate) patriot: Option<DefenseTicks>,
     pub(crate) stinger: Option<DefenseTicks>,
@@ -132,6 +133,7 @@ impl Measured {
             fought: self.fought?,
             skirmish: self.skirmish?,
             supply: self.supply?,
+            helicopter: self.helicopter?,
             defense: self.defense?,
             patriot: self.patriot?,
             stinger: self.stinger?,

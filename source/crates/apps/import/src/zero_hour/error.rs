@@ -225,6 +225,10 @@ pub enum TypeError {
     /// Its slow death keeps it for no time the game or the engine holds.
     #[error("its slow death's delay is no time the engine holds")]
     DeathDelay,
+    /// It hovers by a lift no greater than the game's gravity, or to no height, so it never
+    /// climbs, or at a number the engine's flight does not hold.
+    #[error("its flight is none the engine holds")]
+    Flight,
 }
 
 /// How an install's archive differs from a version's.

@@ -13,15 +13,16 @@ pub(crate) struct WeaponIni {
 
 /// What the import reads of a weapon (`WeaponTemplate`), each the template's default when absent:
 /// its `PrimaryDamage`, `PrimaryDamageRadius`, `SecondaryDamageRadius`, `ScatterRadius`,
-/// `ScatterRadiusVsInfantry`, `AttackRange` and `MinimumAttackRange`; its `WeaponSpeed` in units
-/// a second, `INSTANT` by default; its `MinTargetPitch` and `MaxTargetPitch` in degrees, −180 and
-/// 180 by default; whether it names a `LaserName`; whether it may hit the ground, `AntiGround`,
-/// yes by default; its `RadiusDamageAffects` and its `ProjectileCollidesWith`; whether it deals its
-/// damage at its own place, `DamageDealtAtSelfPosition`; its continuous fire; its bonuses of
-/// `PLAYER_UPGRADE`, 1 by default, as `WeaponBonus` starts; its `DamageType`, of
-/// the game's types, `EXPLOSION` by default; its `DelayBetweenShots`, `ClipSize`, `ClipReloadTime`
-/// and `PreAttackDelay`, times in milliseconds; its `PreAttackType`, `PER_SHOT` by default; and its
-/// `ProjectileObject`, none for `NONE`.
+/// `ScatterRadiusVsInfantry`, `AttackRange` and `MinimumAttackRange`; its `WeaponSpeed` in units a
+/// second, `INSTANT` by default; its `MinTargetPitch` and `MaxTargetPitch` in degrees, −180 and 180
+/// by default; whether it names a `LaserName`; whether it may hit the ground, `AntiGround`, yes by
+/// default, and a vehicle in the air, `AntiAirborneVehicle`, no by default, as the template starts
+/// its anti mask (`WEAPON_ANTI_GROUND`); its `RadiusDamageAffects` and its
+/// `ProjectileCollidesWith`; whether it deals its damage at its own place,
+/// `DamageDealtAtSelfPosition`; its continuous fire; its bonuses of `PLAYER_UPGRADE`, 1 by default,
+/// as `WeaponBonus` starts; its `DamageType`, of the game's types, `EXPLOSION` by default; its
+/// `DelayBetweenShots`, `ClipSize`, `ClipReloadTime` and `PreAttackDelay`, times in milliseconds;
+/// its `PreAttackType`, `PER_SHOT` by default; and its `ProjectileObject`, none for `NONE`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IniWeapon {
     pub(crate) damage: f32,
@@ -37,6 +38,7 @@ pub(crate) struct IniWeapon {
     pub(crate) aim_delta: f32,
     pub(crate) laser: bool,
     pub(crate) anti_ground: bool,
+    pub(crate) anti_air: bool,
     pub(crate) affects: RadiusAffects,
     pub(crate) collides: CollideMask,
     pub(crate) at_self: bool,
@@ -204,6 +206,7 @@ impl Default for IniWeapon {
             aim_delta: 0.0,
             laser: false,
             anti_ground: true,
+            anti_air: false,
             affects: RadiusAffects::DEFAULT,
             collides: CollideMask::DEFAULT,
             at_self: false,
@@ -279,6 +282,7 @@ impl IniWeapon {
             "acceptableaimdelta" => self.aim_delta = at.real()?,
             "lasername" => self.laser = at.tokens.len() > 1,
             "antiground" => self.anti_ground = at.yes()?,
+            "antiairbornevehicle" => self.anti_air = at.yes()?,
             "radiusdamageaffects" => at.set_flags(&mut self.affects)?,
             "projectilecollideswith" => at.set_flags(&mut self.collides)?,
             "damagedealtatselfposition" => self.at_self = at.yes()?,
@@ -606,6 +610,13 @@ Weapon Stinger\r
   AttackRange = 300\r
   AntiGround = No\r
   AntiAirborneVehicle = Yes\r
+  DelayBetweenShots = 1000\r
+End\r
+Weapon Interceptor\r
+  PrimaryDamage = 10\r
+  AttackRange = 200\r
+  AntiGround = No\r
+  AntiProjectile = Yes\r
   DelayBetweenShots = 1000\r
 End\r
 Weapon Blast\r

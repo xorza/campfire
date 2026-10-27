@@ -306,7 +306,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         let amount = Number::Value(Scalar::Decimal(Num::int(amount)));
         WeaponValue::Own(Ranked::One(amount))
     };
-    let enemies = Targeting::Unit(FilterData::parse("enemies").unwrap());
+    let enemies = Targeting::Unit(FilterData::parse("enemies:!air_target").unwrap());
     // Each aims within the least of 0.035 radians, 0.035 × 180 ÷ π degrees, but the cannon's 30°.
     let radians: Num = "0.035".parse().unwrap();
     let least = radians.checked_mul_div(Num::int(180), Num::PI, Rounding::NearestEven);
@@ -920,7 +920,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // weapons, and the shell the crusader's cannon fires.
     SkirmishStart::of(&rules, &mut names).unwrap();
     let mut names = names.into_production();
-    let production = ProductionImport::of(&rules, &mut names);
+    let production = ProductionImport::of(&rules, &mut names, BTreeMap::new());
     let mut names = names.into_projectiles();
     let combat = CombatImport::of(&rules, &mut names).unwrap();
     let upgrades = UpgradeImport::of(&rules, names.types(), &production, &combat).unwrap();

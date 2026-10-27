@@ -18,8 +18,8 @@ use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
 use campfire_stats::{ModifierAppliers, StatsSystems};
 use campfire_units::{
-    AtWork, BodyUnit, Leader, LivingSpawns, OpenCellRun, SpawnCallbacks, SpawnOf, StatusTags,
-    UnitGrid, UnitTypes, UnitsSystems,
+    AtWork, BodyUnit, Leader, LivingSpawns, OpenCellRun, SpawnCallbacks, SpawnOf, UnitGrid,
+    UnitTypes, UnitsSystems,
 };
 use campfire_values::{ActionId, Block, EngineTag, TagProperties, UnitType};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
@@ -271,10 +271,6 @@ impl Module for Production {
                 .filter(|spec| spec.led)
                 .map(|_| Leader)
         });
-        // A gatherer shows its loop in its status tags; a site gets its own at its spawn.
-        d.part::<BodyUnit, StatusTags>(|at| {
-            at.of_type::<Gatherer>().map(|_| StatusTags::default())
-        });
     }
 
     /// Adds production to a match: in Inputs, the tick's orders cancel trains and builds, and, on
@@ -347,7 +343,7 @@ impl Production {
     /// The engine tag of a site, a building under construction: it blocks its attacks, casts and
     /// uses, so no action of its starts.
     pub const CONSTRUCTING: EngineTag = EngineTag::new(
-        4,
+        5,
         "constructing",
         TagProperties::NONE
             .with_block(Block::Attack)
@@ -356,14 +352,14 @@ impl Production {
             .with_block(Block::Produce),
     );
     /// The engine tag of node types, which workers gather from.
-    pub const NODE: EngineTag = EngineTag::new(5, "node", TagProperties::NONE);
+    pub const NODE: EngineTag = EngineTag::new(6, "node", TagProperties::NONE);
     /// The engine tag of drop-off types, which workers take their loads to.
-    pub const DROP_OFF: EngineTag = EngineTag::new(6, "drop_off", TagProperties::NONE);
+    pub const DROP_OFF: EngineTag = EngineTag::new(7, "drop_off", TagProperties::NONE);
     /// The engine tag of a worker in its gather loop, which another such worker passes through.
     pub const GATHERING: EngineTag =
-        EngineTag::new(7, "gathering", TagProperties::NONE.with_passes());
+        EngineTag::new(8, "gathering", TagProperties::NONE.with_passes());
     /// The engine tag of a site that grew in the tick, as a builder builds it.
-    pub const BEING_BUILT: EngineTag = EngineTag::new(8, "being_built", TagProperties::NONE);
+    pub const BEING_BUILT: EngineTag = EngineTag::new(9, "being_built", TagProperties::NONE);
 
     /// The checks of build and gather orders, each placement testing the units `S` sees.
     fn check_builds<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {

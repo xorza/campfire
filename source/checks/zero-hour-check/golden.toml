@@ -3,8 +3,8 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "cd7f049cd24ca897f9ae53e8e9dbab5b9283d75d14a0f72f70644ffb7d647c57"
-rules = "004eaedb6b71376e8fe7ec2eeaeec98cef3227d89749f7b5f90a10d0c25d0c84"
+game = "adf9dea76ae316c6950567553f6db86080f6287ef7e10eef2157043c5cd28f40"
+rules = "9aabd428a67064d385ccb39c254610d8041fbabc5b54f32dc14b115f49b11ee4"
 
 [map]
 heights = [270, 340]
@@ -50,27 +50,27 @@ fires = ["airngr_skl.airngr_ata"]
 dies = ["airngr_skl.airngr_dta", "airngr_skl.airngr_dtb"]
 
 [produced]
-trains = 192
+trains = 206
 builds = 160
-dropped = [0, 23, 31, 6, 4, 0, 0, 0]
+dropped = [0, 23, 17, 6, 4, 0, 0, 0]
 
 [upgraded]
 researches = 69
-modules = 355
-dropped = [287, 0, 0, 7, 0, 12, 0, 116]
+modules = 359
+dropped = [290, 0, 0, 7, 0, 12, 0, 116]
 
 [supplied]
 nodes = 4
 drop_offs = 15
-gathers = 12
+gathers = 17
 hacks = 5
-dropped = [0, 0, 5, 6, 0, 0, 0, 5, 5, 5, 5, 5, 4, 0]
+dropped = [0, 0, 0, 6, 0, 0, 0, 5, 5, 5, 5, 5, 4, 0]
 
 [effects]
 systems = 559
 lists = 318
 textures = 46
-fires = 47
+fires = 53
 hits = 0
 trails = 3
 ends = 22
@@ -79,8 +79,8 @@ bones = 2243
 dropped = [35, 0, 8, 2, 7, 292, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0]
 
 [fought]
-weapons = 88
-dropped = [0, 0, 13, 0, 2, 0, 1, 0, 11, 9, 0, 1, 3, 17, 1, 0, 0, 0, 0, 4, 1, 6, 0, 2, 0]
+weapons = 105
+dropped = [0, 0, 13, 0, 2, 0, 1, 0, 11, 9, 0, 1, 3, 0, 1, 0, 0, 0, 0, 4, 1, 6, 0, 2, 0]
 armors = 53
 kinds = 38
 unliving = 34
@@ -97,6 +97,11 @@ fight = 2634
 [supply]
 built = [482, 437]
 deliveries = [447, 901, 1355]
+
+[helicopter]
+climbed = 77
+delivered = 605
+shot_down = 322
 
 [defense]
 built = [482, 1050]
@@ -122,13 +127,13 @@ death = 1339
 
 [bot]
 built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
-farthest_m = 310
+farthest_m = 519
 
 [base]
-ended = 9243
+ended = 14741
 standing = [0, 8]
-think_ops = 16930
-stalls = 377
+think_ops = 18528
+stalls = 385
 
 [base.result]
 Won = 1
@@ -166,7 +171,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 4
+no_target = 3
 no_place = 0
 no_stack = 0
 
@@ -177,7 +182,7 @@ log_full = 0
 [base.drops.dropped]
 no_unit = 0
 no_walker = 0
-no_weapon = 0
+no_weapon = 166
 hidden = 0
 slot_kind = 0
 no_build = 0
@@ -186,7 +191,7 @@ unusable = 0
 [attack]
 ended = 18761
 standing = [4, 0]
-think_ops = 9085
+think_ops = 9286
 stalls = 240
 
 [attack.result]

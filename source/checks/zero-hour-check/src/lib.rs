@@ -38,6 +38,7 @@ mod defense_play;
 mod error;
 mod failure;
 mod golden;
+mod helicopter_play;
 mod import_check;
 mod import_stamp;
 mod match_play;

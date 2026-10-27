@@ -15,6 +15,7 @@ use campfire_units::{
 };
 use campfire_values::{Block, Motion, Team, UnitTags, UnitType};
 
+use crate::altitude::Altitude;
 use crate::arrived_at::ArrivedAt;
 use crate::aside_depth::AsideDepth;
 use crate::body_index::{BodyIndex, IndexedBody};
@@ -78,7 +79,12 @@ type Steerers<'w, 's> = Query<
     's,
     (
         Entity,
-        (&'static StableId, &'static Position, Option<&'static Team>),
+        (
+            &'static StableId,
+            &'static Position,
+            Option<&'static Team>,
+            Has<Altitude>,
+        ),
         &'static mut Destination,
         &'static MoveStep,
         &'static Body,
@@ -169,16 +175,33 @@ impl Walking {
         passages.clear();
         let mut stalls = 0;
         for &Keyed { entity, .. } in order.sort(ordered) {
-            let (_, (&id, &at, team), mut destination, step, body, mut route, progress, tags, _) =
-                walkers.get_mut(entity).expect("a walker in the order");
+            let (
+                _,
+                (&id, &at, team, flies),
+                mut destination,
+                step,
+                body,
+                mut route,
+                progress,
+                tags,
+                _,
+            ) = walkers.get_mut(entity).expect("a walker in the order");
             let (mut progress, arrived, leaving, walk, _) = progress;
             let mut walk = walk.expect("a walker carries how deep its walk is");
             let depth = *walk;
             let goal = route.goal().expect("a walker with a way ahead has a goal");
             let stuck_for = progress.track(at.get(), route.read().ahead()[0], step.get());
+            // A flier steers in the plane of its route, as it walks (helicopters.md, A flier walks
+            // in the plane).
+            let position = at.get();
+            let position = if flies {
+                Vec3::new(position.x, goal.y, position.z)
+            } else {
+                position
+            };
             let steered = Steered {
                 id,
-                position: at.get(),
+                position,
                 team: team.copied(),
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
@@ -249,7 +272,7 @@ impl Walking {
             };
             let (
                 _,
-                (&id, position, team),
+                (&id, position, team, _),
                 mut destination,
                 _,
                 body,
@@ -416,7 +439,7 @@ impl Walking {
             '_,
             '_,
             (
-                (&mut Position, &mut Facing),
+                (&mut Position, &mut Facing, Has<Altitude>),
                 &mut Destination,
                 RouteMut,
                 (
@@ -433,7 +456,7 @@ impl Walking {
         >,
     ) {
         for (
-            (mut position, mut facing),
+            (mut position, mut facing, flies),
             mut destination,
             mut route,
             (mut progress, arrived, depth, hemmed),
@@ -479,6 +502,13 @@ impl Walking {
                         }
                     }
                     break;
+                };
+                // A flier walks in the plane at its height, which its flight alone writes
+                // (helicopters.md, A flier walks in the plane).
+                let waypoint = if flies {
+                    Vec3::new(waypoint.x, at.y, waypoint.z)
+                } else {
+                    waypoint
                 };
                 if !at.within(waypoint, left) {
                     at = at.step_toward(waypoint, left);

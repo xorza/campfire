@@ -5,7 +5,7 @@ use campfire_units::internals::Spawn;
 use campfire_units::{BodyForm, BodyShape, Died, Layer, MapSpace, Teleported};
 use campfire_values::TagSet;
 use std::collections::BTreeMap;
-use std::num::{NonZeroU16, NonZeroU32};
+use std::num::{NonZeroI64, NonZeroU16, NonZeroU32};
 
 use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::change_detection::DetectChanges;
@@ -28,12 +28,13 @@ use campfire_combat::*;
 use campfire_common::{DeclaredName, PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
+use campfire_navigation::{FlightData, Navigation};
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_script::{Filter, MatchNames};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, EntityIndex, Position, SimComponent, SimEdgeSystems, SimRng, SimSystems, SimTick,
-    SimWorld, StableId, Unpredicted,
+    Capability, EntityIndex, MatchRate, Position, SimComponent, SimEdgeSystems, SimRng, SimSystems,
+    SimTick, SimWorld, StableId, Unpredicted,
 };
 use campfire_stats::{
     Application, Ends, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance, PoolBook,
@@ -475,6 +476,77 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     Combat::attack(&mut game, second, hovering);
     game.run_until(11);
     assert_eq!(healths(&game), [90, 75, 100, 65]);
+}
+
+#[test]
+fn a_ground_weapon_selects_a_flier_on_its_pad_and_an_air_weapon_once_it_flies() {
+    // A unit of a ground weapon, of the enemies no air target, at place 1, 10, and an air weapon,
+    // of the air targets, at place 2, 25, each of 5 m and a windup of a tick, at a period of 5
+    // ticks; a flier 1 m off, of a flight at 8 m that climbs a meter a tick from the ground and
+    // is an air target past 3 m (helicopters.md, Airborne is a tag of height).
+    let mut game = Match::builder(&[
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Navigation,
+    ])
+    .build();
+    Combat::load_weapon_stats(&mut game);
+    let rules = ["attack_rate", "damage", "damage_air"]
+        .map(|name| (Stat::named(name).unwrap(), StatRule::default()));
+    Stats::load_rules(&mut game, &BTreeMap::from(rules));
+    let weapon = |game: &mut Match, aim: &str, damage| {
+        let aim = game
+            .resource::<MatchNames>()
+            .resolve_filter(&FilterData::parse(aim).unwrap())
+            .unwrap();
+        let weapon = TestWeapon {
+            damage,
+            ..TestWeapon::new(aim, ActionRange::meters(Num::int(5)), Ticks::new(1))
+        };
+        Combat::add_weapon(game, weapon)
+    };
+    let ground = weapon(
+        &mut game,
+        "enemies:!air_target",
+        WeaponDamage::Stat(StatId::new(1)),
+    );
+    let air = weapon(
+        &mut game,
+        "enemies:air_target",
+        WeaponDamage::Stat(StatId::new(2)),
+    );
+    let kind = SlotKind::new(0);
+    let slots = ActionSlots::new([(ground, kind, Rank::new(1)), (air, kind, Rank::new(1))]);
+    let shooter = wielder(&mut game, slots, &[Num::int(6), Num::int(10), Num::int(25)]);
+    let flier = Units::load_next_type(&mut game, &UnitTypeCore::default());
+    dummy().give(&mut game, flier);
+    let hz = NonZeroI64::from(game.resource::<MatchRate>().hz()).get();
+    let flight = FlightData::new(Num::int(8), Num::int(hz), Num::int(3)).unwrap();
+    Navigation::load_flight(&mut game, flier, flight);
+    let id = Spawn::of(shooter, (0, 0, 0)).place(&mut game);
+    let target = Spawn::of(flier, (1, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
+    let underway = |game: &Match| {
+        let progress = game.try_part::<ActionProgress>(id).unwrap();
+        progress.in_progress().map(InProgress::slot)
+    };
+    // On its pad, only the ground weapon selects it: it starts in tick 0 and strikes in tick 1,
+    // for 10.
+    Combat::attack(&mut game, id, target);
+    game.run_until(1);
+    assert_eq!(underway(&game), Some(0));
+    game.run_until(2);
+    assert_eq!(Stats::health(&game, target), 90);
+    // It climbs a meter in each tick from tick 0, 4 m up after tick 3: while its ground weapon
+    // cools down, the attack's next start, in tick 4, finds it an air target, and the air
+    // weapon alone selects it; it strikes in tick 5 for 25.
+    game.run_until(4);
+    assert_eq!(underway(&game), None);
+    game.run_until(5);
+    assert_eq!(underway(&game), Some(1));
+    game.run_until(6);
+    assert_eq!(Stats::health(&game, target), 65);
 }
 
 #[test]

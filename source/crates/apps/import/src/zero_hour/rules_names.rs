@@ -45,6 +45,8 @@ pub(crate) struct RulesNames {
     /// and its param, the waypoint's name.
     pub(crate) waypoint: DeclaredName,
     pub(crate) waypoint_name: DeclaredName,
+    /// The layer a flier's body moves on (helicopters.md, Fliers share a layer).
+    pub(crate) air: DeclaredName,
     /// The slot kinds of a type's weapons and of its trains, builds and gather.
     pub(crate) weapon_slot: DeclaredName,
     pub(crate) command_slot: DeclaredName,
@@ -54,6 +56,10 @@ pub(crate) struct RulesNames {
     pub(crate) hostiles: FilterData,
     /// Every unit its own team may attack.
     pub(crate) enemies: FilterData,
+    /// Every unit its own team may attack that is, or is not, an air target, the engine's tag
+    /// (helicopters.md, A weapon's anti flags are its targets).
+    pub(crate) enemies_in_air: FilterData,
+    pub(crate) enemies_on_ground: FilterData,
     /// Every unit of a team the unit's own regards as friendly.
     pub(crate) allies: FilterData,
     /// Every unit that is no structure.
@@ -80,6 +86,7 @@ impl Default for RulesNames {
                 .collect(),
         };
         let life = name("life");
+        let air_target = name("air_target");
         let structure = name("structure");
         let wall = name("wall");
         let armor_upgrade = name("armor_upgrade");
@@ -102,11 +109,14 @@ impl Default for RulesNames {
             player_slot: name("player_slot"),
             waypoint: name("waypoint"),
             waypoint_name: name("name"),
+            air: name("air"),
             weapon_slot: name("weapon"),
             command_slot: name("command"),
             every: FilterData::all(),
             hostiles: filter(RelationSet::Hostiles, None),
             enemies: filter(RelationSet::Enemies, None),
+            enemies_in_air: filter(RelationSet::Enemies, Some((&air_target, false))),
+            enemies_on_ground: filter(RelationSet::Enemies, Some((&air_target, true))),
             allies: filter(RelationSet::Allies, None),
             no_structures: filter(RelationSet::All, Some((&structure, true))),
             enemy_structures: filter(RelationSet::Enemies, Some((&structure, false))),
@@ -137,6 +147,8 @@ mod tests {
             (&names.every, "all"),
             (&names.hostiles, "hostiles"),
             (&names.enemies, "enemies"),
+            (&names.enemies_in_air, "enemies:air_target"),
+            (&names.enemies_on_ground, "enemies:!air_target"),
             (&names.allies, "allies"),
             (&names.no_structures, "all:!structure"),
             (&names.enemy_structures, "enemies:structure"),

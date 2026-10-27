@@ -294,7 +294,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         let object = rules.objects.object(placed.as_bytes()).unwrap();
         names.unit_type(object, &rules).unwrap();
     }
-    let import = ProductionImport::of(&rules, &mut names.into_production());
+    let import = ProductionImport::of(&rules, &mut names.into_production(), BTreeMap::new());
     let supply = &import.supply;
     let name = |name: &str| TypeName::new(&ImportName::of(name.as_bytes())).unwrap();
     let declared = |name: &str| DeclaredName::new(name).unwrap();
@@ -504,7 +504,7 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
     let mut names = ImportNames::default();
     let center = rules.objects.object(b"Center").unwrap();
     names.unit_type(center, &rules).unwrap();
-    let import = ProductionImport::of(&rules, &mut names.into_production());
+    let import = ProductionImport::of(&rules, &mut names.into_production(), BTreeMap::new());
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     for train in ["train_jeep", "train_rover", "train_wisp", "train_ghost"] {
         assert!(
@@ -518,4 +518,25 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets() {
     for parent in ["jeep", "rover"] {
         assert_eq!(import.commands[&TypeName::named(parent)], wisp, "{parent}");
     }
+}
+
+#[test]
+fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad() {
+    // A queue and a parking, of no exit module: its helipad at (5, 10) on the game's axes is its
+    // exit, (5, −10) on the engine's, with no rally of its own; a producer of no parking has no
+    // helipad (helicopters.md, A helipad is an exit).
+    let airfield = IniBuild {
+        queue: Some(1),
+        parking: true,
+        ..IniBuild::default()
+    };
+    let section = ProductionImport::section(&airfield, Some([5.0, 10.0])).unwrap();
+    assert_eq!(section.exit, FramePoint::new([Num::int(5), Num::int(-10)]));
+    assert_eq!(section.rally, None);
+    let plain = IniBuild {
+        parking: false,
+        ..airfield
+    };
+    let section = ProductionImport::section(&plain, Some([5.0, 10.0])).unwrap();
+    assert_eq!(section.exit, None);
 }

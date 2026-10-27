@@ -10,7 +10,7 @@ The slice of [Effects](docs/design/effects.md): a player of a Zero Hour skirmish
 
 It stands last, as the player's check is of the whole slice.
 
-- [ ] A player sees Tournament Desert's shots, hits, trails and deaths in the client as the game draws them ([question](PLAN_QUESTIONS.md#effects-end-of-the-slice)); then the slice's decisions fold into the documents of their systems, `02-engine-core.md` for the format and the client's particles and `09-zero-hour.md` for what the import converts and loses, the code's citations of `effects.md` with them, and `effects.md` goes.
+- [ ] A player sees Tournament Desert's shots, hits, trails and deaths in the client as the game draws them; then the slice's decisions fold into the documents of their systems, `02-engine-core.md` for the format and the client's particles and `09-zero-hour.md` for what the import converts and loses, the code's citations of `effects.md` with them, and `effects.md` goes.
 
 ## Console
 
@@ -20,7 +20,7 @@ The slice of [Console](docs/design/console.md): an agent in Claude Code starts a
 
 It stands last, as the user's check is of the whole slice.
 
-- [ ] Claude Code, after `cargo drive run mcp` and the approval of the project's `.mcp.json`, connects and lists the tools ([question](PLAN_QUESTIONS.md#console-end-of-the-slice)); the user watches the agent start a local match of the MOBA test mode, run it to a tick, table its units and show a screenshot of one; in a local Zero Hour skirmish of bots alone, the agent finds the walkers stuck at a tick with the tools alone; then the slice's decisions fold into the documents of their systems, `02-engine-core.md` for the console, the MCP server and the view, and `08-sessions.md` for the run, the planned ones into `03-game-scripting.md`, `05-protocol-spec.md` and `06-script-api.md`, and `console.md` goes.
+- [ ] Claude Code, after `cargo drive run mcp` and the approval of the project's `.mcp.json`, connects and lists the tools; the user watches the agent start a local match of the MOBA test mode, run it to a tick, table its units and show a screenshot of one; in a local Zero Hour skirmish of bots alone, the agent finds the walkers stuck at a tick with the tools alone; then the slice's decisions fold into the documents of their systems, `02-engine-core.md` for the console, the MCP server and the view, and `08-sessions.md` for the run, the planned ones into `03-game-scripting.md`, `05-protocol-spec.md` and `06-script-api.md`, and `console.md` goes.
 
 ## Wrecks
 
@@ -30,30 +30,11 @@ The slice of [Wrecks](docs/design/wrecks.md): a player of a Zero Hour skirmish s
 
 It stands last, as the player's check is of the whole slice.
 
-- [ ] An agent runs a Tournament Desert skirmish through the console and screenshots a destroyed Crusader, a destroyed Comanche and a driving tank, each fault it sees going to a step before the player's check ([question](PLAN_QUESTIONS.md#wrecks-end-of-the-slice)); then a player sees the hulks, debris, dust and track marks, and an aircraft's fall, in the client as the game draws them; then the slice's decisions fold into `02-engine-core.md` and `09-zero-hour.md`, and `wrecks.md` goes.
+- [ ] An agent runs a Tournament Desert skirmish through the console and screenshots a destroyed Crusader, a destroyed Comanche and a driving tank, each fault it sees going to a step before the player's check; then a player sees the hulks, debris, dust and track marks, and an aircraft's fall, in the client as the game draws them; then the slice's decisions fold into `02-engine-core.md` and `09-zero-hour.md`, and `wrecks.md` goes.
 
 ## Helicopters
 
 The slice of [Helicopters](docs/design/helicopters.md): a USA player of a Zero Hour skirmish trains a Chinook that gathers supplies by air and a Comanche that flies over cliffs and fights, which only weapons that hit the air reach in flight, and which falls when shot down. Its facts are [Zero Hour's helicopters](docs/research/zero-hour-helicopters.md); its checks are that document's. It stands after Wrecks, whose aircraft falls it shows, and waits for no player's check of a slice before it.
-
-### H1. A flier holds a height and is airborne by it
-
-Touches navigation, the units' status tags and combat's tests; it stands first, as the import's fliers need it.
-
-- [ ] No unit holds a height (helicopters.md, A flier holds a height; helicopters.md, A flier walks in the plane): a walker steps toward its waypoints in 3D (`walking.rs:492`), so a waypoint on the ground pulls any height down. A unit type's `flight` section gives its height, climb and airborne height; a flier walks, routes and arrives in the plane on its layer, and after the walk its height in the world moves toward the sim's ground under it plus its height at its climb, never below the ground, on the server and in a predicting client alike. Builds: a kind's part declared once, and a pass that visits only fliers. Checks: navigation's tests climb a flier from the ground to its height at its rate, ease it over a step of the ground and never below it, walk it in the plane to a ground waypoint at its height, part two fliers on the air layer, and pass one over a ground unit and a wall of the ground layer; a production test gathers a full load with a flier from a node and brings it to a drop-off, as a gather reaches its dock by the planar metric whatever the height (helicopters.md, A flying gatherer docks over its dock).
-- [ ] No tag tells a unit in the air from one on the ground (helicopters.md, Airborne is a tag of height): navigation declares the engine tag `airborne`, which a flier holds while its height above the ground passes its airborne height, turned as `gathering` is (`gather_loop/mod.rs:511`). Checks: a test gives and takes the tag as a flier crosses its airborne height on the way up and down; combat's test of weapons by tags shows a weapon of `enemies:!airborne` that selects a flier only on its pad and one of `enemies:airborne` only in flight.
-
-### H2. The import flies Zero Hour's helicopters
-
-Touches the import, the Zero Hour rules package and the golden; it stands after H1, whose parts it writes.
-
-- [ ] The import flies nothing (helicopters.md, The import flies a hovering locomotor; helicopters.md, A weapon's anti flags are its targets; helicopters.md, A helipad is an exit): a type of no driving locomotor gets no speed (`imported_type/mod.rs:148`), so a train of it (`production_import/mod.rs:364`) and its gather (`supply_import.rs:149`) are dropped; a weapon that is not `AntiGround` is dropped (`combat_import/mod.rs:451`); and an airfield's `ParkingPlaceBehavior` gives no exit (`ini_build.rs:89`). The rules package declares the layers `ground` and `air`; an object whose normal locomotor hovers on `AIR` becomes a flier on `air` of its locomotor's speed, turn rate, `PreferredHeight` and `AirborneTargetingHeight`, its climb the mean speed of the original's climb to its height by its `Lift` and gravity; a weapon's `AntiGround` and `AntiAirborneVehicle` give its target filter; an airfield's helipad bone is the exit of its helicopters; the Chinook gathers; and jets, transports, drones and a hover's tilt are counted as losses. Checks: the import's tests convert a hovering locomotor and a jet's, the climb of the Chinook's lift worked by hand, each pair of anti flags, a helipad exit and a flying gatherer, each loss once; the Zero Hour check's golden moves only by the helicopters' types, trains, weapons and losses, each change read.
-
-### H3. A skirmish of helicopters
-
-Touches the Zero Hour check; it stands after H2, as it plays the import.
-
-- [ ] No play flies (helicopters.md, Checks): the Zero Hour check plays no unit in the air. A play of the check gives a USA builder a Chinook that brings a full load to its supply center, and an attacker's Comanche that a Stinger site shoots down, their ticks and the money pinned in the golden. Checks: the play passes, and its record replays.
 
 ### End of the slice
 
@@ -62,6 +43,12 @@ It stands last, as the player's check is of the whole slice.
 - [ ] An agent runs a Tournament Desert skirmish through the console and screenshots a Chinook over a supply dock and a Comanche over a cliff, each fault it sees going to a step before the player's check; then a player sees a Chinook gather, a Comanche fly and fight, ground weapons ignore it in flight, and a Comanche shot down fall, in the client; then the slice's decisions fold into `04-capabilities/navigation.md`, `04-capabilities/stats.md`, `04-capabilities/combat.md`, `04-capabilities/production.md` and `09-zero-hour.md`, and `helicopters.md` goes.
 
 ## Changed
+
+- H3's play starts America and GLA from base starts, not a builder and an attacker: America's base start holds its Chinooks and Comanches, and GLA's every building its workers build, so the play orders only the gather, a stop of the other Chinooks, which their supply center sends to gather, and the flight, and the Comanche falls to every weapon of GLA's base that hits the air, not to a Stinger site alone. The Comanche's climb is pinned too, to the height its flight data gives.
+
+- H2 counts the jets as before, as trains of a unit that does not walk, and records the transports, the drones and a hover's tilt as losses of `09-zero-hour.md` as the slice folds, not as counts of their own: no stage reads a `TransportContain` or a draw's tilt, so a count would name what no stage converts. The skirmish play stands the Chinook each building sends to gather, so its money counts what it spends; the helicopters' play pins a gather. The helipad's bone is read from the airfield's model, which no fixture model holds, so only the production test of its exit and the Zero Hour check's golden hold it.
+
+- H1 gives every unit its status tags from the core, not each capability that turns one: a host declares a part once, and a flying gatherer holds both production's and navigation's tags; every unit's join carries their 5 bytes. The engine tag is `air_target`, not `airborne`, a game's own word, which the test MOBA's knock-up grants. Two fliers parting and one passing over a ground unit and a wall are the air layer's own tests, which flight leaves as they were, so no flight test repeats them.
 
 - W4's dust scales and track numbers are the effects file's `treads` and `tracks`, which the import writes of `W3DTankDraw`'s and `GlobalData`'s, not the client's constants, and a look's track has its width, its model's tread bones' span, besides its texture: a capability names no constant of one game, and the game's track is as wide as the tank's treads.
 

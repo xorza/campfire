@@ -1,14 +1,14 @@
-use std::num::NonZeroU32;
+use std::num::{NonZeroI64, NonZeroU32};
 
 use bevy_ecs::system::SystemState;
 
 use campfire_actions::ActionBook;
 use campfire_capabilities::Order;
 use campfire_geometry::{Bounds, Grid};
-use campfire_navigation::{Navigation, Walker};
+use campfire_navigation::{FlightData, Navigation, Walker};
 use campfire_orders::OrdersDirective;
 use campfire_script::Filter;
-use campfire_sim::{EntityIndex, Position};
+use campfire_sim::{EntityIndex, MatchRate, Position};
 use campfire_units::{GroundPoint, MapBook};
 use campfire_values::{Block, RelationSet};
 
@@ -227,6 +227,59 @@ fn a_worker_brings_its_loads_in_trip_by_trip_and_stops_as_its_node_runs_out() {
     });
     assert_eq!(delivered, Some(6));
     assert_eq!(shop.gold(&client), gold);
+}
+
+#[test]
+fn a_flier_gathers_as_a_walker_does_at_its_height() {
+    // The scene of the walker's first trips, its worker a flier of the air layer, of a flight at
+    // 8 m that climbs a meter a tick: it reaches the mineral and the hall by its reach on the
+    // ground between them, whatever its height, so its trips take the walker's ticks: 5 gold in
+    // tick 6, 10 in tick 13 (helicopters.md, A flying gatherer docks over its dock).
+    let Mining {
+        mut game,
+        shop,
+        mine,
+    } = Mining::new();
+    let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
+    let [ground, air] = [Layer::FIRST, Layer::new(1)].map(|layer| Walker {
+        layer,
+        radius: Num::HALF,
+    });
+    Navigation::load_pathing(
+        &mut game,
+        Grid::new(Num::ONE, bounds).unwrap(),
+        [ground, air],
+    );
+    let flier = Units::load_type(
+        &mut game,
+        TypeScope::Mode,
+        "flier",
+        &UnitTypeCore::default(),
+    );
+    let body = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), air.layer);
+    Units::give_type(&mut game, flier, body);
+    Units::give_type(&mut game, flier, MoveStep::new(Num::ONE).unwrap());
+    Units::give_type(&mut game, flier, Gatherer::default());
+    let hz = NonZeroI64::from(game.resource::<MatchRate>().hz()).get();
+    let flight = FlightData::new(Num::int(8), Num::int(hz), Num::int(3)).unwrap();
+    Navigation::load_flight(&mut game, flier, flight);
+    shop.hall(&mut game, halves(0, 0));
+    let node = mine.mineral(&mut game, halves(0, 12), 12);
+    let slots = TimedSlots::new(ActionSlots::new([(
+        mine.gather,
+        SlotKind::new(0),
+        Rank::new(1),
+    )]));
+    let parts = (Owner::new(PlayerSlot::new(0)), slots);
+    let worker = Spawn::of(flier, halves(1, 6)).parts(parts).place(&mut game);
+    Production::gather_at(&mut game, &[worker], node);
+    let mut gold = Vec::new();
+    for _ in 1..=13 {
+        game.step();
+        gold.push(shop.gold(&game));
+    }
+    assert_eq!([gold[4], gold[5], gold[11], gold[12]], [0, 5, 5, 10]);
+    assert_eq!(game.part::<Position>(worker).get().y, Num::int(8));
 }
 
 #[test]

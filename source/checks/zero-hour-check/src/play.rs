@@ -7,6 +7,8 @@ pub(crate) enum Play {
     Skirmish,
     /// China's free truck delivers supply.
     Supply,
+    /// America's Chinook delivers supply, and its Comanche falls to GLA's base.
+    Helicopter,
     /// A Gattling Cannon kills a dozer.
     Gattling,
     /// A Patriot battery kills a dozer.
@@ -29,6 +31,7 @@ impl Play {
         match self {
             Self::Skirmish => "skirmish",
             Self::Supply => "supply",
+            Self::Helicopter => "helicopter",
             Self::Gattling => "gattling",
             Self::Patriot => "patriot",
             Self::Stinger => "stinger",

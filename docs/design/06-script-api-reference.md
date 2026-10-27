@@ -309,6 +309,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `turret` | combat | since 1.0 |
 | `barrels` | combat | since 1.0 |
 | `navigation` | navigation | since 1.0 |
+| `flight` | navigation | since 1.0 |
 | `vision` | vision | since 1.0 |
 | `projectile` | projectiles | since 1.0 |
 | `area` | areas | since 1.0 |

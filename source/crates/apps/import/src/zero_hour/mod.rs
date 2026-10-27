@@ -271,7 +271,7 @@ impl ZeroHour {
         let start = SkirmishStart::of(&game, &mut object_names)?;
         let money = game.multiplayer.money()?;
         let mut object_names = object_names.into_production();
-        let production = ProductionImport::of(&game, &mut object_names);
+        let production = ProductionImport::of(&game, &mut object_names, looks.helipads.clone());
         let mut object_names = object_names.into_projectiles();
         let combat = CombatImport::of(&game, &mut object_names)?;
         // The systems the projectiles of the weapons the import converts carry.
@@ -470,7 +470,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 43;
+    pub const OUTPUT_VERSION: u32 = 44;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

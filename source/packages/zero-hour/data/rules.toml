@@ -88,9 +88,11 @@ life = "life"
 
 [tags.continuous_fire_slow]
 
-# The tags of the markers its players start at and their starting units rally at.
+# The tags of the markers its players start at and their starting units rally at; and its layers,
+# the ground and the air its helicopters fly in (helicopters.md, Fliers share a layer).
 [navigation]
 spawn_tags = ["start", "rally"]
+layers = ["ground", "air"]
 
 # A skirmish's end, as the original's `VictoryConditions` keeps it: a player whose last living
 # building that counts for victory dies is out of play, and its other units die, as

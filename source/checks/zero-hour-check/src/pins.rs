@@ -345,6 +345,27 @@ const SUPPLY_MONEY: i64 = 50_000 - 1000 - 1500;
 /// `GameData.ini` (09-zero-hour.md, A box is money).
 const TRUCK_LOAD: i64 = 4 * 75;
 
+/// What a delivery of a Chinook pays: its `MaxBoxes` of 8 boxes of `ValuePerSupplyBox`, 75.
+const CHINOOK_LOAD: i64 = 8 * 75;
+
+/// The helicopter play's steps: its ticks, and what the Chinook's first load paid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HelicopterSteps {
+    pub(crate) ticks: HelicopterTicks,
+    pub(crate) load: i64,
+}
+
+/// The ticks of the helicopter play's steps no closed form gives: the Comanche's from its start
+/// to its height, the Chinook's from its gather's order to its first load home, and the
+/// Comanche's from its flight's order to its fall.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HelicopterTicks {
+    pub(crate) climbed: u64,
+    pub(crate) delivered: u64,
+    pub(crate) shot_down: u64,
+}
+
 /// The supply play's steps: the ticks of the power plant and the supply center, each from its
 /// order to its whole building, and the money left; and each of the free truck's first
 /// `DELIVERIES` deliveries.
@@ -552,6 +573,16 @@ impl SupplySteps {
         SupplyTicks {
             built: self.built,
             deliveries: self.deliveries.map(|delivery| delivery.ticks),
+        }
+    }
+}
+
+impl HelicopterSteps {
+    /// The steps of `ticks`, a full load paying a Chinook's boxes.
+    pub(crate) const fn expected(ticks: HelicopterTicks) -> Self {
+        Self {
+            ticks,
+            load: CHINOOK_LOAD,
         }
     }
 }

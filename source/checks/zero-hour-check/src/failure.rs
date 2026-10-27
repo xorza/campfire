@@ -10,8 +10,9 @@ use derive_more::Display;
 use crate::decal_ground::DecalGround;
 use crate::pins::{
     BotBase, BotMatchEnd, DefenseTicks, EffectCounts, FactorySteps, FightSteps, Fingerprints,
-    FoughtCounts, LookCounts, MapCounts, MissileTicks, ProducedCounts, ProductionSteps, RangerLook,
-    RoadCounts, SuppliedCounts, SupplySteps, TerrainDrawn, UpgradeSteps, UpgradedCounts,
+    FoughtCounts, HelicopterSteps, LookCounts, MapCounts, MissileTicks, ProducedCounts,
+    ProductionSteps, RangerLook, RoadCounts, SuppliedCounts, SupplySteps, TerrainDrawn,
+    UpgradeSteps, UpgradedCounts,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -139,6 +140,24 @@ pub(crate) enum CheckFailure {
     /// The supply center freed no truck as it completed.
     #[display("the supply center freed no truck")]
     NoTruck,
+    /// The helicopter play's player lacks a helicopter of this type at its start.
+    #[display("player 1 has no {_0} at its start")]
+    NoHelicopter(&'static str),
+    /// The mode's type of this name has no flight.
+    #[display("the mode's {_0} does not fly")]
+    NoFlight(&'static str),
+    /// The Comanche did not climb to its height within the limit.
+    #[display("the Comanche did not climb to its height within the limit")]
+    NoClimb,
+    /// The Chinook brought no load home within the limit.
+    #[display("the Chinook brought no load home within the limit")]
+    NoLoad,
+    /// The Comanche was not shot down within the limit.
+    #[display("the Comanche was not shot down within the limit")]
+    NoShotDown,
+    /// The helicopter play's ticks or load differ from the expected.
+    #[display("it played helicopters as {_0}")]
+    Helicopters(Box<Differs<HelicopterSteps>>),
     /// The free truck delivered fewer loads than the supply play pins within its limit.
     #[display("the free truck delivered {_0} loads within the limit")]
     NoDelivery(usize),

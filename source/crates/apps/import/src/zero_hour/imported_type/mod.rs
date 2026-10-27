@@ -6,9 +6,9 @@ use campfire_combat::{
 use campfire_common::DeclaredName;
 use campfire_declarations::SectionWriter;
 use campfire_geometry::BodyBox;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::{BountyData, IncomeData, IncomePays, Pays};
-use campfire_navigation::{Gait, UnitNavigationData};
+use campfire_navigation::{FlightData, Gait, UnitNavigationData};
 use campfire_orders::AcquirePatch;
 use campfire_projectiles::ProjectileData;
 use campfire_stats::{StatValue, StatsData, TypePoolsData};
@@ -17,6 +17,7 @@ use campfire_values::{EngineStat, Stat};
 
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::ini::locomotor_ini::Locomotor;
 use crate::zero_hour::format::ini::object_ini::fight_data::{BodyKind, IniTurretPitch};
 use crate::zero_hour::format::ini::object_ini::ini_supply::IniSpawn;
 use crate::zero_hour::format::ini::object_ini::{GeometryShape, IniObject};
@@ -30,26 +31,27 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// by the generic backends with the original's numbers; 09-zero-hour.md, Only walkers and standing
 /// structures have bodies; 09-zero-hour.md, Life is the original's; 09-zero-hour.md, Defeat by the
 /// last building that counts): the speed and the turn rate of its first normal locomotor that
-/// drives on the ground; its body: a circle of its bounding radius, at most `MAX_WALKER`, when it
-/// drives, or, when it is a structure that is not small, a box of twice its radii for a box
-/// geometry, else a circle of its radius, of its geometry's height (04-capabilities/00-overview.md,
-/// A body has a height); the life of an active or a structure body, with its `combat` section of
-/// the armor of its starting armor set and, as its `armors`, the one of its armor set of
-/// `PLAYER_UPGRADE` while its unit holds the tag of that flag (09-zero-hour.md, Zero Hour's upgrade
-/// flags are tags and stats); the tags of its kinds, of victory for a structure that
-/// counts for one, and of a structure, a wall and infantry, which a projectile's hits and a scatter
-/// name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its
-/// `BuildCost` in money as the cost a kill's bounty takes its share of; and the money its
-/// `AutoDepositUpdate` pays over time, a capture's bonus among it (04-capabilities/games.md, Income
-/// over time); and of one that drives, its `navigation`: it drives as a vehicle of `KindOf` and
-/// steps as any other, at a weight of its circle's radius squared, as a body's area weighs it
-/// (04-capabilities/navigation.md, A unit moves by its kind of motion;
-/// 04-capabilities/navigation.md, A unit has a weight). Every other object has none of these. What
-/// every type shares, a death that despawns and a turret's tolerance and slot kind, is Zero Hour's
-/// rules data, `[defaults]`, which lies under each type's own (03-game-scripting.md, Defaults under
-/// each unit type). A fired projectile's type is a projectile alone (09-zero-hour.md, The import
-/// converts shells, splash, scatter, pitch, turrets and slow weapons; 09-zero-hour.md, A missile
-/// converts to a steered projectile).
+/// drives on the ground or hovers, and of one that hovers its flight on the air layer
+/// (helicopters.md, The import flies a hovering locomotor); its body: a circle of its bounding
+/// radius, at most `MAX_WALKER`, when it drives, or, when it is a structure that is not small, a
+/// box of twice its radii for a box geometry, else a circle of its radius, of its geometry's height
+/// (04-capabilities/00-overview.md, A body has a height); the life of an active or a structure
+/// body, with its `combat` section of the armor of its starting armor set and, as its `armors`, the
+/// one of its armor set of `PLAYER_UPGRADE` while its unit holds the tag of that flag
+/// (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats); the tags of its kinds, of
+/// victory for a structure that counts for one, and of a structure, a wall and infantry, which a
+/// projectile's hits and a scatter name; the turn rate of the turret of its AI module, which turns
+/// its weapons; and, of a life, its `BuildCost` in money as the cost a kill's bounty takes its
+/// share of; and the money its `AutoDepositUpdate` pays over time, a capture's bonus among it
+/// (04-capabilities/games.md, Income over time); and of one that drives, its `navigation`: it
+/// drives as a vehicle of `KindOf` that does not hover and steps as any other, at a weight of its
+/// circle's radius squared, as a body's area weighs it (04-capabilities/navigation.md, A unit moves
+/// by its kind of motion; 04-capabilities/navigation.md, A unit has a weight). Every other object
+/// has none of these. What every type shares, a death that despawns and a turret's tolerance and
+/// slot kind, is Zero Hour's rules data, `[defaults]`, which lies under each type's own
+/// (03-game-scripting.md, Defaults under each unit type). A fired projectile's type is a projectile
+/// alone (09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and slow
+/// weapons; 09-zero-hour.md, A missile converts to a steered projectile).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedType {
     /// Its most life, of a type that lives, which its `stats` hold too.
@@ -71,6 +73,9 @@ pub(crate) struct ImportedType {
     income: Option<IncomeData>,
     projectile: Option<ProjectileData>,
     navigation: Option<UnitNavigationData>,
+    /// The flight of a type whose locomotor hovers (helicopters.md, The import flies a hovering
+    /// locomotor).
+    flight: Option<FlightData>,
     /// Whether it leads its spawns, so it has no weapon, body, walk or life of its own.
     leads: bool,
     /// The period of its AI module's idle scan, and every hostile unit for one that attacks
@@ -145,10 +150,14 @@ impl ImportedType {
                 .locomotors
                 .get(name)
                 .ok_or_else(|| TypeError::NoLocomotor(name.clone()))?;
-            if drive.is_none() && locomotor.drives() {
+            if drive.is_none() && (locomotor.drives() || locomotor.hovers()) {
                 drive = Some(locomotor);
             }
         }
+        let flight = drive
+            .filter(|locomotor| locomotor.hovers())
+            .map(|locomotor| Self::flight(locomotor, rules.game_data.gravity))
+            .transpose()?;
         if drive.is_some() && object.supply().kept().is_some_and(IniSpawn::leads) {
             return Ok(Self::leader(object, names));
         }
@@ -158,7 +167,8 @@ impl ImportedType {
             .transpose()?;
         let navigation = walker
             .map(|radius| {
-                let gait = if object.is_vehicle() {
+                // A hover moves any way, as a soldier steps.
+                let gait = if object.is_vehicle() && flight.is_none() {
                     Gait::Drive
                 } else {
                     Gait::Step
@@ -183,7 +193,8 @@ impl ImportedType {
                 let height = num(geometry.height())?;
                 let shape = shape.and_then(|shape| shape.raised(height));
                 let shape = shape.ok_or(TypeError::Body)?;
-                Some(CollisionData { shape, layer: None })
+                let layer = flight.map(|_| names.air.clone());
+                Some(CollisionData { shape, layer })
             }
             None => None,
         };
@@ -291,9 +302,32 @@ impl ImportedType {
             income,
             projectile: None,
             navigation,
+            flight,
             acquire,
             leads: false,
         })
+    }
+
+    /// The flight of a hovering `locomotor` under the game's `gravity`, in units a second
+    /// squared, below 0: at its `PreferredHeight`, an air target past its
+    /// `AirborneTargetingHeight`, or never for none, and climbing at the mean speed of its climb
+    /// from rest to that height, its lift net of gravity lifting it and gravity braking it, as
+    /// `Locomotor::calcLiftToUseAtPt` solves the equation of motion: √(h ÷ 2(1/a + 1/g)), so it
+    /// reaches its height in the original's time (helicopters.md, The import flies a hovering
+    /// locomotor).
+    fn flight(locomotor: &Locomotor, gravity: f32) -> Result<FlightData, TypeError> {
+        let height = locomotor.preferred_height;
+        let braking = -gravity;
+        let lifting = locomotor.lift + gravity;
+        if !(height > 0.0 && braking > 0.0 && lifting > 0.0) {
+            return Err(TypeError::Flight);
+        }
+        let climb = (height / (2.0 * (1.0 / lifting + 1.0 / braking))).sqrt();
+        let airborne = match locomotor.airborne_height {
+            Some(airborne) => num(airborne as f32)?,
+            None => Vec3::BOUND,
+        };
+        FlightData::new(num(height)?, num(climb)?, airborne).ok_or(TypeError::Flight)
     }
 
     /// The type of `object`, a walker that leads its spawns: its tags alone, as it has no life,
@@ -313,6 +347,7 @@ impl ImportedType {
             income: None,
             projectile: None,
             navigation: None,
+            flight: None,
             acquire: None,
             leads: true,
         }
@@ -448,6 +483,9 @@ impl ImportedType {
         if let Some(navigation) = &self.navigation {
             writer.section(navigation);
         }
+        if let Some(flight) = &self.flight {
+            writer.section(flight);
+        }
     }
 
     /// The type of a projectile, of `projectile` alone: it has no life, no body and no tag.
@@ -465,6 +503,7 @@ impl ImportedType {
             income: None,
             projectile: Some(projectile),
             navigation: None,
+            flight: None,
             acquire: None,
             leads: false,
         }

@@ -106,7 +106,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
     let own = ImportedWeapon::own;
     let decimal = |value: i64| Ranked::One(Number::Value(Scalar::Decimal(Num::int(value))));
     let range = |meters: i64| Ranked::One(RangeField::Range(ActionRange::meters(Num::int(meters))));
-    let enemies = Targeting::Unit(FilterData::parse("enemies").unwrap());
+    let enemies = Targeting::Unit(FilterData::parse("enemies:!air_target").unwrap());
     let rifle = ImportedWeapon {
         keys: ActionKeys {
             range: Some(range(100)),
@@ -210,7 +210,19 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
         weapon("Beam").map(|beam| (beam.attack.damage, beam.attack.speed)),
         Ok((WeaponValue::Own(decimal(30)), None))
     );
-    assert_eq!(weapon("Stinger"), Err(WeaponDropCause::NotGround));
+    // A weapon's anti flags give its targets: the rifle's ground alone, the enemies no air
+    // target; the Stinger's air alone, the air targets; the interceptor's neither, which drops.
+    let targets = |name| weapon(name).map(|weapon| weapon.keys.targeting);
+    let names = RulesNames::default();
+    assert_eq!(
+        targets("RangerRifle"),
+        Ok(Targeting::Unit(names.enemies_on_ground))
+    );
+    assert_eq!(
+        targets("Stinger"),
+        Ok(Targeting::Unit(names.enemies_in_air))
+    );
+    assert_eq!(weapon("Interceptor"), Err(WeaponDropCause::NoTarget));
     assert_eq!(weapon("Blast"), Err(WeaponDropCause::Suicide));
     assert_eq!(weapon("Pulse"), Err(WeaponDropCause::AtSelf));
     // The minigun's 250 ms are ⌈7.5⌉ = 8 frames, 266 ms; past 1 and 5 shots in a row, its

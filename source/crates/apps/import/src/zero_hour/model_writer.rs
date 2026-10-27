@@ -117,8 +117,10 @@ struct Converter<'i, 'w> {
 }
 
 /// The looks of an import's `client/units.toml`, which later stages complete before the import
-/// writes them, the bones each unit type's turret and weapons read of its model, and the width
-/// of the track each look's treads lay, of the looks whose model names its treads' bones.
+/// writes them, the bones each unit type's turret and weapons read of its model, the width of the
+/// track each look's treads lay, of the looks whose model names its treads' bones, and the
+/// helipad of each object whose model names its bone, on the ground in its object's frame, the
+/// game's axes.
 #[derive(Debug)]
 pub(crate) struct ImportedLooks {
     pub(crate) units: BTreeMap<DeclaredName, ClientUnit>,
@@ -126,15 +128,21 @@ pub(crate) struct ImportedLooks {
     pub(crate) objects: BTreeMap<DeclaredName, ObjectLook>,
     pub(crate) bones: BTreeMap<TypeName, ModelBones>,
     pub(crate) track_widths: BTreeMap<DeclaredName, f32>,
+    pub(crate) helipads: BTreeMap<DeclaredName, [f32; 2]>,
 }
 
-/// What a unit reads of its model at rest: its turret's and weapons' bones, and the width of
-/// the track its treads lay, when its model names their bones.
+/// What a unit reads of its model at rest: its turret's and weapons' bones, the width of the
+/// track its treads lay, when its model names their bones, and its helipad, its `HeliPark01`
+/// bone's point on the ground, the game's axes, when its model names it.
 #[derive(Debug)]
 struct ModelRest {
     bones: ModelBones,
     track_width: Option<f32>,
+    helipad: Option<[f32; 2]>,
 }
+
+/// The bone an airfield makes a helicopter at (`ParkingPlaceBehavior::exitObjectViaDoor`).
+const HELIPAD: &str = "HeliPark01";
 
 /// The width of one tread, which the game adds to the span of a model's tread bones for its
 /// track's width (`W3DTerrainTracks.cpp`, `DEFAULT_TRACK_WIDTH`).
@@ -241,6 +249,7 @@ impl ModelWriter<'_, '_> {
         let mut objects = BTreeMap::new();
         let mut bones = BTreeMap::new();
         let mut track_widths = BTreeMap::new();
+        let mut helipads = BTreeMap::new();
         let shown = StateLook::default();
         for object in ini.objects() {
             let scale = object.scale();
@@ -261,6 +270,7 @@ impl ModelWriter<'_, '_> {
             let ModelRest {
                 bones: of_model,
                 track_width,
+                helipad,
             } = self.bones(boned.draws(), boned.scale())?;
             if let Some(of_parent) = ini.variations_of(object) {
                 let mut looks = Vec::with_capacity(of_parent.len());
@@ -302,6 +312,9 @@ impl ModelWriter<'_, '_> {
             if let Some(width) = track_width {
                 track_widths.insert(declared.clone(), width);
             }
+            if let Some(helipad) = helipad {
+                helipads.insert(declared.clone(), helipad);
+            }
             units.insert(declared, unit_look);
         }
         Ok(ImportedLooks {
@@ -310,6 +323,7 @@ impl ModelWriter<'_, '_> {
             objects,
             bones,
             track_widths,
+            helipads,
         })
     }
 
@@ -602,6 +616,7 @@ impl ModelWriter<'_, '_> {
         let none = ModelRest {
             bones: ModelBones::default(),
             track_width: None,
+            helipad: None,
         };
         let drawn = draws.iter().find(|draw| draw.kind == DrawKind::Family);
         let Some((draw, model)) = drawn.and_then(|draw| Some((draw, draw.model.as_ref()?))) else {
@@ -650,6 +665,9 @@ impl ModelWriter<'_, '_> {
         }
         let track_width =
             (nodes.tread_span(&pristine)).map(|span| span * scale.get() + TREAD_WIDTH);
+        // A pivot's point is on the engine's axes, its `z` the game's `−y`.
+        let helipad = (nodes.pivot_point(HELIPAD, &pristine))
+            .map(|at| [at.x * scale.get(), -at.z * scale.get()]);
         Ok(ModelRest {
             bones: ModelBones {
                 pivot: pivot(draw.turret.as_ref())?,
@@ -657,6 +675,7 @@ impl ModelWriter<'_, '_> {
                 barrels,
             },
             track_width,
+            helipad,
         })
     }
 

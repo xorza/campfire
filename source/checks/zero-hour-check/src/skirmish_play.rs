@@ -33,6 +33,8 @@ const RANGER: &str = "americainfantryranger";
 const FACTORY: &str = "americawarfactory";
 const CRUSADER: &str = "americatankcrusader";
 const POWER_PLANT: &str = "americapowerplant";
+/// The USA's gatherer, which its supply center sends to gather as it stands up.
+const CHINOOK: &str = "americavehiclechinook";
 
 /// The strategy center, which the dozer places 150 m along −x from the barracks, clear of the
 /// cliffs and of the others, at America's angle, past the war factory it needs.
@@ -377,7 +379,8 @@ impl Play<'_> {
     }
 
     /// The dozer `builder` builds each of `FACTORY_CHAIN` whole in `play`, one after another; the
-    /// ticks of each and the money left.
+    /// ticks of each and the money left. Each Chinook a building sends to gather stands, so the
+    /// money counts what the play spends alone; the helicopter play pins a Chinook's gather.
     fn factory(
         &self,
         play: &mut MatchPlay<'_>,
@@ -386,6 +389,12 @@ impl Play<'_> {
         let mut ticks = [0; FACTORY_CHAIN.len()];
         for (&building, ticks) in FACTORY_CHAIN.iter().zip(&mut ticks) {
             *ticks = play.build(self.packages, builder, building)?;
+            let chinooks = play.owned(CHINOOK, 0)?;
+            let stops: Vec<Order> = chinooks
+                .into_iter()
+                .map(|chinook| Order::one(chinook, OrdersDirective::Stop))
+                .collect();
+            play.order(&stops);
         }
         Ok(FactorySteps {
             ticks,

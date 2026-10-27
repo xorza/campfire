@@ -20,6 +20,7 @@ fn a_weapon_reads_its_numbers_its_type_its_times_and_its_projectile() {
             aim_delta: 0.0,
             laser: false,
             anti_ground: true,
+            anti_air: false,
             affects: RadiusAffects::DEFAULT,
             collides: CollideMask::DEFAULT,
             at_self: false,

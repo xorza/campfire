@@ -19,17 +19,19 @@ use campfire_math::{Num, Vec3};
 use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, Layer, MoveStep, OpenCellAsk, OpenCellRun, SpawnCallbacks,
-    UnitTracker, UnitsSystems, WallBook,
+    BodyUnit, Dead, DeclaredTags, Layer, MapBook, MoveStep, OpenCellAsk, OpenCellRun,
+    SpawnCallbacks, UnitTracker, UnitsSystems, WallBook,
 };
-use campfire_values::{PathId, UnitType};
+use campfire_values::{EngineTag, PathId, TagProperties, UnitType};
 
 use crate::crowd_costs::CrowdCosts;
+use crate::fliers::Fliers;
 use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::Walkable;
 use crate::terrain::WallGrid;
 
+mod altitude;
 mod arrived_at;
 mod aside_depth;
 #[cfg(feature = "internals")]
@@ -40,6 +42,8 @@ mod collider;
 mod crowd_book;
 mod crowd_costs;
 mod error;
+mod fliers;
+mod flight_data;
 mod forced_moves;
 mod gait;
 mod group_box;
@@ -84,12 +88,14 @@ mod walker_kinds;
 mod walker_on_path;
 mod walking;
 
+pub use crate::altitude::Altitude;
 pub use crate::arrived_at::ArrivedAt;
 pub use crate::aside_depth::AsideDepth;
 pub use crate::body_index::{BodyIndex, IndexedBody};
 pub use crate::collider::Collider;
 pub use crate::crowd_book::CrowdBook;
 pub use crate::error::{MapProblem, NavigationDataError, NavigationRefusal};
+pub use crate::flight_data::FlightData;
 pub use crate::forced_moves::ForcedMoves;
 pub use crate::gait::Gait;
 pub use crate::group_box::GroupBox;
@@ -140,10 +146,9 @@ pub enum NavigationSystems {
     FollowPaths,
     /// Units route and move.
     Move,
-    /// The static bodies are taken again, and walkers collide.
+    /// The static bodies are taken again, walkers collide, the units out of the map's bounds come
+    /// back in, and fliers fly.
     Collide,
-    /// The units out of the map's bounds come back in.
-    Bounds,
     /// The static bodies are taken once the tick's last stage is done, so the index holds them
     /// as they stand at the boundary.
     TrackEnd,
@@ -155,7 +160,6 @@ impl ModuleSystems for NavigationSystems {
         Self::FollowPaths,
         Self::Move,
         Self::Collide,
-        Self::Bounds,
         Self::TrackEnd,
     ];
 
@@ -165,7 +169,6 @@ impl ModuleSystems for NavigationSystems {
             Self::FollowPaths => SetPlace::at(ActionsSystems::Chase),
             Self::Move => SetPlace::stage(SimSystems::Move),
             Self::Collide => SetPlace::stage(SimSystems::Collide),
-            Self::Bounds => SetPlace::gap(SimEdgeSystems::After(SimSystems::Collide)),
             Self::TrackEnd => SetPlace::gap(SimEdgeSystems::After(SimSystems::Vision)),
         }
     }
@@ -187,6 +190,8 @@ impl Module for Navigation {
         d.section::<MapNavigationData>();
         d.section::<MapPathsData>();
         d.section::<UnitNavigationData>();
+        d.section::<FlightData>();
+        d.engine_tags(&[Self::AIR_TARGET]);
         d.removals::<Dead>();
         d.callback::<SpawnCallbacks>(Capability::Navigation, Self::make_room);
         d.component::<PathWalker>();
@@ -223,6 +228,8 @@ impl Module for Navigation {
         d.book::<ById<UnitType, Walker>>(Walker::book);
         d.book::<WalkerBook>(WalkerBook::build);
         d.book::<ById<UnitType, UnitNavigationData>>(UnitNavigationData::book);
+        d.book::<ById<UnitType, FlightData>>(FlightData::book);
+        d.component::<Altitude>();
         d.book::<CrowdBook>(CrowdBook::build);
         d.names::<Layer>(Self::layer_names);
         d.extend::<DeclaredTags>(Self::layer_tags);
@@ -240,14 +247,22 @@ impl Module for Navigation {
             at.of_type::<MoveStep>().map(|_| AsideDepth::default())
         });
         d.part::<BodyUnit, Hemmed>(|at| at.of_type::<MoveStep>().map(|_| Hemmed::default()));
+        // A flier, which its type's flight tells, flies from its height in the world as it spawns.
+        d.part::<BodyUnit, Altitude>(|at| {
+            at.of_type::<FlightData>()?;
+            let position = at.position()?;
+            let map = at.world().get_resource::<MapBook>();
+            let point = map.map_or(position, |map| map.point(position));
+            Some(Altitude::new(point.y))
+        });
     }
 
     /// Adds navigation to a match, with no paths, the world for bounds, and a static index for
     /// walkers as wide as a body may be, until the mode sets its map's: in Act, before units chase
     /// their targets, path walkers walk their paths; in Move, units walk their
     /// routes to their destinations, straight lines until the map gives a pathing grid, then the
-    /// forced moves move theirs; in Collide, overlapping living bodies part; after Collide, each
-    /// unit that walks stands within the bounds again.
+    /// forced moves move theirs; in Collide, overlapping living bodies part, each unit that walks
+    /// stands within the bounds again, and fliers fly to their heights.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.add(
             NavigationSystems::TrackStatics,
@@ -283,9 +298,14 @@ impl Module for Navigation {
         );
         cx.add(
             NavigationSystems::Collide,
-            (StaticTracking::track_static_bodies, Walking::collide).chain(),
+            (
+                StaticTracking::track_static_bodies,
+                Walking::collide,
+                Walking::keep_in_bounds,
+                Fliers::fly,
+            )
+                .chain(),
         );
-        cx.add(NavigationSystems::Bounds, Walking::keep_in_bounds);
         cx.add(
             NavigationSystems::TrackEnd,
             StaticTracking::track_static_bodies,
@@ -294,6 +314,10 @@ impl Module for Navigation {
 }
 
 impl Navigation {
+    /// The engine tag of a flier whose height above the ground passes its type's airborne height
+    /// (helicopters.md, Airborne is a tag of height).
+    pub const AIR_TARGET: EngineTag = EngineTag::new(2, "air_target", TagProperties::NONE);
+
     /// Gives `world` its map's pathing grid, when the map has one, for the kinds of walker its
     /// book holds.
     pub fn load_map(world: &mut World) {
@@ -379,6 +403,7 @@ pub mod internals {
     use crate::aside_depth::AsideDepth;
     pub use crate::broadphase::internals::scene;
     use crate::crowd_book::CrowdBook;
+    use crate::flight_data::FlightData;
     use crate::hemmed::Hemmed;
     use crate::moves::Moves;
     use crate::navigation_book::NavigationBook;
@@ -478,6 +503,14 @@ pub mod internals {
         /// navigation would.
         pub fn load_moves(world: &mut World, moves: Moves) {
             CrowdBook { moves }.load_into(world);
+        }
+
+        /// Gives the units of `unit_type` the flight `flight`, as their type's section would; units
+        /// spawned after fly.
+        pub fn load_flight(world: &mut World, unit_type: UnitType, flight: FlightData) {
+            ById::<UnitType, FlightData>::amend(world, |_, book| {
+                book.set(unit_type, flight);
+            });
         }
 
         /// Gives the units of `unit_type` `navigation`, as their type's section would.

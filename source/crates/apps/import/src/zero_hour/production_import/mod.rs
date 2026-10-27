@@ -50,6 +50,9 @@ pub(crate) struct ProductionImport {
     pub(crate) sections: BTreeMap<TypeName, ProductionData>,
     /// The docks, supply centers, gatherers and free units of the types it visits.
     pub(crate) supply: SupplyImport,
+    /// The helipad of each type whose model names one, by its type's name, which an airfield's
+    /// trains leave from.
+    helipads: BTreeMap<DeclaredName, [f32; 2]>,
 }
 
 /// A faction's base, which a player slot that starts with one gets beside its start
@@ -237,8 +240,15 @@ impl ProductionImport {
     /// converted button makes or its variations hold, a building frees, or its object's
     /// prerequisites name, named there, and its own command set's buttons and supply converted in
     /// turn.
-    pub(crate) fn of<'r>(rules: &'r ZeroHourRules, names: &mut ProductionNames<'r>) -> Self {
-        let mut import = Self::default();
+    pub(crate) fn of<'r>(
+        rules: &'r ZeroHourRules,
+        names: &mut ProductionNames<'r>,
+        helipads: BTreeMap<DeclaredName, [f32; 2]>,
+    ) -> Self {
+        let mut import = Self {
+            helipads,
+            ..Self::default()
+        };
         let mut queued: VecDeque<NamedObject<'r>> = names.typed_objects().into();
         // A type is visited once, by its name, as several parents may field one variation.
         let mut seen: BTreeSet<TypeName> = queued.iter().map(|named| named.name.clone()).collect();
@@ -293,7 +303,7 @@ impl ProductionImport {
         let kept = supply.kept().is_some() && spawning == Spawning::ByExit;
         if (kept || supply.one_shots().next().is_some())
             && !self.sections.contains_key(name)
-            && let Some(section) = Self::section(producer.build())
+            && let Some(section) = Self::section(producer.build(), self.helipad(name))
         {
             self.sections.insert(name.clone(), section);
         }
@@ -327,6 +337,7 @@ impl ProductionImport {
         names: &mut ProductionNames<'r>,
     ) -> Option<NamedObject<'r>> {
         // A button in several sets is reported once for each cause it drops by.
+        let helipad = self.helipad(&producer.name);
         let mut drop = |cause| {
             self.dropped.drop(button_name, cause);
             None
@@ -368,7 +379,7 @@ impl ProductionImport {
             _ => {}
         }
         let section = match making {
-            Making::Train => match Self::section(producer.object.build()) {
+            Making::Train => match Self::section(producer.object.build(), helipad) {
                 Some(section) => Some(section),
                 None => return drop(ButtonDropCause::NoQueue),
             },
@@ -475,7 +486,8 @@ impl ProductionImport {
         if button.science {
             return self.dropped.drop(button_name, ButtonDropCause::Science);
         }
-        let Some(section) = Self::section(producer.object.build()) else {
+        let helipad = self.helipad(&producer.name);
+        let Some(section) = Self::section(producer.object.build(), helipad) else {
             return self.dropped.drop(button_name, ButtonDropCause::NoQueue);
         };
         let Ok(windup_ms) = game_time::of_build_seconds(upgrade.time) else {
@@ -547,22 +559,32 @@ impl ProductionImport {
     /// The `production` section of a producer of `build`: its queue, its exit's points in the
     /// engine's frame, the game's `y` its `−z`, as a map's places turn, each none for a number the
     /// engine does not hold or a point past its bound, and whether its exit starts its gatherers;
-    /// none for no `ProductionUpdate`, or a queue past 1 to 255. The supply's conversion gives it
-    /// its free units.
-    fn section(build: &IniBuild) -> Option<ProductionData> {
+    /// none for no `ProductionUpdate`, or a queue past 1 to 255; an airfield of no exit module
+    /// makes its units at its `helipad`, with no rally point of its own (helicopters.md, A
+    /// helipad is an exit). The supply's conversion gives it its free units.
+    fn section(build: &IniBuild, helipad: Option<[f32; 2]>) -> Option<ProductionData> {
         let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;
         let frame = |point: [f32; 2]| {
             let [x, y] = point.map(|axis| game_float::to_num(axis).ok());
             FramePoint::new(axes::ground([x?, y?])?)
         };
         let exit = build.exit;
+        let helipad = helipad.filter(|_| build.parking && exit.is_none());
         Some(ProductionData {
             queue,
-            exit: exit.and_then(|exit| frame(exit.create)),
+            exit: match helipad {
+                Some(helipad) => frame(helipad),
+                None => exit.and_then(|exit| frame(exit.create)),
+            },
             rally: exit.and_then(|exit| frame(exit.rally)),
             gathers: exit.is_some_and(|exit| exit.starts_gatherers),
             free: Vec::new(),
         })
+    }
+
+    /// The helipad of the airfield `name`, none for another.
+    fn helipad(&self, name: &TypeName) -> Option<[f32; 2]> {
+        self.helipads.get(name.declared()).copied()
     }
 
     /// The share of a life of `most` that is 1 life, as the original's site starts at 1 hit point

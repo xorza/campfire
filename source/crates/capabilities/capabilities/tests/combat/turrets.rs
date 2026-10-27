@@ -1,4 +1,4 @@
-use campfire_sim::{DueIndex, MatchRate};
+use campfire_sim::DueIndex;
 use campfire_units::{Facing, TurnStep};
 
 use super::*;

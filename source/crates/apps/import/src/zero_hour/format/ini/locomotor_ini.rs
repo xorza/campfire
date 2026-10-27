@@ -11,17 +11,30 @@ pub(crate) struct LocomotorIni {
 }
 
 /// What the import reads of a locomotor (`LocomotorTemplate`): the surfaces it moves on, its
-/// `Speed` in units a second, its `TurnRate` in degrees a second, its `Acceleration` in units a
-/// second each second and its `PreferredHeight` in units, each 0 when absent, as the template
-/// starts, and whether its `Appearance` is `THRUST`, a missile's.
+/// `Speed` in units a second, its `TurnRate` in degrees a second, its `Acceleration` and its
+/// `Lift` in units a second each second and its `PreferredHeight` in units, each 0 when absent,
+/// as the template starts; its `Appearance`; and its `AirborneTargetingHeight`, none for the
+/// template's `INT_MAX`.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct Locomotor {
     surfaces: Surfaces,
     pub(crate) speed: f32,
     pub(crate) turn_rate: f32,
     pub(crate) acceleration: f32,
+    pub(crate) lift: f32,
     pub(crate) preferred_height: f32,
-    pub(crate) thrust: bool,
+    pub(crate) appearance: Appearance,
+    pub(crate) airborne_height: Option<i32>,
+}
+
+/// A locomotor's `Appearance`, of those the import tells apart: a missile's `THRUST`, a
+/// helicopter's `HOVER`, or another.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Appearance {
+    #[default]
+    Other,
+    Thrust,
+    Hover,
 }
 
 /// The surfaces of a locomotor's `Surfaces`, a bit each in the order of
@@ -31,6 +44,9 @@ struct Surfaces(u8);
 
 /// `TheLocomotorSurfaceTypeNames`, in order.
 const SURFACES: [&str; 5] = ["ground", "water", "cliff", "air", "rubble"];
+
+/// The bit of `AIR` among the surfaces.
+const AIR: usize = 3;
 
 impl LocomotorIni {
     /// Reads one INI file, adding its locomotors to those read before: one read again keeps its
@@ -61,6 +77,12 @@ impl Locomotor {
         self.surfaces.0 & 1 != 0
     }
 
+    /// Whether it hovers in the air, as a helicopter's does: it moves on `AIR` and appears as
+    /// `HOVER`.
+    pub(crate) fn hovers(&self) -> bool {
+        self.surfaces.0 & (1 << AIR) != 0 && self.appearance == Appearance::Hover
+    }
+
     /// Takes the line of `word`, a field the import reads or another.
     fn field(&mut self, word: &str, at: &IniLine<'_>) -> Result<(), IniError> {
         match word {
@@ -68,8 +90,19 @@ impl Locomotor {
             "speed" => self.speed = at.real()?,
             "turnrate" => self.turn_rate = at.real()?,
             "acceleration" => self.acceleration = at.real()?,
+            "lift" => self.lift = at.real()?,
             "preferredheight" => self.preferred_height = at.real()?,
-            "appearance" => self.thrust = at.value()?.eq_ignore_ascii_case("thrust"),
+            "airbornetargetingheight" => self.airborne_height = Some(at.int()?),
+            "appearance" => {
+                let value = at.value()?;
+                self.appearance = if value.eq_ignore_ascii_case("thrust") {
+                    Appearance::Thrust
+                } else if value.eq_ignore_ascii_case("hover") {
+                    Appearance::Hover
+                } else {
+                    Appearance::Other
+                };
+            }
             _ => {}
         }
         Ok(())
@@ -120,6 +153,15 @@ Locomotor JetWings\r
   Speed = 120\r
   TurnRate = 45\r
 End\r
+Locomotor HeliRotors\r
+  Surfaces = AIR\r
+  Speed = 150\r
+  TurnRate = 180\r
+  Lift = 120\r
+  PreferredHeight = 100\r
+  AirborneTargetingHeight = 30\r
+  Appearance = HOVER\r
+End\r
 ";
 }
 
@@ -138,6 +180,16 @@ mod tests {
         assert_eq!(treads.surfaces, Surfaces(0b1_0001));
         assert!(treads.drives());
         assert!(!ini.get("JetWings").unwrap().drives());
+        // The helicopter's rotors fly on the air alone, and hover; the jet's wings do not hover,
+        // and the treads drive, of no airborne height, the template's `INT_MAX`.
+        let rotors = *ini.get("HeliRotors").unwrap();
+        assert!(rotors.hovers() && !rotors.drives());
+        assert_eq!(
+            (rotors.lift, rotors.preferred_height, rotors.airborne_height),
+            (120.0, 100.0, Some(30))
+        );
+        assert!(!ini.get("JetWings").unwrap().hovers() && !treads.hovers());
+        assert_eq!(treads.airborne_height, None);
         // A later file keeps the fields it does not name, and `+` and `-` change the surfaces it
         // names alone; names are of their case, as `NAMEKEY` keeps them.
         ini.read(b"locomotor TankTreads\n surfaces = -GROUND +AIR\n speed = 15\nEnd\n")

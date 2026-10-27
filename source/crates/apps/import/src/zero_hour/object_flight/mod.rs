@@ -6,7 +6,7 @@ use campfire_projectiles::{CruiseData, CurveData, ProjectileData, ProjectileHits
 use campfire_values::FilterData;
 
 use crate::zero_hour::format::game_float;
-use crate::zero_hour::format::ini::locomotor_ini::{Locomotor, LocomotorIni};
+use crate::zero_hour::format::ini::locomotor_ini::{Appearance, Locomotor, LocomotorIni};
 use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::object_ini::fight_data::{IniMissile, IniShell};
 use crate::zero_hour::format::ini::weapon_ini::IniWeapon;
@@ -36,7 +36,8 @@ impl<'l> ObjectFlight<'l> {
         }
         let missile = fight.missile?;
         let first = object.locomotors().first()?;
-        let locomotor = locomotors.get(first).filter(|locomotor| locomotor.thrust)?;
+        let thrusts = |locomotor: &&Locomotor| locomotor.appearance == Appearance::Thrust;
+        let locomotor = locomotors.get(first).filter(thrusts)?;
         Some(Self::Missile { missile, locomotor })
     }
 

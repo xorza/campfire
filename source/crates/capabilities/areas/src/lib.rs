@@ -127,7 +127,7 @@ impl Module for Areas {
 
 impl Areas {
     /// The engine tag of area types: a filter selects their units only when it names it.
-    pub const TAG: EngineTag = EngineTag::new(3, "area", TagProperties::NONE.with_named_only());
+    pub const TAG: EngineTag = EngineTag::new(4, "area", TagProperties::NONE.with_named_only());
 
     /// Lands the area of `launcher`, which aimed at `target` from `from`: on the point it aimed
     /// at, where the unit it aimed at stands, or at `from` for an action that aims at nothing;

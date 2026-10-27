@@ -26,6 +26,13 @@ Object Jet
   Geometry = SPHERE
   GeometryMajorRadius = 12.0
 End
+Object Heli
+  KindOf = VEHICLE AIRCRAFT
+  Locomotor = SET_NORMAL HeliRotors
+  Geometry = CYLINDER
+  GeometryMajorRadius = 6.5
+  GeometryHeight = 20.0
+End
 Object Hover
   Locomotor = SET_NORMAL JetWings TankTreads
   Geometry = CYLINDER
@@ -171,6 +178,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         income: None,
         projectile: None,
         navigation: UnitNavigationData::new(gait, radius * radius),
+        flight: None,
         acquire: None,
         leads: false,
     };
@@ -187,6 +195,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         income: None,
         projectile: None,
         navigation: None,
+        flight: None,
         acquire: None,
         leads: false,
     };
@@ -213,6 +222,30 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         of("Hover").unwrap(),
         drives(half(61), int(90), half(13), int(20), Gait::Step)
     );
+    // Under the game's default gravity of 900 a second squared, the helicopter's lift of 120
+    // lifts it not, so its flight is none the engine holds; under the shipped 64, it hovers at
+    // 150 m and 180° a second on the air layer, stepping as a soldier, at 100 m, an air target
+    // past 30 m, and climbing at √(100 ÷ 2(1/56 + 1/64)) = √(22,400 ÷ 15) ≈ 38.6 m a second, the
+    // mean of its climb from rest by its lift net of gravity, 56, braking by gravity, 64.
+    assert_eq!(of("Heli"), Err(TypeError::Flight));
+    let mut shipped = ZeroHourRules {
+        objects: ObjectIni::of(&[BODIES]),
+        ..ZeroHourRules::default()
+    };
+    shipped.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+    shipped.game_data.gravity = -64.0;
+    let heli = ImportedType::of(shipped.objects.object(b"Heli").unwrap(), &shipped).unwrap();
+    let climb = (100.0_f32 / (2.0 * (1.0 / 56.0 + 1.0 / 64.0))).sqrt();
+    assert!((38.64..38.65).contains(&climb));
+    let flight = FlightData::new(int(100), num(climb).unwrap(), int(30)).unwrap();
+    let mut hovers = drives(int(150), int(180), half(13), int(20), Gait::Step);
+    let shape = hovers.collision.unwrap().shape;
+    hovers.collision = Some(CollisionData {
+        shape,
+        layer: Some(declared("air")),
+    });
+    hovers.flight = Some(flight);
+    assert_eq!(heli, hovers);
     // A train's box bounds a circle of √(112² + 10²) ≈ 112.4 m, past the original's widest
     // pathfinding footprint: its circle is that footprint's 25 m.
     assert_eq!(
@@ -459,6 +492,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         income: None,
         projectile: None,
         navigation: None,
+        flight: None,
         acquire: None,
         leads: false,
     };

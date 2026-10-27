@@ -42,8 +42,9 @@ pub enum WeaponDropCause {
     /// Its shell detonates on shrubbery, projectiles or missiles, which are no units of the
     /// engine's.
     Collides,
-    /// It may not hit the ground, `AntiGround = No`.
-    NotGround,
+    /// It may hit neither the ground nor a vehicle in the air, `AntiGround = No` and no
+    /// `AntiAirborneVehicle`.
+    NoTarget,
     /// It kills its own unit, `RadiusDamageAffects` of `SUICIDE`.
     Suicide,
     /// It deals its damage at its own place, `DamageDealtAtSelfPosition`.
