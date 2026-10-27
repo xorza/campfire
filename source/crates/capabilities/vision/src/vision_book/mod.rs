@@ -85,6 +85,8 @@ impl VisionBook {
             brush: BrushMap::new(&grid, &areas),
             grid,
             teams,
+            shroud: data.shroud,
+            neutral_in_fog: data.neutral_in_fog,
         })))
     }
 }

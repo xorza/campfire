@@ -11,6 +11,7 @@ What the released source (GeneralsX, read as a specification) and the game's INI
 - **The border.** `m_boderShroudLevel` starts at `m_shroudAlpha`: the map past its playable area is drawn shrouded; a script may set it to `m_clearAlpha` (`ScriptActions.cpp`).
 - **Objects in the fog.** `RTS3DScene::updateFixedLightEnvironments` lights a fogged object by the ambient light times `FogAlpha / ClearAlpha`; `W3DShroudMaterialPassClass` applies the shroud texture to objects as to the terrain.
 - **Sight.** An object reveals by its `ShroudClearingRange` (`Object::getShroudClearingRange`); a structure under construction reveals only its bounding circle's radius. `VisionRange` is a separate field, the range of the AI's targeting. A GLA vehicle of `GLAVehicle.ini` gives `VisionRange = 125`, `ShroudClearingRange = 300`.
+- **A skirmish starts with its map explored.** `Multiplayer.ini` gives `UseShroud = No` (the game's default is `TRUE`), and `GameLogic::startNewGame` then calls `PartitionManager::revealMapForPlayer` for each player of a game of slots, which adds and removes a looker on every cell: every cell starts fogged, none shrouded.
 - **A build needs a clear cell.** `BuildAssistant::isLocationLegalToBuild`, with `SHROUD_REVEALED`, refuses a point whose cell is not `CELLSHROUD_CLEAR`, as its first test.
 
 ## Ghosts
@@ -31,3 +32,7 @@ What the released source (GeneralsX, read as a specification) and the game's INI
 - **League of Legends.** Its server withholds an enemy's place until a client must show it ([Riot, VALORANT's fog of war](https://technology.riotgames.com/node/108)). Its fog was a 128 × 128 grid over the map, blurred by a Gaussian and upscaled to 512 × 512 to draw, with one visibility flag for each cell in place of a gradient ([Riot, A story of fog and war](https://www.riotgames.com/en/news/story-fog-and-war)).
 - **OpenRA.** A third state of explored cells comes with its shroud, and a lobby option starts the map explored ([OpenRA forum](https://forum.openra.net/viewtopic.php?p=310577)).
 - **Dota 2.** No source of Valve's says which side computes the fog it draws.
+
+## Measured
+
+- **What the kind `sight` sends** (27 October 2026, the Zero Hour check's bots' matches on Tournament Desert, 68 × 85 cells of 40 m, 91 words of 8 bytes, 728 bytes a change): over the 16,192 ticks of the bases' match, the cells a team sees changed 2,958 and 6,517 times, those it explored 720 and 1,220 times; over the 17,016 of the attacker's, 6,175 and 3,496, and 1,256 and 158. The busiest player received about 12 changes a second of its seen cells, 8.8 KB/s, and 1.6 KB/s of its explored ones.

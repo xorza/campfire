@@ -44,6 +44,10 @@ pub(crate) struct GameDataIni {
     /// `SellPercentage`, as `parsePercentToReal` reads it, a fraction of 1: the share of its cost
     /// a sold object of no `RefundValue` gives back.
     pub(crate) sell_share: f32,
+    /// `ShroudColor`, and the levels of a clear, a fogged and a shrouded cell, `ClearAlpha`,
+    /// `FogAlpha` and `ShroudAlpha`, each a byte (`W3DShroud::setShroudLevel`).
+    pub(crate) shroud_color: [u8; 3],
+    pub(crate) shroud_levels: [u8; 3],
 }
 
 /// What the terrain's conversion reads of `GameData.ini`.
@@ -82,6 +86,8 @@ impl Default for GameDataIni {
             track_marks: false,
             most_tracks: 0,
             sell_share: 1.0,
+            shroud_color: [u8::MAX; 3],
+            shroud_levels: [255, 127, 0],
         }
     }
 }
@@ -125,6 +131,21 @@ impl GameDataIni {
                         self.max_particles = count.ok_or(IniError::Range { line: line.number })?;
                     }
                     "sellpercentage" => self.sell_share = line.real()? / 100.0,
+                    "shroudcolor" => {
+                        let channels = line.int_coord(["R", "G", "B"])?;
+                        for (channel, value) in self.shroud_color.iter_mut().zip(channels) {
+                            *channel = u8::try_from(value)
+                                .map_err(|_| IniError::Range { line: line.number })?;
+                        }
+                    }
+                    level @ ("clearalpha" | "fogalpha" | "shroudalpha") => {
+                        let at = ["clearalpha", "fogalpha", "shroudalpha"]
+                            .iter()
+                            .position(|&word| word == level)
+                            .expect("one of the levels");
+                        self.shroud_levels[at] = u8::try_from(line.int()?)
+                            .map_err(|_| IniError::Range { line: line.number })?;
+                    }
                     word => {
                         let field = match word {
                             "camerapitch" => &mut self.camera_pitch,

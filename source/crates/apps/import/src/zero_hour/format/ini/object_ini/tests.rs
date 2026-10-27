@@ -9,7 +9,7 @@ use crate::zero_hour::format::ini::object_ini::ini_build::{
     IniParking, Prerequisite, ProductionExit,
 };
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSpawn, SupplyDock, SupplyGatherer};
-use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{HealthChange, UpgradeEffect};
+use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::HealthChange;
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
 
 /// Objects of each kind a placed object can be, their reskins, and lists of each form.
@@ -1067,4 +1067,39 @@ fn an_object_keeps_the_slow_death_a_normal_death_most_likely_takes() {
     ]
     .concat();
     assert_eq!(effect(&modules), (Some("FX_Blast".to_owned()), true));
+}
+
+#[test]
+fn an_object_s_radar_priority_is_its_own_or_a_structure_s_for_a_garrison_or_a_capture() {
+    let ini = ObjectIni::of(&["Object Tank
+  RadarPriority = UNIT
+End
+Object Tree
+  RadarPriority = NOT_ON_RADAR
+End
+Object Spy
+  RadarPriority = LOCAL_UNIT_ONLY
+End
+Object House
+  Behavior = GarrisonContain ModuleTag_01
+  End
+End
+Object Derrick
+  KindOf = CAPTURABLE
+End
+Object Rock
+End
+"]);
+    let priority = |name: &str| ini.object(name.as_bytes()).unwrap().radar_priority();
+    assert_eq!(
+        ["Tank", "Tree", "Spy", "House", "Derrick", "Rock"].map(priority),
+        [
+            RadarPriority::Shown,
+            RadarPriority::NotOnRadar,
+            RadarPriority::LocalUnitOnly,
+            RadarPriority::Shown,
+            RadarPriority::Shown,
+            RadarPriority::Unset
+        ]
+    );
 }

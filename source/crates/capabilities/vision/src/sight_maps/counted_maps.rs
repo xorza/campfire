@@ -78,6 +78,11 @@ impl CountedMaps {
         }
     }
 
+    /// The words of `map`'s bitmap.
+    pub(crate) fn bits(&self, map: usize) -> &[u64] {
+        &self.bits[map * self.words..][..self.words]
+    }
+
     /// Whether `map` holds a cell of `cells`, a run, a word at a time.
     pub(crate) fn any(&self, map: usize, cells: Range<usize>) -> bool {
         if cells.is_empty() {
@@ -106,11 +111,6 @@ mod tests {
     use crate::sight_maps::counted_maps::CountedMaps;
 
     impl CountedMaps {
-        /// The words of `map`'s bitmap.
-        pub(crate) fn bits(&self, map: usize) -> &[u64] {
-            &self.bits[map * self.words..][..self.words]
-        }
-
         /// Whether every bit and every count is 0.
         pub(crate) fn is_clear(&self) -> bool {
             self.bits.iter().all(|&word| word == 0) && self.counts.iter().all(|&count| count == 0)

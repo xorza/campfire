@@ -5,7 +5,7 @@ use bevy::app::{App, Plugin, PostStartup};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::Commands;
 use campfire_client_files::{
-    CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, HudFile, KeysFile,
+    CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, FogFile, HudFile, KeysFile,
     MapConditions, MapLights, PickingFile, SoundFile, TeamColors, TerrainFile,
 };
 use campfire_common::{DeclaredName, ErrorReport, MapName};
@@ -42,6 +42,8 @@ pub(crate) struct ClientLoad {
     pub(crate) effects: Option<EffectsFile>,
     /// The mode's own package's sound, `client/sound.toml`, its default for a package of none.
     pub(crate) sound: SoundFile,
+    /// The mode's own package's fog, `client/fog.toml`, its default for a package of none.
+    pub(crate) fog: FogFile,
     /// The map's lights, which its units are drawn in.
     pub(crate) lights: Option<MapLights>,
     /// The map's client objects, none when it has no file of them.
@@ -161,6 +163,7 @@ impl ClientLoad {
         self.camera = Self::file(mode, &CameraFile::path());
         self.effects = Self::file(mode, &EffectsFile::path());
         self.sound = Self::file(mode, &SoundFile::path()).unwrap_or_default();
+        self.fog = Self::file(mode, &FogFile::path()).unwrap_or_default();
         self.lights = Self::file(mode, &MapLights::path(map));
         self.objects = Self::file(mode, &ClientObjects::path(map)).unwrap_or_default();
         // The map's conditions are fixed for the match, so each object's look takes its variant

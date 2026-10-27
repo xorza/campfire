@@ -7,11 +7,13 @@ use crate::zero_hour::format::ini::ini_text::{BlockKinds, IniLine, IniText};
 /// as `parseMultiplayerStartingMoneyChoiceDefinition` adds them, each with whether it is the
 /// default a skirmish starts with; and the players' colors, each `MultiplayerColor`'s `RGBColor`
 /// as `parseMultiplayerColorDefinition` adds them, in the files' order, as its search by name
-/// matches a tooltip's name and finds none.
+/// matches a tooltip's name and finds none; and `MultiplayerSettings`' `UseShroud`, none until a
+/// file sets it.
 #[derive(Debug, Default)]
 pub(crate) struct MultiplayerIni {
     money: Vec<MoneyChoice>,
     colors: Vec<[u8; 3]>,
+    use_shroud: Option<bool>,
 }
 
 /// The starting money a skirmish's host picks among, in the order the files give them, and the
@@ -37,6 +39,14 @@ impl MultiplayerIni {
             let block = block?;
             match block.head.word() {
                 "multiplayerstartingmoneychoice" => {}
+                "multiplayersettings" => {
+                    for line in &block.fields {
+                        if line.word() == "useshroud" {
+                            self.use_shroud = Some(line.yes()?);
+                        }
+                    }
+                    continue;
+                }
                 "multiplayercolor" => {
                     self.colors.push(Self::color(&block.fields)?);
                     continue;
@@ -58,6 +68,13 @@ impl MultiplayerIni {
             self.money.push(choice);
         }
         Ok(())
+    }
+
+    /// Whether a skirmish starts its map shrouded, `UseShroud`, as `MultiplayerSettings` starts
+    /// it true; the game reveals the map to each player of no shroud as it starts
+    /// (`GameLogic::startNewGame`, `revealMapForPlayer`), every cell explored.
+    pub(crate) fn uses_shroud(&self) -> bool {
+        self.use_shroud.unwrap_or(true)
     }
 
     /// The players' colors, in the files' order.
@@ -147,6 +164,12 @@ mod tests {
             .read(b"MultiplayerColor Half\n RGBColor = R:1.5 G:2 B:3\nEnd\n")
             .unwrap();
         assert_eq!(whole.colors(), [[1, 2, 3]]);
+        // A skirmish starts shrouded until a file's settings say it does not, as the game's.
+        assert!(whole.uses_shroud());
+        whole
+            .read(b"MultiplayerSettings\n UseShroud = No\nEnd\n")
+            .unwrap();
+        assert!(!whole.uses_shroud());
         for wrong in ["R:256 G:0 B:0", "R:-1 G:0 B:0"] {
             let text = format!("MultiplayerColor Wrong\n RGBColor = {wrong}\nEnd\n");
             let read = MultiplayerIni::default().read(text.as_bytes());

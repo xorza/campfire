@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
-use bevy::math::UVec2;
+use bevy::math::{UVec2, Vec2};
 use bevy::render::render_resource::{Extent3d, TextureDataOrder, TextureDimension, TextureFormat};
 use campfire_client_files::{BorderWrap, TerrainTexture, TextureCopy, TextureLevels};
 use campfire_package_format::PackageReader;
@@ -71,6 +71,20 @@ impl TerrainImage {
             levels: texture.levels,
             texels,
         }
+    }
+
+    /// The color of the texel of its first level at `uv`, in texels, `u` right and `v` down,
+    /// the nearest one within it.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "a place is cast once it is clamped at 0 or more"
+    )]
+    pub(crate) fn texel(&self, uv: Vec2) -> [u8; 3] {
+        let [width, height] = [self.size.x, self.size.y].map(|side| side.max(1) as f32);
+        let column = uv.x.clamp(0.0, width - 1.0) as usize;
+        let row = uv.y.clamp(0.0, height - 1.0) as usize;
+        let at = (row * self.size.x as usize + column) * 4;
+        [self.texels[at], self.texels[at + 1], self.texels[at + 2]]
     }
 
     /// The texture as Bevy draws it, sampled linearly between texels and levels.
@@ -184,6 +198,24 @@ fn texels_at(at: UVec2) -> Texels {
 /// A texture's side as a length.
 fn usize_of(side: u32) -> usize {
     usize::try_from(side).expect("a side fits usize")
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use bevy::math::UVec2;
+
+    use crate::view::terrain_image::TerrainImage;
+
+    impl TerrainImage {
+        /// A texture of one level of `size` texels, `texels` of 4 bytes each, row by row.
+        pub(crate) fn of_texels(size: UVec2, texels: Vec<u8>) -> Self {
+            Self {
+                size,
+                levels: 1,
+                texels,
+            }
+        }
+    }
 }
 
 #[cfg(test)]

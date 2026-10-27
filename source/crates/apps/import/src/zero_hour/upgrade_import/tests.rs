@@ -98,7 +98,8 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     let twice = import.module(sources, &armor, &held).unwrap();
     assert_eq!(twice.modifier, held[0].modifier);
     // A power plant's rods, a model condition and sub-objects each give the tag its look tests:
-    // the condition's, or for sub-objects, which set none, one of the first trigger's.
+    // the condition's, or for sub-objects, which set none, one of the first trigger's; a radar
+    // gives the tag the minimap shows by.
     let sub_objects = UpgradeEffect::SubObjects {
         show: vec!["Rods".to_owned()],
         hide: Vec::new(),
@@ -127,8 +128,16 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
             EffectModifier::tagged(&declared(tag))
         );
     }
-    // An armor's module sets no condition its look tests.
+    // An armor's module sets no condition its look tests, nor a radar's, whose modifier gives
+    // the radar's tag.
     assert_eq!(look_tag(&armor), Ok(None));
+    let radar = module(UpgradeEffect::Radar, &["Upgrade_A"]);
+    assert_eq!(look_tag(&radar), Ok(None));
+    let entry = import.module(sources, &radar, &[]).unwrap();
+    assert_eq!(
+        import.effects[&entry.modifier],
+        EffectModifier::tagged(&declared("radar"))
+    );
     // What converted keeps its modifiers: A's and B's, and the effect's, of the life stat.
     assert_eq!(
         import.upgrades,

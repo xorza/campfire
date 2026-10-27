@@ -13,13 +13,14 @@ pub(crate) struct PlayerTemplateIni {
 }
 
 /// What the import reads of a player template: whether a player may play it, its
-/// `PlayableSide`, its `BaseSide`, and the objects a skirmish starts its player with, its
-/// `StartingBuilding` and its `StartingUnit0` to `StartingUnit9`, each none or no when absent, as
-/// the template starts.
+/// `PlayableSide`, its `BaseSide`, its `PreferredColor`, and the objects a skirmish starts its
+/// player with, its `StartingBuilding` and its `StartingUnit0` to `StartingUnit9`, each none or no
+/// when absent, as the template starts.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct PlayerTemplate {
     pub(crate) playable: bool,
     pub(crate) base_side: Option<String>,
+    pub(crate) color: Option<[u8; 3]>,
     pub(crate) building: Option<String>,
     units: [Option<String>; Self::UNITS],
 }
@@ -43,6 +44,11 @@ impl PlayerTemplateIni {
             }
         }
         Ok(())
+    }
+
+    /// The template `name`, of its case; none for one no file defines.
+    pub(crate) fn named(&self, name: &str) -> Option<&PlayerTemplate> {
+        self.templates.get(name)
     }
 
     /// The templates a player may play, by name, in the store's order.
@@ -73,6 +79,14 @@ impl PlayerTemplate {
         match (word, unit) {
             ("playableside", _) => self.playable = at.yes()?,
             ("baseside", _) => self.base_side = Some(at.value()?.to_owned()),
+            ("preferredcolor", _) => {
+                let channels = at.int_coord(["R", "G", "B"])?;
+                let byte = |value: i32| {
+                    u8::try_from(value).map_err(|_| IniError::Range { line: at.number })
+                };
+                let [r, g, b] = channels.map(byte);
+                self.color = Some([r?, g?, b?]);
+            }
             ("startingbuilding", _) => self.building = Some(at.value()?.to_owned()),
             (_, Some(index)) => self.units[index] = Some(at.value()?.to_owned()),
             _ => {}
@@ -130,6 +144,14 @@ mod tests {
             ["AmericaVehicleDozer", "Ranger"]
         );
         assert!(!ini.templates.contains_key("factionamerica"));
+        // The civilians' color, by name; a channel past a byte is refused.
+        ini.read(b"PlayerTemplate FactionCivilian\n PreferredColor = R:255 G:255 B:255\nEnd\n")
+            .unwrap();
+        let civilian = ini.named("FactionCivilian").unwrap();
+        assert_eq!(civilian.color, Some([255; 3]));
+        assert_eq!(ini.named("FactionAmerica").unwrap().color, None);
+        let wrong = b"PlayerTemplate A\n PreferredColor = R:256 G:0 B:0\nEnd\n";
+        assert!(PlayerTemplateIni::default().read(wrong).is_err());
 
         let fails = |text: &[u8]| PlayerTemplateIni::default().read(text).unwrap_err();
         assert_eq!(

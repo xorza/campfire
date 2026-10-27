@@ -3,9 +3,10 @@ use bevy::camera::{Camera3d, PerspectiveProjection, Projection};
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::message::MessageReader;
-use bevy::ecs::query::{Changed, With};
+use bevy::ecs::query::{Allow, Changed, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::schedule::common_conditions::{not, resource_exists};
 use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
@@ -15,8 +16,11 @@ use bevy::time::Time;
 use bevy::transform::components::Transform;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window};
 use campfire_host::ReportCamera;
+use campfire_sim::{Position, StableId, Unpredicted};
+use campfire_units::Owner;
 
 use crate::input_map::{Act, InputMap};
+use crate::own_player::OwnPlayer;
 use crate::view::ViewSystems;
 use crate::view::camera_rig::{CameraRig, CameraTurn, ScreenPoint, Zoom};
 use crate::view::client_data::ClientLoad;
@@ -24,14 +28,17 @@ use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
 use crate::view::scene_lights::EXPOSURE;
 
-/// The player's camera, as its package's camera file and the key map move it: the scroll chords
-/// and the window's edges scroll it, the wheel and the zoom chords zoom it, the turn chords turn
-/// it, a drag of the middle button pans it, keeping the ground it grabbed under the cursor, as an
-/// editor's and an RTS's do, and with the orbit's modifiers orbits it, turning and tilting; a
-/// click of the middle button or the reset chord sets it back. It starts over the middle of the
-/// map's heightmap, or the origin, or where a replayed report's camera stood, `start`, and stays
-/// over the heightmap. The window keeps the cursor within it while it has the focus, so the
-/// cursor reaches the edges that scroll, and lets it go when it loses the focus.
+/// The player's camera, as its package's camera file and the key map move it: the scroll chords and
+/// the window's edges scroll it, the wheel and the zoom chords zoom it, the turn chords turn it, a
+/// drag of the middle button pans it, keeping the ground it grabbed under the cursor, as an
+/// editor's and an RTS's do, and with the orbit's modifiers orbits it, turning and tilting; a click
+/// of the middle button or the reset chord sets it back. It starts over the middle of the map's
+/// heightmap, or the origin, then over the player's first unit as the client first holds one, as
+/// Zero Hour starts its camera over the player's start, which a shrouded map's middle hides; or
+/// where a replayed report's camera stood, `start` (02-engine-core.md, The camera starts over the
+/// player's first unit). It stays over the heightmap. The window keeps the cursor within it while
+/// it has the focus, so the cursor reaches the edges that scroll, and lets it go when it loses the
+/// focus.
 #[derive(Debug)]
 pub(crate) struct PlayerCameraPlugin {
     pub(crate) start: Option<ReportCamera>,
@@ -41,6 +48,11 @@ pub(crate) struct PlayerCameraPlugin {
 /// opens a report).
 #[derive(Resource, Debug)]
 struct CameraStart(ReportCamera);
+
+/// Marks the camera put over the player's first unit, once, or standing where a replayed report's
+/// stood.
+#[derive(Resource, Debug)]
+struct Homed;
 
 /// The primary window and its cursor, in a frame the window changed.
 type FocusChanged<'w, 's> = Query<
@@ -57,11 +69,16 @@ impl Plugin for PlayerCameraPlugin {
     fn build(&self, app: &mut App) {
         if let Some(start) = self.start {
             app.insert_resource(CameraStart(start));
+            app.insert_resource(Homed);
         }
         app.add_systems(Startup, Self::spawn);
         app.add_systems(
             Update,
-            (Self::steer, Self::place.run_if(Self::is_moved))
+            (
+                Self::home.run_if(not(resource_exists::<Homed>)),
+                Self::steer,
+                Self::place.run_if(Self::is_moved),
+            )
                 .chain()
                 .before(ViewSystems),
         );
@@ -100,6 +117,28 @@ impl PlayerCameraPlugin {
             rig.transform(0.0),
         ));
         commands.insert_resource(rig);
+    }
+
+    /// Puts the camera over the player's first unit, of the least stable id, as the client first
+    /// holds one of the player's.
+    fn home(
+        own: OwnPlayer<'_, '_>,
+        units: Query<'_, '_, (&StableId, &Owner, &Position), Allow<Unpredicted>>,
+        mut rig: ResMut<'_, CameraRig>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let Some(player_slot) = own.player_slot() else {
+            return;
+        };
+        let owned = units
+            .iter()
+            .filter(|(_, owner, _)| owner.player_slot() == player_slot);
+        let Some((_, _, position)) = owned.min_by_key(|&(&id, _, _)| id) else {
+            return;
+        };
+        let at = position.get();
+        rig.look_at(Vec2::new(at.x.float(), at.z.float()));
+        commands.insert_resource(Homed);
     }
 
     /// Moves the camera by this frame's keys, wheel and cursor.

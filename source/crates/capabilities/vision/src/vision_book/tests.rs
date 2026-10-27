@@ -14,6 +14,8 @@ fn a_brush_loads_only_as_a_simple_polygon_within_the_bounds() {
     let with = |points: &[(i64, i64)]| {
         let sections = Sections::default().with(GridData {
             cell: Num::ONE,
+            shroud: false,
+            neutral_in_fog: false,
             brush: vec![BrushData {
                 points: points
                     .iter()
@@ -46,6 +48,8 @@ fn a_brush_loads_only_as_a_simple_polygon_within_the_bounds() {
     let grid = Sections::default().with(GridData {
         cell: Num::ONE,
         brush: Vec::new(),
+        shroud: false,
+        neutral_in_fog: false,
     });
     assert!(VisionBook::of(&map, &grid, 64).is_ok());
     assert_eq!(

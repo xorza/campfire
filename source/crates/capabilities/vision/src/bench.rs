@@ -43,6 +43,8 @@ fn fog(c: &mut Criterion) {
         brush: BrushMap::new(&grid, &[]),
         grid,
         teams: 2,
+        shroud: false,
+        neutral_in_fog: false,
     };
     let range = Num::from_int(SIGHT).unwrap();
     let mut fog = Fog::default();

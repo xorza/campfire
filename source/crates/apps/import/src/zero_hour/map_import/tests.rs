@@ -22,6 +22,7 @@ fn read_map(text: &str) -> MapData {
     readers.add::<BoundsData>(None);
     readers.add::<GroundData>(None);
     readers.add::<MapNavigationData>(None);
+    readers.add::<GridData>(None);
     let raw = Toml::parse::<TomlTable>(text).unwrap();
     raw.read_with(MapData::seed(&readers)).unwrap()
 }
@@ -418,6 +419,12 @@ fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
     // at the bounds' z −15.
     let navigation = map.section::<MapNavigationData>().unwrap();
     assert_eq!(navigation.cell, Num::int(10));
+    // Its grid's cells are the partition's, of 40 m, with no brush, shrouded.
+    let grid = map.section::<GridData>().unwrap();
+    assert_eq!(
+        (grid.cell, grid.brush.len(), grid.shroud),
+        (Num::int(40), 0, true)
+    );
     let square = |[x0, z0, x1, z1]: [i64; 4]| {
         [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]
             .map(|[x, z]| MapPoint::Ground([Num::int(x), Num::int(z)]))

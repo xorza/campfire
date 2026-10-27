@@ -67,6 +67,25 @@ End
     ini.read(b"GameData\n  SellPercentage = 50%\nEnd\n")
         .unwrap();
     assert_eq!(ini.sell_share, 0.5);
+    // The shroud: white, with clear cells whole, fogged ones at 127 and shrouded ones dark, until
+    // a file sets them; a level past a byte refused.
+    assert_eq!(
+        (ini.shroud_color, ini.shroud_levels),
+        ([255; 3], [255, 127, 0])
+    );
+    ini.read(
+        b"GameData\n  ShroudColor = R:0 G:64 B:128\n  FogAlpha = 100\n  ShroudAlpha = 20\nEnd\n",
+    )
+    .unwrap();
+    assert_eq!(
+        (ini.shroud_color, ini.shroud_levels),
+        ([0, 64, 128], [255, 100, 20])
+    );
+    assert!(ini.read(b"GameData\n  ClearAlpha = 256\nEnd\n").is_err());
+    assert!(
+        ini.read(b"GameData\n  ShroudColor = R:0 G:300 B:0\nEnd\n")
+            .is_err()
+    );
 
     // The shipped camera's fields, which the camera's conversion reads.
     let mut shipped = GameDataIni::default();

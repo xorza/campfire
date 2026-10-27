@@ -77,6 +77,14 @@ pub enum SoundFileError {
     Playlist(DeclaredName),
 }
 
+/// Why a fog file is none the client draws (02-engine-core.md, The fog is the one material's).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum FogFileError {
+    /// A seen cell keeps less light than an explored one, or an explored one than a shrouded one.
+    #[error("a seen cell is darker than an explored one, or an explored one than a shrouded one")]
+    Order,
+}
+
 /// Why a terrain file is none the client draws (02-engine-core.md, Client): a shape, an index, a
 /// number or a rectangle past what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]

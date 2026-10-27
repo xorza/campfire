@@ -15,6 +15,7 @@ use campfire_projectiles::ProjectileData;
 use campfire_stats::{StatValue, StatsData, TypePoolsData};
 use campfire_units::{BodyShape, CollisionData, TypeTagsData, VariationData, VariationsData};
 use campfire_values::{EngineStat, Stat};
+use campfire_vision::{Sight, VisionData};
 
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::format::game_float;
@@ -87,6 +88,9 @@ pub(crate) struct ImportedType {
     /// buildings, as the install gives them, completed from the rules data's defaults, for a type
     /// of a weapon (09-zero-hour.md, A scan follows `AutoAcquireEnemiesWhenIdle`).
     acquire: Option<AcquirePatch>,
+    /// How far it sees, of a type whose range clears the shroud (09-zero-hour.md, Zero Hour sees by
+    /// the vision capability).
+    vision: Option<VisionData>,
 }
 
 /// A type's turret: the fields of its `turret` the install gives, and the weapon slots it carries,
@@ -316,6 +320,7 @@ impl ImportedType {
             sortie,
             acquire,
             leads: false,
+            vision: Self::vision(object)?,
         })
     }
 
@@ -398,10 +403,23 @@ impl ImportedType {
             sortie: None,
             acquire: None,
             leads: true,
+            vision: None,
         }
     }
 
-    /// The tags of `object`'s kinds that the rules data declares.
+    /// The sight of `object`, of its range that clears the shroud; none for one of no range above
+    /// 0, which reveals nothing, as `Object::look` skips it.
+    fn vision(object: &IniObject) -> Result<Option<VisionData>, TypeError> {
+        let range = object.sight_range();
+        if range <= 0.0 {
+            return Ok(None);
+        }
+        let sight = Sight::new(num(range)?).expect("a range above 0 is no negative sight");
+        Ok(Some(VisionData { sight }))
+    }
+
+    /// The tags of `object`'s kinds that the rules data declares, and its radar's, of one made with
+    /// it.
     fn tags(object: &IniObject, names: &RulesNames) -> Option<TypeTagsData> {
         let kinds = [
             (object.counts_for_victory(), &names.counts_for_victory),
@@ -409,6 +427,7 @@ impl ImportedType {
             (object.is_wall(), &names.wall),
             (object.is_base_defense(), &names.base_defense),
             (object.is_infantry(), &names.infantry),
+            (object.makes_radar(), &names.radar),
         ];
         let tags: Vec<DeclaredName> = kinds
             .into_iter()
@@ -537,6 +556,9 @@ impl ImportedType {
         if let Some(flight) = &self.flight {
             writer.section(flight);
         }
+        if let Some(vision) = &self.vision {
+            writer.section(vision);
+        }
     }
 
     /// The type of a projectile, of `projectile` alone: it has no life, no body and no tag.
@@ -558,6 +580,7 @@ impl ImportedType {
             sortie: None,
             acquire: None,
             leads: false,
+            vision: None,
         }
     }
 

@@ -2,12 +2,16 @@ use campfire_geometry::Grid;
 
 use crate::brush_map::BrushMap;
 
-/// The map's grid that sight reveals, its brush, and how many teams the match holds.
+/// The map's grid that sight reveals, its brush, how many teams the match holds, whether the map
+/// starts shrouded, and whether a team sees a neutral team's units that do not walk where it
+/// explored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VisionGrid {
     pub grid: Grid,
     pub brush: BrushMap,
     pub teams: usize,
+    pub shroud: bool,
+    pub neutral_in_fog: bool,
 }
 
 impl VisionGrid {

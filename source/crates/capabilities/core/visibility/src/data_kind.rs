@@ -55,6 +55,9 @@ pub enum DataKind {
     /// The units a player's orders command, on its entity, which its prediction reads
     /// (10-replication-audiences.md, The commanded units are their player's prediction).
     Commanded,
+    /// The cells a player's team sees and explored, on its entity, which its client draws as its
+    /// fog (04-capabilities/vision.md, The server sends a team's cells to its player).
+    Sight,
 }
 
 impl DataKind {
@@ -89,7 +92,8 @@ impl DataKind {
             | Self::UnitStateOwner
             | Self::PlayerStateOwner
             | Self::Server
-            | Self::Commanded => Recipients::NONE,
+            | Self::Commanded
+            | Self::Sight => Recipients::NONE,
         }
     }
 
@@ -115,9 +119,12 @@ impl DataKind {
             | Self::PlayerStateOwner
             | Self::PlayerStateTeam
             | Self::PlayerStateAll => Recipients::SPECTATORS,
-            Self::Unit | Self::Match | Self::Prediction | Self::Server | Self::Commanded => {
-                Recipients::NONE
-            }
+            Self::Unit
+            | Self::Match
+            | Self::Prediction
+            | Self::Server
+            | Self::Commanded
+            | Self::Sight => Recipients::NONE,
         }
     }
 
@@ -129,6 +136,7 @@ impl DataKind {
             | Self::Supply
             | Self::PlayerModifiers
             | Self::Commanded
+            | Self::Sight
             | Self::PlayerStateOwner
             | Self::PlayerStateTeam
             | Self::PlayerStateAll => true,
@@ -187,6 +195,7 @@ mod tests {
                 DataKind::PlayerStateTeam,
                 DataKind::PlayerStateAll,
                 DataKind::Commanded,
+                DataKind::Sight,
             ]
         );
     }

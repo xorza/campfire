@@ -62,6 +62,27 @@ pub struct ClientUnit {
     pub panel: PanelPlaces,
     #[serde(default, skip_serializing_if = "UnitVoices::is_empty")]
     pub voices: UnitVoices,
+    /// Who sees its unit on the minimap (02-engine-core.md, The minimap is drawn from the terrain
+    /// at load).
+    #[serde(default, skip_serializing_if = "RadarShown::is_everyone")]
+    pub radar: RadarShown,
+}
+
+/// Who sees a unit on the minimap: every player whose team sees it; its owner alone, as Zero
+/// Hour's `RADAR_PRIORITY_LOCAL_UNIT_ONLY`; or no one, as its `NOT_ON_RADAR`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RadarShown {
+    #[default]
+    Everyone,
+    Owner,
+    Never,
+}
+
+impl RadarShown {
+    pub const fn is_everyone(&self) -> bool {
+        matches!(self, Self::Everyone)
+    }
 }
 
 /// The voices a unit of a type answers with, each by its sound's name in the effects file, none
@@ -279,6 +300,7 @@ impl ClientUnit {
             chassis: None,
             panel: PanelPlaces::EMPTY,
             voices: UnitVoices::NONE,
+            radar: RadarShown::Everyone,
         }
     }
 

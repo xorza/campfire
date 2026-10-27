@@ -201,6 +201,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         sortie: None,
         acquire: None,
         leads: false,
+        vision: None,
     };
     let stands = |body| ImportedType {
         life: None,
@@ -219,6 +220,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         sortie: None,
         acquire: None,
         leads: false,
+        vision: None,
     };
     // A structure stands of the tag of its kind.
     let structure = |body| ImportedType {
@@ -542,6 +544,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         sortie: None,
         acquire: None,
         leads: false,
+        vision: None,
     };
     // The soldier lives by its active body, 180, in the armor of its set of no condition,
     // the second it gives, by the name the mode declares, and in its set of `PLAYER_UPGRADE`'s
@@ -686,4 +689,67 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
 /// `name`, a name the rules package declares.
 fn declared(name: &str) -> DeclaredName {
     DeclaredName::new(name).unwrap()
+}
+
+#[test]
+fn an_object_sees_by_its_shroud_clearing_range_or_else_its_vision_range() {
+    // A scout of both ranges clears the shroud by its `ShroudClearingRange`; a tank of a
+    // `VisionRange` alone, by it; a wall of a range of 0, or of none, sees nothing.
+    let ini = ObjectIni::of(&["Object Scout
+  VisionRange = 125
+  ShroudClearingRange = 300
+End
+Object Tank
+  VisionRange = 150.5
+End
+Object Wall
+  VisionRange = 100
+  ShroudClearingRange = 0
+End
+Object Rock
+End
+"]);
+    let sight = |name: &str| {
+        let object = ini.object(name.as_bytes()).unwrap();
+        let vision = ImportedType::of(object, &ZeroHourRules::default())
+            .unwrap()
+            .vision;
+        vision.map(|vision| vision.sight.range())
+    };
+    assert_eq!(
+        ["Scout", "Tank", "Wall", "Rock"].map(sight),
+        [
+            Some(Num::int(300)),
+            Some(Num::int(150) + Num::HALF),
+            None,
+            None
+        ]
+    );
+}
+
+#[test]
+fn an_object_made_with_its_radar_holds_the_radar_s_tag_and_one_researched_does_not() {
+    // The USA's command center grants its own radar as it is made; China's researches it.
+    let ini = ObjectIni::of(&["Object Granted
+  Behavior = GrantUpgradeCreate ModuleTag_09
+    UpgradeToGrant = Upgrade_AmericaRadar
+  End
+  Behavior = RadarUpgrade ModuleTag_19
+    TriggeredBy = Upgrade_AmericaRadar
+  End
+End
+Object Researched
+  Behavior = RadarUpgrade ModuleTag_14
+    TriggeredBy = Upgrade_ChinaRadar
+  End
+End
+"]);
+    let tags = |name: &str| {
+        let object = ini.object(name.as_bytes()).unwrap();
+        ImportedType::of(object, &ZeroHourRules::default())
+            .unwrap()
+            .tags
+    };
+    assert_eq!(tags("Granted"), Some(TypeTagsData(vec![declared("radar")])));
+    assert_eq!(tags("Researched"), None);
 }

@@ -1,16 +1,18 @@
 use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Without;
-use bevy_ecs::system::{Query, Res, ResMut};
+use bevy_ecs::query::{Has, With, Without};
+use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_common::Tick;
 use campfire_geometry::Shape;
-use campfire_players::OnMatch;
+use campfire_players::{OnMatch, Player};
 use campfire_sim::{Position, SimTick};
-use campfire_units::{Body, Dead, SeenBy};
-use campfire_values::{Relations, Team, UnitTags};
+use campfire_units::{Body, Dead, MoveStep, SeenBy};
+use campfire_values::{Relation, Relations, Team, TeamSet, UnitTags};
 
+use crate::explored_cells::ExploredCells;
 use crate::fog::{Fog, Seer};
 use crate::reveals::Reveals;
+use crate::seen_cells::SeenCells;
 use crate::sight::Sight;
 use crate::vision_book::VisionBook;
 use crate::vision_grid::VisionGrid;
@@ -38,8 +40,11 @@ impl Seeing {
     /// every brush other than the one it stands in, and those each such unit whose tags detect sees
     /// to its group's detection, and each reveal under way its cells, brush included, to its team's
     /// group, then gives each unit the teams that see it: its own group's, and those of each group
-    /// whose cells hold it, or, for a unit its tags hide, whose detection does. The groups follow
-    /// the relations as they change.
+    /// whose cells hold it, or, for a unit its tags hide, whose detection does; and, on a grid that
+    /// says so, a unit that does not walk, of a team another regards as neutral, that team too
+    /// where it explored its cell, as Zero Hour draws a neutral immobile object in the fog
+    /// (04-capabilities/vision.md, A neutral building stands in the fog). The groups follow the
+    /// relations as they change.
     pub(super) fn see(
         (vision, relations, tick): (
             Res<'_, VisionBook>,
@@ -55,12 +60,15 @@ impl Seeing {
                 Entity,
                 &Position,
                 &Team,
-                Option<&Body>,
-                Option<&UnitTags>,
+                (Option<&Body>, Option<&UnitTags>, Has<MoveStep>),
                 &mut SeenBy,
             ),
         >,
-        mut fog: ResMut<'_, Fog>,
+        (mut fog, explored): (
+            ResMut<'_, Fog>,
+            Query<'_, '_, (&Team, &ExploredCells), With<Player>>,
+        ),
+        mut neutral: Local<'_, Vec<TeamSet>>,
     ) {
         let grid = vision.grid().expect("a map with a grid is seen");
         let relations = relations.get();
@@ -73,15 +81,53 @@ impl Seeing {
             }
             fog.count_new(grid, &reveals);
         });
-        for (entity, &position, &team, body, tags, mut seen) in &mut units {
+        let teams_of = |at: usize| Team::new(u8::try_from(at).expect("a grid's teams fit u8"));
+        neutral.clear();
+        neutral.extend((0..grid.teams).map(|of| {
+            let viewers = (0..grid.teams).map(teams_of);
+            let neutral = viewers
+                .filter(|&viewer| relations.between(viewer, teams_of(of)) == Relation::Neutral);
+            neutral.fold(TeamSet::NONE, TeamSet::with)
+        }));
+        for (entity, &position, &team, (body, tags, walks), mut seen) in &mut units {
             let hidden = tags.is_some_and(|tags| tags.properties.is_hidden());
             let boxed = match Body::shape_of(body) {
                 Shape::Box(body) => Some(body),
                 Shape::Circle(_) => None,
             };
             let slot = entity.index_u32() as usize;
-            let teams = fog.seen_by(grid, slot, position.get(), boxed, team, hidden);
+            let mut teams = fog.seen_by(grid, slot, position.get(), boxed, team, hidden);
+            if grid.neutral_in_fog && !walks && !hidden {
+                let cell = grid.grid.cell_of(position.get());
+                let explored = |viewer: &Team| {
+                    !grid.shroud
+                        || explored.iter().any(|(&of, cells)| {
+                            of == *viewer && cell.is_some_and(|cell| cells.cells().holds(cell))
+                        })
+                };
+                let viewers = neutral[usize::from(team.get())].iter().filter(explored);
+                teams = viewers.fold(teams, TeamSet::with);
+            }
             seen.set_if_neq(SeenBy::new(teams));
+        }
+    }
+
+    /// Writes each player's cells, after the stage's sight: those its team's group sees, and, of
+    /// a shrouded map, those it explored, each only where a cell changed, so its client receives
+    /// each change once (04-capabilities/vision.md, The server sends a team's cells to its player).
+    pub(super) fn share(
+        (vision, fog): (Res<'_, VisionBook>, Res<'_, Fog>),
+        mut players: Query<'_, '_, (&Team, &mut SeenCells, &mut ExploredCells), With<Player>>,
+    ) {
+        let grid = vision.grid().expect("a map with a grid is seen");
+        for (&team, mut seen, mut explored) in &mut players {
+            let words = fog.seen_words(team);
+            if seen.bypass_change_detection().0.set(words) {
+                seen.set_changed();
+            }
+            if grid.shroud && explored.bypass_change_detection().0.add(words) {
+                explored.set_changed();
+            }
         }
     }
 

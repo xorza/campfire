@@ -27,6 +27,8 @@ pub(crate) enum UpgradeEffect {
     /// `PowerPlantUpgrade`: its player's power rises and its object's rods extend, as its
     /// `PowerPlantUpdate` sets `POWER_PLANT_UPGRADED`.
     PowerPlant,
+    /// `RadarUpgrade`: its object gives its player a radar (`Player::hasRadar`).
+    Radar,
     /// `ModelConditionUpgrade`: its object holds the model condition `flag`, its
     /// `ConditionFlag`, none for none named.
     ModelCondition { flag: Option<String> },
@@ -64,6 +66,7 @@ impl IniUpgradeModule {
                 change: HealthChange::SameCurrent,
             },
             "powerplantupgrade" => UpgradeEffect::PowerPlant,
+            "radarupgrade" => UpgradeEffect::Radar,
             "modelconditionupgrade" => UpgradeEffect::ModelCondition { flag: None },
             "subobjectsupgrade" => UpgradeEffect::SubObjects {
                 show: Vec::new(),
@@ -88,6 +91,7 @@ impl IniUpgradeModule {
             UpgradeEffect::WeaponBonus => "WeaponBonusUpgrade",
             UpgradeEffect::MaxHealth { .. } => "MaxHealthUpgrade",
             UpgradeEffect::PowerPlant => "PowerPlantUpgrade",
+            UpgradeEffect::Radar => "RadarUpgrade",
             UpgradeEffect::ModelCondition { .. } => "ModelConditionUpgrade",
             UpgradeEffect::SubObjects { .. } => "SubObjectsUpgrade",
             UpgradeEffect::Other(class) => class,

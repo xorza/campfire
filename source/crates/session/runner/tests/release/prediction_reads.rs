@@ -212,6 +212,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_units::unit_grid::UnitGrid::refresh",
         "campfire_vision::seeing::Seeing::refill",
         "campfire_vision::seeing::Seeing::see",
+        "campfire_vision::seeing::Seeing::share",
     ];
     assert_eq!(server, own);
     // The grid's refresh runs before each of its readers, a client's among them.

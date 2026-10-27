@@ -42,6 +42,10 @@ impl Grid {
         Some(Self { cell, bounds, size })
     }
 
+    pub const fn bounds(&self) -> &Bounds {
+        &self.bounds
+    }
+
     pub const fn cells(&self) -> usize {
         self.size[0] as usize * self.size[1] as usize
     }

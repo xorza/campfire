@@ -16,6 +16,7 @@ use campfire_mode::{MatchEnd, Mode, OptionPicks, OptionValue, PlayerSlotPick};
 use campfire_navigation::StalledWalkers;
 use campfire_orders::{DroppedOrders, OrdersDirective};
 use campfire_package::ModePackages;
+use campfire_players::PlayersWorld;
 use campfire_production::Site;
 use campfire_protocol::PlayerSlotPlan;
 use campfire_runner::SessionWorld;
@@ -23,10 +24,11 @@ use campfire_sim::MatchRate;
 use campfire_sim::{Position, StableId};
 use campfire_units::{BuildTarget, GroundPoint, Life, MapPoint, MoveStep, Units, UnitsWorld};
 use campfire_values::{ResourceId, UnitType};
+use campfire_vision::{CellBits, ExploredCells, SeenCells};
 use tracing::info;
 
 use crate::failure::CheckFailure;
-use crate::pins::{BotDrops, BotMatchEnd, HZ};
+use crate::pins::{BotDrops, BotMatchEnd, HZ, SightSent};
 
 /// America's command center, the building a skirmish starts a player with.
 pub(crate) const CENTER: &str = "americacommandcenter";
@@ -77,6 +79,10 @@ pub(crate) struct MatchPlay<'p> {
     /// The times a walker stood stuck 1 s so far, as navigation's report of each tick counts
     /// them.
     stalls: u64,
+    /// What the server sent players 1 and 2 of their teams' cells so far, and the cells each
+    /// held after the last tick, those it sees and those it explored.
+    sight: SightSent,
+    cells: [[CellBits; 2]; 2],
     books: Arc<Books>,
     due: DuePayloads,
     /// The record of each tick, when the play keeps one: its copy checked, and its log replayed
@@ -228,6 +234,8 @@ impl<'p> MatchPlay<'p> {
             homes: Vec::new(),
             think_ops: 0,
             stalls: 0,
+            sight: SightSent::default(),
+            cells: Default::default(),
             books,
             due,
             record,
@@ -352,6 +360,7 @@ impl<'p> MatchPlay<'p> {
             think_ops: self.think_ops,
             stalls: self.stalls,
             drops,
+            sight: self.sight,
         }
     }
 
@@ -378,6 +387,28 @@ impl<'p> MatchPlay<'p> {
         self.serve();
         self.run_tick();
         self.observe(tick);
+    }
+
+    /// Counts each change of the cells players 1 and 2 hold, those their teams see and those they
+    /// explored, which the server sends them whole.
+    fn count_sight(&mut self) {
+        let world = self.fixed.game();
+        for (at, held) in self.cells.iter_mut().enumerate() {
+            let player_slot = PlayerSlot::new(u32::try_from(at).expect("two players"));
+            let Some(player) = world.player_entity(player_slot) else {
+                continue;
+            };
+            let seen = world.get::<SeenCells>(player).map(SeenCells::cells);
+            let explored = world.get::<ExploredCells>(player).map(ExploredCells::cells);
+            let counts = [&mut self.sight.seen[at], &mut self.sight.explored[at]];
+            for ((cells, count), was) in [seen, explored].into_iter().zip(counts).zip(held) {
+                if let Some(cells) = cells.filter(|&cells| cells != was) {
+                    *count += 1;
+                    was.clone_from(cells);
+                    self.sight.words = cells.words().len();
+                }
+            }
+        }
     }
 
     /// The bots' think for the tick the match runs next, as a server's bot driver runs it, which
@@ -427,6 +458,7 @@ impl<'p> MatchPlay<'p> {
                 self.due.drops_of(drop.player_slot).untaken += 1;
             }
         }
+        self.count_sight();
         let units = MatchUnits::of(self.fixed.game());
         let stalled = self.fixed.game().get_resource::<StalledWalkers>();
         let stalls = stalled.map_or(0, |stalled| stalled.get());

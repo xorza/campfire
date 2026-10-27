@@ -527,8 +527,10 @@ mod scripted_match {
         }
         defaults.assert_no_leak();
         assert!(died, "the south's hero fell in the defaults' run");
-        // A player's money is its own, and its unit's life every client's that holds it.
+        // A player's money and its team's cells are its own, and its unit's life every client's
+        // that holds it.
         assert!(defaults.withheld.contains(&DataKind::Resources));
+        assert!(defaults.withheld.contains(&DataKind::Sight));
         assert!(defaults.held_by_other.contains(&DataKind::Life));
         assert!(!defaults.holds_resources_of(1, 0) && !defaults.holds_resources_of(4, 0));
 

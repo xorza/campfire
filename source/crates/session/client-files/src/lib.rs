@@ -24,6 +24,7 @@ mod death_fall;
 mod effect_list;
 mod effects_file;
 mod error;
+mod fog_file;
 mod hud_file;
 mod keys_file;
 mod ktx2_image;
@@ -60,7 +61,7 @@ pub use crate::client_model::{ClientModel, ClipRounds, ModelScale, ModelTop, Nod
 pub use crate::client_objects::{ClientObject, ClientObjects};
 pub use crate::client_unit::{
     BarrelFlash, ClientUnit, DeathLook, DeathWrecks, FireBarrel, FireBone, LookDraw, LookShown,
-    LookState, LookTransition, LookVariation, UnitVoices,
+    LookState, LookTransition, LookVariation, RadarShown, UnitVoices,
 };
 pub use crate::client_units::ClientUnits;
 pub use crate::condition_test::{AttackPhase, ConditionTest, LifeShare, SiteStage};
@@ -68,9 +69,11 @@ pub use crate::death_fall::{DeathFall, FallStage, GroundDeath, SelfSpin, Spiral}
 pub use crate::effect_list::{EffectList, ListedSystem};
 pub use crate::effects_file::{EffectSets, EffectsFile};
 pub use crate::error::{
-    ClientFileError, CrowdedPlace, EffectsError, SoundFileError, TeamColorsError, TerrainFileError,
-    TextureLevelsError, UntestedCondition,
+    ClientFileError, CrowdedPlace, EffectsError, FogFileError, SoundFileError, TeamColorsError,
+    TerrainFileError, TextureLevelsError, UntestedCondition,
 };
+pub use crate::fog_file::{FogFile, FogLevel};
+pub use crate::hud_file::minimap::Minimap;
 pub use crate::hud_file::panel_grid::{ButtonLook, GridCell, PanelGrid, PlaceOrder};
 pub use crate::hud_file::{HitMark, HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};

@@ -3,9 +3,9 @@ use std::path::Path;
 
 use bevy_math::UVec2;
 use campfire_client_files::{
-    ButtonLook, CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, HitMark, HudFile,
-    KeysFile, MapConditions, MapLights, PanelPlaces, PickingFile, PixelRadius, ShownBars,
-    SoundFile, TeamColors, TerrainFile,
+    ButtonLook, CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, FogFile, FogLevel,
+    HitMark, HudFile, KeysFile, MapConditions, MapLights, Minimap, PanelPlaces, PickingFile,
+    PixelRadius, RadarShown, ShownBars, SoundFile, TeamColors, TerrainFile,
 };
 use campfire_codec::Toml;
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
@@ -27,6 +27,7 @@ use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::effects_import::{EffectSources, EffectsImport, WeaponShot};
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::ini::object_ini::IniObject;
+use crate::zero_hour::format::ini::object_ini::RadarPriority;
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
 use crate::zero_hour::format::map::map_file::ZeroHourMap;
 use crate::zero_hour::format::map::terrain::TextureClass;
@@ -35,6 +36,7 @@ use crate::zero_hour::game_version::GameVersion;
 use crate::zero_hour::import_loss::ImportLoss;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
+use crate::zero_hour::import_team::SLOTS;
 use crate::zero_hour::install::{Install, TextureKind};
 use crate::zero_hour::look_flags::LookFlags;
 use crate::zero_hour::map_import::{MapImport, MapSources};
@@ -113,6 +115,8 @@ pub(crate) mod weapon_drop_cause;
 pub(crate) mod wreck_import;
 pub(crate) mod zero_hour_rules;
 
+/// The player template of the neutral player, whose color the neutral team takes.
+const CIVILIAN: &str = "FactionCivilian";
 /// What an import wrote: the packages' fingerprints, each map, by name, which loads, the road
 /// pieces each map draws, and what it does not hold of the install, in the order the import met
 /// it.
@@ -176,9 +180,18 @@ impl ZeroHour {
             least_radius_px: PixelRadius::new(10.0).expect("a radius at least 0"),
         };
         writer.write(PickingFile::path(), &picking.encode())?;
-        // The players' colors, each team's by its index (02-engine-core.md, Team colors in the
-        // one material).
-        let colors = TeamColors::new(game.multiplayer.colors().to_vec())?;
+        // The players' colors, each team's by its index, the slots' of the multiplayer colors in
+        // turn, then the neutral team's of the civilians' template, as the game colors the neutral
+        // player by `FactionCivilian`'s `PreferredColor`, white when it gives none
+        // (02-engine-core.md, Team colors in the one material).
+        let players = game.multiplayer.colors();
+        let civilian = game
+            .templates
+            .named(CIVILIAN)
+            .and_then(|civilian| civilian.color);
+        let slots = players.iter().cycle().take(usize::from(SLOTS)).copied();
+        let colors = slots.chain([civilian.unwrap_or([u8::MAX; 3])]);
+        let colors = TeamColors::new(colors.collect())?;
         writer.write(TeamColors::path(), &colors.encode())?;
         let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut writer);
         let mut object_names = ImportNames::default();
@@ -306,10 +319,17 @@ impl ZeroHour {
         // The game draws a bar only over a unit selected or under the cursor
         // (`Drawable::drawHealthBar`), and marks no hit (02-engine-core.md, The mode chooses its
         // hit mark).
+        // The radar the game draws by a `RadarUpgrade`'s tag, over its `RADAR_CELL_WIDTH` of 128,
+        // darkened by `interpolateColorForHeight`'s 0.6, its objects of 2 × 2 texels
+        // (02-engine-core.md, A minimap by a radar tag).
         let hud = HudFile {
             bars: ShownBars::Selected,
             hit_mark: HitMark::Hidden,
             panel: panel.grid.clone(),
+            minimap: Minimap {
+                radar: Some(game.names.radar.clone()),
+                ..Minimap::default()
+            },
         };
         writer.write(HudFile::path(), &hud.encode())?;
         let mut object_names = object_names.into_projectiles();
@@ -441,12 +461,18 @@ impl ZeroHour {
         };
         let mut actions =
             effects.action_looks(&game.weapons, delivery, &mut sounds, &mut looks.units)?;
-        // Each look's voices, and the music of each faction's base side (02-engine-core.md, A look
-        // names its voices; 02-engine-core.md, Music by a choice).
+        // Each look's voices, and who sees it on the minimap, and the music of each faction's base
+        // side (02-engine-core.md, A look names its voices; 02-engine-core.md, The minimap is drawn
+        // from the terrain at load; 02-engine-core.md, Music by a choice).
         for object in game.objects.objects() {
             let declared = ImportName::object(object).declared()?;
             if let Some(look) = looks.units.get_mut(&declared) {
                 look.voices = sounds.voices(object.voices())?;
+                look.radar = match object.radar_priority() {
+                    RadarPriority::Unset | RadarPriority::NotOnRadar => RadarShown::Never,
+                    RadarPriority::LocalUnitOnly => RadarShown::Owner,
+                    RadarPriority::Shown => RadarShown::Everyone,
+                };
             }
         }
         let factions = start.factions.iter().filter_map(|faction| {
@@ -460,6 +486,13 @@ impl ZeroHour {
         effects.file = effects.file.clone().with_sounds(sounded.events)?;
         writer.write(EffectsFile::path(), &effects.file.encode())?;
         writer.write(SoundFile::path(), &sound_file.encode())?;
+        // The fog of the game's shroud levels (02-engine-core.md, The fog is the one material's).
+        let game_data = &game.game_data;
+        let fog = FogFile::new(
+            game_data.shroud_levels.map(FogLevel),
+            game_data.shroud_color,
+        )?;
+        writer.write(FogFile::path(), &fog.encode())?;
         for (to, bytes) in &sounded.files {
             writer.write(to.clone(), bytes)?;
         }
@@ -558,7 +591,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 53;
+    pub const OUTPUT_VERSION: u32 = 62;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

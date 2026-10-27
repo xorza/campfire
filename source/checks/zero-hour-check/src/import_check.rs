@@ -8,6 +8,7 @@ use campfire_client_files::{
 };
 use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
+use campfire_geometry::Grid;
 use campfire_import::{
     AnimationDropCause, ButtonDropCause, EffectDropCause, ImportLoss, Imported, PanelDropCause,
     RoadDropCause, SoundDropCause, StateDropCause, SupplyDropCause, UpgradeDropCause,
@@ -19,7 +20,9 @@ use campfire_package::{ModePackages, ModeRead};
 use campfire_package_format::PackageReader;
 use campfire_production::{DropOffData, NodeData, SellData};
 use campfire_stats::UpgradesData;
+use campfire_units::BoundsData;
 use campfire_values::PackagePath;
+use campfire_vision::{GridData, VisionData};
 use tracing::info;
 
 use crate::attack_play::AttackPlay;
@@ -90,6 +93,16 @@ impl ImportCheck<'_> {
         info!(units = %listed(&by_type), "Tournament Desert's units by type");
         info!(objects = %listed(&by_look), "Tournament Desert's client objects by look");
         let navigation = self.packages.map().section::<MapNavigationData>();
+        let bounds = self.packages.map().section::<BoundsData>();
+        let cell = self
+            .packages
+            .map()
+            .section::<GridData>()
+            .map(|grid| grid.cell);
+        let grid = bounds
+            .zip(cell)
+            .and_then(|(bounds, cell)| Grid::new(cell, bounds.0));
+        let types = self.packages.content().units.values();
         let counts = MapCounts {
             heights,
             units: placed.len(),
@@ -98,6 +111,10 @@ impl ImportCheck<'_> {
             object_looks: by_look.len(),
             markers: self.packages.map().markers.len(),
             walls: navigation.map_or(0, |navigation| navigation.walls.len()),
+            grid: grid.map_or([0, 0], |grid| [grid.columns(), grid.rows()]),
+            seers: types
+                .filter(|unit| unit.section::<VisionData>().is_some())
+                .count(),
         };
         let terrain: TerrainFile = client_file(files, &TerrainFile::path(self.map))?;
         let drawn = TerrainDrawn {

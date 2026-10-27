@@ -76,7 +76,12 @@ fn extras_give_their_phase_blend_depth_write_test_and_bias_over_the_gltf_materia
             FileBlend {
                 cutoff: test,
                 team: 0,
+                // The fog darkens each but a multiplying material, which multiplies what it
+                // darkened.
+                fogged: u32::from(factors != Factors::Multiply),
                 colors: MatchColors::BUFFER,
+                fog: MatchFog::IMAGE,
+                fog_frame: MatchFog::FRAME,
                 factors,
                 depth_write,
                 order: BlendOrder::ByDistance,

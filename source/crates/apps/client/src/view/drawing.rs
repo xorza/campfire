@@ -7,7 +7,8 @@ use crate::view::glide::Glide;
 
 /// On the root of a drawing: the unit it draws. The unit may be `Unpredicted`, which the renderer
 /// does not see, so the drawing is an entity of its own; the unit's despawn takes it, and every
-/// child of it, along, unless it was torn off the unit first.
+/// child of it, along, unless it was torn off the unit first or stays as a ghost
+/// (`Ghost::leave`).
 #[derive(Component, Debug)]
 #[relationship(relationship_target = Drawing)]
 pub(crate) struct DrawingOf(pub(crate) Entity);
@@ -15,7 +16,7 @@ pub(crate) struct DrawingOf(pub(crate) Entity);
 /// On a drawn unit: the root of its drawing, which stands on the ground at the unit's place, and
 /// holds its figure, its gauges and the ring of a target.
 #[derive(Component, Debug)]
-#[relationship_target(relationship = DrawingOf, linked_spawn)]
+#[relationship_target(relationship = DrawingOf)]
 pub(crate) struct Drawing(Entity);
 
 impl Drawing {
@@ -23,6 +24,10 @@ impl Drawing {
         self.0
     }
 }
+
+/// On a drawing torn off its unit, which outlives it.
+#[derive(Component, Debug)]
+pub(crate) struct TornOff;
 
 /// On a unit whose drawing was torn off it: the client draws it no more.
 #[derive(Component, Debug)]
@@ -43,7 +48,7 @@ impl Command for TearOff {
 
     fn apply(self, world: &mut World) {
         if let Ok(mut root) = world.get_entity_mut(self.root) {
-            root.remove::<(DrawingOf, Glide)>();
+            root.insert(TornOff).remove::<(DrawingOf, Glide)>();
         }
         if let Ok(mut unit) = world.get_entity_mut(self.unit) {
             unit.insert(Undrawn);

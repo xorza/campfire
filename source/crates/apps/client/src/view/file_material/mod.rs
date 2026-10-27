@@ -1,4 +1,4 @@
-use bevy::app::{App, Plugin};
+use bevy::app::{App, Plugin, Startup};
 use bevy::asset::{Asset, Handle, embedded_asset};
 use bevy::gltf::GltfMaterial;
 use bevy::image::Image;
@@ -17,6 +17,7 @@ use bevy::render::storage::ShaderBuffer;
 use bevy::shader::ShaderRef;
 use campfire_client_files::{Blend, MaterialExtras, TeamPaint};
 
+use crate::view::fog::MatchFog;
 use crate::view::match_colors::MatchColors;
 
 /// The material of a model's glTF material: its standard material, as Bevy draws the glTF
@@ -25,10 +26,11 @@ use crate::view::match_colors::MatchColors;
 /// color and its tint (02-engine-core.md, Team colors in the one material).
 pub(crate) type FileMaterial = ExtendedMaterial<StandardMaterial, FileBlend>;
 
-/// What a material's extras say past the standard material: how its color meets what is behind
-/// it, whether it writes depth, the alpha below which it is not drawn, 0 for none, how its team
-/// colors it, the match's colors its mesh's tag names, and where it stands among the meshes Bevy
-/// blends.
+/// What a material's extras say past the standard material: how its color meets what is behind it,
+/// whether it writes depth, the alpha below which it is not drawn, 0 for none, how its team colors
+/// it, the match's colors its mesh's tag names, the match's fog and its frame, which darken it
+/// where its player's team does not see (02-engine-core.md, The fog is the one material's), and
+/// where it stands among the meshes Bevy blends.
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone, PartialEq)]
 #[bind_group_data(FileBlendKey)]
 pub(crate) struct FileBlend {
@@ -37,8 +39,17 @@ pub(crate) struct FileBlend {
     /// `TINT` and `HUE_MASK`, as its extras' team paint says.
     #[uniform(100)]
     pub(crate) team: u32,
+    /// 1 where the fog darkens it, 0 for a material that multiplies what is behind it, which the
+    /// fog darkened already.
+    #[uniform(100)]
+    pub(crate) fogged: u32,
     #[storage(101, read_only)]
     pub(crate) colors: Handle<ShaderBuffer>,
+    #[texture(102)]
+    #[sampler(103)]
+    pub(crate) fog: Handle<Image>,
+    #[storage(104, read_only)]
+    pub(crate) fog_frame: Handle<ShaderBuffer>,
     pub(crate) factors: Factors,
     pub(crate) depth_write: bool,
     pub(crate) order: BlendOrder,
@@ -104,6 +115,7 @@ impl Plugin for FileMaterialPlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "file_material.wesl");
         app.add_plugins(MaterialPlugin::<FileMaterial>::default());
+        app.add_systems(Startup, MatchFog::clear);
     }
 }
 
@@ -145,9 +157,34 @@ impl FileBlend {
                 cutoff,
                 team: (u32::from(extras.team.tint) * TINT)
                     | (u32::from(extras.team.hue_mask) * HUE_MASK),
+                fogged: factors.fogged(),
                 colors: MatchColors::BUFFER,
+                fog: MatchFog::IMAGE,
+                fog_frame: MatchFog::FRAME,
                 factors,
                 depth_write: extras.depth_write,
+                order: BlendOrder::ByDistance,
+            },
+        }
+    }
+
+    /// The material the ground draws in, of `base`, opaque and painted by no team, so the fog
+    /// darkens it as it darkens every model.
+    pub(crate) fn opaque(base: StandardMaterial) -> FileMaterial {
+        ExtendedMaterial {
+            base: StandardMaterial {
+                alpha_mode: AlphaMode::Opaque,
+                ..base
+            },
+            extension: Self {
+                cutoff: 0.0,
+                team: 0,
+                fogged: Factors::Replace.fogged(),
+                colors: MatchColors::BUFFER,
+                fog: MatchFog::IMAGE,
+                fog_frame: MatchFog::FRAME,
+                factors: Factors::Replace,
+                depth_write: true,
                 order: BlendOrder::ByDistance,
             },
         }
@@ -167,7 +204,10 @@ impl FileBlend {
             extension: Self {
                 cutoff: 0.0,
                 team: 0,
+                fogged: Factors::Alpha.fogged(),
                 colors: MatchColors::BUFFER,
+                fog: MatchFog::IMAGE,
+                fog_frame: MatchFog::FRAME,
                 factors: Factors::Alpha,
                 depth_write: false,
                 order: BlendOrder::Ground { bias },
@@ -201,7 +241,10 @@ impl FileBlend {
             extension: Self {
                 cutoff,
                 team: 0,
+                fogged: factors.fogged(),
                 colors: MatchColors::BUFFER,
+                fog: MatchFog::IMAGE,
+                fog_frame: MatchFog::FRAME,
                 factors,
                 depth_write: false,
                 order: BlendOrder::ByDistance,
@@ -263,6 +306,15 @@ impl FileBlend {
 }
 
 impl Factors {
+    /// 1 where the fog darkens a material of these factors: each but one that multiplies what is
+    /// behind it, which the fog darkened already, as a product of the fog's light.
+    const fn fogged(self) -> u32 {
+        match self {
+            Self::Multiply => 0,
+            Self::Replace | Self::Alpha | Self::Add | Self::Screen => 1,
+        }
+    }
+
     /// The blend of its factors on the color, and the usual blend of alpha; none for replace.
     pub(crate) fn blend(self) -> Option<BlendState> {
         let color = |src_factor, dst_factor| BlendComponent {

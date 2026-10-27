@@ -1,6 +1,6 @@
 // A model's material: the standard material's color, lit unless it says it is unlit, as Bevy's
 // own shader draws it, and not drawn where its alpha is below its cutoff, as an alpha test is; its
-// blend and depth write are its pipeline's. Its mesh's tag names two places in the match's colors,
+// blend and depth write are its pipeline's; and darkened by the match's fog. Its mesh's tag names two places in the match's colors,
 // each from 1, 0 for none: its team's, in its low 16 bits, which its team paint colors it by, and
 // its tint's, in its high 16, which adds to its light as Zero Hour's drawable tint does.
 import bevy_pbr::render::{
@@ -15,10 +15,15 @@ import bevy_pbr::render::{
 struct FileBlend {
     cutoff: f32,
     team: u32,
+    fogged: u32,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> file_blend: FileBlend;
 @group(constants::MATERIAL_BIND_GROUP) @binding(101) var<storage, read> colors: array<vec4<f32>>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(102) var fog: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(103) var fog_sampler: sampler;
+// The fog's frame: its first cell's corner on the ground, and one over its width and depth.
+@group(constants::MATERIAL_BIND_GROUP) @binding(104) var<storage, read> fog_frame: array<vec4<f32>>;
 
 const TINT: u32 = 1u;
 const HUE_MASK: u32 = 2u;
@@ -110,6 +115,14 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     if tint_place != 0u {
         let tint = colors[tint_place - 1u].rgb;
         out.color = vec4(out.color.rgb + pbr_input.material.base_color.rgb * tint, out.color.a);
+    }
+    // The light the fog keeps at the fragment's point of the ground, multiplied in, as Zero Hour
+    // multiplies its shroud's texture over the terrain and the objects.
+    if file_blend.fogged != 0u {
+        let frame = fog_frame[0];
+        let at = (in.world_position.xz - frame.xy) * frame.zw;
+        let light = textureSampleLevel(fog, fog_sampler, at, 0.0).rgb;
+        out.color = vec4(out.color.rgb * light, out.color.a);
     }
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);
     return out;

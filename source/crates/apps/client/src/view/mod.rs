@@ -35,6 +35,7 @@ use crate::view::drawing::{Drawing, DrawingOf, Drawn, Undrawn};
 use crate::view::effects::chassis_run::Tilts;
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
+use crate::view::ghost::{Ghost, LeavesGhost};
 use crate::view::glide::{Follows, FrameClock, Glide, Spot};
 use crate::view::ground_heights::GroundHeights;
 use crate::view::look::{Condition, Look, Pose, ShapeKind, UnitShape};
@@ -55,7 +56,9 @@ pub(crate) mod drawing;
 pub(crate) mod effects;
 pub(crate) mod file_material;
 pub(crate) mod float_num;
+pub(crate) mod fog;
 pub(crate) mod footing;
+pub(crate) mod ghost;
 pub(crate) mod glide;
 pub(crate) mod ground_heights;
 pub(crate) mod look;
@@ -65,6 +68,7 @@ pub(crate) mod map_metric;
 pub(crate) mod match_colors;
 pub(crate) mod match_hud;
 pub(crate) mod match_picking;
+pub(crate) mod minimap;
 pub(crate) mod model_scenes;
 pub(crate) mod package_source;
 pub(crate) mod pixel_scale;
@@ -248,6 +252,8 @@ impl Plugin for ViewPlugin {
         );
         app.add_observer(Self::show_end);
         app.add_observer(ShotStandIns::place);
+        app.add_observer(Ghost::leave);
+        app.add_systems(Update, (Ghost::forget_dying, Ghost::clear));
     }
 }
 
@@ -361,7 +367,7 @@ impl ViewPlugin {
                         yaw: yaw(facing),
                     };
                     let shape = UnitShape::of(ShapeKind::of(avatar, walks), body, draws.top());
-                    commands.spawn((
+                    let mut drawing = commands.spawn((
                         DrawingOf(unit),
                         Turns,
                         Transform::from_translation(at)
@@ -371,6 +377,9 @@ impl ViewPlugin {
                         shape,
                         LookStates::new(unit_type, variation, draws, unit.to_bits()),
                     ));
+                    if !walks {
+                        drawing.insert(LeavesGhost);
+                    }
                     continue;
                 }
                 None => {}

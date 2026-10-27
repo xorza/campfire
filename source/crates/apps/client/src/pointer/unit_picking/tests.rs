@@ -41,7 +41,10 @@ fn blend(factors: Factors, cutoff: f32) -> FileMaterial {
         extension: FileBlend {
             cutoff,
             team: 0,
+            fogged: 1,
             colors: Handle::default(),
+            fog: Handle::default(),
+            fog_frame: Handle::default(),
             factors,
             depth_write: false,
             order: BlendOrder::ByDistance,

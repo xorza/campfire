@@ -37,7 +37,9 @@ use crate::view::ViewPlugin;
 use crate::view::area_view::AreaViewPlugin;
 use crate::view::client_data::ClientFilesPlugin;
 use crate::view::effects::EffectsPlugin;
+use crate::view::fog::FogPlugin;
 use crate::view::look_states::LookStatesPlugin;
+use crate::view::minimap::MinimapPlugin;
 use crate::view::package_source::PackageAssets;
 use crate::view::player_camera::PlayerCameraPlugin;
 use crate::view::sounds::SoundsPlugin;
@@ -65,6 +67,8 @@ pub(crate) enum ClientModule {
     UnitModels,
     LookStates,
     TerrainView,
+    Fog,
+    Minimap,
     Effects,
     Sounds,
     Hud,
@@ -130,6 +134,7 @@ impl ClientModule {
                 &[Capability::Production]
             }
             Self::UseClick => &[Capability::Interaction],
+            Self::Fog => &[Capability::Vision],
             Self::LearnKeys => &[Capability::Progression],
             Self::BuildPreview => &[Capability::Production, Capability::Navigation],
             Self::Window
@@ -142,6 +147,7 @@ impl ClientModule {
             | Self::UnitModels
             | Self::LookStates
             | Self::TerrainView
+            | Self::Minimap
             | Self::Effects
             | Self::Sounds
             | Self::Hud
@@ -165,6 +171,8 @@ impl ClientModule {
             | Self::UnitModels
             | Self::LookStates
             | Self::TerrainView
+            | Self::Fog
+            | Self::Minimap
             | Self::Effects
             | Self::Sounds
             | Self::Hud
@@ -311,6 +319,12 @@ impl ClientModule {
             Self::TerrainView => {
                 app.add_plugins(TerrainViewPlugin);
             }
+            Self::Fog => {
+                app.add_plugins(FogPlugin);
+            }
+            Self::Minimap => {
+                app.add_plugins(MinimapPlugin);
+            }
             Self::Effects => {
                 app.add_plugins(EffectsPlugin);
             }
@@ -423,6 +437,7 @@ mod tests {
             ClientModule::UnitModels,
             ClientModule::LookStates,
             ClientModule::TerrainView,
+            ClientModule::Minimap,
             ClientModule::Effects,
             ClientModule::Sounds,
             ClientModule::Hud,

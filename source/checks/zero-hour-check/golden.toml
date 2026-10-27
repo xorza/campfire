@@ -3,8 +3,8 @@
 drive_ticks = 1715
 
 [fingerprints]
-game = "f2ea29ce6617c4c10ab81e94680b5a7bf4205cab327e3f873dbe9f66704b014e"
-rules = "c19289ecee64026c3f4c8a52958c108743e98e5e97357b8be3e67d69422fd33d"
+game = "c4d0519172e9e182e14d307225802db4058830eaf99055783c2ac67892f6e87f"
+rules = "4e4f4e9d6ece3a66291cef12f267218bf8d0292b325ad488ce9a3dcc1120b071"
 
 [map]
 heights = [270, 340]
@@ -14,6 +14,8 @@ client_objects = 438
 object_looks = 22
 markers = 28
 walls = 286
+grid = [68, 85]
+seers = 570
 
 [terrain]
 overlays = 19041
@@ -57,8 +59,8 @@ dropped = [0, 23, 0, 6, 4, 0, 0, 0]
 
 [upgraded]
 researches = 69
-modules = 369
-dropped = [301, 0, 0, 7, 0, 14, 0, 116]
+modules = 384
+dropped = [286, 0, 0, 7, 0, 14, 0, 116]
 
 [supplied]
 nodes = 4
@@ -109,9 +111,9 @@ wounded = 0
 barracks = 698
 factory = [482, 682, 1091]
 strategy_center = 1879
-shot = 884
-hit = 894
-fight = 2634
+shot = 895
+hit = 905
+fight = 2585
 
 [supply]
 built = [482, 437]
@@ -159,10 +161,10 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 519
 
 [base]
-ended = 16354
+ended = 16544
 standing = [0, 8]
-think_ops = 19117
-stalls = 676
+think_ops = 17730
+stalls = 428
 
 [base.result]
 Won = 1
@@ -175,7 +177,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 0
+no_target = 2
 no_place = 0
 no_stack = 0
 
@@ -200,7 +202,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 5
+no_target = 3
 no_place = 0
 no_stack = 0
 
@@ -217,11 +219,16 @@ slot_kind = 0
 no_build = 0
 unusable = 0
 
+[base.sight]
+seen = [3030, 6691]
+explored = [0, 0]
+words = 91
+
 [attack]
-ended = 18761
+ended = 23434
 standing = [4, 0]
 think_ops = 9286
-stalls = 240
+stalls = 430
 
 [attack.result]
 Won = 0
@@ -275,3 +282,8 @@ hidden = 0
 slot_kind = 0
 no_build = 0
 unusable = 0
+
+[attack.sight]
+seen = [9203, 4546]
+explored = [0, 0]
+words = 91

@@ -41,7 +41,7 @@ use campfire_units::{
 };
 use campfire_values::{EngineTag, MatchScope, NameId, Named as NamedId, Names, TagProperties};
 use campfire_visibility::DataKind;
-use campfire_vision::VisionColumn;
+use campfire_vision::{SeenCells, VisionColumn};
 use serde::{Deserialize, Serialize};
 
 use crate::release::Release;
@@ -497,8 +497,9 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     let mut audit = DeclarationAudit::default();
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
-    // The audit read every module: the core's four kinds, the stats', the players' and the mode's
-    // six parts of a player, its bounty share and its commanded units among them, the mode's
+    // The audit read every module: the core's four kinds, the stats', the players', the mode's and
+    // vision's seven parts of a player, its bounty share, its commanded units and its explored
+    // cells among them, the mode's
     // three of the match, the 38 of a unit, the core's `Variation` and `Leaving`, production's
     // `Leader`, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
     // the core's `StatusTags`, combat's `TurretAim`, navigation's `ArrivedAt`, `AsideDepth`,
@@ -509,7 +510,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     // scans, production's trains, researches, gathers, spawns and sales, stats' type upgrades, the
     // mode's victory, bounty, incomes and inputs, and progression's experience among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 56);
+    assert_eq!(audit.parts.len(), 57);
     assert_eq!(audit.books.len(), 72);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 15);
@@ -578,6 +579,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             (type_name::<ActionSlots>(), type_name::<ClipShots>()),
             (type_name::<ActionSlots>(), type_name::<ShotStreak>()),
             (type_name::<UnitEntity>(), type_name::<SeenBy>()),
+            (type_name::<Player>(), type_name::<SeenCells>()),
             (type_name::<Player>(), type_name::<PlayerSupply>()),
             (type_name::<Builder>(), type_name::<AtWork>()),
         ]

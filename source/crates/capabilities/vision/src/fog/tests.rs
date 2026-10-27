@@ -21,6 +21,8 @@ fn vision() -> VisionGrid {
         brush: BrushMap::new(&grid, &brushes),
         grid,
         teams: 3,
+        shroud: false,
+        neutral_in_fog: false,
     }
 }
 

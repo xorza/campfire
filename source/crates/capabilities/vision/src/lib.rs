@@ -9,6 +9,7 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::EnumAll;
 use campfire_declarations::{ById, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
+use campfire_players::Player;
 use campfire_sim::Capability;
 use campfire_units::{SeenBy, UnitEntity, UnitsSystems};
 
@@ -18,12 +19,15 @@ use campfire_values::UnitType;
 #[cfg(feature = "internals")]
 pub mod bench;
 mod brush_map;
+mod cell_bits;
 mod error;
+mod explored_cells;
 mod fog;
 mod grid_data;
 mod reveals;
 mod run_cache;
 mod seeing;
+mod seen_cells;
 mod seen_targets;
 mod sight;
 mod sight_maps;
@@ -38,14 +42,17 @@ mod vision_grid;
 mod vision_groups;
 
 pub use crate::brush_map::BrushMap;
+pub use crate::cell_bits::CellBits;
 pub use crate::error::VisionDataError;
+pub use crate::explored_cells::ExploredCells;
 pub use crate::fog::Fog;
 pub use crate::grid_data::{BrushData, GridData};
 pub use crate::reveals::{Reveal, Reveals};
 pub use crate::seeing::Seeing;
+pub use crate::seen_cells::SeenCells;
 pub use crate::seen_targets::SeenTargets;
 pub use crate::sight::Sight;
-pub use crate::team_sight::{ByHolding, ByVision, TeamSight};
+pub use crate::team_sight::{ByHolding, ByVision, PointSight, TeamSight};
 pub use crate::vision_api::VisionApi;
 pub use crate::vision_book::VisionBook;
 pub use crate::vision_column::VisionColumn;
@@ -100,6 +107,14 @@ impl Module for Vision {
         // What each team sees is the server's (10-replication-audiences.md, Prediction reads only
         // what its client holds): a predicting client holds none.
         d.server_part::<UnitEntity, SeenBy>();
+        // A team's cells are its player's alone (04-capabilities/vision.md, The server sends a
+        // team's cells to its player): those it explored state, those it sees derived each stage.
+        d.component::<ExploredCells>();
+        d.part::<Player, ExploredCells>(|at| {
+            Some(ExploredCells::start(at.world().resource::<VisionBook>()))
+        });
+        d.derived_sent::<SeenCells>();
+        d.server_part::<Player, SeenCells>();
     }
 
     /// Adds vision to a match when its map has a grid: in Vision, the last stage of a
@@ -115,7 +130,7 @@ impl Module for Vision {
             VisionSystems::Refill,
             Seeing::refill.run_if(Seeing::is_unfilled),
         );
-        cx.server(VisionSystems::See, Seeing::see);
+        cx.server(VisionSystems::See, (Seeing::see, Seeing::share).chain());
     }
 }
 
@@ -148,7 +163,34 @@ pub mod internals {
                 "the mode's check limits the teams of a map with vision"
             );
             let brush = BrushMap::new(&grid, brush);
-            (VisionBook(Some(VisionGrid { grid, brush, teams }))).load_into(world);
+            let shroud = false;
+            let vision = VisionGrid {
+                grid,
+                brush,
+                teams,
+                shroud,
+                neutral_in_fog: false,
+            };
+            (VisionBook(Some(vision))).load_into(world);
+        }
+
+        /// Shows each team the units that do not walk of a team it regards as neutral where it
+        /// explored, on the grid `load_grid` gave.
+        pub fn neutral_in_fog(world: &mut World) {
+            VisionBook::amend(world, |_, book| {
+                book.0
+                    .as_mut()
+                    .expect("a grid the match loaded")
+                    .neutral_in_fog = true;
+            });
+        }
+
+        /// Starts the map of the grid `load_grid` gave shrouded, so each team keeps the cells it
+        /// explored.
+        pub fn shroud_grid(world: &mut World) {
+            VisionBook::amend(world, |_, book| {
+                book.0.as_mut().expect("a grid the match loaded").shroud = true;
+            });
         }
     }
 
@@ -173,7 +215,15 @@ pub mod internals {
             let brush = BrushMap::new(&grid, &[]);
             // A match with no vision declares no vision book: the grid makes its orders read
             // the sight a test sets, as a match with vision does.
-            world.insert_resource(VisionBook(Some(VisionGrid { grid, brush, teams })));
+            let shroud = false;
+            let vision = VisionGrid {
+                grid,
+                brush,
+                teams,
+                shroud,
+                neutral_in_fog: false,
+            };
+            world.insert_resource(VisionBook(Some(vision)));
         }
 
         /// The name of the seer of `sight`, one of `SIGHTS`.

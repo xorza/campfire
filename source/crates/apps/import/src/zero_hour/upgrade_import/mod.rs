@@ -246,6 +246,7 @@ impl UpgradeImport {
                 )
             }
             UpgradeEffect::PowerPlant => ("power".to_owned(), EffectModifier::tagged(&tag()?)),
+            UpgradeEffect::Radar => ("radar".to_owned(), EffectModifier::tagged(&names.radar)),
             UpgradeEffect::ModelCondition { .. } => {
                 let tag = tag()?;
                 (tag.as_str().to_owned(), EffectModifier::tagged(&tag))

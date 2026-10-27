@@ -99,6 +99,11 @@ impl Fog {
         self.maps.sees(self.groups.of(team), cell..cell + 1, false)
     }
 
+    /// The words of the cells `team`'s vision group saw in the last Vision stage.
+    pub(crate) fn seen_words(&self, team: Team) -> &[u64] {
+        self.maps.revealed(self.groups.of(team))
+    }
+
     /// Builds the groups of `grid`'s teams again from `relations`, and empty maps for them.
     pub fn rebuild(&mut self, grid: &VisionGrid, relations: &Relations) {
         self.groups.rebuild(grid.teams, relations);

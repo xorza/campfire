@@ -83,6 +83,11 @@ impl SightMaps {
         map
     }
 
+    /// The words of the cells `group` sees.
+    pub(crate) fn revealed(&self, group: usize) -> &[u64] {
+        self.revealed.bits(group)
+    }
+
     /// Whether `group` sees a cell of `cells`, a run: with its sight, or for a unit its tags
     /// hide, with its detection.
     pub(crate) fn sees(&self, group: usize, cells: Range<usize>, hidden: bool) -> bool {

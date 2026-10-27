@@ -14,6 +14,7 @@ use campfire_mode::{MapData, MapPatch, MarkerData, ModeParam, PlacedUnitData};
 use campfire_navigation::MapNavigationData;
 use campfire_units::{BoundsData, CellSplit, CoarseSpan, Ground, GroundData, HeightGrid, MapPoint};
 use campfire_values::Scalar;
+use campfire_vision::GridData;
 
 use crate::zero_hour::axes;
 use crate::zero_hour::axes::cell_frame::CellFrame;
@@ -344,11 +345,19 @@ impl MapImport {
             .collect();
         let frame = Self::frame(&file.heights);
         let walls = CliffWalls::of(&cliffs, file.heights.width).walls(frame, bounds);
-        // A planar map of its bounds, its ground and its navigation, the sections it gives, then
+        // A planar map of its bounds, its ground, its navigation and its grid of the partition's
+        // cells, which the shroud is drawn at, shrouded as `UseShroud` says a skirmish starts
+        // (09-zero-hour.md, Zero Hour sees by the vision capability), the sections it gives, then
         // the units and markers of the mode's own.
         let mut map = SectionWriter::default();
         map.section(&BoundsData(bounds))
             .section(&ground)
+            .section(&GridData {
+                cell: Num::int(PARTITION_CELL),
+                brush: Vec::new(),
+                shroud: rules.multiplayer.uses_shroud(),
+                neutral_in_fog: true,
+            })
             .section(&MapNavigationData {
                 cell: Num::int(PATHFIND_CELL),
                 walls,

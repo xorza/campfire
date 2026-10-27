@@ -23,6 +23,9 @@ pub(crate) struct RulesNames {
     pub(crate) wall: DeclaredName,
     pub(crate) base_defense: DeclaredName,
     pub(crate) infantry: DeclaredName,
+    /// The tag of a unit that gives its player a radar, which the minimap shows by
+    /// (02-engine-core.md, A minimap by a radar tag).
+    pub(crate) radar: DeclaredName,
     /// The tags an upgrade module gives its unit as it sets the armor set's or the weapon set's
     /// `PLAYER_UPGRADE` (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats).
     pub(crate) armor_upgrade: DeclaredName,
@@ -103,6 +106,7 @@ impl Default for RulesNames {
             rate_of_fire: stat(&name("rate_of_fire")),
             counts_for_victory: name("counts_for_victory"),
             base_defense: name("base_defense"),
+            radar: name("radar"),
             infantry: name("infantry"),
             start: name("start"),
             rally: name("rally"),

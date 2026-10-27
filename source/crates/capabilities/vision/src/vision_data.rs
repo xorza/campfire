@@ -3,13 +3,14 @@ use campfire_math::Num;
 use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::sight::Sight;
 
 /// A unit type's `vision` section: how far it sees, in meters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct VisionData {
+    #[serde(rename = "sight_range")]
     pub sight: Sight,
 }
 

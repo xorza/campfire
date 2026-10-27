@@ -1,14 +1,19 @@
+use bevy_ecs::change_detection::DetectChanges;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
+use campfire_common::PlayerSlot;
 use campfire_deliveries::Deliveries;
 use campfire_geometry::{Bounds, Grid, Polygon};
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
+use campfire_players::{Players, PlayersWorld};
 use campfire_script::FailureKind;
 use campfire_script::{ApiError, Unit};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId};
 use campfire_units::internals::Spawn;
-use campfire_units::{BodyForm, BodyShape, Dead, Layer, Life, UnitTypeCore, Units, UnitsWorld};
+use campfire_units::{
+    BodyForm, BodyShape, Dead, Layer, Life, MoveStep, UnitTypeCore, Units, UnitsWorld,
+};
 use campfire_values::{Relation, TagProperties, Team, TeamSet, TypeScope, VisionShare};
 use campfire_vision::*;
 
@@ -340,4 +345,141 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     Units::hold_properties(&mut game, ward, TagProperties::default().with_detects());
     game.step();
     assert_eq!(Vision::seen_by(&game, building), team(1).with(Team::new(0)));
+}
+
+#[test]
+fn a_player_holds_the_cells_its_team_sees_and_of_a_shrouded_map_those_it_explored() {
+    // A seer of team 0 sees 1 m: the four cells round its point (x, 0), whose centers stand
+    // √0.5 m off, at x ± 0.5 by ±0.5.
+    let around = |x: i64| {
+        let grid = Grid::new(
+            Num::int(1),
+            Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap(),
+        )
+        .unwrap();
+        let mut cells: Vec<usize> = [(-1, -1), (1, -1), (-1, 1), (1, 1)]
+            .map(|(dx, dz)| {
+                let half = |twice: i64| Num::int(twice) / Num::int(2);
+                grid.cell_of(Vec3::new(half(2 * x + dx), Num::ZERO, half(dz)))
+                    .unwrap()
+            })
+            .into();
+        cells.sort_unstable();
+        cells
+    };
+    let held =
+        |cells: &CellBits| -> Vec<usize> { (0..400).filter(|&cell| cells.holds(cell)).collect() };
+    let start = |shroud: bool| {
+        let mut game = vision_match();
+        if shroud {
+            Vision::shroud_grid(&mut game);
+        }
+        Players::spawn(&mut game, 1, 0);
+        let seer = Vision::spawn_seer(&mut game, 0, 0, Team::new(0), Some(1));
+        game.step();
+        (game, seer)
+    };
+    let (mut game, seer) = start(true);
+    let cells = |game: &Match| {
+        let player = game.player_entity(PlayerSlot::new(0)).unwrap();
+        let seen = game.get::<SeenCells>(player).unwrap().cells();
+        let explored = game.get::<ExploredCells>(player).unwrap().cells();
+        (held(seen), held(explored))
+    };
+    assert_eq!(cells(&game), (around(0), around(0)));
+    // It steps 5 m: its team sees the four cells there, and explored those and the four before.
+    let entity = game.unit_entity(seer);
+    *game.get_mut::<Position>(entity).unwrap() = Position::from((5, 0, 0));
+    game.step();
+    let mut both = [around(0), around(5)].concat();
+    both.sort_unstable();
+    assert_eq!(cells(&game), (around(5), both.clone()));
+    // A stage that sees what the last saw writes neither.
+    let written = |game: &Match| {
+        let player = game.player_entity(PlayerSlot::new(0)).unwrap();
+        let seen = game
+            .entity(player)
+            .get_ref::<SeenCells>()
+            .unwrap()
+            .last_changed();
+        let explored = game
+            .entity(player)
+            .get_ref::<ExploredCells>()
+            .unwrap()
+            .last_changed();
+        (seen, explored)
+    };
+    let before = written(&game);
+    game.step();
+    assert_eq!(written(&game), before);
+    // The explored cells are state, restored with the rest; the seen ones the next stage derives
+    // again.
+    let mut restored = vision_match();
+    Vision::shroud_grid(&mut restored);
+    Release::restore_into(&game, &mut restored);
+    assert_eq!(cells(&restored), (Vec::new(), both.clone()));
+    restored.step();
+    assert_eq!(cells(&restored), (around(5), both));
+    // A map that starts known keeps no explored cell, and its team sees alike.
+    let (known, _) = start(false);
+    let player = known.player_entity(PlayerSlot::new(0)).unwrap();
+    assert!(
+        known
+            .get::<ExploredCells>(player)
+            .unwrap()
+            .cells()
+            .is_empty()
+    );
+    assert_eq!(
+        held(known.get::<SeenCells>(player).unwrap().cells()),
+        around(0)
+    );
+}
+
+#[test]
+fn a_neutral_unit_that_does_not_walk_is_seen_by_a_neutral_team_where_it_explored() {
+    // Team 0 regards team 2 as neutral and team 1 as hostile; nothing of team 0 sees (8, 8). A
+    // grid of `neutral_in_fog` shows team 0 the neutral units that do not walk.
+    let start = |shroud: bool, neutral_in_fog: bool| {
+        let mut game = vision_match();
+        if shroud {
+            Vision::shroud_grid(&mut game);
+        }
+        if neutral_in_fog {
+            Vision::neutral_in_fog(&mut game);
+        }
+        Players::spawn(&mut game, 1, 0);
+        let relations = &mut game.relations_mut();
+        relations.set(
+            Team::new(0),
+            Team::new(2),
+            Relation::Neutral,
+            VisionShare::Apart,
+        );
+        let building = Vision::spawn_seer(&mut game, 8, 8, Team::new(2), None);
+        let hostile = Vision::spawn_seer(&mut game, 8, -8, Team::new(1), None);
+        let walker = Vision::spawn_seer(&mut game, -8, 8, Team::new(2), None);
+        game.insert_parts(walker, MoveStep::new(Num::ONE).unwrap());
+        game.step();
+        (game, [building, hostile, walker])
+    };
+    let seen = |game: &Match, id| Vision::seen_by(game, id).contains(Team::new(0));
+    // A map that starts known: team 0 sees the neutral building alone, not a hostile one nor a
+    // neutral walker, as Zero Hour draws only a neutral immobile object in the fog.
+    let (known, units) = start(false, true);
+    assert_eq!(units.map(|id| seen(&known, id)), [true, false, false]);
+    // A grid that does not say so shows none of them.
+    let (plain, units) = start(false, false);
+    assert_eq!(units.map(|id| seen(&plain, id)), [false; 3]);
+    // A shrouded map: none until team 0 explores the building's cell, then the building after
+    // its seer left.
+    let (mut shrouded, [building, ..]) = start(true, true);
+    assert!(!seen(&shrouded, building));
+    let scout = Vision::spawn_seer(&mut shrouded, 7, 8, Team::new(0), Some(2));
+    shrouded.step();
+    assert!(seen(&shrouded, building));
+    let entity = shrouded.unit_entity(scout);
+    *shrouded.get_mut::<Position>(entity).unwrap() = Position::from((-7, 0, -8));
+    shrouded.step();
+    assert!(seen(&shrouded, building));
 }

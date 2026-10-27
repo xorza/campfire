@@ -7,10 +7,14 @@ use bevy::image::Image;
 use bevy::mesh::{Mesh, Mesh3d};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 
+use campfire_client_files::Minimap;
+
 use crate::client_packages::ClientPackages;
 use crate::view::client_data::ClientLoad;
 use crate::view::file_material::{FileBlend, FileMaterial, FileMaterialPlugin};
 use crate::view::ground_heights::GroundHeights;
+use crate::view::match_hud::MatchHud;
+use crate::view::minimap::{MinimapGround, TerrainSource};
 use crate::view::terrain_image::TerrainImage;
 use crate::view::terrain_meshes::TerrainMeshes;
 
@@ -45,7 +49,19 @@ impl TerrainViewPlugin {
             };
             let grid = heights.grid();
             let image = TerrainImage::compose(file.texture(), files);
+            // The minimap's terrain, of the HUD's look, as the composed texture shows it
+            // (02-engine-core.md, The minimap is drawn from the terrain at load).
+            let look = world
+                .get_resource::<MatchHud>()
+                .map_or_else(Minimap::default, |hud| hud.0.minimap.clone());
+            let terrain = TerrainSource {
+                image: &image,
+                quads: file.quads(),
+                grid,
+            };
+            let minimap = MinimapGround::of(terrain, &look);
             let TerrainMeshes { ground, overlay } = TerrainMeshes::of(file, grid);
+            world.insert_resource(minimap);
             let texture = world
                 .resource_mut::<Assets<Image>>()
                 .add(image.into_image());
@@ -60,11 +76,9 @@ impl TerrainViewPlugin {
                 ..StandardMaterial::default()
             };
             let overlay_material = FileBlend::ground(ground_material.clone(), OVERLAY_BIAS);
-            let overlay_material = world
-                .resource_mut::<Assets<FileMaterial>>()
-                .add(overlay_material);
-            let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
-            let ground_material = materials.add(ground_material);
+            let mut materials = world.resource_mut::<Assets<FileMaterial>>();
+            let overlay_material = materials.add(overlay_material);
+            let ground_material = materials.add(FileBlend::opaque(ground_material));
             let mut meshes = world.resource_mut::<Assets<Mesh>>();
             let ground = meshes.add(ground.into_mesh());
             let overlay = (!overlay.indices.is_empty()).then(|| meshes.add(overlay.into_mesh()));

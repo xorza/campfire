@@ -76,6 +76,10 @@ life = "life"
 
 [tags.infantry]
 
+# The tag of a unit that gives its player a radar, which a `RadarUpgrade` gives and the minimap shows
+# by.
+[tags.radar]
+
 [tags.armor_upgrade]
 
 [tags.weapon_upgrade]

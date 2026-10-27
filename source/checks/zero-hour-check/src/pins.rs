@@ -57,8 +57,9 @@ pub(crate) const BOT_TYPES: [&str; 10] = [
 
 /// Tournament Desert as the import writes it: its height samples, as columns and rows; its placed
 /// units, once its road ends are dropped, and their types; its client objects, the rest of its
-/// objects, and their looks; its markers; and its walls, its cliff cells grown by one ring and
-/// merged row by row (09-zero-hour.md, Cliffs are walls).
+/// objects, and their looks; its markers; its walls, its cliff cells grown by one ring and
+/// merged row by row (09-zero-hour.md, Cliffs are walls); and its grid's cells, as columns and
+/// rows, and the unit types of a sight (09-zero-hour.md, Zero Hour sees by the vision capability).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MapCounts {
@@ -69,6 +70,8 @@ pub(crate) struct MapCounts {
     pub(crate) object_looks: usize,
     pub(crate) markers: usize,
     pub(crate) walls: usize,
+    pub(crate) grid: [usize; 2],
+    pub(crate) seers: usize,
 }
 
 /// A terrain file's overlays; its decals' triangles; a copy for each tile its classes' textures
@@ -218,9 +221,10 @@ pub(crate) struct BotBase {
 
 /// How a play's match of two bots stood as it ended or its limit passed: the tick it ended and its
 /// result, if it did, the buildings each player slot held, each whole and alive, the most
-/// operations one think of its bots ran, which the mode's call limit bounds, and the times a walker
-/// stood stuck 1 s, which crowds that yield keep few (09-zero-hour.md, A bots' match that ends;
-/// 09-zero-hour.md, The bots' limits are measured).
+/// operations one think of its bots ran, which the mode's call limit bounds, the times a walker
+/// stood stuck 1 s, which crowds that yield keep few, its bots' drops, and the cells sent each
+/// bot's player (09-zero-hour.md, A bots' match that ends; 09-zero-hour.md, The bots' limits are
+/// measured).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BotMatchEnd {
@@ -230,6 +234,19 @@ pub(crate) struct BotMatchEnd {
     pub(crate) think_ops: u64,
     pub(crate) stalls: u64,
     pub(crate) drops: [BotDrops; 2],
+    pub(crate) sight: SightSent,
+}
+
+/// What the server sent each bot's player of its team's cells over a play: the changes of those it
+/// sees and of those it explored, each sent whole, and the words of one, of 8 bytes, which measure
+/// what the kind `sight` costs (04-capabilities/vision.md, The server sends a team's cells to its
+/// player).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SightSent {
+    pub(crate) seen: [u64; 2],
+    pub(crate) explored: [u64; 2],
+    pub(crate) words: usize,
 }
 
 /// The orders of a player slot's bot that came to nothing over a play: those its search left

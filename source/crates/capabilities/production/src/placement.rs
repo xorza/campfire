@@ -8,7 +8,7 @@ use campfire_players::OnMatch;
 use campfire_sim::{Position, Unpredicted};
 use campfire_units::{Body, Dead, MapBook, MoveStep, UnitsNear, WallBook};
 use campfire_values::{Relation, Relations, TagSet, Team, UnitTags};
-use campfire_vision::{Fog, TeamSight, VisionBook};
+use campfire_vision::{PointSight, TeamSight, VisionBook};
 
 use crate::build_book::{BuildSpec, PlacementCheck};
 
@@ -23,7 +23,7 @@ pub struct Placement<'w, 's, S: TeamSight> {
     relations: OnMatch<'w, 's, Relations>,
     map: Res<'w, MapBook>,
     vision: Option<Res<'w, VisionBook>>,
-    fog: Option<Res<'w, Fog>>,
+    points: PointSight<'w, 's>,
     near: UnitsNear<'w>,
     units: Query<'w, 's, PlacedUnit<S>, (Without<Dead>, Allow<Unpredicted>)>,
 }
@@ -60,8 +60,8 @@ impl<S: TeamSight> Placement<'_, '_, S> {
             return false;
         }
         let grid = self.vision.as_deref().and_then(VisionBook::grid);
-        let unseen = |(fog, grid)| !S::sees_point(fog, grid, position, team);
-        if self.fog.as_deref().zip(grid).is_some_and(unseen) {
+        let unseen = |grid| !S::sees_point(&self.points, grid, position, team);
+        if grid.is_some_and(unseen) {
             return false;
         }
         let Self {

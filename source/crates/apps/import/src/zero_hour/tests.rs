@@ -830,6 +830,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         Capability::Abilities,
         Capability::Production,
         Capability::Combat,
+        Capability::Vision,
     ];
     // Eight players, each a team of one slot, and the neutral team of none.
     assert_eq!(manifest.teams.len(), 9);
@@ -966,7 +967,12 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     let colors = test_dir.read_text("one/game/client/team_colors.toml");
     let colors = Toml::parse::<TeamColors>(&colors).unwrap();
-    assert_eq!(colors.colors(), [[255, 200, 0], [255, 0, 0]]);
+    // The eight slots take the fixture's two colors in turn; the neutral team, the ninth, the
+    // civilians' white, as the fixture's templates give it none.
+    let (gold, red) = ([255, 200, 0], [255, 0, 0]);
+    let mut slots = [gold, red].repeat(4);
+    slots.push([255; 3]);
+    assert_eq!(colors.colors(), slots);
     // Each texture a model or the terrain draws with once, at its path in the archives, as its
     // conversion gives it: the model's rock and the terrain's sand, whose TGA is the sign's; the
     // sign's own TGA, which nothing draws, is not converted.
@@ -1190,10 +1196,18 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     };
     let model = |name: &str, hide: &[&str]| scaled(name, 1.0, hide);
     let unit = ClientUnit::still;
+    // No fixture object gives a `RadarPriority`, a garrison or a capture, so the minimap shows
+    // none of them.
     let looks = |looks: Vec<(&str, ClientUnit)>| {
         looks
             .into_iter()
-            .map(|(name, unit)| (DeclaredName::new(name).unwrap(), unit))
+            .map(|(name, unit)| {
+                let unit = ClientUnit {
+                    radar: RadarShown::Never,
+                    ..unit
+                };
+                (DeclaredName::new(name).unwrap(), unit)
+            })
             .collect()
     };
     // The tank's states: its default, of its turret hidden, and with it the flash below; its

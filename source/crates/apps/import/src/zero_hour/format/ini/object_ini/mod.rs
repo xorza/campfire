@@ -13,7 +13,9 @@ use crate::zero_hour::format::ini::object_ini::ini_death::IniDeath;
 use crate::zero_hour::format::ini::object_ini::ini_fall::IniFall;
 use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
-use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::IniUpgradeModule;
+use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
+    IniUpgradeModule, UpgradeEffect,
+};
 use crate::zero_hour::format::ini::object_ini::ini_voices::IniVoices;
 use crate::zero_hour::format::look_conditions::LookConditions;
 
@@ -88,6 +90,26 @@ pub(crate) struct IniObject {
     /// Its `LifetimeUpdate`'s `MinLifetime` and `MaxLifetime`, in milliseconds.
     lifetime_ms: Option<[f32; 2]>,
     voices: IniVoices,
+    /// Its `VisionRange`, 0 when absent, and its `ShroudClearingRange`, -1 when absent, as
+    /// `ThingTemplate` starts them.
+    vision_range: f32,
+    shroud_clearing_range: f32,
+    /// The upgrade each of its `GrantUpgradeCreate`s grants it as it is made.
+    granted: Vec<String>,
+    /// Its `RadarPriority`, and whether a `GarrisonContain` holds its garrison.
+    radar_priority: RadarPriority,
+    garrisons: bool,
+}
+
+/// An object's `RadarPriority` (`RadarPriorityNames`): none set, `INVALID`; one the radar draws
+/// for no one; one it draws for its controller alone; or one it draws.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum RadarPriority {
+    #[default]
+    Unset,
+    NotOnRadar,
+    LocalUnitOnly,
+    Shown,
 }
 
 /// The kinds of an object's `KindOf` that the import reads: those that decide who draws its placed
@@ -111,6 +133,7 @@ pub(crate) struct ObjectKinds {
     infantry: bool,
     vehicle: bool,
     hulk: bool,
+    capturable: bool,
 }
 
 /// An object's geometry as the game reads it (`GeometryInfo`): its shape, its radii and its
@@ -272,6 +295,7 @@ const FS_BASE_DEFENSE: &str = "fs_base_defense";
 const INFANTRY: &str = "infantry";
 const VEHICLE: &str = "vehicle";
 const HULK: &str = "hulk";
+const CAPTURABLE: &str = "capturable";
 
 /// The locomotor set an object moves by, and the one a jet taxis by, of `TheLocomotorSetNames`.
 const SET_NORMAL: &str = "set_normal";
@@ -361,6 +385,8 @@ enum Block {
     Physics,
     /// A `LifetimeUpdate`, whose lifetime a wreck reads.
     Lifetime,
+    /// A `GrantUpgradeCreate`, whose upgrade the object is made with.
+    GrantUpgrade,
     /// A slow death module, the object's last.
     Death,
     /// An object's `UnitSpecificSounds`.
@@ -475,6 +501,11 @@ impl ObjectFiles {
                 mass: 1.0,
                 lifetime_ms: None,
                 voices: IniVoices::default(),
+                vision_range: 0.0,
+                shroud_clearing_range: -1.0,
+                granted: Vec::new(),
+                radar_priority: RadarPriority::Unset,
+                garrisons: false,
             },
             Some(base) => IniObject {
                 id,
@@ -583,6 +614,7 @@ impl ObjectKinds {
             INFANTRY => &mut self.infantry,
             VEHICLE => &mut self.vehicle,
             HULK => &mut self.hulk,
+            CAPTURABLE => &mut self.capturable,
             _ => return,
         };
         *kind = set;
@@ -971,6 +1003,30 @@ impl IniObject {
     }
 
     /// Its upgrade modules, in the order it gives them.
+    /// Whether it gives its player a radar as it is made: a `RadarUpgrade` of its own whose every
+    /// trigger a `GrantUpgradeCreate` of its own grants, as the USA's command center and the GLA's
+    /// radar van grant theirs (02-engine-core.md, A minimap by a radar tag).
+    pub(crate) fn makes_radar(&self) -> bool {
+        self.upgrades.iter().any(|module| {
+            module.effect == UpgradeEffect::Radar
+                && !module.triggers.is_empty()
+                && module
+                    .triggers
+                    .iter()
+                    .all(|trigger| self.granted.contains(trigger))
+        })
+    }
+
+    /// Its priority on the radar: its `RadarPriority`, or of none set, a structure's for one a
+    /// garrison holds or that is captured, as `Object::getRadarPriority` decides, else none the
+    /// radar draws.
+    pub(crate) const fn radar_priority(&self) -> RadarPriority {
+        match self.radar_priority {
+            RadarPriority::Unset if self.garrisons || self.kinds.capturable => RadarPriority::Shown,
+            priority => priority,
+        }
+    }
+
     pub(crate) fn upgrades(&self) -> &[IniUpgradeModule] {
         &self.upgrades
     }
@@ -1009,6 +1065,16 @@ impl IniObject {
     /// Its mass, its `PhysicsBehavior`'s, which a force pushes it by.
     pub(crate) const fn mass(&self) -> f32 {
         self.mass
+    }
+
+    /// How far it clears the shroud for its player: its `ShroudClearingRange`, or its
+    /// `VisionRange` when it gives none, as `Object`'s constructor takes it.
+    pub(crate) fn sight_range(&self) -> f32 {
+        if self.shroud_clearing_range == -1.0 {
+            self.vision_range
+        } else {
+            self.shroud_clearing_range
+        }
     }
 
     /// The least and the most of its lifetime in milliseconds, its `LifetimeUpdate`'s; none for
@@ -1088,6 +1154,7 @@ impl Reading {
             | Block::Upgrade
             | Block::Physics
             | Block::Lifetime
+            | Block::GrantUpgrade
             | Block::Death
             | Block::UnitSounds
             | Block::Other => Ok(None),
@@ -1307,6 +1374,15 @@ impl Reading {
                     self.stack.push(Block::Other);
                 }
             }
+            Block::GrantUpgrade => {
+                let open = self.object.as_mut().expect("a module is an object's");
+                if word == "upgradetogrant" {
+                    open.object.granted.push(at.value()?.to_owned());
+                }
+                if ObjectFiles::opens(word, tokens) {
+                    self.stack.push(Block::Other);
+                }
+            }
             Block::Physics | Block::Lifetime => {
                 let lifetime = matches!(self.stack.last(), Some(Block::Lifetime));
                 let open = self.object.as_mut().expect("a module is an object's");
@@ -1380,6 +1456,11 @@ impl Reading {
                     && let Some(block) = module.as_deref().and_then(|module| match module {
                         "physicsbehavior" => Some(Block::Physics),
                         "lifetimeupdate" => Some(Block::Lifetime),
+                        "grantupgradecreate" => Some(Block::GrantUpgrade),
+                        "garrisoncontain" => {
+                            open.object.garrisons = true;
+                            None
+                        }
                         _ => None,
                     })
                 {
@@ -1429,14 +1510,21 @@ impl Reading {
         Ok(())
     }
 
-    /// A line of an object's own block: a field of its kinds, fence, scale, bridge, locomotors
-    /// or geometry, or a line that opens a block.
+    /// A line of an object's own block: a field of its kinds, fence, scale, bridge, locomotors,
+    /// sight or geometry, or a line that opens a block.
     fn object_field(&mut self, word: &str, at: &IniLine<'_>) -> Result<(), IniError> {
         let (tokens, line) = (at.tokens, at.number);
         match word {
             _ if matches!(
                 word,
-                "kindof" | "fencewidth" | "scale" | "isbridge" | "locomotor"
+                "kindof"
+                    | "fencewidth"
+                    | "scale"
+                    | "isbridge"
+                    | "locomotor"
+                    | "visionrange"
+                    | "shroudclearingrange"
+                    | "radarpriority"
             ) || word.starts_with("geometry") =>
             {
                 let open = self
@@ -1455,6 +1543,16 @@ impl Reading {
                     _ if open.reskin => {}
                     "kindof" => object.kinds.set_by(at)?,
                     "isbridge" => object.is_bridge = at.yes()?,
+                    "visionrange" => object.vision_range = at.real()?,
+                    "shroudclearingrange" => object.shroud_clearing_range = at.real()?,
+                    "radarpriority" => {
+                        object.radar_priority = match at.value()?.to_ascii_uppercase().as_str() {
+                            "INVALID" => RadarPriority::Unset,
+                            "NOT_ON_RADAR" => RadarPriority::NotOnRadar,
+                            "LOCAL_UNIT_ONLY" => RadarPriority::LocalUnitOnly,
+                            _ => RadarPriority::Shown,
+                        };
+                    }
                     "locomotor" => {
                         let set = at.value()?;
                         // `scanIndexList` finds a set of either case.

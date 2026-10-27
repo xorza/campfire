@@ -15,8 +15,8 @@ use campfire_projectiles::Projectile;
 use campfire_protocol::PlayerSlotPlan;
 use campfire_sim::StableId;
 use campfire_stats::{Modifiers, PlayerModifiers, Stats};
-use campfire_units::{Life, UnitsWorld};
-use campfire_values::{ModifierId, PackageIndex, ResourceId, TagSet, UnitTags};
+use campfire_units::{GroundPoint, Life, SeenBy, UnitsWorld};
+use campfire_values::{ModifierId, PackageIndex, ResourceId, TagSet, Team, UnitTags};
 
 use crate::failure::CheckFailure;
 use crate::match_play::{
@@ -469,10 +469,11 @@ impl Play<'_> {
         Ok(built)
     }
 
-    /// The fight in `play`, after player 1's crusaders were trained in `train_ticks`: they attack
-    /// the bot's command center; the ticks from the attack's order to the first shell's launch,
-    /// to the first damage to the center, and to its death; the money left, and how the match
-    /// ended by then, if it did, as the bot's other buildings count for its victory.
+    /// The fight in `play`, after player 1's crusaders were trained in `train_ticks`: they drive at
+    /// the bot's command center and attack it once their team sees it, as an attack aims only at
+    /// what its team sees; the ticks from the drive's order to the first shell's launch, to the
+    /// first damage to the center, and to its death; the money left, and how the match ended by
+    /// then, if it did, as the bot's other buildings count for its victory.
     fn attack(
         &self,
         play: &mut MatchPlay<'_>,
@@ -484,14 +485,33 @@ impl Play<'_> {
         let money = play.money(self.money);
         let crusaders = play.owned(CRUSADER, 0)?;
         let units = OrderUnits::new(&crusaders).expect("the play's crusaders");
-        play.order(&[Order {
-            units,
-            directive: OrdersDirective::Attack { target }.into(),
-        }]);
+        let order = |directive: OrdersDirective| Order {
+            units: units.clone(),
+            directive: directive.into(),
+        };
+        let matched = MatchUnits::of(play.game());
+        let team = *matched
+            .unit(crusaders[0])
+            .get::<Team>()
+            .expect("a unit's team");
+        let at = matched.position(target);
+        let to = GroundPoint { x: at.x, z: at.z };
+        play.order(&[order(OrdersDirective::Move { to })]);
         let full = play.life(target);
-        let (mut shot_ticks, mut hit_ticks) = (None, None);
+        let (mut shot_ticks, mut hit_ticks, mut attacked) = (None, None, false);
         for fight_ticks in 1..=STEP_LIMIT {
             play.step();
+            if !attacked {
+                let units = MatchUnits::of(play.game());
+                let seen = units
+                    .unit(target)
+                    .get::<SeenBy>()
+                    .and_then(|seen| seen.get());
+                if seen.is_some_and(|teams| teams.contains(team)) {
+                    play.order(&[order(OrdersDirective::Attack { target })]);
+                    attacked = true;
+                }
+            }
             let world = play.game();
             let units = MatchUnits::of(world);
             if shot_ticks.is_none() && units.all().any(|(_, unit)| unit.contains::<Projectile>()) {

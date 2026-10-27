@@ -2,6 +2,8 @@ use campfire_codec::Toml;
 
 use std::num::NonZeroU8;
 
+use campfire_common::DeclaredName;
+
 use super::*;
 use crate::hud_file::panel_grid::{ButtonLook, GridCell};
 use crate::keys_file::Key;
@@ -13,6 +15,7 @@ fn a_hud_shows_every_unit_s_bars_and_hits_unless_its_file_says_otherwise() {
         bars: ShownBars::Selected,
         hit_mark: HitMark::Ring,
         panel: PanelGrid::default(),
+        minimap: Minimap::default(),
     };
     assert_eq!(
         Toml::parse::<HudFile>("bars = \"selected\"").unwrap(),
@@ -47,7 +50,7 @@ fn a_hud_shows_every_unit_s_bars_and_hits_unless_its_file_says_otherwise() {
     );
     assert_eq!(
         refusal("rings = \"all\""),
-        "unknown field `rings`, expected one of `bars`, `hit_mark`, `panel`"
+        "unknown field `rings`, expected one of `bars`, `hit_mark`, `panel`, `minimap`"
     );
 }
 
@@ -101,4 +104,24 @@ fn a_panel_grid_places_its_buttons_in_its_order_and_holds_each_commands_look() {
         r#"icon = { texture = "client/textures/ui.ktx2", rect = [5, 1, 5, 9] }"#
     ));
     assert!(refused(r#"key = "KeyFoo""#));
+}
+
+#[test]
+fn a_minimap_gives_its_radar_cells_darkening_and_squares_and_refuses_what_does_not_hold() {
+    // Zero Hour's: shown by a unit of the tag `radar`, 128 cells, 60 % darker at the lowest ground,
+    // squares of 2 cells.
+    let text = "[minimap]\nradar = \"radar\"\ncells = 128\ndark = 60\ndot = 2";
+    let minimap = Toml::parse::<HudFile>(text).unwrap().minimap;
+    assert_eq!(
+        minimap,
+        Minimap {
+            radar: Some(DeclaredName::new("radar").unwrap()),
+            ..Minimap::default()
+        }
+    );
+    assert_eq!(Toml::parse::<HudFile>("").unwrap().minimap.radar, None);
+    for wrong in ["dark = 101", "cells = 2\ndot = 3"] {
+        let text = format!("[minimap]\n{wrong}");
+        assert!(Toml::parse::<HudFile>(&text).is_err(), "{wrong}");
+    }
 }

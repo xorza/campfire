@@ -46,6 +46,7 @@ fn a_feature_installs_its_passes_only_in_a_match_whose_books_have_it() {
         "campfire_stats::refresh::Refresh::regenerate",
         "campfire_vision::seeing::Seeing::refill",
         "campfire_vision::seeing::Seeing::see",
+        "campfire_vision::seeing::Seeing::share",
     ];
     assert_eq!(added, passes);
 }

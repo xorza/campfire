@@ -35,6 +35,7 @@ internals = [
     "campfire-sim/internals",
     "campfire-stats/internals",
     "campfire-values/internals",
+    "campfire-vision/internals",
     "dep:campfire-measure",
     "dep:criterion",
 ]
@@ -71,6 +72,7 @@ campfire-stats.workspace = true
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-units = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["ecs"] }
+campfire-vision.workspace = true
 
 clap = { workspace = true, features = [
     "derive",
