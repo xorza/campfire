@@ -7,11 +7,11 @@ use campfire_actions::{ActionBook, ActionSlots, Aim, Caster};
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_declarations::ById;
 use campfire_geometry::Placed;
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 use campfire_players::{OnMatch, PlayerResources, PlayerRows, ResourceAmount};
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
-use campfire_units::{Body, Dead, MapBook, Owner, WalkReadOnlyItem};
+use campfire_units::{Body, Dead, Facing, MapBook, Owner, WalkReadOnlyItem};
 use campfire_values::{ActionId, Motion, Relations, ResourceId, Team, UnitTags, UnitType};
 
 use crate::gather_loop::WorkerParts;
@@ -66,6 +66,7 @@ pub struct GatherView<'w, 's> {
         (Without<Dead>, Without<Site>),
     >,
     pub(super) changed: Query<'w, 's, Entity, (Changed<Gatherer>, Without<Dead>)>,
+    pub(super) facings: Query<'w, 's, &'static Facing, Allow<Unpredicted>>,
 }
 
 /// A node's parts as the loop reads them.
@@ -211,14 +212,37 @@ impl GatherView<'_, '_> {
     /// The node of `row`, when `seeker`'s gather gathers it for it, as `node` finds one.
     fn found(&self, row: NodeRow<'_>, seeker: Seeker<'_>) -> Option<FoundNode> {
         let ours = self.takes_node(&row, seeker.rule());
-        let (entity, _, &at, body, ..) = row;
-        ours.then_some(FoundNode {
+        let (entity, _, &at, body, &unit_type, ..) = row;
+        ours.then(|| FoundNode {
             entity,
-            location: LoopTarget {
-                position: at.get(),
+            location: self.location(entity, unit_type, at.get(), body),
+        })
+    }
+
+    /// Where a worker goes to at the unit of `entity`, of `unit_type`, at `at` of `body`: its
+    /// dock's point, turned with it, for a type of one, else its body
+    /// (exits-docks-and-selection.md, A dock has its point).
+    fn location(
+        &self,
+        entity: Entity,
+        unit_type: UnitType,
+        at: Vec3,
+        body: Option<&Body>,
+    ) -> LoopTarget {
+        match self.nodes_book.dock(unit_type) {
+            Some(dock) => {
+                let facing = self.facings.get(entity).ok();
+                let angle = facing.map_or(Num::ZERO, |facing| facing.degrees());
+                LoopTarget {
+                    position: dock.placed(at, angle),
+                    body: None,
+                }
+            }
+            None => LoopTarget {
+                position: at,
                 body: body.copied(),
             },
-        })
+        }
     }
 
     /// The nearest living node to a worker at `from` that `seeker`'s gather gathers, whose body
@@ -253,13 +277,10 @@ impl GatherView<'_, '_> {
 
     /// Where the living, complete drop-off `id` stands, when it takes `delivery`.
     fn drop_off_location(&self, id: StableId, delivery: Haul) -> Option<LoopTarget> {
-        let (_, &at, body, &unit_type, drop_owner) =
-            self.drop_offs.get(self.index.get(id)?).ok()?;
+        let entity = self.index.get(id)?;
+        let (_, &at, body, &unit_type, drop_owner) = self.drop_offs.get(entity).ok()?;
         self.takes(*drop_owner, unit_type, delivery)
-            .then_some(LoopTarget {
-                position: at.get(),
-                body: body.copied(),
-            })
+            .then(|| self.location(entity, unit_type, at.get(), body))
     }
 
     /// The nearest living, complete drop-off that takes `delivery`, to a worker at `from`: by

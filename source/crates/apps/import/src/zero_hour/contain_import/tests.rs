@@ -63,6 +63,9 @@ Object Crawler
     DamagePercentToUnits = 10%
     ExitDelay = 250
   End
+  Behavior = AssaultTransportAIUpdate ModuleTag_NewAI
+    MembersGetHealedAtLifeRatio = 0.5
+  End
 End
 Object Overfull
   KindOf = VEHICLE
@@ -138,6 +141,54 @@ Object Odd
     AllowInsideKindOf = INFANTRY SALVAGER
   End
 End
+Object Fortress
+  KindOf = VEHICLE
+  Locomotor = SET_NORMAL TankTreads
+  Behavior = OverlordContain ModuleTag_06
+    Slots = 1
+    PassengersAllowedToFire = Yes
+  End
+  Behavior = ObjectCreationUpgrade ModuleTag_09
+    UpgradeObject = OCL_FortressBunker
+    TriggeredBy = Upgrade_FortressBunker
+  End
+End
+Object FortressBunker
+  KindOf = PORTABLE_STRUCTURE
+  Behavior = TransportContain ModuleTag_03
+    Slots = 5
+    PassengersAllowedToFire = Yes
+    AllowInsideKindOf = INFANTRY
+  End
+End
+Object Tower
+  KindOf = VEHICLE
+  Locomotor = SET_NORMAL TankTreads
+  Behavior = OverlordContain ModuleTag_06
+    Slots = 1
+  End
+End
+Object Helix
+  KindOf = VEHICLE AIRCRAFT
+  Locomotor = SET_NORMAL TankTreads
+  Behavior = HelixContain ModuleTag_29
+    Slots = 5
+    DamagePercentToUnits = 100%
+    AllowInsideKindOf = INFANTRY VEHICLE PORTABLE_STRUCTURE
+    ForbidInsideKindOf = AIRCRAFT
+    ExitDelay = 100
+    PassengersAllowedToFire = No
+  End
+End
+";
+
+/// The list a fortress's upgrade runs: its bunker, made inside it.
+const LISTS: &str = "ObjectCreationList OCL_FortressBunker
+  CreateObject
+    ObjectNames = FortressBunker
+    ContainInsideSourceObject = Yes
+  End
+End
 ";
 
 #[test]
@@ -147,6 +198,7 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
         ..ZeroHourRules::default()
     };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+    rules.creation_lists.read(LISTS.as_bytes()).unwrap();
     rules
         .game_data
         .read(
@@ -209,11 +261,14 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
         }])),
         sight: false,
         modifier: None,
+        open: None,
+        assault: None,
     };
     assert_eq!(enter("humvee"), humvee);
     // The crawler comes with its 8 Guards, deals each 10 % of its life, the game's `f32` of
-    // 0.100000001490116… to the nearest billionth, and lets none fire; its heal is lost. The
-    // one of 9 Guards, past its room, comes empty.
+    // 0.100000001490116… to the nearest billionth, lets none fire, and lets out to fight those
+    // above half their life as it is ordered to attack; its heal is lost. The one of 9 Guards,
+    // past its room and of no assault, comes empty.
     let crawler = EnterData {
         capacity: 8,
         damage: share(100_000_001),
@@ -222,6 +277,7 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
             count: 8,
         }],
         fire: FireData::None,
+        assault: Some(share(500_000_000)),
         ..humvee.clone()
     };
     assert_eq!(enter("crawler"), crawler);
@@ -231,6 +287,7 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
             damage: Share::NONE,
             exit_ms: 0,
             payload: Vec::new(),
+            assault: None,
             ..crawler
         }
     );
@@ -244,6 +301,32 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
                 "all:infantry:!aircraft:!huge_vehicle",
                 "all:vehicle:!aircraft:!huge_vehicle"
             ]),
+            exit_ms: 100,
+            fire: FireData::None,
+            ..humvee.clone()
+        }
+    );
+    // The fortress takes its bunker's 5 infantry, which fire, once it holds its bunker's upgrade's
+    // tag, the upgrade's name suffixed `created`; the Helix 5 infantry or vehicles but an
+    // aircraft, each 100 ms apart, which do not fire (exits-docks-and-selection.md, A bunker is an
+    // entry a tag opens). The tower of no bunker's upgrade goes.
+    let opened = FilterTag {
+        name: DeclaredName::new("upgrade_fortressbunker_created").unwrap(),
+        negated: false,
+    };
+    assert_eq!(
+        enter("fortress"),
+        EnterData {
+            damage: Share::NONE,
+            exit_ms: 0,
+            open: Some(TagFilterData::new([opened])),
+            ..humvee.clone()
+        }
+    );
+    assert_eq!(
+        enter("helix"),
+        EnterData {
+            riders: filters(&["all:infantry:!aircraft", "all:vehicle:!aircraft"]),
             exit_ms: 100,
             fire: FireData::None,
             ..humvee.clone()
@@ -267,6 +350,8 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
         fire: FireData::Points(vec![point(10, -5), point(-10, -5)]),
         sight: true,
         modifier: Some(DeclaredName::new("garrisoned").unwrap()),
+        open: None,
+        assault: None,
     };
     assert_eq!(enter("chapel"), chapel);
     // The bunker, a faction's, takes its allies alone, lasts until it dies, and lets its riders
@@ -311,13 +396,23 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
             ("Locked", ContainDropCause::Relations),
             ("Odd", ContainDropCause::Kinds),
             ("Overfull", ContainDropCause::Payload),
+            ("Tower", ContainDropCause::Overlord),
         ]
     );
     let converted: Vec<&str> = import.enters.keys().map(TypeName::as_str).collect();
     assert_eq!(
         converted,
         [
-            "bunker", "chapel", "chinook", "crawler", "firebase", "humvee", "overfull"
+            "bunker",
+            "chapel",
+            "chinook",
+            "crawler",
+            "firebase",
+            "fortress",
+            "fortressbunker",
+            "helix",
+            "humvee",
+            "overfull"
         ]
     );
     // The garrison's modifier adds the game's 1.33 less 1 to the range and 0.25 to the damage.

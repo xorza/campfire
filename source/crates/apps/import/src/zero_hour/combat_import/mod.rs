@@ -15,6 +15,7 @@ use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_values::{FilterTag, Number, Ranked, RelationSet, Scalar, Speed, Stat, TagFilterData};
 use serde::Serialize;
 
+use crate::zero_hour::combat_import::converted_shot::{ConvertedShot, WeaponShot};
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_float;
@@ -33,6 +34,7 @@ use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
+pub(crate) mod converted_shot;
 mod weapon_gate;
 
 use crate::zero_hour::combat_import::weapon_gate::{GatedWeapon, WeaponGate};
@@ -53,6 +55,8 @@ use crate::zero_hour::combat_import::weapon_gate::{GatedWeapon, WeaponGate};
 #[derive(Debug, Default)]
 pub(crate) struct CombatImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedWeapon>,
+    /// The game's weapon each action converts, by the action.
+    sources: BTreeMap<DeclaredName, String>,
     pub(crate) modifiers: BTreeMap<DeclaredName, StageModifier>,
     pub(crate) weapons: BTreeMap<TypeName, Vec<DeclaredName>>,
     pub(crate) weapon_slots: BTreeMap<TypeName, Vec<Vec<DeclaredName>>>,
@@ -269,6 +273,7 @@ impl CombatImport {
                             Entry::Occupied(_) => {}
                             Entry::Vacant(new) => {
                                 new.insert(converted.weapon);
+                                import.sources.insert(id.clone(), weapon.to_owned());
                                 if let Some(projectile) = converted.fired {
                                     fired.insert(id.clone(), (weapon, projectile));
                                 }
@@ -407,6 +412,24 @@ impl CombatImport {
                 look.weapons.clone_from(slots);
             }
         }
+    }
+
+    /// Each action it converts, and how it shoots, by the game's weapon it converts, one weapon to
+    /// an action of each set it serves (exits-docks-and-selection.md, A look follows its converted
+    /// action).
+    pub(crate) fn converted_shots(&self) -> BTreeMap<&str, Vec<ConvertedShot<'_>>> {
+        let mut shots: BTreeMap<&str, Vec<ConvertedShot<'_>>> = BTreeMap::new();
+        for (action, weapon) in &self.sources {
+            let shot = match &self.actions[action].delivery {
+                Some(delivery) => WeaponShot::Projectile(&delivery.projectile),
+                None => WeaponShot::Shot,
+            };
+            shots
+                .entry(weapon.as_str())
+                .or_default()
+                .push(ConvertedShot { action, shot });
+        }
+        shots
     }
 
     /// The barrels of each type's weapons that fire a projectile: of each weapon slot of the type,

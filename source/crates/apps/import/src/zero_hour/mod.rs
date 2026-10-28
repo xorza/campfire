@@ -27,7 +27,7 @@ use crate::zero_hour::chassis_import::ChassisImport;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::dropped::Losses;
-use crate::zero_hour::effects_import::{EffectSources, EffectsImport, WeaponShot};
+use crate::zero_hour::effects_import::{EffectSources, EffectsImport};
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::object_ini::RadarPriority;
@@ -103,8 +103,10 @@ pub(crate) mod object_flight;
 pub(crate) mod panel_drop_cause;
 pub(crate) mod panel_import;
 pub(crate) mod pivot_nodes;
+mod portable_structure;
 pub(crate) mod power_drop_cause;
 mod press_import;
+mod production_bones;
 pub(crate) mod production_import;
 pub(crate) mod road_buffer;
 pub(crate) mod road_decals;
@@ -308,12 +310,7 @@ impl ZeroHour {
         let start = SkirmishStart::of(&game, &mut object_names)?;
         let money = game.multiplayer.money()?;
         let mut object_names = object_names.into_production();
-        let production = ProductionImport::of(
-            &game,
-            &mut object_names,
-            looks.helipads.clone(),
-            looks.airfields.clone(),
-        );
+        let production = ProductionImport::of(&game, &mut object_names, looks.points.clone());
         // The panel's icons and keys, its grid, and the atlases its icons draw from
         // (02-engine-core.md, A button's look is its action's).
         let mut panel_dropped = Losses::default();
@@ -530,17 +527,10 @@ impl ZeroHour {
         losses.extend(effects.dropped.iter().cloned().map(ImportLoss::Effect));
         losses.extend(wreck_losses.into_iter().map(ImportLoss::Effect));
         combat.complete_looks(&mut looks.units);
-        let delivery = |action: &DeclaredName| match combat.actions.get(action) {
-            None => WeaponShot::Dropped,
-            Some(weapon) => weapon
-                .delivery
-                .as_ref()
-                .map_or(WeaponShot::Shot, |delivery| {
-                    WeaponShot::Projectile(&delivery.projectile)
-                }),
-        };
+        let converted = combat.converted_shots();
+        let shots_of = |weapon: &str| converted.get(weapon).map_or(&[][..], Vec::as_slice);
         let mut actions =
-            effects.action_looks(&game.weapons, delivery, &mut sounds, &mut looks.units)?;
+            effects.action_looks(&game.weapons, shots_of, &mut sounds, &mut looks.units)?;
         // Each look's voices, and who sees it on the minimap, and the music of each faction's base
         // side (02-engine-core.md, A look names its voices; 02-engine-core.md, The minimap is drawn
         // from the terrain at load; 02-engine-core.md, Music by a choice).
@@ -701,7 +691,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 79;
+    pub const OUTPUT_VERSION: u32 = 85;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

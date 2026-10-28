@@ -7,7 +7,9 @@ use campfire_actions::{
 use campfire_codec::TomlTable;
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::Num;
-use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnSpec, SpawnsData};
+use campfire_production::{
+    DropOffData, EmptyNode, FramePoint, GatherData, NodeData, SpawnSpec, SpawnsData,
+};
 use campfire_values::{Distance, Number, Ranked, Scalar};
 use serde::{Deserialize, Serialize};
 
@@ -105,8 +107,15 @@ pub(crate) const DOCK_RANGE: Num = Num::int(10);
 
 impl SupplyImport {
     /// Adds the node of `producer` when it is a dock, and its drop-off when it is a supply
-    /// center, by the box value of `rules`; drops what it creates over time.
-    pub(crate) fn dock(&mut self, rules: &ZeroHourRules, producer: &NamedObject<'_>) {
+    /// center, by the box value of `rules`, each docked at `dock`, its model's `DockAction`, or at
+    /// its body for none (exits-docks-and-selection.md, A dock has its point); drops what it
+    /// creates over time.
+    pub(crate) fn dock(
+        &mut self,
+        rules: &ZeroHourRules,
+        producer: &NamedObject<'_>,
+        dock: Option<FramePoint>,
+    ) {
         let object = producer.object;
         let supply = object.supply();
         if supply.creates_over_time {
@@ -116,14 +125,16 @@ impl SupplyImport {
             let money = rules.names.money.clone();
             let drop_off = DropOffData {
                 resources: vec![money],
+                dock,
             };
             self.drop_offs.insert(producer.name.clone(), drop_off);
         }
-        let Some(dock) = supply.dock else {
+        let Some(supplied) = supply.dock else {
             return;
         };
-        match Self::node(dock, rules) {
+        match Self::node(supplied, rules) {
             Ok(node) => {
+                let node = NodeData { dock, ..node };
                 self.nodes.insert(producer.name.clone(), node);
             }
             Err(cause) => self.drop(object, cause),
@@ -356,6 +367,7 @@ impl SupplyImport {
             } else {
                 EmptyNode::Stays
             },
+            dock: None,
         })
     }
 

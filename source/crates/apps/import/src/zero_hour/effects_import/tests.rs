@@ -10,6 +10,7 @@ use crate::zero_hour::format::ini::object_ini::ObjectFiles;
 use crate::zero_hour::format::ini::particle_system_ini::samples::PARTICLE_SYSTEMS;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::format::wav::samples::wav;
+use crate::zero_hour::production_bones::ProductionBones;
 
 /// The audio of the sounds the samples name: the quiet list's hush and the cannon's fire, each a
 /// file of its own.
@@ -330,23 +331,38 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
 
     // The cannon fires `FX_TankFire`, which the lists do not hold, and its shell hits with
     // `FX_TankHit`, which its shell's look names, of no exhaust; the rifle, a shot, plays
-    // nothing, and names no look.
+    // nothing, and names no look. The cannon converts to the action of each set it serves, and
+    // each plays its look (exits-docks-and-selection.md, A look follows its converted action).
     let mut weapons = WeaponIni::default();
     weapons.read(WEAPONS.as_bytes()).unwrap();
     let shell = name("tank_shell");
-    let projectile = |action: &DeclaredName| {
-        if *action == name("weapon_tankcannon") {
-            WeaponShot::Projectile(&shell)
-        } else {
-            WeaponShot::Shot
-        }
+    let [starting, upgraded, rifle] = [
+        "weapon_tankcannon_starting",
+        "weapon_tankcannon_upgraded",
+        "weapon_rangerrifle",
+    ]
+    .map(name);
+    let fired_shells = [&starting, &upgraded].map(|action| ConvertedShot {
+        action,
+        shot: WeaponShot::Projectile(&shell),
+    });
+    let rifle_shot = [ConvertedShot {
+        action: &rifle,
+        shot: WeaponShot::Shot,
+    }];
+    let projectile = |weapon: &str| match weapon {
+        "TankCannon" => &fired_shells[..],
+        "RangerRifle" => &rifle_shot[..],
+        _ => &[],
     };
     let mut units = BTreeMap::new();
     let looks = effects
         .action_looks(&weapons, projectile, &mut sounds, &mut units)
         .unwrap();
     // The cannon's fire plays its sound, whose loop over 80 ms is counted.
-    let cannon = |look: ActionLook| BTreeMap::from([(name("weapon_tankcannon"), look)]);
+    let cannon = |look: ActionLook| {
+        BTreeMap::from([(starting.clone(), look.clone()), (upgraded.clone(), look)])
+    };
     let fired = ActionLook {
         fire_sound: Some(name("tankcannonfire")),
         ..ActionLook::default()
@@ -356,11 +372,19 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
         (&units[&shell].end, &units[&shell].trail),
         (&Some(name("fx_tankhit")), &None)
     );
-    // A shot of no projectile names its hit on its action; an action the import does not
+    // A shot of no projectile names its hit on its action; a weapon the import does not
     // convert names none.
+    let cannon_shots = [&starting, &upgraded].map(|action| ConvertedShot {
+        action,
+        shot: WeaponShot::Shot,
+    });
     let mut units = BTreeMap::new();
+    let shot = |weapon: &str| match weapon {
+        "TankCannon" => &cannon_shots[..],
+        _ => &[],
+    };
     let looks = effects
-        .action_looks(&weapons, |_| WeaponShot::Shot, &mut sounds, &mut units)
+        .action_looks(&weapons, shot, &mut sounds, &mut units)
         .unwrap();
     assert_eq!(
         looks,
@@ -370,7 +394,7 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
         })
     );
     assert!(units.is_empty());
-    let none = effects.action_looks(&weapons, |_| WeaponShot::Dropped, &mut sounds, &mut units);
+    let none = effects.action_looks(&weapons, |_| &[], &mut sounds, &mut units);
     assert!(none.unwrap().is_empty());
     let sounded = sounds.finish().dropped;
     assert_eq!(
@@ -417,8 +441,7 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
         objects: BTreeMap::new(),
         bones: BTreeMap::new(),
         track_widths: BTreeMap::from([(name("tank"), 17.5)]),
-        helipads: BTreeMap::new(),
-        airfields: BTreeMap::new(),
+        points: ProductionBones::default(),
         fire_points: BTreeMap::new(),
     };
     let units = &mut looks.units;

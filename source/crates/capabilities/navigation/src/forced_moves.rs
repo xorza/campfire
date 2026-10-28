@@ -107,6 +107,10 @@ impl ForcedMoves {
                     point: to,
                     reach: Num::ZERO,
                 }),
+                ForcedMove::Exit { to, .. } => Some(Goal {
+                    point: ground(to),
+                    reach: Num::ZERO,
+                }),
             };
             let advanced = forced.advance(at.get(), goal);
             let to = map
@@ -118,7 +122,14 @@ impl ForcedMoves {
             let knocked = matches!(forced, ForcedMove::KnockBack { .. });
             let walled =
                 knocked && clearance.is_some_and(|clearance| clearance.walls_block_step(step));
-            let blocked = statics.blocks(step, walker) || walled;
+            // An exit crosses its producer's body (exits-docks-and-selection.md, A trained unit
+            // drives out of its producer).
+            let through = match forced {
+                ForcedMove::Exit { through, .. } => Some(through),
+                ForcedMove::Dash { .. } | ForcedMove::KnockBack { .. } => None,
+            };
+            let blocked =
+                statics.blocks_where(step, walker, |body| Some(body.id) != through) || walled;
             let ends = advanced.ends || past || blocked;
             let stands = if blocked { at.get() } else { to };
             let place = match (clearance, planner.as_deref()) {

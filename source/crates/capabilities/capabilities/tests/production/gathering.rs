@@ -4,6 +4,7 @@ use bevy_ecs::system::SystemState;
 
 use campfire_actions::ActionBook;
 use campfire_capabilities::Order;
+use campfire_declarations::ByIdBuilder;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{FlightData, Navigation, Walker};
 use campfire_orders::OrdersDirective;
@@ -227,6 +228,48 @@ fn a_worker_brings_its_loads_in_trip_by_trip_and_stops_as_its_node_runs_out() {
     });
     assert_eq!(delivered, Some(6));
     assert_eq!(shop.gold(&client), gold);
+}
+
+#[test]
+fn a_worker_docks_at_its_nodes_and_its_drop_offs_dock_points() {
+    // The mineral at (0, 6) docks at (3, 0) of its frame, (3, 6), and the hall at the origin at
+    // (0, −3), past its far side; the worker at (0.5, 3) walks to each point, gathers or delivers
+    // within its gather's 1 m of it, not at the near side of either body
+    // (exits-docks-and-selection.md, A dock has its point).
+    let Mining {
+        mut game,
+        shop,
+        mine,
+    } = Mining::new();
+    let point = |x: i64, z: i64| FramePoint::new([Num::int(x), Num::int(z)]).unwrap();
+    let mut book = game.resource::<NodeBook>().clone();
+    let mut docks = ByIdBuilder::default();
+    docks.set(mine.mineral, point(3, 0));
+    docks.set(shop.depot, point(0, -3));
+    book.docks = docks.build();
+    game.insert_resource(book);
+    shop.hall(&mut game, halves(0, 0));
+    let node = mine.mineral(&mut game, halves(0, 12), 12);
+    let worker = mine.worker(&mut game, halves(1, 6), 0);
+    Production::gather_at(&mut game, &[worker], node);
+    let (mut gathered, mut delivered) = (None, None);
+    for _ in 1..=40 {
+        // Where it stands as the tick starts, which it delivers from and then leaves.
+        let before = game.part::<Position>(worker).get();
+        game.step();
+        let at = game.part::<Position>(worker).get();
+        let step = Production::gather_step(&game, worker);
+        if gathered.is_none() && matches!(step, Some(GatherStep::Gathering { .. })) {
+            gathered = Some(at);
+        }
+        if delivered.is_none() && shop.gold(&game) > 0 {
+            delivered = Some(before);
+        }
+    }
+    // Within 1 m of its edge, a half meter, of each point: 1.5 m of its centre.
+    let near = |at: Option<Vec3>, to: Vec3| at.is_some_and(|at| at.distance(to) <= Num::int(3) / 2);
+    assert!(near(gathered, Vec3::from((3, 0, 6))), "{gathered:?}");
+    assert!(near(delivered, Vec3::from((0, 0, -3))), "{delivered:?}");
 }
 
 #[test]

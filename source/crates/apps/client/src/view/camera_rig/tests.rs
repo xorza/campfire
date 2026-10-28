@@ -20,6 +20,7 @@ const SHIPPED: CameraFile = CameraFile {
 const PRESS: Press = Press {
     drag: 4.0,
     click: 0.167,
+    double: 0.5,
 };
 
 fn near(a: Vec3, b: Vec3) -> bool {

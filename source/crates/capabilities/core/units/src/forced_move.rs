@@ -18,6 +18,14 @@ use crate::unit_entity::UnitEntity;
 pub enum ForcedMove {
     /// A dash of `step` a tick on the ground plane, more than 0, to `to`.
     Dash { to: DashTo, step: Num },
+    /// A new unit's drive out of its producer, `through`, whose body it crosses, as a dash of
+    /// `step` a tick to `to` (exits-docks-and-selection.md, A trained unit drives out of its
+    /// producer).
+    Exit {
+        to: Vec3,
+        step: Num,
+        through: StableId,
+    },
     /// A knock back to `to`, which it reaches in `left` ticks more, at least one: each tick it
     /// goes the share of the way left that one of those ticks is.
     KnockBack { to: Vec3, left: u64 },
@@ -55,7 +63,7 @@ impl ForcedMove {
             return Advanced { point, ends: true };
         };
         match self {
-            Self::Dash { step, .. } => {
+            Self::Dash { step, .. } | Self::Exit { step, .. } => {
                 if point.within(goal.point, goal.reach + *step) {
                     let gap = (point.distance(goal.point) - goal.reach).max(Num::ZERO);
                     return Advanced {
@@ -95,12 +103,12 @@ impl SimComponent for ForcedMove {
     const NAME: &'static str = "units.forced_move";
     type Host = UnitEntity;
 
-    // A dash of no step, or a knock back with no tick left, never ends. A dash's step, and a
-    // knock back's end, lie within twice the world's bound, a distance within it from a place
-    // within it, so a step past a body's reach and a way to the end fit a number. A knock back's
-    // ticks are a time's, within the tick limit. A dash's point lies within the world's bound, as
-    // every place does. The declarations, not this check, require that its unit walks, and so is
-    // no box.
+    // A dash or an exit of no step, or a knock back with no tick left, never ends. A dash's and
+    // an exit's step, and a knock back's end, lie within twice the world's bound, a distance
+    // within it from a place within it, so a step past a body's reach and a way to the end fit a
+    // number. A knock back's ticks are a time's, within the tick limit. A dash's and an exit's
+    // point lies within the world's bound, as every place does. The declarations, not this check,
+    // require that its unit walks, and so is no box.
     fn check(&self, _: &World, _: Entity) -> bool {
         let reach = 2 * Vec3::BOUND.to_bits().unsigned_abs();
         let within = |value: Num| value.to_bits().unsigned_abs() <= reach;
@@ -112,6 +120,7 @@ impl SimComponent for ForcedMove {
                 };
                 step > Num::ZERO && within(step) && point
             }
+            Self::Exit { to, step, .. } => step > Num::ZERO && within(step) && to.within_bound(),
             Self::KnockBack { to, left } => {
                 (1..=Tick::LIMIT.get()).contains(&left)
                     && [to.x, to.y, to.z].into_iter().all(within)

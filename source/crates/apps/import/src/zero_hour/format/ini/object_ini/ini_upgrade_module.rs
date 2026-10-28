@@ -38,6 +38,9 @@ pub(crate) enum UpgradeEffect {
         show: Vec<String>,
         hide: Vec<String>,
     },
+    /// `ObjectCreationUpgrade`: its object runs the creation list `list`, its `UpgradeObject`,
+    /// none for none named.
+    ObjectCreation { list: Option<String> },
     /// Any other upgrade module, by its class's name as the object writes it.
     Other(String),
 }
@@ -72,6 +75,7 @@ impl IniUpgradeModule {
                 show: Vec::new(),
                 hide: Vec::new(),
             },
+            "objectcreationupgrade" => UpgradeEffect::ObjectCreation { list: None },
             lower if lower.ends_with("upgrade") => UpgradeEffect::Other(class.to_owned()),
             _ => return None,
         };
@@ -94,6 +98,7 @@ impl IniUpgradeModule {
             UpgradeEffect::Radar => "RadarUpgrade",
             UpgradeEffect::ModelCondition { .. } => "ModelConditionUpgrade",
             UpgradeEffect::SubObjects { .. } => "SubObjectsUpgrade",
+            UpgradeEffect::ObjectCreation { .. } => "ObjectCreationUpgrade",
             UpgradeEffect::Other(class) => class,
         }
     }
@@ -114,6 +119,9 @@ impl IniUpgradeModule {
             }
             ("showsubobjects", UpgradeEffect::SubObjects { show, .. }) => show.extend(names()),
             ("hidesubobjects", UpgradeEffect::SubObjects { hide, .. }) => hide.extend(names()),
+            ("upgradeobject", UpgradeEffect::ObjectCreation { list }) => {
+                *list = Some(at.value()?.to_owned());
+            }
             ("changetype", UpgradeEffect::MaxHealth { change, .. }) => {
                 *change = match at.value()?.to_ascii_uppercase().as_str() {
                     "SAME_CURRENTHEALTH" => HealthChange::SameCurrent,

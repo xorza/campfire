@@ -13,10 +13,13 @@ use serde::{Deserialize, Serialize};
 /// share of each rider's life most its death deals it; the share of its own life at or below which
 /// it takes none and lets every rider out, none when absent; whether one of no player takes its
 /// first rider's; the riders it spawns with; where its riders fire from, none when absent; whether
-/// its riders see from inside; and the modifier of its package each rider holds inside
+/// its riders see from inside; the modifier of its package each rider holds inside
 /// (04-capabilities/combat.md, A container may let its riders fire; 04-capabilities/interaction.md,
 /// A garrison's riders see from it; 04-capabilities/combat.md, A container's modifier holds on its
-/// riders).
+/// riders); the tags it holds while it takes riders, every time when absent
+/// (exits-docks-and-selection.md, A bunker is an entry a tag opens); and the share of its life
+/// above which a rider leaves to fight as it is ordered to attack, none for riders that stay
+/// (exits-docks-and-selection.md, A transport may assault).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EnterData {
@@ -41,6 +44,10 @@ pub struct EnterData {
     #[serde(default)]
     pub sight: bool,
     pub modifier: Option<DeclaredName>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open: Option<TagFilterData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assault: Option<Share>,
 }
 
 /// Where a container's riders fire from: nowhere; its own place, those of the tags of a filter;

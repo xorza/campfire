@@ -25,6 +25,7 @@ use crate::zero_hour::format::ini::object_ini::ini_contain::{ContainClass, IniCo
 use crate::zero_hour::format::ini::object_ini::object_kinds::{ObjectKind, ObjectKinds};
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_names::TypedObject;
+use crate::zero_hour::portable_structure;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::supply_import::DOCK_RANGE;
 use crate::zero_hour::type_name::TypeName;
@@ -102,8 +103,31 @@ impl ContainImport {
             };
             let points = fire_points.get(typed.name.declared());
             let mut drop = |cause| dropped.drop(&object.name, cause);
-            let mut enter = match Self::enter(object, contain, rules, riders, points, &mut drop) {
-                Ok(enter) => enter,
+            // An Overlord's riders are its battle bunker's, which its upgrade makes inside it,
+            // open once it holds the upgrade's tag (exits-docks-and-selection.md, A bunker is an
+            // entry a tag opens).
+            let bunker = (contain.class == ContainClass::Overlord)
+                .then(|| {
+                    object.upgrades().iter().find_map(|module| {
+                        let carried = portable_structure::transport(rules, module)?;
+                        let contain = carried.contain()?;
+                        (!module.triggers.is_empty()).then_some((carried, contain, module))
+                    })
+                })
+                .flatten();
+            let (entered, contain, open) = match bunker {
+                Some((carried, carried_contain, module)) => {
+                    let tag = portable_structure::tag(module)?.expect("a module of a trigger");
+                    let opened = FilterTag {
+                        name: tag,
+                        negated: false,
+                    };
+                    (carried, carried_contain, Some(TagFilterData::new([opened])))
+                }
+                None => (object, contain, None),
+            };
+            let mut enter = match Self::enter(entered, contain, rules, riders, points, &mut drop) {
+                Ok(enter) => EnterData { open, ..enter },
                 Err(cause) => {
                     drop(cause);
                     continue;
@@ -264,6 +288,12 @@ impl ContainImport {
             fire,
             sight: garrison,
             modifier: garrison.then(|| names.garrisoned.clone()),
+            open: None,
+            assault: object
+                .fight()
+                .assault
+                .map(|ratio| Self::share(ratio).ok_or(ContainDropCause::BadNumber))
+                .transpose()?,
         })
     }
 
@@ -335,7 +365,7 @@ impl ContainImport {
     /// Why a contain module of `class` is dropped; none for a transport's or a garrison's.
     const fn lost(class: ContainClass) -> Option<ContainDropCause> {
         Some(match class {
-            ContainClass::Transport | ContainClass::Garrison => return None,
+            ContainClass::Transport | ContainClass::Garrison | ContainClass::Helix => return None,
             ContainClass::Open => ContainDropCause::Open,
             ContainClass::Cave => ContainDropCause::Cave,
             ContainClass::Heal => ContainDropCause::Heal,
@@ -345,7 +375,6 @@ impl ContainImport {
             ContainClass::MobNexus => ContainDropCause::MobNexus,
             ContainClass::Tunnel => ContainDropCause::Tunnel,
             ContainClass::Overlord => ContainDropCause::Overlord,
-            ContainClass::Helix => ContainDropCause::Helix,
             ContainClass::Parachute => ContainDropCause::Parachute,
         })
     }

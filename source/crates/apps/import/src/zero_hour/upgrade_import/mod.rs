@@ -14,6 +14,7 @@ use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
 };
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::TypedObject;
+use crate::zero_hour::portable_structure;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
@@ -254,7 +255,19 @@ impl UpgradeImport {
             UpgradeEffect::SubObjects { .. } => {
                 ("subobjects".to_owned(), EffectModifier::tagged(&tag()?))
             }
-            UpgradeEffect::Other(_) => return Err(UpgradeDropCause::Effect),
+            // An upgrade that makes a transport inside its object opens the object's entry by its
+            // tag (exits-docks-and-selection.md, A bunker is an entry a tag opens).
+            UpgradeEffect::ObjectCreation { .. }
+                if portable_structure::transport(rules, module).is_some() =>
+            {
+                let tag =
+                    portable_structure::tag(module).map_err(|_| UpgradeDropCause::LongName)?;
+                let tag = tag.ok_or(UpgradeDropCause::NoCondition)?;
+                ("created".to_owned(), EffectModifier::tagged(&tag))
+            }
+            UpgradeEffect::ObjectCreation { .. } | UpgradeEffect::Other(_) => {
+                return Err(UpgradeDropCause::Effect);
+            }
         };
         let adds = matches!(module.effect, UpgradeEffect::MaxHealth { .. });
         let mut name = ImportName::latin(first)

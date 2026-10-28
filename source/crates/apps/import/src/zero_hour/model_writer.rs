@@ -41,6 +41,7 @@ use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_nodes::{ModelNodes, NodeChanges};
+use crate::zero_hour::production_bones::ProductionBones;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::upgrade_import;
 
@@ -122,9 +123,9 @@ struct Converter<'i, 'w> {
 
 /// The looks of an import's `client/units.toml`, which later stages complete before the import
 /// writes them, the bones each unit type's turret and weapons read of its model, the width of the
-/// track each look's treads lay, of the looks whose model names its treads' bones, the helipad of
-/// each object whose model names its bone, and the fire points of each garrison whose model names
-/// one, on the ground in its object's frame, the game's axes.
+/// track each look's treads lay, of the looks whose model names its treads' bones, the points
+/// production reads of each model, and the fire points of each garrison whose model names one, on
+/// the ground in its object's frame, the game's axes.
 #[derive(Debug)]
 pub(crate) struct ImportedLooks {
     pub(crate) units: BTreeMap<DeclaredName, ClientUnit>,
@@ -132,25 +133,28 @@ pub(crate) struct ImportedLooks {
     pub(crate) objects: BTreeMap<DeclaredName, ObjectLook>,
     pub(crate) bones: BTreeMap<TypeName, ModelBones>,
     pub(crate) track_widths: BTreeMap<DeclaredName, f32>,
-    pub(crate) helipads: BTreeMap<DeclaredName, [f32; 2]>,
-    pub(crate) airfields: BTreeMap<DeclaredName, AirfieldBones>,
+    pub(crate) points: ProductionBones,
     pub(crate) fire_points: BTreeMap<DeclaredName, Vec<[f32; 2]>>,
 }
 
 /// What a unit reads of its model at rest: its turret's and weapons' bones, the width of the
 /// track its treads lay, when its model names their bones, its helipad, its `HeliPark01` bone's
-/// point on the ground, the game's axes, when its model names it, and an airfield's places and
-/// runways.
+/// point on the ground, the game's axes, when its model names it, an airfield's places and
+/// runways, and its dock, its `DockAction` bone's point, when its model names it.
 #[derive(Debug)]
 struct ModelRest {
     bones: ModelBones,
     track_width: Option<f32>,
     helipad: Option<[f32; 2]>,
     airfield: Option<AirfieldBones>,
+    dock: Option<[f32; 2]>,
 }
 
 /// The bone an airfield makes a helicopter at (`ParkingPlaceBehavior::exitObjectViaDoor`).
 const HELIPAD: &str = "HeliPark01";
+
+/// The bone a gatherer docks at (`DockUpdate`'s `DockAction`).
+const DOCK_ACTION: &str = "DockAction";
 
 /// The most fire points a garrison holds, `GarrisonContain`'s `MAX_GARRISON_POINTS`.
 const MOST_FIRE_POINTS: usize = 40;
@@ -260,8 +264,7 @@ impl ModelWriter<'_, '_> {
         let mut objects = BTreeMap::new();
         let mut bones = BTreeMap::new();
         let mut track_widths = BTreeMap::new();
-        let mut helipads = BTreeMap::new();
-        let mut airfields = BTreeMap::new();
+        let mut points = ProductionBones::default();
         let mut fire_points = BTreeMap::new();
         let shown = StateLook::default();
         for object in ini.objects() {
@@ -285,6 +288,7 @@ impl ModelWriter<'_, '_> {
                 track_width,
                 helipad,
                 airfield,
+                dock,
             } = self.bones(boned.draws(), boned.scale(), object.build().parking)?;
             let garrisoned = boned
                 .contain()
@@ -333,10 +337,13 @@ impl ModelWriter<'_, '_> {
                 track_widths.insert(declared.clone(), width);
             }
             if let Some(helipad) = helipad {
-                helipads.insert(declared.clone(), helipad);
+                points.helipads.insert(declared.clone(), helipad);
             }
             if let Some(airfield) = airfield {
-                airfields.insert(declared.clone(), airfield);
+                points.airfields.insert(declared.clone(), airfield);
+            }
+            if let Some(dock) = dock {
+                points.docks.insert(declared.clone(), dock);
             }
             if let Some(points) = garrisoned {
                 fire_points.insert(declared.clone(), points);
@@ -349,8 +356,7 @@ impl ModelWriter<'_, '_> {
             objects,
             bones,
             track_widths,
-            helipads,
-            airfields,
+            points,
             fire_points,
         })
     }
@@ -647,6 +653,7 @@ impl ModelWriter<'_, '_> {
             track_width: None,
             helipad: None,
             airfield: None,
+            dock: None,
         };
         let drawn = draws.iter().find(|draw| draw.kind == DrawKind::Family);
         let Some((draw, model)) = drawn.and_then(|draw| Some((draw, draw.model.as_ref()?))) else {
@@ -687,6 +694,7 @@ impl ModelWriter<'_, '_> {
         // A pivot's point is on the engine's axes, its `z` the game's `−y`.
         let ground = |at: Vec3| [at.x * scale.get(), -at.z * scale.get()];
         let helipad = (nodes.pivot_point(HELIPAD, &pristine)).map(ground);
+        let dock = (nodes.pivot_point(DOCK_ACTION, &pristine)).map(ground);
         let airfield = parking.and_then(|parking| {
             let point = |name: String| nodes.pivot_point(&name, &pristine).map(ground);
             let mut places = Vec::new();
@@ -728,6 +736,7 @@ impl ModelWriter<'_, '_> {
             track_width,
             helipad,
             airfield,
+            dock,
         })
     }
 

@@ -550,6 +550,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "ShopIndex::typed",
             "ShopIndex::untyped",
             "Containers::ordered",
+            "Containers::called_out",
             "UseOrders::ordered",
             "NextTurn<Acquire>::revived",
             "NextTurn<Ai>::revived",

@@ -12,6 +12,7 @@ fn the_press_is_the_mouse_s_drag_and_click_time() {
         Press {
             drag: 4.0,
             click: 0.167,
+            double: 0.5,
         }
     );
     assert_eq!(keys.cast, KeysFile::default().cast);

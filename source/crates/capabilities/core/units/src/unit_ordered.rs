@@ -35,6 +35,10 @@ pub enum OrderKind {
     Exit { rider: StableId },
     /// Let every rider out of the unit, a container, which keeps every loop of its own.
     Evacuate,
+    /// Attack a unit, or move attacking on the way, which ends every loop, as any other order
+    /// does, and lets an assault transport's riders out to fight (exits-docks-and-selection.md,
+    /// A transport may assault).
+    Attack,
     /// Any other order, which ends every loop.
     Other,
 }

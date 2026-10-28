@@ -8,7 +8,7 @@ use bevy_ecs::system::RunSystemOnce;
 use campfire_abilities::{Abilities, CastData};
 use campfire_actions::{
     ActionData, ActionKeys, ActionRange, ActionSlots, Actions, RangeBonus, RangeField, SlotKind,
-    Targeting, TimedSlots,
+    SlotTimes, Targeting, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
@@ -38,8 +38,9 @@ use campfire_stats::ModifierData;
 use campfire_stats::Stats;
 use campfire_units::internals::Spawn;
 use campfire_units::{
-    BodyForm, BodyShape, Dead, Destination, FiringRider, GroundPoint, Layer, Leaving, Lifespan,
-    MapBook, MoveStep, Owner, SeeingRider, SeenBy, StatId, StatusTags, UnitTypeCore, Units,
+    BodyForm, BodyShape, Dead, Destination, FiringRider, GroundPoint, Layer, Leaving, Life,
+    Lifespan, MapBook, MoveStep, Owner, RiderFate, RidersCalledOut, SeeingRider, SeenBy, StatId,
+    StatusTags, UnitTypeCore, Units,
 };
 use campfire_values::{
     FilterData, ModifierId, Number, PackageIndex, Rank, Ranked, Scalar, Share, Team, TeamSet,
@@ -128,6 +129,8 @@ impl Rides {
                 fire: FireSpec::None,
                 sight: false,
                 modifier: None,
+                open: None,
+                assault: Some(share(500_000_000)),
             },
         );
         Units::give_type(&mut game, humvee, MoveStep::new(Num::ONE).unwrap());
@@ -147,6 +150,8 @@ impl Rides {
                 fire: FireSpec::None,
                 sight: true,
                 modifier: None,
+                open: None,
+                assault: None,
             },
         );
         let crawler = container(
@@ -168,6 +173,8 @@ impl Rides {
                 fire: FireSpec::None,
                 sight: false,
                 modifier: None,
+                open: None,
+                assault: None,
             },
         );
         let rides = Self {
@@ -315,7 +322,7 @@ fn a_rider_in_reach_enters_out_of_the_world_and_keeps_its_parts() {
 }
 
 #[test]
-fn a_container_takes_no_rider_past_its_room_its_filter_its_size_or_its_side() {
+fn a_container_takes_no_rider_past_its_room_its_filter_its_size_its_side_or_its_parts() {
     let (mut game, rides) = Rides::load();
     let humvee = container(&mut game, rides.humvee, 0, 0, Some(0));
     // A walking caster of size 1 and a caster of size 2 fill its room of 3; one more is refused,
@@ -336,9 +343,42 @@ fn a_container_takes_no_rider_past_its_room_its_filter_its_size_or_its_side() {
         enter(&mut game, player, unit, other);
     }
     assert_eq!(riders(&game, other), []);
+    // A unit that holds its slots but not their times, as a client holds one whose times have
+    // not come, finds no entry, so its order is dropped.
+    let untimed = rider(&mut game, "walking caster", 21, 0, 0);
+    let entity = game.unit_entity(untimed);
+    game.entity_mut(entity).remove::<SlotTimes>();
+    enter(&mut game, 0, untimed, other);
+    assert_eq!(riders(&game, other), []);
     let own = rider(&mut game, "walking caster", 21, 0, 0);
     enter(&mut game, 0, own, other);
     assert_eq!(riders(&game, other), [own]);
+    assert_eq!(failed(&mut game), []);
+}
+
+#[test]
+fn an_entry_opens_only_while_its_container_holds_the_tags_it_names() {
+    // A humvee open while it holds no rider, as its tag `holding` says: the first rider enters,
+    // and the second, ordered once the first is in, finds it closed (exits-docks-and-selection.md,
+    // A bunker is an entry a tag opens).
+    let (mut game, rides) = Rides::books();
+    let mut spec = game
+        .resource::<ById<UnitType, EnterSpec>>()
+        .get(rides.humvee)
+        .unwrap()
+        .clone();
+    spec.open = Some(Filter::of_match(&game, "all:!holding"));
+    let core = UnitTypeCore::default();
+    let gated = Units::load_type(&mut game, TypeScope::Mode, "gated humvee", &core);
+    Abilities::give_combatant(&mut game, gated);
+    Units::give_type(&mut game, gated, spec);
+    Players::spawn(&mut game, 2, 1);
+    let humvee = container(&mut game, gated, 0, 0, Some(0));
+    let [first, second] = [1, -1].map(|x| rider(&mut game, "walking caster", x, 0, 0));
+    enter(&mut game, 0, first, humvee);
+    assert_eq!(riders(&game, humvee), [first]);
+    enter(&mut game, 0, second, humvee);
+    assert_eq!(riders(&game, humvee), [first]);
     assert_eq!(failed(&mut game), []);
 }
 
@@ -464,6 +504,61 @@ fn riders_leave_each_exit_time_apart_at_the_free_cell_nearest_their_container() 
         humvee,
         OrdersDirective::Exit { rider: units[0] },
     );
+    assert_eq!(failed(&mut game), []);
+}
+
+#[test]
+fn an_assault_transports_attack_lets_out_each_rider_above_its_share_of_life() {
+    // A humvee, an assault transport of half a life, holds 2 riders; the first hurt to half its
+    // life, 250 of 500, stays, and the second, whole, leaves as the humvee is ordered to
+    // attack-move (exits-docks-and-selection.md, A transport may assault).
+    let (mut game, rides) = Rides::load();
+    let humvee = container(&mut game, rides.humvee, 0, 0, Some(0));
+    let [hurt, whole] = [1, -1].map(|x| rider(&mut game, "walking caster", x, 0, 0));
+    enter(&mut game, 0, hurt, humvee);
+    enter(&mut game, 0, whole, humvee);
+    assert_eq!(riders(&game, humvee), [hurt, whole]);
+    let entity = game.unit_entity(hurt);
+    game.get_mut::<Life>(entity).unwrap().take(Num::int(250));
+    let to = GroundPoint::new(Num::int(9), Num::ZERO);
+    order(&mut game, 0, humvee, OrdersDirective::AttackMove { to });
+    game.step();
+    assert_eq!(riders(&game, humvee), [hurt]);
+    assert!(!is_out(&mut game, whole));
+    assert_eq!(failed(&mut game), []);
+}
+
+#[test]
+fn riders_called_out_leave_at_their_exit_times_or_go_with_their_container() {
+    // A crawler's 2 riders, which it came with, called out to leave: they leave a tick apart, by
+    // its exit time; another's, called to go, despawn with it (exits-docks-and-selection.md, A
+    // sold container lets its riders out).
+    let (mut game, rides) = Rides::load();
+    grid(&mut game, rides);
+    let crawler = container(&mut game, rides.crawler, 0, 0, Some(0));
+    let carried = riders(&game, crawler);
+    let entity = game.unit_entity(crawler);
+    game.trigger(RidersCalledOut {
+        entity,
+        fate: RiderFate::Leave,
+    });
+    game.step();
+    assert_eq!(riders(&game, crawler), [carried[1]]);
+    game.step();
+    assert_eq!(riders(&game, crawler), []);
+    let other = container(&mut game, rides.crawler, 6, 0, Some(0));
+    let gone: Vec<Entity> = riders(&game, other)
+        .into_iter()
+        .map(|rider| game.unit_entity(rider))
+        .collect();
+    assert_eq!(gone.len(), 2);
+    let entity = game.unit_entity(other);
+    game.trigger(RidersCalledOut {
+        entity,
+        fate: RiderFate::Go,
+    });
+    game.entity_mut(entity).despawn();
+    assert!(gone.iter().all(|&rider| game.get_entity(rider).is_err()));
     assert_eq!(failed(&mut game), []);
 }
 

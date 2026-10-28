@@ -63,6 +63,7 @@ use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel, StateDropCause};
 use crate::zero_hour::object_flight::samples::shell_projectile;
+use crate::zero_hour::production_bones::ProductionBones;
 use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::upgrade_import::UpgradeDropCause;
@@ -986,7 +987,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // weapons, and the shell the crusader's cannon fires.
     SkirmishStart::of(&rules, &mut names).unwrap();
     let mut names = names.into_production();
-    let production = ProductionImport::of(&rules, &mut names, BTreeMap::new(), BTreeMap::new());
+    let production = ProductionImport::of(&rules, &mut names, ProductionBones::default());
     let mut names = names.into_projectiles();
     let combat = CombatImport::of(&rules, &mut names).unwrap();
     let upgrades = UpgradeImport::of(&rules, names.types(), &production, &combat).unwrap();
@@ -1023,6 +1024,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let press = Press {
         drag: 4.0,
         click: 0.167,
+        double: 0.5,
     };
     assert_eq!(keys.press, press);
     let hud = Toml::parse::<HudFile>(&test_dir.read_text("one/game/client/hud.toml")).unwrap();

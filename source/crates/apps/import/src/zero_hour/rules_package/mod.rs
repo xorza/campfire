@@ -30,7 +30,7 @@ use crate::zero_hour::format::ini::ai_data_ini::AiRetaliation;
 use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
 use crate::zero_hour::import_team::ImportTeam;
 use crate::zero_hour::mover_import::MoverImport;
-use crate::zero_hour::production_import::{FactionBase, ProductionImport};
+use crate::zero_hour::production_import::{BaseSources, FactionBase, ProductionImport};
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::science_import::ScienceImport;
 use crate::zero_hour::second_life_import::SecondLifeImport;
@@ -160,7 +160,7 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
             .expect("a range of one rate holds it"),
         teams,
         max_move_speed,
-        // A bot's think of the check's plays runs up to 21,267 operations, and each pool holds a
+        // A bot's think of the check's plays runs up to 22,897 operations, and each pool holds a
         // whole call (09-zero-hour.md, The bots' limits are measured).
         script_limits: ScriptLimits {
             per_call: NonZeroU64::new(BOT_LIMIT).expect("a limit is no zero"),
@@ -264,7 +264,12 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
             .intrinsic
             .get(&faction.name)
             .map_or(&[][..], Vec::as_slice);
-        let base = FactionBase::of(production, combat, faction, perks);
+        let sources = BaseSources {
+            production,
+            combat,
+            contains,
+        };
+        let base = FactionBase::of(sources, faction, perks);
         let fixed = [
             (
                 param("start_building", faction),

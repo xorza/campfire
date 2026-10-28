@@ -17,6 +17,7 @@ use crate::zero_hour::airfield_bones::{AirfieldBones, PlaceBones};
 use crate::zero_hour::area_write::AreaWrite;
 use crate::zero_hour::axes;
 use crate::zero_hour::combat_import::CombatImport;
+use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::NameError;
 use crate::zero_hour::format::csf::string_table::StringTable;
@@ -33,6 +34,7 @@ use crate::zero_hour::import_names::{NamedObject, ProductionNames};
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::panel_import::PanelButtons;
 use crate::zero_hour::power_drop_cause::PowerDropCause;
+use crate::zero_hour::production_bones::ProductionBones;
 use crate::zero_hour::production_import::power_cast::{PowerCast, PowerModifier, PowerNames};
 use crate::zero_hour::skirmish_start::FactionStart;
 use crate::zero_hour::supply_import::{DOCK_RANGE, Spawning, SupplyImport};
@@ -63,10 +65,9 @@ pub(crate) struct ProductionImport {
     pub(crate) supply: SupplyImport,
     /// The places of each producer's buttons on its panel, and their faces.
     pub(crate) panel: PanelButtons,
-    /// The helipad of each type whose model names one, by its type's name, which an airfield's
-    /// trains leave from, and each airfield's places and runways, which its jets take.
-    helipads: BTreeMap<DeclaredName, [f32; 2]>,
-    airfield_bones: BTreeMap<DeclaredName, AirfieldBones>,
+    /// What it reads of the models: the helipad an airfield's trains leave from, each airfield's
+    /// places and runways, which its jets take, and each dock's point.
+    bones: ProductionBones,
     /// The `ParkingPlaceBehavior` of each producer of one it visits.
     parkings: BTreeMap<TypeName, IniParking>,
     /// The `airfield` of each airfield whose production makes its jets at places (09-zero-hour.md,
@@ -95,7 +96,8 @@ struct ExitPoints {
 /// (09-zero-hour.md, A base start): each type its start builders build but its faction building,
 /// once each, in their command sets' order, and each type those buildings and its faction building
 /// train, once each, in that order; its army, those units that neither build nor gather and that a
-/// weapon arms, which a bot trains and sends
+/// weapon arms or that assault with their riders (exits-docks-and-selection.md, A transport may
+/// assault), which a bot trains and sends
 /// (09-zero-hour.md, A builder and an attacker); its gatherers, those units that gather; and its
 /// drop-offs, its faction building and base buildings that take a load, which a bot counts its
 /// gatherers by (04-capabilities/control.md, A bot gathers).
@@ -108,16 +110,33 @@ pub(crate) struct FactionBase {
     pub(crate) drop_offs: Vec<DeclaredName>,
 }
 
+/// What a faction's base is made of: the command sets production converted, the weapons combat
+/// converted, and the containers' entries.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BaseSources<'a> {
+    pub(crate) production: &'a ProductionImport,
+    pub(crate) combat: &'a CombatImport,
+    pub(crate) contains: &'a ContainImport,
+}
+
 impl FactionBase {
-    /// The base of `faction`, from the command sets `production` converted, but a train or a
-    /// build that needs a modifier other than those of `held`, the perks it starts with, its army
-    /// armed by a weapon `combat` converted.
+    /// The base of `faction`, from the command sets `sources` converted, but a train or a build
+    /// that needs a modifier other than those of `held`, the perks it starts with, its army armed
+    /// by a weapon combat converted or an entry of an assault.
     pub(crate) fn of(
-        production: &ProductionImport,
-        combat: &CombatImport,
+        sources: BaseSources<'_>,
         faction: &FactionStart,
         held: &[DeclaredName],
     ) -> Self {
+        let BaseSources {
+            production,
+            combat,
+            contains,
+        } = sources;
+        let assaults = |unit: &DeclaredName| {
+            (contains.enters.iter())
+                .any(|(name, enter)| name.declared() == unit && enter.assault.is_some())
+        };
         let building = &faction.building;
         let mut buildings: Vec<DeclaredName> = Vec::new();
         for builder in &faction.units {
@@ -137,7 +156,9 @@ impl FactionBase {
         }
         let army = units
             .iter()
-            .filter(|unit| production.fights(unit) && production.armed(unit, combat))
+            .filter(|unit| {
+                production.fights(unit) && (production.armed(unit, combat) || assaults(unit))
+            })
             .cloned()
             .collect();
         let gatherers = units
@@ -314,12 +335,10 @@ impl ProductionImport {
     pub(crate) fn of<'r>(
         rules: &'r ZeroHourRules,
         names: &mut ProductionNames<'r>,
-        helipads: BTreeMap<DeclaredName, [f32; 2]>,
-        airfield_bones: BTreeMap<DeclaredName, AirfieldBones>,
+        bones: ProductionBones,
     ) -> Self {
         let mut import = Self {
-            helipads,
-            airfield_bones,
+            bones,
             ..Self::default()
         };
         let mut queued: VecDeque<NamedObject<'r>> = names.typed_objects().into();
@@ -400,7 +419,8 @@ impl ProductionImport {
         named: &NamedObject<'r>,
         names: &mut ProductionNames<'r>,
     ) -> Vec<NamedObject<'r>> {
-        self.supply.dock(rules, named);
+        let dock = self.bones.docks.get(named.name.declared()).copied();
+        self.supply.dock(rules, named, dock.and_then(Self::frame));
         let NamedObject {
             name,
             object: producer,
@@ -893,8 +913,8 @@ impl ProductionImport {
     /// The helipad and the places of the airfield `name`, none for another.
     fn points(&self, name: &TypeName) -> ExitPoints {
         ExitPoints {
-            helipad: self.helipads.get(name.declared()).copied(),
-            airfield: self.airfield_bones.get(name.declared()).cloned(),
+            helipad: self.bones.helipads.get(name.declared()).copied(),
+            airfield: self.bones.airfields.get(name.declared()).cloned(),
         }
     }
 
@@ -946,7 +966,7 @@ impl ProductionImport {
             .filter(|(_, data)| !data.places.is_empty());
         parks
             .filter_map(|(name, _)| {
-                let bones = self.airfield_bones.get(name.declared())?;
+                let bones = self.bones.airfields.get(name.declared())?;
                 let parking = self.parkings.get(name).copied().unwrap_or_default();
                 Some((name.clone(), Self::airfield(bones, parking)?))
             })

@@ -660,12 +660,14 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `resource` | production | since 1.0 |
 | `amount` | production | since 1.0 |
 | `empty` | production | since 1.0 |
+| `dock` | production | since 1.0 |
 
 ### A unit type's `drop_off`
 
 | Field | Capability | Status |
 | --- | --- | --- |
 | `resources` | production | since 1.0 |
+| `dock` | production | since 1.0 |
 
 ### An item type, `[items.<id>]`
 

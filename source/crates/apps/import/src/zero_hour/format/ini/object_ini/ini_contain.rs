@@ -108,7 +108,12 @@ impl IniContain {
 
     /// Takes the module's line of `word`, a field it reads or another.
     pub(crate) fn field(&mut self, word: &str, at: &IniLine<'_>) -> Result<(), IniError> {
-        let transport = self.class == ContainClass::Transport;
+        // A Helix's and an Overlord's contain are transports of their own (`HelixContain` and
+        // `OverlordContain` derive from `TransportContain`).
+        let transport = matches!(
+            self.class,
+            ContainClass::Transport | ContainClass::Helix | ContainClass::Overlord
+        );
         match word {
             "slots" if transport => self.capacity = at.int()?,
             "containmax" if !transport => self.capacity = at.int()?,

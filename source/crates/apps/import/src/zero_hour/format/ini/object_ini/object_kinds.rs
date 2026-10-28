@@ -42,6 +42,7 @@ pub(crate) enum ObjectKind {
     Dozer,
     Parachutable,
     Projectile,
+    PortableStructure,
     #[name = "forceattackable"]
     ForceAttackable,
     NoGarrison,

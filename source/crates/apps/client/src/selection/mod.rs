@@ -52,6 +52,41 @@ impl Selection {
         true
     }
 
+    /// Adds `units`, as `pick` takes them, to the units it holds, as Zero Hour's prefer-selection
+    /// key adds them (exits-docks-and-selection.md, Shift adds, a double click takes a kind);
+    /// whether it changed.
+    pub(crate) fn add(
+        &mut self,
+        units: &[StableId],
+        led_by: impl Fn(StableId) -> Option<StableId>,
+    ) -> bool {
+        let before = self.0.len();
+        self.0
+            .extend(units.iter().map(|&unit| led_by(unit).unwrap_or(unit)));
+        self.0.sort_unstable();
+        self.0.dedup();
+        self.0.len() != before
+    }
+
+    /// Takes `units`, as `pick` takes them, out of it when it holds each of them, as Zero Hour's
+    /// prefer-selection key takes a click's units all selected; whether it did.
+    pub(crate) fn remove(
+        &mut self,
+        units: &[StableId],
+        led_by: impl Fn(StableId) -> Option<StableId>,
+    ) -> bool {
+        let led = |unit: &StableId| led_by(*unit).unwrap_or(*unit);
+        let held = !units.is_empty()
+            && units
+                .iter()
+                .all(|unit| self.0.binary_search(&led(unit)).is_ok());
+        if held {
+            self.0
+                .retain(|unit| !units.iter().any(|picked| led(picked) == *unit));
+        }
+        held
+    }
+
     /// Drops each unit that `held` says the client no longer holds, then, when none is left,
     /// takes `avatar`. Whether it changed.
     pub(crate) fn keep(

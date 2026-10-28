@@ -1,7 +1,7 @@
 use std::fmt;
 
 use bevy::camera::Camera;
-use bevy::ecs::query::{Allow, With, Without};
+use bevy::ecs::query::{Allow, Has, With, Without};
 use bevy::ecs::system::{Query, Res, Single, SystemParam};
 use bevy::math::{Rect, Vec2, Vec3};
 use bevy::picking::hover::HoverMap;
@@ -12,8 +12,8 @@ use bevy::ui::Node;
 use bevy::window::{PrimaryWindow, Window};
 use campfire_common::PlayerSlot;
 use campfire_sim::{StableId, Unpredicted};
-use campfire_units::{Dead, Owner};
-use campfire_values::Team;
+use campfire_units::{Dead, Destination, Owner};
+use campfire_values::{Team, UnitType};
 
 use crate::own_player::OwnPlayer;
 use crate::pointer::unit_picking::UnderMouse;
@@ -38,18 +38,29 @@ pub(crate) struct Pointer<'w, 's> {
 }
 
 /// The living units the client holds: each one's stable id, its team, the player who controls
-/// it, and its drawing.
+/// it, its drawing, its type, and whether it walks, as a unit of a destination does.
 type LivingUnits<'w, 's> = Query<
     'w,
     's,
     (
-        &'static StableId,
-        &'static Team,
-        Option<&'static Owner>,
-        &'static Drawing,
+        (
+            &'static StableId,
+            &'static Team,
+            Option<&'static Owner>,
+            &'static Drawing,
+        ),
+        (&'static UnitType, Has<Destination>),
     ),
     (Without<Dead>, Allow<Unpredicted>),
 >;
+
+/// A unit a drag or a double click may select: the unit, its type, and whether it walks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Shown {
+    unit: Pointed,
+    unit_type: UnitType,
+    walks: bool,
+}
 
 /// A unit the player may point at: its stable id, its team, and the player who controls it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,22 +116,58 @@ impl Pointer<'_, '_> {
         camera.viewport_to_world(place, self.cursor()?).ok()
     }
 
-    /// Adds to `out` each living unit of the player's own whose ground point shows within `rect`
-    /// of the window, in logical pixels, edges included.
-    pub(crate) fn own_units_within(&self, rect: Rect, out: &mut Vec<StableId>) {
-        let (camera, place) = *self.camera;
-        let shown = self
-            .drawn()
-            .map(|(unit, at)| (unit, camera.world_to_viewport(place, at).ok()));
-        out.extend(shown_within(rect, self.own.player_slot(), shown));
+    /// Adds to `out` each living unit of the player's own that walks whose ground point shows
+    /// within `rect` of the window, in logical pixels, edges included: a drag's, which takes no
+    /// building (exits-docks-and-selection.md, A drag selects no building).
+    pub(crate) fn own_walkers_within(&self, rect: Rect, out: &mut Vec<StableId>) {
+        out.extend(shown_within(
+            Some(rect),
+            self.own.player_slot(),
+            self.shown(),
+            |shown| shown.walks,
+        ));
     }
 
-    /// Each living unit with a drawing, and where the drawing stands.
-    fn drawn(&self) -> impl Iterator<Item = (Pointed, Vec3)> {
-        self.units.iter().filter_map(|(&id, &team, owner, drawn)| {
-            let transform = self.drawings.get(drawn.root()).ok()?;
-            Some((Pointed::new(id, team, owner), transform.translation))
-        })
+    /// Adds to `out` each living unit of the player's own of the type of `unit` that walks, as a
+    /// double click on `unit` takes them: those whose ground point the window shows, or every one
+    /// with `across_map` (exits-docks-and-selection.md, Shift adds, a double click takes a kind).
+    /// None for a unit that does not walk, as no mass selection takes a building.
+    pub(crate) fn own_kind_of(&self, unit: StableId, across_map: bool, out: &mut Vec<StableId>) {
+        let Some(kind) = self
+            .units
+            .iter()
+            .find(|((id, ..), _)| **id == unit)
+            .and_then(|(_, (&unit_type, walks))| walks.then_some(unit_type))
+        else {
+            return;
+        };
+        let window = Rect::new(0.0, 0.0, self.window.width(), self.window.height());
+        out.extend(shown_within(
+            (!across_map).then_some(window),
+            self.own.player_slot(),
+            self.shown(),
+            |shown| shown.walks && shown.unit_type == kind,
+        ));
+    }
+
+    /// Each living unit with a drawing, and the point of the window its drawing shows at, if it
+    /// shows.
+    fn shown(&self) -> impl Iterator<Item = (Shown, Option<Vec2>)> {
+        let (camera, place) = *self.camera;
+        self.units
+            .iter()
+            .filter_map(move |((&id, &team, owner, drawn), (&unit_type, walks))| {
+                let transform = self.drawings.get(drawn.root()).ok()?;
+                let shown = Shown {
+                    unit: Pointed::new(id, team, owner),
+                    unit_type,
+                    walks,
+                };
+                Some((
+                    shown,
+                    camera.world_to_viewport(place, transform.translation).ok(),
+                ))
+            })
     }
 }
 
@@ -142,18 +189,20 @@ impl Pointed {
 }
 
 /// Of `units`, each with the point of the window its ground point shows at, if it shows, the
-/// stable ids of those the player of `player_slot` controls whose point lies within `rect`, edges
-/// included.
+/// stable ids of those the player of `player_slot` controls that `takes` takes, whose point lies
+/// within `rect`, edges included, or anywhere, shown or not, for none.
 fn shown_within(
-    rect: Rect,
+    rect: Option<Rect>,
     player_slot: Option<PlayerSlot>,
-    units: impl Iterator<Item = (Pointed, Option<Vec2>)>,
+    units: impl Iterator<Item = (Shown, Option<Vec2>)>,
+    takes: impl Fn(Shown) -> bool,
 ) -> impl Iterator<Item = StableId> {
     units
-        .filter(move |&(unit, shown)| {
-            unit.owned_by(player_slot) && shown.is_some_and(|shown| rect.contains(shown))
+        .filter(move |&(shown, at)| {
+            let within = rect.is_none_or(|rect| at.is_some_and(|at| rect.contains(at)));
+            shown.unit.owned_by(player_slot) && takes(shown) && within
         })
-        .map(|(unit, _)| unit.id)
+        .map(|(shown, _)| shown.unit.id)
 }
 
 /// A system param holds borrows of the world, whose queries print nothing of use.
@@ -170,39 +219,62 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_drag_selects_the_players_own_units_shown_within_its_rectangle() {
+    fn a_drag_selects_the_players_own_walkers_shown_within_its_rectangle_and_a_kind_its_type() {
         let mut ids = IdAllocator::default();
         let (own, other) = (PlayerSlot::new(0), PlayerSlot::new(1));
-        let mut unit = |owner: Option<PlayerSlot>| Pointed {
-            id: ids.allocate(),
-            team: Team::new(0),
-            owner,
+        let (tank, dozer) = (UnitType::new(0), UnitType::new(1));
+        let mut unit = |owner: Option<PlayerSlot>, unit_type, walks| Shown {
+            unit: Pointed {
+                id: ids.allocate(),
+                team: Team::new(0),
+                owner,
+            },
+            unit_type,
+            walks,
         };
         // A rectangle from (10, 20) to (110, 70), dragged from its bottom right corner.
         let rect = Rect::from_corners(Vec2::new(110.0, 70.0), Vec2::new(10.0, 20.0));
-        let [inside, edge, outside, behind, others, unowned] = [
-            unit(Some(own)),
-            unit(Some(own)),
-            unit(Some(own)),
-            unit(Some(own)),
-            unit(Some(other)),
-            unit(None),
+        let [inside, edge, outside, behind, building, others, unowned] = [
+            unit(Some(own), tank, true),
+            unit(Some(own), dozer, true),
+            unit(Some(own), tank, true),
+            unit(Some(own), tank, true),
+            unit(Some(own), tank, false),
+            unit(Some(other), tank, true),
+            unit(None, tank, true),
         ];
         let units = [
             // Inside; on the left edge; 0.5 px past the bottom edge; behind the camera, shown
-            // nowhere.
+            // nowhere; a building inside.
             (inside, Some(Vec2::new(60.0, 45.0))),
             (edge, Some(Vec2::new(10.0, 50.0))),
             (outside, Some(Vec2::new(60.0, 70.5))),
             (behind, None),
+            (building, Some(Vec2::new(60.0, 45.0))),
             // Inside, another player's, and no player's.
             (others, Some(Vec2::new(60.0, 45.0))),
             (unowned, Some(Vec2::new(60.0, 45.0))),
         ];
-        let within = |slot| shown_within(rect, slot, units.into_iter()).collect::<Vec<_>>();
-        assert_eq!(within(Some(own)), [inside.id, edge.id]);
-        assert_eq!(within(Some(other)), [others.id]);
+        let id = |shown: Shown| shown.unit.id;
+        let within = |rect, slot, takes: &dyn Fn(Shown) -> bool| {
+            shown_within(rect, slot, units.into_iter(), takes).collect::<Vec<_>>()
+        };
+        let walks = |shown: Shown| shown.walks;
+        // A drag takes the walkers inside, not the building (exits-docks-and-selection.md, A drag
+        // selects no building).
+        assert_eq!(
+            within(Some(rect), Some(own), &walks),
+            [id(inside), id(edge)]
+        );
+        assert_eq!(within(Some(rect), Some(other), &walks), [id(others)]);
         // A spectator, of no slot, controls none, not even a unit no player controls.
-        assert_eq!(within(None), []);
+        assert_eq!(within(Some(rect), None, &walks), []);
+        // A kind of tanks within the rectangle, and on the whole map, shown or not.
+        let tanks = |shown: Shown| shown.walks && shown.unit_type == tank;
+        assert_eq!(within(Some(rect), Some(own), &tanks), [id(inside)]);
+        assert_eq!(
+            within(None, Some(own), &tanks),
+            [id(inside), id(outside), id(behind)]
+        );
     }
 }

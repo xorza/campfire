@@ -1,11 +1,26 @@
 use super::*;
+use crate::zero_hour::format::ini::object_ini::ObjectIni;
 
 #[test]
 fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_first_it_fails() {
-    let mut rules = ZeroHourRules::default();
+    // A list that makes a bunker of a transport inside its object, and one that makes it beside.
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[
+            "Object Bunker\n Behavior = TransportContain M\n  Slots = 5\n End\nEnd\n",
+        ]),
+        ..ZeroHourRules::default()
+    };
     rules
         .upgrades
         .read(b"Upgrade Upgrade_A\nEnd\nUpgrade Upgrade_B\nEnd\n")
+        .unwrap();
+    rules
+        .creation_lists
+        .read(
+            b"ObjectCreationList OCL_In\n CreateObject\n  ObjectNames = Bunker\n  \
+              ContainInsideSourceObject = Yes\n End\nEnd\n\
+              ObjectCreationList OCL_Out\n CreateObject\n  ObjectNames = Bunker\n End\nEnd\n",
+        )
         .unwrap();
     let bonuses = BTreeMap::new();
     let sources = ModuleSources {
@@ -76,6 +91,14 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
             &["Upgrade_A"][..],
             UpgradeDropCause::NoCondition,
         ),
+        // A list that makes no transport inside its object.
+        (
+            UpgradeEffect::ObjectCreation {
+                list: Some("OCL_Out".to_owned()),
+            },
+            &["Upgrade_A"][..],
+            UpgradeDropCause::Effect,
+        ),
     ] {
         assert_eq!(
             convert(module(effect, triggers)),
@@ -128,6 +151,21 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
             EffectModifier::tagged(&declared(tag))
         );
     }
+    // A bunker made inside its object gives the tag that opens the object's entry, the first
+    // trigger's suffixed `created` (exits-docks-and-selection.md, A bunker is an entry a tag
+    // opens).
+    let bunker = module(
+        UpgradeEffect::ObjectCreation {
+            list: Some("OCL_In".to_owned()),
+        },
+        &["Upgrade_A"],
+    );
+    let entry = import.module(sources, &bunker, &[]).unwrap();
+    assert_eq!(entry.modifier, declared("upgrade_a_created"));
+    assert_eq!(
+        import.effects[&entry.modifier],
+        EffectModifier::tagged(&declared("upgrade_a_created"))
+    );
     // An armor's module sets no condition its look tests, nor a radar's, whose modifier gives
     // the radar's tag.
     assert_eq!(look_tag(&armor), Ok(None));

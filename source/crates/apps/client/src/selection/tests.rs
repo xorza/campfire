@@ -25,6 +25,26 @@ fn a_pick_selects_its_units_alone_and_none_leaves_the_selection() {
 }
 
 #[test]
+fn the_add_key_adds_units_and_takes_out_units_all_selected() {
+    let mut ids = IdAllocator::default();
+    let [a, b, c] = [ids.allocate(), ids.allocate(), ids.allocate()];
+    let mut selection = Selection::default();
+    selection.pick(&[a], |_| None);
+    // c and a join it, in id order, each once; adding a again changes nothing.
+    assert!(selection.add(&[c, a], |_| None));
+    assert_eq!(selection.get(), [a, c]);
+    assert!(!selection.add(&[a], |_| None));
+    // b is not held, so nothing goes; c is, and goes; a spawn of the leader a goes as a.
+    assert!(!selection.remove(&[b, c], |_| None));
+    assert_eq!(selection.get(), [a, c]);
+    assert!(selection.remove(&[c], |_| None));
+    assert_eq!(selection.get(), [a]);
+    assert!(selection.remove(&[b], |unit| (unit == b).then_some(a)));
+    assert_eq!(selection.get(), []);
+    assert!(!selection.remove(&[], |_| None));
+}
+
+#[test]
 fn a_unit_the_client_no_longer_holds_leaves_and_an_empty_selection_takes_the_avatar() {
     let mut ids = IdAllocator::default();
     let [avatar, tank, dozer] = [ids.allocate(), ids.allocate(), ids.allocate()];

@@ -31,6 +31,8 @@ pub struct EnterSpec {
     pub fire: FireSpec,
     pub sight: bool,
     pub modifier: Option<ModifierId>,
+    pub open: Option<Filter>,
+    pub assault: Option<Share>,
 }
 
 /// Where a container's riders fire from, its names resolved (04-capabilities/combat.md, A container
@@ -76,6 +78,14 @@ impl EnterSpec {
     /// with `relation`.
     pub fn admits(&self, relation: Relation, tags: TagSet) -> bool {
         self.riders.selects(relation, tags)
+    }
+
+    /// Whether a container of it of `tags` takes riders: one of no `open`, or of tags it selects
+    /// (exits-docks-and-selection.md, A bunker is an entry a tag opens).
+    pub fn opens(&self, tags: TagSet) -> bool {
+        self.open
+            .as_ref()
+            .is_none_or(|open| open.selects_tags(tags))
     }
 
     /// Whether a rider of `rider`'s player may enter a container of it that `held_by`'s player
@@ -138,6 +148,10 @@ impl EnterSpec {
                 }
                 FireData::Points(points) => FireSpec::Points(points.iter().copied().collect()),
             };
+            let open = data
+                .open
+                .as_ref()
+                .map(|open| Filter::resolve(open.filter(), tags));
             let modifier = data.modifier.as_ref().map(|name| {
                 let modifier =
                     modifiers.and_then(|book| book.names().named((unit.package, name.as_str())));
@@ -156,6 +170,8 @@ impl EnterSpec {
                 fire,
                 sight: data.sight,
                 modifier: modifier.transpose()?,
+                open: open.transpose().map_err(unknown)?,
+                assault: data.assault,
             };
             book.set(unit.unit_type, spec);
         }

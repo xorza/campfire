@@ -17,8 +17,8 @@ use campfire_sim::{
 };
 use campfire_stats::{Modifiers, PlayerModifiers, PoolBook, Stats, StatsWorld, UnitPools};
 use campfire_units::{
-    Body, Dead, Facing, GroundPoint, Leader, Leaving, LivingSpawns, MapBook, OpenCellAsk,
-    OpenCellRun, Owner, SpawnAt, Spawner, Walk,
+    Body, Dead, Facing, ForcedMove, GroundPoint, Leader, Leaving, LivingSpawns, MapBook, MoveStep,
+    OpenCellAsk, OpenCellRun, Owner, SpawnAt, Spawner, Walk,
 };
 use campfire_values::{ActionId, Motion, Relation, Team, UnitTags, UnitType};
 
@@ -43,18 +43,21 @@ use crate::train_spec::TrainSpec;
 use crate::trained_units::{Trained, TrainedUnits};
 
 /// Where a producer's trained units come out and where they go, on the ground plane: its exit
-/// point, and the rally point its player set, else its default one; none of a producer that
-/// names neither.
+/// point, the rally point its player set, else its default one, and its default one; none of a
+/// producer that names neither.
 #[derive(Debug, Clone, Copy)]
 struct TrainPoints {
     exit: Option<Vec3>,
     rally: Option<Vec3>,
+    natural: Option<Vec3>,
 }
 
-/// Where a unit leaves its producer, as the spawner takes it, and the point it then rallies to.
+/// Where a unit leaves its producer, as the spawner takes it, the point it drives out to first,
+/// for one made inside its producer, and the point it then rallies to.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ExitSpawn {
     pub(crate) at: SpawnAt,
+    out_to: Option<Vec3>,
     rally: Option<Vec3>,
 }
 
@@ -527,9 +530,14 @@ impl Trains {
     /// its spawn point, with a new id, and the point it rallies to.
     pub(crate) fn exit_spawn(world: &mut World, entity: Entity, unit_type: UnitType) -> ExitSpawn {
         let points = TrainPoints::of(world, entity);
-        let position = points.spawn_point(world, entity, unit_type);
+        let out_to = points.drives_out(world, entity);
+        let position = match (out_to, points.exit) {
+            (Some(_), Some(exit)) => exit,
+            _ => points.spawn_point(world, entity, unit_type),
+        };
         ExitSpawn {
             at: Self::spawn_at(world, entity, unit_type, position),
+            out_to,
             rally: points.rally,
         }
     }
@@ -547,6 +555,7 @@ impl Trains {
         let position = TrainPoints::open_cell(world, unit_type, near).unwrap_or(near);
         ExitSpawn {
             at: Self::spawn_at(world, entity, unit_type, position),
+            out_to: None,
             rally: None,
         }
     }
@@ -577,6 +586,15 @@ impl Trains {
     pub(crate) fn send_on(world: &mut World, entity: Entity, unit: Entity, exit: ExitSpawn) {
         if let Some(mut leaving) = world.get_mut::<Leaving>(unit) {
             Leaving::set(&mut leaving, true);
+        }
+        // A unit made inside its producer drives out through it at its step, and then walks
+        // its route (exits-docks-and-selection.md, A trained unit drives out of its producer).
+        let step = world.get::<MoveStep>(unit).map(|step| step.get());
+        if let Some((to, step)) = exit.out_to.zip(step.filter(|&step| step > Num::ZERO)) {
+            let through = *world.get::<StableId>(entity).expect("a producer has an id");
+            world
+                .entity_mut(unit)
+                .insert(ForcedMove::Exit { to, step, through });
         }
         let gathers = world.get::<UnitType>(entity).is_some_and(|&producer_type| {
             let producers = world.resource::<ById<UnitType, ProducerSpec>>();
@@ -679,10 +697,27 @@ impl TrainPoints {
             let at = point?.placed(position, angle);
             Some(bounds.ground_point([at.x, at.z], at))
         };
+        let natural = point_of(data.and_then(|data| data.rally));
         Self {
             exit: point_of(data.and_then(|data| data.exit)),
-            rally: Trains::rally_point(world, entity).or_else(|| point_of(data?.rally)),
+            rally: Trains::rally_point(world, entity).or(natural),
+            natural,
         }
+    }
+
+    /// The default rally point a unit made at the exit point drives out to, when the exit point
+    /// lies within the body of the producer of `entity`, as Zero Hour makes a unit inside its
+    /// factory and sends it along its exit path to its `NaturalRallyPoint`
+    /// (exits-docks-and-selection.md, A trained unit drives out of its producer); none for an exit
+    /// point outside it, or a producer of no default rally point.
+    fn drives_out(self, world: &World, entity: Entity) -> Option<Vec3> {
+        let (exit, natural) = (self.exit?, self.natural?);
+        let producer = world.entity(entity);
+        let body = producer.get::<Body>()?;
+        let position = producer.get::<Position>().expect("a producer stands").get();
+        let inside =
+            body.shape().nearest_point(position, exit) == Vec3::new(exit.x, position.y, exit.z);
+        inside.then_some(natural)
     }
 
     /// Where a unit of `unit_type` the producer of `entity` trains spawns: at the center of the

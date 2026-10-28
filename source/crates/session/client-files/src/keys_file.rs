@@ -53,19 +53,27 @@ pub struct KeysFile {
     /// The modifiers held with a drag of the middle button that orbit the camera, where none
     /// pans it.
     pub orbit: KeyModifiers,
+    /// The modifiers held with a click or a drag that add to the selection, or take away a click's
+    /// units all selected, and with a double click that selects a type on the map, not the screen
+    /// alone, as Zero Hour's prefer-selection key and its alt do (exits-docks-and-selection.md,
+    /// Shift adds, a double click takes a kind).
+    pub add: KeyModifiers,
+    pub across_map: KeyModifiers,
     /// What a press of a button is, a selection's and the camera's.
     pub press: Press,
 }
 
 /// The one rule of every press of a button, a selection's and the camera's: it drags once the
 /// cursor moves more than `drag` logical pixels along either axis from where the button went
-/// down, as Zero Hour's `SelectionTranslator` drags past `Mouse.ini`'s `DragTolerance`, and one
-/// that does not drag is a click while it lasts at most `click` seconds
+/// down, as Zero Hour's `SelectionTranslator` drags past `Mouse.ini`'s `DragTolerance`, one that
+/// does not drag is a click while it lasts at most `click` seconds, and a click on the unit the
+/// last one clicked, at most `double` seconds after it, is a double click
 /// (02-engine-core.md, Keys are the mode's data).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct Press {
     pub drag: f32,
     pub click: f32,
+    pub double: f32,
 }
 
 impl Press {
@@ -78,15 +86,23 @@ impl Press {
     pub fn clicks(self, seconds: f64) -> bool {
         seconds <= f64::from(self.click)
     }
+
+    /// Whether a click `seconds` after the last one on its unit is a double click.
+    pub fn doubles(self, seconds: f64) -> bool {
+        seconds <= f64::from(self.double)
+    }
 }
 
 /// The engine's own press: Windows' default `SM_CXDRAG` and `SM_CYDRAG` of 4 pixels, so a hand
-/// that shakes as it clicks still clicks, and a click of up to 0.2 seconds.
+/// that shakes as it clicks still clicks, a click of up to 0.2 seconds, and Windows' default
+/// double click time of 0.5 seconds (`GetDoubleClickTime`), by which Zero Hour's double click
+/// comes.
 impl Default for Press {
     fn default() -> Self {
         Self {
             drag: 4.0,
             click: 0.2,
+            double: 0.5,
         }
     }
 }
@@ -100,21 +116,27 @@ impl<'de> Deserialize<'de> for Press {
         struct Fields {
             drag: Option<f32>,
             click: Option<f32>,
+            double: Option<f32>,
         }
-        let Fields { drag, click } = Fields::deserialize(deserializer)?;
+        let Fields {
+            drag,
+            click,
+            double,
+        } = Fields::deserialize(deserializer)?;
         let engine = Self::default();
         let press = Self {
             drag: drag.unwrap_or(engine.drag),
             click: click.unwrap_or(engine.click),
+            double: double.unwrap_or(engine.double),
         };
-        let held = [press.drag, press.click]
+        let held = [press.drag, press.click, press.double]
             .iter()
             .all(|value| value.is_finite() && *value >= 0.0);
         if held {
             Ok(press)
         } else {
             Err(D::Error::custom(
-                "a press's drag and click are finite and at least 0",
+                "a press's drag, click and double are finite and at least 0",
             ))
         }
     }
@@ -194,8 +216,9 @@ impl KeysFile {
 /// stops; Escape drops a build; P shows the shop; G shows the perks; Space pauses, minus and equals or the keypad's
 /// minus and plus step the speed, F5 saves and F9 loads; the arrows scroll, and the keypad's 8, 2,
 /// 4 and 6 zoom and turn, as the arrows do with Alt, for a keyboard with no keypad; the keypad's 5
-/// and Alt with Backspace set the camera back; and Control with the middle button orbits it
-/// (02-engine-core.md, Every key on a keyboard with no keypad).
+/// and Alt with Backspace set the camera back; Control with the middle button orbits it; and
+/// Shift adds to the selection and Alt takes a double click's type across the map, as Zero Hour's
+/// do (02-engine-core.md, Every key on a keyboard with no keypad).
 impl Default for KeysFile {
     fn default() -> Self {
         let alt = KeyModifiers {
@@ -204,6 +227,10 @@ impl Default for KeysFile {
         };
         let control = KeyModifiers {
             control: true,
+            ..KeyModifiers::NONE
+        };
+        let shift = KeyModifiers {
+            shift: true,
             ..KeyModifiers::NONE
         };
         let plain = |keys: &[Key]| keys.iter().map(|&key| Chord::plain(key)).collect();
@@ -240,6 +267,8 @@ impl Default for KeysFile {
             turn_right: vec![Chord::plain(Key::Numpad6), with(Key::ArrowRight, alt)],
             reset_camera: vec![Chord::plain(Key::Numpad5), with(Key::Backspace, alt)],
             orbit: control,
+            add: shift,
+            across_map: alt,
             press: Press::default(),
         }
     }
@@ -277,6 +306,14 @@ impl KeyModifiers {
         control: false,
         alt: false,
     };
+
+    /// Whether each of its modifiers is held of `held`, and it names one; none is never held.
+    pub const fn held_in(self, held: Self) -> bool {
+        let any = self.shift || self.control || self.alt;
+        any && (!self.shift || held.shift)
+            && (!self.control || held.control)
+            && (!self.alt || held.alt)
+    }
 
     /// The modifiers `text` writes, none for an empty text; none for a name it does not know
     /// or one named twice.

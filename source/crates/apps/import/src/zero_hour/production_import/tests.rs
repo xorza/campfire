@@ -2,6 +2,7 @@ use std::num::NonZeroU32;
 
 use campfire_actions::{ChannelData, ChannelPaysData};
 use campfire_codec::Toml;
+use campfire_interaction::{EnterData, FireData, RiderCount};
 use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnsData};
 use campfire_values::{Distance, Scalar};
 
@@ -109,6 +110,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         .insert(name("gather"), ImportedGather::of_box());
     let money = DropOffData {
         resources: vec![name("money")],
+        dock: None,
     };
     for drop_off in ["center", "factory"] {
         import
@@ -142,7 +144,32 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         offset: Num::ZERO,
         base_side: None,
     };
-    let base = FactionBase::of(&import, &combat, &start(&["dozer", "worker"]), &[]);
+    // The scout, unarmed, assaults by its riders, so it fights in the army too
+    // (exits-docks-and-selection.md, A transport may assault).
+    let mut contains = ContainImport::default();
+    let assault = EnterData {
+        action: name("enter"),
+        capacity: 4,
+        counts: RiderCount::Size,
+        riders: vec![FilterData::all()],
+        exit_ms: 0,
+        damage: Share::NONE,
+        full: Share::NONE,
+        capture: false,
+        payload: Vec::new(),
+        fire: FireData::None,
+        sight: false,
+        modifier: None,
+        open: None,
+        assault: Some(Share::billionths(500_000_000).unwrap()),
+    };
+    contains.enters.insert(TypeName::named("scout"), assault);
+    let sources = BaseSources {
+        production: &import,
+        combat: &combat,
+        contains: &contains,
+    };
+    let base = FactionBase::of(sources, &start(&["dozer", "worker"]), &[]);
     let names = |names: &[&str]| names.iter().map(|&text| name(text)).collect::<Vec<_>>();
     assert_eq!(
         base,
@@ -159,13 +186,13 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
                 "mob",
                 "rabble",
             ]),
-            army: names(&["ranger", "tank", "technical", "mob"]),
+            army: names(&["ranger", "tank", "scout", "technical", "mob"]),
             gatherers: names(&["dozer", "truck"]),
             drop_offs: names(&["center", "factory"]),
         }
     );
     // A start of no builder has no base buildings, and its faction building's trains alone.
-    let alone = FactionBase::of(&import, &combat, &start(&[]), &[]);
+    let alone = FactionBase::of(sources, &start(&[]), &[]);
     assert_eq!(
         (alone.buildings, alone.units),
         (Vec::new(), names(&["dozer"]))
@@ -173,7 +200,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
     // The sniper's train needs `science_sniping`: a faction that starts with that perk trains
     // it in its base, after the scout.
     let held = [name("science_sniping")];
-    let trained = FactionBase::of(&import, &combat, &start(&["dozer", "worker"]), &held);
+    let trained = FactionBase::of(sources, &start(&["dozer", "worker"]), &held);
     assert_eq!(
         trained.units[..7],
         names(&[
@@ -320,21 +347,28 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         let object = rules.objects.object(placed.as_bytes()).unwrap();
         names.unit_type(object, &rules).unwrap();
     }
-    let import = ProductionImport::of(
-        &rules,
-        &mut names.into_production(),
-        BTreeMap::new(),
-        BTreeMap::new(),
-    );
+    let declared = |name: &str| DeclaredName::new(name).unwrap();
+    // The dock's model docks at (10, 20) and the center's at (−5, 0), on the game's axes.
+    let bones = ProductionBones {
+        docks: BTreeMap::from([
+            (declared("dock"), [10.0, 20.0]),
+            (declared("center"), [-5.0, 0.0]),
+        ]),
+        ..ProductionBones::default()
+    };
+    let import = ProductionImport::of(&rules, &mut names.into_production(), bones);
     let supply = &import.supply;
     let name = |name: &str| TypeName::new(&ImportName::of(name.as_bytes())).unwrap();
-    let declared = |name: &str| DeclaredName::new(name).unwrap();
+    let frame = |x: i64, z: i64| FramePoint::new([Num::int(x), Num::int(z)]);
 
-    // The dock holds its 400 boxes, 30,000, and stays; the pile its 150, 11,250, and goes.
-    let node = |amount, empty| NodeData {
+    // The dock holds its 400 boxes, 30,000, and stays, docked at (10, −20) on the engine's axes;
+    // the pile its 150, 11,250, and goes, docked at its body (exits-docks-and-selection.md, A
+    // dock has its point).
+    let node = |amount, empty, dock| NodeData {
         resource: declared("money"),
         amount: NonZeroU32::new(amount).unwrap(),
         empty,
+        dock,
     };
     let nodes: Vec<(&str, &NodeData)> = supply
         .nodes
@@ -344,13 +378,15 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     assert_eq!(
         nodes,
         [
-            ("dock", &node(30_000, EmptyNode::Stays)),
-            ("pile", &node(11_250, EmptyNode::Goes)),
+            ("dock", &node(30_000, EmptyNode::Stays, frame(10, -20))),
+            ("pile", &node(11_250, EmptyNode::Goes, None)),
         ]
     );
-    // The center takes money, starts its gatherers and frees its truck, which it trains.
+    // The center takes money, docked at (−5, 0), starts its gatherers and frees its truck, which
+    // it trains.
     let money = DropOffData {
         resources: vec![declared("money")],
+        dock: frame(-5, 0),
     };
     assert_eq!(supply.drop_offs.get(&name("Center")), Some(&money));
     assert_eq!(supply.drop_offs.len(), 1);
@@ -543,8 +579,7 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets_and_a_sale_its_
     let import = ProductionImport::of(
         &rules,
         &mut names.into_production(),
-        BTreeMap::new(),
-        BTreeMap::new(),
+        ProductionBones::default(),
     );
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     for train in ["train_jeep", "train_rover", "train_wisp", "train_ghost"] {
@@ -635,7 +670,10 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
     };
     let import = ProductionImport {
         sections: BTreeMap::from([(name.clone(), section)]),
-        airfield_bones: BTreeMap::from([(name.declared().clone(), bones)]),
+        bones: ProductionBones {
+            airfields: BTreeMap::from([(name.declared().clone(), bones)]),
+            ..ProductionBones::default()
+        },
         parkings: BTreeMap::from([(name.clone(), parking)]),
         ..ProductionImport::default()
     };
@@ -720,8 +758,7 @@ fn a_power_of_a_marker_s_burst_is_a_cast_of_its_building_and_its_sciences_raise_
     let import = ProductionImport::of(
         &rules,
         &mut names.into_production(),
-        BTreeMap::new(),
-        BTreeMap::new(),
+        ProductionBones::default(),
     );
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     let id = declared("power_repair");

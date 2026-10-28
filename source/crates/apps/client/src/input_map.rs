@@ -100,6 +100,17 @@ impl InputMap {
         held_modifiers(keys) == self.file.orbit
     }
 
+    /// Whether the modifiers that add to the selection are held, others with them or not.
+    pub(crate) fn adds(&self, keys: &ButtonInput<KeyCode>) -> bool {
+        self.file.add.held_in(held_modifiers(keys))
+    }
+
+    /// Whether the modifiers that take a double click's type across the map are held, others
+    /// with them or not.
+    pub(crate) fn across_map(&self, keys: &ButtonInput<KeyCode>) -> bool {
+        self.file.across_map.held_in(held_modifiers(keys))
+    }
+
     fn chords(&self, act: Act) -> &[Chord] {
         let file = &self.file;
         match act {
@@ -198,6 +209,11 @@ mod tests {
         keys.press(KeyCode::ShiftLeft);
         assert!(!InputMap::chord_pressed(first(ChordRow::Learn), &keys));
         assert!(!input.orbits(&keys));
+        // Shift adds to the selection, Control with it or not; Alt takes the map.
+        assert!(input.adds(&keys) && !input.across_map(&keys));
+        keys.release(KeyCode::ShiftLeft);
+        keys.press(KeyCode::AltLeft);
+        assert!(!input.adds(&keys) && input.across_map(&keys));
         // S stops as it goes down, and held into the next frame stops no more.
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::KeyS);

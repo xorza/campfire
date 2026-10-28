@@ -172,11 +172,13 @@ impl NavigationColumn {
     }
 
     /// The nearest point of `search`'s grid where its shape has room as `room_for` tests it, with
-    /// the grid's gap, against `view` and `spawning`; none when no point has room
-    /// (04-capabilities/navigation.md, A script finds room near a point).
+    /// the grid's gap, against `view` and `spawning`, of those that connect, room by room a gap
+    /// apart, to the edge of the search, so no body the call spawned encloses it; of any room when
+    /// none connects; none when no point has room (04-capabilities/navigation.md, A script finds
+    /// room near a point; exits-docks-and-selection.md, A base start's room connects).
     pub fn room_near(view: &View, search: RoomSearch, spawning: &[IndexedBody]) -> Option<Vec3> {
         let RoomSearch { grid, shape, layer } = search;
-        grid.nearest(|position| {
+        let room = |position| {
             let ask = RoomAsk {
                 position,
                 shape,
@@ -184,7 +186,10 @@ impl NavigationColumn {
                 gap: grid.gap,
             };
             Self::room_for(view, ask, spawning)
-        })
+        };
+        let reached = SearchFlood::of(grid, room);
+        grid.nearest(|position| reached.holds(grid, position))
+            .or_else(|| grid.nearest(room))
     }
 
     /// `unit.path`: the name of the path `unit` walks or stands on, `()` with none, or in a view
@@ -215,5 +220,118 @@ impl NavigationColumn {
     ) {
         let path = path.map(|path| path.get());
         fill.column.push(path, walks, Body::layer_of(body));
+    }
+}
+
+/// The points of a search's grid, by their steps from its center, that have room and connect,
+/// room by room along the grid's axes, to a point at the search's edge, one past which the next
+/// step would leave it.
+#[derive(Debug)]
+struct SearchFlood {
+    steps: i64,
+    reached: Vec<bool>,
+}
+
+impl SearchFlood {
+    /// The flood of `grid`'s points where `room` holds, from those at its edge.
+    fn of(grid: GridSearch, room: impl Fn(Vec3) -> bool) -> Self {
+        let steps = i64::from(grid.steps);
+        let side = usize::try_from(2 * steps + 1).expect("a search's side fits usize");
+        let most = steps * steps;
+        let inside = |[i, j]: [i64; 2]| i * i + j * j <= most;
+        let at = |[i, j]: [i64; 2]| {
+            let step = |count: i64| {
+                i64::try_from(i128::from(count) * i128::from(grid.gap.to_bits()))
+                    .ok()
+                    .map(Num::from_bits)
+            };
+            let offset = Vec3::new(step(i)?, Num::ZERO, step(j)?);
+            grid.position
+                .checked_add(offset)
+                .filter(|at| at.within_bound())
+        };
+        let index = |[i, j]: [i64; 2]| {
+            usize::try_from((i + steps) * (2 * steps + 1) + (j + steps)).expect("a step inside")
+        };
+        let mut open = vec![false; side * side];
+        let mut reached = vec![false; side * side];
+        let mut queue = Vec::new();
+        for i in -steps..=steps {
+            for j in -steps..=steps {
+                let cell = [i, j];
+                if !inside(cell) || !at(cell).is_some_and(&room) {
+                    continue;
+                }
+                open[index(cell)] = true;
+                let edge = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+                    .iter()
+                    .any(|[di, dj]| !inside([i + di, j + dj]));
+                if edge {
+                    reached[index(cell)] = true;
+                    queue.push(cell);
+                }
+            }
+        }
+        while let Some([i, j]) = queue.pop() {
+            for [di, dj] in [[1, 0], [-1, 0], [0, 1], [0, -1]] {
+                let next = [i + di, j + dj];
+                if inside(next) && open[index(next)] && !reached[index(next)] {
+                    reached[index(next)] = true;
+                    queue.push(next);
+                }
+            }
+        }
+        Self { steps, reached }
+    }
+
+    /// Whether `position`, a point of `grid`, the search it flooded, is reached.
+    fn holds(&self, grid: GridSearch, position: Vec3) -> bool {
+        let gap = i128::from(grid.gap.to_bits());
+        let step = |at: Num, center: Num| {
+            let bits = i128::from(at.to_bits()) - i128::from(center.to_bits());
+            i64::try_from(bits / gap).expect("a point of the search")
+        };
+        let [i, j] = [
+            step(position.x, grid.position.x),
+            step(position.z, grid.position.z),
+        ];
+        if i.abs() > self.steps || j.abs() > self.steps {
+            return false;
+        }
+        let side = 2 * self.steps + 1;
+        let index = usize::try_from((i + self.steps) * side + (j + self.steps))
+            .expect("a step within the search");
+        self.reached[index]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_flood_reaches_the_rooms_that_connect_to_the_searchs_edge() {
+        // A search of 3 steps of a meter round the origin; room everywhere but a ring of the
+        // square of 2 m, which encloses the 9 points within 1 m: those are not reached, as no step
+        // along the axes leaves them, and the nearest reached point lies 3 m off, along +x
+        // (exits-docks-and-selection.md, A base start's room connects).
+        let grid = GridSearch {
+            position: Vec3::ZERO,
+            gap: Num::ONE,
+            steps: 3,
+        };
+        let ring = |at: Vec3| {
+            let [x, z] = [at.x, at.z].map(|axis| axis.to_int().unwrap().abs());
+            x.max(z) == 2
+        };
+        let flood = SearchFlood::of(grid, |at| !ring(at));
+        let point = |x: i64, z: i64| Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
+        assert!(!flood.holds(grid, point(0, 0)) && !flood.holds(grid, point(1, -1)));
+        assert!(!flood.holds(grid, point(2, 0)));
+        assert!(flood.holds(grid, point(3, 0)) && flood.holds(grid, point(0, -3)));
+        assert_eq!(grid.nearest(|at| flood.holds(grid, at)), Some(point(3, 0)));
+        // With no ring, the origin itself is reached.
+        let open = SearchFlood::of(grid, |_| true);
+        assert!(open.holds(grid, point(0, 0)));
     }
 }

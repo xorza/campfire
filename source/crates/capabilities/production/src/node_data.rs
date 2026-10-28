@@ -6,8 +6,12 @@ use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
 use serde::{Deserialize, Serialize};
 
+use crate::frame_point::FramePoint;
+
 /// A unit type's `node` section: a node of the mode's player resource `resource`, holding
-/// `amount` as it spawns, and what becomes of it once it runs out, `goes` when absent.
+/// `amount` as it spawns, what becomes of it once it runs out, `goes` when absent, and the point
+/// of its frame a worker docks at to gather, none to dock at its body
+/// (exits-docks-and-selection.md, A dock has its point).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NodeData {
@@ -15,6 +19,8 @@ pub struct NodeData {
     pub amount: NonZeroU32,
     #[serde(default)]
     pub empty: EmptyNode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dock: Option<FramePoint>,
 }
 
 /// What becomes of a node that ran out (04-capabilities/production.md, An empty node may stay).

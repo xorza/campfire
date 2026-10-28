@@ -21,10 +21,9 @@ pub enum ContainDropCause {
     MobNexus,
     /// A `TunnelContain`, the GLA's tunnel network.
     Tunnel,
-    /// An `OverlordContain`, the Overlord's and the Emperor's bunker.
+    /// An `OverlordContain` of no upgrade that makes a transport inside it, as the Overlord's and
+    /// the Emperor's battle bunker is.
     Overlord,
-    /// A `HelixContain`, the Helix's bunker.
-    Helix,
     /// A `ParachuteContain`, a parachute.
     Parachute,
     /// A container of no room, which takes no rider.

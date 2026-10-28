@@ -259,13 +259,10 @@ impl UnitOrder {
             Self::Enter { target } => OrderKind::Enter { target },
             Self::Exit { rider } => OrderKind::Exit { rider },
             Self::Evacuate => OrderKind::Evacuate,
-            Self::Move { .. }
-            | Self::AttackMove { .. }
-            | Self::Attack { .. }
-            | Self::Slot { .. }
-            | Self::FollowPath
-            | Self::Reset
-            | Self::Stop => OrderKind::Other,
+            Self::AttackMove { .. } | Self::Attack { .. } => OrderKind::Attack,
+            Self::Move { .. } | Self::Slot { .. } | Self::FollowPath | Self::Reset | Self::Stop => {
+                OrderKind::Other
+            }
         }
     }
 }

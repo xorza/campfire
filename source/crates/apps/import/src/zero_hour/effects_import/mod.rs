@@ -11,6 +11,7 @@ use campfire_values::PackagePath;
 
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::axes;
+use crate::zero_hour::combat_import::converted_shot::{ConvertedShot, WeaponShot};
 use crate::zero_hour::dropped::{Dropped, Losses};
 use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::error::{NameClash, NameError, ZeroHourError};
@@ -52,15 +53,6 @@ pub(crate) struct EffectSources<'a, F> {
     pub(crate) trails: &'a [&'a str],
     pub(crate) cap: u32,
     pub(crate) texture: F,
-}
-
-/// How the import converts a weapon's action: not at all; as a shot of no projectile; or as one
-/// that fires projectiles of the unit type it names.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WeaponShot<'a> {
-    Dropped,
-    Shot,
-    Projectile(&'a DeclaredName),
 }
 
 /// The game's logic frame, in seconds, the step its systems count in (`LOGICFRAMES_PER_SECOND`).
@@ -305,15 +297,16 @@ impl EffectsImport {
         Ok(())
     }
 
-    /// What each action of a weapon of `weapons` plays, as `delivery` gives each by its id:
-    /// its fire's list and its fire's sound of `sounds`, a loop of it counted, and, of a shot of
-    /// no projectile, its hit's list; and, in `units`, what the type of its projectile plays, its
-    /// hit's list where it ends and its exhaust as it flies; each of those the file holds. None for
-    /// an action that plays nothing.
+    /// What each action of a weapon of `weapons` plays, as `converted` gives each weapon's actions
+    /// by its name, its `_starting` and `_upgraded` ones among them (exits-docks-and-selection.md,
+    /// A look follows its converted action): its fire's list and its fire's sound of `sounds`, a
+    /// loop of it counted, and, of a shot of no projectile, its hit's list; and, in `units`, what
+    /// the type of its projectile plays, its hit's list where it ends and its exhaust as it flies;
+    /// each of those the file holds. None for an action that plays nothing.
     pub(crate) fn action_looks<'d, R>(
         &self,
         weapons: &WeaponIni,
-        delivery: impl Fn(&DeclaredName) -> WeaponShot<'d>,
+        converted: impl Fn(&str) -> &'d [ConvertedShot<'d>],
         sounds: &mut SoundImport<'_, R>,
         units: &mut BTreeMap<DeclaredName, ClientUnit>,
     ) -> Result<BTreeMap<DeclaredName, ActionLook>, ZeroHourError>
@@ -322,50 +315,55 @@ impl EffectsImport {
     {
         let mut looks = BTreeMap::new();
         for (name, weapon) in weapons.weapons() {
-            let id = ImportName::latin(name).id("weapon")?;
+            let shots = converted(name);
+            if shots.is_empty() {
+                continue;
+            }
             let list = |name: &Option<String>| name.as_deref().map(|name| self.list(name));
             let fire = list(&weapon.fire_fx).transpose()?.flatten();
             let hit = list(&weapon.detonation_fx).transpose()?.flatten();
-            let shot = delivery(&id);
-            let fire_sound = match (&weapon.fire_sound, shot) {
-                (_, WeaponShot::Dropped) | (None, _) => None,
-                (Some(sound), _) => {
+            let fire_sound = match &weapon.fire_sound {
+                None => None,
+                Some(sound) => {
                     if weapon.fire_sound_loop_ms > 0 {
                         sounds.drop(sound, SoundDropCause::Loop);
                     }
                     sounds.event(sound)?
                 }
             };
-            let look = match shot {
-                WeaponShot::Dropped => continue,
-                WeaponShot::Shot => ActionLook {
-                    fire,
-                    hit,
-                    fire_sound,
-                    ..ActionLook::default()
-                },
-                WeaponShot::Projectile(projectile) => {
-                    let trail = weapon.exhaust.as_deref().map(|name| {
-                        let name = ImportName::latin(name).declared()?;
-                        Ok::<_, NameError>(self.file.systems().contains_key(&name).then_some(name))
-                    });
-                    let trail = trail.transpose()?.flatten();
-                    if hit.is_some() || trail.is_some() {
-                        let look = units
-                            .entry(projectile.clone())
-                            .or_insert_with(|| ClientUnit::new(Vec::new()));
-                        look.end = hit;
-                        look.trail = trail;
-                    }
-                    ActionLook {
-                        fire,
-                        fire_sound,
+            for &ConvertedShot { action, shot } in shots {
+                let look = match shot {
+                    WeaponShot::Shot => ActionLook {
+                        fire: fire.clone(),
+                        hit: hit.clone(),
+                        fire_sound: fire_sound.clone(),
                         ..ActionLook::default()
+                    },
+                    WeaponShot::Projectile(projectile) => {
+                        let trail = weapon.exhaust.as_deref().map(|name| {
+                            let name = ImportName::latin(name).declared()?;
+                            Ok::<_, NameError>(
+                                self.file.systems().contains_key(&name).then_some(name),
+                            )
+                        });
+                        let trail = trail.transpose()?.flatten();
+                        if hit.is_some() || trail.is_some() {
+                            let look = units
+                                .entry(projectile.clone())
+                                .or_insert_with(|| ClientUnit::new(Vec::new()));
+                            look.end.clone_from(&hit);
+                            look.trail = trail;
+                        }
+                        ActionLook {
+                            fire: fire.clone(),
+                            fire_sound: fire_sound.clone(),
+                            ..ActionLook::default()
+                        }
                     }
+                };
+                if look != ActionLook::default() {
+                    looks.insert(action.clone(), look);
                 }
-            };
-            if look != ActionLook::default() {
-                looks.insert(id, look);
             }
         }
         Ok(looks)

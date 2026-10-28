@@ -31,7 +31,8 @@ pub(crate) enum CreationKind {
 /// A `CreateObject` or a `CreateDebris`, each field as `GenericObjectCreationNugget` reads it: its
 /// names, objects' or models', `Offset` in world units on the game's axes, `z` up, `Count`, `Mass`
 /// and its dispositions with their intensity, its random force's magnitudes and pitches, the
-/// pitches in degrees, and `SpinRate` in degrees a second, none for the game's −1.
+/// pitches in degrees, `SpinRate` in degrees a second, none for the game's −1, and whether it
+/// makes its objects inside the object it is made for, `ContainInsideSourceObject`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Creation {
     pub(crate) names: Vec<String>,
@@ -43,6 +44,7 @@ pub(crate) struct Creation {
     pub(crate) force: [f32; 2],
     pub(crate) pitch: [f32; 2],
     pub(crate) spin: Option<f32>,
+    pub(crate) inside: bool,
 }
 
 /// The dispositions of a creation, `DispositionNames` by their flags.
@@ -163,6 +165,7 @@ impl Creation {
             force: [0.0; 2],
             pitch: [0.0; 2],
             spin: None,
+            inside: false,
         }
     }
 
@@ -182,6 +185,7 @@ impl Creation {
             "minforcepitch" => self.pitch[0] = line.real()?,
             "maxforcepitch" => self.pitch[1] = line.real()?,
             "spinrate" => self.spin = Some(line.real()?),
+            "containinsidesourceobject" => self.inside = line.yes()?,
             _ => {}
         }
         Ok(())

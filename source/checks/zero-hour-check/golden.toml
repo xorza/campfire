@@ -3,7 +3,7 @@
 drive_ticks = 1711
 
 [fingerprints]
-game = "c94666cde8144fa9853e64b56b48b8b83cf8642d981bfd14d179e06e6bc042f4"
+game = "4c59f307b5cb0b739f8651e0744e44820d57c2c06194e515456e9fbe9011e6b8"
 rules = "15668b6ed5b27018936f5a5f42069b4f4b66a0051e2df10dd0bf2ece44adc50d"
 
 [map]
@@ -66,7 +66,7 @@ powers_dropped = [40, 25, 9, 0, 0, 0]
 
 [upgraded]
 researches = 70
-modules = 387
+modules = 391
 dropped = [289, 0, 0, 7, 0, 14, 0, 116]
 
 [supplied]
@@ -77,20 +77,20 @@ hacks = 5
 dropped = [0, 0, 0, 6, 0, 0, 0, 5, 5, 5, 5, 5, 4, 0]
 
 [contained]
-transports = 46
+transports = 55
 garrisons = 193
 fire_points = 159
 riders = 354
-dropped = [0, 0, 15, 4, 1, 9, 0, 12, 10, 6, 0, 0, 0, 0, 0, 0, 0, 14, 4]
+dropped = [0, 0, 15, 4, 1, 9, 0, 12, 6, 0, 0, 1, 0, 0, 0, 0, 14, 4]
 
 [effects]
 systems = 559
 lists = 398
 textures = 46
-fires = 49
+fires = 69
 hits = 0
 trails = 3
-ends = 24
+ends = 32
 deaths = 1252
 bones = 2271
 dropped = [35, 0, 8, 2, 7, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0]
@@ -104,14 +104,14 @@ commands = 6
 dropped = [1, 31, 2, 0, 0, 4]
 
 [sounds]
-sounds = 457
+sounds = 465
 lists = 278
-fires = 58
+fires = 92
 voiced = 631
-files = 1582
+files = 1604
 tracks = 33
 playlists = 13
-dropped = [2, 7, 0, 0, 32, 0, 7, 11, 160, 0]
+dropped = [2, 7, 0, 0, 32, 0, 7, 11, 168, 0]
 
 [fought]
 weapons = 103
@@ -136,18 +136,18 @@ uncorrected = 16
 barracks = 648
 factory = [460, 650, 933]
 strategy_center = 1879
-shot = 871
-hit = 881
-fight = 2614
+shot = 905
+hit = 915
+fight = 2621
 
 [supply]
 built = [477, 418]
-deliveries = [402, 823, 1246]
+deliveries = [491, 899, 1313]
 
 [helicopter]
 climbed = 77
-delivered = 605
-shot_down = 322
+delivered = 618
+shot_down = 320
 
 [jet]
 trained = 660
@@ -167,24 +167,24 @@ paladin = 458
 [combat]
 cannon = 33
 missiles = 4
-rockets = 6
-back = [117, 123]
-turret = 210
+rockets = 3
+back = [128, 133]
+turret = 211
 arrived = 576
 
 [transport]
-loaded = 1312
+loaded = 989
 flown = 95
 landed = 81
-boarded = 1154
-fired = 19
-fell = 98
+boarded = 884
+fired = 10
+fell = 128
 evacuated = 9
 
 [garrison]
 garrisoned = 824
-outranged = 1711
-left = 1121
+outranged = 1351
+left = 940
 
 [defense]
 built = [477, 1009]
@@ -204,21 +204,21 @@ death = 1179
 [missile]
 built = 714
 trained = 150
-shot = 1146
-hit = 1163
-death = 1343
+shot = 1088
+hit = 1109
+death = 1287
 
 [bot]
 built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
-farthest_m = 519
+farthest_m = 517
 
 [base]
-ended = 10639
+ended = 11408
 standing = [0, 9]
 ranks = [3, 5]
 perks = [4, 8]
-think_ops = 21267
-stalls = 281
+think_ops = 22897
+stalls = 406
 
 [base.result]
 Won = 1
@@ -256,7 +256,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 3
+no_target = 5
 no_place = 0
 no_stack = 0
 
@@ -274,17 +274,17 @@ no_build = 0
 unusable = 0
 
 [base.sight]
-seen = [3916, 5275]
+seen = [4637, 4905]
 explored = [0, 0]
 words = 91
 
 [attack]
-ended = 14100
+ended = 14101
 standing = [4, 0]
 ranks = [1, 1]
 perks = [2, 2]
-think_ops = 9211
-stalls = 100
+think_ops = 9410
+stalls = 101
 
 [attack.result]
 Won = 0
@@ -340,6 +340,6 @@ no_build = 0
 unusable = 0
 
 [attack.sight]
-seen = [5786, 474]
+seen = [6012, 318]
 explored = [0, 0]
 words = 91

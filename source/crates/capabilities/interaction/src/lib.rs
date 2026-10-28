@@ -181,6 +181,7 @@ impl Module for Interaction {
         d.part::<BodyUnit, Riders>(|at| at.of_type::<EnterSpec>().map(|_| Riders::default()));
         d.callback::<SpawnCallbacks>(Capability::Interaction, Containers::fill);
         d.observer(Containers::ordered);
+        d.observer(Containers::called_out);
         d.extend::<ById<UnitType, ActionSlots>>(Self::use_slots);
         d.extend::<SlotClaims>(Self::claim_slots);
         d.rule(Self::rule);

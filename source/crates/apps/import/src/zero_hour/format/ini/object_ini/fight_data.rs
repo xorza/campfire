@@ -20,6 +20,9 @@ pub(crate) struct FightData {
     pub(crate) ai: bool,
     pub(crate) scan: IniScan,
     pub(crate) jet: Option<IniJet>,
+    /// An `AssaultTransportAIUpdate`'s `MembersGetHealedAtLifeRatio`, the share of its riders'
+    /// life above which they leave to fight, 0 by default; none of no such module.
+    pub(crate) assault: Option<f32>,
 }
 
 /// A `JetAIUpdate`'s sortie: its `TakeoffPause` and its `ReturnToBaseIdleTime`, each in
@@ -344,6 +347,9 @@ impl FightData {
                     if module == "jetaiupdate" {
                         self.jet = Some(IniJet::default());
                     }
+                    if module == "assaulttransportaiupdate" {
+                        self.assault = Some(0.0);
+                    }
                     Some(FightBlock::Ai)
                 } else {
                     None
@@ -442,6 +448,9 @@ impl FightData {
                 }
             }
             (FightBlock::Ai, "autoacquireenemieswhenidle") => at.set_flags(&mut self.scan)?,
+            (FightBlock::Ai, "membersgethealedatliferatio") if self.assault.is_some() => {
+                self.assault = Some(at.real()?);
+            }
             (FightBlock::Ai, "moodattackcheckrate") => self.scan.check_rate_ms = at.int()?,
             (FightBlock::Ai, "takeoffpause") if self.jet.is_some() => {
                 self.jet_mut().takeoff_pause_ms = at.int()?;

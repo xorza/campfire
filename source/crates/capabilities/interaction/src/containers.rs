@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Added, Allow, Changed, Or, QueryState, With, Without};
-use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlots, ActionTarget, InProgress, ProgressIndexes};
 use campfire_common::PlayerSlot;
@@ -15,7 +15,8 @@ use campfire_sim::{
 use campfire_stats::{Held, HeldModifiers};
 use campfire_units::{
     Dead, Destination, Facing, FiringRider, FlightGoal, Leaving, Life, OpenCellAsk, OpenCellRun,
-    OrderKind, Owner, SeeingRider, SeenBy, SpawnAt, Spawner, StatusTags, TagBook, UnitOrdered,
+    OrderKind, Owner, RiderFate, RidersCalledOut, SeeingRider, SeenBy, SpawnAt, Spawner,
+    StatusTags, TagBook, UnitOrdered,
 };
 use campfire_values::{Rank, Team, TeamSet, UnitType};
 
@@ -148,17 +149,28 @@ type RiderPlaces<'w, 's> = Query<'w, 's, &'static mut Position, (With<Riding>, A
 #[derive(Debug, Default)]
 pub(crate) struct CarriedRiders(Vec<(Vec3, StableId)>);
 
+/// What an assault reads: the containers' specs, the riders' lives, out of the world as they ride,
+/// and the index of the units.
+type AssaultReads<'w, 's> = (
+    Res<'w, ById<UnitType, EnterSpec>>,
+    Query<'w, 's, &'static Life, Allow<Disabled>>,
+    Res<'w, EntityIndex>,
+);
+
 impl Containers {
-    /// The observer of an exit or an evacuation ordered to a container, on the server: its rider,
-    /// or each, leaves after the riders that leave before it, as its exits come due; an exit of a
-    /// unit that does not ride in it does nothing.
+    /// The observer of an exit, an evacuation or an attack ordered to a container, on the server:
+    /// its rider, or each, or each of an assault transport whose life lies above its share, leaves
+    /// after the riders that leave before it, as its exits come due; an exit of a unit that does
+    /// not ride in it does nothing (exits-docks-and-selection.md, A transport may assault).
     pub(crate) fn ordered(
         ordered: On<'_, '_, UnitOrdered>,
-        mut containers: Query<'_, '_, (&StableId, &mut Riders), Without<Dead>>,
+        mut containers: Query<'_, '_, (&StableId, &UnitType, &mut Riders), Without<Dead>>,
+        (specs, lives, units): AssaultReads<'_, '_>,
         index: Option<ResMut<'_, DueIndex<Riders>>>,
     ) {
         // The exits are the server's, whose riders come back by replication.
-        let (Some(mut index), Ok((&id, mut riders))) = (index, containers.get_mut(ordered.entity))
+        let (Some(mut index), Ok((&id, &unit_type, mut riders))) =
+            (index, containers.get_mut(ordered.entity))
         else {
             return;
         };
@@ -169,6 +181,27 @@ impl Containers {
                 }
             }
             OrderKind::Evacuate if !riders.is_empty() => riders.evacuate(),
+            OrderKind::Attack => {
+                let Some(share) = specs.get(unit_type).and_then(|spec| spec.assault) else {
+                    return;
+                };
+                let fit = |rider: StableId| {
+                    let life = units.get(rider).and_then(|rider| lives.get(rider).ok());
+                    life.is_some_and(|life| !Riders::at_most(life, share))
+                };
+                let leaving: Vec<StableId> = riders
+                    .iter()
+                    .map(|rider| rider.id)
+                    .filter(|&rider| fit(rider))
+                    .collect();
+                let mut any = false;
+                for rider in leaving {
+                    any |= riders.let_out(rider);
+                }
+                if !any {
+                    return;
+                }
+            }
             _ => return,
         }
         UnitDues::new(&mut index, id, ordered.entity).push(riders.exit_due());
@@ -546,6 +579,37 @@ impl Containers {
         match from.owner {
             Some(owner) => drop(container.insert(Owner::new(owner))),
             None => drop(container.remove::<Owner>()),
+        }
+    }
+
+    /// The observer of a container's riders called out as it leaves the match, on the server, which
+    /// keeps the exits' index: each leaves at its exit time, as a sale starts, or those still
+    /// inside go with it, as it goes (exits-docks-and-selection.md, A sold container lets its
+    /// riders out).
+    pub(crate) fn called_out(
+        called: On<'_, '_, RidersCalledOut>,
+        mut containers: Query<'_, '_, (&StableId, &mut Riders)>,
+        (index, dues): (Res<'_, EntityIndex>, Option<ResMut<'_, DueIndex<Riders>>>),
+        mut commands: Commands<'_, '_>,
+    ) {
+        let RidersCalledOut { entity, fate } = *called;
+        let Ok((&id, mut riders)) = containers.get_mut(entity) else {
+            return;
+        };
+        match fate {
+            RiderFate::Leave => {
+                if let Some(mut dues) = dues.filter(|_| !riders.is_empty()) {
+                    riders.evacuate();
+                    UnitDues::new(&mut dues, id, entity).push(riders.exit_due());
+                }
+            }
+            RiderFate::Go => {
+                for rider in riders.empty() {
+                    if let Some(gone) = index.get(rider.id) {
+                        commands.entity(gone).despawn();
+                    }
+                }
+            }
         }
     }
 

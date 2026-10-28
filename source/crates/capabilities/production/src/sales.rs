@@ -7,7 +7,7 @@ use campfire_players::{
     OrderedUnits, PlayerResources, PlayerRowsMut, ResourceAmount, TickCommands,
 };
 use campfire_sim::{SimTick, StableId};
-use campfire_units::{Dead, Owner, StatusTags};
+use campfire_units::{Dead, Owner, RiderFate, RidersCalledOut, StatusTags};
 use campfire_values::UnitType;
 
 use crate::Production;
@@ -39,7 +39,8 @@ impl Sales {
     /// player controls, of a type of a sale, living, no site and not sold: its train queue
     /// refunded at once, each entry its player gets back what it paid, from its head, as
     /// `BuildAssistant::sellObject` refunds its production, an entry whose refund would carry an
-    /// amount past an `i64` staying with those behind it; it is marked sold until its sale's time
+    /// amount past an `i64` staying with those behind it; its riders are called out; it is marked
+    /// sold until its sale's time
     /// passes, and its engine tag `constructing` blocks its attacks, casts, uses and trains. A sale
     /// is the server's.
     pub(super) fn start_sales(
@@ -83,6 +84,12 @@ impl Sales {
                         queue.remove(0, now, &mut queues.of(unit, entity));
                     }
                 }
+                // A sold container's riders leave (exits-docks-and-selection.md, A sold container
+                // lets its riders out).
+                commands.trigger(RidersCalledOut {
+                    entity,
+                    fate: RiderFate::Leave,
+                });
                 let sold = Sold::new(now, spec.time);
                 if let Some(mut status) = status {
                     let turned = status.turned(Production::CONSTRUCTING, true);
@@ -98,7 +105,8 @@ impl Sales {
     }
 
     /// Ends each sale whose time passed, by stable id: its player gets its type's refund, and it
-    /// goes with no death, as `BuildAssistant::update` destroys a sold object; a refund that would
+    /// goes with no death, as `BuildAssistant::update` destroys a sold object, the riders still
+    /// in it with it; a refund that would
     /// carry an amount past an `i64` is not paid. A sold unit that died first refunds nothing.
     pub(super) fn end_sales(
         tick: Res<'_, SimTick>,
@@ -124,6 +132,10 @@ impl Sales {
             if let Some(mut player) = resources.of_player_slot_mut(owner.player_slot()) {
                 player.refund(&spec.refund);
             }
+            commands.trigger(RidersCalledOut {
+                entity,
+                fate: RiderFate::Go,
+            });
             commands.entity(entity).despawn();
         }
     }

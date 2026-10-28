@@ -10,12 +10,15 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::SystemCondition;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
+use bevy::input::ButtonInput;
 use bevy::input::common_conditions::{input_just_pressed, input_just_released};
+use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::MouseButton;
 use bevy::math::{Rect, Vec2};
 use bevy::picking::Pickable;
 use bevy::state::app::AppExtStates;
 use bevy::state::condition::in_state;
+use bevy::time::{Real, Time};
 use bevy::ui::{BackgroundColor, BorderColor, Node, PositionType, UiRect, Val};
 use campfire_client_files::Press;
 use campfire_mode::PlayerControl;
@@ -56,6 +59,11 @@ struct HeldPress {
 #[derive(Resource, Debug, Default)]
 struct Held(Option<HeldPress>);
 
+/// The last click that met a unit, which a click on the same unit soon after makes a double
+/// click: the unit, and the app's seconds at the click; none once a double click took it.
+#[derive(Resource, Debug, Default)]
+struct LastClick(Option<(StableId, f64)>);
+
 /// The units their players sold, and those out of the world, as a rider is, which no selection
 /// holds, as Zero Hour's rider leaves its group as it enters.
 type Unselectable<'w, 's> = Query<
@@ -90,6 +98,7 @@ impl Plugin for SelectingPlugin {
             return;
         }
         app.init_resource::<Held>();
+        app.init_resource::<LastClick>();
         app.add_systems(Startup, Self::add_box);
         app.add_systems(
             Update,
@@ -158,18 +167,27 @@ impl SelectingPlugin {
         }
     }
 
-    /// Ends the held press: a click selects the player's own unit under the cursor alone, a drag
-    /// each of the player's own units its rectangle holds, a leader's spawn as its leader; one
-    /// that meets none of them leaves the selection as it is.
+    /// Ends the held press: a click selects the player's own unit under the cursor alone, a
+    /// double click on a unit that walks every unit of its type the screen shows, or the map
+    /// holds with the map key, and a drag each of the player's own units that walk its rectangle
+    /// holds, a leader's spawn as its leader; with the add key they join the selection, and a
+    /// click's units all selected leave it (exits-docks-and-selection.md, A drag selects no
+    /// building; exits-docks-and-selection.md, Shift adds, a double click takes a kind). One that
+    /// meets none of them leaves the selection as it is.
     fn release(
         pointer: Pointer<'_, '_>,
+        (input, keys, time): (
+            Res<'_, InputMap>,
+            Res<'_, ButtonInput<KeyCode>>,
+            Res<'_, Time<Real>>,
+        ),
         (index, spawns, leaders): (
             Res<'_, EntityIndex>,
             Query<'_, '_, &SpawnOf>,
             Query<'_, '_, (), With<Leader>>,
         ),
         sold: Unselectable<'_, '_>,
-        mut held: ResMut<'_, Held>,
+        (mut held, mut last): (ResMut<'_, Held>, ResMut<'_, LastClick>),
         (mut selection, mut voices): (ResMut<'_, Selection>, MessageWriter<'_, SelectionVoice>),
         mut picked: Local<'_, Vec<StableId>>,
     ) {
@@ -177,18 +195,38 @@ impl SelectingPlugin {
             return;
         };
         picked.clear();
+        let mut clicked = None;
         if press.drags {
-            pointer.own_units_within(press.rect(), &mut picked);
+            last.0 = None;
+            pointer.own_walkers_within(press.rect(), &mut picked);
+        } else if let Some(unit) = pointer.own_unit_under() {
+            let now = time.elapsed_secs_f64();
+            if last.double(unit, now, input.press()) {
+                pointer.own_kind_of(unit, input.across_map(&keys), &mut picked);
+            }
+            if picked.is_empty() {
+                picked.push(unit);
+                clicked = Some(unit);
+            }
         } else {
-            let unit = pointer.own_unit_under();
-            picked.extend(unit);
+            // A drag, or a click on no unit of the player's, comes between two clicks, as a
+            // double click follows its first click alone.
+            last.0 = None;
         }
         picked.retain(|&unit| index.get(unit).is_none_or(|unit| !sold.contains(unit)));
         let led_by = |unit: StableId| {
             let spawner = spawns.get(index.get(unit)?).ok()?.spawner();
             leaders.contains(index.get(spawner)?).then_some(spawner)
         };
-        if selection.bypass_change_detection().pick(&picked, led_by) {
+        let chosen = selection.bypass_change_detection();
+        let changed = if !input.adds(&keys) {
+            chosen.pick(&picked, led_by)
+        } else if clicked.is_some() && chosen.remove(&picked, led_by) {
+            true
+        } else {
+            chosen.add(&picked, led_by)
+        };
+        if changed {
             selection.set_changed();
             voices.write(SelectionVoice::Select);
         }
@@ -210,6 +248,18 @@ impl SelectingPlugin {
         if [node.left, node.top, node.width, node.height] != place {
             [node.left, node.top, node.width, node.height] = place;
         }
+    }
+}
+
+impl LastClick {
+    /// Notes a click on `unit` at `now`, the app's seconds; whether it doubles the last, a click
+    /// on the same unit within `rule`'s double click time, which then no third click doubles.
+    fn double(&mut self, unit: StableId, now: f64, rule: Press) -> bool {
+        let doubles = self
+            .0
+            .is_some_and(|(last, at)| last == unit && rule.doubles(now - at));
+        self.0 = (!doubles).then_some((unit, now));
+        doubles
     }
 }
 
@@ -244,6 +294,23 @@ mod tests {
         };
         let controls = [PlayerControl::Units, PlayerControl::Avatar];
         assert_eq!(controls.map(held), [true, false]);
+    }
+
+    #[test]
+    fn a_second_click_on_its_unit_within_the_double_time_doubles_and_a_third_does_not() {
+        let mut ids = campfire_sim::IdAllocator::default();
+        let [tank, dozer] = [ids.allocate(), ids.allocate()];
+        let rule = Press::default();
+        let mut last = LastClick::default();
+        // A click, then one on the same unit 0.5 s after, Windows' time: a double click; a third
+        // 0.1 s after starts again.
+        assert!(!last.double(tank, 1.0, rule));
+        assert!(last.double(tank, 1.5, rule));
+        assert!(!last.double(tank, 1.6, rule));
+        // 0.6 s after, or on another unit, it does not double.
+        assert!(!last.double(tank, 2.2, rule));
+        assert!(!last.double(dozer, 2.3, rule));
+        assert!(last.double(dozer, 2.4, rule));
     }
 
     #[test]

@@ -1,9 +1,15 @@
 use crate::halves;
+use bevy_ecs::observer::On;
+use bevy_ecs::resource::Resource;
+use bevy_ecs::system::ResMut;
 use campfire_declarations::ByIdBuilder;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Gait, Navigation, UnitNavigationData, UnpartedPairs, Walker};
 use campfire_sim::{EntityIndex, Position};
-use campfire_units::{Deaths, GroundPoint, Leaving, LivingSpawns, MapBook, SeenBy};
+use campfire_units::{
+    Deaths, ForcedMove, GroundPoint, Leaving, LivingSpawns, MapBook, RiderFate, RidersCalledOut,
+    SeenBy,
+};
 use campfire_values::TeamSet;
 use campfire_vision::Vision;
 
@@ -185,6 +191,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         let destination = game.get::<Destination>(entity).unwrap().get();
         assert_eq!(destination, walks, "{target:?}");
     }
+
     // The clear keeps the producer's part, with no target, as each rally writes it in place.
     assert_eq!(*game.part::<Rally>(producer), Rally::new(None));
     // A unit that died rallies nothing: the grunt spawns at the open cell nearest its producer,
@@ -449,6 +456,9 @@ fn a_predicting_clients_train_reads_only_what_it_holds() {
 
 #[test]
 fn a_sale_refunds_its_queue_at_once_then_its_refund_at_its_end_and_removes_it_with_no_death() {
+    // Each call of a container's riders out, which interaction answers.
+    #[derive(Resource, Default)]
+    struct Called(Vec<RiderFate>);
     // Player 0 holds 0 gold; its barracks, which sells for 40 gold over 3 ticks, queues two
     // trains of 4 ticks that paid 10 and 20 gold.
     let mut game = ordering_match();
@@ -490,6 +500,13 @@ fn a_sale_refunds_its_queue_at_once_then_its_refund_at_its_end_and_removes_it_wi
         queue,
     );
     let held = |game: &Match| game.player_resources(player).unwrap().amount(gold);
+    game.init_resource::<Called>();
+    game.add_observer(
+        |called: On<'_, '_, RidersCalledOut>, mut seen: ResMut<'_, Called>| {
+            seen.0.push(called.fate);
+        },
+    );
+    let called = |game: &Match| game.resource::<Called>().0.clone();
     // Tick 0: another player's sale does nothing. Tick 1: player 0's gives back the queue's 10
     // and 20 at once, and marks the barracks sold from tick 1 to tick 4, its tag `constructing`
     // on. Tick 2: a sale of a sold building does nothing.
@@ -503,6 +520,9 @@ fn a_sale_refunds_its_queue_at_once_then_its_refund_at_its_end_and_removes_it_wi
     assert!(game.part::<TrainQueue>(producer).entries().is_empty());
     let tags = StatusTags::from([Production::CONSTRUCTING]);
     assert_eq!(game.part::<StatusTags>(producer), &tags);
+    // Its riders are called out to leave (exits-docks-and-selection.md, A sold container lets its
+    // riders out).
+    assert_eq!(called(&game), [RiderFate::Leave]);
     Production::tick_ordering(&mut game, 0, producer, ProductionDirective::Sell);
     assert_eq!(game.try_part::<Sold>(producer), Some(&sold));
     // Tick 3 runs before the sale's end: the barracks stands. Tick 4 ends it: player 0 gets its
@@ -516,6 +536,8 @@ fn a_sale_refunds_its_queue_at_once_then_its_refund_at_its_end_and_removes_it_wi
     assert_eq!(held(&game), 70);
     assert_eq!(game.resource::<EntityIndex>().get(producer), None);
     assert!(game.resource::<Deaths>().is_empty());
+    // Those still inside are called to go with it.
+    assert_eq!(called(&game), [RiderFate::Leave, RiderFate::Go]);
 
     // A dead building, and one of a type of no sale, sell nothing.
     let dead = Production::allocate_id(&mut game);
@@ -545,4 +567,55 @@ fn a_sale_refunds_its_queue_at_once_then_its_refund_at_its_end_and_removes_it_wi
     Spawner::place_any(&mut game, at, ());
     Production::tick_ordering(&mut game, 0, gate, ProductionDirective::Sell);
     assert_eq!(game.try_part::<Sold>(gate), None);
+}
+
+#[test]
+fn a_unit_made_inside_its_producer_dashes_out_to_its_default_rally_point_then_walks_on() {
+    // A gate of a box 4 by 2 m at the origin, its exit at its centre and its default rally point
+    // 3 m along x: the grunt is made at the centre, dashes out through the box at its meter a
+    // tick to (3, 0), there in tick 3, then walks to the rally point set, (6, 0)
+    // (exits-docks-and-selection.md, A trained unit drives out of its producer).
+    let mut game = ordering_match();
+    let shop = Shop::place(&mut game);
+    let frame = |x: i64| FramePoint::new([Num::int(x), Num::ZERO]);
+    let mut spec = game
+        .resource::<ById<UnitType, ProducerSpec>>()
+        .get(shop.gate)
+        .unwrap()
+        .clone();
+    spec.exit = frame(0);
+    spec.rally = frame(3);
+    Shop::regive(&mut game, shop.gate, spec);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
+    let gate = Production::allocate_id(&mut game);
+    let at = SpawnAt {
+        id: gate,
+        unit_type: shop.gate,
+        team: Team::new(1),
+        position: Vec3::ZERO,
+        owner: Some(PlayerSlot::new(0)),
+        angle: Num::ZERO,
+        variation: None,
+    };
+    let slots = TimedSlots::new(ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]));
+    Spawner::place_any(&mut game, at, (slots, TrainQueue::default()));
+    let target = Some(RallyTarget::Point(GroundPoint::new(Num::int(6), Num::ZERO)));
+    Production::tick_ordering(&mut game, 0, gate, ProductionDirective::Rally { target });
+    Production::order_train(&mut game, gate);
+    game.step();
+    let made = Shop::spawned(&mut game, shop.grunt)[0].id;
+    assert_eq!(game.part::<Position>(made).get(), Vec3::ZERO);
+    assert_eq!(
+        game.part::<Destination>(made).get(),
+        Some(Vec3::from((6, 0, 0)))
+    );
+    for _ in 0..3 {
+        game.step();
+    }
+    assert_eq!(game.part::<Position>(made).get(), Vec3::from((3, 0, 0)));
+    assert!(game.try_part::<ForcedMove>(made).is_none());
+    for _ in 0..3 {
+        game.step();
+    }
+    assert_eq!(game.part::<Position>(made).get(), Vec3::from((6, 0, 0)));
 }
