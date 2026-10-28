@@ -84,7 +84,7 @@ pub(crate) struct ImportedType {
     /// appearance moves as its mover).
     mover: Option<ImportedMover>,
     /// What its second life raises its most life by, of a type of an undead body
-    /// (defenses-and-airfields.md, A type may live twice).
+    /// (04-capabilities/combat.md, A type may live twice).
     second_life: Option<Num>,
     /// The flight of a type whose locomotor hovers (09-zero-hour.md, The import flies a hovering
     /// locomotor).
@@ -269,7 +269,7 @@ impl ImportedType {
             .transpose()?;
         // An undead body's second life raises its most life to its `SecondLifeMaxHealth`, and its
         // armor is that of its set of `SECOND_LIFE`, ahead of an upgrade's
-        // (defenses-and-airfields.md, A type may live twice).
+        // (04-capabilities/combat.md, A type may live twice).
         let second_life = body
             .filter(|body| body.kind == BodyKind::Undead && life.is_some())
             .map(|body| Ok::<_, TypeError>(num(body.second_life)? - num(body.max)?))
@@ -428,7 +428,7 @@ impl ImportedType {
 
     /// The sortie of the jet `object` of the wings `locomotor`: its `JetAIUpdate`'s `TakeoffPause`
     /// and `ReturnToBaseIdleTime`, none for 0, the locomotor's `Acceleration`, which its takeoff
-    /// rolls by (defenses-and-airfields.md, A jet takes off as a jet), its
+    /// rolls by (04-capabilities/airfields.md, A jet takes off as a jet), its
     /// `OutOfAmmoDamagePerSecond` as `unresistable` damage, as Zero Hour deals it, none for 0, and
     /// the speed of its first taxi locomotor that drives (09-zero-hour.md, The import flies a
     /// winged locomotor); an error for a jet of none, or of a loss past its whole life a second.

@@ -332,7 +332,7 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
     // The cannon fires `FX_TankFire`, which the lists do not hold, and its shell hits with
     // `FX_TankHit`, which its shell's look names, of no exhaust; the rifle, a shot, plays
     // nothing, and names no look. The cannon converts to the action of each set it serves, and
-    // each plays its look (exits-docks-and-selection.md, A look follows its converted action).
+    // each plays its look (09-zero-hour.md, A look follows its converted action).
     let mut weapons = WeaponIni::default();
     weapons.read(WEAPONS.as_bytes()).unwrap();
     let shell = name("tank_shell");

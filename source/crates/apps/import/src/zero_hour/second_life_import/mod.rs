@@ -11,7 +11,7 @@ use crate::zero_hour::rules_names::RulesNames;
 
 /// The modifiers of the types' second lives, one for each raise of their most life, shared among
 /// the types of that raise, `second_life_<n>` from 1 in the raises' order, each giving the tag of
-/// a unit in its second life (defenses-and-airfields.md, A type may live twice).
+/// a unit in its second life (04-capabilities/combat.md, A type may live twice).
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct SecondLifeImport {
     names: BTreeMap<Num, DeclaredName>,

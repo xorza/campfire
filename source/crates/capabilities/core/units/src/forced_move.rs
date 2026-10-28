@@ -19,7 +19,7 @@ pub enum ForcedMove {
     /// A dash of `step` a tick on the ground plane, more than 0, to `to`.
     Dash { to: DashTo, step: Num },
     /// A new unit's drive out of its producer, `through`, whose body it crosses, as a dash of
-    /// `step` a tick to `to` (exits-docks-and-selection.md, A trained unit drives out of its
+    /// `step` a tick to `to` (04-capabilities/production.md, A trained unit drives out of its
     /// producer).
     Exit {
         to: Vec3,

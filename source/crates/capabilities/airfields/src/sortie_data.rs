@@ -15,7 +15,7 @@ use crate::error::AirfieldError;
 
 /// A unit type's `sortie` section, a unit an airfield parks: the milliseconds it waits at its
 /// runway's start before it rolls, the meters a second its roll gains a second
-/// (defenses-and-airfields.md, A jet takes off as a jet), its speed in meters a second on the
+/// (04-capabilities/airfields.md, A jet takes off as a jet), its speed in meters a second on the
 /// ground as it taxis, the
 /// milliseconds it stands idle in the air before it goes home, none for never, and what it loses
 /// stranded, none for nothing (04-capabilities/airfields.md, A jet takes off and lands on its

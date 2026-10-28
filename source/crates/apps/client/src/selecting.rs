@@ -171,8 +171,8 @@ impl SelectingPlugin {
     /// double click on a unit that walks every unit of its type the screen shows, or the map
     /// holds with the map key, and a drag each of the player's own units that walk its rectangle
     /// holds, a leader's spawn as its leader; with the add key they join the selection, and a
-    /// click's units all selected leave it (exits-docks-and-selection.md, A drag selects no
-    /// building; exits-docks-and-selection.md, Shift adds, a double click takes a kind). One that
+    /// click's units all selected leave it (02-engine-core.md, A drag selects no
+    /// building; 02-engine-core.md, Shift adds, a double click takes a kind). One that
     /// meets none of them leaves the selection as it is.
     fn release(
         pointer: Pointer<'_, '_>,

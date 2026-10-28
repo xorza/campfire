@@ -122,7 +122,7 @@ impl ForcedMoves {
             let knocked = matches!(forced, ForcedMove::KnockBack { .. });
             let walled =
                 knocked && clearance.is_some_and(|clearance| clearance.walls_block_step(step));
-            // An exit crosses its producer's body (exits-docks-and-selection.md, A trained unit
+            // An exit crosses its producer's body (04-capabilities/production.md, A trained unit
             // drives out of its producer).
             let through = match forced {
                 ForcedMove::Exit { through, .. } => Some(through),

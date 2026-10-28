@@ -115,8 +115,8 @@ pub(crate) struct IniBody {
 
 /// A body module, of those the import reads as life: `ActiveBody`, `StructureBody` and
 /// `HiveStructureBody`, a structure body whose damage to its spawns is a loss
-/// (defenses-and-airfields.md, A hive is a structure), and `UndeadBody`, which lives twice
-/// (defenses-and-airfields.md, A type may live twice); the others, `ImmortalBody`,
+/// (09-zero-hour.md, A hive is a structure), and `UndeadBody`, which lives twice
+/// (04-capabilities/combat.md, A type may live twice); the others, `ImmortalBody`,
 /// `HighlanderBody` and `InactiveBody`, keep a unit alive by rules of their own (09-zero-hour.md,
 /// Life is the original's).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

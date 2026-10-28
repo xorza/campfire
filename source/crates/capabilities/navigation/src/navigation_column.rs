@@ -175,7 +175,7 @@ impl NavigationColumn {
     /// the grid's gap, against `view` and `spawning`, of those that connect, room by room a gap
     /// apart, to the edge of the search, so no body the call spawned encloses it; of any room when
     /// none connects; none when no point has room (04-capabilities/navigation.md, A script finds
-    /// room near a point; exits-docks-and-selection.md, A base start's room connects).
+    /// room near a point; 04-capabilities/navigation.md, A room near a point connects).
     pub fn room_near(view: &View, search: RoomSearch, spawning: &[IndexedBody]) -> Option<Vec3> {
         let RoomSearch { grid, shape, layer } = search;
         let room = |position| {
@@ -314,7 +314,7 @@ mod tests {
         // A search of 3 steps of a meter round the origin; room everywhere but a ring of the
         // square of 2 m, which encloses the 9 points within 1 m: those are not reached, as no step
         // along the axes leaves them, and the nearest reached point lies 3 m off, along +x
-        // (exits-docks-and-selection.md, A base start's room connects).
+        // (04-capabilities/navigation.md, A room near a point connects).
         let grid = GridSearch {
             position: Vec3::ZERO,
             gap: Num::ONE,

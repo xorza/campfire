@@ -70,7 +70,7 @@ pub(crate) struct TypeAdditions<'a> {
     /// (04-capabilities/stats.md, A hurt type may hold a modifier).
     pub(crate) movers: &'a MoverImport,
     /// The modifiers of the second lives, which a type's `second_life` names
-    /// (defenses-and-airfields.md, A type may live twice).
+    /// (04-capabilities/combat.md, A type may live twice).
     pub(crate) second_lives: &'a SecondLifeImport,
 }
 

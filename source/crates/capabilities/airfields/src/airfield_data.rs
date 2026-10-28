@@ -13,8 +13,8 @@ use crate::error::AirfieldError;
 /// its unit waits at for its runway and the runway it takes; its runways, each from its start to
 /// its end, every point in its own frame (04-capabilities/airfields.md, A jet takes off and lands
 /// on its runway); its approach, where each runway's jets climb out to and land from
-/// (defenses-and-airfields.md, A jet takes off as a jet); and the life a second it heals each unit
-/// that rests at it, none for none (04-capabilities/airfields.md, A jet goes home).
+/// (04-capabilities/airfields.md, A jet takes off as a jet); and the life a second it heals each
+/// unit that rests at it, none for none (04-capabilities/airfields.md, A jet goes home).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AirfieldData {

@@ -14,7 +14,7 @@ use crate::unit_entity::UnitEntity;
 /// tick, which that capability sets each tick as it takes the flier off or lands it. State of
 /// `navigation`'s fliers, kept here, as `Destination` is, for the capabilities above navigation to
 /// write (04-capabilities/airfields.md, A jet takes off and lands on its runway;
-/// defenses-and-airfields.md, A jet takes off as a jet).
+/// 04-capabilities/airfields.md, A jet takes off as a jet).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FlightGoal {
     #[default]

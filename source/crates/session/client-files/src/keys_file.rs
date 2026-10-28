@@ -55,7 +55,7 @@ pub struct KeysFile {
     pub orbit: KeyModifiers,
     /// The modifiers held with a click or a drag that add to the selection, or take away a click's
     /// units all selected, and with a double click that selects a type on the map, not the screen
-    /// alone, as Zero Hour's prefer-selection key and its alt do (exits-docks-and-selection.md,
+    /// alone, as Zero Hour's prefer-selection key and its alt do (02-engine-core.md,
     /// Shift adds, a double click takes a kind).
     pub add: KeyModifiers,
     pub across_map: KeyModifiers,
@@ -213,12 +213,12 @@ impl KeysFile {
 }
 
 /// The engine's own keys: Q, W, E and R cast and, with Control, learn; 1 to 6 cast the items; S
-/// stops; Escape drops a build; P shows the shop; G shows the perks; Space pauses, minus and equals or the keypad's
-/// minus and plus step the speed, F5 saves and F9 loads; the arrows scroll, and the keypad's 8, 2,
-/// 4 and 6 zoom and turn, as the arrows do with Alt, for a keyboard with no keypad; the keypad's 5
-/// and Alt with Backspace set the camera back; Control with the middle button orbits it; and
-/// Shift adds to the selection and Alt takes a double click's type across the map, as Zero Hour's
-/// do (02-engine-core.md, Every key on a keyboard with no keypad).
+/// stops; Escape drops a build; P shows the shop; G shows the perks; Space pauses, minus and equals
+/// or the keypad's minus and plus step the speed, F5 saves and F9 loads; the arrows scroll, and the
+/// keypad's 8, 2, 4 and 6 zoom and turn, as the arrows do with Alt, for a keyboard with no keypad;
+/// the keypad's 5 and Alt with Backspace set the camera back; Control with the middle button orbits
+/// it; and Shift adds to the selection and Alt takes a double click's type across the map, as Zero
+/// Hour's do (02-engine-core.md, Every key on a keyboard with no keypad).
 impl Default for KeysFile {
     fn default() -> Self {
         let alt = KeyModifiers {

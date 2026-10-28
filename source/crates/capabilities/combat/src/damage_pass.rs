@@ -412,7 +412,7 @@ impl DamagePass {
         };
         // The first damage that would kill a unit of a second life leaves it the least life, then
         // its life whole, and the second life's modifier raises its maximum, and its life by as
-        // much, as the tick's stats refresh (defenses-and-airfields.md, A type may live twice).
+        // much, as the tick's stats refresh (04-capabilities/combat.md, A type may live twice).
         let second_life =
             left > Num::ZERO && Self::starts_second_life(world, entity, damage.kind, left);
         if second_life {

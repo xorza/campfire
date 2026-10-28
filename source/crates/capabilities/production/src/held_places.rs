@@ -33,8 +33,8 @@ impl HeldPlaces {
 
     /// Whether a train of `action` may join `queue`: one `trains` says is not at a place always,
     /// and one at a place while a place is free of a unit and of each train at a place the queue
-    /// holds, as Zero Hour reserves a place as the train queues (defenses-and-airfields.md, A train
-    /// at a place reserves it as it queues).
+    /// holds, as Zero Hour reserves a place as the train queues (04-capabilities/production.md, A
+    /// train at a place reserves it as it queues).
     pub fn admits(
         &self,
         action: ActionId,

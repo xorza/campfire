@@ -166,7 +166,7 @@ fn a_producer_of_places_makes_each_unit_at_a_free_one_and_its_next_waits_for_one
 fn a_train_at_a_place_joins_its_queue_only_while_a_place_is_free_of_units_and_queued_trains() {
     // The barracks of two places trains at a place in 5 ticks: ordered in ticks 1 and 2, two
     // trains queue, one for each place; the third, ordered in tick 3, finds none free and is
-    // refused, as Zero Hour reserves a place as the train queues (defenses-and-airfields.md, A
+    // refused, as Zero Hour reserves a place as the train queues (04-capabilities/production.md, A
     // train at a place reserves it as it queues).
     let (mut game, shop) = airfield_match();
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::new(5));
@@ -294,7 +294,7 @@ fn jets_take_off_down_their_runway_one_at_a_time() {
     // lifting by its climb of a meter a tick times (1 − d / 10)², d its distance to the end as the
     // tick starts, none at the start: at the end in tick 26, (1² + 2² + … + 9²) / 100 = 2.85 m up;
     // and a meter higher in tick 27, in the air; the second stands at its place until then
-    // (defenses-and-airfields.md, A jet takes off as a jet).
+    // (04-capabilities/airfields.md, A jet takes off as a jet).
     let place = |at: usize, tick: usize| places[at][tick - 1];
     assert_eq!(place(0, 14), Vec3::from((14, 0, 0)));
     let lifted = |cm: i64| {
@@ -320,9 +320,9 @@ fn a_jet_leaves_by_the_door_of_its_place_and_taxis_from_its_exit_to_its_place() 
     // open in a tick, of no open or closing time, and two trains of no time. Done at time 1, the
     // first finds door 0 closed and leaves as it opened at time 2; the second, done then, opens
     // door 1 and leaves at time 3, each door held open while its place holds its jet. Each jet
-    // taxis half a meter a tick to its place, then parks (defenses-and-airfields.md, A producer's
-    // door opens before its unit leaves;
-    // defenses-and-airfields.md, A hangar is a jet's start).
+    // taxis half a meter a tick to its place, then parks (04-capabilities/production.md, A
+    // producer's door opens before its unit leaves; 04-capabilities/production.md, A hangar is a
+    // jet's start).
     let (mut game, shop) = airfield_match();
     let mut spec = game
         .resource::<ById<UnitType, ProducerSpec>>()
@@ -391,7 +391,7 @@ fn a_door_of_two_places_stays_open_while_either_holds_a_unit_and_a_train_off_pla
     // The airfield's two places share its one door, which opens in a tick, of no open or closing
     // time. A train of no place, as a helicopter of Zero Hour's helipad, leaves at once by no door;
     // the two jets each hold the door open, which closes only once both died
-    // (defenses-and-airfields.md, A producer's door opens before its unit leaves).
+    // (04-capabilities/production.md, A producer's door opens before its unit leaves).
     let (mut game, shop) = airfield_match();
     let mut spec = game
         .resource::<ById<UnitType, ProducerSpec>>()
@@ -445,7 +445,7 @@ fn a_jet_rolls_from_a_stop_lifts_by_the_runway_left_and_climbs_out_to_its_approa
     // jet's roll gains a quarter meter a tick to its meter. Paused from tick 15, it rolls from
     // tick 17, 0.25, 0.5, 0.75 m, then a meter a tick: past the end at (24, 0, 0) in tick 28, at
     // 24.5, so it lets the runway go in tick 29; at the approach in tick 33, and in the air in
-    // tick 34 (defenses-and-airfields.md, A jet takes off as a jet).
+    // tick 34 (04-capabilities/airfields.md, A jet takes off as a jet).
     let (mut game, shop) = idle_airfield_match(Some(Ticks::new(10)));
     let mut sortie = *game
         .resource::<ById<UnitType, SortieSpec>>()
@@ -598,7 +598,7 @@ fn an_idle_jet_flies_home_lands_and_taxis_back_to_its_place() {
     // end, and glides there at its least speed of a meter a tick, sinking 7 m over the 3.72, on
     // the ground at the end in tick 69; it rolls to the start in tick 79, lets it go and taxis
     // back to its place, parked in tick 93 (04-capabilities/airfields.md, A jet goes home;
-    // defenses-and-airfields.md, A jet takes off as a jet).
+    // 04-capabilities/airfields.md, A jet takes off as a jet).
     let (mut game, shop) = idle_airfield_match(Some(Ticks::new(10)));
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
     let barracks = Production::allocate_id(&mut game);

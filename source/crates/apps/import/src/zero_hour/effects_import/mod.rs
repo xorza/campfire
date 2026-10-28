@@ -298,7 +298,7 @@ impl EffectsImport {
     }
 
     /// What each action of a weapon of `weapons` plays, as `converted` gives each weapon's actions
-    /// by its name, its `_starting` and `_upgraded` ones among them (exits-docks-and-selection.md,
+    /// by its name, its `_starting` and `_upgraded` ones among them (09-zero-hour.md,
     /// A look follows its converted action): its fire's list and its fire's sound of `sounds`, a
     /// loop of it counted, and, of a shot of no projectile, its hit's list; and, in `units`, what
     /// the type of its projectile plays, its hit's list where it ends and its exhaust as it flies;

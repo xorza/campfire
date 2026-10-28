@@ -17,9 +17,9 @@ use serde::{Deserialize, Serialize};
 /// (04-capabilities/combat.md, A container may let its riders fire; 04-capabilities/interaction.md,
 /// A garrison's riders see from it; 04-capabilities/combat.md, A container's modifier holds on its
 /// riders); the tags it holds while it takes riders, every time when absent
-/// (exits-docks-and-selection.md, A bunker is an entry a tag opens); and the share of its life
+/// (04-capabilities/interaction.md, A bunker is an entry a tag opens); and the share of its life
 /// above which a rider leaves to fight as it is ordered to attack, none for riders that stay
-/// (exits-docks-and-selection.md, A transport may assault).
+/// (04-capabilities/interaction.md, A transport may assault).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EnterData {

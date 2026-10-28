@@ -13,7 +13,7 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// The transport an upgrade module `module` of `rules` makes inside its object, as
 /// `OCL_OverlordBattleBunker` makes the Overlord's battle bunker, a portable structure of a
 /// `TransportContain` (`ContainInsideSourceObject`), whose riders the import gives its object
-/// (exits-docks-and-selection.md, A bunker is an entry a tag opens); none for a module of no such
+/// (04-capabilities/interaction.md, A bunker is an entry a tag opens); none for a module of no such
 /// creation.
 pub(crate) fn transport<'r>(
     rules: &'r ZeroHourRules,

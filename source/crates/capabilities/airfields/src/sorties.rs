@@ -122,8 +122,8 @@ impl Field {
 impl Sorties {
     /// Parks a unit of a sortie its airfield made at one of its places, as it spawns: on the
     /// ground, grounded, until it is ordered away (04-capabilities/production.md, A jet holds a
-    /// place); one made at its place's exit taxis from there to its place first, as Zero Hour's
-    /// jet leaves its hangar (defenses-and-airfields.md, A hangar is a jet's start). One made at a
+    /// place); one made at its place's exit taxis from there to its place first, as Zero Hour's jet
+    /// leaves its hangar (04-capabilities/production.md, A hangar is a jet's start). One made at a
     /// place of a producer of no runways flies from there, as nothing would take it off.
     pub(crate) fn park(world: &mut World, entity: Entity) {
         let Some(&MadeAt { producer, place }) = world.get::<MadeAt>(entity) else {
@@ -182,20 +182,20 @@ impl Sorties {
     /// Steps each unit of a sortie, by stable id, before the units move
     /// (04-capabilities/airfields.md, A jet takes off and lands on its runway;
     /// 04-capabilities/airfields.md, A jet goes home; 04-capabilities/airfields.md, An order waits
-    /// for the air; defenses-and-airfields.md, A jet takes off as a jet). One ordered away from its
-    /// place waits for its runway, holds it, taxis to its prep point and its start at its taxi
+    /// for the air; 04-capabilities/airfields.md, A jet takes off as a jet). One ordered away from
+    /// its place waits for its runway, holds it, taxis to its prep point and its start at its taxi
     /// speed, waits its pause, rolls from a stop toward its airfield's approach past the runway's
     /// end, lifting toward the approach's height, lets the runway go once past its end, and climbs
     /// from the approach, its orders its own. In the air, one whose clips that refill at home are
     /// all empty, or that stood idle its idle time, drops its attack and flies home to the
     /// approach; an order on the way takes one that still holds a shot back to the air. At the
-    /// approach it sinks toward the approach's height and circles until it holds the runway,
-    /// glides to its end at its least speed, rolls to its start, lets it go, taxis back to its
-    /// place and reloads its clips, all in the longest time a clip's reload takes for the share it
-    /// lacks, its shots back as the time goes. One whose airfield is gone takes the nearest
-    /// airfield of its team with a free place; with none, as it goes home it circles where it
-    /// stands, stranded, until one takes it. It is held, its walk and its attacks blocked, from its
-    /// runway's approach to the approach as it takes off.
+    /// approach it sinks toward the approach's height and circles until it holds the runway, glides
+    /// to its end at its least speed, rolls to its start, lets it go, taxis back to its place and
+    /// reloads its clips, all in the longest time a clip's reload takes for the share it lacks, its
+    /// shots back as the time goes. One whose airfield is gone takes the nearest airfield of its
+    /// team with a free place; with none, as it goes home it circles where it stands, stranded,
+    /// until one takes it. It is held, its walk and its attacks blocked, from its runway's approach
+    /// to the approach as it takes off.
     pub(crate) fn step(
         (tick, rate, index): (Res<'_, SimTick>, Res<'_, MatchRate>, Res<'_, EntityIndex>),
         books: SortieBooks<'_>,
@@ -594,7 +594,7 @@ impl Sorties {
 
     /// The ground point of the approach `approach` of the runway from `start` to `end`: past the
     /// end by its share of the runway's length, where a jet climbs out to and lands from
-    /// (defenses-and-airfields.md, A jet takes off as a jet).
+    /// (04-capabilities/airfields.md, A jet takes off as a jet).
     fn approach(start: Vec3, end: Vec3, approach: ApproachData) -> Vec3 {
         let past = start
             .ground_offset(end)

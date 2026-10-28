@@ -53,7 +53,7 @@ impl Selection {
     }
 
     /// Adds `units`, as `pick` takes them, to the units it holds, as Zero Hour's prefer-selection
-    /// key adds them (exits-docks-and-selection.md, Shift adds, a double click takes a kind);
+    /// key adds them (02-engine-core.md, Shift adds, a double click takes a kind);
     /// whether it changed.
     pub(crate) fn add(
         &mut self,

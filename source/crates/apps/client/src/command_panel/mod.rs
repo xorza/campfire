@@ -772,8 +772,8 @@ impl Button {
     }
 
     /// Whether its unit, of `places` and `queue`, has a place free for its train at a place, as
-    /// `trains` says it is one; any other button needs none (defenses-and-airfields.md, A train at
-    /// a place reserves it as it queues).
+    /// `trains` says it is one; any other button needs none (04-capabilities/production.md, A train
+    /// at a place reserves it as it queues).
     fn has_place(
         self,
         trains: Option<&ById<ActionId, TrainSpec>>,

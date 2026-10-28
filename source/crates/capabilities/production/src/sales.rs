@@ -84,7 +84,7 @@ impl Sales {
                         queue.remove(0, now, &mut queues.of(unit, entity));
                     }
                 }
-                // A sold container's riders leave (exits-docks-and-selection.md, A sold container
+                // A sold container's riders leave (04-capabilities/interaction.md, A sold container
                 // lets its riders out).
                 commands.trigger(RidersCalledOut {
                     entity,

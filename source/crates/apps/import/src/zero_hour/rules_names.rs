@@ -57,7 +57,7 @@ pub(crate) struct RulesNames {
     pub(crate) weapon_upgraded: TagFilterData,
     pub(crate) weapon_unupgraded: TagFilterData,
     /// The tag of a unit in its second life, which its modifier gives and its armor tests, and its
-    /// test (defenses-and-airfields.md, A type may live twice).
+    /// test (04-capabilities/combat.md, A type may live twice).
     pub(crate) second_life: DeclaredName,
     pub(crate) in_second_life: TagFilterData,
     /// The tags of the markers the players start at and their starting units rally at, which a

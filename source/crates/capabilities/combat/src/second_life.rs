@@ -7,7 +7,7 @@ use campfire_values::{DamageKind, ModifierId, Named, Names, UnitType};
 use crate::second_life_data::SecondLifeData;
 
 /// A unit type's second life: the modifier its unit holds in it, and the damage kinds that kill
-/// through it (defenses-and-airfields.md, A type may live twice).
+/// through it (04-capabilities/combat.md, A type may live twice).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecondLife {
     pub modifier: ModifierId,

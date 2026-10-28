@@ -8,7 +8,7 @@ use crate::frame_point::FramePoint;
 
 /// A unit type's `drop_off` section: the mode's player resources a worker's load of joins its
 /// player's there, and the point of its frame a worker docks at to deliver, none to dock at its
-/// body (exits-docks-and-selection.md, A dock has its point).
+/// body (04-capabilities/production.md, A dock has its point).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DropOffData {

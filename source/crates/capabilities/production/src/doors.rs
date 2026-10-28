@@ -15,8 +15,8 @@ use crate::producer_spec::ProducerSpec;
 
 /// A producer's doors, each by its index: the tick it last opened, the tick the last unit through
 /// it left, and whether a unit at its place holds it open, or none for a door that never opened,
-/// from which each door's phase follows by its times (defenses-and-airfields.md, A producer's door
-/// opens before its unit leaves).
+/// from which each door's phase follows by its times (04-capabilities/production.md, A producer's
+/// door opens before its unit leaves).
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Doors(Box<[Option<OpenedDoor>]>);

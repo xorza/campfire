@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::second_life::SecondLife;
 
 /// The mark of a unit in its second life, whose type's modifier it holds, until it respawns
-/// (defenses-and-airfields.md, A type may live twice).
+/// (04-capabilities/combat.md, A type may live twice).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InSecondLife;
 

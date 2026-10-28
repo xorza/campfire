@@ -11,7 +11,7 @@ use crate::frame_point::FramePoint;
 /// A unit type's `node` section: a node of the mode's player resource `resource`, holding
 /// `amount` as it spawns, what becomes of it once it runs out, `goes` when absent, and the point
 /// of its frame a worker docks at to gather, none to dock at its body
-/// (exits-docks-and-selection.md, A dock has its point).
+/// (04-capabilities/production.md, A dock has its point).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NodeData {

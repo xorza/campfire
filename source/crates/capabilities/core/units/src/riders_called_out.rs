@@ -3,7 +3,7 @@ use bevy_ecs::event::EntityEvent;
 
 /// A container's riders are called out as a capability takes it from the match: production, which
 /// sells it, triggers it, and interaction, which holds the riders, observes it, so neither writes
-/// the other's state (exits-docks-and-selection.md, A sold container lets its riders out).
+/// the other's state (04-capabilities/interaction.md, A sold container lets its riders out).
 #[derive(EntityEvent, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RidersCalledOut {
     pub entity: Entity,

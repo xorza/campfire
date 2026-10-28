@@ -143,7 +143,7 @@ impl TrainQueue {
 
 /// A living unit's queue is due as its head's time ends, or as the door its head's unit waits for
 /// opens; a dead unit's waits (04-capabilities/00-overview.md, One due index for each timed
-/// process; defenses-and-airfields.md, A producer's door opens before its unit leaves).
+/// process; 04-capabilities/production.md, A producer's door opens before its unit leaves).
 impl TimedProcess for TrainQueue {
     const RUNS: TimedRuns = TimedRuns::Server;
     const KEPT: TimedKept = TimedKept::BySetters;

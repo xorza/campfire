@@ -152,7 +152,7 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
         );
     }
     // A bunker made inside its object gives the tag that opens the object's entry, the first
-    // trigger's suffixed `created` (exits-docks-and-selection.md, A bunker is an entry a tag
+    // trigger's suffixed `created` (04-capabilities/interaction.md, A bunker is an entry a tag
     // opens).
     let bunker = module(
         UpgradeEffect::ObjectCreation {

@@ -291,7 +291,7 @@ impl Module for Production {
             let spec = at.of_type::<ProducerSpec>()?;
             (!spec.places.is_empty()).then(|| HeldPlaces::free_of(spec.places.len()))
         });
-        // A producer of doors starts with each closed (defenses-and-airfields.md, A producer's
+        // A producer of doors starts with each closed (04-capabilities/production.md, A producer's
         // door opens before its unit leaves).
         d.part::<BodyUnit, Doors>(|at| {
             let doors = at.of_type::<ProducerSpec>()?.doors?;

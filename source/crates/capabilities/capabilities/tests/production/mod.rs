@@ -505,8 +505,8 @@ fn a_train_queue_is_state_and_restores() {
 #[test]
 fn a_producers_door_opens_before_its_unit_leaves_and_closes_after_its_open_time() {
     // The barracks of one door that opens in 2 ticks, stays open 3 past its last unit and closes in
-    // 2, with a train of no time and one of a tick (defenses-and-airfields.md, A producer's door
-    // opens before its unit leaves).
+    // 2, with a train of no time and one of a tick (04-capabilities/production.md, A producer's
+    // door opens before its unit leaves).
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
     let times = DoorTimes {

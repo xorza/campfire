@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// A unit type's `second_life`: the modifier of its package its unit holds once the first damage
 /// that would kill it leaves it the least life, its life then whole, and the damage kinds that
 /// kill it through it, as Zero Hour's `UndeadBody` lives twice but against `UNRESISTABLE` damage
-/// (defenses-and-airfields.md, A type may live twice).
+/// (04-capabilities/combat.md, A type may live twice).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SecondLifeData {

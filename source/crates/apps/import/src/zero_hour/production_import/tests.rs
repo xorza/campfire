@@ -145,7 +145,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         base_side: None,
     };
     // The scout, unarmed, assaults by its riders, so it fights in the army too
-    // (exits-docks-and-selection.md, A transport may assault).
+    // (04-capabilities/interaction.md, A transport may assault).
     let mut contains = ContainImport::default();
     let assault = EnterData {
         action: name("enter"),
@@ -362,7 +362,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     let frame = |x: i64, z: i64| FramePoint::new([Num::int(x), Num::int(z)]);
 
     // The dock holds its 400 boxes, 30,000, and stays, docked at (10, −20) on the engine's axes;
-    // the pile its 150, 11,250, and goes, docked at its body (exits-docks-and-selection.md, A
+    // the pile its 150, 11,250, and goes, docked at its body (04-capabilities/production.md, A
     // dock has its point).
     let node = |amount, empty, dock| NodeData {
         resource: declared("money"),

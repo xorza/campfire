@@ -307,9 +307,9 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
         }
     );
     // The fortress takes its bunker's 5 infantry, which fire, once it holds its bunker's upgrade's
-    // tag, the upgrade's name suffixed `created`; the Helix 5 infantry or vehicles but an
-    // aircraft, each 100 ms apart, which do not fire (exits-docks-and-selection.md, A bunker is an
-    // entry a tag opens). The tower of no bunker's upgrade goes.
+    // tag, the upgrade's name suffixed `created`; the Helix 5 infantry or vehicles but an aircraft,
+    // each 100 ms apart, which do not fire (04-capabilities/interaction.md, A bunker is an entry a
+    // tag opens). The tower of no bunker's upgrade goes.
     let opened = FilterTag {
         name: DeclaredName::new("upgrade_fortressbunker_created").unwrap(),
         negated: false,

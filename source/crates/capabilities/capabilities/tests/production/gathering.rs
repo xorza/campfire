@@ -235,7 +235,7 @@ fn a_worker_docks_at_its_nodes_and_its_drop_offs_dock_points() {
     // The mineral at (0, 6) docks at (3, 0) of its frame, (3, 6), and the hall at the origin at
     // (0, −3), past its far side; the worker at (0.5, 3) walks to each point, gathers or delivers
     // within its gather's 1 m of it, not at the near side of either body
-    // (exits-docks-and-selection.md, A dock has its point).
+    // (04-capabilities/production.md, A dock has its point).
     let Mining {
         mut game,
         shop,

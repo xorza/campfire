@@ -18,8 +18,8 @@ use crate::frame_point::FramePoint;
 /// gatherers); the unit types of its package that leave its exit once, as its site completes
 /// (04-capabilities/production.md, A building may come with its units); and its places, where each
 /// unit it trains is made and which it holds while it lives (04-capabilities/production.md, A jet
-/// holds a place); and its doors, which open before each unit leaves (defenses-and-airfields.md, A
-/// producer's door opens before its unit leaves).
+/// holds a place); and its doors, which open before each unit leaves
+/// (04-capabilities/production.md, A producer's door opens before its unit leaves).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionData {
@@ -43,8 +43,8 @@ pub struct ProductionData {
 }
 
 /// A producer's place: its point in the producer's frame, the angle in degrees its unit faces
-/// there, turned with the producer, and the point its unit is made at, from which an airfield
-/// taxis it to its place, none to make it at its place (defenses-and-airfields.md, A hangar is a
+/// there, turned with the producer, and the point its unit is made at, from which an airfield taxis
+/// it to its place, none to make it at its place (04-capabilities/production.md, A hangar is a
 /// jet's start).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

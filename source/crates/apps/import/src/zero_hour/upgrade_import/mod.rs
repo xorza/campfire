@@ -256,7 +256,7 @@ impl UpgradeImport {
                 ("subobjects".to_owned(), EffectModifier::tagged(&tag()?))
             }
             // An upgrade that makes a transport inside its object opens the object's entry by its
-            // tag (exits-docks-and-selection.md, A bunker is an entry a tag opens).
+            // tag (04-capabilities/interaction.md, A bunker is an entry a tag opens).
             UpgradeEffect::ObjectCreation { .. }
                 if portable_structure::transport(rules, module).is_some() =>
             {

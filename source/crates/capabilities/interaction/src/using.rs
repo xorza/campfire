@@ -95,7 +95,7 @@ impl Using<'_, '_> {
     /// or no size, the container's riders' filters do not select the rider, or the container is
     /// another player's. Whether the container takes it, its room among it, its resolve tests
     /// (04-capabilities/interaction.md, An entry is an action of the container's;
-    /// exits-docks-and-selection.md, A bunker is an entry a tag opens).
+    /// 04-capabilities/interaction.md, A bunker is an entry a tag opens).
     pub fn entry(&self, rider: Entity, container: StableId) -> Option<UnitUse> {
         let (&container_type, &container_team, held_by, container_tags) =
             self.objects.get(self.index.get(container)?).ok()?;

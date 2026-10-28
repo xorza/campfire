@@ -355,8 +355,8 @@ impl Trains {
                     };
                     // A train at a place leaves by its place's door; another leaves a producer of
                     // places by none, as Zero Hour's helipad needs no door, and any other producer
-                    // by its first (defenses-and-airfields.md, A producer's door opens before its
-                    // unit leaves).
+                    // by its first (04-capabilities/production.md, A producer's door opens before
+                    // its unit leaves).
                     let door = match place {
                         Some(place) => Some(place),
                         None => (!world.entity(entity).contains::<HeldPlaces>()).then_some(0),
@@ -588,7 +588,7 @@ impl Trains {
             Leaving::set(&mut leaving, true);
         }
         // A unit made inside its producer drives out through it at its step, and then walks
-        // its route (exits-docks-and-selection.md, A trained unit drives out of its producer).
+        // its route (04-capabilities/production.md, A trained unit drives out of its producer).
         let step = world.get::<MoveStep>(unit).map(|step| step.get());
         if let Some((to, step)) = exit.out_to.zip(step.filter(|&step| step > Num::ZERO)) {
             let through = *world.get::<StableId>(entity).expect("a producer has an id");
@@ -708,7 +708,7 @@ impl TrainPoints {
     /// The default rally point a unit made at the exit point drives out to, when the exit point
     /// lies within the body of the producer of `entity`, as Zero Hour makes a unit inside its
     /// factory and sends it along its exit path to its `NaturalRallyPoint`
-    /// (exits-docks-and-selection.md, A trained unit drives out of its producer); none for an exit
+    /// (04-capabilities/production.md, A trained unit drives out of its producer); none for an exit
     /// point outside it, or a producer of no default rally point.
     fn drives_out(self, world: &World, entity: Entity) -> Option<Vec3> {
         let (exit, natural) = (self.exit?, self.natural?);

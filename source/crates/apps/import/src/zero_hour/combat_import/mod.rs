@@ -415,7 +415,7 @@ impl CombatImport {
     }
 
     /// Each action it converts, and how it shoots, by the game's weapon it converts, one weapon to
-    /// an action of each set it serves (exits-docks-and-selection.md, A look follows its converted
+    /// an action of each set it serves (09-zero-hour.md, A look follows its converted
     /// action).
     pub(crate) fn converted_shots(&self) -> BTreeMap<&str, Vec<ConvertedShot<'_>>> {
         let mut shots: BTreeMap<&str, Vec<ConvertedShot<'_>>> = BTreeMap::new();

@@ -161,7 +161,7 @@ impl Containers {
     /// The observer of an exit, an evacuation or an attack ordered to a container, on the server:
     /// its rider, or each, or each of an assault transport whose life lies above its share, leaves
     /// after the riders that leave before it, as its exits come due; an exit of a unit that does
-    /// not ride in it does nothing (exits-docks-and-selection.md, A transport may assault).
+    /// not ride in it does nothing (04-capabilities/interaction.md, A transport may assault).
     pub(crate) fn ordered(
         ordered: On<'_, '_, UnitOrdered>,
         mut containers: Query<'_, '_, (&StableId, &UnitType, &mut Riders), Without<Dead>>,
@@ -584,7 +584,7 @@ impl Containers {
 
     /// The observer of a container's riders called out as it leaves the match, on the server, which
     /// keeps the exits' index: each leaves at its exit time, as a sale starts, or those still
-    /// inside go with it, as it goes (exits-docks-and-selection.md, A sold container lets its
+    /// inside go with it, as it goes (04-capabilities/interaction.md, A sold container lets its
     /// riders out).
     pub(crate) fn called_out(
         called: On<'_, '_, RidersCalledOut>,

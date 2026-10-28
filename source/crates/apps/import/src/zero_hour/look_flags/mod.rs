@@ -113,7 +113,7 @@ impl LookFlags {
 
     /// The test of `flag` when it is a production door's stage, `door_<n>_opening`,
     /// `door_<n>_waiting_open` or `door_<n>_closing` of the doors 1 to 4, as `ProductionUpdate`
-    /// sets them (defenses-and-airfields.md, A producer's door opens before its unit leaves).
+    /// sets them (04-capabilities/production.md, A producer's door opens before its unit leaves).
     fn door(flag: &str) -> Option<ConditionTest> {
         let rest = flag.strip_prefix("door_")?;
         let (number, stage) = rest.split_once('_')?;

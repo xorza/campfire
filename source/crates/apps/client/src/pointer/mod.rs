@@ -118,7 +118,7 @@ impl Pointer<'_, '_> {
 
     /// Adds to `out` each living unit of the player's own that walks whose ground point shows
     /// within `rect` of the window, in logical pixels, edges included: a drag's, which takes no
-    /// building (exits-docks-and-selection.md, A drag selects no building).
+    /// building (02-engine-core.md, A drag selects no building).
     pub(crate) fn own_walkers_within(&self, rect: Rect, out: &mut Vec<StableId>) {
         out.extend(shown_within(
             Some(rect),
@@ -130,7 +130,7 @@ impl Pointer<'_, '_> {
 
     /// Adds to `out` each living unit of the player's own of the type of `unit` that walks, as a
     /// double click on `unit` takes them: those whose ground point the window shows, or every one
-    /// with `across_map` (exits-docks-and-selection.md, Shift adds, a double click takes a kind).
+    /// with `across_map` (02-engine-core.md, Shift adds, a double click takes a kind).
     /// None for a unit that does not walk, as no mass selection takes a building.
     pub(crate) fn own_kind_of(&self, unit: StableId, across_map: bool, out: &mut Vec<StableId>) {
         let Some(kind) = self
@@ -260,7 +260,7 @@ mod tests {
             shown_within(rect, slot, units.into_iter(), takes).collect::<Vec<_>>()
         };
         let walks = |shown: Shown| shown.walks;
-        // A drag takes the walkers inside, not the building (exits-docks-and-selection.md, A drag
+        // A drag takes the walkers inside, not the building (02-engine-core.md, A drag
         // selects no building).
         assert_eq!(
             within(Some(rect), Some(own), &walks),

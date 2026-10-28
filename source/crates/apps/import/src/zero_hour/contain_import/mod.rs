@@ -104,7 +104,7 @@ impl ContainImport {
             let points = fire_points.get(typed.name.declared());
             let mut drop = |cause| dropped.drop(&object.name, cause);
             // An Overlord's riders are its battle bunker's, which its upgrade makes inside it,
-            // open once it holds the upgrade's tag (exits-docks-and-selection.md, A bunker is an
+            // open once it holds the upgrade's tag (04-capabilities/interaction.md, A bunker is an
             // entry a tag opens).
             let bunker = (contain.class == ContainClass::Overlord)
                 .then(|| {

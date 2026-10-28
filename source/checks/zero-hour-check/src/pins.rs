@@ -23,7 +23,7 @@ pub(crate) const MAP: &str = "tournament_desert";
 pub(crate) const HZ: u64 = 30;
 
 /// The ticks the command center's door takes to open, its 1,500 ms, which its dozer waits before
-/// it leaves (defenses-and-airfields.md, A producer's door opens before its unit leaves).
+/// it leaves (04-capabilities/production.md, A producer's door opens before its unit leaves).
 const CENTER_OPENING: u64 = (1500 * HZ).div_ceil(1000);
 
 /// The ticks the war factory's door takes to open, its 3,250 ms rounded up, which each of its units
@@ -603,7 +603,7 @@ pub(crate) struct SkirmishTicks {
 /// How many weapons the import converts from every starting weapon set, how many it drops for each
 /// cause, in the order of `WeaponDropCause::ALL`, how many armors and damage kinds it writes, and
 /// how many unit types' objects it gives no life, or a life that starts below its most, how many
-/// live twice (defenses-and-airfields.md, A type may live twice), how many weapons prefer a
+/// live twice (04-capabilities/combat.md, A type may live twice), how many weapons prefer a
 /// target, how many lose the preference of a kind of no tag, and how many unit
 /// types answer an ally's call (09-zero-hour.md, The import converts what the choice and the
 /// answer read; 09-zero-hour.md,

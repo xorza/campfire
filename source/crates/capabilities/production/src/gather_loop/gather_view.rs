@@ -221,7 +221,7 @@ impl GatherView<'_, '_> {
 
     /// Where a worker goes to at the unit of `entity`, of `unit_type`, at `at` of `body`: its
     /// dock's point, turned with it, for a type of one, else its body
-    /// (exits-docks-and-selection.md, A dock has its point).
+    /// (04-capabilities/production.md, A dock has its point).
     fn location(
         &self,
         entity: Entity,

@@ -108,7 +108,7 @@ pub(crate) const DOCK_RANGE: Num = Num::int(10);
 impl SupplyImport {
     /// Adds the node of `producer` when it is a dock, and its drop-off when it is a supply
     /// center, by the box value of `rules`, each docked at `dock`, its model's `DockAction`, or at
-    /// its body for none (exits-docks-and-selection.md, A dock has its point); drops what it
+    /// its body for none (04-capabilities/production.md, A dock has its point); drops what it
     /// creates over time.
     pub(crate) fn dock(
         &mut self,

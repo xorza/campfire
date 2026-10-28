@@ -34,7 +34,7 @@ pub enum ConditionTest {
     /// (04-capabilities/combat.md, A death keeps its unit for its animation).
     Dead,
     /// The producer's door at `door`, from 0, is at `stage`, as Zero Hour's `DOOR_<n>_OPENING`,
-    /// `DOOR_<n>_WAITING_OPEN` and `DOOR_<n>_CLOSING` hold (defenses-and-airfields.md, A
+    /// `DOOR_<n>_WAITING_OPEN` and `DOOR_<n>_CLOSING` hold (04-capabilities/production.md, A
     /// producer's door opens before its unit leaves).
     Door { door: u8, stage: DoorStage },
 }

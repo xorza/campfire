@@ -96,7 +96,7 @@ struct ExitPoints {
 /// (09-zero-hour.md, A base start): each type its start builders build but its faction building,
 /// once each, in their command sets' order, and each type those buildings and its faction building
 /// train, once each, in that order; its army, those units that neither build nor gather and that a
-/// weapon arms or that assault with their riders (exits-docks-and-selection.md, A transport may
+/// weapon arms or that assault with their riders (04-capabilities/interaction.md, A transport may
 /// assault), which a bot trains and sends
 /// (09-zero-hour.md, A builder and an attacker); its gatherers, those units that gather; and its
 /// drop-offs, its faction building and base buildings that take a load, which a bot counts its
@@ -864,9 +864,9 @@ impl ProductionImport {
     /// makes its units at its `helipad`, with no rally point of its own (09-zero-hour.md, A helipad
     /// is an exit), and its jets at its places, each facing as its bone does and made in its
     /// hangar, none when one is past what the engine holds (09-zero-hour.md, The import flies a
-    /// winged locomotor; defenses-and-airfields.md, A hangar is a jet's start), and its doors, of a
-    /// module of door animations (defenses-and-airfields.md, A producer's door opens before its
-    /// unit leaves). The supply's conversion gives it its free units.
+    /// winged locomotor; 04-capabilities/production.md, A hangar is a jet's start), and its doors,
+    /// of a module of door animations (04-capabilities/production.md, A producer's door opens
+    /// before its unit leaves). The supply's conversion gives it its free units.
     fn section(build: &IniBuild, points: ExitPoints) -> Option<ProductionData> {
         let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;
         let frame = Self::frame;

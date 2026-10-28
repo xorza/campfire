@@ -81,7 +81,7 @@ impl EnterSpec {
     }
 
     /// Whether a container of it of `tags` takes riders: one of no `open`, or of tags it selects
-    /// (exits-docks-and-selection.md, A bunker is an entry a tag opens).
+    /// (04-capabilities/interaction.md, A bunker is an entry a tag opens).
     pub fn opens(&self, tags: TagSet) -> bool {
         self.open
             .as_ref()

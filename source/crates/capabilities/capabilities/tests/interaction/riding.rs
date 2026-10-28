@@ -358,9 +358,9 @@ fn a_container_takes_no_rider_past_its_room_its_filter_its_size_its_side_or_its_
 
 #[test]
 fn an_entry_opens_only_while_its_container_holds_the_tags_it_names() {
-    // A humvee open while it holds no rider, as its tag `holding` says: the first rider enters,
-    // and the second, ordered once the first is in, finds it closed (exits-docks-and-selection.md,
-    // A bunker is an entry a tag opens).
+    // A humvee open while it holds no rider, as its tag `holding` says: the first rider enters, and
+    // the second, ordered once the first is in, finds it closed (04-capabilities/interaction.md, A
+    // bunker is an entry a tag opens).
     let (mut game, rides) = Rides::books();
     let mut spec = game
         .resource::<ById<UnitType, EnterSpec>>()
@@ -511,7 +511,7 @@ fn riders_leave_each_exit_time_apart_at_the_free_cell_nearest_their_container() 
 fn an_assault_transports_attack_lets_out_each_rider_above_its_share_of_life() {
     // A humvee, an assault transport of half a life, holds 2 riders; the first hurt to half its
     // life, 250 of 500, stays, and the second, whole, leaves as the humvee is ordered to
-    // attack-move (exits-docks-and-selection.md, A transport may assault).
+    // attack-move (04-capabilities/interaction.md, A transport may assault).
     let (mut game, rides) = Rides::load();
     let humvee = container(&mut game, rides.humvee, 0, 0, Some(0));
     let [hurt, whole] = [1, -1].map(|x| rider(&mut game, "walking caster", x, 0, 0));
@@ -531,7 +531,7 @@ fn an_assault_transports_attack_lets_out_each_rider_above_its_share_of_life() {
 #[test]
 fn riders_called_out_leave_at_their_exit_times_or_go_with_their_container() {
     // A crawler's 2 riders, which it came with, called out to leave: they leave a tick apart, by
-    // its exit time; another's, called to go, despawn with it (exits-docks-and-selection.md, A
+    // its exit time; another's, called to go, despawn with it (04-capabilities/interaction.md, A
     // sold container lets its riders out).
     let (mut game, rides) = Rides::load();
     grid(&mut game, rides);

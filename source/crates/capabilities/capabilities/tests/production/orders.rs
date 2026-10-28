@@ -520,7 +520,7 @@ fn a_sale_refunds_its_queue_at_once_then_its_refund_at_its_end_and_removes_it_wi
     assert!(game.part::<TrainQueue>(producer).entries().is_empty());
     let tags = StatusTags::from([Production::CONSTRUCTING]);
     assert_eq!(game.part::<StatusTags>(producer), &tags);
-    // Its riders are called out to leave (exits-docks-and-selection.md, A sold container lets its
+    // Its riders are called out to leave (04-capabilities/interaction.md, A sold container lets its
     // riders out).
     assert_eq!(called(&game), [RiderFate::Leave]);
     Production::tick_ordering(&mut game, 0, producer, ProductionDirective::Sell);
@@ -574,7 +574,7 @@ fn a_unit_made_inside_its_producer_dashes_out_to_its_default_rally_point_then_wa
     // A gate of a box 4 by 2 m at the origin, its exit at its centre and its default rally point
     // 3 m along x: the grunt is made at the centre, dashes out through the box at its meter a
     // tick to (3, 0), there in tick 3, then walks to the rally point set, (6, 0)
-    // (exits-docks-and-selection.md, A trained unit drives out of its producer).
+    // (04-capabilities/production.md, A trained unit drives out of its producer).
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let frame = |x: i64| FramePoint::new([Num::int(x), Num::ZERO]);
