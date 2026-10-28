@@ -1000,6 +1000,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         areas: &production.areas,
         enters: &contains.enters,
         rides: &contains.rides,
+        movers: &types.movers(),
     };
     let units = types.units_file(additions, &rules.names);
     assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);

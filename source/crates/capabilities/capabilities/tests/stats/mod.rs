@@ -22,8 +22,8 @@ use campfire_units::{
     UnitTypeCore, Units,
 };
 use campfire_values::{
-    Block, ModifierId, NameId, PackageIndex, Tag, TagProperties, TagSet, Team, TypeScope, UnitTags,
-    UnitType,
+    Block, ModifierId, NameId, PackageIndex, Share, Tag, TagProperties, TagSet, Team, TypeScope,
+    UnitTags, UnitType,
 };
 use campfire_values::{
     EngineStat, FilterData, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling, Stat,
@@ -401,6 +401,84 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     game.step();
     assert_eq!(step(&game), Num::from_bits(2_236_962));
     assert_eq!(tags(&game).tags, own);
+}
+
+#[test]
+fn a_hurt_type_holds_its_modifier_at_its_share_of_life_and_below_and_drops_it_above() {
+    // Health 100, its life, move speed 4, and a `hurt` of 0.5 whose modifier adds −2: 4 m/s is
+    // 4 × 2²⁴ ÷ 30 = 2 236 962.13 bits a tick, to 2 236 962; 2 m/s 1 118 481.07, to 1 118 481. A
+    // change of life holds or drops it at the next Resolve, and the refresh after it moves the
+    // step that tick.
+    let walker = stats(&[
+        (stat("health"), Num::int(100), Num::ZERO),
+        (Stat::Engine(EngineStat::MoveSpeed), Num::int(4), Num::ZERO),
+    ]);
+    let mut game = stat_match(&[walker]);
+    PoolBook::amend(&mut game, |_, book| book.set_life(Some(HEALTH)));
+    let slower = StatChange {
+        op: StatOp::Add,
+        value: Number::from(Num::int(-2)),
+    };
+    let data = ModifierData {
+        stats: BTreeMap::from([(Stat::Engine(EngineStat::MoveSpeed), slower)]),
+        ..ModifierData::default()
+    };
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "hurt", &data, None);
+    let hurt = Stats::modifier(&game, PackageIndex::MODE, "hurt").unwrap();
+    let upgrade = TypeUpgrade {
+        triggers: Box::new([]),
+        all: true,
+        conflicts: Box::new([]),
+        when: None,
+        below: Some(Share::billionths(500_000_000).unwrap()),
+        modifier: hurt,
+    };
+    Units::give_type(
+        &mut game,
+        UnitType::new(0),
+        TypeUpgrades(Box::new([upgrade])),
+    );
+    let unit = unit(&mut game, 0);
+    let step = |game: &Match| game.get::<MoveStep>(unit).unwrap().get();
+    let held = |game: &Match| {
+        let modifiers = game.get::<Modifiers>(unit).unwrap();
+        modifiers.iter().any(|carried| carried.instance.id == hurt)
+    };
+    let life = |game: &mut Match, change: fn(&mut Life, Num)| {
+        let mut life = game.get_mut::<Life>(unit).unwrap();
+        let half = life.max() / 2;
+        change(&mut life, half);
+    };
+    game.step();
+    assert_eq!(
+        (held(&game), step(&game)),
+        (false, Num::from_bits(2_236_962))
+    );
+    // At half its life, the share itself: held.
+    life(&mut game, |life, half| {
+        life.take(half);
+    });
+    game.step();
+    assert_eq!(
+        (held(&game), step(&game)),
+        (true, Num::from_bits(1_118_481))
+    );
+    // Healed the least step past it: dropped, and its step back, that tick.
+    life(&mut game, |life, _| life.add(Num::EPSILON));
+    game.step();
+    assert_eq!(
+        (held(&game), step(&game)),
+        (false, Num::from_bits(2_236_962))
+    );
+    // Hurt below it: held again.
+    life(&mut game, |life, half| {
+        life.take(half);
+    });
+    game.step();
+    assert_eq!(
+        (held(&game), step(&game)),
+        (true, Num::from_bits(1_118_481))
+    );
 }
 
 #[test]

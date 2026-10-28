@@ -95,6 +95,8 @@ pub(crate) struct IniObject {
     deaths: Vec<IniDeath>,
     /// Its `PhysicsBehavior`'s `Mass`, 1 when it has none, as `DEFAULT_MASS`.
     mass: f32,
+    /// Its `PhysicsBehavior`'s `LateralFriction`, a share a second, none when it has none.
+    lateral_friction: Option<f32>,
     /// Its `LifetimeUpdate`'s `MinLifetime` and `MaxLifetime`, in milliseconds.
     lifetime_ms: Option<[f32; 2]>,
     voices: IniVoices,
@@ -110,6 +112,8 @@ pub(crate) struct IniObject {
     /// room it takes of a transport, its `TransportSlotCount`.
     contain: Option<IniContain>,
     transport_slots: i32,
+    /// The mapped image a button that stands for it shows, its `ButtonImage`, none of none.
+    button_image: Option<String>,
     experience: IniExperience,
     powers: IniPowers,
 }
@@ -481,6 +485,7 @@ impl ObjectFiles {
                 upgrades: Vec::new(),
                 deaths: Vec::new(),
                 mass: 1.0,
+                lateral_friction: None,
                 lifetime_ms: None,
                 voices: IniVoices::default(),
                 vision_range: 0.0,
@@ -489,6 +494,7 @@ impl ObjectFiles {
                 radar_priority: RadarPriority::Unset,
                 contain: None,
                 transport_slots: 0,
+                button_image: None,
                 experience: IniExperience::default(),
                 powers: IniPowers::default(),
             },
@@ -1010,6 +1016,12 @@ impl IniObject {
         self.transport_slots
     }
 
+    /// The mapped image a button that stands for it shows, its `ButtonImage`, as a transport's
+    /// exit shows its rider (`ControlBar::populateButtonProc`).
+    pub(crate) fn button_image(&self) -> Option<&str> {
+        self.button_image.as_deref()
+    }
+
     /// Its kinds of `KindOf` that the import reads.
     pub(crate) const fn kinds(&self) -> ObjectKinds {
         self.kinds
@@ -1024,6 +1036,11 @@ impl IniObject {
     /// Whether it is a structure, of `KindOf`.
     pub(crate) const fn is_structure(&self) -> bool {
         self.kinds.holds(ObjectKind::Structure)
+    }
+
+    /// Whether it is a dozer, of `KindOf`.
+    pub(crate) const fn is_dozer(&self) -> bool {
+        self.kinds.holds(ObjectKind::Dozer)
     }
 
     /// Whether it is a vehicle, of `KindOf`.
@@ -1047,6 +1064,14 @@ impl IniObject {
     /// Its mass, its `PhysicsBehavior`'s, which a force pushes it by.
     pub(crate) const fn mass(&self) -> f32 {
         self.mass
+    }
+
+    /// The share of its lateral velocity it loses a frame, its `PhysicsBehavior`'s
+    /// `LateralFriction` a second times the `f32` of a frame's seconds, as `parseFrictionPerSec`
+    /// reads it, or `DEFAULT_LATERAL_FRICTION`, 0.15, with none.
+    pub(crate) fn lateral_friction(&self) -> f32 {
+        self.lateral_friction
+            .map_or(0.15, |per_second| per_second * (1.0 / 30.0))
     }
 
     /// Its `VisionRange`, 0 when absent.
@@ -1405,6 +1430,7 @@ impl Reading {
                 let object = &mut open.object;
                 match word {
                     "mass" if !lifetime => object.mass = at.real()?,
+                    "lateralfriction" if !lifetime => object.lateral_friction = Some(at.real()?),
                     "minlifetime" | "maxlifetime" if lifetime => {
                         let ms = object.lifetime_ms.get_or_insert([0.0; 2]);
                         ms[usize::from(word == "maxlifetime")] = at.real()?;
@@ -1570,6 +1596,7 @@ impl Reading {
                     | "experiencerequired"
                     | "istrainable"
                     | "transportslotcount"
+                    | "buttonimage"
             ) || word.starts_with("geometry") =>
             {
                 let open = self
@@ -1589,6 +1616,7 @@ impl Reading {
                     "kindof" => object.kinds.set_by(at)?,
                     "isbridge" => object.is_bridge = at.yes()?,
                     "transportslotcount" => object.transport_slots = at.int()?,
+                    "buttonimage" => object.button_image = Some(at.value()?.to_owned()),
                     "visionrange" => object.vision_range = at.real()?,
                     "experiencevalue" | "experiencerequired" | "istrainable" => {
                         object.experience.field(word, at)?;

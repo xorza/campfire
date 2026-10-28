@@ -41,6 +41,19 @@ fn a_way_gives_its_angle_and_a_turn_takes_the_shorter_side_at_most_its_step() {
         ],
         [2, 2, 2, 180, 90].map(Num::int)
     );
+    // The turn to a way is signed, counter-clockwise positive, and half a turn is positive.
+    let turn = |a: i64, b: i64| Facing::of(Num::int(a)).turn_to(Facing::of(Num::int(b)));
+    assert_eq!(
+        [
+            turn(10, 12),
+            turn(12, 10),
+            turn(359, 1),
+            turn(1, 359),
+            turn(0, 180),
+            turn(0, 270)
+        ],
+        [2, -2, 2, -2, 180, -90].map(Num::int)
+    );
     let facing = |angle: i64| Facing::of(Num::int(angle));
     let three = TurnStep::new(Num::int(3));
     let toward = |from: i64, way: i64| facing(from).toward(facing(way), three);

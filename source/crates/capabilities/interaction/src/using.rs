@@ -5,7 +5,7 @@ use campfire_actions::{ActionSlots, SlotKind};
 use campfire_declarations::ById;
 use campfire_players::OnMatch;
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
-use campfire_units::Dead;
+use campfire_units::{Dead, Owner};
 use campfire_values::{ActionId, Relations, TagSet, Team, UnitTags, UnitType};
 
 use crate::enter_spec::EnterSpec;
@@ -28,11 +28,15 @@ pub struct Using<'w, 's> {
     users: Users<'w, 's>,
 }
 
-/// A living unit's type and team, whether a client predicts it or not.
-type Objects<'w, 's> =
-    Query<'w, 's, (&'static UnitType, &'static Team), (Without<Dead>, Allow<Unpredicted>)>;
+/// A living unit's type, team and player, whether a client predicts it or not.
+type Objects<'w, 's> = Query<
+    'w,
+    's,
+    (&'static UnitType, &'static Team, Option<&'static Owner>),
+    (Without<Dead>, Allow<Unpredicted>),
+>;
 
-/// A living unit's type, team, tags and slots.
+/// A living unit's type, team, tags, slots and player.
 type Users<'w, 's> = Query<
     'w,
     's,
@@ -41,6 +45,7 @@ type Users<'w, 's> = Query<
         &'static Team,
         Option<&'static UnitTags>,
         &'static ActionSlots,
+        Option<&'static Owner>,
     ),
     Without<Dead>,
 >;
@@ -58,9 +63,9 @@ impl Using<'_, '_> {
     /// how the object's team regards the user's and the user's tags.
     pub fn of(&self, user: Entity, object: StableId) -> Option<UnitUse> {
         let (specs, slots) = (&self.specs, &self.slots);
-        let (&object_type, &object_team) = self.objects.get(self.index.get(object)?).ok()?;
+        let (&object_type, &object_team, _) = self.objects.get(self.index.get(object)?).ok()?;
         let spec = *specs.get(object_type)?;
-        let (&user_type, &team, tags, held) = self.users.get(user).ok()?;
+        let (&user_type, &team, tags, held, _) = self.users.get(user).ok()?;
         let kind = slots.get(user_type)?.kind();
         let relation = self.relations.get().between(object_team, team);
         let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
@@ -74,15 +79,19 @@ impl Using<'_, '_> {
     }
 
     /// The entry of the living unit `container` by the living unit of `rider`: none when the
-    /// container's type has no `enter`, the rider's no `uses` or no size, or the container's
-    /// riders' filter does not select the rider. Whether the container takes it, its room and its
-    /// side among them, its resolve tests (transports.md, An entry is an action of the
-    /// container's).
+    /// container's type has no `enter`, the rider's no `uses` or no size, the container's riders'
+    /// filters do not select the rider, or the container is another player's. Whether the
+    /// container takes it, its room among it, its resolve tests (transports.md, An entry is an
+    /// action of the container's).
     pub fn entry(&self, rider: Entity, container: StableId) -> Option<UnitUse> {
-        let (&container_type, &container_team) =
+        let (&container_type, &container_team, held_by) =
             self.objects.get(self.index.get(container)?).ok()?;
         let spec = self.entries.get(container_type)?;
-        let (&rider_type, &team, tags, held) = self.users.get(rider).ok()?;
+        let (&rider_type, &team, tags, held, owner) = self.users.get(rider).ok()?;
+        let player = |owner: Option<&Owner>| owner.map(|owner| owner.player_slot());
+        if !spec.sides(player(held_by), player(owner)) {
+            return None;
+        }
         self.sizes.get(rider_type)?;
         let kind = self.slots.get(rider_type)?.kind();
         let relation = self.relations.get().between(container_team, team);

@@ -9,16 +9,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CheckError;
 use crate::pins::{
-    BotBase, BotMatchEnd, CombatTicks, ContainedCounts, DefenseTicks, EffectCounts, Fingerprints,
-    FoughtCounts, GarrisonTicks, HelicopterTicks, JetTicks, LookCounts, MapCounts, MissileTicks,
-    PanelCounts, ProducedCounts, RangerLook, RoadCounts, ScienceSteps, SkirmishTicks, SoundCounts,
-    SuppliedCounts, SupplyTicks, TerrainCounts, TransportTicks, UpgradedCounts,
+    BotBase, BotMatchEnd, CombatTicks, ContainedCounts, DefenseTicks, DrivenCounts, EffectCounts,
+    Fingerprints, FoughtCounts, GarrisonTicks, HelicopterTicks, JetTicks, LookCounts, MapCounts,
+    MissileTicks, PanelCounts, ProducedCounts, RangerLook, RoadCounts, ScienceSteps, SkirmishTicks,
+    SoundCounts, SuppliedCounts, SupplyTicks, TerrainCounts, TransportTicks, UpgradedCounts,
 };
 
 /// What the check measured of the known version and this importer, each a value no closed form
 /// gives: the fingerprints, a run on Linux and a run on macOS alike; Tournament Desert's counts and
-/// roads; the import's looks, trains, builds, researches, upgrades, supply, containers and
-/// weapons; the plays'
+/// roads; the import's looks, trains, builds, researches, upgrades, supply, containers, weapons
+/// and movers; the plays'
 /// ticks, the supply play's deliveries, the helicopter play's climb, load and fall, the jet play's
 /// sortie, the science play's Paladin, the combat play's hits and returns, the transport play's
 /// boardings, shot, fall and flight, the garrison play's garrison, hit and leave, the defense plays' hits and kills and the missile play's
@@ -45,6 +45,7 @@ pub(crate) struct Golden {
     pub(crate) panel: PanelCounts,
     pub(crate) sounds: SoundCounts,
     pub(crate) fought: FoughtCounts,
+    pub(crate) driven: DrivenCounts,
     pub(crate) skirmish: SkirmishTicks,
     pub(crate) supply: SupplyTicks,
     pub(crate) helicopter: HelicopterTicks,
@@ -81,6 +82,7 @@ pub(crate) struct Measured {
     pub(crate) panel: Option<PanelCounts>,
     pub(crate) sounds: Option<SoundCounts>,
     pub(crate) fought: Option<FoughtCounts>,
+    pub(crate) driven: Option<DrivenCounts>,
     pub(crate) skirmish: Option<SkirmishTicks>,
     pub(crate) supply: Option<SupplyTicks>,
     pub(crate) helicopter: Option<HelicopterTicks>,
@@ -155,6 +157,7 @@ impl Measured {
             panel: self.panel?,
             sounds: self.sounds?,
             fought: self.fought?,
+            driven: self.driven?,
             skirmish: self.skirmish?,
             supply: self.supply?,
             helicopter: self.helicopter?,

@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::chassis::Chassis;
 use crate::client_model::{ClientModel, ModelTop};
 use crate::death_fall::DeathFall;
+use crate::panel_icon::PanelIcon;
 use crate::panel_place::PanelPlaces;
 use crate::set_match::SetMatch;
 use crate::state_animation::{AnimationMode, StateAnimation};
@@ -60,6 +61,10 @@ pub struct ClientUnit {
     /// slot order (02-engine-core.md, A look places its buttons).
     #[serde(default, skip_serializing_if = "PanelPlaces::is_empty")]
     pub panel: PanelPlaces,
+    /// The icon a button that stands for its unit shows, as a container's exit shows its rider,
+    /// none for a type of none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<PanelIcon>,
     #[serde(default, skip_serializing_if = "UnitVoices::is_empty")]
     pub voices: UnitVoices,
     /// Who sees its unit on the minimap (02-engine-core.md, The minimap is drawn from the terrain
@@ -299,6 +304,7 @@ impl ClientUnit {
             },
             chassis: None,
             panel: PanelPlaces::EMPTY,
+            icon: None,
             voices: UnitVoices::NONE,
             radar: RadarShown::Everyone,
         }

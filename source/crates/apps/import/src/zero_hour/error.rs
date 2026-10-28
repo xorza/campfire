@@ -258,6 +258,10 @@ pub enum TypeError {
     /// climbs, or at a number the engine's flight, or its wings, do not hold.
     #[error("its flight is none the engine holds")]
     Flight,
+    /// It drives by a locomotor of a number the engine's mover does not hold, or the game's
+    /// threshold of a really damaged body is no share.
+    #[error("its locomotor is none the engine's mover holds")]
+    Locomotor,
     /// It is a jet of no taxi locomotor that drives, or of a takeoff pause or an idle time the
     /// engine does not hold.
     #[error("its sortie is none the engine holds")]

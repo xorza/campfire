@@ -7,3 +7,5 @@ command-sell = Sell
 command-stop = Stop
 command-attack-move = Attack move
 command-rally = Set rally point
+command-exit = Exit
+command-evacuate = Evacuate

@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declarations::Cache;
 use campfire_geometry::Grid;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::regions::Regions;
@@ -304,6 +304,17 @@ impl Clearance<'_> {
                 |cell: usize| cell != start && walled[cell / 64] & (1 << (cell % 64)) != 0;
             self.grid.touches(segment.start(), segment.end(), blocked)
         })
+    }
+
+    /// Whether the walls block the walker from the cell `point` stands in, or `point` lies outside
+    /// the grid, whatever the static bodies block: the terrain a wheel's arc may not cross
+    /// (driving.md, A wheel's arc is tested on the pathing grid).
+    pub(crate) fn walled_at(&self, point: Vec3) -> bool {
+        let Some(cell) = self.grid.cell_of(point) else {
+            return true;
+        };
+        self.walled
+            .is_some_and(|walled| walled[cell / 64] & (1 << (cell % 64)) != 0)
     }
 
     /// Whether a walker may stand in `cell`.

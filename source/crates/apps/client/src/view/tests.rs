@@ -240,6 +240,32 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
 }
 
 #[test]
+fn a_unit_out_of_the_world_is_not_drawn_until_it_comes_back() {
+    // A rider leaves the world as it enters its container, and its drawing hides; as it leaves
+    // the container, its drawing shows again.
+    let mut app = view();
+    let mut ids = IdAllocator::default();
+    let unit = (
+        ids.allocate(),
+        BodyUnit,
+        Position::from((2, 0, 3)),
+        Team::new(0),
+        UNDRAWN,
+    );
+    let rider = app.world_mut().spawn(unit).id();
+    app.update();
+    let shown = |app: &App| {
+        let (root, ..) = root(app.world(), rider);
+        *app.world().get::<Visibility>(root).unwrap()
+    };
+    assert_eq!(shown(&app), Visibility::Inherited);
+    app.world_mut().entity_mut(rider).insert(Disabled);
+    assert_eq!(shown(&app), Visibility::Hidden);
+    app.world_mut().entity_mut(rider).remove::<Disabled>();
+    assert_eq!(shown(&app), Visibility::Inherited);
+}
+
+#[test]
 fn a_drawing_shows_its_unit_as_it_stands_after_a_rollback() {
     let mut app = view();
     let unit = app

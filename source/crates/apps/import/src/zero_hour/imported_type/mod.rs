@@ -28,6 +28,7 @@ use crate::zero_hour::format::ini::object_ini::{GeometryShape, IniObject};
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::model_bones::ModelBones;
+use crate::zero_hour::mover_import::ImportedMover;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
@@ -50,12 +51,13 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// (04-capabilities/games.md, Income over time); and of one that drives, its `navigation`: it
 /// drives as a vehicle of `KindOf` that does not hover and steps as any other, at a weight of its
 /// circle's radius squared, as a body's area weighs it (04-capabilities/navigation.md, A unit moves
-/// by its kind of motion; 04-capabilities/navigation.md, A unit has a weight). Every other object
-/// has none of these. What every type shares, a death that despawns and a turret's tolerance and
-/// slot kind, is Zero Hour's rules data, `[defaults]`, which lies under each type's own
-/// (03-game-scripting.md, Defaults under each unit type). A fired projectile's type is a projectile
-/// alone (09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and slow
-/// weapons; 09-zero-hour.md, A missile converts to a steered projectile).
+/// by its kind of motion; 04-capabilities/navigation.md, A unit has a weight), and of one whose
+/// locomotor drives as a mover, its mover (driving.md, Each appearance moves as its mover). Every
+/// other object has none of these. What every type shares, a death that despawns and a turret's
+/// tolerance and slot kind, is Zero Hour's rules data, `[defaults]`, which lies under each type's
+/// own (03-game-scripting.md, Defaults under each unit type). A fired projectile's type is a
+/// projectile alone (09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets
+/// and slow weapons; 09-zero-hour.md, A missile converts to a steered projectile).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedType {
     /// Its most life, of a type that lives, which its `stats` hold too.
@@ -77,6 +79,9 @@ pub(crate) struct ImportedType {
     income: Option<IncomeData>,
     projectile: Option<ProjectileData>,
     navigation: Option<UnitNavigationData>,
+    /// Its mover, of a type whose locomotor drives as one (driving.md, Each appearance moves as
+    /// its mover).
+    mover: Option<ImportedMover>,
     /// The flight of a type whose locomotor hovers (09-zero-hour.md, The import flies a hovering
     /// locomotor).
     flight: Option<FlightData>,
@@ -217,12 +222,23 @@ impl ImportedType {
             }
             None => None,
         };
+        let mover = drive
+            .filter(|_| flight.is_none())
+            .map(|locomotor| {
+                ImportedMover::of(object, locomotor, rules.game_data.really_damaged_threshold)
+            })
+            .transpose()?
+            .flatten();
         let mut stats = Vec::new();
         if let Some(locomotor) = drive {
             let speed = StatValue::flat(num(locomotor.speed)?);
             stats.push((Stat::Engine(EngineStat::MoveSpeed), speed));
             let turn_rate = StatValue::flat(num(locomotor.turn_rate)?);
             stats.push((Stat::Engine(EngineStat::TurnRate), turn_rate));
+        }
+        if let Some(mover) = &mover {
+            let acceleration = StatValue::flat(mover.acceleration);
+            stats.push((Stat::Engine(EngineStat::Acceleration), acceleration));
         }
         let fight = object.fight();
         let body = fight
@@ -321,6 +337,7 @@ impl ImportedType {
             income,
             projectile: None,
             navigation,
+            mover,
             flight,
             sortie,
             acquire,
@@ -430,6 +447,7 @@ impl ImportedType {
             income: None,
             projectile: None,
             navigation: None,
+            mover: None,
             flight: None,
             sortie: None,
             acquire: None,
@@ -591,6 +609,9 @@ impl ImportedType {
         if let Some(navigation) = &self.navigation {
             writer.section(navigation);
         }
+        if let Some(mover) = &self.mover {
+            writer.section(&mover.data());
+        }
         if let Some(sortie) = &self.sortie {
             writer.section(sortie);
         }
@@ -617,6 +638,7 @@ impl ImportedType {
             income: None,
             projectile: Some(projectile),
             navigation: None,
+            mover: None,
             flight: None,
             sortie: None,
             acquire: None,
@@ -624,6 +646,11 @@ impl ImportedType {
             leads: false,
             vision: None,
         }
+    }
+
+    /// Its mover, of a type whose locomotor drives as one.
+    pub(crate) const fn mover(&self) -> Option<&ImportedMover> {
+        self.mover.as_ref()
     }
 
     /// Whether it leads its spawns, which carry out its orders and fight in its place.
@@ -704,6 +731,19 @@ impl ImportedType {
 /// `value` exactly as a `Num`; an error for one that is not finite, or past what a `Num` holds.
 fn num(value: f32) -> Result<Num, TypeError> {
     game_float::to_num(value).map_err(|_| TypeError::Number)
+}
+
+#[cfg(test)]
+pub(crate) mod reach_in {
+    use campfire_stats::StatsData;
+
+    use crate::zero_hour::imported_type::ImportedType;
+
+    impl ImportedType {
+        pub(crate) const fn stats(&self) -> &StatsData {
+            &self.stats
+        }
+    }
 }
 
 #[cfg(test)]

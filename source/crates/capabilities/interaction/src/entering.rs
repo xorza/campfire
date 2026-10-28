@@ -149,11 +149,11 @@ impl Riders {
             .get::<UnitTags>()
             .map_or(TagSet::NONE, |tags| tags.tags);
         let riders = container_unit.get::<Self>()?;
-        let owner = rider_unit.get::<Owner>();
-        let held_by = container_unit.get::<Owner>();
-        // A free building of no player takes any rider; one a player holds, by a rider or as its
-        // own, takes that player's alone.
-        let side = held_by.map_or(spec.capture, |held_by| Some(held_by) == owner);
+        let owner = rider_unit.get::<Owner>().map(|owner| owner.player_slot());
+        let held_by = container_unit
+            .get::<Owner>()
+            .map(|owner| owner.player_slot());
+        let side = spec.sides(held_by, owner);
         let room = spec.room_of(size.get());
         let fits = u64::from(riders.room()) + u64::from(room) <= u64::from(spec.capacity);
         (!full && spec.admits(relation, tags) && side && fits).then_some(room)

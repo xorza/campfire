@@ -1,10 +1,10 @@
 # What the Zero Hour check measured, which it pins: `CAMPFIRE_BLESS=1 cargo drive run zero-hour` writes it again.
 
-drive_ticks = 1715
+drive_ticks = 1711
 
 [fingerprints]
-game = "a42912791acc4fd86add168965f9b8009c47335b3dc4ca09d9d6b8bdada48a58"
-rules = "e7c54346700714a16f9ede88a95125b489c24d3569339dee27fed9dcb1a52854"
+game = "6dfd669414d8d62f46f2ea69c9f7cd6556392ee5316f73ca6bbfa448c3e8b331"
+rules = "f4bf3ed23e190ba16cf06b9527343f2af2eb2a751c3a1a9eed2eafe4b95b9af1"
 
 [map]
 heights = [270, 340]
@@ -98,10 +98,10 @@ dropped = [35, 0, 8, 2, 7, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0]
 [panel]
 icons = 474
 keys = 474
-panels = 543
-places = 1749
-commands = 4
-dropped = [1, 40, 2, 0, 0, 3]
+panels = 544
+places = 2339
+commands = 6
+dropped = [1, 31, 2, 0, 0, 4]
 
 [sounds]
 sounds = 457
@@ -124,17 +124,24 @@ preferring = 7
 unpreferred = 9
 retaliating = 165
 
+[driven]
+movers = [65, 145, 158, 9]
+hurt = 300
+modifiers = 25
+unturning = 0
+uncorrected = 16
+
 [skirmish]
-barracks = 698
-factory = [482, 682, 1091]
+barracks = 648
+factory = [460, 650, 933]
 strategy_center = 1879
-shot = 895
-hit = 905
-fight = 2585
+shot = 871
+hit = 881
+fight = 2614
 
 [supply]
-built = [482, 437]
-deliveries = [447, 901, 1355]
+built = [477, 418]
+deliveries = [402, 823, 1246]
 
 [helicopter]
 climbed = 77
@@ -159,58 +166,58 @@ paladin = 360
 [combat]
 cannon = 33
 missiles = 4
-rockets = 32
-back = [138, 146]
-turret = 226
-arrived = 578
+rockets = 6
+back = [117, 123]
+turret = 210
+arrived = 576
 
 [transport]
-loaded = 1528
+loaded = 1312
 flown = 95
 landed = 81
-boarded = 1148
+boarded = 1154
 fired = 19
-fell = 127
+fell = 98
 evacuated = 9
 
 [garrison]
-garrisoned = 1098
-outranged = 1797
-left = 1064
+garrisoned = 824
+outranged = 1711
+left = 1121
 
 [defense]
-built = [482, 1050]
-hit = 997
-death = 1515
+built = [477, 1009]
+hit = 995
+death = 1513
 
 [patriot]
-built = [484, 1020]
-hit = 1017
-death = 1181
+built = [464, 996]
+hit = 1013
+death = 1177
 
 [stinger]
-built = [452, 966]
-hit = 951
-death = 1183
+built = [436, 835]
+hit = 948
+death = 1179
 
 [missile]
-built = 718
+built = 714
 trained = 150
-shot = 1142
-hit = 1159
-death = 1339
+shot = 1146
+hit = 1163
+death = 1343
 
 [bot]
 built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 519
 
 [base]
-ended = 22302
+ended = 11786
 standing = [0, 8]
-ranks = [4, 5]
-perks = [5, 8]
-think_ops = 19536
-stalls = 552
+ranks = [3, 5]
+perks = [4, 8]
+think_ops = 21840
+stalls = 339
 
 [base.result]
 Won = 1
@@ -248,7 +255,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 16
+no_target = 2
 no_place = 0
 no_stack = 0
 
@@ -266,17 +273,17 @@ no_build = 0
 unusable = 0
 
 [base.sight]
-seen = [4410, 9132]
+seen = [4150, 6741]
 explored = [0, 0]
 words = 91
 
 [attack]
-ended = 13705
+ended = 14100
 standing = [4, 0]
 ranks = [1, 1]
 perks = [2, 2]
 think_ops = 9211
-stalls = 139
+stalls = 100
 
 [attack.result]
 Won = 0
@@ -332,6 +339,6 @@ no_build = 0
 unusable = 0
 
 [attack.sight]
-seen = [4885, 469]
+seen = [5786, 474]
 explored = [0, 0]
 words = 91

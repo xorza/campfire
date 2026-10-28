@@ -68,7 +68,7 @@ pub use crate::dash_delivery::DashDelivery;
 pub use crate::distance::Distance;
 pub use crate::engine_enum::EngineEnum;
 pub use crate::engine_tag::EngineTag;
-pub use crate::error::{NamesError, TimeTooLarge};
+pub use crate::error::{NamesError, ShareError, TimeTooLarge};
 pub use crate::filter_data::{FilterData, FilterSyntax, FilterTag, TagTerm};
 pub use crate::hit::Hit;
 pub use crate::item_id::ItemId;

@@ -24,6 +24,8 @@ pub(crate) enum EngineMessage {
     Stop,
     AttackMove,
     Rally,
+    Exit,
+    Evacuate,
 }
 
 /// The engine's English file.
@@ -31,7 +33,7 @@ const ENGLISH: &str = include_str!("../locale/en.ftl");
 
 impl EngineMessage {
     #[cfg(test)]
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 9] = [
         Self::Victory,
         Self::Defeat,
         Self::MatchEnded,
@@ -39,6 +41,8 @@ impl EngineMessage {
         Self::Stop,
         Self::AttackMove,
         Self::Rally,
+        Self::Exit,
+        Self::Evacuate,
     ];
 
     /// The name of the panel's `command`.
@@ -48,6 +52,8 @@ impl EngineMessage {
             PanelCommand::Stop => Self::Stop,
             PanelCommand::AttackMove => Self::AttackMove,
             PanelCommand::Rally => Self::Rally,
+            PanelCommand::Exit => Self::Exit,
+            PanelCommand::Evacuate => Self::Evacuate,
         }
     }
 
@@ -61,6 +67,8 @@ impl EngineMessage {
             Self::Stop => "command-stop",
             Self::AttackMove => "command-attack-move",
             Self::Rally => "command-rally",
+            Self::Exit => "command-exit",
+            Self::Evacuate => "command-evacuate",
         }
     }
 }
@@ -120,6 +128,8 @@ mod tests {
                 "Stop",
                 "Attack move",
                 "Set rally point",
+                "Exit",
+                "Evacuate",
             ]
         );
         let resource = FluentResource::try_new(ENGLISH.to_owned()).unwrap();

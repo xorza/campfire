@@ -18,8 +18,9 @@ use crate::view::client_data::ClientLoad;
 
 /// What the panel draws of its buttons, as the packages' client files give it (02-engine-core.md, A
 /// button's look is its action's; 02-engine-core.md, A look places its buttons): the HUD file's
-/// grid, the face of each action whose look gives one and of each command, and the places of each
-/// unit type's look's buttons, by type, none for a look that places none. A place past the grid,
+/// grid, the face of each action whose look gives one and of each command, the places of each unit
+/// type's look's buttons, by type, none for a look that places none, and the face of each type
+/// whose look gives its icon, which a button that stands for its unit shows. A place past the grid,
 /// and an action no action of the match is, are logged and left out.
 #[derive(Resource, Debug)]
 pub(super) struct PanelLooks {
@@ -27,6 +28,7 @@ pub(super) struct PanelLooks {
     actions: BTreeMap<ActionId, CellFace>,
     commands: BTreeMap<PanelCommand, CommandFace>,
     places: Vec<Box<[LookPlace]>>,
+    units: Vec<Option<CellFace>>,
 }
 
 /// A button's face: its icon, none for a button that shows its name, and its key.
@@ -157,11 +159,20 @@ impl PanelLooks {
                 placed.collect()
             })
             .collect();
+        let units = origins
+            .iter()
+            .map(|(_, origin)| {
+                let look = load.of(origin.package).units.units().get(&*origin.name);
+                let icon = look.and_then(|look| look.icon.as_ref());
+                icon.map(|icon| face(origin.package, Some(icon), None))
+            })
+            .collect();
         Self {
             grid,
             actions,
             commands,
             places,
+            units,
         }
     }
 
@@ -176,6 +187,12 @@ impl PanelLooks {
 
     pub(super) fn command(&self, command: PanelCommand) -> &CommandFace {
         &self.commands[&command]
+    }
+
+    /// The face of a button that stands for a unit of `unit_type`, none for a type whose look
+    /// gives no icon.
+    pub(super) fn unit(&self, unit_type: UnitType) -> Option<&CellFace> {
+        self.units.get(unit_type.index())?.as_ref()
     }
 
     /// The buttons the look of `unit_type` places, none for a look that places none.
@@ -231,6 +248,7 @@ pub(super) mod internals {
                 actions,
                 commands,
                 places,
+                units: Vec::new(),
             }
         }
     }

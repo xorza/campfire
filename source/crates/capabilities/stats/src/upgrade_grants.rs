@@ -6,7 +6,7 @@ use campfire_common::PlayerSlot;
 use campfire_declarations::ById;
 use campfire_players::{Player, PlayerRows};
 use campfire_sim::StableId;
-use campfire_units::{Dead, Owner};
+use campfire_units::{Dead, Life, Owner};
 use campfire_values::{ModifierId, Rank, TagSet, UnitTags, UnitType};
 
 use crate::grants::{Grant, GrantFrom, Grants};
@@ -30,16 +30,18 @@ type UpgradedUnit = (
     Option<Ref<'static, Owner>>,
     Option<Ref<'static, UnitTags>>,
     Ref<'static, Modifiers>,
+    Option<Ref<'static, Life>>,
     Has<Dead>,
 );
 
 impl UpgradeGrants {
     /// Pushes the grants of each unit's upgrades: each entry of its type that its player's
-    /// modifiers and its own, those no player's or upgrade's hold gives it, meet, while it lives,
-    /// and none of each other it holds by an upgrade. What a unit wants follows from its type, its
-    /// owner, its tags, its death, its modifiers, its player's modifiers and the book, so a run
-    /// visits only the units of which one changed since its last, unless the book changed, and of
-    /// those only the units of a type with upgrades or that hold an upgrade's modifier.
+    /// modifiers and its own, those no player's or upgrade's hold gives it, and its life meet,
+    /// while it lives, and none of each other it holds by an upgrade. What a unit wants follows
+    /// from its type, its owner, its tags, its death, its modifiers, its life, its player's
+    /// modifiers and the book, so a run visits only the units of which one changed since its last,
+    /// unless the book changed, and of those only the units of a type with upgrades or that hold
+    /// an upgrade's modifier.
     pub(crate) fn want(
         book: Res<'_, ById<UnitType, TypeUpgrades>>,
         (players, changed_players): (
@@ -66,7 +68,7 @@ impl UpgradeGrants {
         again.extend(revisits.read());
         again.sort_unstable();
         let every = book.is_changed();
-        for (entity, &id, unit_type, owner, tags, modifiers, dead) in &units {
+        for (entity, &id, unit_type, owner, tags, modifiers, life, dead) in &units {
             let upgrades = book.get(*unit_type);
             let visits = every
                 || unit_type.is_changed()
@@ -75,6 +77,7 @@ impl UpgradeGrants {
                 })
                 || tags.as_ref().is_some_and(DetectChanges::is_changed)
                 || modifiers.is_changed()
+                || life.as_ref().is_some_and(DetectChanges::is_changed)
                 || again.binary_search(&entity).is_ok();
             let held = modifiers.iter().filter(|carried| {
                 let instance = carried.instance;
@@ -100,7 +103,8 @@ impl UpgradeGrants {
             let tags = tags.map_or(TagSet::NONE, |tags| tags.tags);
             if !dead {
                 let entries = upgrades.into_iter().flat_map(|upgrades| &upgrades.0);
-                let met = entries.filter(|entry| entry.met(tags, holds));
+                let life = life.as_deref().copied();
+                let met = entries.filter(|entry| entry.met(tags, life, holds));
                 for entry in met {
                     if !wanted.contains(&entry.modifier) {
                         wanted.push(entry.modifier);

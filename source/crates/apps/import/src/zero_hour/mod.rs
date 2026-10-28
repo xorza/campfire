@@ -98,6 +98,7 @@ pub(crate) mod model_bones;
 pub(crate) mod model_import;
 pub(crate) mod model_nodes;
 pub(crate) mod model_writer;
+pub(crate) mod mover_import;
 pub(crate) mod object_flight;
 pub(crate) mod panel_drop_cause;
 pub(crate) mod panel_import;
@@ -373,6 +374,26 @@ impl ZeroHour {
                     .expect("a command set gives each place one button");
             }
         }
+        // Each type's icon, its `ButtonImage`, which a button that stands for its unit shows, as
+        // a container's exit shows its rider (transports.md, The client orders entries by the
+        // right click).
+        for object in game.objects.objects() {
+            let Some(image) = object.button_image() else {
+                continue;
+            };
+            let declared = ImportName::object(object).declared()?;
+            let Some(look) = looks.units.get_mut(&declared) else {
+                continue;
+            };
+            match PanelImport::found(&game.images, |name| road_assets.texture(name), Some(image)) {
+                Ok((path, rect)) => {
+                    let texture = game_path::texture(&path)?;
+                    panel.textures.insert(path);
+                    look.icon = Some(PanelIcon { texture, rect });
+                }
+                Err(cause) => panel_dropped.drop(&object.name, cause),
+            }
+        }
         // The game draws a bar only over a unit selected or under the cursor
         // (`Drawable::drawHealthBar`), and marks no hit (02-engine-core.md, The mode chooses its
         // hit mark).
@@ -578,6 +599,7 @@ impl ZeroHour {
         // each.
         let types = object_names.close();
         let retaliation = rules_package::retaliation(game.ai.retaliation, &game.names)?;
+        let movers = types.movers();
         let mode = ModeImport {
             start: &start,
             production: &production,
@@ -588,6 +610,7 @@ impl ZeroHour {
             contains: &contains,
             start_money: &money,
             retaliation: retaliation.as_ref(),
+            movers: &movers,
         };
         writer.write(ModeFile::path(), rules_package::mode_data(mode).as_bytes())?;
         let barrels = combat.barrels(&looks_bones);
@@ -609,6 +632,7 @@ impl ZeroHour {
             areas: &production.areas,
             enters: &contains.enters,
             rides: &contains.rides,
+            movers: &movers,
         };
         let units = types.units_file(additions, &game.names);
         writer.write(UnitsFile::path(), units.text.as_bytes())?;
@@ -673,7 +697,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 71;
+    pub const OUTPUT_VERSION: u32 = 75;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

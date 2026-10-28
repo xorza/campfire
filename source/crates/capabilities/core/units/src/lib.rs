@@ -9,6 +9,7 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
+mod accel_step;
 mod arrived_short;
 mod at_work;
 mod avatar;
@@ -108,6 +109,7 @@ mod walk;
 mod wall;
 mod wall_book;
 
+pub use crate::accel_step::AccelStep;
 pub use crate::arrived_short::ArrivedShort;
 pub use crate::at_work::AtWork;
 pub use crate::avatar::Avatar;

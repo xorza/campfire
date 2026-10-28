@@ -5,14 +5,14 @@ use bevy_ecs::system::{Commands, If, Local, ParamSet, Query, Res, ResMut};
 use campfire_actions::ActionProgress;
 use campfire_declarations::{ById, RoleForm};
 use campfire_deliveries::DashDelivering;
-use campfire_math::{Direction, SinCos, Vec3};
+use campfire_math::{Direction, Num, SinCos, Vec3};
 use campfire_sim::{
     DueIndex, EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId, UnitDues,
     Unpredicted,
 };
 use campfire_units::{
-    AtWork, Body, Dead, Destination, Facing, FlightGoal, ForcedMove, Leaving, MapBook, MoveStep,
-    OnWings, StatusTags, TurnStep,
+    AccelStep, AtWork, Body, Dead, Destination, Facing, FlightGoal, ForcedMove, Leaving, MapBook,
+    MoveStep, OnWings, StatusTags, TurnStep,
 };
 use campfire_values::{Block, Motion, Team, UnitTags, UnitType};
 
@@ -27,15 +27,18 @@ use crate::crowd_book::CrowdBook;
 use crate::crowd_costs::{CrowdCosts, Stamp, Standing};
 use crate::gait::Gait;
 use crate::hemmed::Hemmed;
+use crate::movement_model::MovementModel;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::{Route, RouteAsk, RouteMut};
+use crate::route::{Route, RouteAsk, RouteMut, RouteMutItem};
 use crate::route_planner::{Passage, RoutePlanner, Short, Walkable, Window};
 use crate::stalled_walkers::StalledWalkers;
 use crate::steering::{Aside, Friends, Steered, Steering, TickBody};
 use crate::unit_navigation_data::UnitNavigationData;
 use crate::unparted_pairs::UnpartedPairs;
 use crate::walker::Walker;
+use crate::zero_hour::zero_hour_drive::ZeroHourDrive;
+use crate::zero_hour::zero_hour_mover::{Stance, Steer, ZeroHourMover};
 
 /// The living units that cannot walk, those a client only holds among them: the static bodies.
 type StaticUnits = (
@@ -88,7 +91,7 @@ type Steerers<'w, 's> = Query<
             (Option<&'static StatusTags>, Option<&'static FlightGoal>),
         ),
         &'static mut Destination,
-        &'static MoveStep,
+        (&'static MoveStep, Option<&'static ZeroHourDrive>),
         &'static Body,
         RouteMut,
         (
@@ -112,21 +115,21 @@ pub struct Walking;
 impl Walking {
     /// Steers each walker round the units in their way, as `Steering::steer` says, in stable-id
     /// order, with the work the planner has left this tick; once it has none, the rest keep their
-    /// routes, and steer again in a later tick. A walker is stuck once it has come no half a step
-    /// nearer its waypoint than ever for the ticks of `Progress::stuck_after`, and only coming so
-    /// near starts its count again, not a detour. A predicting client counts the units it holds
-    /// that stand: one that stands has not moved since the server sent it. With no pathing grid
-    /// no walker steers, and one that does not walk this tick, waits for its route, or has none
-    /// ahead, does not either: none of them takes a place in the order. On a server, each unit
-    /// that stands idle on the next stretch of a walker's way, as far as its window reaches, and
-    /// that the mode's `CrowdBook` lets it move, steps aside, as `Steering::asides` says, to the
-    /// place `RoutePlanner::yield_place` finds clear of the walker's passage, which
-    /// `Steering::passage` reads; one that finds none is hemmed in. A walker stuck for
-    /// `Progress::ask_after` asks its route again, and stops past `Progress::MOST_STUCK_ASKS`
-    /// such asks; one stuck by its route's last waypoint where a unit that stands crowds it, as
-    /// `Steering::crowded` says, passes it, and arrives. A walker that touches the crowd that
-    /// arrived at its goal arrives, as `Steering::packed` says; one that leaves its producer takes
-    /// no short route round its team's units.
+    /// routes, and steer again in a later tick. A walker is stuck once it has come no half a step,
+    /// a mover half its speed, nearer its waypoint than ever for the ticks of
+    /// `Progress::stuck_after`, and only coming so near starts its count again, not a detour. A
+    /// predicting client counts the units it holds that stand: one that stands has not moved since
+    /// the server sent it. With no pathing grid no walker steers, and one that does not walk this
+    /// tick, waits for its route, or has none ahead, does not either: none of them takes a place in
+    /// the order. On a server, each unit that stands idle on the next stretch of a walker's way, as
+    /// far as its window reaches, and that the mode's `CrowdBook` lets it move, steps aside, as
+    /// `Steering::asides` says, to the place `RoutePlanner::yield_place` finds clear of the
+    /// walker's passage, which `Steering::passage` reads; one that finds none is hemmed in. A
+    /// walker stuck for `Progress::ask_after` asks its route again, and stops past
+    /// `Progress::MOST_STUCK_ASKS` such asks; one stuck by its route's last waypoint where a unit
+    /// that stands crowds it, as `Steering::crowded` says, passes it, and arrives. A walker that
+    /// touches the crowd that arrived at its goal arrives, as `Steering::packed` says; one that
+    /// leaves its producer takes no short route round its team's units.
     pub(super) fn steer<F: RoleForm>(
         (rate, index, tick): (Res<'_, MatchRate>, Res<'_, EntityIndex>, Res<'_, SimTick>),
         mut asks: ResMut<'_, DueIndex<Route>>,
@@ -184,7 +187,7 @@ impl Walking {
                 _,
                 (&id, &at, team, flies, _),
                 mut destination,
-                step,
+                (step, drive),
                 body,
                 mut route,
                 progress,
@@ -195,7 +198,10 @@ impl Walking {
             let mut walk = walk.expect("a walker carries how deep its walk is");
             let depth = *walk;
             let goal = route.goal().expect("a walker with a way ahead has a goal");
-            let stuck_for = progress.track(at.get(), route.read().ahead()[0], step.get());
+            // A mover comes nearer by its speed, which it gains and loses over ticks, not by its
+            // step (driving.md, A mover keeps a velocity).
+            let pace = drive.map_or_else(|| step.get(), ZeroHourDrive::speed);
+            let stuck_for = progress.track(at.get(), route.read().ahead()[0], pace);
             // A flier steers in the plane of its route, as it walks (04-capabilities/navigation.md,
             // A flier walks in the plane).
             let position = at.get();
@@ -428,18 +434,23 @@ impl Walking {
         }
     }
 
-    /// Walks each living unit along its route, a step a tick: past each waypoint it reaches, on to
-    /// the next with the rest of its step. Past the last it has arrived, and drops its destination,
-    /// notes its goal as the one it arrived at, and drops its route when the route reached the
-    /// goal: one that ends short stays, arrived short, so an order that sends the unit there again
-    /// plans nothing, and a step aside that ends short where it began leaves its unit hemmed in. A
-    /// unit that walks has arrived at no goal. A unit whose route waits for the planner walks the
-    /// one it has, if any. One its tags or a forced move stop keeps both.
+    /// Walks each living unit along its route by its type's movement model (driving.md, A type
+    /// moves by its movement model): a step a tick, or a drive of Zero Hour's locomotor. Past the
+    /// last waypoint it has arrived, and drops its destination, notes its goal as the one it
+    /// arrived at, and drops its route when the route reached the goal: one that ends short stays,
+    /// arrived short, so an order that sends the unit there again plans nothing, and a step aside
+    /// that ends short where it began leaves its unit hemmed in. A unit that walks has arrived at
+    /// no goal. A unit whose route waits for the planner walks the one it has, if any. One its
+    /// tags or a forced move stop keeps both, and a mover stops.
     ///
-    /// First it turns toward its leg's way, at its turn step, or at once with none, and it stands
-    /// this tick unless it then faces within `Facing::WITHIN` of the way
+    /// A step walker first turns toward its leg's way, at its turn step, or at once with none, and
+    /// stands this tick unless it then faces within `Facing::WITHIN` of the way
     /// (04-capabilities/navigation.md, A walker faces its leg and turns at its turn rate).
     pub(super) fn move_units(
+        (models, grid): (
+            Res<'_, ById<UnitType, MovementModel>>,
+            Option<Res<'_, PathingGrid>>,
+        ),
         mut units: Query<
             '_,
             '_,
@@ -454,7 +465,8 @@ impl Walking {
                     Option<&mut AsideDepth>,
                     Option<&mut Hemmed>,
                 ),
-                (&MoveStep, Option<&TurnStep>),
+                (&MoveStep, Option<&TurnStep>, Option<&AccelStep>),
+                (&UnitType, Option<&Body>, Option<&mut ZeroHourDrive>),
                 Option<&UnitTags>,
                 Has<ForcedMove>,
             ),
@@ -467,7 +479,8 @@ impl Walking {
             mut destination,
             mut route,
             (mut progress, arrived, depth, hemmed),
-            (step, turn),
+            (step, turn, accel),
+            (unit_type, body, drive),
             tags,
             forced,
         ) in &mut units
@@ -475,61 +488,101 @@ impl Walking {
             if Self::held(status, goal)
                 || !Self::walks(Some(&destination), tags, Motion::of(forced))
             {
+                if let Some(mut drive) = drive {
+                    let stopped = drive.stopped();
+                    drive.set_if_neq(stopped);
+                }
                 continue;
             }
             let mut arrived = arrived.expect("a walker carries the goal it arrived at");
             ArrivedAt::set(&mut arrived, None);
-            let mut at = position.get();
-            if let Some(way) = route.read().way() {
-                let turned = facing.toward(way, turn.copied());
-                facing.set_if_neq(turned.facing);
-                if !turned.faces {
-                    continue;
-                }
-            }
-            let mut left = step.get();
-            loop {
-                let Some(&waypoint) = route.read().ahead().first() else {
-                    if route.asked().is_none() {
-                        Destination::route_to(&mut destination, None);
-                        ArrivedAt::set(&mut arrived, route.goal());
-                        let mut depth = depth.expect("a walker carries how deep its walk is");
-                        // A step aside that ends short of its place where it began found no place
-                        // it reaches, so its unit is firm, as one whose search found none, and the
-                        // walker that moved it asks it no more; one that went on its way and
-                        // ends short is asked again from there (04-capabilities/navigation.md, A
-                        // friend that cannot yield is firm, and a stuck walker's route walls it).
-                        if !route.is_reached() && depth.went_nowhere(at, step.get()) {
-                            let mut hemmed =
-                                hemmed.expect("a walker carries whether it is hemmed in");
-                            Hemmed::set(&mut hemmed, true);
-                        }
-                        AsideDepth::set(&mut depth, AsideDepth::default());
-                        if route.is_reached() {
-                            route.clear();
-                            progress.restart();
+            let at = position.get();
+            let at = match MovementModel::of(&models, *unit_type) {
+                MovementModel::Step => {
+                    if let Some(way) = route.read().way() {
+                        let turned = facing.toward(way, turn.copied());
+                        facing.set_if_neq(turned.facing);
+                        if !turned.faces {
+                            continue;
                         }
                     }
-                    break;
-                };
-                // A flier walks in the plane at its height, which its flight alone writes
-                // (04-capabilities/navigation.md, A flier walks in the plane).
-                let waypoint = if flies {
-                    Vec3::new(waypoint.x, at.y, waypoint.z)
-                } else {
-                    waypoint
-                };
-                if !at.within(waypoint, left) {
-                    at = at.step_toward(waypoint, left);
-                    break;
+                    Self::step(&mut route, &mut progress, at, step.get(), flies)
                 }
-                left -= at.distance(waypoint);
-                at = waypoint;
-                route.advance();
-                progress.restart();
-            }
+                MovementModel::ZeroHour(mover) => {
+                    let mut drive =
+                        drive.expect("a walker of a Zero Hour locomotor carries its drive");
+                    let clearance = grid
+                        .as_deref()
+                        .map(|grid| grid.clearance(Walker::walking(body)));
+                    let mut driver = Driver {
+                        mover: &mover,
+                        speed: step.get(),
+                        turn: turn.copied(),
+                        accel: accel.copied(),
+                        stance: Stance {
+                            at,
+                            facing: *facing,
+                        },
+                        state: *drive,
+                    };
+                    driver.follow(&mut route, &mut progress, |point| {
+                        clearance.is_none_or(|clearance| !clearance.walled_at(point))
+                    });
+                    let Driver { stance, state, .. } = driver;
+                    drive.set_if_neq(state);
+                    facing.set_if_neq(stance.facing);
+                    stance.at
+                }
+            };
             position.set_if_neq(Position::from(at));
+            if route.read().ahead().is_empty() && route.asked().is_none() {
+                Destination::route_to(&mut destination, None);
+                ArrivedAt::set(&mut arrived, route.goal());
+                let mut depth = depth.expect("a walker carries how deep its walk is");
+                // A step aside that ends short of its place where it began found no place it
+                // reaches, so its unit is firm, as one whose search found none, and the walker
+                // that moved it asks it no more; one that went on its way and ends short is asked
+                // again from there (04-capabilities/navigation.md, A friend that cannot yield is
+                // firm, and a stuck walker's route walls it).
+                if !route.is_reached() && depth.went_nowhere(at, step.get()) {
+                    let mut hemmed = hemmed.expect("a walker carries whether it is hemmed in");
+                    Hemmed::set(&mut hemmed, true);
+                }
+                AsideDepth::set(&mut depth, AsideDepth::default());
+                if route.is_reached() {
+                    route.clear();
+                    progress.restart();
+                }
+            }
         }
+    }
+
+    /// Where a step walker at `at` walks along `route` with `left` meters of its step: past each
+    /// waypoint it reaches, on to the next with the rest of its step. A walker that `flies` walks
+    /// in the plane at its height, which its flight alone writes (04-capabilities/navigation.md, A
+    /// flier walks in the plane).
+    fn step(
+        route: &mut RouteMutItem<'_, '_>,
+        progress: &mut Progress,
+        mut at: Vec3,
+        mut left: Num,
+        flies: bool,
+    ) -> Vec3 {
+        while let Some(&waypoint) = route.read().ahead().first() {
+            let waypoint = if flies {
+                Vec3::new(waypoint.x, at.y, waypoint.z)
+            } else {
+                waypoint
+            };
+            if !at.within(waypoint, left) {
+                return at.step_toward(waypoint, left);
+            }
+            left -= at.distance(waypoint);
+            at = waypoint;
+            route.advance();
+            progress.restart();
+        }
+        at
     }
 
     /// Pushes apart the living bodies of one layer within each other's personal space as the stage
@@ -759,6 +812,75 @@ impl Walking {
     ) {
         for mut position in &mut units {
             position.set_if_neq(Position::from(map.bounds.clamp(position.get())));
+        }
+    }
+}
+
+/// A Zero Hour walker as it drives a tick: its locomotor; its speed in meters a tick, its turn
+/// and its acceleration, as its stats give them; where it stands and faces; and its drive.
+#[derive(Debug)]
+struct Driver<'a> {
+    mover: &'a ZeroHourMover,
+    speed: Num,
+    turn: Option<TurnStep>,
+    accel: Option<AccelStep>,
+    stance: Stance,
+    state: ZeroHourDrive,
+}
+
+impl Driver<'_> {
+    /// Drives along `route` a tick, as Zero Hour's path follower feeds its locomotor (driving.md,
+    /// The route feeds the mover): toward the route's next waypoint, with the length left along
+    /// the route as its distance to its goal, then past each waypoint but the last it comes within
+    /// its step of. Within its close enough distance of the route's end, it has arrived, and stands
+    /// on the end, where Zero Hour's stops where it stands. With no waypoint, as its route waits
+    /// for the planner, it stands.
+    fn follow(
+        &mut self,
+        route: &mut RouteMutItem<'_, '_>,
+        progress: &mut Progress,
+        open: impl Fn(Vec3) -> bool,
+    ) {
+        let Self {
+            mover,
+            speed,
+            turn,
+            accel,
+            stance,
+            state,
+        } = self;
+        let ahead = route.read().ahead();
+        let (Some(&next), Some(&end)) = (ahead.first(), ahead.last()) else {
+            return;
+        };
+        let on_path = ahead
+            .windows(2)
+            .fold(stance.at.ground().distance(next.ground()), |length, leg| {
+                length + leg[0].ground().distance(leg[1].ground())
+            });
+        if on_path < mover.close_enough() {
+            while !route.read().ahead().is_empty() {
+                route.advance();
+            }
+            progress.restart();
+            stance.at = Vec3::new(end.x, stance.at.y, end.z);
+            return;
+        }
+        let steer = Steer {
+            speed: *speed,
+            // A walker of no turn step turns at once, and one of no acceleration step gains its
+            // speed in a tick.
+            turn: turn.map_or(Num::int(180), TurnStep::get),
+            accel: accel.map_or(*speed, AccelStep::get),
+            goal: next,
+            on_path,
+        };
+        mover.drive(steer, stance, state, open);
+        while let [waypoint, _, ..] = route.read().ahead()
+            && stance.at.within_ground(*waypoint, *speed)
+        {
+            route.advance();
+            progress.restart();
         }
     }
 }

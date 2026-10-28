@@ -9,6 +9,7 @@ use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::entity_disabling::Disabled;
 use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::message::MessageWriter;
 use bevy::ecs::observer::On;
@@ -37,6 +38,7 @@ use campfire_capabilities::Order;
 use campfire_client_files::{Chord, GridCell, Key, PanelCommand};
 use campfire_common::{Tick, Ticks};
 use campfire_declarations::ById;
+use campfire_interaction::Riders;
 use campfire_math::Num;
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersDirective;
@@ -79,13 +81,15 @@ mod panel_looks;
 /// player's amount of each of the mode's resources; the unit's buttons in the HUD file's grid, at
 /// the places its look gives, or a look of none its trains, builds and researches in slot order,
 /// each its icon or its name, dimmed while the player cannot press it, as one it cannot pay or a
-/// research its player or its unit holds; the unit's train queue, each entry's icon or name, the
-/// head's progress a bar over it, a click on an entry cancelling it; of a site, its progress, a
-/// click cancelling it; and the name, the key, the cost and the time of the button under the
-/// cursor. A left click on a button, or a key with no modifier that a shown button's look gives,
-/// presses it: a train or a research orders the unit alone to start it; a build starts the build
-/// preview; a sale and a stop order the selection at once; an attack move and a rally take the
-/// point the next left click on the ground picks, a right click or the drop chord dropping it.
+/// research its player or its unit holds; a container's riders, each at an exit place, its icon its
+/// type's; the unit's train queue, each entry's icon or name, the head's progress a bar over it, a
+/// click on an entry cancelling it; of a site, its progress, a click cancelling it; and the name,
+/// the key, the cost and the time of the button under the cursor. A left click on a button, or a
+/// key with no modifier that a shown button's look gives, presses it: a train or a research orders
+/// the unit alone to start it; a build starts the build preview; a sale, a stop and an evacuation
+/// order the selection at once; a rider's button orders its container to let it out (transports.md,
+/// The client orders entries by the right click); an attack move and a rally take the point the
+/// next left click on the ground picks, a right click or the drop chord dropping it.
 #[derive(Debug)]
 pub(crate) struct CommandPanelPlugin;
 
@@ -152,7 +156,8 @@ struct Button {
     key: Option<Key>,
 }
 
-/// What a button does: start an action of its unit's slot, or order a command.
+/// What a button does: start an action of its unit's slot, order a command, or let a rider of
+/// its unit, a container, out, the button showing the rider's type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Does {
     Action {
@@ -161,6 +166,10 @@ enum Does {
         making: Making,
     },
     Command(PanelCommand),
+    Exit {
+        rider: StableId,
+        unit_type: UnitType,
+    },
 }
 
 /// What a button's action makes: a unit the unit trains, a building of a type it builds, or a
@@ -184,7 +193,8 @@ struct MakingBooks<'a> {
     sales: Option<&'a ById<UnitType, SellSpec>>,
 }
 
-/// What the panel reads of a unit: its type, its slots, its train queue, and its site.
+/// What the panel reads of a unit: its type, its slots, its train queue, its site, its tags, and
+/// its riders' ids and types, in the order they entered, of a container.
 #[derive(Debug, Clone, Copy)]
 struct PanelUnit<'a> {
     unit_type: UnitType,
@@ -192,6 +202,7 @@ struct PanelUnit<'a> {
     queue: Option<&'a TrainQueue>,
     site: Option<&'a Site>,
     tags: TagSet,
+    riders: &'a [(StableId, UnitType)],
 }
 
 /// What a button's cost shows: its action's cost and its time in whole seconds, rounded up; that
@@ -258,9 +269,13 @@ type PanelUnits<'w, 's> = Query<
         Option<&'static Modifiers>,
         Option<&'static UnitTags>,
         Option<&'static SlotTimes>,
+        Option<&'static Riders>,
     ),
     (Without<Dead>, Allow<Unpredicted>),
 >;
+
+/// The types of the riders the client holds, out of the world.
+type RiderTypes<'w, 's> = Query<'w, 's, &'static UnitType, (Allow<Disabled>, Allow<Unpredicted>)>;
 
 /// The nodes the panel writes each frame: the lines' texts and colors, the icons' tints, and the
 /// bars' widths.
@@ -399,7 +414,12 @@ impl CommandPanelPlugin {
     )]
     fn show(
         own: OwnPlayer<'_, '_>,
-        (selection, index, units): (Res<'_, Selection>, Res<'_, EntityIndex>, PanelUnits<'_, '_>),
+        (selection, index, units, rider_types): (
+            Res<'_, Selection>,
+            Res<'_, EntityIndex>,
+            PanelUnits<'_, '_>,
+            RiderTypes<'_, '_>,
+        ),
         (book, builds, researches, sales, names): PanelBooks<'_>,
         (looks, hovered, mut pressable): (
             Res<'_, PanelLooks>,
@@ -417,7 +437,7 @@ impl CommandPanelPlugin {
         (mut texts, mut colors, mut icons, mut bars): PanelLines<'_, '_>,
         (cells, queue_cells, site_rows, mut tooltips): PanelCells<'_, '_>,
         mut commands: Commands<'_, '_>,
-        mut line: Local<'_, String>,
+        (mut line, mut riders): (Local<'_, String>, Local<'_, Vec<(StableId, UnitType)>>),
     ) {
         let player_slot = own.player_slot();
         let books = MakingBooks {
@@ -428,7 +448,7 @@ impl CommandPanelPlugin {
         };
         next.clear();
         for &unit in selection.get() {
-            let Some(Ok((owner, &unit_type, slots, queue, site, _, _, tags, _))) =
+            let Some(Ok((owner, &unit_type, slots, queue, site, _, _, tags, _, held_riders))) =
                 index.get(unit).map(|at| units.get(at))
             else {
                 continue;
@@ -436,12 +456,19 @@ impl CommandPanelPlugin {
             if player_slot.is_none() || owner.map(|owner| owner.player_slot()) != player_slot {
                 continue;
             }
+            riders.clear();
+            let ridden = held_riders.into_iter().flat_map(Riders::iter);
+            riders.extend(ridden.filter_map(|rider| {
+                let unit_type = rider_types.get(index.get(rider.id)?).ok()?;
+                Some((rider.id, *unit_type))
+            }));
             let held = PanelUnit {
                 unit_type,
                 slots,
                 queue,
                 site,
                 tags: tags.map_or_else(TagSet::default, |tags| tags.tags),
+                riders: &riders,
             };
             if next.fill(unit, held, books, &looks) {
                 break;
@@ -462,7 +489,7 @@ impl CommandPanelPlugin {
             return;
         };
         root.set_if_neq(Visibility::Inherited);
-        let Ok((_, _, slots, queue, site, progress, carried, _, times)) = units.get(unit) else {
+        let Ok((_, _, slots, queue, site, progress, carried, _, times, _)) = units.get(unit) else {
             return;
         };
         let now = tick.start();
@@ -514,7 +541,7 @@ impl CommandPanelPlugin {
                     None => ButtonValue::Nothing,
                 }
             }
-            Does::Command(_) => ButtonValue::Nothing,
+            Does::Command(_) | Does::Exit { .. } => ButtonValue::Nothing,
         };
         pressable.0.extend(shown.buttons.iter().map(|&button| {
             button.meets(requirements.as_deref(), |held| own.holds(held))
@@ -718,6 +745,7 @@ impl Button {
         match self.does {
             Does::Action { action, .. } => names.of(action),
             Does::Command(command) => &looks.command(command).name,
+            Does::Exit { .. } => &looks.command(PanelCommand::Exit).name,
         }
     }
 
@@ -732,7 +760,7 @@ impl Button {
             Does::Action { action, .. } => requirements
                 .and_then(|book| book.of(action))
                 .is_none_or(|required| required.modifiers.iter().all(|&held| holds(held))),
-            Does::Command(_) => true,
+            Does::Command(_) | Does::Exit { .. } => true,
         }
     }
 
@@ -740,7 +768,7 @@ impl Button {
     /// always; an action its player can pay, not a research held or an action unlearned.
     fn enabled(self, value: ButtonValue<'_>, affords: impl Fn(&[ResourceAmount]) -> bool) -> bool {
         match (self.does, value) {
-            (Does::Command(_), _) => true,
+            (Does::Command(_) | Does::Exit { .. }, _) => true,
             (Does::Action { .. }, ButtonValue::Costs { costs, .. }) => affords(costs),
             (
                 Does::Action { .. },
@@ -792,6 +820,15 @@ impl Button {
             }
             Does::Command(PanelCommand::AttackMove) => Pressed::Aim(AimedCommand::AttackMove),
             Does::Command(PanelCommand::Rally) => Pressed::Aim(AimedCommand::Rally),
+            Does::Command(PanelCommand::Evacuate) => {
+                Pressed::Order(selection.order(OrdersDirective::Evacuate)?)
+            }
+            Does::Command(PanelCommand::Exit) => {
+                unreachable!("an exit place lays a rider's button, or none")
+            }
+            Does::Exit { rider, .. } => {
+                Pressed::Order(Order::one(unit, OrdersDirective::Exit { rider }))
+            }
         })
     }
 }
@@ -831,8 +868,9 @@ impl Shown {
     /// button: then it shows nothing. Whether it shows the unit. A site shows its own row alone,
     /// as its actions wait for it to complete. A look's places lay its buttons: each action its
     /// unit's slots hold of a train, a build or a research, and each command its unit takes, a
-    /// sale of a type that sells and a rally of a unit that trains; a look of no places lays its
-    /// unit's trains, builds and researches in slot order, from the grid's first place.
+    /// sale of a type that sells, a rally of a unit that trains, each exit place the next of a
+    /// container's riders, and an evacuation of a container that holds one; a look of no places
+    /// lays its unit's trains, builds and researches in slot order, from the grid's first place.
     fn fill(
         &mut self,
         unit: StableId,
@@ -866,6 +904,7 @@ impl Shown {
         let key = |does: Does| match does {
             Does::Action { action, .. } => looks.action(action)?.key,
             Does::Command(command) => looks.command(command).face.key,
+            Does::Exit { .. } => looks.command(PanelCommand::Exit).face.key,
         };
         let places = looks.places(held.unit_type);
         if places.is_empty() {
@@ -882,20 +921,27 @@ impl Shown {
             let sells = books
                 .sales
                 .is_some_and(|sales| sales.get(held.unit_type).is_some());
+            let mut riders = held.riders.iter();
             for placed in places {
-                let does = match placed.button {
-                    PlacedButton::Action(id) => actions
-                        .iter()
-                        .copied()
-                        .find(|does| matches!(does, Does::Action { action, .. } if *action == id)),
-                    PlacedButton::Command(PanelCommand::Sell) => {
-                        sells.then_some(Does::Command(PanelCommand::Sell))
-                    }
-                    PlacedButton::Command(PanelCommand::Rally) => {
-                        held.queue.map(|_| Does::Command(PanelCommand::Rally))
-                    }
-                    PlacedButton::Command(command) => Some(Does::Command(command)),
-                };
+                let does =
+                    match placed.button {
+                        PlacedButton::Action(id) => actions.iter().copied().find(
+                            |does| matches!(does, Does::Action { action, .. } if *action == id),
+                        ),
+                        PlacedButton::Command(PanelCommand::Sell) => {
+                            sells.then_some(Does::Command(PanelCommand::Sell))
+                        }
+                        PlacedButton::Command(PanelCommand::Rally) => {
+                            held.queue.map(|_| Does::Command(PanelCommand::Rally))
+                        }
+                        PlacedButton::Command(PanelCommand::Exit) => {
+                            let rider = riders.next();
+                            rider.map(|&(rider, unit_type)| Does::Exit { rider, unit_type })
+                        }
+                        PlacedButton::Command(PanelCommand::Evacuate) => (!held.riders.is_empty())
+                            .then_some(Does::Command(PanelCommand::Evacuate)),
+                        PlacedButton::Command(command) => Some(Does::Command(command)),
+                    };
                 if let Some(does) = does {
                     self.buttons.push(Button {
                         cell: placed.cell,
@@ -952,6 +998,15 @@ impl Shown {
             let face = match button.does {
                 Does::Action { action, .. } => looks.action(action).cloned(),
                 Does::Command(command) => Some(looks.command(command).face.clone()),
+                Does::Exit { unit_type, .. } => {
+                    let exit = &looks.command(PanelCommand::Exit).face;
+                    Some(
+                        looks
+                            .unit(unit_type)
+                            .cloned()
+                            .unwrap_or_else(|| exit.clone()),
+                    )
+                }
             };
             let name = button.name(looks, names);
             let cell = Node {

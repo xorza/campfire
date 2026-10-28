@@ -3,8 +3,9 @@ use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
+use bevy::ecs::entity_disabling::Disabled;
 use bevy::ecs::message::MessageWriter;
-use bevy::ecs::query::{Allow, With};
+use bevy::ecs::query::{Allow, Or, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::SystemCondition;
@@ -55,8 +56,18 @@ struct HeldPress {
 #[derive(Resource, Debug, Default)]
 struct Held(Option<HeldPress>);
 
-/// The units their players sold, which no selection holds.
-type Unselectable<'w, 's> = Query<'w, 's, (), (With<Sold>, Allow<Unpredicted>)>;
+/// The units their players sold, and those out of the world, as a rider is, which no selection
+/// holds, as Zero Hour's rider leaves its group as it enters.
+type Unselectable<'w, 's> = Query<
+    'w,
+    's,
+    (),
+    (
+        Or<(With<Sold>, With<Disabled>)>,
+        Allow<Unpredicted>,
+        Allow<Disabled>,
+    ),
+>;
 
 /// The rectangle a drag draws, a node of the UI that takes no clicks.
 #[derive(Component, Debug)]
@@ -113,8 +124,9 @@ impl SelectingPlugin {
         ));
     }
 
-    /// Drops from the selection each unit the client no longer holds or that its player sold; an
-    /// empty selection takes the avatar. A selection that stays as it was is not marked changed.
+    /// Drops from the selection each unit the client no longer holds, that its player sold, or
+    /// that left the world; an empty selection takes the avatar. A selection that stays as it was
+    /// is not marked changed.
     fn keep(
         (index, sold): (Res<'_, EntityIndex>, Unselectable<'_, '_>),
         own: OwnPlayer<'_, '_>,

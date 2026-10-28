@@ -16,6 +16,7 @@ use campfire_script::{
 use campfire_sim::{Breach, Capability, MatchRate, Position, SimEdgeSystems, SimSystems};
 use campfire_values::{Relations, Tag, Team, UnitTags, UnitType};
 
+use crate::accel_step::AccelStep;
 use crate::arrived_short::ArrivedShort;
 use crate::avatar::Avatar;
 use crate::body::Body;
@@ -134,6 +135,7 @@ impl Module for Units {
         d.timed::<Lifespan>();
         d.component::<MoveStep>();
         d.component::<TurnStep>();
+        d.component::<AccelStep>();
         d.sim_component::<Position>();
         d.component::<Owner>();
         d.component::<SpawnPoint>();
@@ -197,6 +199,7 @@ impl Module for Units {
         d.api(ViewApi::register_queries);
         d.book::<ById<UnitType, MoveStep>>(UnitSteps::steps);
         d.book::<ById<UnitType, TurnStep>>(UnitSteps::turns);
+        d.book::<ById<UnitType, AccelStep>>(UnitSteps::accelerations);
         d.book::<ById<UnitType, BodyForm>>(Self::bodies);
         d.book::<ById<UnitType, Variations>>(Variations::book);
         // A unit faces its spawn's angle, which its body turns by.
@@ -216,6 +219,7 @@ impl Module for Units {
         });
         d.part::<BodyUnit, MoveStep>(|at| at.of_type::<MoveStep>().copied());
         d.part::<BodyUnit, TurnStep>(|at| at.of_type::<TurnStep>().copied());
+        d.part::<BodyUnit, AccelStep>(|at| at.of_type::<AccelStep>().copied());
         // A unit that walks, which its move step tells, takes a destination.
         d.part::<BodyUnit, Destination>(|at| {
             at.of_type::<MoveStep>().map(|_| Destination::default())

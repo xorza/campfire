@@ -26,6 +26,7 @@ use campfire_values::{EngineTag, PathId, TagProperties, UnitType};
 
 use crate::crowd_costs::CrowdCosts;
 use crate::fliers::Fliers;
+use crate::movement_model::MovementModel;
 use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::Walkable;
@@ -50,10 +51,12 @@ mod gait;
 mod group_box;
 mod held_place;
 mod hemmed;
+mod locomotor_data;
 mod map_navigation_data;
 mod map_paths_data;
 mod mode_navigation_data;
 mod move_effect_data;
+mod movement_model;
 mod moves;
 mod navigation_api;
 mod navigation_book;
@@ -90,6 +93,7 @@ mod walker_kinds;
 mod walker_on_path;
 mod walking;
 mod wings;
+mod zero_hour;
 
 pub use crate::altitude::Altitude;
 pub use crate::arrived_at::ArrivedAt;
@@ -104,6 +108,7 @@ pub use crate::gait::Gait;
 pub use crate::group_box::GroupBox;
 pub use crate::held_place::HeldPlace;
 pub use crate::hemmed::Hemmed;
+pub use crate::locomotor_data::LocomotorData;
 pub use crate::map_navigation_data::{MapNavigationData, WallData};
 pub use crate::map_paths_data::{MapPathsData, PathData};
 pub use crate::mode_navigation_data::ModeNavigationData;
@@ -140,6 +145,8 @@ pub use crate::walker_book::WalkerBook;
 pub use crate::walker_kinds::WalkerKinds;
 pub use crate::walker_on_path::WalkerOnPath;
 pub use crate::walking::Walking;
+pub use crate::zero_hour::zero_hour_drive::ZeroHourDrive;
+pub use crate::zero_hour::zero_hour_locomotor::{LocomotorAppearance, ZeroHourLocomotor};
 
 /// Navigation's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -195,6 +202,7 @@ impl Module for Navigation {
         d.section::<MapPathsData>();
         d.section::<UnitNavigationData>();
         d.section::<FlightData>();
+        d.section::<LocomotorData>();
         d.engine_tags(&[Self::AIR_TARGET, OnWings::TAG]);
         d.removals::<Dead>();
         d.callback::<SpawnCallbacks>(Capability::Navigation, Self::make_room);
@@ -235,6 +243,8 @@ impl Module for Navigation {
         d.book::<WalkerBook>(WalkerBook::build);
         d.book::<ById<UnitType, UnitNavigationData>>(UnitNavigationData::book);
         d.book::<ById<UnitType, FlightData>>(FlightData::book);
+        d.book::<ById<UnitType, MovementModel>>(MovementModel::book);
+        d.component::<ZeroHourDrive>();
         d.component::<Altitude>();
         d.component::<HeldPlace>();
         d.component::<FlightGoal>();
@@ -255,6 +265,13 @@ impl Module for Navigation {
             at.of_type::<MoveStep>().map(|_| AsideDepth::default())
         });
         d.part::<BodyUnit, Hemmed>(|at| at.of_type::<MoveStep>().map(|_| Hemmed::default()));
+        // A walker of a model that keeps a velocity drives from a stop (driving.md, A mover keeps a
+        // velocity).
+        d.part::<BodyUnit, ZeroHourDrive>(|at| {
+            at.of_type::<MoveStep>()?;
+            let model = at.of_type::<MovementModel>()?;
+            matches!(model, MovementModel::ZeroHour(_)).then(ZeroHourDrive::default)
+        });
         // A flier, which its type's flight tells, flies from its height in the world as it spawns.
         d.part::<BodyUnit, Altitude>(|at| {
             at.of_type::<FlightData>()?;
@@ -413,7 +430,7 @@ pub mod internals {
     use campfire_declarations::internals::BookLoad;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::{Num, Vec3};
-    use campfire_sim::{SimWorld, StableId};
+    use campfire_sim::{MatchRate, SimWorld, StableId, UnitDues};
     use campfire_units::{Destination, Leaving, MoveStep, Wall, WallBook};
     use campfire_values::UnitType;
 
@@ -424,6 +441,7 @@ pub mod internals {
     use crate::crowd_book::CrowdBook;
     use crate::flight_data::FlightData;
     use crate::hemmed::Hemmed;
+    use crate::movement_model::MovementModel;
     use crate::moves::Moves;
     use crate::navigation_book::NavigationBook;
     use crate::pathing_grid::PathingGrid;
@@ -433,7 +451,8 @@ pub mod internals {
     use crate::unit_navigation_data::UnitNavigationData;
     use crate::walker::Walker;
     use crate::walker_kinds::WalkerKinds;
-    use campfire_sim::UnitDues;
+    use crate::zero_hour::zero_hour_locomotor::ZeroHourLocomotor;
+    use crate::zero_hour::zero_hour_mover::ZeroHourMover;
 
     impl Navigation {
         /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
@@ -529,6 +548,22 @@ pub mod internals {
         pub fn load_flight(world: &mut World, unit_type: UnitType, flight: FlightData) {
             ById::<UnitType, FlightData>::amend(world, |_, book| {
                 book.set(unit_type, flight);
+            });
+        }
+
+        /// Gives the units of `unit_type` the Zero Hour locomotor `locomotor` at the match's rate,
+        /// as their type's section would; units spawned after drive by it.
+        pub fn load_locomotor(
+            world: &mut World,
+            unit_type: UnitType,
+            locomotor: ZeroHourLocomotor,
+        ) {
+            let rate = *world.resource::<MatchRate>();
+            ById::<UnitType, MovementModel>::amend(world, |_, book| {
+                book.set(
+                    unit_type,
+                    MovementModel::ZeroHour(ZeroHourMover::of(&locomotor, rate)),
+                );
             });
         }
 

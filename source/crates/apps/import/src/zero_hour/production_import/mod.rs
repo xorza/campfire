@@ -473,6 +473,8 @@ impl ProductionImport {
             | ButtonCommand::Stop
             | ButtonCommand::AttackMove
             | ButtonCommand::SetRallyPoint
+            | ButtonCommand::ExitContainer
+            | ButtonCommand::Evacuate
             | ButtonCommand::PurchaseScience
             | ButtonCommand::Other => return None,
         };

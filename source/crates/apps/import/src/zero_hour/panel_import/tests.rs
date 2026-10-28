@@ -143,3 +143,43 @@ fn a_set_places_its_converted_buttons_and_commands_with_their_images_and_keys() 
         ]
     );
 }
+
+#[test]
+fn a_transports_set_places_an_exit_at_each_of_its_places_and_its_evacuation() {
+    // The Humvee's set places its exit at 4 to 8 and its evacuation at 9, as the game's does:
+    // each exit place shows the next of its riders.
+    let strings = strings();
+    let humvee = TypeName::named("americavehiclehumvee");
+    let mut buttons = PanelButtons::default();
+    let exit = button(
+        ButtonCommand::ExitContainer,
+        "CONTROLBAR:Exit",
+        Some("SSEvacButton"),
+    );
+    let evacuate = button(
+        ButtonCommand::Evacuate,
+        "CONTROLBAR:Evacuate",
+        Some("SSEvacButton"),
+    );
+    for place in 4..=8 {
+        buttons.place(
+            &strings,
+            &humvee,
+            (place, "Command_TransportExit"),
+            &exit,
+            None,
+        );
+    }
+    buttons.place(&strings, &humvee, (9, "Command_Evacuate"), &evacuate, None);
+    let at = |place: u8, command| PanelPlace {
+        place: NonZeroU8::new(place).unwrap(),
+        button: PanelButton::Command(command),
+    };
+    let exits = (4..=8).map(|place| at(place, PanelCommand::Exit));
+    let places: Vec<PanelPlace> = exits.chain([at(9, PanelCommand::Evacuate)]).collect();
+    assert_eq!(buttons.places[&humvee], places);
+    assert_eq!(
+        buttons.commands[&PanelCommand::Evacuate].image.as_deref(),
+        Some("SSEvacButton")
+    );
+}

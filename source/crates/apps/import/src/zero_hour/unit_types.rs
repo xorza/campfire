@@ -16,6 +16,7 @@ use campfire_stats::UpgradesData;
 use crate::zero_hour::area_write::AreaWrite;
 use crate::zero_hour::imported_type::{ImportedType, TypeWeapons};
 use crate::zero_hour::model_bones::ModelBones;
+use crate::zero_hour::mover_import::MoverImport;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::type_name::TypeName;
 use campfire_areas::AreaData;
@@ -64,6 +65,9 @@ pub(crate) struct TypeAdditions<'a> {
     /// slot kind of its entry (transports.md, A container says who rides).
     pub(crate) enters: &'a BTreeMap<TypeName, EnterData>,
     pub(crate) rides: &'a BTreeMap<TypeName, RidesData>,
+    /// The modifiers of the movers' hurts, which a hurt mover's `hurt` names (driving.md, A hurt
+    /// type may hold a modifier).
+    pub(crate) movers: &'a MoverImport,
 }
 
 /// The package's `data/units.toml`, and the largest speed of its types, when one drives.
@@ -76,6 +80,11 @@ pub(crate) struct WrittenUnits {
 impl ImportedTypes {
     pub(crate) const fn new(types: BTreeMap<TypeName, ImportedType>) -> Self {
         Self { types }
+    }
+
+    /// The modifiers of its movers' hurts.
+    pub(crate) fn movers(&self) -> MoverImport {
+        MoverImport::of(self.types.values().filter_map(ImportedType::mover))
     }
 
     /// The package's `data/units.toml`: each unit type in the order of their names, of the
@@ -99,6 +108,12 @@ impl ImportedTypes {
                         .map_or(&[][..], Vec::as_slice),
                 };
                 imported.write(&mut writer, additions.bones.get(name), weapons);
+                let hurt = imported
+                    .mover()
+                    .and_then(|mover| additions.movers.hurt(mover));
+                if let Some(hurt) = hurt {
+                    writer.section(&hurt);
+                }
                 let slots: BTreeMap<DeclaredName, Vec<DeclaredName>> = [
                     (&names.weapon_slot, additions.weapon),
                     (&names.command_slot, additions.command),
@@ -181,6 +196,7 @@ impl ImportedTypes {
 pub(crate) mod reach_in {
     use std::collections::BTreeMap;
 
+    use crate::zero_hour::mover_import::MoverImport;
     use crate::zero_hour::rules_names::RulesNames;
     use crate::zero_hour::unit_types::{ImportedTypes, TypeAdditions, WrittenUnits};
 
@@ -205,6 +221,7 @@ pub(crate) mod reach_in {
                 areas: &BTreeMap::new(),
                 enters: &BTreeMap::new(),
                 rides: &BTreeMap::new(),
+                movers: &MoverImport::default(),
             };
             self.units_file(additions, &RulesNames::default())
         }

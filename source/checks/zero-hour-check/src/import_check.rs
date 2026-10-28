@@ -15,15 +15,15 @@ use campfire_import::{
     UpgradeDropCause, WeaponDropCause,
 };
 use campfire_interaction::{EnterData, FireData, RiderCount, RidesData};
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::ModeParam;
-use campfire_navigation::MapNavigationData;
+use campfire_navigation::{LocomotorAppearance, LocomotorData, MapNavigationData};
 use campfire_orders::RetaliateData;
 use campfire_package::{ModePackages, ModeRead};
 use campfire_package_format::PackageReader;
 use campfire_production::{DropOffData, NodeData, SellData};
 use campfire_progression::{ModePerksData, TypeTracksData};
-use campfire_stats::UpgradesData;
+use campfire_stats::{HurtData, UpgradesData};
 use campfire_units::BoundsData;
 use campfire_values::PackagePath;
 use campfire_vision::{GridData, VisionData};
@@ -43,11 +43,11 @@ use crate::jet_play::JetPlay;
 use crate::match_play::PlayTools;
 use crate::missile_play::MissilePlay;
 use crate::pins::{
-    CombatSteps, ContainedCounts, EffectCounts, FactorySteps, FightSteps, Fingerprints,
-    FoughtCounts, GarrisonSteps, HZ, HelicopterSteps, LookCounts, MapCounts, PanelCounts,
-    ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SaleSteps, SkirmishTicks, SoundCounts,
-    SuppliedCounts, SupplySteps, TerrainCounts, TerrainDrawn, TransportSteps, UpgradeSteps,
-    UpgradedCounts,
+    CombatSteps, ContainedCounts, DrivenCounts, EffectCounts, FactorySteps, FightSteps,
+    Fingerprints, FoughtCounts, GarrisonSteps, HZ, HelicopterSteps, LookCounts, MapCounts,
+    PanelCounts, ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SaleSteps, SkirmishTicks,
+    SoundCounts, SuppliedCounts, SupplySteps, TerrainCounts, TerrainDrawn, TransportSteps,
+    UpgradeSteps, UpgradedCounts,
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
@@ -593,6 +593,51 @@ impl ImportCheck<'_> {
             .extend(Differs::of(fought, expected).map(CheckFailure::Fought));
         self.measured.fought = Some(fought);
         info!(%fought, "the weapons, armors and bodies");
+    }
+
+    /// The movers, by appearance, their hurts and their modifiers.
+    pub(crate) fn movers(&mut self) {
+        let units = self.packages.content().units.values();
+        let movers =
+            units.filter_map(|unit| unit.section::<LocomotorData>().map(|data| (unit, data)));
+        let mut driven = DrivenCounts {
+            movers: [0; 4],
+            hurt: 0,
+            modifiers: 0,
+            unturning: 0,
+            uncorrected: 0,
+        };
+        let mut modifiers = BTreeSet::new();
+        for (unit, LocomotorData::ZeroHour(locomotor)) in movers {
+            let appearance = locomotor.appearance;
+            let at = match appearance {
+                LocomotorAppearance::Treads => 0,
+                LocomotorAppearance::TwoLegs => 1,
+                LocomotorAppearance::FourWheels => 2,
+                LocomotorAppearance::Motorcycle => 3,
+            };
+            driven.movers[at] += 1;
+            let wheels = matches!(
+                appearance,
+                LocomotorAppearance::FourWheels | LocomotorAppearance::Motorcycle
+            );
+            if wheels && locomotor.min_turn_speed == Vec3::BOUND {
+                driven.unturning += 1;
+            }
+            if !locomotor.corrects {
+                driven.uncorrected += 1;
+            }
+            if let Some(hurt) = unit.section::<HurtData>() {
+                driven.hurt += 1;
+                modifiers.insert(hurt.modifier.clone());
+            }
+        }
+        driven.modifiers = modifiers.len();
+        let expected = self.pinned(|golden| golden.driven, driven);
+        self.failures
+            .extend(Differs::of(driven, expected).map(CheckFailure::Driven));
+        self.measured.driven = Some(driven);
+        info!(%driven, "the movers");
     }
 
     /// The packages of a match of `play`, loaded again, and its tools, its probe resolved in them

@@ -7,14 +7,16 @@ resources = ["money"]
 # which its scripts find a slot's start and rally by; a map of no waypoint has them on no marker.
 marker_params = ["name", "player_slot"]
 
-# The stats its units drive by, the life they live by, the rate of fire a stage of continuous
-# fire adds to, which a weapon of one divides its period by, plus 1, the damage and the rate of
-# fire a level of veterancy adds to every weapon, as `Object::onVeterancyLevelChanged` sets its
-# weapon bonus condition, and the range and the damage a garrison adds to every weapon of its
-# riders, as `GarrisonContain::onContaining` sets `GARRISONED`.
+# The stats its units drive by, their acceleration a mover's (driving.md, A type moves by its
+# movement model), the life they live by, the rate of fire a stage of continuous fire adds to,
+# which a weapon of one divides its period by, plus 1, the damage and the rate of fire a level
+# of veterancy adds to every weapon, as `Object::onVeterancyLevelChanged` sets its weapon bonus
+# condition, and the range and the damage a garrison adds to every weapon of its riders, as
+# `GarrisonContain::onContaining` sets `GARRISONED`.
 [stats]
 move_speed = {}
 turn_rate = {}
+acceleration = {}
 life = {}
 rate_of_fire = {}
 veterancy_damage = {}

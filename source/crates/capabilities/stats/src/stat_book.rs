@@ -7,7 +7,7 @@ use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByIdBuilder};
 use campfire_math::{Num, Rounding};
 use campfire_script::{MatchNames, UnknownName};
 use campfire_sim::MatchRate;
-use campfire_units::{MoveStep, StatId, TurnStep, UnitSteps};
+use campfire_units::{AccelStep, MoveStep, StatId, TurnStep, UnitSteps};
 use campfire_values::{EngineStat, NameId, Named, Names, PackageIndex, Stat, UnitType};
 
 use crate::mode_stats_data::ModeStatsData;
@@ -205,6 +205,21 @@ impl StatBook {
         )
     }
 
+    /// How much faster a unit with `values` may move each tick at `rate`, in meters a tick: its
+    /// `acceleration`, at least 0, divided by the square of the tick rate, rounded once; `None`
+    /// when the mode declares no acceleration.
+    pub fn accel_step(&self, values: &[Num], rate: MatchRate) -> Option<Num> {
+        let accel = self
+            .engine(values, EngineStat::Acceleration)?
+            .max(Num::ZERO);
+        let hz = NonZeroI64::from(rate.hz()).get();
+        Some(
+            accel
+                .checked_div_int(hz * hz, Rounding::NearestEven)
+                .expect("an acceleration a tick fits"),
+        )
+    }
+
     /// How far a unit with `values` turns a tick at `rate`, in degrees: its `turn_rate`, at
     /// least 0, divided by the tick rate, rounded once; `None` when the mode declares no turn
     /// rate.
@@ -255,14 +270,15 @@ impl StatBook {
 }
 
 impl StatBook {
-    /// How far each unit type that stands walks and turns a tick at level 1, at the match's rate,
-    /// as a refresh computes them: a type of no move speed among its stats does not walk, and one
-    /// turns only when it walks.
+    /// How far each unit type that stands walks, turns and speeds up a tick at level 1, at the
+    /// match's rate, as a refresh computes them: a type of no move speed among its stats does not
+    /// walk, and one turns only when it walks.
     pub fn unit_steps(cx: &BookCx<'_>) -> Result<UnitSteps, BookError> {
         let book = cx.book::<Self>()?;
         let rate = cx.rate();
         let mut steps = ByIdBuilder::default();
         let mut turns = ByIdBuilder::default();
+        let mut accelerations = ByIdBuilder::default();
         for unit in cx.standing() {
             let unit_type = unit.unit_type;
             let gives = |stat| {
@@ -286,10 +302,17 @@ impl StatBook {
                 let turn = TurnStep::new(turn).expect("the book's turn step is never negative");
                 turns.set(unit_type, turn);
             }
+            if gives(EngineStat::Acceleration) {
+                let accel = book.accel_step(&values, rate);
+                let accel = accel.expect("a type gives only a stat the mode declares");
+                let accel = AccelStep::new(accel).expect("the book's step is never negative");
+                accelerations.set(unit_type, accel);
+            }
         }
         Ok(UnitSteps {
             steps: steps.build(),
             turns: turns.build(),
+            accelerations: accelerations.build(),
         })
     }
 }

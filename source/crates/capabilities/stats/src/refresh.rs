@@ -5,7 +5,7 @@ use bevy_ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, MatchRate, Removals, StableId, Unpredicted};
-use campfire_units::{Dead, Life, MoveStep, PoolId, StatusTags, TagEffect, TurnStep};
+use campfire_units::{AccelStep, Dead, Life, MoveStep, PoolId, StatusTags, TagEffect, TurnStep};
 use campfire_values::{NameId, UnitTags, UnitType};
 
 use crate::level::Level;
@@ -97,7 +97,12 @@ impl Refresh {
                 Query<
                     '_,
                     '_,
-                    (Option<&mut MoveStep>, Option<&mut TurnStep>, UnitPools),
+                    (
+                        Option<&mut MoveStep>,
+                        Option<&mut TurnStep>,
+                        Option<&mut AccelStep>,
+                        UnitPools,
+                    ),
                     Allow<Disabled>,
                 >,
                 Query<'_, '_, &mut Modifiers, Allow<Disabled>>,
@@ -201,9 +206,9 @@ impl Refresh {
     }
 
     /// Sets what holds the effect of each refreshed unit's stats, `scratch`'s values: how far it
-    /// walks and turns a tick at `rate`, and its pools' maxima, `life` the life pool's. A unit a
-    /// client holds as the server sent it is no unit of `effects`, so a client writes nothing of
-    /// it.
+    /// walks, turns and speeds up a tick at `rate`, and its pools' maxima, `life` the life pool's.
+    /// A unit a client holds as the server sent it is no unit of `effects`, so a client writes
+    /// nothing of it.
     fn hold_effects(
         scratch: &RefreshScratch,
         (book, pool_book): (&StatBook, &PoolBook),
@@ -212,13 +217,18 @@ impl Refresh {
         effects: &mut Query<
             '_,
             '_,
-            (Option<&mut MoveStep>, Option<&mut TurnStep>, UnitPools),
+            (
+                Option<&mut MoveStep>,
+                Option<&mut TurnStep>,
+                Option<&mut AccelStep>,
+                UnitPools,
+            ),
             Allow<Disabled>,
         >,
     ) {
         let count = usize::from(book.len());
         for (unit, refreshing) in scratch.units.iter().enumerate() {
-            let Ok((step, turn, pools)) = effects.get_mut(refreshing.entity) else {
+            let Ok((step, turn, accel, pools)) = effects.get_mut(refreshing.entity) else {
                 continue;
             };
             let values = scratch.values(unit, count);
@@ -227,6 +237,10 @@ impl Refresh {
             }
             if let (Some(mut turn), Some(value)) = (turn, book.turn_step(values, rate)) {
                 turn.set_if_neq(TurnStep::new(value).expect("a turn step is at least 0"));
+            }
+            if let (Some(mut accel), Some(value)) = (accel, book.accel_step(values, rate)) {
+                accel
+                    .set_if_neq(AccelStep::new(value).expect("an acceleration step is at least 0"));
             }
             let mut pools = pools.of(life);
             for (pool, stats) in pool_book.iter() {

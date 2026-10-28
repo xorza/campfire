@@ -143,6 +143,7 @@ fn a_types_upgrades_hold_while_its_players_and_its_own_modifiers_meet_them() {
         all,
         conflicts: conflicts.into(),
         when: None,
+        below: None,
         modifier,
     };
     let upgrades = TypeUpgrades(Box::new([

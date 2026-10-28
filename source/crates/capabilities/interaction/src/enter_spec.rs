@@ -1,5 +1,5 @@
 use campfire_actions::ActionBook;
-use campfire_common::Ticks;
+use campfire_common::{PlayerSlot, Ticks};
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::Num;
 use campfire_script::{Filter, Filters, UnknownName};
@@ -76,6 +76,13 @@ impl EnterSpec {
     /// with `relation`.
     pub fn admits(&self, relation: Relation, tags: TagSet) -> bool {
         self.riders.selects(relation, tags)
+    }
+
+    /// Whether a rider of `rider`'s player may enter a container of it that `held_by`'s player
+    /// holds: one of its own player's, or a free building no player holds (transports.md, A
+    /// rider may enter its own player's container, or a free one).
+    pub fn sides(&self, held_by: Option<PlayerSlot>, rider: Option<PlayerSlot>) -> bool {
+        held_by.map_or(self.capture, |held_by| Some(held_by) == rider)
     }
 
     /// The room a rider of `size` takes of it.

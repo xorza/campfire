@@ -14,3 +14,8 @@ pub enum NamesError {
     #[error("the table holds the most ids of its kind")]
     Full,
 }
+
+/// A text that writes no share: past 1, of more than nine digits, or no decimal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("a share is a decimal from 0 to 1 of at most 9 digits")]
+pub struct ShareError;

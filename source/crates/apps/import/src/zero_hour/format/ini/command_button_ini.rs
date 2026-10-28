@@ -44,6 +44,10 @@ pub(crate) enum ButtonCommand {
     AttackMove,
     /// `SET_RALLY_POINT`: its producers rally to the point the next click picks.
     SetRallyPoint,
+    /// `EXIT_CONTAINER`: its container lets out the rider its place shows.
+    ExitContainer,
+    /// `EVACUATE`: its containers let out every rider.
+    Evacuate,
     /// `PURCHASE_SCIENCE`: its player buys its science.
     PurchaseScience,
     /// `SPECIAL_POWER`: its building fires its power.
@@ -75,6 +79,8 @@ impl CommandButtonIni {
                             "STOP" => ButtonCommand::Stop,
                             "ATTACK_MOVE" => ButtonCommand::AttackMove,
                             "SET_RALLY_POINT" => ButtonCommand::SetRallyPoint,
+                            "EXIT_CONTAINER" => ButtonCommand::ExitContainer,
+                            "EVACUATE" => ButtonCommand::Evacuate,
                             "PURCHASE_SCIENCE" => ButtonCommand::PurchaseScience,
                             "SPECIAL_POWER" => ButtonCommand::SpecialPower,
                             _ => ButtonCommand::Other,

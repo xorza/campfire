@@ -73,6 +73,8 @@ impl PanelButtons {
             ButtonCommand::Stop => Some(PanelCommand::Stop),
             ButtonCommand::AttackMove => Some(PanelCommand::AttackMove),
             ButtonCommand::SetRallyPoint => Some(PanelCommand::Rally),
+            ButtonCommand::ExitContainer => Some(PanelCommand::Exit),
+            ButtonCommand::Evacuate => Some(PanelCommand::Evacuate),
             ButtonCommand::UnitBuild
             | ButtonCommand::DozerConstruct
             | ButtonCommand::PlayerUpgrade

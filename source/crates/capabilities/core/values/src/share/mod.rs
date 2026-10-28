@@ -1,6 +1,10 @@
+use std::str::FromStr;
+
 use campfire_math::{Num, Rounding};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::error::ShareError;
 
 /// A share from 0 to 1, exactly as data writes it: the integer 0 or 1, or a decimal string of at
 /// most nine fractional digits, kept in billionths, so `"0.7"` of 300 is 210, and `"0.5"` and
@@ -35,6 +39,13 @@ impl Share {
             .expect("a share of at most 1 of a value fits")
     }
 
+    /// Whether `part` is at most this share of `whole`, decided exactly, as a unit at 35 of 100
+    /// life is at most 0.35 of it.
+    pub fn covers(self, part: Num, whole: Num) -> bool {
+        let part = i128::from(part.to_bits()) * i128::from(Self::WHOLE);
+        part <= i128::from(self.0) * i128::from(whole.to_bits())
+    }
+
     /// The share of `parts` billionths; `None` past 1.
     pub const fn billionths(parts: u32) -> Option<Self> {
         if parts > Self::WHOLE {
@@ -67,6 +78,16 @@ impl Share {
         };
         let parts = u32::from(int == "1") * Self::WHOLE + frac * scale;
         (parts <= Self::WHOLE).then_some(Self(parts))
+    }
+}
+
+/// The share a decimal text writes, as data writes it in a string: `[0|1][.digits]`, at most nine
+/// digits, from 0 to 1.
+impl FromStr for Share {
+    type Err = ShareError;
+
+    fn from_str(text: &str) -> Result<Self, ShareError> {
+        Self::parse(text).ok_or(ShareError)
     }
 }
 

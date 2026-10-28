@@ -47,6 +47,14 @@ fn a_share_is_exactly_the_decimal_data_writes() {
     assert_eq!((half.of(7), half.of(-7)), (3, -4));
     assert_eq!(half.of_num(Num::EPSILON), Num::ZERO);
     assert_eq!(half.of_num(-Num::EPSILON), -Num::EPSILON);
+    // 0.35 of 100 is 35, which it covers, and not 35 and the least step past it; 0.7 of 1, which
+    // has no exact binary value, covers 0.7 rounded down to a number's bits, not rounded up.
+    let much = share("0.35").unwrap();
+    assert!(much.covers(Num::int(35), Num::int(100)));
+    assert!(!much.covers(Num::int(35) + Num::EPSILON, Num::int(100)));
+    let seven = share("0.7").unwrap();
+    assert!(seven.covers(seven.of_num(Num::ONE), Num::ONE));
+    assert!(!seven.covers(seven.of_num(Num::ONE) + Num::EPSILON, Num::ONE));
     for refused in [
         "1.5",
         "2",
@@ -67,6 +75,8 @@ fn a_share_is_exactly_the_decimal_data_writes() {
     assert_eq!(of("share = 2"), None);
     // One share however data writes it.
     assert_eq!(share("0.5"), share("0.50"));
+    assert_eq!("0.35".parse(), Ok(share("0.35").unwrap()));
+    assert_eq!("1.5".parse::<Share>(), Err(ShareError));
     assert_eq!(share("1.0"), Some(Share::ALL));
     assert_eq!(read("share = 1"), Some(Share::ALL));
 }

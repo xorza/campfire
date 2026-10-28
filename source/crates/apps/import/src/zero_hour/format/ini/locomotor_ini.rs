@@ -12,11 +12,13 @@ pub(crate) struct LocomotorIni {
 
 /// What the import reads of a locomotor (`LocomotorTemplate`): the surfaces it moves on, its
 /// `Speed` and `MinSpeed` in units a second, its `TurnRate` in degrees a second, its
-/// `Acceleration` and its `Lift` in units a second each second, and its `CirclingRadius` and its
-/// `PreferredHeight` in units, each 0 when absent, as the template starts; its `Appearance`; its
-/// `AirborneTargetingHeight`, none for the template's `INT_MAX`; and its `AccelerationDamaged`,
-/// none for its `Acceleration`, and its `Braking`, none for the template's 99,999, in units a
-/// second each second.
+/// `Acceleration` and its `Lift` in units a second each second, its `CirclingRadius` and its
+/// `PreferredHeight` in units, and its `TurnPivotOffset`, a share of its radius, each 0 when
+/// absent, as the template starts; its `Appearance`; its `AirborneTargetingHeight`, none for the
+/// template's `INT_MAX`; its `SpeedDamaged`, `TurnRateDamaged` and `AccelerationDamaged`, none for
+/// its own; its `Braking` in units a second each second and its `MinTurnSpeed` in units a second,
+/// none for the template's `BIGNUM`, 99,999 a frame; its `CanMoveBackwards`, false when absent;
+/// and its `CloseEnoughDist` in units, 1 when absent.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct Locomotor {
     surfaces: Surfaces,
@@ -29,13 +31,20 @@ pub(crate) struct Locomotor {
     pub(crate) preferred_height: f32,
     pub(crate) appearance: Appearance,
     pub(crate) airborne_height: Option<i32>,
+    speed_damaged: Option<f32>,
+    turn_rate_damaged: Option<f32>,
     acceleration_damaged: Option<f32>,
     braking: Option<f32>,
+    min_turn_speed: Option<f32>,
+    pub(crate) pivot: f32,
+    pub(crate) backwards: bool,
+    close_enough: Option<f32>,
     pub(crate) chassis: IniChassis,
 }
 
 /// A locomotor's `Appearance`, of those the import tells apart: a missile's `THRUST`, a
-/// helicopter's `HOVER`, a jet's `WINGS`, a tank's `TREADS`, a car's `FOUR_WHEELS`, or another.
+/// helicopter's `HOVER`, a jet's `WINGS`, a tank's `TREADS`, a car's `FOUR_WHEELS`, a soldier's
+/// `TWO_LEGS`, a bike's `MOTORCYCLE`, or another.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum Appearance {
     #[default]
@@ -45,6 +54,8 @@ pub(crate) enum Appearance {
     Wings,
     Treads,
     Wheels,
+    Legs,
+    Motorcycle,
 }
 
 /// The springs a locomotor's chassis pitches and rolls on, as `LocomotorTemplate` reads them: its
@@ -91,6 +102,12 @@ const SURFACES: [&str; 5] = ["ground", "water", "cliff", "air", "rubble"];
 
 /// The bit of `AIR` among the surfaces.
 const AIR: usize = 3;
+
+/// The template's number of a braking or a turning speed it leaves out, `BIGNUM`, a frame.
+const BIGNUM: f32 = 99_999.0;
+
+/// The game's logic frames a second, which a template's own number counts in.
+const FRAMES_PER_SECOND: f32 = 30.0;
 
 impl LocomotorIni {
     /// Reads one INI file, adding its locomotors to those read before: one read again keeps its
@@ -146,9 +163,33 @@ impl Locomotor {
         matches!(self.appearance, Appearance::Treads | Appearance::Wheels).then_some(&self.chassis)
     }
 
-    /// Its braking, the template's 99,999 when it names none.
+    /// Its speed while damaged past the game's `MovementPenaltyDamageState`, its `Speed` when it
+    /// names none, as `LocomotorTemplate::validate` takes it.
+    pub(crate) fn speed_damaged(&self) -> f32 {
+        self.speed_damaged.unwrap_or(self.speed)
+    }
+
+    /// Its turn rate while damaged, as `speed_damaged` takes it.
+    pub(crate) fn turn_rate_damaged(&self) -> f32 {
+        self.turn_rate_damaged.unwrap_or(self.turn_rate)
+    }
+
+    /// Its braking in units a second each second, the template's `BIGNUM` a frame each frame when
+    /// it names none, as the template holds it in its own frames.
     pub(crate) fn braking(&self) -> f32 {
-        self.braking.unwrap_or(99_999.0)
+        self.braking
+            .unwrap_or(BIGNUM * FRAMES_PER_SECOND * FRAMES_PER_SECOND)
+    }
+
+    /// The least speed it turns at in units a second, the template's `BIGNUM` a frame when it
+    /// names none.
+    pub(crate) fn min_turn_speed(&self) -> f32 {
+        self.min_turn_speed.unwrap_or(BIGNUM * FRAMES_PER_SECOND)
+    }
+
+    /// The units from its goal within which it has arrived, 1 when it names none.
+    pub(crate) fn close_enough(&self) -> f32 {
+        self.close_enough.unwrap_or(1.0)
     }
 
     /// Takes the line of `word`, a field the import reads or another.
@@ -158,8 +199,14 @@ impl Locomotor {
             "speed" => self.speed = at.real()?,
             "turnrate" => self.turn_rate = at.real()?,
             "acceleration" => self.acceleration = at.real()?,
+            "speeddamaged" => self.speed_damaged = Some(at.real()?),
+            "turnratedamaged" => self.turn_rate_damaged = Some(at.real()?),
             "accelerationdamaged" => self.acceleration_damaged = Some(at.real()?),
             "braking" => self.braking = Some(at.real()?),
+            "minturnspeed" => self.min_turn_speed = Some(at.real()?),
+            "turnpivotoffset" => self.pivot = at.real()?,
+            "canmovebackwards" => self.backwards = at.yes()?,
+            "closeenoughdist" => self.close_enough = Some(at.real()?),
             "pitchstiffness" => self.chassis.pitch_stiffness = at.real()?,
             "rollstiffness" => self.chassis.roll_stiffness = at.real()?,
             "pitchdamping" => self.chassis.pitch_damping = at.real()?,
@@ -186,6 +233,10 @@ impl Locomotor {
                     Appearance::Treads
                 } else if value.eq_ignore_ascii_case("four_wheels") {
                     Appearance::Wheels
+                } else if value.eq_ignore_ascii_case("two_legs") {
+                    Appearance::Legs
+                } else if value.eq_ignore_ascii_case("motorcycle") {
+                    Appearance::Motorcycle
                 } else {
                     Appearance::Other
                 };

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::halves;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::entity_disabling::Disabled;
+use bevy_ecs::system::RunSystemOnce;
 use campfire_abilities::{Abilities, CastData};
 use campfire_actions::{
     ActionData, ActionKeys, ActionRange, ActionSlots, Actions, RangeBonus, RangeField, SlotKind,
@@ -21,7 +22,7 @@ use campfire_declarations::internals::BookLoad;
 use campfire_geometry::{Bounds, Grid};
 use campfire_interaction::{
     EnterActionData, EnterSpec, FireSpec, Interaction, RiderCount, RiderPayload, RiderSize, Riders,
-    Riding, UseSlot,
+    Riding, UseSlot, Using,
 };
 use campfire_math::Num;
 use campfire_navigation::{FlightData, Navigation, Walker};
@@ -350,7 +351,16 @@ fn a_free_building_takes_its_first_riders_side_until_it_empties_and_none_at_its_
     let first = rider(&mut game, "walking caster", 1, 0, 0);
     let second = rider(&mut game, "walking caster", -1, 0, 0);
     let foe = rider(&mut game, "walking caster", 0, 1, 1);
+    // An order checks the side as the entry does: the free bunker takes either player's rider,
+    // and once player 0's first rider holds it, player 0's alone.
+    let entry = |game: &mut Match, rider: StableId| {
+        let entity = game.unit_entity(rider);
+        let read = move |using: Using<'_, '_>| using.entry(entity, bunker).is_some();
+        game.run_system_once(read).unwrap()
+    };
+    assert!(entry(&mut game, first) && entry(&mut game, foe));
     enter(&mut game, 0, first, bunker);
+    assert!(entry(&mut game, second) && !entry(&mut game, foe));
     let side = |game: &Match| {
         let owner = game
             .try_part::<Owner>(bunker)

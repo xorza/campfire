@@ -9,10 +9,10 @@ use derive_more::Display;
 
 use crate::decal_ground::DecalGround;
 use crate::pins::{
-    BotBase, BotMatchEnd, CombatSteps, ContainedCounts, DefenseTicks, EffectCounts, FactorySteps,
-    FightSteps, Fingerprints, FoughtCounts, GarrisonSteps, HelicopterSteps, JetTicks, LookCounts,
-    MapCounts, MissileTicks, PanelCounts, ProducedCounts, ProductionSteps, RangerLook, RoadCounts,
-    SaleSteps, ScienceSteps, SoundCounts, SuppliedCounts, SupplySteps, TerrainDrawn,
+    BotBase, BotMatchEnd, CombatSteps, ContainedCounts, DefenseTicks, DrivenCounts, EffectCounts,
+    FactorySteps, FightSteps, Fingerprints, FoughtCounts, GarrisonSteps, HelicopterSteps, JetTicks,
+    LookCounts, MapCounts, MissileTicks, PanelCounts, ProducedCounts, ProductionSteps, RangerLook,
+    RoadCounts, SaleSteps, ScienceSteps, SoundCounts, SuppliedCounts, SupplySteps, TerrainDrawn,
     TransportSteps, UpgradeSteps, UpgradedCounts,
 };
 
@@ -216,6 +216,9 @@ pub(crate) enum CheckFailure {
     /// The import's weapons, armors, damage kinds and bodies differ from the pinned.
     #[display("it converted {_0}")]
     Fought(Box<Differs<FoughtCounts>>),
+    /// The import's movers differ from the pinned.
+    #[display("it converted movers as {_0}")]
+    Driven(Box<Differs<DrivenCounts>>),
     /// Tournament Desert lacks a start of player 1 or 2.
     #[display("it has no start of player 1 or of player 2")]
     NoStarts,

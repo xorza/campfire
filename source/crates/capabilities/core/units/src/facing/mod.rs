@@ -69,19 +69,21 @@ impl Facing {
 
     /// The angle between it and `other` the shorter way round, from 0 to 180 degrees.
     pub const fn apart(self, other: Self) -> Num {
-        let apart = (other.0.to_bits() - self.0.to_bits()).rem_euclid(FULL);
-        Num::from_bits(if apart > HALF { FULL - apart } else { apart })
+        Num::from_bits(self.turn_to(other).to_bits().abs())
+    }
+
+    /// The turn from it to `way` the shorter way round, in degrees from just past −180 to 180,
+    /// counter-clockwise positive.
+    pub const fn turn_to(self, way: Self) -> Num {
+        let left = (way.0.to_bits() - self.0.to_bits()).rem_euclid(FULL);
+        Num::from_bits(if left > HALF { left - FULL } else { left })
     }
 
     /// It turned toward `way` the shorter way round, counter-clockwise on a tie: by at most
     /// `step`'s degrees, or at once with no step; and whether it then faces within
     /// `Facing::WITHIN` of the way.
     pub fn toward(self, way: Self, step: Option<TurnStep>) -> Turn {
-        // The turn to the way, from just past −180° to 180°.
-        let mut left = Num::from_bits((way.0.to_bits() - self.0.to_bits()).rem_euclid(FULL));
-        if left.to_bits() > HALF {
-            left = Num::from_bits(left.to_bits() - FULL);
-        }
+        let left = self.turn_to(way);
         let turn = step.map_or(left, |step| left.clamp(-step.get(), step.get()));
         let rest = left - turn;
         Turn {

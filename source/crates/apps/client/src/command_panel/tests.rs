@@ -115,6 +115,7 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
         queue: Some(&queue),
         site: None,
         tags: TagSet::default(),
+        riders: &[],
     };
     assert!(shown.fill(center, held, books, &looks));
     assert_eq!(
@@ -152,9 +153,10 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
     assert!(shown.fill(center, held, books, &looks));
     assert_eq!(shown.buttons.len(), 1);
 
-    // The dozer's look places its build at 1, an action its slots do not hold at 2, its train at
-    // 7, the 4th column's top, and the stop, the rally and the sale at 12, 13 and 14: each but the
-    // unheld action, the rally as the dozer trains, the sale as its type sells.
+    // The dozer's look places its build at 1, an action its slots do not hold at 2, two exits at 4
+    // and 5, its train at 7, the 4th column's top, an evacuation at 9, and the stop, the rally and
+    // the sale at 12, 13 and 14: each but the unheld action, the exits and the evacuation, as it
+    // holds no rider, the rally as the dozer trains, the sale as its type sells.
     let at = |place: u8| columns.cell(NonZeroU8::new(place).unwrap()).unwrap();
     let placed = |place, button| LookPlace {
         cell: at(place),
@@ -163,7 +165,10 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
     let dozer_places = [
         placed(1, PlacedButton::Action(build)),
         placed(2, PlacedButton::Action(ActionId::new(99))),
+        placed(4, PlacedButton::Command(PanelCommand::Exit)),
+        placed(5, PlacedButton::Command(PanelCommand::Exit)),
         placed(7, PlacedButton::Action(train)),
+        placed(9, PlacedButton::Command(PanelCommand::Evacuate)),
         placed(12, PlacedButton::Command(PanelCommand::Stop)),
         placed(13, PlacedButton::Command(PanelCommand::Rally)),
         placed(14, PlacedButton::Command(PanelCommand::Sell)),
@@ -204,6 +209,25 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
     };
     assert!(shown.fill(center, idle, unsold, &looks));
     assert_eq!(shown.buttons, laid[..3]);
+    // Holding three riders, its two exits show the first two in the order they entered, each by
+    // its type, and its evacuation shows.
+    let (first, second, third) = (ids.allocate(), ids.allocate(), ids.allocate());
+    let riders = [(first, ranger), (second, dozer), (third, ranger)];
+    let holding = PanelUnit {
+        riders: &riders,
+        ..held
+    };
+    assert!(shown.fill(center, holding, books, &looks));
+    let exit = |cell, rider, unit_type| Button {
+        cell,
+        does: Does::Exit { rider, unit_type },
+        key: None,
+    };
+    let mut full = laid;
+    full.insert(1, exit(cell(1, 1), first, ranger));
+    full.insert(2, exit(cell(2, 0), second, dozer));
+    full.insert(4, command(cell(4, 0), PanelCommand::Evacuate));
+    assert_eq!(shown.buttons, full);
 
     // A unit of no train or build and no places shows nothing.
     let none = ActionSlots::new([]);
@@ -213,6 +237,7 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
         queue: None,
         site: None,
         tags: TagSet::default(),
+        riders: &[],
     };
     assert!(!shown.fill(wall, held, books, &looks));
     assert_eq!(shown, Shown::default());
@@ -231,6 +256,7 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
         queue: Some(&queue),
         site: Some(&site),
         tags: TagSet::default(),
+        riders: &[],
     };
     assert!(shown.fill(wall, held, books, &looks));
     assert_eq!(
@@ -408,6 +434,23 @@ fn a_key_presses_the_first_shown_button_of_it_and_each_press_does_its_button_s_w
     assert_eq!(
         press(Does::Command(PanelCommand::Rally), &selection),
         Some(Pressed::Aim(AimedCommand::Rally))
+    );
+    // An evacuation orders the selection; a rider's button its container, the dozer here, to let
+    // that rider out.
+    assert_eq!(
+        press(Does::Command(PanelCommand::Evacuate), &selection),
+        Some(order(OrdersDirective::Evacuate.into()))
+    );
+    let rider = Does::Exit {
+        rider: tank,
+        unit_type: UnitType::new(0),
+    };
+    assert_eq!(
+        press(rider, &selection),
+        Some(Pressed::Order(Order::one(
+            dozer,
+            OrdersDirective::Exit { rider: tank }
+        )))
     );
     let to = GroundPoint {
         x: Num::int(30),

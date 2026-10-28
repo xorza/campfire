@@ -618,6 +618,25 @@ pub(crate) struct FoughtCounts {
     pub(crate) retaliating: usize,
 }
 
+/// How many unit types the import makes movers of each appearance, treads, two legs, four wheels
+/// and a motorcycle, how many of them a hurt slows, how many modifiers the hurts share, how many
+/// wheels turn at the world's bound, of a locomotor of no `MinTurnSpeed`, and how many push
+/// themselves out of no cell, as a dozer does not (driving.md, Each appearance moves as its mover;
+/// driving.md, A hurt type may hold a modifier).
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    "movers {:?}, {hurt} hurt, {modifiers} hurt modifiers, {unturning} wheels of no turning speed, {uncorrected} uncorrected",
+    movers
+)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DrivenCounts {
+    pub(crate) movers: [usize; 4],
+    pub(crate) hurt: usize,
+    pub(crate) modifiers: usize,
+    pub(crate) unturning: usize,
+    pub(crate) uncorrected: usize,
+}
+
 /// How many docks become nodes, supply centers drop-offs, gatherers gathers and hackers hacks,
 /// and how many supply modules, or parts of one, the import drops for each cause, in the order of
 /// `SupplyDropCause::ALL` (09-zero-hour.md, A box is money; 09-zero-hour.md, A hack is a channel

@@ -5,9 +5,11 @@ use bevy::asset::{Assets, Handle};
 use bevy::camera::ClearColor;
 use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
+use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::lifecycle::{Add, RemovedComponents};
+use bevy::ecs::entity_disabling::Disabled;
+use bevy::ecs::lifecycle::{Add, Remove, RemovedComponents};
 use bevy::ecs::observer::On;
 use bevy::ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy::ecs::resource::Resource;
@@ -251,6 +253,8 @@ impl Plugin for ViewPlugin {
                 .in_set(ViewSystems),
         );
         app.add_observer(Self::show_end);
+        app.add_observer(Self::hide);
+        app.add_observer(Self::unhide);
         app.add_observer(ShotStandIns::place);
         app.add_observer(Ghost::leave);
         app.add_systems(Update, (Ghost::forget_dying, Ghost::clear));
@@ -645,6 +649,38 @@ impl ViewPlugin {
             if turns && !tilts && transform.rotation != rotation {
                 transform.rotation = rotation;
             }
+        }
+    }
+
+    /// Hides the drawing of a unit that leaves the world, as a rider does (transports.md, The
+    /// client orders entries by the right click).
+    fn hide(
+        added: On<'_, '_, Add<Disabled>>,
+        units: Query<'_, '_, &Drawing, (Allow<Disabled>, Allow<Unpredicted>)>,
+        mut shown: Query<'_, '_, &mut Visibility>,
+    ) {
+        Self::show_drawing(added.entity, Visibility::Hidden, &units, &mut shown);
+    }
+
+    /// Shows again the drawing of a unit that comes back into the world.
+    fn unhide(
+        removed: On<'_, '_, Remove<Disabled>>,
+        units: Query<'_, '_, &Drawing, (Allow<Disabled>, Allow<Unpredicted>)>,
+        mut shown: Query<'_, '_, &mut Visibility>,
+    ) {
+        Self::show_drawing(removed.entity, Visibility::Inherited, &units, &mut shown);
+    }
+
+    /// Sets the drawing of `unit`, of `units`, to `visibility`, for a unit drawn.
+    fn show_drawing(
+        unit: Entity,
+        visibility: Visibility,
+        units: &Query<'_, '_, &Drawing, (Allow<Disabled>, Allow<Unpredicted>)>,
+        shown: &mut Query<'_, '_, &mut Visibility>,
+    ) {
+        let root = units.get(unit).map(Drawing::root);
+        if let Ok(mut root) = root.and_then(|root| shown.get_mut(root)) {
+            root.set_if_neq(visibility);
         }
     }
 

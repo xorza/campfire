@@ -24,6 +24,9 @@ pub struct DeclaredStat(DeclaredName);
 pub enum EngineStat {
     MoveSpeed,
     TurnRate,
+    /// How fast a walker of a movement model that keeps a velocity gathers speed, in meters a
+    /// second squared (driving.md, A type moves by its movement model).
+    Acceleration,
 }
 
 impl Stat {

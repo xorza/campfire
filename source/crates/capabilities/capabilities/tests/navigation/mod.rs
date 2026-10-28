@@ -1331,6 +1331,7 @@ fn every_navigation_type_is_state() {
 }
 
 mod boxes;
+mod driving;
 mod flight;
 mod forced;
 mod groups;

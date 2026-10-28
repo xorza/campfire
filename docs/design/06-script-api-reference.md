@@ -304,6 +304,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `stats` | stats | since 1.0 |
 | `passive` | stats | since 1.0 |
 | `upgrades` | stats | since 1.0 |
+| `hurt` | stats | since 1.0 |
 | `tracks` | progression | since 1.0 |
 | `experience` | progression | since 1.0 |
 | `combat` | combat | since 1.0 |
@@ -311,6 +312,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `barrels` | combat | since 1.0 |
 | `navigation` | navigation | since 1.0 |
 | `flight` | navigation | since 1.0 |
+| `locomotor` | navigation | since 1.0 |
 | `vision` | vision | since 1.0 |
 | `projectile` | projectiles | since 1.0 |
 | `area` | areas | since 1.0 |

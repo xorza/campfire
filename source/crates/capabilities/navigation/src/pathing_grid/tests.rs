@@ -1,5 +1,4 @@
 use campfire_geometry::{Bounds, Polygon, Radius, Shape};
-use campfire_math::Vec3;
 use campfire_sim::IdAllocator;
 use campfire_units::{Layer, Wall};
 
@@ -184,6 +183,23 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     let lines = |rows: [&str; 6]| rows.map(str::to_owned).to_vec();
     let expected = [lines(walled), lines(walled), lines(ringed), open];
     assert_eq!(drawn_all(&grid), expected);
+    // A point is walled in a cell the walls block its walker from, and outside the grid; the air
+    // has no walls.
+    let walled_at = |walker: Walker, [x, z]: [Num; 2]| {
+        grid.clearance(walker).walled_at(Vec3::new(x, Num::ZERO, z))
+    };
+    let point = |x: i64, z: i64| [Num::HALF * x, Num::HALF * z];
+    assert_eq!(
+        [
+            walled_at(ground(Num::ZERO), point(1, 1)),
+            walled_at(ground(Num::ZERO), point(3, 1)),
+            walled_at(ground(Num::ONE), point(3, 1)),
+            walled_at(ground(Num::ONE), point(5, 5)),
+            walled_at(ground(Num::ONE), point(7, 0)),
+            walled_at(air(), point(1, 1)),
+        ],
+        [true, false, true, false, true, false]
+    );
     // A tower of 1 m at the origin blocks for the walker of 1 m the cells within 2 m of it, which
     // the ring holds; once it is gone, the wall's cells stay blocked.
     let mut index = BodyIndex::new(Num::ONE);
