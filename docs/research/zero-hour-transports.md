@@ -30,6 +30,13 @@ What the released source (GeneralsX, read as a specification) and the install's 
 - **A garrison past its threshold.** `GarrisonContain::onBodyDamageStateChange` orders every rider out as the container reaches `REALLYDAMAGED`, unless `GARRISONABLE_UNTIL_DESTROYED`; `GameData.ini` gives `UnitReallyDamagedThreshold = 0.35` and `UnitDamagedThreshold = 0.7`.
 - **An initial payload.** `InitialPayload` makes that many riders of the type inside a container as it is made.
 
+## A sale and an assault
+
+Read 28 October 2026.
+
+- **A sold container lets its riders out.** `BuildAssistant::sellObject` calls the container's `onSelling`, and `OpenContain::onSelling` orders every rider out (`orderAllPassengersToExit`), as the sale's scaffold counts down; a rider still inside as the object goes is destroyed with it (`OpenContain::onDelete`). The engine's sale despawns its unit as its time ends (`Sales::end_sales`), and its containers let riders out only as they die (`Containers::fall`, on `Added<Dead>`), so a sold container's riders stay out of the world.
+- **An assault transport deploys its riders.** `ChinaVehicleTroopCrawler` runs an `AssaultTransportAIUpdate`, `MembersGetHealedAtLifeRatio = 0.5`: a player's attack or attack-move order makes it let out each rider above that share of its life to fight the target, and call back each below it to heal inside; an idle order calls them all back (`AssaultTransportAIUpdate::aiDoCommand`, `update`). The bot gives no order to let riders out, so a crawler's 8 Red Guards of `InitialPayload` never fight.
+
 ## The Chinook
 
 - **It lands for its riders.** `ChinookAIUpdate::update` lands an idle Chinook while a unit waits to enter or exit it, and takes off once none waits; a rider leaves only a landed Chinook, or a combat drop's rappel (`getAiFreeToExit`).
