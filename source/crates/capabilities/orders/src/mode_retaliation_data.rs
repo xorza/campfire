@@ -4,9 +4,9 @@ use campfire_script::{ApiVersion, DataSection, DataTable, Status};
 use campfire_values::FilterData;
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// The mode's `[retaliation]` (combat-response.md, Retaliation is the mode's data): the units a
-/// damaged unit answers, the most meters it lies from them, edge to edge, the radius round it,
-/// past its body, within which its allies answer, and how long, in milliseconds, they chase.
+/// The mode's `[retaliation]` (04-capabilities/control.md, Retaliation is the mode's data): the
+/// units a damaged unit answers, the most meters it lies from them, edge to edge, the radius round
+/// it, past its body, within which its allies answer, and how long, in milliseconds, they chase.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModeRetaliationData {
     pub aggressors: FilterData,

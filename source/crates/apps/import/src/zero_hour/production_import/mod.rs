@@ -72,8 +72,9 @@ pub(crate) struct ProductionImport {
     /// The `airfield` of each airfield whose production makes its jets at places (09-zero-hour.md,
     /// The import flies a winged locomotor).
     pub(crate) airfields: BTreeMap<TypeName, AirfieldData>,
-    /// The sciences its trains, builds and researches need, by their names in the game, whose
-    /// perks give their modifiers (generals.md, A perk's modifier is a player modifier).
+    /// The sciences its trains, builds and researches need, by their names in the game, whose perks
+    /// give their modifiers (04-capabilities/progression.md, A perk's modifier is a player
+    /// modifier).
     pub(crate) sciences: BTreeSet<String>,
     /// The powers it converts to casts: what each perk's modifier gives for them, by the perk's
     /// name, the stats of their heals, each marker type's area, and the powers' buttons dropped.
@@ -599,7 +600,7 @@ impl ProductionImport {
     }
 
     /// Converts the special power button `button_name`, `button`, of the set of `producer` to a
-    /// cast of its producer, made once (generals.md, A power is a cast of its building): of an
+    /// cast of its producer, made once (09-zero-hour.md, A power is a cast of its building): of an
     /// `OCLSpecialPower` of its power made where its player aims, each of whose lists makes one
     /// object of a single-burst `AutoHealBehavior` of vehicles, the first list's object the area
     /// it lands, and of the power's science, whose perk's modifier gives the producer the cast's

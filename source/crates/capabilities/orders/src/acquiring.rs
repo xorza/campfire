@@ -30,15 +30,15 @@ type Candidate = (u128, StableId);
 impl Acquiring {
     /// Scans for each unit due this tick that stands idle, with no destination, nothing under way
     /// and no attack target, or that attack-moves with nothing under way and no attack target: it
-    /// takes as its attack target, from its scan, the nearest unit its team sees, center to
-    /// center, that a filter of its type's targets selects and that a weapon of it that selects
-    /// it reaches, the lower stable id at one distance, and one that attack-moves stops its walk
-    /// to attack it; one of a turret that walks with nothing under way and no target takes it as
-    /// its turret target, as Zero Hour's turret takes its unit's mood target
+    /// takes as its attack target, from its scan, the nearest unit its team sees, center to center,
+    /// that a filter of its type's targets selects and that a weapon of it that selects it reaches,
+    /// the lower stable id at one distance, and one that attack-moves stops its walk to attack it;
+    /// one of a turret that walks with nothing under way and no target takes it as its turret
+    /// target, as Zero Hour's turret takes its unit's mood target
     /// (`TurretAI::friend_checkForIdleMoodTarget`), and walks on; then it is due a period later,
     /// idle or not (04-capabilities/control.md, The scan is the server's;
-    /// 04-capabilities/control.md, An army attack-moves; combat-response.md, The scan reaches by
-    /// any weapon; combat-response.md, A turret has its own target).
+    /// 04-capabilities/control.md, An army attack-moves; 04-capabilities/control.md, The scan
+    /// reaches by any weapon; 04-capabilities/combat.md, A turret has its own target).
     pub(super) fn scan(
         (tick, actions, book, mounts, bonuses): (
             Res<'_, SimTick>,

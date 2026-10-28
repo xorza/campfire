@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::zero_hour_locomotor::ZeroHourLocomotor;
 
-/// A unit type's `locomotor` section: the movement model its units walk by in place of the
-/// engine's step, which keeps a velocity (driving.md, A type moves by its movement model): Zero
-/// Hour's locomotor.
+/// A unit type's `locomotor` section: the movement model its units walk by in place of the engine's
+/// step, which keeps a velocity (04-capabilities/navigation.md, A type moves by its movement
+/// model): Zero Hour's locomotor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum LocomotorData {

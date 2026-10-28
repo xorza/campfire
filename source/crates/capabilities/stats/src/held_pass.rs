@@ -25,8 +25,8 @@ use crate::projection::{Affects, Projection};
 use crate::stat_books::StatBooks;
 
 /// The living units whose held modifiers `HeldPass::run` writes, riders out of the world among
-/// them, which their containers' modifiers reach (transports.md, A container's modifier holds on
-/// its riders): on a predicting client, those it predicts.
+/// them, which their containers' modifiers reach (04-capabilities/combat.md, A container's modifier
+/// holds on its riders): on a predicting client, those it predicts.
 type HeldUnits<'w, 's> = Query<
     'w,
     's,

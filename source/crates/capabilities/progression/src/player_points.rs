@@ -12,7 +12,8 @@ use crate::player_experience::PlayerExperience;
 use crate::track_book::TrackBook;
 
 /// The points a player has to spend on perks: those the levels of its tracks gave, less the costs
-/// of the perks it learned (generals.md, A track of players). State, sent to its owner.
+/// of the perks it learned (04-capabilities/progression.md, A track of players). State, sent to its
+/// owner.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PlayerPoints(u32);

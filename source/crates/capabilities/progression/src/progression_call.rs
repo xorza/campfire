@@ -10,8 +10,8 @@ use campfire_values::PerkId;
 use crate::player_perks::PlayerPerks;
 use crate::player_points::PlayerPoints;
 
-/// Progression's part of a call: each player's points, none for a player of no track of points,
-/// and its perks, by player slot, as the call reads them (generals.md, A bot buys its skill set).
+/// Progression's part of a call: each player's points, none for a player of no track of points, and
+/// its perks, by player slot, as the call reads them (09-zero-hour.md, A bot buys its skill set).
 /// It reads them as each call begins, as an earlier call's grant changes the perks, through one
 /// query of the players, its buffers kept, so a call allocates none once they hold every player.
 #[derive(Debug, Default)]

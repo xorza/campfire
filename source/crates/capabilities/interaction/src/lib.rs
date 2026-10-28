@@ -110,7 +110,7 @@ impl ModuleSystems for InteractionSystems {
 
 impl Interaction {
     /// The engine tag of a container that holds a rider, which its looks test and a scan's
-    /// filter may select (transports.md, A container holding riders holds a tag).
+    /// filter may select (04-capabilities/interaction.md, A container holding riders holds a tag).
     pub const HOLDING: EngineTag = EngineTag::new(12, "holding", TagProperties::NONE);
 
     /// A unit of a type with a use slot holds one slot of its kind, as it spawns with, which a use
@@ -190,14 +190,14 @@ impl Module for Interaction {
     }
 
     /// Adds the containers' passes, on the server: in the gap after Think, each firing rider whose
-    /// target changed takes the free fire point nearest it; in the gap after Act, each flier a
-    /// unit comes to, or a rider of which waits to leave, lands, and climbs once none does; in the
-    /// gap after Collide, each
-    /// container's riders stand where it does, or at their points; in the gap after Hit, each
-    /// container holds its modifier on its riders, which stats hold in Resolve; in the gap after Resolve, the riders of the containers that
-    /// fell leave, hurt, those of the containers whose life fell to their `full` share start to
-    /// leave, and then the riders whose exits came leave. A `use` or an `enter` order fills a
-    /// use slot as it is given, and the abilities' casts run it.
+    /// target changed takes the free fire point nearest it; in the gap after Act, each flier a unit
+    /// comes to, or a rider of which waits to leave, lands, and climbs once none does; in the gap
+    /// after Collide, each container's riders stand where it does, or at their points; in the gap
+    /// after Hit, each container holds its modifier on its riders, which stats hold in Resolve; in
+    /// the gap after Resolve, the riders of the containers that fell leave, hurt, those of the
+    /// containers whose life fell to their `full` share start to leave, and then the riders whose
+    /// exits came leave. A `use` or an `enter` order fills a use slot as it is given, and the
+    /// abilities' casts run it.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.server(InteractionSystems::Aim, Containers::aim);
         cx.server(InteractionSystems::Land, Containers::land);

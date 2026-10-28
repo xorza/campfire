@@ -116,7 +116,7 @@ fn a_mover_takes_its_numbers_a_tick_at_the_match_rate() {
 fn the_forward_speed_is_the_release_games_on_each_axis_apart() {
     // Along its facing on an axis, the speed is the velocity's; against it, negative. On a
     // diagonal, each axis's part is v·r² for r = cos 45°, so the speed is √2·v·r² ≈ 0.707·v, not
-    // v (driving.md, The release game's forward speed).
+    // v (04-capabilities/navigation.md, The release game's forward speed).
     assert_eq!(
         ZeroHourMover::forward([Num::int(2), Num::ZERO], facing(0.0)),
         Num::int(2)

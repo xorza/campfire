@@ -395,9 +395,9 @@ impl<P: TimedProcess> DueIndex<P> {
         }
     }
 
-    /// Pushes a unit that comes back into the world as its `Disabled` goes, whose entry a pass
-    /// that found no unit dropped while it was out (transports.md, A rider's timers wait and catch
-    /// up).
+    /// Pushes a unit that comes back into the world as its `Disabled` goes, whose entry a pass that
+    /// found no unit dropped while it was out (04-capabilities/interaction.md, A rider's timers
+    /// wait and catch up).
     fn enabled(
         enabled: On<'_, '_, Remove<Disabled>>,
         books: StaticSystemParam<'_, '_, P::Books>,

@@ -15,11 +15,11 @@ pub(crate) struct ObjectKinds(u64);
 /// of it keeps its player in the match by (09-zero-hour.md, Defeat by the last building that
 /// counts); infantry, which a weapon may scatter more at; a vehicle, which drives through a crowd
 /// as one that turns, not one that steps (04-capabilities/navigation.md, A unit moves by its kind
-/// of motion); an aircraft, which a weapon may prefer (combat-response.md, An attack may prefer
-/// its targets); an immobile object, a drone and one that cannot retaliate, which answer no
-/// ally's call (combat-response.md, The import converts what the choice and the answer read); a
-/// hulk; an object a capture puts on the radar; the kinds a container's masks name, and a
-/// garrison that holds riders until it dies (transports.md, A container says who rides); and the
+/// of motion); an aircraft, which a weapon may prefer (04-capabilities/combat.md, An attack may
+/// prefer its targets); an immobile object, a drone and one that cannot retaliate, which answer no
+/// ally's call (09-zero-hour.md, The import converts what the choice and the answer read); a hulk;
+/// an object a capture puts on the radar; the kinds a container's masks name, and a garrison that
+/// holds riders until it dies (04-capabilities/interaction.md, A container says who rides); and the
 /// faction structures, `KINDOFMASK_FS`, the base defense among them, which a human player's idle
 /// unit takes as a target among structures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, NamedEnum)]

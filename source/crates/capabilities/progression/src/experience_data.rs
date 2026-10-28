@@ -8,8 +8,9 @@ use serde::de::Error;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// The mode's `[[experience]]`: the shares of a death's experience, each its own track, to
-/// whom, and the victims whose deaths give it (generals.md, A death's experience goes by shares).
+/// The mode's `[[experience]]`: the shares of a death's experience, each its own track, to whom,
+/// and the victims whose deaths give it (04-capabilities/games.md, A death's experience goes by
+/// shares).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ModeExperienceData(pub Vec<ShareData>);
@@ -26,8 +27,9 @@ pub struct ShareData {
 
 /// To whom a death's experience goes: its killer, `"killer"`, or its killer's player, `"player"`,
 /// when the killer passes `killer`, a filter from the victim's side, `enemies` by default
-/// (generals.md, A share's killer passes a filter; generals.md, A track of players); or `{ radius, filter }`, the living units `filter` selects for the victim whose
-/// bodies come within `radius` of its point, split evenly.
+/// (04-capabilities/games.md, A share's killer passes a filter; 04-capabilities/progression.md, A
+/// track of players); or `{ radius, filter }`, the living units `filter` selects for the victim
+/// whose bodies come within `radius` of its point, split evenly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExperienceTo {
     Killer { killer: FilterData },

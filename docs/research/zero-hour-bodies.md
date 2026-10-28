@@ -1,0 +1,10 @@
+# Zero Hour's bodies
+
+What each body module of Zero Hour does with damage, and which objects carry it, read on 28 October 2026 from [GeneralsX](https://github.com/fbraz3/GeneralsX) (`Body/*.cpp`) and the release game's `INIZH.big` (`Data/INI/Object/*.ini`).
+
+- **The counts.** Of the objects' `Body` modules, 1,160 are `ActiveBody`, 312 `StructureBody`, 36 `ImmortalBody`, 15 `HighlanderBody`, 11 `HiveStructureBody`, 6 `UndeadBody` and 6 `InactiveBody`.
+- **A hive is a structure.** `HiveStructureBody` is a `StructureBody` that passes the damage of its `PropagateDamageTypesToSlavesWhenExisting` types to one of its spawns while one lives, and swallows that of its `SwallowDamageTypesIfSlavesNotExisting` types while none lives. It is the body of every Fire Base, `AmericaFireBase` and the three generals' copies, 1,000 health, which passes `SNIPER` and has no spawns, and of every Stinger Site, `GLAStingerSite`, `GLAStingerSiteNoHole` and the generals' copies.
+- **An undead body lives twice.** `UndeadBody` is an `ActiveBody` whose first damage that would kill it, of any type but `UNRESISTABLE` that hurts health, leaves it 1 health, then sets its most health to `SecondLifeMaxHealth` and heals it whole, sets the armor set's `SECOND_LIFE` flag and starts a slow death drawn among those that apply, `BattleBusSlowDeathBehavior` for the bus (`UndeadBody::attemptDamage`, `startSecondLife`). Its objects are the Battle Bus, `GLAVehicleBattleBus` and its generals' copies, 400 health, 650 the second life.
+- **A highlander never dies of damage.** `HighlanderBody` keeps 1 health against all but `UNRESISTABLE` damage: the SDI lasers, trees and stumps, and the TNT, booby trap and C4 charges.
+- **Immortal and inactive bodies.** `ImmortalBody` never falls below 1 health; `InactiveBody` takes no damage: the multiplayer beacon, fire fields and the garrison gun.
+- **What the engine holds.** The import gives life to an `ActiveBody` and a `StructureBody` alone (`fight_data.rs`, `BodyKind`), so a Fire Base, a Stinger Site and a Battle Bus have no life: no weapon targets them, no bar shows their health, and nothing kills them.

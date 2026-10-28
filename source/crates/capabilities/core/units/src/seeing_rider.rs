@@ -8,10 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::unit_entity::UnitEntity;
 
-/// Marks a rider that sees from its container, out of the world as every rider is: vision names
-/// it, by `Sighted`, beside the units in the world (transports.md, A garrison's riders see from
-/// it). Interaction sets it as the rider enters and takes it as the rider leaves: interaction's
-/// state, kept here, as `FiringRider` is, so vision names it with no dependency on interaction.
+/// Marks a rider that sees from its container, out of the world as every rider is: vision names it,
+/// by `Sighted`, beside the units in the world (04-capabilities/interaction.md, A garrison's riders
+/// see from it). Interaction sets it as the rider enters and takes it as the rider leaves:
+/// interaction's state, kept here, as `FiringRider` is, so vision names it with no dependency on
+/// interaction.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 pub struct SeeingRider;

@@ -13,9 +13,10 @@ use crate::zero_hour::format::ini::locomotor_ini::{Appearance, Locomotor};
 use crate::zero_hour::format::ini::object_ini::IniObject;
 
 /// A type's Zero Hour mover, of a locomotor of `TREADS`, `TWO_LEGS`, `FOUR_WHEELS` or `MOTORCYCLE`
-/// that drives it on the ground (driving.md, Each appearance moves as its mover): its `locomotor`,
-/// its acceleration in meters a second squared, and its hurt, of a locomotor whose damaged numbers
-/// differ from its own (driving.md, A hurt type may hold a modifier).
+/// that drives it on the ground (04-capabilities/navigation.md, Each appearance moves as its
+/// mover): its `locomotor`, its acceleration in meters a second squared, and its hurt, of a
+/// locomotor whose damaged numbers differ from its own (04-capabilities/stats.md, A hurt type may
+/// hold a modifier).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ImportedMover {
     pub(crate) locomotor: ZeroHourLocomotor,

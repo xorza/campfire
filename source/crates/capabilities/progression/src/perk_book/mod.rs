@@ -16,9 +16,9 @@ use crate::perk_data::PerkData;
 use crate::track_book::TrackBook;
 use crate::track_data::TrackHolder;
 
-/// The perks a match loaded, by id (generals.md, A science is a perk of a player). Package data,
-/// not state: a restore loads it from the packages, as a new match does. A clone shares the
-/// perks.
+/// The perks a match loaded, by id (04-capabilities/progression.md, A science is a perk of a
+/// player). Package data, not state: a restore loads it from the packages, as a new match does. A
+/// clone shares the perks.
 #[derive(Resource, Debug, Clone, Default)]
 #[component(immutable)]
 pub struct PerkBook(Arc<Perks>);

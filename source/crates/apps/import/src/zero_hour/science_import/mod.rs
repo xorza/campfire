@@ -20,16 +20,18 @@ const TRACK: &str = "rank";
 /// prerequisites for the rank it needs.
 const RANK_LEAD: &str = "SCIENCE_Rank";
 
-/// The import's general's ranks and sciences (generals.md, A track of players; generals.md, A
-/// science is a perk of a player): the player track `rank`, of `Rank.ini`'s skill points from rank
-/// 2 and each rank's points to buy sciences, and its share, to the killer's player of a death of an
-/// enemy's unit but a site's, as `Player::addSkillPointsForKill` counts none for a victim
-/// `UNDER_CONSTRUCTION` and `Object::scoreTheKill` none for the neutral player; the perks, one for
-/// each science a playable template holds from the start or buys in its purchase sets, each one a
-/// train, a build, a research or a start needs, and each prerequisite of one but a rank's, each of its cost, none for a cost of 0, the level of its
-/// highest rank's science, its other prerequisites, and a modifier of its name; and each faction's
-/// intrinsic sciences, which the mode's start grants, and the skill sets of its side, which its
-/// bot buys (generals.md, A bot buys its skill set). None of a game of no ranks.
+/// The import's general's ranks and sciences (04-capabilities/progression.md, A track of players;
+/// 04-capabilities/progression.md, A science is a perk of a player): the player track `rank`, of
+/// `Rank.ini`'s skill points from rank 2 and each rank's points to buy sciences, and its share, to
+/// the killer's player of a death of an enemy's unit but a site's, as
+/// `Player::addSkillPointsForKill` counts none for a victim `UNDER_CONSTRUCTION` and
+/// `Object::scoreTheKill` none for the neutral player; the perks, one for each science a playable
+/// template holds from the start or buys in its purchase sets, each one a train, a build, a
+/// research or a start needs, and each prerequisite of one but a rank's, each of its cost, none for
+/// a cost of 0, the level of its highest rank's science, its other prerequisites, and a modifier of
+/// its name; and each faction's intrinsic sciences, which the mode's start grants, and the skill
+/// sets of its side, which its bot buys (09-zero-hour.md, A bot buys its skill set). None of a game
+/// of no ranks.
 #[derive(Debug, Default)]
 pub(crate) struct ScienceImport {
     pub(crate) track: Option<(DeclaredName, TrackData)>,
@@ -40,7 +42,8 @@ pub(crate) struct ScienceImport {
 }
 
 /// A perk's button on a page of its faction's panel of perks: its place, from 1, its perk, and its
-/// button's image, by name, none for a button of none (generals.md, The perk panel by a choice).
+/// button's image, by name, none for a button of none (02-engine-core.md, The perk panel by a
+/// choice).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PageFace {
     pub(crate) place: NonZeroU8,

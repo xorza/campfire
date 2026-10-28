@@ -26,13 +26,13 @@ const BUGGY: &str = "glavehiclerocketbuggy";
 const CANNON: &str = "weapon_comanche20mmcannonweapon";
 const MISSILES: &str = "weapon_comancheantitankmissileweapon";
 
-/// Where the play's units go, `[x, z]` meters from the middle of the two starts, in the open
-/// ground between the map's ridges, clear of its buildings. The Comanche waits 350 m from its targets, past its weapons'
-/// 200 m, so its orders alone start its fights. The buggy stops 215 m from the first Crusader,
-/// their bodies 181 m apart: past the Crusader's gun of 150 m, within the buggy's rockets of
-/// 300 m and the mode's retaliation distance of 200 m. The second Crusader stands 60 m from the
-/// first, within the mode's radius of 120 m, and 223 m from the buggy, past its own gun. The
-/// driving Crusader passes 100 m from the second Rebel, within its gun's reach, which stands
+/// Where the play's units go, `[x, z]` meters from the middle of the two starts, in the open ground
+/// between the map's ridges, clear of its buildings. The Comanche waits 350 m from its targets,
+/// past its weapons' 200 m, so its orders alone start its fights. The buggy stops 215 m from the
+/// first Crusader, their bodies 181 m apart: past the Crusader's gun of 150 m, within the buggy's
+/// rockets of 300 m and the mode's retaliation distance of 200 m. The second Crusader stands 60 m
+/// from the first, within the mode's radius of 120 m, and 223 m from the buggy, past its own gun.
+/// The driving Crusader passes 100 m from the second Rebel, within its gun's reach, which stands
 /// 340 m from the other Crusader.
 const REBEL_AT: [i64; 2] = [0, 0];
 const SCORPION_AT: [i64; 2] = [100, 0];
@@ -42,14 +42,14 @@ const BUGGY_AT: [i64; 2] = [-185, 0];
 const DRIVEN_REBEL_AT: [i64; 2] = [-100, -100];
 const DRIVE_TO: [i64; 2] = [150, 0];
 
-/// The combat play on Tournament Desert (combat-response.md, Combat chooses the weapon;
-/// combat-response.md, A turret has its own target; combat-response.md, A damaged unit calls its
-/// idle allies; combat-response.md, A play walks its units out of the base starts): player 1,
-/// America, and player 2, GLA, each from its base start, ordered nothing but the play's orders,
-/// which walk their units out to the middle of the map. America's Comanche, ordered at a Rebel
-/// and then at a Scorpion, fires its cannon at the one and its missiles at the other; a rocket
-/// buggy fires on a standing Crusader from past the Crusader's reach, and the Crusader and its
-/// idle neighbour chase it and walk back to their places; and a Crusader driven past a Rebel
+/// The combat play on Tournament Desert (04-capabilities/combat.md, Combat chooses the weapon;
+/// 04-capabilities/combat.md, A turret has its own target; 04-capabilities/control.md, A damaged
+/// unit calls its idle allies; 09-zero-hour.md, A play walks its units out of the base starts):
+/// player 1, America, and player 2, GLA, each from its base start, ordered nothing but the play's
+/// orders, which walk their units out to the middle of the map. America's Comanche, ordered at a
+/// Rebel and then at a Scorpion, fires its cannon at the one and its missiles at the other; a
+/// rocket buggy fires on a standing Crusader from past the Crusader's reach, and the Crusader and
+/// its idle neighbour chase it and walk back to their places; and a Crusader driven past a Rebel
 /// fires on it from its turret and drives on to its goal.
 #[derive(Debug)]
 pub(crate) struct CombatPlay;

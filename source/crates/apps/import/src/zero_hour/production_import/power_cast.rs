@@ -18,10 +18,10 @@ use crate::zero_hour::import_name::ImportName;
 /// The param of a power's cast that its heal reads, its building's stat of the power's heal.
 const HEAL: &str = "heal";
 
-/// The section of a special power the import converts to a cast of its building (generals.md, A
-/// power is a cast of its building; generals.md, The import converts a marker's burst): the area
-/// of its marker's type it lands, which heals each unit it reaches by its building's stat of the
-/// power's heal; its keys cast it at a point anywhere, its cooldown its player's, of its
+/// The section of a special power the import converts to a cast of its building (09-zero-hour.md, A
+/// power is a cast of its building; 09-zero-hour.md, The import converts a marker's burst): the
+/// area of its marker's type it lands, which heals each unit it reaches by its building's stat of
+/// the power's heal; its keys cast it at a point anywhere, its cooldown its player's, of its
 /// `ReloadTime`, while its building holds the power's tag.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PowerCast {

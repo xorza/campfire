@@ -301,7 +301,7 @@ impl CombatImport {
 
     /// The filter of the targets of all of `kinds`, a weapon set's `PreferredAgainst`, by their
     /// tags of `names`; none for a kind of no tag, as `BALLISTIC_MISSILE`, which no unit of the
-    /// engine's is (combat-response.md, The import converts what the choice and the answer read).
+    /// engine's is (09-zero-hour.md, The import converts what the choice and the answer read).
     fn preference(kinds: PreferredKinds, names: &RulesNames) -> Option<TagFilterData> {
         let PreferredKinds {
             infantry,
@@ -691,8 +691,8 @@ impl ImportedWeapon {
     }
 
     /// The stats a weapon's rate of fire takes: the veterancy's, and the stages' of a weapon of
-    /// continuous fire, as `Weapon::computeBonus` sums each condition's bonus (generals.md, A
-    /// weapon's bonus is a sum of stats).
+    /// continuous fire, as `Weapon::computeBonus` sums each condition's bonus
+    /// (04-capabilities/combat.md, A weapon's bonus is a sum of stats).
     fn rate_bonus(names: &RulesNames, staged: bool) -> BonusData {
         let stage = staged.then(|| names.rate_of_fire.clone());
         let stats = [names.veterancy_rate.clone()].into_iter().chain(stage);

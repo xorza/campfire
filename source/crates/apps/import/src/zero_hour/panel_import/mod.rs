@@ -44,8 +44,8 @@ pub(crate) struct PanelImport {
     pub(crate) grid: PanelGrid,
     pub(crate) textures: BTreeSet<ArchivePath>,
     /// The icons of a veteran, an elite and a heroic unit, as `Drawable` draws `SCVeter1` to
-    /// `SCVeter3`, none when one of them draws from no texture (generals.md, A level shows its
-    /// icon).
+    /// `SCVeter3`, none when one of them draws from no texture (02-engine-core.md, A level shows
+    /// its icon).
     pub(crate) level_icons: Vec<PanelIcon>,
 }
 

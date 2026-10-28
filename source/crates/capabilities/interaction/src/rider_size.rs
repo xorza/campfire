@@ -7,7 +7,7 @@ use crate::rides_data::RidesData;
 
 /// A rider type's size, package data and not state: the room each of its units takes of a
 /// container that counts its riders' sizes; a type of none rides nothing
-/// (transports.md, A container says who rides).
+/// (04-capabilities/interaction.md, A container says who rides).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RiderSize(NonZeroU32);
 

@@ -222,12 +222,13 @@ fn a_scan_passes_a_unit_inside_its_minimum_range_and_an_order_backs_away_from_it
 }
 
 /// A scan reaches by any weapon, and a chase walks to the range of the weapon its unit chose
-/// (combat-response.md, The scan reaches by any weapon; combat-response.md, The chosen weapon is
-/// the attack's). A scanner of 10 within 2 m in slot 0 and of 30 within 6 m in slot 1, which walks
-/// a meter a tick, takes in tick 0 an enemy at 4 m, which its second weapon alone reaches, and
-/// keeps it as the second cools. Another, at x = 100, ordered at an enemy 20 m off, which no
-/// weapon reaches, chooses the first and walks a meter a tick; in tick 14, at x = 86, the second
-/// reaches the enemy and is its choice, and it stops there, keeping the second as it cools.
+/// (04-capabilities/control.md, The scan reaches by any weapon; 04-capabilities/combat.md, The
+/// chosen weapon is the attack's). A scanner of 10 within 2 m in slot 0 and of 30 within 6 m in
+/// slot 1, which walks a meter a tick, takes in tick 0 an enemy at 4 m, which its second weapon
+/// alone reaches, and keeps it as the second cools. Another, at x = 100, ordered at an enemy 20 m
+/// off, which no weapon reaches, chooses the first and walks a meter a tick; in tick 14, at x = 86,
+/// the second reaches the enemy and is its choice, and it stops there, keeping the second as it
+/// cools.
 #[test]
 fn a_scan_reaches_by_any_weapon_and_a_chase_walks_to_the_chosen_weapons_range() {
     let mut game = orders_match();
@@ -278,13 +279,12 @@ fn a_scan_reaches_by_any_weapon_and_a_chase_walks_to_the_chosen_weapons_range() 
 }
 
 /// A walking unit's turret takes the target its scan finds, fires on it as the unit walks on, and
-/// drops it out of reach (combat-response.md, A turret has its own target). The scanner, of a
-/// turret that turns at once and fires within 180°, walks a meter a tick from the origin to
-/// (0, 0, 10), scanning in ticks 0, 3 and 6; in tick 6, at z = 6, √2 m from an enemy at
-/// (1, 0, 5), within its reach of 2 m, its turret takes it and its attack starts, which strikes
-/// in tick 7 as the unit walks on; in tick 8, at z = 8, √10 m off, the turret drops it, and the
-/// unit stands at its goal after tick 9. An attack target ends a turret target, as the unit's
-/// own comes first.
+/// drops it out of reach (04-capabilities/combat.md, A turret has its own target). The scanner, of
+/// a turret that turns at once and fires within 180°, walks a meter a tick from the origin to (0,
+/// 0, 10), scanning in ticks 0, 3 and 6; in tick 6, at z = 6, √2 m from an enemy at (1, 0, 5),
+/// within its reach of 2 m, its turret takes it and its attack starts, which strikes in tick 7 as
+/// the unit walks on; in tick 8, at z = 8, √10 m off, the turret drops it, and the unit stands at
+/// its goal after tick 9. An attack target ends a turret target, as the unit's own comes first.
 #[test]
 fn a_walking_turret_fires_on_what_its_scan_finds_and_its_unit_walks_on() {
     let mut scene = Scene::new(&["enemies"], Some(meter()));

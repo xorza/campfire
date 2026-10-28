@@ -178,7 +178,7 @@ pub(crate) struct Layout {
 impl Layout {
     /// The badge of its unit's level on its stand: left of the life bar, at its height, in front
     /// of the bars, as Zero Hour's `Drawable::drawVeterancy` draws its chevron by the health bar
-    /// (generals.md, A level shows its icon).
+    /// (02-engine-core.md, A level shows its icon).
     pub(crate) fn badge() -> Transform {
         let left = -(WIDE / 2.0 + BADGE_GAP + BADGE / 2.0);
         Transform::from_translation(Vec3::new(left, FRONT, -ABOVE))

@@ -8,10 +8,10 @@ use crate::action_range::ActionRange;
 use crate::action_slots::{ActionSlot, ActionSlots};
 use crate::rank_values::RankValues;
 
-/// A weapon's range bonus: the stats whose sum stretches its range, times 1 plus the sum, as
-/// Zero Hour's `RANGE` weapon bonus does, which the capability of weapons books for each weapon of
-/// one, so the scan and the chase, which know no weapon, read it (transports.md, A container's
-/// modifier holds on its riders).
+/// A weapon's range bonus: the stats whose sum stretches its range, times 1 plus the sum, as Zero
+/// Hour's `RANGE` weapon bonus does, which the capability of weapons books for each weapon of one,
+/// so the scan and the chase, which know no weapon, read it (04-capabilities/combat.md, A
+/// container's modifier holds on its riders).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RangeBonus(Box<[StatId]>);
 

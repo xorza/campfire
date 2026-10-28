@@ -121,9 +121,9 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         include_bytes!("../../../../../packages/zero-hour/package.index")
     );
     // The package's own reader takes its units file: the tank, the wall and the rocks the map
-    // places, America's start objects, the barracks, the power plant, the ranger and the
-    // pathfinder their command sets make, and the shell the tank's cannon fires. Its units drive, by stats, orders and
-    // navigation, no faster than the tank's 30.5 m a second.
+    // places, America's start objects, the barracks, the power plant, the ranger and the pathfinder
+    // their command sets make, and the shell the tank's cannon fires. Its units drive, by stats,
+    // orders and navigation, no faster than the tank's 30.5 m a second.
     let mode = ModePackages::at(&PackageDir::new(test_dir.path("one/game")), Some(&named)).unwrap();
     let types: Vec<String> = mode
         .content()
@@ -160,8 +160,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let navigation = data.section::<ModeNavigationData>().unwrap();
     assert_eq!(navigation.spawn_tags, all_declared(&["start", "rally"]));
     // Its base, as the dozer builds the power plant, which America's science lets it, and the
-    // barracks, and the center and the barracks train, and two of each unit (09-zero-hour.md, A base start); its army the ranger alone, as the sample's
-    // pathfinder holds no weapon.
+    // barracks, and the center and the barracks train, and two of each unit (09-zero-hour.md, A
+    // base start); its army the ranger alone, as the sample's pathfinder holds no weapon.
     let names = |names: &[&str]| {
         ModeParam::List(
             names
@@ -303,7 +303,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let mut barracks = ActionData::of(Targeting::Point, barracks);
     barracks.keys.range = meters(10);
     // The power plant, of no cost and of no body, needs America's science: its perk's modifier
-    // (generals.md, A perk's modifier is a player modifier).
+    // (04-capabilities/progression.md, A perk's modifier is a player modifier).
     let power_plant = BuildData {
         unit_type: declared("americapowerplant"),
         requires: Some(RequiresData {

@@ -224,7 +224,7 @@ impl AgainstAmerica {
 }
 
 /// A play's match of two players, each from its faction's base start and ordered by the play alone
-/// (combat-response.md, A play walks its units out of the base starts): their factions' picks.
+/// (09-zero-hour.md, A play walks its units out of the base starts): their factions' picks.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BaseStarts {
     factions: [&'static str; 2],

@@ -29,14 +29,14 @@ pub(crate) mod pre_attack;
 pub(crate) mod progress_dues;
 
 /// What a unit's actions have under way, beside its slots, whose table it keys on: the action it
-/// was ordered or has under way, one at a time; the unit its attacks aim at, which it attacks
-/// again each time a weapon is ready, until another order; the unit its turret aims at while it
-/// walks with no attack target, of its scan (combat-response.md, A turret has its own target);
-/// the slot of the weapon combat chose this tick against the first of the two it has
-/// (combat-response.md, The chosen weapon is the attack's); the pre-attack of a weapon at that
-/// unit; and a channel an order, a stop or an interrupt cut, whose
-/// `on_interrupt` has yet to run. An attack's or a channel's step changes it alone, so what reads
-/// the slots' table visits no unit for it.
+/// was ordered or has under way, one at a time; the unit its attacks aim at, which it attacks again
+/// each time a weapon is ready, until another order; the unit its turret aims at while it walks
+/// with no attack target, of its scan (04-capabilities/combat.md, A turret has its own target); the
+/// slot of the weapon combat chose this tick against the first of the two it has
+/// (04-capabilities/combat.md, The chosen weapon is the attack's); the pre-attack of a weapon at
+/// that unit; and a channel an order, a stop or an interrupt cut, whose `on_interrupt` has yet to
+/// run. An attack's or a channel's step changes it alone, so what reads the slots' table visits no
+/// unit for it.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionProgress {
     underway: Option<InProgress>,
@@ -494,8 +494,8 @@ impl ActionProgress {
     }
 
     /// Attacks `target` from now on, its unit due in `dues` while it has one; another target than
-    /// the one its attacks aim at cancels an attack in its windup and spends nothing. A target
-    /// ends its turret target, as its own comes first (combat-response.md, A turret has its own
+    /// the one its attacks aim at cancels an attack in its windup and spends nothing. A target ends
+    /// its turret target, as its own comes first (04-capabilities/combat.md, A turret has its own
     /// target).
     pub fn set_attack_target(&mut self, target: Option<AttackTarget>, dues: &mut ProgressDues<'_>) {
         let aimed = target.map_or(self.turret_target, |target| Some(target.unit));

@@ -2,15 +2,15 @@
 // `attacker`. Each think, a bot learns the perks of its skill set it can; a bot with no site under
 // way orders one of its faction's builders to build the first building of its faction's base list
 // it lacks and may start, at the nearest place round its start where the build passes, so the
-// builder idles once its base is whole and builds a building again once one falls. Each bot sends its idle gatherers to the nearest node,
-// and trains a gatherer while it holds fewer than `gatherers` for each drop-off. The attacker also
-// trains its faction's army at each producer, the type it holds fewest of first; its idle units
-// at home, within `guard` of its start, go at an enemy seen there while it holds fewer than `army`
-// of them and more are coming, and once it holds `army`, or no more are coming, at the nearest
-// enemy they see within `sight`, or at the nearest enemy start; its idle units out with the army
-// go on so whatever its count: by attack-move, and within `reach` by an attack (09-zero-hour.md,
-// A builder and an attacker; 04-capabilities/control.md, A bot gathers; 04-capabilities/control.md,
-// An army attack-moves).
+// builder idles once its base is whole and builds a building again once one falls. Each bot sends
+// its idle gatherers to the nearest node, and trains a gatherer while it holds fewer than
+// `gatherers` for each drop-off. The attacker also trains its faction's army at each producer, the
+// type it holds fewest of first; its idle units at home, within `guard` of its start, go at an
+// enemy seen there while it holds fewer than `army` of them and more are coming, and once it holds
+// `army`, or no more are coming, at the nearest enemy they see within `sight`, or at the nearest
+// enemy start; its idle units out with the army go on so whatever its count: by attack-move, and
+// within `reach` by an attack (09-zero-hour.md, A builder and an attacker;
+// 04-capabilities/control.md, A bot gathers; 04-capabilities/control.md, An army attack-moves).
 fn on_bot_think(ctx) {
     let me = ctx.player;
     let chosen = ctx.chosen(me, "faction");
@@ -29,10 +29,10 @@ fn on_bot_think(ctx) {
 }
 
 // Orders each perk of its skill set its player lacks, in the set's order, by an order of no units,
-// each think its player holds a point: the set at its player slot's place among its faction's
-// sets, as a bot's think draws from no stream. The server drops a learn its player may not make
-// yet, as `AIPlayer::doUpgradesAndSkills` skips a science it cannot buy (generals.md, A bot buys
-// its skill set).
+// each think its player holds a point: the set at its player slot's place among its faction's sets,
+// as a bot's think draws from no stream. The server drops a learn its player may not make yet, as
+// `AIPlayer::doUpgradesAndSkills` skips a science it cannot buy (09-zero-hour.md, A bot buys its
+// skill set).
 fn learn(ctx, me, faction) {
     let sets = ctx.params[`skill_sets_${faction}`];
     if sets.is_empty() || me.perk_points == 0 {

@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 use crate::enter_spec::EnterSpec;
 
 /// Marks a rider, out of the world inside its container, by the container's stable id
-/// (transports.md, A rider leaves the world and keeps its entity): its hooks give it Bevy's
-/// `Disabled` and take it back, so every query that does not name `Disabled` passes over it,
-/// in a match and on each client that receives it, while its parts and its stable id stay.
+/// (04-capabilities/interaction.md, A rider leaves the world and keeps its entity): its hooks give
+/// it Bevy's `Disabled` and take it back, so every query that does not name `Disabled` passes over
+/// it, in a match and on each client that receives it, while its parts and its stable id stay.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable, on_insert = Self::leave_world, on_remove = Self::come_back)]
 #[serde(transparent)]

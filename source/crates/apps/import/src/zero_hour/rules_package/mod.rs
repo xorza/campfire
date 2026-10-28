@@ -188,7 +188,7 @@ pub(crate) struct ModeImport<'a> {
 }
 
 /// The mode's `[retaliation]` of `ai`'s values, its aggressors `names`' enemies on the ground, as
-/// `shouldRetaliateAgainstAggressor` refuses an airborne one (combat-response.md, The import
+/// `shouldRetaliateAgainstAggressor` refuses an airborne one (09-zero-hour.md, The import
 /// converts what the choice and the answer read); none when `AIData` gives none of them, and an
 /// error for a value the engine holds no number of.
 pub(crate) fn retaliation(
@@ -208,19 +208,19 @@ pub(crate) fn retaliation(
     }))
 }
 
-/// The imported package's mode data: what the install gives, over the rules package's fixed
-/// data (03-game-scripting.md, Overrides by load order): its name and its teams' names, as its
-/// manifest names the teams, the rules package's mode script, its params of what each faction
-/// starts with and its choice of a faction, `start` (09-zero-hour.md, A skirmish starts with the
-/// faction's start objects; 09-zero-hour.md, Each player picks a faction), each faction's base
-/// and its choice of a start, standard or a base (09-zero-hour.md, A player slot picks its start;
-/// 09-zero-hour.md, A base start), and the
-/// option of the money it starts with, of `start_money`'s values (09-zero-hour.md, The import
-/// writes Zero Hour's money as an option); the armors, the weapons, the modifiers of their
-/// stages and the stats of their damage bonuses of `combat` (09-zero-hour.md), the trains, builds
-/// and researches of `production` (04-capabilities/production.md), the modifiers of `upgrades`,
-/// each upgrade's and each effect's (09-zero-hour.md, Zero Hour's upgrade flags are tags and
-/// stats), and those of the hurts of `movers` (driving.md, A hurt type may hold a modifier).
+/// The imported package's mode data: what the install gives, over the rules package's fixed data
+/// (03-game-scripting.md, Overrides by load order): its name and its teams' names, as its manifest
+/// names the teams, the rules package's mode script, its params of what each faction starts with
+/// and its choice of a faction, `start` (09-zero-hour.md, A skirmish starts with the faction's
+/// start objects; 09-zero-hour.md, Each player picks a faction), each faction's base and its choice
+/// of a start, standard or a base (09-zero-hour.md, A player slot picks its start; 09-zero-hour.md,
+/// A base start), and the option of the money it starts with, of `start_money`'s values
+/// (09-zero-hour.md, The import writes Zero Hour's money as an option); the armors, the weapons,
+/// the modifiers of their stages and the stats of their damage bonuses of `combat`
+/// (09-zero-hour.md), the trains, builds and researches of `production`
+/// (04-capabilities/production.md), the modifiers of `upgrades`, each upgrade's and each effect's
+/// (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats), and those of the hurts of
+/// `movers` (04-capabilities/stats.md, A hurt type may hold a modifier).
 pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     let ModeImport {
         start,
@@ -279,7 +279,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
             (param("perks", faction), list(perks)),
         ];
         // Each skill set its own list, `skill_set_<n>_<faction>` from 1, as a param holds no list
-        // of lists, and their names in order (generals.md, A bot buys its skill set).
+        // of lists, and their names in order (09-zero-hour.md, A bot buys its skill set).
         let sets = sciences
             .skill_sets
             .get(&faction.name)

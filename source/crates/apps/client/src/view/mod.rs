@@ -652,7 +652,7 @@ impl ViewPlugin {
         }
     }
 
-    /// Hides the drawing of a unit that leaves the world, as a rider does (transports.md, The
+    /// Hides the drawing of a unit that leaves the world, as a rider does (02-engine-core.md, The
     /// client orders entries by the right click).
     fn hide(
         added: On<'_, '_, Add<Disabled>>,

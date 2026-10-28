@@ -147,7 +147,7 @@ pub(super) static MAP_FLAWS: &[Flaw] = &[
         MODE,
         |problem| rule_at(problem, &unit_type("inhibitor"), &AcquireError::NoWeapon),
     ),
-    // A type that retaliates has a weapon and walks (combat-response.md, Retaliation is the
+    // A type that retaliates has a weapon and walks (04-capabilities/control.md, Retaliation is the
     // mode's data).
     Flaw::of(
         UNITS,

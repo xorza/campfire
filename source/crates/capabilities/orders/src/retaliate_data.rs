@@ -3,9 +3,10 @@ use campfire_math::Num;
 use campfire_script::{ApiVersion, DataSection, DataTable, Status};
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// A unit type's `retaliate`, which makes its units answer an ally's call (combat-response.md,
-/// Retaliation is the mode's data): the meters from where it stood past which it gives up, its
-/// leash, and those past which its target lies when it gives up, its reach.
+/// A unit type's `retaliate`, which makes its units answer an ally's call
+/// (04-capabilities/control.md, Retaliation is the mode's data): the meters from where it stood
+/// past which it gives up, its leash, and those past which its target lies when it gives up, its
+/// reach.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RetaliateData {
     pub leash: Num,

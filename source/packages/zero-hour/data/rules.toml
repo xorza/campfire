@@ -7,11 +7,11 @@ resources = ["money"]
 # which its scripts find a slot's start and rally by; a map of no waypoint has them on no marker.
 marker_params = ["name", "player_slot"]
 
-# The stats its units drive by, their acceleration a mover's (driving.md, A type moves by its
-# movement model), the life they live by, the rate of fire a stage of continuous fire adds to,
-# which a weapon of one divides its period by, plus 1, the damage and the rate of fire a level
-# of veterancy adds to every weapon, as `Object::onVeterancyLevelChanged` sets its weapon bonus
-# condition, and the range and the damage a garrison adds to every weapon of its riders, as
+# The stats its units drive by, their acceleration a mover's (04-capabilities/navigation.md, A type
+# moves by its movement model), the life they live by, the rate of fire a stage of continuous fire
+# adds to, which a weapon of one divides its period by, plus 1, the damage and the rate of fire a
+# level of veterancy adds to every weapon, as `Object::onVeterancyLevelChanged` sets its weapon
+# bonus condition, and the range and the damage a garrison adds to every weapon of its riders, as
 # `GarrisonContain::onContaining` sets `GARRISONED`.
 [stats]
 move_speed = {}
@@ -97,8 +97,8 @@ life = "life"
 
 [tags.no_garrison]
 
-# The tag of a unit that gives its player a radar, which a `RadarUpgrade` gives and the minimap shows
-# by.
+# The tag of a unit that gives its player a radar, which a `RadarUpgrade` gives and the minimap
+# shows by.
 [tags.radar]
 
 [tags.armor_upgrade]
@@ -114,7 +114,8 @@ life = "life"
 [tags.continuous_fire_slow]
 
 # The tags of the markers its players start at and their starting units rally at; and its layers,
-# the ground and the air its helicopters fly in (04-capabilities/navigation.md, Fliers share a layer).
+# the ground and the air its helicopters fly in (04-capabilities/navigation.md, Fliers share a
+# layer).
 [navigation]
 spawn_tags = ["start", "rally"]
 layers = ["ground", "air"]
@@ -161,8 +162,8 @@ targets = ["hostiles:!structure", "hostiles:base_defense", "hostiles:holding"]
 tolerance_deg = "2.0053522829578814"
 slot = "weapon"
 
-# Every player holds each unit's slot times and clips, as the original draws every unit's pre-attack,
-# shot, wait and reload, which its look's conditions derive from them (02-engine-core.md, The
-# client derives an attack's phase).
+# Every player holds each unit's slot times and clips, as the original draws every unit's
+# pre-attack, shot, wait and reload, which its look's conditions derive from them
+# (02-engine-core.md, The client derives an attack's phase).
 [visibility]
 cooldowns = ["allies", "enemies", "spectators"]

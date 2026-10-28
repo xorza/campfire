@@ -30,13 +30,14 @@ use crate::zero_hour::supply_import::DOCK_RANGE;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
-/// Zero Hour's transports and garrisons, of the unit types the import makes (transports.md, A
-/// container says who rides; transports.md, A container may let its riders fire; transports.md, A
-/// garrison's riders see from it; transports.md, A container's modifier holds on its riders): the
-/// `enter` of each type of a `TransportContain` or
-/// a `GarrisonContain`, the `rides` of each type that walks and takes room of a transport, the
-/// entry they name, the garrison's modifier of `GameData.ini`'s `GARRISONED` bonuses, and what it
-/// drops, each once for each cause, in the order of the types' names.
+/// Zero Hour's transports and garrisons, of the unit types the import makes
+/// (04-capabilities/interaction.md, A container says who rides; 04-capabilities/combat.md, A
+/// container may let its riders fire; 04-capabilities/interaction.md, A garrison's riders see from
+/// it; 04-capabilities/combat.md, A container's modifier holds on its riders): the `enter` of each
+/// type of a `TransportContain` or a `GarrisonContain`, the `rides` of each type that walks and
+/// takes room of a transport, the entry they name, the garrison's modifier of `GameData.ini`'s
+/// `GARRISONED` bonuses, and what it drops, each once for each cause, in the order of the types'
+/// names.
 #[derive(Debug, Default)]
 pub(crate) struct ContainImport {
     pub(crate) enters: BTreeMap<TypeName, EnterData>,
@@ -134,8 +135,8 @@ impl ContainImport {
 
     /// The `enter` of `object`'s `contain`, its payload left out, by the names and the threshold
     /// of `rules`, which takes those of `riders` its kinds take, by tags that take each as its
-    /// masks do (transports.md, The import says who rides by tags, or drops the container), and
-    /// fires from `points`, or from its place of none or of no enclosing (transports.md, A
+    /// masks do (09-zero-hour.md, The import says who rides by tags, or drops the container), and
+    /// fires from `points`, or from its place of none or of no enclosing (09-zero-hour.md, A
     /// garrison that encloses no rider fires from its place), each part it drops given to `drop`;
     /// the cause as an error for a contain module it does not convert.
     fn enter(
@@ -267,7 +268,7 @@ impl ContainImport {
     }
 
     /// The entry of every container, which a rider runs from within the pathfinder's cell of its
-    /// body (transports.md, The import's entry reaches the pathfinder's cell).
+    /// body (09-zero-hour.md, The import's entry reaches the pathfinder's cell).
     fn entry() -> ActionKeys {
         let range = RangeField::Range(ActionRange::meters(DOCK_RANGE));
         ActionKeys {

@@ -20,12 +20,12 @@ use crate::enter_spec::EnterSpec;
 use crate::riding::Riding;
 
 /// A container's riders, in the order they entered, its owner's state
-/// (transports.md, A container keeps its riders in order): each with the room it takes and
-/// whether an exit waits for it; the first tick the next may leave; while a rider's player holds
-/// it, the player and the team it had before (transports.md, A free building takes its riders'
-/// side); the units ordered to enter it, each whether it waits on the ground for it to land; and
-/// whether it lands for them (transports.md, A flier lands for its riders). Every unit of a
-/// container type holds one from its spawn.
+/// (04-capabilities/interaction.md, A container keeps its riders in order): each with the room it
+/// takes and whether an exit waits for it; the first tick the next may leave; while a rider's
+/// player holds it, the player and the team it had before (04-capabilities/interaction.md, A free
+/// building takes its riders' side); the units ordered to enter it, each whether it waits on the
+/// ground for it to land; and whether it lands for them (04-capabilities/navigation.md, A flier
+/// lands for its riders). Every unit of a container type holds one from its spawn.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_insert = DueIndex::<Self>::pushed)]
 pub struct Riders {
@@ -213,8 +213,9 @@ impl Riders {
     }
 }
 
-/// A living container is due as its next rider may leave, while one waits to; a dead one lets
-/// every rider out as it falls (transports.md, A rider leaves at a free cell by the container).
+/// A living container is due as its next rider may leave, while one waits to; a dead one lets every
+/// rider out as it falls (04-capabilities/interaction.md, A rider leaves at a free cell by the
+/// container).
 impl TimedProcess for Riders {
     const RUNS: TimedRuns = TimedRuns::Server;
     const KEPT: TimedKept = TimedKept::BySetters;

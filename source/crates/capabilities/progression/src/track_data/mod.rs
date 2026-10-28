@@ -13,15 +13,16 @@ pub struct TrackData {
     /// Whether the track is its unit's `level`, which its stats read.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub level: bool,
-    /// Who gains experience on it: units, or players (generals.md, A track of players).
+    /// Who gains experience on it: units, or players (04-capabilities/progression.md, A track of
+    /// players).
     #[serde(default, skip_serializing_if = "TrackHolder::is_unit")]
     pub holder: TrackHolder,
     /// The modifier of the package its units hold at each level from 2, one for each threshold;
-    /// none for a track of no modifiers (generals.md, A level holds a modifier).
+    /// none for a track of no modifiers (04-capabilities/progression.md, A level holds a modifier).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub modifiers: Vec<DeclaredName>,
     /// The points each level from 1 gives, one for each level; one each when none
-    /// (generals.md, A track gives points by level).
+    /// (04-capabilities/progression.md, A track gives points by level).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub points: Option<Vec<u32>>,
 }

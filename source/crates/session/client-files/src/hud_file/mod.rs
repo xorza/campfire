@@ -12,7 +12,7 @@ use crate::panel_icon::PanelIcon;
 /// file, or a field the file does not give, shows every unit's bars, a ring for each hit, the
 /// default grid, the default minimap and no level (02-engine-core.md, Bars in screen space;
 /// 02-engine-core.md, The mode chooses its hit mark; 02-engine-core.md, A look places its buttons;
-/// generals.md, A level shows its icon).
+/// 02-engine-core.md, A level shows its icon).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HudFile {

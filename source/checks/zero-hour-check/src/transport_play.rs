@@ -39,14 +39,15 @@ const CHINOOK_TO: [i64; 2] = [300, 250];
 /// body of 20.9 m and a cell's diagonal of 14.1 m past it, 35 m, rounded up.
 const NEAR: Num = Num::int(40);
 
-/// The transport play on Tournament Desert (transports.md, A container says who rides;
-/// transports.md, A container may let its riders fire; transports.md, A container's fall hurts
-/// its riders; transports.md, A flier lands for its riders): player 1, America, and player 2,
+/// The transport play on Tournament Desert (04-capabilities/interaction.md, A container says who
+/// rides; 04-capabilities/combat.md, A container may let its riders fire;
+/// 04-capabilities/interaction.md, A container's fall hurts its riders;
+/// 04-capabilities/navigation.md, A flier lands for its riders): player 1, America, and player 2,
 /// China, each from its base start, ordered nothing but the play's orders. A Chinook lands for a
 /// Ranger and a Crusader, flies them across the map, and lets them out there; the Ranger and a
-/// Missile Defender board a Humvee, which drives up to a Troop Crawler, and fire on it from
-/// inside; America's Crusaders destroy the Crawler, whose 8 Red Guards leave it, each hurt by its
-/// 10 %; and the Humvee lets its riders out.
+/// Missile Defender board a Humvee, which drives up to a Troop Crawler, and fire on it from inside;
+/// America's Crusaders destroy the Crawler, whose 8 Red Guards leave it, each hurt by its 10 %; and
+/// the Humvee lets its riders out.
 #[derive(Debug)]
 pub(crate) struct TransportPlay;
 

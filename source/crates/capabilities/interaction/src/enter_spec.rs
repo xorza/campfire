@@ -12,11 +12,11 @@ use campfire_values::{
 use crate::enter_data::{EnterData, FireData, RiderCount};
 
 /// A container type's `enter` as a match reads it, package data and not state
-/// (transports.md, A container says who rides): its entry, how many it holds and how it counts
-/// them, the riders it takes, the ticks between two exits, the share of each rider's life most
-/// its death deals it, the share of its own life at or below which it holds none, whether it
-/// takes its first rider's player, the riders it spawns with, where its riders fire from, whether
-/// they see from inside, and the modifier each rider holds inside.
+/// (04-capabilities/interaction.md, A container says who rides): its entry, how many it holds and
+/// how it counts them, the riders it takes, the ticks between two exits, the share of each rider's
+/// life most its death deals it, the share of its own life at or below which it holds none, whether
+/// it takes its first rider's player, the riders it spawns with, where its riders fire from,
+/// whether they see from inside, and the modifier each rider holds inside.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnterSpec {
     pub action: ActionId,
@@ -33,8 +33,8 @@ pub struct EnterSpec {
     pub modifier: Option<ModifierId>,
 }
 
-/// Where a container's riders fire from, its names resolved (transports.md, A container may let
-/// its riders fire).
+/// Where a container's riders fire from, its names resolved (04-capabilities/combat.md, A container
+/// may let its riders fire).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FireSpec {
     None,
@@ -79,8 +79,9 @@ impl EnterSpec {
     }
 
     /// Whether a rider of `rider`'s player may enter a container of it that `held_by`'s player
-    /// holds: one of its own player's, or a free building no player holds (transports.md, A
-    /// rider may enter its own player's container, or a free one).
+    /// holds: one of its own player's, or a free building no player holds
+    /// (04-capabilities/interaction.md, A rider may enter its own player's container, or a free
+    /// one).
     pub fn sides(&self, held_by: Option<PlayerSlot>, rider: Option<PlayerSlot>) -> bool {
         held_by.map_or(self.capture, |held_by| Some(held_by) == rider)
     }

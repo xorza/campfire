@@ -32,7 +32,7 @@ pub(crate) enum CombatEffect {
     /// A heal of `amount` to `unit`'s life pool, times one plus its `heal_scale` stat.
     Heal { unit: StableId, amount: Num },
     /// An extra attack of the acting unit on `unit`, with the weapon it would choose against
-    /// `unit` (combat-response.md, Combat chooses the weapon).
+    /// `unit` (04-capabilities/combat.md, Combat chooses the weapon).
     AttackHit { unit: StableId },
     /// `unit`'s life taken whole, so it dies as the next Die stage finds it, with no killer.
     Kill { unit: StableId },

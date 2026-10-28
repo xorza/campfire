@@ -17,12 +17,12 @@ pub(crate) struct RulesNames {
     /// The stat a stage of continuous fire adds to.
     pub(crate) rate_of_fire: Stat,
     /// The stats a level of veterancy adds to every weapon's damage and rate of fire
-    /// (generals.md, A weapon's bonus is a sum of stats).
+    /// (04-capabilities/combat.md, A weapon's bonus is a sum of stats).
     pub(crate) veterancy_damage: Stat,
     pub(crate) veterancy_rate: Stat,
     /// The stats a garrison's modifier adds to its riders' weapons' range and damage, and the
-    /// modifier, which the import gives of `GameData.ini`'s `GARRISONED` bonuses (transports.md,
-    /// A container's modifier holds on its riders).
+    /// modifier, which the import gives of `GameData.ini`'s `GARRISONED` bonuses
+    /// (04-capabilities/combat.md, A container's modifier holds on its riders).
     pub(crate) garrison_range: Stat,
     pub(crate) garrison_damage: Stat,
     pub(crate) garrisoned: DeclaredName,
@@ -38,7 +38,7 @@ pub(crate) struct RulesNames {
     pub(crate) vehicle: DeclaredName,
     pub(crate) aircraft: DeclaredName,
     /// The tags of a huge vehicle and of one no garrison takes, which a container refuses
-    /// (transports.md, A container says who rides).
+    /// (04-capabilities/interaction.md, A container says who rides).
     pub(crate) huge_vehicle: DeclaredName,
     pub(crate) no_garrison: DeclaredName,
     /// The tag of a unit that gives its player a radar, which the minimap shows by
@@ -72,7 +72,7 @@ pub(crate) struct RulesNames {
     pub(crate) weapon_slot: DeclaredName,
     pub(crate) command_slot: DeclaredName,
     /// The slot kind of a rider's entry, and the entry, an action of the `enter` kind
-    /// (transports.md, An entry is an action of the container's).
+    /// (04-capabilities/interaction.md, An entry is an action of the container's).
     pub(crate) use_slot: DeclaredName,
     pub(crate) enter: DeclaredName,
     /// Every unit, of no tag.

@@ -10,10 +10,10 @@ use crate::client_path;
 use crate::hud_file::panel_grid::PanelGrid;
 use crate::panel_icon::PanelIcon;
 
-/// A mode's `client/perks.toml`: the choice whose value names a player's pages of perks, the
-/// grid each page lays its places on, and for each value of the choice its pages, each of its
-/// perks at a place, with its icon (generals.md, The perk panel by a choice). A mode of no file
-/// shows no perk panel.
+/// A mode's `client/perks.toml`: the choice whose value names a player's pages of perks, the grid
+/// each page lays its places on, and for each value of the choice its pages, each of its perks at a
+/// place, with its icon (02-engine-core.md, The perk panel by a choice). A mode of no file shows no
+/// perk panel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PerksFile {

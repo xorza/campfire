@@ -59,10 +59,10 @@ pub enum DataKind {
     /// fog (04-capabilities/vision.md, The server sends a team's cells to its player).
     Sight,
     /// The ready ticks of the actions whose cooldown a player keeps, on its entity, which its
-    /// prediction reads (generals.md, A power's cooldown may be its player's).
+    /// prediction reads (04-capabilities/actions.md, A power's cooldown may be its player's).
     PlayerCooldowns,
-    /// A container's riders, in their order, which its panel lists (transports.md, A container
-    /// keeps its riders in order).
+    /// A container's riders, in their order, which its panel lists (04-capabilities/interaction.md,
+    /// A container keeps its riders in order).
     Riders,
 }
 

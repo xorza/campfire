@@ -200,8 +200,8 @@ impl ExperienceShare {
     /// evenly, rounded to the nearest, among the living units the filter selects for the victim
     /// whose bodies come within the radius of its point, in the order of their stable ids, as a
     /// script's `ctx.find` finds them. Each raises its unit's level as a script's `add_xp` does
-    /// (04-capabilities/games.md, A death's experience; generals.md, A death's experience goes by
-    /// shares).
+    /// (04-capabilities/games.md, A death's experience; 04-capabilities/games.md, A death's
+    /// experience goes by shares).
     pub(crate) fn give(
         world: &mut World,
         mut reads: Local<'_, SystemState<ShareReads>>,

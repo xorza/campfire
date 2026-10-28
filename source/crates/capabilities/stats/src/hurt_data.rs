@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// A unit type's `hurt`: the modifier of its package its units hold while their life is at most
 /// the share `below` of its maximum, as Zero Hour's movers take their locomotor's damaged numbers
-/// once really damaged (driving.md, A hurt type may hold a modifier).
+/// once really damaged (04-capabilities/stats.md, A hurt type may hold a modifier).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HurtData {

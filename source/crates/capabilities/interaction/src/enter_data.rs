@@ -6,16 +6,17 @@ use campfire_values::{FilterData, Share, TagFilterData};
 use serde::{Deserialize, Serialize};
 
 /// A unit type's `enter` section, which makes its units containers that others ride in
-/// (transports.md, A container says who rides): its entry, an action of its package of the
-/// `enter` kind, which a rider's use slot runs at it; how many it holds, of each rider's `size`
-/// or one each; the riders it takes, those any of its filters selects by their relation to it
-/// and their tags, all of them when absent; the milliseconds between two exits; the share of each rider's life most its death deals
-/// it; the share of its own life at or below which it takes none and lets every rider out, none
-/// when absent; whether one of no player takes its first rider's; the riders it spawns with; where
-/// its riders fire from, none when absent; whether its riders see from inside; and the modifier of
-/// its package each rider holds inside (transports.md, A container may let its riders fire;
-/// transports.md, A garrison's riders see from it; transports.md, A container's modifier holds on
-/// its riders).
+/// (04-capabilities/interaction.md, A container says who rides): its entry, an action of its
+/// package of the `enter` kind, which a rider's use slot runs at it; how many it holds, of each
+/// rider's `size` or one each; the riders it takes, those any of its filters selects by their
+/// relation to it and their tags, all of them when absent; the milliseconds between two exits; the
+/// share of each rider's life most its death deals it; the share of its own life at or below which
+/// it takes none and lets every rider out, none when absent; whether one of no player takes its
+/// first rider's; the riders it spawns with; where its riders fire from, none when absent; whether
+/// its riders see from inside; and the modifier of its package each rider holds inside
+/// (04-capabilities/combat.md, A container may let its riders fire; 04-capabilities/interaction.md,
+/// A garrison's riders see from it; 04-capabilities/combat.md, A container's modifier holds on its
+/// riders).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EnterData {

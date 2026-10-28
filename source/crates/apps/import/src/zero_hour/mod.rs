@@ -323,7 +323,7 @@ impl ZeroHour {
             &mut panel_dropped,
         )?;
         // The panel of perks: each faction's purchase sets, each at its places on the game's
-        // grid of 5 columns of 3, down each column, its buttons' icons (generals.md, The perk
+        // grid of 5 columns of 3, down each column, its buttons' icons (02-engine-core.md, The perk
         // panel by a choice).
         let mut pages = BTreeMap::new();
         for (faction, faces) in ScienceImport::pages(&game)? {
@@ -375,7 +375,7 @@ impl ZeroHour {
             }
         }
         // Each type's icon, its `ButtonImage`, which a button that stands for its unit shows, as
-        // a container's exit shows its rider (transports.md, The client orders entries by the
+        // a container's exit shows its rider (02-engine-core.md, The client orders entries by the
         // right click).
         for object in game.objects.objects() {
             let Some(image) = object.button_image() else {

@@ -9,8 +9,8 @@ use crate::modifier_book::ModifierBook;
 use crate::upgrades_data::UpgradesData;
 
 /// A unit type's upgrades, as its `upgrades` names them, and its `hurt` as one more
-/// (04-capabilities/stats.md, A unit type takes modifiers by upgrades; driving.md, A hurt type
-/// may hold a modifier).
+/// (04-capabilities/stats.md, A unit type takes modifiers by upgrades; 04-capabilities/stats.md, A
+/// hurt type may hold a modifier).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeUpgrades(pub Box<[TypeUpgrade]>);
 

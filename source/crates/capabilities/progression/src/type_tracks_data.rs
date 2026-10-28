@@ -15,9 +15,9 @@ pub struct TypeTracksData(pub Vec<TypeTrackData>);
 
 /// An entry of a type's `tracks`: a track's name, or `{ track, levels, starts }`, the type's own
 /// thresholds on it, of the count of the track's, as Zero Hour's `ExperienceRequired` is each
-/// type's (generals.md, A type's own thresholds), and the levels its units start at, each always
-/// or while their player holds a modifier, the highest that holds (generals.md, A start level by
-/// a modifier).
+/// type's (04-capabilities/progression.md, A type's own thresholds), and the levels its units start
+/// at, each always or while their player holds a modifier, the highest that holds
+/// (04-capabilities/progression.md, A start level by a modifier).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeTrackData {
     pub track: DeclaredName,

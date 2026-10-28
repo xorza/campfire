@@ -87,10 +87,10 @@ impl LevelUps {
 }
 
 impl LevelUps {
-    /// Gives the player of `player` `amount` of experience on `track`, one of the player tracks
-    /// it holds: its level rises to what the experience reaches, and its points by those the
-    /// levels reached give (generals.md, A track of players). A player's level-up runs no
-    /// `on_level_up`, a unit's hook.
+    /// Gives the player of `player` `amount` of experience on `track`, one of the player tracks it
+    /// holds: its level rises to what the experience reaches, and its points by those the levels
+    /// reached give (04-capabilities/progression.md, A track of players). A player's level-up runs
+    /// no `on_level_up`, a unit's hook.
     pub(crate) fn grant_player(world: &mut World, player: Entity, track: TrackId, amount: Num) {
         let book = world.resource::<TrackBook>().clone();
         let raised = world
@@ -109,8 +109,8 @@ impl LevelUps {
 
     /// Gives the unit of `entity`, which the mode's spawner spawned, the experience of the highest
     /// of its type's start levels on each track that holds, always or by a modifier its player
-    /// holds, as `grant` raises a level: the spawn callback of progression (generals.md, A start
-    /// level by a modifier).
+    /// holds, as `grant` raises a level: the spawn callback of progression
+    /// (04-capabilities/progression.md, A start level by a modifier).
     pub(crate) fn start(world: &mut World, entity: Entity) {
         let unit = world.entity(entity);
         let (Some(&unit_type), Some(&id)) = (unit.get::<UnitType>(), unit.get::<StableId>()) else {

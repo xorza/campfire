@@ -13,9 +13,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::move_step::MoveStep;
 use crate::unit_entity::UnitEntity;
 
-/// How much faster a walker may move each tick, in meters a tick, never negative: the effect of
-/// its acceleration, which its stats give, for a movement model that keeps a velocity (driving.md,
-/// A mover keeps a velocity).
+/// How much faster a walker may move each tick, in meters a tick, never negative: the effect of its
+/// acceleration, which its stats give, for a movement model that keeps a velocity
+/// (04-capabilities/navigation.md, A mover keeps a velocity).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct AccelStep(Num);

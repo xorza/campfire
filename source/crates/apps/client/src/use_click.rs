@@ -13,7 +13,7 @@ use crate::selection::Selection;
 
 /// A right click on a unit the own avatar may use, with the avatar selected, orders the avatar
 /// alone to use it; else a right click on a container orders each selected unit that may enter
-/// it in (transports.md, The client orders entries by the right click); either takes the click.
+/// it in (02-engine-core.md, The client orders entries by the right click); either takes the click.
 #[derive(Debug)]
 pub(crate) struct UseClickPlugin;
 

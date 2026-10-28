@@ -55,10 +55,10 @@ pub enum ImportLoss {
     /// full.
     Wounded(String),
     /// A weapon whose `PreferredAgainst` names a kind of no tag, by its name, which prefers no
-    /// target (combat-response.md, The import converts what the choice and the answer read).
+    /// target (09-zero-hour.md, The import converts what the choice and the answer read).
     Unpreferred(String),
     /// A trainable object whose `ExperienceRequired` does not start at 0 and rise in each step,
-    /// by its name, which gains no level (generals.md, Veterancy is progression's data).
+    /// by its name, which gains no level (09-zero-hour.md, Veterancy is progression's data).
     Untrainable(String),
     /// An object's build variations the import converts otherwise than whole, by the parent's
     /// name, or a map's placement of a variation it converts otherwise than to its parent, by the
@@ -73,14 +73,14 @@ pub enum ImportLoss {
     /// A command set's button, or a part of one, the panel does not show (09-zero-hour.md, The
     /// panel).
     Panel(Dropped<PanelDropCause>),
-    /// A special power's button, by its name, the import converts to no cast (generals.md, A
+    /// A special power's button, by its name, the import converts to no cast (09-zero-hour.md, A
     /// power is a cast of its building).
     Power(Dropped<PowerDropCause>),
     /// An audio event, by its name, or a part of how the game plays it, the import does not
     /// convert (09-zero-hour.md, Sound).
     Sound(Dropped<SoundDropCause>),
     /// An object's contain module, or a part of one, by the object's name, the import does not
-    /// convert (transports.md, What the slice leaves).
+    /// convert (09-zero-hour.md, Transports and garrisons).
     Contain(Dropped<ContainDropCause>),
 }
 

@@ -264,8 +264,8 @@ impl Weapon {
         Some(self.bonused(stats, outer.amounts[rank.index()]))
     }
 
-    /// What it would deal at `rank` for a unit of stats `stats` to a target of `armor`, its
-    /// damage as the armor takes its kind, the whole for none (combat-response.md, An estimate is
+    /// What it would deal at `rank` for a unit of stats `stats` to a target of `armor`, its damage
+    /// as the armor takes its kind, the whole for none (04-capabilities/combat.md, An estimate is
     /// the weapon's damage as the armor takes it).
     pub(crate) fn estimate(&self, stats: &[Num], rank: Rank, armor: Option<&Armor>) -> Num {
         let damage = self.damage(stats, rank);

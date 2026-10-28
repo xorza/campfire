@@ -1,8 +1,8 @@
 use campfire_common::EnumAll;
 use serde::{Deserialize, Serialize};
 
-/// Why the import drops a special power's button, which converts to no cast (generals.md, A power
-/// is a cast of its building).
+/// Why the import drops a special power's button, which converts to no cast (09-zero-hour.md, A
+/// power is a cast of its building).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 pub enum PowerDropCause {
     /// No file defines its power, or its building holds no `OCLSpecialPower` of it.

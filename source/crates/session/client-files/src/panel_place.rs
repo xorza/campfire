@@ -30,7 +30,7 @@ pub enum PanelButton {
 /// A command of the panel, each an order of the engine: a sale of a building, a stop, an attack
 /// move to a point, a producer's rally to a point, a container's exit of a rider, each place of
 /// one showing the next of its riders in their order, and its evacuation of every rider
-/// (transports.md, The client orders entries by the right click).
+/// (02-engine-core.md, The client orders entries by the right click).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PanelCommand {

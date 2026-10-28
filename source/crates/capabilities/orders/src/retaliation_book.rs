@@ -9,8 +9,8 @@ use campfire_values::{PackageIndex, TimeTooLarge};
 use crate::error::RetaliationError;
 use crate::mode_retaliation_data::ModeRetaliationData;
 
-/// The mode's `[retaliation]` as a match runs it, none for a mode of none (combat-response.md,
-/// Retaliation is the mode's data). Package data, not state.
+/// The mode's `[retaliation]` as a match runs it, none for a mode of none
+/// (04-capabilities/control.md, Retaliation is the mode's data). Package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 #[component(immutable)]
 pub struct RetaliationBook(pub(crate) Option<RetaliationRule>);

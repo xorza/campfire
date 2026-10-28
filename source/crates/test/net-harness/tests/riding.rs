@@ -15,7 +15,7 @@ use campfire_values::{Team, TeamSet};
 fn a_rider_leaves_its_enemies_clients_and_stays_hidden_on_its_allies() {
     // A solo match of the lane mode, with interaction: the west player's client holds its hero and
     // the creeps it sees walk; here a creep of each team rides, as an entry leaves it, its team
-    // alone seeing it (transports.md, A rider's team holds it).
+    // alone seeing it (04-capabilities/interaction.md, A rider's team holds it).
     let mut tree = PackageTree::of(TestMode::Lane);
     tree.edit(
         "modes/lane/manifest.toml",

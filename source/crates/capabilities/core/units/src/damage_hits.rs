@@ -5,8 +5,8 @@ use campfire_declarations::{Report, Role};
 use campfire_sim::StableId;
 
 /// The hits the tick's damage dealt, each its target and its source, in the order dealt: what a
-/// capability that answers a hit reads once the damage is dealt, as a damaged unit calls its
-/// allies (combat-response.md, A damaged unit calls its idle allies). Not state: it empties before
+/// capability that answers a hit reads once the damage is dealt, as a damaged unit calls its allies
+/// (04-capabilities/control.md, A damaged unit calls its idle allies). Not state: it empties before
 /// each tick's damage, and a match that runs no damage holds none.
 #[derive(Resource, Debug, Default)]
 pub struct DamageHits(Vec<DamageHit>);

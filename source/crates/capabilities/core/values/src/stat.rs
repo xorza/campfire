@@ -25,7 +25,7 @@ pub enum EngineStat {
     MoveSpeed,
     TurnRate,
     /// How fast a walker of a movement model that keeps a velocity gathers speed, in meters a
-    /// second squared (driving.md, A type moves by its movement model).
+    /// second squared (04-capabilities/navigation.md, A type moves by its movement model).
     Acceleration,
 }
 

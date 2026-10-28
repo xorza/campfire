@@ -52,12 +52,13 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// drives as a vehicle of `KindOf` that does not hover and steps as any other, at a weight of its
 /// circle's radius squared, as a body's area weighs it (04-capabilities/navigation.md, A unit moves
 /// by its kind of motion; 04-capabilities/navigation.md, A unit has a weight), and of one whose
-/// locomotor drives as a mover, its mover (driving.md, Each appearance moves as its mover). Every
-/// other object has none of these. What every type shares, a death that despawns and a turret's
-/// tolerance and slot kind, is Zero Hour's rules data, `[defaults]`, which lies under each type's
-/// own (03-game-scripting.md, Defaults under each unit type). A fired projectile's type is a
-/// projectile alone (09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets
-/// and slow weapons; 09-zero-hour.md, A missile converts to a steered projectile).
+/// locomotor drives as a mover, its mover (04-capabilities/navigation.md, Each appearance moves as
+/// its mover). Every other object has none of these. What every type shares, a death that despawns
+/// and a turret's tolerance and slot kind, is Zero Hour's rules data, `[defaults]`, which lies
+/// under each type's own (03-game-scripting.md, Defaults under each unit type). A fired
+/// projectile's type is a projectile alone (09-zero-hour.md, The import converts shells, splash,
+/// scatter, pitch, turrets and slow weapons; 09-zero-hour.md, A missile converts to a steered
+/// projectile).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedType {
     /// Its most life, of a type that lives, which its `stats` hold too.
@@ -79,8 +80,8 @@ pub(crate) struct ImportedType {
     income: Option<IncomeData>,
     projectile: Option<ProjectileData>,
     navigation: Option<UnitNavigationData>,
-    /// Its mover, of a type whose locomotor drives as one (driving.md, Each appearance moves as
-    /// its mover).
+    /// Its mover, of a type whose locomotor drives as one (04-capabilities/navigation.md, Each
+    /// appearance moves as its mover).
     mover: Option<ImportedMover>,
     /// The flight of a type whose locomotor hovers (09-zero-hour.md, The import flies a hovering
     /// locomotor).
@@ -95,7 +96,7 @@ pub(crate) struct ImportedType {
     /// of a weapon (09-zero-hour.md, A scan follows `AutoAcquireEnemiesWhenIdle`).
     acquire: Option<AcquirePatch>,
     /// Its leash and its target's reach as it answers an ally's call, of a type of an AI module
-    /// that drives, of no kind that answers none (combat-response.md, The import converts what the
+    /// that drives, of no kind that answers none (09-zero-hour.md, The import converts what the
     /// choice and the answer read).
     retaliate: Option<RetaliatePatch>,
     /// How far it sees, of a type whose range clears the shroud (09-zero-hour.md, Zero Hour sees by

@@ -1,5 +1,5 @@
-//! The retaliation of `orders` (combat-response.md, A damaged unit calls its idle allies;
-//! combat-response.md, A retaliation's target is chased to its leash).
+//! The retaliation of `orders` (04-capabilities/control.md, A damaged unit calls its idle allies;
+//! 04-capabilities/control.md, A retaliation's target is chased to its leash).
 
 use campfire_actions::{
     ActionProgress, ActionRange, ActionSlots, AttackTarget, ProgressDues, SlotKind, TargetSource,
@@ -148,11 +148,11 @@ fn a_damaged_unit_calls_its_idle_allies_within_the_radius_that_may_hit_its_aggre
 }
 
 /// A retaliation ends at its time, past its reach and past its leash, each apart, and its unit
-/// walks back to where it stood; a save and a restore keep its point and its tick. Each unit
-/// chases an enemy, a meter a tick: one of a leash of 30 m and a reach of 40 m at an enemy 1 m
-/// off, in its weapon's reach, drops it in tick 30; one of a leash of 3 m at an enemy 10 m off drops it as
-/// it stands past 3 m, at x = 104 after tick 3, in tick 4; one of a reach of 5 m at an enemy 10 m
-/// off drops it in tick 0.
+/// walks back to where it stood; a save and a restore keep its point and its tick. Each unit chases
+/// an enemy, a meter a tick: one of a leash of 30 m and a reach of 40 m at an enemy 1 m off, in its
+/// weapon's reach, drops it in tick 30; one of a leash of 3 m at an enemy 10 m off drops it as it
+/// stands past 3 m, at x = 104 after tick 3, in tick 4; one of a reach of 5 m at an enemy 10 m off
+/// drops it in tick 0.
 #[test]
 fn a_retaliation_ends_at_its_time_its_leash_and_its_reach_and_its_unit_walks_back() {
     let units =

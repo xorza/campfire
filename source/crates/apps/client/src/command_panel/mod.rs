@@ -87,9 +87,10 @@ mod panel_looks;
 /// the key, the cost and the time of the button under the cursor. A left click on a button, or a
 /// key with no modifier that a shown button's look gives, presses it: a train or a research orders
 /// the unit alone to start it; a build starts the build preview; a sale, a stop and an evacuation
-/// order the selection at once; a rider's button orders its container to let it out (transports.md,
-/// The client orders entries by the right click); an attack move and a rally take the point the
-/// next left click on the ground picks, a right click or the drop chord dropping it.
+/// order the selection at once; a rider's button orders its container to let it out
+/// (02-engine-core.md, The client orders entries by the right click); an attack move and a rally
+/// take the point the next left click on the ground picks, a right click or the drop chord dropping
+/// it.
 #[derive(Debug)]
 pub(crate) struct CommandPanelPlugin;
 
@@ -512,7 +513,8 @@ impl CommandPanelPlugin {
                         carried.is_some_and(|carried| carried.get(modifier, Some(source)).is_some())
                     },
                 );
-                // A cast waits for its slot's ready tick and its player's, where its player keeps it.
+                // A cast waits for its slot's ready tick and its player's, where its player keeps
+                // it.
                 let ready = |action: ActionId| {
                     let unit = times
                         .and_then(|times| times.slot(slot))
@@ -960,8 +962,9 @@ impl Shown {
         true
     }
 
-    /// Its buttons whose keys `take` says went down, each with its place among them, in the order of their places, `take` asked
-    /// of each key once at most, so of buttons of one key the first alone.
+    /// Its buttons whose keys `take` says went down, each with its place among them, in the order
+    /// of their places, `take` asked of each key once at most, so of buttons of one key the first
+    /// alone.
     fn keyed<'a>(
         &'a self,
         mut take: impl FnMut(Key) -> bool + 'a,

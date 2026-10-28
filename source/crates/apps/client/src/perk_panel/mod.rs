@@ -37,7 +37,7 @@ use crate::view::client_data::MatchPerks;
 /// opens and closes it; it shows the own player's rank, its progress and its points above, then
 /// each page of perks of its pick of the perks file's choice, its perks in their places' order,
 /// each with its cost; a perk it may learn now is bright, one it holds says so, and any other is
-/// dimmed; a click learns it (generals.md, The perk panel by a choice).
+/// dimmed; a click learns it (02-engine-core.md, The perk panel by a choice).
 #[derive(Debug)]
 pub(crate) struct PerkPanelPlugin;
 

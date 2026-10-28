@@ -20,7 +20,7 @@ use crate::retaliate::Retaliate;
 use crate::retaliation_book::RetaliationBook;
 
 /// The calls of damaged units to their allies to answer the units that struck them
-/// (combat-response.md, A damaged unit calls its idle allies).
+/// (04-capabilities/control.md, A damaged unit calls its idle allies).
 #[derive(Debug)]
 pub struct Retaliating;
 

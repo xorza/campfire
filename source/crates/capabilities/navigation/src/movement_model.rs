@@ -4,9 +4,10 @@ use campfire_values::UnitType;
 use crate::locomotor_data::LocomotorData;
 use crate::zero_hour::zero_hour_mover::ZeroHourMover;
 
-/// How a unit type's walkers move along their routes (driving.md, A type moves by its movement
-/// model): the engine's step, which turns toward its leg and steps along it, or Zero Hour's
-/// locomotor, which drives by a velocity it keeps (driving.md, A mover keeps a velocity).
+/// How a unit type's walkers move along their routes (04-capabilities/navigation.md, A type moves
+/// by its movement model): the engine's step, which turns toward its leg and steps along it, or
+/// Zero Hour's locomotor, which drives by a velocity it keeps (04-capabilities/navigation.md, A
+/// mover keeps a velocity).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MovementModel {
     Step,

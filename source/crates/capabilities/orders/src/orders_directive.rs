@@ -27,10 +27,10 @@ pub enum OrdersDirective<R: OrderRefs = Ids> {
     /// Use the object `target` with the use slot: its action runs from that slot.
     Use { target: R::Unit },
     /// Enter the container `target` with the use slot: its entry runs from that slot
-    /// (transports.md, An entry is an action of the container's).
+    /// (04-capabilities/interaction.md, An entry is an action of the container's).
     Enter { target: R::Unit },
     /// Let `rider` out of the container the order's unit is, after the riders before it
-    /// (transports.md, A rider leaves at a free cell by the container).
+    /// (04-capabilities/interaction.md, A rider leaves at a free cell by the container).
     Exit { rider: R::Unit },
     /// Let every rider out of the container the order's unit is, in their order.
     Evacuate,

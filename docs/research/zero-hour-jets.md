@@ -30,6 +30,16 @@ How Zero Hour flies a jet, parks it, sends it down a runway, makes it attack and
 - **Landing.** A jet waits for its runway, flies to an approach point beyond the runway's end at the airfield's `ApproachHeight`, lands from the runway's end to its start, taxis to its place, turns to the place's facing and reloads (`LANDING_AWAIT_CLEARANCE`, `LANDING`, `TAXI_FROM_LANDING`, `ORIENT_FOR_PARKING_PLACE`, `RELOAD_AMMO`).
 - **One jet a runway.** A runway is reserved by one jet at a time, for its takeoff or its landing, and the next jet in line for takeoff takes it as the first leaves.
 
+## Doors, takeoff and the approach
+
+Read on 28 October 2026 from GeneralsX (`ProductionUpdate.cpp`, `ParkingPlaceBehavior.cpp`, `JetAIUpdate.cpp`) and the release game's `INIZH.big` (`FactionBuilding.ini`).
+
+- **A door opens before its unit leaves.** A `ProductionUpdate` of `NumDoorAnimations` above 0 opens the door it reserves once a production ends, `DOOR_<n>_OPENING` for `DoorOpeningTime`, makes the unit only once the door waits open, `DOOR_<n>_WAITING_OPEN` for `DoorWaitOpenTime`, each later unit through that door holding it open, then closes it, `DOOR_<n>_CLOSING` for `DoorCloseTime` (`ProductionUpdate::update`). Both airfields give 4 doors, 2,000 ms opening, 3,000 ms open and 2,000 ms closing; America's War Factory 1 door, 3,250, 3,000 and 4,000 ms.
+- **An airfield's door is its place.** `ParkingPlaceBehavior::reserveDoorForExit` gives the place it reserves as the door; with `ParkInHangars`, China's, the jet is made in its place's hangar, `Runway<c>Park<r>Han`, and taxis out to its place (`calcPPInfo`'s `parkingSpace`).
+- **A place is reserved as the train queues.** A train at an airfield of no free place is refused as it is queued, a queued train holding its place (`ProductionUpdate::queueCreateUnit`, `reserveDoorForExit`), so an airfield of 4 places never trains a fifth jet while 4 live or wait.
+- **A takeoff's path and lift.** A jet takes off by its normal locomotor, of `WINGS`, with its lift set to 0, along a path to the runway's end raised to the approach height, then to the runway's exit; each frame its lift is its locomotor's most times `(1 − d / L)²`, `d` its distance to the runway's end and `L` the runway's length, so it lifts more as it nears the end (`JetTakeoffOrLandingState::update`).
+- **The approach and the exit.** Both lie past the runway's end by three quarters of the runway's length, at the runway end's height plus the airfield's `ApproachHeight`, 50 at both airfields (`ParkingPlaceBehavior::calcPPInfo`); a landing jet flies to the approach at its least speed, then down to the runway's end and along it to its start.
+
 ## Other engines
 
 - **OpenRA's attack runs.** A fixed-wing aircraft attacks by runs: it flies to its target's center, passes it, flies out to its weapons' range and comes round for the next run, and between them moves within its minimum and maximum range ([FlyAttack.cs](https://github.com/OpenRA/OpenRA/blob/bleed/OpenRA.Mods.Common/Activities/Air/FlyAttack.cs)).

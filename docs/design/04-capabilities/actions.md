@@ -32,6 +32,7 @@
 ## Cooldown cuts
 
 - **A cut never ends a wait early.** A cut of a cooldown or a share of one rounds so that no ready tick is earlier than now, as Master Yi's takedowns cut his cooldowns.
+- **A power's cooldown may be its player's.** An action's `cooldown_holder = "player"` keeps its ready tick on its player's entity, shared by every unit of the player that holds the action, and none yet held is ready, as Zero Hour's `SharedSyncedTimer` and OpenRA's `SupportPowerManager` share one timer among a player's buildings, and a purchase readies its power. Refused: each building's own timer, under which a second command center fires twice.
 
 ## Kinds
 
@@ -40,7 +41,7 @@
 | `cast` | `abilities` | `cast` |
 | `attack` | `combat` | `attack` |
 | `use` | `interaction`, run by `abilities` | `use` |
-| `enter` | `interaction`, planned | `use` |
+| `enter` | `interaction` | `use` |
 | `train`, `research` | `production` | `produce` |
 | `build`, `gather` | `production` | `use` |
 | `craft` | `items`, planned | `use` |

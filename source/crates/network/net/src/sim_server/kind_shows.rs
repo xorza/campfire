@@ -23,7 +23,7 @@ use crate::sim_server::team_rooms::TeamRooms;
 use campfire_host::PlayerLink;
 
 /// The entities of the kind `K` a show takes, with their owner and the teams that see them, a rider
-/// out of the world among them (transports.md, A rider's team holds it).
+/// out of the world among them (04-capabilities/interaction.md, A rider's team holds it).
 type NewOfKind<'w, 's, K> =
     Query<'w, 's, (Option<&'static Owner>, Option<&'static SeenBy>), (With<K>, Allow<Disabled>)>;
 

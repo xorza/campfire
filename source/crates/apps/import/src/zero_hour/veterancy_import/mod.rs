@@ -24,14 +24,14 @@ use crate::zero_hour::type_name::TypeName;
 /// track, as `TheVeterancyNames` names the levels.
 const LEVEL_MODIFIERS: [&str; 3] = ["veteran", "elite", "heroic"];
 
-/// The import's veterancy (generals.md, Veterancy is progression's data): the mode's `level`
-/// track `veterancy`, of the commonest thresholds of the trainable types, each level from 2
-/// holding its modifier and none giving a point, and its share, to a hostile killer that has the
-/// track, of every death but a site's, as `Object::scoreTheKill` gives none to an ally or the
-/// neutral player and none for a victim `UNDER_CONSTRUCTION`; the modifiers of its levels, of
-/// `GameData.ini`'s bonuses; each trainable type's entry on it, of its own thresholds where they
-/// are not the track's and the levels its `VeterancyGainCreate` modules start it at, each always or
-/// by its science's perk's modifier (generals.md, A start level by a modifier); each type's
+/// The import's veterancy (09-zero-hour.md, Veterancy is progression's data): the mode's `level`
+/// track `veterancy`, of the commonest thresholds of the trainable types, each level from 2 holding
+/// its modifier and none giving a point, and its share, to a hostile killer that has the track, of
+/// every death but a site's, as `Object::scoreTheKill` gives none to an ally or the neutral player
+/// and none for a victim `UNDER_CONSTRUCTION`; the modifiers of its levels, of `GameData.ini`'s
+/// bonuses; each trainable type's entry on it, of its own thresholds where they are not the track's
+/// and the levels its `VeterancyGainCreate` modules start it at, each always or by its science's
+/// perk's modifier (04-capabilities/progression.md, A start level by a modifier); each type's
 /// `experience`, its `ExperienceValue` by level; and the trainable objects of thresholds that do
 /// not ascend from 0, which gain no level, by name.
 #[derive(Debug, Default)]

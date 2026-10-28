@@ -20,14 +20,15 @@ const RANGER: &str = "americainfantryranger";
 const CRUSADER: &str = "americatankcrusader";
 const REBEL: &str = "glainfantryrebel";
 
-/// The garrison play on Tournament Desert (transports.md, A free building takes its riders' side;
-/// transports.md, A container's modifier holds on its riders; transports.md, A container's fall
-/// hurts its riders): player 1, America, and player 2, GLA, each from its base start, ordered
-/// nothing but the play's orders. Two Rebels garrison the free building nearest the middle of the
-/// map that lets its riders out before it dies, which turns GLA's; a Ranger that attacks its way to
-/// it takes the Rebels' fire before its own reaches them, as their garrison stretches their reach;
-/// and America's Crusaders, attacking their way there, shell the building until its Rebels leave
-/// it, at its share of life of leaving or below, and it stands free again.
+/// The garrison play on Tournament Desert (04-capabilities/interaction.md, A free building takes
+/// its riders' side; 04-capabilities/combat.md, A container's modifier holds on its riders;
+/// 04-capabilities/interaction.md, A container's fall hurts its riders): player 1, America, and
+/// player 2, GLA, each from its base start, ordered nothing but the play's orders. Two Rebels
+/// garrison the free building nearest the middle of the map that lets its riders out before it
+/// dies, which turns GLA's; a Ranger that attacks its way to it takes the Rebels' fire before its
+/// own reaches them, as their garrison stretches their reach; and America's Crusaders, attacking
+/// their way there, shell the building until its Rebels leave it, at its share of life of leaving
+/// or below, and it stands free again.
 #[derive(Debug)]
 pub(crate) struct GarrisonPlay;
 

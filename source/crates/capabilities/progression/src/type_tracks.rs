@@ -9,8 +9,8 @@ use crate::track_data::{Thresholds, TrackHolder, TrackThresholds};
 use crate::track_set::TrackSet;
 use crate::type_tracks_data::TypeTracksData;
 
-/// A unit type's tracks, and its own thresholds on those it gives them for (generals.md, A
-/// type's own thresholds).
+/// A unit type's tracks, and its own thresholds on those it gives them for
+/// (04-capabilities/progression.md, A type's own thresholds).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TypeTracks {
     set: TrackSet,

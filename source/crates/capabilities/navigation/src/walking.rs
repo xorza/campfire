@@ -199,7 +199,7 @@ impl Walking {
             let depth = *walk;
             let goal = route.goal().expect("a walker with a way ahead has a goal");
             // A mover comes nearer by its speed, which it gains and loses over ticks, not by its
-            // step (driving.md, A mover keeps a velocity).
+            // step (04-capabilities/navigation.md, A mover keeps a velocity).
             let pace = drive.map_or_else(|| step.get(), ZeroHourDrive::speed);
             let stuck_for = progress.track(at.get(), route.read().ahead()[0], pace);
             // A flier steers in the plane of its route, as it walks (04-capabilities/navigation.md,
@@ -434,14 +434,15 @@ impl Walking {
         }
     }
 
-    /// Walks each living unit along its route by its type's movement model (driving.md, A type
-    /// moves by its movement model): a step a tick, or a drive of Zero Hour's locomotor. Past the
-    /// last waypoint it has arrived, and drops its destination, notes its goal as the one it
-    /// arrived at, and drops its route when the route reached the goal: one that ends short stays,
-    /// arrived short, so an order that sends the unit there again plans nothing, and a step aside
-    /// that ends short where it began leaves its unit hemmed in. A unit that walks has arrived at
-    /// no goal. A unit whose route waits for the planner walks the one it has, if any. One its
-    /// tags or a forced move stop keeps both, and a mover stops.
+    /// Walks each living unit along its route by its type's movement model
+    /// (04-capabilities/navigation.md, A type moves by its movement model): a step a tick, or a
+    /// drive of Zero Hour's locomotor. Past the last waypoint it has arrived, and drops its
+    /// destination, notes its goal as the one it arrived at, and drops its route when the route
+    /// reached the goal: one that ends short stays, arrived short, so an order that sends the unit
+    /// there again plans nothing, and a step aside that ends short where it began leaves its unit
+    /// hemmed in. A unit that walks has arrived at no goal. A unit whose route waits for the
+    /// planner walks the one it has, if any. One its tags or a forced move stop keeps both, and a
+    /// mover stops.
     ///
     /// A step walker first turns toward its leg's way, at its turn step, or at once with none, and
     /// stands this tick unless it then faces within `Facing::WITHIN` of the way
@@ -829,12 +830,12 @@ struct Driver<'a> {
 }
 
 impl Driver<'_> {
-    /// Drives along `route` a tick, as Zero Hour's path follower feeds its locomotor (driving.md,
-    /// The route feeds the mover): toward the route's next waypoint, with the length left along
-    /// the route as its distance to its goal, then past each waypoint but the last it comes within
-    /// its step of. Within its close enough distance of the route's end, it has arrived, and stands
-    /// on the end, where Zero Hour's stops where it stands. With no waypoint, as its route waits
-    /// for the planner, it stands.
+    /// Drives along `route` a tick, as Zero Hour's path follower feeds its locomotor
+    /// (04-capabilities/navigation.md, The route feeds the mover): toward the route's next
+    /// waypoint, with the length left along the route as its distance to its goal, then past each
+    /// waypoint but the last it comes within its step of. Within its close enough distance of the
+    /// route's end, it has arrived, and stands on the end, where Zero Hour's stops where it stands.
+    /// With no waypoint, as its route waits for the planner, it stands.
     fn follow(
         &mut self,
         route: &mut RouteMutItem<'_, '_>,

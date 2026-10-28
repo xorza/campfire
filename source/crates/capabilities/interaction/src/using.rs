@@ -80,9 +80,9 @@ impl Using<'_, '_> {
 
     /// The entry of the living unit `container` by the living unit of `rider`: none when the
     /// container's type has no `enter`, the rider's no `uses` or no size, the container's riders'
-    /// filters do not select the rider, or the container is another player's. Whether the
-    /// container takes it, its room among it, its resolve tests (transports.md, An entry is an
-    /// action of the container's).
+    /// filters do not select the rider, or the container is another player's. Whether the container
+    /// takes it, its room among it, its resolve tests (04-capabilities/interaction.md, An entry is
+    /// an action of the container's).
     pub fn entry(&self, rider: Entity, container: StableId) -> Option<UnitUse> {
         let (&container_type, &container_team, held_by) =
             self.objects.get(self.index.get(container)?).ok()?;

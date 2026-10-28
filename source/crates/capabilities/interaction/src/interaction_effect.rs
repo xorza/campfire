@@ -8,7 +8,7 @@ use crate::riders::Riders;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum InteractionEffect {
     /// The acting unit, a rider whose entry resolved, enters `container` when the container
-    /// takes it (transports.md, An entry is an action of the container's).
+    /// takes it (04-capabilities/interaction.md, An entry is an action of the container's).
     Enter { container: StableId },
 }
 

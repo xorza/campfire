@@ -36,11 +36,11 @@ impl Refresh {
     /// stats once they are final; a live change whose source is gone keeps the value it last had.
     /// An effect whose stat the mode does not declare keeps what the unit's type gave it as it
     /// spawned. A rider out of the world derives them too, as its container's modifier reaches it
-    /// (transports.md, A container's modifier holds on its riders). A predicting client derives
-    /// the stats and tags of every unit it holds, as their
-    /// inputs reach it, so an aura's numbers resolve there as on the server
-    /// (10-replication-audiences.md, A client derives what it can for every unit it holds); it
-    /// writes nothing else of a unit it holds as the server sent it.
+    /// (04-capabilities/combat.md, A container's modifier holds on its riders). A predicting client
+    /// derives the stats and tags of every unit it holds, as their inputs reach it, so an aura's
+    /// numbers resolve there as on the server (10-replication-audiences.md, A client derives what
+    /// it can for every unit it holds); it writes nothing else of a unit it holds as the server
+    /// sent it.
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"

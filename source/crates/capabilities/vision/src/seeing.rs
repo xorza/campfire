@@ -22,7 +22,7 @@ use crate::vision_grid::VisionGrid;
 pub struct Seeing;
 
 /// The living units with a sight, which reveal the cells round them, and the riders that see
-/// from their containers (transports.md, A garrison's riders see from it).
+/// from their containers (04-capabilities/interaction.md, A garrison's riders see from it).
 type Seers<'w, 's> = Query<
     'w,
     's,

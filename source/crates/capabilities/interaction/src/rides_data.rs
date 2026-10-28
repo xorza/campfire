@@ -4,9 +4,9 @@ use campfire_declarations::{Section, SectionTable};
 use campfire_script::{ApiVersion, DataSection, DataTable, Status};
 use serde::{Deserialize, Serialize};
 
-/// A unit type's `rides` section, which lets its units enter containers: the room each takes of
-/// a container that counts its riders' sizes, at least one (transports.md, A container says who
-/// rides).
+/// A unit type's `rides` section, which lets its units enter containers: the room each takes of a
+/// container that counts its riders' sizes, at least one (04-capabilities/interaction.md, A
+/// container says who rides).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RidesData {

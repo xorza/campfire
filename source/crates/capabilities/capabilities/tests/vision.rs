@@ -116,9 +116,9 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     assert_eq!(Vision::seen_by(&game, sneak), team(1).with(Team::new(0)));
 
     // A rider out of the world reveals nothing, but one that sees from its container does
-    // (transports.md, A garrison's riders see from it): a rider of team 0 at (−7, −7), seeing 3
-    // m, shows team 1's unit at (−8, −7), whose cell's center lies √0.5 ≈ 0.71 m off, only once
-    // it holds `SeeingRider`.
+    // (04-capabilities/interaction.md, A garrison's riders see from it): a rider of team 0 at (−7,
+    // −7), seeing 3 m, shows team 1's unit at (−8, −7), whose cell's center lies √0.5 ≈ 0.71 m off,
+    // only once it holds `SeeingRider`.
     let rider = Vision::spawn_seer(&mut game, -7, -7, Team::new(0), Some(3));
     let watched = Vision::spawn_seer(&mut game, -8, -7, Team::new(1), None);
     game.insert_parts(rider, Disabled);

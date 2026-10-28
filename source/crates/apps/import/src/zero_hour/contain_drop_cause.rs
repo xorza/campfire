@@ -1,8 +1,8 @@
 use campfire_common::EnumAll;
 use serde::{Deserialize, Serialize};
 
-/// Why the import drops an object's contain module, or a part of one (transports.md, What the
-/// slice leaves).
+/// Why the import drops an object's contain module, or a part of one (09-zero-hour.md, Transports
+/// and garrisons).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
 pub enum ContainDropCause {
     /// An `OpenContain`.

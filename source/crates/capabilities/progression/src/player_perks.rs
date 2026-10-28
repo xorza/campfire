@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::perk_book::PerkBook;
 
-/// The perks a player has, each once, in order (generals.md, A science is a perk of a player).
-/// State, sent to its owner.
+/// The perks a player has, each once, in order (04-capabilities/progression.md, A science is a perk
+/// of a player). State, sent to its owner.
 #[derive(Component, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PlayerPerks(Vec<PerkId>);
@@ -27,8 +27,8 @@ impl PlayerPerks {
         &self.0
     }
 
-    /// Gives it `perk`, whose modifier its player then holds (generals.md, A perk's modifier is a
-    /// player modifier): whether it lacked the perk.
+    /// Gives it `perk`, whose modifier its player then holds (04-capabilities/progression.md, A
+    /// perk's modifier is a player modifier): whether it lacked the perk.
     pub(crate) fn add(&mut self, perk: PerkId) -> bool {
         let at = self.0.binary_search(&perk);
         if let Err(at) = at {

@@ -49,11 +49,11 @@ mod gauge;
 mod ring;
 
 /// Makes the match readable with plain shapes over the drawings: a bar of the life over every unit
-/// with one, or, as the mode's HUD file says, over the selected and the pointed alone, beside it the
-/// icon of the unit's level the HUD file gives (generals.md, A level shows its icon); under the
-/// own avatar's, its other pools, a gold mark over each ability it may learn a rank of, its
-/// cooldowns, a tick for each rank of an ability that ranks up, bright once learned, and a tick for
-/// each charge of an ability with charges, bright while held and filling while it comes back; a
+/// with one, or, as the mode's HUD file says, over the selected and the pointed alone, beside it
+/// the icon of the unit's level the HUD file gives (02-engine-core.md, A level shows its icon);
+/// under the own avatar's, its other pools, a gold mark over each ability it may learn a rank of,
+/// its cooldowns, a tick for each rank of an ability that ranks up, bright once learned, and a tick
+/// for each charge of an ability with charges, bright while held and filling while it comes back; a
 /// ring where each hit lands; and one overlay of rings under units, one under each unit the player
 /// selected and a wider one under the unit the own avatar attacks. It reads the sim's components
 /// and changes none, and keeps its own on its drawings.

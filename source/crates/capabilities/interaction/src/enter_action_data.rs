@@ -12,10 +12,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::entering::EntryResolve;
 
-/// The section of an action of kind `enter`, a container's entry: it has no field of its own.
-/// The abilities' casts run it as a use, within a range in meters of the container's body, and
-/// its resolve puts its rider in the container (transports.md, An entry is an action of the
-/// container's), so it takes a windup, and no script, list, cost, channel, cooldown or delivery.
+/// The section of an action of kind `enter`, a container's entry: it has no field of its own. The
+/// abilities' casts run it as a use, within a range in meters of the container's body, and its
+/// resolve puts its rider in the container (04-capabilities/interaction.md, An entry is an action
+/// of the container's), so it takes a windup, and no script, list, cost, channel, cooldown or
+/// delivery.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[expect(

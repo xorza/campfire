@@ -265,8 +265,8 @@ impl Module for Navigation {
             at.of_type::<MoveStep>().map(|_| AsideDepth::default())
         });
         d.part::<BodyUnit, Hemmed>(|at| at.of_type::<MoveStep>().map(|_| Hemmed::default()));
-        // A walker of a model that keeps a velocity drives from a stop (driving.md, A mover keeps a
-        // velocity).
+        // A walker of a model that keeps a velocity drives from a stop
+        // (04-capabilities/navigation.md, A mover keeps a velocity).
         d.part::<BodyUnit, ZeroHourDrive>(|at| {
             at.of_type::<MoveStep>()?;
             let model = at.of_type::<MovementModel>()?;

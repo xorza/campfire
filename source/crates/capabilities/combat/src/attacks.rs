@@ -187,12 +187,12 @@ impl Attacks {
     /// Chooses, in Act before the chase, the weapon of each living unit the index of the attack
     /// targets holds against the unit its attacks aim at, a living enemy, by its slots' times in
     /// the tick, its weapons' reach of the target and the armor the target's type gives its tags;
-    /// the weapon of an attack in its windup stays its choice (combat-response.md, Combat chooses
-    /// the weapon; combat-response.md, The chosen weapon is the attack's). A turret target with no
-    /// attack in its windup goes once it is no living enemy, once no weapon reaches it, or once
-    /// the weapon chosen against it is one the unit's turret does not carry (combat-response.md, A
-    /// turret has its own target).
-    /// Its owner's client chooses for its own units as the server does.
+    /// the weapon of an attack in its windup stays its choice (04-capabilities/combat.md, Combat
+    /// chooses the weapon; 04-capabilities/combat.md, The chosen weapon is the attack's). A turret
+    /// target with no attack in its windup goes once it is no living enemy, once no weapon reaches
+    /// it, or once the weapon chosen against it is one the unit's turret does not carry
+    /// (04-capabilities/combat.md, A turret has its own target). Its owner's client chooses for its
+    /// own units as the server does.
     pub(super) fn choose_weapons(
         (tick, book, weapons, armors): (
             Res<'_, SimTick>,

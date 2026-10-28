@@ -7,9 +7,9 @@ use campfire_values::UnitType;
 use crate::error::RetaliationError;
 use crate::retaliate_data::RetaliateData;
 
-/// A unit type's `retaliate` as a match runs it: the meters from where its unit stood past which
-/// it gives up a chase, and those past which the target lies when it does (combat-response.md, A
-/// retaliation's target is chased to its leash).
+/// A unit type's `retaliate` as a match runs it: the meters from where its unit stood past which it
+/// gives up a chase, and those past which the target lies when it does (04-capabilities/control.md,
+/// A retaliation's target is chased to its leash).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Retaliate {
     pub(crate) leash: Num,

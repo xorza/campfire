@@ -8,13 +8,13 @@ use campfire_units::{MoveStep, UnitEntity};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-/// What a unit of a Zero Hour locomotor carries from tick to tick (driving.md, A mover keeps a
-/// velocity): its velocity on the ground plane, `[x, z]` in meters a tick, as `PhysicsBehavior`
-/// keeps it; whether its locomotor brakes, its `IS_BRAKING`, and whether it braked as its last
-/// drive ended, the object's `OBJECT_STATUS_BRAKING`, which its stop leaves; the factor of its
-/// braking, `m_brakingFactor`, from 0 to 5; whether it backs, `MOVING_BACKWARDS`, and turns in
-/// three points, `DOING_THREE_POINT_TURN`; and the ticks it drove since it was last more than
-/// the donut distance from its route's end or stood, which `m_donutTimer` counts as a frame.
+/// What a unit of a Zero Hour locomotor carries from tick to tick (04-capabilities/navigation.md, A
+/// mover keeps a velocity): its velocity on the ground plane, `[x, z]` in meters a tick, as
+/// `PhysicsBehavior` keeps it; whether its locomotor brakes, its `IS_BRAKING`, and whether it
+/// braked as its last drive ended, the object's `OBJECT_STATUS_BRAKING`, which its stop leaves; the
+/// factor of its braking, `m_brakingFactor`, from 0 to 5; whether it backs, `MOVING_BACKWARDS`, and
+/// turns in three points, `DOING_THREE_POINT_TURN`; and the ticks it drove since it was last more
+/// than the donut distance from its route's end or stood, which `m_donutTimer` counts as a frame.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ZeroHourDrive {
     pub(crate) velocity: [Num; 2],

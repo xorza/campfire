@@ -13,8 +13,8 @@ use crate::action_book::ActionBook;
 use crate::cooldown_holder::CooldownHolder;
 
 /// The first tick each action of a player's cooldown may start again, on its entity, by action,
-/// each once, in order: none held is ready (generals.md, A power's cooldown may be its player's).
-/// State, sent to its owner.
+/// each once, in order: none held is ready (04-capabilities/actions.md, A power's cooldown may be
+/// its player's). State, sent to its owner.
 #[derive(Component, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PlayerCooldowns(Vec<PlayerCooldown>);

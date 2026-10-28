@@ -126,8 +126,9 @@ impl ViewReader {
     }
 
     /// The observer of a unit that leaves the world as `Disabled` comes, which no change tick
-    /// shows, in a match that reads its units for scripts: the next read visits the unit, which no query of the core finds then, and drops its
-    /// row (transports.md, A rider leaves the world and keeps its entity).
+    /// shows, in a match that reads its units for scripts: the next read visits the unit, which no
+    /// query of the core finds then, and drops its row (04-capabilities/interaction.md, A rider
+    /// leaves the world and keeps its entity).
     pub(crate) fn disabled(
         disabled: On<'_, '_, Add<Disabled>>,
         ids: Query<'_, '_, &StableId, Allow<Disabled>>,

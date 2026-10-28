@@ -151,8 +151,8 @@ fn a_kinds_section_names_the_first_pipeline_field_it_misuses() {
         ..action.clone()
     };
     assert_eq!(attacking(&ending).misused(), Some(PipelineField::OnEnd));
-    // A cast alone keeps its cooldown on its player (generals.md, A power's cooldown may be its
-    // player's).
+    // A cast alone keeps its cooldown on its player (04-capabilities/actions.md, A power's cooldown
+    // may be its player's).
     let shared = ActionData {
         keys: ActionKeys {
             cooldown_holder: CooldownHolder::Player,

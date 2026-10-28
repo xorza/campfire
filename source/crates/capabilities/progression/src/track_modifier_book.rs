@@ -14,8 +14,9 @@ use crate::experience::Experience;
 use crate::mode_tracks_data::ModeTracksData;
 use crate::track_book::TrackBook;
 
-/// The modifier each track's units hold at each of its levels from 2, by track, none for a
-/// track of no `modifiers` (generals.md, A level holds a modifier). Package data, not state.
+/// The modifier each track's units hold at each of its levels from 2, by track, none for a track of
+/// no `modifiers` (04-capabilities/progression.md, A level holds a modifier). Package data, not
+/// state.
 #[derive(Resource, Debug, Clone, Default)]
 #[component(immutable)]
 pub struct TrackModifierBook(Arc<[Box<[ModifierId]>]>);

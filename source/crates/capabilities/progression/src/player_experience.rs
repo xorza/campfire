@@ -12,7 +12,7 @@ use crate::track_book::TrackBook;
 use crate::track_data::TrackHolder;
 
 /// A player's experience and level on each of the mode's player tracks, as a unit's `Experience`
-/// holds a unit's (generals.md, A track of players). State, sent to its owner.
+/// holds a unit's (04-capabilities/progression.md, A track of players). State, sent to its owner.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PlayerExperience(pub(crate) Experience);

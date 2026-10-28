@@ -50,7 +50,7 @@ impl Armor {
 
 impl Armor {
     /// Whether a unit of it takes none of `kind`'s damage, its share 0, so no weapon of the kind
-    /// attacks it (combat-response.md, Combat chooses the weapon).
+    /// attacks it (04-capabilities/combat.md, Combat chooses the weapon).
     pub fn spares(&self, kind: DamageKind) -> bool {
         self.0[kind.index()] == Num::ZERO
     }

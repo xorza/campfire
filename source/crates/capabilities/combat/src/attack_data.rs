@@ -36,12 +36,12 @@ pub struct AttackData {
     /// The stats whose sum scales its own amount and its splash's outer amount, times 1 plus the
     /// sum (04-capabilities/combat.md, One bonus scales both rings).
     pub damage_bonus: Option<BonusData>,
-    /// The stats whose sum stretches its range, times 1 plus the sum (transports.md, A
+    /// The stats whose sum stretches its range, times 1 plus the sum (04-capabilities/combat.md, A
     /// container's modifier holds on its riders).
     pub range_bonus: Option<BonusData>,
     pub damage_kind: DeclaredName,
     /// The tags of the targets it is chosen for above every weapon that does not prefer them
-    /// (combat-response.md, An attack may prefer its targets).
+    /// (04-capabilities/combat.md, An attack may prefer its targets).
     pub prefers: Option<TagFilterData>,
     pub clip: Option<ClipData>,
     pub splash: Option<SplashData>,
@@ -143,7 +143,8 @@ impl<'de> Deserialize<'de> for AttackData {
 }
 
 /// As data writes it, what `Deserialize` reads: its damage, `amount` or the stat `damage`, its
-/// kind, the filter it prefers, its rate, `period_ms` or the stat `rate`, and each optional field it has.
+/// kind, the filter it prefers, its rate, `period_ms` or the stat `rate`, and each optional field
+/// it has.
 impl Serialize for AttackData {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(None)?;

@@ -12,9 +12,10 @@ use crate::unit_entity::UnitEntity;
 pub type UnitFilter = With<UnitEntity>;
 
 /// The units that act: those in the world, and the riders that fire from their containers, which
-/// the scan and the attacks name beside them (transports.md, A container may let its riders fire).
+/// the scan and the attacks name beside them (04-capabilities/combat.md, A container may let its
+/// riders fire).
 pub type Acting = (Allow<Disabled>, Or<(Without<Disabled>, With<FiringRider>)>);
 
 /// The units that see: those in the world, and the riders that see from their containers, which
-/// vision names beside them (transports.md, A garrison's riders see from it).
+/// vision names beside them (04-capabilities/interaction.md, A garrison's riders see from it).
 pub type Sighted = (Allow<Disabled>, Or<(Without<Disabled>, With<SeeingRider>)>);

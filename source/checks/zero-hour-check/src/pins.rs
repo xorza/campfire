@@ -59,13 +59,13 @@ pub(crate) const BOT_TYPES: [&str; 10] = [
 
 /// Tournament Desert as the import writes it: its height samples, as columns and rows; its placed
 /// units, once its road ends are dropped, and their types; its client objects, the rest of its
-/// objects, and their looks; its markers; its walls, its cliff cells grown by one ring and
-/// merged row by row (09-zero-hour.md, Cliffs are walls); and its grid's cells, as columns and
-/// rows, and the unit types of a sight (09-zero-hour.md, Zero Hour sees by the vision capability);
-/// the unit types on a track of veterancy, and the trainable objects that gain no level
-/// (generals.md, Veterancy is progression's data); and the mode's perks, those of a cost, and the
-/// perks the factions start with, summed over the factions (generals.md, A science is a perk of a
-/// player).
+/// objects, and their looks; its markers; its walls, its cliff cells grown by one ring and merged
+/// row by row (09-zero-hour.md, Cliffs are walls); and its grid's cells, as columns and rows, and
+/// the unit types of a sight (09-zero-hour.md, Zero Hour sees by the vision capability); the unit
+/// types on a track of veterancy, and the trainable objects that gain no level (09-zero-hour.md,
+/// Veterancy is progression's data); and the mode's perks, those of a cost, and the perks the
+/// factions start with, summed over the factions (04-capabilities/progression.md, A science is a
+/// perk of a player).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MapCounts {
@@ -231,12 +231,12 @@ pub(crate) struct BotBase {
 }
 
 /// How a play's match of two bots stood as it ended or its limit passed: the tick it ended and its
-/// result, if it did, the buildings each player slot held, each whole and alive, each player's
-/// rank and the perks it held, its faction's among them (generals.md, A bot buys its skill set),
-/// the most operations one think of its bots ran, which the mode's call limit bounds, the times a walker
-/// stood stuck 1 s, which crowds that yield keep few, its bots' drops, and the cells sent each
-/// bot's player (09-zero-hour.md, A bots' match that ends; 09-zero-hour.md, The bots' limits are
-/// measured).
+/// result, if it did, the buildings each player slot held, each whole and alive, each player's rank
+/// and the perks it held, its faction's among them (09-zero-hour.md, A bot buys its skill set), the
+/// most operations one think of its bots ran, which the mode's call limit bounds, the times a
+/// walker stood stuck 1 s, which crowds that yield keep few, its bots' drops, and the cells sent
+/// each bot's player (09-zero-hour.md, A bots' match that ends; 09-zero-hour.md, The bots' limits
+/// are measured).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BotMatchEnd {
@@ -410,12 +410,12 @@ pub(crate) struct HelicopterTicks {
     pub(crate) shot_down: u64,
 }
 
-/// The combat play's steps (combat-response.md, Combat chooses the weapon; combat-response.md, A
-/// turret has its own target; combat-response.md, A retaliation's target is chased to its leash):
-/// its ticks; the slot of the weapon the Comanche fired first at the Rebel and then at the
-/// Scorpion; how far each Crusader that answered the buggy stood, back, from where it
-/// stood when called; whether the driving Crusader's first hit on the Rebel came from its turret
-/// as it drove; and how far from its goal it stopped.
+/// The combat play's steps (04-capabilities/combat.md, Combat chooses the weapon;
+/// 04-capabilities/combat.md, A turret has its own target; 04-capabilities/control.md, A
+/// retaliation's target is chased to its leash): its ticks; the slot of the weapon the Comanche
+/// fired first at the Rebel and then at the Scorpion; how far each Crusader that answered the buggy
+/// stood, back, from where it stood when called; whether the driving Crusader's first hit on the
+/// Rebel came from its turret as it drove; and how far from its goal it stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CombatSteps {
     pub(crate) ticks: CombatTicks,
@@ -440,12 +440,12 @@ pub(crate) struct CombatTicks {
     pub(crate) arrived: u64,
 }
 
-/// The transport play's steps (transports.md, A container says who rides; transports.md, A
-/// container may let its riders fire; transports.md, A container's fall hurts its riders;
-/// transports.md, A flier lands for its riders): its ticks; whether the rider that fired first
-/// fired from inside the Humvee; how many of the Troop Crawler's riders stood out of it as it fell,
-/// and whether each lost its share of its life; and whether the Chinook's riders stood alive
-/// within reach of its goal once out.
+/// The transport play's steps (04-capabilities/interaction.md, A container says who rides;
+/// 04-capabilities/combat.md, A container may let its riders fire; 04-capabilities/interaction.md,
+/// A container's fall hurts its riders; 04-capabilities/navigation.md, A flier lands for its
+/// riders): its ticks; whether the rider that fired first fired from inside the Humvee; how many of
+/// the Troop Crawler's riders stood out of it as it fell, and whether each lost its share of its
+/// life; and whether the Chinook's riders stood alive within reach of its goal once out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TransportSteps {
     pub(crate) ticks: TransportTicks,
@@ -471,11 +471,12 @@ pub(crate) struct TransportTicks {
     pub(crate) evacuated: u64,
 }
 
-/// The garrison play's steps (transports.md, A free building takes its riders' side;
-/// transports.md, A container's modifier holds on its riders; transports.md, A container's fall
-/// hurts its riders): its ticks; whether the building turned its Rebels' player's; whether the
-/// Ranger took their fire before it fired; whether the Rebels left at the building's share of life
-/// of leaving or below, while it stood; and whether it stood free once they left.
+/// The garrison play's steps (04-capabilities/interaction.md, A free building takes its riders'
+/// side; 04-capabilities/combat.md, A container's modifier holds on its riders;
+/// 04-capabilities/interaction.md, A container's fall hurts its riders): its ticks; whether the
+/// building turned its Rebels' player's; whether the Ranger took their fire before it fired;
+/// whether the Rebels left at the building's share of life of leaving or below, while it stood; and
+/// whether it stood free once they left.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct GarrisonSteps {
     pub(crate) ticks: GarrisonTicks,
@@ -496,9 +497,9 @@ pub(crate) struct GarrisonTicks {
     pub(crate) left: u64,
 }
 
-/// The science play's steps (generals.md, A science is a perk of a player): how many Paladins the
-/// war factory queued or made before the player held their science, the points left once it is
-/// learned, and the ticks the Paladin took from its order.
+/// The science play's steps (04-capabilities/progression.md, A science is a perk of a player): how
+/// many Paladins the war factory queued or made before the player held their science, the points
+/// left once it is learned, and the ticks the Paladin took from its order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ScienceSteps {
@@ -595,7 +596,7 @@ pub(crate) struct SkirmishTicks {
 /// cause, in the order of `WeaponDropCause::ALL`, how many armors and damage kinds it writes, and
 /// how many unit types' objects it gives no life, or a life that starts below its most, how many
 /// weapons prefer a target, how many lose the preference of a kind of no tag, and how many unit
-/// types answer an ally's call (combat-response.md, The import converts what the choice and the
+/// types answer an ally's call (09-zero-hour.md, The import converts what the choice and the
 /// answer read; 09-zero-hour.md,
 /// Life is the original's; 09-zero-hour.md, A weapon converts when it hits one
 /// target at once; 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
@@ -621,8 +622,8 @@ pub(crate) struct FoughtCounts {
 /// How many unit types the import makes movers of each appearance, treads, two legs, four wheels
 /// and a motorcycle, how many of them a hurt slows, how many modifiers the hurts share, how many
 /// wheels turn at the world's bound, of a locomotor of no `MinTurnSpeed`, and how many push
-/// themselves out of no cell, as a dozer does not (driving.md, Each appearance moves as its mover;
-/// driving.md, A hurt type may hold a modifier).
+/// themselves out of no cell, as a dozer does not (04-capabilities/navigation.md, Each appearance
+/// moves as its mover; 04-capabilities/stats.md, A hurt type may hold a modifier).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     "movers {:?}, {hurt} hurt, {modifiers} hurt modifiers, {unturning} wheels of no turning speed, {uncorrected} uncorrected",
@@ -656,9 +657,9 @@ pub(crate) struct SuppliedCounts {
 }
 
 /// How many unit types the import makes transports, of an `enter` that counts its riders' sizes,
-/// and garrisons, of one that counts each rider one; how many garrisons fire from their points;
-/// how many types ride; and how many contain modules, or parts of one, it drops for each cause, in
-/// the order of `ContainDropCause::ALL` (transports.md, A container says who rides).
+/// and garrisons, of one that counts each rider one; how many garrisons fire from their points; how
+/// many types ride; and how many contain modules, or parts of one, it drops for each cause, in the
+/// order of `ContainDropCause::ALL` (04-capabilities/interaction.md, A container says who rides).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     "{transports} transports, {garrisons} garrisons, {fire_points} of fire points, {riders} riders, \
@@ -745,7 +746,7 @@ pub(crate) struct SoundCounts {
 /// gives a sale, how many buttons it drops for each cause, in the order of `ButtonDropCause::ALL`
 /// (09-zero-hour.md, Every command set's trains and builds are imported), how many powers it
 /// converts to casts, and how many power buttons it drops for each cause, in the order of
-/// `PowerDropCause::ALL` (generals.md, A power is a cast of its building).
+/// `PowerDropCause::ALL` (09-zero-hour.md, A power is a cast of its building).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
     "{trains} trains, {builds} builds, {sells} sales, dropped {:?}, {casts} casts, dropped {:?}",

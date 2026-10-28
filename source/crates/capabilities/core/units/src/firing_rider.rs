@@ -10,9 +10,9 @@ use crate::unit_entity::UnitEntity;
 
 /// Marks a rider that fires from its container, out of the world as every rider is: the scan and
 /// the attacks name it, by `Acting`, beside the units in the world, while no search for a target
-/// finds it (transports.md, A container may let its riders fire). Interaction sets it as the
-/// rider enters and takes it as the rider leaves: interaction's state, kept here, as `Leaving`
-/// is, so the attacks name it with no dependency on interaction.
+/// finds it (04-capabilities/combat.md, A container may let its riders fire). Interaction sets it
+/// as the rider enters and takes it as the rider leaves: interaction's state, kept here, as
+/// `Leaving` is, so the attacks name it with no dependency on interaction.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 pub struct FiringRider;

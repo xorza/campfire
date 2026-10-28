@@ -54,19 +54,19 @@ pub(crate) struct TypeAdditions<'a> {
     pub(crate) barrels: &'a BTreeMap<TypeName, BarrelsData>,
     /// The bones each type's turret reads of its model.
     pub(crate) bones: &'a BTreeMap<TypeName, ModelBones>,
-    /// Its track of veterancy and what its death gives (generals.md, Veterancy is progression's
+    /// Its track of veterancy and what its death gives (09-zero-hour.md, Veterancy is progression's
     /// data).
     pub(crate) tracks: &'a BTreeMap<TypeName, TypeTracksData>,
     pub(crate) experience: &'a BTreeMap<TypeName, ExperienceData>,
-    /// The area of each marker a power's cast lands (generals.md, The import converts a marker's
-    /// burst).
+    /// The area of each marker a power's cast lands (09-zero-hour.md, The import converts a
+    /// marker's burst).
     pub(crate) areas: &'a BTreeMap<TypeName, AreaWrite>,
     /// The `enter` of each container, and the `rides` of each rider, which takes a `uses` of the
-    /// slot kind of its entry (transports.md, A container says who rides).
+    /// slot kind of its entry (04-capabilities/interaction.md, A container says who rides).
     pub(crate) enters: &'a BTreeMap<TypeName, EnterData>,
     pub(crate) rides: &'a BTreeMap<TypeName, RidesData>,
-    /// The modifiers of the movers' hurts, which a hurt mover's `hurt` names (driving.md, A hurt
-    /// type may hold a modifier).
+    /// The modifiers of the movers' hurts, which a hurt mover's `hurt` names
+    /// (04-capabilities/stats.md, A hurt type may hold a modifier).
     pub(crate) movers: &'a MoverImport,
 }
 

@@ -216,9 +216,9 @@ impl ZeroHourMover {
 
     /// The push out of a cell it may not stand in of a mover at `at` of `velocity`, as
     /// `fixInvalidPosition`: a fifth of a meter a tick each tick away from each of the eight cells
-    /// round it that `open` refuses, each a cell off, on each axis; and as much again as cancels its
-    /// velocity toward them, the root of its speed into them, the game's own; none for a mover of no
-    /// such cell round it, or one that leaves already, faster than a quarter meter a tick.
+    /// round it that `open` refuses, each a cell off, on each axis; and as much again as cancels
+    /// its velocity toward them, the root of its speed into them, the game's own; none for a mover
+    /// of no such cell round it, or one that leaves already, faster than a quarter meter a tick.
     fn correction(at: Vec3, [x, z]: [Num; 2], open: impl Fn(Vec3) -> bool) -> Option<[Num; 2]> {
         // The cells off on Zero Hour's plane, its y north, −z.
         let mut off = [0_i64; 2];
@@ -443,8 +443,8 @@ impl ZeroHourMover {
     }
 
     /// The forward speed of `velocity` along `facing`, as `getForwardSpeed2D` measures it, each
-    /// axis apart: `√((vₓdₓ)² + (v_zd_z)²)`, negative when the two sum below 0 (driving.md, The
-    /// release game's forward speed).
+    /// axis apart: `√((vₓdₓ)² + (v_zd_z)²)`, negative when the two sum below 0
+    /// (04-capabilities/navigation.md, The release game's forward speed).
     fn forward([x, z]: [Num; 2], facing: Facing) -> Num {
         let [cos, minus_sin] = Self::way(facing);
         let (along_x, along_z) = (x * cos, z * minus_sin);

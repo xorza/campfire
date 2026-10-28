@@ -25,7 +25,7 @@ pub struct Destinations;
 
 impl Destinations {
     /// Walks each unit that can move to its attack target while out of the range of the weapon
-    /// combat chose against it (combat-response.md, The chosen weapon is the attack's), and
+    /// combat chose against it (04-capabilities/combat.md, The chosen weapon is the attack's), and
     /// straight away from it to halfway between the weapon's minimum and its range while nearer
     /// than its minimum, of those the index of the attack targets holds, and
     /// stops it in reach or in its windup, but a unit on wings, which flies on at its target; a
@@ -95,8 +95,8 @@ impl Destinations {
             });
             // A retaliation ends as its chase's time passes, its target lies past its reach from
             // where its unit stood, or its unit past its leash, and so does one of no target: its
-            // unit walks back by an attack-move (combat-response.md, A retaliation's target is
-            // chased to its leash).
+            // unit walks back by an attack-move (04-capabilities/control.md, A retaliation's target
+            // is chased to its leash).
             if let Some(TargetSource::Retaliation { from, until }) = progress.target_source() {
                 let retaliate = retaliates.get(*unit_type);
                 let past = |bound: Num, at: Vec3| {

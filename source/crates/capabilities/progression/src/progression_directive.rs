@@ -10,7 +10,7 @@ pub enum ProgressionDirective<R: OrderRefs = Ids> {
     /// Learn the next rank of the action in `slot`, for a point.
     Learn { slot: R::Slot },
     /// Learn the perk `perk` for its player, for its cost, whatever units the order names
-    /// (generals.md, A science is a perk of a player).
+    /// (04-capabilities/progression.md, A science is a perk of a player).
     LearnPerk { perk: R::Perk },
 }
 

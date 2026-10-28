@@ -53,10 +53,10 @@ impl LearnOrders {
 
     /// Applies each perk's learn order of the tick, in input order, so a second learn in a tick
     /// sees the points the first spent: the perk, for its cost, to the order's player, which then
-    /// holds its modifier, when the player has its points, its level and the perks it requires,
-    /// and lacks it (generals.md, A science is a perk of a player). An order of a perk no player
-    /// learns, or that fails a check, is dropped: a client can send anything. The server's, as
-    /// no client predicts its player's state.
+    /// holds its modifier, when the player has its points, its level and the perks it requires, and
+    /// lacks it (04-capabilities/progression.md, A science is a perk of a player). An order of a
+    /// perk no player learns, or that fails a check, is dropped: a client can send anything. The
+    /// server's, as no client predicts its player's state.
     pub(super) fn learn_perks(
         mut orders: TickCommands<'_, '_, ProgressionDirective>,
         book: Res<'_, PerkBook>,

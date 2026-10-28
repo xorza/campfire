@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A weapon's `rate_bonus` or `damage_bonus` as data writes it: a stat, or a list of them, whose
 /// sum is the bonus, as Zero Hour's `WeaponBonusSet::appendBonuses` adds each condition's bonus
-/// (generals.md, A weapon's bonus is a sum of stats).
+/// (04-capabilities/combat.md, A weapon's bonus is a sum of stats).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BonusData(Vec<Stat>);
 

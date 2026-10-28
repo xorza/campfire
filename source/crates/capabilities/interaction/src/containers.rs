@@ -25,9 +25,9 @@ use crate::rider_size::RiderSize;
 use crate::riders::Riders;
 use crate::riding::Riding;
 
-/// The containers' passes: the exits their orders and their falls ask for, the riders they
-/// carry, and the riders they spawn with (transports.md, A rider leaves at a free cell by the
-/// container; transports.md, A container's fall hurts its riders).
+/// The containers' passes: the exits their orders and their falls ask for, the riders they carry,
+/// and the riders they spawn with (04-capabilities/interaction.md, A rider leaves at a free cell by
+/// the container; 04-capabilities/interaction.md, A container's fall hurts its riders).
 #[derive(Debug)]
 pub(crate) struct Containers;
 
@@ -174,9 +174,9 @@ impl Containers {
         UnitDues::new(&mut index, id, ordered.entity).push(riders.exit_due());
     }
 
-    /// Lets out each rider whose exit came, of the containers the index holds due, by their
-    /// stable ids, each its container's exit time after the one before, at the free cell nearest
-    /// its container (transports.md, A rider leaves at a free cell by the container).
+    /// Lets out each rider whose exit came, of the containers the index holds due, by their stable
+    /// ids, each its container's exit time after the one before, at the free cell nearest its
+    /// container (04-capabilities/interaction.md, A rider leaves at a free cell by the container).
     pub(crate) fn let_out(world: &mut World, mut taken: Local<'_, Vec<DueUnit>>) {
         let now = world.resource::<SimTick>().start();
         taken.clear();
@@ -191,7 +191,7 @@ impl Containers {
                 continue;
             }
             // A container in the air lets no rider out: it lands, and they leave on the ground
-            // (transports.md, A flier lands for its riders).
+            // (04-capabilities/navigation.md, A flier lands for its riders).
             if !Riders::grounded(world, entity) {
                 UnitDues::<Riders>::with(world, id, entity, |world, dues| {
                     let riders = world
@@ -221,7 +221,7 @@ impl Containers {
     /// `damage` share of its life's most, which dies at all of it, as Zero Hour's
     /// `OpenContain::onDie`; and starts the exit of every rider of each living container whose
     /// life fell to its `full` share, as `GarrisonContain::onBodyDamageStateChange`
-    /// (transports.md, A container's fall hurts its riders).
+    /// (04-capabilities/interaction.md, A container's fall hurts its riders).
     pub(crate) fn fall(
         world: &mut World,
         dead: &mut Fallen,
@@ -272,7 +272,8 @@ impl Containers {
 
     /// Puts each rider where its container stands, or at its fire point of its container's frame,
     /// of the containers that moved or turned this tick or whose riders changed, as a rider's place
-    /// is its container's while it rides (transports.md, A container may let its riders fire).
+    /// is its container's while it rides (04-capabilities/combat.md, A container may let its riders
+    /// fire).
     pub(crate) fn carry(
         mut units: ParamSet<'_, '_, (Moved<'_, '_>, RiderPlaces<'_, '_>)>,
         (index, specs): (Res<'_, EntityIndex>, Res<'_, ById<UnitType, EnterSpec>>),
@@ -305,7 +306,7 @@ impl Containers {
 
     /// Moves each firing rider of a container of fire points whose target changed to the free
     /// point nearest its target, when it is nearer than its own, there at once
-    /// (transports.md, A container may let its riders fire).
+    /// (04-capabilities/combat.md, A container may let its riders fire).
     pub(crate) fn aim(
         mut firing: Retargeted<'_, '_>,
         mut containers: Holders<'_, '_>,
@@ -347,7 +348,7 @@ impl Containers {
     /// Lands each container that flies while it stands with a unit coming to it or waiting for it,
     /// or a rider waiting to leave it, and lifts it again once none does; once it is on the
     /// ground, each unit that waits for it enters again, and a unit that took another order or
-    /// went comes no more (transports.md, A flier lands for its riders).
+    /// went comes no more (04-capabilities/navigation.md, A flier lands for its riders).
     pub(crate) fn land(
         mut containers: Landers<'_, '_>,
         mut boarders: Boarders<'_, '_>,
@@ -410,7 +411,7 @@ impl Containers {
     }
 
     /// Holds each container's modifier on each of its riders this tick, from the container, in a
-    /// match with stats (transports.md, A container's modifier holds on its riders).
+    /// match with stats (04-capabilities/combat.md, A container's modifier holds on its riders).
     pub(crate) fn hold(
         containers: Query<'_, '_, (&StableId, &Riders, &UnitType), Without<Dead>>,
         specs: Res<'_, ById<UnitType, EnterSpec>>,
@@ -437,7 +438,7 @@ impl Containers {
 
     /// Spawns the riders of the payload of the container of `entity`, which the spawner spawned,
     /// inside it, in their order, each of its team and its player, as it comes full
-    /// (transports.md, A container may come full).
+    /// (04-capabilities/interaction.md, A container may come full).
     pub(crate) fn fill(world: &mut World, entity: Entity) {
         let Some(spec) = Self::spec(world, entity) else {
             return;
@@ -528,8 +529,8 @@ impl Containers {
     }
 
     /// Takes the `holding` tag from the container of `entity` once its riders left, and gives a
-    /// free building back to the player and the team it had (transports.md, A free building takes
-    /// its riders' side).
+    /// free building back to the player and the team it had (04-capabilities/interaction.md, A free
+    /// building takes its riders' side).
     fn emptied(world: &mut World, entity: Entity) {
         let mut riders = world.get_mut::<Riders>(entity).expect("a container");
         if !riders.is_empty() {

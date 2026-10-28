@@ -26,12 +26,12 @@ impl Armed<'_> {
     /// The slot of the weapon it attacks a target of `tags` with, a unit it regards with
     /// `relation`, of the armor `armor`, each weapon's reach of it as `reaches` says of its slot:
     /// of its weapons whose `when` its tags pass, whose filter selects the target and whose kind
-    /// the armor does not spare, of those that reach the target one ready, or preferred, before
-    /// one cooling, then one preferred, then the one of the most estimated damage, then the
-    /// lowest slot; and while none reaches it, the first, as Zero Hour's
+    /// the armor does not spare, of those that reach the target one ready, or preferred, before one
+    /// cooling, then one preferred, then the one of the most estimated damage, then the lowest
+    /// slot; and while none reaches it, the first, as Zero Hour's
     /// `WeaponSet::chooseBestWeaponForTarget` walks its slots and falls back to its primary
-    /// (combat-response.md, Combat chooses the weapon; combat-response.md, An attack may prefer
-    /// its targets). None for no such weapon.
+    /// (04-capabilities/combat.md, Combat chooses the weapon; 04-capabilities/combat.md, An attack
+    /// may prefer its targets). None for no such weapon.
     pub(crate) fn choose(
         self,
         (relation, tags): (Relation, TagSet),

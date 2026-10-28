@@ -35,18 +35,18 @@ impl Riders {
     /// Puts the rider of `rider` in the container of `container`, when the container takes it;
     /// whether it did. A container takes a living rider of a size, not inside already, that its
     /// filter selects and its room fits, while it lives above its `full` share of life
-    /// (transports.md, A container says who rides), of the rider's player, or of a free building
-    /// no other player's rider holds (transports.md, A rider may enter its own player's container,
-    /// or a free one). The rider leaves the world with its stable id and parts, its team alone
-    /// sees it, and it walks nowhere; the container holds the `holding` tag, and a free building
-    /// takes its first rider's player and team (transports.md, A free building takes its riders'
-    /// side).
+    /// (04-capabilities/interaction.md, A container says who rides), of the rider's player, or of a
+    /// free building no other player's rider holds (04-capabilities/interaction.md, A rider may
+    /// enter its own player's container, or a free one). The rider leaves the world with its stable
+    /// id and parts, its team alone sees it, and it walks nowhere; the container holds the
+    /// `holding` tag, and a free building takes its first rider's player and team
+    /// (04-capabilities/interaction.md, A free building takes its riders' side).
     pub(crate) fn enter(world: &mut World, rider: Entity, container: Entity) -> bool {
         let Some(room) = Self::admits(world, rider, container) else {
             return false;
         };
         // A container in the air takes no rider: the rider waits on the ground for it to land
-        // (transports.md, A flier lands for its riders).
+        // (04-capabilities/navigation.md, A flier lands for its riders).
         if !Self::grounded(world, container) {
             let id = *world
                 .get::<StableId>(rider)

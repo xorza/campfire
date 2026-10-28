@@ -2,17 +2,18 @@ use campfire_math::{Num, Vec3};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// A Zero Hour locomotor, its speed, turn rate and acceleration its unit's stats (driving.md, Each
-/// appearance moves as its mover): its appearance; how fast it brakes, in meters a second squared,
-/// above 0; the speed in meters a second a leg slows to as it comes to its goal, its `MinSpeed`;
-/// the speed a wheel holds in a turn, at least, its `MinTurnSpeed`; the meters ahead of its center
-/// it turns about, its `TurnPivotOffset` times its bounding radius (driving.md, A turn moves the
-/// body round its pivot); whether a wheel backs toward a goal behind it, its `CanMoveBackwards`;
-/// the meters past which its goal along its route makes it turn in three points, five major
-/// radii; the share of its sideways velocity it loses each tick, its `LateralFriction`, 0.15 with
-/// none; the meters from its route's end within which it has arrived, its `CloseEnoughDist`, 1
-/// with none; and whether, in a cell it may not stand in, it pushes itself out, as
-/// `fixInvalidPosition` does for every mover but a dozer, true with none.
+/// A Zero Hour locomotor, its speed, turn rate and acceleration its unit's stats
+/// (04-capabilities/navigation.md, Each appearance moves as its mover): its appearance; how fast it
+/// brakes, in meters a second squared, above 0; the speed in meters a second a leg slows to as it
+/// comes to its goal, its `MinSpeed`; the speed a wheel holds in a turn, at least, its
+/// `MinTurnSpeed`; the meters ahead of its center it turns about, its `TurnPivotOffset` times its
+/// bounding radius (04-capabilities/navigation.md, A turn moves the body round its pivot); whether
+/// a wheel backs toward a goal behind it, its `CanMoveBackwards`; the meters past which its goal
+/// along its route makes it turn in three points, five major radii; the share of its sideways
+/// velocity it loses each tick, its `LateralFriction`, 0.15 with none; the meters from its route's
+/// end within which it has arrived, its `CloseEnoughDist`, 1 with none; and whether, in a cell it
+/// may not stand in, it pushes itself out, as `fixInvalidPosition` does for every mover but a
+/// dozer, true with none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ZeroHourLocomotor {
     pub appearance: LocomotorAppearance,

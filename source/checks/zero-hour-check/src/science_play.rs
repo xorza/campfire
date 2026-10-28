@@ -26,10 +26,11 @@ const SCIENCE: &str = "science_paladintank";
 /// applies in, as a queue would hold a started train.
 const REFUSED_TICKS: u64 = 3;
 
-/// The science play on Tournament Desert (generals.md, A science is a perk of a player;
-/// generals.md, A perk's modifier is a player modifier): America starts with its base, whose war
-/// factory may not train a Paladin, which needs `SCIENCE_PaladinTank`; the player learns that
-/// science for its rank 1 point, by an order of no units, and the war factory then trains one.
+/// The science play on Tournament Desert (04-capabilities/progression.md, A science is a perk of a
+/// player; 04-capabilities/progression.md, A perk's modifier is a player modifier): America starts
+/// with its base, whose war factory may not train a Paladin, which needs `SCIENCE_PaladinTank`; the
+/// player learns that science for its rank 1 point, by an order of no units, and the war factory
+/// then trains one.
 #[derive(Debug)]
 pub(crate) struct SciencePlay;
 

@@ -308,7 +308,7 @@ impl Clearance<'_> {
 
     /// Whether the walls block the walker from the cell `point` stands in, or `point` lies outside
     /// the grid, whatever the static bodies block: the terrain a wheel's arc may not cross
-    /// (driving.md, A wheel's arc is tested on the pathing grid).
+    /// (04-capabilities/navigation.md, A wheel's arc is tested on the pathing grid).
     pub(crate) fn walled_at(&self, point: Vec3) -> bool {
         let Some(cell) = self.grid.cell_of(point) else {
             return true;

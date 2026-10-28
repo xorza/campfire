@@ -14,7 +14,7 @@ pub struct AttackTarget {
 /// What gave a unit its attack target: an order, which it chases; its idle scan, which it
 /// drops once no weapon of it reaches the target; or an ally's call to retaliate, which it chases
 /// to its leash from where it stood, `from`, until the tick `until`, and then walks back
-/// (combat-response.md, A retaliation's target is chased to its leash).
+/// (04-capabilities/control.md, A retaliation's target is chased to its leash).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TargetSource {
     Order,
