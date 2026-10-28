@@ -7,17 +7,17 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::query::{Has, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use campfire_actions::{
     ActionBook, ActionCall, ActionCheck, ActionKind, ActionProgress, ActionSlots, CastSpends,
     Caster, CheckedAction, EffectListBook, InProgress, ListCall, ListHook, ListsOf, OnResolve,
-    OrderPhase, ProgressDues, ProgressIndexes, Purse, RangeFit, ResolveKind, ResolvedCast,
-    SlotCommit, SlotTimes, StartChecked, StartFrom, Targets, UseGroup,
+    OrderPhase, PlayerCooldowns, ProgressDues, ProgressIndexes, Purse, RangeFit, ResolveKind,
+    ResolvedCast, SlotCommit, SlotTimes, StartChecked, StartFrom, Targets, UseGroup,
 };
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_math::{Num, RngStream, Rounding, Vec3};
-use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorld};
+use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersCall, PlayersWorld};
 use campfire_script::{
     ActionCast, Answered, CallError, CallStart, Ctx, ScriptBatch, ScriptId, ScriptValue,
     ScriptsWorld, Unit,
@@ -84,6 +84,7 @@ impl Casts {
         (tick, rng): (Res<'_, SimTick>, Res<'_, SimRng>),
         book: Res<'_, ActionBook>,
         (resources, life): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PoolBook>),
+        cooldowns: PlayerRows<'_, '_, PlayerCooldowns>,
         targets: Targets<'_, '_>,
         mut units: Query<
             '_,
@@ -158,7 +159,10 @@ impl Casts {
                 continue;
             };
             let action = book.get(action).expect("a slot's action is in the book");
-            if !matches!(action.kind, ActionKind::Cast | ActionKind::Use) {
+            if !matches!(
+                action.kind,
+                ActionKind::Cast | ActionKind::Use | ActionKind::Enter
+            ) {
                 continue;
             }
             if blocked {
@@ -193,6 +197,7 @@ impl Casts {
                 now,
                 caster: Caster::of(tags, Motion::of(forced), used),
                 slots,
+                player: cooldowns.of(owner),
                 purse,
                 aim,
                 relation,
@@ -323,6 +328,7 @@ impl Casts {
         clock: TickClock<'_>,
         book: Res<'_, ActionBook>,
         (resources, life): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PoolBook>),
+        mut cooldowns: PlayerRowsMut<'_, '_, PlayerCooldowns>,
         targets: Targets<'_, '_>,
         mut casters: Query<
             '_,
@@ -378,6 +384,7 @@ impl Casts {
                 now,
                 caster: Caster::of(tags, Motion::of(forced), used),
                 slots,
+                player: cooldowns.of(owner),
                 purse,
                 aim: casting,
                 relation,
@@ -391,7 +398,11 @@ impl Casts {
             });
             progress.complete_cast(slots, now, resolved.as_ref(), dues);
             if let Some(resolved) = &resolved {
-                times.commit(SlotCommit::cast(resolved, now, second));
+                let player = cooldowns.of_mut(owner);
+                times.commit(
+                    SlotCommit::cast(resolved, now, second),
+                    player.map(Mut::into_inner),
+                );
             }
         }
     }
@@ -429,10 +440,24 @@ impl Casts {
             progress.complete_cast(slots, now, resolved.as_ref(), dues);
         });
         if let Some(resolved) = &resolved {
-            world
-                .get_mut::<SlotTimes>(entity)
-                .expect("a caster has slot times")
-                .commit(SlotCommit::cast(resolved, now, second));
+            let owner = world.get::<Owner>(entity).map(|owner| owner.player_slot());
+            let player = owner.and_then(|owner| world.player_entity(owner));
+            let player = player.filter(|&player| world.get::<PlayerCooldowns>(player).is_some());
+            let commit = SlotCommit::cast(resolved, now, second);
+            match player {
+                Some(player) => {
+                    let [mut unit, mut player] = world.entity_mut([entity, player]);
+                    let mut times = unit
+                        .get_mut::<SlotTimes>()
+                        .expect("a caster has slot times");
+                    let held = player.get_mut::<PlayerCooldowns>();
+                    times.commit(commit, held.map(Mut::into_inner));
+                }
+                None => world
+                    .get_mut::<SlotTimes>(entity)
+                    .expect("a caster has slot times")
+                    .commit(commit, None),
+            }
             CastSpends::spend(world, entity, resolved.call.aim.slot);
         }
     }
@@ -533,6 +558,9 @@ impl Casts {
                 unit.get::<UseGroup>(),
             ),
             slots,
+            player: owner
+                .and_then(|owner| world.player_entity(owner.player_slot()))
+                .and_then(|player| world.get::<PlayerCooldowns>(player)),
             purse,
             aim: casting,
             relation,

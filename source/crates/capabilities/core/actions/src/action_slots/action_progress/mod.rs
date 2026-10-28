@@ -30,13 +30,19 @@ pub(crate) mod progress_dues;
 
 /// What a unit's actions have under way, beside its slots, whose table it keys on: the action it
 /// was ordered or has under way, one at a time; the unit its attacks aim at, which it attacks
-/// again each time a weapon is ready, until another order; the pre-attack of a weapon at that
-/// unit; and a channel an order, a stop or an interrupt cut, whose `on_interrupt` has yet to run. An attack's or a channel's step changes
-/// it alone, so what reads the slots' table visits no unit for it.
+/// again each time a weapon is ready, until another order; the unit its turret aims at while it
+/// walks with no attack target, of its scan (combat-response.md, A turret has its own target);
+/// the slot of the weapon combat chose this tick against the first of the two it has
+/// (combat-response.md, The chosen weapon is the attack's); the pre-attack of a weapon at that
+/// unit; and a channel an order, a stop or an interrupt cut, whose
+/// `on_interrupt` has yet to run. An attack's or a channel's step changes it alone, so what reads
+/// the slots' table visits no unit for it.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionProgress {
     underway: Option<InProgress>,
     attack_target: Option<AttackTarget>,
+    turret_target: Option<StableId>,
+    weapon: Option<u8>,
     pre_attack: Option<PreAttack>,
     interrupted: Option<ChannelCall>,
 }
@@ -204,9 +210,7 @@ impl ActionProgress {
     /// Starts an attack with the weapon in `slot` at the attack target, to resolve in
     /// `resolves_at`: its unit is due then in `dues`.
     pub fn schedule_attack(&mut self, slot: u8, resolves_at: Tick, dues: &mut ProgressDues<'_>) {
-        let target = self
-            .attack_target()
-            .expect("an attack starts at its target");
+        let target = self.aimed_at().expect("an attack starts at its target");
         self.underway = Some(InProgress::Attack {
             slot,
             target,
@@ -314,7 +318,7 @@ impl ActionProgress {
     /// Ends the cast under way, as `complete_cast` does, but makes no unit due.
     fn complete(&mut self, slots: &ActionSlots, now: Tick, resolved: Option<&ResolvedCast>) {
         self.halt();
-        let Some(&ResolvedCast { call, values }) = resolved else {
+        let Some(&ResolvedCast { call, values, .. }) = resolved else {
             return;
         };
         let Some(rule) = values.channel else {
@@ -410,11 +414,74 @@ impl ActionProgress {
         }
     }
 
+    /// The unit its turret aims at while it walks with no attack target.
+    pub const fn turret_target(&self) -> Option<StableId> {
+        self.turret_target
+    }
+
+    /// The unit its attacks aim at: its attack target, else its turret target.
+    pub const fn aimed_at(&self) -> Option<StableId> {
+        match self.attack_target {
+            Some(target) => Some(target.unit),
+            None => self.turret_target,
+        }
+    }
+
     /// What gave it its attack target.
     pub const fn target_source(&self) -> Option<TargetSource> {
         match self.attack_target {
             Some(target) => Some(target.source),
             None => None,
+        }
+    }
+
+    /// The slot of the weapon its attacks use against the unit they aim at, as combat chose it
+    /// this tick; none while no weapon of it may attack the unit.
+    pub const fn weapon(&self) -> Option<u8> {
+        self.weapon
+    }
+
+    /// Attacks the unit it aims at with the weapon of `slot`, or with none.
+    pub fn choose_weapon(&mut self, slot: Option<u8>) {
+        debug_assert!(
+            slot.is_none() || self.aimed_at().is_some(),
+            "a weapon is chosen against a target"
+        );
+        self.weapon = slot;
+    }
+
+    /// Aims its turret at `target` from now on, or at none, its unit due in `dues` while it has
+    /// one; another than the current one cancels an attack on it in its windup and spends nothing,
+    /// and so does a new one while it has an attack target, which comes first.
+    pub fn set_turret_target(&mut self, target: Option<StableId>, dues: &mut ProgressDues<'_>) {
+        debug_assert!(
+            target.is_none() || self.attack_target.is_none(),
+            "a turret takes a target of its own while its unit has none"
+        );
+        if target != self.turret_target && self.attack_target.is_none() {
+            self.retarget();
+        }
+        self.turret_target = target;
+        dues.push(self);
+    }
+
+    /// Drops the unit its attacks aim at, its attack target, else its turret target, as it is no
+    /// living enemy any more.
+    pub fn drop_aimed(&mut self, dues: &mut ProgressDues<'_>) {
+        if self.attack_target.is_some() {
+            self.set_attack_target(None, dues);
+        } else {
+            self.set_turret_target(None, dues);
+        }
+    }
+
+    /// Forgets the choice of weapon and the pre-attack of the unit its attacks aimed at, and
+    /// cancels an attack on it in its windup, as they aim at another.
+    const fn retarget(&mut self) {
+        self.weapon = None;
+        self.pre_attack = None;
+        if matches!(self.underway, Some(InProgress::Attack { .. })) {
+            self.underway = None;
         }
     }
 
@@ -427,14 +494,16 @@ impl ActionProgress {
     }
 
     /// Attacks `target` from now on, its unit due in `dues` while it has one; another target than
-    /// the current one cancels an attack in its windup and spends nothing.
+    /// the one its attacks aim at cancels an attack in its windup and spends nothing. A target
+    /// ends its turret target, as its own comes first (combat-response.md, A turret has its own
+    /// target).
     pub fn set_attack_target(&mut self, target: Option<AttackTarget>, dues: &mut ProgressDues<'_>) {
-        let unit = target.map(|target| target.unit);
-        if unit != self.attack_target() {
-            self.pre_attack = None;
-            if self.attacking().is_some() {
-                self.underway = None;
-            }
+        let aimed = target.map_or(self.turret_target, |target| Some(target.unit));
+        if aimed != self.aimed_at() {
+            self.retarget();
+        }
+        if target.is_some() {
+            self.turret_target = None;
         }
         self.attack_target = target;
         dues.push(self);
@@ -478,6 +547,9 @@ impl ActionProgress {
         if let Some(underway) = &mut self.underway {
             moved(underway.slot_mut());
         }
+        if let Some(weapon) = &mut self.weapon {
+            moved(weapon);
+        }
         if let Some(pre_attack) = &mut self.pre_attack {
             moved(&mut pre_attack.slot);
         }
@@ -498,6 +570,9 @@ impl ActionProgress {
         if let Some(underway) = &mut self.underway {
             follow(underway.slot_mut());
         }
+        if let Some(weapon) = &mut self.weapon {
+            follow(weapon);
+        }
         if let Some(pre_attack) = &mut self.pre_attack {
             follow(&mut pre_attack.slot);
         }
@@ -506,10 +581,14 @@ impl ActionProgress {
         }
     }
 
-    /// Ends what is under way from `slot`, a channel cut, and its pre-attack, as its slot is
-    /// filled afresh: an order of the slot ends, as its action is gone, where an interrupt sends
-    /// it back to its order; a wind-down runs on, as it is of the slot, whatever the slot holds.
+    /// Ends what is under way from `slot`, a channel cut, its pre-attack and its choice of weapon,
+    /// as its slot is filled afresh: an order of the slot ends, as its action is gone, where an
+    /// interrupt sends it back to its order; a wind-down runs on, as it is of the slot, whatever
+    /// the slot holds.
     pub(crate) fn slot_emptied(&mut self, slot: u8, dues: &mut ProgressDues<'_>) {
+        if self.weapon == Some(slot) {
+            self.weapon = None;
+        }
         if self
             .pre_attack
             .is_some_and(|pre_attack| pre_attack.slot == slot)
@@ -536,8 +615,11 @@ impl SimComponent for ActionProgress {
     fn check(&self, world: &World, entity: Entity) -> bool {
         let book = world.resource::<ActionBook>();
         let dead = world.entity(entity).contains::<Dead>();
-        let ended =
-            self.underway.is_none() && self.attack_target.is_none() && self.pre_attack.is_none();
+        let ended = self.underway.is_none()
+            && self.attack_target.is_none()
+            && self.turret_target.is_none()
+            && self.weapon.is_none()
+            && self.pre_attack.is_none();
         (!dead || ended)
             && world
                 .get::<ActionSlots>(entity)
@@ -603,8 +685,13 @@ impl ActionProgress {
                 .and_then(|action| action.values_at(cut.rank)?.channel);
             usize::from(cut.call.aim.slot) < slots.len() && rule.is_some()
         });
+        let returns = self.attack_target.is_none_or(|target| match target.source {
+            TargetSource::Retaliation { from, .. } => from.within_bound(),
+            TargetSource::Order | TargetSource::Scan => true,
+        });
         let places = self.underway.is_none_or(InProgress::check)
-            && self.interrupted.is_none_or(|cut| cut.call.check());
+            && self.interrupted.is_none_or(|cut| cut.call.check())
+            && returns;
         // A start holds a charge exactly when its action charges at its rank, as `ctx.charge`
         // reads one.
         let charged = |values: Option<&RankValues>, start: ActionStart| {
@@ -635,16 +722,24 @@ impl ActionProgress {
                 .and_then(|action| action.values_at(cut.rank));
             charged(values, cut.call.start)
         });
-        // A pre-attack is of a weapon's slot, at the attack target.
+        // A turret target serves a unit of no attack target; a chosen weapon is of a weapon's
+        // slot, against a target.
+        let turret = self.turret_target.is_none() || self.attack_target.is_none();
+        let weapon = self.weapon.is_none_or(|weapon| {
+            let slot = slots.slot(weapon).and_then(|slot| book.get(slot.action?));
+            self.aimed_at().is_some()
+                && slot.is_some_and(|action| action.kind == ActionKind::Attack)
+        });
+        // A pre-attack is of a weapon's slot, at the unit its attacks aim at.
         let pre_attack = self.pre_attack.is_none_or(|pre_attack| {
-            let target = self.attack_target.map(|target| target.unit);
+            let target = self.aimed_at();
             let slot = slots
                 .slot(pre_attack.slot)
                 .and_then(|slot| book.get(slot.action?));
             target == Some(pre_attack.target)
                 && slot.is_some_and(|action| action.kind == ActionKind::Attack)
         });
-        underway && interrupted && places && started && cut_start && pre_attack
+        underway && interrupted && places && started && cut_start && turret && weapon && pre_attack
     }
 }
 

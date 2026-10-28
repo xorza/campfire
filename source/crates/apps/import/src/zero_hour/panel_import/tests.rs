@@ -85,7 +85,7 @@ fn a_set_places_its_converted_buttons_and_commands_with_their_images_and_keys() 
     );
 
     // The images: the dozer's of its atlas, the sell's of a texture no archive holds, the stop's
-    // turned; each converted once.
+    // turned; each converted once; and the three levels' chevrons of the atlas.
     let mut images = MappedImageIni::default();
     images
         .read(
@@ -93,7 +93,13 @@ fn a_set_places_its_converted_buttons_and_commands_with_their_images_and_keys() 
               Coords = Left:63 Top:301 Right:123 Bottom:349\nEnd\n\
               MappedImage SSSell2\n Texture = Lost.tga\n Coords = Left:1 Top:1 Right:9 Bottom:9\nEnd\n\
               MappedImage Turned\n Texture = SAUserInterface512_005.tga\n \
-              Coords = Left:0 Top:0 Right:9 Bottom:9\n Status = ROTATED_90_CLOCKWISE\nEnd\n",
+              Coords = Left:0 Top:0 Right:9 Bottom:9\n Status = ROTATED_90_CLOCKWISE\nEnd\n\
+              MappedImage SCVETER1\n Texture = SAUserInterface512_005.tga\n \
+              Coords = Left:0 Top:0 Right:16 Bottom:16\nEnd\n\
+              MappedImage SCVETER2\n Texture = SAUserInterface512_005.tga\n \
+              Coords = Left:16 Top:0 Right:32 Bottom:16\nEnd\n\
+              MappedImage SCVETER3\n Texture = SAUserInterface512_005.tga\n \
+              Coords = Left:32 Top:0 Right:48 Bottom:16\nEnd\n",
         )
         .unwrap();
     let atlas = ArchivePath::of("art\\textures\\sauserinterface512_005.tga");
@@ -113,7 +119,12 @@ fn a_set_places_its_converted_buttons_and_commands_with_their_images_and_keys() 
     let sold = &panel.grid.commands[&PanelCommand::Sell];
     assert_eq!((&sold.icon, sold.key), (&None, Some(Key::KeyS)));
     assert_eq!(panel.grid.commands[&PanelCommand::Stop].icon, None);
-    assert_eq!(panel.textures, BTreeSet::from([atlas]));
+    assert_eq!(panel.textures, BTreeSet::from([atlas.clone()]));
+    let level = |left| PanelIcon {
+        texture: game_path::texture(&atlas).unwrap(),
+        rect: IconRect::new(left, 0, left + 16, 16).unwrap(),
+    };
+    assert_eq!(panel.level_icons, [level(0), level(16), level(32)]);
     // The game's grid: 7 columns of 2, down each column.
     let grid = &panel.grid;
     assert_eq!(

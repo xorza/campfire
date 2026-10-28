@@ -39,6 +39,11 @@ gatherers_base = []
 gatherers_outpost = []
 drop_offs_base = []
 drop_offs_outpost = []
+# The perks each faction starts with, and the skill sets its bot buys: none.
+perks_base = []
+perks_outpost = []
+skill_sets_base = []
+skill_sets_outpost = []
 base_count = 2
 
 # The faction each player plays, which the session's host picks for a player slot, and a player slot with no

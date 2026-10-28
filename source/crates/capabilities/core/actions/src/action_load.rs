@@ -112,7 +112,10 @@ impl ActionLoading {
                 UnknownName::new(StatId::NAMES, stat),
             ));
         }
-        if !(data.on_resolve.is_empty() && data.on_hit.is_empty() && data.on_end.is_empty()) {
+        // A kind whose own effect ends its `on_resolve` holds a list though its data writes none.
+        let lists =
+            !(data.on_resolve.is_empty() && data.on_hit.is_empty() && data.on_end.is_empty());
+        if lists || data.section.resolves().is_some() {
             let pushed = self.effects.push(action, data, names.effects(data, index));
             pushed.map_err(|error| ActionLoad::error(index, id, error))?;
         }

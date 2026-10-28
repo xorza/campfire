@@ -219,7 +219,10 @@ impl PendingOrders {
         let mut carried = Vec::new();
         while left > 0 && done < self.0.len() {
             match &self.0[done] {
-                Pending::Order(order) if known.commands(order.units.get()) => {
+                // An order of no units goes with no select, and leaves what the server commands.
+                Pending::Order(order)
+                    if order.units.get().is_empty() || known.commands(order.units.get()) =>
+                {
                     let seq = seq(sent);
                     sent.push(seq, stamp, max_len, |body, out| {
                         order.write_commanded_payload(body, out);

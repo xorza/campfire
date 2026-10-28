@@ -9,10 +9,11 @@ use derive_more::Display;
 
 use crate::decal_ground::DecalGround;
 use crate::pins::{
-    BotBase, BotMatchEnd, DefenseTicks, EffectCounts, FactorySteps, FightSteps, Fingerprints,
-    FoughtCounts, HelicopterSteps, JetTicks, LookCounts, MapCounts, MissileTicks, PanelCounts,
-    ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SaleSteps, SoundCounts,
-    SuppliedCounts, SupplySteps, TerrainDrawn, UpgradeSteps, UpgradedCounts,
+    BotBase, BotMatchEnd, CombatSteps, ContainedCounts, DefenseTicks, EffectCounts, FactorySteps,
+    FightSteps, Fingerprints, FoughtCounts, GarrisonSteps, HelicopterSteps, JetTicks, LookCounts,
+    MapCounts, MissileTicks, PanelCounts, ProducedCounts, ProductionSteps, RangerLook, RoadCounts,
+    SaleSteps, ScienceSteps, SoundCounts, SuppliedCounts, SupplySteps, TerrainDrawn,
+    TransportSteps, UpgradeSteps, UpgradedCounts,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -60,6 +61,10 @@ pub(crate) enum CheckFailure {
     /// pinned.
     #[display("it supplied {_0}")]
     Supplied(Box<Differs<SuppliedCounts>>),
+    /// The import's transports, garrisons, riders and dropped contain modules by cause differ
+    /// from the pinned.
+    #[display("it contained {_0}")]
+    Contained(Box<Differs<ContainedCounts>>),
     /// The import's panel: its icons, keys, places, commands and drops by cause.
     #[display("it converted the panel as {_0}")]
     Panel(Box<Differs<PanelCounts>>),
@@ -74,6 +79,13 @@ pub(crate) enum CheckFailure {
     /// The imported mode has no unit type a play reads.
     #[display("the imported mode has no unit type {_0}")]
     NoType(&'static str),
+    /// The imported mode has no perk the science play learns, or the play's player did not
+    /// learn it.
+    #[display("the science play's player holds no perk {_0}")]
+    NoPerk(&'static str),
+    /// The science play's queue, points or ticks differ from the pinned.
+    #[display("it played sciences as {_0}")]
+    Science(Box<Differs<ScienceSteps>>),
     /// A unit type of the imported mode lacks an action a play orders.
     #[display("the unit type {unit} has no action {action}")]
     NoAction {
@@ -153,9 +165,12 @@ pub(crate) enum CheckFailure {
     /// The supply center freed no truck as it completed.
     #[display("the supply center freed no truck")]
     NoTruck,
-    /// The helicopter play's player lacks a helicopter of this type at its start.
-    #[display("player 1 has no {_0} at its start")]
-    NoHelicopter(&'static str),
+    /// A play's player lacks a unit of this type at its start.
+    #[display("player {} has no {unit} at its start", player_slot + 1)]
+    NoStartUnit {
+        player_slot: u32,
+        unit: &'static str,
+    },
     /// The mode's type of this name has no flight.
     #[display("the mode's {_0} does not fly")]
     NoFlight(&'static str),
@@ -177,6 +192,21 @@ pub(crate) enum CheckFailure {
     /// The helicopter play's ticks or load differ from the expected.
     #[display("it played helicopters as {_0}")]
     Helicopters(Box<Differs<HelicopterSteps>>),
+    /// A play did not reach this step within the limit.
+    #[display("a play did not reach {_0} within the limit")]
+    NoStep(&'static str),
+    /// The combat play's ticks, weapons, returns or drive differ from the expected.
+    #[display("it played combat as {_0}")]
+    Combat(Box<Differs<CombatSteps>>),
+    /// The transport play's ticks, shot, fall or flight differ from the expected.
+    #[display("it played transports as {_0}")]
+    Transport(Box<Differs<TransportSteps>>),
+    /// The map holds no free building whose riders leave it before it dies.
+    #[display("the map holds no free building whose riders leave it before it dies")]
+    NoGarrison,
+    /// The garrison play's ticks, side, fire or leave differ from the expected.
+    #[display("it played the garrison as {_0}")]
+    Garrison(Box<Differs<GarrisonSteps>>),
     /// The free truck delivered fewer loads than the supply play pins within its limit.
     #[display("the free truck delivered {_0} loads within the limit")]
     NoDelivery(usize),

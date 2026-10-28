@@ -1,5 +1,6 @@
-data_version 81
-actions.progress 91dd90cbde2fd145
+data_version 91
+actions.player_cooldowns e392c93f37f118db
+actions.progress cf0f07e0b1cf07cf
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
 actions.use_group 0f977a41bb13e2a2
@@ -18,6 +19,8 @@ combat.respawn b5032795d09dab8f
 combat.shot_streak 8a6a9cb82924ef1f
 combat.turret_aim fa45bc37a1eb10aa
 deliveries.dash_delivering 776ca8dc66220523
+interaction.riders cd6c680a3ecb9068
+interaction.riding 6ff2625efa5dd9ea
 items.inventory 8652b58008c7aed2
 mode.bounty_share fc2b4ee1c2c504db
 mode.choices b10fae13644c0483
@@ -45,7 +48,7 @@ navigation.progress f62d79625f4af8d5
 navigation.route b5c9910f717355cc
 navigation.route_cursor 790c89e6fd464e20
 orders.attack_move fd181ae15e5479fa
-orders.held_order 215a21cbaf28cb1f
+orders.held_order 5511ad5b0cc991a7
 orders.next_scan a53661197d67a547
 orders.next_think fd16837f474306ba
 orders.resetting 38f27f78ec03c9db
@@ -74,6 +77,9 @@ production.train_queue eddf577bb3fa6bed
 production.trained_units 2fde87a764f18cfd
 progression.experience 59054d8a3dd78ffe
 progression.level_ups fc77233e4615a843
+progression.player_experience b6a882681d655dfb
+progression.player_perks 88a6e0bea1ab1c37
+progression.player_points 772551969f62e458
 progression.points 9f0daa2a9c452ec0
 projectiles.flight_state 085a998dea1a8917
 projectiles.projectile 12d9585a32f4b6d4
@@ -85,7 +91,7 @@ sim.tick 3328d301c5649b40
 stats.level ad5ac71447c2fd50
 stats.life 40ac46e305f71e63
 stats.modifier_clocks 5af3c8c15034127c
-stats.modifiers d3848b5faf79c0f5
+stats.modifiers 9b0346a69679eb38
 stats.player_modifiers a8df3177805e52f3
 stats.pools 7afa89e615deaaca
 units.body 6b7ff95bfd4a56ed
@@ -93,6 +99,7 @@ units.body_unit 38f27f78ec03c9db
 units.dead 38f27f78ec03c9db
 units.destination c4bce0c70722e851
 units.facing a90d70522fa19de5
+units.firing_rider 38f27f78ec03c9db
 units.flight_goal a23e026ae9172f36
 units.forced_move 518abbeb1ee1727b
 units.leaving 631977ddad03a1fb
@@ -100,6 +107,7 @@ units.lifespan 0db406d8bacb40e8
 units.move_step 3d0d7b40666bb0c3
 units.owner 9d77d0186c3d6499
 units.relations b9d987aebd309938
+units.seeing_rider 38f27f78ec03c9db
 units.spawn_point ff8287b22b37cc00
 units.state 93e25215c6d8a651
 units.state_all 088faffb8282fbc2

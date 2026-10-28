@@ -61,8 +61,8 @@ impl TimedProcess for ChannelSteps {
     }
 }
 
-/// The units with an attack target: each is due at once, and stays held while it has one, as
-/// a unit chases its target and starts its attacks in each tick.
+/// The units with an attack target or a turret target: each is due at once, and stays held while
+/// it has one, as a unit chases its target and starts its attacks in each tick.
 #[derive(Debug)]
 pub struct AttackTargets;
 
@@ -73,7 +73,7 @@ impl TimedProcess for AttackTargets {
     type Books = ();
 
     fn due((): &(), progress: &ActionProgress) -> Option<Tick> {
-        progress.attack_target().map(|_| Tick::ZERO)
+        progress.aimed_at().map(|_| Tick::ZERO)
     }
 }
 

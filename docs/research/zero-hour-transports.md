@@ -26,6 +26,7 @@ What the released source (GeneralsX, read as a specification) and the install's 
 
 - **An exit.** A rider leaves by the container's exit paths, `NumberOfExitPaths`, one every `ExitDelay` (`OpenContain::exitObjectViaDoor`); the command set's `Command_TransportExit` buttons, at the Humvee's places 4 to 8, show each rider and let it out, and `Command_Evacuate`, at 9, lets out every rider.
 - **A container's death.** `OpenContain::onDie` deals each rider `DamagePercentToUnits` of its most health as `UNRESISTABLE` damage, kills it at 100 %, and lets out the survivors.
+- **A body's damage state.** `ActiveBody::calcDamageState` makes a body `REALLYDAMAGED` at a ratio of its health to its most at `UnitReallyDamagedThreshold` or below, and above 0 (read 28 October 2026).
 - **A garrison past its threshold.** `GarrisonContain::onBodyDamageStateChange` orders every rider out as the container reaches `REALLYDAMAGED`, unless `GARRISONABLE_UNTIL_DESTROYED`; `GameData.ini` gives `UnitReallyDamagedThreshold = 0.35` and `UnitDamagedThreshold = 0.7`.
 - **An initial payload.** `InitialPayload` makes that many riders of the type inside a container as it is made.
 
@@ -36,3 +37,11 @@ What the released source (GeneralsX, read as a specification) and the install's 
 ## OpenRA
 
 - **Cargo.** `RideTransport` loads its passenger into the transport's `Cargo` and removes it from the world (`World.Remove`) at the frame's end, and a `Cargo` trait holds its passengers as live actors out of the world, killing them as it dies unless `EjectOnDeath`, by `MaxWeight` against each `Passenger`'s `Weight`; `Types` against the passenger's `CargoType` choose who enters; `UnloadCargo` lets them out at the actor's exits; `InitialUnits` fill it as it is made. `AttackGarrisoned` lets a `Cargo`'s passengers fire from its `FirePorts`, each a point and a cone of the actor's.
+
+## The engine's riding
+
+Read 28 October 2026.
+
+- **Bevy's entity disabling.** A disabled entity stays in the world with its relationships; a query that does not name the disabling component passes over it, and `World`'s methods reach it; Bevy warns that "custom disabling components can cause significant interoperability issues within the ecosystem" ([entity_disabling](https://docs.rs/bevy_ecs/latest/bevy_ecs/entity_disabling/index.html)).
+- **bevy_replicon 0.45.2.** The server replicates by walking the world's archetypes, disabled entities among them; a visibility filter's insert observer gets its entity by `Query<(Entity, &F), (Without<ClientVisibility>, Allow<Disabled>)>` and unwraps it (`src/server/visibility.rs:132`), and the observer of a new client's filter names no disabling component at all. The engine's `Rooms` and data filters are such filters.
+- **OpenRA.** `RideTransport::OnEnterComplete` loads the passenger into its transport's `Cargo` and calls `World.Remove`, which keeps the actor; `Cargo` keeps its passengers in a list and unloads the last first, kills or ejects them as it dies, crediting its killer, and gives them its new owner as it changes hands ([RideTransport.cs](https://raw.githubusercontent.com/OpenRA/OpenRA/bleed/OpenRA.Mods.Common/Activities/RideTransport.cs), [Cargo.cs](https://raw.githubusercontent.com/OpenRA/OpenRA/bleed/OpenRA.Mods.Common/Traits/Cargo.cs), [World.cs](https://raw.githubusercontent.com/OpenRA/OpenRA/bleed/OpenRA.Game/World.cs)).

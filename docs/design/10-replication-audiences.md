@@ -14,7 +14,7 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 | `pools` | The other pools |
 | `modifiers` | A unit's modifiers |
 | `cooldowns` | Each slot's ready tick, charges, toggle payments |
-| `progression` | Experience and points |
+| `progression` | Experience and points, a unit's or a player's, and a player's perks |
 | `inventory` | A unit's inventory |
 | `prediction` | What only the owner's prediction reads |
 | `resources`, `supply`, `queues`, `player_modifiers` | A player's |
@@ -25,6 +25,7 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 | `server` | What never leaves the server |
 | `commanded` | The units a player's orders command |
 | `sight` | The cells a player's team sees and explored, sent to its player alone |
+| `player_cooldowns` | The ready ticks of the actions whose cooldown a player keeps, which its prediction reads |
 
 - **The commanded units are their player's prediction.** They are a kind of their own, `commanded`, sent to their player alone and set by no mode, as an enemy's selection tells another player what it plans, and a predicting client applies its own selects as it applies its orders, so its prediction commands what the server will; a select replaces or adds units, so a replay of one gives the same units. Refused: `prediction`, which a client receives only of the units it predicts, and a player's entity is none; state the client keeps apart from the match, which a rollback to the server's state leaves behind.
 - **One kind for each type.** A filter hides whole components, so a component of two kinds is split along them, as `Pools` into `Life` and `Pools`, and `ActionSlots` into `ActionSlots` and `SlotTimes`.

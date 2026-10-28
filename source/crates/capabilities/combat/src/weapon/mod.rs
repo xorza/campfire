@@ -1,5 +1,6 @@
 use std::num::NonZeroU16;
 
+use campfire_actions::RangeBonus;
 use campfire_common::Ticks;
 use campfire_declarations::PerId;
 use campfire_geometry::Volume;
@@ -9,19 +10,26 @@ use campfire_values::{
     ActionId, DamageKind, ModifierId, NameId, Rank, RelationSet, Speed, Tag, TagSet,
 };
 
+use campfire_script::Filter;
+
+use crate::armor::Armor;
 use crate::attack_data::{ClipRefill, PreAttackEach};
+use crate::bonus_stats::BonusStats;
 
 /// What makes an action of kind `attack` a weapon, as the match runs it: where its rate and its
-/// damage come from, the stat that speeds its own period, the kind of damage it deals, its clip
-/// at each rank, its projectile's splash and scatter, its bound of pitch, the speed that delays
+/// damage come from, the stat that speeds its own period, the kind of damage it deals, the filter
+/// of the targets it prefers, its clip at each rank, its projectile's splash and scatter, its
+/// bound of pitch, the speed that delays
 /// the hit of a weapon of no projectile, and its shot streak, if it has them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Weapon {
     pub(crate) rate: Rate,
-    pub(crate) rate_bonus: Option<StatId>,
+    pub(crate) rate_bonus: Option<BonusStats>,
+    pub(crate) range_bonus: Option<RangeBonus>,
     pub(crate) damage: WeaponDamage,
-    pub(crate) damage_bonus: Option<StatId>,
+    pub(crate) damage_bonus: Option<BonusStats>,
     pub kind: DamageKind,
+    pub(crate) prefers: Option<Filter>,
     pub(crate) clip: Option<Box<[ClipRule]>>,
     pub splash: Option<Splash>,
     pub scatter: Option<Scatter>,
@@ -256,15 +264,29 @@ impl Weapon {
         Some(self.bonused(stats, outer.amounts[rank.index()]))
     }
 
+    /// What it would deal at `rank` for a unit of stats `stats` to a target of `armor`, its
+    /// damage as the armor takes its kind, the whole for none (combat-response.md, An estimate is
+    /// the weapon's damage as the armor takes it).
+    pub(crate) fn estimate(&self, stats: &[Num], rank: Rank, armor: Option<&Armor>) -> Num {
+        let damage = self.damage(stats, rank);
+        armor.map_or(damage, |armor| armor.take(self.kind, damage))
+    }
+
+    /// Whether it prefers a target of `tags`, which its filter of preference selects.
+    pub(crate) fn prefers(&self, tags: TagSet) -> bool {
+        self.prefers
+            .is_some_and(|prefers| prefers.selects_tags(tags))
+    }
+
     /// `amount` times 1 plus the value of its damage bonus for a unit of stats `stats`, from the
     /// exact product, rounded once, as Zero Hour's weapon bonus scales its primary and its
     /// secondary damage alike (04-capabilities/combat.md, One bonus scales both rings); a factor
     /// below 0 counts as 0, and one past the range of numbers saturates.
     fn bonused(&self, stats: &[Num], amount: Num) -> Num {
-        let Some(bonus) = self.damage_bonus else {
+        let Some(bonus) = &self.damage_bonus else {
             return amount;
         };
-        let bonus = stats.get(bonus.index()).copied().unwrap_or(Num::ZERO);
+        let bonus = bonus.value(stats);
         let factor = Num::ONE
             .checked_add(bonus)
             .unwrap_or(Num::MAX)
@@ -298,10 +320,10 @@ impl Weapon {
     /// stat); a divisor below one bit counts as one bit, and the ticks stop at 2⁵⁶, as long as
     /// the stat rate's longest period.
     fn sped(&self, stats: &[Num], ticks: Ticks) -> Ticks {
-        let Some(bonus) = self.rate_bonus else {
+        let Some(bonus) = &self.rate_bonus else {
             return ticks;
         };
-        let bonus = stats.get(bonus.index()).copied().unwrap_or(Num::ZERO);
+        let bonus = bonus.value(stats);
         let divisor = (i128::from(Num::ONE.to_bits()) + i128::from(bonus.to_bits())).max(1);
         let sped = (i128::from(ticks.get()) << Num::FRAC_BITS) / divisor;
         Ticks::new(u64::try_from(sped.min(1 << 56)).expect("2⁵⁶ ticks at most"))

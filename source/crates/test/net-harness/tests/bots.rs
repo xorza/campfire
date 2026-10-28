@@ -13,11 +13,14 @@ use campfire_mode::internals::ModeWorldInternals;
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
-use campfire_progression::Experience;
+use campfire_players::PlayersWorld;
+use campfire_progression::{Experience, PerkBook, PlayerPerks, PlayerPoints};
 use campfire_protocol::{Controller, ServerInput};
 use campfire_runner::Session;
 use campfire_script::StateValue;
+use campfire_stats::PlayerModifiers;
 use campfire_store::internals::TestDir;
+use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{Destination, Owner};
 
 /// Where the server's hero of `player_slot` walks to.
@@ -262,4 +265,59 @@ fn a_restored_server_plays_a_mode_bot_on_from_the_world_it_finds() {
     let whole = played(walk(), false, 20);
     assert_eq!(whole.payloads.len(), 7);
     assert_eq!(played(walk(), true, 20), whole);
+}
+
+#[test]
+fn a_mode_bot_learns_a_perk_by_an_order_of_no_units_and_its_log_learns_the_same() {
+    // The lane mode of a player track `rank` whose level 1 gives a point, and the perk `drill` of
+    // cost 1: the bot `walk` learns it in its first think, before tick 1, as it holds a point and
+    // lacks it, by an order of no units beside its walk; its think before tick 4 walks alone.
+    const RANK: &str = "[tracks.rank]\nholder = \"player\"\nlevels = [50]\n\n\
+                        [perks.drill]\ncost = 1\nmodifier = \"drill\"\n\n\
+                        [modifiers.drill]\nstats = { move_speed = { cut = \"0.1\" } }\n";
+    const LEARN: &str = "fn on_bot_think(ctx) {\n    \
+                         if ctx.player.perk_points > 0 && !ctx.player.has_perk(\"drill\") {\n        \
+                         ctx.order([], #{ progression: #{ learn_perk: #{ perk: \"drill\" } } });\n    \
+                         }\n";
+    let mut tree = PackageTree::of(TestMode::Lane);
+    tree.edit("modes/lane/data/mode.toml", Edit::Append(RANK))
+        .edit(
+            "modes/lane/scripts/walk_bot.rhai",
+            Edit::Replace("fn on_bot_think(ctx) {\n", LEARN),
+        );
+    let mut local = InProcessMatch::of_mode(walk(), tree.packages());
+    local.start_match();
+    let bot = PlayerSlot::new(1);
+    let mut seen = Vec::new();
+    while local.next_tick(End::Server) < 6 {
+        let tick = local.next_tick(End::Server);
+        local.step();
+        if local.next_tick(End::Server) > tick {
+            let world = local.server().world();
+            let player = world.player_entity(bot).unwrap();
+            let book = world.resource::<PerkBook>();
+            let drill = book.names().named("drill").unwrap();
+            let perks = world.get::<PlayerPerks>(player).unwrap();
+            let points = world.get::<PlayerPoints>(player).unwrap().get();
+            let modifiers = world.get::<PlayerModifiers>(player).unwrap();
+            assert_eq!(
+                perks.holds(drill),
+                modifiers.holds(book.modifier(drill)),
+                "tick {tick}"
+            );
+            seen.push((
+                tick,
+                perks.holds(drill),
+                points,
+                local.server_inputs().len(),
+            ));
+        }
+    }
+    // The match starts through tick 1, whose think's two orders spent the point; the think
+    // before tick 4 gives its walk alone.
+    let expected: Vec<_> = (2..6)
+        .map(|tick| (tick, true, 0, if tick < 4 { 2 } else { 3 }))
+        .collect();
+    assert_eq!(seen, expected);
+    local.assert_log_replays();
 }

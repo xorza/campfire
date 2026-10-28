@@ -4,12 +4,14 @@ use campfire_common::MapName;
 use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::animation_import::AnimationDropCause;
+use crate::zero_hour::contain_drop_cause::ContainDropCause;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::dropped_roads::DroppedRoads;
 use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
 use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel};
 use crate::zero_hour::panel_drop_cause::PanelDropCause;
+use crate::zero_hour::power_drop_cause::PowerDropCause;
 use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::sound_drop_cause::SoundDropCause;
 use crate::zero_hour::supply_import::SupplyDropCause;
@@ -52,6 +54,12 @@ pub enum ImportLoss {
     /// An object whose body starts below its most life, by its name, which the engine starts
     /// full.
     Wounded(String),
+    /// A weapon whose `PreferredAgainst` names a kind of no tag, by its name, which prefers no
+    /// target (combat-response.md, The import converts what the choice and the answer read).
+    Unpreferred(String),
+    /// A trainable object whose `ExperienceRequired` does not start at 0 and rise in each step,
+    /// by its name, which gains no level (generals.md, Veterancy is progression's data).
+    Untrainable(String),
     /// An object's build variations the import converts otherwise than whole, by the parent's
     /// name, or a map's placement of a variation it converts otherwise than to its parent, by the
     /// variation's (09-zero-hour.md, A chassis converts to the parent of its file).
@@ -65,9 +73,15 @@ pub enum ImportLoss {
     /// A command set's button, or a part of one, the panel does not show (09-zero-hour.md, The
     /// panel).
     Panel(Dropped<PanelDropCause>),
+    /// A special power's button, by its name, the import converts to no cast (generals.md, A
+    /// power is a cast of its building).
+    Power(Dropped<PowerDropCause>),
     /// An audio event, by its name, or a part of how the game plays it, the import does not
     /// convert (09-zero-hour.md, Sound).
     Sound(Dropped<SoundDropCause>),
+    /// An object's contain module, or a part of one, by the object's name, the import does not
+    /// convert (transports.md, What the slice leaves).
+    Contain(Dropped<ContainDropCause>),
 }
 
 /// What the loss is, then the part of the install it is of, and why.
@@ -131,6 +145,15 @@ impl Display for ImportLoss {
                 "an object's body starts below its most life, which the engine starts full: \
                  {object}"
             ),
+            Self::Unpreferred(weapon) => write!(
+                f,
+                "a weapon prefers a kind of no tag, which no unit is: {weapon}"
+            ),
+            Self::Untrainable(object) => write!(
+                f,
+                "a trainable object's experience levels do not rise from 0, so it gains no \
+                 level: {object}"
+            ),
             Self::Variation(variation) => {
                 write!(
                     f,
@@ -144,7 +167,14 @@ impl Display for ImportLoss {
             ),
             Self::Effect(effect) => write!(f, "an effect is not imported: {effect}"),
             Self::Panel(button) => write!(f, "a panel's button is not shown whole: {button}"),
+            Self::Power(button) => write!(f, "a special power is not a cast: {button}"),
             Self::Sound(event) => write!(f, "a sound is not played whole: {event}"),
+            Self::Contain(contain) => {
+                write!(
+                    f,
+                    "an object's contain module is not imported whole: {contain}"
+                )
+            }
         }
     }
 }

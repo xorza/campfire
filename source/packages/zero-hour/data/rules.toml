@@ -7,13 +7,20 @@ resources = ["money"]
 # which its scripts find a slot's start and rally by; a map of no waypoint has them on no marker.
 marker_params = ["name", "player_slot"]
 
-# The stats its units drive by, the life they live by, and the rate of fire a stage of continuous
-# fire adds to, which a weapon of one divides its period by, plus 1.
+# The stats its units drive by, the life they live by, the rate of fire a stage of continuous
+# fire adds to, which a weapon of one divides its period by, plus 1, the damage and the rate of
+# fire a level of veterancy adds to every weapon, as `Object::onVeterancyLevelChanged` sets its
+# weapon bonus condition, and the range and the damage a garrison adds to every weapon of its
+# riders, as `GarrisonContain::onContaining` sets `GARRISONED`.
 [stats]
 move_speed = {}
 turn_rate = {}
 life = {}
 rate_of_fire = {}
+veterancy_damage = {}
+veterancy_rate = {}
+garrison_range = {}
+garrison_damage = {}
 
 [pools.life]
 max = "life"
@@ -76,6 +83,18 @@ life = "life"
 
 [tags.infantry]
 
+# A vehicle, of `KindOf = VEHICLE`, whose powers' bursts heal it.
+[tags.vehicle]
+
+# An aircraft, of `KindOf = AIRCRAFT`, which a weapon may prefer and a Chinook refuses.
+[tags.aircraft]
+
+# A huge vehicle, of `KindOf = HUGE_VEHICLE`, which a Chinook refuses, and one of `NO_GARRISON`,
+# which no garrison takes.
+[tags.huge_vehicle]
+
+[tags.no_garrison]
+
 # The tag of a unit that gives its player a radar, which a `RadarUpgrade` gives and the minimap shows
 # by.
 [tags.radar]
@@ -112,23 +131,26 @@ defeat = "kill_all"
 killer = "enemies"
 victim = "all:!constructing"
 
-# The slot kinds of its units' weapons and of their command buttons.
+# The slot kinds of its units' weapons, of their command buttons, and of the entry a rider runs.
 [[slots]]
 name = "weapon"
 
 [[slots]]
 name = "command"
 
+[[slots]]
+name = "use"
+
 # What every unit type of the game shares, as its code fixes it, under each type's own section.
 # A unit despawns as it dies.
 [defaults.combat]
 on_death = "despawn"
 
-# A human player's idle unit takes a hostile unit, but of the structures only a base defense, as
-# `PartitionFilterRejectBuildings` keeps them; a type of `ATTACK_BUILDINGS` names every hostile
-# unit of its own.
+# A human player's idle unit takes a hostile unit, but of the structures only a base defense and one
+# that holds riders, as `PartitionFilterRejectBuildings` keeps one that can attack, which a garrison
+# makes its building; a type of `ATTACK_BUILDINGS` names every hostile unit of its own.
 [defaults.acquire]
-targets = ["hostiles:!structure", "hostiles:base_defense"]
+targets = ["hostiles:!structure", "hostiles:base_defense", "hostiles:holding"]
 
 # A turret turns the weapons of the weapon slot kind, and starts an attack within the original's
 # tolerance of its aim, 0.035 radians (`TurretAIAimTurretState::update`), in degrees, which reads

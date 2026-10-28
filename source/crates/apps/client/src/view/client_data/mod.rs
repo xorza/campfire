@@ -6,7 +6,7 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::Commands;
 use campfire_client_files::{
     CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, FogFile, HudFile, KeysFile,
-    MapConditions, MapLights, PickingFile, SoundFile, TeamColors, TerrainFile,
+    MapConditions, MapLights, PerksFile, PickingFile, SoundFile, TeamColors, TerrainFile,
 };
 use campfire_common::{DeclaredName, ErrorReport, MapName};
 use campfire_package::ModePackages;
@@ -67,7 +67,13 @@ pub(crate) struct ClientFiles {
     pub(crate) hud: MatchHud,
     pub(crate) picking: MatchPicking,
     pub(crate) colors: MatchColors,
+    pub(crate) perks: MatchPerks,
 }
+
+/// The mode's own package's perks, `client/perks.toml`, none for a package of none, which shows
+/// no panel of perks.
+#[derive(Resource, Debug, Default)]
+pub(crate) struct MatchPerks(pub(crate) Option<PerksFile>);
 
 /// A package's client data: its unit looks, `client/units.toml`.
 #[derive(Debug, Default)]
@@ -92,6 +98,7 @@ impl Plugin for ClientFilesPlugin {
             hud,
             picking,
             colors,
+            perks,
         } = ClientLoad::read(&self.packages);
         app.insert_resource(load);
         if let Some(heights) = heights {
@@ -101,6 +108,7 @@ impl Plugin for ClientFilesPlugin {
         app.insert_resource(hud);
         app.insert_resource(picking);
         app.insert_resource(colors);
+        app.insert_resource(perks);
         app.add_systems(PostStartup, ClientLoad::drop);
         app.insert_resource(ClientPackages::of(&self.packages));
         let mode = &self.packages.mode().package.files;
@@ -126,6 +134,7 @@ impl ClientLoad {
             hud: MatchHud(Self::file(mode, &HudFile::path()).unwrap_or_default()),
             picking: MatchPicking(Self::file(mode, &PickingFile::path()).unwrap_or_default()),
             colors: MatchColors::new(Self::file(mode, &TeamColors::path()).unwrap_or_default()),
+            perks: MatchPerks(Self::file(mode, &PerksFile::path())),
         }
     }
 

@@ -2,16 +2,19 @@
 //! flaw of a use, an object or a user, which fails the load with its own problem.
 
 use crate::flaws::{Flaw, fails_each};
-use campfire_actions::{ActionProblem, PipelineField, SlotError, SlotKind};
+use campfire_actions::{
+    ActionBook, ActionProblem, EffectListBook, ListHook, ListsOf, PipelineField, SlotError,
+    SlotKind,
+};
 use campfire_common::DeclaredName;
-use campfire_interaction::UseError;
+use campfire_interaction::{EnterError, UseError};
 use campfire_items::ItemsDataError;
 use campfire_package::{LoadError, LoadProblem, ModePackages, Place};
 use campfire_script::Filter;
 use campfire_sim::Capability;
 use campfire_test_packages::Edit;
 use campfire_values::PackageName;
-use campfire_values::{ActionId, Named};
+use campfire_values::{ActionId, Named, PackageIndex};
 
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule_at};
@@ -299,4 +302,133 @@ fn every_flaw_of_the_uses_fails_the_load_with_its_own_problem() {
     with_uses(&[]).unwrap();
     with_uses(&[(HUSK, Edit::Set("inventory.slots", "250"))]).unwrap();
     fails_each(&FLAWS, with_uses);
+}
+
+/// The 3v3's uses, a boarding of the mode, an entry of 1 m, the fountain a container of 2 that
+/// boarding enters, and Husk a rider of size 1.
+const ENTRIES: [(&str, Edit<'static>); 3] = [
+    (
+        MODE_DATA,
+        Edit::Set(
+            "actions.board",
+            r#"{ kind = "enter", targeting = "all", range = "1.0" }"#,
+        ),
+    ),
+    (
+        UNITS,
+        Edit::Set(
+            "units.fountain.enter",
+            r#"{ action = "board", capacity = 2 }"#,
+        ),
+    ),
+    (HUSK, Edit::Set("rides", "{ size = 1 }")),
+];
+
+/// The 3v3 with its uses, its entries, and `more` edits after them.
+fn with_entries(more: &[(&'static str, Edit<'static>)]) -> Result<ModePackages, LoadError> {
+    let entries = USES.iter().chain(&ENTRIES).chain(more).copied();
+    load(&edited(entries))
+}
+
+const ENTRY_FLAWS: [Flaw; 8] = [
+    // A fire point lies within a place's bound, 2²⁰ m.
+    Flaw {
+        file: UNITS,
+        edit: Edit::Set(
+            "units.fountain.enter.fire",
+            r#"{ points = [["1048577", "0"]] }"#,
+        ),
+        also: &[],
+        package: MODE,
+        refused: |problem| rule_at(problem, &fountain(), &EnterError::FirePoint),
+    },
+    // An entry aims at a unit, and only an `enter` section names one, of the `enter` kind.
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Set("actions.board.targeting", r#""point""#),
+        also: &[],
+        package: MODE,
+        refused: |problem| rule_at(problem, &entry("actions", "board"), &EnterError::Aims),
+    },
+    Flaw {
+        file: UNITS,
+        edit: Edit::Set("units.fountain.enter.action", r#""pray""#),
+        also: &[],
+        package: MODE,
+        refused: |problem| rule_at(problem, &fountain(), &EnterError::NotEnter(name("pray"))),
+    },
+    Flaw {
+        file: UNITS,
+        edit: Edit::Set("units.wolf.slots.weapon", r#"["wolf_attack", "board"]"#),
+        also: &[],
+        package: MODE,
+        refused: |problem| {
+            let at = Place::UnitType(name("wolf"));
+            rule_at(problem, &at, &EnterError::Named(name("board")))
+        },
+    },
+    // A container holds a rider, and its payload rides and fits.
+    Flaw {
+        file: UNITS,
+        edit: Edit::Set("units.fountain.enter.capacity", "0"),
+        also: &[],
+        package: MODE,
+        refused: |problem| rule_at(problem, &fountain(), &EnterError::NoCapacity),
+    },
+    Flaw {
+        file: UNITS,
+        edit: Edit::Set(
+            "units.fountain.enter.payload",
+            r#"[{ unit = "wolf", count = 1 }]"#,
+        ),
+        also: &[],
+        package: MODE,
+        refused: |problem| rule_at(problem, &fountain(), &EnterError::Payload),
+    },
+    // A rider has a use slot to enter by, and a size of at least 1.
+    Flaw {
+        file: UNITS,
+        edit: Edit::Set("units.wolf.rides", "{ size = 1 }"),
+        also: &[],
+        package: MODE,
+        refused: |problem| {
+            let at = Place::UnitType(name("wolf"));
+            rule_at(problem, &at, &EnterError::RidesWithoutUses)
+        },
+    },
+    Flaw {
+        file: HUSK,
+        edit: Edit::Set("rides.size", "0"),
+        also: &[],
+        package: "hero-husk",
+        refused: |problem| matches!(problem, LoadProblem::Content(_)),
+    },
+];
+
+#[test]
+fn every_flaw_of_the_entries_fails_the_load_with_its_own_problem() {
+    // The entries load, and the board's resolve holds the `enter` kind's own effect, though its
+    // data writes no list.
+    let packages = with_entries(&[]).unwrap();
+    let books = packages.load_books();
+    let names = books.get::<ActionBook>().unwrap().names();
+    let board = names.named((PackageIndex::MODE, "board")).unwrap();
+    let lists = books.get::<EffectListBook>().unwrap();
+    let resolve = lists.of(ListsOf::Action(board, ListHook::OnResolve));
+    assert_eq!(resolve.len(), 1);
+    // A container holds 256 fire points, as a rider's point counts them, and no more.
+    let points = |count: usize| -> &'static str {
+        let points = vec![r#"["0", "0"]"#; count].join(", ");
+        Box::leak(format!("{{ points = [{points}] }}").into_boxed_str())
+    };
+    with_entries(&[(UNITS, Edit::Set("units.fountain.enter.fire", points(256)))]).unwrap();
+    let past = Flaw {
+        file: UNITS,
+        edit: Edit::Set("units.fountain.enter.fire", points(257)),
+        also: &[],
+        package: MODE,
+        refused: |problem| rule_at(problem, &fountain(), &EnterError::FirePoint),
+    };
+    let flaws: Vec<Flaw> = ENTRY_FLAWS.into_iter().chain([past]).collect();
+    fails_each(&flaws, with_entries);
 }

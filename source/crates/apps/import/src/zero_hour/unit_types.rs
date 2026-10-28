@@ -2,20 +2,24 @@ use std::collections::BTreeMap;
 
 use campfire_actions::TypeSlotsData;
 use campfire_airfields::AirfieldData;
-use campfire_codec::{Toml, TomlTable};
+use campfire_codec::{Toml, TomlTable, TomlValue};
 use campfire_combat::BarrelsData;
 use campfire_common::DeclaredName;
 use campfire_declarations::SectionWriter;
 use campfire_math::Num;
-use campfire_orders::AcquireData;
+use campfire_orders::{AcquireData, RetaliateData};
 use campfire_package::UnitsFile;
 use campfire_production::{DropOffData, NodeData, ProductionData, SellData, SpawnsData};
+use campfire_progression::{ExperienceData, TypeTracksData};
 use campfire_stats::UpgradesData;
 
+use crate::zero_hour::area_write::AreaWrite;
 use crate::zero_hour::imported_type::{ImportedType, TypeWeapons};
 use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::type_name::TypeName;
+use campfire_areas::AreaData;
+use campfire_interaction::{EnterData, RidesData, UsesData};
 
 /// The closed set of the import's unit types, by their names: each the fields its object gives.
 /// The stages after it read it and add no type; what they give a type, its actions and its
@@ -49,6 +53,17 @@ pub(crate) struct TypeAdditions<'a> {
     pub(crate) barrels: &'a BTreeMap<TypeName, BarrelsData>,
     /// The bones each type's turret reads of its model.
     pub(crate) bones: &'a BTreeMap<TypeName, ModelBones>,
+    /// Its track of veterancy and what its death gives (generals.md, Veterancy is progression's
+    /// data).
+    pub(crate) tracks: &'a BTreeMap<TypeName, TypeTracksData>,
+    pub(crate) experience: &'a BTreeMap<TypeName, ExperienceData>,
+    /// The area of each marker a power's cast lands (generals.md, The import converts a marker's
+    /// burst).
+    pub(crate) areas: &'a BTreeMap<TypeName, AreaWrite>,
+    /// The `enter` of each container, and the `rides` of each rider, which takes a `uses` of the
+    /// slot kind of its entry (transports.md, A container says who rides).
+    pub(crate) enters: &'a BTreeMap<TypeName, EnterData>,
+    pub(crate) rides: &'a BTreeMap<TypeName, RidesData>,
 }
 
 /// The package's `data/units.toml`, and the largest speed of its types, when one drives.
@@ -94,13 +109,16 @@ impl ImportedTypes {
                     Some((slot.clone(), actions?.clone()))
                 })
                 .collect();
-                // A scan takes a weapon to attack what it finds.
+                // A scan and an answer take a weapon to attack what they find.
                 let armed = slots.contains_key(&names.weapon_slot);
                 if !slots.is_empty() {
                     writer.section(&TypeSlotsData(slots));
                 }
                 if let Some(acquire) = imported.acquire().filter(|_| armed) {
                     writer.patch::<AcquireData>(acquire);
+                }
+                if let Some(retaliate) = imported.retaliate().filter(|_| armed) {
+                    writer.patch::<RetaliateData>(retaliate);
                 }
                 if let Some(production) = additions.production.get(name) {
                     writer.section(production);
@@ -125,6 +143,24 @@ impl ImportedTypes {
                 }
                 if let Some(barrels) = additions.barrels.get(name) {
                     writer.section(barrels);
+                }
+                if let Some(tracks) = additions.tracks.get(name) {
+                    writer.section(tracks);
+                }
+                if let Some(experience) = additions.experience.get(name) {
+                    writer.section(experience);
+                }
+                if let Some(area) = additions.areas.get(name) {
+                    writer.value::<AreaData>(TomlValue::of(area));
+                }
+                if let Some(enter) = additions.enters.get(name) {
+                    writer.section(enter);
+                }
+                if let Some(rides) = additions.rides.get(name) {
+                    writer.section(rides);
+                    writer.section(&UsesData {
+                        kind: names.use_slot.clone(),
+                    });
                 }
                 (name.declared().clone(), writer.into_table())
             })
@@ -164,6 +200,11 @@ pub(crate) mod reach_in {
                 upgrades: &BTreeMap::new(),
                 barrels: &BTreeMap::new(),
                 bones: &BTreeMap::new(),
+                tracks: &BTreeMap::new(),
+                experience: &BTreeMap::new(),
+                areas: &BTreeMap::new(),
+                enters: &BTreeMap::new(),
+                rides: &BTreeMap::new(),
             };
             self.units_file(additions, &RulesNames::default())
         }

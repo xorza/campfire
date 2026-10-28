@@ -5,7 +5,7 @@ use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, IdAllocator, StableId};
-use campfire_units::{DeliveryEntity, Owner, UnitCore, UnitFilter};
+use campfire_units::{Acting, DeliveryEntity, Owner, UnitCore, UnitFilter};
 use campfire_values::{Team, UnitType};
 
 /// Spawns the units that actions deliver, projectiles and areas, each for its source.
@@ -14,7 +14,7 @@ pub struct DeliverySpawner<'w, 's> {
     commands: Commands<'w, 's>,
     ids: ResMut<'w, IdAllocator>,
     index: Res<'w, EntityIndex>,
-    sources: Query<'w, 's, (&'static Team, Option<&'static Owner>), UnitFilter>,
+    sources: Query<'w, 's, (&'static Team, Option<&'static Owner>), (UnitFilter, Acting)>,
 }
 
 /// `Commands` prints nothing, so a spawner prints only what it is.

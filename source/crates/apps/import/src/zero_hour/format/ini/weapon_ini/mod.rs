@@ -3,6 +3,9 @@ use std::collections::BTreeMap;
 use crate::zero_hour::format::ini::damage_type::DamageType;
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{BlockKinds, FlagSet, IniLine, IniText};
+use crate::zero_hour::format::ini::weapon_bonus::{
+    BONUS_FIELDS, CONTINUOUS_FIRE_MEAN, DAMAGE, PLAYER_UPGRADE, RATE_OF_FIRE, WeaponBonusLine,
+};
 
 /// The weapons of Zero Hour's `Weapon.ini` files, as `WeaponStore` reads them, by their names, of
 /// their case.
@@ -91,53 +94,6 @@ pub(crate) struct ContinuousFire {
 pub(crate) struct UpgradeBonus {
     bonuses: [f32; BONUS_FIELDS.len()],
 }
-
-/// `TheWeaponBonusNames`, of the game's build, which leaves `ALLOW_DEMORALIZE` out: a bonus's
-/// condition, the two continuous-fire stages at 2 and 3.
-const BONUS_CONDITIONS: [&str; 27] = [
-    "GARRISONED",
-    "HORDE",
-    "CONTINUOUS_FIRE_MEAN",
-    "CONTINUOUS_FIRE_FAST",
-    "NATIONALISM",
-    "PLAYER_UPGRADE",
-    "DRONE_SPOTTING",
-    "DEMORALIZED_OBSOLETE",
-    "ENTHUSIASTIC",
-    "VETERAN",
-    "ELITE",
-    "HERO",
-    "BATTLEPLAN_BOMBARDMENT",
-    "BATTLEPLAN_HOLDTHELINE",
-    "BATTLEPLAN_SEARCHANDDESTROY",
-    "SUBLIMINAL",
-    "SOLO_HUMAN_EASY",
-    "SOLO_HUMAN_NORMAL",
-    "SOLO_HUMAN_HARD",
-    "SOLO_AI_EASY",
-    "SOLO_AI_NORMAL",
-    "SOLO_AI_HARD",
-    "TARGET_FAERIE_FIRE",
-    "FANATICISM",
-    "FRENZY_ONE",
-    "FRENZY_TWO",
-    "FRENZY_THREE",
-];
-
-/// The place of `CONTINUOUS_FIRE_MEAN` among `BONUS_CONDITIONS`, `FAST` the next.
-const CONTINUOUS_FIRE_MEAN: usize = 2;
-
-/// The place of `PLAYER_UPGRADE` among `BONUS_CONDITIONS`.
-const PLAYER_UPGRADE: usize = 5;
-
-/// `TheWeaponBonusFieldNames`: what a bonus changes, the rate of fire at 3.
-const BONUS_FIELDS: [&str; 5] = ["DAMAGE", "RADIUS", "RANGE", "RATE_OF_FIRE", "PRE_ATTACK"];
-
-/// The place of `RATE_OF_FIRE` among `BONUS_FIELDS`.
-const RATE_OF_FIRE: usize = 3;
-
-/// The place of `DAMAGE` among `BONUS_FIELDS`.
-const DAMAGE: usize = 0;
 
 /// A weapon's `RadiusDamageAffects`, of `TheWeaponAffectsMaskNames`: whom its radius damages, by
 /// their relation to its unit, its unit itself, `SELF`, and whether it kills its own unit, spares
@@ -390,17 +346,11 @@ impl IniWeapon {
     /// same over the earlier, keeping the continuous-fire stages' and `PLAYER_UPGRADE`'s; a name
     /// of no list fails the read, as `INI::scanIndexList` does.
     fn bonus(&mut self, at: &IniLine<'_>) -> Result<(), IniError> {
-        let listed = |token: Option<&&str>, names: &[&str]| {
-            let token = token.ok_or(IniError::NoValue { line: at.number })?;
-            let found = names
-                .iter()
-                .position(|name| name.eq_ignore_ascii_case(token));
-            found.ok_or(IniError::NotListed { line: at.number })
-        };
-        let condition = listed(at.tokens.get(1), &BONUS_CONDITIONS)?;
-        let field = listed(at.tokens.get(2), &BONUS_FIELDS)?;
-        // `INI::scanPercentToReal` divides the real by 100 in the game's `f32`.
-        let value = at.real_at(3)? / 100.0;
+        let WeaponBonusLine {
+            condition,
+            field,
+            value,
+        } = WeaponBonusLine::read(at)?;
         if condition == PLAYER_UPGRADE {
             self.upgrade.bonuses[field] = value;
             return Ok(());

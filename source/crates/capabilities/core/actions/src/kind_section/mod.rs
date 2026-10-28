@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use campfire_declarations::ListedSet;
 use campfire_script::DataTable;
@@ -9,6 +10,7 @@ use campfire_values::{Number, Ranked};
 use crate::action_kind::ActionKind;
 use crate::dyn_eq::DynEq;
 use crate::kind_takes::KindTakes;
+use crate::listed_effect::listed_spec::ListedSpec;
 
 /// What an action's data gives for its kind, beside the pipeline's fields: the type of the module
 /// that registers the kind by its name, which reads the fields of the kind's own and builds what
@@ -26,6 +28,11 @@ pub trait KindSection: DynEq + Any + Debug + Send + Sync {
 
     /// Its numbers at each rank, which count the action's ranks and may read its params.
     fn numbers(&self) -> Vec<&Ranked<Number>>;
+
+    /// The effect its kind adds to the end of its action's `on_resolve`, to the unit the action
+    /// reached, which no data writes; none for a kind whose resolve is its script's and its
+    /// lists' alone.
+    fn resolves(&self) -> Option<Arc<dyn ListedSpec>>;
 }
 
 impl PartialEq for dyn KindSection {

@@ -3,7 +3,8 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::entity_disabling::Disabled;
+use bevy_ecs::lifecycle::{HookContext, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Allow, ReleaseStateQueryData, SingleEntityQueryData};
 use bevy_ecs::resource::Resource;
@@ -350,11 +351,13 @@ where
 
 impl<P: TimedProcess> DueIndex<P> {
     /// Adds what keeps the index of `P` true in `world`: the observers that build it again as
-    /// the state is rewritten and push a unit a client starts to predict, and, in a debug build,
-    /// the check at each tick's end that each unit due is held, in `schedule`.
+    /// the state is rewritten and push a unit a client starts to predict or that comes back into
+    /// the world, and, in a debug build, the check at each tick's end that each unit due is held,
+    /// in `schedule`.
     pub fn track(world: &mut World, schedule: &mut Schedule) {
         world.add_observer(Self::rebuild);
         world.add_observer(Self::predicted);
+        world.add_observer(Self::enabled);
         if cfg!(debug_assertions) && P::KEPT == TimedKept::BySetters {
             schedule.add_systems(Self::audit.in_set(TickEndSystems).before(end_tick));
         }
@@ -384,6 +387,24 @@ impl<P: TimedProcess> DueIndex<P> {
         index: Option<ResMut<'_, Self>>,
     ) {
         let entity = started.entity;
+        let (Some(mut index), Ok((&id, parts))) = (index, units.get(entity)) else {
+            return;
+        };
+        if let Some(at) = P::due(&books, parts) {
+            index.push(at, id, entity);
+        }
+    }
+
+    /// Pushes a unit that comes back into the world as its `Disabled` goes, whose entry a pass
+    /// that found no unit dropped while it was out (transports.md, A rider's timers wait and catch
+    /// up).
+    fn enabled(
+        enabled: On<'_, '_, Remove<Disabled>>,
+        books: StaticSystemParam<'_, '_, P::Books>,
+        units: Query<'_, '_, (&StableId, P::Parts), Allow<Disabled>>,
+        index: Option<ResMut<'_, Self>>,
+    ) {
+        let entity = enabled.entity;
         let (Some(mut index), Ok((&id, parts))) = (index, units.get(entity)) else {
             return;
         };

@@ -1,6 +1,6 @@
 use std::num::NonZeroI64;
 
-use campfire_actions::{ActionSlots, SlotKind, SlotKindBook};
+use campfire_actions::{ActionSlots, SlotKind, SlotKindBook, TurretMount};
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::{Num, Rounding, SinCos, Vec3};
 use campfire_script::UnknownName;
@@ -149,6 +149,17 @@ impl Turret {
                 BookError::unknown(unit.package, at, name)
             })?;
             book.set(unit.unit_type, Self::of(turret, slot, cx.rate()));
+        }
+        Ok(book.build())
+    }
+
+    /// The mount of each unit type that stands with a turret.
+    pub fn mounts(cx: &BookCx<'_>) -> Result<ById<UnitType, TurretMount>, BookError> {
+        let mut book = ByIdBuilder::default();
+        for unit in cx.standing() {
+            if unit.data.section::<TurretData>().is_some() {
+                book.set(unit.unit_type, TurretMount);
+            }
         }
         Ok(book.build())
     }

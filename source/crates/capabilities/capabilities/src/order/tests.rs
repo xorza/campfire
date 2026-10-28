@@ -4,7 +4,7 @@ use campfire_actions::ActionTarget;
 use campfire_math::{Num, Vec3};
 use campfire_production::RallyTarget;
 use campfire_units::{BuildTarget, GroundPoint};
-use campfire_values::ItemId;
+use campfire_values::{ItemId, PerkId};
 
 use crate::Release;
 
@@ -250,8 +250,14 @@ const fn variant(directive: &Directive) -> usize {
             OrdersDirective::Stop => 4,
             OrdersDirective::Use { .. } => 5,
             OrdersDirective::AttackMove { .. } => 6,
+            OrdersDirective::Enter { .. } => 16,
+            OrdersDirective::Exit { .. } => 17,
+            OrdersDirective::Evacuate => 18,
         },
-        Directive::Progression(ProgressionDirective::Learn { .. }) => 7,
+        Directive::Progression(directive) => match directive {
+            ProgressionDirective::Learn { .. } => 7,
+            ProgressionDirective::LearnPerk { .. } => 15,
+        },
         Directive::Production(directive) => match directive {
             ProductionDirective::CancelTrain { .. } => 8,
             ProductionDirective::Rally { .. } => 9,
@@ -269,13 +275,14 @@ const fn variant(directive: &Directive) -> usize {
 #[test]
 fn the_largest_order_to_one_unit_is_51_bytes_within_the_least_payload_length() {
     // Each directive at its largest values: an id of `u64::MAX` and a `Num` of `i64::MIN` take
-    // 10 bytes, an item of `u32::MAX` 5, a slot 1. The largest are a slot's cast at a point and a
+    // 10 bytes, an item of `u32::MAX` 5, a perk of `u16::MAX` 3, a slot 1. The largest are a slot's cast at a point and a
     // build at a point with its angle, 33 bytes: their variant, the slot, the target's variant
     // and three `Num`s. With a select of the one unit, 14 bytes with its command's addressee and
     // length, the directive's command of 36, and the count of commands, 51 bytes
     // (05-protocol-spec.md, A session's terms hold every input).
     let unit: StableId = Binary::decode(&Binary::encode(&u64::MAX)).unwrap();
     let item: ItemId = Binary::decode(&Binary::encode(&u32::MAX)).unwrap();
+    let perk: PerkId = Binary::decode(&Binary::encode(&u16::MAX)).unwrap();
     let num = Num::from_bits(i64::MIN);
     let ground = GroundPoint { x: num, z: num };
     let point = Vec3 {
@@ -321,9 +328,13 @@ fn the_largest_order_to_one_unit_is_51_bytes_within_the_least_payload_length() {
             to: u8::MAX,
         }
         .into(),
+        ProgressionDirective::LearnPerk { perk }.into(),
+        OrdersDirective::Enter { target: unit }.into(),
+        OrdersDirective::Exit { rider: unit }.into(),
+        OrdersDirective::Evacuate.into(),
     ];
     let listed: Vec<usize> = directives.iter().map(variant).collect();
-    assert_eq!(listed, (0..15).collect::<Vec<_>>());
+    assert_eq!(listed, (0..19).collect::<Vec<_>>());
     let mut payloads = OrderPayloads::default();
     let lengths: Vec<usize> = directives
         .into_iter()

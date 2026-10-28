@@ -1103,3 +1103,47 @@ End
         ]
     );
 }
+
+#[test]
+fn an_object_s_veterancy_reads_four_values_a_list_and_its_reskin_keeps_its_base_s() {
+    let mut ini = ObjectFiles::default();
+    ini.read(
+        b"Object Tank\n  ExperienceValue = 100 100 200 400 ; each level\n  \
+          ExperienceRequired = 0 200 300 600\n  IsTrainable = Yes\n  \
+          Behavior = VeterancyGainCreate ModuleTag_01\n    StartingLevel = VETERAN\n  End\n  \
+          Behavior = VeterancyGainCreate ModuleTag_02\n    StartingLevel = elite\n    \
+          ScienceRequired = SCIENCE_Training\n  End\nEnd\n\
+          ObjectReskin TankRed Tank\n  ExperienceValue = 1 1 1 1\nEnd\n\
+          Object Rock\nEnd\n",
+    )
+    .unwrap();
+    let experience = |name: &str| ini.named(name).unwrap().experience().clone();
+    // A start always at veteran, 1, and one at elite, 2, by its science.
+    let start = |level, science: Option<&str>| IniStart {
+        level,
+        science: science.map(str::to_owned),
+    };
+    let tank = IniExperience {
+        values: [100, 100, 200, 400],
+        required: [0, 200, 300, 600],
+        trainable: true,
+        starts: vec![start(1, None), start(2, Some("SCIENCE_Training"))],
+    };
+    assert_eq!(experience("Tank"), tank);
+    assert_eq!(experience("TankRed"), tank);
+    assert_eq!(experience("Rock"), IniExperience::default());
+    // A level of no veterancy's name is refused.
+    let wrong = b"Object A
+ Behavior = VeterancyGainCreate M
+  StartingLevel = Hero
+ End
+End
+";
+    assert_eq!(
+        ObjectFiles::default().read(wrong),
+        Err(IniError::NotListed { line: 3 })
+    );
+    // `parseIntList` reads four, and refuses a list of three.
+    let short = ObjectFiles::default().read(b"Object A\n ExperienceValue = 1 2 3\nEnd\n");
+    assert_eq!(short, Err(IniError::NoValue { line: 2 }));
+}

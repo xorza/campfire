@@ -6,7 +6,7 @@ use crate::workspace::Workspace;
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 86] = [
+const LOOKUPS: [(&str, &str); 89] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
     ("actions/action_names.rs", "named"),
@@ -27,6 +27,7 @@ const LOOKUPS: [(&str, &str); 86] = [
     ("combat/type_armor.rs", "named"),
     ("combat/weapon_names.rs", "named"),
     ("declarations/book_cx/mod.rs", "named"),
+    ("interaction/enter_spec.rs", "named"),
     ("interaction/use_slot.rs", "named"),
     ("interaction/use_spec.rs", "named"),
     ("items/inventory.rs", "named"),
@@ -42,7 +43,9 @@ const LOOKUPS: [(&str, &str); 86] = [
     ("production/requirement_book.rs", "named"),
     ("production/research_spec.rs", "named"),
     ("progression/experience_book.rs", "named"),
-    ("progression/track_set.rs", "named"),
+    ("progression/perk_book/mod.rs", "named"),
+    ("progression/track_modifier_book.rs", "named"),
+    ("progression/type_tracks.rs", "named"),
     ("script/scripts/script_facts/mod.rs", "hook_named"),
     ("stats/action_params.rs", "named"),
     ("stats/modifier_book.rs", "named"),

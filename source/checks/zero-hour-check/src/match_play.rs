@@ -1,4 +1,4 @@
-use campfire_actions::{SlotKinds, TypeSlotsData};
+use campfire_actions::{ActionProgress, SlotKinds, SlotTimes, TypeSlotsData};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -10,6 +10,7 @@ use campfire_capabilities::{Books, Directive, Location, Match, NamedRefs, Order}
 use campfire_common::{DeclaredName, PlayerSlot, Tick};
 use campfire_declarations::MatchFacts;
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits, ProbeFile, ReplayRecord};
+use campfire_interaction::{Riders, Riding};
 use campfire_math::{Num, Vec3};
 use campfire_mode::internals::MarkerOf;
 use campfire_mode::{MatchEnd, Mode, OptionPicks, OptionValue, PlayerSlotPick};
@@ -18,11 +19,14 @@ use campfire_orders::{DroppedOrders, OrdersDirective};
 use campfire_package::ModePackages;
 use campfire_players::PlayersWorld;
 use campfire_production::Site;
+use campfire_progression::{PlayerExperience, PlayerPerks};
 use campfire_protocol::PlayerSlotPlan;
 use campfire_runner::SessionWorld;
 use campfire_sim::MatchRate;
-use campfire_sim::{Position, StableId};
-use campfire_units::{BuildTarget, GroundPoint, Life, MapPoint, MoveStep, Units, UnitsWorld};
+use campfire_sim::{Position, SimWorld, StableId};
+use campfire_units::{
+    BuildTarget, Destination, GroundPoint, Life, MapPoint, MoveStep, Units, UnitsWorld,
+};
 use campfire_values::{ResourceId, UnitType};
 use campfire_vision::{CellBits, ExploredCells, SeenCells};
 use tracing::info;
@@ -55,6 +59,14 @@ pub(crate) struct PlannedBuilding {
     pub(crate) unit: &'static str,
     pub(crate) action: &'static str,
     pub(crate) at: [i64; 3],
+}
+
+/// A walk a play orders: the player slot that orders it, its unit, and the point it walks to.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PlayWalk {
+    pub(crate) player_slot: u32,
+    pub(crate) unit: StableId,
+    pub(crate) to: GroundPoint,
 }
 
 /// Player 1's dozer that builds: its unit type and its stable id.
@@ -211,6 +223,51 @@ impl AgainstAmerica {
     }
 }
 
+/// A play's match of two players, each from its faction's base start and ordered by the play alone
+/// (combat-response.md, A play walks its units out of the base starts): their factions' picks.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BaseStarts {
+    factions: [&'static str; 2],
+}
+
+impl BaseStarts {
+    pub(crate) const AMERICA_GLA: Self = Self {
+        factions: ["0:faction=america", "1:faction=gla"],
+    };
+    pub(crate) const AMERICA_CHINA: Self = Self {
+        factions: ["0:faction=america", "1:faction=china"],
+    };
+
+    /// Plays `steps` in a match of `packages` at `rate` ticks a second, from the tick before its
+    /// first, each player starting with `START_MONEY`, and ends the match; what they measured, or
+    /// their failure, or a failure when the mode takes no such pick.
+    pub(crate) fn play<T>(
+        self,
+        packages: ModePackages,
+        rate: NonZeroU32,
+        tools: PlayTools,
+        steps: impl FnOnce(&mut MatchPlay<'_>) -> Result<T, CheckFailure>,
+    ) -> Result<T, CheckFailure> {
+        let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
+        let picks = OptionPicks::named(&packages.data().options, &[start_money])
+            .map_err(CheckFailure::Options)?;
+        let [one, two] = self.factions;
+        let player_slot_picks: Vec<PlayerSlotPick> = [one, "0:start=base", two, "1:start=base"]
+            .map(|pick| pick.parse().expect("the play's pick"))
+            .into();
+        let session = FixedSession::planned(packages, [PlayerSlotPlan::Player; 2])
+            .rate(rate)
+            .picked(picks.places())
+            .player_slot_picked(&player_slot_picks);
+        let mut play = MatchPlay::new(session.start(), session.packages(), tools);
+        let played = steps(&mut play);
+        let ended = play.end();
+        let played = played?;
+        ended?;
+        Ok(played)
+    }
+}
+
 impl<'p> MatchPlay<'p> {
     /// `fixed`, a match of `packages`, before its first tick, played with `tools`.
     pub(crate) fn new(mut fixed: FixedMatch, packages: &'p ModePackages, tools: PlayTools) -> Self {
@@ -353,10 +410,24 @@ impl<'p> MatchPlay<'p> {
                 .count()
         });
         let drops = [0, 1].map(|index| self.due.drops.get(index).copied().unwrap_or_default());
+        let world = self.game();
+        let player = |player_slot| world.player_entity(PlayerSlot::new(player_slot));
+        let ranks = [0, 1].map(|player_slot| {
+            let experience =
+                player(player_slot).and_then(|player| world.get::<PlayerExperience>(player));
+            let rank = experience.and_then(|experience| experience.get().iter().next());
+            rank.map_or(0, |rank| rank.level.get())
+        });
+        let perks = [0, 1].map(|player_slot| {
+            let perks = player(player_slot).and_then(|player| world.get::<PlayerPerks>(player));
+            perks.map_or(0, |perks| perks.get().len())
+        });
         BotMatchEnd {
             ended: end.map(|end| end.tick().get()),
             result: end.map(MatchEnd::result),
             standing,
+            ranks,
+            perks,
             think_ops: self.think_ops,
             stalls: self.stalls,
             drops,
@@ -483,8 +554,13 @@ impl<'p> MatchPlay<'p> {
 
     /// Sends player 1's `orders`, stamped for the tick it runs next.
     pub(crate) fn order(&mut self, orders: &[Order]) {
+        self.order_as(0, orders);
+    }
+
+    /// Sends player `player_slot`'s `orders`, stamped for the tick it runs next.
+    pub(crate) fn order_as(&mut self, player_slot: u32, orders: &[Order]) {
         self.fixed
-            .send(0, self.fixed.next_tick(), &Order::payload(orders));
+            .send(player_slot, self.fixed.next_tick(), &Order::payload(orders));
     }
 
     /// The living units player `player_slot` owns of the type `name`, by stable id; a failure when
@@ -500,6 +576,89 @@ impl<'p> MatchPlay<'p> {
         let living =
             owned.filter(|(_, unit)| unit.get::<Life>().is_none_or(|life| !life.is_empty()));
         Ok(living.map(|(id, _)| id).collect())
+    }
+
+    /// The ticks it runs until `done` holds, at most `STEP_LIMIT`; none past it.
+    pub(crate) fn run_until(&mut self, done: impl Fn(&Self) -> bool) -> Option<u64> {
+        for ticks in 1..=STEP_LIMIT {
+            self.step();
+            if done(self) {
+                return Some(ticks);
+            }
+        }
+        None
+    }
+
+    /// The ticks it runs until `done` holds, at most `STEP_LIMIT`; a failure past it, of the step
+    /// `what`.
+    pub(crate) fn step_until(
+        &mut self,
+        what: &'static str,
+        done: impl Fn(&Self) -> bool,
+    ) -> Result<u64, CheckFailure> {
+        self.run_until(done).ok_or(CheckFailure::NoStep(what))
+    }
+
+    /// Orders each of `walks` in the tick it runs next, by its player, then runs ticks until
+    /// every unit stands with no destination.
+    pub(crate) fn walk(&mut self, walks: &[PlayWalk]) -> Result<(), CheckFailure> {
+        for player_slot in [0, 1] {
+            let orders: Vec<Order> = walks
+                .iter()
+                .filter(|walk| walk.player_slot == player_slot)
+                .map(|walk| Order::one(walk.unit, OrdersDirective::Move { to: walk.to }))
+                .collect();
+            if !orders.is_empty() {
+                self.order_as(player_slot, &orders);
+            }
+        }
+        self.step_until("a walk's end", |play| {
+            walks
+                .iter()
+                .all(|walk| play.destination(walk.unit).is_none())
+        })?;
+        Ok(())
+    }
+
+    /// Whether `unit` died or is gone.
+    pub(crate) fn dead(&self, unit: StableId) -> bool {
+        self.life(unit).is_none_or(|life| life == Num::ZERO)
+    }
+
+    /// What `unit`, which the match holds, has under way.
+    pub(crate) fn progress(&self, unit: StableId) -> ActionProgress {
+        let unit = MatchUnits::of(self.game()).unit(unit);
+        *unit
+            .get::<ActionProgress>()
+            .expect("a unit of weapons acts")
+    }
+
+    /// The times of the slots of `unit`, which the match holds.
+    pub(crate) fn times(&self, unit: StableId) -> &SlotTimes {
+        let unit = MatchUnits::of(self.game()).unit(unit);
+        unit.get::<SlotTimes>()
+            .expect("a unit of weapons times them")
+    }
+
+    /// Whether `unit` rides a container; not once it is gone.
+    pub(crate) fn riding(&self, unit: StableId) -> bool {
+        let entity = self.game().entity_of(unit);
+        entity.is_some_and(|entity| self.game().entity(entity).contains::<Riding>())
+    }
+
+    /// The riders of `container`, which the match holds, in the order they entered.
+    pub(crate) fn riders(&self, container: StableId) -> Vec<StableId> {
+        let units = MatchUnits::of(self.game());
+        let riders = units.unit(container).get::<Riders>();
+        riders.map_or_else(Vec::new, |riders| {
+            riders.iter().map(|rider| rider.id).collect()
+        })
+    }
+
+    /// Where `unit`, which the match holds, walks, if anywhere.
+    pub(crate) fn destination(&self, unit: StableId) -> Option<Vec3> {
+        let unit = MatchUnits::of(self.game()).unit(unit);
+        unit.get::<Destination>()?.get()
     }
 
     /// Orders `unit` to `directive` in the tick it runs next, then runs ticks until `done`; the
@@ -545,9 +704,13 @@ impl<'p> MatchPlay<'p> {
 
     /// The life of `unit`, none once it is gone.
     pub(crate) fn life(&self, unit: StableId) -> Option<Num> {
-        let units = MatchUnits::of(self.game());
-        let unit = units.all().find(|(id, _)| *id == unit)?.1;
-        unit.get::<Life>().map(|life| life.current())
+        self.life_of(unit).map(Life::current)
+    }
+
+    /// The life pool of `unit`, none once it is gone.
+    pub(crate) fn life_of(&self, unit: StableId) -> Option<Life> {
+        let entity = self.game().entity_of(unit)?;
+        self.game().entity(entity).get::<Life>().copied()
     }
 
     /// Player 1's amount of `money`.
@@ -583,17 +746,28 @@ pub(crate) fn bot_script(packages: &ModePackages, text: &str) -> Result<BotScrip
     BotScript::new(&script, &BotNames::new(books)).map_err(CheckFailure::BotNames)
 }
 
-/// The slot of `action`, of the type `unit` of `packages`, in its slot kind `command`: its place
-/// among that kind's actions past the actions of every kind before it, as a unit holds its kinds
-/// in the mode's order (04-capabilities/actions.md, Slot kinds in the mode's order); a failure
+/// The slot of `action`, of the type `unit` of `packages`, in its slot kind `command`; a failure
 /// when the mode lacks the type or the action.
 pub(crate) fn slot(
     packages: &ModePackages,
     unit: &'static str,
     action: &'static str,
 ) -> Result<u8, CheckFailure> {
+    slot_in(packages, unit, "command", action)
+}
+
+/// The slot of `action`, of the type `unit` of `packages`, in its slot kind `kind`: its place
+/// among that kind's actions past the actions of every kind before it, as a unit holds its kinds
+/// in the mode's order (04-capabilities/actions.md, Slot kinds in the mode's order); a failure
+/// when the mode lacks the type or the action.
+pub(crate) fn slot_in(
+    packages: &ModePackages,
+    unit: &'static str,
+    kind: &str,
+    action: &'static str,
+) -> Result<u8, CheckFailure> {
     let missing = CheckFailure::NoAction { unit, action };
-    let command = DeclaredName::new("command").expect("a declared name");
+    let wanted = DeclaredName::new(kind).expect("a declared name");
     let held = packages.content().units.get(unit);
     let slots = held.and_then(|held| held.section::<TypeSlotsData>());
     let Some(slots) = slots else {
@@ -601,9 +775,9 @@ pub(crate) fn slot(
     };
     let kinds = packages.data().section_or_default::<SlotKinds>();
     let mut before = 0;
-    for kind in kinds.kinds() {
-        let actions = slots.0.get(&kind.name).map_or(&[][..], Vec::as_slice);
-        if kind.name == command {
+    for held_kind in kinds.kinds() {
+        let actions = slots.0.get(&held_kind.name).map_or(&[][..], Vec::as_slice);
+        if held_kind.name == wanted {
             let at = actions.iter().position(|held| held.as_str() == action);
             let at = at.ok_or(missing)?;
             return Ok(u8::try_from(before + at).expect("a unit's slots fit a u8"));

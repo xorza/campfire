@@ -69,6 +69,10 @@ pub enum WeaponDropCause {
     BadNumber,
     /// A name of its action or of a stage of it passes the bytes a declared name holds.
     LongName,
+    /// Its weapon set's `AutoChooseSources` names no source for its slot, so it fires only at a
+    /// target a lock gives it, as the Patriot battery's assist weapon at one another battery
+    /// designates.
+    Locked,
 }
 
 /// A time the import writes none of is a number of no worth to the engine.

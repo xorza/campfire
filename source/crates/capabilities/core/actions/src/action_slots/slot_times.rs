@@ -21,6 +21,8 @@ use crate::action_call::ResolvedCast;
 use crate::action_slots::caster::Caster;
 use crate::action_slots::{ActionSlot, ActionSlots};
 use crate::checked_action::CheckedAction;
+use crate::cooldown_holder::CooldownHolder;
+use crate::player_cooldowns::PlayerCooldowns;
 use crate::purse::Purse;
 use crate::range_fit::RangeFit;
 use crate::rank_toggle::TogglePer;
@@ -54,15 +56,17 @@ pub struct SlotCharges {
 }
 
 /// What `SlotTimes::start` reads besides the times: the match's book of actions, the tick `now`,
-/// the unit as a caster, whose tags and motion may block the action, its slots and what its purse
-/// affords, the slot and target `aim` names, how the unit regards a team, `relation`, and the
-/// living unit of a stable id, `living`.
+/// the unit as a caster, whose tags and motion may block the action, its slots, its player's
+/// cooldowns, none for a unit of no player or a match whose actions keep none there, and what its
+/// purse affords, the slot and target `aim` names, how the unit regards a team, `relation`, and
+/// the living unit of a stable id, `living`.
 #[derive(Debug)]
 pub struct ActionCheck<'b, 'a, R, L, P> {
     pub book: &'b ActionBook,
     pub now: Tick,
     pub caster: Caster<'a>,
     pub slots: &'a ActionSlots,
+    pub player: Option<&'a PlayerCooldowns>,
     pub purse: Purse<'a, P>,
     pub aim: SlotAim,
     pub relation: R,
@@ -126,8 +130,9 @@ pub struct StartChecked<'b> {
 }
 
 /// What the commit of an action spends of its slot: the slot, the tick `now` it commits at, the
-/// first tick it may start again, its action's charge rule at its rank, and, for a toggle it
-/// turns on, the tick it pays its cost each second from.
+/// first tick it may start again, its action's charge rule at its rank, for a toggle it turns on,
+/// the tick it pays its cost each second from, and the action, when its player keeps its
+/// cooldown.
 #[derive(Debug, Clone, Copy)]
 pub struct SlotCommit {
     pub slot: u8,
@@ -135,6 +140,7 @@ pub struct SlotCommit {
     pub ready_at: Tick,
     pub charges: Option<ChargeRule>,
     pub toggle: Option<Tick>,
+    pub player: Option<ActionId>,
 }
 
 impl SlotCommit {
@@ -147,6 +153,7 @@ impl SlotCommit {
             ready_at: now.after(resolved.values.cooldown),
             charges: resolved.values.charges,
             toggle: resolved.values.toggle.map(|_| now.after(second)),
+            player: (resolved.holder == CooldownHolder::Player).then_some(resolved.action),
         }
     }
 }
@@ -176,19 +183,23 @@ impl SlotTimes {
     }
 
     /// The commit step's spend of the slot's time, which each kind takes at its own moment, as its
-    /// cost goes through `Payer::pay`: its cooldown to `commit.ready_at`, and under its charge
-    /// rule a charge, the timer of the next starting as the slot falls below its most; and the
-    /// toggle it turns on.
-    pub fn commit(&mut self, commit: SlotCommit) {
+    /// cost goes through `Payer::pay`: its cooldown to `commit.ready_at`, on `player`'s cooldowns
+    /// too for an action its player keeps, and under its charge rule a charge, the timer of the
+    /// next starting as the slot falls below its most; and the toggle it turns on.
+    pub fn commit(&mut self, commit: SlotCommit, player: Option<&mut PlayerCooldowns>) {
         let SlotCommit {
             slot,
             now,
             ready_at,
             charges,
             toggle,
+            player: kept,
         } = commit;
         let held = &mut self.0[usize::from(slot)];
         held.ready_at = ready_at;
+        if let (Some(action), Some(player)) = (kept, player) {
+            player.cool_down(action, ready_at);
+        }
         if let Some(rule) = charges {
             let charges = held
                 .charges
@@ -227,6 +238,7 @@ impl SlotTimes {
             now,
             caster,
             slots,
+            player,
             purse,
             aim,
             relation,
@@ -242,7 +254,11 @@ impl SlotTimes {
         let affords = purse.affords(&values.cost, action.resource_cost(rank));
         let charged =
             values.charges.is_none() || time.charges.is_some_and(|charges| charges.count > 0);
-        if now < time.ready_at || !affords || !charged {
+        let cooled = match (action.cooldown_holder, player) {
+            (CooldownHolder::Player, Some(player)) => now >= player.ready_at(id),
+            (CooldownHolder::Player, None) | (CooldownHolder::Unit, _) => true,
+        };
+        if now < time.ready_at || !cooled || !affords || !charged {
             return None;
         }
         let target = action.start_target(aim.target, |target| {
@@ -610,9 +626,10 @@ mod tests {
             ready_at: Tick::new(now + 4),
             charges: Some(rule),
             toggle: toggle.map(Tick::new),
+            player: None,
         };
         // At its most, the first charge spent starts the timer: the next comes 10 ticks from 5.
-        times.commit(commit(5, Some(35)));
+        times.commit(commit(5, Some(35)), None);
         let time = times.slot(0).unwrap();
         assert_eq!(time.ready_at, Tick::new(9));
         assert_eq!(
@@ -624,7 +641,7 @@ mod tests {
         );
         assert_eq!(time.toggle, Some(Tick::new(35)));
         // Below its most, a second keeps the timer, and a commit with no toggle leaves it on.
-        times.commit(commit(7, None));
+        times.commit(commit(7, None), None);
         let time = times.slot(0).unwrap();
         assert_eq!(time.ready_at, Tick::new(11));
         assert_eq!(

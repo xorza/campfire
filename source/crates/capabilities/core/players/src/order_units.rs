@@ -3,18 +3,23 @@ use std::slice;
 use campfire_sim::StableId;
 use serde::{Serialize, Serializer};
 
-/// The units an order goes to: at least one, in increasing stable id, each once. One unit is held
-/// in place, so an order to one unit allocates nothing.
+/// The units an order goes to: at least one, in increasing stable id, each once, or none for an
+/// order its player carries out, as a perk's learn, which goes with no select. One unit is held in
+/// place, so an order to one unit allocates nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderUnits(Units);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Units {
+    None,
     One(StableId),
     Many(Box<[StableId]>),
 }
 
 impl OrderUnits {
+    /// No unit: the units of an order its player carries out.
+    pub const NONE: Self = Self(Units::None);
+
     pub const fn one(id: StableId) -> Self {
         Self(Units::One(id))
     }
@@ -35,6 +40,7 @@ impl OrderUnits {
 
     pub fn get(&self) -> &[StableId] {
         match &self.0 {
+            Units::None => &[],
             Units::One(unit) => slice::from_ref(unit),
             Units::Many(units) => units,
         }

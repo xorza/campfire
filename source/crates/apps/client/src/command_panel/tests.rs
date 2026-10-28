@@ -8,6 +8,7 @@ use campfire_capabilities::{Directive, Match};
 use campfire_client_files::{ButtonLook, ClientUnits, HudFile, PanelGrid, PlaceOrder};
 use campfire_codec::Toml;
 use campfire_declarations::Role;
+use campfire_math::Vec3;
 use campfire_production::internals::TestBuild;
 use campfire_production::{
     BuildStart, NewBuild, Production, Queued, RallyTarget, SiteStart, Style,
@@ -113,6 +114,7 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
         slots: Some(&slots),
         queue: Some(&queue),
         site: None,
+        tags: TagSet::default(),
     };
     assert!(shown.fill(center, held, books, &looks));
     assert_eq!(
@@ -210,6 +212,7 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
         slots: Some(&none),
         queue: None,
         site: None,
+        tags: TagSet::default(),
     };
     assert!(!shown.fill(wall, held, books, &looks));
     assert_eq!(shown, Shown::default());
@@ -227,6 +230,7 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
         slots: Some(&slots),
         queue: Some(&queue),
         site: Some(&site),
+        tags: TagSet::default(),
     };
     assert!(shown.fill(wall, held, books, &looks));
     assert_eq!(
@@ -409,16 +413,40 @@ fn a_key_presses_the_first_shown_button_of_it_and_each_press_does_its_button_s_w
         x: Num::int(30),
         z: Num::int(-12),
     };
+    let at = Vec3::new(Num::int(30), Num::int(2), Num::int(-12));
+    let ordered = |directive: Directive| selection.order(directive);
     assert_eq!(
-        AimedCommand::AttackMove.directive(to),
-        OrdersDirective::AttackMove { to }.into()
+        AimedCommand::AttackMove.order(to, at, &selection),
+        ordered(OrdersDirective::AttackMove { to }.into())
     );
     assert_eq!(
-        AimedCommand::Rally.directive(to),
-        ProductionDirective::Rally {
-            target: Some(RallyTarget::Point(to)),
-        }
-        .into()
+        AimedCommand::Rally.order(to, at, &selection),
+        ordered(
+            ProductionDirective::Rally {
+                target: Some(RallyTarget::Point(to)),
+            }
+            .into()
+        )
+    );
+    // A cast aims too, and the aim orders its unit to cast at the point of the world it picks,
+    // whatever the selection.
+    let cast = Does::Action {
+        slot: 2,
+        action: ActionId::new(7),
+        making: Making::Cast,
+    };
+    let aimed = AimedCommand::Cast {
+        unit: dozer,
+        slot: 2,
+    };
+    assert_eq!(press(cast, &selection), Some(Pressed::Aim(aimed)));
+    let slot = OrdersDirective::Slot {
+        slot: 2,
+        target: ActionTarget::Point(at),
+    };
+    assert_eq!(
+        aimed.order(to, at, &Selection::default()),
+        Some(Order::one(dozer, slot))
     );
 }
 
@@ -532,4 +560,66 @@ fn a_research_is_done_as_its_player_or_its_unit_from_itself_holds_it() {
     assert!(done(research(walls, ResearchHolder::Producer)));
     assert!(!done(research(drill, ResearchHolder::Producer)));
     assert!(!done(Making::Train));
+}
+
+#[test]
+fn a_cast_shows_while_its_when_passes_and_dims_while_it_cools() {
+    // A cast of `when = "all:dead"` hides for a unit of no tag, and one of no `when` shows.
+    let world = Match::builder(&[Capability::Stats])
+        .role(Role::Client)
+        .build();
+    let dead = Filter::of_match(&world, "all:dead");
+    assert_eq!(Making::cast(Some(dead), TagSet::default()), None);
+    assert_eq!(Making::cast(None, TagSet::default()), Some(Making::Cast));
+    // Cooling, it is dimmed; ready and afforded, it is not.
+    let button = Button {
+        cell: GridCell { column: 0, row: 0 },
+        does: Does::Action {
+            slot: 0,
+            action: ActionId::new(0),
+            making: Making::Cast,
+        },
+        key: None,
+    };
+    assert!(!button.enabled(ButtonValue::Cooling { seconds: 240 }, |_| true));
+    let costs = ButtonValue::Costs {
+        costs: &[],
+        seconds: 0,
+    };
+    assert!(button.enabled(costs, |_| true));
+    assert_eq!(
+        ButtonValue::Cooling { seconds: 240 }.to_string(),
+        "ready in 240 s"
+    );
+}
+
+#[test]
+fn a_train_of_a_modifier_its_player_lacks_is_dimmed() {
+    // A train that requires the modifier 3, which its player lacks, then holds; an action that
+    // requires nothing, and a command, need none.
+    let mut world = Match::builder(&[Capability::Production, Capability::Stats])
+        .role(Role::Client)
+        .build();
+    let train = Production::add_train(&mut world, UnitType::new(1), Ticks::new(1), None);
+    let science = ModifierId::new(3);
+    let mut requirements = RequirementBook::default();
+    requirements.push(train, Vec::<[UnitType; 1]>::new(), [science]);
+    let button = |action| Button {
+        cell: GridCell { column: 0, row: 0 },
+        does: Does::Action {
+            slot: 0,
+            action,
+            making: Making::Train,
+        },
+        key: None,
+    };
+    let lacks = |_| false;
+    assert!(!button(train).meets(Some(&requirements), lacks));
+    assert!(button(train).meets(Some(&requirements), |held| held == science));
+    assert!(button(ActionId::new(9)).meets(Some(&requirements), lacks));
+    let stop = Button {
+        does: Does::Command(PanelCommand::Stop),
+        ..button(train)
+    };
+    assert!(stop.meets(Some(&requirements), lacks));
 }

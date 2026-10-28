@@ -1,7 +1,8 @@
 //! The script arguments of the ids `values` holds, each resolved by name in the call's view.
 
 use campfire_values::{
-    ActionId, DamageKind, ModifierId, PathId, ResourceId, Tag, Team, TrackId, TypeScope, UnitType,
+    ActionId, DamageKind, ModifierId, PathId, PerkId, ResourceId, Tag, Team, TrackId, TypeScope,
+    UnitType,
 };
 
 use crate::name_script_arg;
@@ -21,6 +22,8 @@ name_script_arg!(ModifierId, |ctx, name| {
 name_script_arg!(PathId, |ctx, name| { ctx.view().names().named(name) });
 
 name_script_arg!(TrackId, |ctx, name| { ctx.view().names().named(name) });
+
+name_script_arg!(PerkId, |ctx, name| { ctx.view().names().named(name) });
 
 name_script_arg!(ResourceId, |ctx, name| { ctx.view().names().named(name) });
 

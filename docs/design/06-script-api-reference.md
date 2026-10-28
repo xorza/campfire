@@ -14,7 +14,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `after` | `(name: text, ms: ms)` or `(name: text, ms: ms, data: any)`, `name` a timer | mode | core | since 1.0 | calls `on_timer` with `name`, one the mode declares, and `data`, `()` if not given, `ms` from the call, rounded up to whole ticks, at least one |
 | `all_avatars` | `()` or `(team: text)`, `team` a team | every role of the sim | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
 | `all_units_tagged` | `(tag: text)`, `tag` a tag | every role of the sim | core | since 1.0 | the units of a tag, living or dead, by stable id |
-| `attack_hit` | `(target: Unit)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`, with its first weapon whose filter selects `target`, struck at once: no crit, no `on_attack`, and nothing when no weapon selects it |
+| `attack_hit` | `(target: Unit)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`, with the weapon it would choose against `target` at any distance, struck at once: no crit, no `on_attack`, and nothing when no weapon selects it |
 | `avatars` | `()` or `(team: text)`, `team` a team | every role of the sim | core | since 1.0 | the living avatars of every team or of `team`, by stable id |
 | `can_choose` | `(player: Player, choice: text, value: text)`, `choice` a choice | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
 | `cancel_timer` | `(name: text)`, `name` a timer | mode | core | since 1.0 | ends every timer of `name` the call's script set, those the call set before among them |
@@ -35,7 +35,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `generate` | `(region)` | mode | core | planned | builds the map's region `region` through `on_generate` |
 | `give_item` | `(unit, id)` | every role of the sim | items | planned | gives `unit` the item `id`, in its first slot that takes it |
 | `grant` | `(unit: Unit, kind: text, ids: array)`, `kind` a slot kind | mode | abilities | since 1.0 | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
-| `grant_perk` | `(unit, id)` | every role of the sim | progression | planned | gives `unit` the perk `id`, with no point and no requirement |
+| `grant_perk` | `(player: Player, id: text)`, `id` a perk | mode | progression | since 1.0 | gives `player` the perk `id`, with no point and no requirement, and its modifier |
 | `heal` | `(unit: Unit, amount: Num)` | every role of the sim | combat | since 1.0 | heals `unit`'s life pool, times one plus its `heal_scale` stat |
 | `idle` | `(unit: Unit)` | bot | orders | since 1.0 | whether `unit`, the bot's own, stood idle as the think began: no action under way, no target, nowhere to walk, no gather and no build |
 | `kill` | `(unit: Unit)` | mode | combat | since 1.0 | takes `unit`'s life whole: it dies as the next tick's deaths find it, with no killer; nothing for a unit that does not live |
@@ -160,8 +160,10 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | --- | --- | --- | --- | --- |
 | `!=` | operator | core | since 1.0 | whether the two are two players |
 | `==` | operator | core | since 1.0 | whether the two are one player |
+| `has_perk` | `(id: text)`, `id` a perk | progression | since 1.0 | whether it has the perk `id` |
 | `held` | read | core | since 1.0 | whether a player or a bot held its slot as the match started |
 | `is_out` | read | core | since 1.0 | whether it is out of play, as the last tick's end derived it |
+| `perk_points` | read | progression | since 1.0 | its unspent points to learn perks, which a player of a track of points has |
 | `player_slot` | read | core | since 1.0 | its player slot's place, from 0 |
 | `resource` | `(name: text)`, `name` a player resource | core | since 1.0 | the amount of the player resource `name` it holds, with the call's changes |
 | `state` | read | core | since 1.0 | its script state, by name, as the mode's `[player_state]` declares it, which a call may write and read back |
@@ -180,7 +182,6 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `attack_target` | read | combat | since 1.0 | the unit its attack aims at, `()` with none |
 | `can_see` | `(unit: Unit)` | vision | since 1.0 | whether its team sees the other unit |
 | `has_modifier` | `(id: text)`, `id` a modifier | stats | since 1.0 | whether it carries the modifier of the script's package |
-| `has_perk` | `(id)` | progression | planned | whether it has the perk `id` |
 | `has_tag` | `(tag: text)`, `tag` a tag | core | since 1.0 | whether it has the tag, of its type or a modifier |
 | `inside` | read | interaction | planned | the host it rides or garrisons in, `()` with none |
 | `is_alive` | read | core | since 1.0 | whether it lives |
@@ -325,8 +326,11 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `shop` | items | since 1.0 |
 | `use` | interaction | since 1.0 |
 | `uses` | interaction | since 1.0 |
+| `enter` | interaction | since 1.0 |
+| `rides` | interaction | since 1.0 |
 | `orders` | orders | since 1.0 |
 | `acquire` | orders | since 1.0 |
+| `retaliate` | orders | since 1.0 |
 
 ### `data/mode.toml`
 
@@ -342,11 +346,13 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `stats` | stats | since 1.0 |
 | `pools` | stats | since 1.0 |
 | `tracks` | progression | since 1.0 |
+| `perks` | progression | since 1.0 |
 | `experience` | progression | since 1.0 |
 | `combat` | combat | since 1.0 |
 | `navigation` | navigation | since 1.0 |
 | `supply` | production | since 1.0 |
 | `items` | items | since 1.0 |
+| `retaliation` | orders | since 1.0 |
 | `name` | core | since 1.0 |
 | `choices` | core | since 1.0 |
 | `inputs` | core | since 1.0 |
@@ -421,6 +427,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `charging` | core | since 1.0 |
 | `passive_modifier` | core | since 1.0 |
 | `passive_while_ready` | core | since 1.0 |
+| `cooldown_holder` | core | since 1.0 |
 | `params` | core | since 1.0 |
 | `on_resolve` | core | since 1.0 |
 | `on_hit` | core | since 1.0 |
@@ -431,7 +438,9 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `rate_bonus` | combat | since 1.0 |
 | `damage` | combat | since 1.0 |
 | `damage_bonus` | combat | since 1.0 |
+| `range_bonus` | combat | since 1.0 |
 | `damage_kind` | combat | since 1.0 |
+| `prefers` | combat | since 1.0 |
 | `amount` | combat | since 1.0 |
 | `period_ms` | combat | since 1.0 |
 | `clip` | combat | since 1.0 |
@@ -489,6 +498,19 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | --- | --- | --- |
 | `levels` | progression | since 1.0 |
 | `level` | progression | since 1.0 |
+| `holder` | progression | since 1.0 |
+| `modifiers` | progression | since 1.0 |
+| `points` | progression | since 1.0 |
+
+### A perk, `[perks.<name>]`
+
+| Field | Capability | Status |
+| --- | --- | --- |
+| `cost` | progression | since 1.0 |
+| `requires` | progression | since 1.0 |
+| `track` | progression | since 1.0 |
+| `level` | progression | since 1.0 |
+| `modifier` | progression | since 1.0 |
 
 ### An action's `kind`
 
@@ -501,6 +523,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `build` | production | since 1.0 |
 | `gather` | production | since 1.0 |
 | `use` | interaction | since 1.0 |
+| `enter` | interaction | since 1.0 |
 
 ### The mode's `[combat]`
 

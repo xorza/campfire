@@ -18,7 +18,7 @@ use campfire_declarations::internals::BookLoad;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersDirective;
-use campfire_progression::{Points, ProgressionDirective, TrackSet};
+use campfire_progression::{Points, ProgressionDirective, TrackBook, TrackSet};
 use campfire_script::ScriptLimits;
 use campfire_sim::Capability;
 use campfire_sim::internals::SimWorldInternals;
@@ -230,7 +230,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     // Player 0's caster, at level 1 with 2 points, its spawn's and one more.
     let caster = Abilities::caster(&mut game, lash_out, 0);
     let track = TrackId::new(0);
-    let mut points = Points::at_spawn(TrackSet::from([track]), Some(track)).unwrap();
+    let mut points = Points::at_spawn(TrackSet::from([track]), &TrackBook::sample()).unwrap();
     points.gain(1);
     let step = MoveStep::new(Num::ONE).unwrap();
     game.insert_parts(caster, (points, Navigation::walker(step)));

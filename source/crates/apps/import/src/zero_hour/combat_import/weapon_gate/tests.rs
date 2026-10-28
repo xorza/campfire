@@ -7,23 +7,28 @@ fn a_slot_whose_weapon_the_upgrade_set_keeps_serves_both_and_each_other_serves_i
         ..WeaponSet::default()
     };
     let starting = set([Some("Rifle"), Some("Pistol"), None]);
-    let gated = |slot, weapon, gate| GatedWeapon { slot, weapon, gate };
-    // No upgrade set: each weapon serves both, of its slot.
+    let gated = |slot, weapon, gate, set| GatedWeapon {
+        slot,
+        weapon,
+        gate,
+        set,
+    };
+    // No upgrade set: each weapon serves both, of its slot, of the starting set.
     assert_eq!(
         WeaponGate::of(&starting, None),
         [
-            gated(0, "Rifle", WeaponGate::Both),
-            gated(1, "Pistol", WeaponGate::Both)
+            gated(0, "Rifle", WeaponGate::Both, &starting),
+            gated(1, "Pistol", WeaponGate::Both, &starting)
         ]
     );
-    // The upgrade keeps the rifle, drops the pistol, and adds a tertiary flamer.
+    // The upgrade keeps the rifle, drops the pistol, and adds a tertiary flamer, of its own set.
     let upgrade = set([Some("Rifle"), None, Some("Flamer")]);
     assert_eq!(
         WeaponGate::of(&starting, Some(&upgrade)),
         [
-            gated(0, "Rifle", WeaponGate::Both),
-            gated(1, "Pistol", WeaponGate::Starting),
-            gated(2, "Flamer", WeaponGate::Upgraded),
+            gated(0, "Rifle", WeaponGate::Both, &starting),
+            gated(1, "Pistol", WeaponGate::Starting, &starting),
+            gated(2, "Flamer", WeaponGate::Upgraded, &upgrade),
         ]
     );
     let id = DeclaredName::new("weapon_rifle").unwrap();

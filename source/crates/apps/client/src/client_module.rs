@@ -27,6 +27,7 @@ use crate::item_names::ItemNamesPlugin;
 use crate::learn_keys::LearnKeysPlugin;
 use crate::local_keys::LocalKeysPlugin;
 use crate::orders::OrdersPlugin;
+use crate::perk_panel::PerkPanelPlugin;
 use crate::pointer::unit_picking::UnitPickingPlugin;
 use crate::rally_click::RallyClickPlugin;
 use crate::report::ReportPlugin;
@@ -78,6 +79,7 @@ pub(crate) enum ClientModule {
     UseClick,
     RallyClick,
     LearnKeys,
+    PerkPanel,
     ItemNames,
     ShopPanel,
     InventoryBar,
@@ -135,7 +137,7 @@ impl ClientModule {
             }
             Self::UseClick => &[Capability::Interaction],
             Self::Fog => &[Capability::Vision],
-            Self::LearnKeys => &[Capability::Progression],
+            Self::LearnKeys | Self::PerkPanel => &[Capability::Progression],
             Self::BuildPreview => &[Capability::Production, Capability::Navigation],
             Self::Window
             | Self::LocalKeys
@@ -182,6 +184,7 @@ impl ClientModule {
             | Self::UseClick
             | Self::RallyClick
             | Self::LearnKeys
+            | Self::PerkPanel
             | Self::ItemNames
             | Self::ShopPanel
             | Self::InventoryBar
@@ -356,6 +359,9 @@ impl ClientModule {
             Self::LearnKeys => {
                 app.add_plugins(LearnKeysPlugin);
             }
+            Self::PerkPanel => {
+                app.add_plugins(PerkPanelPlugin);
+            }
             Self::ItemNames => {
                 app.add_plugins(ItemNamesPlugin);
             }
@@ -488,7 +494,7 @@ mod tests {
             of(remote, &[Capability::Interaction]),
             with(&interaction, remote)
         );
-        let progression = [ClientModule::LearnKeys];
+        let progression = [ClientModule::LearnKeys, ClientModule::PerkPanel];
         assert_eq!(
             of(remote, &[Capability::Progression]),
             with(&progression, remote)

@@ -7,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use campfire_common::{Bytes32, PlayerSlot, Tick};
-use campfire_host::{ClientFrame, InputLogged, Listening, MatchStarted, ServerFrame};
+use campfire_host::{ClientFrame, InputLogged, Listening, MatchStarted, OrdersSent, ServerFrame};
 use campfire_store::OutputFile;
 
 use crate::binaries::Binaries;
@@ -276,14 +276,16 @@ impl<'a> LanMatch<'a> {
     }
 
     /// Waits until the server logged the first input of the player slot that bot `RESTARTED`
-    /// learned it plays, and an input of each bot's player slot stamped as late or later, or the
-    /// deadline passed; whether it did. A bot's order of that stamp still on its way would share
-    /// the machine with the restarted bot's new process as it starts, and could miss its stamp
-    /// tick.
+    /// learned it plays, and an input of each bot's player slot stamped as late or later, and
+    /// bot `RESTARTED` logged that it sent its first, or the deadline passed; whether it did. A
+    /// bot's order of that stamp still on its way would share the machine with the restarted
+    /// bot's new process as it starts, and could miss its stamp tick; the bot logs its send after
+    /// the server can log the input, so a stop before its own line would lose a send it made.
     fn first_orders_logged(&mut self, deadline: Instant) -> Result<bool, CheckError> {
         let mut player_slots: Vec<Option<PlayerSlot>> = vec![None; self.scripts.len()];
         let mut seen_bots = vec![0; player_slots.len()];
         let mut seen_server = 0;
+        let (mut seen_sent, mut sent) = (0, Vec::new());
         let mut logged = Vec::new();
         while Instant::now() < deadline {
             for (bot, (player_slot, seen)) in
@@ -301,6 +303,10 @@ impl<'a> LanMatch<'a> {
                 self.tail(Process::Server)
                     .read_past::<InputLogged>(&mut seen_server)?,
             );
+            sent.extend(
+                self.tail(Process::Bot(RESTARTED))
+                    .read_past::<OrdersSent>(&mut seen_sent)?,
+            );
             if let Some(player_slots) = player_slots.iter().copied().collect::<Option<Vec<_>>>() {
                 let first = logged
                     .iter()
@@ -314,7 +320,9 @@ impl<'a> LanMatch<'a> {
                             .any(|input| input.player_slot == player_slot && input.stamp >= stamp)
                     })
                 };
-                if first.is_some_and(reached) {
+                let sent_first =
+                    |stamp: Tick| sent.iter().any(|orders: &OrdersSent| orders.stamp == stamp);
+                if first.is_some_and(|first| reached(first) && sent_first(first)) {
                     return Ok(true);
                 }
             }

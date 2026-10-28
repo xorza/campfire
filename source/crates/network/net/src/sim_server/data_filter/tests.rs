@@ -1,7 +1,7 @@
 use bevy_ecs::world::Mut;
 use campfire_codec::Toml;
 use campfire_declarations::Role;
-use campfire_progression::{Experience, Points};
+use campfire_progression::{Experience, PlayerExperience, PlayerPerks, PlayerPoints, Points};
 use campfire_sim::{OnAny, SimComponent};
 use campfire_states::SentOnChange;
 use campfire_units::{AudienceAll, UnitState};
@@ -45,11 +45,21 @@ fn mask<S: FilterScope>(app: &mut App) -> String {
 
 #[test]
 fn each_filtered_kinds_scope_holds_the_types_the_lists_give_it() {
-    // Progression's kind holds its experience and its points; that of a unit's script state
-    // fields of `audience = "all"`, their one component alone.
+    // Progression's kind holds the experience and the points of units and of players, and the
+    // players' perks; that of a
+    // unit's script state fields of `audience = "all"`, their one component alone.
     let mut app = App::new();
     let progression = mask::<KindScope<ProgressionKind>>(&mut app);
-    assert_eq!(progression, mask::<(Experience, Points)>(&mut app));
+    assert_eq!(
+        progression,
+        mask::<(
+            Experience,
+            Points,
+            PlayerExperience,
+            PlayerPoints,
+            PlayerPerks
+        )>(&mut app)
+    );
     let all = mask::<KindScope<UnitStateAllKind>>(&mut app);
     assert_ne!(all, progression);
     assert_eq!(

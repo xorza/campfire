@@ -4,9 +4,10 @@ use std::marker::PhantomData;
 use bevy_app::{App, FixedUpdate};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::lifecycle::{Add, RemovedComponents};
 use bevy_ecs::observer::On;
-use bevy_ecs::query::{Changed, With};
+use bevy_ecs::query::{Allow, Changed, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, If, Query, Res, ResMut, SystemParam};
@@ -21,9 +22,10 @@ use tracing::debug;
 use crate::sim_server::team_rooms::TeamRooms;
 use campfire_host::PlayerLink;
 
-/// The entities of the kind `K` a show takes, with their owner and the teams that see them.
+/// The entities of the kind `K` a show takes, with their owner and the teams that see them, a rider
+/// out of the world among them (transports.md, A rider's team holds it).
 type NewOfKind<'w, 's, K> =
-    Query<'w, 's, (Option<&'static Owner>, Option<&'static SeenBy>), With<K>>;
+    Query<'w, 's, (Option<&'static Owner>, Option<&'static SeenBy>), (With<K>, Allow<Disabled>)>;
 
 /// The entities of the kind `K` that came since its last show, which the show takes. Scratch.
 #[derive(Resource)]
@@ -49,12 +51,13 @@ impl<K> fmt::Debug for Unshown<K> {
     }
 }
 
-/// The replicated entities of the kind `K` whose seers changed this tick.
+/// The replicated entities of the kind `K` whose seers changed this tick, a rider that entered
+/// among them.
 type SeersChanged<'w, 's, K> = Query<
     'w,
     's,
     (Entity, &'static StableId, &'static SeenBy),
-    (With<K>, Changed<SeenBy>, With<Replicate>),
+    (With<K>, Changed<SeenBy>, With<Replicate>, Allow<Disabled>),
 >;
 
 /// The replicated entities of the kind `K`, with their owner.

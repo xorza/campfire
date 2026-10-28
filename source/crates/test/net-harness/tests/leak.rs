@@ -25,6 +25,7 @@ use campfire_net_prediction::RollbackMode;
 use campfire_net_replication::Replicate;
 use campfire_package::ModePackages;
 use campfire_players::{HeldOut, Player, PlayerResources, PlayersWorld};
+use campfire_progression::PlayerExperience;
 use campfire_sim::{EntityIndex, SimResource, SimWorld, StableId, Unpredicted};
 use campfire_states::{Replication, StateTypes};
 use campfire_test_packages::Edit;
@@ -218,6 +219,11 @@ const HELD_OUT: [(&str, Edit<'_>); 3] = [
         ),
     ),
 ];
+
+/// A player track, `rank`, which a kill of an enemy raises for its killer's player: experience and
+/// points on each player's entity.
+const RANK: &str = "\n[tracks.rank]\nholder = \"player\"\nlevels = [100]\npoints = [1, 1]\n\n\
+                    [[experience]]\ntrack = \"rank\"\nto = \"player\"\n";
 
 /// A `[visibility]` that sets every kind a mode may set to its other extreme: each recipient the
 /// mode may set that the default lacks, and none it holds.
@@ -500,15 +506,15 @@ impl LeakCheck {
         hero.is_some_and(|hero| hero.contains::<Dead>())
     }
 
-    /// Whether `client` holds `PlayerResources` on the entity of player `player_slot`.
-    fn holds_resources_of(&self, client: usize, player_slot: u32) -> bool {
+    /// Whether `client` holds `C` on the entity of player `player_slot`.
+    fn holds_of<C: Component>(&self, client: usize, player_slot: u32) -> bool {
         let world = self.local.client(client).world();
         let player = world.iter_entities().find(|entity| {
             entity
                 .get::<Player>()
                 .is_some_and(|player| player.player_slot() == PlayerSlot::new(player_slot))
         });
-        player.is_some_and(|player| player.contains::<PlayerResources>())
+        player.is_some_and(|player| player.contains::<C>())
     }
 }
 
@@ -518,7 +524,7 @@ mod scripted_match {
     #[test]
     fn each_client_holds_exactly_what_each_kinds_audience_admits_with_either_extreme() {
         // The defaults: the spectators see every unit, through any fog.
-        let mut defaults = LeakCheck::start(short_3v3(&HELD_OUT, ""), &[], &[None]);
+        let mut defaults = LeakCheck::start(short_3v3(&HELD_OUT, RANK), &[], &[None]);
         defaults.strike();
         let mut died = false;
         for _ in 0..MATCH_TICKS {
@@ -527,19 +533,27 @@ mod scripted_match {
         }
         defaults.assert_no_leak();
         assert!(died, "the south's hero fell in the defaults' run");
-        // A player's money and its team's cells are its own, and its unit's life every client's
-        // that holds it.
+        // A player's money, its rank and its team's cells are its own, and its unit's life every
+        // client's that holds it.
         assert!(defaults.withheld.contains(&DataKind::Resources));
         assert!(defaults.withheld.contains(&DataKind::Sight));
         assert!(defaults.held_by_other.contains(&DataKind::Life));
-        assert!(!defaults.holds_resources_of(1, 0) && !defaults.holds_resources_of(4, 0));
+        assert!(
+            !defaults.holds_of::<PlayerResources>(1, 0)
+                && !defaults.holds_of::<PlayerResources>(4, 0)
+        );
+        assert!(
+            defaults.holds_of::<PlayerExperience>(0, 0)
+                && !defaults.holds_of::<PlayerExperience>(1, 0)
+                && !defaults.holds_of::<PlayerExperience>(4, 0)
+        );
 
         // The other extreme: the spectators watch the teams' views, one every team's and one the
         // south's alone, as the host's flags say; each kind's audience flips as the mode's
         // `[visibility]` says.
         let south = TeamSet::from([Team::new(1)]);
         let mut extreme = LeakCheck::start(
-            short_3v3(&HELD_OUT, &other_extreme()),
+            short_3v3(&HELD_OUT, &format!("{RANK}{}", other_extreme())),
             &["spectators=teams", "out=spectators"],
             &[None, Some(south)],
         );
@@ -551,11 +565,17 @@ mod scripted_match {
         }
         extreme.assert_no_leak();
         assert!(died, "the south's hero fell in the extreme's run");
-        // A player's allies and the spectators hold its money; no one but the owner its unit's
-        // life.
+        // A player's allies and the spectators hold its money and its rank; no one but the owner
+        // its unit's life.
         assert!(extreme.held_by_other.contains(&DataKind::Resources));
         assert!(extreme.withheld.contains(&DataKind::Life));
-        assert!(extreme.holds_resources_of(1, 0) && extreme.holds_resources_of(4, 0));
+        assert!(
+            extreme.holds_of::<PlayerResources>(1, 0) && extreme.holds_of::<PlayerResources>(4, 0)
+        );
+        assert!(
+            extreme.holds_of::<PlayerExperience>(1, 0)
+                && extreme.holds_of::<PlayerExperience>(4, 0)
+        );
         // Out of play, the south's dead hero's player and Gale's, whom the script held out alive,
         // held what their teams did not see; in the defaults, which keep a player out of play to
         // its team's view, no player did.

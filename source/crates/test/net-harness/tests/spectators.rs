@@ -264,19 +264,19 @@ const fn rated(bytes_per_second: u32) -> LinkModel {
 fn a_join_burst_fits_the_initial_window_and_a_megabit_link_delays_it_one_tick() {
     // At 10 Mbit/s each datagram arrives at the other end's next frame, as the link takes time to
     // carry it: the handshake's frames, the session's terms among them, whose max payload length
-    // of 1,024 takes a varint of 2 bytes, then the world's 58 entities in one frame of 5,090
+    // of 1,024 takes a varint of 2 bytes, then the world's 58 entities in one frame of 5,176
     // bytes, the largest, which takes 4.1 ms. It is below NewReno's initial window of 10 packets
     // of 1,200 bytes, so the packet session's budget sends it whole
     // (11-net-stack/packet-session.md, Congestion control is NewReno, in the packet session).
     let fast = JoinBurst::over(rated(1_250_000));
-    assert_eq!(fast.frames, [0, 43, 0, 431, 0, 656, 51, 5_090, 425]);
+    assert_eq!(fast.frames, [0, 43, 0, 431, 0, 658, 51, 5_176, 431]);
     assert_eq!(fast.entities, 58);
     assert!(fast.largest() < 10 * 1_200);
 
-    // At 1 Mbit/s the 5,090 bytes take 40,720 µs, past the tick of 33,333 µs: the spectator
+    // At 1 Mbit/s the 5,176 bytes take 41,408 µs, past the tick of 33,333 µs: the spectator
     // holds the world one frame later, in which the server sent one more frame's bytes.
     let slow = JoinBurst::over(rated(125_000));
-    assert_eq!(slow.frames, [0, 43, 0, 431, 0, 656, 51, 5_090, 425, 440]);
+    assert_eq!(slow.frames, [0, 43, 0, 431, 0, 658, 51, 5_176, 431, 452]);
     assert_eq!(slow.entities, 58);
-    assert_eq!(slow.largest() * 1_000_000 / 125_000, 40_720);
+    assert_eq!(slow.largest() * 1_000_000 / 125_000, 41_408);
 }

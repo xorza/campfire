@@ -197,6 +197,12 @@ impl UnitOrders {
                     OrdersDirective::Use { target } => sees(target)
                         .then_some(UnitOrder::Use { target })
                         .ok_or(OrderDropCause::Hidden),
+                    OrdersDirective::Enter { target } => sees(target)
+                        .then_some(UnitOrder::Enter { target })
+                        .ok_or(OrderDropCause::Hidden),
+                    // A rider is out of the world, which only its container's riders name.
+                    OrdersDirective::Exit { rider } => Ok(UnitOrder::Exit { rider }),
+                    OrdersDirective::Evacuate => Ok(UnitOrder::Evacuate),
                     OrdersDirective::Stop => Ok(UnitOrder::Stop),
                     OrdersDirective::Move { .. } | OrdersDirective::AttackMove { .. } => {
                         unreachable!("a walk was checked as a group")

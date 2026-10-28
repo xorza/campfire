@@ -16,7 +16,7 @@ use campfire_declarations::{
 use campfire_navigation::NavigationSystems;
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::{Capability, SimSystems};
-use campfire_stats::ModifierAppliers;
+use campfire_stats::{ModifierAppliers, StatsSystems};
 use campfire_units::{BodyUnit, Due, UnitGrid};
 use campfire_values::UnitType;
 use campfire_vision::{ByHolding, ByVision, TeamSight};
@@ -33,11 +33,16 @@ mod attack_move;
 mod destinations;
 mod dropped_orders;
 mod error;
+mod mode_retaliation_data;
 mod next_turn;
 mod orders_api;
 mod orders_directive;
 mod orders_effect;
 mod resetting;
+mod retaliate;
+mod retaliate_data;
+mod retaliating;
+mod retaliation_book;
 mod thinking;
 mod unit_order;
 mod unit_orders;
@@ -50,11 +55,16 @@ pub use crate::ai_data::AiData;
 pub use crate::attack_move::AttackMove;
 pub use crate::destinations::Destinations;
 pub use crate::dropped_orders::{DroppedOrder, DroppedOrders, OrderDropCause};
-pub use crate::error::{AcquireError, AiError, OrdersRefusal};
+pub use crate::error::{AcquireError, AiError, OrdersRefusal, RetaliationError};
+pub use crate::mode_retaliation_data::{ModeRetaliationData, ModeRetaliationPatch};
 pub use crate::next_turn::{NextTurn, TurnSpec};
 pub use crate::orders_api::OrdersApi;
 pub use crate::orders_directive::OrdersDirective;
 pub use crate::resetting::Resetting;
+pub use crate::retaliate::Retaliate;
+pub use crate::retaliate_data::{RetaliateData, RetaliatePatch};
+pub use crate::retaliating::Retaliating;
+pub use crate::retaliation_book::RetaliationBook;
 pub use crate::thinking::Thinking;
 pub use crate::unit_order::{HeldOrder, UnitOrder};
 pub use crate::unit_orders::{OrderQueue, UnitOrders};
@@ -70,6 +80,9 @@ pub enum OrdersSystems {
     Scan,
     /// AI of the units due this tick issues orders.
     Think,
+    /// Once the tick's damage is dealt and its units died, in Resolve: the damaged units call their
+    /// allies to retaliate.
+    Retaliate,
 }
 
 impl ModuleSystems for OrdersSystems {
@@ -83,6 +96,7 @@ impl ModuleSystems for OrdersSystems {
             }
             Self::Scan => SetPlace::stage(SimSystems::Think).before(Self::Think),
             Self::Think => SetPlace::stage(SimSystems::Think),
+            Self::Retaliate => SetPlace::stage(SimSystems::Resolve).after(StatsSystems::Hold),
         }
     }
 }
@@ -109,6 +123,10 @@ impl Module for Orders {
         d.timed::<AttackMove>();
         d.part::<BodyUnit, AttackMove>(|at| at.of_type::<Acquire>().map(|_| AttackMove::NONE));
         d.book::<ById<UnitType, Acquire>>(Acquire::book);
+        d.section::<ModeRetaliationData>();
+        d.section::<RetaliateData>();
+        d.book::<RetaliationBook>(RetaliationBook::build);
+        d.book::<ById<UnitType, Retaliate>>(Retaliate::book);
         d.component::<NextThink>();
         d.timed::<NextThink>();
         d.observer(NextThink::revived);
@@ -133,7 +151,8 @@ impl Module for Orders {
     /// tick's orders are checked and become current; in Think, on a match that computes the state,
     /// the units that attack-move and stand walk on and the idle units due scan for a target, then
     /// the resets whose units arrived end, and the
-    /// units due this tick think; in Act, before combat starts attacks, after path walkers
+    /// units due this tick think; in Resolve, once its dead died, on a server of a mode of
+    /// `[retaliation]`, the units the tick's damage struck call their allies; in Act, before combat starts attacks, after path walkers
     /// walk, units chase their targets. It builds on the core `Units` installs, on navigation and
     /// on stats. Without the core's scripts, as on a client, no unit thinks. An order's targets are
     /// checked as the server's vision sees them, or, on a predicting client, as the units it holds.
@@ -152,6 +171,15 @@ impl Module for Orders {
             )
                 .chain(),
         );
+        let retaliates = cx
+            .book::<RetaliationBook>()
+            .is_some_and(|retaliation| retaliation.0.is_some());
+        if retaliates {
+            cx.server(
+                OrdersSystems::Retaliate,
+                UnitGrid::before_reading(Retaliating::call),
+            );
+        }
         cx.scripted(
             OrdersSystems::Think,
             (
@@ -184,6 +212,7 @@ pub mod internals {
     use campfire_common::Tick;
     use campfire_declarations::ById;
     use campfire_declarations::internals::BookLoad;
+    use campfire_math::Num;
     use campfire_script::{Filters, MatchNames, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{MatchRate, StableId};
@@ -195,6 +224,8 @@ pub mod internals {
     use crate::ai::Ai;
     use crate::ai_data::AiData;
     use crate::error::AiError;
+    use crate::retaliate::Retaliate;
+    use crate::retaliation_book::{RetaliationBook, RetaliationRule};
 
     impl Orders {
         /// Gives `unit_type` its AI, with its compiled script: the think period in milliseconds
@@ -232,6 +263,34 @@ pub mod internals {
                 targets: Filters::resolve(&targets, tags).expect("a test's tags"),
             };
             ById::<UnitType, Acquire>::amend(world, |_, book| book.set(unit_type, acquire));
+        }
+
+        /// Gives the match the mode's `[retaliation]`: the aggressors `aggressors` selects, within
+        /// `distance` meters, its allies within `radius` meters answering for `chase_ms`.
+        pub fn load_retaliation(
+            world: &mut World,
+            aggressors: &str,
+            [distance, radius]: [Num; 2],
+            chase_ms: u64,
+        ) {
+            let rate = *world.resource::<MatchRate>();
+            let filter = FilterData::parse(aggressors).expect("a test's filter");
+            let rule = RetaliationRule {
+                aggressors: world
+                    .resource::<MatchNames>()
+                    .resolve_filter(&filter)
+                    .expect("a test's tags"),
+                distance,
+                radius,
+                chase: rate.duration(chase_ms).expect("a test's chase"),
+            };
+            RetaliationBook::amend(world, |_, book| book.0 = Some(rule));
+        }
+
+        /// Gives `unit_type` its `retaliate`, of `leash` and `reach` meters.
+        pub fn load_retaliate(world: &mut World, unit_type: UnitType, leash: Num, reach: Num) {
+            let retaliate = Retaliate { leash, reach };
+            ById::<UnitType, Retaliate>::amend(world, |_, book| book.set(unit_type, retaliate));
         }
     }
 

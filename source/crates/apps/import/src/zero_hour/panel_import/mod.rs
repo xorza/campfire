@@ -43,7 +43,14 @@ pub(crate) struct PanelImport {
     pub(crate) actions: BTreeMap<DeclaredName, ButtonLook>,
     pub(crate) grid: PanelGrid,
     pub(crate) textures: BTreeSet<ArchivePath>,
+    /// The icons of a veteran, an elite and a heroic unit, as `Drawable` draws `SCVeter1` to
+    /// `SCVeter3`, none when one of them draws from no texture (generals.md, A level shows its
+    /// icon).
+    pub(crate) level_icons: Vec<PanelIcon>,
 }
+
+/// The images of a veteran's, an elite's and a heroic unit's icon, `Drawable::s_veterancyImage`.
+const LEVEL_IMAGES: [&str; 3] = ["SCVeter1", "SCVeter2", "SCVeter3"];
 
 impl PanelButtons {
     /// The last place the game's control bar draws, as `ControlBar.wnd` lays 14 windows; places
@@ -70,13 +77,23 @@ impl PanelButtons {
             | ButtonCommand::DozerConstruct
             | ButtonCommand::PlayerUpgrade
             | ButtonCommand::ObjectUpgrade
+            | ButtonCommand::PurchaseScience
+            | ButtonCommand::SpecialPower
             | ButtonCommand::Other => None,
         };
         let placed = match (action, command) {
             (Some(action), _) => PanelButton::Action(action),
             (None, Some(command)) => PanelButton::Command(command),
-            // A button of an action the import did not make is counted by its cause already.
-            (None, None) if button.command != ButtonCommand::Other => return,
+            // A button of an action the import did not make is counted by its cause already; a
+            // purchase belongs to a player's panel of sciences, never to a unit's.
+            (None, None)
+                if !matches!(
+                    button.command,
+                    ButtonCommand::Other | ButtonCommand::PurchaseScience
+                ) =>
+            {
+                return;
+            }
             (None, None) => return self.dropped.drop(name, PanelDropCause::Command),
         };
         let place = NonZeroU8::new(place).filter(|place| place.get() <= Self::PLACES);
@@ -117,8 +134,8 @@ impl PanelButtons {
 impl PanelImport {
     /// The panel of `buttons`, each image of `images` an icon of its texture, which `texture`
     /// finds in the archives; a button of no image, of a turned one, of no texture or of no key
-    /// counted into `dropped`, its icon or its key left out. Its grid is the game's, 7 columns of
-    /// 2, its places down each column, as `ControlBar.wnd` lays them.
+    /// counted into `dropped`, its icon or its key left out, as each level's image is. Its grid is
+    /// the game's, 7 columns of 2, its places down each column, as `ControlBar.wnd` lays them.
     pub(crate) fn of(
         buttons: &PanelButtons,
         images: &MappedImageIni,
@@ -134,20 +151,26 @@ impl PanelImport {
             },
             ..Self::default()
         };
+        let found = |name: Option<&str>| Self::found(images, &texture, name);
+        let mut levels = Vec::with_capacity(LEVEL_IMAGES.len());
+        for name in LEVEL_IMAGES {
+            match found(Some(name)) {
+                Ok((path, rect)) => levels.push((path, rect)),
+                Err(cause) => dropped.drop(name, cause),
+            }
+        }
+        if levels.len() == LEVEL_IMAGES.len() {
+            for (path, rect) in levels {
+                let texture = game_path::texture(&path)?;
+                panel.level_icons.push(PanelIcon { texture, rect });
+                panel.textures.insert(path);
+            }
+        }
         let mut look = |face: &ButtonFace| -> Result<ButtonLook, ZeroHourError> {
             if face.key.is_none() {
                 dropped.drop(&face.button, PanelDropCause::NoKey);
             }
-            let image = face.image.as_deref().and_then(|name| images.get(name));
-            let found = match image {
-                None => Err(PanelDropCause::NoImage),
-                Some(image) if image.rotated => Err(PanelDropCause::Rotated),
-                Some(image) => match (texture(&image.texture), Self::rect(image.coords)) {
-                    (None, _) => Err(PanelDropCause::NoTexture),
-                    (Some(_), None) => Err(PanelDropCause::NoImage),
-                    (Some(path), Some(rect)) => Ok((path, rect)),
-                },
-            };
+            let found = found(face.image.as_deref());
             let icon = match found {
                 Ok((path, rect)) => {
                     let icon = PanelIcon {
@@ -178,6 +201,25 @@ impl PanelImport {
         panel.actions = actions;
         panel.grid.commands = commands;
         Ok(panel)
+    }
+
+    /// The texture and the rectangle of the image `name` of `images`, its texture as `texture`
+    /// finds it in the archives; a cause for no image, a turned one, or one of no texture.
+    pub(crate) fn found(
+        images: &MappedImageIni,
+        texture: impl Fn(&str) -> Option<ArchivePath>,
+        name: Option<&str>,
+    ) -> Result<(ArchivePath, IconRect), PanelDropCause> {
+        let image = name.and_then(|name| images.get(name));
+        match image {
+            None => Err(PanelDropCause::NoImage),
+            Some(image) if image.rotated => Err(PanelDropCause::Rotated),
+            Some(image) => match (texture(&image.texture), Self::rect(image.coords)) {
+                (None, _) => Err(PanelDropCause::NoTexture),
+                (Some(_), None) => Err(PanelDropCause::NoImage),
+                (Some(path), Some(rect)) => Ok((path, rect)),
+            },
+        }
     }
 
     /// The rectangle of an image's `Coords`, its left, top, right and bottom; none of no pixel or

@@ -128,13 +128,23 @@ impl ActionSlots {
         holder: TagSet,
         target: Option<(Relation, TagSet)>,
     ) -> Option<u8> {
-        let at = self.iter().position(|slot| {
-            slot.action.is_some_and(|action| {
-                let action = book.get(action).expect("a slot's action is in the book");
-                action.arms(slot.rank, holder, target)
-            })
-        })?;
-        Some(u8::try_from(at).expect("a unit's slots fit u8"))
+        self.weapons_in(book, holder, target).next()
+    }
+
+    /// The slots of each learned weapon of these slots, of `book`, that `weapon_in` takes, in slot
+    /// order.
+    pub fn weapons_in(
+        &self,
+        book: &ActionBook,
+        holder: TagSet,
+        target: Option<(Relation, TagSet)>,
+    ) -> impl Iterator<Item = u8> {
+        self.indexed().filter_map(move |(at, slot)| {
+            let action = book
+                .get(slot.action?)
+                .expect("a slot's action is in the book");
+            action.arms(slot.rank, holder, target).then_some(at)
+        })
     }
 
     /// Whether a learned slot of these, of `book`, holds a weapon, whatever its `when`, as a type

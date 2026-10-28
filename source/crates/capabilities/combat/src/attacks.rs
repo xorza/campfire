@@ -7,8 +7,8 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionCheck, ActionProgress, ActionSlots, ActionTarget, Caster, InProgress, Payer,
-    ProgressIndexes, Purse, RangeFit, Reached, Shot, ShotDamage, Shots, SlotAim, SlotCommit,
-    SlotTimes, StartFrom, Targets,
+    ProgressIndexes, Purse, RangeBonus, RangeFit, Reached, Shot, ShotDamage, Shots, SlotAim,
+    SlotCommit, SlotTimes, StartFrom, Stretch, Targets,
 };
 use campfire_common::Tick;
 use campfire_declarations::{ById, RoleForm};
@@ -19,7 +19,8 @@ use campfire_script::ScriptsWorld;
 use campfire_sim::{DueUnit, EntityIndex, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{ModifierEvents, PoolBook, UnitPools, UnitPoolsReadOnly, UnitStats};
 use campfire_units::{
-    Body, Dead, Due, Facing, ForcedMove, MapBook, OnWings, Owner, StatusTags, TurnStep, UnitsNear,
+    Acting, Body, Dead, Due, Facing, ForcedMove, MapBook, OnWings, Owner, StatusTags, TurnStep,
+    UnitsNear,
 };
 use campfire_values::{ActionId, Allegiance, Block, Motion, TagSet, Team, UnitTags, UnitType};
 
@@ -34,6 +35,7 @@ use crate::streak_shots::{FiredShot, StreakShot, StreakShots};
 use crate::turret::Turret;
 use crate::turret::aiming::Aiming;
 use crate::turret::turret_aim::TurretAim;
+use crate::type_armor::TypeArmor;
 use crate::volley::{GoingOff, Volley};
 use crate::weapon::Weapon;
 use crate::wielded::Wielded;
@@ -182,20 +184,127 @@ impl Attacks {
         }
     }
 
-    /// Starts the attack of each unit the index of the attack targets holds on its attack target,
-    /// in Act, when it has nothing under way, and forgets each gone or with no target: with the
-    /// first weapon whose filter selects the target, once that weapon passes its checks, the target
+    /// Chooses, in Act before the chase, the weapon of each living unit the index of the attack
+    /// targets holds against the unit its attacks aim at, a living enemy, by its slots' times in
+    /// the tick, its weapons' reach of the target and the armor the target's type gives its tags;
+    /// the weapon of an attack in its windup stays its choice (combat-response.md, Combat chooses
+    /// the weapon; combat-response.md, The chosen weapon is the attack's). A turret target with no
+    /// attack in its windup goes once it is no living enemy, once no weapon reaches it, or once
+    /// the weapon chosen against it is one the unit's turret does not carry (combat-response.md, A
+    /// turret has its own target).
+    /// Its owner's client chooses for its own units as the server does.
+    pub(super) fn choose_weapons(
+        (tick, book, weapons, armors): (
+            Res<'_, SimTick>,
+            Res<'_, ActionBook>,
+            Res<'_, ById<ActionId, Weapon>>,
+            Res<'_, ById<UnitType, TypeArmor>>,
+        ),
+        (targets, types, turrets, bonuses): (
+            Targets<'_, '_>,
+            Query<'_, '_, &UnitType>,
+            Res<'_, ById<UnitType, Turret>>,
+            Option<Res<'_, ById<ActionId, RangeBonus>>>,
+        ),
+        mut units: Query<
+            '_,
+            '_,
+            (
+                (&Team, &Position, Option<&Body>, &UnitType),
+                (&ActionSlots, &mut ActionProgress),
+                Option<&SlotTimes>,
+                Option<&UnitTags>,
+                Option<&UnitStats>,
+            ),
+            (Without<Dead>, Acting),
+        >,
+        (index, mut indexes, mut visits): (
+            Res<'_, EntityIndex>,
+            ProgressIndexes<'_>,
+            Local<'_, Vec<DueUnit>>,
+        ),
+    ) {
+        visits.clear();
+        indexes.attackers(&mut visits);
+        for &DueUnit { id, entity } in &*visits {
+            let Ok((
+                (&team, position, body, &unit_type),
+                (slots, mut progress),
+                times,
+                tags,
+                stats,
+            )) = units.get_mut(entity)
+            else {
+                continue;
+            };
+            let from = Placed::new(position.get(), Body::shape_of(body));
+            let stretch = Stretch {
+                bonuses: bonuses.as_deref(),
+                stats: stats.map_or(&[][..], UnitStats::values),
+            };
+            let reaches = |slot, to| {
+                let values = stretch
+                    .values_in(slots, &book, slot)
+                    .expect("a weapon's values");
+                targets.reach(from, values.range, values.min_range, to) == RangeFit::Within
+            };
+            let aimed = progress
+                .aimed_at()
+                .and_then(|target| targets.enemy(team, target));
+            let chosen = match progress.in_progress() {
+                Some(InProgress::Attack { slot, .. }) => Some(slot),
+                _ => aimed.and_then(|target| {
+                    let armor = index
+                        .get(target.id)
+                        .and_then(|at| types.get(at).ok())
+                        .and_then(|&unit_type| armors.get(unit_type))
+                        .and_then(|armor| armor.of(target.tags));
+                    let armed = Armed {
+                        slots,
+                        times,
+                        book: &book,
+                        weapons: &weapons,
+                        holder: tags.map_or(TagSet::NONE, |tags| tags.tags),
+                        stats: stats.map_or(&[][..], UnitStats::values),
+                        now: tick.start(),
+                    };
+                    let relation = targets.relation(team, target.team);
+                    let to = Placed::new(target.position, target.shape);
+                    armed.choose((relation, target.tags), armor, |slot| reaches(slot, to))
+                }),
+            };
+            // An attack in its windup strikes out of reach, as its range counts at its start.
+            let turret = turrets.get(unit_type);
+            let kept = progress.attack_target().is_some()
+                || progress.attacking().is_some()
+                || chosen.zip(aimed).is_some_and(|(slot, target)| {
+                    let to = Placed::new(target.position, target.shape);
+                    turret.is_some_and(|turret| turret.carries(slots, slot)) && reaches(slot, to)
+                });
+            if !kept && progress.turret_target().is_some() {
+                progress.set_turret_target(None, &mut indexes.of(id, entity));
+            } else if progress.weapon() != chosen {
+                progress.choose_weapon(chosen);
+            }
+        }
+    }
+
+    /// Starts the attack of each unit the index of the attack targets holds on the unit its attacks
+    /// aim at, its attack target or its turret target, in Act, when it has nothing under way, and
+    /// forgets each gone or with no target: with the
+    /// weapon combat chose against the target, once that weapon passes its checks, the target
     /// is within its reach, and, for a weapon of its turret's slot kind, the turret lies within its
     /// tolerance of the target's bearing and pitch (04-capabilities/combat.md, A unit type may have
     /// a turret; 04-capabilities/combat.md, A turret may pitch), and the weapon's pre-attack, if it
     /// has one, is done (04-capabilities/combat.md, A pre-attack). An attack in its windup stops
     /// when the unit's tags keep it from attacking, or it lives no more, and such a unit starts
-    /// none. An attack target that is no living enemy any more is dropped, with the attack on it.
+    /// none. A target that is no living enemy any more is dropped, with the attack on it.
     pub(super) fn start_attacks(
-        (tick, (book, weapons), turrets): (
+        (tick, (book, weapons), turrets, bonuses): (
             Res<'_, SimTick>,
             (Res<'_, ActionBook>, Res<'_, ById<ActionId, Weapon>>),
             Res<'_, ById<UnitType, Turret>>,
+            Option<Res<'_, ById<ActionId, RangeBonus>>>,
         ),
         (resources, life): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PoolBook>),
         targets: Targets<'_, '_>,
@@ -219,9 +328,10 @@ impl Attacks {
                     Option<&TurretAim>,
                     &ClipShots,
                     Option<&StatusTags>,
+                    Option<&UnitStats>,
                 ),
             ),
-            Without<Dead>,
+            (Without<Dead>, Acting),
         >,
         (mut indexes, mut held): (ProgressIndexes<'_>, Local<'_, Vec<DueUnit>>),
     ) {
@@ -240,7 +350,7 @@ impl Attacks {
                 body,
                 tags,
                 forced,
-                (&unit_type, mut facing, turn, turret_aim, clips, status),
+                (&unit_type, mut facing, turn, turret_aim, clips, status, stats),
             )) = units.get_mut(entity).map_err(|error| {
                 if matches!(error, QueryEntityError::NotSpawned(_)) {
                     indexes.forget_attacker(entity);
@@ -249,12 +359,16 @@ impl Attacks {
             else {
                 continue;
             };
-            if progress.attack_target().is_none() {
+            if progress.aimed_at().is_none() {
                 indexes.forget_attacker(entity);
                 continue;
             }
             let blocked =
                 Caster::of(tags, Motion::of(forced), None).blocks(Block::Attack) || !pools.lives();
+            let stretch = Stretch {
+                bonuses: bonuses.as_deref(),
+                stats: stats.map_or(&[][..], UnitStats::values),
+            };
             match progress.in_progress() {
                 Some(
                     InProgress::Order { .. }
@@ -266,28 +380,21 @@ impl Attacks {
                     if blocked {
                         progress.interrupt(&mut indexes.of(id, entity));
                     } else if progress
-                        .attack_target()
+                        .aimed_at()
                         .is_none_or(|target| targets.enemy(team, target).is_none())
                     {
-                        progress.set_attack_target(None, &mut indexes.of(id, entity));
+                        progress.drop_aimed(&mut indexes.of(id, entity));
                     }
                 }
                 None => {
-                    let Some(target) = progress.attack_target() else {
+                    let Some(target) = progress.aimed_at() else {
                         continue;
                     };
                     let Some(unit) = targets.enemy(team, target) else {
-                        progress.set_attack_target(None, &mut indexes.of(id, entity));
+                        progress.drop_aimed(&mut indexes.of(id, entity));
                         continue;
                     };
-                    let armed = Armed {
-                        slots,
-                        book: &book,
-                        team,
-                        holder: tags.map_or(TagSet::NONE, |tags| tags.tags),
-                    };
-                    let weapon_slot = armed.weapon_against(&targets, &unit);
-                    let (Some(slot), false) = (weapon_slot, blocked) else {
+                    let (Some(slot), false) = (progress.weapon(), blocked) else {
                         progress.end_pre_attack();
                         continue;
                     };
@@ -324,7 +431,9 @@ impl Attacks {
                     } else if let (Some(aim), Some(facing)) = (body_aim, facing.as_mut()) {
                         // A weapon no turret carries turns its attacker toward its target in its
                         // reach (04-capabilities/combat.md, An attacker aims its body).
-                        let values = held_slot.values_in(&book).expect("a held weapon's values");
+                        let values = stretch
+                            .values_of(held_slot, &book)
+                            .expect("a held weapon's values");
                         let fit = targets.reach(
                             Placed::new(position.get(), Body::shape_of(body)),
                             values.range,
@@ -361,6 +470,7 @@ impl Attacks {
                         targets: &targets,
                     };
                     let check = ActionCheck {
+                        player: None,
                         book: &book,
                         now,
                         caster: Caster::of(tags, Motion::of(forced), None),
@@ -385,7 +495,9 @@ impl Attacks {
                         // The pre-attack runs while the weapon reaches the target, ready or not, as
                         // Zero Hour's aim and fire states run through a reload, a clip's loaded as
                         // its reload starts.
-                        let values = held_slot.values_in(&book).expect("a held weapon's values");
+                        let values = stretch
+                            .values_of(held_slot, &book)
+                            .expect("a held weapon's values");
                         let fit = targets.reach(
                             Placed::new(position.get(), Body::shape_of(body)),
                             values.range,
@@ -424,9 +536,20 @@ impl Attacks {
                             }
                         }
                     }
+                    // Its reach is the weapon's range stretched by its bonus, which the check of
+                    // the action alone does not know.
+                    let values = stretch
+                        .values_of(held_slot, &book)
+                        .expect("a held weapon's values");
+                    let reached = targets.reach(
+                        Placed::new(position.get(), Body::shape_of(body)),
+                        values.range,
+                        values.min_range,
+                        Placed::new(unit.position, unit.shape),
+                    );
                     let started = times
                         .start(check, Some(from))
-                        .filter(|started| started.reach == RangeFit::Within && pitched)
+                        .filter(|_| reached == RangeFit::Within && pitched)
                         .map(|started| now.after(started.checked.values.windup));
                     if let Some(resolves_at) = started {
                         if pre_attack.is_some() {
@@ -447,7 +570,7 @@ impl Attacks {
             (Res<'_, ActionBook>, Res<'_, ById<ActionId, Weapon>>),
             Option<Res<'_, PoolBook>>,
         ),
-        attackers: Query<'_, '_, Attacker<'_>, Without<Dead>>,
+        attackers: Query<'_, '_, Attacker<'_>, (Without<Dead>, Acting)>,
         resources: PlayerRows<'_, '_, PlayerResources>,
         due: Option<ResMut<'_, Due<GoingOff>>>,
     ) {
@@ -509,7 +632,7 @@ impl Attacks {
                 UnitPools,
                 Option<&Owner>,
             ),
-            Without<Dead>,
+            (Without<Dead>, Acting),
         >,
     ) {
         let life = life.life();
@@ -574,7 +697,7 @@ impl Attacks {
                 Option<&Owner>,
                 (&mut ClipShots, Option<&Body>, &Team),
             ),
-            Without<Dead>,
+            (Without<Dead>, Acting),
         >,
         (index, aims, dead, map, mut held): (
             Res<'_, EntityIndex>,
@@ -651,13 +774,17 @@ impl Attacks {
                 _ => period,
             };
             let ready_at = started.after(ready);
-            times.commit(SlotCommit {
-                slot: wielded.slot,
-                now,
-                ready_at,
-                charges: values.charges,
-                toggle: None,
-            });
+            times.commit(
+                SlotCommit {
+                    slot: wielded.slot,
+                    now,
+                    ready_at,
+                    charges: values.charges,
+                    toggle: None,
+                    player: None,
+                },
+                None,
+            );
             progress.end(dues);
             if F::PREDICTS {
                 continue;

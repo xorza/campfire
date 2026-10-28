@@ -1,4 +1,5 @@
 use bevy_ecs::change_detection::DetectChanges;
+use bevy_ecs::entity_disabling::Disabled;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_common::PlayerSlot;
@@ -12,7 +13,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId};
 use campfire_units::internals::Spawn;
 use campfire_units::{
-    BodyForm, BodyShape, Dead, Layer, Life, MoveStep, UnitTypeCore, Units, UnitsWorld,
+    BodyForm, BodyShape, Dead, Layer, Life, MoveStep, SeeingRider, UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{Relation, TagProperties, Team, TeamSet, TypeScope, VisionShare};
 use campfire_vision::*;
@@ -113,6 +114,19 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     *game.get_mut::<Position>(entity).unwrap() = Position::from((-3, 0, 0));
     game.step();
     assert_eq!(Vision::seen_by(&game, sneak), team(1).with(Team::new(0)));
+
+    // A rider out of the world reveals nothing, but one that sees from its container does
+    // (transports.md, A garrison's riders see from it): a rider of team 0 at (−7, −7), seeing 3
+    // m, shows team 1's unit at (−8, −7), whose cell's center lies √0.5 ≈ 0.71 m off, only once
+    // it holds `SeeingRider`.
+    let rider = Vision::spawn_seer(&mut game, -7, -7, Team::new(0), Some(3));
+    let watched = Vision::spawn_seer(&mut game, -8, -7, Team::new(1), None);
+    game.insert_parts(rider, Disabled);
+    game.step();
+    assert_eq!(Vision::seen_by(&game, watched), team(1));
+    game.insert_parts(rider, SeeingRider);
+    game.step();
+    assert_eq!(Vision::seen_by(&game, watched), team(1).with(Team::new(0)));
 
     // A new unit is seen by its whole group before its first Vision stage, as that stage gives
     // it: teams 1 and 2 become friends that share vision.

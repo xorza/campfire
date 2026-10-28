@@ -370,6 +370,6 @@ moves = "none"
 killer = "enemies:avatar"
 
 # A death's experience splits evenly among the enemy heroes within 16 m of it.
-[experience]
+[[experience]]
 track = "level"
 to = { radius = "16.0", filter = "enemies:avatar" }

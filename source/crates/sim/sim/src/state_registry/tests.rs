@@ -114,7 +114,8 @@ fn shuffled_world() -> World {
     world
 }
 
-/// A despawned id, an entity with no registered component, and extreme values.
+/// A despawned id, an entity with no registered component, and extreme values, of an entity out
+/// of the world, as a rider is.
 fn varied_world() -> World {
     let mut world = plain_world();
     world.insert_resource(SimTick::new(Tick::new(7)));
@@ -128,6 +129,7 @@ fn varied_world() -> World {
         extreme,
         Life(Num::MIN),
         Position(Vec3::new(Num::MAX, Num::MIN, Num::EPSILON)),
+        Disabled,
     ));
     world
 }
@@ -298,6 +300,12 @@ fn snapshot_restores_the_same_state() {
         Ok(registry().hash(&original))
     );
     assert_eq!(snapshot(&restored), bytes);
+    // The entity out of the world comes back whole.
+    let extreme = restored.entity_of(StableId::new(4)).unwrap();
+    assert_eq!(
+        restored.get::<Life>(extreme).map(|life| life.0),
+        Some(Num::MIN)
+    );
     // The allocator continues where the original would.
     assert_eq!(allocate(&mut restored), allocate(&mut original));
 }
@@ -862,6 +870,15 @@ fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
     assert_eq!(world.queried_entity_of(first), Some(entity(world, first)));
     assert_eq!(world.entity_of(second), None);
     assert_eq!(world.queried_entity_of(second), None);
+    // A value of an entity out of the world, as a rider is, Bevy's `Disabled` hiding it from
+    // every query that does not name it: copied all the same.
+    let ridden = following.step(|world| {
+        let first = entity(world, first);
+        world.entity_mut(first).insert(Disabled);
+        world.get_mut::<Life>(first).unwrap().0 = Num::from_int(12).unwrap();
+    });
+    let health_12 = ("test.life", encoded(&[(first, Some(life(12)))]));
+    assert_eq!(ridden, (vec![], vec![], vec![absent.clone(), health_12]));
 
     // A resource inserted, then removed.
     let tick = SimTick::new(Tick::new(5));

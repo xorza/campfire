@@ -35,7 +35,9 @@ jobs:
       matrix:
         os: [ubuntu-26.04, windows-2025, macos-26]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    # A branch's run restores master's cache, which only master's runs save: Windows then builds
+    # the branch's tests for about 55 minutes, and its gate passed 90 in each of three runs.
+    timeout-minutes: ${{ matrix.os == 'windows-2025' && 150 || 90 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

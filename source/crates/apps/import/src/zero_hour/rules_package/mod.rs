@@ -11,21 +11,30 @@ use campfire_mode::{
     ChoiceData, ListEntry, ModeData, ModeParam, ModePatch, Offers, OptionData, RelationData,
     TeamData, TeamManifest,
 };
+use campfire_orders::{ModeRetaliationData, ModeRetaliationPatch};
 use campfire_package::{
     BotData, BotList, Dependency, Language, ModeManifest, PackageHeader, ScriptOrder, TickRange,
 };
 use campfire_package_format::DependencyPath;
+use campfire_progression::{ModeExperienceData, ModePerksData, ModeTracksData};
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
 use campfire_stats::{ModeStatsData, ModifiersData};
 use campfire_values::{PackageName, PackagePath, Relation, Scalar, ScriptSource, Speed, TextId};
 
 use crate::zero_hour::combat_import::CombatImport;
+use crate::zero_hour::contain_import::ContainImport;
+use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::ini::ai_data_ini::AiRetaliation;
 use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
 use crate::zero_hour::import_team::ImportTeam;
 use crate::zero_hour::production_import::{FactionBase, ProductionImport};
+use crate::zero_hour::rules_names::RulesNames;
+use crate::zero_hour::science_import::ScienceImport;
 use crate::zero_hour::skirmish_start::{FactionStart, SkirmishStart};
 use crate::zero_hour::upgrade_import::UpgradeImport;
+use crate::zero_hour::veterancy_import::VeterancyImport;
 
 /// The operations of a script call, and of each pool's calls of a tick: twice the most one think
 /// of the Zero Hour check's bots runs, rounded up, as a longer match's bases grow
@@ -141,12 +150,15 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
             Capability::Projectiles,
             Capability::Airfields,
             Capability::Vision,
+            Capability::Progression,
+            Capability::Areas,
+            Capability::Interaction,
         ],
         tick_hz: TickRange::new(logic_frames, logic_frames, logic_frames)
             .expect("a range of one rate holds it"),
         teams,
         max_move_speed,
-        // A bot's think of the check's plays runs up to 17,843 operations, and each pool holds a
+        // A bot's think of the check's plays runs up to 19,247 operations, and each pool holds a
         // whole call (09-zero-hour.md, The bots' limits are measured).
         script_limits: ScriptLimits {
             per_call: NonZeroU64::new(BOT_LIMIT).expect("a limit is no zero"),
@@ -166,7 +178,32 @@ pub(crate) struct ModeImport<'a> {
     pub(crate) production: &'a ProductionImport,
     pub(crate) combat: &'a CombatImport,
     pub(crate) upgrades: &'a UpgradeImport,
+    pub(crate) veterancy: &'a VeterancyImport,
+    pub(crate) sciences: &'a ScienceImport,
+    pub(crate) contains: &'a ContainImport,
     pub(crate) start_money: &'a MoneyChoices,
+    pub(crate) retaliation: Option<&'a ModeRetaliationPatch>,
+}
+
+/// The mode's `[retaliation]` of `ai`'s values, its aggressors `names`' enemies on the ground, as
+/// `shouldRetaliateAgainstAggressor` refuses an airborne one (combat-response.md, The import
+/// converts what the choice and the answer read); none when `AIData` gives none of them, and an
+/// error for a value the engine holds no number of.
+pub(crate) fn retaliation(
+    ai: AiRetaliation,
+    names: &RulesNames,
+) -> Result<Option<ModeRetaliationPatch>, ZeroHourError> {
+    let (Some(distance), Some(radius), Some(chase_ms)) = (ai.distance, ai.radius, ai.chase_ms)
+    else {
+        return Ok(None);
+    };
+    let num = |value: f32| game_float::to_num(value).map_err(|_| ZeroHourError::Retaliation);
+    Ok(Some(ModeRetaliationPatch {
+        aggressors: Some(names.enemies_on_ground.clone()),
+        distance: Some(num(distance)?),
+        radius: Some(num(radius)?),
+        chase_ms: Some(u64::try_from(chase_ms).map_err(|_| ZeroHourError::Retaliation)?),
+    }))
 }
 
 /// The imported package's mode data: what the install gives, over the rules package's fixed
@@ -188,7 +225,11 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         production,
         combat,
         upgrades,
+        veterancy,
+        sciences,
+        contains,
         start_money,
+        retaliation,
     } = mode;
     debug_assert!(
         combat.actions.keys().all(|name| {
@@ -212,8 +253,12 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         ModeParam::List(names.iter().cloned().map(ListEntry::Name).collect())
     };
     let params = start.factions.iter().flat_map(|faction| {
-        let base = FactionBase::of(production, combat, faction);
-        [
+        let perks = sciences
+            .intrinsic
+            .get(&faction.name)
+            .map_or(&[][..], Vec::as_slice);
+        let base = FactionBase::of(production, combat, faction, perks);
+        let fixed = [
             (
                 param("start_building", faction),
                 ModeParam::Name(faction.building.clone()),
@@ -228,7 +273,24 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
             (param("army_units", faction), list(&base.army)),
             (param("gatherers", faction), list(&base.gatherers)),
             (param("drop_offs", faction), list(&base.drop_offs)),
-        ]
+            (param("perks", faction), list(perks)),
+        ];
+        // Each skill set its own list, `skill_set_<n>_<faction>` from 1, as a param holds no list
+        // of lists, and their names in order (generals.md, A bot buys its skill set).
+        let sets = sciences
+            .skill_sets
+            .get(&faction.name)
+            .map_or(&[][..], Vec::as_slice);
+        let set_name = |at: usize| param(&format!("skill_set_{}", at + 1), faction);
+        let named = (0..sets.len()).map(set_name).collect::<Vec<_>>();
+        let sets = sets
+            .iter()
+            .enumerate()
+            .map(move |(at, set)| (set_name(at), list(set)));
+        fixed
+            .into_iter()
+            .chain([(param("skill_sets", faction), list(&named))])
+            .chain(sets)
     });
     let base_count = (
         declared("base_count"),
@@ -288,6 +350,9 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         ])),
         ..ModePatch::default()
     });
+    if let Some(retaliation) = retaliation {
+        writer.patch::<ModeRetaliationData>(retaliation);
+    }
     if !combat.armors.is_empty() {
         writer.patch::<ModeCombatData>(&ModeCombatPatch {
             armors: Some(combat.armors.clone()),
@@ -313,16 +378,42 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
             TomlValue::of(hack).read().expect("the keys write a table"),
         )
     });
-    let actions: BTreeMap<&DeclaredName, TomlTable> =
-        weapons.chain(trains).chain(gathers).chain(hacks).collect();
+    let entries = contains.entry_tables();
+    let actions: BTreeMap<&DeclaredName, TomlTable> = weapons
+        .chain(trains)
+        .chain(gathers)
+        .chain(hacks)
+        .chain(entries)
+        .collect();
     if !actions.is_empty() {
         writer.value::<ActionsData>(TomlValue::of(&actions));
     }
-    if !combat.bonuses.is_empty() {
+    if !combat.bonuses.is_empty() || !production.power_stats.is_empty() {
         let none = TomlTable::default();
-        let stats = combat.bonuses.keys().map(|stat| (stat, &none));
-        let stats: BTreeMap<_, _> = stats.collect();
+        let bonuses = combat.bonuses.keys().chain(&production.power_stats);
+        let stats: BTreeMap<_, _> = bonuses.map(|stat| (stat, &none)).collect();
         writer.value::<ModeStatsData>(TomlValue::of(&stats));
+    }
+    let tracks: BTreeMap<_, _> = veterancy
+        .track
+        .iter()
+        .chain(&sciences.track)
+        .cloned()
+        .collect();
+    if !tracks.is_empty() {
+        writer.section(&ModeTracksData(tracks));
+    }
+    let shares: Vec<_> = veterancy
+        .share
+        .iter()
+        .chain(&sciences.share)
+        .cloned()
+        .collect();
+    if !shares.is_empty() {
+        writer.section(&ModeExperienceData(shares));
+    }
+    if !sciences.perks.is_empty() {
+        writer.section(&ModePerksData(sciences.perks.clone()));
     }
     let stages = combat
         .modifiers
@@ -334,12 +425,38 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .effects
         .iter()
         .map(|(id, effect)| (id, effect.table()));
-    let modifiers: BTreeMap<&DeclaredName, TomlValue> =
-        stages.chain(researched).chain(effects).collect();
+    let levels = veterancy
+        .modifiers
+        .iter()
+        .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+    let perks = sciences.perks.values().map(|perk| {
+        let given = production.power_modifiers.get(&perk.modifier);
+        (
+            &perk.modifier,
+            given.map_or_else(|| nothing.clone(), TomlValue::of),
+        )
+    });
+    let garrisons = contains
+        .modifiers
+        .iter()
+        .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+    let modifiers: BTreeMap<&DeclaredName, TomlValue> = stages
+        .chain(researched)
+        .chain(effects)
+        .chain(levels)
+        .chain(perks)
+        .chain(garrisons)
+        .collect();
     debug_assert_eq!(
         modifiers.len(),
-        combat.modifiers.len() + upgrades.upgrades.len() + upgrades.effects.len(),
-        "a stage's, an upgrade's and an effect's modifiers share no name"
+        combat.modifiers.len()
+            + upgrades.upgrades.len()
+            + upgrades.effects.len()
+            + veterancy.modifiers.len()
+            + sciences.perks.len()
+            + contains.modifiers.len(),
+        "a stage's, an upgrade's, an effect's, a level's, a perk's and a garrison's modifiers \
+         share no name"
     );
     if !modifiers.is_empty() {
         writer.value::<ModifiersData>(TomlValue::of(&modifiers));

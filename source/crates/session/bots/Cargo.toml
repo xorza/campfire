@@ -21,6 +21,7 @@ internals = [
     "campfire-package/internals",
     "campfire-players/internals",
     "campfire-production/internals",
+    "campfire-progression/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-units/internals",
@@ -42,6 +43,7 @@ campfire-orders.workspace = true
 campfire-package.workspace = true
 campfire-players.workspace = true
 campfire-production.workspace = true
+campfire-progression.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-units.workspace = true
@@ -55,7 +57,6 @@ thiserror = { workspace = true, features = ["std"] }
 [dev-dependencies]
 campfire-bots = { workspace = true, features = ["internals"] }
 campfire-harness.workspace = true
-campfire-progression = { workspace = true, features = ["internals"] }
 # Its tests resolve scripts in the workspace's test packages.
 campfire-test-packages.workspace = true
 campfire-visibility.workspace = true

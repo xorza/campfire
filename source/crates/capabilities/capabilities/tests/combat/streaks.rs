@@ -55,7 +55,7 @@ fn gun_fight(game: &mut Match, held: impl Bundle<Effect: NoBundleEffect>) -> [St
     );
     let weapon = TestWeapon {
         rate: Rate::Period(Box::new([Ticks::new(8)])),
-        rate_bonus: Some(RATE_OF_FIRE),
+        rate_bonus: Some(BonusStats::from([RATE_OF_FIRE])),
         damage: WeaponDamage::Amount(Box::new([Num::ONE])),
         streak: Some(streak),
         ..TestWeapon::new(

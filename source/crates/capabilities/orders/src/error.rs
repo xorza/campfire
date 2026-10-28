@@ -56,3 +56,21 @@ impl CapabilityRefusal for OrdersRefusal {
         }
     }
 }
+
+/// Why the mode's `[retaliation]` or a unit type's `retaliate` does not load. Packages are
+/// untrusted, so each is an expected failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum RetaliationError {
+    /// The chase is too long to count in ticks.
+    #[error("retaliation's chase: {0}")]
+    Time(#[from] TimeTooLarge),
+    /// A distance, a radius, a leash or a reach is below 0.
+    #[error("a retaliation's distance, radius, leash and reach are at least 0")]
+    Negative,
+    /// The type has no weapon to answer with.
+    #[error("a type that retaliates has a weapon")]
+    NoWeapon,
+    /// The type does not walk, so it cannot chase.
+    #[error("a type that retaliates walks")]
+    NoWalk,
+}

@@ -58,7 +58,8 @@ impl ProductionOrders {
                 };
                 (None, Some(gather))
             }
-            OrderKind::Use { .. } | OrderKind::Other => (None, None),
+            OrderKind::Use { .. } | OrderKind::Enter { .. } | OrderKind::Other => (None, None),
+            OrderKind::Exit { .. } | OrderKind::Evacuate => return,
         };
         if let Some(mut builder) = builder
             && (build.is_some() || builder.order().is_some())

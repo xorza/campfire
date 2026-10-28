@@ -35,6 +35,7 @@ mod object_look;
 mod panel_icon;
 mod panel_place;
 mod particle_system;
+mod perks_file;
 mod picking_file;
 mod set_match;
 mod sound_event;
@@ -87,6 +88,7 @@ pub use crate::panel_place::{PanelButton, PanelCommand, PanelPlace, PanelPlaces}
 pub use crate::particle_system::{
     AlphaKey, ColorKey, EmissionVelocity, EmissionVolume, ParticleSystem, SlaveSystem,
 };
+pub use crate::perks_file::{PerkPage, PerkPlace, PerksFile};
 pub use crate::picking_file::{PickingFile, PixelRadius};
 pub use crate::set_match::SetMatch;
 pub use crate::sound_event::{Hearers, SoundEvent, SoundLimit, SoundPick, SoundRange};

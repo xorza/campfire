@@ -12,7 +12,8 @@ pub(crate) struct CommandButtonIni {
 
 /// What the import reads of a button: its command, the object it makes, the upgrade it
 /// researches, the label of its text in the string table, its `ButtonImage`, a mapped image's
-/// name, and whether it needs a science, as a `Science` line of a science names one.
+/// name, the sciences of its `Science` line: those it needs, or for a purchase the one it buys,
+/// and the special power it fires, `SpecialPower`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct CommandButton {
     pub(crate) command: ButtonCommand,
@@ -20,7 +21,8 @@ pub(crate) struct CommandButton {
     pub(crate) upgrade: Option<String>,
     pub(crate) label: Option<String>,
     pub(crate) image: Option<String>,
-    pub(crate) science: bool,
+    pub(crate) sciences: Vec<String>,
+    pub(crate) power: Option<String>,
 }
 
 /// A button's `Command`, of those the import converts.
@@ -42,6 +44,10 @@ pub(crate) enum ButtonCommand {
     AttackMove,
     /// `SET_RALLY_POINT`: its producers rally to the point the next click picks.
     SetRallyPoint,
+    /// `PURCHASE_SCIENCE`: its player buys its science.
+    PurchaseScience,
+    /// `SPECIAL_POWER`: its building fires its power.
+    SpecialPower,
     /// Any other, which the import leaves.
     #[default]
     Other,
@@ -69,6 +75,8 @@ impl CommandButtonIni {
                             "STOP" => ButtonCommand::Stop,
                             "ATTACK_MOVE" => ButtonCommand::AttackMove,
                             "SET_RALLY_POINT" => ButtonCommand::SetRallyPoint,
+                            "PURCHASE_SCIENCE" => ButtonCommand::PurchaseScience,
+                            "SPECIAL_POWER" => ButtonCommand::SpecialPower,
                             _ => ButtonCommand::Other,
                         };
                     }
@@ -78,11 +86,17 @@ impl CommandButtonIni {
                     // empties it.
                     "science" => {
                         let sciences = &line.tokens[1..];
-                        button.science = !sciences.is_empty()
-                            && !sciences
-                                .iter()
-                                .any(|token| token.eq_ignore_ascii_case("none"));
+                        let none = sciences
+                            .iter()
+                            .any(|token| token.eq_ignore_ascii_case("none"));
+                        button.sciences.clear();
+                        if !none {
+                            button
+                                .sciences
+                                .extend(sciences.iter().map(|&token| token.to_owned()));
+                        }
                     }
+                    "specialpower" => button.power = Some(line.value()?.to_owned()),
                     "textlabel" => button.label = Some(line.value()?.to_owned()),
                     "buttonimage" => button.image = Some(line.value()?.to_owned()),
                     _ => {}
@@ -165,6 +179,16 @@ CommandButton Command_UpgradeAmericaLaserMissiles\r
   Upgrade = Upgrade_AmericaCompositeArmor\r
   Science = SCIENCE_AMERICA\r
 End\r
+CommandButton Command_PurchaseScienceParadrop1\r
+  Command = PURCHASE_SCIENCE\r
+  Science = SCIENCE_Paradrop1\r
+  ButtonImage = SAParadrop\r
+End\r
+CommandButton Command_PurchaseScienceParadrop2\r
+  Command = PURCHASE_SCIENCE\r
+  Science = SCIENCE_Paradrop2\r
+  ButtonImage = SAParadrop\r
+End\r
 CommandButton Command_UpgradeLost\r
   Command = OBJECT_UPGRADE\r
   Upgrade = Upgrade_Lost\r
@@ -187,7 +211,8 @@ mod tests {
             upgrade: None,
             label: Some("CONTROLBAR:ConstructAmericaDozer".to_owned()),
             image: Some("SACDozer".to_owned()),
-            science: false,
+            sciences: Vec::new(),
+            power: None,
         };
         assert_eq!(ini.get("Command_ConstructAmericaDozer"), Some(&dozer));
         let rally = ini.get("Command_SetRallyPoint").unwrap();
@@ -203,23 +228,28 @@ mod tests {
         // An upgrade's button names it; a science of `NONE` is none.
         let armor = ini.get("Command_UpgradeAmericaCompositeArmor").unwrap();
         assert_eq!(
-            (armor.command, armor.upgrade.as_deref(), armor.science),
+            (
+                armor.command,
+                armor.upgrade.as_deref(),
+                armor.sciences.is_empty()
+            ),
             (
                 ButtonCommand::PlayerUpgrade,
                 Some("Upgrade_AmericaCompositeArmor"),
-                false
+                true
             )
         );
         let walls = ini.get("Command_UpgradeAmericaBarracksWalls").unwrap();
         assert_eq!(
-            (walls.command, walls.science),
-            (ButtonCommand::ObjectUpgrade, false)
+            (walls.command, walls.sciences.is_empty()),
+            (ButtonCommand::ObjectUpgrade, true)
         );
-        assert!(
-            ini.get("Command_UpgradeAmericaLaserMissiles")
-                .unwrap()
-                .science
-        );
+        let laser = ini.get("Command_UpgradeAmericaLaserMissiles").unwrap();
+        assert_eq!(laser.sciences, ["SCIENCE_AMERICA"]);
+        // A purchase names the science it buys.
+        let paradrop = ini.get("Command_PurchaseScienceParadrop2").unwrap();
+        assert_eq!(paradrop.command, ButtonCommand::PurchaseScience);
+        assert_eq!(paradrop.sciences, ["SCIENCE_Paradrop2"]);
         // A later file keeps the fields it does not name; a command of either case is read.
         ini.read(b"CommandButton Command_ConstructAmericaDozer\n Command = dozer_construct\nEnd\n")
             .unwrap();

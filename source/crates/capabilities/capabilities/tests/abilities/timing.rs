@@ -5,9 +5,9 @@ use campfire_abilities::*;
 use campfire_actions::internals::LooseDues;
 use campfire_actions::{
     ActionBook, ActionData, ActionKeys, ActionProgress, ActionRange, ActionSlots, ActionTarget,
-    Actions, ChannelData, ChannelPaysData, ChargeRule, ChargeUpData, ChargesData, InProgress,
-    OrderPhase, ProgressDues, RangeField, SlotKind, SlotTimes, SlotsMut, Targeting, TimedSlots,
-    Toggle,
+    Actions, ChannelData, ChannelPaysData, ChargeRule, ChargeUpData, ChargesData, CooldownHolder,
+    InProgress, OrderPhase, PlayerCooldowns, ProgressDues, RangeField, SlotKind, SlotTimes,
+    SlotsMut, Targeting, TimedSlots, Toggle,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
@@ -791,7 +791,11 @@ fn a_channel_with_no_end_pays_by_its_level_until_an_order_waits_out_its_wind_dow
         let id = Abilities::walking_caster(game, hack);
         *game.part_mut::<Position>(id) = Position::from((x, 0, 0));
         let mut experience = Experience::new(TrackSet::from([TrackId::new(1)]));
-        experience.add(TrackId::new(1), Num::int(50), &book);
+        experience.add(
+            TrackId::new(1),
+            Num::int(50),
+            book.thresholds(TrackId::new(1)),
+        );
         game.insert_parts(id, experience);
         Abilities::cast(game, id, ActionTarget::None);
         let Some(InProgress::Order {
@@ -826,4 +830,71 @@ fn a_channel_with_no_end_pays_by_its_level_until_an_order_waits_out_its_wind_dow
     assert_eq!(gold(&game), held);
     assert_eq!(game.part::<Position>(stopped).get(), Vec3::from((20, 0, 0)));
     assert_eq!(Abilities::failed_calls(&mut game), []);
+}
+
+#[test]
+fn a_cooldown_its_player_keeps_is_shared_by_its_units_alone_and_a_restore_keeps_it() {
+    // Power: a cooldown of 1000 ms, 30 ticks, its player's, at 10 mana a cast. Player 0's two
+    // casters share it, and player 1's caster has its own: in tick 0 the first of player 0 casts,
+    // in tick 1 its second may not and player 1's may, and in tick 30 player 0's second may.
+    let mut game = Abilities::match_of(
+        ScriptLimits::ROOMY,
+        &[Capability::Stats, Capability::Abilities],
+    );
+    Abilities::load_stats(&mut game);
+    let power = ActionData {
+        keys: ActionKeys {
+            script: Some(PackagePath::parse("cast.rhai").unwrap()),
+            cooldown_ms: Some(Ranked::One(int(1000))),
+            cost: cost("mana", int(10)),
+            cooldown_holder: CooldownHolder::Player,
+            ..ActionData::of(Targeting::None, CastData::default()).keys
+        },
+        ..ActionData::of(Targeting::None, CastData::default())
+    };
+    let power = Abilities::load(
+        &mut game,
+        "power",
+        &power,
+        "fn on_resolve(ctx, caster, target) {}",
+    );
+    for player_slot in [0, 1] {
+        let player = game.player_entity(PlayerSlot::new(player_slot)).unwrap();
+        game.entity_mut(player).insert(PlayerCooldowns::default());
+    }
+    let caster = |game: &mut Match, player_slot, x| {
+        Spawn::named(game, "caster", (x, 0, 0))
+            .parts((
+                Owner::new(PlayerSlot::new(player_slot)),
+                TimedSlots::new(ActionSlots::new([(power, SlotKind::new(0), Rank::new(1))])),
+            ))
+            .place(game)
+    };
+    let [first, second, other] =
+        [(0, 0), (0, 5), (1, 10)].map(|(slot, x)| caster(&mut game, slot, x));
+    let mana = |game: &Match| [first, second, other].map(|id| Abilities::pool(game, id));
+    Abilities::cast(&mut game, first, ActionTarget::None);
+    assert_eq!(mana(&game), [90, 100, 100]);
+    let held = |game: &Match| {
+        let player = game.player_entity(PlayerSlot::new(0)).unwrap();
+        game.get::<PlayerCooldowns>(player).unwrap().clone()
+    };
+    assert_eq!(held(&game).ready_at(power), Tick::new(30));
+    Abilities::casts(
+        &mut game,
+        &[(second, ActionTarget::None), (other, ActionTarget::None)],
+    );
+    assert_eq!(mana(&game), [90, 100, 90]);
+    game.run_until(30);
+    Abilities::cast(&mut game, second, ActionTarget::None);
+    assert_eq!(mana(&game), [90, 90, 90]);
+    // A save and a restore keep the player's cooldown, now to tick 60.
+    let kept = held(&game);
+    assert_eq!(kept.ready_at(power), Tick::new(60));
+    let mut snapshot = Vec::new();
+    game.snapshot(&mut snapshot);
+    let player = game.player_entity(PlayerSlot::new(0)).unwrap();
+    game.entity_mut(player).insert(PlayerCooldowns::default());
+    game.restore_in_place(&snapshot).unwrap();
+    assert_eq!(held(&game), kept);
 }

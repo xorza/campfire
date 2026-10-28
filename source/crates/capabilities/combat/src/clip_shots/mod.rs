@@ -20,9 +20,8 @@ use crate::weapon::Weapon;
 /// The shots each weapon of a unit with a clip fired since its clip was last full, by action, in
 /// the order of their ids: a weapon of none is not in it, so one state has one form, which its
 /// owner's client predicts as it predicts its slots' times. Every unit with slots holds it, as
-/// Bevy's required component, empty as the slots come. A weapon in two slots counts once, as the
-/// unit attacks with its first weapon whose filter selects the target, so the second never
-/// fires.
+/// Bevy's required component, empty as the slots come. A weapon in two slots counts once, its
+/// two slots firing from one clip.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct ClipShots(Vec<Fired>);

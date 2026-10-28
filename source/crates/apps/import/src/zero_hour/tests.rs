@@ -1,4 +1,4 @@
-use std::num::{NonZeroU8, NonZeroU32};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use campfire_actions::{
@@ -12,8 +12,8 @@ use campfire_client_files::{
     StateAnimation, StateClip, StatePlay,
 };
 use campfire_combat::{
-    ArmorShare, AttackData, ClipData, ClipRefill, CombatData, ModeCombatData, OnDeath, PitchData,
-    ScatterData, SplashData, TurretData, UnitOffset, WeaponValue,
+    ArmorShare, AttackData, BonusData, ClipData, ClipRefill, CombatData, ModeCombatData, OnDeath,
+    PitchData, ScatterData, SplashData, TurretData, UnitOffset, WeaponValue,
 };
 use campfire_math::Rounding;
 use campfire_mode::{ChoiceData, ListEntry, ModeParam, Offers, OptionData, RelationData};
@@ -44,6 +44,7 @@ use crate::zero_hour::error::{NameClash, NameError, VersionDifference};
 use crate::zero_hour::format::big::big_archive::samples::big;
 use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::csf::string_table::samples::strings;
+use crate::zero_hour::format::ini::ai_data_ini::samples::AI_DATA;
 use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
 use crate::zero_hour::format::ini::command_button_ini::samples::COMMAND_BUTTONS;
 use crate::zero_hour::format::ini::command_set_ini::samples::COMMAND_SETS;
@@ -120,8 +121,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         include_bytes!("../../../../../packages/zero-hour/package.index")
     );
     // The package's own reader takes its units file: the tank, the wall and the rocks the map
-    // places, America's start objects, the barracks, the ranger and the pathfinder their command
-    // sets make, and the shell the tank's cannon fires. Its units drive, by stats, orders and
+    // places, America's start objects, the barracks, the power plant, the ranger and the
+    // pathfinder their command sets make, and the shell the tank's cannon fires. Its units drive, by stats, orders and
     // navigation, no faster than the tank's 30.5 m a second.
     let mode = ModePackages::at(&PackageDir::new(test_dir.path("one/game")), Some(&named)).unwrap();
     let types: Vec<String> = mode
@@ -137,6 +138,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             "americacommandcenter",
             "americainfantrypathfinder",
             "americainfantryranger",
+            "americapowerplant",
             "americatankcrusader",
             "americavehicledozer",
             "fortresswall",
@@ -157,8 +159,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let one = |value: i64| Ranked::One(Number::from(value));
     let navigation = data.section::<ModeNavigationData>().unwrap();
     assert_eq!(navigation.spawn_tags, all_declared(&["start", "rally"]));
-    // Its base, as the dozer builds the barracks and the center and the barracks train, and two
-    // of each unit (09-zero-hour.md, A base start); its army the ranger alone, as the sample's
+    // Its base, as the dozer builds the power plant, which America's science lets it, and the
+    // barracks, and the center and the barracks train, and two of each unit (09-zero-hour.md, A base start); its army the ranger alone, as the sample's
     // pathfinder holds no weapon.
     let names = |names: &[&str]| {
         ModeParam::List(
@@ -177,12 +179,27 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             ),
             (
                 declared("base_buildings_america"),
-                names(&["americabarracks"])
+                names(&["americapowerplant", "americabarracks"])
             ),
             (declared("base_count"), ModeParam::Value(Scalar::Int(2))),
             // The sample's dozer builds and does not gather, and no building takes a load.
             (declared("drop_offs_america"), names(&[])),
             (declared("gatherers_america"), names(&[])),
+            // America starts with its science, which the mode's start grants, and its bot buys
+            // its side's two skill sets, a list each.
+            (declared("perks_america"), names(&["science_america"])),
+            (
+                declared("skill_sets_america"),
+                names(&["skill_set_1_america", "skill_set_2_america"])
+            ),
+            (
+                declared("skill_set_1_america"),
+                names(&["science_paradrop1", "science_paradrop2"])
+            ),
+            (
+                declared("skill_set_2_america"),
+                names(&["science_paradrop2"])
+            ),
             (
                 declared("base_units_america"),
                 names(&[
@@ -243,7 +260,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     assert_eq!(data.relations, neutral);
     let slots = data.section::<SlotKinds>().unwrap().kinds();
     let slots: Vec<&str> = slots.iter().map(|kind| kind.name.as_str()).collect();
-    assert_eq!(slots, ["weapon", "command"]);
+    assert_eq!(slots, ["weapon", "command", "use"]);
     // The command sets' trains and builds: the center's dozer, the dozer's barracks, which
     // starts as it is ordered and its builder builds within 10 m, and the barracks' ranger,
     // which needs a barracks; each its object's cost, and the milliseconds of its frames, 5 s
@@ -285,6 +302,24 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     };
     let mut barracks = ActionData::of(Targeting::Point, barracks);
     barracks.keys.range = meters(10);
+    // The power plant, of no cost and of no body, needs America's science: its perk's modifier
+    // (generals.md, A perk's modifier is a player modifier).
+    let power_plant = BuildData {
+        unit_type: declared("americapowerplant"),
+        requires: Some(RequiresData {
+            units: Vec::new(),
+            modifiers: vec![declared("science_america")],
+        }),
+        construct: ConstructData::Builder,
+        start: BuildStart::Order,
+        start_life: None,
+        cancel_refund: None,
+        placement: None,
+    };
+    let mut power_plant = ActionData::of(Targeting::Point, power_plant);
+    power_plant.keys.range = meters(10);
+    power_plant.keys.windup_ms = Some(one(1000));
+    power_plant.keys.name = Some(TextId::new("action-build-americapowerplant").unwrap());
     let ranger = train(
         "americainfantryranger",
         Some(RequiresData {
@@ -312,12 +347,18 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // Each aims within the least of 0.035 radians, 0.035 × 180 ÷ π degrees, but the cannon's 30°.
     let radians: Num = "0.035".parse().unwrap();
     let least = radians.checked_mul_div(Num::int(180), Num::PI, Rounding::NearestEven);
+    // Each takes the veterancy's and the garrison's damage, and the garrison's range.
+    let names = RulesNames::default();
+    let fixed_damage = BonusData::of([names.veterancy_damage, names.garrison_damage]).unwrap();
+    let garrison_range = BonusData::from(names.garrison_range);
     let rifle = AttackData {
         rate: WeaponValue::Own(one(100)),
-        rate_bonus: None,
+        rate_bonus: Some(BonusData::from(RulesNames::default().veterancy_rate)),
         damage: damage(5),
-        damage_bonus: None,
+        damage_bonus: Some(fixed_damage.clone()),
+        range_bonus: Some(garrison_range.clone()),
         damage_kind: declared("small_arms"),
+        prefers: None,
         clip: Some(ClipData {
             shots: one(3),
             reload_ms: one(700),
@@ -337,10 +378,12 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // ends, to all but its own unit, which scatters 10 m at infantry, within 15° of level.
     let cannon = AttackData {
         rate: WeaponValue::Own(one(2000)),
-        rate_bonus: None,
+        rate_bonus: Some(BonusData::from(RulesNames::default().veterancy_rate)),
         damage: damage(60),
-        damage_bonus: None,
+        damage_bonus: Some(fixed_damage),
+        range_bonus: Some(garrison_range.clone()),
         damage_kind: declared("armor_piercing"),
+        prefers: None,
         clip: None,
         splash: SplashData::new(Num::int(5), RelationSet::All, true),
         scatter: ScatterData::new(
@@ -361,10 +404,16 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // 125 % names the stat of that percent.
     let bolt = AttackData {
         rate: WeaponValue::Own(one(1000)),
-        rate_bonus: None,
+        rate_bonus: Some(BonusData::from(RulesNames::default().veterancy_rate)),
         damage: damage(30),
-        damage_bonus: Stat::named("upgrade_damage_125"),
+        damage_bonus: BonusData::of([
+            RulesNames::default().veterancy_damage,
+            RulesNames::default().garrison_damage,
+            Stat::named("upgrade_damage_125").unwrap(),
+        ]),
+        range_bonus: Some(garrison_range),
         damage_kind: declared("explosion"),
+        prefers: None,
         clip: None,
         splash: None,
         scatter: None,
@@ -393,6 +442,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         *actions,
         BTreeMap::from([
             made("build_americabarracks", 600, 10000, barracks),
+            (declared("build_americapowerplant"), power_plant),
             made("train_americainfantrypathfinder", 300, 6000, pathfinder),
             made("train_americainfantryranger", 225, 5000, ranger),
             made(
@@ -474,13 +524,14 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     assert_eq!(
         command("americavehicledozer"),
-        all_declared(&["build_americabarracks"])
+        all_declared(&["build_americapowerplant", "build_americabarracks"])
     );
     assert_eq!(
         command("americabarracks"),
         all_declared(&[
             "train_americainfantryranger",
             "train_americainfantrypathfinder",
+            "build_americapowerplant",
             "research_upgrade_americarangerflashbang",
             "research_upgrade_americabarrackswalls"
         ])
@@ -501,9 +552,13 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     assert_eq!(weapons("americavehicledozer"), Vec::<DeclaredName>::new());
     // The crusader scans each 250 ms, written as 266, for the rules data's targets: a hostile unit
-    // that is no structure, and a hostile base defense; the dozer's AI says `Yes` too, but it
-    // has no weapon, so it scans for none.
-    let filters = ["hostiles:!structure", "hostiles:base_defense"];
+    // that is no structure, a hostile base defense, and a hostile container that holds riders;
+    // the dozer's AI says `Yes` too, but it has no weapon, so it scans for none.
+    let filters = [
+        "hostiles:!structure",
+        "hostiles:base_defense",
+        "hostiles:holding",
+    ];
     let acquire = AcquireData {
         scan_ms: 266,
         targets: filters.map(|text| FilterData::parse(text).unwrap()).into(),
@@ -569,7 +624,10 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         tags("americainfantryranger"),
         Some(all_declared(&["infantry"]))
     );
-    assert_eq!(tags("americatankcrusader"), None);
+    assert_eq!(
+        tags("americatankcrusader"),
+        Some(all_declared(&["vehicle"]))
+    );
     // The crusader's turret turns 180° a second, starts an attack within the original's 0.035
     // radians of its aim, 2.00535… degrees, 33,644,228 · 2⁻²⁴, and carries its `PRIMARY` cannon
     // alone, at place 0, not its `SECONDARY` rifle; its shell, of no life or
@@ -646,8 +704,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     assert_eq!(production("americavehicledozer"), None);
     // The names, of the string table's labels, their hotkeys' markers dropped and `&&` an
-    // `&`, braces escaped as Fluent reads them; the ranger's and the pathfinder's labels the table
-    // lacks, so their objects' names.
+    // `&`, braces escaped as Fluent reads them; the power plant's, the ranger's and the
+    // pathfinder's labels the table lacks, so their objects' names.
     assert_eq!(
         test_dir.read_text("one/game/locale/en.ftl"),
         "mode-name = Zero Hour\nchoice-faction = Faction\nchoice-start = Start\nteam-player-1 = Player 1\nteam-player-2 = Player 2\n\
@@ -655,6 +713,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
          team-player-6 = Player 6\nteam-player-7 = Player 7\nteam-player-8 = Player 8\n\
          team-neutral = Neutral\n\
          action-build-americabarracks = Barracks & {\"{\"}Yard{\"}\"}\n\
+         action-build-americapowerplant = AmericaPowerPlant\n\
          action-research-upgrade-americabarrackswalls = Upgrade_AmericaBarracksWalls\n\
          action-research-upgrade-americacompositearmor = Upgrade_AmericaCompositeArmor\n\
          action-research-upgrade-americarangerflashbang = Upgrade_AmericaRangerFlashBang\n\
@@ -662,10 +721,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
          action-train-americainfantryranger = AmericaInfantryRanger\n\
          action-train-americavehicledozer = Dozer\n"
     );
-    // The buttons dropped, each by its cause, in the order the sets are read: the center's
-    // research of a science, the dozer's, then the barracks', which the dozer's set makes,
-    // the research of no upgrade last; the power plant, in both the dozer's and the barracks'
-    // sets, once.
+    // The buttons dropped, each by its cause, in the order the sets are read: the dozer's, then
+    // the barracks', which the dozer's set makes, the research of no upgrade last.
     let dropped: Vec<(&str, ButtonDropCause)> = imported
         .losses
         .iter()
@@ -677,14 +734,6 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     assert_eq!(
         dropped,
         [
-            (
-                "Command_UpgradeAmericaLaserMissiles",
-                ButtonDropCause::Science
-            ),
-            (
-                "Command_ConstructAmericaPowerPlant",
-                ButtonDropCause::Science
-            ),
             ("Command_ConstructAmericaFireBase", ButtonDropCause::NoBody),
             (
                 "Command_ConstructAmericaInfantryRanger",
@@ -878,6 +927,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     rules.strings = StringTable::read(&strings()).unwrap();
     rules.weapons.read(WEAPONS.as_bytes()).unwrap();
     rules.armors.read(ARMORS.as_bytes()).unwrap();
+    rules.ai.read(AI_DATA.as_bytes()).unwrap();
     let looks: ClientUnits =
         Toml::parse(&test_dir.read_text("one/game/client/units.toml")).unwrap();
     let mut names = ImportNames::default();
@@ -929,6 +979,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let mut names = names.into_projectiles();
     let combat = CombatImport::of(&rules, &mut names).unwrap();
     let upgrades = UpgradeImport::of(&rules, names.types(), &production, &combat).unwrap();
+    let veterancy = VeterancyImport::of(&rules.game_data, names.types(), &rules.names).unwrap();
+    let contains = ContainImport::of(&rules, names.types(), &BTreeMap::new()).unwrap();
     let types = names.close();
     let additions = TypeAdditions {
         weapon: &combat.weapons,
@@ -943,6 +995,11 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         upgrades: &upgrades.types,
         barrels: &BTreeMap::new(),
         bones: &BTreeMap::new(),
+        tracks: &veterancy.tracks,
+        experience: &veterancy.experience,
+        areas: &production.areas,
+        enters: &contains.enters,
+        rides: &contains.rides,
     };
     let units = types.units_file(additions, &rules.names);
     assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);
@@ -959,6 +1016,30 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     assert_eq!(
         (hud.bars, hud.hit_mark),
         (ShownBars::Selected, HitMark::Hidden)
+    );
+    // America's panel of perks: its rank 3 set, the paradrop's first level at 1 and its second at
+    // 4, of no icon, as the fixture maps no image; by the choice of a faction.
+    let perks =
+        Toml::parse::<PerksFile>(&test_dir.read_text("one/game/client/perks.toml")).unwrap();
+    let place = |at, perk: &str| PerkPlace {
+        place: NonZeroU8::new(at).unwrap(),
+        perk: DeclaredName::new(perk).unwrap(),
+        icon: None,
+    };
+    assert_eq!(perks.choice, DeclaredName::new("faction").unwrap());
+    assert_eq!(
+        perks.pages(&DeclaredName::new("america").unwrap()),
+        [PerkPage {
+            places: vec![place(1, "science_paradrop1"), place(4, "science_paradrop2")],
+        }]
+    );
+    assert_eq!(
+        (
+            perks.grid.columns.get(),
+            perks.grid.rows.get(),
+            perks.grid.order
+        ),
+        (5, 3, PlaceOrder::Columns)
     );
     let picking = test_dir.read_text("one/game/client/picking.toml");
     assert_eq!(
@@ -1359,8 +1440,8 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         ..empty()
     };
     // The panels of the sets: each converted button at its place, the command center's rally at
-    // its 13, its research's science and the barracks' wall left out (02-engine-core.md, A look
-    // places its buttons).
+    // its 13, its second research of one action and the barracks' wall left out (02-engine-core.md,
+    // A look places its buttons).
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     let panel = |places: &[(u8, &str)]| {
         let places = places.iter().map(|&(place, button)| PanelPlace {
@@ -1380,6 +1461,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                     panel: panel(&[
                         (1, "train_americainfantryranger"),
                         (2, "train_americainfantrypathfinder"),
+                        (6, "build_americapowerplant"),
                         (7, "research_upgrade_americarangerflashbang"),
                         (8, "research_upgrade_americabarrackswalls"),
                     ]),
@@ -1416,7 +1498,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             (
                 "americavehicledozer",
                 ClientUnit {
-                    panel: panel(&[(3, "build_americabarracks")]),
+                    panel: panel(&[(1, "build_americapowerplant"), (3, "build_americabarracks")]),
                     ..empty()
                 },
             ),

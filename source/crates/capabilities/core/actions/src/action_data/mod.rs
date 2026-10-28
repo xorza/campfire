@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::action_kind::ActionKind;
 use crate::action_range::ActionRange;
+use crate::cooldown_holder::CooldownHolder;
 use crate::cost_target::CostTarget;
 use crate::delivery_section::{DeliverySection, DeliverySections};
 use crate::error::{ActionField, ActionProblem};
@@ -131,6 +132,9 @@ pub struct ActionKeys {
     /// The passive modifier is held only while the action is off cooldown.
     #[serde(default, skip_serializing_if = "is_off")]
     pub passive_while_ready: bool,
+    /// Who keeps its cooldown, its unit by default.
+    #[serde(default, skip_serializing_if = "CooldownHolder::is_unit")]
+    pub cooldown_holder: CooldownHolder,
     /// Values for the script, as `ctx.params` reads them.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<DeclaredName, Param>,
@@ -165,6 +169,7 @@ impl ActionKeys {
             charging: None,
             passive_modifier: None,
             passive_while_ready: false,
+            cooldown_holder: CooldownHolder::Unit,
             params: BTreeMap::new(),
         }
     }
@@ -763,6 +768,7 @@ impl ActionData {
             PipelineField::Charging => keys.charging.is_some(),
             PipelineField::PassiveModifier => keys.passive_modifier.is_some(),
             PipelineField::PassiveWhileReady => keys.passive_while_ready,
+            PipelineField::CooldownHolder => keys.cooldown_holder == CooldownHolder::Player,
             PipelineField::Delivery => self.delivery.is_some(),
             PipelineField::Params => !keys.params.is_empty(),
             PipelineField::OnResolve => !self.on_resolve.is_empty(),

@@ -24,9 +24,17 @@ fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
     let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
     assert_eq!(
         read("levels = [\"0.5\", 300]\nlevel = true").unwrap(),
+        TrackData::new(Thresholds::new([Num::HALF, Num::int(300)]).unwrap(), true)
+    );
+    assert_eq!(
+        read("levels = [100, 300]\nmodifiers = [\"veteran\", \"elite\"]\npoints = [0, 0, 3]")
+            .unwrap(),
         TrackData {
-            levels: Thresholds::new([Num::HALF, Num::int(300)]).unwrap(),
-            level: true,
+            modifiers: ["veteran", "elite"]
+                .map(|name| DeclaredName::new(name).unwrap())
+                .to_vec(),
+            points: Some(vec![0, 0, 3]),
+            ..TrackData::new(Thresholds::new([100, 300].map(Num::int)).unwrap(), false)
         }
     );
     for refused in ["levels = []", "levels = [0]", "levels = [300, 100]"] {

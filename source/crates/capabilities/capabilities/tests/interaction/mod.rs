@@ -377,3 +377,5 @@ fn a_second_use_of_one_object_keeps_its_slot_and_a_use_of_another_fills_it_afres
     );
     assert_eq!(failed(&mut game), []);
 }
+
+mod riding;

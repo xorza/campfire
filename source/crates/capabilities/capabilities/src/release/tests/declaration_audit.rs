@@ -497,21 +497,24 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     let mut audit = DeclarationAudit::default();
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
-    // The audit read every module: the core's four kinds, the stats', the players', the mode's and
-    // vision's seven parts of a player, its bounty share, its commanded units and its explored
-    // cells among them, the mode's
+    // The audit read every module: the core's four kinds, the actions', the stats', the players',
+    // the mode's, vision's and progression's eleven parts of a player, its cooldowns, its bounty
+    // share, its commanded units, its explored cells and its experience, points and perks among
+    // them, the mode's
     // three of the match, the 38 of a unit, the core's `Variation` and `Leaving`, production's
     // `Leader`, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
     // the core's `StatusTags`, combat's `TurretAim`, navigation's `ArrivedAt`, `AsideDepth`,
     // `Hemmed`, `Altitude`, `FlightGoal` and `HeldPlace`, production's `HeldPlaces`, airfields'
-    // `Runways` and `Sortie`, and the mode's `IncomeClock` among them, and the 72 books, 15 of the
-    // core's, its variations among them, interaction's two, combat's armors, turrets, barrels and
-    // weapons, navigation's walkers, unit types' navigation and flight and crowd rule, orders'
+    // `Runways` and `Sortie`, interaction's `Riders`, and the mode's `IncomeClock` among them, and
+    // the 80 books, 15 of the core's, its variations among them, interaction's four, combat's
+    // range bonuses, armors, turrets, turret
+    // mounts, barrels and weapons, navigation's walkers, unit types' navigation and flight and crowd rule, orders'
     // scans, production's trains, researches, gathers, spawns and sales, stats' type upgrades, the
-    // mode's victory, bounty, incomes and inputs, and progression's experience among them.
+    // mode's victory, bounty, incomes and inputs, orders' retaliation and its types', and
+    // progression's experience, track modifiers and perks among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 57);
-    assert_eq!(audit.books.len(), 72);
+    assert_eq!(audit.parts.len(), 62);
+    assert_eq!(audit.books.len(), 80);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 15);
     // The observers, the runs out of the schedule and the parts a server derives, which the
@@ -521,12 +524,18 @@ fn the_modules_declarations_keep_every_rule_between_them() {
         [
             "UnitTracker<GridUnits>::aged",
             "UnitTracker<GridUnits>::lost_body",
+            "UnitTracker<GridUnits>::disabled",
+            "UnitTracker<GridUnits>::enabled",
             "Lifespan::revived",
             "Units::refill_view",
+            "ViewReader::disabled",
+            "ViewReader::enabled",
             "OrderSteps::forget_gone",
             "Level::raise",
             "HeldHits::drop_died",
             "UnitTracker<StaticBodies>::aged",
+            "UnitTracker<StaticBodies>::disabled",
+            "UnitTracker<StaticBodies>::enabled",
             "StaticBodies::part_removed",
             "StaticBodies::state_inserted",
             "StaticBodies::state_removed",
@@ -540,6 +549,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "Holdings::aged",
             "ShopIndex::typed",
             "ShopIndex::untyped",
+            "Containers::ordered",
             "UseOrders::ordered",
             "NextTurn<Acquire>::revived",
             "NextTurn<Ai>::revived",
@@ -600,7 +610,8 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "drop_off",
             "gathering",
             "being_built",
-            "airfield_held"
+            "airfield_held",
+            "holding"
         ]
     );
 }

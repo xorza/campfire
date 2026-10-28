@@ -1,5 +1,6 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
@@ -34,7 +35,9 @@ impl Refresh {
     /// for every refreshing unit in the stat book's order, so a live change reads its source's
     /// stats once they are final; a live change whose source is gone keeps the value it last had.
     /// An effect whose stat the mode does not declare keeps what the unit's type gave it as it
-    /// spawned. A predicting client derives the stats and tags of every unit it holds, as their
+    /// spawned. A rider out of the world derives them too, as its container's modifier reaches it
+    /// (transports.md, A container's modifier holds on its riders). A predicting client derives
+    /// the stats and tags of every unit it holds, as their
     /// inputs reach it, so an aura's numbers resolve there as on the server
     /// (10-replication-audiences.md, A client derives what it can for every unit it holds); it
     /// writes nothing else of a unit it holds as the server sent it.
@@ -67,6 +70,7 @@ impl Refresh {
                             Added<Dead>,
                         )>,
                         Allow<Unpredicted>,
+                        Allow<Disabled>,
                     ),
                 >,
                 Query<
@@ -81,12 +85,22 @@ impl Refresh {
                         Option<&StatusTags>,
                         Has<Dead>,
                     ),
-                    (With<UnitStats>, Allow<Unpredicted>),
+                    (With<UnitStats>, Allow<Unpredicted>, Allow<Disabled>),
                 >,
-                Query<'_, '_, (&UnitType, &Level, &UnitStats), Allow<Unpredicted>>,
-                Query<'_, '_, &mut UnitStats, Allow<Unpredicted>>,
-                Query<'_, '_, (Option<&mut MoveStep>, Option<&mut TurnStep>, UnitPools)>,
-                Query<'_, '_, &mut Modifiers>,
+                Query<
+                    '_,
+                    '_,
+                    (&UnitType, &Level, &UnitStats),
+                    (Allow<Unpredicted>, Allow<Disabled>),
+                >,
+                Query<'_, '_, &mut UnitStats, (Allow<Unpredicted>, Allow<Disabled>)>,
+                Query<
+                    '_,
+                    '_,
+                    (Option<&mut MoveStep>, Option<&mut TurnStep>, UnitPools),
+                    Allow<Disabled>,
+                >,
+                Query<'_, '_, &mut Modifiers, Allow<Disabled>>,
             ),
         >,
         mut revived: Removals<'_, '_, Dead>,
@@ -195,7 +209,12 @@ impl Refresh {
         (book, pool_book): (&StatBook, &PoolBook),
         life: Option<PoolId>,
         rate: MatchRate,
-        effects: &mut Query<'_, '_, (Option<&mut MoveStep>, Option<&mut TurnStep>, UnitPools)>,
+        effects: &mut Query<
+            '_,
+            '_,
+            (Option<&mut MoveStep>, Option<&mut TurnStep>, UnitPools),
+            Allow<Disabled>,
+        >,
     ) {
         let count = usize::from(book.len());
         for (unit, refreshing) in scratch.units.iter().enumerate() {

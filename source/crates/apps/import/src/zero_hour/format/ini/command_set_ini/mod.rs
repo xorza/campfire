@@ -54,7 +54,11 @@ pub(crate) mod samples {
     /// `Data\INI\CommandSet.ini` of the fixture install: the command center's, the dozer's and
     /// the barracks', each of a button the import drops among those it converts, the command
     /// center's and the barracks' of researches.
-    pub(crate) const COMMAND_SETS: &str = "CommandSet AmericaCommandCenterCommandSet\r
+    pub(crate) const COMMAND_SETS: &str = "CommandSet SCIENCE_AMERICA_CommandSetRank3\r
+  1 = Command_PurchaseScienceParadrop1\r
+  4 = Command_PurchaseScienceParadrop2\r
+End\r
+CommandSet AmericaCommandCenterCommandSet\r
   1 = Command_ConstructAmericaDozer\r
   2 = Command_UpgradeAmericaCompositeArmor\r
   3 = Command_UpgradeAmericaLaserMissiles ; a science\r

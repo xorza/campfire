@@ -7,7 +7,9 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionBook, ActionSlots, ActionsSystems, TogglePer};
+use campfire_actions::{
+    ActionBook, ActionSlots, ActionsSystems, RangeBonus, TogglePer, TurretMount,
+};
 use campfire_common::EnumAll;
 use campfire_declarations::{
     ById, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
@@ -16,7 +18,9 @@ use campfire_math::RngStream;
 use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimSystems};
 use campfire_stats::{LifePool, ModifierAppliers, StatsSystems, TypePools};
-use campfire_units::{BodyUnit, Dead, Deaths, Due, Life, SpawnPoint, UnitGrid, UnitsSystems};
+use campfire_units::{
+    BodyUnit, DamageHits, Dead, Deaths, Due, Life, SpawnPoint, UnitGrid, UnitsSystems,
+};
 use campfire_values::{ActionId, DamageKind, UnitType};
 
 use crate::combat_column::RowReads;
@@ -34,6 +38,7 @@ mod attack_data;
 mod attacks;
 mod barrel_turns;
 mod barrels;
+mod bonus_stats;
 mod clip_shots;
 mod combat_api;
 mod combat_book;
@@ -84,6 +89,7 @@ pub use crate::attacks::Attacks;
 pub use crate::barrel_turns::BarrelTurns;
 pub use crate::barrels::Barrels;
 pub use crate::barrels::barrels_data::{BarrelData, BarrelsData};
+pub use crate::bonus_stats::{BonusData, BonusStats};
 pub use crate::clip_shots::{ClipShots, HomeClip};
 pub use crate::combat_api::CombatApi;
 pub use crate::combat_book::CombatBook;
@@ -139,6 +145,8 @@ pub enum CombatSystems {
     /// The streaks whose coast ended lose their stage, and the units whose streak changed push
     /// their grants, before the grant pass of Inputs.
     StreakAtInputs,
+    /// Before the chase: each attacker chooses its weapon against its attack target.
+    Choose,
     /// Attacks start, and targets that are gone are dropped.
     Attack,
     /// After the projectiles fly and before areas trigger: the hits of the attacks'
@@ -169,6 +177,7 @@ impl ModuleSystems for CombatSystems {
             Self::StreakAtInputs => SetPlace::stage(SimSystems::Inputs)
                 .after(UnitsSystems::Begin)
                 .before(ActionsSystems::HoldAtInputs),
+            Self::Choose => SetPlace::stage(SimSystems::Act).before(ActionsSystems::Chase),
             Self::Attack => SetPlace::at(ActionsSystems::WindUp),
             Self::Hits => SetPlace::at(ActionsSystems::Hit),
             Self::Pay => SetPlace::at(ActionsSystems::Pay),
@@ -196,6 +205,7 @@ impl Module for Combat {
         d.component::<TurretAim>();
         d.timed::<TurretAim>();
         d.book::<ById<UnitType, Turret>>(Turret::book);
+        d.book::<ById<UnitType, TurretMount>>(Turret::mounts);
         d.part::<BodyUnit, TurretAim>(|at| at.of_type::<Turret>().map(TurretAim::rest));
         d.section::<BarrelsData>();
         d.book::<ById<UnitType, Barrels>>(Barrels::book);
@@ -228,6 +238,7 @@ impl Module for Combat {
         d.resource::<HeldHits>();
         d.observer(HeldHits::drop_died);
         d.report::<Deaths>();
+        d.report::<DamageHits>();
         d.resource::<UnansweredDeaths>();
         d.mode_events::<UnansweredDeaths>(EventPhase::Losses);
         d.calls::<Weighers>();
@@ -237,6 +248,7 @@ impl Module for Combat {
         d.book::<CombatBook>(CombatBook::build);
         d.listed::<AttackData>();
         d.book::<ById<ActionId, Weapon>>(Weapon::book);
+        d.book::<ById<ActionId, RangeBonus>>(Weapon::range_bonuses);
         d.extend::<ModifierAppliers>(ShotStreak::applied_ways);
         d.rule(Self::rule);
         d.rule(Self::attacks_rule);
@@ -265,8 +277,8 @@ impl Module for Combat {
         });
     }
 
-    /// Adds combat to a match: in Inputs, dead units whose respawn is due come back; in Act,
-    /// attacks in range start once ready; in Hit, windups that end strike, or fire when ranged
+    /// Adds combat to a match: in Inputs, dead units whose respawn is due come back; in Act, each
+    /// attacker chooses its weapon, and attacks in range start once ready; in DamageHit, windups that end strike, or fire when ranged
     /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
     /// go, after the Mode stage saw them. A streak weapon's shot counts in its unit's streak, whose
@@ -302,6 +314,7 @@ impl Module for Combat {
                 Aiming::aim.before(Attacks::start_attacks),
             );
         }
+        cx.add(CombatSystems::Choose, Attacks::choose_weapons);
         cx.add(CombatSystems::Attack, Attacks::start_attacks);
         cx.add(CombatSystems::Respawn, Dying::respawn);
         cx.server(
@@ -369,7 +382,7 @@ pub mod internals {
     use campfire_actions::internals::TestAction;
     use campfire_actions::{
         ActionBook, ActionData, ActionKind, ActionProgress, ActionRange, ActionSlots, Actions, Aim,
-        AttackTarget, InProgress, LoadedAction, ProgressDues, SlotKind, SlotTimes,
+        AttackTarget, InProgress, LoadedAction, ProgressDues, RangeBonus, SlotKind, SlotTimes,
     };
     use campfire_common::{DeclaredName, Tick, Ticks};
     use campfire_declarations::{ById, ServerForm};
@@ -388,6 +401,7 @@ pub mod internals {
     use crate::Combat;
     use crate::attack_data::AttackData;
     use crate::attacks::Attacks;
+    use crate::bonus_stats::BonusStats;
     use crate::combat_book::CombatBook;
     use crate::damage::{Damage, DamageCause};
     use crate::damage_pass::DamagePass;
@@ -402,9 +416,10 @@ pub mod internals {
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
     /// homing projectile it fires, if it fires one, where its rate and its damage come from, the
-    /// stat that speeds its own period, its clip, its cost in pools and in a player resource, and
-    /// its splash, its scatter's radius, its bound of pitch, its speed, its streak, its pre-attack
-    /// and the bearing its attacker aims within, at its one rank.
+    /// stat that speeds its own period, the kind of its damage, the filter of the targets it
+    /// prefers, its clip, its cost in pools and in a player resource, and its splash, its
+    /// scatter's radius, its bound of pitch, its speed, its streak, its pre-attack and the bearing
+    /// its attacker aims within, at its one rank.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct TestWeapon {
         pub aim: Filter,
@@ -413,9 +428,12 @@ pub mod internals {
         pub windup: Ticks,
         pub projectile: Option<UnitType>,
         pub rate: Rate,
-        pub rate_bonus: Option<StatId>,
+        pub rate_bonus: Option<BonusStats>,
+        pub range_bonus: Option<RangeBonus>,
         pub damage: WeaponDamage,
-        pub damage_bonus: Option<StatId>,
+        pub damage_bonus: Option<BonusStats>,
+        pub kind: DamageKind,
+        pub prefers: Option<Filter>,
         pub clip: Option<ClipRule>,
         pub cost: PoolCost,
         pub resource_cost: Option<ResourceAmount>,
@@ -430,7 +448,7 @@ pub mod internals {
 
     impl TestWeapon {
         /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
-        /// rate and damage, costing nothing.
+        /// rate and damage, of the first damage kind, costing nothing.
         pub fn new(aim: Filter, range: ActionRange, windup: Ticks) -> Self {
             Self {
                 aim,
@@ -440,8 +458,11 @@ pub mod internals {
                 projectile: None,
                 rate: Rate::Stat(StatId::new(0)),
                 rate_bonus: None,
+                range_bonus: None,
                 damage: WeaponDamage::Stat(StatId::new(1)),
                 damage_bonus: None,
+                kind: DamageKind::new(0),
+                prefers: None,
                 clip: None,
                 cost: PoolCost::default(),
                 resource_cost: None,
@@ -457,8 +478,8 @@ pub mod internals {
     }
 
     impl Combat {
-        /// Adds `weapon` to the match's action book and its weapon book, which deals damage of
-        /// the first kind, and its streak's modifiers to the book of the streaks' modifiers.
+        /// Adds `weapon` to the match's action book and its weapon book, and its streak's
+        /// modifiers to the book of the streaks' modifiers.
         pub fn add_weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
             let action = TestAction {
                 min_range: weapon.min_range,
@@ -476,15 +497,20 @@ pub mod internals {
                 None => action,
             };
             let id = Actions::add(world, "weapon", action);
+            if let Some(bonus) = weapon.range_bonus.clone() {
+                ById::<ActionId, RangeBonus>::amend(world, |_, book| book.set(id, bonus));
+            }
             ById::<ActionId, Weapon>::amend(world, |_, book| {
                 book.set(
                     id,
                     Weapon {
                         rate: weapon.rate,
                         rate_bonus: weapon.rate_bonus,
+                        range_bonus: weapon.range_bonus.clone(),
                         damage: weapon.damage,
                         damage_bonus: weapon.damage_bonus,
-                        kind: DamageKind::new(0),
+                        kind: weapon.kind,
+                        prefers: weapon.prefers,
                         clip: weapon.clip.map(|clip| Box::from([clip])),
                         splash: weapon.splash,
                         scatter: weapon.scatter.map(|radius| Scatter {

@@ -20,19 +20,22 @@ use campfire_math::Num;
 use campfire_navigation::PathWalker;
 use campfire_orders::OrdersDirective;
 use campfire_package::ModePackages;
+use campfire_players::{OrderUnits, PlayersWorld};
 use campfire_production::Production;
-use campfire_progression::{Experience, Points};
-use campfire_runner::ScriptCallFailed;
+use campfire_progression::{
+    Experience, PerkBook, PlayerExperience, PlayerPerks, PlayerPoints, Points, ProgressionDirective,
+};
+use campfire_runner::{MatchBuild, ScriptCallFailed};
 use campfire_sim::EntityIndex;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{MatchRate, SimWorld, StableId};
-use campfire_stats::Level;
+use campfire_stats::{Level, ModifierBook, PlayerModifiers};
 use campfire_store::InputFile;
 use campfire_store::internals::TestDir;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{Dead, Deaths, StatusTags, Units};
 use campfire_units::{GroundPoint, Life, MoveStep, Owner, UnitTypeBook};
-use campfire_values::{Rank, Team, TrackId, UnitType};
+use campfire_values::{PackageIndex, PerkId, Rank, Team, TrackId, UnitType};
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and
 /// its ultimate, its points, its experience and its level.
@@ -63,6 +66,15 @@ impl Progress {
 fn order(fixed: &mut FixedMatch, walker: StableId, tick: u64, directive: impl Into<Directive>) {
     let payload = Order::payload(&[Order::one(walker, directive)]);
     fixed.send(0, Tick::new(tick), &payload);
+}
+
+/// Player 0 sends the learn of `perk`, an order of no units, stamped for `tick`.
+fn learn_perk(fixed: &mut FixedMatch, tick: u64, perk: PerkId) {
+    let learn = Order {
+        units: OrderUnits::NONE,
+        directive: ProgressionDirective::LearnPerk { perk }.into(),
+    };
+    fixed.send(0, Tick::new(tick), &Order::payload(&[learn]));
 }
 
 /// The ticks the lane match plays, and the one its east creeps reach the walker in.
@@ -160,8 +172,6 @@ fn a_wave_with_no_wave_to_meet_strikes_the_tower_and_falls_to_it() {
 
 /// The mode's scripted match, which `source/.config/nextest.toml` exempts from the bound of 1 s.
 mod scripted_match {
-    use campfire_progression::ProgressionDirective;
-
     use super::*;
 
     #[test]
@@ -382,18 +392,17 @@ fn a_kill_gives_its_killer_the_victims_experience_and_an_allys_kill_gives_none()
     assert_eq!(fell(&mut fixed, ally), Num::int(60));
 }
 
-/// A victim the mode's `[experience]` victim filter leaves out gives no experience: an enemy creep
-/// marked as a site, `constructing`, gives the walker none under `all:!constructing`, and its 60
-/// with no filter.
+/// A share's filters and the shares of one death: an enemy creep marked as a site,
+/// `constructing`, gives the walker none under a victim filter of `all:!constructing`, and its 60
+/// with none; none under a killer filter of `allies`, which the walker, an enemy of the creep, does
+/// not pass; and 120 under two shares of the `level` track, 60 from each.
 #[test]
-fn a_victim_the_experience_filter_leaves_out_gives_none() {
-    let xp_of_a_site_kill = |filtered: bool| {
+fn a_share_s_filters_leave_a_death_out_and_two_shares_each_give() {
+    const SHARE: &str = "[[experience]]\ntrack = \"level\"\nto = \"killer\"\n";
+    let xp_of_a_site_kill = |share: Option<&str>| {
         let mut tree = PackageTree::of(TestMode::Lane);
-        if filtered {
-            tree.edit(
-                "modes/lane/data/mode.toml",
-                Edit::Set("experience.victim", "\"all:!constructing\""),
-            );
+        if let Some(share) = share {
+            tree.edit("modes/lane/data/mode.toml", Edit::Replace(SHARE, share));
         }
         let session = FixedSession::new(tree.load().unwrap(), 2);
         let mut fixed = session.start();
@@ -424,8 +433,117 @@ fn a_victim_the_experience_filter_leaves_out_gives_none() {
         fixed.step();
         Progress::of(&fixed, walker).xp
     };
-    assert_eq!(xp_of_a_site_kill(true), Num::ZERO);
-    assert_eq!(xp_of_a_site_kill(false), Num::int(60));
+    let victim = format!("{SHARE}victim = \"all:!constructing\"\n");
+    let killer = format!("{SHARE}killer = \"allies\"\n");
+    let twice = format!("{SHARE}\n{SHARE}");
+    assert_eq!(xp_of_a_site_kill(Some(&victim)), Num::ZERO);
+    assert_eq!(xp_of_a_site_kill(None), Num::int(60));
+    assert_eq!(xp_of_a_site_kill(Some(&killer)), Num::ZERO);
+    assert_eq!(xp_of_a_site_kill(Some(&twice)), Num::int(120));
+}
+
+/// A share to the killer's player: the lane's player track `rank`, of level 2 at 50 and the
+/// points 1 and 2, takes the walker's kill of an enemy creep, 60, for its player: level 2, and
+/// 1 + 2 points. The player pays them for perks: `drill` of cost 1 at once; `march` of cost 2, which
+/// requires `drill` and level 2, once the kill gave both; `aim` of cost 1 not in the tick `drill`
+/// spent the one point; and `free`, of no cost, by the mode's grant alone. A save and a restore
+/// keep the track, the points and the perks.
+#[test]
+fn a_player_track_rises_by_its_share_and_pays_for_perks() {
+    const RANK: &str = "[tracks.rank]\nholder = \"player\"\nlevels = [50]\npoints = [1, 2]\n\n\
+                        [[experience]]\ntrack = \"rank\"\nto = \"player\"\n\n\
+                        [perks.aim]\ncost = 1\nmodifier = \"aim\"\n\n\
+                        [perks.drill]\ncost = 1\nmodifier = \"drill\"\n\n\
+                        [perks.free]\nmodifier = \"free\"\n\n\
+                        [perks.march]\ncost = 2\nrequires = [\"drill\"]\ntrack = \"rank\"\n\
+                        level = 2\nmodifier = \"march\"\n\n\
+                        [modifiers.aim]\nstats = { move_speed = { cut = \"0.1\" } }\n\n\
+                        [modifiers.drill]\nstats = { move_speed = { cut = \"0.1\" } }\n\n\
+                        [modifiers.free]\nstats = { move_speed = { cut = \"0.1\" } }\n\n\
+                        [modifiers.march]\nstats = { move_speed = { cut = \"0.1\" } }\n";
+    let mut tree = PackageTree::of(TestMode::Lane);
+    tree.edit("modes/lane/data/mode.toml", Edit::Append(RANK))
+        .edit(
+            "modes/lane/scripts/mode.rhai",
+            Edit::Replace(
+                "    ctx.after(\"first_wave\", 1);\n",
+                "    ctx.grant_perk(ctx.players[0], \"free\");\n    ctx.after(\"first_wave\", 1);\n",
+            ),
+        );
+    let mut target = MatchBuild::test_target(&tree.load().unwrap(), 2);
+    let session = FixedSession::new(tree.load().unwrap(), 2);
+    let mut fixed = session.start();
+    fixed.step();
+    let walker = MatchUnits::of(fixed.game()).hero(0);
+    let ours = *MatchUnits::of(fixed.game())
+        .unit(walker)
+        .get::<Team>()
+        .unwrap();
+    let creep = Units::type_named(fixed.game(), "creep").unwrap();
+    let enemy = MatchUnits::of(fixed.game())
+        .all()
+        .find(|(_, unit)| {
+            unit.get::<UnitType>() == Some(&creep) && unit.get::<Team>() != Some(&ours)
+        })
+        .map(|(id, _)| id)
+        .unwrap();
+    let owner = MatchUnits::of(fixed.game())
+        .unit(walker)
+        .get::<Owner>()
+        .unwrap()
+        .player_slot();
+    let player = fixed.game().player_entity(owner).unwrap();
+    let perk = |name| {
+        fixed
+            .game()
+            .resource::<PerkBook>()
+            .names()
+            .named(name)
+            .unwrap()
+    };
+    let [aim, drill, free, march] = ["aim", "drill", "free", "march"].map(perk);
+    let modifiers = ["aim", "drill", "free", "march"].map(|name| {
+        let book = fixed.game().resource::<ModifierBook>();
+        book.names().named((PackageIndex::MODE, name)).unwrap()
+    });
+    // The rank's experience, level and points, and each of the perks `aim`, `drill`, `free` and
+    // `march` the player has, as its modifier it holds.
+    let held = |game: &World, player: Entity| {
+        let experience = game.get::<PlayerExperience>(player).unwrap();
+        let rank = experience.get().iter().next().unwrap();
+        let points = game.get::<PlayerPoints>(player).unwrap().get();
+        let perks = game.get::<PlayerPerks>(player).unwrap();
+        let held = game.get::<PlayerModifiers>(player).unwrap();
+        let has = [aim, drill, free, march].map(|perk| perks.holds(perk));
+        assert_eq!(modifiers.map(|modifier| held.holds(modifier)), has);
+        (rank.xp, rank.level.get(), points, has)
+    };
+    let free_only = [false, false, true, false];
+    assert_eq!(held(fixed.game(), player), (Num::ZERO, 1, 1, free_only));
+    for perk in [march, free, drill, aim] {
+        learn_perk(&mut fixed, 1, perk);
+    }
+    fixed.step();
+    let drilled = [false, true, true, false];
+    assert_eq!(held(fixed.game(), player), (Num::ZERO, 1, 0, drilled));
+    Combat::damage(
+        fixed.game_mut(),
+        Some(walker),
+        enemy,
+        100_000,
+        DamageCause::Effect,
+    );
+    fixed.step();
+    assert_eq!(held(fixed.game(), player), (Num::int(60), 2, 2, drilled));
+    learn_perk(&mut fixed, 3, march);
+    fixed.step();
+    let marched = [false, true, true, true];
+    assert_eq!(held(fixed.game(), player), (Num::int(60), 2, 0, marched));
+    let mut snapshot = Vec::new();
+    fixed.game().snapshot(&mut snapshot);
+    target.restore_in_place(&snapshot).unwrap();
+    let restored = target.player_entity(owner).unwrap();
+    assert_eq!(held(&target, restored), (Num::int(60), 2, 0, marched));
 }
 
 /// The stable ids of the units the table of `probe`'s last record holds, in its order.

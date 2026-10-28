@@ -13,7 +13,7 @@ use campfire_protocol::PlayerSlotPlan;
 use campfire_units::{Destination, GroundPoint};
 
 use crate::failure::CheckFailure;
-use crate::match_play::{self, MatchPlay, PlayTools, START_MONEY, STEP_LIMIT};
+use crate::match_play::{self, MatchPlay, PlayTools, START_MONEY};
 use crate::pins::JetTicks;
 
 /// America's airfield, its jet and the jet's train, and GLA's command center, the target.
@@ -144,12 +144,6 @@ impl JetPlay {
         step: &'static str,
         done: impl Fn(&MatchPlay<'_>) -> bool,
     ) -> Result<u64, CheckFailure> {
-        for ticks in 1..=STEP_LIMIT {
-            play.step();
-            if done(play) {
-                return Ok(ticks);
-            }
-        }
-        Err(CheckFailure::NoJetStep(step))
+        play.run_until(done).ok_or(CheckFailure::NoJetStep(step))
     }
 }

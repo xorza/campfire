@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU8;
 use std::path::Path;
 
 use bevy_math::UVec2;
 use campfire_client_files::{
     ButtonLook, CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, FogFile, FogLevel,
-    HitMark, HudFile, KeysFile, MapConditions, MapLights, Minimap, PanelPlaces, PickingFile,
-    PixelRadius, RadarShown, ShownBars, SoundFile, TeamColors, TerrainFile,
+    HitMark, HudFile, KeysFile, MapConditions, MapLights, Minimap, PanelGrid, PanelIcon,
+    PanelPlaces, PerkPage, PerkPlace, PerksFile, PickingFile, PixelRadius, PlaceOrder, RadarShown,
+    ShownBars, SoundFile, TeamColors, TerrainFile,
 };
 use campfire_codec::Toml;
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
@@ -23,6 +25,7 @@ use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::chassis_import::ChassisImport;
 use crate::zero_hour::combat_import::CombatImport;
+use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::effects_import::{EffectSources, EffectsImport, WeaponShot};
 use crate::zero_hour::error::ZeroHourError;
@@ -47,11 +50,13 @@ use crate::zero_hour::panel_import::PanelImport;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::road_pieces::RoadPieces;
 use crate::zero_hour::rules_package::{FACTION, ModeImport, RULES_FILES};
+use crate::zero_hour::science_import::ScienceImport;
 use crate::zero_hour::skirmish_start::SkirmishStart;
 use crate::zero_hour::sound_import::SoundImport;
 use crate::zero_hour::terrain_atlas::PackageTexture;
 use crate::zero_hour::unit_types::TypeAdditions;
 use crate::zero_hour::upgrade_import::UpgradeImport;
+use crate::zero_hour::veterancy_import::VeterancyImport;
 use crate::zero_hour::wreck_import::WreckImport;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 use campfire_client_files::{SpeedScale, TrackMarks, TreadDust, WreckGround};
@@ -59,12 +64,15 @@ use campfire_client_files::{SpeedScale, TrackMarks, TreadDust, WreckGround};
 mod airfield_bones;
 pub(crate) mod animation_import;
 pub(crate) mod archive_path;
+pub(crate) mod area_write;
 pub(crate) mod axes;
 pub(crate) mod barrel_recoil;
 pub(crate) mod camera_import;
 pub(crate) mod chassis_import;
 pub(crate) mod cliff_walls;
 pub(crate) mod combat_import;
+pub(crate) mod contain_drop_cause;
+pub(crate) mod contain_import;
 pub(crate) mod convex_clip;
 pub(crate) mod draw_sets;
 pub(crate) mod dropped;
@@ -94,6 +102,7 @@ pub(crate) mod object_flight;
 pub(crate) mod panel_drop_cause;
 pub(crate) mod panel_import;
 pub(crate) mod pivot_nodes;
+pub(crate) mod power_drop_cause;
 mod press_import;
 pub(crate) mod production_import;
 pub(crate) mod road_buffer;
@@ -102,6 +111,7 @@ pub(crate) mod road_mesh;
 pub(crate) mod road_pieces;
 pub(crate) mod rules_names;
 pub(crate) mod rules_package;
+pub(crate) mod science_import;
 pub(crate) mod skirmish_start;
 pub(crate) mod sound_drop_cause;
 pub(crate) mod sound_import;
@@ -111,6 +121,7 @@ pub(crate) mod terrain_cells;
 pub(crate) mod type_name;
 pub(crate) mod unit_types;
 pub(crate) mod upgrade_import;
+pub(crate) mod veterancy_import;
 pub(crate) mod weapon_drop_cause;
 pub(crate) mod wreck_import;
 pub(crate) mod zero_hour_rules;
@@ -304,12 +315,58 @@ impl ZeroHour {
         // The panel's icons and keys, its grid, and the atlases its icons draw from
         // (02-engine-core.md, A button's look is its action's).
         let mut panel_dropped = Losses::default();
-        let panel = PanelImport::of(
+        let mut panel = PanelImport::of(
             &production.panel,
             &game.images,
             |name| road_assets.texture(name),
             &mut panel_dropped,
         )?;
+        // The panel of perks: each faction's purchase sets, each at its places on the game's
+        // grid of 5 columns of 3, down each column, its buttons' icons (generals.md, The perk
+        // panel by a choice).
+        let mut pages = BTreeMap::new();
+        for (faction, faces) in ScienceImport::pages(&game)? {
+            let mut held = Vec::with_capacity(faces.len());
+            for page in faces {
+                let mut places = Vec::with_capacity(page.len());
+                for face in page {
+                    let found = PanelImport::found(
+                        &game.images,
+                        |name| road_assets.texture(name),
+                        face.image.as_deref(),
+                    );
+                    let icon = match found {
+                        Ok((path, rect)) => {
+                            let texture = game_path::texture(&path)?;
+                            panel.textures.insert(path);
+                            Some(PanelIcon { texture, rect })
+                        }
+                        Err(cause) => {
+                            panel_dropped.drop(face.perk.as_str(), cause);
+                            None
+                        }
+                    };
+                    places.push(PerkPlace {
+                        place: face.place,
+                        perk: face.perk,
+                        icon,
+                    });
+                }
+                held.push(PerkPage { places });
+            }
+            pages.insert(faction, held);
+        }
+        let perks = PerksFile {
+            choice: DeclaredName::new(FACTION).expect("the faction's choice is a declared name"),
+            grid: PanelGrid {
+                columns: NonZeroU8::new(5).expect("5 columns"),
+                rows: NonZeroU8::new(3).expect("3 rows"),
+                order: PlaceOrder::Columns,
+                commands: BTreeMap::new(),
+            },
+            pages,
+        };
+        writer.write(PerksFile::path(), &perks.encode())?;
         for (producer, places) in &production.panel.places {
             if let Some(look) = looks.units.get_mut(producer.declared()) {
                 look.panel = PanelPlaces::try_from(places.clone())
@@ -330,6 +387,7 @@ impl ZeroHour {
                 radar: Some(game.names.radar.clone()),
                 ..Minimap::default()
             },
+            level_icons: panel.level_icons.clone(),
         };
         writer.write(HudFile::path(), &hud.encode())?;
         let mut object_names = object_names.into_projectiles();
@@ -506,20 +564,30 @@ impl ZeroHour {
             look.key = button.key;
         }
         let looks_bones = looks.bones;
+        let fire_points = std::mem::take(&mut looks.fire_points);
         let looks =
             ClientUnits::new(looks.units, looks.conditions, looks.objects)?.with_actions(actions);
         let upgrades = UpgradeImport::of(&game, object_names.types(), &production, &combat)?;
+        let veterancy = VeterancyImport::of(&game.game_data, object_names.types(), &game.names)?;
+        let needed = production.sciences.iter().chain(&veterancy.sciences);
+        let sciences = ScienceImport::of(&game, needed.map(String::as_str))?;
+        let contains = ContainImport::of(&game, object_names.types(), &fire_points)?;
         writer.write(ClientUnits::path(), &looks.encode())?;
         // Every unit type is made: the maps', the start's, the command sets' and the projectiles
         // their weapons fire. The stages after read their closed set, and return what they give
         // each.
         let types = object_names.close();
+        let retaliation = rules_package::retaliation(game.ai.retaliation, &game.names)?;
         let mode = ModeImport {
             start: &start,
             production: &production,
             combat: &combat,
             upgrades: &upgrades,
+            veterancy: &veterancy,
+            sciences: &sciences,
+            contains: &contains,
             start_money: &money,
+            retaliation: retaliation.as_ref(),
         };
         writer.write(ModeFile::path(), rules_package::mode_data(mode).as_bytes())?;
         let barrels = combat.barrels(&looks_bones);
@@ -536,6 +604,11 @@ impl ZeroHour {
             drop_offs: &production.supply.drop_offs,
             spawns: &production.supply.spawns,
             upgrades: &upgrades.types,
+            tracks: &veterancy.tracks,
+            experience: &veterancy.experience,
+            areas: &production.areas,
+            enters: &contains.enters,
+            rides: &contains.rides,
         };
         let units = types.units_file(additions, &game.names);
         writer.write(UnitsFile::path(), units.text.as_bytes())?;
@@ -565,14 +638,23 @@ impl ZeroHour {
             }
         }
         losses.extend(production.dropped.into_iter().map(ImportLoss::Button));
+        losses.extend(production.powers_dropped.into_iter().map(ImportLoss::Power));
         let panel_losses = production.panel.dropped.into_iter().chain(panel_dropped);
         losses.extend(panel_losses.map(ImportLoss::Panel));
         losses.extend(upgrades.dropped.into_iter().map(ImportLoss::Upgrade));
         let supply = production.supply.dropped.into_iter();
         losses.extend(supply.map(ImportLoss::Supply));
         losses.extend(combat.dropped.into_iter().map(ImportLoss::Weapon));
+        losses.extend(contains.dropped.into_iter().map(ImportLoss::Contain));
         losses.extend(combat.unliving.into_iter().map(ImportLoss::Unliving));
         losses.extend(combat.wounded.into_iter().map(ImportLoss::Wounded));
+        losses.extend(combat.unpreferred.into_iter().map(ImportLoss::Unpreferred));
+        losses.extend(
+            veterancy
+                .untrainable
+                .into_iter()
+                .map(ImportLoss::Untrainable),
+        );
         Ok(Imported {
             fingerprint,
             rules,
@@ -591,7 +673,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 62;
+    pub const OUTPUT_VERSION: u32 = 71;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

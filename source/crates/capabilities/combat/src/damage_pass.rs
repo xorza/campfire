@@ -9,7 +9,6 @@ use campfire_actions::{
     ProgressDues,
 };
 use campfire_common::Tick;
-use campfire_declarations::ById;
 use campfire_math::{Num, Rounding};
 use campfire_script::{
     ActionCast, CallStart, Ctx, Hook, HookDecl, ScriptBatch, ScriptRole, ScriptsWorld,
@@ -18,8 +17,8 @@ use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 use campfire_stats::{
     CarriedMut, ModifierBook, ModifierClocks, ModifierEvents, ModifierHooks, StatsWorld, UnitStats,
 };
-use campfire_units::{Deaths, Fallen, Life, StatId, TagEffect};
-use campfire_values::{Block, NameId, TagSet, UnitTags, UnitType};
+use campfire_units::{DamageHit, DamageHits, Deaths, Fallen, Life, StatId, TagEffect};
+use campfire_values::{Block, NameId, UnitTags};
 
 use crate::combat_book::CombatBook;
 use crate::combat_event::CombatEvent;
@@ -127,6 +126,7 @@ impl DamagePass {
     pub(crate) fn run(world: &mut World, mut scratch: Local<'_, DamageScratch>) {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);
+        world.resource_mut::<DamageHits>().clear();
         // Only a tick that carries entries writes the next tick's damage, which is state.
         if world.resource::<NextDamage>().is_empty() {
             world.resource_mut::<PassQueue>().begin([]);
@@ -248,14 +248,7 @@ impl DamagePass {
     /// What `damage` deals to `target` through the armor its type gives its tags, before the mode
     /// weighs it: the whole for none.
     fn armored(world: &World, target: Entity, damage: Damage) -> Num {
-        let armor = world.get::<UnitType>(target).and_then(|&unit_type| {
-            let armors = world.get_resource::<ById<UnitType, TypeArmor>>()?;
-            let tags = world.get::<UnitTags>(target);
-            armors
-                .get(unit_type)?
-                .of(tags.map_or(TagSet::NONE, |tags| tags.tags))
-        });
-        armor.map_or(damage.amount, |armor| {
+        TypeArmor::of_unit(world, target).map_or(damage.amount, |armor| {
             armor.take(damage.kind, damage.amount)
         })
     }
@@ -407,6 +400,10 @@ impl DamagePass {
         };
         let killed = !living(world);
         if let Some(source) = source {
+            let target = damage.target;
+            world
+                .resource_mut::<DamageHits>()
+                .push(DamageHit { target, source });
             let records = scratch
                 .records
                 .get_or_insert_with(|| SystemState::new(world));

@@ -3,7 +3,8 @@ use std::marker::PhantomData;
 
 use bevy_ecs::change_detection::{CheckChangeTicks, DetectChanges, Ref, Tick};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::Remove;
+use bevy_ecs::entity_disabling::Disabled;
+use bevy_ecs::lifecycle::{Add, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Allow, Changed, Or, QueryFilter};
 use bevy_ecs::resource::Resource;
@@ -24,8 +25,9 @@ pub trait TrackedUnits: Send + Sync + 'static {
 /// Whether the units of `T` came, went, moved or changed their bodies since a reader last took
 /// them: by the change ticks of their stable ids, places and bodies, their count, and a mark for
 /// what no change tick shows, which observers set: a unit that moves in or out of the group as a
-/// part comes or goes, a body lost, and Bevy's check of change ticks. A mark too many costs one
-/// take, never a stale reader. Derived from the units, never state.
+/// part comes or goes, a body lost, a unit that leaves the world or comes back, and Bevy's check
+/// of change ticks. A mark too many costs one take, never a stale reader. Derived from the units,
+/// never state.
 #[derive(Resource, Debug)]
 pub struct UnitTracker<T> {
     /// The last take, `None` before the first.
@@ -128,6 +130,18 @@ impl<T: TrackedUnits> UnitTracker<T> {
     /// The observer of a body lost, which no change tick shows: a unit of the group that holds
     /// its body as a part it may lack.
     pub fn lost_body(_: On<'_, '_, Remove<Body>>, mut tracker: ResMut<'_, Self>) {
+        tracker.marked = true;
+    }
+
+    /// The observer of a unit that leaves the world, which no query of the group then finds, so
+    /// a count of them hides it when another comes back in the same run.
+    pub fn disabled(_: On<'_, '_, Add<Disabled>>, mut tracker: ResMut<'_, Self>) {
+        tracker.marked = true;
+    }
+
+    /// The observer of a unit that comes back into the world, whose change ticks are of its
+    /// time out of it.
+    pub fn enabled(_: On<'_, '_, Remove<Disabled>>, mut tracker: ResMut<'_, Self>) {
         tracker.marked = true;
     }
 }

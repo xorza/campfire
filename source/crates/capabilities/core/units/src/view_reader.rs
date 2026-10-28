@@ -3,9 +3,10 @@ use std::{fmt, mem};
 
 use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemoveEvent;
+use bevy_ecs::entity_disabling::Disabled;
+use bevy_ecs::lifecycle::{Add, Remove, RemoveEvent};
 use bevy_ecs::observer::{Observer, On};
-use bevy_ecs::query::{QueryState, ROQueryItem};
+use bevy_ecs::query::{Allow, QueryState, ROQueryItem};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut, SystemState};
 use bevy_ecs::world::World;
@@ -120,6 +121,32 @@ impl ViewReader {
         mut reader: ResMut<'_, Self>,
     ) {
         if let Ok(&id) = ids.get(removed.entity) {
+            reader.removed.push(id);
+        }
+    }
+
+    /// The observer of a unit that leaves the world as `Disabled` comes, which no change tick
+    /// shows, in a match that reads its units for scripts: the next read visits the unit, which no query of the core finds then, and drops its
+    /// row (transports.md, A rider leaves the world and keeps its entity).
+    pub(crate) fn disabled(
+        disabled: On<'_, '_, Add<Disabled>>,
+        ids: Query<'_, '_, &StableId, Allow<Disabled>>,
+        reader: Option<ResMut<'_, Self>>,
+    ) {
+        if let (Ok(&id), Some(mut reader)) = (ids.get(disabled.entity), reader) {
+            reader.removed.push(id);
+        }
+    }
+
+    /// The observer of a unit that comes back into the world as `Disabled` goes, whose parts'
+    /// change ticks are of its time out of it: the next read visits it, every source filling its
+    /// row.
+    pub(crate) fn enabled(
+        enabled: On<'_, '_, Remove<Disabled>>,
+        ids: Query<'_, '_, &StableId, Allow<Disabled>>,
+        reader: Option<ResMut<'_, Self>>,
+    ) {
+        if let (Ok(&id), Some(mut reader)) = (ids.get(enabled.entity), reader) {
             reader.removed.push(id);
         }
     }

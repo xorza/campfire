@@ -9,13 +9,16 @@ kind = "app"
 
 [features]
 internals = [
+    "campfire-abilities/internals",
     "campfire-actions/internals",
+    "campfire-areas/internals",
     "campfire-airfields/internals",
     "campfire-client-files/internals",
     "campfire-codec/internals",
     "campfire-combat/internals",
     "campfire-declarations/internals",
     "campfire-geometry/internals",
+    "campfire-interaction/internals",
     "campfire-logging/internals",
     "campfire-math/internals",
     "campfire-mode/internals",
@@ -25,6 +28,7 @@ internals = [
     "campfire-package-disk/internals",
     "campfire-package-format/internals",
     "campfire-production/internals",
+    "campfire-progression/internals",
     "campfire-projectiles/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
@@ -37,7 +41,9 @@ internals = [
 ]
 
 [dependencies]
+campfire-abilities.workspace = true
 campfire-actions.workspace = true
+campfire-areas.workspace = true
 campfire-airfields.workspace = true
 campfire-client-files.workspace = true
 campfire-codec.workspace = true
@@ -47,6 +53,7 @@ campfire-declarations.workspace = true
 campfire-logging.workspace = true
 campfire-math.workspace = true
 campfire-geometry.workspace = true
+campfire-interaction.workspace = true
 campfire-mode.workspace = true
 campfire-navigation.workspace = true
 campfire-orders.workspace = true
@@ -54,6 +61,7 @@ campfire-package.workspace = true
 campfire-package-disk.workspace = true
 campfire-package-format.workspace = true
 campfire-production.workspace = true
+campfire-progression.workspace = true
 campfire-projectiles.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true

@@ -6,19 +6,23 @@ use campfire_client_files::{
     ActionLook, ClientFile, ClientObjects, ClientUnit, ClientUnits, EffectsFile, HudFile, LookDraw,
     MapConditions, SoundFile, TerrainFile,
 };
-use campfire_combat::ModeCombatData;
+use campfire_combat::{AttackData, ModeCombatData};
 use campfire_common::{DeclaredName, MapName};
 use campfire_geometry::Grid;
 use campfire_import::{
-    AnimationDropCause, ButtonDropCause, EffectDropCause, ImportLoss, Imported, PanelDropCause,
-    RoadDropCause, SoundDropCause, StateDropCause, SupplyDropCause, UpgradeDropCause,
-    WeaponDropCause,
+    AnimationDropCause, ButtonDropCause, ContainDropCause, EffectDropCause, ImportLoss, Imported,
+    PanelDropCause, PowerDropCause, RoadDropCause, SoundDropCause, StateDropCause, SupplyDropCause,
+    UpgradeDropCause, WeaponDropCause,
 };
+use campfire_interaction::{EnterData, FireData, RiderCount, RidesData};
 use campfire_math::Num;
+use campfire_mode::ModeParam;
 use campfire_navigation::MapNavigationData;
+use campfire_orders::RetaliateData;
 use campfire_package::{ModePackages, ModeRead};
 use campfire_package_format::PackageReader;
 use campfire_production::{DropOffData, NodeData, SellData};
+use campfire_progression::{ModePerksData, TypeTracksData};
 use campfire_stats::UpgradesData;
 use campfire_units::BoundsData;
 use campfire_values::PackagePath;
@@ -27,26 +31,31 @@ use tracing::info;
 
 use crate::attack_play::AttackPlay;
 use crate::base_play::BasePlay;
+use crate::combat_play::CombatPlay;
 use crate::decal_ground::DecalGround;
 use crate::defense_play::DefensePlay;
 use crate::error::CheckError;
 use crate::failure::{CheckFailure, Differs};
+use crate::garrison_play::GarrisonPlay;
 use crate::golden::{Golden, Measured};
 use crate::helicopter_play::HelicopterPlay;
 use crate::jet_play::JetPlay;
 use crate::match_play::PlayTools;
 use crate::missile_play::MissilePlay;
 use crate::pins::{
-    EffectCounts, FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, HelicopterSteps,
-    LookCounts, MapCounts, PanelCounts, ProducedCounts, ProductionSteps, RangerLook, RoadCounts,
-    SaleSteps, SkirmishTicks, SoundCounts, SuppliedCounts, SupplySteps, TerrainCounts,
-    TerrainDrawn, UpgradeSteps, UpgradedCounts,
+    CombatSteps, ContainedCounts, EffectCounts, FactorySteps, FightSteps, Fingerprints,
+    FoughtCounts, GarrisonSteps, HZ, HelicopterSteps, LookCounts, MapCounts, PanelCounts,
+    ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SaleSteps, SkirmishTicks, SoundCounts,
+    SuppliedCounts, SupplySteps, TerrainCounts, TerrainDrawn, TransportSteps, UpgradeSteps,
+    UpgradedCounts,
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
+use crate::science_play::SciencePlay;
 use crate::skirmish_play::{SkirmishPlay, SkirmishSteps};
 use crate::start_drive::StartDrive;
 use crate::supply_play::SupplyPlay;
+use crate::transport_play::TransportPlay;
 
 /// The checks of an import, a group at a time, each failure it finds kept: the import's report,
 /// its game package, the mode of `MAP` loaded from it, the values the golden file pins, none in
@@ -103,6 +112,12 @@ impl ImportCheck<'_> {
             .zip(cell)
             .and_then(|(bounds, cell)| Grid::new(cell, bounds.0));
         let types = self.packages.content().units.values();
+        let data = self.packages.data();
+        let perks = data.section::<ModePerksData>().map(|perks| &perks.0);
+        let granted = data.params.iter().filter_map(|(name, param)| match param {
+            ModeParam::List(perks) if name.as_str().starts_with("perks_") => Some(perks.len()),
+            _ => None,
+        });
         let counts = MapCounts {
             heights,
             units: placed.len(),
@@ -113,8 +128,23 @@ impl ImportCheck<'_> {
             walls: navigation.map_or(0, |navigation| navigation.walls.len()),
             grid: grid.map_or([0, 0], |grid| [grid.columns(), grid.rows()]),
             seers: types
+                .clone()
                 .filter(|unit| unit.section::<VisionData>().is_some())
                 .count(),
+            trainable: types
+                .filter(|unit| unit.section::<TypeTracksData>().is_some())
+                .count(),
+            untrainable: self
+                .imported
+                .losses
+                .iter()
+                .filter(|loss| matches!(loss, ImportLoss::Untrainable(_)))
+                .count(),
+            perks: perks.map_or(0, BTreeMap::len),
+            learnable: perks.map_or(0, |perks| {
+                perks.values().filter(|perk| perk.cost.is_some()).count()
+            }),
+            granted: granted.sum(),
         };
         let terrain: TerrainFile = client_file(files, &TerrainFile::path(self.map))?;
         let drawn = TerrainDrawn {
@@ -315,6 +345,11 @@ impl ImportCheck<'_> {
                 ImportLoss::Button(button) => Some(button.cause),
                 _ => None,
             }),
+            casts: self.kind_count(ActionKind::Cast),
+            powers_dropped: self.dropped(PowerDropCause::ALL, |loss| match loss {
+                ImportLoss::Power(button) => Some(button.cause),
+                _ => None,
+            }),
         };
         let expected = self.pinned(|golden| golden.produced, produced);
         self.failures
@@ -325,7 +360,9 @@ impl ImportCheck<'_> {
             builds = produced.builds,
             sells = produced.sells,
             dropped = ?produced.dropped,
-            "the command sets' trains, builds and sales"
+            casts = produced.casts,
+            powers_dropped = ?produced.powers_dropped,
+            "the command sets' trains, builds, sales and powers"
         );
     }
 
@@ -393,6 +430,37 @@ impl ImportCheck<'_> {
             dropped = ?supplied.dropped,
             "the docks, supply centers, gatherers and hackers"
         );
+    }
+
+    /// The transports and the garrisons, the garrisons of fire points, the riders, and the
+    /// contain modules dropped, by cause.
+    pub(crate) fn contains(&mut self) {
+        let mut contained = ContainedCounts {
+            transports: 0,
+            garrisons: 0,
+            fire_points: 0,
+            riders: 0,
+            dropped: self.dropped(ContainDropCause::ALL, |loss| match loss {
+                ImportLoss::Contain(contain) => Some(contain.cause),
+                _ => None,
+            }),
+        };
+        for unit in self.packages.content().units.values() {
+            contained.riders += usize::from(unit.section::<RidesData>().is_some());
+            let Some(enter) = unit.section::<EnterData>() else {
+                continue;
+            };
+            match enter.counts {
+                RiderCount::Size => contained.transports += 1,
+                RiderCount::One => contained.garrisons += 1,
+            }
+            contained.fire_points += usize::from(matches!(enter.fire, FireData::Points(_)));
+        }
+        let expected = self.pinned(|golden| golden.contained, contained);
+        self.failures
+            .extend(Differs::of(contained, expected).map(CheckFailure::Contained));
+        self.measured.contained = Some(contained);
+        info!(%contained, "the transports, garrisons and riders");
     }
 
     /// The panel: the actions' icons and keys, the looks' places, the grid's commands of an icon,
@@ -498,7 +566,8 @@ impl ImportCheck<'_> {
         Ok(())
     }
 
-    /// The weapons, the armors, the damage kinds and the bodies of no life or a wounded start.
+    /// The weapons, the armors, the damage kinds, the bodies of no life or a wounded start, and
+    /// the weapons' preferences.
     pub(crate) fn combat(&mut self) {
         let combat = self.packages.data().section_or_default::<ModeCombatData>();
         let losses = &self.imported.losses;
@@ -513,6 +582,11 @@ impl ImportCheck<'_> {
             kinds: combat.damage_kinds.len(),
             unliving: count(|loss| matches!(loss, ImportLoss::Unliving(_))),
             wounded: count(|loss| matches!(loss, ImportLoss::Wounded(_))),
+            preferring: self.preferring(),
+            unpreferred: count(|loss| matches!(loss, ImportLoss::Unpreferred(_))),
+            retaliating: (self.packages.content().units.values())
+                .filter(|unit| unit.section::<RetaliateData>().is_some())
+                .count(),
         };
         let expected = self.pinned(|golden| golden.fought, fought);
         self.failures
@@ -684,6 +758,20 @@ impl ImportCheck<'_> {
                 "player 1's Raptor took off, struck GLA's command center, landed and reloaded"
             );
         }
+        if let Some((played, tools)) = self.played(Play::Science, rate)?
+            && let Some(science) = SciencePlay::run(played, rate, tools, &mut self.failures)
+        {
+            let expected = self.pinned(|golden| golden.science, science);
+            self.failures
+                .extend(Differs::of(science, expected).map(CheckFailure::Science));
+            self.measured.science = Some(science);
+            info!(
+                queued_before = science.queued_before,
+                points = science.points,
+                paladin = science.paladin,
+                "player 1 learned the Paladin's science, and its war factory trained one"
+            );
+        }
         if let Some((played, tools)) = self.played(Play::Gattling, rate)?
             && let Some(defense) =
                 DefensePlay::GATTLING.run(played, rate, tools, &mut self.failures)
@@ -741,6 +829,66 @@ impl ImportCheck<'_> {
                 hit = missile.hit,
                 death = missile.death,
                 "player 1's Tank Hunter, ordered nothing, killed the bot's dozer with its missiles"
+            );
+        }
+        if let Some((played, tools)) = self.played(Play::Combat, rate)?
+            && let Some(weapons) = CombatPlay::weapons(&played)
+                .map_err(|failure| self.failures.push(failure))
+                .ok()
+            && let Some(combat) = CombatPlay::run(played, rate, tools, &mut self.failures)
+        {
+            let ticks = combat.ticks;
+            let expected =
+                CombatSteps::expected(self.pinned(|golden| golden.combat, ticks), weapons);
+            self.failures
+                .extend(Differs::of(combat, expected).map(CheckFailure::Combat));
+            self.measured.combat = Some(ticks);
+            info!(
+                ticks = ?combat.ticks,
+                weapons = ?combat.weapons,
+                strays = ?combat.strays,
+                drove = combat.drove,
+                left = %combat.left,
+                "player 1's Comanche fired its cannon at a Rebel and its missiles at a Scorpion, its \
+                 Crusaders answered a rocket buggy and walked back, and a Crusader fired from its \
+                 turret as it drove"
+            );
+        }
+        if let Some((played, tools)) = self.played(Play::Transport, rate)?
+            && let Some(transport) = TransportPlay::run(played, rate, tools, &mut self.failures)
+        {
+            let ticks = transport.ticks;
+            let expected = TransportSteps::expected(self.pinned(|golden| golden.transport, ticks));
+            self.failures
+                .extend(Differs::of(transport, expected).map(CheckFailure::Transport));
+            self.measured.transport = Some(ticks);
+            info!(
+                ticks = ?transport.ticks,
+                fired_inside = transport.fired_inside,
+                out = transport.out,
+                hurt = transport.hurt,
+                near = transport.near,
+                "player 1's Chinook flew a Ranger and a Crusader across the map, its Ranger and \
+                 Missile Defender fired from a Humvee, and its Crusaders destroyed a Troop Crawler \
+                 whose Red Guards left it hurt"
+            );
+        }
+        if let Some((played, tools)) = self.played(Play::Garrison, rate)?
+            && let Some(garrison) = GarrisonPlay::run(played, rate, tools, &mut self.failures)
+        {
+            let ticks = garrison.ticks;
+            let expected = GarrisonSteps::expected(self.pinned(|golden| golden.garrison, ticks));
+            self.failures
+                .extend(Differs::of(garrison, expected).map(CheckFailure::Garrison));
+            self.measured.garrison = Some(ticks);
+            info!(
+                ticks = ?garrison.ticks,
+                turned = garrison.turned,
+                first = garrison.first,
+                held = garrison.held,
+                freed = garrison.freed,
+                "player 2's Rebels garrisoned a free building and turned it theirs, outranged a \
+                 Ranger, and left it as player 1's Crusaders shelled it"
             );
         }
         if let Some((played, tools)) = self.played(Play::Base, rate)?
@@ -826,6 +974,13 @@ impl ImportCheck<'_> {
     fn kind_count(&self, kind: ActionKind) -> usize {
         let actions = self.packages.content().actions().values();
         actions.filter(|action| action.kind() == kind).count()
+    }
+
+    /// How many weapons prefer a target.
+    fn preferring(&self) -> usize {
+        let actions = self.packages.content().actions().values();
+        let attacks = actions.filter_map(|action| action.section::<AttackData>());
+        attacks.filter(|attack| attack.prefers.is_some()).count()
     }
 }
 

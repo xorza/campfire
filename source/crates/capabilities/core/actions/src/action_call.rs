@@ -1,7 +1,8 @@
 use campfire_common::Tick;
-use campfire_values::ActionStart;
+use campfire_values::{ActionId, ActionStart};
 use serde::{Deserialize, Serialize};
 
+use crate::cooldown_holder::CooldownHolder;
 use crate::rank_values::RankValues;
 use crate::slot_aim::SlotAim;
 
@@ -27,10 +28,12 @@ impl ActionCall {
     }
 }
 
-/// A cast that resolved: its call, at the target its check gave, and its action's values at its
-/// rank.
+/// A cast that resolved: its action and who keeps its cooldown, its call, at the target its check gave, and its action's
+/// values at its rank.
 #[derive(Debug, Clone, Copy)]
 pub struct ResolvedCast {
+    pub action: ActionId,
+    pub holder: CooldownHolder,
     pub call: ActionCall,
     pub values: RankValues,
 }

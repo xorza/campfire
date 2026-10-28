@@ -9,10 +9,12 @@ use campfire_geometry::{Bounds, GridSearch};
 use campfire_items::ItemBook;
 use campfire_math::{Num, Vec3};
 use campfire_mode::{InputBook, InputType, MarkerSpec};
+use campfire_progression::PerkBook;
 use campfire_script::{Filter, UnknownName};
 use campfire_units::{GroundPoint, MapBook, RefMap, UnitTypeBook};
 use campfire_values::{
-    ActionId, Article, FilterData, ItemId, NameKind, NameScope, Named as _, TypeScope, UnitType,
+    ActionId, Article, FilterData, ItemId, NameKind, NameScope, Named as _, PerkId, TypeScope,
+    UnitType,
 };
 
 use crate::bot_script::error::BotScriptError;
@@ -23,12 +25,13 @@ use crate::order_script::{ScriptedInput, ScriptedValue};
 const MARKERS: NameKind = NameKind::new("marker", Article::A, NameScope::Match);
 
 /// What a bot's script names, as the books of its match hold it: the unit types and their tags,
-/// the actions, the item types, the map's metric and its markers.
+/// the actions, the item types, the perks, the map's metric and its markers.
 #[derive(Debug, Clone, Copy)]
 pub struct BotNames<'b> {
     types: &'b UnitTypeBook,
     actions: &'b ActionBook,
     items: Option<&'b ItemBook>,
+    perks: Option<&'b PerkBook>,
     map: &'b MapBook,
     markers: &'b [MarkerSpec],
     inputs: &'b InputBook,
@@ -43,12 +46,14 @@ pub(crate) struct LoadRefs<'n, 'b> {
 }
 
 impl<'b> BotNames<'b> {
-    /// The names of the match of `books`; a match with no items names no item type.
+    /// The names of the match of `books`; a match with no items names no item type, and one with
+    /// no progression no perk.
     pub fn new(books: &'b Books) -> Self {
         Self {
             types: books.get().expect("a match has unit types"),
             actions: books.get().expect("a match has an action book"),
             items: books.get(),
+            perks: books.get(),
             map: books.get().expect("a match has a map"),
             markers: books.markers(),
             inputs: books.get().expect("a match has the mode's inputs"),
@@ -117,6 +122,10 @@ impl RefMap<NamedRefs, Loaded> for LoadRefs<'_, '_> {
     }
 
     fn used(&mut self, unit: FilterData) -> Result<Filter, BotScriptError> {
+        self.filter(&unit)
+    }
+
+    fn entered(&mut self, unit: FilterData) -> Result<Filter, BotScriptError> {
         self.filter(&unit)
     }
 
@@ -189,5 +198,13 @@ impl RefMap<NamedRefs, Loaded> for LoadRefs<'_, '_> {
     /// A stack by its item type's name.
     fn carried(&mut self, carried: DeclaredName) -> Result<ItemId, BotScriptError> {
         self.item(carried)
+    }
+
+    fn perk(&mut self, perk: DeclaredName) -> Result<PerkId, BotScriptError> {
+        let found = self
+            .names
+            .perks
+            .and_then(|perks| perks.names().named(perk.as_str()));
+        Ok(found.ok_or_else(|| UnknownName::new(PerkId::NAMES, &perk))?)
     }
 }

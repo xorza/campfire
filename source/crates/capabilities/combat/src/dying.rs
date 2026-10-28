@@ -67,6 +67,7 @@ impl Dying {
             if let Some(mut progress) = progress {
                 let dues = &mut indexes.of(id, entity);
                 progress.set_attack_target(None, dues);
+                progress.set_turret_target(None, dues);
                 progress.end(dues);
             }
             let kept = unit_type

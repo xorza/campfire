@@ -4,31 +4,39 @@ use std::ops::Index;
 use campfire_client_files::ModelScale;
 
 use crate::zero_hour::format::ini::error::IniError;
-use crate::zero_hour::format::ini::ini_text::{FlagList, FlagSet, IniLine, IniText};
+use crate::zero_hour::format::ini::ini_text::{FlagList, IniLine, IniText};
 use crate::zero_hour::format::ini::object_ini::build_variations::BuildVariations;
 use crate::zero_hour::format::ini::object_ini::fight_data::{FightBlock, FightData};
 use crate::zero_hour::format::ini::object_ini::ini_animation::IniAnimation;
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, ProductionModule};
+use crate::zero_hour::format::ini::object_ini::ini_contain::{ContainClass, IniContain};
 use crate::zero_hour::format::ini::object_ini::ini_death::IniDeath;
+use crate::zero_hour::format::ini::object_ini::ini_experience::{IniExperience, IniStart};
 use crate::zero_hour::format::ini::object_ini::ini_fall::IniFall;
+use crate::zero_hour::format::ini::object_ini::ini_power::{IniPowers, PowerModule};
 use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
     IniUpgradeModule, UpgradeEffect,
 };
 use crate::zero_hour::format::ini::object_ini::ini_voices::IniVoices;
+use crate::zero_hour::format::ini::object_ini::object_kinds::{ObjectKind, ObjectKinds};
 use crate::zero_hour::format::look_conditions::LookConditions;
 
 pub(crate) mod build_variations;
 pub(crate) mod fight_data;
 pub(crate) mod ini_animation;
 pub(crate) mod ini_build;
+pub(crate) mod ini_contain;
 pub(crate) mod ini_death;
+pub(crate) mod ini_experience;
 pub(crate) mod ini_fall;
+pub(crate) mod ini_power;
 pub(crate) mod ini_recoil;
 pub(crate) mod ini_supply;
 pub(crate) mod ini_upgrade_module;
 pub(crate) mod ini_voices;
+pub(crate) mod object_kinds;
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
 /// draw modules show by default, and their build variations, resolved once every file is read, as
@@ -96,9 +104,14 @@ pub(crate) struct IniObject {
     shroud_clearing_range: f32,
     /// The upgrade each of its `GrantUpgradeCreate`s grants it as it is made.
     granted: Vec<String>,
-    /// Its `RadarPriority`, and whether a `GarrisonContain` holds its garrison.
+    /// Its `RadarPriority`.
     radar_priority: RadarPriority,
-    garrisons: bool,
+    /// Its contain module, its last when it gives several, as `Object` keeps the last, and the
+    /// room it takes of a transport, its `TransportSlotCount`.
+    contain: Option<IniContain>,
+    transport_slots: i32,
+    experience: IniExperience,
+    powers: IniPowers,
 }
 
 /// An object's `RadarPriority` (`RadarPriorityNames`): none set, `INVALID`; one the radar draws
@@ -110,30 +123,6 @@ pub(crate) enum RadarPriority {
     NotOnRadar,
     LocalUnitOnly,
     Shown,
-}
-
-/// The kinds of an object's `KindOf` that the import reads: those that decide who draws its placed
-/// objects (`GameLogic::startNewGame`), an optimized tree and a prop the client alone draws, an
-/// object a build clears, which is fluff, the client's too, unless it is a fence, and a wall a unit
-/// walks on top of, which the game spawns with the bridges; a structure, which routes block when it
-/// is not small; an object that counts for a multiplayer victory, which a structure of it keeps
-/// its player in the match by (09-zero-hour.md, Defeat by the last building that counts); a base
-/// defense, which a human player's idle unit takes as a target among structures; infantry,
-/// which a weapon may scatter more at; and a vehicle, which drives through a crowd as one that
-/// turns, not one that steps (04-capabilities/navigation.md, A unit moves by its kind of motion).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct ObjectKinds {
-    optimized_tree: bool,
-    prop: bool,
-    cleared_by_build: bool,
-    walk_on_top_of_wall: bool,
-    structure: bool,
-    mp_count_for_victory: bool,
-    fs_base_defense: bool,
-    infantry: bool,
-    vehicle: bool,
-    hulk: bool,
-    capturable: bool,
 }
 
 /// An object's geometry as the game reads it (`GeometryInfo`): its shape, its radii and its
@@ -284,19 +273,6 @@ const MODEL_DRAWS: [&str; 11] = [
     "w3dtruckdraw",
 ];
 
-/// The kinds of `KindOf` the import reads, as the game names them.
-const OPTIMIZED_TREE: &str = "optimized_tree";
-const PROP: &str = "prop";
-const CLEARED_BY_BUILD: &str = "cleared_by_build";
-const WALK_ON_TOP_OF_WALL: &str = "walk_on_top_of_wall";
-const STRUCTURE: &str = "structure";
-const MP_COUNT_FOR_VICTORY: &str = "mp_count_for_victory";
-const FS_BASE_DEFENSE: &str = "fs_base_defense";
-const INFANTRY: &str = "infantry";
-const VEHICLE: &str = "vehicle";
-const HULK: &str = "hulk";
-const CAPTURABLE: &str = "capturable";
-
 /// The locomotor set an object moves by, and the one a jet taxis by, of `TheLocomotorSetNames`.
 const SET_NORMAL: &str = "set_normal";
 const SET_TAXIING: &str = "set_taxiing";
@@ -379,6 +355,8 @@ enum Block {
     Production(ProductionModule),
     /// A behavior module whose fields supply reads.
     Supply(SupplyModule),
+    /// A special power's or a heal burst's module.
+    Power(PowerModule),
     /// An upgrade module, the object's last.
     Upgrade,
     /// A `PhysicsBehavior`, whose mass a wreck reads.
@@ -387,8 +365,12 @@ enum Block {
     Lifetime,
     /// A `GrantUpgradeCreate`, whose upgrade the object is made with.
     GrantUpgrade,
+    /// A `VeterancyGainCreate`, whose level the object is made at.
+    VeterancyGain,
     /// A slow death module, the object's last.
     Death,
+    /// A contain module, the object's last.
+    Contain,
     /// An object's `UnitSpecificSounds`.
     UnitSounds,
     Other,
@@ -505,7 +487,10 @@ impl ObjectFiles {
                 shroud_clearing_range: -1.0,
                 granted: Vec::new(),
                 radar_priority: RadarPriority::Unset,
-                garrisons: false,
+                contain: None,
+                transport_slots: 0,
+                experience: IniExperience::default(),
+                powers: IniPowers::default(),
             },
             Some(base) => IniObject {
                 id,
@@ -591,44 +576,6 @@ impl Index<ObjectId> for ObjectIni {
 
     fn index(&self, id: ObjectId) -> &IniObject {
         &self.files[id]
-    }
-}
-
-impl ObjectKinds {
-    /// Sets the kinds by a `KindOf` line's flags, as `BitFlags::parse` does; a kind the import
-    /// does not read changes nothing.
-    fn set_by(&mut self, at: &IniLine<'_>) -> Result<(), IniError> {
-        at.set_flags(self)
-    }
-
-    /// Sets or clears the kind `name`, of either case.
-    fn set_kind(&mut self, name: &str, set: bool) {
-        let kind = match name.to_ascii_lowercase().as_str() {
-            OPTIMIZED_TREE => &mut self.optimized_tree,
-            PROP => &mut self.prop,
-            CLEARED_BY_BUILD => &mut self.cleared_by_build,
-            WALK_ON_TOP_OF_WALL => &mut self.walk_on_top_of_wall,
-            STRUCTURE => &mut self.structure,
-            MP_COUNT_FOR_VICTORY => &mut self.mp_count_for_victory,
-            FS_BASE_DEFENSE => &mut self.fs_base_defense,
-            INFANTRY => &mut self.infantry,
-            VEHICLE => &mut self.vehicle,
-            HULK => &mut self.hulk,
-            CAPTURABLE => &mut self.capturable,
-            _ => return,
-        };
-        *kind = set;
-    }
-}
-
-impl FlagSet for ObjectKinds {
-    fn clear(&mut self) {
-        *self = Self::default();
-    }
-
-    fn set(&mut self, name: &str, on: bool) -> bool {
-        self.set_kind(name, on);
-        true
     }
 }
 
@@ -731,6 +678,11 @@ impl DrawModule {
             "snow" => conditions.snow,
             _ => false,
         };
+        self.best_state(held).drawn
+    }
+
+    /// Its state drawn while the flags `held` holds are set, as `drawn` finds it.
+    pub(crate) fn best_state(&self, held: impl Fn(&str) -> bool) -> ModuleState<'_> {
         let held = |flag: &String| held(flag) && !self.ignored.flags.contains(flag);
         let mut best = None;
         let (mut most, mut fewest) = (0, usize::MAX);
@@ -739,7 +691,7 @@ impl DrawModule {
                 let common = set.flags.iter().filter(|flag| held(flag)).count();
                 let lacked = set.flags.len() - common;
                 if common > most || (common >= most && lacked < fewest) {
-                    (best, most, fewest) = (Some(state.drawn), common, lacked);
+                    (best, most, fewest) = (Some(state), common, lacked);
                 }
             }
         }
@@ -923,11 +875,13 @@ impl IniObject {
     /// game forces fluff onto it; any other the sim.
     pub(crate) const fn placed_as(&self) -> PlacedAs {
         let kinds = self.kinds;
-        if self.is_bridge || kinds.walk_on_top_of_wall {
+        if self.is_bridge || kinds.holds(ObjectKind::WalkOnTopOfWall) {
             PlacedAs::Bridge
-        } else if kinds.optimized_tree {
+        } else if kinds.holds(ObjectKind::OptimizedTree) {
             PlacedAs::Tree
-        } else if kinds.prop || (kinds.cleared_by_build && self.fence_width == 0.0) {
+        } else if kinds.holds(ObjectKind::Prop)
+            || (kinds.holds(ObjectKind::ClearedByBuild) && self.fence_width == 0.0)
+        {
             PlacedAs::Prop
         } else {
             PlacedAs::Unit
@@ -1022,7 +976,11 @@ impl IniObject {
     /// radar draws.
     pub(crate) const fn radar_priority(&self) -> RadarPriority {
         match self.radar_priority {
-            RadarPriority::Unset if self.garrisons || self.kinds.capturable => RadarPriority::Shown,
+            RadarPriority::Unset
+                if self.garrisons() || self.kinds.holds(ObjectKind::Capturable) =>
+            {
+                RadarPriority::Shown
+            }
             priority => priority,
         }
     }
@@ -1031,40 +989,69 @@ impl IniObject {
         &self.upgrades
     }
 
+    /// Its contain module, if it has one.
+    pub(crate) const fn contain(&self) -> Option<&IniContain> {
+        self.contain.as_ref()
+    }
+
+    /// Whether a `GarrisonContain` holds its garrison.
+    pub(crate) const fn garrisons(&self) -> bool {
+        matches!(
+            &self.contain,
+            Some(IniContain {
+                class: ContainClass::Garrison,
+                ..
+            })
+        )
+    }
+
+    /// The room it takes of a transport, its `TransportSlotCount`: 0 for one no transport takes.
+    pub(crate) const fn transport_slots(&self) -> i32 {
+        self.transport_slots
+    }
+
+    /// Its kinds of `KindOf` that the import reads.
+    pub(crate) const fn kinds(&self) -> ObjectKinds {
+        self.kinds
+    }
+
     /// Whether it counts for a multiplayer victory: a structure of the kind
     /// `MP_COUNT_FOR_VICTORY`, as `Team::hasAnyBuildings` counts it.
     pub(crate) const fn counts_for_victory(&self) -> bool {
-        self.kinds.structure && self.kinds.mp_count_for_victory
+        self.kinds.holds(ObjectKind::Structure) && self.kinds.holds(ObjectKind::MpCountForVictory)
     }
 
     /// Whether it is a structure, of `KindOf`.
     pub(crate) const fn is_structure(&self) -> bool {
-        self.kinds.structure
-    }
-
-    /// Whether it is a base defense, of `KindOf`'s `FS_BASE_DEFENSE`.
-    pub(crate) const fn is_base_defense(&self) -> bool {
-        self.kinds.fs_base_defense
-    }
-
-    /// Whether it is infantry, of `KindOf`.
-    pub(crate) const fn is_infantry(&self) -> bool {
-        self.kinds.infantry
+        self.kinds.holds(ObjectKind::Structure)
     }
 
     /// Whether it is a vehicle, of `KindOf`.
     pub(crate) const fn is_vehicle(&self) -> bool {
-        self.kinds.vehicle
+        self.kinds.holds(ObjectKind::Vehicle)
+    }
+
+    /// Whether it may answer an ally's call to retaliate: neither `IMMOBILE`, a `DRONE` nor
+    /// `CANNOT_RETALIATE`, as `AIUpdateInterface::shouldRetaliate` refuses them.
+    pub(crate) const fn may_retaliate(&self) -> bool {
+        !(self.kinds.holds(ObjectKind::Immobile)
+            || self.kinds.holds(ObjectKind::Drone)
+            || self.kinds.holds(ObjectKind::CannotRetaliate))
     }
 
     /// Whether it is a hulk, of `KindOf`: a wreck of a death, which no rule reads.
     pub(crate) const fn is_hulk(&self) -> bool {
-        self.kinds.hulk
+        self.kinds.holds(ObjectKind::Hulk)
     }
 
     /// Its mass, its `PhysicsBehavior`'s, which a force pushes it by.
     pub(crate) const fn mass(&self) -> f32 {
         self.mass
+    }
+
+    /// Its `VisionRange`, 0 when absent.
+    pub(crate) const fn vision_range(&self) -> f32 {
+        self.vision_range
     }
 
     /// How far it clears the shroud for its player: its `ShroudClearingRange`, or its
@@ -1075,6 +1062,17 @@ impl IniObject {
         } else {
             self.shroud_clearing_range
         }
+    }
+
+    /// Its special powers and its heal burst.
+    pub(crate) const fn powers(&self) -> &IniPowers {
+        &self.powers
+    }
+
+    /// Its veterancy: what its death gives, what each level needs, whether it gains any, and the
+    /// levels it is made at.
+    pub(crate) const fn experience(&self) -> &IniExperience {
+        &self.experience
     }
 
     /// The least and the most of its lifetime in milliseconds, its `LifetimeUpdate`'s; none for
@@ -1155,7 +1153,10 @@ impl Reading {
             | Block::Physics
             | Block::Lifetime
             | Block::GrantUpgrade
+            | Block::VeterancyGain
+            | Block::Power(_)
             | Block::Death
+            | Block::Contain
             | Block::UnitSounds
             | Block::Other => Ok(None),
         }
@@ -1374,6 +1375,21 @@ impl Reading {
                     self.stack.push(Block::Other);
                 }
             }
+            Block::Power(module) => {
+                let module = *module;
+                let open = self.object.as_mut().expect("a module is an object's");
+                open.object.powers.module_field(module, word, at)?;
+                if ObjectFiles::opens(word, tokens) {
+                    self.stack.push(Block::Other);
+                }
+            }
+            Block::VeterancyGain => {
+                let open = self.object.as_mut().expect("a module is an object's");
+                open.object.experience.start_field(word, at)?;
+                if ObjectFiles::opens(word, tokens) {
+                    self.stack.push(Block::Other);
+                }
+            }
             Block::GrantUpgrade => {
                 let open = self.object.as_mut().expect("a module is an object's");
                 if word == "upgradetogrant" {
@@ -1444,6 +1460,14 @@ impl Reading {
                     return Ok(());
                 }
                 if word == "behavior"
+                    && let Some(module) = module
+                        .as_deref()
+                        .and_then(|module| open.object.powers.module(module))
+                {
+                    self.stack.push(Block::Power(module));
+                    return Ok(());
+                }
+                if word == "behavior"
                     && let Some(module) = tokens
                         .get(1)
                         .and_then(|class| IniUpgradeModule::module(class))
@@ -1457,14 +1481,21 @@ impl Reading {
                         "physicsbehavior" => Some(Block::Physics),
                         "lifetimeupdate" => Some(Block::Lifetime),
                         "grantupgradecreate" => Some(Block::GrantUpgrade),
-                        "garrisoncontain" => {
-                            open.object.garrisons = true;
-                            None
+                        "veterancygaincreate" => {
+                            open.object.experience.starts.push(IniStart::default());
+                            Some(Block::VeterancyGain)
                         }
                         _ => None,
                     })
                 {
                     self.stack.push(block);
+                    return Ok(());
+                }
+                if word == "behavior"
+                    && let Some(contain) = tokens.get(1).and_then(|class| IniContain::module(class))
+                {
+                    open.object.contain = Some(contain);
+                    self.stack.push(Block::Contain);
                     return Ok(());
                 }
                 if word == "behavior"
@@ -1499,6 +1530,16 @@ impl Reading {
                 }
                 self.object_field(word, at)?;
             }
+            Block::Contain => {
+                let open = self.object.as_mut().expect("a module is an object's");
+                let contain = open.object.contain.as_mut();
+                contain
+                    .expect("a contain block opened its module")
+                    .field(word, at)?;
+                if ObjectFiles::opens(word, tokens) {
+                    self.stack.push(Block::Other);
+                }
+            }
             Block::UnitSounds => {
                 let open = self.object.as_mut().expect("a block is an object's");
                 open.object.voices.unit_specific(word, at)?;
@@ -1525,6 +1566,10 @@ impl Reading {
                     | "visionrange"
                     | "shroudclearingrange"
                     | "radarpriority"
+                    | "experiencevalue"
+                    | "experiencerequired"
+                    | "istrainable"
+                    | "transportslotcount"
             ) || word.starts_with("geometry") =>
             {
                 let open = self
@@ -1543,7 +1588,11 @@ impl Reading {
                     _ if open.reskin => {}
                     "kindof" => object.kinds.set_by(at)?,
                     "isbridge" => object.is_bridge = at.yes()?,
+                    "transportslotcount" => object.transport_slots = at.int()?,
                     "visionrange" => object.vision_range = at.real()?,
+                    "experiencevalue" | "experiencerequired" | "istrainable" => {
+                        object.experience.field(word, at)?;
+                    }
                     "shroudclearingrange" => object.shroud_clearing_range = at.real()?,
                     "radarpriority" => {
                         object.radar_priority = match at.value()?.to_ascii_uppercase().as_str() {

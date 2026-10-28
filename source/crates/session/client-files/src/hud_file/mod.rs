@@ -5,12 +5,14 @@ use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
 use crate::hud_file::minimap::Minimap;
 use crate::hud_file::panel_grid::PanelGrid;
+use crate::panel_icon::PanelIcon;
 
 /// A mode's `client/hud.toml`: which units show their bars, how a hit shows, the command panel's
-/// grid and the minimap; a mode of no file, or a field the file does not give, shows every unit's
-/// bars, a ring for each hit, the default grid and the default minimap (02-engine-core.md, Bars in
-/// screen space; 02-engine-core.md, The mode chooses its hit mark; 02-engine-core.md, A look
-/// places its buttons).
+/// grid, the minimap, and the icon each level from 2 shows beside its unit's bars; a mode of no
+/// file, or a field the file does not give, shows every unit's bars, a ring for each hit, the
+/// default grid, the default minimap and no level (02-engine-core.md, Bars in screen space;
+/// 02-engine-core.md, The mode chooses its hit mark; 02-engine-core.md, A look places its buttons;
+/// generals.md, A level shows its icon).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HudFile {
@@ -18,6 +20,16 @@ pub struct HudFile {
     pub hit_mark: HitMark,
     pub panel: PanelGrid,
     pub minimap: Minimap,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub level_icons: Vec<PanelIcon>,
+}
+
+impl HudFile {
+    /// The icon a unit at `level` shows; none at level 1 and past the last icon.
+    pub fn level_icon(&self, level: u32) -> Option<&PanelIcon> {
+        let at = usize::try_from(level).ok()?.checked_sub(2)?;
+        self.level_icons.get(at)
+    }
 }
 
 /// Which units show their bars: all of them, as a MOBA shows them; or those the player selected

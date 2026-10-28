@@ -2,6 +2,9 @@ use std::num::NonZeroU32;
 
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{BlockKinds, IniText};
+use crate::zero_hour::format::ini::weapon_bonus::{
+    DAMAGE, GARRISONED, RANGE, RATE_OF_FIRE, VETERAN, WeaponBonusLine,
+};
 
 /// What the import reads of Zero Hour's `GameData.ini` files, as `GlobalData` reads them: each
 /// field from the game's default until a file sets it, a later file's value replacing an earlier
@@ -48,6 +51,37 @@ pub(crate) struct GameDataIni {
     /// `FogAlpha` and `ShroudAlpha`, each a byte (`W3DShroud::setShroudLevel`).
     pub(crate) shroud_color: [u8; 3],
     pub(crate) shroud_levels: [u8; 3],
+    /// The bonuses of a veteran, an elite and a heroic object, of the global `WeaponBonus`
+    /// lines and `HealthBonus_Veteran`, `_Elite` and `_Heroic`, each 1 by default, as the
+    /// game's `WeaponBonusSet` and `GlobalData` start them.
+    pub(crate) veterancy: [VeterancyBonus; 3],
+    /// The bonus of a garrisoned object, of the global `WeaponBonus` lines of `GARRISONED`.
+    pub(crate) garrison: GarrisonBonus,
+}
+
+/// What a garrison multiplies its riders' weapons' range and damage by, each 1 by default.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct GarrisonBonus {
+    pub(crate) range: f32,
+    pub(crate) damage: f32,
+}
+
+/// What a level of veterancy multiplies: its weapons' damage and rate of fire, and its most
+/// health.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct VeterancyBonus {
+    pub(crate) damage: f32,
+    pub(crate) rate_of_fire: f32,
+    pub(crate) health: f32,
+}
+
+impl VeterancyBonus {
+    /// No bonus.
+    const NONE: Self = Self {
+        damage: 1.0,
+        rate_of_fire: 1.0,
+        health: 1.0,
+    };
 }
 
 /// What the terrain's conversion reads of `GameData.ini`.
@@ -88,6 +122,11 @@ impl Default for GameDataIni {
             sell_share: 1.0,
             shroud_color: [u8::MAX; 3],
             shroud_levels: [255, 127, 0],
+            veterancy: [VeterancyBonus::NONE; 3],
+            garrison: GarrisonBonus {
+                range: 1.0,
+                damage: 1.0,
+            },
         }
     }
 }
@@ -137,6 +176,42 @@ impl GameDataIni {
                             *channel = u8::try_from(value)
                                 .map_err(|_| IniError::Range { line: line.number })?;
                         }
+                    }
+                    "weaponbonus" => {
+                        let bonus = WeaponBonusLine::read(line)?;
+                        let level = bonus
+                            .condition
+                            .checked_sub(VETERAN)
+                            .filter(|&level| level < 3);
+                        if let Some(level) = level {
+                            let veterancy = &mut self.veterancy[level];
+                            match bonus.field {
+                                DAMAGE => veterancy.damage = bonus.value,
+                                RATE_OF_FIRE => veterancy.rate_of_fire = bonus.value,
+                                _ => {}
+                            }
+                        }
+                        if bonus.condition == GARRISONED {
+                            match bonus.field {
+                                DAMAGE => self.garrison.damage = bonus.value,
+                                RANGE => self.garrison.range = bonus.value,
+                                _ => {}
+                            }
+                        }
+                    }
+                    health @ ("healthbonus_veteran"
+                    | "healthbonus_elite"
+                    | "healthbonus_heroic") => {
+                        let at = [
+                            "healthbonus_veteran",
+                            "healthbonus_elite",
+                            "healthbonus_heroic",
+                        ]
+                        .iter()
+                        .position(|&word| word == health)
+                        .expect("one of the levels");
+                        // `INI::parsePercentToReal`.
+                        self.veterancy[at].health = line.real()? / 100.0;
                     }
                     level @ ("clearalpha" | "fogalpha" | "shroudalpha") => {
                         let at = ["clearalpha", "fogalpha", "shroudalpha"]

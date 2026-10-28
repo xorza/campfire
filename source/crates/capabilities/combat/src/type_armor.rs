@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
 
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_script::{Filter, UnknownName};
 use campfire_units::UnitTypes;
-use campfire_values::{DamageKind, Named, Names, TagSet, UnitType};
+use campfire_values::{DamageKind, Named, Names, TagSet, UnitTags, UnitType};
 
 use crate::Combat;
 use crate::armor::Armor;
@@ -35,6 +37,19 @@ impl TypeArmor {
             .iter()
             .find(|tagged| tagged.when.selects_tags(tags));
         tagged.map(|tagged| &tagged.armor).or(self.armor.as_ref())
+    }
+}
+
+impl TypeArmor {
+    /// The armor the unit `entity` of `world` takes damage through, by its type and its tags; none
+    /// takes the whole.
+    pub(crate) fn of_unit(world: &World, entity: Entity) -> Option<&Armor> {
+        let unit_type = world.get::<UnitType>(entity)?;
+        let tags = world.get::<UnitTags>(entity);
+        let armors = world.get_resource::<ById<UnitType, Self>>()?;
+        armors
+            .get(*unit_type)?
+            .of(tags.map_or(TagSet::NONE, |tags| tags.tags))
     }
 }
 

@@ -16,6 +16,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::track_book::TrackBook;
+use crate::track_data::TrackThresholds;
 use crate::track_set::TrackSet;
 
 /// A unit's experience and level on each of its tracks, in the order of their ids. A level is
@@ -75,9 +76,14 @@ impl Experience {
     }
 
     /// Adds `amount`, not negative, to `track`, which the unit has, at most up to the largest
-    /// number: its level rises to the one the experience reaches on `book`'s track, if that is
+    /// number: its level rises to the one the experience reaches by `thresholds`, if that is
     /// higher.
-    pub fn add(&mut self, track: TrackId, amount: Num, book: &TrackBook) -> TrackRaise {
+    pub fn add(
+        &mut self,
+        track: TrackId,
+        amount: Num,
+        thresholds: TrackThresholds<'_>,
+    ) -> TrackRaise {
         debug_assert!(amount >= Num::ZERO, "experience added is not negative");
         let held = self
             .tracks
@@ -86,7 +92,7 @@ impl Experience {
             .expect("a unit given experience has the track");
         held.xp = held.xp.checked_add(amount).unwrap_or(Num::MAX);
         let from = held.level;
-        held.level = from.max(book.level_at(track, held.xp));
+        held.level = from.max(thresholds.level_at(held.xp));
         TrackRaise {
             from,
             to: held.level,
@@ -167,26 +173,26 @@ mod tests {
         assert_eq!(book.names().name(track(1)), Some("valor"));
         // A threshold met is a level: 99.99… is 1, 100 is 2, 299 is 2, 300 and anything past
         // are 3.
-        let level = |xp| book.level_at(track(0), xp).get();
+        let level = |xp| book.thresholds(track(0)).level_at(xp).get();
         let below = Num::int(100) - Num::EPSILON;
         let levels = [below, Num::int(100), Num::int(299), Num::int(300), Num::MAX].map(level);
         assert_eq!(levels, [1, 2, 2, 3, 3]);
-        assert_eq!(book.level_at(track(1), Num::int(50)).get(), 2);
+        assert_eq!(book.thresholds(track(1)).level_at(Num::int(50)).get(), 2);
 
         // Experience adds up to the largest number at most, and a level set past what it reaches
         // stays: a level is state. Each track holds its own level, the `level` track's too.
         let mut experience = Experience::new(TrackSet::from([track(0), track(1)]));
         let level_of = |experience: &Experience, at| experience.get(track(at)).unwrap().level.get();
         assert_eq!([0, 1].map(|at| level_of(&experience, at)), [1, 1]);
-        let raised = experience.add(track(0), Num::int(150), &book);
+        let raised = experience.add(track(0), Num::int(150), book.thresholds(track(0)));
         assert_eq!((raised.from.get(), raised.to.get()), (1, 2));
-        let raised = experience.add(track(0), Num::MAX, &book);
+        let raised = experience.add(track(0), Num::MAX, book.thresholds(track(0)));
         assert_eq!((raised.from.get(), raised.to.get()), (2, 3));
         assert_eq!(experience.get(track(0)).unwrap().xp, Num::MAX);
         assert_eq!([0, 1].map(|at| level_of(&experience, at)), [3, 1]);
         let mut ahead = Experience::new(TrackSet::from([track(1)]));
         ahead.tracks_mut()[0].level = Level::new(5).unwrap();
-        let raised = ahead.add(track(1), Num::int(60), &book);
+        let raised = ahead.add(track(1), Num::int(60), book.thresholds(track(1)));
         assert_eq!((raised.from.get(), raised.to.get()), (5, 5));
         assert_eq!(ahead.get(track(0)), None);
     }

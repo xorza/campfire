@@ -1,6 +1,8 @@
 use campfire_common::DeclaredName;
 use campfire_values::{FilterData, FilterTag, RelationSet, Stat, TagFilterData};
 
+use crate::zero_hour::format::ini::object_ini::object_kinds::ObjectKind;
+
 /// The names the import's stages write that the rules package beside the mode declares,
 /// `source/packages/zero-hour/data/rules.toml`, each checked once as the import's rules are
 /// read, and the filters the stages write, made of them: a stage takes a name, never its text.
@@ -14,15 +16,31 @@ pub(crate) struct RulesNames {
     pub(crate) life_stat: Stat,
     /// The stat a stage of continuous fire adds to.
     pub(crate) rate_of_fire: Stat,
+    /// The stats a level of veterancy adds to every weapon's damage and rate of fire
+    /// (generals.md, A weapon's bonus is a sum of stats).
+    pub(crate) veterancy_damage: Stat,
+    pub(crate) veterancy_rate: Stat,
+    /// The stats a garrison's modifier adds to its riders' weapons' range and damage, and the
+    /// modifier, which the import gives of `GameData.ini`'s `GARRISONED` bonuses (transports.md,
+    /// A container's modifier holds on its riders).
+    pub(crate) garrison_range: Stat,
+    pub(crate) garrison_damage: Stat,
+    pub(crate) garrisoned: DeclaredName,
     /// The tag of a type that counts for a multiplayer victory (09-zero-hour.md, Defeat by the
     /// last building that counts).
     pub(crate) counts_for_victory: DeclaredName,
-    /// The tags of a structure, a wall, a base defense and infantry, of the objects' `KindOf`
-    /// and `FenceWidth`.
+    /// The tags of a structure, a wall, a base defense, infantry, a vehicle and an aircraft, of the
+    /// objects' `KindOf` and `FenceWidth`.
     pub(crate) structure: DeclaredName,
     pub(crate) wall: DeclaredName,
     pub(crate) base_defense: DeclaredName,
     pub(crate) infantry: DeclaredName,
+    pub(crate) vehicle: DeclaredName,
+    pub(crate) aircraft: DeclaredName,
+    /// The tags of a huge vehicle and of one no garrison takes, which a container refuses
+    /// (transports.md, A container says who rides).
+    pub(crate) huge_vehicle: DeclaredName,
+    pub(crate) no_garrison: DeclaredName,
     /// The tag of a unit that gives its player a radar, which the minimap shows by
     /// (02-engine-core.md, A minimap by a radar tag).
     pub(crate) radar: DeclaredName,
@@ -53,6 +71,10 @@ pub(crate) struct RulesNames {
     /// The slot kinds of a type's weapons and of its trains, builds and gather.
     pub(crate) weapon_slot: DeclaredName,
     pub(crate) command_slot: DeclaredName,
+    /// The slot kind of a rider's entry, and the entry, an action of the `enter` kind
+    /// (transports.md, An entry is an action of the container's).
+    pub(crate) use_slot: DeclaredName,
+    pub(crate) enter: DeclaredName,
     /// Every unit, of no tag.
     pub(crate) every: FilterData,
     /// Every unit of a team the unit's own regards as hostile.
@@ -72,6 +94,22 @@ pub(crate) struct RulesNames {
     pub(crate) allied_structures: FilterData,
     /// Every wall.
     pub(crate) walls: FilterData,
+}
+
+impl RulesNames {
+    /// The tag of each kind of `KindOf` that a tag of its own says, which a type of the kind
+    /// holds and a container's filters test.
+    pub(crate) const fn kind_tags(&self) -> [(ObjectKind, &DeclaredName); 7] {
+        [
+            (ObjectKind::Structure, &self.structure),
+            (ObjectKind::FsBaseDefense, &self.base_defense),
+            (ObjectKind::Infantry, &self.infantry),
+            (ObjectKind::Vehicle, &self.vehicle),
+            (ObjectKind::Aircraft, &self.aircraft),
+            (ObjectKind::HugeVehicle, &self.huge_vehicle),
+            (ObjectKind::NoGarrison, &self.no_garrison),
+        ]
+    }
 }
 
 impl Default for RulesNames {
@@ -104,10 +142,21 @@ impl Default for RulesNames {
             money: name("money"),
             life_stat: stat(&life),
             rate_of_fire: stat(&name("rate_of_fire")),
+            veterancy_damage: stat(&name("veterancy_damage")),
+            veterancy_rate: stat(&name("veterancy_rate")),
+            garrison_range: stat(&name("garrison_range")),
+            garrison_damage: stat(&name("garrison_damage")),
+            garrisoned: name("garrisoned"),
+            huge_vehicle: name("huge_vehicle"),
+            no_garrison: name("no_garrison"),
+            use_slot: name("use"),
+            enter: name("enter"),
             counts_for_victory: name("counts_for_victory"),
             base_defense: name("base_defense"),
             radar: name("radar"),
             infantry: name("infantry"),
+            vehicle: name("vehicle"),
+            aircraft: name("aircraft"),
             start: name("start"),
             rally: name("rally"),
             player_slot: name("player_slot"),

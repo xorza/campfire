@@ -13,16 +13,21 @@ pub(crate) struct PlayerTemplateIni {
 }
 
 /// What the import reads of a player template: whether a player may play it, its
-/// `PlayableSide`, its `BaseSide`, its `PreferredColor`, and the objects a skirmish starts its
-/// player with, its `StartingBuilding` and its `StartingUnit0` to `StartingUnit9`, each none or no
-/// when absent, as the template starts.
+/// `PlayableSide`, its `Side`, whose skill sets its skirmish AI buys, its `BaseSide`, its `PreferredColor`, the objects a skirmish starts its player
+/// with, its `StartingBuilding` and its `StartingUnit0` to `StartingUnit9`, the sciences its
+/// player holds from the start, `IntrinsicSciences`, and the command sets of the sciences it buys,
+/// `PurchaseScienceCommandSetRank1`, `Rank3` and `Rank8`, each none or no when absent, as the
+/// template starts.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct PlayerTemplate {
     pub(crate) playable: bool,
+    pub(crate) side: Option<String>,
     pub(crate) base_side: Option<String>,
     pub(crate) color: Option<[u8; 3]>,
     pub(crate) building: Option<String>,
     units: [Option<String>; Self::UNITS],
+    pub(crate) intrinsic: Vec<String>,
+    pub(crate) purchases: [Option<String>; 3],
 }
 
 impl PlayerTemplateIni {
@@ -78,6 +83,7 @@ impl PlayerTemplate {
             .and_then(|digit| digit.parse::<usize>().ok());
         match (word, unit) {
             ("playableside", _) => self.playable = at.yes()?,
+            ("side", _) => self.side = Some(at.value()?.to_owned()),
             ("baseside", _) => self.base_side = Some(at.value()?.to_owned()),
             ("preferredcolor", _) => {
                 let channels = at.int_coord(["R", "G", "B"])?;
@@ -88,6 +94,20 @@ impl PlayerTemplate {
                 self.color = Some([r?, g?, b?]);
             }
             ("startingbuilding", _) => self.building = Some(at.value()?.to_owned()),
+            ("intrinsicsciences", _) => {
+                let named = at.tokens[1..].iter().copied();
+                let named = named.filter(|name| !name.eq_ignore_ascii_case("none"));
+                self.intrinsic = named.map(str::to_owned).collect();
+            }
+            ("purchasesciencecommandsetrank1", _) => {
+                self.purchases[0] = Some(at.value()?.to_owned());
+            }
+            ("purchasesciencecommandsetrank3", _) => {
+                self.purchases[1] = Some(at.value()?.to_owned());
+            }
+            ("purchasesciencecommandsetrank8", _) => {
+                self.purchases[2] = Some(at.value()?.to_owned());
+            }
             (_, Some(index)) => self.units[index] = Some(at.value()?.to_owned()),
             _ => {}
         }
@@ -110,6 +130,8 @@ PlayerTemplate FactionAmerica\r
   PlayableSide = Yes\r
   StartingBuilding = AmericaCommandCenter\r
   StartingUnit0 = AmericaVehicleDozer ; the builder\r
+  IntrinsicSciences = SCIENCE_AMERICA\r
+  PurchaseScienceCommandSetRank3 = SCIENCE_AMERICA_CommandSetRank3\r
 End\r
 ";
 }
@@ -127,7 +149,23 @@ mod tests {
         assert_eq!(america.building.as_deref(), Some("AmericaCommandCenter"));
         assert_eq!(america.units().collect::<Vec<_>>(), ["AmericaVehicleDozer"]);
         assert_eq!(america.base_side.as_deref(), Some("USA"));
-        assert_eq!(ini.templates["FactionObserver"], PlayerTemplate::default());
+        assert_eq!(america.intrinsic, ["SCIENCE_AMERICA"]);
+        assert_eq!(
+            america.purchases,
+            [
+                None,
+                Some("SCIENCE_AMERICA_CommandSetRank3".to_owned()),
+                None
+            ]
+        );
+        assert_eq!(america.side.as_deref(), Some("America"));
+        assert_eq!(
+            ini.templates["FactionObserver"],
+            PlayerTemplate {
+                side: Some("Observer".to_owned()),
+                ..PlayerTemplate::default()
+            }
+        );
         // Only America is played.
         let played: Vec<&str> = ini.playable().map(|(name, _)| name).collect();
         assert_eq!(played, ["FactionAmerica"]);
@@ -144,11 +182,16 @@ mod tests {
             ["AmericaVehicleDozer", "Ranger"]
         );
         assert!(!ini.templates.contains_key("factionamerica"));
-        // The civilians' color, by name; a channel past a byte is refused.
-        ini.read(b"PlayerTemplate FactionCivilian\n PreferredColor = R:255 G:255 B:255\nEnd\n")
-            .unwrap();
+        // The civilians' color, by name, and no science of `None`; a channel past a byte is
+        // refused.
+        ini.read(
+            b"PlayerTemplate FactionCivilian\n PreferredColor = R:255 G:255 B:255\n \
+              IntrinsicSciences = None\nEnd\n",
+        )
+        .unwrap();
         let civilian = ini.named("FactionCivilian").unwrap();
         assert_eq!(civilian.color, Some([255; 3]));
+        assert!(civilian.intrinsic.is_empty());
         assert_eq!(ini.named("FactionAmerica").unwrap().color, None);
         let wrong = b"PlayerTemplate A\n PreferredColor = R:256 G:0 B:0\nEnd\n";
         assert!(PlayerTemplateIni::default().read(wrong).is_err());

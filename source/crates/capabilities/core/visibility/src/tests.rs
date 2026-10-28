@@ -273,10 +273,10 @@ fn a_host_sets_only_what_the_mode_leaves_it_each_once() {
 fn a_visibility_encodes_as_its_bytes_and_reads_back_only_from_them() {
     // The kinds a mode may set, in their order: life, pools, modifiers, cooldowns, progression,
     // inventory, mode_state, resources, supply, queues, player_modifiers, the three unit state
-    // fields' classes and the three player state fields'; then the fog, what a player out of
-    // play sees, and the spectators.
+    // fields' classes, the three player state fields', player_cooldowns and riders; then the fog,
+    // what a player out of play sees, and the spectators.
     let default = [
-        7, 0, 7, 0, 0, 0, 7, 0, 0, 0, 7, 0, 1, 7, 0, 1, 7, 0, 0, 0, 0, 0, 0,
+        7, 0, 7, 0, 0, 0, 7, 0, 0, 0, 7, 0, 1, 7, 0, 1, 7, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
     assert_eq!(Visibility::DEFAULT.encode(), default);
     assert_eq!(Visibility::decode(&default), Ok(Visibility::DEFAULT));
@@ -299,7 +299,7 @@ host = ["spectators", "out"]
     assert_eq!(
         bytes,
         [
-            5, 0, 7, 0, 0, 5, 7, 0, 0, 0, 7, 0, 1, 7, 0, 1, 7, 1, 1, 2, 1, 0, 0
+            5, 0, 7, 0, 0, 5, 7, 0, 0, 0, 7, 0, 1, 7, 0, 1, 7, 0, 0, 1, 1, 2, 1, 0, 0
         ]
     );
     assert_eq!(Visibility::decode(&bytes), Ok(session));
@@ -327,14 +327,14 @@ host = ["spectators", "out"]
         flawed(14, 1),
         Err(VisibilityDecodeError::Audience(DataKind::PlayerStateOwner))
     );
-    assert_eq!(flawed(17, 2), Err(VisibilityDecodeError::Spectators));
-    assert_eq!(flawed(18, 2), Err(VisibilityDecodeError::Out));
+    assert_eq!(flawed(19, 2), Err(VisibilityDecodeError::Spectators));
+    assert_eq!(flawed(20, 2), Err(VisibilityDecodeError::Out));
     assert_eq!(
-        Visibility::decode(&default[..22]),
-        Err(VisibilityDecodeError::Length(22))
+        Visibility::decode(&default[..24]),
+        Err(VisibilityDecodeError::Length(24))
     );
     assert_eq!(
         Visibility::decode(&[default.as_slice(), &[0]].concat()),
-        Err(VisibilityDecodeError::Length(24))
+        Err(VisibilityDecodeError::Length(26))
     );
 }

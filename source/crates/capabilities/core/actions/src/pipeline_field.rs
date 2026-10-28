@@ -19,6 +19,7 @@ pub enum PipelineField {
     Charging,
     PassiveModifier,
     PassiveWhileReady,
+    CooldownHolder,
     Delivery,
     Params,
     OnResolve,

@@ -15,6 +15,7 @@ pub enum ActionKind {
     Research,
     Build,
     Gather,
+    Enter,
 }
 
 impl ActionKind {
@@ -24,7 +25,7 @@ impl ActionKind {
         match self {
             Self::Cast => Block::Cast,
             Self::Attack => Block::Attack,
-            Self::Use | Self::Build | Self::Gather => Block::Use,
+            Self::Use | Self::Build | Self::Gather | Self::Enter => Block::Use,
             Self::Train | Self::Research => Block::Produce,
         }
     }

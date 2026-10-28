@@ -419,6 +419,7 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
         track_widths: BTreeMap::from([(name("tank"), 17.5)]),
         helipads: BTreeMap::new(),
         airfields: BTreeMap::new(),
+        fire_points: BTreeMap::new(),
     };
     let units = &mut looks.units;
     let fall = DeathFall {

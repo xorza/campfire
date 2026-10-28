@@ -20,6 +20,7 @@ internals = [
     "campfire-declarations/internals",
     "campfire-geometry/internals",
     "campfire-import/internals",
+    "campfire-interaction/internals",
     "campfire-logging/internals",
     "campfire-math/internals",
     "campfire-navigation/internals",
@@ -35,6 +36,7 @@ internals = [
     "campfire-sim/internals",
     "campfire-stats/internals",
     "campfire-values/internals",
+    "campfire-progression/internals",
     "campfire-vision/internals",
     "dep:campfire-measure",
     "dep:criterion",
@@ -52,6 +54,7 @@ campfire-common.workspace = true
 campfire-declarations.workspace = true
 campfire-geometry.workspace = true
 campfire-harness.workspace = true
+campfire-interaction.workspace = true
 campfire-import.workspace = true
 campfire-logging.workspace = true
 campfire-math.workspace = true
@@ -72,6 +75,7 @@ campfire-stats.workspace = true
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-units = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["ecs"] }
+campfire-progression.workspace = true
 campfire-vision.workspace = true
 
 clap = { workspace = true, features = [

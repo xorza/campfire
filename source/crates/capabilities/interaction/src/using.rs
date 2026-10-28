@@ -1,13 +1,15 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_actions::ActionSlots;
+use campfire_actions::{ActionSlots, SlotKind};
 use campfire_declarations::ById;
 use campfire_players::OnMatch;
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_units::Dead;
 use campfire_values::{ActionId, Relations, TagSet, Team, UnitTags, UnitType};
 
+use crate::enter_spec::EnterSpec;
+use crate::rider_size::RiderSize;
 use crate::use_slot::UseSlot;
 use crate::use_spec::UseSpec;
 
@@ -18,6 +20,8 @@ use crate::use_spec::UseSpec;
 pub struct Using<'w, 's> {
     index: Res<'w, EntityIndex>,
     specs: Res<'w, ById<UnitType, UseSpec>>,
+    entries: Res<'w, ById<UnitType, EnterSpec>>,
+    sizes: Res<'w, ById<UnitType, RiderSize>>,
     slots: Res<'w, ById<UnitType, UseSlot>>,
     relations: OnMatch<'w, 's, Relations>,
     objects: Objects<'w, 's>,
@@ -63,14 +67,39 @@ impl Using<'_, '_> {
         if !spec.admits(relation, tags) {
             return None;
         }
+        Some(UnitUse {
+            slot: Self::use_slot(held, kind),
+            action: spec.action(),
+        })
+    }
+
+    /// The entry of the living unit `container` by the living unit of `rider`: none when the
+    /// container's type has no `enter`, the rider's no `uses` or no size, or the container's
+    /// riders' filter does not select the rider. Whether the container takes it, its room and its
+    /// side among them, its resolve tests (transports.md, An entry is an action of the
+    /// container's).
+    pub fn entry(&self, rider: Entity, container: StableId) -> Option<UnitUse> {
+        let (&container_type, &container_team) =
+            self.objects.get(self.index.get(container)?).ok()?;
+        let spec = self.entries.get(container_type)?;
+        let (&rider_type, &team, tags, held) = self.users.get(rider).ok()?;
+        self.sizes.get(rider_type)?;
+        let kind = self.slots.get(rider_type)?.kind();
+        let relation = self.relations.get().between(container_team, team);
+        let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
+        spec.admits(relation, tags).then(|| UnitUse {
+            slot: Self::use_slot(held, kind),
+            action: spec.action,
+        })
+    }
+
+    /// The slot of the use slot kind `kind` of a unit of `held` slots.
+    fn use_slot(held: &ActionSlots, kind: SlotKind) -> u8 {
         let slot = held.first_of(kind);
         debug_assert!(
             held.slot(slot).is_some_and(|at| at.kind == kind),
             "a user spawns with its use slot"
         );
-        Some(UnitUse {
-            slot,
-            action: spec.action(),
-        })
+        slot
     }
 }

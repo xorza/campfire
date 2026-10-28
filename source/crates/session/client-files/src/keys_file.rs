@@ -27,6 +27,8 @@ pub struct KeysFile {
     pub drop_build: Vec<Chord>,
     /// The chords that show and hide the shop.
     pub shop: Vec<Chord>,
+    /// The chords that show and hide the panel of perks.
+    pub perks: Vec<Chord>,
     /// The chords that pause a local match and play it on, step its speed down and up, save it,
     /// and load its latest save.
     pub pause: Vec<Chord>,
@@ -189,7 +191,7 @@ impl KeysFile {
 }
 
 /// The engine's own keys: Q, W, E and R cast and, with Control, learn; 1 to 6 cast the items; S
-/// stops; Escape drops a build; P shows the shop; Space pauses, minus and equals or the keypad's
+/// stops; Escape drops a build; P shows the shop; G shows the perks; Space pauses, minus and equals or the keypad's
 /// minus and plus step the speed, F5 saves and F9 loads; the arrows scroll, and the keypad's 8, 2,
 /// 4 and 6 zoom and turn, as the arrows do with Alt, for a keyboard with no keypad; the keypad's 5
 /// and Alt with Backspace set the camera back; and Control with the middle button orbits it
@@ -221,6 +223,7 @@ impl Default for KeysFile {
             stop: plain(&[Key::KeyS]),
             drop_build: plain(&[Key::Escape]),
             shop: plain(&[Key::KeyP]),
+            perks: plain(&[Key::KeyG]),
             pause: plain(&[Key::Space]),
             slower: plain(&[Key::Minus, Key::NumpadSubtract]),
             faster: plain(&[Key::Equal, Key::NumpadAdd]),

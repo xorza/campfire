@@ -1,7 +1,9 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, PipelineField, Takes};
+use campfire_actions::{
+    ActionKind, KindSection, KindSections, KindTakes, ListedSpec, PipelineField, Takes,
+};
 use campfire_common::DeclaredName;
 use campfire_declarations::Listed;
 use campfire_script::ApiBuilder;
@@ -51,6 +53,10 @@ impl KindSection for GatherData {
 
     fn numbers(&self) -> Vec<&Ranked<Number>> {
         Vec::new()
+    }
+
+    fn resolves(&self) -> Option<Arc<dyn ListedSpec>> {
+        None
     }
 }
 

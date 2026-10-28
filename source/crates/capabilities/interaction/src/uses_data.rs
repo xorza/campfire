@@ -2,11 +2,11 @@ use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
 use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A unit type's `uses` section, which lets its units use objects: the mode's slot kind of the one
 /// action slot that holds the use under way.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UsesData {
     pub kind: DeclaredName,

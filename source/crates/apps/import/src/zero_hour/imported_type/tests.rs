@@ -3,6 +3,7 @@ use campfire_combat::UnitOffset;
 use campfire_values::FilterData;
 
 use super::*;
+use crate::zero_hour::format::ini::ai_data_ini::samples::AI_DATA;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
 
@@ -200,6 +201,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         flight: None,
         sortie: None,
         acquire: None,
+        retaliate: None,
         leads: false,
         vision: None,
     };
@@ -219,6 +221,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         flight: None,
         sortie: None,
         acquire: None,
+        retaliate: None,
         leads: false,
         vision: None,
     };
@@ -231,11 +234,15 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     // 10 bounds a circle of √(15² + 10²) = √325 = 18.02775637…, in `f32` the nearest of
     // 19 bits past the point, 9,451,736 · 2⁻¹⁹ = 18.0277557373…, exactly 302,455,552 · 2⁻²⁴
     // as a `Num`. Its geometry names no height, so it has the game's default, 1 m. A `VEHICLE`,
-    // it drives through a crowd, of a weight of its radius squared, as every type that drives
+    // tagged `vehicle`, it drives through a crowd, of a weight of its radius squared, as every type that drives
     // weighs (04-capabilities/navigation.md, A unit has a weight).
     let tank = of("Tank").unwrap();
     let radius = Num::from_bits(302_455_552);
-    assert_eq!(tank, drives(half(61), int(90), radius, int(1), Gait::Drive));
+    let vehicle = ImportedType {
+        tags: Some(TypeTagsData(vec![declared("vehicle")])),
+        ..drives(half(61), int(90), radius, int(1), Gait::Drive)
+    };
+    assert_eq!(tank, vehicle);
     assert_eq!(tank.move_speed(), Some(half(61)));
     // The jet only flies: no stats, and no body. The hover craft's first normal locomotor
     // flies, and its second drives, a cylinder's major radius 6.5, 20 m tall.
@@ -268,6 +275,10 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         layer: Some(declared("air")),
     });
     hovers.flight = Some(flight);
+    hovers.tags = Some(TypeTagsData(vec![
+        declared("vehicle"),
+        declared("aircraft"),
+    ]));
     assert_eq!(heli, hovers);
     // The Raptor's wings fly as the helicopter's rotors do, of the same lift and height, at 175
     // m and 120° a second, at least 60 m a second round a circle of 100 m; its sortie waits its
@@ -281,6 +292,10 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         layer: Some(declared("air")),
     });
     flies.flight = Some(flight.winged(wings));
+    flies.tags = Some(TypeTagsData(vec![
+        declared("vehicle"),
+        declared("aircraft"),
+    ]));
     flies.sortie = Some(SortieData {
         pause_ms: 500,
         taxi_speed: int(50),
@@ -543,6 +558,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         flight: None,
         sortie: None,
         acquire: None,
+        retaliate: None,
         leads: false,
         vision: None,
     };
@@ -752,4 +768,59 @@ End
     };
     assert_eq!(tags("Granted"), Some(TypeTagsData(vec![declared("radar")])));
     assert_eq!(tags("Researched"), None);
+}
+
+/// A tank of an AI module that drives and sees 150, one alike that is `IMMOBILE`, and one of no AI
+/// module.
+const ANSWERING: &str = "Object Tank
+  Locomotor = SET_NORMAL TankTreads
+  Behavior = AIUpdateInterface ModuleTag_01
+  End
+  VisionRange = 150.0
+  Geometry = CYLINDER
+  GeometryMajorRadius = 5.0
+End
+Object Fixed
+  KindOf = IMMOBILE
+  Locomotor = SET_NORMAL TankTreads
+  Behavior = AIUpdateInterface ModuleTag_01
+  End
+  VisionRange = 150.0
+  Geometry = CYLINDER
+  GeometryMajorRadius = 5.0
+End
+Object Mindless
+  Locomotor = SET_NORMAL TankTreads
+  VisionRange = 150.0
+  Geometry = CYLINDER
+  GeometryMajorRadius = 5.0
+End
+";
+
+#[test]
+fn a_type_of_an_ai_module_that_drives_retaliates_by_its_vision_range() {
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[ANSWERING]),
+        ..ZeroHourRules::default()
+    };
+    rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+    let of = |rules: &ZeroHourRules, name: &str| {
+        let object = rules.objects.object(name.as_bytes()).unwrap();
+        ImportedType::of(object, rules)
+            .unwrap()
+            .retaliate()
+            .cloned()
+    };
+    // No factor of `AIData`, no retaliation.
+    assert_eq!(of(&rules, "Tank"), None);
+    // The tank's leash is 150 × 1.8 = 270, and its target's reach 150 × 2.2 + 270 = 600, each
+    // exact in the game's `f32`; an immobile one and one of no AI module answer none.
+    rules.ai.read(AI_DATA.as_bytes()).unwrap();
+    let tank = RetaliatePatch {
+        leash: Some(Num::int(270)),
+        reach: Some(Num::int(600)),
+    };
+    assert_eq!(of(&rules, "Tank"), Some(tank));
+    assert_eq!(of(&rules, "Fixed"), None);
+    assert_eq!(of(&rules, "Mindless"), None);
 }

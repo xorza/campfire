@@ -54,6 +54,8 @@ pub(crate) enum UnitRole {
     /// The target of the action in the order's slot: a cast's, or a gather's node.
     Aimed(u8),
     Used,
+    /// The container an entry enters.
+    Entered,
     Shop,
     /// The site the build in the order's slot goes on with.
     Site(u8),
@@ -257,6 +259,9 @@ impl<S: TeamSight> BotView<'_, '_, S> {
             }
             UnitRole::Used => {
                 (self.using.as_ref()).is_some_and(|using| using.of(entity, target).is_some())
+            }
+            UnitRole::Entered => {
+                (self.using.as_ref()).is_some_and(|using| using.entry(entity, target).is_some())
             }
             UnitRole::Shop => (self.shopping.as_ref())
                 .is_some_and(|shopping| shopping.serving(target, unit).is_some()),

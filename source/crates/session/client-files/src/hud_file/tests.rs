@@ -16,6 +16,7 @@ fn a_hud_shows_every_unit_s_bars_and_hits_unless_its_file_says_otherwise() {
         hit_mark: HitMark::Ring,
         panel: PanelGrid::default(),
         minimap: Minimap::default(),
+        level_icons: Vec::new(),
     };
     assert_eq!(
         Toml::parse::<HudFile>("bars = \"selected\"").unwrap(),
@@ -50,7 +51,7 @@ fn a_hud_shows_every_unit_s_bars_and_hits_unless_its_file_says_otherwise() {
     );
     assert_eq!(
         refusal("rings = \"all\""),
-        "unknown field `rings`, expected one of `bars`, `hit_mark`, `panel`, `minimap`"
+        "unknown field `rings`, expected one of `bars`, `hit_mark`, `panel`, `minimap`, `level_icons`"
     );
 }
 
@@ -124,4 +125,18 @@ fn a_minimap_gives_its_radar_cells_darkening_and_squares_and_refuses_what_does_n
         let text = format!("[minimap]\n{wrong}");
         assert!(Toml::parse::<HudFile>(&text).is_err(), "{wrong}");
     }
+}
+
+#[test]
+fn a_level_from_2_shows_its_icon_and_level_1_none() {
+    // Two icons, of levels 2 and 3, each a rectangle of one texture; level 1 and level 4 show none.
+    let text = "[[level_icons]]\ntexture = \"art/veteran.png\"\nrect = [0, 0, 16, 16]\n\n\
+                [[level_icons]]\ntexture = \"art/veteran.png\"\nrect = [16, 0, 32, 16]\n";
+    let hud = Toml::parse::<HudFile>(text).unwrap();
+    assert_eq!(hud.level_icons.len(), 2);
+    assert_eq!(hud.level_icon(1), None);
+    assert_eq!(hud.level_icon(2), Some(&hud.level_icons[0]));
+    assert_eq!(hud.level_icon(3), Some(&hud.level_icons[1]));
+    assert_eq!(hud.level_icon(4), None);
+    assert_eq!(Toml::parse::<HudFile>(&Toml::write(&hud)).unwrap(), hud);
 }

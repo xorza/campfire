@@ -83,6 +83,7 @@ impl StartChecks<'_, '_> {
         };
         let life = self.life.as_deref().and_then(PoolBook::life);
         let check = ActionCheck {
+            player: None,
             book: &self.actions,
             now,
             caster: Caster::of(tags, Motion::Own, None),

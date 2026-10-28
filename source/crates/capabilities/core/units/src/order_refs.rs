@@ -2,15 +2,14 @@ use std::fmt::Debug;
 
 use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
-use campfire_values::ItemId;
+use campfire_values::{ItemId, PerkId};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::ground_point::GroundPoint;
 
-/// What an order's directive names a unit, a slot, a place, an item type and a stack a unit
-/// carries by: its ids, `Ids`, as
-/// a command carries them, or another form while the order is not due, as a bot's script names
+/// What an order's directive names a unit, a slot, a place, an item type, a stack a unit carries
+/// and a perk by: its ids, `Ids`, as a command carries them, or another form while the order is not due, as a bot's script names
 /// them (04-capabilities/control.md, A directive is generic over its references).
 pub trait OrderRefs: Debug + Clone + Copy + PartialEq + Eq {
     type Unit: Debug + Clone + PartialEq + Eq;
@@ -24,6 +23,8 @@ pub trait OrderRefs: Debug + Clone + Copy + PartialEq + Eq {
     type Item: Debug + Clone + PartialEq + Eq;
     /// A stack a unit carries.
     type Carried: Debug + Clone + PartialEq + Eq;
+    /// A perk its player learns.
+    type Perk: Debug + Clone + PartialEq + Eq;
 }
 
 /// References that serde writes and reads, which each action's serde form names as its bound.
@@ -38,6 +39,7 @@ pub trait SerdeRefs:
         Point: Serialize + DeserializeOwned,
         Item: Serialize + DeserializeOwned,
         Carried: Serialize + DeserializeOwned,
+        Perk: Serialize + DeserializeOwned,
     >
 {
 }
@@ -51,13 +53,14 @@ impl<R> SerdeRefs for R where
             Point: Serialize + DeserializeOwned,
             Item: Serialize + DeserializeOwned,
             Carried: Serialize + DeserializeOwned,
+            Perk: Serialize + DeserializeOwned,
         >
 {
 }
 
 /// The references of an order as a command carries it: a unit by its stable id, a slot by its
-/// place among the unit's, a place by its coordinates, an item type by its id, and a carried
-/// stack by its place in the unit's inventory.
+/// place among the unit's, a place by its coordinates, an item type by its id, a carried stack
+/// by its place in the unit's inventory, and a perk by its id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ids;
 
@@ -69,6 +72,7 @@ impl OrderRefs for Ids {
     type Point = Vec3;
     type Item = ItemId;
     type Carried = u8;
+    type Perk = PerkId;
 }
 
 /// Gives the references of `To` for those of `From`, each in its turn as an action's map of
@@ -90,6 +94,9 @@ pub trait RefMap<From: OrderRefs, To: OrderRefs> {
     /// The object a use uses.
     fn used(&mut self, unit: From::Unit) -> Result<To::Unit, Self::Error>;
 
+    /// The container an entry enters.
+    fn entered(&mut self, unit: From::Unit) -> Result<To::Unit, Self::Error>;
+
     /// The shop of a buy or a sale.
     fn shop(&mut self, unit: From::Unit) -> Result<To::Unit, Self::Error>;
 
@@ -108,4 +115,6 @@ pub trait RefMap<From: OrderRefs, To: OrderRefs> {
     fn item(&mut self, item: From::Item) -> Result<To::Item, Self::Error>;
 
     fn carried(&mut self, carried: From::Carried) -> Result<To::Carried, Self::Error>;
+
+    fn perk(&mut self, perk: From::Perk) -> Result<To::Perk, Self::Error>;
 }

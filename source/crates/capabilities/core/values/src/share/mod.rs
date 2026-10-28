@@ -9,6 +9,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub struct Share(u32);
 
 impl Share {
+    /// None of an amount.
+    pub const NONE: Self = Self(0);
+
     /// All of an amount.
     pub const ALL: Self = Self(Self::WHOLE);
 

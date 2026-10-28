@@ -114,10 +114,12 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
         },
         attack: AttackData {
             rate: WeaponValue::Own(own(100)),
-            rate_bonus: None,
+            rate_bonus: Some(veterancy_rate()),
             damage: WeaponValue::Own(decimal(5)),
-            damage_bonus: None,
+            damage_bonus: Some(fixed_damage()),
+            range_bonus: Some(garrison_range()),
             damage_kind: DamageType::SmallArms.kind(),
+            prefers: None,
             clip: Some(ClipData {
                 shots: own(3),
                 reload_ms: own(700),
@@ -149,10 +151,12 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
             },
             attack: AttackData {
                 rate: WeaponValue::Own(own(2000)),
-                rate_bonus: None,
+                rate_bonus: Some(veterancy_rate()),
                 damage: WeaponValue::Own(decimal(60)),
-                damage_bonus: None,
+                damage_bonus: Some(fixed_damage()),
+                range_bonus: Some(garrison_range()),
                 damage_kind: DamageType::ArmorPiercing.kind(),
+                prefers: None,
                 clip: None,
                 splash: SplashData::new(Num::int(5), RelationSet::All, true),
                 scatter: ScatterData::new(
@@ -243,7 +247,10 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
     assert_eq!(minigun.weapon.attack.rate, WeaponValue::Own(own(266)));
     assert_eq!(
         minigun.weapon.attack.rate_bonus,
-        Some(RulesNames::default().rate_of_fire)
+        BonusData::of([
+            RulesNames::default().veterancy_rate,
+            RulesNames::default().rate_of_fire
+        ])
     );
     assert_eq!(
         minigun.weapon.attack.streak,
@@ -600,6 +607,78 @@ fn weapons_of_one_name_but_case_share_an_action_only_of_the_same_numbers() {
     assert!(matches!(other, Err(ZeroHourError::WeaponName(name)) if name == "GUN"));
 }
 
+/// A gunship of a cannon preferred against infantry, missiles against a vehicle that is a
+/// structure too, and an assist weapon no source chooses, as the Comanche's and the Patriot
+/// battery's sets; and a battery of flak preferred against an aircraft that is a ballistic
+/// missile too.
+const PREFERRING: &str = "Object Gunship
+  WeaponSet
+    Conditions = None
+    Weapon = PRIMARY Cannon
+    Weapon = SECONDARY Missiles
+    Weapon = TERTIARY Assist
+    PreferredAgainst = PRIMARY INFANTRY
+    PreferredAgainst = SECONDARY VEHICLE STRUCTURE
+    AutoChooseSources = TERTIARY NONE
+  End
+End
+Object Battery
+  WeaponSet
+    Conditions = None
+    Weapon = PRIMARY Flak
+    PreferredAgainst = PRIMARY BALLISTIC_MISSILE AIRCRAFT
+  End
+End
+";
+
+#[test]
+fn a_slots_preference_is_its_weapons_filter_of_all_its_kinds_and_a_locked_slot_drops() {
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[PREFERRING]),
+        ..ZeroHourRules::default()
+    };
+    let gun = |name: &str| {
+        format!("Weapon {name}\n  PrimaryDamage = 5\n  DelayBetweenShots = 100\nEnd\n")
+    };
+    let guns: String = ["Cannon", "Missiles", "Assist", "Flak"].map(gun).concat();
+    rules.weapons.read(guns.as_bytes()).unwrap();
+    let mut names = ImportNames::default();
+    for object in ["Gunship", "Battery"] {
+        let object = rules.objects.object(object.as_bytes()).unwrap();
+        names.unit_type(object, &rules).unwrap();
+    }
+    let import = CombatImport::of(&rules, &mut names.into_production().into_projectiles()).unwrap();
+    let prefers = |weapon: &str| {
+        let weapon = import.actions.get(&DeclaredName::new(weapon).unwrap());
+        weapon.map(|weapon| {
+            weapon
+                .attack
+                .prefers
+                .as_ref()
+                .map(|prefers| prefers.filter().to_string())
+        })
+    };
+    // The cannon prefers infantry and the missiles a target of both kinds, as `isKindOfMulti`
+    // tests the mask; the flak's ballistic missile is a kind of no tag, and it prefers none.
+    assert_eq!(
+        prefers("weapon_cannon"),
+        Some(Some("all:infantry".to_owned()))
+    );
+    assert_eq!(
+        prefers("weapon_missiles"),
+        Some(Some("all:vehicle:structure".to_owned()))
+    );
+    assert_eq!(prefers("weapon_flak"), Some(None));
+    assert_eq!(import.unpreferred, BTreeSet::from(["Flak".to_owned()]));
+    // The assist weapon, which no source chooses, is dropped.
+    assert_eq!(prefers("weapon_assist"), None);
+    let dropped: Vec<(String, WeaponDropCause)> = (&import.dropped)
+        .into_iter()
+        .map(|dropped| (dropped.name.clone(), dropped.cause))
+        .collect();
+    assert_eq!(dropped, [("Assist".to_owned(), WeaponDropCause::Locked)]);
+}
+
 #[test]
 fn a_living_type_takes_its_armor_by_the_name_of_its_case() {
     let guard = |armor: &str| {
@@ -804,4 +883,20 @@ fn a_types_weapons_that_fire_a_projectile_take_their_slots_barrels() {
         barrels,
         BTreeMap::from([(TypeName::named("hunter"), hunter)])
     );
+}
+
+/// A weapon's rate bonus of the veterancy's stat alone.
+fn veterancy_rate() -> BonusData {
+    BonusData::from(RulesNames::default().veterancy_rate)
+}
+
+/// A weapon's damage bonus of the veterancy's stat and the garrison's.
+fn fixed_damage() -> BonusData {
+    let names = RulesNames::default();
+    BonusData::of([names.veterancy_damage, names.garrison_damage]).unwrap()
+}
+
+/// A weapon's range bonus, of the garrison's stat.
+fn garrison_range() -> BonusData {
+    BonusData::from(RulesNames::default().garrison_range)
 }

@@ -1,7 +1,7 @@
 use std::f32::consts::FRAC_PI_2;
 
 use bevy::app::{App, Plugin, Startup, Update};
-use bevy::asset::{Assets, Handle};
+use bevy::asset::{AssetPath, AssetServer, Assets, Handle};
 use bevy::camera::visibility::Visibility;
 use bevy::camera::{Camera3d, Projection};
 use bevy::color::Color;
@@ -13,9 +13,12 @@ use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::schedule::common_conditions::{not, resource_exists};
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::ecs::world::Ref;
-use bevy::math::{Quat, Vec3};
+use bevy::image::Image;
+use bevy::material::AlphaMode;
+use bevy::math::{Affine2, Quat, Rect, Vec2, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::shape::{Annulus, Plane3d};
@@ -28,9 +31,9 @@ use campfire_progression::{Learning, Points};
 use campfire_sim::{EntityIndex, SimTick, StableId, Unpredicted};
 use campfire_stats::{Level, Pools};
 use campfire_units::{Dead, Leader, Life, LivingSpawns};
-use campfire_values::{Rank, Relation, Relations, Team};
+use campfire_values::{PackageIndex, Rank, Relation, Relations, Team};
 
-use crate::hud::gauge::{Cooling, Gauge, GaugeKind, SlotPlace};
+use crate::hud::gauge::{Cooling, Gauge, GaugeKind, Layout, SlotPlace};
 use crate::hud::ring::Ring;
 use crate::own_player::OwnPlayer;
 use crate::pointer::Pointer;
@@ -39,13 +42,15 @@ use crate::view::ViewSystems;
 use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::look::UnitShape;
 use crate::view::match_hud::MatchHud;
+use crate::view::package_source::PackageAssets;
 use crate::view::pixel_scale::PixelScale;
 
 mod gauge;
 mod ring;
 
 /// Makes the match readable with plain shapes over the drawings: a bar of the life over every unit
-/// with one, or, as the mode's HUD file says, over the selected and the pointed alone; under the
+/// with one, or, as the mode's HUD file says, over the selected and the pointed alone, beside it the
+/// icon of the unit's level the HUD file gives (generals.md, A level shows its icon); under the
 /// own avatar's, its other pools, a gold mark over each ability it may learn a rank of, its
 /// cooldowns, a tick for each rank of an ability that ranks up, bright once learned, and a tick for
 /// each charge of an ability with charges, bright while held and filling while it comes back; a
@@ -211,6 +216,27 @@ type Gaugeable<'w, 's> = Query<
 struct Gauged {
     stand: Option<Entity>,
     slots: Option<Vec<SlotRows>>,
+    /// The badge of its level on its stand, of a unit with a life.
+    badge: Option<Entity>,
+}
+
+/// A level's badge on a unit's stand, shown at each level the HUD file gives an icon.
+#[derive(Component, Debug)]
+struct LevelBadge;
+
+/// The material of each level's icon from 2, of the HUD file's rectangles of its textures, each
+/// fitted to its rectangle once its texture loads.
+#[derive(Resource, Debug, Default)]
+struct LevelBadges(Vec<BadgeMaterial>);
+
+/// A level's material: its texture, the rectangle of it the icon shows, in pixels, and whether
+/// its texture's coordinates fit the rectangle yet.
+#[derive(Debug)]
+struct BadgeMaterial {
+    image: Handle<Image>,
+    rect: Rect,
+    material: Handle<StandardMaterial>,
+    fitted: bool,
 }
 
 impl Gauged {
@@ -293,6 +319,33 @@ type Stands<'w, 's> = Query<'w, 's, &'static Children, With<GaugeStand>>;
 type Hurt<'w, 's> =
     Query<'w, 's, (&'static Life, &'static Drawing), (Changed<Life>, Allow<Unpredicted>)>;
 
+/// The drawn units whose level changed.
+type ChangedLevels<'w, 's> = Query<
+    'w,
+    's,
+    Entity,
+    (
+        With<Drawing>,
+        Or<(Changed<Level>, Added<Dead>)>,
+        Allow<Unpredicted>,
+    ),
+>;
+
+/// What a badge shows of each unit: its drawing, its level and whether it is dead.
+type Leveled<'w, 's> =
+    Query<'w, 's, (&'static Drawing, Option<&'static Level>, Has<Dead>), Allow<Unpredicted>>;
+
+/// The badges, by their units' gauges.
+type Badges<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut MeshMaterial3d<StandardMaterial>,
+        &'static mut Visibility,
+    ),
+    (With<LevelBadge>, Without<Gauge>),
+>;
+
 /// The fill of each gauge: a drawn quad that no gauge holds.
 type Fills<'w, 's> = Query<'w, 's, &'static mut Transform, With<GaugeFill>>;
 
@@ -326,6 +379,12 @@ const SELECTED_LIFT: f32 = 0.035;
 const TARGET_LIFT: f32 = 0.04;
 const TARGET_SCALE: f32 = 1.25;
 
+/// The texture coordinates of a badge's quad that show `rect` of its texture of `size`, its
+/// pixels as shares of the texture's.
+fn badge_uv(rect: Rect, size: Vec2) -> Affine2 {
+    Affine2::from_scale_angle_translation(rect.size() / size, 0.0, rect.min / size)
+}
+
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::set_palette);
@@ -340,6 +399,13 @@ impl Plugin for HudPlugin {
                 Self::face_camera,
                 Self::mark_hits.run_if(Self::marks_hits),
                 Self::fill_gauges,
+                Self::load_badges
+                    .run_if(resource_exists::<MatchHud>)
+                    .run_if(not(resource_exists::<LevelBadges>)),
+                Self::fit_badges
+                    .run_if(resource_exists::<LevelBadges>)
+                    .run_if(resource_exists::<Assets<Image>>),
+                Self::show_levels.run_if(resource_exists::<LevelBadges>),
                 Self::widen_rings,
                 Self::mark_rings,
             )
@@ -430,6 +496,7 @@ impl HudPlugin {
                 commands.entity(root).insert(Gauged {
                     stand: None,
                     slots: rows,
+                    badge: None,
                 });
                 continue;
             }
@@ -441,9 +508,23 @@ impl HudPlugin {
                     Visibility::Inherited,
                 ))
                 .id();
+            let badge = life.is_some().then(|| {
+                let badge = commands
+                    .spawn((
+                        LevelBadge,
+                        Mesh3d(palette.quad.clone()),
+                        MeshMaterial3d(palette.back.clone()),
+                        Layout::badge(),
+                        Visibility::Hidden,
+                    ))
+                    .id();
+                commands.entity(stand).add_child(badge);
+                badge
+            });
             commands.entity(root).add_child(stand).insert(Gauged {
                 stand: Some(stand),
                 slots: rows,
+                badge,
             });
             for &kind in &scratch.kinds {
                 let layout = kind.layout();
@@ -787,6 +868,93 @@ impl HudPlugin {
                 });
                 if let (Some(fraction), Ok(mut fill)) = (shown, fills.get_mut(gauge.fill)) {
                     fill.set_if_neq(gauge.kind.layout().fill(fraction));
+                }
+            }
+        }
+    }
+
+    /// Makes the material of each level's icon of the match's HUD file, its texture of the mode's
+    /// package.
+    fn load_badges(
+        hud: Res<'_, MatchHud>,
+        assets: Res<'_, AssetServer>,
+        mut materials: ResMut<'_, Assets<StandardMaterial>>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let badges = hud.0.level_icons.iter().map(|icon| {
+            let path = PackageAssets::asset_path(PackageIndex::MODE, &icon.texture);
+            let image: Handle<Image> = assets.load(AssetPath::from(path));
+            let [left, top, right, bottom] = icon.rect.edges().map(f32::from);
+            BadgeMaterial {
+                material: materials.add(StandardMaterial {
+                    base_color_texture: Some(image.clone()),
+                    unlit: true,
+                    alpha_mode: AlphaMode::Blend,
+                    ..StandardMaterial::default()
+                }),
+                image,
+                rect: Rect::new(left, top, right, bottom),
+                fitted: false,
+            }
+        });
+        commands.insert_resource(LevelBadges(badges.collect()));
+    }
+
+    /// Fits each level's material to its icon's rectangle once its texture loads, as a
+    /// rectangle's share of its texture's size.
+    fn fit_badges(
+        mut badges: ResMut<'_, LevelBadges>,
+        images: Res<'_, Assets<Image>>,
+        mut materials: ResMut<'_, Assets<StandardMaterial>>,
+    ) {
+        for badge in badges.0.iter_mut().filter(|badge| !badge.fitted) {
+            let Some(image) = images.get(&badge.image) else {
+                continue;
+            };
+            let size = image.size_f32();
+            if let Some(mut material) = materials.get_mut(&badge.material) {
+                material.uv_transform = badge_uv(badge.rect, size);
+            }
+            badge.fitted = true;
+        }
+    }
+
+    /// Shows the badge of each drawn unit's level that changed, or whose gauges are new: the icon
+    /// of its level, none at level 1 or past the HUD file's last icon, nor while it is dead.
+    fn show_levels(
+        badges: Res<'_, LevelBadges>,
+        (changed, newly, gauged): (ChangedLevels<'_, '_>, NewlyGauged<'_, '_>, Roots<'_, '_>),
+        units: Leveled<'_, '_>,
+        mut shown: Badges<'_, '_>,
+    ) {
+        let new = newly.iter().map(|&DrawingOf(unit)| unit);
+        for unit in changed.iter().chain(new) {
+            let Ok((drawing, level, dead)) = units.get(unit) else {
+                continue;
+            };
+            let badge = gauged
+                .get(drawing.root())
+                .ok()
+                .and_then(|gauged| gauged.badge);
+            let Some(Ok((mut material, mut visibility))) = badge.map(|badge| shown.get_mut(badge))
+            else {
+                continue;
+            };
+            let at = level.map_or(1, |level| level.get());
+            let icon = usize::try_from(at)
+                .ok()
+                .and_then(|at| at.checked_sub(2))
+                .and_then(|at| badges.0.get(at))
+                .filter(|_| !dead);
+            match icon {
+                Some(icon) => {
+                    if material.0 != icon.material {
+                        material.0 = icon.material.clone();
+                    }
+                    visibility.set_if_neq(Visibility::Inherited);
+                }
+                None => {
+                    visibility.set_if_neq(Visibility::Hidden);
                 }
             }
         }

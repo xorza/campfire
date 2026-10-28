@@ -10,6 +10,7 @@ mod prototype;
 mod receipts;
 mod rejoin;
 mod restore;
+mod riding;
 mod saves;
 mod scenario;
 mod short_3v3;

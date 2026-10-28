@@ -30,7 +30,9 @@ use bevy::ui::{
     AlignItems, BackgroundColor, Display, FlexDirection, GridPlacement, GridTrackRepetition,
     JustifyContent, Node, PositionType, RepeatedGridTrack, UiRect, Val,
 };
-use campfire_actions::{ActionBook, ActionKind, ActionSlots, ActionTarget};
+use campfire_actions::{
+    ActionBook, ActionKind, ActionSlots, ActionTarget, PlayerCooldowns, SlotTimes,
+};
 use campfire_capabilities::Order;
 use campfire_client_files::{Chord, GridCell, Key, PanelCommand};
 use campfire_common::{Tick, Ticks};
@@ -38,16 +40,16 @@ use campfire_declarations::ById;
 use campfire_math::Num;
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersDirective;
-use campfire_players::ResourceAmount;
+use campfire_players::{PlayerRows, ResourceAmount};
 use campfire_production::{
-    BuildBook, ProductionDirective, ResearchHolder, ResearchSpec, SellSpec, Site, SiteProgress,
-    TrainQueue,
+    BuildBook, ProductionDirective, RequirementBook, ResearchHolder, ResearchSpec, SellSpec, Site,
+    SiteProgress, TrainQueue,
 };
-use campfire_script::MatchNames;
+use campfire_script::{Filter, MatchNames};
 use campfire_sim::{EntityIndex, MatchRate, SimTick, StableId, Unpredicted};
 use campfire_stats::Modifiers;
 use campfire_units::{Dead, Owner, TypeOriginBook};
-use campfire_values::{ActionId, ModifierId, NameId, ResourceId, UnitType};
+use campfire_values::{ActionId, ModifierId, NameId, ResourceId, TagSet, UnitTags, UnitType};
 
 use crate::command_panel::aimed_command::AimedCommand;
 use crate::command_panel::panel_looks::{CellFace, LookSources, PanelLooks, PlacedButton};
@@ -168,6 +170,8 @@ enum Making {
     Train,
     Build(UnitType),
     Research(ResearchSpec),
+    /// A cast aimed at a point of the ground.
+    Cast,
 }
 
 /// The books the panel tells a train, a build and a research apart by, a build's building, and a
@@ -187,6 +191,7 @@ struct PanelUnit<'a> {
     slots: Option<&'a ActionSlots>,
     queue: Option<&'a TrainQueue>,
     site: Option<&'a Site>,
+    tags: TagSet,
 }
 
 /// What a button's cost shows: its action's cost and its time in whole seconds, rounded up; that
@@ -195,6 +200,10 @@ struct PanelUnit<'a> {
 enum ButtonValue<'a> {
     Costs {
         costs: &'a [ResourceAmount],
+        seconds: u64,
+    },
+    /// A cast on its cooldown, ready in whole seconds, rounded up.
+    Cooling {
         seconds: u64,
     },
     Done,
@@ -247,6 +256,8 @@ type PanelUnits<'w, 's> = Query<
         Option<&'static Site>,
         Option<&'static SiteProgress>,
         Option<&'static Modifiers>,
+        Option<&'static UnitTags>,
+        Option<&'static SlotTimes>,
     ),
     (Without<Dead>, Allow<Unpredicted>),
 >;
@@ -396,7 +407,11 @@ impl CommandPanelPlugin {
             ResMut<'_, Pressable>,
         ),
         (tick, rate): (Res<'_, SimTick>, Res<'_, MatchRate>),
-        setup: Res<'_, PanelSetup>,
+        (setup, requirements, cooldowns): (
+            Res<'_, PanelSetup>,
+            Option<Res<'_, RequirementBook>>,
+            PlayerRows<'_, '_, PlayerCooldowns>,
+        ),
         (mut shown, mut next): (ResMut<'_, Shown>, Local<'_, Shown>),
         (root, rows, funds): PanelNodes<'_, '_>,
         (mut texts, mut colors, mut icons, mut bars): PanelLines<'_, '_>,
@@ -413,7 +428,7 @@ impl CommandPanelPlugin {
         };
         next.clear();
         for &unit in selection.get() {
-            let Some(Ok((owner, &unit_type, slots, queue, site, ..))) =
+            let Some(Ok((owner, &unit_type, slots, queue, site, _, _, tags, _))) =
                 index.get(unit).map(|at| units.get(at))
             else {
                 continue;
@@ -426,6 +441,7 @@ impl CommandPanelPlugin {
                 slots,
                 queue,
                 site,
+                tags: tags.map_or_else(TagSet::default, |tags| tags.tags),
             };
             if next.fill(unit, held, books, &looks) {
                 break;
@@ -446,9 +462,10 @@ impl CommandPanelPlugin {
             return;
         };
         root.set_if_neq(Visibility::Inherited);
-        let Ok((_, _, slots, queue, site, progress, carried)) = units.get(unit) else {
+        let Ok((_, _, slots, queue, site, progress, carried, _, times)) = units.get(unit) else {
             return;
         };
+        let now = tick.start();
         line.clear();
         for (at, &resource) in setup.resources.iter().enumerate() {
             let amount = own.amount(resource);
@@ -468,8 +485,28 @@ impl CommandPanelPlugin {
                         carried.is_some_and(|carried| carried.get(modifier, Some(source)).is_some())
                     },
                 );
+                // A cast waits for its slot's ready tick and its player's, where its player keeps it.
+                let ready = |action: ActionId| {
+                    let unit = times
+                        .and_then(|times| times.slot(slot))
+                        .map(|time| time.ready_at);
+                    let player = cooldowns
+                        .of_player_slot(player_slot?)
+                        .map(|held| held.ready_at(action));
+                    unit.into_iter().chain(player).max()
+                };
                 match ranked {
                     _ if done => ButtonValue::Done,
+                    Some(_)
+                        if making == Making::Cast
+                            && let Some(ready) = held.and_then(|held| ready(held.action?))
+                            && now < ready =>
+                    {
+                        let left = ready.since(now).map_or(0, Ticks::get);
+                        ButtonValue::Cooling {
+                            seconds: left.div_ceil(hz),
+                        }
+                    }
                     Some((action, rank)) => ButtonValue::Costs {
                         costs: action.resource_cost(rank),
                         seconds: action.values(rank).windup.get().div_ceil(hz),
@@ -479,12 +516,10 @@ impl CommandPanelPlugin {
             }
             Does::Command(_) => ButtonValue::Nothing,
         };
-        pressable.0.extend(
-            shown
-                .buttons
-                .iter()
-                .map(|&button| button.enabled(value(button), |costs| own.affords(costs))),
-        );
+        pressable.0.extend(shown.buttons.iter().map(|&button| {
+            button.meets(requirements.as_deref(), |held| own.holds(held))
+                && button.enabled(value(button), |costs| own.affords(costs))
+        }));
         let mut tip = None;
         for (entity, cell) in cells.iter().filter(|_| !remade) {
             let enabled = pressable.0[cell.at];
@@ -520,7 +555,6 @@ impl CommandPanelPlugin {
                 Visibility::Inherited
             });
         }
-        let now = tick.start();
         for cell in &queue_cells {
             let head = (cell.place == 0).then_some(queue).flatten();
             let percent = head.and_then(|queue| head_percent(queue, now));
@@ -614,10 +648,14 @@ impl CommandPanelPlugin {
         if !buttons.just_pressed(MouseButton::Left) || pointer.is_over_ui() {
             return;
         }
-        let Some(to) = pointer.ground().and_then(float_num::ground_point) else {
+        let Some(ground) = pointer.ground() else {
             return;
         };
-        if let Some(order) = selection.order(aiming.directive(to)) {
+        let (Some(to), Some(at)) = (float_num::ground_point(ground), float_num::position(ground))
+        else {
+            return;
+        };
+        if let Some(order) = aiming.order(to, at, &selection) {
             orders.push(order);
             // An attack move answers as a move does (`pickAndPlayUnitVoiceResponse`).
             if *aiming == AimedCommand::AttackMove {
@@ -683,13 +721,31 @@ impl Button {
         }
     }
 
+    /// Whether its player holds the modifiers its action requires, as `requirements` gives them
+    /// and `holds` says of a modifier; a command needs none.
+    fn meets(
+        self,
+        requirements: Option<&RequirementBook>,
+        holds: impl Fn(ModifierId) -> bool,
+    ) -> bool {
+        match self.does {
+            Does::Action { action, .. } => requirements
+                .and_then(|book| book.of(action))
+                .is_none_or(|required| required.modifiers.iter().all(|&held| holds(held))),
+            Does::Command(_) => true,
+        }
+    }
+
     /// Whether its player may press it, its cost `value`, as `affords` says of a cost: a command
     /// always; an action its player can pay, not a research held or an action unlearned.
     fn enabled(self, value: ButtonValue<'_>, affords: impl Fn(&[ResourceAmount]) -> bool) -> bool {
         match (self.does, value) {
             (Does::Command(_), _) => true,
             (Does::Action { .. }, ButtonValue::Costs { costs, .. }) => affords(costs),
-            (Does::Action { .. }, ButtonValue::Done | ButtonValue::Nothing) => false,
+            (
+                Does::Action { .. },
+                ButtonValue::Cooling { .. } | ButtonValue::Done | ButtonValue::Nothing,
+            ) => false,
         }
     }
 
@@ -712,6 +768,11 @@ impl Button {
                 let target = ActionTarget::None;
                 Pressed::Order(Order::one(unit, OrdersDirective::Slot { slot, target }))
             }
+            Does::Action {
+                slot,
+                making: Making::Cast,
+                ..
+            } => Pressed::Aim(AimedCommand::Cast { unit, slot }),
             Does::Action {
                 slot,
                 action,
@@ -785,6 +846,7 @@ impl Shown {
             self.site = Some(site.action());
             return true;
         }
+        let tags = held.tags;
         let slots = held.slots.into_iter().flat_map(ActionSlots::indexed);
         let actions = slots.filter_map(|(slot, held)| {
             let action = held.action?;
@@ -792,6 +854,7 @@ impl Shown {
                 ActionKind::Train => Making::Train,
                 ActionKind::Build => Making::Build(books.builds.of(action)?.unit_type),
                 ActionKind::Research => Making::Research(*books.researches?.get(action)?),
+                ActionKind::Cast => Making::cast(books.actions.get(action)?.when, tags)?,
                 _ => return None,
             };
             Some(Does::Action {
@@ -1008,10 +1071,18 @@ impl Making {
             ResearchHolder::Producer => unit_holds(spec.modifier, unit),
         }
     }
+
+    /// A cast's button, while its unit's `tags` pass its action's `when`; none, hidden, while
+    /// they do not.
+    fn cast(when: Option<Filter>, tags: TagSet) -> Option<Self> {
+        when.is_none_or(|when| when.selects_tags(tags))
+            .then_some(Self::Cast)
+    }
 }
 
 impl fmt::Display for ButtonValue<'_> {
-    /// Each cost's amount, then the seconds, `N s`; `done`; or nothing.
+    /// Each cost's amount, then the seconds, `N s`; a cooling cast's `ready in N s`; `done`; or
+    /// nothing.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Costs { costs, seconds } => {
@@ -1020,6 +1091,7 @@ impl fmt::Display for ButtonValue<'_> {
                 }
                 write!(f, "{seconds} s")
             }
+            Self::Cooling { seconds } => write!(f, "ready in {seconds} s"),
             Self::Done => f.write_str("done"),
             Self::Nothing => Ok(()),
         }

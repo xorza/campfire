@@ -8,7 +8,7 @@ use campfire_production::PlaceSearch;
 use campfire_script::Filter;
 use campfire_sim::StableId;
 use campfire_units::{GroundPoint, Ids, RefMap};
-use campfire_values::{ItemId, UnitType};
+use campfire_values::{ItemId, PerkId, UnitType};
 use campfire_vision::TeamSight;
 
 use crate::bot_script::bot_names::BotNames;
@@ -268,8 +268,8 @@ impl BotOrder {
     /// units hold the action at, each to the units that hold it there, in increasing stable id, or
     /// for an attack one to the units that may attack its target and one that sends the others to
     /// attack-move to the target's place (04-capabilities/control.md, An attack goes to the units
-    /// that may attack its target); and why it goes unsent to all of its units or to some, the
-    /// first cause of several.
+    /// that may attack its target), or one of no units for a directive its player carries out; and
+    /// why it goes unsent to all of its units or to some, the first cause of several.
     pub fn orders<S: TeamSight>(
         &self,
         player_slot: PlayerSlot,
@@ -285,6 +285,9 @@ impl BotOrder {
         } = scratch;
         let mut split = AttackSplit { attacking, moving };
         units.clear();
+        if self.directive.is_players() {
+            return self.give(units, None, view, &mut split, out).err();
+        }
         match &self.units {
             BotUnits::Avatar => match view.avatar(player_slot) {
                 Some(avatar) => units.push(avatar.id),
@@ -324,6 +327,13 @@ impl BotOrder {
     ) -> Result<(), OrderUnsent> {
         let mut refs = DueRefs { view, units, slot };
         let directive = self.directive.clone().map_refs(&mut refs)?;
+        if directive.is_players() {
+            out.push(Order {
+                units: OrderUnits::NONE,
+                directive,
+            });
+            return Ok(());
+        }
         let Directive::Orders(OrdersDirective::Attack { target }) = directive else {
             let units = OrderUnits::new(units).expect("an order commands a unit at least");
             out.push(Order { units, directive });
@@ -413,6 +423,10 @@ impl<S: TeamSight> RefMap<Loaded, Ids> for DueRefs<'_, '_, '_, S> {
         self.nearest(UnitRole::Used, unit)
     }
 
+    fn entered(&mut self, unit: Filter) -> Result<StableId, OrderUnsent> {
+        self.nearest(UnitRole::Entered, unit)
+    }
+
     fn shop(&mut self, unit: Filter) -> Result<StableId, OrderUnsent> {
         self.nearest(UnitRole::Shop, unit)
     }
@@ -461,6 +475,10 @@ impl<S: TeamSight> RefMap<Loaded, Ids> for DueRefs<'_, '_, '_, S> {
         self.view
             .carried(self.units[0], item)
             .ok_or(OrderUnsent::NoStack)
+    }
+
+    fn perk(&mut self, perk: PerkId) -> Result<PerkId, OrderUnsent> {
+        Ok(perk)
     }
 }
 

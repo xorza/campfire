@@ -1,9 +1,4 @@
-use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
-use campfire_script::UnknownName;
-use campfire_values::{NameId, Named, TrackId, UnitType};
-
-use crate::track_book::TrackBook;
-use crate::type_tracks_data::TypeTracksData;
+use campfire_values::{NameId, TrackId};
 
 /// The tracks a unit has, of the mode's at most `TrackId::LIMIT`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -39,36 +34,6 @@ impl TrackSet {
         (0..TrackId::LIMIT)
             .map(TrackId::at)
             .filter(move |&track| self.contains(track))
-    }
-}
-
-impl PerId<UnitType> for TrackSet {
-    const SCRIPTS_ONLY: bool = false;
-}
-
-impl TrackSet {
-    /// The tracks of each unit type that stands and gains experience; an error for a track the
-    /// mode does not declare.
-    pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
-        let names = cx.book::<TrackBook>()?.names();
-        let mut book = ByIdBuilder::default();
-        for unit in cx.standing() {
-            let Some(tracks) = unit.data.section::<TypeTracksData>() else {
-                continue;
-            };
-            let set = tracks.0.iter().map(|track| {
-                let named = names.named(track.as_str());
-                named.ok_or_else(|| {
-                    let at = BookPlace::UnitType(unit.place());
-                    BookError::unknown(unit.package, at, UnknownName::new(TrackId::NAMES, track))
-                })
-            });
-            let set: Self = set.collect::<Result<_, BookError>>()?;
-            if !tracks.0.is_empty() {
-                book.set(unit.unit_type, set);
-            }
-        }
-        Ok(book.build())
     }
 }
 

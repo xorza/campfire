@@ -112,7 +112,7 @@ spawn_tags = ["spawn"]
 moves = "none"
 
 # A death's experience goes to its killer, of the level track.
-[experience]
+[[experience]]
 track = "level"
 to = "killer"
 

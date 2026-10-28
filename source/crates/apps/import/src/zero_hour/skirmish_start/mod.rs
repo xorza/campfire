@@ -82,9 +82,8 @@ impl FactionStart {
         let half = building.geometry().bounding_sphere() / 2.0;
         let offset =
             game_float::to_num(half).map_err(|_| Self::type_error(building, TypeError::Number))?;
-        let faction = template_name.strip_prefix(LEAD).unwrap_or(template_name);
         Ok(Self {
-            name: ImportName::of(faction.as_bytes()).declared()?,
+            name: Self::name_of(template_name)?,
             building: unit_type(building)?,
             units: template
                 .units()
@@ -93,6 +92,13 @@ impl FactionStart {
             offset,
             base_side: template.base_side.clone(),
         })
+    }
+
+    /// The name of the faction of the template `template_name`, the template's without the lead
+    /// `Faction`.
+    pub(crate) fn name_of(template_name: &str) -> Result<DeclaredName, ZeroHourError> {
+        let faction = template_name.strip_prefix(LEAD).unwrap_or(template_name);
+        Ok(ImportName::of(faction.as_bytes()).declared()?)
     }
 
     fn type_error(object: &IniObject, error: TypeError) -> ZeroHourError {

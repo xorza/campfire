@@ -1,8 +1,9 @@
 use std::num::NonZeroU32;
 
 use campfire_actions::{ChannelData, ChannelPaysData};
+use campfire_codec::Toml;
 use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnsData};
-use campfire_values::{Distance, FilterData, Scalar};
+use campfire_values::{Distance, Scalar};
 
 use super::*;
 use crate::zero_hour::dropped::Dropped;
@@ -26,7 +27,8 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
     // weapon arms, the mob's by its rangers (09-zero-hour.md, A leader of armed spawns is
     // armed), but the scout, of no weapon, the mortar, whose weapon dropped, and the rabble,
     // whose rangers fight in no place of its; its gatherers the dozer and the truck; and its
-    // drop-offs the center and the factory, which take a load.
+    // drop-offs the center and the factory, which take a load. The factory's sniper needs a perk
+    // the faction does not start with.
     let name = |text: &str| DeclaredName::new(text).unwrap();
     let train = |unit: &str| ImportedAction {
         keys: ActionKeys::new(Targeting::None),
@@ -35,6 +37,16 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
             requires: None,
             at_place: false,
         }),
+    };
+    let needing = |unit: &str, modifier: &str| {
+        let mut needing = train(unit);
+        if let MadeSection::Train(train) = &mut needing.made {
+            train.requires = Some(RequiresData {
+                units: Vec::new(),
+                modifiers: vec![name(modifier)],
+            });
+        }
+        needing
     };
     let build = |unit: &str| ImportedAction {
         keys: ActionKeys::new(Targeting::Point),
@@ -60,6 +72,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         ("train_truck", train("truck")),
         ("train_mortar", train("mortar")),
         ("train_scout", train("scout")),
+        ("train_sniper", needing("sniper", "science_sniping")),
         ("train_technical", train("technical")),
         ("train_mob", train("mob")),
         ("train_rabble", train("rabble")),
@@ -80,6 +93,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
                 "train_tank",
                 "train_truck",
                 "train_scout",
+                "train_sniper",
                 "train_technical",
                 "train_mob",
                 "train_rabble",
@@ -129,7 +143,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         offset: Num::ZERO,
         base_side: None,
     };
-    let base = FactionBase::of(&import, &combat, &start(&["dozer", "worker"]));
+    let base = FactionBase::of(&import, &combat, &start(&["dozer", "worker"]), &[]);
     let names = |names: &[&str]| names.iter().map(|&text| name(text)).collect::<Vec<_>>();
     assert_eq!(
         base,
@@ -152,10 +166,20 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         }
     );
     // A start of no builder has no base buildings, and its faction building's trains alone.
-    let alone = FactionBase::of(&import, &combat, &start(&[]));
+    let alone = FactionBase::of(&import, &combat, &start(&[]), &[]);
     assert_eq!(
         (alone.buildings, alone.units),
         (Vec::new(), names(&["dozer"]))
+    );
+    // The sniper's train needs `science_sniping`: a faction that starts with that perk trains
+    // it in its base, after the scout.
+    let held = [name("science_sniping")];
+    let trained = FactionBase::of(&import, &combat, &start(&["dozer", "worker"]), &held);
+    assert_eq!(
+        trained.units[..7],
+        names(&[
+            "dozer", "ranger", "mortar", "tank", "truck", "scout", "sniper"
+        ])
     );
 }
 
@@ -624,4 +648,148 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
     };
     let section = ProductionImport::section(&plain, points).unwrap();
     assert_eq!((section.exit, section.places), (None, Vec::new()));
+}
+
+#[test]
+fn a_power_of_a_marker_s_burst_is_a_cast_of_its_building_and_its_sciences_raise_its_heal() {
+    // Emergency Repair: the center's power of `SCIENCE_Repair1`, ready again 240 s after a use,
+    // makes a marker that heals vehicles by 100 within 100 m, 200 by `SCIENCE_Repair2`'s list and
+    // 300 by `SCIENCE_Repair3`'s. A power of a list of two objects, and one of infantry, drop.
+    const OBJECTS: &str = "\
+        Object Center\n CommandSet = CenterSet\n\
+         Behavior = OCLSpecialPower M1\n  SpecialPowerTemplate = Repair\n\
+          UpgradeOCL = SCIENCE_Repair3 Heal3\n  UpgradeOCL = SCIENCE_Repair2 Heal2\n\
+          OCL = Heal1\n  CreateLocation = CREATE_AT_LOCATION\n End\n\
+         Behavior = OCLSpecialPower M2\n  SpecialPowerTemplate = Twice\n  OCL = Two\n\
+          CreateLocation = CREATE_AT_LOCATION\n End\n\
+         Behavior = OCLSpecialPower M3\n  SpecialPowerTemplate = Medic\n  OCL = Medic\n\
+          CreateLocation = CREATE_AT_LOCATION\n End\nEnd\n\
+        Object Marker1\n Behavior = AutoHealBehavior M1\n  HealingAmount = 100\n  Radius = 100.0\n\
+          KindOf = VEHICLE\n  SingleBurst = Yes\n  StartsActive = Yes\n End\nEnd\n\
+        Object Marker2\n Behavior = AutoHealBehavior M1\n  HealingAmount = 200\n  Radius = 100.0\n\
+          KindOf = VEHICLE\n  SingleBurst = Yes\n  StartsActive = Yes\n End\nEnd\n\
+        Object Marker3\n Behavior = AutoHealBehavior M1\n  HealingAmount = 300\n  Radius = 100.0\n\
+          KindOf = VEHICLE\n  SingleBurst = Yes\n  StartsActive = Yes\n End\nEnd\n\
+        Object Medic\n Behavior = AutoHealBehavior M1\n  HealingAmount = 50\n  Radius = 10.0\n\
+          KindOf = INFANTRY\n  SingleBurst = Yes\n  StartsActive = Yes\n End\nEnd\n";
+    const LISTS: &str = "\
+        ObjectCreationList Heal1\n CreateObject\n  ObjectNames = Marker1\n  Count = 1\n End\nEnd\n\
+        ObjectCreationList Heal2\n CreateObject\n  ObjectNames = Marker2\n  Count = 1\n End\nEnd\n\
+        ObjectCreationList Heal3\n CreateObject\n  ObjectNames = Marker3\n  Count = 1\n End\nEnd\n\
+        ObjectCreationList Two\n CreateObject\n  ObjectNames = Marker1 Marker2\n  Count = 1\n End\n\
+         End\n\
+        ObjectCreationList Medic\n CreateObject\n  ObjectNames = Medic\n  Count = 1\n End\nEnd\n";
+    const POWERS: &str = "\
+        SpecialPower Repair\n ReloadTime = 240000\n RequiredScience = SCIENCE_Repair1\n\
+         SharedSyncedTimer = Yes\nEnd\n\
+        SpecialPower Twice\n ReloadTime = 1000\n RequiredScience = SCIENCE_Repair1\nEnd\n\
+        SpecialPower Medic\n ReloadTime = 1000\n RequiredScience = SCIENCE_Repair1\nEnd\n";
+    const SETS: &str =
+        "CommandSet CenterSet\n 8 = Command_Repair\n 9 = Command_Twice\n 10 = Command_Medic\nEnd\n";
+    const BUTTONS: &str = "\
+        CommandButton Command_Repair\n Command = SPECIAL_POWER\n SpecialPower = Repair\nEnd\n\
+        CommandButton Command_Twice\n Command = SPECIAL_POWER\n SpecialPower = Twice\nEnd\n\
+        CommandButton Command_Medic\n Command = SPECIAL_POWER\n SpecialPower = Medic\nEnd\n";
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[OBJECTS]),
+        ..ZeroHourRules::default()
+    };
+    rules.creation_lists.read(LISTS.as_bytes()).unwrap();
+    rules.powers.read(POWERS.as_bytes()).unwrap();
+    rules.sets.read(SETS.as_bytes()).unwrap();
+    rules.buttons.read(BUTTONS.as_bytes()).unwrap();
+    let mut names = ImportNames::default();
+    let center = rules.objects.object(b"Center").unwrap();
+    names.unit_type(center, &rules).unwrap();
+    let import = ProductionImport::of(
+        &rules,
+        &mut names.into_production(),
+        BTreeMap::new(),
+        BTreeMap::new(),
+    );
+    let declared = |name: &str| DeclaredName::new(name).unwrap();
+    let id = declared("power_repair");
+    assert_eq!(
+        import.commands[&TypeName::named("center")],
+        std::slice::from_ref(&id)
+    );
+    let heal = Stat::named("power_repair_heal").unwrap();
+    let names = PowerNames::of("Repair").unwrap();
+    assert_eq!((&names.id, &names.tag, &names.heal), (&id, &id, &heal));
+    let expected = ImportedAction {
+        keys: PowerCast::keys(&names, 240_000, "action-power-repair"),
+        made: MadeSection::Cast(PowerCast::new(declared("marker1"))),
+    };
+    assert_eq!(import.actions[&id], expected);
+    // Its table: a point anywhere, its player's cooldown, its tag, and the heal of its area.
+    let table = Toml::write(&import.actions[&id].table());
+    for line in [
+        "targeting = \"point\"",
+        "range = \"global\"",
+        "cooldown_ms = 240000",
+        "cooldown_holder = \"player\"",
+        "when = \"all:power_repair\"",
+        "[delivery]\narea = \"marker1\"",
+        "[on_hit.heal.amount]\nparam = \"heal\"",
+        "power_repair_heal = \"1\"",
+    ] {
+        assert!(table.contains(line), "{line} of {table}");
+    }
+    // The first science's perk gives the tag and 100; each upgrade 100 more than the one below.
+    let added = |amount: i64| BTreeMap::from([(heal.clone(), Number::from(amount))]);
+    assert_eq!(
+        import.power_modifiers,
+        BTreeMap::from([
+            (
+                declared("science_repair1"),
+                PowerModifier {
+                    tags: vec![id],
+                    stats: added(100),
+                }
+            ),
+            (
+                declared("science_repair2"),
+                PowerModifier {
+                    tags: Vec::new(),
+                    stats: added(100),
+                }
+            ),
+            (
+                declared("science_repair3"),
+                PowerModifier {
+                    tags: Vec::new(),
+                    stats: added(100),
+                }
+            ),
+        ])
+    );
+    assert_eq!(import.power_stats, BTreeSet::from([heal]));
+    assert_eq!(
+        import.areas,
+        BTreeMap::from([(
+            TypeName::named("marker1"),
+            AreaWrite {
+                radius: Num::int(100),
+                affects: FilterData::parse("allies:vehicle").unwrap(),
+            }
+        )])
+    );
+    let sciences = ["SCIENCE_Repair1", "SCIENCE_Repair2", "SCIENCE_Repair3"];
+    assert!(
+        sciences
+            .iter()
+            .all(|&science| import.sciences.contains(science))
+    );
+    // A list of two objects makes no one marker; a burst of infantry heals what no tag marks.
+    let dropped: Vec<_> = (&import.powers_dropped)
+        .into_iter()
+        .map(|dropped| (dropped.name.as_str(), dropped.cause))
+        .collect();
+    assert_eq!(
+        dropped,
+        [
+            ("Command_Twice", PowerDropCause::NoBurst),
+            ("Command_Medic", PowerDropCause::Kind),
+        ]
+    );
 }

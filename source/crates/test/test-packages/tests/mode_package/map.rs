@@ -6,7 +6,7 @@ use campfire_common::DeclaredName;
 use campfire_declarations::NamesListError;
 use campfire_mode::{ChoiceId, MarkerTag, ModeDataError, ModeError, TimerId};
 use campfire_navigation::NavigationDataError;
-use campfire_orders::AcquireError;
+use campfire_orders::{AcquireError, RetaliationError};
 use campfire_package::{LoadProblem, Place};
 use campfire_production::ProductionDataError;
 use campfire_script::Filter;
@@ -146,6 +146,29 @@ pub(super) static MAP_FLAWS: &[Flaw] = &[
         ),
         MODE,
         |problem| rule_at(problem, &unit_type("inhibitor"), &AcquireError::NoWeapon),
+    ),
+    // A type that retaliates has a weapon and walks (combat-response.md, Retaliation is the
+    // mode's data).
+    Flaw::of(
+        UNITS,
+        Edit::Set(
+            "units.inhibitor.retaliate",
+            r#"{ leash = "10", reach = "20" }"#,
+        ),
+        MODE,
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("inhibitor"),
+                &RetaliationError::NoWeapon,
+            )
+        },
+    ),
+    Flaw::of(
+        UNITS,
+        Edit::Set("units.tower.retaliate", r#"{ leash = "10", reach = "20" }"#),
+        MODE,
+        |problem| rule_at(problem, &unit_type("tower"), &RetaliationError::NoWalk),
     ),
     Flaw {
         file: UNITS,
@@ -952,9 +975,9 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
     // ranks.
     Flaw::of(
         HUSK,
-        Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"enter\"\n"),
+        Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"ride\"\n"),
         "hero-husk",
-        |problem| read_fails(problem, "data/avatar.toml", "unknown variant `enter`"),
+        |problem| read_fails(problem, "data/avatar.toml", "unknown variant `ride`"),
     ),
     Flaw {
         file: MODE_DATA,

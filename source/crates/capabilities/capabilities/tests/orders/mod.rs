@@ -44,6 +44,7 @@ use campfire_visibility::{OutView, SettingValue};
 use campfire_vision::Vision;
 
 mod acquire;
+mod retaliation;
 
 const ONE: i64 = 1 << 24;
 /// The MOBA 3v3's creep and tower AI as they were when these tests were written: the

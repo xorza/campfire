@@ -161,6 +161,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         };
         let no_target = |_| Relation::Friendly;
         let check = ActionCheck {
+            player: None,
             book: &self.book,
             now: self.tick.start(),
             caster: Caster::of(tags, Motion::Own, None),

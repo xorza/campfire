@@ -89,6 +89,7 @@ impl ActionBookBuilder {
             hooks,
             delivery,
             pays,
+            cooldown_holder: data.keys.cooldown_holder,
         });
         id
     }

@@ -9,17 +9,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CheckError;
 use crate::pins::{
-    BotBase, BotMatchEnd, DefenseTicks, EffectCounts, Fingerprints, FoughtCounts, HelicopterTicks,
-    JetTicks, LookCounts, MapCounts, MissileTicks, PanelCounts, ProducedCounts, RangerLook,
-    RoadCounts, SkirmishTicks, SoundCounts, SuppliedCounts, SupplyTicks, TerrainCounts,
-    UpgradedCounts,
+    BotBase, BotMatchEnd, CombatTicks, ContainedCounts, DefenseTicks, EffectCounts, Fingerprints,
+    FoughtCounts, GarrisonTicks, HelicopterTicks, JetTicks, LookCounts, MapCounts, MissileTicks,
+    PanelCounts, ProducedCounts, RangerLook, RoadCounts, ScienceSteps, SkirmishTicks, SoundCounts,
+    SuppliedCounts, SupplyTicks, TerrainCounts, TransportTicks, UpgradedCounts,
 };
 
 /// What the check measured of the known version and this importer, each a value no closed form
 /// gives: the fingerprints, a run on Linux and a run on macOS alike; Tournament Desert's counts and
-/// roads; the import's looks, trains, builds, researches, upgrades, supply and weapons; the plays'
+/// roads; the import's looks, trains, builds, researches, upgrades, supply, containers and
+/// weapons; the plays'
 /// ticks, the supply play's deliveries, the helicopter play's climb, load and fall, the jet play's
-/// sortie, the defense plays' hits and kills and the missile play's shot, hit and kill among them;
+/// sortie, the science play's Paladin, the combat play's hits and returns, the transport play's
+/// boardings, shot, fall and flight, the garrison play's garrison, hit and leave, the defense plays' hits and kills and the missile play's
+/// shot, hit and kill among them;
 /// the bot's base; and how the base play's and the attack play's matches stood. A run pins them,
 /// and a run that blesses writes them again (09-zero-hour.md, The check's measures are a golden
 /// file).
@@ -37,6 +40,7 @@ pub(crate) struct Golden {
     pub(crate) produced: ProducedCounts,
     pub(crate) upgraded: UpgradedCounts,
     pub(crate) supplied: SuppliedCounts,
+    pub(crate) contained: ContainedCounts,
     pub(crate) effects: EffectCounts,
     pub(crate) panel: PanelCounts,
     pub(crate) sounds: SoundCounts,
@@ -45,6 +49,10 @@ pub(crate) struct Golden {
     pub(crate) supply: SupplyTicks,
     pub(crate) helicopter: HelicopterTicks,
     pub(crate) jet: JetTicks,
+    pub(crate) science: ScienceSteps,
+    pub(crate) combat: CombatTicks,
+    pub(crate) transport: TransportTicks,
+    pub(crate) garrison: GarrisonTicks,
     pub(crate) defense: DefenseTicks,
     pub(crate) patriot: DefenseTicks,
     pub(crate) stinger: DefenseTicks,
@@ -68,6 +76,7 @@ pub(crate) struct Measured {
     pub(crate) produced: Option<ProducedCounts>,
     pub(crate) upgraded: Option<UpgradedCounts>,
     pub(crate) supplied: Option<SuppliedCounts>,
+    pub(crate) contained: Option<ContainedCounts>,
     pub(crate) effects: Option<EffectCounts>,
     pub(crate) panel: Option<PanelCounts>,
     pub(crate) sounds: Option<SoundCounts>,
@@ -76,6 +85,10 @@ pub(crate) struct Measured {
     pub(crate) supply: Option<SupplyTicks>,
     pub(crate) helicopter: Option<HelicopterTicks>,
     pub(crate) jet: Option<JetTicks>,
+    pub(crate) science: Option<ScienceSteps>,
+    pub(crate) combat: Option<CombatTicks>,
+    pub(crate) transport: Option<TransportTicks>,
+    pub(crate) garrison: Option<GarrisonTicks>,
     pub(crate) defense: Option<DefenseTicks>,
     pub(crate) patriot: Option<DefenseTicks>,
     pub(crate) stinger: Option<DefenseTicks>,
@@ -137,6 +150,7 @@ impl Measured {
             produced: self.produced?,
             upgraded: self.upgraded?,
             supplied: self.supplied?,
+            contained: self.contained?,
             effects: self.effects?,
             panel: self.panel?,
             sounds: self.sounds?,
@@ -145,6 +159,10 @@ impl Measured {
             supply: self.supply?,
             helicopter: self.helicopter?,
             jet: self.jet?,
+            science: self.science?,
+            combat: self.combat?,
+            transport: self.transport?,
+            garrison: self.garrison?,
             defense: self.defense?,
             patriot: self.patriot?,
             stinger: self.stinger?,

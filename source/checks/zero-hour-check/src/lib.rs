@@ -32,11 +32,13 @@ mod attack_play;
 mod base_play;
 #[cfg(feature = "internals")]
 pub mod bench;
+mod combat_play;
 mod command_line;
 mod decal_ground;
 mod defense_play;
 mod error;
 mod failure;
+mod garrison_play;
 mod golden;
 mod helicopter_play;
 mod import_check;
@@ -48,9 +50,11 @@ mod pins;
 mod play;
 mod play_selection;
 mod probe_arg;
+mod science_play;
 mod skirmish_play;
 mod start_drive;
 mod supply_play;
+mod transport_play;
 
 /// Runs the check as its command line says, and gives the process's exit status.
 pub fn run() -> ExitCode {
@@ -138,6 +142,7 @@ fn check(out: &Path, selection: &PlaySelection) -> Result<Vec<CheckFailure>, Che
     check.production();
     check.upgrades();
     check.supply();
+    check.contains();
     check.effects()?;
     check.panel()?;
     check.sounds()?;

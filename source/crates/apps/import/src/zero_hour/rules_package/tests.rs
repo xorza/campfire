@@ -10,7 +10,6 @@ use campfire_values::{Number, Stat};
 use super::*;
 use crate::zero_hour::combat_import::StageModifier;
 use crate::zero_hour::format::ini::damage_type::DamageType;
-use crate::zero_hour::rules_names::RulesNames;
 
 #[test]
 fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
@@ -34,7 +33,11 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
             production: &ProductionImport::default(),
             combat,
             upgrades: &UpgradeImport::default(),
+            veterancy: &VeterancyImport::default(),
+            sciences: &ScienceImport::default(),
+            contains: &ContainImport::default(),
             start_money: &money,
+            retaliation: None,
         })
     };
     // An empty table would write `actions = {}` into `[params]`, and `armors = {}` under a
@@ -48,6 +51,42 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
     // A stage's modifier reads back as the modifier that adds to the rate of fire and gives its
     // tag; a fall's, of no stat, as the one that gives its tag alone.
     let names = RulesNames::default();
+    // The retaliation of `AIData.ini`'s values, its aggressors the enemies on the ground; none of
+    // a file of none of them.
+    let ai = AiRetaliation {
+        distance: Some(200.0),
+        radius: Some(120.0),
+        chase_ms: Some(10_000),
+        inner: Some(1.8),
+        outer: Some(2.2),
+    };
+    let patch = retaliation(ai, &names).unwrap().unwrap();
+    assert_eq!(
+        patch,
+        ModeRetaliationPatch {
+            aggressors: Some(names.enemies_on_ground.clone()),
+            distance: Some(Num::int(200)),
+            radius: Some(Num::int(120)),
+            chase_ms: Some(10_000),
+        }
+    );
+    assert_eq!(retaliation(AiRetaliation::default(), &names).unwrap(), None);
+    let written = mode_data(ModeImport {
+        start: &start,
+        production: &ProductionImport::default(),
+        combat: &CombatImport::default(),
+        upgrades: &UpgradeImport::default(),
+        veterancy: &VeterancyImport::default(),
+        sciences: &ScienceImport::default(),
+        contains: &ContainImport::default(),
+        start_money: &money,
+        retaliation: Some(&patch),
+    });
+    assert!(
+        written.contains("[retaliation]\naggressors = \"enemies:!air_target\"\nchase_ms = 10000\ndistance = \"200\"\nradius = \"120\""),
+        "{written}"
+    );
+    assert!(!none.contains("retaliation"), "{none}");
     let rate = names.rate_of_fire.clone();
     let one = Number::Value(Scalar::Decimal(Num::ONE));
     let stage = StageModifier {
@@ -102,7 +141,14 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
     // Each name the import writes is one the rules package declares.
     let names = RulesNames::default();
     assert_eq!((&life, resources), (&names.life, vec![names.money.clone()]));
-    for stat in [&names.life_stat, &names.rate_of_fire] {
+    for stat in [
+        &names.life_stat,
+        &names.rate_of_fire,
+        &names.veterancy_damage,
+        &names.veterancy_rate,
+        &names.garrison_range,
+        &names.garrison_damage,
+    ] {
         assert!(stats.holds(stat.name()), "{stat}");
     }
     assert!(pools.holds(names.life.as_str()));
@@ -113,6 +159,11 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
         &names.wall,
         &names.base_defense,
         &names.infantry,
+        &names.vehicle,
+        &names.aircraft,
+        &names.huge_vehicle,
+        &names.no_garrison,
+        &names.radar,
         &names.armor_upgrade,
         &names.weapon_upgrade,
         &names.continuous_fire[0],
@@ -132,7 +183,10 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
     );
     let slots = rules.take::<Vec<SlotKindData>>("slots").unwrap().unwrap();
     let slots: Vec<&DeclaredName> = slots.iter().map(|slot| &slot.name).collect();
-    assert_eq!(slots, [&names.weapon_slot, &names.command_slot]);
+    assert_eq!(
+        slots,
+        [&names.weapon_slot, &names.command_slot, &names.use_slot]
+    );
     let slot = turret.take::<DeclaredName>("slot").unwrap().unwrap();
     assert_eq!(slot, names.weapon_slot);
 }

@@ -232,13 +232,17 @@ impl Construction {
         let mut times = world
             .get_mut::<SlotTimes>(entity)
             .expect("a builder has slot times");
-        times.commit(SlotCommit {
-            slot: order.slot,
-            now,
-            ready_at: now.after(start.cooldown),
-            charges: start.charges,
-            toggle: None,
-        });
+        times.commit(
+            SlotCommit {
+                slot: order.slot,
+                now,
+                ready_at: now.after(start.cooldown),
+                charges: start.charges,
+                toggle: None,
+                player: None,
+            },
+            None,
+        );
         // The site is the server's, which a client predicts no spawn of: the order ends, so the
         // build starts once, and the server's, turned to the site, comes back by replication.
         if F::PREDICTS {

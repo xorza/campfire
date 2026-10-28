@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use campfire_actions::SlotKinds;
 use campfire_declarations::{BookCx, BookError, BookPlace, Section};
-use campfire_values::{Names, PackageIndex, TrackId};
+use campfire_values::{Names, PackageIndex, PerkId, TrackId};
 
 use crate::Progression;
 use crate::error::TrackError;
 use crate::mode_tracks_data::ModeTracksData;
+use crate::perk_book::PerkBook;
 use crate::track_book::TrackBook;
 
 impl Progression {
@@ -31,6 +32,11 @@ impl Progression {
             }
             _ => Ok(()),
         }
+    }
+
+    /// The names of the mode's perks.
+    pub(crate) fn perk_names(cx: &BookCx<'_>) -> Result<Arc<Names<PerkId>>, BookError> {
+        Ok(Arc::clone(cx.book::<PerkBook>()?.names()))
     }
 
     /// The names of the mode's tracks.

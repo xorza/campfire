@@ -221,6 +221,8 @@ impl Module for Navigation {
         d.cache::<RoutePlanner>();
         d.cache::<CrowdCosts>();
         d.observer(UnitTracker::<StaticBodies>::aged);
+        d.observer(UnitTracker::<StaticBodies>::disabled);
+        d.observer(UnitTracker::<StaticBodies>::enabled);
         d.observer(StaticBodies::part_removed);
         d.observer(StaticBodies::state_inserted);
         d.observer(StaticBodies::state_removed);

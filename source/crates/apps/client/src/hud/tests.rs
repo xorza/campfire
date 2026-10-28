@@ -84,6 +84,7 @@ fn a_ring_marks_each_drop_of_life_where_the_unit_is_drawn() {
     app.world_mut().entity_mut(root).insert(Gauged {
         stand: Some(stand),
         slots: None,
+        badge: None,
     });
     let mut rings = app.world_mut().query::<(&Ring, &Transform)>();
     // Unchanged, its life marks nothing; a drop to 450 marks one ring on the ground under it,
@@ -122,6 +123,7 @@ fn a_ring_marks_each_drop_of_life_where_the_unit_is_drawn() {
     app.world_mut().entity_mut(root).insert(Gauged {
         stand: Some(stand),
         slots: Some(vec![none]),
+        badge: None,
     });
     app.world_mut()
         .entity_mut(unit)
@@ -274,6 +276,7 @@ fn a_unit_shows_its_bars_while_selected_when_the_hud_shows_the_selected_alone() 
                 Gauged {
                     stand: Some(stand),
                     slots: None,
+                    badge: None,
                 },
             ))
             .id();
@@ -431,5 +434,101 @@ fn an_avatars_ability_rows_stack_its_marks_cooldowns_ranks_and_charges() {
     assert_eq!(
         scratch.kinds,
         [cooldown(0), cooldown(1), charge(1), charge(2)]
+    );
+}
+
+#[test]
+fn a_unit_shows_the_badge_of_its_level_from_2_by_its_stand_and_none_at_level_1() {
+    // A unit drawn, its root gauged with a badge on its stand, and two levels' materials, of
+    // levels 2 and 3: at level 1 the badge is hidden; at 2 it shows the first, at 3 the second,
+    // and at 4, past the last, none; dead, none.
+    let mut app = test_app::view();
+    app.add_plugins(ViewPlugin);
+    app.add_systems(
+        Update,
+        HudPlugin::show_levels
+            .run_if(resource_exists::<LevelBadges>)
+            .after(ViewSystems),
+    );
+    let unit = app
+        .world_mut()
+        .spawn((
+            IdAllocator::default().allocate(),
+            BodyUnit,
+            Position::from((0, 0, 0)),
+            Team::new(0),
+            UnitType::new(0),
+            Life::full(Num::int(100)),
+            Level::new(1).unwrap(),
+        ))
+        .id();
+    app.update();
+    let root = app.world().get::<Drawing>(unit).unwrap().root();
+    let stand = app
+        .world_mut()
+        .spawn((GaugeStand, Transform::default(), ChildOf(root)))
+        .id();
+    let materials = [(); 2].map(|()| {
+        app.world_mut()
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial::default())
+    });
+    let badge = app
+        .world_mut()
+        .spawn((
+            LevelBadge,
+            MeshMaterial3d(Handle::<StandardMaterial>::default()),
+            Layout::badge(),
+            Visibility::Hidden,
+            ChildOf(stand),
+        ))
+        .id();
+    app.world_mut().insert_resource(LevelBadges(
+        materials
+            .iter()
+            .map(|material| BadgeMaterial {
+                image: Handle::default(),
+                rect: Rect::new(0.0, 0.0, 16.0, 16.0),
+                material: material.clone(),
+                fitted: true,
+            })
+            .collect(),
+    ));
+    app.world_mut().entity_mut(root).insert(Gauged {
+        stand: Some(stand),
+        slots: None,
+        badge: Some(badge),
+    });
+    app.update();
+    let shown = |app: &App| {
+        let world = app.world();
+        let visible = *world.get::<Visibility>(badge).unwrap() == Visibility::Inherited;
+        let material = &world
+            .get::<MeshMaterial3d<StandardMaterial>>(badge)
+            .unwrap()
+            .0;
+        visible.then(|| materials.iter().position(|held| held == material))
+    };
+    assert_eq!(shown(&app), None);
+    // The badge stands left of the life bar, (64 / 2 + 2 + 12 / 2) = 40 to the left, at its
+    // height, 12 square.
+    let placed = *app.world().get::<Transform>(badge).unwrap();
+    assert_eq!(placed.translation.x, -40.0);
+    assert_eq!(placed.scale, Vec3::new(12.0, 1.0, 12.0));
+    for (level, expected) in [(2, Some(Some(0))), (3, Some(Some(1))), (4, None)] {
+        *app.world_mut().get_mut::<Level>(unit).unwrap() = Level::new(level).unwrap();
+        app.update();
+        assert_eq!(shown(&app), expected, "level {level}");
+    }
+    *app.world_mut().get_mut::<Level>(unit).unwrap() = Level::new(2).unwrap();
+    app.world_mut().entity_mut(unit).insert(Dead);
+    app.update();
+    assert_eq!(shown(&app), None);
+    // A rectangle of a texture, as its share: (16, 0) to (32, 16) of 64 by 32 scales by a
+    // quarter and a half, and moves a quarter across.
+    let uv = badge_uv(Rect::new(16.0, 0.0, 32.0, 16.0), Vec2::new(64.0, 32.0));
+    assert_eq!(
+        uv,
+        Affine2::from_scale_angle_translation(Vec2::new(0.25, 0.5), 0.0, Vec2::new(0.25, 0.0))
     );
 }

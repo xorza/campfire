@@ -353,6 +353,7 @@ pub(crate) mod samples {
     use crate::zero_hour::animation_import::samples::animation_files;
     use crate::zero_hour::format::big::big_archive::samples::big;
     use crate::zero_hour::format::csf::string_table::samples::strings;
+    use crate::zero_hour::format::ini::ai_data_ini::samples::AI_DATA;
     use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
     use crate::zero_hour::format::ini::command_button_ini::samples::COMMAND_BUTTONS;
     use crate::zero_hour::format::ini::command_set_ini::samples::COMMAND_SETS;
@@ -362,6 +363,8 @@ pub(crate) mod samples {
         DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
     };
     use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
+    use crate::zero_hour::format::ini::rank_ini::samples::RANKS;
+    use crate::zero_hour::format::ini::science_ini::samples::SCIENCES;
     use crate::zero_hour::format::ini::upgrade_ini::samples::UPGRADES;
     use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
     use crate::zero_hour::format::map::map_file::samples::map;
@@ -420,6 +423,9 @@ pub(crate) mod samples {
                 ("Data\\INI\\CommandSet.ini", COMMAND_SETS.as_bytes()),
                 ("Data\\INI\\CommandButton.ini", COMMAND_BUTTONS.as_bytes()),
                 ("Data\\INI\\Upgrade.ini", UPGRADES.as_bytes()),
+                ("Data\\INI\\Rank.ini", RANKS.as_bytes()),
+                ("Data\\INI\\Default\\AIData.ini", AI_DATA.as_bytes()),
+                ("Data\\INI\\Science.ini", SCIENCES.as_bytes()),
                 ("Data\\INI\\Multiplayer.ini", MULTIPLAYER.as_bytes()),
                 ("Data\\English\\generals.csf", &strings()),
                 ("Data\\INI\\Object.ini", OBJECTS.as_bytes()),

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, PipelineField, Takes};
+use campfire_actions::{
+    ActionKind, KindSection, KindSections, KindTakes, ListedSpec, PipelineField, Takes,
+};
 use campfire_declarations::Listed;
 use campfire_script::ApiBuilder;
 use campfire_script::{ApiVersion, Status};
@@ -52,6 +54,10 @@ impl KindSection for UseActionData {
 
     fn numbers(&self) -> Vec<&Ranked<Number>> {
         Vec::new()
+    }
+
+    fn resolves(&self) -> Option<Arc<dyn ListedSpec>> {
+        None
     }
 }
 

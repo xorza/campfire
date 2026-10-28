@@ -28,7 +28,7 @@ use campfire_production::{
     BuildData, DropOffData, GatherData, ModeSupplyData, NodeData, ProductionData, RequiresData,
     SupplyData, TrainData,
 };
-use campfire_progression::TrackData;
+use campfire_progression::{PerkData, TrackData};
 use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_script::*;
 use campfire_sim::Capability;
@@ -234,10 +234,20 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
             Status::Runs(ApiVersion::FIRST)
         )
     );
-    let perk = api.member(ApiHolder::of::<Unit>(), "has_perk").unwrap();
+    let perk = api
+        .member(ApiHolder::of::<PlayerHandle>(), "has_perk")
+        .unwrap();
     assert_eq!(
         (perk.decl.capability, perk.status),
-        (Some(Capability::Progression), Status::Planned)
+        (
+            Some(Capability::Progression),
+            Status::Runs(ApiVersion::FIRST)
+        )
+    );
+    let give = api.member(ApiHolder::CTX, "give_item").unwrap();
+    assert_eq!(
+        (give.decl.capability, give.status),
+        (Some(Capability::Items), Status::Planned)
     );
     // A name takes the capability of the module that binds it, as `damage` and `points` do; the
     // mode's are the core's but one that names another capability, as `respawn` names combat.
@@ -579,6 +589,7 @@ fn the_data_fields_are_the_schemas() {
         table::<AreaData>(),
         table::<AreaInsideData>(),
         table::<TrackData>(),
+        table::<PerkData>(),
         table::<ModifierData>(),
         table::<AuraData>(),
         table::<CombatData>(),

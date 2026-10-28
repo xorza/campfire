@@ -239,6 +239,25 @@ pub(super) static DATA_FLAWS: &[Flaw] = &[
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Unknown { of: TrackId::NAMES, name, .. } if name == "levels"),
     ),
+    // A type's own thresholds count as many as the track's: the 3v3's `level` has 17.
+    Flaw::of(
+        HUSK,
+        Edit::Replace(
+            r#"tracks = ["level"]"#,
+            r#"tracks = [{ track = "level", levels = [100] }]"#,
+        ),
+        "hero-husk",
+        |problem| {
+            rule(
+                problem,
+                &TrackError::TypeLevels {
+                    track: DeclaredName::new("level").unwrap(),
+                    given: 1,
+                    levels: 17,
+                },
+            )
+        },
+    ),
     Flaw::of(
         MANIFEST,
         Edit::Set("tick_hz", "{ min = 40, max = 60, default = 30 }"),

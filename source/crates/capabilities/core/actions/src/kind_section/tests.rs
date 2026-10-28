@@ -10,6 +10,7 @@ use serde::Deserialize;
 use crate::action_kind::ActionKind;
 use crate::kind_section::{KindSection, KindSections};
 use crate::kind_takes::KindTakes;
+use crate::listed_effect::listed_spec::ListedSpec;
 
 /// The kind of the crate's tests, registered as `cast`: it may take every field of the
 /// pipeline, and has one number of its own, `most`.
@@ -34,6 +35,10 @@ impl KindSection for TestKind {
 
     fn numbers(&self) -> Vec<&Ranked<Number>> {
         self.most.iter().collect()
+    }
+
+    fn resolves(&self) -> Option<Arc<dyn ListedSpec>> {
+        None
     }
 }
 

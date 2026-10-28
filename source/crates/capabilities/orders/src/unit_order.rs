@@ -52,6 +52,12 @@ pub enum UnitOrder {
     /// Use the object `target`, which `interaction` starts in the use slot the object's users
     /// give the unit, as `Slot` starts an action.
     Use { target: StableId },
+    /// Enter the container `target`, which `interaction` starts in the use slot as a use.
+    Enter { target: StableId },
+    /// Let `rider` out of the unit, which `interaction` does; the unit keeps what it does.
+    Exit { rider: StableId },
+    /// Let every rider out of the unit, which `interaction` does; the unit keeps what it does.
+    Evacuate,
 }
 
 /// The parts of a unit that an order reads and changes: where it stands and where it spawned, its
@@ -172,7 +178,9 @@ impl UnitOrder {
                 }
                 return Some(kind);
             }
-            Self::Use { .. } => return Some(kind),
+            Self::Use { .. } | Self::Enter { .. } | Self::Exit { .. } | Self::Evacuate => {
+                return Some(kind);
+            }
             Self::FollowPath => {
                 if let Some(underway) = &mut underway {
                     underway.set_attack_target(None, dues);
@@ -248,6 +256,9 @@ impl UnitOrder {
                 from: position,
             },
             Self::Use { target } => OrderKind::Use { target },
+            Self::Enter { target } => OrderKind::Enter { target },
+            Self::Exit { rider } => OrderKind::Exit { rider },
+            Self::Evacuate => OrderKind::Evacuate,
             Self::Move { .. }
             | Self::AttackMove { .. }
             | Self::Attack { .. }

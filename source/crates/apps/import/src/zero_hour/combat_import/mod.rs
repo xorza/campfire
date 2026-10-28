@@ -5,13 +5,14 @@ use campfire_actions::{ActionKeys, ActionRange, RangeField, Targeting};
 use campfire_client_files::ClientUnit;
 use campfire_codec::{TomlTable, TomlValue};
 use campfire_combat::{
-    ArmorShare, AttackData, BarrelsData, ClipData, ClipRefill, FallData, OuterData, PitchData,
-    PreAttackData, PreAttackEach, ScatterData, SplashData, StageData, StreakData, WeaponValue,
+    ArmorShare, AttackData, BarrelsData, BonusData, ClipData, ClipRefill, FallData, OuterData,
+    PitchData, PreAttackData, PreAttackEach, ScatterData, SplashData, StageData, StreakData,
+    WeaponValue,
 };
 use campfire_common::DeclaredName;
 use campfire_math::{Num, Rounding};
 use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
-use campfire_values::{Number, Ranked, RelationSet, Scalar, Speed, Stat};
+use campfire_values::{FilterTag, Number, Ranked, RelationSet, Scalar, Speed, Stat, TagFilterData};
 use serde::Serialize;
 
 use crate::zero_hour::dropped::Losses;
@@ -19,6 +20,7 @@ use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::damage_type::DamageType;
 use crate::zero_hour::format::ini::object_ini::IniObject;
+use crate::zero_hour::format::ini::object_ini::fight_data::PreferredKinds;
 use crate::zero_hour::format::ini::weapon_ini::{IniWeapon, PrefireType, RadiusAffects, ShotDelay};
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
@@ -61,6 +63,8 @@ pub(crate) struct CombatImport {
     pub(crate) dropped: Losses<WeaponDropCause>,
     pub(crate) unliving: Vec<String>,
     pub(crate) wounded: Vec<String>,
+    /// The weapons whose `PreferredAgainst` names a kind of no tag, whose preference goes.
+    pub(crate) unpreferred: BTreeSet<String>,
     projectile_looks: Vec<ProjectileLook>,
 }
 
@@ -219,7 +223,18 @@ impl CombatImport {
             let Some(set) = fight.starting_weapons().filter(|_| !typed.leads()) else {
                 continue;
             };
-            for GatedWeapon { slot, weapon, gate } in WeaponGate::of(set, fight.upgrade_weapons()) {
+            let gated = WeaponGate::of(set, fight.upgrade_weapons());
+            for GatedWeapon {
+                slot,
+                weapon,
+                gate,
+                set,
+            } in gated
+            {
+                if set.locked[slot] {
+                    import.dropped.drop(weapon, WeaponDropCause::Locked);
+                    continue;
+                }
                 let named = ImportName::latin(weapon).id("weapon")?;
                 let converted = rules
                     .weapons
@@ -234,6 +249,12 @@ impl CombatImport {
                 match converted {
                     Ok((id, mut converted)) => {
                         converted.weapon.keys.when = gate.when(&rules.names);
+                        if let Some(kinds) = set.preferred[slot] {
+                            converted.weapon.attack.prefers = Self::preference(kinds, &rules.names);
+                            if kinds.other {
+                                import.unpreferred.insert(weapon.to_owned());
+                            }
+                        }
                         // Weapons whose names differ only in case would share one action.
                         match import.actions.entry(id.clone()) {
                             Entry::Occupied(held)
@@ -276,6 +297,33 @@ impl CombatImport {
         import.armors = armors;
         import.name_projectiles(fired, names)?;
         Ok(import)
+    }
+
+    /// The filter of the targets of all of `kinds`, a weapon set's `PreferredAgainst`, by their
+    /// tags of `names`; none for a kind of no tag, as `BALLISTIC_MISSILE`, which no unit of the
+    /// engine's is (combat-response.md, The import converts what the choice and the answer read).
+    fn preference(kinds: PreferredKinds, names: &RulesNames) -> Option<TagFilterData> {
+        let PreferredKinds {
+            infantry,
+            vehicle,
+            structure,
+            aircraft,
+            other,
+        } = kinds;
+        let tags = [
+            (infantry, &names.infantry),
+            (vehicle, &names.vehicle),
+            (structure, &names.structure),
+            (aircraft, &names.aircraft),
+        ];
+        let tags = tags
+            .into_iter()
+            .filter(|&(holds, _)| holds)
+            .map(|(_, tag)| FilterTag {
+                name: tag.clone(),
+                negated: false,
+            });
+        (!other).then(|| TagFilterData::new(tags))
     }
 
     /// Keeps the stat of `bonus`, a weapon's, with what an upgrade adds to it; a bad number for a
@@ -611,10 +659,12 @@ impl ImportedWeapon {
                 },
                 attack: AttackData {
                     rate: WeaponValue::Own(ms(period_ms)?),
-                    rate_bonus: stages.as_ref().map(|_| rules.names.rate_of_fire.clone()),
+                    rate_bonus: Some(Self::rate_bonus(&rules.names, stages.is_some())),
                     damage: WeaponValue::Own(damage),
-                    damage_bonus: bonus.as_ref().map(|bonus| bonus.stat.clone()),
+                    damage_bonus: Some(Self::damage_bonus_stats(&rules.names, bonus.as_ref())),
+                    range_bonus: Some(Self::range_bonus(&rules.names)),
                     damage_kind: damage_kind.kind(),
+                    prefers: None,
                     clip,
                     splash,
                     scatter,
@@ -638,6 +688,32 @@ impl ImportedWeapon {
         radians
             .checked_mul_div(Num::int(180), Num::PI, Rounding::NearestEven)
             .expect("a small angle in degrees fits")
+    }
+
+    /// The stats a weapon's rate of fire takes: the veterancy's, and the stages' of a weapon of
+    /// continuous fire, as `Weapon::computeBonus` sums each condition's bonus (generals.md, A
+    /// weapon's bonus is a sum of stats).
+    fn rate_bonus(names: &RulesNames, staged: bool) -> BonusData {
+        let stage = staged.then(|| names.rate_of_fire.clone());
+        let stats = [names.veterancy_rate.clone()].into_iter().chain(stage);
+        BonusData::of(stats).expect("the veterancy's stat at least")
+    }
+
+    /// The stats a weapon's range takes: the garrison's.
+    fn range_bonus(names: &RulesNames) -> BonusData {
+        BonusData::of([names.garrison_range.clone()]).expect("the garrison's stat")
+    }
+
+    /// The stats a weapon's damage takes: the veterancy's, the garrison's, and its upgrade's
+    /// `bonus`.
+    fn damage_bonus_stats(names: &RulesNames, bonus: Option<&DamageBonus>) -> BonusData {
+        let upgrade = bonus.map(|bonus| bonus.stat.clone());
+        let fixed = [
+            names.veterancy_damage.clone(),
+            names.garrison_damage.clone(),
+        ];
+        let stats = fixed.into_iter().chain(upgrade);
+        BonusData::of(stats).expect("the veterancy's stat at least")
     }
 
     /// The damage bonus of `factor`, a weapon's of `PLAYER_UPGRADE`: none for a factor of 1, which

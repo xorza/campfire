@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use campfire_actions::{ActionBook, ActionKind, ActionsData, LoadedAction, Targeting};
+use campfire_actions::{ActionBook, ActionKind, ActionsData, LoadedAction, RangeBonus, Targeting};
 use campfire_declarations::{
     BookCx, BookError, BookPlace, ById, ByIdBuilder, NamesListError, Section,
 };
@@ -130,6 +130,20 @@ impl Weapon {
                 modifiers,
             };
             book.set(loaded.action, names.weapon(data)?);
+        }
+        Ok(book.build())
+    }
+}
+
+impl Weapon {
+    /// The range bonus of each weapon of one, for the scan and the chase, which know no weapon.
+    pub fn range_bonuses(cx: &BookCx<'_>) -> Result<ById<ActionId, RangeBonus>, BookError> {
+        let weapons = cx.book::<ById<ActionId, Self>>()?;
+        let mut book = ByIdBuilder::default();
+        for (action, weapon) in weapons {
+            if let Some(bonus) = &weapon.range_bonus {
+                book.set(action, bonus.clone());
+            }
         }
         Ok(book.build())
     }

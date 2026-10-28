@@ -5,8 +5,10 @@
 // original's pathfind cell, 10, as clear of each body, as the building may cover the rally; a unit
 // with no room within 20 cells is left out. A player's faction is the one its host picked, or one
 // drawn of the mode's factions, as the original draws a slot's Random, which then counts as its
-// pick. A player slot whose host picked the start `base` also gets its faction's base: each of its
-// base buildings, whole, at the room nearest its start within 40 cells, and `base_count` of each of
+// pick, and its faction's sciences, its perks `perks`, as `Player::resetSciences` gives a player
+// its template's `IntrinsicSciences`. A player slot whose host picked the start `base` also gets
+// its faction's base: each of its base buildings, whole, at the room nearest its start within 40
+// cells, and `base_count` of each of
 // its base units at the room nearest its rally within 40, each left out with no room. A slot no
 // player or bot held as the match started, and a player whose start the map lacks, start with no
 // unit. Every player starts with the skirmish's money, `start_money`, as the game gives each its
@@ -26,6 +28,9 @@ fn on_match_start(ctx) {
         } else {
             picked[0]
         };
+        for perk in ctx.params[`perks_${faction}`] {
+            ctx.grant_perk(player, perk);
+        }
         let at = slot_point(ctx, "start", player.player_slot);
         if at == () {
             continue;

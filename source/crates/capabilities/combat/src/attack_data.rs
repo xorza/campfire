@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, PipelineField, Takes};
+use campfire_actions::{
+    ActionKind, KindSection, KindSections, KindTakes, ListedSpec, PipelineField, Takes,
+};
 use campfire_common::DeclaredName;
 use campfire_declarations::Listed;
 use campfire_geometry::MAX_BOUND;
@@ -9,30 +11,38 @@ use campfire_math::Num;
 use campfire_script::ApiBuilder;
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
-use campfire_values::{Number, Ranked, RelationSet, Speed, Stat};
+use campfire_values::{Number, Ranked, RelationSet, Speed, Stat, TagFilterData};
 use serde::de::Error;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::bonus_stats::BonusData;
+
 /// The section of an action of kind `attack`, a weapon: where its rate and its damage come from,
-/// the stat that speeds its own period, the kind of damage it deals, its clip, its projectile's
-/// splash and scatter, its bound of pitch, the speed that delays the hit of a weapon of no
-/// projectile, its shot streak, its pre-attack, and the bearing its attacker aims within
-/// (04-capabilities/actions.md, Each kind owns its section).
+/// the stat that speeds its own period, the kind of damage it deals, the filter of the targets it
+/// prefers, its clip, its projectile's splash and scatter, its bound of pitch, the speed that
+/// delays the hit of a weapon of no projectile, its shot streak, its pre-attack, and the bearing
+/// its attacker aims within (04-capabilities/actions.md, Each kind owns its section).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttackData {
     /// Its attacks a second, a stat `rate`, or its own time from one attack's start to the next,
     /// `period_ms`.
     pub rate: WeaponValue,
-    /// The stat whose value speeds its own period and its clip's reload, divided by 1 plus the
-    /// value (04-capabilities/combat.md, A weapon's own period may speed up by a stat).
-    pub rate_bonus: Option<Stat>,
+    /// The stats whose sum speeds its own period and its clip's reload, divided by 1 plus the
+    /// sum (04-capabilities/combat.md, A weapon's own period may speed up by a stat).
+    pub rate_bonus: Option<BonusData>,
     /// Its damage, a stat `damage`, or its own `amount`.
     pub damage: WeaponValue,
-    /// The stat whose value scales its own amount and its splash's outer amount, times 1 plus the
-    /// value (04-capabilities/combat.md, One bonus scales both rings).
-    pub damage_bonus: Option<Stat>,
+    /// The stats whose sum scales its own amount and its splash's outer amount, times 1 plus the
+    /// sum (04-capabilities/combat.md, One bonus scales both rings).
+    pub damage_bonus: Option<BonusData>,
+    /// The stats whose sum stretches its range, times 1 plus the sum (transports.md, A
+    /// container's modifier holds on its riders).
+    pub range_bonus: Option<BonusData>,
     pub damage_kind: DeclaredName,
+    /// The tags of the targets it is chosen for above every weapon that does not prefer them
+    /// (combat-response.md, An attack may prefer its targets).
+    pub prefers: Option<TagFilterData>,
     pub clip: Option<ClipData>,
     pub splash: Option<SplashData>,
     pub scatter: Option<ScatterData>,
@@ -73,10 +83,12 @@ impl<'de> Deserialize<'de> for AttackData {
         #[serde(deny_unknown_fields)]
         struct Fields {
             rate: Option<Stat>,
-            rate_bonus: Option<Stat>,
+            rate_bonus: Option<BonusData>,
             damage: Option<Stat>,
-            damage_bonus: Option<Stat>,
+            damage_bonus: Option<BonusData>,
+            range_bonus: Option<BonusData>,
             damage_kind: DeclaredName,
+            prefers: Option<TagFilterData>,
             amount: Option<Ranked<Number>>,
             period_ms: Option<Ranked<Number>>,
             clip: Option<ClipData>,
@@ -115,7 +127,9 @@ impl<'de> Deserialize<'de> for AttackData {
                 "a weapon's damage is a stat, `damage`, or its own `amount`: one of them",
             )?,
             damage_bonus: fields.damage_bonus,
+            range_bonus: fields.range_bonus,
             damage_kind: fields.damage_kind,
+            prefers: fields.prefers,
             clip: fields.clip,
             splash: fields.splash,
             scatter: fields.scatter,
@@ -129,7 +143,7 @@ impl<'de> Deserialize<'de> for AttackData {
 }
 
 /// As data writes it, what `Deserialize` reads: its damage, `amount` or the stat `damage`, its
-/// kind, its rate, `period_ms` or the stat `rate`, and each optional field it has.
+/// kind, the filter it prefers, its rate, `period_ms` or the stat `rate`, and each optional field it has.
 impl Serialize for AttackData {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(None)?;
@@ -141,12 +155,18 @@ impl Serialize for AttackData {
             map.serialize_entry("damage_bonus", stat)?;
         }
         map.serialize_entry("damage_kind", &self.damage_kind)?;
+        if let Some(prefers) = &self.prefers {
+            map.serialize_entry("prefers", prefers)?;
+        }
         match &self.rate {
             WeaponValue::Own(period) => map.serialize_entry("period_ms", period)?,
             WeaponValue::Stat(stat) => map.serialize_entry("rate", stat)?,
         }
         if let Some(stat) = &self.rate_bonus {
             map.serialize_entry("rate_bonus", stat)?;
+        }
+        if let Some(stat) = &self.range_bonus {
+            map.serialize_entry("range_bonus", stat)?;
         }
         if let Some(clip) = &self.clip {
             map.serialize_entry("clip", clip)?;
@@ -217,6 +237,10 @@ impl KindSection for AttackData {
             .chain(outer.map(|outer| &outer.amount))
             .chain(pre_attack)
             .collect()
+    }
+
+    fn resolves(&self) -> Option<Arc<dyn ListedSpec>> {
+        None
     }
 }
 

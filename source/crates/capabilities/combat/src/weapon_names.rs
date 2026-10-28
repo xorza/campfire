@@ -1,13 +1,15 @@
 use std::num::NonZeroU16;
 
-use campfire_actions::{Action, DeliveryAim, LoadedAction};
+use campfire_actions::{Action, DeliveryAim, LoadedAction, RangeBonus};
 use campfire_common::{DeclaredName, Ticks};
 use campfire_declarations::BookError;
 use campfire_math::Num;
-use campfire_script::{TagNames, UnknownName};
+use campfire_script::{Filter, TagNames, UnknownName};
 use campfire_sim::MatchRate;
 use campfire_stats::{ModifierBook, StatBook};
 use campfire_units::StatId;
+
+use crate::bonus_stats::{BonusData, BonusStats};
 use campfire_values::{
     DamageKind, ModifierId, NameKind, Named, Names, Number, Rank, Ranked, Scalar, Stat, Tag,
     TimeTooLarge,
@@ -88,8 +90,16 @@ impl WeaponNames<'_> {
                 tags: tags.collect::<Result<_, _>>()?,
             })
         });
-        let rate_bonus = data.rate_bonus.as_ref().map(|stat| self.stat(stat));
-        let damage_bonus = data.damage_bonus.as_ref().map(|stat| self.stat(stat));
+        let bonus = |bonus: &BonusData| {
+            let stats = bonus.stats().iter().map(|stat| self.stat(stat));
+            stats.collect::<Result<BonusStats, BookError>>()
+        };
+        let rate_bonus = data.rate_bonus.as_ref().map(bonus);
+        let range_bonus = data.range_bonus.as_ref().map(|bonus| {
+            let stats = bonus.stats().iter().map(|stat| self.stat(stat));
+            stats.collect::<Result<RangeBonus, BookError>>()
+        });
+        let damage_bonus = data.damage_bonus.as_ref().map(bonus);
         let streak = data.streak.as_ref().map(|streak| self.streak(streak));
         let pre_attack = data.pre_attack.as_ref().map(|pre_attack| {
             let ticks = self.at_ranks(|rank| {
@@ -104,9 +114,16 @@ impl WeaponNames<'_> {
         Ok(Weapon {
             rate,
             rate_bonus: rate_bonus.transpose()?,
+            range_bonus: range_bonus.transpose()?,
             damage,
             damage_bonus: damage_bonus.transpose()?,
             kind,
+            prefers: data
+                .prefers
+                .as_ref()
+                .map(|prefers| Filter::resolve(prefers.filter(), self.tags))
+                .transpose()
+                .map_err(|name| self.loaded.unknown(name))?,
             clip: clip.transpose()?,
             splash: data
                 .splash

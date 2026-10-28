@@ -85,6 +85,9 @@ const THICKNESS: f32 = 6.0;
 const ROW: f32 = 8.0;
 /// The pool bars' width.
 const WIDE: f32 = 64.0;
+/// A level's badge's side, and its gap from the life bar's left end.
+const BADGE: f32 = 12.0;
+const BADGE_GAP: f32 = 2.0;
 /// A cooldown pip's width, and the step from one pip to the next.
 const PIP: f32 = 14.0;
 const PIP_STEP: f32 = 16.0;
@@ -173,6 +176,15 @@ pub(crate) struct Layout {
 }
 
 impl Layout {
+    /// The badge of its unit's level on its stand: left of the life bar, at its height, in front
+    /// of the bars, as Zero Hour's `Drawable::drawVeterancy` draws its chevron by the health bar
+    /// (generals.md, A level shows its icon).
+    pub(crate) fn badge() -> Transform {
+        let left = -(WIDE / 2.0 + BADGE_GAP + BADGE / 2.0);
+        Transform::from_translation(Vec3::new(left, FRONT, -ABOVE))
+            .with_scale(Vec3::new(BADGE, 1.0, BADGE))
+    }
+
     /// The back's transform, relative to the gauge.
     pub(crate) const fn back(self) -> Transform {
         Transform::from_scale(Vec3::new(self.width, 1.0, self.thickness))

@@ -7,6 +7,7 @@ use campfire_values::{ModifierId, PackageIndex, Rank, Relation, TagSet};
 use crate::action_kind::ActionKind;
 use crate::action_target::ActionTarget;
 use crate::channel_pay::ChannelPay;
+use crate::cooldown_holder::CooldownHolder;
 use crate::delivery::Delivery;
 use crate::rank_toggle::TogglePer;
 use crate::rank_values::RankValues;
@@ -37,6 +38,8 @@ pub struct Action {
     pub delivery: Option<Delivery>,
     /// What each tick of its channel pays its unit's owner.
     pub pays: Option<ChannelPay>,
+    /// Who keeps its cooldown.
+    pub cooldown_holder: CooldownHolder,
 }
 
 /// An action's passive modifier, and whether its unit holds it only while the action is off

@@ -26,6 +26,14 @@ pub enum OrdersDirective<R: OrderRefs = Ids> {
     Stop,
     /// Use the object `target` with the use slot: its action runs from that slot.
     Use { target: R::Unit },
+    /// Enter the container `target` with the use slot: its entry runs from that slot
+    /// (transports.md, An entry is an action of the container's).
+    Enter { target: R::Unit },
+    /// Let `rider` out of the container the order's unit is, after the riders before it
+    /// (transports.md, A rider leaves at a free cell by the container).
+    Exit { rider: R::Unit },
+    /// Let every rider out of the container the order's unit is, in their order.
+    Evacuate,
     /// Walk to a point on the ground plane as a move does, attacking each enemy the scan finds on
     /// the way, then walking on (04-capabilities/control.md, An army attack-moves).
     AttackMove { to: R::Ground },
@@ -65,6 +73,13 @@ impl<R: OrderRefs> OrdersDirective<R> {
             Self::Use { target } => OrdersDirective::Use {
                 target: refs.used(target)?,
             },
+            Self::Enter { target } => OrdersDirective::Enter {
+                target: refs.entered(target)?,
+            },
+            Self::Exit { rider } => OrdersDirective::Exit {
+                rider: refs.unit(rider)?,
+            },
+            Self::Evacuate => OrdersDirective::Evacuate,
         })
     }
 }

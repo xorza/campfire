@@ -10,7 +10,7 @@ use campfire_geometry::BodyBox;
 use campfire_math::{Num, Vec3};
 use campfire_mode::{BountyData, IncomeData, IncomePays, Pays};
 use campfire_navigation::{FlightData, Gait, UnitNavigationData, WingsData};
-use campfire_orders::AcquirePatch;
+use campfire_orders::{AcquirePatch, RetaliatePatch};
 use campfire_projectiles::ProjectileData;
 use campfire_stats::{StatValue, StatsData, TypePoolsData};
 use campfire_units::{BodyShape, CollisionData, TypeTagsData, VariationData, VariationsData};
@@ -19,6 +19,7 @@ use campfire_vision::{Sight, VisionData};
 
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::ini::ai_data_ini::AiRetaliation;
 use crate::zero_hour::format::ini::damage_type::DamageType;
 use crate::zero_hour::format::ini::locomotor_ini::Locomotor;
 use crate::zero_hour::format::ini::object_ini::fight_data::{BodyKind, IniTurretPitch};
@@ -88,6 +89,10 @@ pub(crate) struct ImportedType {
     /// buildings, as the install gives them, completed from the rules data's defaults, for a type
     /// of a weapon (09-zero-hour.md, A scan follows `AutoAcquireEnemiesWhenIdle`).
     acquire: Option<AcquirePatch>,
+    /// Its leash and its target's reach as it answers an ally's call, of a type of an AI module
+    /// that drives, of no kind that answers none (combat-response.md, The import converts what the
+    /// choice and the answer read).
+    retaliate: Option<RetaliatePatch>,
     /// How far it sees, of a type whose range clears the shroud (09-zero-hour.md, Zero Hour sees by
     /// the vision capability).
     vision: Option<VisionData>,
@@ -319,9 +324,35 @@ impl ImportedType {
             flight,
             sortie,
             acquire,
+            retaliate: Self::retaliating(object, rules.ai.retaliation, navigation.is_some())?,
             leads: false,
             vision: Self::vision(object)?,
         })
+    }
+
+    /// The `retaliate` of `object`, by `ai`'s factors of a human player's guard, which `drives`
+    /// tells: of a type of an AI module that drives and answers, its leash its `VisionRange` times
+    /// `GuardInnerModifierHuman`, and its target's reach that and its range times
+    /// `GuardOuterModifierHuman`, each in the game's `f32`, as `GuardRetaliateExitConditions`
+    /// bounds the chase (`AIGuardRetaliateMachine::getStdGuardRange`); none for another, or with no
+    /// factor of `AIData`.
+    fn retaliating(
+        object: &IniObject,
+        ai: AiRetaliation,
+        drives: bool,
+    ) -> Result<Option<RetaliatePatch>, TypeError> {
+        let answers = object.fight().ai && drives && object.may_retaliate();
+        let (Some(inner), Some(outer), true) = (ai.inner, ai.outer, answers) else {
+            return Ok(None);
+        };
+        let vision = object.vision_range();
+        let leash = vision * inner;
+        let reach = vision * outer + leash;
+        let num = |value: f32| game_float::to_num(value).map_err(|_| TypeError::Number);
+        Ok(Some(RetaliatePatch {
+            leash: Some(num(leash)?),
+            reach: Some(num(reach)?),
+        }))
     }
 
     /// The flight of a hovering `locomotor` under the game's `gravity`, in units a second
@@ -402,6 +433,7 @@ impl ImportedType {
             flight: None,
             sortie: None,
             acquire: None,
+            retaliate: None,
             leads: true,
             vision: None,
         }
@@ -421,16 +453,20 @@ impl ImportedType {
     /// The tags of `object`'s kinds that the rules data declares, and its radar's, of one made with
     /// it.
     fn tags(object: &IniObject, names: &RulesNames) -> Option<TypeTagsData> {
-        let kinds = [
-            (object.counts_for_victory(), &names.counts_for_victory),
-            (object.is_structure(), &names.structure),
+        let kinds = object.kinds();
+        let of_kinds = names
+            .kind_tags()
+            .into_iter()
+            .map(|(kind, tag)| (kinds.holds(kind), tag));
+        let victory = (object.counts_for_victory(), &names.counts_for_victory);
+        let others = [
             (object.is_wall(), &names.wall),
-            (object.is_base_defense(), &names.base_defense),
-            (object.is_infantry(), &names.infantry),
             (object.makes_radar(), &names.radar),
         ];
-        let tags: Vec<DeclaredName> = kinds
+        let tags: Vec<DeclaredName> = [victory]
             .into_iter()
+            .chain(of_kinds)
+            .chain(others)
             .filter(|&(holds, _)| holds)
             .map(|(_, tag)| tag.clone())
             .collect();
@@ -496,6 +532,11 @@ impl ImportedType {
 
     pub(crate) const fn acquire(&self) -> Option<&AcquirePatch> {
         self.acquire.as_ref()
+    }
+
+    /// Its `retaliate`, of a type that answers an ally's call.
+    pub(crate) const fn retaliate(&self) -> Option<&RetaliatePatch> {
+        self.retaliate.as_ref()
     }
 
     /// Writes each section it gives into `writer`, a unit type's table: whole, or the patch of
@@ -579,6 +620,7 @@ impl ImportedType {
             flight: None,
             sortie: None,
             acquire: None,
+            retaliate: None,
             leads: false,
             vision: None,
         }

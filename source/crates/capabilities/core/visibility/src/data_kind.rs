@@ -18,7 +18,7 @@ pub enum DataKind {
     Modifiers,
     /// Each of a unit's action slots' ready tick, charges and toggle.
     Cooldowns,
-    /// A unit's experience and points.
+    /// A unit's or a player's experience and points.
     Progression,
     /// A unit's inventory.
     Inventory,
@@ -58,6 +58,12 @@ pub enum DataKind {
     /// The cells a player's team sees and explored, on its entity, which its client draws as its
     /// fog (04-capabilities/vision.md, The server sends a team's cells to its player).
     Sight,
+    /// The ready ticks of the actions whose cooldown a player keeps, on its entity, which its
+    /// prediction reads (generals.md, A power's cooldown may be its player's).
+    PlayerCooldowns,
+    /// A container's riders, in their order, which its panel lists (transports.md, A container
+    /// keeps its riders in order).
+    Riders,
 }
 
 impl DataKind {
@@ -93,7 +99,9 @@ impl DataKind {
             | Self::PlayerStateOwner
             | Self::Server
             | Self::Commanded
-            | Self::Sight => Recipients::NONE,
+            | Self::Sight
+            | Self::PlayerCooldowns
+            | Self::Riders => Recipients::NONE,
         }
     }
 
@@ -108,11 +116,13 @@ impl DataKind {
             }
             Self::Pools
             | Self::Cooldowns
+            | Self::PlayerCooldowns
             | Self::Progression
             | Self::Inventory
             | Self::Resources
             | Self::Supply
-            | Self::Queues => Recipients::ALL,
+            | Self::Queues
+            | Self::Riders => Recipients::ALL,
             Self::UnitStateOwner
             | Self::UnitStateTeam
             | Self::UnitStateAll
@@ -139,7 +149,8 @@ impl DataKind {
             | Self::Sight
             | Self::PlayerStateOwner
             | Self::PlayerStateTeam
-            | Self::PlayerStateAll => true,
+            | Self::PlayerStateAll
+            | Self::PlayerCooldowns => true,
             Self::Unit
             | Self::Life
             | Self::Pools
@@ -154,7 +165,8 @@ impl DataKind {
             | Self::UnitStateOwner
             | Self::UnitStateTeam
             | Self::UnitStateAll
-            | Self::Server => false,
+            | Self::Server
+            | Self::Riders => false,
         }
     }
 
@@ -196,6 +208,7 @@ mod tests {
                 DataKind::PlayerStateAll,
                 DataKind::Commanded,
                 DataKind::Sight,
+                DataKind::PlayerCooldowns,
             ]
         );
     }

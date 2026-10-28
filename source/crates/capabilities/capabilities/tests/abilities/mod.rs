@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use campfire_abilities::*;
 use campfire_actions::{
-    ActionData, ActionKeys, ActionRange, DeliverySection, EffectData, EffectTo, KindSection,
-    ListedEffect, PipelineField, RangeField, Targeting,
+    ActionData, ActionKeys, ActionRange, CooldownHolder, DeliverySection, EffectData, EffectTo,
+    KindSection, ListedEffect, PipelineField, RangeField, Targeting,
 };
 use campfire_capabilities::Match;
 use campfire_capabilities::internals::*;
@@ -103,9 +103,11 @@ fn stat_attack() -> AttackData {
     AttackData {
         rate: WeaponValue::Stat(Stat::named("armor").unwrap()),
         rate_bonus: None,
+        range_bonus: None,
         damage: WeaponValue::Stat(Stat::named("attack_damage").unwrap()),
         damage_bonus: None,
         damage_kind: DeclaredName::new("physical").unwrap(),
+        prefers: None,
         clip: None,
         splash: None,
         scatter: None,
@@ -149,6 +151,19 @@ fn a_kinds_section_names_the_first_pipeline_field_it_misuses() {
         ..action.clone()
     };
     assert_eq!(attacking(&ending).misused(), Some(PipelineField::OnEnd));
+    // A cast alone keeps its cooldown on its player (generals.md, A power's cooldown may be its
+    // player's).
+    let shared = ActionData {
+        keys: ActionKeys {
+            cooldown_holder: CooldownHolder::Player,
+            ..action.clone().keys
+        },
+        ..action.clone()
+    };
+    assert_eq!(
+        attacking(&shared).misused(),
+        Some(PipelineField::CooldownHolder)
+    );
     // An attack must have a range.
     let unranged = ActionData {
         keys: ActionKeys {

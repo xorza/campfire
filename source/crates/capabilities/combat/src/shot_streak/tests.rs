@@ -183,9 +183,11 @@ fn the_modifier_is_the_stages_or_the_falls() {
     let weapon = Weapon {
         rate: Rate::Period(Box::new([Ticks::new(4)])),
         rate_bonus: None,
+        range_bonus: None,
         damage: WeaponDamage::Amount(Box::new([Num::ONE])),
         damage_bonus: None,
         kind: DamageKind::new(0),
+        prefers: None,
         clip: None,
         splash: None,
         scatter: None,

@@ -1,19 +1,21 @@
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionSlots};
+use campfire_actions::{ActionBook, ActionSlots, SlotTimes};
 use campfire_common::Ticks;
 use campfire_declarations::ById;
 use campfire_math::Num;
 use campfire_script::{Effect, EffectKind, Frame};
-use campfire_sim::{EntityIndex, SimWorld, StableId};
+use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 use campfire_stats::UnitStats;
 use campfire_units::{Owner, UnitsWorld};
 use campfire_values::{ActionId, Allegiance, DamageKind, TagSet, Team, UnitTags};
 
+use crate::armed::Armed;
 use crate::damage::{Damage, DamageCause};
 use crate::damage_pass::DamagePass;
 use crate::heal::{Heal, HealCause};
 use crate::pass_queue::PassEntry;
 use crate::respawn::Respawn;
+use crate::type_armor::TypeArmor;
 use crate::weapon::Weapon;
 
 /// A change to units' pools that a call queued, from its acting unit.
@@ -29,8 +31,8 @@ pub(crate) enum CombatEffect {
     },
     /// A heal of `amount` to `unit`'s life pool, times one plus its `heal_scale` stat.
     Heal { unit: StableId, amount: Num },
-    /// An extra attack of the acting unit on `unit`, with its first weapon whose filter selects
-    /// `unit`.
+    /// An extra attack of the acting unit on `unit`, with the weapon it would choose against
+    /// `unit` (combat-response.md, Combat chooses the weapon).
     AttackHit { unit: StableId },
     /// `unit`'s life taken whole, so it dies as the next Die stage finds it, with no killer.
     Kill { unit: StableId },
@@ -44,8 +46,8 @@ impl Effect for CombatEffect {
 
     /// Applies the effect, which the call in `frame` queued: from its acting unit, by its ability,
     /// at its chain depth, delivered by its hit. Damage and a heal join the pass's queue, and an
-    /// extra attack queues the damage of the source's first weapon that selects its target, when
-    /// it still has one.
+    /// extra attack queues the damage of the weapon the source would choose against its target,
+    /// when it still has one.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let (source, action, depth) = (frame.acting(), frame.action(), frame.depth());
         let damage = |target, amount, kind, cause| Damage {
@@ -106,20 +108,31 @@ impl Effect for CombatEffect {
                     .get::<UnitTags>(aimed)
                     .map_or(TagSet::NONE, |tags| tags.tags);
                 let selected = (world.relations().between(team, aimed_team), tags);
+                let armor = TypeArmor::of_unit(world, aimed);
+                let now = world.resource::<SimTick>().start();
                 let unit = world.entity(unit);
                 let book = world.resource::<ActionBook>();
                 let weapons = world.resource::<ById<ActionId, Weapon>>();
-                let holder = unit
-                    .get::<UnitTags>()
-                    .map_or(TagSet::NONE, |tags| tags.tags);
-                let first = unit.get::<ActionSlots>().and_then(|slots| {
-                    let slot = slots.slot(slots.weapon_in(book, holder, Some(selected))?)?;
+                let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
+                let chosen = unit.get::<ActionSlots>().and_then(|slots| {
+                    let armed = Armed {
+                        slots,
+                        times: unit.get::<SlotTimes>(),
+                        book,
+                        weapons,
+                        holder: unit
+                            .get::<UnitTags>()
+                            .map_or(TagSet::NONE, |tags| tags.tags),
+                        stats,
+                        now,
+                    };
+                    // An extra attack strikes at once, at any distance.
+                    let slot = slots.slot(armed.choose(selected, armor, |_| true)?)?;
                     Some((slot, slot.rank?, weapons.get(slot.action?)?))
                 });
-                let Some((slot, rank, weapon)) = first else {
+                let Some((slot, rank, weapon)) = chosen else {
                     return;
                 };
-                let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
                 let allegiance = Allegiance {
                     team,
                     owner: unit.get::<Owner>().map(|owner| owner.player_slot()),

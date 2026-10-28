@@ -163,7 +163,8 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     // the forgetting of attackers, the despawns of the dead and of empty nodes, the trades, the
     // idle scans, the supply's count, the rallies, the sales' start and end, the trains' finish
     // and the places freed, the levels shown, the sight, the areas' landings, at their two
-    // places, and triggers, and the projectiles' shots, launches and flight.
+    // places, and triggers, the projectiles' shots, launches and flight, and the containers' aim,
+    // carry, holds, landings, falls and exits.
     let mut server = World::new();
     Release::build(
         &mut server,
@@ -187,6 +188,12 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_combat::dying::Dying::decay",
         "campfire_combat::dying::Dying::die",
         "campfire_combat::dying::Dying::forget_attackers",
+        "campfire_interaction::containers::Containers::aim",
+        "campfire_interaction::containers::Containers::carry",
+        "campfire_interaction::containers::Containers::fall",
+        "campfire_interaction::containers::Containers::hold",
+        "campfire_interaction::containers::Containers::land",
+        "campfire_interaction::containers::Containers::let_out",
         "campfire_items::trade_orders::TradeOrders::trade_items",
         "campfire_orders::acquiring::Acquiring::scan",
         "campfire_orders::attack_move::AttackMove::walk_on",

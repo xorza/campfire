@@ -1,6 +1,5 @@
 use campfire_common::Tick;
-use serde::de::Error;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 /// How long a modifier's instance lasts: while any hold keeps it, and while an application of
 /// its own keeps it, until its end if it has one. It ends only when neither keeps it, so a timed
@@ -25,8 +24,9 @@ pub enum Ends {
 /// aura or an area, which hold it while their rules select its carrier; an action's `hold`,
 /// which its toggle that is on or its channel that runs keeps; its carrier's player, which holds
 /// it while it holds the modifier and its `affects` selects the carrier; its carrier's shot
-/// streak, which its stage keeps; an item its carrier carries; or its carrier's type's upgrade,
-/// which keeps it while its triggers are met. Every hold from one source of
+/// streak, which its stage keeps; an item its carrier carries; its carrier's type's upgrade,
+/// which keeps it while its triggers are met; or its carrier's level on a track, which keeps it
+/// while the carrier is at that level. Every hold from one source of
 /// one modifier is one hold: which of them holds it changes nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hold {
@@ -37,18 +37,20 @@ pub enum Hold {
     Streak,
     Item,
     Upgrade,
+    Level,
 }
 
 impl Hold {
     /// Whether it holds as a passive does, through a death and with no stack: a unit's or an
-    /// action's passive, or an item's.
+    /// action's passive, an item's, or a level's.
     pub const fn is_passive(self) -> bool {
-        matches!(self, Self::Passive | Self::Item)
+        matches!(self, Self::Passive | Self::Item | Self::Level)
     }
 }
 
-/// The holds that keep an instance, a bit each.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+/// The holds that keep an instance, a bit each; every bit of a `u8` is a hold, so a snapshot's
+/// set decodes whole.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub(crate) struct HoldSet(u8);
 
@@ -95,7 +97,7 @@ impl Lifetime {
 
     /// Whether a passive's hold keeps it, which keeps it through a death and with no stack.
     pub const fn held_as_passive(self) -> bool {
-        self.held_by(Hold::Passive) || self.held_by(Hold::Item)
+        self.held_by(Hold::Passive) || self.held_by(Hold::Item) || self.held_by(Hold::Level)
     }
 
     /// Its end: none while a hold keeps it or its application never ends.
@@ -124,15 +126,14 @@ impl Lifetime {
     }
 }
 
+/// A hold set holds one bit of its `u8` for each hold.
+const _: () = assert!(
+    (Hold::Level as u32) < u8::BITS,
+    "each hold has a bit of the set"
+);
+
 impl HoldSet {
     const NONE: Self = Self(0);
-    const ALL: u8 = Self::bit(Hold::Passive)
-        | Self::bit(Hold::Held)
-        | Self::bit(Hold::Running)
-        | Self::bit(Hold::Player)
-        | Self::bit(Hold::Streak)
-        | Self::bit(Hold::Item)
-        | Self::bit(Hold::Upgrade);
 
     pub(crate) const fn of(hold: Hold) -> Self {
         Self(Self::bit(hold))
@@ -156,17 +157,6 @@ impl HoldSet {
 
     const fn bit(hold: Hold) -> u8 {
         1 << hold as u8
-    }
-}
-
-/// A snapshot is untrusted, so a bit of no hold fails to decode.
-impl<'de> Deserialize<'de> for HoldSet {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let bits = u8::deserialize(deserializer)?;
-        if bits & !Self::ALL != 0 {
-            return Err(D::Error::custom("a bit of no hold"));
-        }
-        Ok(Self(bits))
     }
 }
 
@@ -208,16 +198,18 @@ mod tests {
     }
 
     #[test]
-    fn a_hold_set_decodes_only_bits_of_holds() {
-        let decode = |bits: u8| Binary::decode::<HoldSet>(&[bits]).ok();
+    fn a_hold_set_holds_a_bit_for_each_hold_and_decodes_each_bit() {
         let all = HoldSet::of(Hold::Passive)
             .union(HoldSet::of(Hold::Held))
             .union(HoldSet::of(Hold::Running))
             .union(HoldSet::of(Hold::Player))
             .union(HoldSet::of(Hold::Streak))
             .union(HoldSet::of(Hold::Item))
-            .union(HoldSet::of(Hold::Upgrade));
-        assert_eq!(decode(0b111_1111), Some(all));
-        assert_eq!(decode(0b1000_0000), None);
+            .union(HoldSet::of(Hold::Upgrade))
+            .union(HoldSet::of(Hold::Level));
+        assert_eq!(all.0, u8::MAX);
+        let decode = |bits: u8| Binary::decode::<HoldSet>(&[bits]).ok();
+        assert_eq!(decode(0b1111_1111), Some(all));
+        assert_eq!(decode(0b1000_0000), Some(HoldSet::of(Hold::Level)));
     }
 }

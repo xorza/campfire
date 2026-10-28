@@ -43,16 +43,17 @@ impl Sighting {
     fn tick(&mut self, run: TickRun, tick: u64, ready: u64) -> Vec<ShotSeen> {
         self.world.insert_resource(run);
         self.world.insert_resource(SimTick::new(Tick::new(tick)));
-        self.world
-            .get_mut::<SlotTimes>(self.unit)
-            .unwrap()
-            .commit(SlotCommit {
+        self.world.get_mut::<SlotTimes>(self.unit).unwrap().commit(
+            SlotCommit {
                 slot: 0,
                 now: Tick::new(tick),
                 ready_at: Tick::new(ready),
                 charges: None,
                 toggle: None,
-            });
+                player: None,
+            },
+            None,
+        );
         self.world.run_system(self.predicted).unwrap();
         self.world.run_system(self.received).unwrap();
         std::mem::take(&mut self.world.resource_mut::<SeenShots>().0)

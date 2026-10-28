@@ -5,9 +5,11 @@ use campfire_bots::OrderUnsent;
 use campfire_client_files::{ClientUnits, StateAnimation};
 use campfire_common::{DeclaredName, PackageFingerprint};
 use campfire_import::{
-    AnimationDropCause, ButtonDropCause, EffectDropCause, PanelDropCause, RoadDropCause,
-    SoundDropCause, StateDropCause, SupplyDropCause, UpgradeDropCause, WeaponDropCause,
+    AnimationDropCause, ButtonDropCause, ContainDropCause, EffectDropCause, PanelDropCause,
+    PowerDropCause, RoadDropCause, SoundDropCause, StateDropCause, SupplyDropCause,
+    UpgradeDropCause, WeaponDropCause,
 };
+use campfire_math::Num;
 use campfire_mode::MatchResult;
 use campfire_orders::OrderDropCause;
 use campfire_runner::BotInputDrop;
@@ -59,7 +61,11 @@ pub(crate) const BOT_TYPES: [&str; 10] = [
 /// units, once its road ends are dropped, and their types; its client objects, the rest of its
 /// objects, and their looks; its markers; its walls, its cliff cells grown by one ring and
 /// merged row by row (09-zero-hour.md, Cliffs are walls); and its grid's cells, as columns and
-/// rows, and the unit types of a sight (09-zero-hour.md, Zero Hour sees by the vision capability).
+/// rows, and the unit types of a sight (09-zero-hour.md, Zero Hour sees by the vision capability);
+/// the unit types on a track of veterancy, and the trainable objects that gain no level
+/// (generals.md, Veterancy is progression's data); and the mode's perks, those of a cost, and the
+/// perks the factions start with, summed over the factions (generals.md, A science is a perk of a
+/// player).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MapCounts {
@@ -72,6 +78,11 @@ pub(crate) struct MapCounts {
     pub(crate) walls: usize,
     pub(crate) grid: [usize; 2],
     pub(crate) seers: usize,
+    pub(crate) trainable: usize,
+    pub(crate) untrainable: usize,
+    pub(crate) perks: usize,
+    pub(crate) learnable: usize,
+    pub(crate) granted: usize,
 }
 
 /// A terrain file's overlays; its decals' triangles; a copy for each tile its classes' textures
@@ -220,8 +231,9 @@ pub(crate) struct BotBase {
 }
 
 /// How a play's match of two bots stood as it ended or its limit passed: the tick it ended and its
-/// result, if it did, the buildings each player slot held, each whole and alive, the most
-/// operations one think of its bots ran, which the mode's call limit bounds, the times a walker
+/// result, if it did, the buildings each player slot held, each whole and alive, each player's
+/// rank and the perks it held, its faction's among them (generals.md, A bot buys its skill set),
+/// the most operations one think of its bots ran, which the mode's call limit bounds, the times a walker
 /// stood stuck 1 s, which crowds that yield keep few, its bots' drops, and the cells sent each
 /// bot's player (09-zero-hour.md, A bots' match that ends; 09-zero-hour.md, The bots' limits are
 /// measured).
@@ -231,6 +243,8 @@ pub(crate) struct BotMatchEnd {
     pub(crate) ended: Option<u64>,
     pub(crate) result: Option<MatchResult>,
     pub(crate) standing: [usize; 2],
+    pub(crate) ranks: [u32; 2],
+    pub(crate) perks: [usize; 2],
     pub(crate) think_ops: u64,
     pub(crate) stalls: u64,
     pub(crate) drops: [BotDrops; 2],
@@ -375,6 +389,9 @@ const TRUCK_LOAD: i64 = 4 * 75;
 /// What a delivery of a Chinook pays: its `MaxBoxes` of 8 boxes of `ValuePerSupplyBox`, 75.
 const CHINOOK_LOAD: i64 = 8 * 75;
 
+/// The riders a Troop Crawler comes with, its `InitialPayload` of 8 Red Guards.
+const CRAWLER_LOAD: usize = 8;
+
 /// The helicopter play's steps: its ticks, and what the Chinook's first load paid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HelicopterSteps {
@@ -391,6 +408,103 @@ pub(crate) struct HelicopterTicks {
     pub(crate) climbed: u64,
     pub(crate) delivered: u64,
     pub(crate) shot_down: u64,
+}
+
+/// The combat play's steps (combat-response.md, Combat chooses the weapon; combat-response.md, A
+/// turret has its own target; combat-response.md, A retaliation's target is chased to its leash):
+/// its ticks; the slot of the weapon the Comanche fired first at the Rebel and then at the
+/// Scorpion; how far each Crusader that answered the buggy stood, back, from where it
+/// stood when called; whether the driving Crusader's first hit on the Rebel came from its turret
+/// as it drove; and how far from its goal it stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CombatSteps {
+    pub(crate) ticks: CombatTicks,
+    pub(crate) weapons: [u8; 2],
+    pub(crate) strays: [Num; 2],
+    pub(crate) drove: bool,
+    pub(crate) left: Num,
+}
+
+/// The ticks of the combat play's steps no closed form gives: the Comanche's first shot at the
+/// Rebel and at the Scorpion, each from its order; the first Crusader's, from the buggy's order;
+/// each Crusader's walk back, from that hit until it stands with no target; and the driven
+/// Crusader's first hit on the Rebel and its stop, each from the order of its drive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CombatTicks {
+    pub(crate) cannon: u64,
+    pub(crate) missiles: u64,
+    pub(crate) rockets: u64,
+    pub(crate) back: [u64; 2],
+    pub(crate) turret: u64,
+    pub(crate) arrived: u64,
+}
+
+/// The transport play's steps (transports.md, A container says who rides; transports.md, A
+/// container may let its riders fire; transports.md, A container's fall hurts its riders;
+/// transports.md, A flier lands for its riders): its ticks; whether the rider that fired first
+/// fired from inside the Humvee; how many of the Troop Crawler's riders stood out of it as it fell,
+/// and whether each lost its share of its life; and whether the Chinook's riders stood alive
+/// within reach of its goal once out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TransportSteps {
+    pub(crate) ticks: TransportTicks,
+    pub(crate) fired_inside: bool,
+    pub(crate) out: usize,
+    pub(crate) hurt: bool,
+    pub(crate) near: bool,
+}
+
+/// The ticks of the transport play's steps no closed form gives, each from its order: the
+/// Chinook's boarding, its flight, and its riders' exit; the Humvee's boarding; a rider's first
+/// shot from it, from the Humvee's drive; the Troop Crawler's fall, from the Crusaders' attack; and
+/// the Humvee's evacuation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TransportTicks {
+    pub(crate) loaded: u64,
+    pub(crate) flown: u64,
+    pub(crate) landed: u64,
+    pub(crate) boarded: u64,
+    pub(crate) fired: u64,
+    pub(crate) fell: u64,
+    pub(crate) evacuated: u64,
+}
+
+/// The garrison play's steps (transports.md, A free building takes its riders' side;
+/// transports.md, A container's modifier holds on its riders; transports.md, A container's fall
+/// hurts its riders): its ticks; whether the building turned its Rebels' player's; whether the
+/// Ranger took their fire before it fired; whether the Rebels left at the building's share of life
+/// of leaving or below, while it stood; and whether it stood free once they left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GarrisonSteps {
+    pub(crate) ticks: GarrisonTicks,
+    pub(crate) turned: bool,
+    pub(crate) first: bool,
+    pub(crate) held: bool,
+    pub(crate) freed: bool,
+}
+
+/// The ticks of the garrison play's steps no closed form gives, each from its order: the Rebels'
+/// garrison, the Ranger's first hit, from its attack, and the Rebels' leave, from the Crusaders'
+/// attack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct GarrisonTicks {
+    pub(crate) garrisoned: u64,
+    pub(crate) outranged: u64,
+    pub(crate) left: u64,
+}
+
+/// The science play's steps (generals.md, A science is a perk of a player): how many Paladins the
+/// war factory queued or made before the player held their science, the points left once it is
+/// learned, and the ticks the Paladin took from its order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ScienceSteps {
+    pub(crate) queued_before: usize,
+    pub(crate) points: u32,
+    pub(crate) paladin: u64,
 }
 
 /// The ticks of the jet play's steps no closed form gives, each from the one before: the Raptor's
@@ -479,13 +593,16 @@ pub(crate) struct SkirmishTicks {
 
 /// How many weapons the import converts from every starting weapon set, how many it drops for each
 /// cause, in the order of `WeaponDropCause::ALL`, how many armors and damage kinds it writes, and
-/// how many unit types' objects it gives no life, or a life that starts below its most
-/// (09-zero-hour.md, Life is the original's; 09-zero-hour.md, A weapon converts when it hits one
+/// how many unit types' objects it gives no life, or a life that starts below its most, how many
+/// weapons prefer a target, how many lose the preference of a kind of no tag, and how many unit
+/// types answer an ally's call (combat-response.md, The import converts what the choice and the
+/// answer read; 09-zero-hour.md,
+/// Life is the original's; 09-zero-hour.md, A weapon converts when it hits one
 /// target at once; 09-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
 /// slow weapons).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    "{weapons} weapons, dropped {:?}, {armors} armors, {kinds} damage kinds, {unliving} unliving, {wounded} wounded",
+    "{weapons} weapons, dropped {:?}, {armors} armors, {kinds} damage kinds, {unliving} unliving, {wounded} wounded, {preferring} preferring, {unpreferred} unpreferred, {retaliating} retaliating",
     dropped
 )]
 #[serde(deny_unknown_fields)]
@@ -496,6 +613,9 @@ pub(crate) struct FoughtCounts {
     pub(crate) kinds: usize,
     pub(crate) unliving: usize,
     pub(crate) wounded: usize,
+    pub(crate) preferring: usize,
+    pub(crate) unpreferred: usize,
+    pub(crate) retaliating: usize,
 }
 
 /// How many docks become nodes, supply centers drop-offs, gatherers gathers and hackers hacks,
@@ -514,6 +634,25 @@ pub(crate) struct SuppliedCounts {
     pub(crate) gathers: usize,
     pub(crate) hacks: usize,
     pub(crate) dropped: [usize; SupplyDropCause::ALL.len()],
+}
+
+/// How many unit types the import makes transports, of an `enter` that counts its riders' sizes,
+/// and garrisons, of one that counts each rider one; how many garrisons fire from their points;
+/// how many types ride; and how many contain modules, or parts of one, it drops for each cause, in
+/// the order of `ContainDropCause::ALL` (transports.md, A container says who rides).
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[display(
+    "{transports} transports, {garrisons} garrisons, {fire_points} of fire points, {riders} riders, \
+     dropped {:?}",
+    dropped
+)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ContainedCounts {
+    pub(crate) transports: usize,
+    pub(crate) garrisons: usize,
+    pub(crate) fire_points: usize,
+    pub(crate) riders: usize,
+    pub(crate) dropped: [usize; ContainDropCause::ALL.len()],
 }
 
 /// How many particle systems and effect lists the import converts, how many textures the systems
@@ -584,12 +723,15 @@ pub(crate) struct SoundCounts {
 }
 
 /// How many trains and builds the import converts from every command set, how many unit types it
-/// gives a sale, and how many buttons it drops for each cause, in the order of
-/// `ButtonDropCause::ALL` (09-zero-hour.md, Every command set's trains and builds are imported).
+/// gives a sale, how many buttons it drops for each cause, in the order of `ButtonDropCause::ALL`
+/// (09-zero-hour.md, Every command set's trains and builds are imported), how many powers it
+/// converts to casts, and how many power buttons it drops for each cause, in the order of
+/// `PowerDropCause::ALL` (generals.md, A power is a cast of its building).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    "{trains} trains, {builds} builds, {sells} sales, dropped {:?}",
-    dropped
+    "{trains} trains, {builds} builds, {sells} sales, dropped {:?}, {casts} casts, dropped {:?}",
+    dropped,
+    powers_dropped
 )]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ProducedCounts {
@@ -597,6 +739,8 @@ pub(crate) struct ProducedCounts {
     pub(crate) builds: usize,
     pub(crate) sells: usize,
     pub(crate) dropped: [usize; ButtonDropCause::ALL.len()],
+    pub(crate) casts: usize,
+    pub(crate) powers_dropped: [usize; PowerDropCause::ALL.len()],
 }
 
 /// How many researches the import converts from every command set, how many upgrade modules its
@@ -663,6 +807,50 @@ impl SupplySteps {
         SupplyTicks {
             built: self.built,
             deliveries: self.deliveries.map(|delivery| delivery.ticks),
+        }
+    }
+}
+
+impl CombatSteps {
+    /// The steps of `ticks` when the Comanche attacks the Rebel and the Scorpion with the weapons
+    /// of the slots `weapons`, each Crusader walks back to the point it left, and the driven one
+    /// fires as it drives and stops at its goal.
+    pub(crate) const fn expected(ticks: CombatTicks, weapons: [u8; 2]) -> Self {
+        Self {
+            ticks,
+            weapons,
+            strays: [Num::ZERO; 2],
+            drove: true,
+            left: Num::ZERO,
+        }
+    }
+}
+
+impl TransportSteps {
+    /// The steps of `ticks` when a rider fires from inside the Humvee, the Troop Crawler's 8
+    /// riders stand out of it as it falls, each hurt by its share, and the Chinook's riders stand
+    /// by its goal.
+    pub(crate) const fn expected(ticks: TransportTicks) -> Self {
+        Self {
+            ticks,
+            fired_inside: true,
+            out: CRAWLER_LOAD,
+            hurt: true,
+            near: true,
+        }
+    }
+}
+
+impl GarrisonSteps {
+    /// The steps of `ticks` when the building turns its Rebels' player's, they outrange the
+    /// Ranger, and they leave it at its share of leaving, free again.
+    pub(crate) const fn expected(ticks: GarrisonTicks) -> Self {
+        Self {
+            ticks,
+            turned: true,
+            first: true,
+            held: true,
+            freed: true,
         }
     }
 }

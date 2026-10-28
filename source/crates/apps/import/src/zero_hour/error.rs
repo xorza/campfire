@@ -104,6 +104,25 @@ pub enum ZeroHourError {
     /// them.
     #[error("the game data's damage thresholds are no shares of life")]
     DamageThresholds,
+    /// A value of retaliation of `AIData.ini` is no number the engine holds.
+    #[error("the AI data's retaliation is no number the engine holds")]
+    Retaliation,
+    /// A veterancy bonus of `GameData.ini` is no number the engine holds.
+    #[error("the game data's veterancy bonus is no number the engine holds")]
+    VeterancyBonus,
+    /// The garrison's bonus of `GameData.ini` is no number the engine holds.
+    #[error("the game data's garrison bonus is no number the engine holds")]
+    GarrisonBonus,
+    /// The general's ranks of `Rank.ini` are not numbered from 1 on, rank 1 needs skill points,
+    /// or a rank needs no more than the one before.
+    #[error("the general's ranks do not rise from rank 1 at no skill points")]
+    Ranks,
+    /// A science a template or a science names, by its name, is no science of `Science.ini`.
+    #[error("science {0} is no science of the INI files")]
+    NoScience(String),
+    /// A science, by its name, needs a rank past the last.
+    #[error("science {0} needs a rank past the last")]
+    ScienceRank(String),
     /// A state holds a number the engine does not hold: a stride, a speed or a rise that is not
     /// finite, or a speed range not above 0 and in order.
     #[error("a state holds a stride, a speed or a rise the engine does not hold")]

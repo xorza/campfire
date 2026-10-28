@@ -28,6 +28,13 @@ pub enum OrderKind {
     },
     /// Use the object `target`, with the use slot and the action its users give the unit.
     Use { target: StableId },
+    /// Enter the container `target`, with the use slot and its entry
+    /// (transports.md, An entry is an action of the container's).
+    Enter { target: StableId },
+    /// Let `rider` out of the unit, a container, which keeps every loop of its own.
+    Exit { rider: StableId },
+    /// Let every rider out of the unit, a container, which keeps every loop of its own.
+    Evacuate,
     /// Any other order, which ends every loop.
     Other,
 }

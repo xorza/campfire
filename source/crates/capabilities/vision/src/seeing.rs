@@ -6,7 +6,7 @@ use campfire_common::Tick;
 use campfire_geometry::Shape;
 use campfire_players::{OnMatch, Player};
 use campfire_sim::{Position, SimTick};
-use campfire_units::{Body, Dead, MoveStep, SeenBy};
+use campfire_units::{Body, Dead, MoveStep, SeenBy, Sighted};
 use campfire_values::{Relation, Relations, Team, TeamSet, UnitTags};
 
 use crate::explored_cells::ExploredCells;
@@ -21,7 +21,8 @@ use crate::vision_grid::VisionGrid;
 #[derive(Debug)]
 pub struct Seeing;
 
-/// The living units with a sight, which reveal the cells round them.
+/// The living units with a sight, which reveal the cells round them, and the riders that see
+/// from their containers (transports.md, A garrison's riders see from it).
 type Seers<'w, 's> = Query<
     'w,
     's,
@@ -32,7 +33,7 @@ type Seers<'w, 's> = Query<
         &'static Sight,
         Option<&'static UnitTags>,
     ),
-    Without<Dead>,
+    (Without<Dead>, Sighted),
 >;
 
 impl Seeing {

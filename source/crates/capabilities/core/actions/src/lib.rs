@@ -11,6 +11,7 @@ use campfire_common::EnumAll;
 use campfire_declarations::{
     ById, Declarations, InstallCx, Module, ModuleSystems, NamedScripts, NamedTexts, SetPlace,
 };
+use campfire_players::Player;
 use campfire_sim::{Capability, SimSystems};
 use campfire_units::{BodyUnit, UnitsSystems};
 
@@ -41,6 +42,7 @@ mod cast_spends;
 mod channel_call;
 mod channel_pay;
 mod checked_action;
+mod cooldown_holder;
 mod cost_target;
 mod delivery;
 mod delivery_section;
@@ -62,7 +64,9 @@ mod loadout_ranks;
 mod payer;
 mod pipeline_field;
 mod planned_effect;
+mod player_cooldowns;
 mod purse;
+mod range_bonus;
 mod range_field;
 mod range_fit;
 mod rank_toggle;
@@ -79,6 +83,7 @@ mod slot_kinds;
 mod spawn_effect_data;
 mod targeting;
 mod targets;
+mod turret_mount;
 mod type_slots_data;
 
 pub use crate::action::{Action, Aim, Passive};
@@ -115,6 +120,7 @@ pub use crate::cast_spends::CastSpends;
 pub use crate::channel_call::{ChannelCall, ChannelStep};
 pub use crate::channel_pay::ChannelPay;
 pub use crate::checked_action::CheckedAction;
+pub use crate::cooldown_holder::CooldownHolder;
 pub use crate::cost_target::CostTarget;
 pub use crate::delivery::{Delivery, DeliveryAim, DeliveryAims};
 pub use crate::delivery_section::{DeliverySection, DeliverySections};
@@ -140,7 +146,9 @@ pub use crate::loadout_ranks::LoadoutRanks;
 pub use crate::payer::Payer;
 pub use crate::pipeline_field::PipelineField;
 pub use crate::planned_effect::PlannedEffect;
+pub use crate::player_cooldowns::{PlayerCooldown, PlayerCooldowns};
 pub use crate::purse::Purse;
+pub use crate::range_bonus::{RangeBonus, Stretch};
 pub use crate::range_field::RangeField;
 pub use crate::range_fit::RangeFit;
 pub use crate::rank_toggle::{RankToggle, TogglePer};
@@ -157,6 +165,7 @@ pub use crate::slot_kinds::SlotKinds;
 pub use crate::spawn_effect_data::SpawnEffectData;
 pub use crate::targeting::Targeting;
 pub use crate::targets::Targets;
+pub use crate::turret_mount::TurretMount;
 pub use crate::type_slots_data::TypeSlotsData;
 
 /// The core's actions: every action a match loads, and the slots units hold them in.
@@ -256,6 +265,11 @@ impl Module for Actions {
         d.component::<ActionSlots>();
         d.component::<ActionProgress>();
         d.component::<SlotTimes>();
+        d.component::<PlayerCooldowns>();
+        d.part::<Player, PlayerCooldowns>(|at| {
+            let book = at.world().get_resource::<ActionBook>()?;
+            PlayerCooldowns::any(book).then(PlayerCooldowns::default)
+        });
         d.timed::<Charges>();
         d.timed::<Resolves>();
         d.timed::<ChannelSteps>();
@@ -318,6 +332,7 @@ pub mod internals {
     use crate::action_data::ActionData;
     use crate::action_kind::ActionKind;
     use crate::action_range::ActionRange;
+    use crate::cooldown_holder::CooldownHolder;
     use crate::delivery::{Delivery, DeliveryAim};
     use crate::effect_list_book::EffectListBook;
     use crate::effect_names::EffectNames;
@@ -365,6 +380,7 @@ pub mod internals {
                     hooks: HookSet::default(),
                     delivery: action.delivery,
                     pays: None,
+                    cooldown_holder: CooldownHolder::Unit,
                 },
             )
         }
@@ -402,6 +418,7 @@ pub mod internals {
                     hooks: HookSet::default(),
                     delivery: None,
                     pays: None,
+                    cooldown_holder: CooldownHolder::Unit,
                 },
             )
         }

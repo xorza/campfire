@@ -1,5 +1,6 @@
 //! The game's INI files.
 
+pub(crate) mod ai_data_ini;
 pub(crate) mod armor_ini;
 pub(crate) mod audio_ini;
 pub(crate) mod command_button_ini;
@@ -17,7 +18,11 @@ pub(crate) mod multiplayer_ini;
 pub(crate) mod object_ini;
 pub(crate) mod particle_system_ini;
 pub(crate) mod player_template_ini;
+pub(crate) mod rank_ini;
 pub(crate) mod roads_ini;
+pub(crate) mod science_ini;
+pub(crate) mod special_power_ini;
 pub(crate) mod terrain_ini;
 pub(crate) mod upgrade_ini;
+pub(crate) mod weapon_bonus;
 pub(crate) mod weapon_ini;

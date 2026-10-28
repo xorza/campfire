@@ -5,8 +5,9 @@ use crate::zero_hour::format::ini::object_ini::SLOTS;
 /// What an object gives combat, as `ThingTemplate` and its modules read it: its body, none with
 /// none, its weapon sets and armor sets in the order it gives them, each appended as
 /// `parseWeaponTemplateSet` and `parseArmorTemplateSet` append them, its shell's flight, of a
-/// `DumbProjectileBehavior`, its missile's, of a `MissileAIUpdate`, and the first turret and the
-/// idle scan of its AI module, and its `JetAIUpdate`'s sortie, none for another AI. A reskin keeps
+/// `DumbProjectileBehavior`, its missile's, of a `MissileAIUpdate`, whether it has an AI module,
+/// the first turret and the idle scan of its AI module, and its `JetAIUpdate`'s sortie, none for
+/// another AI. A reskin keeps
 /// its base's, as its table sets none of them.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct FightData {
@@ -16,6 +17,7 @@ pub(crate) struct FightData {
     pub(crate) shell: Option<IniShell>,
     pub(crate) missile: Option<IniMissile>,
     pub(crate) turret: Option<IniTurret>,
+    pub(crate) ai: bool,
     pub(crate) scan: IniScan,
     pub(crate) jet: Option<IniJet>,
 }
@@ -116,12 +118,29 @@ pub(crate) enum BodyKind {
     Other,
 }
 
-/// A `WeaponSet`: the conditions it is for, and its weapons by slot, `PRIMARY`, `SECONDARY` then
-/// `TERTIARY`, none for a slot it leaves empty or names `NONE`.
+/// A `WeaponSet`: the conditions it is for, and by slot, `PRIMARY`, `SECONDARY` then `TERTIARY`,
+/// its weapons, none for a slot it leaves empty or names `NONE`; the kinds of its
+/// `PreferredAgainst`, none for none; and whether its `AutoChooseSources` names no source, so the
+/// game's choice never takes the slot's weapon, which fires only at a target a lock gives it
+/// (`WeaponSet::chooseBestWeaponForTarget`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct WeaponSet {
     pub(crate) conditions: SetConditions,
     pub(crate) weapons: [Option<String>; 3],
+    pub(crate) preferred: [Option<PreferredKinds>; 3],
+    pub(crate) locked: [bool; 3],
+}
+
+/// The kinds of a weapon set's `PreferredAgainst`, a target of all of which the slot's weapon is
+/// preferred against, as `isKindOfMulti` tests the mask: those the import has a tag of, and
+/// whether it names another.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PreferredKinds {
+    pub(crate) infantry: bool,
+    pub(crate) vehicle: bool,
+    pub(crate) structure: bool,
+    pub(crate) aircraft: bool,
+    pub(crate) other: bool,
 }
 
 /// An `ArmorSet`: the conditions it is for, and its armor, none for `NONE` or none named.
@@ -202,6 +221,25 @@ impl SetConditions {
         let upgrade = (0..conditions.len())
             .find(|&at| Some(at) != starting && conditions[at].upgrade_alone());
         [starting, upgrade]
+    }
+}
+
+/// A `KindOfMaskType`'s names, as `BitFlags::parse` reads them: any name is a kind.
+impl FlagSet for PreferredKinds {
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    fn set(&mut self, name: &str, on: bool) -> bool {
+        let kind = match name.to_ascii_lowercase().as_str() {
+            "infantry" => &mut self.infantry,
+            "vehicle" => &mut self.vehicle,
+            "structure" => &mut self.structure,
+            "aircraft" => &mut self.aircraft,
+            _ => &mut self.other,
+        };
+        *kind = on;
+        true
     }
 }
 
@@ -286,6 +324,7 @@ impl FightData {
                     self.missile = Some(IniMissile::DEFAULT);
                     Some(FightBlock::Missile)
                 } else if module.ends_with("aiupdate") || module.ends_with("aiupdateinterface") {
+                    self.ai = true;
                     if module == "jetaiupdate" {
                         self.jet = Some(IniJet::default());
                     }
@@ -323,16 +362,31 @@ impl FightData {
             (FightBlock::Body, "initialhealth") => self.body_mut().initial = at.real()?,
             (FightBlock::WeaponSet, "conditions") => self.last_weapons().conditions = conditions(),
             (FightBlock::WeaponSet, "weapon") => {
-                let slot = at.value()?.to_ascii_lowercase();
-                let slot = SLOTS
-                    .iter()
-                    .position(|known| *known == slot)
-                    .ok_or(IniError::WeaponSlot { line: at.number })?;
+                let slot = Self::slot(at)?;
                 let name = at
                     .tokens
                     .get(2)
                     .ok_or(IniError::NoValue { line: at.number })?;
                 self.last_weapons().weapons[slot] = named(name);
+            }
+            (FightBlock::WeaponSet, "preferredagainst") => {
+                let slot = Self::slot(at)?;
+                let mut kinds = PreferredKinds::default();
+                for kind in &at.tokens[2..] {
+                    if !kind.eq_ignore_ascii_case("none") {
+                        kinds.set(kind, true);
+                    }
+                }
+                let any = kinds != PreferredKinds::default();
+                self.last_weapons().preferred[slot] = any.then_some(kinds);
+            }
+            (FightBlock::WeaponSet, "autochoosesources") => {
+                let slot = Self::slot(at)?;
+                let sources = &at.tokens[2..];
+                let none = sources
+                    .iter()
+                    .all(|source| source.eq_ignore_ascii_case("none"));
+                self.last_weapons().locked[slot] = none;
             }
             (FightBlock::ArmorSet, "conditions") => self.last_armor().conditions = conditions(),
             (FightBlock::ArmorSet, "armor") => self.last_armor().armor = named(at.value()?),
@@ -416,6 +470,15 @@ impl FightData {
             _ => {}
         }
         Ok(None)
+    }
+
+    /// The slot a weapon set's line `at` names first, of `TheWeaponSlotTypeNames`.
+    fn slot(at: &IniLine<'_>) -> Result<usize, IniError> {
+        let slot = at.value()?.to_ascii_lowercase();
+        SLOTS
+            .iter()
+            .position(|known| *known == slot)
+            .ok_or(IniError::WeaponSlot { line: at.number })
     }
 
     /// Its `JetAIUpdate`'s sortie, which the module's line opened.

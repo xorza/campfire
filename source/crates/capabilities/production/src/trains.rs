@@ -191,6 +191,7 @@ impl Trains {
             let no_target = |_| Relation::Friendly;
             let started = times.start(
                 ActionCheck {
+                    player: None,
                     book,
                     now,
                     caster: Caster::of(tags, Motion::Own, None),
@@ -229,13 +230,17 @@ impl Trains {
                 time: values.windup,
                 paid: u8::try_from(paid.len()).expect("a cost names at most a mode's resources"),
             };
-            times.commit(SlotCommit {
-                slot: ordered.slot,
-                now,
-                ready_at: now.after(values.cooldown),
-                charges: values.charges,
-                toggle: None,
-            });
+            times.commit(
+                SlotCommit {
+                    slot: ordered.slot,
+                    now,
+                    ready_at: now.after(values.cooldown),
+                    charges: values.charges,
+                    toggle: None,
+                    player: None,
+                },
+                None,
+            );
             queue.push(queued, paid, now, &mut queues.of(id, entity));
             if let TrainAdmission::Holds { owner, supply } = admission {
                 holdings.reserve(entity, owner, supply);

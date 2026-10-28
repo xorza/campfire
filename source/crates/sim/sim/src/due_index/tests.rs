@@ -27,7 +27,8 @@ impl TimedProcess for Probe {
 }
 
 #[test]
-fn the_index_builds_again_as_the_state_is_rewritten_and_the_audit_finds_a_missed_push() {
+fn the_index_builds_again_as_the_state_is_rewritten_holds_a_unit_back_in_the_world_and_the_audit_finds_a_missed_push()
+ {
     let mut world = World::new();
     world.init_resource::<EntityIndex>();
     world.init_resource::<DefaultQueryFilters>();
@@ -71,6 +72,16 @@ fn the_index_builds_again_as_the_state_is_rewritten_and_the_audit_finds_a_missed
         .resource_mut::<DueIndex<Probe>>()
         .push(Tick::new(3), a, due_a);
     assert!(audit(&mut world));
+    // A unit out of the world is held by no rewrite; it is pushed as it comes back.
+    let out = (StableId::new(4), Probe(Some(Tick::new(6))), Disabled);
+    let out = world.spawn(out).id();
+    world.trigger(StateRewritten);
+    assert_eq!(world.resource::<DueIndex<Probe>>().due_at(out), None);
+    world.entity_mut(out).remove::<Disabled>();
+    assert_eq!(
+        world.resource::<DueIndex<Probe>>().due_at(out),
+        Some(Tick::new(6))
+    );
 }
 
 /// A process whose part's insert hook pushes its unit, as each such process's does.

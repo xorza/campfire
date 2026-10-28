@@ -3,12 +3,12 @@ use std::collections::BTreeMap;
 use campfire_common::DeclaredName;
 use campfire_declarations::{Section, SectionTable};
 use campfire_script::{ApiVersion, Status};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::track_data::TrackData;
 
 /// The mode's `[tracks]`: the tracks its units gain experience on, by name.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ModeTracksData(pub BTreeMap<DeclaredName, TrackData>);
 

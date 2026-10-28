@@ -5,7 +5,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ActionProgress, ProgressIndexes, ResolveKind};
 use campfire_declarations::{Role, Scratch};
 use campfire_sim::{DueUnit, SimTick, StableId};
-use campfire_units::Dead;
+use campfire_units::{Acting, Dead};
 
 /// The attacks that go off this tick, by attacker's stable id: what the toggles' pay, the
 /// attack events and the strikes visit, read once as the tick's attacks pay, each of them
@@ -26,7 +26,7 @@ impl Volley {
     /// resolves.
     pub(crate) fn collect(
         tick: Res<'_, SimTick>,
-        attackers: Query<'_, '_, &ActionProgress, Without<Dead>>,
+        attackers: Query<'_, '_, &ActionProgress, (Without<Dead>, Acting)>,
         (mut indexes, mut taken): (ProgressIndexes<'_>, Local<'_, Vec<DueUnit>>),
         mut volley: ResMut<'_, Self>,
     ) {

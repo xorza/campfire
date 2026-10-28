@@ -11,6 +11,8 @@ pub(crate) enum Play {
     Helicopter,
     /// America's Raptor takes off, strikes, lands and reloads.
     Jet,
+    /// America learns the Paladin's science, and its war factory then trains one.
+    Science,
     /// A Gattling Cannon kills a dozer.
     Gattling,
     /// A Patriot battery kills a dozer.
@@ -19,6 +21,15 @@ pub(crate) enum Play {
     Stinger,
     /// A Tank Hunter's missiles kill a dozer.
     Missile,
+    /// America's Comanche chooses its weapons, its Crusaders answer a rocket buggy, and one fires
+    /// from its turret as it drives.
+    Combat,
+    /// America's Chinook flies a Ranger and a Crusader across the map, its Ranger and Missile
+    /// Defender fire from a Humvee, and its Crusaders destroy China's Troop Crawler of Red Guards.
+    Transport,
+    /// GLA's Rebels garrison a free building, outrange America's Ranger, and leave it as
+    /// America's Crusaders shell it.
+    Garrison,
     /// Two attackers from base starts.
     Base,
     /// China's attacker against GLA's builder from standard starts.
@@ -35,10 +46,14 @@ impl Play {
             Self::Supply => "supply",
             Self::Helicopter => "helicopter",
             Self::Jet => "jet",
+            Self::Science => "science",
             Self::Gattling => "gattling",
             Self::Patriot => "patriot",
             Self::Stinger => "stinger",
             Self::Missile => "missile",
+            Self::Combat => "combat",
+            Self::Transport => "transport",
+            Self::Garrison => "garrison",
             Self::Base => "base",
             Self::Attack => "attack",
             Self::Drive => "drive",

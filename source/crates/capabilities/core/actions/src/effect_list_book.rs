@@ -82,6 +82,16 @@ impl EffectListBuilder {
         let lists = data.effect_lists();
         for (run, (hook, list)) in runs.iter_mut().zip(lists) {
             *run = self.append(data, hook, list, names)?;
+            // The kind's own effect ends its `on_resolve`, in the run its list's effects began.
+            if hook == ListHook::OnResolve
+                && let Some(does) = data.section.resolves()
+            {
+                self.effects.push(EffectSpec {
+                    does,
+                    to: EffectTo::Reached,
+                });
+                run.end = position(self.effects.len());
+            }
         }
         self.runs[action.index()] = runs;
         Ok(())

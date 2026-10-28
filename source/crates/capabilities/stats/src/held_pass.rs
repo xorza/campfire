@@ -1,6 +1,7 @@
 use std::ops::ControlFlow;
 
 use bevy_ecs::entity::Entity;
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::query::{Allow, Has, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
 use campfire_declarations::RoleForm;
@@ -23,8 +24,9 @@ use crate::modifiers::modifier_clocks::ModifierClocks;
 use crate::projection::{Affects, Projection};
 use crate::stat_books::StatBooks;
 
-/// The living units whose held modifiers `HeldPass::run` writes: on a predicting client, those it
-/// predicts.
+/// The living units whose held modifiers `HeldPass::run` writes, riders out of the world among
+/// them, which their containers' modifiers reach (transports.md, A container's modifier holds on
+/// its riders): on a predicting client, those it predicts.
 type HeldUnits<'w, 's> = Query<
     'w,
     's,
@@ -38,7 +40,7 @@ type HeldUnits<'w, 's> = Query<
         Entity,
         Option<&'static Life>,
     ),
-    (Without<Dead>, Without<Unpredicted>),
+    (Without<Dead>, Without<Unpredicted>, Allow<Disabled>),
 >;
 
 /// The living units a predicting client holds as the server sent them: their auras reach the

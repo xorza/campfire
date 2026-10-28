@@ -483,10 +483,7 @@ fn with_valor(more: &[Capability]) -> (Match, TrackId) {
     let declared: Vec<Capability> = declared.into_iter().chain(more.iter().copied()).collect();
     let mut game = Abilities::match_of(ScriptLimits::ROOMY, &declared);
     Abilities::load_stats(&mut game);
-    let valor = TrackData {
-        levels: Thresholds::new([Num::int(50)]).unwrap(),
-        level: false,
-    };
+    let valor = TrackData::new(Thresholds::new([Num::int(50)]).unwrap(), false);
     let tracks = BTreeMap::from([(DeclaredName::new("valor").unwrap(), valor)]);
     Progression::load_tracks(&mut game, &tracks);
     (game, TrackId::new(0))

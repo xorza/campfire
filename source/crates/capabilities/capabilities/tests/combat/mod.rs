@@ -1,6 +1,6 @@
 use crate::combatant;
-use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
+use campfire_declarations::{ById, Role};
 use campfire_units::internals::Spawn;
 use campfire_units::{BodyForm, BodyShape, Died, Layer, MapSpace, Teleported};
 use campfire_values::TagSet;
@@ -365,7 +365,7 @@ fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
 }
 
 #[test]
-fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
+fn a_unit_attacks_with_its_ready_weapon_of_the_most_damage_whose_filter_selects_the_target() {
     // An RTS unit with a ground weapon of 1 m and no windup, dealing its stat at place 1, 10,
     // then an air weapon of 5 m and a windup of 1 tick, dealing its stat at place 2, 25; both at
     // its rate of 6 attacks a second, a period of 30 ÷ 6 = 5 ticks.
@@ -464,19 +464,147 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     }
     assert_eq!(healths(&game), [90, 75, 100, 100]);
 
-    // Both weapons select a hovering unit, ground and air, 1 m off: the first, the ground one,
-    // ready since tick 7, strikes in tick 8 for 10.
+    // Both weapons select a hovering unit, 1 m off, both ready: the air one deals more, 25 over
+    // 10, and starts in tick 8 to strike in tick 9.
     Combat::attack(&mut game, id, hovering);
     game.run_until(9);
-    assert_eq!(healths(&game), [90, 75, 100, 90]);
-
-    // A weapon not learned is none: a unit √2 m off the hovering one, its ground weapon at rank
-    // 0, starts with the air one in tick 9 and strikes in tick 10 for 25, while the first unit's
-    // ground weapon waits for tick 13.
-    let second = Spawn::of(second, (0, 0, 1)).place(&mut game);
-    Combat::attack(&mut game, second, hovering);
+    assert_eq!(underway(&game), Some(1));
+    game.run_until(10);
+    assert_eq!(healths(&game), [90, 75, 100, 75]);
+    // The air one cools until tick 8 + 5 = 13: the ground one, ready since tick 7, strikes in
+    // tick 10 itself, for 10. Both cooling, the air one deals more, starts once ready in tick
+    // 13, and strikes in tick 14.
     game.run_until(11);
     assert_eq!(healths(&game), [90, 75, 100, 65]);
+    game.run_until(13);
+    assert_eq!(underway(&game), None);
+    game.run_until(14);
+    assert_eq!(underway(&game), Some(1));
+    game.run_until(15);
+    assert_eq!(healths(&game), [90, 75, 100, 40]);
+
+    // A weapon not learned is none: a unit 1 m off the ground unit, its ground weapon at rank 0,
+    // starts nothing at it.
+    let second = Spawn::of(second, (1, 0, 1)).place(&mut game);
+    Combat::attack(&mut game, second, ground_unit);
+    game.run_until(17);
+    let progress = game.try_part::<ActionProgress>(second).unwrap();
+    assert_eq!((progress.weapon(), progress.in_progress()), (None, None));
+    assert_eq!(healths(&game)[0], 90);
+}
+
+#[test]
+fn a_preferred_weapon_comes_first_cooling_or_not_then_the_most_damage_its_armor_takes() {
+    // A unit of three weapons of 5 m, no windup and a period of 5 ticks, at every enemy: in slot
+    // 0 a cannon of 10 of the first kind, preferring infantry; in slot 1 a missile of 30 of the
+    // second kind, preferring vehicles; in slot 2 a rifle of 10 of the first kind.
+    let mut game = fight_match();
+    let [infantry, vehicle] = ["infantry", "vehicle"].map(|tag| {
+        let data = UnitTypeCore::tagged(&[tag]);
+        Units::load_type(&mut game, TypeScope::Mode, tag, &data)
+    });
+    let names = game.resource::<MatchNames>();
+    let filter = |text| {
+        names
+            .resolve_filter(&FilterData::parse(text).unwrap())
+            .unwrap()
+    };
+    let [cannon_prefers, missile_prefers] = ["all:infantry", "all:vehicle"].map(filter);
+    let enemies = filter("enemies");
+    let mut weapon = |amount, kind, prefers| {
+        let weapon = TestWeapon {
+            rate: Rate::Period(Box::new([Ticks::new(5)])),
+            damage: WeaponDamage::Amount(Box::new([Num::int(amount)])),
+            kind: DamageKind::new(kind),
+            prefers,
+            ..TestWeapon::new(enemies, ActionRange::meters(Num::int(5)), Ticks::ZERO)
+        };
+        Combat::add_weapon(&mut game, weapon)
+    };
+    let slots = [
+        weapon(10, 0, Some(cannon_prefers)),
+        weapon(30, 1, Some(missile_prefers)),
+        weapon(10, 0, None),
+    ]
+    .map(|weapon| (weapon, SlotKind::new(0), Rank::new(1)));
+    let wielder = wielder(&mut game, ActionSlots::new(slots), &[]);
+    // Targets of no armor, and of armors that take a quarter of the second kind, none of the
+    // first, and none of either.
+    let kinds: Names<DamageKind> = ["kinetic", "blast"].into_iter().collect();
+    let armored = |game: &mut Match, shares: &[(&str, i64, i64)]| {
+        let unit_type = Units::load_next_type(game, &UnitTypeCore::default());
+        dummy().give(game, unit_type);
+        let shares = shares.iter().map(|&(kind, over, under)| {
+            let share = Num::int(over) / Num::int(under);
+            (
+                DeclaredName::new(kind).unwrap(),
+                ArmorShare::new(share).unwrap(),
+            )
+        });
+        let armor = Armor::of(&shares.collect(), &kinds).unwrap();
+        ById::<UnitType, TypeArmor>::amend(game, |_, book| {
+            let armors = Box::new([]);
+            book.set(
+                unit_type,
+                TypeArmor {
+                    armor: Some(armor),
+                    armors,
+                },
+            );
+        });
+        unit_type
+    };
+    let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
+    for unit_type in [infantry, vehicle, plain] {
+        dummy().give(&mut game, unit_type);
+    }
+    let plated = armored(&mut game, &[("blast", 1, 4)]);
+    let shielded = armored(&mut game, &[("kinetic", 0, 1)]);
+    let warded = armored(&mut game, &[("kinetic", 0, 1), ("blast", 0, 1)]);
+    let pairs = [infantry, vehicle, plain, plated, shielded, warded]
+        .into_iter()
+        .zip(0..)
+        .map(|(unit_type, at)| {
+            let attacker = Spawn::of(wielder, (at * 100, 0, 0)).place(&mut game);
+            let target = Spawn::of(unit_type, (at * 100 + 1, 0, 0))
+                .team(Team::new(1))
+                .place(&mut game);
+            Combat::attack(&mut game, attacker, target);
+            [attacker, target]
+        })
+        .collect::<Vec<_>>();
+    let chosen = |game: &Match| {
+        let chosen = pairs
+            .iter()
+            .map(|&[attacker, _]| game.try_part::<ActionProgress>(attacker).unwrap().weapon());
+        chosen.collect::<Vec<_>>()
+    };
+    let healths = |game: &Match| {
+        let healths = pairs.iter().map(|&[_, target]| Stats::health(game, target));
+        healths.collect::<Vec<_>>()
+    };
+
+    // In tick 0, all ready: infantry takes the cannon it prefers over the stronger missile, and
+    // a vehicle the missile; a plain unit the missile, of the most damage. The plated one takes
+    // the missile's 30 as 7.5, below the cannon's and the rifle's 10, of which the lower slot,
+    // the cannon, comes first; the shielded one spares the cannon and the rifle, and the warded
+    // one every weapon.
+    game.run_until(1);
+    assert_eq!(
+        chosen(&game),
+        [Some(0), Some(1), Some(1), Some(0), Some(1), None]
+    );
+    assert_eq!(healths(&game), [90, 70, 70, 90, 70, 100]);
+    // In tick 1, each weapon that fired cools until tick 5: infantry keeps the cannon it
+    // prefers, which ranks as ready, and waits for it; a plain unit's missile cools, and the
+    // cannon, ready, strikes; the plated one's rifle, ready, strikes for 10 over the missile's
+    // 7.5; the shielded one has only the missile, and waits for it.
+    game.run_until(2);
+    assert_eq!(
+        chosen(&game),
+        [Some(0), Some(1), Some(0), Some(2), Some(1), None]
+    );
+    assert_eq!(healths(&game), [90, 70, 60, 80, 70, 100]);
 }
 
 #[test]

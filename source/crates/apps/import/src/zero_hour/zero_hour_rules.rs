@@ -1,6 +1,7 @@
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::csf::string_table::StringTable;
+use crate::zero_hour::format::ini::ai_data_ini::AiDataIni;
 use crate::zero_hour::format::ini::armor_ini::ArmorIni;
 use crate::zero_hour::format::ini::audio_ini::AudioIni;
 use crate::zero_hour::format::ini::command_button_ini::CommandButtonIni;
@@ -15,7 +16,10 @@ use crate::zero_hour::format::ini::multiplayer_ini::MultiplayerIni;
 use crate::zero_hour::format::ini::object_ini::{ObjectFiles, ObjectIni};
 use crate::zero_hour::format::ini::particle_system_ini::ParticleSystemIni;
 use crate::zero_hour::format::ini::player_template_ini::PlayerTemplateIni;
+use crate::zero_hour::format::ini::rank_ini::RankIni;
 use crate::zero_hour::format::ini::roads_ini::RoadsIni;
+use crate::zero_hour::format::ini::science_ini::ScienceIni;
+use crate::zero_hour::format::ini::special_power_ini::SpecialPowerIni;
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
 use crate::zero_hour::format::ini::upgrade_ini::UpgradeIni;
 use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
@@ -37,6 +41,10 @@ pub(crate) struct ZeroHourRules {
     pub(crate) buttons: CommandButtonIni,
     pub(crate) images: MappedImageIni,
     pub(crate) upgrades: UpgradeIni,
+    pub(crate) ranks: RankIni,
+    pub(crate) sciences: ScienceIni,
+    pub(crate) ai: AiDataIni,
+    pub(crate) powers: SpecialPowerIni,
     pub(crate) multiplayer: MultiplayerIni,
     pub(crate) weapons: WeaponIni,
     pub(crate) armors: ArmorIni,
@@ -77,6 +85,14 @@ impl ZeroHourRules {
             )?,
             images: Self::images(install)?,
             upgrades: install.read_inis("Upgrade", UpgradeIni::default(), UpgradeIni::read)?,
+            ranks: install.read_inis("Rank", RankIni::default(), RankIni::read)?,
+            sciences: install.read_inis("Science", ScienceIni::default(), ScienceIni::read)?,
+            ai: Self::ai(install)?,
+            powers: install.read_inis(
+                "SpecialPower",
+                SpecialPowerIni::default(),
+                SpecialPowerIni::read,
+            )?,
             multiplayer: install.read_inis(
                 "Multiplayer",
                 MultiplayerIni::default(),
@@ -110,6 +126,12 @@ impl ZeroHourRules {
             MappedImageIni::read,
         )?;
         install.read_inis("MappedImages\\HandCreated", sized, MappedImageIni::read)
+    }
+
+    /// The install's skill sets, of its default AI data, then its own, as `AI::AI` reads them.
+    fn ai(install: &Install) -> Result<AiDataIni, ZeroHourError> {
+        let ai = install.read_inis("Default\\AIData", AiDataIni::default(), AiDataIni::read)?;
+        install.read_inis("AIData", ai, AiDataIni::read)
     }
 
     /// The install's audio events, of its sound effects and its voices, its music, and its

@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes};
+use campfire_actions::{ActionKind, KindSection, KindSections, KindTakes, ListedSpec};
 use campfire_declarations::Listed;
 use campfire_script::ApiBuilder;
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_values::{Number, Ranked};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The section of an action of kind `cast`, the default kind: a cast has no field of its own,
 /// and runs every field of the pipeline (04-capabilities/actions.md, Each kind owns its section).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[expect(
     clippy::empty_structs_with_brackets,
@@ -33,6 +33,10 @@ impl KindSection for CastData {
 
     fn numbers(&self) -> Vec<&Ranked<Number>> {
         Vec::new()
+    }
+
+    fn resolves(&self) -> Option<Arc<dyn ListedSpec>> {
+        None
     }
 }
 

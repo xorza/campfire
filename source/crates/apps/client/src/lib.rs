@@ -46,6 +46,7 @@ mod local_keys;
 mod name_texts;
 mod orders;
 mod own_player;
+mod perk_panel;
 mod placing;
 mod pointer;
 mod rally_click;

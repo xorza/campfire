@@ -6,5 +6,12 @@ api = "1.0"
 language = "en"
 kind = "rules"
 # What its script and its data use of a mode, and the game's 30 logic frames a second.
-capabilities = ["stats", "combat", "navigation", "orders", "production"]
+capabilities = [
+    "stats",
+    "combat",
+    "navigation",
+    "orders",
+    "production",
+    "interaction",
+]
 tick_hz = { min = 30, max = 30 }

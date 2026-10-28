@@ -20,6 +20,50 @@ fn a_field_keeps_the_default_until_a_file_sets_it_and_the_last_file_wins() {
     ini.read(b"GameData\n  adjustclifftextures = NO\n  Use3WayTerrainBlends = 2\nEnd\n")
         .unwrap();
     assert_eq!(fields(&ini), (false, true));
+    // No veterancy or garrison bonus by default; the shipped veteran's 110 % damage, 120 % rate
+    // of fire and 120 % health, a heroic's 150 % health, and a garrison's 133 % range, once they
+    // read; the other conditions and a garrison's other fields pass over.
+    let none = GarrisonBonus {
+        range: 1.0,
+        damage: 1.0,
+    };
+    assert_eq!(
+        (ini.veterancy, ini.garrison),
+        ([VeterancyBonus::NONE; 3], none)
+    );
+    ini.read(
+        b"GameData\n  WeaponBonus = VETERAN DAMAGE 110%\n  WeaponBonus = VETERAN RATE_OF_FIRE 120%\n  \
+          WeaponBonus = GARRISONED RANGE 133%\n  WeaponBonus = GARRISONED RATE_OF_FIRE 200%\n  \
+          WeaponBonus = HORDE DAMAGE 120%\n  HealthBonus_Veteran = 120%\n  \
+          HealthBonus_Heroic = 150%\nEnd\n",
+    )
+    .unwrap();
+    assert_eq!(
+        ini.garrison,
+        GarrisonBonus {
+            range: 1.33,
+            ..none
+        }
+    );
+    ini.read(b"GameData\n  WeaponBonus = GARRISONED DAMAGE 125%\nEnd\n")
+        .unwrap();
+    assert_eq!(
+        ini.garrison,
+        GarrisonBonus {
+            range: 1.33,
+            damage: 1.25
+        }
+    );
+    let veteran = VeterancyBonus {
+        damage: 1.1,
+        rate_of_fire: 1.2,
+        health: 1.2,
+    };
+    let heroic = VeterancyBonus {
+        health: 1.5,
+        ..VeterancyBonus::NONE
+    };
+    assert_eq!(ini.veterancy, [veteran, VeterancyBonus::NONE, heroic]);
     // A box pays 100 by default, the shipped file's 75 once it reads; none of no money.
     assert_eq!(ini.box_value.get(), 100);
     ini.read(b"GameData\n  ValuePerSupplyBox = 75\nEnd\n")

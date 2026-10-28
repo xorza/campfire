@@ -40,6 +40,8 @@ impl CheckedAction<'_> {
             target: self.target,
         };
         ResolvedCast {
+            action: self.id,
+            holder: self.action.cooldown_holder,
             call: ActionCall {
                 aim,
                 start: call.start,

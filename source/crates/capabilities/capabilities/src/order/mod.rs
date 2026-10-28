@@ -36,6 +36,12 @@ impl Copy for Directive {}
 pub(crate) type DirectiveDecoder = fn(&[u8]) -> Option<Directive>;
 
 impl<R: OrderRefs> Directive<R> {
+    /// Whether its player carries it out, whatever units its order names, so its order goes to
+    /// none, as a perk's learn.
+    pub const fn is_players(&self) -> bool {
+        matches!(self, Self::Progression(directive) if directive.is_players())
+    }
+
     /// The same directive with each reference as `refs` gives it (04-capabilities/control.md, A
     /// directive is generic over its references).
     pub fn map_refs<T: OrderRefs, M: RefMap<R, T>>(
@@ -160,12 +166,16 @@ impl Order {
     /// Writes into `payloads` the inputs of this order, each of `max_len` bytes at most: a select
     /// of its units with its directive, or, for more units than one payload holds, a select of as
     /// many as it holds, then selects that continue it, the last with the directive
-    /// (04-capabilities/control.md, A select holds what its player controls). Whether they fit: not
-    /// when one unit and the directive pass `max_len`, and then `payloads` holds none.
+    /// (04-capabilities/control.md, A select holds what its player controls); its directive alone
+    /// for an order of no units, which its player carries out. Whether they fit: not when one unit
+    /// and the directive pass `max_len`, and then `payloads` holds none.
     pub fn write_payloads(&self, max_len: u32, payloads: &mut OrderPayloads) -> bool {
         let max_len = usize::try_from(max_len).expect("a payload's length fits usize");
         payloads.clear();
         self.encode_into(&mut payloads.directive);
+        if self.units.get().is_empty() {
+            return payloads.push_alone(self, max_len);
+        }
         let mut select = self.select();
         loop {
             if payloads.push(select, Some(self), max_len) {
@@ -257,6 +267,19 @@ impl OrderPayloads {
         true
     }
 
+    /// Appends the payload of `order`'s directive alone, with no select; whether it holds `max_len`
+    /// bytes at most, as none is appended when it does not.
+    fn push_alone(&mut self, order: &Order, max_len: usize) -> bool {
+        let start = self.bytes.len();
+        Command::write(&[order.command(&self.directive)], &mut self.bytes);
+        if self.bytes.len() - start > max_len {
+            self.bytes.truncate(start);
+            return false;
+        }
+        self.ends.push(self.bytes.len());
+        true
+    }
+
     /// Takes the last payload away.
     fn pop(&mut self) {
         self.ends.pop();
@@ -310,8 +333,9 @@ pub(crate) mod internals {
 
     impl Order {
         /// The orders of `payload`, each to the units the selects before it in the payload
-        /// command, as a test reads what a bot sent; none for a payload that is no list of
-        /// selects and orders, or of an order before any select.
+        /// command, or to none for a directive its player carries out, as a test reads what a bot
+        /// sent; none for a payload that is no list of selects and orders, or of an order of units
+        /// before any select.
         pub fn of_payload(payload: &[u8]) -> Option<Vec<Self>> {
             let (mut orders, mut units, mut whole) = (Vec::new(), Vec::new(), true);
             let mut named: Vec<StableId> = Vec::new();
@@ -334,8 +358,15 @@ pub(crate) mod internals {
                     Addressee::Capability(capability) => capability,
                 };
                 let directive = Directive::decoder(capability).and_then(|decode| decode(body));
-                match directive.zip(OrderUnits::new(&units)) {
-                    Some((directive, units)) => orders.push(Self { units, directive }),
+                let units = |directive: &Directive| {
+                    if directive.is_players() {
+                        Some(OrderUnits::NONE)
+                    } else {
+                        OrderUnits::new(&units)
+                    }
+                };
+                match directive.and_then(|directive| Some((units(&directive)?, directive))) {
+                    Some((units, directive)) => orders.push(Self { units, directive }),
                     None => whole = false,
                 }
             });
@@ -349,14 +380,16 @@ pub(crate) mod internals {
             body
         }
 
-        /// A payload of `orders` alone, a select and a command each, as a test or a check sends
-        /// them.
+        /// A payload of `orders` alone, a select and a command each, or the command alone for an
+        /// order of no units, as a test or a check sends them.
         pub fn payload(orders: &[Self]) -> Vec<u8> {
             let mut bodies: Vec<(Addressee, Vec<u8>)> = Vec::new();
             for order in orders {
-                let mut select = Vec::new();
-                order.select().encode_into(&mut select);
-                bodies.push((Addressee::Players, select));
+                if !order.units.get().is_empty() {
+                    let mut select = Vec::new();
+                    order.select().encode_into(&mut select);
+                    bodies.push((Addressee::Players, select));
+                }
                 let to = Addressee::Capability(order.directive.capability());
                 bodies.push((to, order.encode()));
             }

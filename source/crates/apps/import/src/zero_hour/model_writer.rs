@@ -13,6 +13,7 @@ use campfire_package_disk::PackageWriter;
 use serde::{Deserialize, Serialize};
 
 use crate::gltf::model_bounds::ModelBounds;
+use crate::pose::RigidPose;
 use crate::zero_hour::airfield_bones::{AirfieldBones, PlaceBones};
 use crate::zero_hour::animation_import::{AnimationDropCause, AnimationEnds, ConvertedAnimation};
 use crate::zero_hour::archive_path::ArchivePath;
@@ -25,6 +26,7 @@ use crate::zero_hour::format::ini::object_ini::ini_animation::{
     AnimationFlag, IniAnimation, IniMode,
 };
 use crate::zero_hour::format::ini::object_ini::ini_build::IniParking;
+use crate::zero_hour::format::ini::object_ini::ini_contain::ContainClass;
 use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
 use crate::zero_hour::format::ini::object_ini::{
@@ -120,9 +122,9 @@ struct Converter<'i, 'w> {
 
 /// The looks of an import's `client/units.toml`, which later stages complete before the import
 /// writes them, the bones each unit type's turret and weapons read of its model, the width of the
-/// track each look's treads lay, of the looks whose model names its treads' bones, and the
-/// helipad of each object whose model names its bone, on the ground in its object's frame, the
-/// game's axes.
+/// track each look's treads lay, of the looks whose model names its treads' bones, the helipad of
+/// each object whose model names its bone, and the fire points of each garrison whose model names
+/// one, on the ground in its object's frame, the game's axes.
 #[derive(Debug)]
 pub(crate) struct ImportedLooks {
     pub(crate) units: BTreeMap<DeclaredName, ClientUnit>,
@@ -132,6 +134,7 @@ pub(crate) struct ImportedLooks {
     pub(crate) track_widths: BTreeMap<DeclaredName, f32>,
     pub(crate) helipads: BTreeMap<DeclaredName, [f32; 2]>,
     pub(crate) airfields: BTreeMap<DeclaredName, AirfieldBones>,
+    pub(crate) fire_points: BTreeMap<DeclaredName, Vec<[f32; 2]>>,
 }
 
 /// What a unit reads of its model at rest: its turret's and weapons' bones, the width of the
@@ -148,6 +151,9 @@ struct ModelRest {
 
 /// The bone an airfield makes a helicopter at (`ParkingPlaceBehavior::exitObjectViaDoor`).
 const HELIPAD: &str = "HeliPark01";
+
+/// The most fire points a garrison holds, `GarrisonContain`'s `MAX_GARRISON_POINTS`.
+const MOST_FIRE_POINTS: usize = 40;
 
 /// The width of one tread, which the game adds to the span of a model's tread bones for its
 /// track's width (`W3DTerrainTracks.cpp`, `DEFAULT_TRACK_WIDTH`).
@@ -256,6 +262,7 @@ impl ModelWriter<'_, '_> {
         let mut track_widths = BTreeMap::new();
         let mut helipads = BTreeMap::new();
         let mut airfields = BTreeMap::new();
+        let mut fire_points = BTreeMap::new();
         let shown = StateLook::default();
         for object in ini.objects() {
             let scale = object.scale();
@@ -279,6 +286,12 @@ impl ModelWriter<'_, '_> {
                 helipad,
                 airfield,
             } = self.bones(boned.draws(), boned.scale(), object.build().parking)?;
+            let garrisoned = boned
+                .contain()
+                .filter(|contain| contain.class == ContainClass::Garrison && contain.enclosing)
+                .map(|_| self.fire_points(boned.draws(), boned.scale()))
+                .transpose()?
+                .filter(|points| !points.is_empty());
             if let Some(of_parent) = ini.variations_of(object) {
                 let mut looks = Vec::with_capacity(of_parent.len());
                 for variation in of_parent {
@@ -325,6 +338,9 @@ impl ModelWriter<'_, '_> {
             if let Some(airfield) = airfield {
                 airfields.insert(declared.clone(), airfield);
             }
+            if let Some(points) = garrisoned {
+                fire_points.insert(declared.clone(), points);
+            }
             units.insert(declared, unit_look);
         }
         Ok(ImportedLooks {
@@ -335,6 +351,7 @@ impl ModelWriter<'_, '_> {
             track_widths,
             helipads,
             airfields,
+            fire_points,
         })
     }
 
@@ -635,22 +652,11 @@ impl ModelWriter<'_, '_> {
         let Some((draw, model)) = drawn.and_then(|draw| Some((draw, draw.model.as_ref()?))) else {
             return Ok(none);
         };
-        // The bones stand as the state's first animation places them at its first frame, or its
-        // last of `PRISTINE_BONE_POS_IN_FINAL_FRAME`, as `validateCachedBones` sets them.
-        let animation = draw
+        let default = draw
             .states()
             .next()
-            .expect("a module has its default state")
-            .animation;
-        let ends = match animation.clips.first() {
-            Some(clip) => self.animation_ends(&clip.name)?,
-            None => None,
-        };
-        let last = animation.flags.holds(AnimationFlag::PristineFinal);
-        let animated = ends.map(|ends| {
-            let end = if last { &ends.last } else { &ends.first };
-            end.clone()
-        });
+            .expect("a module has its default state");
+        let animated = self.rested(default.animation)?;
         let WrittenModel::Nodes { nodes, .. } = self.model(model)? else {
             return Ok(none);
         };
@@ -721,6 +727,60 @@ impl ModelWriter<'_, '_> {
             helipad,
             airfield,
         })
+    }
+
+    /// The poses of a state of `animation` as its bones stand at rest: its first animation's at
+    /// its first frame, or its last of `PRISTINE_BONE_POS_IN_FINAL_FRAME`, as
+    /// `validateCachedBones` sets them; none for a state of no animation the package holds.
+    fn rested(
+        &mut self,
+        animation: &IniAnimation,
+    ) -> Result<Option<Vec<RigidPose>>, ZeroHourError> {
+        let ends = match animation.clips.first() {
+            Some(clip) => self.animation_ends(&clip.name)?,
+            None => None,
+        };
+        let last = animation.flags.holds(AnimationFlag::PristineFinal);
+        Ok(ends.map(|ends| {
+            let end = if last { &ends.last } else { &ends.first };
+            end.clone()
+        }))
+    }
+
+    /// The fire points of a garrison of `draws`, at `scale`, on the ground in its object's frame,
+    /// the game's axes, as `loadGarrisonPoints` reads its points while garrisoned and undamaged:
+    /// of each module of the `W3DModelDraw` family in turn, the bones `FIREPOINT01` on of the model
+    /// of its state drawn while garrisoned, up to the first it lacks, as that state's bones stand
+    /// at rest, `MOST_FIRE_POINTS` at most (`Drawable::getPristineBonePositions`); none of a model
+    /// the package lacks.
+    fn fire_points(
+        &mut self,
+        draws: &[DrawModule],
+        scale: ModelScale,
+    ) -> Result<Vec<[f32; 2]>, ZeroHourError> {
+        let mut points = Vec::new();
+        for draw in draws.iter().filter(|draw| draw.kind == DrawKind::Family) {
+            let state = draw.best_state(|flag| flag == "garrisoned");
+            let Some(model) = state.drawn.model else {
+                continue;
+            };
+            let animated = self.rested(state.animation)?;
+            let WrittenModel::Nodes { nodes, .. } = self.model(model)? else {
+                continue;
+            };
+            let pristine = nodes.pristine(animated.as_deref());
+            for number in 1.. {
+                if points.len() == MOST_FIRE_POINTS {
+                    return Ok(points);
+                }
+                let bone = format!("FIREPOINT{number:02}");
+                let Some(at) = nodes.pivot_point(&bone, &pristine) else {
+                    break;
+                };
+                points.push([at.x * scale.get(), -at.z * scale.get()]);
+            }
+        }
+        Ok(points)
     }
 
     /// The look of a client object of what `drawn` draws on a map of each conditions, at `scale`:

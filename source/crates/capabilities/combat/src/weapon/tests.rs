@@ -18,9 +18,11 @@ fn own(periods: [u64; 2], amounts: [i64; 2]) -> Weapon {
     Weapon {
         rate: Rate::Period(Box::new(periods.map(Ticks::new))),
         rate_bonus: None,
+        range_bonus: None,
         damage: WeaponDamage::Amount(Box::new(amounts.map(Num::int))),
         damage_bonus: None,
         kind: DamageKind::new(0),
+        prefers: None,
         clip: None,
         splash: None,
         scatter: None,
@@ -116,7 +118,7 @@ fn a_rate_bonus_divides_its_own_period_and_reload_by_one_more_than_it_rounded_do
         refill: ClipRefill::Time,
     };
     let weapon = Weapon {
-        rate_bonus: Some(StatId::new(0)),
+        rate_bonus: Some(BonusStats::from([StatId::new(0)])),
         clip: Some(Box::new([clip, clip])),
         ..own([8, 8], [1, 1])
     };
@@ -147,7 +149,7 @@ fn a_damage_bonus_scales_its_amount_and_its_outer_ring_rounded_once() {
         .and_then(|splash| splash.with_outer(Num::int(3), Box::new([Num::int(4), Num::int(4)])))
         .unwrap();
     let weapon = Weapon {
-        damage_bonus: Some(StatId::new(0)),
+        damage_bonus: Some(BonusStats::from([StatId::new(0)])),
         splash: Some(splash),
         ..own([1, 1], [10, 10])
     };
@@ -169,6 +171,15 @@ fn a_damage_bonus_scales_its_amount_and_its_outer_ring_rounded_once() {
         Num::from_bits(Num::int(10).to_bits() + 10)
     );
     assert_eq!(dealt(&weapon, &[]), [Num::int(10), Num::int(4)]);
+    // A bonus of two stats takes their sum: 0.25 and 0.25 scale as one of 0.5, 15 and 6.
+    let summed = Weapon {
+        damage_bonus: Some(BonusStats::from([StatId::new(0), StatId::new(1)])),
+        ..weapon.clone()
+    };
+    assert_eq!(
+        dealt(&summed, &[Num::QUARTER, Num::QUARTER]),
+        [Num::int(15), Num::int(6)]
+    );
     let plain = Weapon {
         damage_bonus: None,
         ..weapon

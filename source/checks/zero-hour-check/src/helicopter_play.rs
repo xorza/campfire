@@ -89,10 +89,16 @@ impl HelicopterPlay {
         play.step();
         let chinooks = play.owned(CHINOOK, 0)?;
         let [chinook, ref others @ ..] = chinooks[..] else {
-            return Err(CheckFailure::NoHelicopter(CHINOOK));
+            return Err(CheckFailure::NoStartUnit {
+                player_slot: 0,
+                unit: CHINOOK,
+            });
         };
         let [comanche, ..] = play.owned(COMANCHE, 0)?[..] else {
-            return Err(CheckFailure::NoHelicopter(COMANCHE));
+            return Err(CheckFailure::NoStartUnit {
+                player_slot: 0,
+                unit: COMANCHE,
+            });
         };
         let flight = packages.content().units.get(COMANCHE);
         let flight = flight.and_then(|held| held.section::<FlightData>());
@@ -128,11 +134,12 @@ impl HelicopterPlay {
             to: GroundPoint { x: gla.x, z: gla.z },
         };
         play.order(&[Order::one(comanche, flight)]);
-        let shot_down = Self::until(play, |play| {
-            play.owned(COMANCHE, 0)
-                .is_ok_and(|owned| !owned.contains(&comanche))
-        })
-        .ok_or(CheckFailure::NoShotDown)?;
+        let shot_down = play
+            .run_until(|play| {
+                play.owned(COMANCHE, 0)
+                    .is_ok_and(|owned| !owned.contains(&comanche))
+            })
+            .ok_or(CheckFailure::NoShotDown)?;
         Ok(HelicopterSteps {
             ticks: HelicopterTicks {
                 climbed,
@@ -141,17 +148,6 @@ impl HelicopterPlay {
             },
             load,
         })
-    }
-
-    /// The ticks `play` runs until `done` holds, at most `STEP_LIMIT`; none past it.
-    fn until(play: &mut MatchPlay<'_>, done: impl Fn(&MatchPlay<'_>) -> bool) -> Option<u64> {
-        for ticks in 1..=STEP_LIMIT {
-            play.step();
-            if done(play) {
-                return Some(ticks);
-            }
-        }
-        None
     }
 
     /// The supply dock nearest `unit` on the ground, the lowest stable id of a tie.
