@@ -13,6 +13,12 @@ pub enum AirfieldError {
     /// A type of a sortie has no flight, so nothing flies it.
     #[error("its sortie's type does not fly")]
     SortieFlight,
+    /// Its approach's height or share past a runway's end lies below 0 or past the world's bound.
+    #[error("its airfield's approach lies below 0 or past the world's bound")]
+    Approach,
+    /// Its sortie's roll gains no step a tick.
+    #[error("its sortie's acceleration gains no step a tick")]
+    Acceleration,
     /// It heals no life a second.
     #[error("its airfield heals no life")]
     Heal,

@@ -3,8 +3,8 @@
 drive_ticks = 1711
 
 [fingerprints]
-game = "6dfd669414d8d62f46f2ea69c9f7cd6556392ee5316f73ca6bbfa448c3e8b331"
-rules = "f4bf3ed23e190ba16cf06b9527343f2af2eb2a751c3a1a9eed2eafe4b95b9af1"
+game = "c94666cde8144fa9853e64b56b48b8b83cf8642d981bfd14d179e06e6bc042f4"
+rules = "15668b6ed5b27018936f5a5f42069b4f4b66a0051e2df10dd0bf2ece44adc50d"
 
 [map]
 heights = [270, 340]
@@ -40,14 +40,14 @@ joins = 16
 dropped = [0, 0, 0]
 
 [looks]
-varied = 1261
+varied = 1265
 empty = 273
-states = 19229
-untested = 246
+states = 20057
+untested = 232
 night = 15
 snowy = 17
-animations = 2740
-dropped_animations = [46, 0, 1]
+animations = 2774
+dropped_animations = [47, 0, 1]
 dropped_states = [324, 24]
 
 [ranger]
@@ -92,7 +92,7 @@ hits = 0
 trails = 3
 ends = 24
 deaths = 1252
-bones = 2243
+bones = 2271
 dropped = [35, 0, 8, 2, 7, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0]
 
 [panel]
@@ -118,8 +118,9 @@ weapons = 103
 dropped = [0, 0, 9, 0, 0, 1, 2, 10, 8, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 29]
 armors = 53
 kinds = 38
-unliving = 35
+unliving = 20
 wounded = 0
+second_lives = 4
 preferring = 7
 unpreferred = 9
 retaliating = 165
@@ -149,19 +150,19 @@ delivered = 605
 shot_down = 322
 
 [jet]
-trained = 600
-took_off = 91
-over = 312
+trained = 660
+took_off = 142
+over = 305
 hit = 107
-home = 228
-parked = 457
+home = 236
+parked = 490
 reloaded = 240
 target_life = 4600
 
 [science]
 queued_before = 0
 points = 0
-paladin = 360
+paladin = 458
 
 [combat]
 cannon = 33
@@ -212,12 +213,12 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 519
 
 [base]
-ended = 11786
-standing = [0, 8]
+ended = 10639
+standing = [0, 9]
 ranks = [3, 5]
 perks = [4, 8]
-think_ops = 21840
-stalls = 339
+think_ops = 21267
+stalls = 281
 
 [base.result]
 Won = 1
@@ -255,7 +256,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 2
+no_target = 3
 no_place = 0
 no_stack = 0
 
@@ -273,7 +274,7 @@ no_build = 0
 unusable = 0
 
 [base.sight]
-seen = [4150, 6741]
+seen = [3916, 5275]
 explored = [0, 0]
 words = 91
 

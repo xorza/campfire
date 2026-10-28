@@ -21,6 +21,7 @@ use campfire_visibility::DataKind;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::doors::Doors;
 use crate::producer_spec::ProducerSpec;
 
 /// A unit's train queue: the trains it was ordered, in order, at most as many as its type's
@@ -140,16 +141,22 @@ impl TrainQueue {
     }
 }
 
-/// A living unit's queue is due as its head's time ends; a dead unit's waits
-/// (04-capabilities/00-overview.md, One due index for each timed process).
+/// A living unit's queue is due as its head's time ends, or as the door its head's unit waits for
+/// opens; a dead unit's waits (04-capabilities/00-overview.md, One due index for each timed
+/// process; defenses-and-airfields.md, A producer's door opens before its unit leaves).
 impl TimedProcess for TrainQueue {
     const RUNS: TimedRuns = TimedRuns::Server;
     const KEPT: TimedKept = TimedKept::BySetters;
-    type Parts = (&'static Self, Has<Dead>);
+    type Parts = (&'static Self, Has<Dead>, Option<&'static Doors>);
     type Books = ();
 
-    fn due((): &(), (queue, dead): (&Self, bool)) -> Option<Tick> {
-        queue.head_done.filter(|_| !dead)
+    fn due((): &(), (queue, dead, doors): (&Self, bool, Option<&Doors>)) -> Option<Tick> {
+        let done = queue.head_done.filter(|_| !dead)?;
+        Some(
+            doors
+                .and_then(Doors::last_open_at)
+                .map_or(done, |open_at| done.max(open_at)),
+        )
     }
 }
 

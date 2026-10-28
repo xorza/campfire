@@ -83,6 +83,9 @@ pub(crate) struct ImportedType {
     /// Its mover, of a type whose locomotor drives as one (04-capabilities/navigation.md, Each
     /// appearance moves as its mover).
     mover: Option<ImportedMover>,
+    /// What its second life raises its most life by, of a type of an undead body
+    /// (defenses-and-airfields.md, A type may live twice).
+    second_life: Option<Num>,
     /// The flight of a type whose locomotor hovers (09-zero-hour.md, The import flies a hovering
     /// locomotor).
     flight: Option<FlightData>,
@@ -181,7 +184,7 @@ impl ImportedType {
             .transpose()?;
         let sortie = drive
             .filter(|locomotor| locomotor.wings())
-            .map(|_| Self::sortie_of(object, rules))
+            .map(|locomotor| Self::sortie_of(object, locomotor, rules))
             .transpose()?;
         if drive.is_some() && object.supply().kept().is_some_and(IniSpawn::leads) {
             return Ok(Self::leader(object, names));
@@ -242,9 +245,12 @@ impl ImportedType {
             stats.push((Stat::Engine(EngineStat::Acceleration), acceleration));
         }
         let fight = object.fight();
-        let body = fight
-            .body
-            .filter(|body| matches!(body.kind, BodyKind::Active | BodyKind::Structure));
+        let body = fight.body.filter(|body| {
+            matches!(
+                body.kind,
+                BodyKind::Active | BodyKind::Structure | BodyKind::Undead
+            )
+        });
         let life = body
             .filter(|body| body.max > 0.0)
             .map(|body| num(body.max))
@@ -261,12 +267,30 @@ impl ImportedType {
             .filter(|&upgraded| fight.starting_armor() != Some(upgraded))
             .map(|upgraded| ImportName::latin(upgraded).declared())
             .transpose()?;
-        let armors = upgraded.map(|armor| {
-            vec![TaggedArmorData {
-                when: names.armor_upgraded.clone(),
-                armor,
-            }]
-        });
+        // An undead body's second life raises its most life to its `SecondLifeMaxHealth`, and its
+        // armor is that of its set of `SECOND_LIFE`, ahead of an upgrade's
+        // (defenses-and-airfields.md, A type may live twice).
+        let second_life = body
+            .filter(|body| body.kind == BodyKind::Undead && life.is_some())
+            .map(|body| Ok::<_, TypeError>(num(body.second_life)? - num(body.max)?))
+            .transpose()?;
+        let second_armor = second_life
+            .and_then(|_| fight.second_life_armor())
+            .map(|armor| ImportName::latin(armor).declared())
+            .transpose()?;
+        let armors: Vec<TaggedArmorData> = [
+            (second_armor, &names.in_second_life),
+            (upgraded, &names.armor_upgraded),
+        ]
+        .into_iter()
+        .filter_map(|(armor, when)| {
+            Some(TaggedArmorData {
+                when: when.clone(),
+                armor: armor?,
+            })
+        })
+        .collect();
+        let armors = (!armors.is_empty()).then_some(armors);
         // A death keeps the object for the delay of the slow death a normal death of it most
         // likely takes (04-capabilities/combat.md, A death keeps its unit for its animation).
         let kept = object.slow_death().map(|death| {
@@ -339,6 +363,7 @@ impl ImportedType {
             projectile: None,
             navigation,
             mover,
+            second_life,
             flight,
             sortie,
             acquire,
@@ -401,12 +426,17 @@ impl ImportedType {
         Ok(flight.winged(wings.ok_or(TypeError::Flight)?))
     }
 
-    /// The sortie of the jet `object`: its `JetAIUpdate`'s `TakeoffPause` and
-    /// `ReturnToBaseIdleTime`, none for 0, its `OutOfAmmoDamagePerSecond` as `unresistable` damage,
-    /// as Zero Hour deals it, none for 0, and the speed of its first taxi locomotor that drives
-    /// (09-zero-hour.md, The import flies a winged locomotor); an error for a jet of none, or of a
-    /// loss past its whole life a second.
-    fn sortie_of(object: &IniObject, rules: &ZeroHourRules) -> Result<SortieData, TypeError> {
+    /// The sortie of the jet `object` of the wings `locomotor`: its `JetAIUpdate`'s `TakeoffPause`
+    /// and `ReturnToBaseIdleTime`, none for 0, the locomotor's `Acceleration`, which its takeoff
+    /// rolls by (defenses-and-airfields.md, A jet takes off as a jet), its
+    /// `OutOfAmmoDamagePerSecond` as `unresistable` damage, as Zero Hour deals it, none for 0, and
+    /// the speed of its first taxi locomotor that drives (09-zero-hour.md, The import flies a
+    /// winged locomotor); an error for a jet of none, or of a loss past its whole life a second.
+    fn sortie_of(
+        object: &IniObject,
+        locomotor: &Locomotor,
+        rules: &ZeroHourRules,
+    ) -> Result<SortieData, TypeError> {
         let jet = object.fight().jet.expect("a jet has its AI's sortie");
         let taxi = object
             .taxi_locomotors()
@@ -425,6 +455,7 @@ impl ImportedType {
         };
         Ok(SortieData {
             pause_ms: ms(jet.takeoff_pause_ms)?,
+            acceleration: num(locomotor.acceleration)?,
             taxi_speed: num(taxi.speed)?,
             idle_ms: Some(ms(jet.idle_ms)?).filter(|&ms| ms > 0),
             stranded,
@@ -449,6 +480,7 @@ impl ImportedType {
             projectile: None,
             navigation: None,
             mover: None,
+            second_life: None,
             flight: None,
             sortie: None,
             acquire: None,
@@ -640,6 +672,7 @@ impl ImportedType {
             projectile: Some(projectile),
             navigation: None,
             mover: None,
+            second_life: None,
             flight: None,
             sortie: None,
             acquire: None,
@@ -652,6 +685,11 @@ impl ImportedType {
     /// Its mover, of a type whose locomotor drives as one.
     pub(crate) const fn mover(&self) -> Option<&ImportedMover> {
         self.mover.as_ref()
+    }
+
+    /// What its second life raises its most life by, of a type that lives twice.
+    pub(crate) const fn second_life(&self) -> Option<Num> {
+        self.second_life
     }
 
     /// Whether it leads its spawns, which carry out its orders and fight in its place.
@@ -736,6 +774,7 @@ fn num(value: f32) -> Result<Num, TypeError> {
 
 #[cfg(test)]
 pub(crate) mod reach_in {
+    use campfire_combat::CombatPatch;
     use campfire_stats::StatsData;
 
     use crate::zero_hour::imported_type::ImportedType;
@@ -743,6 +782,10 @@ pub(crate) mod reach_in {
     impl ImportedType {
         pub(crate) const fn stats(&self) -> &StatsData {
             &self.stats
+        }
+
+        pub(crate) const fn combat(&self) -> Option<&CombatPatch> {
+            self.combat.as_ref()
         }
     }
 }

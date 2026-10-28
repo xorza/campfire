@@ -11,6 +11,7 @@ use campfire_stats::{PlayerModifiers, PoolBook, UnitPoolsReadOnly};
 use campfire_units::{Dead, Owner};
 use campfire_values::{Motion, Relation, UnitTags, UnitType};
 
+use crate::held_places::HeldPlaces;
 use crate::holdings::Holdings;
 use crate::production_books::{ProductionBooks, TrainAdmission, TrainAsk};
 use crate::train_queue::TrainQueue;
@@ -42,6 +43,7 @@ pub struct StartChecks<'w, 's> {
             Option<&'static Owner>,
             Option<&'static UnitTags>,
             Option<&'static TrainQueue>,
+            Option<&'static HeldPlaces>,
         ),
         (Without<Dead>, Allow<Unpredicted>),
     >,
@@ -53,10 +55,10 @@ impl StartChecks<'_, '_> {
     /// slot `slot` holds, as the order's own checks find it as it applies, by the holdings as the
     /// last tick left them: its slot is ready and charged, its pools and its player afford it, its
     /// tags do not block it and its player meets its `requires`; a train or a research also finds
-    /// room in its unit's queue, a train with supply room under its player's cap, and a research
-    /// its modifier neither held nor queued. A build's place is its order's, which this
-    /// tests not. False for any other action, a unit that is gone, a match with no production, and
-    /// one before its first tick, whose holdings count no unit yet.
+    /// room in its unit's queue, a train with supply room under its player's cap and, at a place,
+    /// a free place, and a research its modifier neither held nor queued. A build's place is its
+    /// order's, which this tests not. False for any other action, a unit that is gone, a match
+    /// with no production, and one before its first tick, whose holdings count no unit yet.
     pub fn may_start(&self, id: StableId, slot: u8, now: Tick) -> bool {
         let holdings = self
             .holdings
@@ -68,7 +70,8 @@ impl StartChecks<'_, '_> {
         let Some(entity) = self.index.get(id) else {
             return false;
         };
-        let Ok((at, &unit_type, slots, times, pools, owner, tags, queue)) = self.units.get(entity)
+        let Ok((at, &unit_type, slots, times, pools, owner, tags, queue, places)) =
+            self.units.get(entity)
         else {
             return false;
         };
@@ -114,6 +117,7 @@ impl StartChecks<'_, '_> {
                     owner: player_slot,
                     modifiers,
                     action: checked.id,
+                    places,
                 };
                 books.admits(holdings, ask) != TrainAdmission::Refused
             }),

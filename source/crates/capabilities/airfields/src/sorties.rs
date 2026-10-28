@@ -13,7 +13,7 @@ use campfire_common::{Tick, Ticks};
 use campfire_declarations::ById;
 use campfire_math::{Num, Rounding, Vec3};
 use campfire_navigation::FlightData;
-use campfire_production::{FramePoint, HeldPlaces, MadeAt, ProducerSpec};
+use campfire_production::{Doors, FramePoint, HeldPlaces, MadeAt, ProducerSpec};
 use campfire_sim::{EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId};
 use campfire_units::{
     DashTo, Dead, Destination, Facing, FlightGoal, ForcedMove, Life, MoveStep, StatusTags,
@@ -22,7 +22,7 @@ use campfire_units::{
 use campfire_values::{ActionId, Team, UnitType};
 
 use crate::Airfields;
-use crate::airfield_data::AirfieldData;
+use crate::airfield_data::{AirfieldData, ApproachData};
 use crate::runways::Runways;
 use crate::sortie::Sortie;
 use crate::sortie_data::SortieSpec;
@@ -44,7 +44,11 @@ type Fields<'w, 's> = Query<
             Option<&'static Facing>,
         ),
         (&'static UnitType, &'static Team),
-        (&'static mut Runways, &'static mut HeldPlaces),
+        (
+            &'static mut Runways,
+            &'static mut HeldPlaces,
+            Option<&'static mut Doors>,
+        ),
     ),
     (Without<Dead>, Without<Sortie>),
 >;
@@ -118,21 +122,55 @@ impl Field {
 impl Sorties {
     /// Parks a unit of a sortie its airfield made at one of its places, as it spawns: on the
     /// ground, grounded, until it is ordered away (04-capabilities/production.md, A jet holds a
-    /// place). One made at a place of a producer of no runways flies from there, as nothing would
-    /// take it off.
+    /// place); one made at its place's exit taxis from there to its place first, as Zero Hour's
+    /// jet leaves its hangar (defenses-and-airfields.md, A hangar is a jet's start). One made at a
+    /// place of a producer of no runways flies from there, as nothing would take it off.
     pub(crate) fn park(world: &mut World, entity: Entity) {
-        let Some(&MadeAt { producer, .. }) = world.get::<MadeAt>(entity) else {
+        let Some(&MadeAt { producer, place }) = world.get::<MadeAt>(entity) else {
             return;
         };
-        let producer = world.resource::<EntityIndex>().get(producer);
-        if !producer.is_some_and(|producer| world.entity(producer).contains::<Runways>()) {
+        let Some(producer) = world.resource::<EntityIndex>().get(producer) else {
+            return;
+        };
+        let field = world.entity(producer);
+        if !field.contains::<Runways>() {
             return;
         }
+        let field = Field {
+            at: field.get::<Position>().expect("an airfield stands").get(),
+            angle: field
+                .get::<Facing>()
+                .map_or(Num::ZERO, |facing| facing.degrees()),
+        };
+        let field_type = *world
+            .get::<UnitType>(producer)
+            .expect("an airfield has a type");
+        let unit_type = *world.get::<UnitType>(entity).expect("a unit has a type");
+        let parked = world
+            .resource::<ById<UnitType, ProducerSpec>>()
+            .get(field_type)
+            .expect("an airfield produces")
+            .places[usize::from(place)];
+        let taxi = parked.exit.zip(
+            world
+                .resource::<ById<UnitType, SortieSpec>>()
+                .get(unit_type)
+                .map(|spec| spec.taxi_step),
+        );
         let mut unit = world.entity_mut(entity);
         let Some(mut sortie) = unit.get_mut::<Sortie>() else {
             return;
         };
-        *sortie = Sortie::Parked;
+        *sortie = if taxi.is_some() {
+            Sortie::BackToPlace
+        } else {
+            Sortie::Parked
+        };
+        if let Some((exit, step)) = taxi {
+            let mut facing = unit.get_mut::<Facing>().expect("a unit of a sortie faces");
+            let dash = Self::dash(&mut facing, field.point(exit), field.point(parked.at), step);
+            unit.insert(dash);
+        }
         if let Some(mut goal) = unit.get_mut::<FlightGoal>() {
             *goal = FlightGoal::Ground;
         }
@@ -144,18 +182,20 @@ impl Sorties {
     /// Steps each unit of a sortie, by stable id, before the units move
     /// (04-capabilities/airfields.md, A jet takes off and lands on its runway;
     /// 04-capabilities/airfields.md, A jet goes home; 04-capabilities/airfields.md, An order waits
-    /// for the air). One ordered away from its place waits for its runway, holds it, taxis to its
-    /// prep point and its start at its taxi speed, waits its pause, rolls to the runway's end at
-    /// its speed, lets the runway go and climbs, its orders its own. In the air, one whose clips
-    /// that refill at home are all empty, or that stood idle its idle time, drops its attack and
-    /// flies home to its runway's approach, past the runway's end as far as it flies while it sinks
-    /// from its height; an order on the way takes one that still holds a shot back to the air. At
-    /// the approach it circles until it holds the runway, sinks to its end, rolls to its start,
-    /// lets it go, taxis back to its place and reloads its clips, all in the longest time a clip's
-    /// reload takes for the share it lacks, its shots back as the time goes. One whose airfield is
-    /// gone takes the nearest airfield of its team with a free place; with none, as it goes home it
-    /// circles where it stands, stranded, until one takes it. It is held, its walk and its attacks
-    /// blocked, from its runway's approach to its runway's end as it takes off.
+    /// for the air; defenses-and-airfields.md, A jet takes off as a jet). One ordered away from its
+    /// place waits for its runway, holds it, taxis to its prep point and its start at its taxi
+    /// speed, waits its pause, rolls from a stop toward its airfield's approach past the runway's
+    /// end, lifting toward the approach's height, lets the runway go once past its end, and climbs
+    /// from the approach, its orders its own. In the air, one whose clips that refill at home are
+    /// all empty, or that stood idle its idle time, drops its attack and flies home to the
+    /// approach; an order on the way takes one that still holds a shot back to the air. At the
+    /// approach it sinks toward the approach's height and circles until it holds the runway,
+    /// glides to its end at its least speed, rolls to its start, lets it go, taxis back to its
+    /// place and reloads its clips, all in the longest time a clip's reload takes for the share it
+    /// lacks, its shots back as the time goes. One whose airfield is gone takes the nearest
+    /// airfield of its team with a free place; with none, as it goes home it circles where it
+    /// stands, stranded, until one takes it. It is held, its walk and its attacks blocked, from its
+    /// runway's approach to the approach as it takes off.
     pub(crate) fn step(
         (tick, rate, index): (Res<'_, SimTick>, Res<'_, MatchRate>, Res<'_, EntityIndex>),
         books: SortieBooks<'_>,
@@ -223,14 +263,20 @@ impl Sorties {
                 let free =
                     fields
                         .iter()
-                        .filter_map(|((&field, &place, _), (_, &of), (_, held))| {
+                        .filter_map(|((&field, &place, _), (_, &of), (_, held, _))| {
                             let free = held.free().filter(|_| of == team)?;
                             Some((place.get().ground_offset(at).length(), field, free))
                         });
                 if let Some((_, field, place)) = free.min() {
                     let entity = index.get(field).expect("a living airfield is indexed");
-                    let (_, _, (_, mut held)) = fields.get_mut(entity).expect("an airfield");
+                    let (_, (&field_type, _), (_, mut held, doors)) =
+                        fields.get_mut(entity).expect("an airfield");
                     held.hold_for(place, id);
+                    // Its place's door opens for it, as Zero Hour's `reserveSpace` holds it open.
+                    let times = producers.get(field_type).and_then(|spec| spec.doors);
+                    if let Some((mut doors, times)) = doors.zip(times) {
+                        doors.hold(place, now, times);
+                    }
                     made.set_if_neq(MadeAt {
                         producer: field,
                         place,
@@ -271,7 +317,7 @@ impl Sorties {
                 status.set_if_neq(held);
                 continue;
             };
-            let ((_, &field_at, field_facing), (&field_type, _), (mut runways, _)) =
+            let ((_, &field_at, field_facing), (&field_type, _), (mut runways, ..)) =
                 fields.get_mut(home).expect("a sortie's airfield");
             let field = Field {
                 at: field_at.get(),
@@ -287,9 +333,28 @@ impl Sorties {
                 .expect("an airfield produces")
                 .places[usize::from(made.place)];
             let flight = flights.get(unit_type).expect("a sortie's type flies");
-            let approach = Self::approach(field, runway.start, runway.end, flight, *step, hz);
+            let (start, end) = (field.point(runway.start), field.point(runway.end));
+            let approach = Self::approach(start, end, airfield.approach);
+            let climb = flight
+                .climb()
+                .checked_div_int(hz, Rounding::NearestEven)
+                .expect("a climb over a rate fits");
+            // A jet lands at its least speed (`JetTakeoffOrLandingState::onEnter`).
+            let landing = match flight.wings() {
+                Some(wings) => wings
+                    .least_speed()
+                    .checked_div_int(hz, Rounding::NearestEven)
+                    .expect("a speed over a rate fits"),
+                None => step.get(),
+            };
+            let climbing = |lift: Num| FlightGoal::Toward {
+                height: airfield.approach.height,
+                climb: climb * lift,
+            };
             let mut dash = |facing: &mut Mut<'_, Facing>, to: Vec3, step: Num| {
-                Self::dash(&mut commands, entity, facing, at, to, step);
+                commands
+                    .entity(entity)
+                    .insert(Self::dash(facing, at, to, step));
             };
             let next = match *sortie {
                 Sortie::Flying { .. } if !empty && !idled => Sortie::Flying { idle_since },
@@ -307,7 +372,10 @@ impl Sorties {
                     let away = aims || destination.get().is_some_and(|to| to != approach);
                     match destination.get() {
                         _ if away && !empty => Sortie::FLYING,
-                        None => Sortie::Approach,
+                        None => {
+                            goal.set_if_neq(climbing(Num::ONE));
+                            Sortie::Approach
+                        }
                         Some(to) if to == approach => Sortie::Home,
                         Some(_) => {
                             drop_target();
@@ -316,13 +384,27 @@ impl Sorties {
                         }
                     }
                 }
+                // From the approach it glides to the runway's end at its least speed, sinking to
+                // reach the ground there, then rolls to the runway's start, as Zero Hour's landing
+                // path runs.
                 Sortie::Approach if runways.take(place.runway, id) => {
-                    goal.set_if_neq(FlightGoal::Ground);
-                    dash(&mut facing, field.point(runway.end), step.get());
+                    let along = at.ground_offset(end).length();
+                    let sink = if along > Num::ZERO {
+                        at.y.checked_mul_div(landing, along, Rounding::Ceiling)
+                            .expect("a height over a distance fits")
+                    } else {
+                        at.y
+                    };
+                    goal.set_if_neq(FlightGoal::Toward {
+                        height: Num::ZERO,
+                        climb: sink.min(Vec3::BOUND),
+                    });
+                    dash(&mut facing, end, landing);
                     Sortie::Descent
                 }
                 Sortie::Descent if !moving => {
-                    dash(&mut facing, field.point(runway.start), step.get());
+                    goal.set_if_neq(FlightGoal::Ground);
+                    dash(&mut facing, start, landing);
                     Sortie::Landing
                 }
                 Sortie::Landing if !moving => {
@@ -381,14 +463,29 @@ impl Sorties {
                         until: now.after(spec.pause),
                     }
                 }
+                // It rolls from a stop, gaining its acceleration a tick to its speed, toward the
+                // approach past the runway's end, lifting more as it nears the end, and lets the
+                // runway go once past it, as Zero Hour's takeoff path runs.
                 Sortie::Pause { until } if now >= until => {
-                    dash(&mut facing, field.point(runway.end), step.get());
-                    Sortie::Roll
+                    let rolled = spec.acceleration.min(step.get());
+                    goal.set_if_neq(climbing(Self::lift(at, start, end)));
+                    dash(&mut facing, approach, rolled);
+                    Sortie::Roll { step: rolled }
                 }
-                Sortie::Roll if !moving => {
-                    runways.release(place.runway, id);
-                    goal.set_if_neq(FlightGoal::Height);
-                    Sortie::FLYING
+                Sortie::Roll { step: rolled } => {
+                    let past = start.ground_offset(end).dot(end.ground_offset(at)) >= Num::ZERO;
+                    if past || !moving {
+                        runways.release(place.runway, id);
+                    }
+                    if moving {
+                        let rolled = (rolled + spec.acceleration).min(step.get());
+                        goal.set_if_neq(climbing(Self::lift(at, start, end)));
+                        dash(&mut facing, approach, rolled);
+                        Sortie::Roll { step: rolled }
+                    } else {
+                        goal.set_if_neq(FlightGoal::Height);
+                        Sortie::FLYING
+                    }
                 }
                 held => held,
             };
@@ -495,30 +592,32 @@ impl Sorties {
         }
     }
 
-    /// The point a unit at `step` a tick, of `flight` at `hz` ticks a second, flies home to: past
-    /// the runway's `end`, away from its `start`, as far as it flies while it sinks from its
-    /// height to the ground at its climb, the ticks of that rounded up.
-    fn approach(
-        field: Field,
-        start: FramePoint,
-        end: FramePoint,
-        flight: &FlightData,
-        step: MoveStep,
-        hz: i64,
-    ) -> Vec3 {
-        let (start, end) = (field.point(start), field.point(end));
-        let climb = flight
-            .climb()
-            .checked_div_int(hz, Rounding::NearestEven)
-            .expect("a climb over a rate fits");
-        let ticks = flight
-            .height()
-            .checked_div(climb, Rounding::Ceiling)
-            .expect("a height over a climb fits")
-            .ceil();
-        let along = start.ground_offset(end).normalized();
-        let along = along.unwrap_or(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO));
-        end.ground() + along * (step.get() * Num::int(ticks))
+    /// The ground point of the approach `approach` of the runway from `start` to `end`: past the
+    /// end by its share of the runway's length, where a jet climbs out to and lands from
+    /// (defenses-and-airfields.md, A jet takes off as a jet).
+    fn approach(start: Vec3, end: Vec3, approach: ApproachData) -> Vec3 {
+        let past = start
+            .ground_offset(end)
+            .checked_mul(approach.past)
+            .expect("a runway past its end lies within the world");
+        end.ground() + past
+    }
+
+    /// The share of its climb a jet at `at` lifts by as it rolls down the runway from `start` to
+    /// `end`: `(1 − d / L)²`, `d` its distance to the end and `L` the runway's length, from none at
+    /// the start to all at the end, as `JetTakeoffOrLandingState::update` sets its lift.
+    fn lift(at: Vec3, start: Vec3, end: Vec3) -> Num {
+        let length = start.ground_offset(end).length();
+        if length == Num::ZERO {
+            return Num::ONE;
+        }
+        let left = at
+            .ground_offset(end)
+            .length()
+            .checked_div(length, Rounding::NearestEven)
+            .expect("a distance over a runway's length fits");
+        let share = (Num::ONE - left).clamp(Num::ZERO, Num::ONE);
+        share * share
     }
 
     /// The ticks of `reload` for the share of a clip of `shots` that `fired` empties, rounded up.
@@ -563,22 +662,15 @@ impl Sorties {
         }
     }
 
-    /// Sends the unit of `entity` at `from` straight to `to` by a dash of `step` a tick, which
-    /// carries it as a forced move does, facing along its way.
-    fn dash(
-        commands: &mut Commands<'_, '_>,
-        entity: Entity,
-        facing: &mut Mut<'_, Facing>,
-        from: Vec3,
-        to: Vec3,
-        step: Num,
-    ) {
+    /// The dash of `step` a tick that sends a unit at `from` straight to `to`, which carries it as
+    /// a forced move does, its `facing` turned along its way.
+    fn dash(facing: &mut Mut<'_, Facing>, from: Vec3, to: Vec3, step: Num) -> ForcedMove {
         if let Some(way) = Facing::along([to.x - from.x, to.z - from.z]) {
             facing.set_if_neq(way);
         }
-        commands.entity(entity).insert(ForcedMove::Dash {
+        ForcedMove::Dash {
             to: DashTo::Point(to),
             step,
-        });
+        }
     }
 }

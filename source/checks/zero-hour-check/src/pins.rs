@@ -22,6 +22,14 @@ pub(crate) const MAP: &str = "tournament_desert";
 /// The ticks a second the plays run at.
 pub(crate) const HZ: u64 = 30;
 
+/// The ticks the command center's door takes to open, its 1,500 ms, which its dozer waits before
+/// it leaves (defenses-and-airfields.md, A producer's door opens before its unit leaves).
+const CENTER_OPENING: u64 = (1500 * HZ).div_ceil(1000);
+
+/// The ticks the war factory's door takes to open, its 3,250 ms rounded up, which each of its units
+/// waits, as each train of 10 s outlasts the door's 3 s open and 4 s closing.
+const FACTORY_OPENING: u64 = (3250 * HZ).div_ceil(1000);
+
 /// The money of the 50,000 the host picks less the dozer's 1,000, then the barracks' 600, then
 /// the ranger's 225.
 const PRODUCTION_MONEY: [i64; 3] = [50_000 - 1000, 50_000 - 1600, 50_000 - 1825];
@@ -595,7 +603,8 @@ pub(crate) struct SkirmishTicks {
 /// How many weapons the import converts from every starting weapon set, how many it drops for each
 /// cause, in the order of `WeaponDropCause::ALL`, how many armors and damage kinds it writes, and
 /// how many unit types' objects it gives no life, or a life that starts below its most, how many
-/// weapons prefer a target, how many lose the preference of a kind of no tag, and how many unit
+/// live twice (defenses-and-airfields.md, A type may live twice), how many weapons prefer a
+/// target, how many lose the preference of a kind of no tag, and how many unit
 /// types answer an ally's call (09-zero-hour.md, The import converts what the choice and the
 /// answer read; 09-zero-hour.md,
 /// Life is the original's; 09-zero-hour.md, A weapon converts when it hits one
@@ -603,7 +612,7 @@ pub(crate) struct SkirmishTicks {
 /// slow weapons).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[display(
-    "{weapons} weapons, dropped {:?}, {armors} armors, {kinds} damage kinds, {unliving} unliving, {wounded} wounded, {preferring} preferring, {unpreferred} unpreferred, {retaliating} retaliating",
+    "{weapons} weapons, dropped {:?}, {armors} armors, {kinds} damage kinds, {unliving} unliving, {wounded} wounded, {second_lives} of a second life, {preferring} preferring, {unpreferred} unpreferred, {retaliating} retaliating",
     dropped
 )]
 #[serde(deny_unknown_fields)]
@@ -614,6 +623,7 @@ pub(crate) struct FoughtCounts {
     pub(crate) kinds: usize,
     pub(crate) unliving: usize,
     pub(crate) wounded: usize,
+    pub(crate) second_lives: usize,
     pub(crate) preferring: usize,
     pub(crate) unpreferred: usize,
     pub(crate) retaliating: usize,
@@ -795,11 +805,12 @@ pub(crate) struct Fingerprints {
 }
 
 impl ProductionSteps {
-    /// The steps with the barracks' ticks `barracks_ticks`: the dozer's 5 s and the ranger's 5 s,
-    /// the order's tick among them, and the money after each.
+    /// The steps with the barracks' ticks `barracks_ticks`: the dozer's 5 s and its door's opening,
+    /// and the ranger's 5 s, of a barracks of no door, the order's tick among them, and the money
+    /// after each.
     pub(crate) const fn expected(barracks_ticks: u64) -> Self {
         Self {
-            dozer_ticks: 5 * HZ,
+            dozer_ticks: 5 * HZ + CENTER_OPENING,
             barracks_ticks,
             ranger_ticks: 5 * HZ,
             money: PRODUCTION_MONEY,
@@ -907,12 +918,13 @@ impl SaleSteps {
 }
 
 impl FightSteps {
-    /// The fight of `ticks`: `CRUSADERS` trains of 10 s one after another; the money after the
+    /// The fight of `ticks`: `CRUSADERS` trains of 10 s one after another, each with its door's
+    /// opening; the money after the
     /// upgrades and the sale; and no end of the match, as the bot's other buildings count for its
     /// victory (09-zero-hour.md, Defeat by the last building that counts).
     pub(crate) fn expected(ticks: SkirmishTicks) -> Self {
         Self {
-            train_ticks: u64::from(CRUSADERS) * 10 * HZ,
+            train_ticks: u64::from(CRUSADERS) * (10 * HZ + FACTORY_OPENING),
             shot_ticks: ticks.shot,
             hit_ticks: ticks.hit,
             fight_ticks: ticks.fight,

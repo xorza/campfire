@@ -15,12 +15,12 @@ use bevy::ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use bevy::time::{Fixed, Time};
 use bevy::transform::components::Transform;
 use campfire_actions::{ActionProgress, ActionSlots, SlotTimes};
-use campfire_client_files::{FireBarrel, SiteStage};
+use campfire_client_files::{DoorStage, FireBarrel, SiteStage};
 use campfire_combat::{ClipShots, Weapon};
 use campfire_common::{Tick, Ticks};
 use campfire_declarations::ById;
 use campfire_math::Num;
-use campfire_production::{Site, SiteProgress, Sold};
+use campfire_production::{DoorPhase, DoorTimes, Doors, ProducerSpec, Site, SiteProgress, Sold};
 use campfire_sim::{Position, SimTick, Unpredicted};
 use campfire_units::{Dead, Destination, Life, Variation};
 use campfire_values::{ActionId, Team, UnitTags, UnitType};
@@ -41,12 +41,12 @@ use crate::view::{DrawSystems, ViewSystems};
 pub(crate) mod draw_show;
 
 /// Draws each unit of a look of states in the state of each of its draws whose conditions best
-/// match its own, which it picks again as what its conditions test changes: its life, its tags,
-/// its destination, its site, its attack, and whether it moved of late (02-engine-core.md, A look
-/// is states of conditions); and plays each state's clip by its mode, through a transition between two states
-/// of one, and its idle clips one after another (02-engine-core.md, A state plays its animation by
-/// its mode). A state of other models than the last spawns them hidden, and they replace the last
-/// as they are dressed, so the unit is never drawn of none.
+/// match its own, which it picks again as what its conditions test changes: its life, its tags, its
+/// destination, its site, its attack, and whether it moved of late (02-engine-core.md, A look is
+/// states of conditions); and plays each state's clip by its mode, through a transition between two
+/// states of one, and its idle clips one after another (02-engine-core.md, A state plays its
+/// animation by its mode). A state of other models than the last spawns them hidden, and they
+/// replace the last as they are dressed, so the unit is never drawn of none.
 #[derive(Debug)]
 pub(crate) struct LookStatesPlugin;
 
@@ -85,6 +85,7 @@ type Retested<'w, 's> = Query<
             Changed<ActionProgress>,
             Changed<SlotTimes>,
             Changed<ClipShots>,
+            Changed<Doors>,
             Added<Dead>,
         )>,
         Allow<Unpredicted>,
@@ -143,12 +144,19 @@ type AttackQuery<'w, 's> = Query<
 >;
 
 /// What a pick reads beside the units: the app's time, the looks, the sim's tick, which an
-/// attack's phase reads, and the book of weapons, none in a match of no combat.
+/// attack's phase and a door's stage read, and the book of weapons, none in a match of no combat.
 type PickReads<'w> = (
     Res<'w, Time>,
     Res<'w, UnitLooks>,
     Res<'w, SimTick>,
     Option<Res<'w, ById<ActionId, Weapon>>>,
+);
+
+/// What a producer's doors read: each producer's doors, and its type's door times, none in a match
+/// of no production.
+type DoorReads<'w, 's> = (
+    Query<'w, 's, (&'static Doors, &'static UnitType), Allow<Unpredicted>>,
+    Option<Res<'w, ById<UnitType, ProducerSpec>>>,
 );
 
 /// The players of the models' clips, each with its graph.
@@ -258,8 +266,8 @@ impl LookDice {
 
 impl LookStatesPlugin {
     /// Picks the states of each new drawing, of each unit whose conditions' parts changed, that
-    /// moved, or that came back from its death, and of each that held a condition time ends, of its walk or its attack, as it
-    /// may hold another now; and asks each draw to show its state anew.
+    /// moved, or that came back from its death, and of each that held a condition time ends, of its
+    /// walk or its attack, as it may hold another now; and asks each draw to show its state anew.
     fn pick(
         (time, looks, tick, weapons): PickReads<'_>,
         (mut scenes, mut clips, timings, mut graphs, assets): ShowAssets<'_>,
@@ -269,7 +277,11 @@ impl LookStatesPlugin {
             RemovedComponents<'_, '_, Dead>,
             Query<'_, '_, &'static Drawing, Allow<Unpredicted>>,
         ),
-        (units, armed): (UnitParts<'_, '_>, AttackQuery<'_, '_>),
+        (units, armed, (doors, producers)): (
+            UnitParts<'_, '_>,
+            AttackQuery<'_, '_>,
+            DoorReads<'_, '_>,
+        ),
         (replacing, mut roots): (Query<'_, '_, &'static Replaces>, Roots<'_, '_>),
         (mut timed, mut visits, mut lacks): PickScratch<'_>,
         mut commands: Commands<'_, '_>,
@@ -337,6 +349,16 @@ impl LookStatesPlugin {
                 states.lacks.extend(rounds);
                 Relacked::Changed
             };
+            let door_times = doors.get(unit).ok().zip(producers.as_deref());
+            let door_times = door_times.and_then(|((doors, &unit_type), producers)| {
+                Some((doors, producers.get(unit_type)?.doors?))
+            });
+            let at = tick.start();
+            let doors = door_times.map_or(0, |(doors, times)| Self::doors(doors, times, at));
+            // A door's stage that time ends: its opening, its open time and its closing.
+            if door_times.is_some_and(|(doors, times)| !Self::doors_settled(doors, times, at)) {
+                timed.push(root);
+            }
             let facts = UnitFacts {
                 tags: tags.tags,
                 walks: destination.is_some_and(|destination| destination.get().is_some()),
@@ -352,6 +374,7 @@ impl LookStatesPlugin {
                 dead,
                 attacking,
                 attacks,
+                doors,
             };
             let held = tests.held(facts);
             if held & tests.timed() != 0 {
@@ -392,8 +415,8 @@ impl LookStatesPlugin {
         }
     }
 
-    /// What the clip of each of its look's weapon groups `groups` lacks, by the groups' places, of a
-    /// unit of `parts`, its shots `shots` seen, into `lacks`: the clip of its first slot of a
+    /// What the clip of each of its look's weapon groups `groups` lacks, by the groups' places, of
+    /// a unit of `parts`, its shots `shots` seen, into `lacks`: the clip of its first slot of a
     /// weapon of the group, none for a group of no such slot.
     fn lacks(
         parts: &AttackParts<'_>,
@@ -409,6 +432,28 @@ impl LookStatesPlugin {
                 parts.slot(shots, slot).lack()
             })
         }));
+    }
+
+    /// The bits of `UnitFacts::doors` of a producer of `doors` and `times` at `now`: each door's
+    /// stage but closed.
+    fn doors(doors: &Doors, times: DoorTimes, now: Tick) -> u32 {
+        (0..times.count)
+            .filter_map(|at| {
+                let stage = match doors.get(at)?.phase(now, times) {
+                    DoorPhase::Opening => DoorStage::Opening,
+                    DoorPhase::Open => DoorStage::Open,
+                    DoorPhase::Closing => DoorStage::Closing,
+                    DoorPhase::Closed => return None,
+                };
+                UnitFacts::door_bit(at, stage)
+            })
+            .fold(0, |bits, bit| bits | bit)
+    }
+
+    /// Whether each door of `doors` and `times` holds its stage at `now` until the producer uses it
+    /// again: closed, or held open.
+    fn doors_settled(doors: &Doors, times: DoorTimes, now: Tick) -> bool {
+        (0..times.count).all(|at| doors.get(at).is_none_or(|door| door.settled(now, times)))
     }
 
     /// The bits of `UnitFacts::attacks` of a unit of `parts`, its shots `shots` seen: each phase

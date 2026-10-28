@@ -5,6 +5,7 @@ use campfire_declarations::ById;
 use campfire_stats::PlayerModifiers;
 use campfire_values::{ActionId, UnitType};
 
+use crate::held_places::HeldPlaces;
 use crate::holdings::Holdings;
 use crate::producer_spec::ProducerSpec;
 use crate::requirement_book::RequirementBook;
@@ -38,6 +39,7 @@ pub(crate) struct TrainAsk<'a> {
     pub(crate) owner: Option<PlayerSlot>,
     pub(crate) modifiers: Option<&'a PlayerModifiers>,
     pub(crate) action: ActionId,
+    pub(crate) places: Option<&'a HeldPlaces>,
 }
 
 /// Whether a train passes what its start checks beyond the core's checks of its slot, and the
@@ -56,9 +58,9 @@ pub(crate) enum TrainAdmission {
 
 impl ProductionBooks<'_> {
     /// Whether the train or the research of `ask` passes what its start checks beyond the core's
-    /// checks of its slot, by `holdings`: its queue has room, its owner meets its `requires` and,
-    /// for a train in a match with supply, has room under its cap for what it uses; a research
-    /// uses none.
+    /// checks of its slot, by `holdings`: its queue has room, its owner meets its `requires`, a
+    /// train at a place has a place its producer's units and queue leave free, and, for a train in
+    /// a match with supply, has room under its cap for what it uses; a research uses none.
     pub(crate) fn admits(&self, holdings: &Holdings, ask: TrainAsk<'_>) -> TrainAdmission {
         let TrainAsk {
             unit_type,
@@ -66,6 +68,7 @@ impl ProductionBooks<'_> {
             owner,
             modifiers,
             action,
+            places,
         } = ask;
         let capacity = self
             .producers
@@ -78,6 +81,9 @@ impl ProductionBooks<'_> {
         let Some(made) = self.trains.get(action) else {
             return TrainAdmission::Free;
         };
+        if places.is_some_and(|places| !places.admits(action, queue, &self.trains)) {
+            return TrainAdmission::Refused;
+        }
         let cost = self.costs.cost(made.unit_type);
         let max = self.rules.0.map(|rules| u64::from(rules.max));
         match max.zip(owner) {

@@ -64,6 +64,11 @@ impl FlightData {
         self.climb
     }
 
+    /// Its wings, none for a flight that hovers.
+    pub const fn wings(&self) -> Option<WingsData> {
+        self.wings
+    }
+
     /// The flight of each unit type that stands with a `flight` section.
     #[expect(
         clippy::unnecessary_wraps,
@@ -122,6 +127,11 @@ impl WingsData {
             least_speed,
             circling,
         })
+    }
+
+    /// The meters a second its units fly at, at least.
+    pub const fn least_speed(&self) -> Num {
+        self.least_speed
     }
 }
 

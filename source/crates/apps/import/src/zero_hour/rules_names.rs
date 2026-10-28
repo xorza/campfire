@@ -56,6 +56,10 @@ pub(crate) struct RulesNames {
     pub(crate) armor_upgraded: TagFilterData,
     pub(crate) weapon_upgraded: TagFilterData,
     pub(crate) weapon_unupgraded: TagFilterData,
+    /// The tag of a unit in its second life, which its modifier gives and its armor tests, and its
+    /// test (defenses-and-airfields.md, A type may live twice).
+    pub(crate) second_life: DeclaredName,
+    pub(crate) in_second_life: TagFilterData,
     /// The tags of the markers the players start at and their starting units rally at, which a
     /// map's `Player_<n>_Start` and `Player_<n>_Rally` waypoints carry, and their param, the
     /// player slot, from 0 (09-zero-hour.md, A skirmish starts with the faction's start objects).
@@ -132,6 +136,7 @@ impl Default for RulesNames {
         let wall = name("wall");
         let armor_upgrade = name("armor_upgrade");
         let weapon_upgrade = name("weapon_upgrade");
+        let second_life = name("second_life");
         let tagged = |name: &DeclaredName, negated| {
             TagFilterData::new([FilterTag {
                 name: name.clone(),
@@ -178,6 +183,8 @@ impl Default for RulesNames {
             armor_upgraded: tagged(&armor_upgrade, false),
             weapon_upgraded: tagged(&weapon_upgrade, false),
             weapon_unupgraded: tagged(&weapon_upgrade, true),
+            in_second_life: tagged(&second_life, false),
+            second_life,
             armor_upgrade,
             weapon_upgrade,
             continuous_fire: [name("continuous_fire_mean"), name("continuous_fire_fast")],
@@ -214,6 +221,7 @@ mod tests {
             (&names.armor_upgraded, "all:armor_upgrade"),
             (&names.weapon_upgraded, "all:weapon_upgrade"),
             (&names.weapon_unupgraded, "all:!weapon_upgrade"),
+            (&names.in_second_life, "all:second_life"),
         ] {
             assert_eq!(*filter.filter(), FilterData::parse(text).unwrap(), "{text}");
         }

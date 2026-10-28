@@ -9,6 +9,7 @@ use campfire_actions::{
     ProgressDues,
 };
 use campfire_common::Tick;
+use campfire_declarations::ById;
 use campfire_math::{Num, Rounding};
 use campfire_script::{
     ActionCast, CallStart, Ctx, Hook, HookDecl, ScriptBatch, ScriptRole, ScriptsWorld,
@@ -18,7 +19,7 @@ use campfire_stats::{
     CarriedMut, ModifierBook, ModifierClocks, ModifierEvents, ModifierHooks, StatsWorld, UnitStats,
 };
 use campfire_units::{DamageHit, DamageHits, Deaths, Fallen, Life, StatId, TagEffect};
-use campfire_values::{Block, NameId, UnitTags};
+use campfire_values::{Block, DamageKind, NameId, UnitTags, UnitType};
 
 use crate::combat_book::CombatBook;
 use crate::combat_event::CombatEvent;
@@ -26,10 +27,12 @@ use crate::damage::{Damage, WeaponHit};
 use crate::damage_handle::DamageHandle;
 use crate::heal::{Heal, HealCause};
 use crate::heal_handle::HealHandle;
+use crate::in_second_life::InSecondLife;
 use crate::next_damage::NextDamage;
 use crate::pass_queue::{PassEntry, PassQueue};
 use crate::recent_attack::RecentAttack;
 use crate::recent_attackers::RecentAttackers;
+use crate::second_life::SecondLife;
 use crate::type_armor::TypeArmor;
 use crate::weighers::{Weigh, Weighers};
 
@@ -352,6 +355,24 @@ impl DamagePass {
         }
     }
 
+    /// Whether `left` of a damage of `kind` would kill the unit of `entity`, living on its first
+    /// life, of a type of a second life that the kind does not kill through.
+    fn starts_second_life(world: &World, entity: Entity, kind: DamageKind, left: Num) -> bool {
+        let unit = world.entity(entity);
+        if unit.contains::<InSecondLife>() {
+            return false;
+        }
+        let life = unit.get::<Life>().expect("a unit that takes damage");
+        let lives = unit.get::<UnitType>().and_then(|&unit_type| {
+            world
+                .get_resource::<ById<UnitType, SecondLife>>()?
+                .get(unit_type)
+        });
+        !life.is_empty()
+            && left >= life.current()
+            && lives.is_some_and(|lives| !lives.is_lethal(kind))
+    }
+
     /// Deals `damage`, its amount weighed, in this tick, a negative amount as 0: more than 0 cuts a
     /// channel that damage interrupts, then shields absorb it, and the life pool takes the rest.
     /// The source is recorded as the target's attacker; when the damage took the target to zero,
@@ -389,6 +410,15 @@ impl DamagePass {
             let life = world.get::<Life>(entity);
             !life.expect("a unit that takes damage").is_empty()
         };
+        // The first damage that would kill a unit of a second life leaves it the least life, then
+        // its life whole, and the second life's modifier raises its maximum, and its life by as
+        // much, as the tick's stats refresh (defenses-and-airfields.md, A type may live twice).
+        let second_life =
+            left > Num::ZERO && Self::starts_second_life(world, entity, damage.kind, left);
+        if second_life {
+            let life = world.get::<Life>(entity).expect("a unit that takes damage");
+            left = life.current() - Num::EPSILON;
+        }
         // A write marks the life changed, so damage that takes nothing writes nothing.
         let taken = if left > Num::ZERO && living(world) {
             let mut life = world
@@ -398,6 +428,13 @@ impl DamagePass {
         } else {
             Num::ZERO
         };
+        if second_life {
+            world
+                .get_mut::<Life>(entity)
+                .expect("a unit that takes damage")
+                .fill();
+            world.entity_mut(entity).insert(InSecondLife);
+        }
         let killed = !living(world);
         if let Some(source) = source {
             let target = damage.target;

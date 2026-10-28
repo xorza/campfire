@@ -33,6 +33,7 @@ use crate::zero_hour::mover_import::MoverImport;
 use crate::zero_hour::production_import::{FactionBase, ProductionImport};
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::science_import::ScienceImport;
+use crate::zero_hour::second_life_import::SecondLifeImport;
 use crate::zero_hour::skirmish_start::{FactionStart, SkirmishStart};
 use crate::zero_hour::upgrade_import::UpgradeImport;
 use crate::zero_hour::veterancy_import::VeterancyImport;
@@ -159,7 +160,7 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
             .expect("a range of one rate holds it"),
         teams,
         max_move_speed,
-        // A bot's think of the check's plays runs up to 21,840 operations, and each pool holds a
+        // A bot's think of the check's plays runs up to 21,267 operations, and each pool holds a
         // whole call (09-zero-hour.md, The bots' limits are measured).
         script_limits: ScriptLimits {
             per_call: NonZeroU64::new(BOT_LIMIT).expect("a limit is no zero"),
@@ -172,7 +173,8 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
 }
 
 /// What the mode's data is made of: the skirmish's start, the trains, builds and researches, the
-/// weapons and armors, the upgrades, the starting money, and the modifiers of the movers' hurts.
+/// weapons and armors, the upgrades, the starting money, and the modifiers of the movers' hurts
+/// and of the second lives.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ModeImport<'a> {
     pub(crate) start: &'a SkirmishStart,
@@ -185,6 +187,7 @@ pub(crate) struct ModeImport<'a> {
     pub(crate) start_money: &'a MoneyChoices,
     pub(crate) retaliation: Option<&'a ModeRetaliationPatch>,
     pub(crate) movers: &'a MoverImport,
+    pub(crate) second_lives: &'a SecondLifeImport,
 }
 
 /// The mode's `[retaliation]` of `ai`'s values, its aggressors `names`' enemies on the ground, as
@@ -233,6 +236,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         start_money,
         retaliation,
         movers,
+        second_lives,
     } = mode;
     debug_assert!(
         combat.actions.keys().all(|name| {
@@ -447,6 +451,10 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .modifiers
         .iter()
         .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+    let lives = second_lives
+        .modifiers
+        .iter()
+        .map(|(id, modifier)| (id, TomlValue::of(modifier)));
     let modifiers: BTreeMap<&DeclaredName, TomlValue> = stages
         .chain(researched)
         .chain(effects)
@@ -454,6 +462,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .chain(perks)
         .chain(garrisons)
         .chain(hurts)
+        .chain(lives)
         .collect();
     debug_assert_eq!(
         modifiers.len(),
@@ -463,9 +472,10 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
             + veterancy.modifiers.len()
             + sciences.perks.len()
             + contains.modifiers.len()
-            + movers.modifiers.len(),
-        "a stage's, an upgrade's, an effect's, a level's, a perk's, a garrison's and a hurt's \
-         modifiers share no name"
+            + movers.modifiers.len()
+            + second_lives.modifiers.len(),
+        "a stage's, an upgrade's, an effect's, a level's, a perk's, a garrison's, a hurt's and a \
+         second life's modifiers share no name"
     );
     if !modifiers.is_empty() {
         writer.value::<ModifiersData>(TomlValue::of(&modifiers));

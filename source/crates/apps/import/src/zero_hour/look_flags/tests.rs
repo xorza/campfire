@@ -80,6 +80,21 @@ fn each_flag_tests_its_part_of_a_unit_and_any_other_none() {
         ]
     );
     assert!(untested("firing_d"));
+    // Each stage of a production door 1 to 4, of its door from 0; a door past 4 is none.
+    let door = |door, stage| ConditionTest::Door { door, stage };
+    assert_eq!(
+        [
+            test("door_1_opening"),
+            test("door_2_waiting_open"),
+            test("door_4_closing"),
+        ],
+        [
+            door(0, DoorStage::Opening),
+            door(1, DoorStage::Open),
+            door(3, DoorStage::Closing),
+        ]
+    );
+    assert!(untested("door_5_opening"));
     // The flags an upgrade sets test the tags of their names, which the upgrades' modifiers give;
     // a flag none sets, none.
     let tag = |name: &str| ConditionTest::Tag {
@@ -89,10 +104,6 @@ fn each_flag_tests_its_part_of_a_unit_and_any_other_none() {
     assert_eq!(test("user_1"), tag("user_1"));
     assert!(untested("user_2"));
     assert!(untested("garrisoned"));
-    assert_eq!(
-        flags.condition("door_1_opening").unwrap().name.as_str(),
-        "door_1_opening"
-    );
     // A flag that is no name; thresholds that do not fall, or reach none.
     assert!(
         matches!(flags.condition("1st"), Err(ZeroHourError::ConditionFlag(flag)) if flag == "1st")

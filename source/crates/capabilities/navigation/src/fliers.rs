@@ -20,8 +20,9 @@ pub(crate) struct Fliers;
 impl Fliers {
     /// Flies each living flier, after every move of the tick: its height in the world moves toward
     /// the ground under it plus its type's height, or toward the ground for one its `FlightGoal`
-    /// holds there, by its climb a tick, never below the ground, and its position takes the height
-    /// above the ground that gives; it holds the engine tag `air_target` while that height passes
+    /// holds there, by its climb a tick, or toward the height its goal names by the goal's climb,
+    /// never below the ground, and its position takes the height above the ground that gives; it
+    /// holds the engine tag `air_target` while that height passes
     /// its type's airborne height, and a winged flier `on_wings` too
     /// (04-capabilities/navigation.md, A flier holds a height; 04-capabilities/stats.md, Airborne
     /// is a tag of height; 04-capabilities/navigation.md, A jet flies on wings).
@@ -49,11 +50,11 @@ impl Fliers {
             let flight = *book.get(unit_type).expect("a flier's type has its flight");
             let at = position.get();
             let ground = map.point(Vec3::new(at.x, Num::ZERO, at.z)).y;
-            let goal = match goal {
-                FlightGoal::Height => ground + flight.height,
-                FlightGoal::Ground => ground,
+            let (goal, climb) = match goal {
+                FlightGoal::Height => (ground + flight.height, flight.climb / hz),
+                FlightGoal::Ground => (ground, flight.climb / hz),
+                FlightGoal::Toward { height, climb } => (ground + height, climb),
             };
-            let climb = flight.climb / hz;
             let now = altitude.get();
             let next = if now < goal {
                 (now + climb).min(goal)

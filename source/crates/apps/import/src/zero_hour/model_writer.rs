@@ -379,15 +379,15 @@ impl ModelWriter<'_, '_> {
         Ok(look)
     }
 
-    /// The draws of a unit of `object`, at its scale, each module's states, its default first,
-    /// and the flags it ignores, as each draw module of a drawable picks its best state, a map's
+    /// The draws of a unit of `object`, at its scale, each module's states, its default first, and
+    /// the flags it ignores, as each draw module of a drawable picks its best state, a map's
     /// conditions among the unit's (02-engine-core.md, A look is states of conditions): each
     /// state's sets of flags its conditions, whose tests `flags` gives, its models of those the
     /// package holds, and, of `ADJUST_HEIGHT_BY_CONSTRUCTION_PERCENT`, its rise, the object's
     /// height at its scale, as `W3DModelDraw::adjustTransformMtx` sinks its scaled model by
-    /// `getMaxHeightAbovePosition` (04-capabilities/production.md, A building rises with its site). A module
-    /// none of whose states draws a model is dropped. Draws of no model are empty when no model
-    /// they name draws anything, and none when the package lacks one a default names, so the
+    /// `getMaxHeightAbovePosition` (04-capabilities/production.md, A building rises with its site).
+    /// A module none of whose states draws a model is dropped. Draws of no model are empty when no
+    /// model they name draws anything, and none when the package lacks one a default names, so the
     /// client shows its loss.
     fn unit_draws(
         &mut self,
@@ -692,15 +692,17 @@ impl ModelWriter<'_, '_> {
             let mut places = Vec::new();
             for row in 1..=parking.rows {
                 for col in 1..=parking.cols {
-                    let parked = if parking.hangars {
-                        format!("Runway{col}Park{row}Han")
+                    let hangar = format!("Runway{col}Park{row}Han");
+                    let (parked, hangar) = if parking.hangars {
+                        (hangar, None)
                     } else {
-                        format!("Runway{col}Parking{row}")
+                        (format!("Runway{col}Parking{row}"), point(hangar))
                     };
                     let [at, way] = nodes.pivot_pose(&parked, &pristine)?;
                     places.push(PlaceBones {
                         at: ground(at),
                         angle: (-way.z).atan2(way.x).to_degrees(),
+                        hangar,
                         prep: point(format!("Runway{col}Prep{row}"))?,
                         runway: col - 1,
                     });

@@ -99,22 +99,28 @@ pub(crate) struct IniTurretPitch {
     pub(crate) rest: f32,
 }
 
-/// An object's `Body` module: its kind, its `MaxHealth` and its `InitialHealth`, 0 when absent,
-/// as `ActiveBodyModuleData` starts.
+/// An object's `Body` module: its kind, its `MaxHealth`, its `InitialHealth` and its
+/// `SecondLifeMaxHealth`, 0 when absent, as `ActiveBodyModuleData` starts, but an undead body's
+/// second life, 1.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct IniBody {
     pub(crate) kind: BodyKind,
     pub(crate) max: f32,
     pub(crate) initial: f32,
+    pub(crate) second_life: f32,
 }
 
-/// A body module, of those the import reads as life: `ActiveBody` and `StructureBody`; the others,
-/// `ImmortalBody`, `HighlanderBody`, `UndeadBody`, `HiveStructureBody` and `InactiveBody`, keep a
-/// unit alive or move its damage by rules of their own (09-zero-hour.md, Life is the original's).
+/// A body module, of those the import reads as life: `ActiveBody`, `StructureBody` and
+/// `HiveStructureBody`, a structure body whose damage to its spawns is a loss
+/// (defenses-and-airfields.md, A hive is a structure), and `UndeadBody`, which lives twice
+/// (defenses-and-airfields.md, A type may live twice); the others, `ImmortalBody`,
+/// `HighlanderBody` and `InactiveBody`, keep a unit alive by rules of their own (09-zero-hour.md,
+/// Life is the original's).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BodyKind {
     Active,
     Structure,
+    Undead,
     Other,
 }
 
@@ -151,10 +157,12 @@ pub(crate) struct ArmorSet {
 }
 
 /// The conditions a set is for, as its `Conditions` names them, `NONE` none: whether they hold
-/// `PLAYER_UPGRADE`, which an upgrade module sets, and how many others they hold.
+/// `PLAYER_UPGRADE`, which an upgrade module sets, and `SECOND_LIFE`, which an undead body sets
+/// in its second life, and how many others they hold.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct SetConditions {
     pub(crate) upgrade: bool,
+    pub(crate) second_life: bool,
     pub(crate) others: usize,
 }
 
@@ -204,7 +212,12 @@ impl FlagSet for IniScan {
 impl SetConditions {
     /// How many conditions it holds.
     pub(crate) const fn count(self) -> usize {
-        self.others + if self.upgrade { 1 } else { 0 }
+        self.others + if self.upgrade { 1 } else { 0 } + if self.second_life { 1 } else { 0 }
+    }
+
+    /// Whether it holds `SECOND_LIFE` and no other condition.
+    const fn second_life_alone(self) -> bool {
+        self.second_life && !self.upgrade && self.others == 0
     }
 
     /// Whether it holds `PLAYER_UPGRADE` and no other condition.
@@ -297,13 +310,16 @@ impl FightData {
                     .as_deref()
                 {
                     Some("activebody") => BodyKind::Active,
-                    Some("structurebody") => BodyKind::Structure,
+                    Some("structurebody" | "hivestructurebody") => BodyKind::Structure,
+                    Some("undeadbody") => BodyKind::Undead,
                     _ => BodyKind::Other,
                 };
+                // `UndeadBodyModuleData` starts its second life's most at 1.
                 self.body = Some(IniBody {
                     kind,
                     max: 0.0,
                     initial: 0.0,
+                    second_life: if kind == BodyKind::Undead { 1.0 } else { 0.0 },
                 });
                 Some(FightBlock::Body)
             }
@@ -351,6 +367,8 @@ impl FightData {
             for flag in &at.tokens[1..] {
                 if flag.eq_ignore_ascii_case("player_upgrade") {
                     conditions.upgrade = true;
+                } else if flag.eq_ignore_ascii_case("second_life") {
+                    conditions.second_life = true;
                 } else if !flag.eq_ignore_ascii_case("none") {
                     conditions.others += 1;
                 }
@@ -360,6 +378,9 @@ impl FightData {
         match (block, word) {
             (FightBlock::Body, "maxhealth") => self.body_mut().max = at.real()?,
             (FightBlock::Body, "initialhealth") => self.body_mut().initial = at.real()?,
+            (FightBlock::Body, "secondlifemaxhealth") => {
+                self.body_mut().second_life = at.real()?;
+            }
             (FightBlock::WeaponSet, "conditions") => self.last_weapons().conditions = conditions(),
             (FightBlock::WeaponSet, "weapon") => {
                 let slot = Self::slot(at)?;
@@ -521,15 +542,32 @@ impl FightData {
         self.armor_sets[upgrade?].armor.as_deref()
     }
 
+    /// The armor it takes in its second life, of the set of `SECOND_LIFE` alone; none with no such
+    /// set or none named.
+    pub(crate) fn second_life_armor(&self) -> Option<&str> {
+        let set = self
+            .armor_sets
+            .iter()
+            .find(|set| set.conditions.second_life_alone());
+        set?.armor.as_deref()
+    }
+
     /// How many of its weapon sets and armor sets it neither starts with nor takes by an upgrade,
-    /// as each is of a condition the import does not convert.
+    /// nor, of an armor set, in its second life, as each is of a condition the import does not
+    /// convert.
     pub(crate) fn unconverted_sets(&self) -> usize {
         let unconverted = |conditions: Vec<SetConditions>| {
             let chosen = SetConditions::chosen(conditions.iter().copied());
             conditions.len() - chosen.iter().flatten().count()
         };
+        let second_lives = self
+            .armor_sets
+            .iter()
+            .filter(|set| set.conditions.second_life_alone())
+            .count();
         unconverted(self.weapon_sets.iter().map(|set| set.conditions).collect())
             + unconverted(self.armor_sets.iter().map(|set| set.conditions).collect())
+            - second_lives
     }
 
     const fn body_mut(&mut self) -> &mut IniBody {

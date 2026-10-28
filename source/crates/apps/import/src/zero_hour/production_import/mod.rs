@@ -2,13 +2,13 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::num::NonZeroU8;
 
 use campfire_actions::{ActionKeys, ActionKind, ActionRange, RangeField, Targeting};
-use campfire_airfields::{AirfieldData, AirfieldPlace, RunwayData};
+use campfire_airfields::{AirfieldData, AirfieldPlace, ApproachData, RunwayData};
 use campfire_codec::TomlTable;
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::{Num, Rounding};
 use campfire_production::{
-    BuildData, BuildStart, ConstructData, FramePoint, PlaceData, ProductionData, RequiredUnit,
-    RequiresData, ResearchData, ResearchHolder, SellData, TrainData,
+    BuildData, BuildStart, ConstructData, DoorsData, FramePoint, PlaceData, ProductionData,
+    RequiredUnit, RequiresData, ResearchData, ResearchHolder, SellData, TrainData,
 };
 use campfire_values::{FilterData, Number, Ranked, Share, Stat, TextId};
 use serde::{Deserialize, Serialize};
@@ -24,7 +24,7 @@ use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::command_button_ini::{ButtonCommand, CommandButton};
 use crate::zero_hour::format::ini::creation_list_ini::CreationNugget;
 use crate::zero_hour::format::ini::object_ini::IniObject;
-use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, Prerequisite};
+use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, IniParking, Prerequisite};
 use crate::zero_hour::format::ini::object_ini::ini_power::IniAutoHeal;
 use crate::zero_hour::format::ini::upgrade_ini::UpgradeKind;
 use crate::zero_hour::game_time;
@@ -67,8 +67,8 @@ pub(crate) struct ProductionImport {
     /// trains leave from, and each airfield's places and runways, which its jets take.
     helipads: BTreeMap<DeclaredName, [f32; 2]>,
     airfield_bones: BTreeMap<DeclaredName, AirfieldBones>,
-    /// The `HealAmountPerSecond` of each producer of a `ParkingPlaceBehavior` it visits.
-    heals: BTreeMap<TypeName, f32>,
+    /// The `ParkingPlaceBehavior` of each producer of one it visits.
+    parkings: BTreeMap<TypeName, IniParking>,
     /// The `airfield` of each airfield whose production makes its jets at places (09-zero-hour.md,
     /// The import flies a winged locomotor).
     pub(crate) airfields: BTreeMap<TypeName, AirfieldData>,
@@ -242,6 +242,10 @@ impl ProductionImport {
     /// 90 frames until −50, 135 frames, 180 in all.
     const SELL_MS: u32 = 6_000;
 
+    /// How far past a runway's end its approach lies, as a share of the runway's length, as
+    /// `ParkingPlaceBehavior::calcPPInfo`'s `APPROACH_DIST` places it.
+    const APPROACH_PAST: Num = Num::from_bits(3 << (Num::FRAC_BITS - 2));
+
     /// Whether `unit`'s command set holds a gather.
     fn gathers(&self, unit: &DeclaredName) -> bool {
         let commands = self.commands.get(unit);
@@ -323,7 +327,7 @@ impl ProductionImport {
         let mut seen: BTreeSet<TypeName> = queued.iter().map(|named| named.name.clone()).collect();
         while let Some(producer) = queued.pop_front() {
             if let Some(parking) = producer.object.build().parking {
-                import.heals.insert(producer.name.clone(), parking.heal);
+                import.parkings.insert(producer.name.clone(), parking);
             }
             let set = producer.object.build().command_set.as_deref();
             let buttons = set.and_then(|set| rules.sets.buttons(set));
@@ -838,9 +842,11 @@ impl ProductionImport {
     /// engine does not hold or a point past its bound, and whether its exit starts its gatherers;
     /// none for no `ProductionUpdate`, or a queue past 1 to 255; an airfield of no exit module
     /// makes its units at its `helipad`, with no rally point of its own (09-zero-hour.md, A helipad
-    /// is an exit), and its jets at its places, each facing as its bone does, none when one is past
-    /// what the engine holds (09-zero-hour.md, The import flies a winged locomotor). The supply's
-    /// conversion gives it its free units.
+    /// is an exit), and its jets at its places, each facing as its bone does and made in its
+    /// hangar, none when one is past what the engine holds (09-zero-hour.md, The import flies a
+    /// winged locomotor; defenses-and-airfields.md, A hangar is a jet's start), and its doors, of a
+    /// module of door animations (defenses-and-airfields.md, A producer's door opens before its
+    /// unit leaves). The supply's conversion gives it its free units.
     fn section(build: &IniBuild, points: ExitPoints) -> Option<ProductionData> {
         let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;
         let frame = Self::frame;
@@ -852,12 +858,16 @@ impl ProductionImport {
             Some(PlaceData {
                 at: frame(place.at)?,
                 angle: game_float::to_num(place.angle).ok()?,
+                exit: match place.hangar {
+                    Some(hangar) => Some(frame(hangar)?),
+                    None => None,
+                },
             })
         };
         let parked = (points.airfield).filter(|airfield| {
             build
                 .parking
-                .is_some_and(|parking| Self::airfield(airfield, parking.heal).is_some())
+                .is_some_and(|parking| Self::airfield(airfield, parking).is_some())
         });
         let places: Option<Vec<PlaceData>> =
             parked.and_then(|airfield| airfield.places.iter().map(place).collect());
@@ -871,6 +881,12 @@ impl ProductionImport {
             gathers: exit.is_some_and(|exit| exit.starts_gatherers),
             free: Vec::new(),
             places: places.unwrap_or_default(),
+            doors: NonZeroU8::new(build.doors.count).map(|count| DoorsData {
+                count,
+                opening_ms: build.doors.opening_ms,
+                open_ms: build.doors.open_ms,
+                closing_ms: build.doors.closing_ms,
+            }),
         })
     }
 
@@ -889,11 +905,12 @@ impl ProductionImport {
         FramePoint::new(axes::ground([x?, y?])?)
     }
 
-    /// The `airfield` of `bones` and of `heal`, its `HealAmountPerSecond`: each place's prep point
-    /// and runway, each runway's start and end, in the engine's frame, and its heal, none of 0 or
-    /// less; none when a point or the heal is past what the engine holds, so its production makes
-    /// no unit at a place either.
-    fn airfield(bones: &AirfieldBones, heal: f32) -> Option<AirfieldData> {
+    /// The `airfield` of `bones` and of `parking`: each place's prep point and runway, each
+    /// runway's start and end, in the engine's frame, its approach at its `ApproachHeight`, past
+    /// each runway's end by `APPROACH_PAST` of its length, and its heal, its `HealAmountPerSecond`,
+    /// none of 0 or less; none when a point, the height or the heal is past what the engine holds,
+    /// so its production makes no unit at a place either.
+    fn airfield(bones: &AirfieldBones, parking: IniParking) -> Option<AirfieldData> {
         let places = bones.places.iter().map(|place| {
             Some(AirfieldPlace {
                 prep: Self::frame(place.prep)?,
@@ -906,13 +923,17 @@ impl ProductionImport {
                 end: Self::frame(end)?,
             })
         });
-        let heal = match game_float::to_num(heal).ok()? {
+        let heal = match game_float::to_num(parking.heal).ok()? {
             heal if heal > Num::ZERO => Some(heal),
             _ => None,
         };
         Some(AirfieldData {
             places: places.collect::<Option<_>>()?,
             runways: runways.collect::<Option<_>>()?,
+            approach: ApproachData {
+                height: game_float::to_num(parking.approach_height).ok()?,
+                past: Self::APPROACH_PAST,
+            },
             heal,
         })
     }
@@ -926,8 +947,8 @@ impl ProductionImport {
         parks
             .filter_map(|(name, _)| {
                 let bones = self.airfield_bones.get(name.declared())?;
-                let heal = self.heals.get(name).copied().unwrap_or_default();
-                Some((name.clone(), Self::airfield(bones, heal)?))
+                let parking = self.parkings.get(name).copied().unwrap_or_default();
+                Some((name.clone(), Self::airfield(bones, parking)?))
             })
             .collect()
     }

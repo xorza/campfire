@@ -6,6 +6,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::internals::StatsFixtures;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
+use campfire_combat::{Combat, DamageCause, InSecondLife, SecondLife};
 use campfire_common::{DeclaredName, Tick, Ticks};
 use campfire_declarations::Role;
 use campfire_declarations::Scratch;
@@ -22,8 +23,8 @@ use campfire_units::{
     UnitTypeCore, Units,
 };
 use campfire_values::{
-    Block, ModifierId, NameId, PackageIndex, Share, Tag, TagProperties, TagSet, Team, TypeScope,
-    UnitTags, UnitType,
+    Block, DamageKind, ModifierId, NameId, PackageIndex, Share, Tag, TagProperties, TagSet, Team,
+    TypeScope, UnitTags, UnitType,
 };
 use campfire_values::{
     EngineStat, FilterData, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling, Stat,
@@ -479,6 +480,82 @@ fn a_hurt_type_holds_its_modifier_at_its_share_of_life_and_below_and_drops_it_ab
         (held(&game), step(&game)),
         (true, Num::from_bits(1_118_481))
     );
+}
+
+/// A match of two types of health 100, its life, of a second life whose modifier adds 50 to it,
+/// the second's killed through it by the damage kind the tests deal; and a unit of each.
+fn second_life_match() -> (Match, [Entity; 2]) {
+    let lives = stats(&[(stat("health"), Num::int(100), Num::ZERO)]);
+    let mut game = stat_match(&[lives.clone(), lives]);
+    PoolBook::amend(&mut game, |_, book| book.set_life(Some(HEALTH)));
+    let raise = StatChange {
+        op: StatOp::Add,
+        value: Number::from(Num::int(50)),
+    };
+    let data = ModifierData {
+        stats: BTreeMap::from([(stat("health"), raise)]),
+        ..ModifierData::default()
+    };
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "second", &data, None);
+    let modifier = Stats::modifier(&game, PackageIndex::MODE, "second").unwrap();
+    for (unit_type, lethal) in [(0, vec![]), (1, vec![DamageKind::new(0)])] {
+        let life = SecondLife {
+            modifier,
+            lethal: lethal.into(),
+        };
+        Units::give_type(&mut game, UnitType::new(unit_type), life);
+    }
+    let units = [0, 1].map(|unit_type| unit(&mut game, unit_type));
+    (game, units)
+}
+
+#[test]
+fn a_type_of_a_second_life_lives_twice_but_against_its_lethal_kinds() {
+    let (mut game, [twice, once]) = second_life_match();
+    game.step();
+    let id = |game: &Match, entity| *game.get::<StableId>(entity).unwrap();
+    let life = |game: &Match, entity| {
+        let life = game.get::<Life>(entity).unwrap();
+        (life.current(), life.max())
+    };
+    let hundred = (Num::int(100), Num::int(100));
+    assert_eq!([life(&game, twice), life(&game, once)], [hundred; 2]);
+    // 150, past its 100: the first takes 100 less the least a number holds, then its life fills
+    // to 100 and the second life's 50 raises it and its maximum to 150, as the tick's stats
+    // refresh; the second, whose kind kills through, dies.
+    for unit in [twice, once] {
+        let target = id(&game, unit);
+        Combat::damage(&mut game, None, target, 150, DamageCause::Effect);
+    }
+    game.step();
+    assert_eq!(life(&game, twice), (Num::int(150), Num::int(150)));
+    assert!(game.get::<InSecondLife>(twice).is_some() && game.get::<Dead>(twice).is_none());
+    assert!(game.get::<Dead>(once).is_some() && game.get::<InSecondLife>(once).is_none());
+    // Its second life survives a save and a restore.
+    let (mut restored, _) = second_life_match();
+    Release::restore_into(&game, &mut restored);
+    // Its second life ends as any life does: 150 kills it.
+    let target = id(&game, twice);
+    Combat::damage(&mut game, None, target, 150, DamageCause::Effect);
+    game.step();
+    assert!(game.get::<Dead>(twice).is_some());
+    // A unit already at no life dies, and no damage starts its second life.
+    let (mut game, [twice, _]) = second_life_match();
+    game.step();
+    game.get_mut::<Life>(twice).unwrap().take(Num::int(100));
+    let target = id(&game, twice);
+    Combat::damage(&mut game, None, target, 10, DamageCause::Effect);
+    game.step();
+    assert!(game.get::<Dead>(twice).is_some() && game.get::<InSecondLife>(twice).is_none());
+    // A second damage in the tick its second life starts takes the first life's 100, whose raise
+    // waits for the tick's stats: 150 and then 100 kill it.
+    let (mut game, [twice, _]) = second_life_match();
+    game.step();
+    let target = id(&game, twice);
+    Combat::damage(&mut game, None, target, 150, DamageCause::Effect);
+    Combat::damage(&mut game, None, target, 100, DamageCause::Effect);
+    game.step();
+    assert!(game.get::<Dead>(twice).is_some());
 }
 
 #[test]

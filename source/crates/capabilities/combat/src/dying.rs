@@ -1,4 +1,5 @@
 use crate::decay::Decay;
+use crate::in_second_life::InSecondLife;
 use crate::kept::Kept;
 use crate::on_death::OnDeath;
 use crate::recent_attackers::RecentAttackers;
@@ -120,9 +121,9 @@ impl Dying {
         }
     }
 
-    /// Brings back each dead unit whose respawn is due, at its spawn point with full pools: put
-    /// there at once, as what homes on it learns. It visits only the units the index of the
-    /// respawns due holds, by tick, then stable id, in a buffer it keeps.
+    /// Brings back each dead unit whose respawn is due, at its spawn point with full pools, on its
+    /// first life: put there at once, as what homes on it learns. It visits only the units the
+    /// index of the respawns due holds, by tick, then stable id, in a buffer it keeps.
     pub(super) fn respawn(
         tick: Res<'_, SimTick>,
         mut commands: Commands<'_, '_>,
@@ -143,7 +144,9 @@ impl Dying {
             }
             pools.fill();
             *position = Position::from(spawn.get());
-            commands.entity(entity).remove::<(Dead, Respawn, Decay)>();
+            commands
+                .entity(entity)
+                .remove::<(Dead, Respawn, Decay, InSecondLife)>();
             commands.trigger(Teleported { id });
         }
     }

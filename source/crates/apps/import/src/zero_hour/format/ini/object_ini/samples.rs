@@ -93,13 +93,13 @@ End
 End
 ";
 
-/// `Data\INI\Object.ini` of the fixture install: two reskins of the tank, one with its own
-/// draw module, a pair whose build variations they are, a stump of no model, a prop of a lone mesh at a scale of 1.5 and its
-/// reskin, an optimized tree, fluff, a wall a unit walks on, a structure of a box of half
-/// extents 10 and 2.5, and the fixture map's tank, which drives on its treads, a box of half
-/// extents 4 and 3, its gun on a turret of 180° a second, and its fence; the shell the tank's
-/// cannon fires, a sphere of radius 1; and America's start objects, which no map places: a
-/// command center of a box of half extents 12 and 9 and height 40, whose sphere's radius is
+/// `Data\INI\Object.ini` of the fixture install: two reskins of the tank, one with its own draw
+/// module, a pair whose build variations they are, a stump of no model, a prop of a lone mesh at a
+/// scale of 1.5 and its reskin, an optimized tree, fluff, a wall a unit walks on, a structure of a
+/// box of half extents 10 and 2.5, and the fixture map's tank, which drives on its treads, a box of
+/// half extents 4 and 3, its gun on a turret of 180° a second, and its fence; the shell the tank's
+/// cannon fires, a sphere of radius 1; and America's start objects, which no map places: a command
+/// center of a box of half extents 12 and 9 and height 40, whose sphere's radius is
 /// √(144 + 81 + 400) = 25, and a dozer on treads.
 pub(crate) const OBJECTS: &str = "ObjectReskin TankCamo Tank\r
 End\r
@@ -294,6 +294,10 @@ InitialHealth = 1200.0\r
   End\r
   Behavior = ProductionUpdate ModuleTag_11\r
 MaxQueueEntries = 5\r
+NumDoorAnimations = 1\r
+DoorOpeningTime = 3250  ;in mSeconds\r
+DoorWaitOpenTime = 3000\r
+DoorCloseTime = 4000\r
   End\r
   Behavior = MaxHealthUpgrade ModuleTag_20\r
 TriggeredBy = Upgrade_AmericaBarracksWalls\r

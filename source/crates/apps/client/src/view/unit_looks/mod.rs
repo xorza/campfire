@@ -11,8 +11,9 @@ use bevy::math::Vec3;
 use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_client_files::{
-    AnimationMode, AttackPhase, ClientModel, ClipRounds, ConditionTest, FireBone, LifeShare,
-    LookDraw, LookShown, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation, StateSet,
+    AnimationMode, AttackPhase, ClientModel, ClipRounds, ConditionTest, DoorStage, FireBone,
+    LifeShare, LookDraw, LookShown, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation,
+    StateSet,
 };
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
@@ -172,6 +173,8 @@ enum UnitTest {
     /// A weapon of its look's group at a place is at a phase, or at any, by their bits in
     /// `UnitFacts::attacks`.
     Attack(u64),
+    /// A door of its producer at a stage, by its bit in `UnitFacts::doors`.
+    Door(u32),
 }
 
 /// A package's tests, and what each of its conditions is to a look.
@@ -193,7 +196,8 @@ enum Known {
 /// What a unit holds that its look's tests read: its tags, whether it walks to a destination, how
 /// long since it last moved, its life and its most life, none for a unit of no life, its site's
 /// stage, none for a unit that is no site, whether it is dead, whether it has an attack target,
-/// and the phases of its look's weapon groups, by their bits, as `attack_bit` places them.
+/// the phases of its look's weapon groups, by their bits, as `attack_bit` places them, and the
+/// stages of its doors, by their bits, as `door_bit` places them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct UnitFacts {
     pub(crate) tags: TagSet,
@@ -204,6 +208,7 @@ pub(crate) struct UnitFacts {
     pub(crate) dead: bool,
     pub(crate) attacking: bool,
     pub(crate) attacks: u64,
+    pub(crate) doors: u32,
 }
 
 /// A model a look is drawn with: the path of its glTF's first scene, its nodes, the factor it is
@@ -625,6 +630,17 @@ impl UnitTests {
                 ConditionTest::Life(share) => Some(UnitTest::Life(*share)),
                 ConditionTest::Site { stage } => Some(UnitTest::Site(*stage)),
                 ConditionTest::Dead => Some(UnitTest::Dead),
+                ConditionTest::Door { door, stage } => {
+                    let bit = UnitFacts::door_bit(*door, *stage);
+                    if bit.is_none() {
+                        let (condition, door) = (name.as_str(), *door);
+                        error!(
+                            condition,
+                            door, "a look's condition tests a door past the last"
+                        );
+                    }
+                    bit.map(UnitTest::Door)
+                }
                 ConditionTest::Attacking => Some(UnitTest::Attacking),
                 ConditionTest::Attack { group, phase } => {
                     let bits = match phase {
@@ -671,6 +687,7 @@ impl UnitTests {
                 UnitTest::Dead => facts.dead,
                 UnitTest::Attacking => facts.attacking,
                 UnitTest::Attack(bit) => facts.attacks & bit != 0,
+                UnitTest::Door(bit) => facts.doors & bit != 0,
             };
             if holds {
                 held |= 1 << bit;
@@ -680,7 +697,7 @@ impl UnitTests {
     }
 
     /// The bits of its tests that time ends while nothing else of the unit changes: a walk's, as
-    /// it stands still, and an attack's, as each phase ends.
+    /// it stands still, and an attack's, as each phase ends; a door's stage is timed by its pick.
     pub(crate) fn timed(&self) -> u64 {
         let mut timed = 0;
         for (bit, test) in self.tests.iter().enumerate() {
@@ -722,6 +739,18 @@ impl ModelSource<'_> {
 }
 
 impl UnitFacts {
+    /// The bit of `doors` of the door at `door` at `stage`, three for each door; none for a door
+    /// past the ten it holds.
+    pub(crate) fn door_bit(door: u8, stage: DoorStage) -> Option<u32> {
+        let stage = match stage {
+            DoorStage::Opening => 0,
+            DoorStage::Open => 1,
+            DoorStage::Closing => 2,
+        };
+        let at = u32::from(door) * 3 + stage;
+        (at < 30).then(|| 1 << at)
+    }
+
     /// The bit of `attacks` of the weapon group at `group` at `phase`, four for each group; none
     /// for a group past the sixteen it holds.
     pub(crate) fn attack_bit(group: u8, phase: AttackPhase) -> Option<u64> {

@@ -295,6 +295,7 @@ Locomotor RaptorWings\r
   Surfaces = AIR\r
   Speed = 175\r
   MinSpeed = 60\r
+  Acceleration = 120\r
   TurnRate = 120\r
   Lift = 120\r
   CirclingRadius = 100\r

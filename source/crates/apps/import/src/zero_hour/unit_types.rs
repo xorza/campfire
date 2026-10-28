@@ -18,6 +18,7 @@ use crate::zero_hour::imported_type::{ImportedType, TypeWeapons};
 use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::mover_import::MoverImport;
 use crate::zero_hour::rules_names::RulesNames;
+use crate::zero_hour::second_life_import::SecondLifeImport;
 use crate::zero_hour::type_name::TypeName;
 use campfire_areas::AreaData;
 use campfire_interaction::{EnterData, RidesData, UsesData};
@@ -68,6 +69,9 @@ pub(crate) struct TypeAdditions<'a> {
     /// The modifiers of the movers' hurts, which a hurt mover's `hurt` names
     /// (04-capabilities/stats.md, A hurt type may hold a modifier).
     pub(crate) movers: &'a MoverImport,
+    /// The modifiers of the second lives, which a type's `second_life` names
+    /// (defenses-and-airfields.md, A type may live twice).
+    pub(crate) second_lives: &'a SecondLifeImport,
 }
 
 /// The package's `data/units.toml`, and the largest speed of its types, when one drives.
@@ -80,6 +84,14 @@ pub(crate) struct WrittenUnits {
 impl ImportedTypes {
     pub(crate) const fn new(types: BTreeMap<TypeName, ImportedType>) -> Self {
         Self { types }
+    }
+
+    /// The modifiers of its types' second lives, of `names`' life stat and tag.
+    pub(crate) fn second_lives(&self, names: &RulesNames) -> SecondLifeImport {
+        SecondLifeImport::of(
+            self.types.values().filter_map(ImportedType::second_life),
+            names,
+        )
     }
 
     /// The modifiers of its movers' hurts.
@@ -113,6 +125,9 @@ impl ImportedTypes {
                     .and_then(|mover| additions.movers.hurt(mover));
                 if let Some(hurt) = hurt {
                     writer.section(&hurt);
+                }
+                if let Some(raise) = imported.second_life() {
+                    writer.section(&additions.second_lives.data(raise));
                 }
                 let slots: BTreeMap<DeclaredName, Vec<DeclaredName>> = [
                     (&names.weapon_slot, additions.weapon),
@@ -198,6 +213,7 @@ pub(crate) mod reach_in {
 
     use crate::zero_hour::mover_import::MoverImport;
     use crate::zero_hour::rules_names::RulesNames;
+    use crate::zero_hour::second_life_import::SecondLifeImport;
     use crate::zero_hour::unit_types::{ImportedTypes, TypeAdditions, WrittenUnits};
 
     impl ImportedTypes {
@@ -222,6 +238,7 @@ pub(crate) mod reach_in {
                 enters: &BTreeMap::new(),
                 rides: &BTreeMap::new(),
                 movers: &MoverImport::default(),
+                second_lives: &SecondLifeImport::default(),
             };
             self.units_file(additions, &RulesNames::default())
         }

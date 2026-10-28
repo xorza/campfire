@@ -59,6 +59,7 @@ mod heal;
 mod heal_effect_data;
 mod heal_handle;
 mod held_hits;
+mod in_second_life;
 mod kept;
 mod mode_combat_data;
 mod next_damage;
@@ -67,6 +68,8 @@ mod pass_queue;
 mod recent_attack;
 mod recent_attackers;
 mod respawn;
+mod second_life;
+mod second_life_data;
 mod shot_source;
 mod shot_streak;
 mod streak_shots;
@@ -105,6 +108,7 @@ pub use crate::error::{CombatDataError, CombatRefusal};
 pub use crate::heal::{Heal, HealCause};
 pub use crate::heal_effect_data::HealEffectData;
 pub use crate::heal_handle::HealHandle;
+pub use crate::in_second_life::InSecondLife;
 pub use crate::kept::Kept;
 pub use crate::mode_combat_data::{LeechData, ModeCombatData, ModeCombatPatch};
 pub use crate::on_death::OnDeath;
@@ -112,6 +116,8 @@ pub use crate::pass_queue::{PassEntry, PassQueue};
 pub use crate::recent_attack::RecentAttack;
 pub use crate::recent_attackers::RecentAttackers;
 pub use crate::respawn::Respawn;
+pub use crate::second_life::SecondLife;
+pub use crate::second_life_data::SecondLifeData;
 pub use crate::shot_source::ShotSource;
 pub use crate::shot_streak::ShotStreak;
 pub use crate::turret::Turret;
@@ -163,6 +169,9 @@ pub enum CombatSystems {
     StreakAtResolve,
     /// Units at zero life die.
     Die,
+    /// Once the dead died, each unit in its second life holds its type's modifier, before stats
+    /// hold the tick's.
+    SecondLives,
     /// The dead whose type despawns go, after the Mode stage saw them, and those whose type kept
     /// them go as their time ends.
     Despawn,
@@ -186,6 +195,8 @@ impl ModuleSystems for CombatSystems {
             Self::StreakAtResolve => SetPlace::at(ActionsSystems::Resolve),
             Self::Die => (SetPlace::stage(SimSystems::Resolve).after(StatsSystems::GrantAtResolve))
                 .before(StatsSystems::ClearDead),
+            Self::SecondLives => (SetPlace::stage(SimSystems::Resolve).after(Self::Die))
+                .before(StatsSystems::ClearDead),
             Self::Despawn => SetPlace::at(UnitsSystems::End),
         }
     }
@@ -208,6 +219,7 @@ impl Module for Combat {
         d.book::<ById<UnitType, TurretMount>>(Turret::mounts);
         d.part::<BodyUnit, TurretAim>(|at| at.of_type::<Turret>().map(TurretAim::rest));
         d.section::<BarrelsData>();
+        d.section::<SecondLifeData>();
         d.book::<ById<UnitType, Barrels>>(Barrels::book);
         d.component::<BarrelTurns>();
         // A unit with slots turns the barrels of its weapons on a server, which alone launches;
@@ -270,6 +282,8 @@ impl Module for Combat {
         d.book::<ById<UnitType, Life>>(TypePools::lives);
         d.book::<ById<UnitType, OnDeath>>(OnDeath::book);
         d.book::<ById<UnitType, TypeArmor>>(TypeArmor::book);
+        d.book::<ById<UnitType, SecondLife>>(SecondLife::book);
+        d.component::<InSecondLife>();
         d.part::<BodyUnit, Life>(|at| at.of_type::<Life>().copied());
         // A unit that can die keeps who struck it, for its death's assisters.
         d.part::<BodyUnit, RecentAttackers>(|at| {
@@ -278,18 +292,18 @@ impl Module for Combat {
     }
 
     /// Adds combat to a match: in Inputs, dead units whose respawn is due come back; in Act, each
-    /// attacker chooses its weapon, and attacks in range start once ready; in DamageHit, windups that end strike, or fire when ranged
-    /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
-    /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
-    /// go, after the Mode stage saw them. A streak weapon's shot counts in its unit's streak, whose
-    /// stage's modifier its unit holds, the stage ending in Inputs past its coast. A unit's hits,
-    /// damage, death and despawn, its attackers, its toggles' pay and its streak are the
-    /// server's: a predicting client deals no damage, as its pools and its deaths come from the
-    /// server, despawns no unit, forgets no attacker it never held, pays no toggle and counts no
-    /// streak; it predicts a respawn that is due. The server gives each shot of a weapon of
-    /// barrels its launch once it struck. The turrets' aim, the slow weapons' hits, the pay of
-    /// toggles that cost an attack, the barrels and the streaks install only in a match whose
-    /// books have them (02-engine-core.md, Books before the install).
+    /// attacker chooses its weapon, and attacks in range start once ready; in DamageHit, windups
+    /// that end strike, or fire when ranged and the match has projectiles; in Resolve, the tick's
+    /// damage is dealt, then units at zero life die, each with its killer and assisters; in Vision,
+    /// the dead whose type despawns go, after the Mode stage saw them. A streak weapon's shot
+    /// counts in its unit's streak, whose stage's modifier its unit holds, the stage ending in
+    /// Inputs past its coast. A unit's hits, damage, death and despawn, its attackers, its toggles'
+    /// pay and its streak are the server's: a predicting client deals no damage, as its pools and
+    /// its deaths come from the server, despawns no unit, forgets no attacker it never held, pays
+    /// no toggle and counts no streak; it predicts a respawn that is due. The server gives each
+    /// shot of a weapon of barrels its launch once it struck. The turrets' aim, the slow weapons'
+    /// hits, the pay of toggles that cost an attack, the barrels and the streaks install only in a
+    /// match whose books have them (02-engine-core.md, Books before the install).
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         let turrets = cx
             .book::<ById<UnitType, Turret>>()
@@ -323,6 +337,7 @@ impl Module for Combat {
         );
         cx.server(CombatSystems::Damage, DamagePass::run);
         cx.server(CombatSystems::Die, Dying::die);
+        cx.add(CombatSystems::SecondLives, InSecondLife::hold);
         cx.add(CombatSystems::Pay, Volley::collect);
         cx.by_role(
             CombatSystems::Strike,

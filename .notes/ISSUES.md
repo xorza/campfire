@@ -8,6 +8,7 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Research
 
+- **Interaction.** A use or an entry order of a unit that the use orders' query finds a use for, but that holds no slots, times or progress, panics the client's local server in `UseOrders::ordered` (`a user holds its slots, their times and their progress: QueryDoesNotMatch`), as in a China match against the America builder bot on Tournament Desert three minutes in.
 - **Zero Hour.** America's base start on Tournament Desert places its first Ranger where its buildings enclose it, so no order walks it out.
 
 ## Ready

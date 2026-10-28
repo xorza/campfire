@@ -7,6 +7,7 @@ use campfire_actions::{
     ActionCheck, ActionKind, ActionProgress, ActionSlots, Caster, Payer, ProgressIndexes, Purse,
     SlotCommit, SlotTimes, StartChecked,
 };
+use campfire_common::Tick;
 use campfire_declarations::{ById, RoleForm};
 use campfire_math::{Num, Vec3};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
@@ -21,6 +22,8 @@ use campfire_units::{
 };
 use campfire_values::{ActionId, Motion, Relation, Team, UnitTags, UnitType};
 
+use crate::door_times::DoorTimes;
+use crate::doors::Doors;
 use crate::frame_point::FramePoint;
 use crate::gather_loop::GatherLoop;
 use crate::gather_spec::GatherSpec;
@@ -69,6 +72,7 @@ type Training = (
     UnitPools,
     Option<&'static Owner>,
     Option<&'static UnitTags>,
+    Option<&'static HeldPlaces>,
 );
 
 /// What a research's check of what is held or queued reads of each unit with a queue, dead or
@@ -175,6 +179,7 @@ impl Trains {
                 pools,
                 held_by,
                 tags,
+                places,
             ) = training.get_mut(entity).expect("a unit in the order");
             let pools = pools.of(life.as_deref().and_then(PoolBook::life));
             let kind = if researching.is_some() {
@@ -212,6 +217,7 @@ impl Trains {
                 owner,
                 modifiers: held_modifiers.of(held_by),
                 action: checked.id,
+                places,
             };
             let admission = books.admits(&holdings, ask);
             if researched || admission == TrainAdmission::Refused {
@@ -333,21 +339,34 @@ impl Trains {
                     // A train at a place makes its unit at a free one of its producer, and waits
                     // while each holds a unit (04-capabilities/production.md, A jet holds a place).
                     let places = world.get::<HeldPlaces>(entity).filter(|_| spec.at_place);
-                    let unit = match places.map(HeldPlaces::free) {
-                        None => Self::leave(world, entity, spec.unit_type),
-                        Some(Some(place)) => Self::leave_at(world, entity, spec.unit_type, place),
+                    let place = match places.map(HeldPlaces::free) {
+                        None => None,
+                        Some(Some(place)) => Some(place),
                         Some(None) => {
                             // Due again at once, it is looked at each tick until a place frees.
-                            world.resource_scope(
-                                |world, mut index: Mut<'_, DueIndex<TrainQueue>>| {
-                                    let queue =
-                                        world.get::<TrainQueue>(entity).expect("a producer");
-                                    UnitDues::new(&mut index, trainer, entity)
-                                        .push(queue.head_done());
-                                },
-                            );
+                            let queue = world.get::<TrainQueue>(entity).expect("a producer");
+                            let again = queue.head_done().expect("a queue of a done head");
+                            Self::due_again(world, trainer, entity, again);
                             break;
                         }
+                    };
+                    // A train at a place leaves by its place's door; another leaves a producer of
+                    // places by none, as Zero Hour's helipad needs no door, and any other producer
+                    // by its first (defenses-and-airfields.md, A producer's door opens before its
+                    // unit leaves).
+                    let door = match place {
+                        Some(place) => Some(place),
+                        None => (!world.entity(entity).contains::<HeldPlaces>()).then_some(0),
+                    };
+                    if let Some(open_at) =
+                        door.and_then(|door| Self::through_door(world, entity, door, now))
+                    {
+                        Self::due_again(world, trainer, entity, open_at);
+                        break;
+                    }
+                    let unit = match place {
+                        None => Self::leave(world, entity, spec.unit_type),
+                        Some(place) => Self::leave_at(world, entity, spec.unit_type, place),
                     };
                     world.resource_mut::<TrainedUnits>().0.extend([Trained {
                         unit,
@@ -363,6 +382,32 @@ impl Trains {
                 });
             }
         }
+    }
+
+    /// Pushes the queue of the producer `trainer` of `entity` due again at `at`.
+    fn due_again(world: &mut World, trainer: StableId, entity: Entity, at: Tick) {
+        world.resource_scope(|_, mut index: Mut<'_, DueIndex<TrainQueue>>| {
+            UnitDues::new(&mut index, trainer, entity).push(Some(at));
+        });
+    }
+
+    /// Lets a unit of the producer of `entity` through the door of its place `place` at `now`, as
+    /// `Doors::pass` does; none for a producer of no doors or once it left, else the tick it may
+    /// leave.
+    fn through_door(world: &mut World, entity: Entity, place: u8, now: Tick) -> Option<Tick> {
+        let times = Self::door_times(world, entity)?;
+        world.get_mut::<Doors>(entity)?.pass(place, now, times)
+    }
+
+    /// The door times of the producer of `entity`, none for one of no doors.
+    fn door_times(world: &World, entity: Entity) -> Option<DoorTimes> {
+        let producer_type = *world
+            .get::<UnitType>(entity)
+            .expect("a producer has a type");
+        world
+            .resource::<ById<UnitType, ProducerSpec>>()
+            .get(producer_type)?
+            .doors
     }
 
     /// Gives what the research `action` of the producer `producer` of `entity` gives: its modifier,
@@ -415,9 +460,10 @@ impl Trains {
         exit.at.id
     }
 
-    /// Spawns a unit of `unit_type` at the free place `place` of the producer of `entity`, facing
-    /// as the place turns with the producer, of its team and player, through the mode's spawner,
-    /// and holds the place for it; it stays there, as no rally sends it on. Its id.
+    /// Spawns a unit of `unit_type` for the free place `place` of the producer of `entity`, at the
+    /// place's exit or, of none, at the place, facing as the place turns with the producer, of its
+    /// team and player, through the mode's spawner, and holds the place for it; no rally sends it
+    /// on. Its id.
     fn leave_at(world: &mut World, entity: Entity, unit_type: UnitType, place: u8) -> StableId {
         let producer = world.entity(entity);
         let position = producer.get::<Position>().expect("a producer stands").get();
@@ -432,7 +478,8 @@ impl Trains {
         let data = spec
             .expect("a producer of places has its production")
             .places[usize::from(place)];
-        let mut at = Self::spawn_at(world, entity, unit_type, data.at.placed(position, angle));
+        let point = data.exit.unwrap_or(data.at);
+        let mut at = Self::spawn_at(world, entity, unit_type, point.placed(position, angle));
         at.angle = angle + data.angle;
         let made = at.id;
         Spawner::spawn(
@@ -447,22 +494,31 @@ impl Trains {
             .get_mut::<HeldPlaces>(entity)
             .expect("a producer of places");
         places.hold(place, made);
+        let now = world.resource::<SimTick>().end();
+        if let Some(times) = Self::door_times(world, entity)
+            && let Some(mut doors) = world.get_mut::<Doors>(entity)
+        {
+            doors.hold(place, now, times);
+        }
         made
     }
 
     /// Frees the place each unit made at one held, as it dies, for its producer's next train
     /// (04-capabilities/production.md, A jet holds a place).
     pub(super) fn free_places(
-        index: Res<'_, EntityIndex>,
+        (tick, index): (Res<'_, SimTick>, Res<'_, EntityIndex>),
         dead: Query<'_, '_, (&StableId, &MadeAt), Added<Dead>>,
-        mut producers: Query<'_, '_, &mut HeldPlaces>,
+        mut producers: Query<'_, '_, (&mut HeldPlaces, Option<&mut Doors>)>,
     ) {
         for (&unit, &MadeAt { producer, place }) in &dead {
             let held = index
                 .get(producer)
                 .and_then(|producer| producers.get_mut(producer).ok());
-            if let Some(mut held) = held {
-                held.release(place, unit);
+            if let Some((mut held, doors)) = held
+                && held.release(place, unit)
+                && let Some(mut doors) = doors
+            {
+                doors.release(place, tick.end(), held.held());
             }
         }
     }

@@ -284,6 +284,7 @@ fn a_completed_site_frees_its_units_out_of_its_exit_in_their_order() {
             gathers: false,
             free,
             places: Box::new([]),
+            doors: None,
         };
         Shop::give(&mut game, shop.depot, spec);
         let builder = yard.builder(&mut game, halves(-20, 0), Team::new(0), 0);
@@ -349,6 +350,7 @@ fn a_depot_spawned_whole_keeps_its_spawns_and_a_restore_sends_none_again() {
             gathers: false,
             free: Box::new([]),
             places: Box::new([]),
+            doors: None,
         };
         Shop::give(&mut game, shop.depot, spec);
         let spawns = SpawnSpec {
@@ -449,6 +451,7 @@ fn a_completed_site_keeps_its_spawns_brings_each_back_and_takes_them_as_it_dies(
             gathers: false,
             free: Box::new([]),
             places: Box::new([]),
+            doors: None,
         };
         Shop::give(&mut game, shop.depot, spec);
         let spawns = SpawnSpec {

@@ -5,22 +5,32 @@ use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::IniLine;
 
 /// An airfield's `ParkingPlaceBehavior`: its `NumRows` and `NumCols` of places, whether it
-/// `ParkInHangars`, and its `HealAmountPerSecond`, each 0 or no by default, as the module's data
-/// starts.
+/// `ParkInHangars`, its `HealAmountPerSecond` and its `ApproachHeight`, each 0 or no by default, as
+/// the module's data starts.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct IniParking {
     pub(crate) rows: u8,
     pub(crate) cols: u8,
     pub(crate) hangars: bool,
     pub(crate) heal: f32,
+    pub(crate) approach_height: f32,
+}
+
+/// A `ProductionUpdate`'s doors, as `IniBuild` reads them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct IniDoors {
+    pub(crate) count: u8,
+    pub(crate) opening_ms: u32,
+    pub(crate) open_ms: u32,
+    pub(crate) closing_ms: u32,
 }
 
 /// What an object gives production, as `ThingTemplate` and its modules read it: its `BuildCost`,
 /// its `RefundValue`, 0 when it gives none, as `BuildAssistant::update` reads it, its `BuildTime`
-/// in seconds, its `CommandSet`, its `Prerequisites`, its `ProductionUpdate`'s
-/// `MaxQueueEntries` when it has the module, the points of its exit module when it has one that
-/// names them, its `ParkingPlaceBehavior`, an airfield's, which makes a helicopter at its model's
-/// helipad bone and parks its jets, and its `PlacementViewAngle`.
+/// in seconds, its `CommandSet`, its `Prerequisites`, its `ProductionUpdate`'s `MaxQueueEntries`
+/// when it has the module, and its doors, the points of its exit module when it has one that names
+/// them, its `ParkingPlaceBehavior`, an airfield's, which makes a helicopter at its model's helipad
+/// bone and parks its jets, and its `PlacementViewAngle`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IniBuild {
     pub(crate) cost: u16,
@@ -31,6 +41,9 @@ pub(crate) struct IniBuild {
     pub(crate) queue: Option<i32>,
     pub(crate) exit: Option<ProductionExit>,
     pub(crate) parking: Option<IniParking>,
+    /// Its `ProductionUpdate`'s doors: its `NumDoorAnimations`, and its `DoorOpeningTime`,
+    /// `DoorWaitOpenTime` and `DoorCloseTime` in milliseconds, each 0 when absent.
+    pub(crate) doors: IniDoors,
     /// Its `PlacementViewAngle` in degrees, the angle the cursor's building shows at as a player
     /// places it, none when it gives none; a value that is not a number is refused.
     pub(crate) placement_angle: Option<Num>,
@@ -134,8 +147,16 @@ impl IniBuild {
             let count = at.int()?;
             u8::try_from(count).map_err(|_| IniError::Range { line: at.number })
         };
+        let ms = || {
+            let ms = at.int()?;
+            u32::try_from(ms).map_err(|_| IniError::Range { line: at.number })
+        };
         match (module, word) {
             (ProductionModule::Queue, "maxqueueentries") => self.queue = Some(at.int()?),
+            (ProductionModule::Queue, "numdooranimations") => self.doors.count = count()?,
+            (ProductionModule::Queue, "dooropeningtime") => self.doors.opening_ms = ms()?,
+            (ProductionModule::Queue, "doorwaitopentime") => self.doors.open_ms = ms()?,
+            (ProductionModule::Queue, "doorclosetime") => self.doors.closing_ms = ms()?,
             (ProductionModule::Exit, "unitcreatepoint") => {
                 self.exit.get_or_insert_default().create = point()?;
             }
@@ -153,6 +174,9 @@ impl IniBuild {
             }
             (ProductionModule::Parking, "healamountpersecond") => {
                 self.parking.get_or_insert_default().heal = at.real()?;
+            }
+            (ProductionModule::Parking, "approachheight") => {
+                self.parking.get_or_insert_default().approach_height = at.real()?;
             }
             _ => {}
         }
@@ -180,7 +204,7 @@ impl IniBuild {
 
 impl Default for IniBuild {
     /// As `ThingTemplate` starts: free, of no refund, a second to build, of no command set,
-    /// prerequisite, production module or variation.
+    /// prerequisite, production module, door or variation.
     fn default() -> Self {
         Self {
             cost: 0,
@@ -191,6 +215,7 @@ impl Default for IniBuild {
             queue: None,
             exit: None,
             parking: None,
+            doors: IniDoors::default(),
             placement_angle: None,
             variations: Vec::new(),
         }

@@ -10,7 +10,6 @@ use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
-use crate::zero_hour::format::ini::object_ini::ini_build::IniParking;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::supply_import::{ImportedGather, SupplyDropCause};
 
@@ -580,7 +579,8 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
     // A queue and a parking, of no exit module: its helipad at (5, 10) on the game's axes is its
     // exit, (5, −10) on the engine's, with no rally of its own; its places, at (20, 30) facing 90°
     // and (20, −30) facing −90°, are at (20, −30) and (20, 30) on the engine's axes, facing alike,
-    // and its airfield's prep points and runway turn the same way; a producer of no parking has
+    // the first's jet made in its hangar at (10, 30), (10, −30) on the engine's, and its
+    // airfield's prep points and runway turn the same way; a producer of no parking has
     // neither (09-zero-hour.md, A helipad is an exit; 09-zero-hour.md, The import flies a winged
     // locomotor).
     let airfield = IniBuild {
@@ -588,14 +588,18 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
         parking: Some(IniParking::default()),
         ..IniBuild::default()
     };
-    let place = |y: f32, angle: f32| PlaceBones {
+    let place = |y: f32, angle: f32, hangar| PlaceBones {
         at: [20.0, y],
         angle,
+        hangar,
         prep: [25.0, y],
         runway: 0,
     };
     let bones = AirfieldBones {
-        places: vec![place(30.0, 90.0), place(-30.0, -90.0)],
+        places: vec![
+            place(30.0, 90.0, Some([10.0, 30.0])),
+            place(-30.0, -90.0, None),
+        ],
         runways: vec![[[40.0, 0.0], [140.0, 0.0]]],
     };
     let points = ExitPoints {
@@ -611,20 +615,28 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
         [
             PlaceData {
                 at: frame(20, -30),
-                angle: Num::int(90)
+                angle: Num::int(90),
+                exit: Some(frame(10, -30)),
             },
             PlaceData {
                 at: frame(20, 30),
-                angle: Num::int(-90)
+                angle: Num::int(-90),
+                exit: None,
             },
         ]
     );
     let name = TypeName::named("airfield");
-    // It heals its module's 10 life a second.
+    // It heals its module's 10 life a second, and its approach lies 50 m up, past each runway's
+    // end by three quarters of its length.
+    let parking = IniParking {
+        heal: 10.0,
+        approach_height: 50.0,
+        ..IniParking::default()
+    };
     let import = ProductionImport {
         sections: BTreeMap::from([(name.clone(), section)]),
         airfield_bones: BTreeMap::from([(name.declared().clone(), bones)]),
-        heals: BTreeMap::from([(name.clone(), 10.0)]),
+        parkings: BTreeMap::from([(name.clone(), parking)]),
         ..ProductionImport::default()
     };
     let prep = |z: i64| AirfieldPlace {
@@ -639,6 +651,10 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
                 start: frame(40, 0),
                 end: frame(140, 0),
             }],
+            approach: ApproachData {
+                height: Num::int(50),
+                past: Num::from_bits(3 << (Num::FRAC_BITS - 2)),
+            },
             heal: Some(Num::int(10)),
         }
     );

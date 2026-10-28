@@ -6,7 +6,7 @@ use campfire_client_files::{
     ActionLook, ClientFile, ClientObjects, ClientUnit, ClientUnits, EffectsFile, HudFile, LookDraw,
     MapConditions, SoundFile, TerrainFile,
 };
-use campfire_combat::{AttackData, ModeCombatData};
+use campfire_combat::{AttackData, ModeCombatData, SecondLifeData};
 use campfire_common::{DeclaredName, MapName};
 use campfire_geometry::Grid;
 use campfire_import::{
@@ -582,6 +582,9 @@ impl ImportCheck<'_> {
             kinds: combat.damage_kinds.len(),
             unliving: count(|loss| matches!(loss, ImportLoss::Unliving(_))),
             wounded: count(|loss| matches!(loss, ImportLoss::Wounded(_))),
+            second_lives: (self.packages.content().units.values())
+                .filter(|unit| unit.section::<SecondLifeData>().is_some())
+                .count(),
             preferring: self.preferring(),
             unpreferred: count(|loss| matches!(loss, ImportLoss::Unpreferred(_))),
             retaliating: (self.packages.content().units.values())

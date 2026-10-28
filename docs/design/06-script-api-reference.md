@@ -310,6 +310,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `combat` | combat | since 1.0 |
 | `turret` | combat | since 1.0 |
 | `barrels` | combat | since 1.0 |
+| `second_life` | combat | since 1.0 |
 | `navigation` | navigation | since 1.0 |
 | `flight` | navigation | since 1.0 |
 | `locomotor` | navigation | since 1.0 |
@@ -630,6 +631,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `gathers` | production | since 1.0 |
 | `free` | production | since 1.0 |
 | `places` | production | since 1.0 |
+| `doors` | production | since 1.0 |
 
 ### A unit type's `supply`
 

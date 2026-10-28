@@ -8,6 +8,7 @@ use campfire_script::{DataSection, DataTable};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::doors_data::DoorsData;
 use crate::frame_point::FramePoint;
 
 /// A unit type's `production` section: the most entries its train queue holds; where its trained
@@ -17,7 +18,8 @@ use crate::frame_point::FramePoint;
 /// gatherers); the unit types of its package that leave its exit once, as its site completes
 /// (04-capabilities/production.md, A building may come with its units); and its places, where each
 /// unit it trains is made and which it holds while it lives (04-capabilities/production.md, A jet
-/// holds a place).
+/// holds a place); and its doors, which open before each unit leaves (defenses-and-airfields.md, A
+/// producer's door opens before its unit leaves).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionData {
@@ -36,16 +38,22 @@ pub struct ProductionData {
         deserialize_with = "PlaceData::read_places"
     )]
     pub places: Vec<PlaceData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doors: Option<DoorsData>,
 }
 
-/// A producer's place: its point in the producer's frame, and the angle in degrees its unit
-/// faces there, turned with the producer.
+/// A producer's place: its point in the producer's frame, the angle in degrees its unit faces
+/// there, turned with the producer, and the point its unit is made at, from which an airfield
+/// taxis it to its place, none to make it at its place (defenses-and-airfields.md, A hangar is a
+/// jet's start).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlaceData {
     pub at: FramePoint,
     #[serde(default)]
     pub angle: Num,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit: Option<FramePoint>,
 }
 
 impl PlaceData {
@@ -96,6 +104,7 @@ mod tests {
             PlaceData {
                 at: FramePoint::new([Num::ONE, Num::int(2)]).unwrap(),
                 angle: Num::int(90),
+                exit: None,
             }
         );
         assert_eq!(

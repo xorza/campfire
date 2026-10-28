@@ -500,20 +500,21 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     // The audit read every module: the core's four kinds, the actions', the stats', the players',
     // the mode's, vision's and progression's eleven parts of a player, its cooldowns, its bounty
     // share, its commanded units, its explored cells and its experience, points and perks among
-    // them, the mode's three of the match, the 39 of a unit, the core's `Variation` and
-    // `Leaving`, production's `Leader`, items' `UseGroup`, orders' `NextThink`, `NextScan` and
-    // `AttackMove`, the core's `StatusTags`, combat's `TurretAim`, navigation's `ArrivedAt`,
-    // `AsideDepth`, `Hemmed`, `Altitude`, `FlightGoal`, `HeldPlace` and `ZeroHourDrive`,
-    // production's `HeldPlaces`, airfields' `Runways` and `Sortie`, interaction's `Riders`, and the
-    // mode's `IncomeClock` among them, and the 82 books, 16 of the core's, its variations among
-    // them, interaction's four, combat's range bonuses, armors, turrets, turret mounts, barrels
-    // and weapons, navigation's walkers, unit types' navigation, flight, movement models and crowd
-    // rule, orders' scans, production's trains, researches, gathers, spawns and sales, stats' type
-    // upgrades, the mode's victory, bounty, incomes and inputs, orders' retaliation and its
-    // types', and progression's experience, track modifiers and perks among them.
+    // them, the mode's three of the match, the 39 of a unit, the core's `Variation` and `Leaving`,
+    // production's `Leader`, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
+    // the core's `StatusTags`, combat's `TurretAim`, navigation's `ArrivedAt`, `AsideDepth`,
+    // `Hemmed`, `Altitude`, `FlightGoal`, `HeldPlace` and `ZeroHourDrive`, production's
+    // `HeldPlaces` and `Doors`, airfields' `Runways` and `Sortie`, interaction's `Riders`, and the
+    // mode's `IncomeClock` among them, and the 83 books, 16 of the core's, its variations among
+    // them, interaction's four, combat's range bonuses, armors, second lives, turrets, turret
+    // mounts, barrels and weapons, navigation's walkers, unit types' navigation, flight, movement
+    // models and crowd rule, orders' scans, production's trains, researches, gathers, spawns and
+    // sales, stats' type upgrades, the mode's victory, bounty, incomes and inputs, orders'
+    // retaliation and its types', and progression's experience, track modifiers and perks among
+    // them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 64);
-    assert_eq!(audit.books.len(), 82);
+    assert_eq!(audit.parts.len(), 65);
+    assert_eq!(audit.books.len(), 83);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 16);
     // The observers, the runs out of the schedule and the parts a server derives, which the

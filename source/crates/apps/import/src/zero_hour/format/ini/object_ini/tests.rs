@@ -6,7 +6,7 @@ use crate::zero_hour::format::ini::object_ini::fight_data::{
 };
 use crate::zero_hour::format::ini::object_ini::ini_animation::{AnimationFlag, IniClip, IniMode};
 use crate::zero_hour::format::ini::object_ini::ini_build::{
-    IniParking, Prerequisite, ProductionExit,
+    IniDoors, IniParking, Prerequisite, ProductionExit,
 };
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSpawn, SupplyDock, SupplyGatherer};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::HealthChange;
@@ -489,8 +489,9 @@ End
     assert_eq!((turn.mode, &turn.key), (IniMode::Once, &None));
     assert_eq!(module.states[0].sets.len(), 2);
 
-    // Idle clips of a loop, or beside other clips, an idle line of none too; a transition of a loop, from a key to itself,
-    // or of no model with no default; a mode or a flag the game does not name.
+    // Idle clips of a loop, or beside other clips, an idle line of none too; a transition of a
+    // loop, from a key to itself, or of no model with no default; a mode or a flag the game does
+    // not name.
     let fails = |state: &str| {
         let text = format!(
             "Object A\n Draw = W3DModelDraw M\n  ConditionState = NONE\n   Model = A\n  End\n{state}\n End\nEnd\n"
@@ -670,15 +671,25 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
                 starts_gatherers: false,
             }),
             parking: None,
+            doors: IniDoors::default(),
             placement_angle: Some(Num::int(-135)),
             variations: Vec::new(),
         }
     );
-    // The barracks' queue of 5, and its points, of a `QueueProductionExitUpdate`, which names them
-    // as the default exit does; the ranger's line of one object; the pathfinder's of two; the
-    // power plant's science. An object of no fields is free, a second to build, and of no
+    // The barracks' queue of 5, its door, and its points, of a `QueueProductionExitUpdate`, which
+    // names them as the default exit does; the ranger's line of one object; the pathfinder's of
+    // two; the power plant's science. An object of no fields is free, a second to build, and of no
     // module.
     assert_eq!(build(&ini, "AmericaBarracks").queue, Some(5));
+    assert_eq!(
+        build(&ini, "AmericaBarracks").doors,
+        IniDoors {
+            count: 1,
+            opening_ms: 3250,
+            open_ms: 3000,
+            closing_ms: 4000,
+        }
+    );
     assert_eq!(
         build(&ini, "AmericaBarracks").exit,
         Some(ProductionExit {
@@ -702,11 +713,11 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
         [Prerequisite::Science("SCIENCE_AMERICA".to_owned())]
     );
     assert_eq!(build(&ini, "AmericaFireBase"), IniBuild::default());
-    // An airfield's parking, its rows, columns, hangars and heal a second; a jet's AI, its pause,
-    // its idle time and its stranded loss of 10%, a fraction of 1.
+    // An airfield's parking, its rows, columns, hangars, heal a second and approach height; a jet's
+    // AI, its pause, its idle time and its stranded loss of 10%, a fraction of 1.
     ini.read(
         b"Object Field\n Behavior = ParkingPlaceBehavior M\n  NumRows = 2\n  NumCols = 3\n  \
-          ParkInHangars = Yes\n  HealAmountPerSecond = 10\n End\nEnd\n\
+          ParkInHangars = Yes\n  HealAmountPerSecond = 10\n  ApproachHeight = 50\n End\nEnd\n\
           Object Jet\n Behavior = JetAIUpdate M\n  TakeoffPause = 500\n  \
           ReturnToBaseIdleTime = 10000\n  OutOfAmmoDamagePerSecond = 10%\n End\nEnd\n",
     )
@@ -718,6 +729,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
             cols: 3,
             hangars: true,
             heal: 10.0,
+            approach_height: 50.0,
         })
     );
     assert_eq!(

@@ -44,8 +44,8 @@ use campfire_net::PendingOrders;
 use campfire_orders::OrdersDirective;
 use campfire_players::{PlayerRows, ResourceAmount};
 use campfire_production::{
-    BuildBook, ProductionDirective, RequirementBook, ResearchHolder, ResearchSpec, SellSpec, Site,
-    SiteProgress, TrainQueue,
+    BuildBook, HeldPlaces, ProductionDirective, RequirementBook, ResearchHolder, ResearchSpec,
+    SellSpec, Site, SiteProgress, TrainQueue, TrainSpec,
 };
 use campfire_script::{Filter, MatchNames};
 use campfire_sim::{EntityIndex, MatchRate, SimTick, StableId, Unpredicted};
@@ -253,10 +253,11 @@ type PanelBooks<'w> = (
     Option<Res<'w, ById<ActionId, ResearchSpec>>>,
     Option<Res<'w, ById<UnitType, SellSpec>>>,
     Res<'w, NameTexts<ActionId>>,
+    Option<Res<'w, ById<ActionId, TrainSpec>>>,
 );
 
 /// The units the panel may show: each one's player, type, slots, train queue, site and its
-/// progress, and the modifiers it carries.
+/// progress, the modifiers it carries, its slots' times, its riders and its places.
 type PanelUnits<'w, 's> = Query<
     'w,
     's,
@@ -271,6 +272,7 @@ type PanelUnits<'w, 's> = Query<
         Option<&'static UnitTags>,
         Option<&'static SlotTimes>,
         Option<&'static Riders>,
+        Option<&'static HeldPlaces>,
     ),
     (Without<Dead>, Allow<Unpredicted>),
 >;
@@ -421,7 +423,7 @@ impl CommandPanelPlugin {
             PanelUnits<'_, '_>,
             RiderTypes<'_, '_>,
         ),
-        (book, builds, researches, sales, names): PanelBooks<'_>,
+        (book, builds, researches, sales, names, trains): PanelBooks<'_>,
         (looks, hovered, mut pressable): (
             Res<'_, PanelLooks>,
             Res<'_, Hovered>,
@@ -449,7 +451,7 @@ impl CommandPanelPlugin {
         };
         next.clear();
         for &unit in selection.get() {
-            let Some(Ok((owner, &unit_type, slots, queue, site, _, _, tags, _, held_riders))) =
+            let Some(Ok((owner, &unit_type, slots, queue, site, _, _, tags, _, held_riders, _))) =
                 index.get(unit).map(|at| units.get(at))
             else {
                 continue;
@@ -490,7 +492,9 @@ impl CommandPanelPlugin {
             return;
         };
         root.set_if_neq(Visibility::Inherited);
-        let Ok((_, _, slots, queue, site, progress, carried, _, times, _)) = units.get(unit) else {
+        let Ok((_, _, slots, queue, site, progress, carried, _, times, _, places)) =
+            units.get(unit)
+        else {
             return;
         };
         let now = tick.start();
@@ -548,6 +552,7 @@ impl CommandPanelPlugin {
         pressable.0.extend(shown.buttons.iter().map(|&button| {
             button.meets(requirements.as_deref(), |held| own.holds(held))
                 && button.enabled(value(button), |costs| own.affords(costs))
+                && button.has_place(trains.as_deref(), places, queue)
         }));
         let mut tip = None;
         for (entity, cell) in cells.iter().filter(|_| !remade) {
@@ -763,6 +768,29 @@ impl Button {
                 .and_then(|book| book.of(action))
                 .is_none_or(|required| required.modifiers.iter().all(|&held| holds(held))),
             Does::Command(_) | Does::Exit { .. } => true,
+        }
+    }
+
+    /// Whether its unit, of `places` and `queue`, has a place free for its train at a place, as
+    /// `trains` says it is one; any other button needs none (defenses-and-airfields.md, A train at
+    /// a place reserves it as it queues).
+    fn has_place(
+        self,
+        trains: Option<&ById<ActionId, TrainSpec>>,
+        places: Option<&HeldPlaces>,
+        queue: Option<&TrainQueue>,
+    ) -> bool {
+        let Does::Action {
+            action,
+            making: Making::Train,
+            ..
+        } = self.does
+        else {
+            return true;
+        };
+        match (trains, places, queue) {
+            (Some(trains), Some(places), Some(queue)) => places.admits(action, queue, trains),
+            _ => true,
         }
     }
 

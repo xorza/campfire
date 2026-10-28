@@ -101,6 +101,12 @@ life = "life"
 # shows by.
 [tags.radar]
 
+# A unit in its second life, as an undead body's first death leaves it, held where it stands as
+# `BattleBusSlowDeathBehavior` holds the bus, which its second life's armor tests
+# (defenses-and-airfields.md, A type may live twice).
+[tags.second_life]
+blocks = ["move"]
+
 [tags.armor_upgrade]
 
 [tags.weapon_upgrade]

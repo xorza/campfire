@@ -7,7 +7,7 @@ use campfire_actions::SlotKind;
 use campfire_capabilities::{Directive, Match};
 use campfire_client_files::{ButtonLook, ClientUnits, HudFile, PanelGrid, PlaceOrder};
 use campfire_codec::Toml;
-use campfire_declarations::Role;
+use campfire_declarations::{ByIdBuilder, Role};
 use campfire_math::Vec3;
 use campfire_production::internals::TestBuild;
 use campfire_production::{
@@ -634,6 +634,59 @@ fn a_cast_shows_while_its_when_passes_and_dims_while_it_cools() {
         ButtonValue::Cooling { seconds: 240 }.to_string(),
         "ready in 240 s"
     );
+}
+
+#[test]
+fn a_train_at_a_place_is_dimmed_while_no_place_is_free_of_units_and_queued_trains() {
+    // A train at a place, action 0, and one at the exit, action 1; two places, one held by a unit.
+    let at_place = ActionId::new(0);
+    let mut trains = ByIdBuilder::default();
+    trains.set(
+        at_place,
+        TrainSpec {
+            unit_type: UnitType::new(1),
+            at_place: true,
+        },
+    );
+    trains.set(
+        ActionId::new(1),
+        TrainSpec {
+            unit_type: UnitType::new(2),
+            at_place: false,
+        },
+    );
+    let trains = trains.build();
+    let held = HeldPlaces::of([Some(IdAllocator::default().allocate()), None]);
+    let queued = |count: usize| {
+        let mut queue = TrainQueue::default();
+        let queued = Queued {
+            action: at_place,
+            rank: Rank::FIRST,
+            time: Ticks::new(1),
+            paid: 0,
+        };
+        for _ in 0..count {
+            queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
+        }
+        queue
+    };
+    let button = |action| Button {
+        cell: GridCell { column: 0, row: 0 },
+        does: Does::Action {
+            slot: 0,
+            action,
+            making: Making::Train,
+        },
+        key: None,
+    };
+    let has_place = |action, queue: &TrainQueue| {
+        button(action).has_place(Some(&trains), Some(&held), Some(queue))
+    };
+    // One place free: pressed with an empty queue, dimmed once a train at a place waits for it;
+    // a train at the exit needs none.
+    assert!(has_place(at_place, &queued(0)));
+    assert!(!has_place(at_place, &queued(1)));
+    assert!(has_place(ActionId::new(1), &queued(1)));
 }
 
 #[test]

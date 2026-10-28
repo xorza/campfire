@@ -30,9 +30,22 @@ pub enum ConditionTest {
     /// `ATTACKING` holds from its attack state's start to its end (`AIAttackState::onEnter`,
     /// `onExit`).
     Attacking,
-    /// The unit is dead, as a type that keeps its dead holds it for its time (04-capabilities/combat.md,
-    /// A death keeps its unit for its animation).
+    /// The unit is dead, as a type that keeps its dead holds it for its time
+    /// (04-capabilities/combat.md, A death keeps its unit for its animation).
     Dead,
+    /// The producer's door at `door`, from 0, is at `stage`, as Zero Hour's `DOOR_<n>_OPENING`,
+    /// `DOOR_<n>_WAITING_OPEN` and `DOOR_<n>_CLOSING` hold (defenses-and-airfields.md, A
+    /// producer's door opens before its unit leaves).
+    Door { door: u8, stage: DoorStage },
+}
+
+/// A stage of a door that is not closed: opening, open, or closing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DoorStage {
+    Opening,
+    Open,
+    Closing,
 }
 
 /// A phase of an attack's weapon, as Zero Hour's `Object::updateDrawableWeaponState` names each:

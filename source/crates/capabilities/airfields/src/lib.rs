@@ -21,7 +21,7 @@ mod sortie;
 mod sortie_data;
 mod sorties;
 
-pub use crate::airfield_data::{AirfieldData, AirfieldPlace, RunwayData};
+pub use crate::airfield_data::{AirfieldData, AirfieldPlace, ApproachData, RunwayData};
 pub use crate::error::AirfieldError;
 pub use crate::runways::Runways;
 pub use crate::sortie::Sortie;

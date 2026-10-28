@@ -1,7 +1,8 @@
 use std::num::NonZeroI64;
 
 use campfire_airfields::{
-    AirfieldData, AirfieldPlace, RunwayData, Runways, Sortie, SortieSpec, StrandedLoss,
+    AirfieldData, AirfieldPlace, ApproachData, RunwayData, Runways, Sortie, SortieSpec,
+    StrandedLoss,
 };
 use campfire_navigation::{FlightData, Navigation, WingsData};
 use campfire_sim::MatchRate;
@@ -32,6 +33,7 @@ fn places(game: &mut Match, shop: Shop, idle: Option<Ticks>) {
     let at = [4, -4].map(|z| PlaceData {
         at: frame(0, z),
         angle: Num::ZERO,
+        exit: None,
     });
     let production = ProducerSpec {
         queue: NonZeroU8::new(3).unwrap(),
@@ -40,6 +42,7 @@ fn places(game: &mut Match, shop: Shop, idle: Option<Ticks>) {
         gathers: false,
         free: Box::new([]),
         places: Box::new(at),
+        doors: None,
     };
     Shop::regive(game, shop.barracks, production);
     let hz = NonZeroI64::from(game.resource::<MatchRate>().hz()).get();
@@ -48,6 +51,7 @@ fn places(game: &mut Match, shop: Shop, idle: Option<Ticks>) {
     Navigation::load_flight(game, shop.grunt, flight.winged(wings));
     let sortie = SortieSpec {
         pause: Ticks::new(2),
+        acceleration: Num::ONE,
         taxi_step: Num::HALF,
         idle,
         stranded: None,
@@ -70,6 +74,10 @@ fn airfield(game: &mut Match, shop: Shop, idle: Option<Ticks>) {
             start: frame(4, 0),
             end: frame(14, 0),
         }],
+        approach: ApproachData {
+            height: Num::int(4),
+            past: Num::ZERO,
+        },
         heal: None,
     };
     Shop::give(game, shop.barracks, airfield);
@@ -152,6 +160,46 @@ fn a_producer_of_places_makes_each_unit_at_a_free_one_and_its_next_waits_for_one
     assert_eq!(made.len(), 3);
     assert_eq!(made[2].1, at(4));
     assert_eq!(held(&game).holder(0), Some(made[2].0));
+}
+
+#[test]
+fn a_train_at_a_place_joins_its_queue_only_while_a_place_is_free_of_units_and_queued_trains() {
+    // The barracks of two places trains at a place in 5 ticks: ordered in ticks 1 and 2, two
+    // trains queue, one for each place; the third, ordered in tick 3, finds none free and is
+    // refused, as Zero Hour reserves a place as the train queues (defenses-and-airfields.md, A
+    // train at a place reserves it as it queues).
+    let (mut game, shop) = airfield_match();
+    let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::new(5));
+    let barracks = Production::allocate_id(&mut game);
+    shop.producer(
+        &mut game,
+        barracks,
+        10,
+        Team::new(0),
+        None,
+        train,
+        TrainQueue::default(),
+    );
+    let queued = |game: &Match| game.part::<TrainQueue>(barracks).entries().len();
+    for count in [1, 2, 2] {
+        Production::order_train(&mut game, barracks);
+        game.step();
+        assert_eq!(queued(&game), count);
+    }
+    // Both made, each holding its place: a fourth is refused while they live.
+    while Shop::spawned(&mut game, shop.grunt).len() < 2 {
+        game.step();
+    }
+    Production::order_train(&mut game, barracks);
+    game.step();
+    assert_eq!(queued(&game), 0);
+    // One dies, and frees its place for the next.
+    let first = game.part::<HeldPlaces>(barracks).holder(0).unwrap();
+    game.insert_parts(first, Dead);
+    game.step();
+    Production::order_train(&mut game, barracks);
+    game.step();
+    assert_eq!(queued(&game), 1);
 }
 
 #[test]
@@ -242,14 +290,240 @@ fn jets_take_off_down_their_runway_one_at_a_time() {
     // Waiting, to the prep point, to the start, the pause, the roll, and the air.
     assert_eq!(ticks(0), [1, 2, 6, 15, 17, 27]);
     assert_eq!(ticks(1), [1, 27, 31, 40, 42, 52]);
-    // The first stands at the runway's start in tick 14, at its end on the ground in tick 26,
-    // and a meter up in tick 27; the second stands at its place until then.
+    // The first stands at the runway's start in tick 14, and rolls a meter a tick from tick 17,
+    // lifting by its climb of a meter a tick times (1 − d / 10)², d its distance to the end as the
+    // tick starts, none at the start: at the end in tick 26, (1² + 2² + … + 9²) / 100 = 2.85 m up;
+    // and a meter higher in tick 27, in the air; the second stands at its place until then
+    // (defenses-and-airfields.md, A jet takes off as a jet).
     let place = |at: usize, tick: usize| places[at][tick - 1];
     assert_eq!(place(0, 14), Vec3::from((14, 0, 0)));
-    assert_eq!(place(0, 26), Vec3::from((24, 0, 0)));
-    assert_eq!(place(0, 27), Vec3::from((25, 1, 0)));
+    let lifted = |cm: i64| {
+        Num::int(cm)
+            .checked_div_int(100, Rounding::NearestEven)
+            .unwrap()
+    };
+    assert_eq!(
+        place(0, 26),
+        Vec3::new(Num::int(24), lifted(285), Num::ZERO)
+    );
+    assert_eq!(
+        place(0, 27),
+        Vec3::new(Num::int(25), lifted(385), Num::ZERO)
+    );
     assert_eq!(place(1, 26), Vec3::from((10, 0, -4)));
     assert_eq!(game.part::<Runways>(barracks).holder(0), None);
+}
+
+#[test]
+fn a_jet_leaves_by_the_door_of_its_place_and_taxis_from_its_exit_to_its_place() {
+    // The airfield's places made 2 m behind each, at (8, 0, 4) and (8, 0, −4), by two doors that
+    // open in a tick, of no open or closing time, and two trains of no time. Done at time 1, the
+    // first finds door 0 closed and leaves as it opened at time 2; the second, done then, opens
+    // door 1 and leaves at time 3, each door held open while its place holds its jet. Each jet
+    // taxis half a meter a tick to its place, then parks (defenses-and-airfields.md, A producer's
+    // door opens before its unit leaves;
+    // defenses-and-airfields.md, A hangar is a jet's start).
+    let (mut game, shop) = airfield_match();
+    let mut spec = game
+        .resource::<ById<UnitType, ProducerSpec>>()
+        .get(shop.barracks)
+        .unwrap()
+        .clone();
+    for (place, z) in spec.places.iter_mut().zip([4, -4]) {
+        place.exit = Some(frame(-2, z));
+    }
+    spec.doors = Some(DoorTimes {
+        count: 2,
+        opening: Ticks::ONE,
+        open: Ticks::ZERO,
+        closing: Ticks::ZERO,
+    });
+    Shop::regive(&mut game, shop.barracks, spec);
+    let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
+    let barracks = Production::allocate_id(&mut game);
+    shop.producer(
+        &mut game,
+        barracks,
+        10,
+        Team::new(0),
+        None,
+        train,
+        queue(train, &[0, 0]),
+    );
+    let made = |game: &mut Match| Shop::spawned(game, shop.grunt);
+    game.step();
+    assert!(made(&mut game).is_empty());
+    game.step();
+    let first = made(&mut game)[0].id;
+    assert_eq!(made(&mut game)[0].position, Vec3::from((8, 0, 4)));
+    assert_eq!(game.part::<Sortie>(first), &Sortie::BackToPlace);
+    game.step();
+    let second = made(&mut game)[1];
+    assert_eq!(second.position, Vec3::from((8, 0, -4)));
+    let door = |at, held| {
+        Some(OpenedDoor {
+            open_at: Tick::new(at),
+            left: Tick::new(at),
+            held,
+        })
+    };
+    let doors = game.part::<Doors>(barracks);
+    assert_eq!([doors.get(0), doors.get(1)], [door(2, true), door(3, true)]);
+    let (phases, places) = phases(&mut game, second.id, 6);
+    assert_eq!(phases, [(1, Sortie::BackToPlace), (5, Sortie::Parked)]);
+    assert_eq!(places[3], Vec3::from((10, 0, -4)));
+    assert_eq!(game.part::<Sortie>(first), &Sortie::Parked);
+    assert_eq!(game.part::<Position>(first).get(), Vec3::from((10, 0, 4)));
+    // Its door stays open while the first lives, and closes as it dies, in tick 9, which ends at
+    // time 10.
+    assert_eq!(game.part::<Doors>(barracks).get(0), door(2, true));
+    game.insert_parts(first, Dead);
+    game.step();
+    let closed = OpenedDoor {
+        left: Tick::new(10),
+        ..door(2, false).unwrap()
+    };
+    assert_eq!(game.part::<Doors>(barracks).get(0), Some(closed));
+}
+
+#[test]
+fn a_door_of_two_places_stays_open_while_either_holds_a_unit_and_a_train_off_places_uses_none() {
+    // The airfield's two places share its one door, which opens in a tick, of no open or closing
+    // time. A train of no place, as a helicopter of Zero Hour's helipad, leaves at once by no door;
+    // the two jets each hold the door open, which closes only once both died
+    // (defenses-and-airfields.md, A producer's door opens before its unit leaves).
+    let (mut game, shop) = airfield_match();
+    let mut spec = game
+        .resource::<ById<UnitType, ProducerSpec>>()
+        .get(shop.barracks)
+        .unwrap()
+        .clone();
+    spec.doors = Some(DoorTimes {
+        count: 1,
+        opening: Ticks::ONE,
+        open: Ticks::ZERO,
+        closing: Ticks::ZERO,
+    });
+    Shop::regive(&mut game, shop.barracks, spec);
+    let plain = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
+    let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
+    let barracks = Production::allocate_id(&mut game);
+    shop.producer(
+        &mut game,
+        barracks,
+        10,
+        Team::new(0),
+        None,
+        train,
+        queue(plain, &[0]),
+    );
+    game.step();
+    assert_eq!(Shop::spawned(&mut game, shop.grunt).len(), 1);
+    assert_eq!(game.part::<Doors>(barracks).get(0), None);
+    for _ in 0..2 {
+        Production::order_train(&mut game, barracks);
+        game.step();
+    }
+    while Shop::spawned(&mut game, shop.grunt).len() < 3 {
+        game.step();
+    }
+    let held = |game: &Match| game.part::<Doors>(barracks).get(0).unwrap().held;
+    assert!(held(&game));
+    let jets = game.part::<HeldPlaces>(barracks).clone();
+    let [first, second] = [0, 1].map(|place| jets.holder(place).unwrap());
+    game.insert_parts(first, Dead);
+    game.step();
+    assert!(held(&game));
+    game.insert_parts(second, Dead);
+    game.step();
+    assert!(!held(&game));
+}
+
+#[test]
+fn a_jet_rolls_from_a_stop_lifts_by_the_runway_left_and_climbs_out_to_its_approach() {
+    // The airfield's approach 4 m up and half the runway's 10 m past its end, at (29, 0, 0); the
+    // jet's roll gains a quarter meter a tick to its meter. Paused from tick 15, it rolls from
+    // tick 17, 0.25, 0.5, 0.75 m, then a meter a tick: past the end at (24, 0, 0) in tick 28, at
+    // 24.5, so it lets the runway go in tick 29; at the approach in tick 33, and in the air in
+    // tick 34 (defenses-and-airfields.md, A jet takes off as a jet).
+    let (mut game, shop) = idle_airfield_match(Some(Ticks::new(10)));
+    let mut sortie = *game
+        .resource::<ById<UnitType, SortieSpec>>()
+        .get(shop.grunt)
+        .unwrap();
+    sortie.acceleration = Num::from_bits(Num::ONE.to_bits() / 4);
+    Shop::regive(&mut game, shop.grunt, sortie);
+    let mut airfield = game
+        .resource::<ById<UnitType, AirfieldData>>()
+        .get(shop.barracks)
+        .unwrap()
+        .clone();
+    airfield.approach.past = Num::HALF;
+    Shop::regive(&mut game, shop.barracks, airfield);
+    let jet = parked_jet(&mut game, shop);
+    *game.part_mut::<Destination>(jet) = Destination::to(Some(Vec3::from((80, 0, 0))));
+    let barracks = game.part::<MadeAt>(jet).producer;
+    let mut held = Vec::new();
+    let (phases, places) = {
+        let mut phases: Vec<(u64, Sortie)> = Vec::new();
+        let mut places = Vec::new();
+        for tick in 1..=34 {
+            game.step();
+            let sortie = *game.part::<Sortie>(jet);
+            if phases
+                .last()
+                .is_none_or(|&(_, last)| mem::discriminant(&last) != mem::discriminant(&sortie))
+            {
+                phases.push((tick, sortie));
+            }
+            places.push(game.part::<Position>(jet).get());
+            held.push(game.part::<Runways>(barracks).holder(0).is_some());
+        }
+        (phases, places)
+    };
+    let ticks: Vec<u64> = phases.iter().map(|&(tick, _)| tick).collect();
+    assert_eq!(ticks, [1, 2, 6, 15, 17, 34]);
+    let quarter = Num::from_bits(Num::ONE.to_bits() / 4);
+    assert_eq!(phases[4].1, Sortie::Roll { step: quarter });
+    let place = |tick: usize| places[tick - 1];
+    let x = |tick: usize| place(tick).x;
+    assert_eq!(
+        [17, 18, 19, 20, 28, 33].map(x),
+        [
+            Num::int(14) + quarter,
+            Num::int(14) + Num::HALF + quarter,
+            Num::int(15) + Num::HALF,
+            Num::int(16) + Num::HALF,
+            Num::int(24) + Num::HALF,
+            Num::int(29),
+        ]
+    );
+    assert_eq!((held[27], held[28]), (true, false));
+    // Each tick it lifts by its climb of a meter times (1 − d / 10)², d its distance to the end as
+    // the tick starts: none at the start in tick 17, and 0.025² in tick 18; by tick 28 the sum of
+    // (0.025, 0.075, 0.15, 0.25, …, 0.95)², 3.32875 m, each share rounded to 2⁻²⁴, so within 11
+    // of those; its 0.95² in tick 29 reaches the approach's 4 m, which it holds to the approach.
+    assert_eq!(place(17).y, Num::ZERO);
+    assert_eq!(
+        place(18).y,
+        Num::int(1)
+            .checked_div_int(1600, Rounding::NearestEven)
+            .unwrap()
+    );
+    let sum = Num::int(332_875)
+        .checked_div_int(100_000, Rounding::NearestEven)
+        .unwrap();
+    assert!((place(28).y - sum).to_bits().abs() <= 11, "{}", place(28).y);
+    assert_eq!([29, 33].map(|tick| place(tick).y), [Num::int(4); 2]);
+    assert_eq!(game.part::<FlightGoal>(jet), &FlightGoal::Height);
+    // Idle at its goal, it flies home to the same approach, from which it lands.
+    while game.part::<Sortie>(jet) != &Sortie::Home {
+        game.step();
+    }
+    assert_eq!(
+        game.part::<Destination>(jet).get(),
+        Some(Vec3::from((29, 0, 0)))
+    );
 }
 
 #[test]
@@ -285,7 +559,7 @@ fn a_jet_that_dies_on_its_runway_lets_it_go() {
     for _ in 1..20 {
         game.step();
     }
-    assert_eq!(game.part::<Sortie>(first), &Sortie::Roll);
+    assert!(matches!(game.part::<Sortie>(first), Sortie::Roll { .. }));
     assert_eq!(game.part::<Runways>(barracks).holder(0), Some(first));
     game.insert_parts(first, Dead);
     let (phases, _) = phases(&mut game, second, 40);
@@ -318,11 +592,13 @@ fn phases(game: &mut Match, jet: StableId, ticks: u64) -> (Vec<(u64, Sortie)>, V
 fn an_idle_jet_flies_home_lands_and_taxis_back_to_its_place() {
     // A jet sent to (40, 0, 0) takes off as the first of `jets_take_off_down_their_runway_one_at_a_
     // time` does, arrives within its 4 m of its goal in tick 39, stands idle in the air its 10
-    // ticks and goes home in tick 49: to its approach past the runway's end, as far as it flies
-    // while it sinks its 8 m at a meter a tick, (32, 0, 0). It arrives and takes the runway in tick
-    // 57, sinks to the runway's end, on the ground there in tick 69, rolls to its start in tick 79,
-    // lets it go and taxis back to its place, parked in tick 93 (04-capabilities/airfields.md, A
-    // jet goes home).
+    // ticks and goes home in tick 49: to its approach, at the runway's end, (24, 0, 0), as the
+    // test's airfield places it. It arrives within its 4 m in tick 64, 16 m back, and sinks toward
+    // the approach's 4 m from tick 65; it takes the runway in tick 66, 7 m up and 3.72 m off the
+    // end, and glides there at its least speed of a meter a tick, sinking 7 m over the 3.72, on
+    // the ground at the end in tick 69; it rolls to the start in tick 79, lets it go and taxis
+    // back to its place, parked in tick 93 (04-capabilities/airfields.md, A jet goes home;
+    // defenses-and-airfields.md, A jet takes off as a jet).
     let (mut game, shop) = idle_airfield_match(Some(Ticks::new(10)));
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
     let barracks = Production::allocate_id(&mut game);
@@ -340,7 +616,7 @@ fn an_idle_jet_flies_home_lands_and_taxis_back_to_its_place() {
     *game.part_mut::<Destination>(jet) = Destination::to(Some(Vec3::from((40, 0, 0))));
     let (phases, places) = phases(&mut game, jet, 100);
     let ticks: Vec<u64> = phases.iter().map(|&(tick, _)| tick).collect();
-    assert_eq!(ticks, [1, 2, 6, 15, 17, 27, 49, 57, 58, 70, 80, 89, 93]);
+    assert_eq!(ticks, [1, 2, 6, 15, 17, 27, 49, 65, 66, 70, 80, 89, 93]);
     assert_eq!(phases[6].1, Sortie::Home);
     assert_eq!(phases[12].1, Sortie::Parked);
     let place = |tick: usize| places[tick - 1];
@@ -428,7 +704,7 @@ fn an_empty_jet_flies_home_and_reloads_its_clip_at_its_place() {
     let ticks: Vec<u64> = phases.iter().map(|&(tick, _)| tick).collect();
     assert_eq!(
         ticks,
-        [1, 2, 6, 15, 17, 27, 52, 64, 65, 77, 87, 96, 100, 120]
+        [1, 2, 6, 15, 17, 27, 52, 72, 73, 77, 87, 96, 100, 120]
     );
     assert_eq!(
         phases[12].1,
@@ -694,21 +970,21 @@ fn an_order_takes_a_jet_off_its_way_home_and_waits_while_it_lands() {
         game.part::<Destination>(jet).get(),
         Some(Vec3::from((80, 0, 0)))
     );
-    // A second jet, home at the same ticks and ordered to (80, 0, 0) in tick 60 as it sinks to
+    // A second jet, home at the same ticks and ordered to (80, 0, 0) in tick 67 as it glides to
     // the runway, holds the order as it lands, taxis back and parks in tick 93, as the idle one
     // does, then goes for its runway in tick 94 and takes off with it as the first of
     // `jets_take_off_down_their_runway_one_at_a_time` does, 93 ticks later.
     let (mut game, shop) = idle_airfield_match(Some(Ticks::new(10)));
     let jet = parked_jet(&mut game, shop);
     *game.part_mut::<Destination>(jet) = to(40);
-    for _ in 1..60 {
+    for _ in 1..67 {
         game.step();
     }
     assert_eq!(game.part::<Sortie>(jet), &Sortie::Descent);
     *game.part_mut::<Destination>(jet) = to(80);
     let (phases, _) = phases(&mut game, jet, 50);
-    let ticks: Vec<u64> = phases.iter().map(|&(tick, _)| tick + 59).collect();
-    assert_eq!(ticks, [60, 70, 80, 89, 93, 94, 95, 99, 108]);
+    let ticks: Vec<u64> = phases.iter().map(|&(tick, _)| tick + 66).collect();
+    assert_eq!(ticks, [67, 70, 80, 89, 93, 94, 95, 99, 108, 110]);
     assert_eq!(phases[4].1, Sortie::Parked);
     assert_eq!(phases[5].1, Sortie::Waiting);
     assert_eq!(

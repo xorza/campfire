@@ -22,8 +22,8 @@ use campfire_orders::AcquireData;
 use campfire_package::ModePackages;
 use campfire_package_format::ContentHash;
 use campfire_production::{
-    BuildData, BuildStart, ConstructData, FramePoint, ProductionData, RequiredUnit, RequiresData,
-    ResearchData, ResearchHolder, TrainData,
+    BuildData, BuildStart, ConstructData, DoorsData, FramePoint, ProductionData, RequiredUnit,
+    RequiresData, ResearchData, ResearchHolder, TrainData,
 };
 use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_sim::Capability;
@@ -692,15 +692,26 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         gathers: false,
         free: Vec::new(),
         places: Vec::new(),
+        doors: None,
     };
     let production = |name: &str| unit(name).section::<ProductionData>();
     assert_eq!(
         production("americacommandcenter"),
         Some(&trainer(9, point(-18, -35), point(60, -35)))
     );
+    // The barracks' door of 3,250 ms to open, 3,000 open and 4,000 to close.
+    let doors = DoorsData {
+        count: NonZeroU8::new(1).unwrap(),
+        opening_ms: 3250,
+        open_ms: 3000,
+        closing_ms: 4000,
+    };
     assert_eq!(
         production("americabarracks"),
-        Some(&trainer(5, point(0, 0), point(55, 0)))
+        Some(&ProductionData {
+            doors: Some(doors),
+            ..trainer(5, point(0, 0), point(55, 0))
+        })
     );
     assert_eq!(production("americavehicledozer"), None);
     // The names, of the string table's labels, their hotkeys' markers dropped and `&&` an
@@ -1001,6 +1012,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         enters: &contains.enters,
         rides: &contains.rides,
         movers: &types.movers(),
+        second_lives: &types.second_lives(&rules.names),
     };
     let units = types.units_file(additions, &rules.names);
     assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);

@@ -5,6 +5,7 @@ use campfire_sim::Capability;
 use campfire_values::UnitType;
 
 use crate::book_builders;
+use crate::door_times::DoorTimes;
 use crate::frame_point::FramePoint;
 use crate::production_data::{PlaceData, ProductionData};
 
@@ -20,6 +21,7 @@ pub struct ProducerSpec {
     pub gathers: bool,
     pub free: Box<[UnitType]>,
     pub places: Box<[PlaceData]>,
+    pub doors: Option<DoorTimes>,
 }
 
 impl PerId<UnitType> for ProducerSpec {
@@ -51,6 +53,7 @@ impl ProducerSpec {
                 gathers: data.gathers,
                 free: free.collect::<Result<_, _>>()?,
                 places: data.places.iter().copied().collect(),
+                doors: data.doors.map(|doors| DoorTimes::of(doors, cx.rate())),
             };
             book.set(unit.unit_type, spec);
         }

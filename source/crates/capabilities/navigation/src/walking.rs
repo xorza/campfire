@@ -793,7 +793,7 @@ impl Walking {
     /// (04-capabilities/navigation.md, A jet flies on wings; 04-capabilities/airfields.md, A jet
     /// takes off and lands on its runway).
     fn held(status: Option<&StatusTags>, goal: Option<&FlightGoal>) -> bool {
-        OnWings::holds(status) || goal == Some(&FlightGoal::Ground)
+        OnWings::holds(status) || goal.is_some_and(|goal| goal.held())
     }
 
     fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, motion: Motion) -> bool {

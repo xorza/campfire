@@ -1,6 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_math::{Num, Vec3};
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentPredicted};
 use campfire_visibility::DataKind;
@@ -8,23 +9,43 @@ use serde::{Deserialize, Serialize};
 
 use crate::unit_entity::UnitEntity;
 
-/// Where a flier's flight takes it: up to its type's height, or down to the ground, where the
-/// capability that parks it holds it. State of `navigation`'s fliers, kept here, as `Destination`
-/// is, for the capabilities above navigation to write (04-capabilities/airfields.md, A jet takes
-/// off and lands on its runway).
+/// Where a flier's flight takes it: up to its type's height, down to the ground, where the
+/// capability that parks it holds it, or toward `height` above the ground by `climb` meters a
+/// tick, which that capability sets each tick as it takes the flier off or lands it. State of
+/// `navigation`'s fliers, kept here, as `Destination` is, for the capabilities above navigation to
+/// write (04-capabilities/airfields.md, A jet takes off and lands on its runway;
+/// defenses-and-airfields.md, A jet takes off as a jet).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FlightGoal {
     #[default]
     Height,
     Ground,
+    Toward {
+        height: Num,
+        climb: Num,
+    },
+}
+
+impl FlightGoal {
+    /// Whether the capability that parks its flier holds it, which moves only as it is forced.
+    pub const fn held(self) -> bool {
+        matches!(self, Self::Ground | Self::Toward { .. })
+    }
 }
 
 impl SimComponent for FlightGoal {
     const NAME: &'static str = "units.flight_goal";
     type Host = UnitEntity;
 
+    // A height within the world and a climb of none to its bound.
     fn check(&self, _: &World, _: Entity) -> bool {
-        true
+        match *self {
+            Self::Height | Self::Ground => true,
+            Self::Toward { height, climb } => {
+                let within = Num::ZERO..=Vec3::BOUND;
+                within.contains(&height) && within.contains(&climb)
+            }
+        }
     }
 }
 

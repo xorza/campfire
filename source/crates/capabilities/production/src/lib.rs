@@ -39,6 +39,9 @@ mod builder;
 mod completed_sites;
 mod construct_data;
 mod construction;
+mod door_times;
+mod doors;
+mod doors_data;
 mod drop_off_data;
 mod error;
 mod frame_point;
@@ -99,6 +102,9 @@ pub use crate::completed_sites::{CompletedSites, OnSiteComplete};
 pub use crate::construct_data::ConstructData;
 pub use crate::construction::Construction;
 pub use crate::construction::step::{StartingBuild, Step};
+pub use crate::door_times::DoorTimes;
+pub use crate::doors::{DoorPhase, Doors, OpenedDoor};
+pub use crate::doors_data::DoorsData;
 pub use crate::drop_off_data::DropOffData;
 pub use crate::error::{PointPastBound, ProductionDataError, ProductionRefusal};
 pub use crate::frame_point::FramePoint;
@@ -223,6 +229,7 @@ impl Module for Production {
         d.server_part::<Player, PlayerSupply>();
         d.component::<Rally>();
         d.component::<HeldPlaces>();
+        d.component::<Doors>();
         d.component::<MadeAt>();
         d.component::<Builder>();
         d.timed::<Builder>();
@@ -283,6 +290,12 @@ impl Module for Production {
         d.part::<BodyUnit, HeldPlaces>(|at| {
             let spec = at.of_type::<ProducerSpec>()?;
             (!spec.places.is_empty()).then(|| HeldPlaces::free_of(spec.places.len()))
+        });
+        // A producer of doors starts with each closed (defenses-and-airfields.md, A producer's
+        // door opens before its unit leaves).
+        d.part::<BodyUnit, Doors>(|at| {
+            let doors = at.of_type::<ProducerSpec>()?.doors?;
+            Some(Doors::closed(doors.count))
         });
         d.part::<BodyUnit, Builder>(|at| at.of_type::<Builder>().copied());
         d.part::<BodyUnit, Node>(|at| at.of_type::<Node>().copied());

@@ -199,6 +199,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         projectile: None,
         navigation: UnitNavigationData::new(gait, radius * radius),
         mover: None,
+        second_life: None,
         flight: None,
         sortie: None,
         acquire: None,
@@ -220,6 +221,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         projectile: None,
         navigation: None,
         mover: None,
+        second_life: None,
         flight: None,
         sortie: None,
         acquire: None,
@@ -232,11 +234,11 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         tags: Some(TypeTagsData(vec![declared("structure")])),
         ..stands(body)
     };
-    // The tank drives on its treads, 30.5 m and 90° a second; a box of half extents 15 and
-    // 10 bounds a circle of √(15² + 10²) = √325 = 18.02775637…, in `f32` the nearest of
-    // 19 bits past the point, 9,451,736 · 2⁻¹⁹ = 18.0277557373…, exactly 302,455,552 · 2⁻²⁴
-    // as a `Num`. Its geometry names no height, so it has the game's default, 1 m. A `VEHICLE`,
-    // tagged `vehicle`, it drives through a crowd, of a weight of its radius squared, as every type that drives
+    // The tank drives on its treads, 30.5 m and 90° a second; a box of half extents 15 and 10
+    // bounds a circle of √(15² + 10²) = √325 = 18.02775637…, in `f32` the nearest of 19 bits past
+    // the point, 9,451,736 · 2⁻¹⁹ = 18.0277557373…, exactly 302,455,552 · 2⁻²⁴ as a `Num`. Its
+    // geometry names no height, so it has the game's default, 1 m. A `VEHICLE`, tagged `vehicle`,
+    // it drives through a crowd, of a weight of its radius squared, as every type that drives
     // weighs (04-capabilities/navigation.md, A unit has a weight).
     let tank = of("Tank").unwrap();
     let radius = Num::from_bits(302_455_552);
@@ -300,6 +302,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     ]));
     flies.sortie = Some(SortieData {
         pause_ms: 500,
+        acceleration: int(120),
         taxi_speed: int(50),
         idle_ms: Some(10_000),
         stranded: Some(StrandedData {
@@ -365,8 +368,9 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
         collision: collision.unwrap(),
     });
     // The mob leads its spawns: it has no life, walk, body, turret or scan of its own, its active
-    // body's 100 life among them, so it stands of none. The rabble's spawns act on their own, so it drives as the hover craft, of its
-    // turret and its scan (09-zero-hour.md, The import converts a mob).
+    // body's 100 life among them, so it stands of none. The rabble's spawns act on their own, so it
+    // drives as the hover craft, of its turret and its scan (09-zero-hour.md, The import converts a
+    // mob).
     let mob = of("Mob").unwrap();
     let led = ImportedType {
         leads: true,
@@ -558,6 +562,7 @@ fn a_living_object_lives_by_its_body_and_takes_its_starting_armor_its_tags_and_i
         projectile: None,
         navigation: None,
         mover: None,
+        second_life: None,
         flight: None,
         sortie: None,
         acquire: None,

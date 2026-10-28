@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use campfire_client_files::{AttackPhase, ConditionTest, LifeShare, SiteStage};
+use campfire_client_files::{AttackPhase, ConditionTest, DoorStage, LifeShare, SiteStage};
 use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_production::Production;
@@ -17,17 +17,18 @@ use crate::zero_hour::upgrade_import;
 /// name them (09-zero-hour.md, A condition is the game's name for a test): `NIGHT` and `SNOW` the
 /// map's; `DAMAGED` and `REALLYDAMAGED` its life above and at most the shares of
 /// `UnitDamagedThreshold` and `UnitReallyDamagedThreshold`, each apart from the other, as
-/// `calcDamageState` sets one damage state; `MOVING` its walk; `ATTACKING` its attack target; `DYING` and `RUBBLE` its death,
-/// which a slow death keeps it for, as `RUBBLE` is the damage state of no life; `AWAITING_CONSTRUCTION` and
-/// `PARTIALLY_CONSTRUCTED` a site before and after a builder first built it, and
-/// `ACTIVELY_BEING_CONSTRUCTED` the engine's tag of a site that grew in the tick, as a dozer's
-/// `DozerAIUpdate` sets them; `PREATTACK_<slot>`, `FIRING_<slot>`, `BETWEEN_FIRING_SHOTS_<slot>`
-/// and `RELOADING_<slot>` each phase of an attack of the weapons of the slot `A`, `B` or `C`,
-/// the look's group at that slot's place, and `USING_WEAPON_<slot>` any of them; `WEAPONSET_PLAYER_UPGRADE` the tag of a
-/// `WeaponSetUpgrade`; `CONTINUOUS_FIRE_MEAN`, `CONTINUOUS_FIRE_FAST` and `CONTINUOUS_FIRE_SLOW`
-/// the tags of a streak's stages and of its fall, which their modifiers give; a flag an upgrade module of an object sets the tag of its name, which the
-/// module's modifier gives (09-zero-hour.md, An upgrade's look is a tag); and any other flag
-/// none, a condition no test says, which a set counts (02-engine-core.md, A set counts the
+/// `calcDamageState` sets one damage state; `MOVING` its walk; `ATTACKING` its attack target;
+/// `DYING` and `RUBBLE` its death, which a slow death keeps it for, as `RUBBLE` is the damage state
+/// of no life; `AWAITING_CONSTRUCTION` and `PARTIALLY_CONSTRUCTED` a site before and after a
+/// builder first built it, and `ACTIVELY_BEING_CONSTRUCTED` the engine's tag of a site that grew in
+/// the tick, as a dozer's `DozerAIUpdate` sets them; `PREATTACK_<slot>`, `FIRING_<slot>`,
+/// `BETWEEN_FIRING_SHOTS_<slot>` and `RELOADING_<slot>` each phase of an attack of the weapons of
+/// the slot `A`, `B` or `C`, the look's group at that slot's place, and `USING_WEAPON_<slot>` any
+/// of them; `WEAPONSET_PLAYER_UPGRADE` the tag of a `WeaponSetUpgrade`; `CONTINUOUS_FIRE_MEAN`,
+/// `CONTINUOUS_FIRE_FAST` and `CONTINUOUS_FIRE_SLOW` the tags of a streak's stages and of its fall,
+/// which their modifiers give; a flag an upgrade module of an object sets the tag of its name,
+/// which the module's modifier gives (09-zero-hour.md, An upgrade's look is a tag); and any other
+/// flag none, a condition no test says, which a set counts (02-engine-core.md, A set counts the
 /// conditions no test says).
 #[derive(Debug)]
 pub(crate) struct LookFlags {
@@ -110,6 +111,28 @@ impl LookFlags {
         })
     }
 
+    /// The test of `flag` when it is a production door's stage, `door_<n>_opening`,
+    /// `door_<n>_waiting_open` or `door_<n>_closing` of the doors 1 to 4, as `ProductionUpdate`
+    /// sets them (defenses-and-airfields.md, A producer's door opens before its unit leaves).
+    fn door(flag: &str) -> Option<ConditionTest> {
+        let rest = flag.strip_prefix("door_")?;
+        let (number, stage) = rest.split_once('_')?;
+        let door = match number {
+            "1" => 0,
+            "2" => 1,
+            "3" => 2,
+            "4" => 3,
+            _ => return None,
+        };
+        let stage = match stage {
+            "opening" => DoorStage::Opening,
+            "waiting_open" => DoorStage::Open,
+            "closing" => DoorStage::Closing,
+            _ => return None,
+        };
+        Some(ConditionTest::Door { door, stage })
+    }
+
     /// The condition of `flag`, a flag of a state in lowercase, and its test; an error for a
     /// flag that is no declared name.
     pub(crate) fn condition(&self, flag: &str) -> Result<FlagCondition, ZeroHourError> {
@@ -117,6 +140,7 @@ impl LookFlags {
             DeclaredName::new(flag).ok_or_else(|| ZeroHourError::ConditionFlag(flag.to_owned()))?;
         let test = match flag {
             attack if let Some(test) = Self::attack(attack) => test,
+            door if let Some(test) = Self::door(door) => test,
             "night" | "snow" => ConditionTest::Map,
             "damaged" => ConditionTest::Life(self.damaged),
             "reallydamaged" => ConditionTest::Life(self.really_damaged),

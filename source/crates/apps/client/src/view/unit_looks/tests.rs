@@ -230,6 +230,7 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         [conditions]
         damaged = { test = "life", above = "0.25", at_most = "0.5" }
         engaged = { test = "attacking" }
+        hatch = { test = "door", door = 1, stage = "open" }
         moving = { test = "moving", still_ms = 250 }
         night = { test = "map" }
         snow = { test = "map" }
@@ -264,11 +265,12 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         };
         UnitLooks::of(types, &data)
     };
-    // The tested conditions' bits, by name: damaged 0, engaged 1, moving 2, upgraded 3, waiting 4,
-    // wip 5, zap 6, zing 7, zombie 8; the map's are none.
+    // The tested conditions' bits, by name: damaged 0, engaged 1, hatch 2, moving 3, upgraded 4,
+    // waiting 5, wip 6, zap 7, zing 8, zombie 9; the map's are none.
     let [
         damaged,
         engaged,
+        hatch,
         moving,
         upgraded,
         waiting,
@@ -276,7 +278,7 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         zap,
         zing,
         zombie,
-    ] = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+    ] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
     let drawn = |looks: &UnitLooks, held: u64| {
         let draw = &looks.draws(barracks, None).unwrap().draws()[0];
         let model = &draw.states()[draw.best(held)].shown.models[0];
@@ -319,6 +321,7 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         dead: false,
         attacking: false,
         attacks: 0,
+        doors: 0,
     };
     assert_eq!(tests.held(still), 0);
     // Dead: zombie.
@@ -360,6 +363,23 @@ fn a_draw_draws_the_state_whose_set_best_matches_its_units_conditions() {
         Some(1 << 63)
     );
     assert_eq!(UnitFacts::attack_bit(16, AttackPhase::PreAttack), None);
+    // Its second door open: hatch; opening or its first open, none. Three bits a door: the
+    // second's open is bit 4, the tenth's closing bit 29; an eleventh has none.
+    let door = |door, stage| UnitFacts {
+        doors: UnitFacts::door_bit(door, stage).unwrap(),
+        ..still
+    };
+    assert_eq!(
+        [
+            tests.held(door(1, DoorStage::Open)),
+            tests.held(door(1, DoorStage::Opening)),
+            tests.held(door(0, DoorStage::Open)),
+        ],
+        [hatch, 0, 0]
+    );
+    assert_eq!(UnitFacts::door_bit(1, DoorStage::Open), Some(1 << 4));
+    assert_eq!(UnitFacts::door_bit(9, DoorStage::Closing), Some(1 << 29));
+    assert_eq!(UnitFacts::door_bit(10, DoorStage::Opening), None);
     let built = |stage| UnitFacts {
         site: Some(stage),
         ..still
@@ -455,6 +475,7 @@ fn a_gattling_draws_its_state_of_each_stage_and_of_its_fall_while_it_attacks() {
             dead: false,
             attacking,
             attacks: 0,
+            doors: 0,
         };
         let model = &draw.states()[draw.best(tests.held(facts))].shown.models[0];
         let path = model.scene.to_string();

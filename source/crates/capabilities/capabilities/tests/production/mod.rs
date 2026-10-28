@@ -11,7 +11,7 @@ use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
 use campfire_declarations::{ById, PerId};
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Rounding, Vec3};
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
@@ -79,6 +79,7 @@ impl Shop {
             gathers: false,
             free: Box::new([]),
             places: Box::new([]),
+            doors: None,
         };
         Self::give(game, barracks, production.clone());
         let frame = |x: i64| FramePoint::new([Num::int(x), Num::ZERO]);
@@ -499,6 +500,137 @@ fn a_train_queue_is_state_and_restores() {
     let now = restored.resource::<SimTick>().start().get();
     assert!(check(now, 3) && !check(now + 1, 3));
     assert_eq!(restored.part::<TrainQueue>(id), game.part::<TrainQueue>(id));
+}
+
+#[test]
+fn a_producers_door_opens_before_its_unit_leaves_and_closes_after_its_open_time() {
+    // The barracks of one door that opens in 2 ticks, stays open 3 past its last unit and closes in
+    // 2, with a train of no time and one of a tick (defenses-and-airfields.md, A producer's door
+    // opens before its unit leaves).
+    let mut game = shop_match();
+    let shop = Shop::place(&mut game);
+    let times = DoorTimes {
+        count: 1,
+        opening: Ticks::new(2),
+        open: Ticks::new(3),
+        closing: Ticks::new(2),
+    };
+    let doored = |game: &mut Match| {
+        let mut spec = game
+            .resource::<ById<UnitType, ProducerSpec>>()
+            .get(shop.barracks)
+            .unwrap()
+            .clone();
+        spec.doors = Some(times);
+        Shop::regive(game, shop.barracks, spec);
+    };
+    doored(&mut game);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
+    let id = Production::allocate_id(&mut game);
+    shop.producer(
+        &mut game,
+        id,
+        10,
+        Team::new(1),
+        None,
+        train,
+        queue(train, &[0, 1]),
+    );
+    let door = |game: &Match| game.part::<Doors>(id).get(0);
+    assert_eq!(door(&game), None);
+    // Done at time 1, the end of tick 0, the first finds its door closed: it begins to open, and
+    // the unit waits until it opened, at time 3, then leaves, and the door stays open from then.
+    game.step();
+    assert_eq!(shop.spawns(&mut game).len(), 0);
+    let opening = OpenedDoor {
+        open_at: Tick::new(3),
+        left: Tick::new(3),
+        held: false,
+    };
+    assert_eq!(door(&game), Some(opening));
+    game.step();
+    assert_eq!(shop.spawns(&mut game).len(), 0);
+    game.step();
+    assert_eq!(shop.spawns(&mut game).len(), 1);
+    // The second, which started at time 3, is done at time 4 and leaves through the open door,
+    // which stays open 3 ticks from then: open through time 6, closing at 7 and 8, closed from 9.
+    game.step();
+    assert_eq!(shop.spawns(&mut game).len(), 2);
+    let passed = OpenedDoor {
+        open_at: Tick::new(3),
+        left: Tick::new(4),
+        held: false,
+    };
+    assert_eq!(door(&game), Some(passed));
+    assert_eq!(
+        [1, 2, 3, 6, 7, 8, 9].map(|at| passed.phase(Tick::new(at), times)),
+        [
+            DoorPhase::Opening,
+            DoorPhase::Opening,
+            DoorPhase::Open,
+            DoorPhase::Open,
+            DoorPhase::Closing,
+            DoorPhase::Closing,
+            DoorPhase::Closed,
+        ]
+    );
+    // Its phase holds from time 9, as it closed, and from its opening's end while held open.
+    assert_eq!(
+        [6, 8, 9].map(|at| passed.settled(Tick::new(at), times)),
+        [false, false, true]
+    );
+    let held = OpenedDoor {
+        held: true,
+        ..passed
+    };
+    assert_eq!(
+        [2, 3, 9].map(|at| (
+            held.phase(Tick::new(at), times),
+            held.settled(Tick::new(at), times)
+        )),
+        [
+            (DoorPhase::Opening, false),
+            (DoorPhase::Open, true),
+            (DoorPhase::Open, true)
+        ]
+    );
+    // The door is state: a restore of the same books holds it, and a door count other than its
+    // type's, or a unit that left before its door opened, fails the check.
+    let mut restored = shop_match();
+    let restored_shop = Shop::place(&mut restored);
+    doored(&mut restored);
+    Production::add_train(&mut restored, restored_shop.grunt, Ticks::ZERO, None);
+    Release::restore_into(&game, &mut restored);
+    assert_eq!(restored.part::<Doors>(id), game.part::<Doors>(id));
+    let entity = restored.unit_entity(id);
+    assert!(!Doors::of([None, None]).check(&restored, entity));
+    assert!(Doors::of([None]).check(&restored, entity));
+    let early = OpenedDoor {
+        open_at: Tick::new(3),
+        left: Tick::new(2),
+        held: false,
+    };
+    assert!(!Doors::of([Some(early)]).check(&restored, entity));
+    // Closed from time 9, the door begins to open again for a third train ordered in tick 9, done
+    // at its end, time 10: its unit leaves at time 12.
+    for _ in 0..5 {
+        game.step();
+    }
+    assert_eq!(game.resource::<SimTick>().start(), Tick::new(9));
+    Production::order_train(&mut game, id);
+    game.step();
+    assert_eq!(
+        door(&game),
+        Some(OpenedDoor {
+            open_at: Tick::new(12),
+            left: Tick::new(12),
+            held: false,
+        })
+    );
+    game.step();
+    assert_eq!(shop.spawns(&mut game).len(), 2);
+    game.step();
+    assert_eq!(shop.spawns(&mut game).len(), 3);
 }
 
 mod construction;

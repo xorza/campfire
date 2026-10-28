@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use crate::error::AirfieldError;
 
 /// A unit type's `sortie` section, a unit an airfield parks: the milliseconds it waits at its
-/// runway's start before it rolls, its speed in meters a second on the ground as it taxis, the
+/// runway's start before it rolls, the meters a second its roll gains a second
+/// (defenses-and-airfields.md, A jet takes off as a jet), its speed in meters a second on the
+/// ground as it taxis, the
 /// milliseconds it stands idle in the air before it goes home, none for never, and what it loses
 /// stranded, none for nothing (04-capabilities/airfields.md, A jet takes off and lands on its
 /// runway; 04-capabilities/airfields.md, A jet goes home).
@@ -22,6 +24,7 @@ use crate::error::AirfieldError;
 #[serde(deny_unknown_fields)]
 pub struct SortieData {
     pub pause_ms: u32,
+    pub acceleration: Num,
     pub taxi_speed: Num,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idle_ms: Option<u32>,
@@ -38,11 +41,12 @@ pub struct StrandedData {
     pub kind: DeclaredName,
 }
 
-/// A sortie at the match's rate: its pause and its idle time in ticks, rounded up, its taxi's
-/// step a tick, and its stranded loss.
+/// A sortie at the match's rate: its pause and its idle time in ticks, rounded up, the step its
+/// roll gains a tick, its taxi's step a tick, and its stranded loss.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SortieSpec {
     pub pause: Ticks,
+    pub acceleration: Num,
     pub taxi_step: Num,
     pub idle: Option<Ticks>,
     pub stranded: Option<StrandedLoss>,
@@ -58,8 +62,9 @@ pub struct StrandedLoss {
 
 impl SortieSpec {
     /// The sortie of each unit type that stands with a `sortie` section, at the match's rate; an
-    /// error for a type of no `flight`, which nothing flies, for a stranded loss of no share of a
-    /// life above 0 to 1, and for one of a damage kind the match does not have.
+    /// error for a type of no `flight`, which nothing flies, for an acceleration that gains no step
+    /// a tick, for a stranded loss of no share of a life above 0 to 1, and for one of a damage kind
+    /// the match does not have.
     pub(crate) fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {
         let rate = cx.rate();
         let kinds = cx.names_if::<DamageKind>()?;
@@ -91,7 +96,11 @@ impl SortieSpec {
                     })
                 })
                 .transpose()?;
-            book.set(unit.unit_type, Self::of(data, stranded, rate));
+            let spec = Self::of(data, stranded, rate);
+            if spec.acceleration <= Num::ZERO {
+                return Err(broken(AirfieldError::Acceleration));
+            }
+            book.set(unit.unit_type, spec);
         }
         Ok(book.build())
     }
@@ -107,6 +116,10 @@ impl SortieSpec {
                 rate.ticks(u64::from(ms))
                     .expect("an idle time of a u32 of milliseconds fits the ticks")
             }),
+            acceleration: data
+                .acceleration
+                .checked_div_int(hz * hz, Rounding::NearestEven)
+                .expect("an acceleration over a rate squared fits"),
             taxi_step: data
                 .taxi_speed
                 .checked_div_int(hz, Rounding::NearestEven)

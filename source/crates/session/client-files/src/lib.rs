@@ -65,7 +65,7 @@ pub use crate::client_unit::{
     LookState, LookTransition, LookVariation, RadarShown, UnitVoices,
 };
 pub use crate::client_units::ClientUnits;
-pub use crate::condition_test::{AttackPhase, ConditionTest, LifeShare, SiteStage};
+pub use crate::condition_test::{AttackPhase, ConditionTest, DoorStage, LifeShare, SiteStage};
 pub use crate::death_fall::{DeathFall, FallStage, GroundDeath, SelfSpin, Spiral};
 pub use crate::effect_list::{EffectList, ListedSystem};
 pub use crate::effects_file::{EffectSets, EffectsFile};

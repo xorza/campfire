@@ -113,6 +113,7 @@ pub(crate) mod road_pieces;
 pub(crate) mod rules_names;
 pub(crate) mod rules_package;
 pub(crate) mod science_import;
+pub(crate) mod second_life_import;
 pub(crate) mod skirmish_start;
 pub(crate) mod sound_drop_cause;
 pub(crate) mod sound_import;
@@ -600,6 +601,7 @@ impl ZeroHour {
         let types = object_names.close();
         let retaliation = rules_package::retaliation(game.ai.retaliation, &game.names)?;
         let movers = types.movers();
+        let second_lives = types.second_lives(&game.names);
         let mode = ModeImport {
             start: &start,
             production: &production,
@@ -611,6 +613,7 @@ impl ZeroHour {
             start_money: &money,
             retaliation: retaliation.as_ref(),
             movers: &movers,
+            second_lives: &second_lives,
         };
         writer.write(ModeFile::path(), rules_package::mode_data(mode).as_bytes())?;
         let barrels = combat.barrels(&looks_bones);
@@ -633,6 +636,7 @@ impl ZeroHour {
             enters: &contains.enters,
             rides: &contains.rides,
             movers: &movers,
+            second_lives: &second_lives,
         };
         let units = types.units_file(additions, &game.names);
         writer.write(UnitsFile::path(), units.text.as_bytes())?;
@@ -697,7 +701,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 75;
+    pub const OUTPUT_VERSION: u32 = 79;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

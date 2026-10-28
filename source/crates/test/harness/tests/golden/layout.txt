@@ -1,17 +1,18 @@
-data_version 92
+data_version 95
 actions.player_cooldowns e392c93f37f118db
 actions.progress cf0f07e0b1cf07cf
 actions.slot_times e81a763b4f0f5285
 actions.slots 77914db4b6a5cde1
 actions.use_group 0f977a41bb13e2a2
 airfields.runways 021548d9d9b6cef3
-airfields.sortie 39069aad2ead9211
+airfields.sortie c789ce99456962a8
 areas.area ef43b96412883a9f
 areas.area_trigger ff4ce9e93a2759bd
 combat.barrel_turns 130bbc25e5957965
 combat.clip_shots 121b28f318bff088
 combat.decay c7e7ff63db8ef8ec
 combat.held_hits b2486a5047340c53
+combat.in_second_life 38f27f78ec03c9db
 combat.kept 38f27f78ec03c9db
 combat.next_damage fc06260262f7fc0f
 combat.recent_attackers 2d636b06899c6163
@@ -62,6 +63,7 @@ players.player 69d8c998cbad47c0
 players.resources f26b1f61542b2e51
 production.builder 26e6fd92ccae1e7e
 production.completed_sites a418e571afbca2f9
+production.doors 84cdc2ec5b713bf5
 production.gatherer d610187bdebae0ad
 production.held_places 4232d80591188070
 production.kept_spawns a547cf3f5ad273a6
@@ -102,7 +104,7 @@ units.dead 38f27f78ec03c9db
 units.destination c4bce0c70722e851
 units.facing a90d70522fa19de5
 units.firing_rider 38f27f78ec03c9db
-units.flight_goal a23e026ae9172f36
+units.flight_goal f1b6dd2159da3df3
 units.forced_move 518abbeb1ee1727b
 units.leaving 631977ddad03a1fb
 units.lifespan 0db406d8bacb40e8
