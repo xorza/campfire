@@ -1,7 +1,3 @@
-use crate::locally_predicted::LocallyPredicted;
-use crate::prediction_despawned::PredictionDespawned;
-use crate::prediction_gate;
-use crate::prediction_setup::PredictionSetup;
 use bevy_ecs::prelude::*;
 use campfire_net_connection::NetworkingState;
 use campfire_net_despawns::DespawnReplicated;
@@ -9,6 +5,11 @@ use campfire_net_replication::PreSpawned;
 use campfire_net_replication::Predicted;
 use campfire_net_timeline::LocalTimeline;
 use tracing::debug;
+
+use crate::locally_predicted::LocallyPredicted;
+use crate::prediction_despawned::PredictionDespawned;
+use crate::prediction_gate;
+use crate::prediction_setup::PredictionSetup;
 
 /// Despawns a predicted entity as a rollback can undo: the entity is disabled with
 /// [`PredictionDespawned`] at the tick the fixed schedule simulates, its local timeline's tick

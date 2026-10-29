@@ -1,12 +1,3 @@
-use crate::deficit::Deficit;
-use crate::sync_hysteresis::SyncHysteresis;
-use crate::sync_sample::SyncSample;
-use crate::sync_setup::SyncSetup;
-use crate::timeline_sync::TimelineSync;
-
-use crate::input_timeline_setup::InputTimelineSetup;
-use crate::link_estimate::LinkEstimate;
-use crate::link_estimator::LinkEstimator;
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use campfire_math::TickRate;
@@ -16,6 +7,15 @@ use campfire_net_core::TickInstant;
 use campfire_net_core::TickSpan;
 use campfire_net_timeline::TimelineRate;
 use tracing::trace;
+
+use crate::deficit::Deficit;
+use crate::input_timeline_setup::InputTimelineSetup;
+use crate::link_estimate::LinkEstimate;
+use crate::link_estimator::LinkEstimator;
+use crate::sync_hysteresis::SyncHysteresis;
+use crate::sync_sample::SyncSample;
+use crate::sync_setup::SyncSetup;
+use crate::timeline_sync::TimelineSync;
 
 /// Runtime state for synchronizing the application-global
 /// [`LocalTimeline`](campfire_net_timeline::LocalTimeline).

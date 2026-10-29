@@ -1,7 +1,9 @@
-use crate::timeline_setup::TimelineSetup;
+use core::ops::{Deref, DerefMut};
+
 use bevy_reflect::Reflect;
 use campfire_net_core::TickInstant;
-use core::ops::{Deref, DerefMut};
+
+use crate::timeline_setup::TimelineSetup;
 
 /// A timeline defines an independent progression of time.
 ///

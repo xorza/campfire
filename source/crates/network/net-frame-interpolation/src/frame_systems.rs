@@ -1,15 +1,5 @@
 //! The typed systems of the frame rules: each component's frame history, and each rule's write of
 //! its visual.
-
-use crate::frame_holders::FrameHolders;
-use crate::frame_interpolate::FrameInterpolate;
-use crate::frame_interpolation_history::FrameInterpolationHistory;
-use crate::frame_phase_systems::FramePhaseSystems;
-use crate::frame_registry::FrameRuleId;
-use crate::frame_rule::FrameMap;
-use crate::frame_source::{FrameSamples, FrameSamplesFn, FrameSource};
-use crate::interpolation_sample_cx::InterpolationSampleCx;
-use crate::skip_frame_interpolation::SkipFrameInterpolation;
 use bevy_app::prelude::*;
 use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
@@ -23,6 +13,16 @@ use campfire_net_replication::DeferredEntityCommands;
 use campfire_net_replication::HistoryComponent;
 use campfire_net_timeline::LocalTimeline;
 use tracing::trace;
+
+use crate::frame_holders::FrameHolders;
+use crate::frame_interpolate::FrameInterpolate;
+use crate::frame_interpolation_history::FrameInterpolationHistory;
+use crate::frame_phase_systems::FramePhaseSystems;
+use crate::frame_registry::FrameRuleId;
+use crate::frame_rule::FrameMap;
+use crate::frame_source::{FrameSamples, FrameSamplesFn, FrameSource};
+use crate::interpolation_sample_cx::InterpolationSampleCx;
+use crate::skip_frame_interpolation::SkipFrameInterpolation;
 
 /// Where a frame write reads a component's samples: its frame history, or, on an archetype that
 /// holds the component's frame source, the source's fn at the app's tick.

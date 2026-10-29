@@ -3,7 +3,10 @@ use std::mem;
 use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
 use campfire_declarations::UnitDefaults;
+use campfire_package_format::ContentError;
+use campfire_package_format::PackageFiles;
 use campfire_script::{ScriptApi, ScriptHost};
+use campfire_values::PackageName;
 
 use crate::avatar_unit::AvatarUnit;
 use crate::error::load_problem::LoadProblem;
@@ -15,9 +18,6 @@ use crate::files::manifest::Manifest;
 use crate::files::rules_manifest::RulesNeeds;
 use crate::files::script_list::ScriptOrder;
 use crate::package::Package;
-use campfire_package_format::ContentError;
-use campfire_package_format::PackageFiles;
-use campfire_values::PackageName;
 
 const AVATAR_DATA: &str = "data/avatar.toml";
 const LOADOUT_DATA: &str = "data/loadout.toml";

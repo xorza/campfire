@@ -3,11 +3,12 @@ use std::mem;
 use std::path::Path;
 use std::sync::{Arc, Condvar};
 
+use campfire_platform::UserOnly;
+use campfire_threads::{Failure, ThreadName, Worker, WorkerLock};
+
 use crate::path_error::PathError;
 use crate::stream_writer::error::StreamError;
 use crate::stream_writer::stream_sender::StreamSender;
-use campfire_platform::UserOnly;
-use campfire_threads::{Failure, ThreadName, Worker, WorkerLock};
 
 pub(crate) mod error;
 pub(crate) mod stream_sender;

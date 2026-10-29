@@ -1,5 +1,3 @@
-use crate::fixtures::AUDIT;
-use crate::fixtures::LINK;
 use bevy::prelude::{App, Query, ResMut, Resource, Update};
 use campfire_net_channels::Channel;
 use campfire_net_messages::MessageReceiver;
@@ -10,6 +8,9 @@ use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_transport::internals::{Channel1, ChannelOrderedReliable};
+
+use crate::fixtures::AUDIT;
+use crate::fixtures::LINK;
 
 #[derive(Debug, Default, Resource)]
 struct Received(usize);

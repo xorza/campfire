@@ -1,10 +1,12 @@
-use crate::packet_received::PacketReceived;
-use crate::transport::Transport;
-use crate::transport_systems::TransportSystems;
+use core::any::TypeId;
+
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use campfire_log::LogEvent;
+use campfire_net_channels::{SendGate, SendRefusal};
 use campfire_net_connection::Disconnected;
 use campfire_net_connection::LinkSide;
+use campfire_net_connection::{Client, ClientOf};
 use campfire_net_link::{Link, LinkSystems, Linked, Unlink};
 use campfire_net_payload::UnlinkReason;
 use campfire_net_timeline::Clock;
@@ -12,14 +14,13 @@ use campfire_net_timeline::LocalInstant;
 use tracing::{debug, trace_span};
 
 use crate::channel_registry::{ChannelGate, ChannelRegistry};
+use crate::packet_received::PacketReceived;
 use crate::protocol_channel::ProtocolChannel;
 use crate::protocol_check::ProtocolCheck;
 use crate::protocol_differs::ProtocolDiffers;
 use crate::protocol_hashes::ProtocolHashes;
-use campfire_log::LogEvent;
-use campfire_net_channels::{SendGate, SendRefusal};
-use campfire_net_connection::{Client, ClientOf};
-use core::any::TypeId;
+use crate::transport::Transport;
+use crate::transport_systems::TransportSystems;
 
 #[derive(Debug)]
 pub struct TransportPlugin;

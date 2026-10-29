@@ -1,11 +1,10 @@
 //! Receive-side packet conditioning: a [`LinkModel`] applied to the datagrams an endpoint receives.
-
-use crate::ready_buffer::ReadyBuffer;
 use campfire_net_core::Instant;
 
 use crate::link_conditioning::LinkConditioning;
 use crate::link_model::LinkModel;
 use crate::link_model_run::LinkModelRun;
+use crate::ready_buffer::ReadyBuffer;
 
 /// Generic receive-side packet conditioner (11-net-stack/packet-session.md, The link conditioner
 /// goes into the endpoint, before the packet sessions).

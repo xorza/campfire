@@ -1,12 +1,12 @@
 //! The state a [`LinkModel`] carries from packet to packet on one direction.
-
-use campfire_net_core::Instant;
 use core::num::NonZeroU128;
 use core::time::Duration;
 
+use campfire_math::{Num, SplitMix64};
+use campfire_net_core::Instant;
+
 use crate::link_model::LinkModel;
 use crate::loss_state::LossState;
-use campfire_math::{Num, SplitMix64};
 
 /// When the model delivers one packet, and when its duplicate arrives, if it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

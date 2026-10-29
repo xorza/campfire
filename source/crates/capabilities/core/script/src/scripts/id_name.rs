@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
+use campfire_values::Named;
 use rhai::Dynamic;
 
 use crate::scripts::given_names::GivenNames;
 use crate::scripts::script_output::ScriptOutput;
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
-use campfire_values::Named;
 
 /// The name of an id of type `I`, as a form gives it: a script reads it as text, and the load
 /// checks each literal a script compares it with as a name of `I`'s kind

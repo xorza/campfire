@@ -1,13 +1,14 @@
 use std::collections::BTreeMap;
 
+use campfire_package_format::PackageFiles;
+use campfire_values::PackageName;
+
 use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::{LoadError, PackageRef};
 use crate::files::manifest::Manifest;
 use crate::language::Language;
 use crate::locale_file::LocaleFile;
-use campfire_package_format::PackageFiles;
-use campfire_values::PackageName;
 
 /// A locale package: its name, and its translations of the packages it depends on, by each
 /// package's name, then by language.

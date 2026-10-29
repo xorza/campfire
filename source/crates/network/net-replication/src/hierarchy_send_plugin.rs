@@ -1,8 +1,3 @@
-use crate::disable_replicate_hierarchy::DisableReplicateHierarchy;
-use crate::overridden::Overridden;
-use crate::replicate_like::ReplicateLike;
-use crate::replication_systems::ReplicationSystems;
-use crate::replication_target::Replicate;
 use bevy_app::prelude::*;
 use bevy_ecs::entity::{EntityHashMap, EntityHashSet};
 use bevy_ecs::prelude::*;
@@ -10,6 +5,12 @@ use bevy_ecs::query::QueryData;
 use bevy_replicon::prelude::SyncRelatedAppExt;
 use smallvec::SmallVec;
 use tracing::trace;
+
+use crate::disable_replicate_hierarchy::DisableReplicateHierarchy;
+use crate::overridden::Overridden;
+use crate::replicate_like::ReplicateLike;
+use crate::replication_systems::ReplicationSystems;
+use crate::replication_target::Replicate;
 
 /// Attaches the `ChildOf` hierarchy of a replicated entity to it.
 ///

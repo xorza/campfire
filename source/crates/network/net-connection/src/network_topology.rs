@@ -1,5 +1,6 @@
-use crate::network_topology_error::NetworkTopologyError;
 use bevy_ecs::prelude::*;
+
+use crate::network_topology_error::NetworkTopologyError;
 
 /// The ready network side of this Bevy application.
 ///

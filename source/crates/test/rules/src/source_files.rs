@@ -80,6 +80,63 @@ pub(crate) fn a_module_is_gated_by_a_bare_cfg_of_test_or_internals(workspace: &W
     assert_eq!(found, Vec::<String>::new());
 }
 
+/// The group of an import by the crate it names first: the standard library's, another crate's,
+/// or this crate's own.
+fn import_group(item: &syn::ItemUse) -> u8 {
+    let first = match &item.tree {
+        syn::UseTree::Path(path) => path.ident.to_string(),
+        syn::UseTree::Name(name) => name.ident.to_string(),
+        syn::UseTree::Rename(rename) => rename.ident.to_string(),
+        syn::UseTree::Glob(_) | syn::UseTree::Group(_) => String::new(),
+    };
+    match first.as_str() {
+        "std" | "core" | "alloc" => 0,
+        "crate" | "super" | "self" => 2,
+        _ => 1,
+    }
+}
+
+/// Whether the imports at the top of `code`, those no attribute gates, go the standard
+/// library's first, then other crates', then this crate's own.
+fn imports_in_order(code: &str) -> bool {
+    let Ok(file) = syn::parse_file(code) else {
+        return true;
+    };
+    let groups = file.items.iter().map_while(|item| match item {
+        syn::Item::Use(item) => Some(item),
+        _ => None,
+    });
+    let groups: Vec<u8> = groups
+        .filter(|item| item.attrs.is_empty())
+        .map(import_group)
+        .collect();
+    groups.is_sorted()
+}
+
+pub(crate) fn a_files_imports_go_std_then_other_crates_then_its_own(workspace: &Workspace) {
+    let unordered: Vec<&str> = workspace
+        .sources()
+        .iter()
+        .filter(|file| !imports_in_order(&file.text))
+        .map(|file| file.path.as_str())
+        .collect();
+    assert_eq!(unordered, Vec::<&str>::new());
+}
+
+#[test]
+fn a_files_imports_are_read_in_their_three_groups() {
+    assert!(imports_in_order(
+        "use std::fs;\n\nuse bevy::App;\n\nuse crate::a;\nfn f() {}\n"
+    ));
+    assert!(imports_in_order("use bevy::App;\nuse super::*;\n"));
+    assert!(!imports_in_order("use crate::a;\nuse std::fs;\n"));
+    assert!(!imports_in_order("use bevy::App;\nuse core::mem;\n"));
+    // A gated import, and one past the first item, are none of the rule's.
+    assert!(imports_in_order(
+        "use crate::a;\n#[cfg(test)]\nuse std::fs;\nfn f() {}\nuse std::mem;\n"
+    ));
+}
+
 #[test]
 fn a_gate_the_rules_cannot_read_is_a_breach() {
     // Of each module declaration, a bare `test` or `internals` gate reads, and one of `any` or

@@ -1,9 +1,9 @@
-use crate::data_kind::DataKind;
-use crate::recipients::Recipients;
 use campfire_common::NamedEnum;
 
+use crate::data_kind::DataKind;
 use crate::error::VisibilityDecodeError;
 use crate::out_view::OutView;
+use crate::recipients::Recipients;
 use crate::setting::SettingValue;
 use crate::setting::error::VisibilityError;
 use crate::spectator_fog::SpectatorFog;

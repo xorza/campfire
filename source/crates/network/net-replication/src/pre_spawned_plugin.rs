@@ -1,8 +1,3 @@
-use crate::confirmed_tick_map::ConfirmedTickMap;
-use crate::pre_spawned::PreSpawned;
-use crate::pre_spawned_receiver::PreSpawnedReceiver;
-use crate::pre_spawned_systems::PreSpawnedSystems;
-use crate::replication_receiver::ReplicationReceiver;
 use bevy_app::{App, Plugin, PostUpdate};
 use bevy_ecs::prelude::*;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
@@ -10,6 +5,12 @@ use bevy_replicon::prelude::Signature;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
 use campfire_net_timeline::LocalTimeline;
+
+use crate::confirmed_tick_map::ConfirmedTickMap;
+use crate::pre_spawned::PreSpawned;
+use crate::pre_spawned_receiver::PreSpawnedReceiver;
+use crate::pre_spawned_systems::PreSpawnedSystems;
+use crate::replication_receiver::ReplicationReceiver;
 
 /// Matches an entity a client pre-spawned to the one its server replicates, by the hash of a
 /// `PreSpawned` on each (11-net-stack/replication.md, An unmatched pre-spawn expires when the

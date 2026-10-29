@@ -2,10 +2,11 @@ use std::fs;
 use std::io::{self, BufWriter, IntoInnerError, Write};
 use std::path::{Path, PathBuf};
 
-use crate::durable_file::error::{DurableCreateError, DurableError};
-use crate::path_error::PathError;
 use campfire_platform::DurableName;
 use campfire_platform::UserOnly;
+
+use crate::durable_file::error::{DurableCreateError, DurableError};
+use crate::path_error::PathError;
 
 pub(crate) mod error;
 

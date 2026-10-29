@@ -3,7 +3,6 @@
 //! every tick, and so does the replay of the log's file with the packages a verifier holds. So does
 //! the MOBA 3v3's, whose players learn ranks.
 
-use campfire_threads::ThreadName;
 use std::num::NonZeroU32;
 use std::ops::Range;
 use std::path::Path;
@@ -23,7 +22,7 @@ use campfire_package_disk::{PackageDir, PackageStore};
 use campfire_projectiles::Projectile;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
-    Applied, InputRules, JournalFrames, LeaveReason, Outcome, PlayerSlotChange,
+    Applied, InputRules, JournalFrames, JournalShape, LeaveReason, Outcome, PlayerSlotChange,
     PlayerSlotChangeKind, PlayerSlotPlan, RecordSink, SeedError, ServerInput, ServerSeed,
     ServerSeeds, SessionLog, SessionResult, SessionTerms, SnapshotFingerprint, Taken,
 };
@@ -36,9 +35,10 @@ use campfire_sim::{EntityIndex, SimWorld, StableId, StateRegistry};
 use campfire_store::internals::{PinnedFile, TestDir};
 use campfire_store::{AppendWriter, PathError, ReadError};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
+use campfire_threads::ThreadName;
 use campfire_units::{Destination, GroundPoint, Life};
 use campfire_values::Rank;
-use campfire_verifier::{VerifyError, verify_file, verify_log};
+use campfire_verifier::{VerifyError, show_log, verify_file, verify_log};
 
 /// Long enough for every order to apply, and for the hero to arrive.
 const TICKS: u64 = 40;
@@ -249,7 +249,8 @@ fn a_matchs_journal_publishes_the_log_its_twin_of_no_journal_holds() {
         }
         Ok(())
     };
-    SessionLog::publish(&mut walk, &session().seed(1), &mut published).unwrap();
+    let shape = JournalShape::read(&mut walk).unwrap();
+    SessionLog::publish(&shape, &mut walk, &session().seed(1), &mut published).unwrap();
     assert_eq!(published, encoded(twin.game().session().log()));
     // The log its journal rebuilds forgets the same past, and stands where its twin does.
     let rebuilt =
@@ -497,6 +498,36 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
         },
     ];
     assert_eq!(game.session().log().changes(), changes);
+
+    // Shown as text, the log names its player slots, each tick's entries, the leave at tick 10
+    // and the return at tick 20, its seed reveal and that it holds no result.
+    let mut text = Vec::new();
+    show_log(game.session().log(), &mut text).unwrap();
+    let text = String::from_utf8(text).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    let log = game.session().log();
+    assert_eq!(lines[0], format!("session {}", log.session_id()));
+    let join = lines[2].replace(
+        "player slot 0: player of",
+        "  server: join of player slot 0 by",
+    );
+    assert_eq!(
+        lines[3..],
+        [
+            "player slot 1: bot",
+            "segment 0 from tick 0",
+            "tick 0",
+            "  packet: player slot 0 at tick 0, 15 bytes",
+            "  server: bot of player slot 1, 18 bytes",
+            "tick 10",
+            "  server: leave of player slot 0, asked, which becomes Reserve",
+            "tick 20",
+            join.as_str(),
+            "  packet: player slot 0 at tick 22, 18 bytes",
+            "seeds revealed through segment 0",
+            "no result",
+        ]
+    );
 
     // The file decodes to a log that encodes to the same bytes, and replays to the same hashes.
     let bytes = encoded(game.session().log());

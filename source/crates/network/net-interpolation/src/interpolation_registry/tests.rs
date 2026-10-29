@@ -1,19 +1,15 @@
-use super::*;
-use crate::confirmed_history_fns::ConfirmedHistoryFns;
-use crate::fixtures::interpolation_stack::InterpolationStack;
-use crate::fixtures::protocol::*;
-use crate::interpolate::sample_history_with_interpolation;
-use crate::interpolation_fns::InterpolationFns;
-use crate::interpolation_phase_systems::InterpolationPhaseSystems;
-use crate::interpolation_rule::InterpolationRule;
-use crate::interpolation_rule_component::InterpolationRuleComponent;
 use bevy_app::Update;
+use bevy_ecs::component::Component;
 use bevy_ecs::query::ArchetypeFilter;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
 use bevy_replicon::prelude::EntityDiffExt;
 use bevy_replicon::prelude::{RepliconTick, RuleFns};
+use bevy_replicon::shared::replication::registry::FnsId;
+use bevy_replicon::shared::replication::registry::ReplicationRegistry;
+use bevy_replicon::shared::replication::registry::test_fns::TestFnsEntityExt;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_core::NetTick;
+use campfire_net_core::TickInstant;
 use campfire_net_replication::internals::*;
 use campfire_net_replication::{
     AppComponentExt, ConfirmedHistory, ConfirmedTickMap, HistoryState, Interpolated,
@@ -21,23 +17,24 @@ use campfire_net_replication::{
 };
 use campfire_net_stepper::StepperSetup;
 use campfire_net_stepper::{StepOrder, Stepper};
-
-use crate::app_interpolation_ext::AppInterpolationExt;
-
-use crate::interpolation_registration_ext::InterpolationRegistrationExt;
-
-use bevy_replicon::shared::replication::registry::ReplicationRegistry;
-
-use crate::interpolation_marker_plugin::InterpolationMarkerPlugin;
-use crate::interpolation_plugins::InterpolationPlugins;
-use crate::interpolation_registry_plugin::InterpolationRegistryPlugin;
-use crate::interpolation_timeline::InterpolationTimeline;
-use bevy_ecs::component::Component;
-use bevy_replicon::shared::replication::registry::FnsId;
-use bevy_replicon::shared::replication::registry::test_fns::TestFnsEntityExt;
-use campfire_net_core::TickInstant;
 use campfire_net_timeline::NetworkTimeline;
 use serde::{Deserialize, Serialize};
+
+use super::*;
+use crate::app_interpolation_ext::AppInterpolationExt;
+use crate::confirmed_history_fns::ConfirmedHistoryFns;
+use crate::fixtures::interpolation_stack::InterpolationStack;
+use crate::fixtures::protocol::*;
+use crate::interpolate::sample_history_with_interpolation;
+use crate::interpolation_fns::InterpolationFns;
+use crate::interpolation_marker_plugin::InterpolationMarkerPlugin;
+use crate::interpolation_phase_systems::InterpolationPhaseSystems;
+use crate::interpolation_plugins::InterpolationPlugins;
+use crate::interpolation_registration_ext::InterpolationRegistrationExt;
+use crate::interpolation_registry_plugin::InterpolationRegistryPlugin;
+use crate::interpolation_rule::InterpolationRule;
+use crate::interpolation_rule_component::InterpolationRuleComponent;
+use crate::interpolation_timeline::InterpolationTimeline;
 
 #[derive(Component, Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct TestComp(f32);

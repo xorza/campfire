@@ -1,7 +1,7 @@
 //! The interpolation timeline, which trails the remote timeline by a delay that the sender's
 //! replication interval sets: a sender announces it in its `SenderHello` when it connects.
+use core::time::Duration;
 
-use crate::interpolation_setup::InterpolationSetup;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
@@ -13,8 +13,9 @@ use campfire_net_sync::SyncSample;
 use campfire_net_sync::SyncSetup;
 use campfire_net_sync::TimelineSync;
 use campfire_net_timeline::Timeline;
-use core::time::Duration;
 use tracing::trace;
+
+use crate::interpolation_setup::InterpolationSetup;
 
 /// The timeline the interpolation histories are sampled at: it trails the remote timeline at a
 /// speed its sync controls, apart from the local one (11-net-stack/time.md, Two estimates of one

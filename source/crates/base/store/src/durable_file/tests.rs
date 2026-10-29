@@ -1,7 +1,7 @@
-use crate::test_dir::TestDir;
+use campfire_threads::internals::Race;
 
 use super::*;
-use campfire_threads::internals::Race;
+use crate::test_dir::TestDir;
 
 #[test]
 fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {

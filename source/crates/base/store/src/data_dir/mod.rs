@@ -1,10 +1,11 @@
 use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
 
+use campfire_platform::UserOnly;
+
 use crate::data_dir::error::DataDirError;
 use crate::durable_dir::DurableDir;
 use crate::path_error::PathError;
-use campfire_platform::UserOnly;
 
 pub(crate) mod error;
 

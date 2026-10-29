@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use campfire_capabilities::ProbeSpec;
 use clap::{Parser, Subcommand};
 
-/// Verifies a session log, or replays a player's bug report to the tick its client drew.
+/// Verifies a session log, prints one as text, or replays a player's bug report to the tick its
+/// client drew.
 #[derive(Debug, Parser)]
 #[command(version)]
 pub(crate) struct CommandLine {
@@ -25,13 +26,20 @@ pub(crate) enum VerifierCommand {
         /// which the verifier also checks
         snapshots: Option<PathBuf>,
     },
+    /// Prints a session log as text: its terms, each segment and its checkpoint, each tick's
+    /// entries, the seed reveal and the result
+    Show {
+        /// The session log file
+        log: PathBuf,
+    },
     /// Replays a report's log to the tick its client drew, with the mode its facts name, and
     /// prints a table of the units there
     Report {
         /// The report's folder, as the client wrote it in its data directory's `reports`
         report: PathBuf,
         /// A probe of the units before the report's tick, `<period_ms>:<units>`, the units
-        /// `all`, `player=<n>` from 1, `team=<n>`, `type=<name>` or `ids=<id>,<id>`; it writes
+        /// `all`, `player=<n>` from 1, `team=<n>`, `type=<name>`, `ids=<id>,<id>` or
+        /// `state=<state>`; it writes
         /// `<session>-<tick>.probe` in the probes' directory, and the table at the tick takes its
         /// units
         #[arg(long)]

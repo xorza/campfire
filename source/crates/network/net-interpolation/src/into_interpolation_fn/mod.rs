@@ -1,9 +1,9 @@
 //! The constructors of a rule's interpolation fn, one for each shape of fn, apart by a marker type
 //! as Bevy's `IntoSystem<In, Out, Marker>` keeps its fn shapes apart.
-
-use crate::interpolation_fn::{ComponentInterpolation, InterpolationFn};
 use bevy_ecs::component::Component;
 use campfire_net_frame_interpolation::InterpolationSampleCx;
+
+use crate::interpolation_fn::{ComponentInterpolation, InterpolationFn};
 
 /// A fn of a fraction that interpolates the rule's target `S`: `Fn(&C, &C, f32) -> C` for a
 /// component, `Fn((&A, &B), (&A, &B), f32) -> (A, B)` for a bundle (11-net-stack/api.md, A rule's

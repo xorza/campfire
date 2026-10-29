@@ -1,7 +1,7 @@
+use std::num::NonZeroU8;
+
 use campfire_codec::Toml;
 use campfire_math::Num;
-
-use std::num::NonZeroU8;
 
 use super::*;
 use crate::client_model::{ModelScale, ModelTop};

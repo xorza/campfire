@@ -1,7 +1,9 @@
+use core::num::NonZeroU32;
+
+use campfire_net_core::NetId;
+
 use crate::message_ref::MessageRef;
 use crate::send_message_key::SendMessageKey;
-use campfire_net_core::NetId;
-use core::num::NonZeroU32;
 
 /// A channel-held message that is due in a flush, and how it competes: one for each message, a
 /// fragmented one's included, whose fragments the packet builder takes in turn

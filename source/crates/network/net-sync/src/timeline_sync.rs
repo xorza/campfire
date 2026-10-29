@@ -1,11 +1,12 @@
+use bevy_utils::prelude::DebugName;
+use campfire_net_core::{TickInstant, TickSpan};
+use tracing::trace;
+
 use crate::deficit::Deficit;
 use crate::sync_adjustment::SyncAdjustment;
 use crate::sync_hysteresis::SyncHysteresis;
 use crate::sync_sample::SyncSample;
 use crate::sync_setup::SyncSetup;
-use bevy_utils::prelude::DebugName;
-use campfire_net_core::{TickInstant, TickSpan};
-use tracing::trace;
 
 /// Runtime controller for synchronizing a local clock or cursor to a remote timeline.
 ///

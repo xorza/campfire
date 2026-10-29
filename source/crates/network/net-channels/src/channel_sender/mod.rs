@@ -1,8 +1,9 @@
 //! Channel send state and delivery policies.
-
-use bytes::Bytes;
 use core::time::Duration;
 use std::collections::VecDeque;
+
+use bytes::Bytes;
+use campfire_net_core::NetId;
 
 use crate::bench_counter::BenchCounter;
 use crate::channel_mode::ChannelMode;
@@ -13,12 +14,10 @@ use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;
 use crate::message_ref::MessageRef;
 use crate::queued_message::QueuedMessage;
+use crate::reliable_send_state::{ReliableDelivery, ReliableSendState};
 use crate::send_candidate::{CandidateMessages, CandidateRank, CandidateSink, SendCandidate};
 use crate::send_message_key::SendMessageKey;
 use crate::single_body::SingleBody;
-use campfire_net_core::NetId;
-
-use crate::reliable_send_state::{ReliableDelivery, ReliableSendState};
 
 /// The sending half of one registered transport channel.
 ///

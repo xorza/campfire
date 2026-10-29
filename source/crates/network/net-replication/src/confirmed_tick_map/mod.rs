@@ -1,5 +1,6 @@
-use crate::authoritative_tick::decode_authoritative_tick;
-use crate::confirmed_tick::ConfirmedTick;
+use core::sync::atomic::{AtomicU64, Ordering};
+use std::collections::VecDeque;
+
 use bevy_ecs::prelude::On;
 use bevy_ecs::prelude::ResMut;
 use bevy_ecs::prelude::Resource;
@@ -8,9 +9,10 @@ use bevy_replicon::client::confirm_history::ConfirmHistory;
 use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
 use bevy_replicon::prelude::RepliconTick;
 use campfire_net_core::NetTick;
-use core::sync::atomic::{AtomicU64, Ordering};
-use std::collections::VecDeque;
 use tracing::debug;
+
+use crate::authoritative_tick::decode_authoritative_tick;
+use crate::confirmed_tick::ConfirmedTick;
 
 /// How many confirmed ticks the map keeps: the window of recent rollback and prediction.
 pub(crate) const MAX_CONFIRMED_TICKS: usize = 256;

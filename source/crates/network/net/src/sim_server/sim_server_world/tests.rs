@@ -1,11 +1,11 @@
-use crate::sim_server::sim_server_world::internals::SimServerWorldInternals;
-use campfire_host::{BotPlay, PlayerSlotBot};
 use std::num::{NonZeroU8, NonZeroU32};
 
 use bevy_state::state::{NextState, State};
 use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_common::{AfterLeave, ExitStatus, PlayerSlot, Tick};
 use campfire_harness::{FixedMatch, FixedSession};
+use campfire_host::SessionJournal;
+use campfire_host::{BotPlay, PlayerSlotBot};
 use campfire_mode::{HostPicks, PlayersData, SaveBy, SavesData};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
@@ -18,7 +18,7 @@ use campfire_test_packages::{PackageTree, TestMode};
 use campfire_threads::ThreadName;
 
 use super::*;
-use campfire_host::SessionJournal;
+use crate::sim_server::sim_server_world::internals::SimServerWorldInternals;
 
 #[test]
 fn a_failed_journal_ends_the_server_with_its_exit_code() {

@@ -2,9 +2,9 @@
 //! the types that carry them, its acknowledgements. The header is the AEAD's associated data, so it
 //! is authenticated and not encrypted (11-net-stack/packet-session.md, The header is the AEAD's
 //! associated data: authenticated, not encrypted).
+use core::time::Duration;
 
 use campfire_net_payload::PayloadKind;
-use core::time::Duration;
 
 use crate::header_error::PacketHeaderError;
 

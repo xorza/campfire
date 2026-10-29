@@ -1,6 +1,8 @@
-use crate::channel::Channel;
-use campfire_net_core::RegisteredType;
 use core::any::TypeId;
+
+use campfire_net_core::RegisteredType;
+
+use crate::channel::Channel;
 
 /// The type of a registered [`Channel`], which names the channel within an app.
 #[derive(Debug, Eq, Hash, Copy, Clone, PartialEq)]

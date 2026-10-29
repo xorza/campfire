@@ -2,6 +2,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_log::LogEvent;
+use campfire_protocol::JournalShape;
 use campfire_runner::Session;
 use campfire_store::AppendWatch;
 
@@ -16,12 +17,13 @@ use crate::server::session_journal::SessionJournal;
 pub struct JournalWatch(pub AppendWatch);
 
 /// Where a journal the session keeps goes on from.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum JournalFrom {
     /// A new journal, which the log fills from its start.
     Start,
-    /// A journal of `len` bytes, which holds every record of the log so far.
-    End { len: u64 },
+    /// A journal of `len` bytes and of the shape `shape`, which holds every record of the log
+    /// so far.
+    End { len: u64, shape: JournalShape },
 }
 
 impl JournalWatch {
@@ -31,7 +33,7 @@ impl JournalWatch {
         let journal = Box::new(journal);
         match from {
             JournalFrom::Start => session.keep_journal(journal),
-            JournalFrom::End { len } => session.resume_journal(journal, len),
+            JournalFrom::End { len, shape } => session.resume_journal(journal, len, shape),
         }
         watch
     }

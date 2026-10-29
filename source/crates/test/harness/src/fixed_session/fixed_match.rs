@@ -8,11 +8,11 @@ use campfire_protocol::{
     Applied, Checkpoint, Controller, Delegation, InputChain, PlayerPacket, ServerInput,
     SessionResult, SessionTerms, Signer,
 };
+use campfire_runner::{BotInputDrop, ServerInputRefusal, SessionWorld};
+use campfire_sim::{UnreadCommand, UnreadCommands};
 
 use crate::fixed_session::FixedSession;
 use crate::probe_file::ProbeFile;
-use campfire_runner::{BotInputDrop, ServerInputRefusal, SessionWorld};
-use campfire_sim::{UnreadCommand, UnreadCommands};
 
 /// A match of a `FixedSession`, and the input chain of each player slot's player, so a test sends
 /// inputs as a player's client would, and server inputs as its server would.

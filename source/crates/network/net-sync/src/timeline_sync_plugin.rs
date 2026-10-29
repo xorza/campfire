@@ -1,8 +1,9 @@
-use crate::sync_systems::SyncSystems;
 use bevy_app::{App, Plugin, PostUpdate, PreUpdate};
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use campfire_net_timeline::TimelineSystems;
 use campfire_net_transport::TransportSystems;
+
+use crate::sync_systems::SyncSystems;
 
 #[derive(Debug)]
 pub(crate) struct TimelineSyncPlugin;

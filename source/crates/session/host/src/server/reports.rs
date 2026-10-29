@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_protocol::{Journal, SessionId, SessionLog};
+use campfire_protocol::{Journal, JournalShape, SessionId, SessionLog};
 use campfire_runner::Session;
 use campfire_store::DurableFile;
 use tracing::warn;
@@ -22,21 +22,23 @@ pub struct Reports {
     pending: Vec<PendingReport>,
 }
 
-/// A report whose tick the log reached: the report, the records the journal had taken, and the
-/// bytes of the journal's file they end at.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A report whose tick the log reached: the report, the records the journal had taken, the
+/// bytes of the journal's file they end at, and the journal's shape there.
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct PendingReport {
     key: ReportKey,
     records: u64,
     bytes: u64,
+    shape: JournalShape,
 }
 
-/// A report whose records the journal synced: its folder, and the bytes of the journal's file
-/// its log ends at.
+/// A report whose records the journal synced: its folder, the bytes of the journal's file its
+/// log ends at, and the journal's shape there.
 #[derive(Debug)]
 pub(crate) struct DueReport {
     pub(crate) dir: ReportDir,
     pub(crate) bytes: u64,
+    pub(crate) shape: JournalShape,
 }
 
 impl Reports {
@@ -105,6 +107,7 @@ impl Reports {
                     key,
                     records,
                     bytes,
+                    shape: journal.shape().clone(),
                 });
             }
             !reached
@@ -124,6 +127,7 @@ impl Reports {
             .map(move |report| DueReport {
                 dir: layout.report_dir(session, report.key),
                 bytes: report.bytes,
+                shape: report.shape,
             })
     }
 }
@@ -158,8 +162,9 @@ mod tests {
             key: key(20),
             records: 7,
             bytes: 900,
+            shape: JournalShape::default(),
         };
-        reports.pending.push(reached);
+        reports.pending.push(reached.clone());
         world.insert_resource(reports);
         Reports::loaded(&mut world);
         let reports = world.resource::<Reports>();

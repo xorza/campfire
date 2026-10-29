@@ -1,13 +1,3 @@
-use crate::net_tick::NetTick;
-use crate::overstep::Overstep;
-use crate::tick_range_error::TickRangeError;
-#[cfg(feature = "reflect")]
-use bevy_reflect::Reflect;
-use campfire_math::{Num, Rounding, TickRate};
-use campfire_net_bytes::Reader;
-use campfire_net_bytes::SerializationError;
-use campfire_net_bytes::ToBytes;
-use campfire_net_bytes::WriteInteger;
 use core::fmt::Debug;
 use core::fmt::Formatter;
 use core::num::{NonZeroI128, NonZeroU32};
@@ -15,7 +5,19 @@ use core::ops::Add;
 use core::ops::Neg;
 use core::ops::Sub;
 use core::time::Duration;
+
+#[cfg(feature = "reflect")]
+use bevy_reflect::Reflect;
+use campfire_math::{Num, Rounding, TickRate};
+use campfire_net_bytes::Reader;
+use campfire_net_bytes::SerializationError;
+use campfire_net_bytes::ToBytes;
+use campfire_net_bytes::WriteInteger;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::net_tick::NetTick;
+use crate::overstep::Overstep;
+use crate::tick_range_error::TickRangeError;
 
 /// The bits of the largest unsigned span and instant, 2^32 - 2^-24 ticks.
 const UNSIGNED_MAX: i64 = (1 << (32 + Num::FRAC_BITS)) - 1;

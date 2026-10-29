@@ -1,7 +1,9 @@
+use core::time::Duration;
+
+use bevy_ecs::prelude::*;
+
 use crate::correction_ease::CorrectionEase;
 use crate::switch_direction::SwitchDirection;
-use bevy_ecs::prelude::*;
-use core::time::Duration;
 
 /// A resolved [`TimelineSwitch`], committed for the next frame's apply pass.
 ///

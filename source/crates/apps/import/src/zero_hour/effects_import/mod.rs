@@ -1,9 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bevy_math::{Quat, Vec3};
-
-use crate::quaternion::Quaternion;
-use crate::zero_hour::format::game_frames;
 use campfire_client_files::{
     ActionLook, AlphaKey, Blend, ClientUnit, ColorKey, EffectList, EffectSets, EffectsFile,
     EmissionVelocity, EmissionVolume, ListedSystem, ParticleSystem, SlaveSystem, Spread, TrackLook,
@@ -12,6 +9,7 @@ use campfire_client_files::{
 use campfire_common::DeclaredName;
 use campfire_values::PackagePath;
 
+use crate::quaternion::Quaternion;
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::axes;
 use crate::zero_hour::combat_import::converted_shot::{ConvertedShot, WeaponShot};
@@ -19,6 +17,7 @@ use crate::zero_hour::dropped::{Dropped, Losses};
 use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::error::{NameClash, NameError, ZeroHourError};
 use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::game_frames;
 use crate::zero_hour::format::ini::fx_list_ini::{FxListIni, FxNugget, NuggetKind, ParticleNugget};
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::ini_death::DeathPhase;

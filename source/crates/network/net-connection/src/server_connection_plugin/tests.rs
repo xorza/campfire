@@ -1,9 +1,10 @@
+use campfire_net_link::ServerLinkPlugin;
+use campfire_net_payload::AppCode;
+
 use super::*;
 use crate::client_connection_plugin::ClientConnectionPlugin;
 use crate::networking_state::NetworkingState;
 use crate::server_state::StopReason;
-use campfire_net_link::ServerLinkPlugin;
-use campfire_net_payload::AppCode;
 
 #[derive(Debug, Resource, Default)]
 struct Ends {

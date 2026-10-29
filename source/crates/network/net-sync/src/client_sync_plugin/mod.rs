@@ -1,10 +1,11 @@
 //! Syncs a client's clocks to its server.
-use crate::local_timeline_sync::LocalTimelineSync;
-use crate::remote_timeline::RemoteTimeline;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::IntoScheduleConfigs;
 use campfire_net_connection::Client;
 use campfire_net_timeline::TimelineSystems;
+
+use crate::local_timeline_sync::LocalTimelineSync;
+use crate::remote_timeline::RemoteTimeline;
 
 /// Keeps a client's estimate of its server's timeline, and syncs the local timeline to it.
 #[derive(Debug)]

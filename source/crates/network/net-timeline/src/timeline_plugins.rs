@@ -1,7 +1,8 @@
-use crate::clock_plugin::ClockPlugin;
-use crate::local_timeline_plugin::LocalTimelinePlugin;
 use bevy_app::{PluginGroup, PluginGroupBuilder};
 use campfire_math::TickRate;
+
+use crate::clock_plugin::ClockPlugin;
+use crate::local_timeline_plugin::LocalTimelinePlugin;
 
 /// The app's network clock and its local timeline at `tick_rate`, on Bevy's `TimePlugin`, which
 /// the app adds.

@@ -1,5 +1,3 @@
-use campfire_common::{DeclaredName, Tick};
-use campfire_geometry::{Bounds, Metric};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 use std::time::Duration;
 
@@ -18,7 +16,9 @@ use campfire_capabilities::internals::AreasFixtures;
 use campfire_client_files::{
     ClientModel, ClientUnit, ClientUnits, LookDraw, LookVariation, ModelScale, ModelTop,
 };
+use campfire_common::{DeclaredName, Tick};
 use campfire_declarations::{ById, ByIdBuilder};
+use campfire_geometry::{Bounds, Metric};
 use campfire_math::Num;
 use campfire_projectiles::{Flight, Payload};
 use campfire_script::MatchNames;

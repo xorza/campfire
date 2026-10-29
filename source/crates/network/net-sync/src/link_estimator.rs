@@ -1,10 +1,10 @@
 //! The latency estimate of a link, from the RTT samples its packet session takes from each ACK.
+use core::time::Duration;
 
 use bevy_ecs::prelude::*;
 use campfire_net_connection::Connected;
 use campfire_net_link::Link;
 use campfire_net_timeline::Clock;
-use core::time::Duration;
 use tracing::trace;
 
 use crate::link_estimate::LinkEstimate;

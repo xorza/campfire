@@ -1,9 +1,5 @@
-use crate::interpolation_fn::{ComponentInterpolation, InterpolationFn};
-use crate::interpolation_holders::InterpolationHolders;
-use crate::interpolation_phase_systems::InterpolationPhaseSystems;
-use crate::interpolation_rule_id::InterpolationRuleId;
-use crate::interpolation_timeline::InterpolationTimeline;
-use crate::sample_ticks;
+use std::borrow::Cow;
+
 use bevy_app::{App, Update};
 use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
@@ -18,8 +14,14 @@ use campfire_net_replication::HistoryState;
 use campfire_net_replication::Interpolated;
 use campfire_net_timeline::NetworkTimeline;
 use campfire_net_timeline::TimelineRate;
-use std::borrow::Cow;
 use tracing::trace;
+
+use crate::interpolation_fn::{ComponentInterpolation, InterpolationFn};
+use crate::interpolation_holders::InterpolationHolders;
+use crate::interpolation_phase_systems::InterpolationPhaseSystems;
+use crate::interpolation_rule_id::InterpolationRuleId;
+use crate::interpolation_timeline::InterpolationTimeline;
+use crate::sample_ticks;
 
 /// Installs the system that applies the component rule `rule_id` of `C`, with `interpolation`,
 /// to the live `C` of each entity whose apply the rule holds. An equal value is not written, so

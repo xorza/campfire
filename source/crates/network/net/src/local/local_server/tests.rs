@@ -4,16 +4,11 @@
 //! link, and writes its log into a report; once the server drops, the session ends and its log is
 //! published. The report then opens on a local server of the same data directory, which replays
 //! it to its client watching.
-
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::local::local_server::{
-    LocalLobby, LocalReplay, LocalServer, LocalServerSetup, LocalSession,
-};
-use crate::sim_client::{PendingJournalCommands, SimClientPlugin};
 use bevy_app::App;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
@@ -41,6 +36,11 @@ use campfire_sim::{SimTick, SimWorld};
 use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 use campfire_values::TeamSet;
+
+use crate::local::local_server::{
+    LocalLobby, LocalReplay, LocalServer, LocalServerSetup, LocalSession,
+};
+use crate::sim_client::{PendingJournalCommands, SimClientPlugin};
 
 /// How long the client gets to join and play.
 const DEADLINE: Duration = Duration::from_secs(10);

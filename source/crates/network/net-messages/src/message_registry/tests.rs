@@ -1,16 +1,14 @@
+use bevy_app::App;
+use bevy_ecs::entity::Entity;
+use bevy_reflect::Reflect;
+use serde::Serialize;
+
 use super::*;
 use crate::app_message_ext::AppMessageExt;
 use crate::entity_check::EntityCheck;
 use crate::message_plugin::MessagePlugin;
 use crate::receive_entity_map::ReceiveEntityMap;
 use crate::send_entity_map::SendEntityMap;
-use bevy_ecs::entity::Entity;
-
-use bevy_app::App;
-
-use bevy_reflect::Reflect;
-
-use serde::Serialize;
 
 impl MessageRegistry {
     pub(crate) fn deserialize<M: Message>(

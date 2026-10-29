@@ -1,5 +1,6 @@
-use crate::room_id::RoomId;
 use bevy_ecs::prelude::*;
+
+use crate::room_id::RoomId;
 
 /// Hands out room ids, and takes back the ids of rooms that are gone, so that only the rooms
 /// that live at once count toward the `u16` id space.

@@ -8,14 +8,13 @@ use campfire_script::{Filter, TagNames, UnknownName};
 use campfire_sim::MatchRate;
 use campfire_stats::{ModifierBook, StatBook};
 use campfire_units::StatId;
-
-use crate::bonus_stats::{BonusData, BonusStats};
 use campfire_values::{
     DamageKind, ModifierId, NameKind, Named, Names, Number, Rank, Ranked, Scalar, Stat, Tag,
     TimeTooLarge,
 };
 
 use crate::attack_data::{AttackData, SplashData, StreakData, WeaponValue};
+use crate::bonus_stats::{BonusData, BonusStats};
 use crate::error::CombatDataError;
 use crate::weapon::{
     ClipRule, OuterRing, Pitch, PreAttackRule, Rate, Scatter, ScatterTag, Splash, Streak,

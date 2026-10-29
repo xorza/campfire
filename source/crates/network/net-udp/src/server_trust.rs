@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use campfire_net_core::TlsKey;
 use rustls::client::Resumption;
 use rustls::client::danger::ServerCertVerifier;
 use rustls::pki_types::ServerName;
@@ -9,7 +10,6 @@ use rustls::{ConfigBuilder, RootCertStore, WantsVerifier};
 use crate::invalid_server_name::InvalidServerName;
 use crate::pinned_key_verifier::PinnedKeyVerifier;
 use crate::tls_provider;
-use campfire_net_core::TlsKey;
 
 /// The name a pinned client sends, which its verifier never reads.
 const PINNED_NAME: &str = "campfire";

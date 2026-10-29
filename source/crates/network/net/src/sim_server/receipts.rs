@@ -3,14 +3,14 @@ use std::time::Duration;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
 use campfire_common::{PlayerSlot, Tick};
+use campfire_host::JournalWatch;
+use campfire_host::PlayerSlotLinks;
 use campfire_net_messages::MessageSender;
 use campfire_net_timeline::Clock;
 use campfire_protocol::{DurableHead, Receipt, SessionId, SignedReceipt};
 use campfire_runner::Session;
 
 use crate::net_protocol::MatchChannel;
-use campfire_host::JournalWatch;
-use campfire_host::PlayerSlotLinks;
 
 /// How often the server gives receipts.
 const INTERVAL: Duration = Duration::from_secs(1);

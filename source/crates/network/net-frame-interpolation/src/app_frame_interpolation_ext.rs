@@ -1,13 +1,14 @@
-use crate::frame_interpolation_history::FrameInterpolationHistory;
-use crate::frame_registry::{self, FrameRegistry};
-use crate::frame_rule::FrameRule;
-use crate::frame_systems::{install_frame_history, install_visual_write};
 use bevy_app::App;
 use bevy_ecs::archetype::Archetype;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ArchetypeFilter;
 use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::HistoryComponent;
+
+use crate::frame_interpolation_history::FrameInterpolationHistory;
+use crate::frame_registry::{self, FrameRegistry};
+use crate::frame_rule::FrameRule;
+use crate::frame_systems::{install_frame_history, install_visual_write};
 
 /// The frame rules of an app.
 pub trait AppFrameInterpolationExt {
@@ -45,7 +46,7 @@ impl AppFrameInterpolationExt for App {
             .register_component::<FrameInterpolationHistory<C>>();
         let mut registry = frame_registry::open(self);
         registry.record_visual::<C, V>(history);
-        registry.defer(Box::new(move |app: &mut Self| {
+        registry.defer(move |app: &mut Self| {
             let mut registry = app.world_mut().resource_mut::<FrameRegistry>();
             let source = registry.source(&ComponentTypeId::of::<C>()).cloned();
             let installs_history = registry.install_history_once::<C>();
@@ -66,7 +67,7 @@ impl AppFrameInterpolationExt for App {
             if let Some(map) = rule.map {
                 install_visual_write::<C, V>(app, id, map, source);
             }
-        }));
+        });
         self
     }
 }

@@ -1,3 +1,5 @@
+use std::mem;
+
 use campfire_common::PlayerSlot;
 
 use crate::session_log::SessionLog;
@@ -5,6 +7,7 @@ use crate::session_log::durable_head::DurableHead;
 use crate::session_log::durable_heads::DurableHeads;
 use crate::session_log::journal::journal_frames::JournalFrames;
 use crate::session_log::journal::record_sink::RecordSink;
+use crate::session_log::journal_shape::JournalShape;
 
 /// A server's journal of its session's log: the sink its records go to, the frames of the records
 /// the log took since the sink last took them, how many records the log took, how many bytes the
@@ -25,12 +28,21 @@ pub struct Journal {
     /// and those not flushed yet among them.
     len: u64,
     durable: DurableHeads,
+    /// The shape of the records the journal holds, kept as it appends, so a publication reads
+    /// its file once; boxed, as a session holds the journal in its role beside a verifier's, of
+    /// none.
+    shape: Box<JournalShape>,
 }
 
 impl Journal {
     /// The journal of `sink`, whose file holds `len` bytes so far, of a session of `player_slots`
     /// player slots.
-    pub(crate) fn new(sink: Box<dyn RecordSink>, len: u64, player_slots: u32) -> Self {
+    pub(crate) fn new(
+        sink: Box<dyn RecordSink>,
+        len: u64,
+        player_slots: u32,
+        shape: JournalShape,
+    ) -> Self {
         let player_slots = usize::try_from(player_slots).expect("a u32 fits usize");
         Self {
             sink,
@@ -39,6 +51,7 @@ impl Journal {
             written: 0,
             len,
             durable: DurableHeads::new(player_slots),
+            shape: Box::new(shape),
         }
     }
 
@@ -46,22 +59,31 @@ impl Journal {
     /// what `log` holds; the log's calls that take a record add each of theirs as they take it.
     pub fn start(log: &SessionLog, sink: Box<dyn RecordSink>) -> Self {
         let tag = u64::try_from(JournalFrames::TAG.len()).expect("the tag's length fits u64");
-        let mut journal = Self::new(sink, tag, log.player_slot_count());
+        let mut journal = Self::new(sink, tag, log.player_slot_count(), JournalShape::default());
         log.write_journal(&mut journal);
         journal
     }
 
-    /// The journal of `sink`, whose file holds `len` bytes and every record `log` took, as the
-    /// log was rebuilt from it: every chain whose head its player's current delegation signed
-    /// stands durably where the log holds it, as the journal was read back from the disk.
-    pub fn resume(log: &SessionLog, sink: Box<dyn RecordSink>, len: u64) -> Self {
-        let mut journal = Self::new(sink, len, log.player_slot_count());
+    /// The journal of `sink`, whose file holds `len` bytes and every record `log` took, of the
+    /// shape `shape`, as the log and the shape were rebuilt from it: every chain whose head its
+    /// player's current delegation signed stands durably where the log holds it, as the journal
+    /// was read back from the disk.
+    pub fn resume(
+        log: &SessionLog,
+        sink: Box<dyn RecordSink>,
+        len: u64,
+        shape: JournalShape,
+    ) -> Self {
+        let mut journal = Self::new(sink, len, log.player_slot_count(), shape);
         log.resume_durable(&mut journal);
         journal
     }
 
     /// Frames `record` after the frames the sink takes at the next `flush`.
     pub(crate) fn append(&mut self, record: &[u8]) {
+        self.shape
+            .take(record)
+            .expect("a record the log takes is one a shape reads");
         let start = journal_frames::open(&mut self.frames);
         self.frames.extend_from_slice(record);
         journal_frames::seal(&mut self.frames, start);
@@ -87,6 +109,18 @@ impl Journal {
     /// How many records the log took into the journal.
     pub const fn written(&self) -> u64 {
         self.written
+    }
+
+    /// The shape of the records it holds, the unflushed among them.
+    pub const fn shape(&self) -> &JournalShape {
+        &self.shape
+    }
+
+    /// Hands the sink the records not flushed, and ends the journal: the shape of what its file
+    /// holds.
+    pub fn close(mut self) -> JournalShape {
+        self.flush();
+        *mem::take(&mut self.shape)
     }
 
     /// How many bytes the journal's file holds.

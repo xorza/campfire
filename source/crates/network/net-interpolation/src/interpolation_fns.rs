@@ -1,9 +1,11 @@
-use crate::interpolation_fn::InterpolationFn;
-use crate::into_interpolation_fn::{IntoCxLerpFn, IntoLerpFn};
+use core::marker::PhantomData;
+
 use bevy_curve::Ease;
 use bevy_ecs::component::Component;
 use campfire_net_frame_interpolation::linear_lerp;
-use core::marker::PhantomData;
+
+use crate::interpolation_fn::InterpolationFn;
+use crate::into_interpolation_fn::{IntoCxLerpFn, IntoLerpFn};
 
 /// Functions used by an interpolation rule.
 ///

@@ -47,19 +47,10 @@
 // a previous one was running, the highest decay ratio between the two is used
 // (the one that would give the biggest error).
 
-use crate::on_timeline::OnTimeline;
-use crate::pending_switch::PendingSwitch;
-use crate::prediction_registry::PredictionRegistry;
-use crate::prediction_systems::PredictionSystems;
-use crate::rollback_check_state::RollbackCheckState;
-use crate::rollback_systems::RollbackSystems;
-use crate::switch_blend::SwitchBlend;
-use crate::switch_direction::SwitchDirection;
-use crate::timeline_switch::TimelineSwitch;
-use crate::timeline_switch_setup::TimelineSwitchSetup;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_time::{Time, Virtual};
+use campfire_log::LogEvent;
 use campfire_net_frame_interpolation::FrameInterpolate;
 use campfire_net_frame_interpolation::FrameRegistry;
 use campfire_net_replication::DeferredEntityCommands;
@@ -68,8 +59,17 @@ use campfire_net_replication::Predicted;
 use campfire_net_replication::ReplicationSystems;
 use tracing::trace;
 
+use crate::on_timeline::OnTimeline;
+use crate::pending_switch::PendingSwitch;
+use crate::prediction_registry::PredictionRegistry;
+use crate::prediction_systems::PredictionSystems;
+use crate::rollback_check_state::RollbackCheckState;
+use crate::rollback_systems::RollbackSystems;
+use crate::switch_blend::SwitchBlend;
+use crate::switch_direction::SwitchDirection;
 use crate::switch_refused::SwitchRefused;
-use campfire_log::LogEvent;
+use crate::timeline_switch::TimelineSwitch;
+use crate::timeline_switch_setup::TimelineSwitchSetup;
 
 /// The timeline-switch pipeline on the prediction client. Each of its systems is in
 /// [`PredictionSystems::All`], which runs only for client topologies: host-servers stay

@@ -1,10 +1,11 @@
+use core::num::NonZeroU32;
+use core::time::Duration;
+
 use campfire_common::Secret;
 use campfire_math::TickRate;
 use campfire_net_emulator::DuplexModel;
 use campfire_net_packets::PacketSessionSetup;
 use campfire_net_udp::{ServerIdentity, ServerSecret};
-use core::num::NonZeroU32;
-use core::time::Duration;
 
 use crate::client_kind::ClientKind;
 

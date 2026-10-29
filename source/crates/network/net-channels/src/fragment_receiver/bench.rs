@@ -1,11 +1,11 @@
 //! `atomic/fragment_receiver/reassemble_…`: a message's fragments, received in order by a fresh
 //! [`FragmentReceiver`] until it returns the message, its throughput the fragments.
+use std::hint::black_box;
 
 use bytes::Bytes;
 use campfire_measure::{Kind, Scale};
 use campfire_net_core::NetTick;
 use criterion::{BatchSize, Criterion};
-use std::hint::black_box;
 
 use crate::channel_setup::DEFAULT_MAX_MESSAGE_LEN;
 use crate::fragment_receiver::{FragmentCx, FragmentOutcome, FragmentReceiver, PartialExpiry};

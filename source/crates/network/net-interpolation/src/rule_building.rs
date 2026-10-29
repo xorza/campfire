@@ -1,5 +1,14 @@
 //! Building interpolation rules once every member's mode is known, and installing their typed
 //! systems.
+use bevy_app::App;
+use bevy_ecs::archetype::Archetype;
+use bevy_ecs::prelude::*;
+use bevy_ecs::query::ArchetypeFilter;
+use campfire_net_replication::ComponentRegistry;
+use campfire_net_replication::ComponentTypeId;
+use campfire_net_replication::HistoryComponent;
+use campfire_net_replication::ReplicationKind;
+
 use crate::confirmed_history_fns::ConfirmedHistoryFns;
 use crate::interpolate::install_component_interpolation;
 use crate::interpolation_fns::{InterpolationFns, InterpolationPipeline};
@@ -10,14 +19,6 @@ use crate::interpolation_rule_component::InterpolationRuleComponent;
 use crate::interpolation_rule_id::InterpolationRuleId;
 use crate::member_mode::MemberMode;
 use crate::registered_rule::RegisteredRule;
-use bevy_app::App;
-use bevy_ecs::archetype::Archetype;
-use bevy_ecs::prelude::*;
-use bevy_ecs::query::ArchetypeFilter;
-use campfire_net_replication::ComponentRegistry;
-use campfire_net_replication::ComponentTypeId;
-use campfire_net_replication::HistoryComponent;
-use campfire_net_replication::ReplicationKind;
 
 pub(crate) const SINGLE_COMPONENT_RULE_PRIORITY: usize = 1;
 /// The priority of a component's default rule, its `.interpolate`: the lowest, below every rule
@@ -151,8 +152,8 @@ where
     QueryState::<&Archetype, F>::new(app.world_mut());
     let priority = rule.priority.unwrap_or(SINGLE_COMPONENT_RULE_PRIORITY);
     let fns = rule.fns;
-    interpolation_registry::open(app).defer(Box::new(move |app: &mut App| {
+    interpolation_registry::open(app).defer(move |app: &mut App| {
         let confirmed = resolve_confirmed::<C>(app, fns.pipeline());
         install_component_rule::<C, F>(app, fns, confirmed, priority);
-    }));
+    });
 }

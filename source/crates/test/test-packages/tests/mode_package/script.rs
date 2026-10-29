@@ -1,6 +1,4 @@
 //! Each flaw a package can have fails the load of the MOBA packages with its own problem.
-
-use crate::flaws::{Flaw, fails_each};
 use campfire_actions::{ActionProblem, EffectRule, ListHook};
 use campfire_navigation::PathEnd;
 use campfire_package::{LoadProblem, Place, ScriptProblem};
@@ -11,6 +9,7 @@ use campfire_sim::Capability;
 use campfire_test_packages::Edit;
 use campfire_values::{DamageKind, ModifierId, Named, Param, ScriptEnum};
 
+use crate::flaws::{Flaw, fails_each};
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule_at, rule_of};
 
@@ -96,7 +95,7 @@ pub(super) static SCRIPT_FLAWS: &[Flaw] = &[
         },
     },
     Flaw::of(
-        "heroes/husk/scripts/extra.rhai",
+        "moba/heroes/husk/scripts/extra.rhai",
         Edit::Create("fn on_resolve(ctx, caster, target) {}"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Script { path, problem: ScriptProblem::Unreferenced } if path.to_string() == "scripts/extra.rhai"),
@@ -125,7 +124,7 @@ pub(super) static SCRIPT_FLAWS: &[Flaw] = &[
             "fn on_think(ctx, unit) {",
             "fn on_resolve(ctx, caster, target) {}\n\nfn on_think(ctx, unit) {",
         ),
-        MODE,
+        "test-ai",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_resolve"),
     ),
     Flaw::of(
@@ -141,7 +140,7 @@ pub(super) static SCRIPT_FLAWS: &[Flaw] = &[
             "ctx.nearest_visible(unit, unit.params.aggro_range, \"enemies:creep\")",
             "ctx.nearest_visible(unit, unit.params.aggro_rang, \"enemies:creep\")",
         ),
-        MODE,
+        "test-ai",
         |problem| matches!(problem, LoadProblem::Unknown { of: Param::NAMES, at: Place::Script(path), name } if path.as_str() == "scripts/creep_ai.rhai" && name == "aggro_rang"),
     ),
     // A handle's member every form of which is of a capability the mode does not declare: the
@@ -152,7 +151,7 @@ pub(super) static SCRIPT_FLAWS: &[Flaw] = &[
             "if target == () {\n        ctx.order_follow_path",
             "if unit.load > 0 {\n        ctx.order_follow_path",
         ),
-        MODE,
+        "test-ai",
         |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Script(path) } if path.as_str() == "scripts/creep_ai.rhai"),
     ),
     Flaw::of(
@@ -161,13 +160,13 @@ pub(super) static SCRIPT_FLAWS: &[Flaw] = &[
             "if target == () {\n        ctx.order_follow_path",
             "if unit.load > 0 {\n        ctx.order_follow_path",
         ),
-        MODE,
+        "test-ai",
         |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Script(path) } if path.as_str() == "scripts/creep_ai.rhai"),
     ),
     Flaw::of(
         CREEP_AI,
         Edit::Replace("fn on_think(ctx, unit)", "fn on_think(ctx, unit, more)"),
-        MODE,
+        "test-ai",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_think"),
     ),
     Flaw::of(
@@ -218,7 +217,7 @@ pub(super) static SCRIPT_FLAWS: &[Flaw] = &[
             "let target = unit.attack_target;",
             "let target = unti.attack_target;",
         ),
-        MODE,
+        "test-ai",
         |problem| undefined(problem, "unti"),
     ),
     Flaw::of(
@@ -227,7 +226,7 @@ pub(super) static SCRIPT_FLAWS: &[Flaw] = &[
             "fn defend_hero(ctx, unit) {\n    for ally in ctx.find(",
             "fn defend_hero(c, unit) {\n    for ally in c.find(",
         ),
-        MODE,
+        "test-ai",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::CtxMisuse(CtxMisuse::Renamed { function }), .. } if function == "defend_hero"),
     ),
     // An engine enum's argument takes a member, never a string literal; a member and a function

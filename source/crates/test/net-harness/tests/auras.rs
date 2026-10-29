@@ -25,7 +25,7 @@ const WALK_FRAMES: usize = 60;
 /// come from her stats; Rime's cuts the move speed of each enemy within 3 m of her by 30 %.
 const AURAS: [(&str, Edit<'_>); 3] = [
     (
-        "heroes/gale/data/avatar.toml",
+        "moba/heroes/gale/data/avatar.toml",
         Edit::Replace(
             "[modifiers.fair_wind_speed]\nstats = { move_speed = { pct = \"0.03\" } }",
             "[modifiers.fair_wind_speed]\nstats = { move_speed = { param = \"wind\" } }\n\n\
@@ -33,11 +33,11 @@ const AURAS: [(&str, Edit<'_>); 3] = [
         ),
     ),
     (
-        "heroes/rime/data/avatar.toml",
+        "moba/heroes/rime/data/avatar.toml",
         Edit::Replace("passive = \"stillness\"", "passive = \"frost_field\""),
     ),
     (
-        "heroes/rime/data/avatar.toml",
+        "moba/heroes/rime/data/avatar.toml",
         Edit::Replace(
             "[modifiers.stillness]",
             "[modifiers.frost_field]\n\

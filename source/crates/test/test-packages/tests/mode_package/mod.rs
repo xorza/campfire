@@ -34,30 +34,30 @@ use crate::moba::{edited, load, moba, two_lanes};
 use crate::module_rules::{entry, rule, rule_at, unit_type};
 
 /// A flaw, the package it is in, and the problem it fails the load with.
-const MANIFEST: &str = "modes/3v3/manifest.toml";
-const UNITS: &str = "modes/3v3/data/units.toml";
-const MAP: &str = "modes/3v3/map/two_lanes/map.toml";
-const HUSK: &str = "heroes/husk/data/avatar.toml";
-const HUSK_MANIFEST: &str = "heroes/husk/manifest.toml";
-const HUSK_TEXT: &str = "heroes/husk/locale/en.ftl";
-const MODE_TEXT: &str = "modes/3v3/locale/en.ftl";
-const GALE: &str = "heroes/gale/data/avatar.toml";
-const CINDER: &str = "heroes/cinder/data/avatar.toml";
-const VEIL: &str = "heroes/veil/data/avatar.toml";
-const RIME: &str = "heroes/rime/data/avatar.toml";
+const MANIFEST: &str = "moba/modes/3v3/manifest.toml";
+const UNITS: &str = "moba/modes/3v3/data/units.toml";
+const MAP: &str = "moba/modes/3v3/map/two_lanes/map.toml";
+const HUSK: &str = "moba/heroes/husk/data/avatar.toml";
+const HUSK_MANIFEST: &str = "moba/heroes/husk/manifest.toml";
+const HUSK_TEXT: &str = "moba/heroes/husk/locale/en.ftl";
+const MODE_TEXT: &str = "moba/modes/3v3/locale/en.ftl";
+const GALE: &str = "moba/heroes/gale/data/avatar.toml";
+const CINDER: &str = "moba/heroes/cinder/data/avatar.toml";
+const VEIL: &str = "moba/heroes/veil/data/avatar.toml";
+const RIME: &str = "moba/heroes/rime/data/avatar.toml";
 /// Rime's Fan of Frost's `on_hit` effect that slows.
 const SLOWS: &str = r#"{ modifier = { id = "slow", duration_ms = { param = "slow_ms" } } },"#;
-const LASH_OUT: &str = "heroes/husk/scripts/lash_out.rhai";
-const CHAIN_FIRE: &str = "heroes/cinder/scripts/chain_fire.rhai";
+const LASH_OUT: &str = "moba/heroes/husk/scripts/lash_out.rhai";
+const CHAIN_FIRE: &str = "moba/heroes/cinder/scripts/chain_fire.rhai";
 /// The script of Rime's passive.
-const STILLNESS: &str = "heroes/rime/scripts/stillness.rhai";
-const SNOW_OWL: &str = "heroes/rime/scripts/snow_owl.rhai";
-const CREEP_AI: &str = "modes/3v3/scripts/creep_ai.rhai";
+const STILLNESS: &str = "moba/heroes/rime/scripts/stillness.rhai";
+const SNOW_OWL: &str = "moba/heroes/rime/scripts/snow_owl.rhai";
+const CREEP_AI: &str = "engine/ai/scripts/creep_ai.rhai";
 const MODE: &str = "moba-3v3";
 /// A package whose manifest does not read has no name, so its directory names it.
-const MODE_DIR: &str = "modes/3v3";
-const MODE_DATA: &str = "modes/3v3/data/mode.toml";
-const MODE_SCRIPT: &str = "modes/3v3/scripts/mode.rhai";
+const MODE_DIR: &str = "moba/modes/3v3";
+const MODE_DATA: &str = "moba/modes/3v3/data/mode.toml";
+const MODE_SCRIPT: &str = "moba/modes/3v3/scripts/mode.rhai";
 /// A train of a melee creep, which the mode's data does not hold, put before its first action.
 const RECRUIT: &str = "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"melee_creep\"\n\n[actions.melee_creep_attack]";
 /// A yard with the mode's life pool, put before the tower.
@@ -577,7 +577,7 @@ fn a_script_names_a_spawn_tag_no_marker_of_the_map_holds() {
     // may name, as a mode names the markers it spawns at whatever map it plays.
     let edits = [
         (
-            "modes/3v3/scripts/mode.rhai",
+            "moba/modes/3v3/scripts/mode.rhai",
             Edit::Replace(r#"ctx.map.markers("camp")"#, r#"ctx.map.markers("camps")"#),
         ),
         (
@@ -912,7 +912,7 @@ fn a_mode_loads_the_map_its_session_names() {
     let map = PackageTree::of(TestMode::Moba3v3).text(MAP).to_owned();
     let raised = raised(&map);
     let second = MapName::parse("second").unwrap();
-    let two = edited([("modes/3v3/map/second/map.toml", Edit::Create(&raised))]);
+    let two = edited([("moba/modes/3v3/map/second/map.toml", Edit::Create(&raised))]);
     let planar = load(&two).unwrap();
     assert_eq!(planar.map_name(), &two_lanes());
     assert_eq!(planar.map().metric(), Metric::Planar);
@@ -945,7 +945,7 @@ fn a_mode_loads_the_map_its_session_names() {
         "name one of the mode's maps: second, two_lanes"
     );
     // A directory under `map/` whose name no map can have fails the load.
-    let upper = edited([("modes/3v3/map/Upper/map.toml", Edit::Create(&raised))]);
+    let upper = edited([("moba/modes/3v3/map/Upper/map.toml", Edit::Create(&raised))]);
     assert!(matches!(
         &*load(&upper).unwrap_err().problem,
         LoadProblem::MapDirName(name) if name == "Upper"
@@ -956,7 +956,7 @@ fn a_mode_loads_the_map_its_session_names() {
 fn a_maps_height_grid_loads_with_it_and_one_that_does_not_decode_fails_the_load() {
     // The 3v3's map has no height grid. A grid of 2 × 2 samples at its `heights.bin` loads with
     // its packages, and bytes that decode as none fail the load at that file.
-    let heights = "modes/3v3/map/two_lanes/heights.bin";
+    let heights = "moba/modes/3v3/map/two_lanes/heights.bin";
     assert_eq!(load(&edited([])).unwrap().heights(), None);
     let grid = HeightGrid::new([Num::ZERO; 2], Num::ONE, Num::ONE, 2, vec![0, 1, 2, 3]).unwrap();
     let mut tree = PackageTree::of(TestMode::Moba3v3);

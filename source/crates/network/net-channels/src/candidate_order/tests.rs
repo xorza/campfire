@@ -1,9 +1,11 @@
+use core::num::NonZeroU32;
+
+use campfire_net_core::NetId;
+
 use super::*;
 use crate::message_id::MessageId;
 use crate::send_candidate::CandidateRank;
 use crate::send_message_key::SendMessageKey;
-use campfire_net_core::NetId;
-use core::num::NonZeroU32;
 
 /// A candidate of `channel_id` of a whole message of `bytes_len` bytes, or of a fragmented
 /// message when `bytes_len` is 0.

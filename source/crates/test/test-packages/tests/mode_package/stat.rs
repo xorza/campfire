@@ -1,6 +1,4 @@
 //! Each flaw a package can have fails the load of the MOBA packages with its own problem.
-
-use crate::flaws::{Flaw, fails_each};
 use campfire_actions::{ActionProblem, CostTarget, SlotError};
 use campfire_combat::{Armor, CombatDataError};
 use campfire_common::DeclaredName;
@@ -18,6 +16,7 @@ use campfire_values::{
     UnitType,
 };
 
+use crate::flaws::{Flaw, fails_each};
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule, rule_at, rule_of, unit_type};
 
@@ -123,7 +122,7 @@ pub(super) static STAT_FLAWS: &[Flaw] = &[
         |problem| read_fails(problem, "data/avatar.toml", r#""tank:front" is not a name"#),
     ),
     Flaw::of(
-        "heroes/kensho/data/avatar.toml",
+        "moba/heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"left = { type = "int""#, r#"Left = { type = "int""#),
         "hero-kensho",
         |problem| read_fails(problem, "data/avatar.toml", r#""Left" is not a name"#),
@@ -208,7 +207,7 @@ pub(super) static STAT_FLAWS: &[Flaw] = &[
         also: &[
             (MANIFEST, Edit::Replace("hero-cinder = {", "eruption = {")),
             (
-                "heroes/cinder/manifest.toml",
+                "moba/heroes/cinder/manifest.toml",
                 Edit::Replace(r#"name = "hero-cinder""#, r#"name = "eruption""#),
             ),
         ],
@@ -258,10 +257,10 @@ pub(super) static STAT_FLAWS: &[Flaw] = &[
         },
     },
     Flaw {
-        file: "spells/data/loadout.toml",
+        file: "moba/spells/data/loadout.toml",
         edit: Edit::Set("actions.blink.passive_modifier", r#""haste""#),
         also: &[(
-            "spells/data/loadout.toml",
+            "moba/spells/data/loadout.toml",
             Edit::Set("actions.haste.passive_modifier", r#""haste""#),
         )],
         package: "player-spells",
@@ -505,7 +504,7 @@ pub(super) static STAT_FLAWS: &[Flaw] = &[
         |problem| matches!(problem, LoadProblem::UnnamedAction(action) if action == "dread"),
     ),
     Flaw::of(
-        "spells/data/loadout.toml",
+        "moba/spells/data/loadout.toml",
         Edit::Remove("actions.blink.name"),
         "player-spells",
         |problem| matches!(problem, LoadProblem::UnnamedAction(action) if action == "blink"),
@@ -529,13 +528,13 @@ pub(super) static STAT_FLAWS: &[Flaw] = &[
         |problem| matches!(problem, LoadProblem::Locale { problem: LocaleProblem::Repeated(id), .. } if id.as_str() == "hero-name"),
     ),
     Flaw::of(
-        "heroes/husk/locale/de.ftl",
+        "moba/heroes/husk/locale/de.ftl",
         Edit::Create("hero-nme = Hülse\n"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Locale { path, problem: LocaleProblem::Stray(id) } if path.as_str() == "locale/de.ftl" && id.as_str() == "hero-nme"),
     ),
     Flaw::of(
-        "heroes/husk/locale/de_DE.ftl",
+        "moba/heroes/husk/locale/de_DE.ftl",
         Edit::Create("hero-name = Hülse\n"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Locale { path, problem: LocaleProblem::FileName } if path.as_str() == "locale/de_DE.ftl"),
@@ -572,7 +571,7 @@ pub(super) static STAT_FLAWS: &[Flaw] = &[
         },
     ),
     Flaw::of(
-        "heroes/veil/data/avatar.toml",
+        "moba/heroes/veil/data/avatar.toml",
         Edit::Set(
             "modifiers.dual_path.params.spell_vamp.bonus.attack_damage",
             "1099511627776",
@@ -647,13 +646,13 @@ pub(super) static STAT_FLAWS: &[Flaw] = &[
         |problem| matches!(problem, LoadProblem::Unknown { of: CostTarget::NAMES, at: Place::Entry { table: "actions", name: id }, name } if id == "lash_out" && name == "rage"),
     ),
     Flaw::of(
-        "heroes/veil/scripts/dusk_mark.rhai",
+        "moba/heroes/veil/scripts/dusk_mark.rhai",
         Edit::Replace(r#""energy""#, r#""rage""#),
         "hero-veil",
         |problem| matches!(problem, LoadProblem::Unknown { of: PoolId::NAMES, at: Place::Script(_), name } if name == "rage"),
     ),
     Flaw::of(
-        "heroes/veil/scripts/dusk_mark.rhai",
+        "moba/heroes/veil/scripts/dusk_mark.rhai",
         Edit::Replace(r#"is_action("dusk_mark")"#, r#"is_action("dusk")"#),
         "hero-veil",
         |problem| matches!(problem, LoadProblem::Unknown { of: ActionId::NAMES, at: Place::Script(_), name } if name == "dusk"),
@@ -732,7 +731,7 @@ pub(super) static STAT_FLAWS: &[Flaw] = &[
         |problem| matches!(problem, LoadProblem::Unknown { of: Armor::NAMES, name, .. } if name == "plate"),
     ),
     Flaw::of(
-        "heroes/veil/scripts/whirling_blades.rhai",
+        "moba/heroes/veil/scripts/whirling_blades.rhai",
         Edit::Replace(r#""physical""#, r#""fire""#),
         "hero-veil",
         |problem| matches!(problem, LoadProblem::Unknown { of: DamageKind::NAMES, name: kind, .. } if kind == "fire"),
@@ -747,7 +746,7 @@ pub(super) static STAT_FLAWS: &[Flaw] = &[
         |problem| matches!(problem, LoadProblem::Unknown { of: Param::NAMES, at: Place::Entry { table: "modifiers", name: id }, name } if id == "gust_speed" && name == "bonus_speeds"),
     ),
     Flaw::of(
-        "heroes/kensho/data/avatar.toml",
+        "moba/heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"hold = "still_mind""#, r#"hold = "still_mindful""#),
         "hero-kensho",
         |problem| matches!(problem, LoadProblem::Unknown { of: ModifierId::NAMES, at: Place::Entry { table: "actions", name: ability }, name: id } if ability == "still_mind" && id == "still_mindful"),
@@ -759,13 +758,13 @@ pub(super) static STAT_FLAWS: &[Flaw] = &[
         |problem| matches!(problem, LoadProblem::Unknown { of: Filter::NAMES, name: filter, .. } if filter == "allies:friends"),
     ),
     Flaw::of(
-        "heroes/rime/data/avatar.toml",
+        "moba/heroes/rime/data/avatar.toml",
         Edit::Replace(r#"hits = "enemies:avatar""#, r#"hits = "foes:avatar""#),
         "hero-rime",
         |problem| read_fails(problem, "data/avatar.toml", "filter \"foes:avatar\""),
     ),
     Flaw::of(
-        "heroes/kensho/data/avatar.toml",
+        "moba/heroes/kensho/data/avatar.toml",
         Edit::Set("modifiers.flicker_strike.state.left.audience", r#""all""#),
         "hero-kensho",
         |problem| read_fails(problem, "data/avatar.toml", "unknown field `audience`"),

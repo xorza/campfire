@@ -1,11 +1,3 @@
-use crate::link_messages::LinkMessages;
-use crate::link_messages::{EndpointList, ListedEndpoint};
-use crate::message::Message;
-use crate::message_error::MessageError;
-use crate::message_receive_cx::MessageReceiveCx;
-use crate::message_type_id::MessageTypeId;
-use crate::messages_unread::MessagesUnread;
-use crate::received_message::ReceivedMessage;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Commands;
@@ -14,6 +6,15 @@ use bevy_ecs::world::World;
 use bevy_utils::prelude::DebugName;
 use campfire_log::LogEvent;
 use tracing::trace;
+
+use crate::link_messages::LinkMessages;
+use crate::link_messages::{EndpointList, ListedEndpoint};
+use crate::message::Message;
+use crate::message_error::MessageError;
+use crate::message_receive_cx::MessageReceiveCx;
+use crate::message_type_id::MessageTypeId;
+use crate::messages_unread::MessagesUnread;
+use crate::received_message::ReceivedMessage;
 
 /// The messages of type `M` a link received this frame, which [`receive`](Self::receive) drains
 /// and `Last` clears.

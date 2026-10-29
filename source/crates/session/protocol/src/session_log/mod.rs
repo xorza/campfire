@@ -30,16 +30,17 @@ use crate::session_log::input_schedule::{InputOrder, InputSchedule};
 use crate::session_log::journal::Journal;
 use crate::session_log::journal::journal_frames::{self, MAX_RECORD};
 use crate::session_log::log_entries::{LogEntries, Served};
+use crate::session_log::log_entry::{HeldStart, LogEntry};
 use crate::session_log::log_replay::LogReplay;
 use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::player_slot_control::{PlayerSlotControl, PlayerSlotState, TakenPacket};
 use crate::session_log::segments::{Boundary, LoggedCheckpoint, SegmentStart, Segments};
 use crate::session_log::session_header::SessionHeader;
+use crate::session_log::signature_checks::SignatureChecks;
 use crate::session_result::SessionResult;
 use crate::signature::Signature;
 use crate::signed::InSession;
 use crate::signer::Signer;
-use crate::verifier::Verifier;
 
 pub(crate) mod applied;
 mod checked_carry;
@@ -49,9 +50,12 @@ pub(crate) mod error;
 mod file;
 mod input_schedule;
 pub(crate) mod journal;
+mod journal_kinds;
 mod journal_records;
 pub(crate) mod journal_replay;
+pub(crate) mod journal_shape;
 mod log_entries;
+pub(crate) mod log_entry;
 pub(crate) mod log_replay;
 pub(crate) mod paged_bytes;
 pub(crate) mod paged_vec;
@@ -60,6 +64,7 @@ mod player_slot_control;
 pub(crate) mod publish;
 mod segments;
 pub(crate) mod session_header;
+mod signature_checks;
 
 /// What one record adds beside its own bytes: in the journal its frame and its kind's byte, in
 /// the file its kind's byte and the growth of the counts before it, each at most 10 bytes.
@@ -84,7 +89,7 @@ pub struct SessionLog {
     header: SessionHeader,
     /// Present once the segment is published.
     revealed: Option<ServerSeed>,
-    verifier: Verifier,
+    checks: SignatureChecks,
     /// The scratch a record's signed message is written into.
     message: Vec<u8>,
     /// The record the log takes now, its kind's byte then its body, encoded once: what its
@@ -162,7 +167,7 @@ impl ServerServe<'_, '_> {
                     place: log.next_place(),
                 };
                 let server_key = log.header.terms.server_key;
-                log.verifier.verifies(&signature, &server_key, &whole)
+                log.checks.verifies(&signature, &server_key, &whole)
             },
             "a signature the log made over a server input's encoding is one over the input"
         );
@@ -324,7 +329,7 @@ impl SessionLog {
             result: None,
             header,
             revealed: None,
-            verifier: Verifier::new(),
+            checks: SignatureChecks::new(),
             message: Vec::new(),
             record: Vec::new(),
             server_since: 0,
@@ -498,6 +503,42 @@ impl SessionLog {
         start.checkpoint.as_ref().map(|logged| &logged.record)
     }
 
+    /// The first segment whose entries the log holds, and the tick it starts at: the first a log
+    /// file holds, the base a server's log forgot the past before, or segment 0 at tick 0.
+    pub fn first_held(&self) -> HeldStart {
+        let segment = self.base.unwrap_or_else(|| self.segments.first());
+        let tick = self
+            .segments
+            .get(segment)
+            .map_or(Tick::ZERO, |start| start.tick);
+        HeldStart { segment, tick }
+    }
+
+    /// The entries of `tick`, in the order logged; none for a tick the log does not hold: one not
+    /// sealed yet, or before the segment its entries start at, the first a log file holds or the
+    /// base a server's log forgot the past before.
+    pub fn tick_entries(&self, tick: Tick) -> Option<impl Iterator<Item = LogEntry<'_>>> {
+        if tick < self.first_held().tick || tick >= self.next_tick() {
+            return None;
+        }
+        let entries = &self.entries;
+        let range = entries.tick_range(tick);
+        Some(
+            entries
+                .entries(range)
+                .map(move |entry| LogEntry::of(entries, entry)),
+        )
+    }
+
+    /// The entries logged since the last tick was sealed, in the order logged, which the next
+    /// tick takes.
+    pub fn open_entries(&self) -> impl Iterator<Item = LogEntry<'_>> {
+        let entries = &self.entries;
+        entries
+            .entries(entries.sealed_end()..entries.len())
+            .map(move |entry| LogEntry::of(entries, entry))
+    }
+
     /// Every checkpoint record it holds, by segment.
     pub fn checkpoints(&self) -> impl Iterator<Item = &Checkpoint> {
         self.segments.checkpoints().map(|logged| &logged.record)
@@ -630,7 +671,7 @@ impl SessionLog {
             return Err(InputError::AheadOfTime);
         }
         self.record.clear();
-        self.record.push(journal_records::JOURNAL_PACKET);
+        self.record.push(journal_kinds::JOURNAL_PACKET);
         let written = PlayerPacket {
             player_slot,
             inputs: inputs.clone(),
@@ -645,7 +686,7 @@ impl SessionLog {
             chain.extend(stamp, payload);
         }
         let head = chain.signed_head(self.session_id);
-        if !self.verifier.verifies(signature, &session_key, &head) {
+        if !self.checks.verifies(signature, &session_key, &head) {
             return Err(InputError::BadSignature);
         }
 
@@ -779,7 +820,7 @@ impl SessionLog {
             input: &self.record[1..],
         };
         let server_key = self.header.terms.server_key;
-        if !self.verifier.verifies(signature, &server_key, &placed) {
+        if !self.checks.verifies(signature, &server_key, &placed) {
             return Err(ServerInputError::BadSignature);
         }
         self.log_server(input, change, signature, journal)
@@ -828,7 +869,7 @@ impl SessionLog {
     ) -> Result<Option<PlayerSlotChangeKind>, ServerInputError> {
         let change = self.change_of(input)?;
         self.record.clear();
-        self.record.push(journal_records::JOURNAL_SERVER);
+        self.record.push(journal_kinds::JOURNAL_SERVER);
         input.encode(&mut self.record);
         Ok(change)
     }
@@ -982,7 +1023,7 @@ impl SessionLog {
             record: &record,
         };
         let server_key = *server_key;
-        if !self.verifier.verifies(signature, &server_key, &signed) {
+        if !self.checks.verifies(signature, &server_key, &signed) {
             return Err(CheckpointError::BadSignature);
         }
         self.take_checkpoint(record, signature, journal, past)
@@ -1104,7 +1145,7 @@ impl SessionLog {
             record: &result,
         };
         let server_key = *server_key;
-        if !self.verifier.verifies(signature, &server_key, &signed) {
+        if !self.checks.verifies(signature, &server_key, &signed) {
             return Err(ResultError::BadSignature);
         }
         self.take_result(result, signature, journal)
@@ -1177,7 +1218,7 @@ impl SessionLog {
         self.file_len += varint_len(ticks + 1) - varint_len(ticks) + 1;
         debug_assert!(self.file_len <= self.bounds.file(), "a seal has its room");
         self.record.clear();
-        self.record.push(journal_records::JOURNAL_SEALED);
+        self.record.push(journal_kinds::JOURNAL_SEALED);
         self.journal_record(journal);
         self.entries.seal(self.entries.len());
         self.server_since = 0;
@@ -1266,7 +1307,7 @@ impl SessionLog {
             record: &record,
         };
         let server_key = self.header.terms.server_key;
-        if !self.verifier.verifies(signature, &server_key, &signed) {
+        if !self.checks.verifies(signature, &server_key, &signed) {
             return Err(CheckpointError::BadSignature);
         }
         if record.segment == 0 {

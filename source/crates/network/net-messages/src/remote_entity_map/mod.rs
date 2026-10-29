@@ -1,7 +1,8 @@
-use crate::receive_entity_map::ReceiveEntityMap;
-use crate::send_entity_map::SendEntityMap;
 use bevy_ecs::entity::Entity;
 use bevy_reflect::Reflect;
+
+use crate::receive_entity_map::ReceiveEntityMap;
+use crate::send_entity_map::SendEntityMap;
 
 /// A bijection between local and remote entities. (used mostly on client because it's when we
 /// receive entity updates) (11-net-stack/layering.md, The entity maps, their views and the context

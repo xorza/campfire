@@ -2,9 +2,9 @@
 //! counts its sends and orders its messages, while prediction, rollback and the timelines run on
 //! the server's `NetTick`, so a client resolves each Replicon tick through the
 //! [`ConfirmedTickMap`](crate::ConfirmedTickMap) before it uses it.
+use campfire_net_core::NetTick;
 
 use crate::confirmed_tick_error::ConfirmedTickError;
-use campfire_net_core::NetTick;
 
 pub(crate) const AUTHORITATIVE_TICK_LEN: usize = size_of::<NetTick>();
 

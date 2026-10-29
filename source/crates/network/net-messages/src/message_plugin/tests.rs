@@ -1,19 +1,3 @@
-use super::*;
-use crate::app_event_ext::AppEventExt;
-use crate::app_message_ext::AppMessageExt;
-use crate::event_sender::EventSender;
-use crate::fixtures::messages_stack::MessagesStack;
-use crate::fixtures::protocol::EntityMessage;
-use crate::fixtures::protocol::StringEvent;
-use crate::fixtures::protocol::StringMessage;
-use crate::fixtures::received_messages::ReceivedMessages;
-use crate::message_receiver::MessageReceiver;
-use crate::message_sender::MessageSender;
-use crate::message_type_id::MessageTypeId;
-use crate::messages_unread::MessagesUnread;
-use crate::multi_message_sender::MultiMessageSender;
-use crate::received_message::ReceivedMessage;
-use crate::remote_event::RemoteEvent;
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::UniqueEntityArray;
 use bevy_ecs::event::Event;
@@ -41,6 +25,23 @@ use campfire_net_transport::internals::TestChannel;
 use campfire_net_transport::internals::TestTransportPlugin;
 use serde::Deserialize;
 use serde::Serialize;
+
+use super::*;
+use crate::app_event_ext::AppEventExt;
+use crate::app_message_ext::AppMessageExt;
+use crate::event_sender::EventSender;
+use crate::fixtures::messages_stack::MessagesStack;
+use crate::fixtures::protocol::EntityMessage;
+use crate::fixtures::protocol::StringEvent;
+use crate::fixtures::protocol::StringMessage;
+use crate::fixtures::received_messages::ReceivedMessages;
+use crate::message_receiver::MessageReceiver;
+use crate::message_sender::MessageSender;
+use crate::message_type_id::MessageTypeId;
+use crate::messages_unread::MessagesUnread;
+use crate::multi_message_sender::MultiMessageSender;
+use crate::received_message::ReceivedMessage;
+use crate::remote_event::RemoteEvent;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 struct M(usize);

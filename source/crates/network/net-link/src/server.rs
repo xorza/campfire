@@ -4,11 +4,6 @@
 //! Bevy's relationship API: [`Server`] is the relationship target, and [`LinkOf`] is inserted on
 //! each child link entity to point back to the server. Transport crates can use this to keep the
 //! server endpoint independent from the concrete links used for each connected peer.
-
-use crate::link_state::Linked;
-use crate::link_state::Linking;
-use crate::link_state::Unlinked;
-use crate::unlink::Unlink;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::relationship::Relationship;
@@ -18,6 +13,11 @@ use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::Reflect;
 use campfire_net_payload::UnlinkReason;
 use tracing::trace;
+
+use crate::link_state::Linked;
+use crate::link_state::Linking;
+use crate::link_state::Unlinked;
+use crate::unlink::Unlink;
 
 /// Relationship target for a server endpoint that holds multiple link entities.
 ///

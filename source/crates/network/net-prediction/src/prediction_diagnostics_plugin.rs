@@ -1,10 +1,12 @@
-use crate::prediction_counts::PredictionCounts;
+use core::time::Duration;
+
 use bevy_app::{App, Plugin, PostUpdate};
 use bevy_diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic};
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::system::{Local, Res};
 use bevy_time::common_conditions::on_timer;
-use core::time::Duration;
+
+use crate::prediction_counts::PredictionCounts;
 
 /// Plugin in charge of collecting diagnostics for the prediction systems.
 #[derive(Debug)]

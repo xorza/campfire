@@ -6,6 +6,7 @@ use campfire_declarations::CapabilitySet;
 use campfire_mode::TeamManifest;
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
+use campfire_values::PackageName;
 use campfire_values::{Speed, Team};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -13,7 +14,6 @@ use crate::files::dependency::Dependency;
 use crate::files::package_header::PackageHeader;
 use crate::files::tick_range::TickRange;
 use crate::language::Language;
-use campfire_values::PackageName;
 
 /// A mode's manifest: its header's fields, then the rules its matches run by, in one table. Its
 /// capabilities read as the list the file names, `C` a `Vec`, which `checked` makes a set the

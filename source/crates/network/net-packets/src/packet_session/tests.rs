@@ -1,6 +1,6 @@
-use super::*;
 use campfire_net_payload::PayloadToken;
 
+use super::*;
 use crate::bandwidth_limit::BandwidthLimit;
 use crate::open_error::OpenError;
 use crate::received_window::MAX_ACK_DELAY;

@@ -1,12 +1,11 @@
 //! `atomic/udp/admission/…`: a server's admission of a run of handshakes, a flood and rejoins.
-
-use campfire_net_core::Instant;
 use core::time::Duration;
 use std::hint::black_box;
 use std::net::{IpAddr, Ipv4Addr};
 use std::num::NonZeroU32;
 
 use campfire_measure::{INPUTS, Kind, Scale};
+use campfire_net_core::Instant;
 use criterion::{BatchSize, Criterion};
 
 use crate::admission::Admission;

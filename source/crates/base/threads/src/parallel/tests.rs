@@ -1,6 +1,6 @@
-use super::*;
-
 use std::sync::{Barrier, Mutex};
+
+use super::*;
 
 /// Each index runs once and its result comes back in its place; no indices give nothing.
 #[test]

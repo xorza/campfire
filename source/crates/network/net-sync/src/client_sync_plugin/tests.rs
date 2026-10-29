@@ -1,21 +1,19 @@
-use super::*;
-use campfire_math::TickRate;
-
-use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use core::time::Duration;
 
-use campfire_net_connection::NetworkingState;
-use campfire_net_timeline::TimelinePlugins;
-
-use crate::client_sync_plugins::ClientSyncPlugins;
-use crate::sync_plugins::SyncPlugins;
-
 use bevy_ecs::prelude::*;
+use bevy_time::{TimePlugin, TimeUpdateStrategy};
+use campfire_math::TickRate;
+use campfire_net_connection::NetworkingState;
 use campfire_net_core::NetTick;
 use campfire_net_core::TickInstant;
 use campfire_net_link::Linked;
 use campfire_net_timeline::Rollback;
+use campfire_net_timeline::TimelinePlugins;
 use campfire_net_transport::TransportSystems;
+
+use super::*;
+use crate::client_sync_plugins::ClientSyncPlugins;
+use crate::sync_plugins::SyncPlugins;
 
 #[derive(Resource, Default)]
 struct SeenAtReceive(Option<TickInstant>);

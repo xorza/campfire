@@ -29,7 +29,7 @@ macro_rules! rules {
     };
 }
 
-const RULES: [Rule; 47] = rules![
+const RULES: [Rule; 48] = rules![
     bans::each_banned_call_goes_through_its_proxy_alone,
     bans::a_crates_clippy_toml_is_the_workspaces_with_its_own_entries,
     bans::no_tick_reads_removals_that_age_with_the_app,
@@ -66,6 +66,7 @@ const RULES: [Rule; 47] = rules![
     platform::only_the_platform_module_names_an_os,
     re_exports::no_crate_re_exports_another_crate,
     re_exports::no_module_re_exports_its_own_crates_item,
+    source_files::a_files_imports_go_std_then_other_crates_then_its_own,
     source_files::a_module_is_gated_by_a_bare_cfg_of_test_or_internals,
     suffixes::a_declared_name_keeps_its_suffix,
     suffixes::a_package_data_struct_refuses_a_field_it_does_not_hold,

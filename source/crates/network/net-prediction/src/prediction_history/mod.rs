@@ -3,9 +3,9 @@
 //! The prediction history is used to:
 //! 1. Compare local predicted values with confirmed values from the server to detect mismatches
 //! 2. Rollback to a past local state and replay the simulation
+use core::fmt::{self, Debug, Display};
+use core::iter::FilterMap;
 
-use crate::locally_predicted::LocallyPredicted;
-use crate::prediction_setup::PredictionSetup;
 use bevy_ecs::component::ComponentIdFor;
 use bevy_ecs::prelude::*;
 use bevy_ecs::resource::IsResource;
@@ -30,9 +30,10 @@ use campfire_net_replication::Predicted;
 use campfire_net_sync::{InputTimelineSetup, SyncedLocalTimeline};
 use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::LocalTimelineShift;
-use core::fmt::{self, Debug, Display};
-use core::iter::FilterMap;
 use tracing::trace;
+
+use crate::locally_predicted::LocallyPredicted;
+use crate::prediction_setup::PredictionSetup;
 
 /// Holds the history of locally predicted component states, to allow for rollback.
 ///

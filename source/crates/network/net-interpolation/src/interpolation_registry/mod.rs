@@ -1,18 +1,18 @@
-use crate::interpolation_holders::InterpolationHolders;
-use crate::interpolation_rule_id::InterpolationRuleId;
-use crate::member_mode::MemberMode;
-use crate::registered_rule::RegisteredRule;
-use crate::rule_resolution::{ResolvedRule, RuleResolutionScratch};
 use bevy_app::App;
-use campfire_net_replication::HistoryComponent;
-
 use bevy_ecs::archetype::{Archetype, Archetypes};
 use bevy_ecs::component::Components;
 use bevy_ecs::prelude::*;
 use campfire_net_core::RegistrySeal;
 use campfire_net_frame_interpolation::ArchetypeSet;
-use campfire_net_replication::ComponentTypeId;
+use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::ReplicationKind;
+use campfire_net_replication::{ComponentTable, ComponentTypeId, PendingInstalls};
+
+use crate::interpolation_holders::InterpolationHolders;
+use crate::interpolation_rule_id::InterpolationRuleId;
+use crate::member_mode::MemberMode;
+use crate::registered_rule::RegisteredRule;
+use crate::rule_resolution::{ResolvedRule, RuleResolutionScratch};
 
 /// The interpolation rules and what each component interpolates with, which the registration
 /// APIs, [`InterpolationRegistrationExt::interpolate`](crate::InterpolationRegistrationExt) and
@@ -29,35 +29,20 @@ pub struct InterpolationRegistry {
     /// Sealed as the app finishes its plugins, after which a rule would install no system.
     seal: RegistrySeal<()>,
     /// The rules registered so far, built by [`finish`] once every member's mode is known.
-    pending: PendingRules,
-    /// What the registry holds of each component, sorted by its type.
-    components: Vec<ComponentEntry>,
+    pending: PendingInstalls,
+    /// What the registry holds of each component.
+    components: ComponentTable<ComponentEntry>,
 }
 
 /// What the registry holds of one component.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct ComponentEntry {
-    type_id: ComponentTypeId,
     /// How its confirmed history is written, as its registration recorded it.
     mode: Option<MemberMode>,
     /// How its installed confirmed history system takes its replication.
     history_system: Option<ReplicationKind>,
     /// Whether its receive fns are set under the interpolation markers.
     marker_fns: bool,
-}
-
-/// A registered rule, built once the app finishes its plugins.
-pub(crate) type PendingRule = Box<dyn FnOnce(&mut App) + Send + Sync>;
-
-#[derive(Default)]
-struct PendingRules(Vec<PendingRule>);
-
-impl core::fmt::Debug for PendingRules {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("PendingRules")
-            .field("len", &self.0.len())
-            .finish()
-    }
 }
 
 /// The app's interpolation registry, created by its first registration, which must come before
@@ -73,10 +58,7 @@ pub(crate) fn open(app: &mut App) -> Mut<'_, InterpolationRegistry> {
 /// Builds every registered rule, now that each member's mode is known, and finalizes the
 /// registry: `InterpolationRegistryPlugin::finish`.
 pub(crate) fn finish(app: &mut App) {
-    let pending = core::mem::take(&mut open(app).pending.0);
-    for rule in pending {
-        rule(app);
-    }
+    open(app).pending.take().run(app);
     app.world_mut()
         .resource_mut::<InterpolationRegistry>()
         .finalize();
@@ -89,8 +71,8 @@ impl InterpolationRegistry {
     }
 
     /// Queues `rule` for [`finish`].
-    pub(crate) fn defer(&mut self, rule: PendingRule) {
-        self.pending.0.push(rule);
+    pub(crate) fn defer(&mut self, rule: impl FnOnce(&mut App) + Send + Sync + 'static) {
+        self.pending.push(rule);
     }
 
     /// Records how `C`'s confirmed history is written.
@@ -146,30 +128,12 @@ impl InterpolationRegistry {
     }
 
     fn component(&self, type_id: &ComponentTypeId) -> Option<&ComponentEntry> {
-        self.components
-            .binary_search_by_key(type_id, |entry| entry.type_id)
-            .ok()
-            .map(|index| &self.components[index])
+        self.components.get(*type_id)
     }
 
     /// The entry of `type_id`, which goes in if it is not there.
     fn component_mut(&mut self, type_id: ComponentTypeId) -> &mut ComponentEntry {
-        let index = self
-            .components
-            .binary_search_by_key(&type_id, |entry| entry.type_id)
-            .unwrap_or_else(|index| {
-                self.components.insert(
-                    index,
-                    ComponentEntry {
-                        type_id,
-                        mode: None,
-                        history_system: None,
-                        marker_fns: false,
-                    },
-                );
-                index
-            });
-        &mut self.components[index]
+        self.components.entry(type_id, ComponentEntry::default)
     }
 
     fn assert_open(&self) {

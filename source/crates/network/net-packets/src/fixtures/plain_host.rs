@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_platform::time::Instant as OsInstant;
+use campfire_common::ChannelBinding;
 use campfire_net_core::Instant;
 use campfire_net_payload::{
     OutgoingPayload, PacketSessionQueues, PayloadFate, PayloadKind, PayloadToken, UnlinkReason,
@@ -14,7 +15,6 @@ use crate::endpoint_core::{EndpointTime, News, PeerKey};
 use crate::endpoint_pieces::EndpointPieces;
 use crate::endpoint_runtime::{EndpointRuntime, HoldTiming, PassScratch};
 use crate::fixtures::hold_clock::HoldClock;
-use campfire_common::ChannelBinding;
 
 /// The carrier of a client's one packet session: the host's own.
 pub const CLIENT: u32 = 0;

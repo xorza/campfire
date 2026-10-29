@@ -1,13 +1,14 @@
-use crate::ready_buffer::ReadyBuffer;
+use core::time::Duration;
+
 use bytes::Bytes;
 use campfire_net_core::Instant;
-use core::time::Duration;
 
 use crate::direction_counts::DirectionCounts;
 use crate::link_model::LinkModel;
 use crate::link_model_run::{Arrival, LinkModelRun};
 use crate::phase::Phase;
 use crate::phase_mode::PhaseMode;
+use crate::ready_buffer::ReadyBuffer;
 
 /// One direction of an emulated link: its model, its timeline of phases, and the packets on it.
 #[derive(Debug)]

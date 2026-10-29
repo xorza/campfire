@@ -1,5 +1,3 @@
-use crate::send_map_view::SendMapView;
-use crate::serialize_fns::ErasedSerializeFns;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::FilteredEntityMut;
 use campfire_net_bytes::ToBytes;
@@ -9,6 +7,9 @@ use campfire_net_core::NetId;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
 use tracing::trace;
+
+use crate::send_map_view::SendMapView;
+use crate::serialize_fns::ErasedSerializeFns;
 
 /// The values a sender holds until the frame sends them: the queue under
 /// `MessageSender<M>` and

@@ -1,10 +1,9 @@
 //! One link's packet stream, with no IO: it numbers, seals and acknowledges packets, finds their
 //! losses, and keeps the timers, while its endpoint moves its datagrams and the frame's payloads.
-
-use bytes::{Buf, BytesMut};
 use core::time::Duration;
 use std::collections::VecDeque;
 
+use bytes::{Buf, BytesMut};
 use campfire_net_bytes::ByteArena;
 use campfire_net_core::Instant;
 use campfire_net_payload::{

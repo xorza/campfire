@@ -1,11 +1,6 @@
 //! Receiver-side history support for diff-replicated confirmed state.
-
 use core::marker::PhantomData;
 
-use crate::component_codec::ComponentCodec;
-use crate::confirmed_history::{self, ConfirmedHistory, ReceivedValue};
-use crate::history_component::HistoryComponent;
-use crate::history_state::HistoryState;
 use bevy_ecs::error::BevyError;
 use bevy_ecs::prelude::{Entity, Query, ResMut};
 use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
@@ -17,6 +12,11 @@ use bytes::Bytes;
 use campfire_net_core::NetTick;
 use campfire_net_core::Ticked;
 use tracing::debug;
+
+use crate::component_codec::ComponentCodec;
+use crate::confirmed_history::{self, ConfirmedHistory, ReceivedValue};
+use crate::history_component::HistoryComponent;
+use crate::history_state::HistoryState;
 
 /// Why a diff message could not be queued or materialized.
 #[derive(Debug)]

@@ -1,7 +1,8 @@
-use crate::message_id::MessageId;
 use bytes::Bytes;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::WriteInteger;
+
+use crate::message_id::MessageId;
 
 /// A message too large for one packet: its bytes once, which each fragment slices at its index,
 /// and the state of each fragment.

@@ -4,6 +4,11 @@ use std::time::Duration;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_bots::OrderScript;
 use campfire_common::{ChannelBinding, DeclaredName};
+use campfire_host::Os;
+use campfire_host::PlannedBot;
+use campfire_host::SessionTimes;
+use campfire_host::UnixClock;
+use campfire_host::{Join, JoinRole};
 use campfire_mode::{PickError, PlayerSlotPickError};
 use campfire_net_connection::RemoteId;
 use campfire_net_core::PeerId;
@@ -20,11 +25,6 @@ use campfire_visibility::{OutView, Setting, SpectatorFog, Visibility, Visibility
 
 use super::*;
 use crate::sim_server::offering::Offered;
-use campfire_host::Os;
-use campfire_host::PlannedBot;
-use campfire_host::SessionTimes;
-use campfire_host::UnixClock;
-use campfire_host::{Join, JoinRole};
 
 /// A session of the lane mode's 2 player slots, with bots in player slots `bots` and player slots
 /// `open` open.

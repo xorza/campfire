@@ -1,11 +1,12 @@
+use bevy_app::{PluginGroup, PluginGroupBuilder};
+use bevy_replicon::server::ServerPlugin;
+
 use crate::control_plugin::ControlPlugin;
 use crate::hierarchy_send_plugin::HierarchySendPlugin;
 use crate::inheritance_plugin::InheritancePlugin;
 use crate::network_visibility_plugin::NetworkVisibilityPlugin;
 use crate::server_replicon_plugin::ServerRepliconPlugin;
 use crate::server_send_plugin::ServerSendPlugin;
-use bevy_app::{PluginGroup, PluginGroupBuilder};
-use bevy_replicon::server::ServerPlugin;
 
 /// A server's replication, on [`ReplicationPlugins`](crate::ReplicationPlugins): Replicon's
 /// server, the stack's send, control, hierarchy, inheritance and visibility.

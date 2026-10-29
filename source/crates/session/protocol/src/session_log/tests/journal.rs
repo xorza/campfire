@@ -45,6 +45,28 @@ fn a_journal_rebuilds_the_log_it_followed() {
     let kinds: Vec<u8> = records(&journal).iter().map(|record| record[0]).collect();
     assert_eq!(kinds, [0, 1, 2, 3, 6, 4, 1, 5]);
 
+    // A rebuild trusts the signatures before its base, the checkpoint recorded at 5, as the
+    // server's own, and checks those after it: a packet's signature, its last byte flipped,
+    // passes at 1 and fails at 6, as the result's does at 7.
+    let flipped = |at: usize| {
+        let mut held: Vec<Vec<u8>> = records(&journal)
+            .iter()
+            .map(|record| record.to_vec())
+            .collect();
+        *held[at].last_mut().unwrap() ^= 1;
+        SessionLog::from_journal(held.iter().map(Vec::as_slice), RELEASE).err()
+    };
+    assert_eq!(flipped(1), None);
+    assert_eq!(flipped(2), None);
+    assert_eq!(
+        flipped(6),
+        Some(JournalReplayError::BadSignature { record: 6 })
+    );
+    assert_eq!(
+        flipped(7),
+        Some(JournalReplayError::BadSignature { record: 7 })
+    );
+
     // Kept at the end: the log writes what it holds, the same records.
     let mut log = new_log();
     play_minimal(&mut log, None);
@@ -143,8 +165,9 @@ fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
     // The log the journal rebuilds, once its journal resumes, holds every chain durably.
     drop(journal);
     let journal = file.bytes();
-    let rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
-    let resumed = Journal::resume(&rebuilt, MemorySink::new().boxed(), len(journal.len()));
+    let rebuilt = ReplayedJournal::of(records(&journal), RELEASE).unwrap();
+    let sink = MemorySink::new().boxed();
+    let resumed = Journal::resume(&rebuilt.log, sink, len(journal.len()), rebuilt.shape);
     assert_eq!(resumed.durable_head(player_slot), Some(head));
     assert_eq!(resumed.durable_head(PlayerSlot::new(0)), None);
 }
@@ -181,8 +204,9 @@ fn a_renewal_forgets_where_the_chain_stands_durably() {
     assert_eq!(journal.durable_head(player_slot), None);
     drop(journal);
     let journal = file.bytes();
-    let rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
-    let resumed = Journal::resume(&rebuilt, MemorySink::new().boxed(), len(journal.len()));
+    let rebuilt = ReplayedJournal::of(records(&journal), RELEASE).unwrap();
+    let sink = MemorySink::new().boxed();
+    let resumed = Journal::resume(&rebuilt.log, sink, len(journal.len()), rebuilt.shape);
     assert_eq!(resumed.durable_head(player_slot), None);
 }
 
@@ -194,11 +218,21 @@ fn a_journal_publishes_the_file_its_log_writes() {
     let file = MemorySink::new();
     let mut journal = Journal::start(&log, file.boxed());
     play_minimal(&mut log, Some(&mut journal));
-    drop(journal);
+    let kept = journal.close();
     assert_eq!(published_from(&file.bytes()), Ok(encoded(&minimal())));
+    // The shape the journal kept as it appended is the one a read of its file finds, and the one
+    // a restore rebuilds.
+    let bytes = file.bytes();
+    let mut walk = |visit: &mut dyn FnMut(&[u8])| {
+        JournalFrames::new(&bytes).unwrap().for_each(visit);
+        Ok(())
+    };
+    assert_eq!(JournalShape::read(&mut walk).unwrap(), kept);
+    let replayed = ReplayedJournal::of(JournalFrames::new(&bytes).unwrap(), RELEASE).unwrap();
+    assert_eq!(replayed.shape, kept);
 
-    // A walk that stops short of the journal's end in its second pass, as a read of its file
-    // fails after the first, publishes nothing, though its first pass found the log whole.
+    // A walk that stops short of the journal's end, as a read of its file fails, publishes
+    // nothing, though the shape holds the log whole.
     let bytes = file.bytes();
     let mut walks = 0;
     let mut walk = |visit: &mut dyn FnMut(&[u8])| {
@@ -212,7 +246,8 @@ fn a_journal_publishes_the_file_its_log_writes() {
         }
         if walks == 1 { Ok(()) } else { Err(WalkStopped) }
     };
-    let published = SessionLog::publish(&mut walk, &SEED_CHAIN.seed(1), &mut Vec::new());
+    let shape = JournalShape::read(&mut walk).unwrap();
+    let published = SessionLog::publish(&shape, &mut walk, &SEED_CHAIN.seed(1), &mut Vec::new());
     assert!(matches!(
         published,
         Err(PublishWriteError::Walk(WalkStopped))

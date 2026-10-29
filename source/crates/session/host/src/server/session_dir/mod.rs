@@ -11,8 +11,8 @@ use campfire_common::{ErrorReport, Version};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    JournalFrames, JournalReplay, PublishWriteError, ServerSeed, SessionId, SessionLog,
-    SessionPrivate, SessionTerms, Signer, WalkStopped,
+    JournalFrames, JournalReplay, JournalShape, PublishWriteError, ReplayedJournal, ServerSeed,
+    SessionId, SessionLog, SessionPrivate, SessionTerms, Signer, WalkStopped,
 };
 use campfire_runner::{
     CheckedTerms, ResumeAt, Session, SessionRules, SessionSource, SessionWorld, StartError,
@@ -67,6 +67,8 @@ pub struct RestoredSession {
     pub files: SessionFiles,
     /// The bytes its journal holds: the tag and the whole frames.
     pub journal_len: u64,
+    /// The shape of its journal's records, read as the log was.
+    pub shape: JournalShape,
     /// When the journal was last written.
     pub modified: SystemTime,
 }
@@ -229,7 +231,7 @@ impl SessionDir {
             cut.log_dropped();
             return Ok(None);
         };
-        let log = replay.finish();
+        let ReplayedJournal { log, shape } = replay.finish().map_err(RestoreError::Replay)?;
         if log.session_id() != self.session {
             return Err(RestoreError::OtherSession(log.session_id()));
         }
@@ -246,6 +248,7 @@ impl SessionDir {
                 snapshots: self.snapshots(),
             },
             journal_len: whole,
+            shape,
             modified,
         }))
     }
@@ -255,17 +258,22 @@ impl SessionDir {
         DurableDir::remove(&self.path)
     }
 
-    /// Publishes the log of `session`, which its journal under `data` holds whole, with the
-    /// server seed `revealed` of its last segment, in `data`, written durably, as `publish_into`
-    /// writes it; the file's path.
+    /// Publishes the log of `session`, which its journal under `data` holds whole, of the shape
+    /// `shape`, with the server seed `revealed` of its last segment, in `data`, written durably,
+    /// as `publish_into` writes it; the file's path.
     pub fn publish(
         data: &ServerDir,
         session: SessionId,
+        shape: &JournalShape,
         revealed: &ServerSeed,
     ) -> Result<PathBuf, SessionPublishError> {
         DurableDir::create(&data.layout().logs_dir())?;
         let file = data.layout().published_log(session);
-        Self::publish_into(data, session, Bound::Whole, revealed, &file)?;
+        let journal = JournalBound {
+            shape,
+            bound: Bound::Whole,
+        };
+        Self::publish_into(data, session, journal, revealed, &file)?;
         Ok(file)
     }
 
@@ -298,13 +306,17 @@ impl SessionDir {
             let session = world.resource::<Session>();
             let (id, seed) = (session.log().session_id(), session.last_seed());
             let data = world.resource::<ServerDir>();
-            for DueReport { dir, bytes } in reports.due(id, durable) {
+            for DueReport { dir, bytes, shape } in reports.due(id, durable) {
                 let file = dir.log();
                 if let Err(problem) = dir.create() {
                     error!(file = %file.display(), error = %ErrorReport::of(&problem), "could not make the report's folder");
                     continue;
                 }
-                match Self::publish_into(data, id, Bound::Bytes(bytes), seed, &file) {
+                let journal = JournalBound {
+                    shape: &shape,
+                    bound: Bound::Bytes(bytes),
+                };
+                match Self::publish_into(data, id, journal, seed, &file) {
                     Ok(()) => info!(file = %file.display(), "wrote the log so far into the report"),
                     Err(problem) => {
                         error!(file = %file.display(), error = %ErrorReport::of(&problem), "could not write the log into the report");
@@ -314,23 +326,24 @@ impl SessionDir {
         });
     }
 
-    /// Writes durably into `file` the log of `session`, whose journal under `data` holds it in
-    /// `bound` of its bytes, with the server seed `revealed` of its last segment: the file the
-    /// journal publishes in two streaming reads (08-sessions.md, A published log is written from
-    /// the journal), so a session's log is never whole in memory, and a bound keeps a read off the
+    /// Writes durably into `file` the log of `session`, whose journal under `data` holds it as
+    /// `journal` says, with the server seed `revealed` of its last segment: the file the journal
+    /// publishes in one streaming read (08-sessions.md, A published log is written from the
+    /// journal), so a session's log is never whole in memory, and a bound keeps the read off the
     /// frames the journal's writer appends after it.
     pub(crate) fn publish_into(
         data: &ServerDir,
         session: SessionId,
-        bound: Bound,
+        journal: JournalBound<'_>,
         revealed: &ServerSeed,
         file: &Path,
     ) -> Result<(), SessionPublishError> {
+        let JournalBound { shape, bound } = journal;
         let dir = Self {
             session,
             path: data.layout().session_dir(session),
         };
-        let journal = dir.journal();
+        let path = dir.journal();
         // A walk that fails keeps why, and stops the publication before its file is named.
         let mut failed = None;
         let mut walk = |visit: &mut dyn FnMut(&[u8])| {
@@ -341,7 +354,7 @@ impl SessionDir {
                 visit(record);
                 ControlFlow::Continue(())
             };
-            let streamed = InputFile::stream(&journal, SessionLog::MAX_JOURNAL_LEN)
+            let streamed = InputFile::stream(&path, SessionLog::MAX_JOURNAL_LEN)
                 .map_err(SessionPublishError::Read)
                 .and_then(|stream| {
                     let streamed = match bound {
@@ -357,17 +370,18 @@ impl SessionDir {
         };
         // A journal that does not publish ends the write, and its error is the publication's.
         let mut unpublished = None;
-        let mut fill = |out: &mut dyn Write| match SessionLog::publish(&mut walk, revealed, out) {
-            Ok(()) => Ok(()),
-            Err(PublishWriteError::Write(error)) => Err(error),
-            Err(PublishWriteError::Walk(WalkStopped)) => {
-                Err(io::Error::other("a walk of the journal stopped short"))
-            }
-            Err(PublishWriteError::Journal(error)) => {
-                unpublished = Some(error);
-                Err(io::Error::other("the journal does not publish"))
-            }
-        };
+        let mut fill =
+            |out: &mut dyn Write| match SessionLog::publish(shape, &mut walk, revealed, out) {
+                Ok(()) => Ok(()),
+                Err(PublishWriteError::Write(error)) => Err(error),
+                Err(PublishWriteError::Walk(WalkStopped)) => {
+                    Err(io::Error::other("a walk of the journal stopped short"))
+                }
+                Err(PublishWriteError::Journal(error)) => {
+                    unpublished = Some(error);
+                    Err(io::Error::other("the journal does not publish"))
+                }
+            };
         let written = DurableFile::write_with(file, &mut fill);
         if let Some(error) = failed {
             return Err(error);
@@ -386,6 +400,13 @@ impl SessionDir {
 pub(crate) enum Bound {
     Whole,
     Bytes(u64),
+}
+
+/// The journal a publication reads: the shape of its records within `bound`, and the bound.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct JournalBound<'a> {
+    pub(crate) shape: &'a JournalShape,
+    pub(crate) bound: Bound,
 }
 
 /// What a session's replay leaves beside its match: the watch of its journal, and its
@@ -434,6 +455,7 @@ impl RestoredSession {
             log,
             files: SessionFiles { journal, snapshots },
             journal_len,
+            shape,
             ..
         } = self;
         let ticks = log.next_tick();
@@ -464,7 +486,10 @@ impl RestoredSession {
         let journal = JournalWatch::keep(
             &mut world.resource_mut::<Session>(),
             journal,
-            JournalFrom::End { len: journal_len },
+            JournalFrom::End {
+                len: journal_len,
+                shape,
+            },
         );
         let resumed = world.session().next_tick();
         world.replay_to(ticks, |world| {
@@ -509,12 +534,15 @@ impl RestoredSession {
                 .expect("the server's own result holds");
         }
         world.session_mut().reveal_seed();
-        world.session_mut().close_journal();
+        let shape = world
+            .session_mut()
+            .close_journal()
+            .expect("a restored session keeps its journal");
         let session = world.resource::<Session>();
         let log = session.log();
         let last = session.last_seed();
-        let file =
-            SessionDir::publish(data, log.session_id(), last).map_err(AbortError::Publish)?;
+        let file = SessionDir::publish(data, log.session_id(), &shape, last)
+            .map_err(AbortError::Publish)?;
         SessionAborted {
             session: log.session_id(),
             file: file.clone(),

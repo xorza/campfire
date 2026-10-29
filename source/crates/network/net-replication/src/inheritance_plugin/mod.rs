@@ -1,6 +1,15 @@
 //! Hierarchy members follow the replication aspects of their root.
 //!
 //! The policy is in (11-net-stack/replication.md, Hierarchy inheritance).
+use core::fmt::Debug;
+
+use bevy_app::prelude::*;
+use bevy_ecs::component::Immutable;
+use bevy_ecs::prelude::*;
+use bevy_ecs::query::QueryData;
+use bevy_ecs::system::SystemParam;
+use bevy_replicon::server::visibility::client_visibility::ClientVisibility;
+
 use crate::deferred_entity_commands::DeferredEntityCommands;
 use crate::manual_visibility::ManualVisibility;
 use crate::overridden::Overridden;
@@ -11,13 +20,6 @@ use crate::replication_target::PredictionTarget;
 use crate::replication_target::Replicate;
 use crate::rooms::Rooms;
 use crate::visibility_bits::VisibilityBits;
-use bevy_app::prelude::*;
-use bevy_ecs::component::Immutable;
-use bevy_ecs::prelude::*;
-use bevy_ecs::query::QueryData;
-use bevy_ecs::system::SystemParam;
-use bevy_replicon::server::visibility::client_visibility::ClientVisibility;
-use core::fmt::Debug;
 
 /// Keeps each aspect that a hierarchy member follows equal to its root's
 /// (11-net-stack/replication.md, Detaching never widens what an entity replicates).

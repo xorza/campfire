@@ -8,6 +8,17 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::Mut;
 use campfire_common::ChannelBinding;
+use campfire_host::Dismissed;
+use campfire_host::JoinError;
+use campfire_host::JoinRefused;
+use campfire_host::Joined;
+use campfire_host::PlayerLink;
+use campfire_host::PlayerSlots;
+use campfire_host::ServerSetup;
+use campfire_host::SessionOffer;
+use campfire_host::SessionTimes;
+use campfire_host::UnixClock;
+use campfire_host::{Join, JoinRole};
 use campfire_log::LogEvent;
 use campfire_net_connection::{ClientOf, Connected, Disconnect};
 use campfire_net_endpoint::LinkBinding;
@@ -22,17 +33,6 @@ use tracing::debug;
 
 use crate::close_code::CloseCode;
 use crate::net_protocol::MatchChannel;
-use campfire_host::Dismissed;
-use campfire_host::JoinError;
-use campfire_host::JoinRefused;
-use campfire_host::Joined;
-use campfire_host::PlayerLink;
-use campfire_host::PlayerSlots;
-use campfire_host::ServerSetup;
-use campfire_host::SessionOffer;
-use campfire_host::SessionTimes;
-use campfire_host::UnixClock;
-use campfire_host::{Join, JoinRole};
 
 /// How long an offer that got no answer waits before it goes again, in the server's real time, as
 /// the window to answer it is: a second, the 30 ticks it waited at 30 Hz.

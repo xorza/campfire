@@ -1,5 +1,6 @@
-use crate::data_kind::DataKind;
 use thiserror::Error;
+
+use crate::data_kind::DataKind;
 
 /// Why the visibility a session's terms hold does not read: terms come from a server or a
 /// published log, so each is an expected failure.

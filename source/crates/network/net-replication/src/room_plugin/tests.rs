@@ -1,23 +1,20 @@
-use super::*;
-use crate::fixtures::replication_stack::ReplicationStack;
-use crate::fixtures::steps::ClientCopies;
-use crate::fixtures::steps::PROPAGATION_FRAMES;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::VisibilityFilter;
+use bevy_replicon::prelude::{AuthMethod, RepliconSharedPlugin};
+use bevy_replicon::server::ServerPlugin;
 use bevy_replicon::server::visibility::client_visibility::ClientVisibility;
+use bevy_state::app::StatesPlugin;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_connection::{ClientOf, Connected};
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 
-use crate::room_id::RoomId;
-
+use super::*;
+use crate::fixtures::replication_stack::ReplicationStack;
+use crate::fixtures::steps::ClientCopies;
+use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::replication_target::Replicate;
-
-use bevy_replicon::prelude::{AuthMethod, RepliconSharedPlugin};
-use bevy_replicon::server::ServerPlugin;
-
-use bevy_state::app::StatesPlugin;
+use crate::room_id::RoomId;
 
 /// App with the rooms filter, without networking.
 fn rooms_app() -> App {

@@ -1,9 +1,11 @@
-use crate::send_message_key::SendMessageKey;
+use core::ops::Range;
+use std::collections::VecDeque;
+
 use campfire_net_core::NetId;
 use campfire_net_core::NetTick;
 use campfire_net_payload::PayloadToken;
-use core::ops::Range;
-use std::collections::VecDeque;
+
+use crate::send_message_key::SendMessageKey;
 
 /// The packets a transport gave its packet session and whose fate the packet session has not
 /// reported: the tick each carried, which the tick encoder learns at its delivery, and the reliable

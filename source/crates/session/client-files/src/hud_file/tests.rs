@@ -1,7 +1,6 @@
-use campfire_codec::Toml;
-
 use std::num::NonZeroU8;
 
+use campfire_codec::Toml;
 use campfire_common::DeclaredName;
 
 use super::*;

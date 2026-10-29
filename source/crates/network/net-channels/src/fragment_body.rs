@@ -1,12 +1,14 @@
-use crate::fragment_count::FragmentCount;
-use crate::fragment_index::FragmentIndex;
-use crate::message_id::MessageId;
+use core::fmt::Debug;
+
 use bytes::Bytes;
 use campfire_net_bytes::Reader;
 use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::WriteInteger;
-use core::fmt::Debug;
+
+use crate::fragment_count::FragmentCount;
+use crate::fragment_index::FragmentIndex;
+use crate::message_id::MessageId;
 
 /// One fragment as a packet carries it: its message's id, its index, its message's fragment count
 /// and its bytes, which a read slices from the packet's.

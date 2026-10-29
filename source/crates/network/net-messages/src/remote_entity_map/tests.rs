@@ -1,10 +1,11 @@
-use super::*;
-use crate::receive_map_view::ReceiveMapView;
-use crate::send_map_view::SendMapView;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::{EntityMapper, hash_map::EntityHashMap};
 use bevy_ecs::query::With;
 use bevy_ecs::world::World;
+
+use super::*;
+use crate::receive_map_view::ReceiveMapView;
+use crate::send_map_view::SendMapView;
 
 fn local_pair() -> (SendEntityMap, ReceiveEntityMap, Entity, Entity) {
     let local = Entity::from_raw_u32(1).unwrap();

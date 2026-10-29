@@ -1,6 +1,7 @@
 use bevy_ecs::system::{Local, Res};
 use campfire_actions::{ProgressIndexes, SlotsMut, UseGroup};
 use campfire_players::{OrderedUnits, PlayerResources, PlayerRowsMut, TickCommands};
+use campfire_values::ItemId;
 use campfire_values::Team;
 use campfire_vision::{ByVision, SeenTargets};
 
@@ -8,7 +9,6 @@ use crate::inventory::{CarrierSlots, Inventory};
 use crate::item_book::ItemBook;
 use crate::items_directive::ItemsDirective;
 use crate::shopping::Shopping;
-use campfire_values::ItemId;
 
 /// The tick's orders that buy, sell or swap items.
 #[derive(Debug)]

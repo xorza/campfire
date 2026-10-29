@@ -1,11 +1,10 @@
+use bytes::Bytes;
+
 use super::*;
-
 use crate::fragment_body::FragmentBody;
-
 use crate::fragment_count::FragmentCount;
 use crate::fragment_index::FragmentIndex;
 use crate::single_body::SingleBody;
-use bytes::Bytes;
 
 #[test]
 fn a_message_id_wraps_at_u16_max() {

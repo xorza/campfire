@@ -1,8 +1,9 @@
+use bytes::Bytes;
+
 use crate::reader::Reader;
 use crate::serialization_error::SerializationError;
 use crate::var_int::VarInt;
 use crate::writer::WriteInteger;
-use bytes::Bytes;
 
 /// A value the stack's headers write to and read from bytes, whose write cannot fail.
 pub trait ToBytes {

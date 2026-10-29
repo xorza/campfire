@@ -1,10 +1,11 @@
+use campfire_net_replication::ComponentRegistrator;
+use campfire_net_replication::HistoryComponent;
+
 use crate::interpolation_fns::InterpolationFns;
 use crate::interpolation_mode::InterpolationMode;
 use crate::interpolation_registry;
 use crate::interpolation_rule::InterpolationRule;
 use crate::rule_building;
-use campfire_net_replication::ComponentRegistrator;
-use campfire_net_replication::HistoryComponent;
 
 /// Interpolation on a component's registration, which takes its mode from the registration's
 /// replication kind.

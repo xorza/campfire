@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, Fact};
 use campfire_navigation::{MarkerPoint, NavigationBook, Paths, PlacedBody};
@@ -5,7 +7,6 @@ use campfire_units::{BodyForm, MapPoint, Variation, Variations};
 use campfire_values::{
     Names, NamesError, PackageIndex, Relations, Team, TypeScope, UnitType, VisionShare,
 };
-use std::sync::Arc;
 
 use crate::error::ModeError;
 use crate::map_data::MapData;

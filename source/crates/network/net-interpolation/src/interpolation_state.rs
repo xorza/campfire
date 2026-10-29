@@ -1,6 +1,7 @@
+use core::time::Duration;
+
 use bevy_reflect::Reflect;
 use campfire_net_sync::SyncHysteresis;
-use core::time::Duration;
 
 #[derive(Debug, Reflect)]
 pub struct InterpolationState {

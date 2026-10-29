@@ -1,11 +1,10 @@
-use super::*;
-
-use crate::connection_plugins::ConnectionPlugins;
-use crate::connection_state::DisconnectedReason;
+use campfire_net_core::PeerId;
 use campfire_net_payload::AppCode;
 
+use super::*;
+use crate::connection_plugins::ConnectionPlugins;
+use crate::connection_state::DisconnectedReason;
 use crate::remote_id::RemoteId;
-use campfire_net_core::PeerId;
 
 fn app() -> App {
     let mut app = App::new();

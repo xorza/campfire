@@ -6,10 +6,13 @@
 #![warn(clippy::float_arithmetic)]
 
 mod events;
+mod log_text;
 mod report_replay;
 mod verification;
 
 pub use crate::events::verified::Verified;
+pub use crate::log_text::error::ShowError;
+pub use crate::log_text::{show_file, show_log};
 pub use crate::report_replay::error::ReportReplayError;
 pub use crate::report_replay::{ReportProbe, replay_report};
 pub use crate::verification::error::VerifyError;

@@ -1,3 +1,12 @@
+use bevy_replicon::server::visibility::registry::FilterRegistry;
+use bevy_replicon::shared::replication::registry::ReplicationRegistry;
+use campfire_net_connection::NetworkTarget;
+use campfire_net_despawns::DespawnReplicated;
+use campfire_net_messages::LinkMessages;
+use campfire_net_stepper::Stepper;
+use campfire_net_stepper::StepperSetup;
+use tracing::info;
+
 use super::*;
 use crate::fixtures::protocol::*;
 use crate::fixtures::replication_stack::ReplicationStack;
@@ -6,15 +15,6 @@ use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::inheritance_plugin::InheritancePlugin;
 use crate::replication_target::Replicate;
 use crate::visibility_ext::VisibilityExt;
-use campfire_net_connection::NetworkTarget;
-use campfire_net_despawns::DespawnReplicated;
-use campfire_net_messages::LinkMessages;
-use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperSetup;
-use tracing::info;
-
-use bevy_replicon::server::visibility::registry::FilterRegistry;
-use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 
 /// App with visibility inheritance and one fake sender, without networking.
 fn visibility_app() -> (App, Entity) {

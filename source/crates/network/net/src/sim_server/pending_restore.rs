@@ -4,17 +4,17 @@ use bevy_app::AppExit;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_common::ErrorReport;
+use campfire_host::RestoredSession;
+use campfire_host::ServerBots;
+use campfire_host::ServerPhase;
+use campfire_host::ServerSetup;
+use campfire_host::SessionRestored;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_runner::{CheckedTerms, Session, SessionRules, TermsError};
 use tracing::error;
 
 use crate::sim_server::server_match::{MatchBegin, MatchSource, ServerMatch};
-use campfire_host::RestoredSession;
-use campfire_host::ServerBots;
-use campfire_host::ServerPhase;
-use campfire_host::ServerSetup;
-use campfire_host::SessionRestored;
 
 /// A session to restore in an app's first frame, as a match starts in a fixed tick: the one a stop
 /// ended, as its server starts again, or the one a load went back to. `SimServerPlugin` restores it

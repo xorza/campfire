@@ -1,9 +1,11 @@
 //! What one link puts on the emulated network for a fixed workload: exact counts for each
 //! direction, so a change to the wire shows as a diff of them (11-net-stack/testing.md, Bytes are
 //! golden tests, not benches).
+use core::num::NonZeroU32;
+use core::ops::Sub;
+use core::time::Duration;
 
 use bevy::prelude::*;
-
 use campfire_math::TickRate;
 use campfire_net_channels::{Channel, Channels};
 use campfire_net_connection::Connected;
@@ -21,9 +23,6 @@ use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::LinkEstimator;
 use campfire_net_transport::Transport;
 use campfire_net_transport::internals::{Channel1, ChannelOrderedReliable};
-use core::num::NonZeroU32;
-use core::ops::Sub;
-use core::time::Duration;
 
 use crate::fixtures::full_stack::FullStack;
 

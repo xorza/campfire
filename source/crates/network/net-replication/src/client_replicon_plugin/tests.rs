@@ -1,14 +1,15 @@
+use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
+use campfire_net_connection::NetworkTarget;
+use campfire_net_core::NetTick;
+use campfire_net_stepper::Stepper;
+use campfire_net_stepper::StepperSetup;
+
 use super::*;
 use crate::fixtures::protocol::CompA;
 use crate::fixtures::replication_stack::ReplicationStack;
 use crate::fixtures::steps::ClientCopies;
 use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::replication_target::Replicate;
-use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
-use campfire_net_connection::NetworkTarget;
-use campfire_net_core::NetTick;
-use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperSetup;
 
 /// When a client disconnects, all replicated entities on that client should be despawned.
 #[test]

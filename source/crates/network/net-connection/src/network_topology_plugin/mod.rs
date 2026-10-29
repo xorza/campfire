@@ -1,7 +1,11 @@
+use bevy_app::{App, Plugin, PostUpdate};
+use bevy_ecs::prelude::*;
+use campfire_common::ErrorReport;
+use campfire_net_link::{LinkSystems, Server};
+use smallvec::SmallVec;
+
 use crate::client::Client;
 use crate::connection_state::Connected;
-use campfire_common::ErrorReport;
-
 use crate::connection_state::Disconnected;
 use crate::network_topology::NetworkTopology;
 use crate::network_topology_error::NetworkTopologyError;
@@ -9,10 +13,6 @@ use crate::network_topology_systems::NetworkTopologySystems;
 use crate::networking_state::NetworkingState;
 use crate::server_state::Started;
 use crate::server_state::Stopped;
-use bevy_app::{App, Plugin, PostUpdate};
-use bevy_ecs::prelude::*;
-use campfire_net_link::{LinkSystems, Server};
-use smallvec::SmallVec;
 
 type TopologyComponents = (Client, Server, Connected, Disconnected, Started, Stopped);
 

@@ -1,3 +1,8 @@
+use bevy_app::App;
+use bevy_ecs::event::Event;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
 use crate::event_registration::EventRegistration;
 use crate::event_sender::EventSender;
 use crate::message_registry::{MessageModeFns, MessageRegistry, ReceiveEventFns, SenderFns};
@@ -6,10 +11,6 @@ use crate::send_queue::SendQueue;
 use crate::serialize_fns::CxDeserializeFns;
 use crate::serialize_fns::CxSerializeFns;
 use crate::serialize_fns::{default_deserialize, default_serialize};
-use bevy_app::App;
-use bevy_ecs::event::Event;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
 
 pub trait AppEventExt {
     /// Registers the trigger `M`, which encodes in `codec`'s binary encoding.

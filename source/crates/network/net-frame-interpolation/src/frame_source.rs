@@ -1,8 +1,9 @@
+use core::any::Any;
+use std::sync::Arc;
+
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::world::FilteredEntityRef;
 use campfire_net_core::NetTick;
-use core::any::Any;
-use std::sync::Arc;
 
 /// Where frame interpolation reads a component's values at the last two fixed ticks when another
 /// plugin keeps them, as prediction keeps a predicted component's history: the component that

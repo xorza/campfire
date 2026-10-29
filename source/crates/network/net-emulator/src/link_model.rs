@@ -1,7 +1,7 @@
 //! How one direction of a link carries packets.
+use core::time::Duration;
 
 use campfire_math::{Num, Rounding};
-use core::time::Duration;
 
 use crate::rate_limit::RateLimit;
 

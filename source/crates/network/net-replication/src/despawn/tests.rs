@@ -1,8 +1,9 @@
-use super::*;
 use bevy_replicon::prelude::RepliconTick;
 use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 use bevy_replicon::shared::replication::registry::test_fns::TestFnsEntityExt;
 use campfire_net_core::NetTick;
+
+use super::*;
 
 /// A world whose confirmed tick 1 maps to tick 10, under `policy`.
 fn world(policy: InterpolatedDespawn) -> World {

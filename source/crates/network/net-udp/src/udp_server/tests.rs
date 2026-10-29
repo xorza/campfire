@@ -1,3 +1,5 @@
+use core::time::Duration;
+
 use campfire_net_core::Instant;
 use campfire_net_core::TimeSource;
 use campfire_net_emulator::internals::per_mille;
@@ -5,7 +7,6 @@ use campfire_net_emulator::{DuplexModel, EmulatedNetwork, LinkModel};
 use campfire_net_packets::EmulatedWires;
 use campfire_net_packets::internals::{CLIENT, PlainHost};
 use campfire_net_payload::{PayloadFate, PayloadToken, UnlinkReason};
-use core::time::Duration;
 
 use crate::server_trust::ServerTrust;
 use crate::test_link::TestLink;

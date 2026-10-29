@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::names::NameId;
-use serde::{Deserialize, Serialize};
 
 /// An item type of the mode's item book, by its place there, the order of its id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

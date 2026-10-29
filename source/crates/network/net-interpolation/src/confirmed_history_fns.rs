@@ -1,8 +1,3 @@
-use crate::interpolate::{drain_old_history, queue_history_presence};
-use crate::interpolation_holders::InterpolationHolders;
-use crate::interpolation_phase_systems::InterpolationPhaseSystems;
-use crate::interpolation_timeline::InterpolationTimeline;
-use crate::pending_diffs::{Diffs, PendingDiffs, WholeValues};
 use bevy_app::{App, Update};
 use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
@@ -18,6 +13,12 @@ use campfire_net_replication::Interpolated;
 use campfire_net_replication::ReplicationKind;
 use campfire_net_timeline::NetworkTimeline;
 use tracing::trace;
+
+use crate::interpolate::{drain_old_history, queue_history_presence};
+use crate::interpolation_holders::InterpolationHolders;
+use crate::interpolation_phase_systems::InterpolationPhaseSystems;
+use crate::interpolation_timeline::InterpolationTimeline;
+use crate::pending_diffs::{Diffs, PendingDiffs, WholeValues};
 
 /// What a member that holds its confirmed history installs, once for its component: the system
 /// that maintains it.

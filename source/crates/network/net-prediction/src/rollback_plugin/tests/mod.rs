@@ -1,6 +1,10 @@
-use super::*;
-use crate::fixtures::prediction_stack::PredictionStack;
-use crate::prediction_registration_ext::PredictionRegistrationExt;
+use core::fmt::Debug;
+use core::time::Duration;
+
+use bevy_ecs::system::RunSystemOnce;
+use bevy_replicon::client::confirm_history::ConfirmHistory;
+use bevy_replicon::prelude::RepliconTick;
+use bevy_replicon::shared::replication::diff::diff_index::DiffIndex;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use bevy_time::Virtual;
 use campfire_math::TickRate;
@@ -10,24 +14,19 @@ use campfire_net_interpolation::internals::CompFull;
 use campfire_net_replication::AppComponentExt;
 use campfire_net_replication::ComponentRegistry;
 use campfire_net_replication::internals::ClientCopies;
-use campfire_net_replication::internals::PROPAGATION_FRAMES;
-
-use bevy_ecs::system::RunSystemOnce;
-
-use core::fmt::Debug;
-
-use crate::fixtures::protocol::{CompNotNetworked, CompPredictionOnly};
-use crate::fixtures::steps::{request_forced_rollback_at_completed_tick, trigger_state_rollback};
-use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
-use bevy_replicon::client::confirm_history::ConfirmHistory;
-use bevy_replicon::prelude::RepliconTick;
-use bevy_replicon::shared::replication::diff::diff_index::DiffIndex;
 use campfire_net_replication::internals::CompRepliconDiff;
+use campfire_net_replication::internals::PROPAGATION_FRAMES;
 use campfire_net_replication::{HistoryDiffReceiver, PredictionTarget, Replicate};
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_timeline::LocalTimelineShift;
-use core::time::Duration;
+
+use super::*;
+use crate::fixtures::prediction_stack::PredictionStack;
+use crate::fixtures::protocol::{CompNotNetworked, CompPredictionOnly};
+use crate::fixtures::steps::{request_forced_rollback_at_completed_tick, trigger_state_rollback};
+use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
+use crate::prediction_registration_ext::PredictionRegistrationExt;
 
 mod pre_spawned;
 

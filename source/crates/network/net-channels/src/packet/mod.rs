@@ -4,13 +4,13 @@
 //! Its bytes start after the packet session's headroom, where the packet session writes its header
 //! in place, with the tick; the messages follow in batches, or one fragment and then batches. A
 //! message larger than a packet's payload is split into `FragmentBody`.
+use bytes::BytesMut;
+use campfire_net_bytes::VarInt;
+use campfire_net_payload::{DEFAULT_MTU, OutgoingPayload};
 
 use crate::packet_kind::PacketKind;
 use crate::packet_message::PacketMessage;
 use crate::tick_encoder::EncodedTick;
-use bytes::BytesMut;
-use campfire_net_bytes::VarInt;
-use campfire_net_payload::{DEFAULT_MTU, OutgoingPayload};
 
 /// The most fragments a message splits into: the largest count a two-byte varint holds, so the
 /// fragment id and count reserve two bytes each.

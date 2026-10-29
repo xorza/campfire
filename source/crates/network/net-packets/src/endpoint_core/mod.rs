@@ -1,12 +1,12 @@
 //! An endpoint's packet sessions and its establishment, which its pass drives with the IO's
 //! datagrams and its timers, and which the frame reads and feeds through each link's queues.
-
-use bytes::Buf;
 use core::cmp::Reverse;
 use core::net::{IpAddr, SocketAddr};
 use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 
 use bevy_platform::time::Instant as OsInstant;
+use bytes::Buf;
+use campfire_common::{ChannelBinding, Secret};
 use campfire_net_core::Instant;
 use campfire_net_emulator::LinkConditioner;
 use campfire_net_payload::{AppCode, PacketSessionQueues, UnlinkReason};
@@ -22,7 +22,6 @@ use crate::packet_session::{PacketSession, PathOutcome, Received};
 use crate::packet_session_setup::PacketSessionSetup;
 use crate::stateless_reset;
 use crate::transmit::{Path, Transmit};
-use campfire_common::{ChannelBinding, Secret};
 
 /// A packet session's slot in its endpoint's table, and its id, which no later packet session in
 /// the slot shares.

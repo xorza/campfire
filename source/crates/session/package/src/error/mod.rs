@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
 use campfire_common::PackageFingerprint;
+use campfire_values::PackageName;
 use derive_more::Display;
 use thiserror::Error;
 
 use crate::error::load_problem::LoadProblem;
-use campfire_values::PackageName;
 
 pub(crate) mod load_problem;
 pub(crate) mod locale_problem;

@@ -1,11 +1,12 @@
-use crate::networking_state::NetworkingState;
-use crate::remote_id::RemoteId;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::Reflect;
 use campfire_net_payload::AppCode;
 use campfire_net_payload::UnlinkReason;
+
+use crate::networking_state::NetworkingState;
+use crate::remote_id::RemoteId;
 
 #[derive(Component, Debug, Reflect)]
 #[component(on_add = Connected::on_add, on_remove = Connected::on_remove)]

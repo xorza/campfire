@@ -1,5 +1,6 @@
-use super::*;
 use campfire_common::Secret;
+
+use super::*;
 
 /// A token is the first 16 bytes of HMAC-SHA256 of the ID's 8 bytes, under the key the secret
 /// derives: Python's `hmac.new(reset_key, bytes([0] * 7 + [7]), sha256)` for ID 7 and the

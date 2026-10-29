@@ -1,8 +1,10 @@
+use core::time::Duration;
+
+use campfire_net_core::RegistryHasher;
+
 use crate::channel_mode::ChannelMode;
 use crate::packet::{FRAGMENT_LEN, MAX_FRAGMENTS};
 use crate::receive_budget::DEFAULT_RECEIVE_BUDGET;
-use campfire_net_core::RegistryHasher;
-use core::time::Duration;
 
 /// How a channel delivers: its mode, direction and send interval.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -1,6 +1,7 @@
-use crate::rollback_mode::RollbackMode;
 use bevy_reflect::Reflect;
 use campfire_net_sync::InputTimelineSetup;
+
+use crate::rollback_mode::RollbackMode;
 
 #[derive(Debug, Clone, Copy, Reflect)]
 /// The RollbackConfig defines how we check and trigger rollbacks.

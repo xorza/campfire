@@ -2,11 +2,11 @@ use std::collections::BTreeMap;
 
 use campfire_common::Version;
 use campfire_script::ApiVersion;
+use campfire_values::PackageName;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::files::dependency::Dependency;
 use crate::language::Language;
-use campfire_values::PackageName;
 
 /// What every manifest starts with: the package's name and version, the package API version it
 /// targets, and the language of its own text.

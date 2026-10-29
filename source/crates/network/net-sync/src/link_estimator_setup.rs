@@ -1,5 +1,6 @@
-use bevy_reflect::Reflect;
 use core::time::Duration;
+
+use bevy_reflect::Reflect;
 
 /// How a `LinkEstimator` takes the link's RTT samples.
 #[derive(Clone, Copy, Debug, Reflect)]

@@ -1,7 +1,8 @@
-use super::*;
 use bevy_replicon::prelude::Remote;
 use campfire_net_core::NetTick;
 use campfire_net_core::TickInstant;
+
+use super::*;
 
 fn setup_app(interpolation_tick: NetTick) -> App {
     let mut app = App::new();

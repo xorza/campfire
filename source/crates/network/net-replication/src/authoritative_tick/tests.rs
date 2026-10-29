@@ -1,7 +1,8 @@
-use super::*;
-use crate::confirmed_tick_map::ConfirmedTickMap;
 use bevy_replicon::client::UserdataReceived;
 use bevy_replicon::prelude::RepliconTick;
+
+use super::*;
+use crate::confirmed_tick_map::ConfirmedTickMap;
 
 #[test]
 fn an_authoritative_tick_reads_back_from_its_userdata() {

@@ -1,10 +1,3 @@
-use crate::input_timeline_setup::InputTimelineSetup;
-use crate::link_estimator::LinkEstimator;
-use crate::local_timeline_sync::LocalTimelineSync;
-use crate::remote_timeline::RemoteTimeline;
-use crate::sync_sample::SyncSample;
-use crate::sync_systems::SyncSystems;
-use crate::timeline_sync::TimelineSync;
 use bevy_app::{App, Last, Plugin, PostUpdate};
 use bevy_ecs::prelude::*;
 use bevy_time::{Fixed, Time, Virtual};
@@ -18,6 +11,14 @@ use campfire_net_timeline::LocalTimelineShift;
 use campfire_net_timeline::NetworkTimeline;
 use campfire_net_timeline::TimelineRate;
 use tracing::trace;
+
+use crate::input_timeline_setup::InputTimelineSetup;
+use crate::link_estimator::LinkEstimator;
+use crate::local_timeline_sync::LocalTimelineSync;
+use crate::remote_timeline::RemoteTimeline;
+use crate::sync_sample::SyncSample;
+use crate::sync_systems::SyncSystems;
+use crate::timeline_sync::TimelineSync;
 
 /// The speed `update_virtual_time` composed: the application's base, and the speed it wrote.
 #[derive(Debug, Clone, Copy)]

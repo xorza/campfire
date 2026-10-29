@@ -3,10 +3,10 @@
 //! the payloads a frame holds below the largest opened, so one ACK names every packet one frame
 //! accepts: a packet at or before the window's start is dropped, as its replay cannot be told
 //! (RFC 4303 §3.4.3).
+use core::time::Duration;
 
 use campfire_net_core::Instant;
 use campfire_net_payload::PacketNumber;
-use core::time::Duration;
 
 use crate::header::AckFields;
 use crate::packet_numbers;

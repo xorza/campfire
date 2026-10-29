@@ -1,14 +1,5 @@
-use crate::link_messages::LinkMessages;
-use crate::message_error::MessageError;
-use crate::message_receive_cx::MessageReceiveCx;
-use crate::message_receive_cx::ReceivedMessageHeader;
-use crate::message_registry::MessageModeFns;
-use crate::message_registry::MessageRegistry;
-use crate::message_systems::MessageSystems;
-use crate::receive_map_view::ReceiveMapView;
-use crate::replicon_map_param::RepliconMapParam;
-use crate::send_map_view::SendMapView;
-use crate::send_queue::SendLink;
+use std::sync::Arc;
+
 use bevy_app::App;
 use bevy_app::Last;
 use bevy_app::Plugin;
@@ -51,9 +42,20 @@ use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::ProtocolHashes;
 use campfire_net_transport::Transport;
 use campfire_net_transport::TransportSystems;
-use std::sync::Arc;
 use tracing::debug;
 use tracing::trace;
+
+use crate::link_messages::LinkMessages;
+use crate::message_error::MessageError;
+use crate::message_receive_cx::MessageReceiveCx;
+use crate::message_receive_cx::ReceivedMessageHeader;
+use crate::message_registry::MessageModeFns;
+use crate::message_registry::MessageRegistry;
+use crate::message_systems::MessageSystems;
+use crate::receive_map_view::ReceiveMapView;
+use crate::replicon_map_param::RepliconMapParam;
+use crate::send_map_view::SendMapView;
+use crate::send_queue::SendLink;
 
 /// Receives and sends each link's registered messages and events over its transport.
 #[derive(Debug)]

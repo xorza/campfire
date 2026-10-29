@@ -2,6 +2,8 @@
 //! server's own, so a host server, which is both, lists the shared ones once
 //! (11-net-stack/api.md, One plugin group for each kind of app, and no plugin adds another).
 
+use core::num::NonZeroU32;
+
 use bevy_app::PluginGroupBuilder;
 use campfire_math::TickRate;
 use campfire_net_connection::{ConnectionPlugins, ServerConnectionPlugin};
@@ -26,7 +28,6 @@ use campfire_net_socket::UdpIo;
 use campfire_net_sync::{ClientSyncPlugins, SyncPlugins};
 use campfire_net_timeline::TimelinePlugins;
 use campfire_net_transport::TransportPlugin;
-use core::num::NonZeroU32;
 
 /// The default tick rate, 60 Hz.
 pub(crate) const DEFAULT_TICK_RATE: TickRate = TickRate::hertz(NonZeroU32::new(60).unwrap());

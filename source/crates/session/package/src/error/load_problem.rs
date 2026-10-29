@@ -1,16 +1,16 @@
 use campfire_capabilities::CapabilityError;
 use campfire_common::{DeclaredName, MapName};
 use campfire_declarations::Problem;
+use campfire_package_format::ContentError;
 use campfire_script::ApiVersion;
 use campfire_sim::Capability;
+use campfire_values::PackageName;
 use campfire_values::{NameKind, PackagePath};
 use thiserror::Error;
 
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
-use campfire_package_format::ContentError;
-use campfire_values::PackageName;
 
 /// A problem that fails a package's load, as the load's checks find them (06-script-api.md, Checks
 /// at package load).

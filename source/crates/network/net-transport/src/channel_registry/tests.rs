@@ -1,7 +1,9 @@
-use super::*;
+use core::time::Duration;
+
 use campfire_net_channels::ChannelMode;
 use campfire_net_core::LinkDirection;
-use core::time::Duration;
+
+use super::*;
 
 #[derive(Debug)]
 struct Chat;

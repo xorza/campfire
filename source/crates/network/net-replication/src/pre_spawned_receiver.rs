@@ -1,4 +1,3 @@
-use crate::pre_spawned::PreSpawned;
 use bevy_ecs::error;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::Signature;
@@ -6,6 +5,8 @@ use campfire_net_core::NetTick;
 use campfire_net_despawns::DespawnReplicated;
 use campfire_net_timeline::LocalTimelineShift;
 use tracing::debug;
+
+use crate::pre_spawned::PreSpawned;
 
 /// Global lifecycle state for locally pre-spawned entities.
 ///

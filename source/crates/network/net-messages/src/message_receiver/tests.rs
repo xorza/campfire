@@ -1,8 +1,9 @@
-use super::*;
-use crate::message_receive_cx::ReceivedMessageHeader;
 use campfire_net_channels::Channel;
 use campfire_net_channels::ChannelTypeId;
 use campfire_net_core::NetTick;
+
+use super::*;
+use crate::message_receive_cx::ReceivedMessageHeader;
 
 #[derive(Debug, PartialEq)]
 struct TestMessage(&'static str);

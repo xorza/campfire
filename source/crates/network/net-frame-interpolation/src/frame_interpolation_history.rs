@@ -1,5 +1,3 @@
-use crate::frame_holders::FrameHolders;
-use crate::frame_interpolate::FrameInterpolate;
 use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
 use bevy_utils::prelude::DebugName;
@@ -7,6 +5,9 @@ use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::DeferredEntityCommands;
 use campfire_net_replication::HistoryComponent;
 use tracing::trace;
+
+use crate::frame_holders::FrameHolders;
+use crate::frame_interpolate::FrameInterpolate;
 
 /// The values of `C` at the last two fixed ticks, which a frame rule blends into `C`'s visual.
 ///

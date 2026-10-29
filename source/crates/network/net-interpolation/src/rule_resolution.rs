@@ -1,7 +1,7 @@
 //! What the registry resolves an archetype into, for the holders.
+use campfire_net_replication::ComponentTypeId;
 
 use crate::interpolation_rule_id::InterpolationRuleId;
-use campfire_net_replication::ComponentTypeId;
 
 /// The work assigned to one interpolation rule for an archetype.
 ///

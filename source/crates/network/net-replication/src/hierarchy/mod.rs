@@ -1,12 +1,12 @@
 //! The replication of `ChildOf`, whose parent goes as the server's entity, which the receiver maps.
-
-use crate::component_codec::ComponentCodec;
-use crate::remote_parent::RemoteParent;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::RuleFns;
 use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
 use bevy_replicon::shared::replication::registry::ctx::{RemoveCtx, SerializeCtx, WriteCtx};
 use bytes::Bytes;
+
+use crate::component_codec::ComponentCodec;
+use crate::remote_parent::RemoteParent;
 
 /// Serializes the server parent entity targeted by [`ChildOf`].
 ///

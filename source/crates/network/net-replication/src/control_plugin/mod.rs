@@ -1,6 +1,7 @@
-use crate::controlled_by::ControlledBy;
 use bevy_app::{App, Plugin};
 use bevy_replicon::prelude::AppVisibilityExt;
+
+use crate::controlled_by::ControlledBy;
 
 #[derive(Debug)]
 pub(crate) struct ControlPlugin;

@@ -1,5 +1,6 @@
-use campfire_net_core::Instant;
 use core::num::NonZeroU64;
+
+use campfire_net_core::Instant;
 
 use crate::bandwidth_limit::BandwidthLimit;
 

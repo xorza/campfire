@@ -1,14 +1,16 @@
-use crate::message_error::MessageError;
-use crate::receive_map_view::ReceiveMapView;
-use crate::send_map_view::SendMapView;
+use std::any::Any;
+use std::sync::Arc;
+
 use campfire_codec::{Binary, Sink};
 use campfire_net_bytes::Reader;
 use campfire_net_bytes::WriteInteger;
 use campfire_net_bytes::Writer;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use std::any::Any;
-use std::sync::Arc;
+
+use crate::message_error::MessageError;
+use crate::receive_map_view::ReceiveMapView;
+use crate::send_map_view::SendMapView;
 
 /// The serialization fns of one type, erased so that a registry holds those of every type.
 #[derive(Clone, Debug)]

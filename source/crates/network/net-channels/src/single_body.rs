@@ -1,10 +1,12 @@
-use crate::message_id::MessageId;
+use core::fmt::Debug;
+
 use bytes::Bytes;
 use campfire_net_bytes::Reader;
 use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::WriteInteger;
-use core::fmt::Debug;
+
+use crate::message_id::MessageId;
 
 #[derive(Clone, Debug, PartialEq)]
 /// The serialized bytes of one message: serialized once at send, cloned cheaply after, and sized

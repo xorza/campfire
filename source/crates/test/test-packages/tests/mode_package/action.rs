@@ -1,6 +1,4 @@
 //! Each flaw a package can have fails the load of the MOBA packages with its own problem.
-
-use crate::flaws::{Flaw, fails_each};
 use campfire_actions::{ActionField, ActionProblem, PipelineField};
 use campfire_combat::CombatDataError;
 use campfire_common::DeclaredName;
@@ -14,6 +12,7 @@ use campfire_units::{StatId, TypesError};
 use campfire_values::{ActionId, DamageKind, ModifierId, Named, Param};
 use campfire_vision::VisionDataError;
 
+use crate::flaws::{Flaw, fails_each};
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule, rule_at, unit_type};
 
@@ -314,7 +313,7 @@ pub(super) static ACTION_FLAWS: &[Flaw] = &[
     ),
     // An AI's order in the mode's script.
     Flaw::of(
-        "modes/3v3/scripts/mode.rhai",
+        "moba/modes/3v3/scripts/mode.rhai",
         Edit::Replace(
             "fn on_match_start(ctx) {",
             "fn on_match_start(ctx) {\n    ctx.order_reset();",
@@ -472,13 +471,13 @@ pub(super) static ACTION_FLAWS: &[Flaw] = &[
         |problem| matches!(problem, LoadProblem::Unknown { of: ActionId::NAMES, at: Place::Script(path), name } if path.to_string() == "scripts/lash_out.rhai" && name == "lash"),
     ),
     Flaw::of(
-        "heroes/cinder/scripts/wildfire.rhai",
+        "moba/heroes/cinder/scripts/wildfire.rhai",
         Edit::Replace(r#""kindle""#, r#""kindl""#),
         "hero-cinder",
         |problem| matches!(problem, LoadProblem::Unknown { of: ModifierId::NAMES, name: id, .. } if id == "kindl"),
     ),
     Flaw::of(
-        "heroes/veil/scripts/dual_path.rhai",
+        "moba/heroes/veil/scripts/dual_path.rhai",
         Edit::Replace(r#"stat("attack_damage")"#, r#"stat("attack_dmg")"#),
         "hero-veil",
         |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, name, .. } if name == "attack_dmg"),
@@ -486,7 +485,7 @@ pub(super) static ACTION_FLAWS: &[Flaw] = &[
     Flaw::of(
         CREEP_AI,
         Edit::Replace("enemies:creep", "enemies:minion"),
-        MODE,
+        "test-ai",
         |problem| matches!(problem, LoadProblem::Unknown { of: Filter::NAMES, name: filter, .. } if filter == "enemies:minion"),
     ),
     Flaw::of(
@@ -516,7 +515,7 @@ pub(super) static ACTION_FLAWS: &[Flaw] = &[
     ),
     // Only a point aim clamps to the range.
     Flaw::of(
-        "spells/data/loadout.toml",
+        "moba/spells/data/loadout.toml",
         Edit::Set("actions.blink.targeting", r#""direction""#),
         "player-spells",
         |problem| {
@@ -529,7 +528,7 @@ pub(super) static ACTION_FLAWS: &[Flaw] = &[
     ),
     // A stat change names one operation; a scaling param scales with declared stats alone.
     Flaw::of(
-        "spells/data/loadout.toml",
+        "moba/spells/data/loadout.toml",
         Edit::Set("modifiers.haste.stats.move_speed.cut", r#""0.1""#),
         "player-spells",
         |problem| {
@@ -564,7 +563,7 @@ pub(super) static ACTION_FLAWS: &[Flaw] = &[
     // Dual Path's spell vamp reads attack damage; a modifier whose attack damage reads spell
     // vamp closes a loop.
     Flaw::of(
-        "heroes/veil/data/avatar.toml",
+        "moba/heroes/veil/data/avatar.toml",
         Edit::Replace(
             "[modifiers.dual_path.params]",
             "[modifiers.loop]\nstats = { attack_damage = { param = \"thirst\" } }\n[modifiers.loop.params]\nthirst = { base = 0, spell_vamp = \"10\" }\n\n[modifiers.dual_path.params]",
@@ -573,7 +572,7 @@ pub(super) static ACTION_FLAWS: &[Flaw] = &[
         |problem| stat_loop(problem, ["attack_damage", "spell_vamp"]),
     ),
     Flaw::of(
-        "heroes/veil/data/avatar.toml",
+        "moba/heroes/veil/data/avatar.toml",
         Edit::Replace("bonus = { attack_damage =", "bonus = { attack_dmg ="),
         "hero-veil",
         |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, at: Place::Entry { table: "modifiers", name: id }, name } if id == "dual_path" && name == "attack_dmg"),

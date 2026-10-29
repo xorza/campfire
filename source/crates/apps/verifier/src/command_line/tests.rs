@@ -9,14 +9,16 @@ fn read(args: &[&str]) -> Result<CommandLine, clap::Error> {
 }
 
 #[test]
-fn the_command_line_names_a_verification_or_a_report_or_its_flaw() {
+fn the_command_line_names_a_verification_a_show_or_a_report_or_its_flaw() {
     let verify = |args: &[&str]| match read(args).unwrap().command {
         VerifierCommand::Verify {
             packages,
             log,
             snapshots,
         } => (packages, log, snapshots),
-        VerifierCommand::Report { .. } => panic!("{args:?} names a verification"),
+        VerifierCommand::Show { .. } | VerifierCommand::Report { .. } => {
+            panic!("{args:?} names a verification")
+        }
     };
     assert_eq!(
         verify(&["verify", "packages", "session.log", "snapshots"]),
@@ -28,6 +30,12 @@ fn the_command_line_names_a_verification_or_a_report_or_its_flaw() {
     );
     assert_eq!(verify(&["verify", "packages", "session.log"]).2, None);
 
+    // A show of a log.
+    let VerifierCommand::Show { log } = read(&["show", "session.log"]).unwrap().command else {
+        panic!("`show` names a show");
+    };
+    assert_eq!(log, PathBuf::from("session.log"));
+
     // A report, with the probes' directory the line names or `target/report`.
     let report = |args: &[&str]| match read(args).unwrap().command {
         VerifierCommand::Report {
@@ -35,7 +43,9 @@ fn the_command_line_names_a_verification_or_a_report_or_its_flaw() {
             probe,
             probe_dir,
         } => (report, probe, probe_dir),
-        VerifierCommand::Verify { .. } => panic!("{args:?} names a report"),
+        VerifierCommand::Verify { .. } | VerifierCommand::Show { .. } => {
+            panic!("{args:?} names a report")
+        }
     };
     let spec: ProbeSpec = "1000:all".parse().unwrap();
     assert_eq!(
@@ -64,6 +74,7 @@ fn the_command_line_names_a_verification_or_a_report_or_its_flaw() {
             ErrorKind::UnknownArgument,
         ),
         (&["report"], ErrorKind::MissingRequiredArgument),
+        (&["show"], ErrorKind::MissingRequiredArgument),
         (
             &["report", "reports/a-40", "--probe", "1000"],
             ErrorKind::ValueValidation,

@@ -8,19 +8,13 @@ use crate::session_log::applied::Applied;
 use crate::session_log::durable_head::DurableHead;
 use crate::session_log::error::{CheckpointError, LogError};
 use crate::session_log::journal::Journal;
+use crate::session_log::journal_kinds::{
+    JOURNAL_CHECKPOINT_BEGUN, JOURNAL_CHECKPOINT_DONE, JOURNAL_HEADER, JOURNAL_LOADED,
+    JOURNAL_PACKET, JOURNAL_RESULT, JOURNAL_SEALED, JOURNAL_SERVER,
+};
 use crate::session_log::log_entries::Entry;
 use crate::session_log::segments::{LoggedCheckpoint, SegmentStart};
 use crate::session_log::{LoggedResult, Past, SessionLog, put, take};
-
-/// The bytes that start each kind of journal record.
-pub(super) const JOURNAL_HEADER: u8 = 0;
-pub(super) const JOURNAL_PACKET: u8 = 1;
-pub(super) const JOURNAL_SERVER: u8 = 2;
-pub(super) const JOURNAL_SEALED: u8 = 3;
-pub(super) const JOURNAL_CHECKPOINT_DONE: u8 = 4;
-pub(super) const JOURNAL_RESULT: u8 = 5;
-pub(super) const JOURNAL_CHECKPOINT_BEGUN: u8 = 6;
-pub(super) const JOURNAL_LOADED: u8 = 7;
 
 impl SegmentStart {
     /// Writes the begin of the checkpoint that starts segment `segment`, and its record once it

@@ -1,11 +1,12 @@
-use crate::message::Message;
-use crate::message_error::MessageError;
-use crate::message_receive_cx::MessageReceiveCx;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::event::{EntityEvent, Event};
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::PeerId;
 use tracing::trace;
+
+use crate::message::Message;
+use crate::message_error::MessageError;
+use crate::message_receive_cx::MessageReceiveCx;
 
 /// The event a peer triggered, with the peer and the link it arrived on.
 #[derive(Event, Debug)]

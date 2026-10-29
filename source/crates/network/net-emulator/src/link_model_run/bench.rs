@@ -1,12 +1,12 @@
 //! `atomic/link_model_run/admit_…`: one packet through [`LinkModelRun::admit`] under each kind of
 //! model.
+use core::time::Duration;
+use std::hint::black_box;
 
 use campfire_math::Num;
 use campfire_measure::{Kind, Scale};
 use campfire_net_core::Instant;
-use core::time::Duration;
 use criterion::Criterion;
-use std::hint::black_box;
 
 use crate::link_model::{LinkModel, per_mille};
 use crate::link_model_run::LinkModelRun;

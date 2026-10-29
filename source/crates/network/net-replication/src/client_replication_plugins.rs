@@ -1,7 +1,8 @@
-use crate::client_replication_plugin::ClientReplicationPlugin;
-use crate::client_replicon_plugin::ClientRepliconPlugin;
 use bevy_app::{PluginGroup, PluginGroupBuilder};
 use bevy_replicon::client::ClientPlugin;
+
+use crate::client_replication_plugin::ClientReplicationPlugin;
+use crate::client_replicon_plugin::ClientRepliconPlugin;
 
 /// A client's replication, on [`ReplicationPlugins`](crate::ReplicationPlugins): Replicon's
 /// client, the stack's receive, and what the client does with what it receives.

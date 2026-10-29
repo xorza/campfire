@@ -1,6 +1,6 @@
-use super::*;
-
 use bevy_ecs::prelude::Component;
+
+use super::*;
 
 #[derive(Component, Clone, Debug, PartialEq)]
 struct Value(f32);

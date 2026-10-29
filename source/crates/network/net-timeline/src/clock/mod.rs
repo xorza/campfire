@@ -1,12 +1,12 @@
 //! The clock every networking read takes.
+use core::time::Duration;
 
 use bevy_ecs::prelude::*;
 use bevy_platform::time::Instant as OsInstant;
 use bevy_time::{Real, Time, TimeUpdateStrategy};
-use core::time::Duration;
+use campfire_net_core::{Instant, TimeSource};
 
 use crate::clock_source::ClockSource;
-use campfire_net_core::{Instant, TimeSource};
 
 /// An app's network clock: ping stamps, packet send and receive times, retransmit timers and the
 /// bandwidth bucket all read it (11-net-stack/time.md, One clock per app, owned by the stack).

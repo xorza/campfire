@@ -6,6 +6,7 @@ use crate::session_log::journal::Journal;
 use crate::session_log::journal::error::{JournalStreamError, NotJournal};
 use crate::session_log::journal::journal_frames::{self, JournalFrames, MAX_RECORD};
 use crate::session_log::journal::record_sink::RecordSink;
+use crate::session_log::journal_shape::JournalShape;
 
 /// A journal's file in memory, which a test reads back as it likes, and how many appends made
 /// it.
@@ -63,14 +64,20 @@ pub(crate) const RECORDS: [&[u8]; 3] = [b"first", b"", b"third record"];
 
 /// The journal file of `RECORDS`, framed in turn.
 pub(crate) fn journal_of_records() -> Vec<u8> {
+    let bytes = framed(&RECORDS);
+    // The tag, then each record's 4 + 32 bytes beside its own: 19 + 41 + 36 + 48.
+    assert_eq!(bytes.len(), 144);
+    bytes
+}
+
+/// The journal file of `records`, framed in turn.
+fn framed(records: &[&[u8]]) -> Vec<u8> {
     let mut bytes = JournalFrames::TAG.to_vec();
-    for record in RECORDS {
+    for record in records {
         let start = journal_frames::open(&mut bytes);
         bytes.extend_from_slice(record);
         journal_frames::seal(&mut bytes, start);
     }
-    // The tag, then each record's 4 + 32 bytes beside its own: 19 + 41 + 36 + 48.
-    assert_eq!(bytes.len(), 144);
     bytes
 }
 
@@ -187,19 +194,30 @@ fn a_flipped_byte_or_a_length_past_the_bound_stops_the_read_at_its_frame() {
 fn a_journal_frames_its_records_and_hands_them_to_its_sink_once_a_flush() {
     let file = MemorySink::new();
     let tag = u64::try_from(JournalFrames::TAG.len()).unwrap();
-    let mut journal = Journal::new(file.boxed(), tag, 0);
-    for record in RECORDS {
+    let mut journal = Journal::new(file.boxed(), tag, 0, JournalShape::default());
+    // A header, a packet and a seal, as a log takes them: 19 + 42 + 37 + 37 bytes.
+    let logged: [&[u8]; 3] = [b"\x00head!", b"\x01", b"\x03"];
+    for record in logged {
         journal.append(record);
     }
-    assert_eq!((journal.written(), journal.file_len()), (3, 144));
+    assert_eq!((journal.written(), journal.file_len()), (3, 135));
+    assert_eq!(journal.shape().records(), 3);
     // The sink takes nothing until the flush, then the three records in one append; a flush
     // of nothing appends nothing, and a drop flushes what is left.
     assert_eq!(file.bytes(), JournalFrames::TAG);
     journal.flush();
     journal.flush();
     assert_eq!((file.appends(), file.records()), (1, 3));
-    assert_eq!(file.bytes(), journal_of_records());
-    journal.append(b"last");
-    drop(journal);
+    assert_eq!(file.bytes(), framed(&logged));
+    // A close flushes what is left and gives the shape of every record: the header, and one
+    // tick of one entry.
+    journal.append(b"\x01");
+    let shape = journal.close();
     assert_eq!((file.appends(), file.records()), (2, 4));
+    assert_eq!(shape.records(), 4);
+    assert_eq!(shape.header.as_deref(), Some(b"head!".as_slice()));
+    assert_eq!(
+        (shape.segments[0].ticks.as_slice(), shape.tail),
+        ([1].as_slice(), 1)
+    );
 }

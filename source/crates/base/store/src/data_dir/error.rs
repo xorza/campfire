@@ -1,11 +1,11 @@
 use std::io;
 use std::path::PathBuf;
 
+use campfire_platform::Exposure;
 use thiserror::Error;
 
 use crate::durable_dir::error::DurableDirError;
 use crate::path_error::PathError;
-use campfire_platform::Exposure;
 
 /// Why a data directory did not open, each case with the path of its step: the directory or
 /// one above it, the directory, or its lock file.

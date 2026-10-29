@@ -6,6 +6,8 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_app_threads::OneThreadPlugins;
 use campfire_declarations::CapabilitySet;
+use campfire_host::Listening;
+use campfire_host::SessionOffer;
 use campfire_math::TickRate;
 use campfire_net_connection::{Client, Connect};
 use campfire_net_endpoint::Endpoint;
@@ -16,8 +18,6 @@ use campfire_net_payload::UnlinkReason;
 use campfire_net_stack::ClientPlugins;
 
 use crate::net_protocol::NetProtocolPlugin;
-use campfire_host::Listening;
-use campfire_host::SessionOffer;
 
 /// A client of a session's protocol and nothing past it, on its own app: a test of a server's
 /// process links it to see the server's links and closes, as no match runs on it.

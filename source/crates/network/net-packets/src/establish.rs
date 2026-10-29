@@ -1,12 +1,13 @@
+use core::net::{IpAddr, SocketAddr};
+
+use campfire_common::{ChannelBinding, Secret};
 use campfire_net_core::Instant;
 use campfire_net_payload::UnlinkReason;
-use core::net::{IpAddr, SocketAddr};
 
 use crate::connection_id::ConnectionId;
 use crate::datagram_io::{Datagram, Outbound};
 use crate::protection::Protection;
 use crate::stateless_reset;
-use campfire_common::{ChannelBinding, Secret};
 
 /// How an endpoint makes its packet sessions: at once and plain in-process, or by a handshake that
 /// gives the seal over a network. The endpoint calls it with the datagrams that are not a

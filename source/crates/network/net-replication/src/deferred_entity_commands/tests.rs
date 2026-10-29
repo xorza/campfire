@@ -1,9 +1,11 @@
-use super::*;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use bevy_app::{App, Update};
 use bevy_ecs::prelude::*;
 use campfire_net_despawns::DespawnReplicated;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+
+use super::*;
 
 #[derive(Component, Debug, PartialEq)]
 struct A(u32);

@@ -1,12 +1,12 @@
 //! Frame interpolation: the fixed ticks run at their own rate, so a frame shows each component one
 //! tick late, between its last two ticks at the fixed overstep, rather than step a partial tick.
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::ScheduleLabel;
 
 use crate::frame_holders::FrameHolders;
 use crate::frame_interpolation_systems::FrameInterpolationSystems;
 use crate::frame_phase_systems::FramePhaseSystems;
-use bevy_app::prelude::*;
-use bevy_ecs::prelude::*;
-use bevy_ecs::schedule::ScheduleLabel;
 
 /// The frame pipeline of a client: each frame rule writes its visual in `PostUpdate`, before the
 /// transforms propagate, through change detection, so a later system reads `Changed<V>`; the frame

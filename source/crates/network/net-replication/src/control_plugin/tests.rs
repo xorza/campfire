@@ -1,3 +1,9 @@
+use bevy_ecs::system::EntityCommand;
+use campfire_net_connection::NetworkTarget;
+use campfire_net_despawns::DespawnReplicated;
+use campfire_net_stepper::Stepper;
+use campfire_net_stepper::StepperSetup;
+
 use super::*;
 use crate::controlled_by::ControlledByRemote;
 use crate::controlled_lifetime::ControlledLifetime;
@@ -5,11 +11,6 @@ use crate::fixtures::replication_stack::ReplicationStack;
 use crate::fixtures::steps::ClientCopies;
 use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::replication_target::Replicate;
-use bevy_ecs::system::EntityCommand;
-use campfire_net_connection::NetworkTarget;
-use campfire_net_despawns::DespawnReplicated;
-use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperSetup;
 
 /// When a client disconnects, entities it controlled (via ControlledBy with SessionBased lifetime)
 /// should be despawned on the server.

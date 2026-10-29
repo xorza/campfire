@@ -1,5 +1,6 @@
-use crate::prediction_registry::{self, PredictionRegistry};
 use bevy_app::{App, Plugin};
+
+use crate::prediction_registry::{self, PredictionRegistry};
 
 /// Holds the prediction registry, which a shared protocol registers into on both sides, and seals
 /// it once the plugins are built.

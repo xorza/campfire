@@ -3,19 +3,19 @@
 //! `integration/replication/<send or receive>_<insert or update>_…`: the server's or the client's
 //! update for a frame that replicates `ENTITIES` entities, each timed alone, their throughput the
 //! entities.
+use core::time::Duration;
+use std::time::Instant;
 
-use crate::fixtures::steps::PROPAGATION_FRAMES;
 use bevy_ecs::query::With;
 use campfire_measure::{Kind, Scale};
 use campfire_net_connection::NetworkTarget;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
-use core::time::Duration;
 use criterion::Criterion;
-use std::time::Instant;
 
 use crate::fixtures::protocol::CompSimple;
 use crate::fixtures::replication_stack::ReplicationStack;
+use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::replication_target::Replicate;
 
 const ENTITIES: usize = 1000;

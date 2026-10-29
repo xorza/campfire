@@ -1,7 +1,8 @@
+use core::time::Duration;
+
 use bevy_reflect::Reflect;
 use campfire_math::TickRate;
 use campfire_net_core::PositiveTickSpan;
-use core::time::Duration;
 
 /// Immutable settings shared by local-clock and interpolation synchronization controllers.
 ///

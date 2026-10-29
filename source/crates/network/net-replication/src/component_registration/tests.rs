@@ -1,19 +1,17 @@
+use bevy_ecs::component::Component;
+use bevy_replicon::prelude::{AuthMethod, RepliconSharedPlugin};
+use bevy_state::app::StatesPlugin;
+use campfire_net_connection::NetworkTarget;
+use campfire_net_stepper::Stepper;
+use campfire_net_stepper::StepperSetup;
+
 use super::*;
+use crate::app_component_ext::AppComponentExt;
 use crate::fixtures::protocol::{CompA, CompReplicateOnce, CompRepliconDiff};
 use crate::fixtures::replication_stack::ReplicationStack;
 use crate::fixtures::steps::ClientCopies;
 use crate::fixtures::steps::PROPAGATION_FRAMES;
 use crate::replication_target::Replicate;
-use campfire_net_connection::NetworkTarget;
-use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperSetup;
-
-use crate::app_component_ext::AppComponentExt;
-
-use bevy_ecs::component::Component;
-use bevy_replicon::prelude::{AuthMethod, RepliconSharedPlugin};
-
-use bevy_state::app::StatesPlugin;
 
 #[derive(Debug, Component)]
 struct LocalComponent;

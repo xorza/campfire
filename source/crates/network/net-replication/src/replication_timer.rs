@@ -1,6 +1,7 @@
+use core::time::Duration;
+
 use bevy_ecs::prelude::*;
 use bevy_time::{Timer, TimerMode};
-use core::time::Duration;
 
 /// The interval at which the app replicates, which all of its senders share.
 #[derive(Debug, Resource)]

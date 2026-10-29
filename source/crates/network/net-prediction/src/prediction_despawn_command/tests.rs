@@ -1,6 +1,3 @@
-use super::*;
-use crate::fixtures::prediction_stack::PredictionStack;
-use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
 use bevy_replicon::prelude::Remote;
 use campfire_net_connection::{NetworkTarget, NetworkTopology};
 use campfire_net_core::NetTick;
@@ -11,6 +8,10 @@ use campfire_net_replication::internals::PROPAGATION_FRAMES;
 use campfire_net_replication::{PredictionTarget, Replicate};
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
+
+use super::*;
+use crate::fixtures::prediction_stack::PredictionStack;
+use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
 
 #[derive(Component, Debug, PartialEq)]
 struct TestComponent(usize);

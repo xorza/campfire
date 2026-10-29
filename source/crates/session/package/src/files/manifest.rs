@@ -1,12 +1,11 @@
 use campfire_package_format::PackageFiles;
 use campfire_script::ApiVersion;
 use campfire_sim::Capability;
+use campfire_values::PackageName;
 use serde::Deserialize;
 
 use crate::error::load_problem::LoadProblem;
 use crate::error::{LoadError, PackageRef};
-use campfire_values::PackageName;
-
 use crate::files::mode_manifest::ModeManifest;
 use crate::files::package_header::LocaleManifest;
 use crate::files::package_header::PackageHeader;

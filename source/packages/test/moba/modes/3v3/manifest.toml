@@ -20,3 +20,4 @@ hero-kensho = { path = "../../heroes/kensho" }
 hero-rime = { path = "../../heroes/rime" }
 hero-veil = { path = "../../heroes/veil" }
 player-spells = { path = "../../spells" }
+test-ai = { path = "../../../engine/ai" }

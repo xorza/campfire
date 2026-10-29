@@ -1,6 +1,7 @@
 //! The prototype of milestone 1: the sim schedule in the network stack's `World`, a server and one
 //! predicting client over in-process channels, and the server's session log replayed in a bare
 //! `World` with the same state hash after every tick.
+use std::panic;
 
 use bevy_app::{App, AppExit};
 use bevy_ecs::entity::Entity;
@@ -35,7 +36,6 @@ use campfire_units::{
     MoveStep, Owner, PoolId, Units, UnitsWorld,
 };
 use campfire_values::{Names, PackageIndex, Relation, Relations, ResourceId, Team};
-use std::panic;
 
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 120;

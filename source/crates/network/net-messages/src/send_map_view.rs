@@ -1,7 +1,8 @@
-use crate::send_entity_map::SendEntityMap;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::entity::{EntityMapper, hash_map::EntityHashMap};
 use tracing::trace;
+
+use crate::send_entity_map::SendEntityMap;
 
 /// How a sender writes the entities a message names, as a read-only [`EntityMapper`].
 ///

@@ -1,7 +1,8 @@
-use campfire_net_core::Instant;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap};
 use std::net::{IpAddr, Ipv4Addr};
+
+use campfire_net_core::Instant;
 
 use crate::admission_setup::AdmissionSetup;
 

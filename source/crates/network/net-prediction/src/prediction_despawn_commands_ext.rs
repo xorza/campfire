@@ -1,5 +1,6 @@
-use crate::prediction_despawn_command::PredictionDespawnCommand;
 use bevy_ecs::prelude::*;
+
+use crate::prediction_despawn_command::PredictionDespawnCommand;
 
 pub trait PredictionDespawnCommandsExt {
     fn prediction_despawn(&mut self);

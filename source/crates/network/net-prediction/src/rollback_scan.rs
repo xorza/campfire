@@ -1,8 +1,3 @@
-use crate::misprediction::CheckTarget;
-use crate::misprediction::needs_rollback;
-use crate::prediction_history::PredictionHistory;
-use crate::prediction_registry::PredictionRegistry;
-use crate::rollback_refused::RollbackRefused;
 use bevy_ecs::prelude::*;
 use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
@@ -15,7 +10,12 @@ use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::HistoryDiffReceiver;
 use tracing::trace;
 
+use crate::misprediction::CheckTarget;
+use crate::misprediction::needs_rollback;
+use crate::prediction_history::PredictionHistory;
+use crate::prediction_registry::PredictionRegistry;
 use crate::rollback_check_state::RollbackKind;
+use crate::rollback_refused::RollbackRefused;
 
 /// What the stages of one frame's rollback check share, as each predicted component's survey and
 /// scan is its own system: the confirmed tick they look at, what they report, and the rollback the

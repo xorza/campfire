@@ -1,7 +1,8 @@
-use crate::room_id::RoomId;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::VisibilityFilter;
 use smallvec::SmallVec;
+
+use crate::room_id::RoomId;
 
 /// The rooms of an entity or a link, sorted, each once, inline up to eight: an entity replicates to
 /// each link that shares a room with it, by ids from the

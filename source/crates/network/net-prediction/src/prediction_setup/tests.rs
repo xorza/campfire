@@ -1,8 +1,7 @@
-use super::*;
-
-use crate::rollback_check_state::RollbackCheckState;
-
 use campfire_net_sync::InputDelaySetup;
+
+use super::*;
+use crate::rollback_check_state::RollbackCheckState;
 
 #[test]
 fn the_rollback_depth_keeps_to_the_prediction_limit() {

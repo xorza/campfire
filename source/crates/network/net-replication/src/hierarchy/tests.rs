@@ -1,9 +1,20 @@
+use bevy_app::App;
+use bevy_replicon::prelude::{AuthMethod, RepliconSharedPlugin};
+use bevy_replicon::server::ServerPlugin;
+use bevy_state::app::StatesPlugin;
+use campfire_net_connection::NetworkTarget;
+use campfire_net_connection::RemoteId;
+use campfire_net_stepper::Stepper;
+use campfire_net_stepper::StepperSetup;
+
 use super::*;
 use crate::disable_replicate_hierarchy::DisableReplicateHierarchy;
 use crate::fixtures::protocol::*;
 use crate::fixtures::replication_stack::ReplicationStack;
 use crate::fixtures::steps::ClientCopies;
 use crate::fixtures::steps::PROPAGATION_FRAMES;
+use crate::hierarchy_send_plugin::HierarchySendPlugin;
+use crate::inheritance_plugin::InheritancePlugin;
 use crate::manual_visibility::ManualVisibility;
 use crate::overridden::Overridden;
 use crate::replicate_like::ReplicateLike;
@@ -12,19 +23,6 @@ use crate::room_allocator::RoomAllocator;
 use crate::room_id::RoomId;
 use crate::rooms::Rooms;
 use crate::visibility_ext::VisibilityExt;
-use campfire_net_connection::NetworkTarget;
-use campfire_net_connection::RemoteId;
-use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperSetup;
-
-use crate::hierarchy_send_plugin::HierarchySendPlugin;
-use crate::inheritance_plugin::InheritancePlugin;
-
-use bevy_app::App;
-
-use bevy_replicon::prelude::{AuthMethod, RepliconSharedPlugin};
-use bevy_replicon::server::ServerPlugin;
-use bevy_state::app::StatesPlugin;
 
 fn app_with_hierarchy_plugin() -> App {
     let mut app = App::default();

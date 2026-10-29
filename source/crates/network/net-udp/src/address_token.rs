@@ -1,11 +1,11 @@
 //! The tokens that prove a client holds its address: a Retry's, for one handshake, and the ones a
 //! server gives in a handshake for the client's next connection, each usable once
 //! (11-net-stack/udp.md, A server checks an address before it keeps state).
+use core::net::IpAddr;
+use core::time::Duration;
 
 use campfire_common::Secret;
 use campfire_net_core::Instant;
-use core::net::IpAddr;
-use core::time::Duration;
 use ring::hmac;
 
 /// How long a Retry's token lasts: the round trip of the client's next Initial.

@@ -9,6 +9,7 @@ use bevy_ecs::system::{Commands, Query, Res, SystemParam};
 use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::PlayerSlot;
 use campfire_declarations::MatchFacts;
+use campfire_host::PlayerLink;
 use campfire_net_replication::Rooms;
 use campfire_players::{OutOfPlay, Player, PlayersWorld};
 use campfire_values::{PlayerView, Team, TeamSet};
@@ -16,7 +17,6 @@ use campfire_visibility::Recipients;
 use campfire_visibility::{OutView, Visibility};
 
 use crate::sim_server::team_rooms::TeamRooms;
-use campfire_host::PlayerLink;
 
 /// How a client link views the match, which every data filter reads (10-replication-audiences.md,
 /// Four recipients; 10-replication-audiences.md, The host admits spectators, and their fog is a

@@ -1,9 +1,3 @@
-use crate::fixtures::prediction_stack::PredictionStack;
-use crate::fixtures::steps::trigger_state_rollback;
-use crate::prediction_counts::PredictionCounts;
-use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
-use crate::prediction_despawned::PredictionDespawned;
-use crate::prediction_history::PredictionHistory;
 use bevy_app::FixedUpdate;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::hierarchy::ChildOf;
@@ -34,6 +28,13 @@ use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::{InputTimelineSetup, SyncSetup};
 use campfire_net_timeline::LocalTimeline;
 use tracing::info;
+
+use crate::fixtures::prediction_stack::PredictionStack;
+use crate::fixtures::steps::trigger_state_rollback;
+use crate::prediction_counts::PredictionCounts;
+use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
+use crate::prediction_despawned::PredictionDespawned;
+use crate::prediction_history::PredictionHistory;
 
 #[test]
 fn distinct_salts_give_distinct_hashes_on_one_tick() {

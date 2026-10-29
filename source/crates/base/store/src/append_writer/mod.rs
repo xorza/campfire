@@ -5,13 +5,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar};
 use std::time::{Duration, Instant};
 
+use campfire_threads::{Failure, ThreadName, Worker, WorkerLock};
+
 use crate::append_writer::append_file::AppendFile;
 use crate::append_writer::append_watch::AppendWatch;
 use crate::append_writer::error::{AppendError, AppendOpenError};
 use crate::append_writer::slow_sync::SlowSync;
 use crate::durable_file::DurableFile;
 use crate::path_error::PathError;
-use campfire_threads::{Failure, ThreadName, Worker, WorkerLock};
 
 pub(crate) mod append_file;
 pub(crate) mod append_watch;

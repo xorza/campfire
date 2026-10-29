@@ -1,6 +1,7 @@
+use core::any::TypeId;
+
 use bevy_reflect::Reflect;
 use campfire_net_core::RegisteredType;
-use core::any::TypeId;
 
 /// [`ComponentTypeId`] is an internal wrapper around the type of the component
 #[derive(Debug, Eq, Hash, Copy, Clone, PartialEq, PartialOrd, Ord, Reflect)]

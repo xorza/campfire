@@ -1,10 +1,11 @@
+use bevy_replicon::server::visibility::filters_mask::FilterBit;
+use bevy_replicon::server::visibility::registry::FilterRegistry;
+use bevy_replicon::shared::replication::registry::ReplicationRegistry;
+
 use super::*;
 use crate::network_visibility_plugin::NetworkVisibilityPlugin;
 use crate::room_id::RoomId;
 use crate::visibility_ext::VisibilityExt;
-use bevy_replicon::server::visibility::filters_mask::FilterBit;
-use bevy_replicon::server::visibility::registry::FilterRegistry;
-use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 
 fn inheritance_app() -> App {
     let mut app = App::new();

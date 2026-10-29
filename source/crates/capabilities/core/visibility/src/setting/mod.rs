@@ -1,11 +1,11 @@
 use std::fmt;
 use std::str::FromStr;
 
-use crate::data_kind::DataKind;
-use crate::recipients::Recipients;
 use campfire_common::NamedEnum;
 
+use crate::data_kind::DataKind;
 use crate::out_view::OutView;
+use crate::recipients::Recipients;
 use crate::setting::error::VisibilityError;
 use crate::spectator_fog::SpectatorFog;
 

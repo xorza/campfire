@@ -1,5 +1,6 @@
-use campfire_net_core::Instant;
 use core::time::Duration;
+
+use campfire_net_core::Instant;
 
 /// A handshake's first timer: the probe timeout before an RTT sample, 333 + 4 · 166.5 ms (RFC
 /// 9002 §6.2.2, `kInitialRtt`), which doubles at each resend.

@@ -1,7 +1,8 @@
-use super::*;
 use campfire_net_emulator::LinkModel;
 use campfire_net_emulator::internals::per_mille;
 use campfire_threads::Parallel;
+
+use super::*;
 
 /// 20 ms each way, the same both ways.
 fn latency() -> LinkModel {

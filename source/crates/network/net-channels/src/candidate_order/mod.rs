@@ -1,5 +1,6 @@
-use crate::send_candidate::SendCandidate;
 use tracing::debug;
+
+use crate::send_candidate::SendCandidate;
 
 /// Reusable scheduler scratch for ordering channel-held send candidates.
 ///

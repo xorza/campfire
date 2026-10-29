@@ -1,37 +1,33 @@
-use super::*;
-use crate::prediction_registry::PredictionRegistry;
+use core::fmt::Debug;
+
 use bevy_app::App;
 use bevy_app::PreUpdate;
 use bevy_app::Update;
-use campfire_net_replication::ComponentRegistry;
-use campfire_net_replication::internals::ClientCopies;
-use campfire_net_replication::internals::PROPAGATION_FRAMES;
-use campfire_net_sync::TimelineSync;
-use campfire_net_timeline::Rollback;
-
 use bevy_ecs::entity_disabling::Disabled;
-
 use bevy_ecs::system::RunSystemOnce;
-
-use bevy_replicon::prelude::RepliconTick;
-
-use core::fmt::Debug;
-
-use campfire_net_sync::InputDelaySetup;
-use campfire_net_sync::LocalTimelineSync;
-
-use crate::fixtures::prediction_stack::PredictionStack;
-use crate::fixtures::protocol::CompCorr;
-use crate::fixtures::steps::trigger_state_rollback;
-use crate::rollback_setup::RollbackSetup;
-use crate::rollback_systems::RollbackSystems;
 use bevy_replicon::prelude::Remote;
+use bevy_replicon::prelude::RepliconTick;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_interpolation::internals::CompFull;
+use campfire_net_replication::ComponentRegistry;
+use campfire_net_replication::internals::ClientCopies;
 use campfire_net_replication::internals::CompA;
+use campfire_net_replication::internals::PROPAGATION_FRAMES;
 use campfire_net_replication::{PredictionTarget, Replicate};
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
+use campfire_net_sync::InputDelaySetup;
+use campfire_net_sync::LocalTimelineSync;
+use campfire_net_sync::TimelineSync;
+use campfire_net_timeline::Rollback;
+
+use super::*;
+use crate::fixtures::prediction_stack::PredictionStack;
+use crate::fixtures::protocol::CompCorr;
+use crate::fixtures::steps::trigger_state_rollback;
+use crate::prediction_registry::PredictionRegistry;
+use crate::rollback_setup::RollbackSetup;
+use crate::rollback_systems::RollbackSystems;
 
 #[derive(Component, Clone, PartialEq, Debug)]
 struct TestValue(f32);

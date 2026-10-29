@@ -4,12 +4,12 @@ use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Res, ResMut, Single};
 use campfire_common::Tick;
+use campfire_host::JoinState;
 use campfire_net_connection::{Client, Disconnected};
 use campfire_net_sync::SyncedLocalTimeline;
 use tracing::info;
 
 use crate::sim_client::LeaveRequest;
-use campfire_host::JoinState;
 
 /// The leave of a client a bot script plays, after the tick the script ends at: whether it asked
 /// to leave yet.

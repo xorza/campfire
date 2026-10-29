@@ -1,10 +1,12 @@
-use crate::net_tick::NetTick;
-use crate::ticked::Ticked;
-#[cfg(feature = "reflect")]
-use bevy_reflect::Reflect;
 use core::iter::FusedIterator;
 use core::ops::RangeBounds;
 use std::collections::{VecDeque, vec_deque};
+
+#[cfg(feature = "reflect")]
+use bevy_reflect::Reflect;
+
+use crate::net_tick::NetTick;
+use crate::ticked::Ticked;
 
 /// Entries ordered by tick from oldest to newest, one for each tick: the store under the
 /// histories.

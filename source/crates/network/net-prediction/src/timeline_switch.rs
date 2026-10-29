@@ -1,11 +1,13 @@
+use core::time::Duration;
+
+use bevy_ecs::prelude::*;
+use serde::Deserialize;
+
 use crate::correction_ease::CorrectionEase;
 use crate::on_timeline::OnTimeline;
 use crate::pending_switch::PendingSwitch;
 use crate::switch_direction::SwitchDirection;
 use crate::timeline_switch_setup::TimelineSwitchSetup;
-use bevy_ecs::prelude::*;
-use core::time::Duration;
-use serde::Deserialize;
 
 /// Request to move an entity between the prediction and interpolation timelines.
 ///

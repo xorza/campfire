@@ -1,13 +1,13 @@
 use bevy::prelude::*;
 use campfire_net_connection::Connected;
-use campfire_net_messages::{MessageReceiver, MessageSender};
-
-use crate::scenario::guarantee::Guarantee;
 use campfire_net_messages::internals::SeqMessage;
+use campfire_net_messages::{MessageReceiver, MessageSender};
 use campfire_net_transport::internals::{
     Channel1, ChannelOrderedReliable, ChannelSequencedReliable, ChannelSequencedUnreliable,
     ChannelUnorderedReliable,
 };
+
+use crate::scenario::guarantee::Guarantee;
 
 /// The guarantee of each channel the scenarios send on, by the `channel` index of a
 /// [`SeqMessage`].

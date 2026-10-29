@@ -1,20 +1,19 @@
+use bevy_platform::collections::HashMap;
 use bytes::Bytes;
+use bytes::BytesMut;
 use campfire_net_core::TickInstant;
 use campfire_net_payload::DEFAULT_MTU;
 
+use super::*;
 use crate::channel::Channel;
 use crate::channel_type_id::ChannelTypeId;
+use crate::error::ReceiveError;
 use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;
 use crate::packet::FRAGMENT_LEN;
+use crate::queued_message::QueuedMessage;
 use crate::send_candidate::{CandidateRank, CandidateSink};
 use crate::tick_encoder::TickEncoder;
-use bevy_platform::collections::HashMap;
-
-use super::*;
-use crate::error::ReceiveError;
-use crate::queued_message::QueuedMessage;
-use bytes::BytesMut;
 
 #[derive(Debug)]
 struct Channel1;

@@ -1,6 +1,7 @@
+use campfire_net_core::NetId;
+
 use crate::bench_counter::BenchCounter;
 use crate::send_message_key::SendMessageKey;
-use campfire_net_core::NetId;
 
 /// A message that a packet carries, as the sender records it until the packet goes to the
 /// packet session.

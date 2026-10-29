@@ -1,5 +1,6 @@
-use bevy_ecs::component::{Component, Mutable};
 use core::fmt::Debug;
+
+use bevy_ecs::component::{Component, Mutable};
 
 /// A component that prediction and interpolation keep in a history: stored by `Clone`, compared by
 /// `PartialEq`, and written back, as `Mutable` lets them.

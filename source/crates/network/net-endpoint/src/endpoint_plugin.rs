@@ -1,8 +1,9 @@
+use core::marker::PhantomData;
+
 use bevy_app::{App, Plugin, PostUpdate, PreUpdate};
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use campfire_net_link::LinkSystems;
 use campfire_net_packets::DatagramIo;
-use core::marker::PhantomData;
 
 use crate::endpoint::Endpoint;
 use crate::frame_wake::FrameWake;

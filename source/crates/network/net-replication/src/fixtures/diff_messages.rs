@@ -1,5 +1,3 @@
-use crate::component_codec::ComponentCodec;
-use crate::confirmed_history::ConfirmedHistory;
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_replicon::prelude::RepliconTick;
@@ -8,6 +6,8 @@ use bytes::Bytes;
 use campfire_net_core::NetTick;
 use serde::Serialize;
 
+use crate::component_codec::ComponentCodec;
+use crate::confirmed_history::ConfirmedHistory;
 use crate::confirmed_tick_map::ConfirmedTickMap;
 use crate::fixtures::protocol::CompRepliconDiff;
 

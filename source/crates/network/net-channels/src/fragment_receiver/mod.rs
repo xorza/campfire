@@ -1,15 +1,14 @@
 //! Fragment validation and reassembly for channel receives.
-
 use bevy_platform::collections::HashMap;
+use bytes::Bytes;
 use campfire_net_core::Instant;
+use campfire_net_core::NetTick;
 
 use crate::error::ReceiveError;
 use crate::fragment_body::FragmentBody;
 use crate::message_id::MessageId;
 use crate::packet::MAX_FRAGMENTS;
 use crate::receive_budget::{ReceiveBudget, Reservation};
-use bytes::Bytes;
-use campfire_net_core::NetTick;
 
 type Result<T> = core::result::Result<T, ReceiveError>;
 use tracing::trace;

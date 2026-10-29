@@ -1,4 +1,6 @@
 //! Deferred structural entity commands.
+use core::any::{Any, TypeId};
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
@@ -7,7 +9,6 @@ use bevy_ecs::world::{DeferredWorld, World};
 use bevy_platform::cell::SyncCell;
 use bevy_platform::collections::HashMap;
 use bevy_replicon::shared::replication::deferred_entity::{DeferredEntity, EntityScratch};
-use core::any::{Any, TypeId};
 
 /// Batched structural changes for multiple entities, kept in the system state as
 /// [`Commands`](bevy_ecs::system::Commands) are.

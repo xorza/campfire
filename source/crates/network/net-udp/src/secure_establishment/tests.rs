@@ -1,3 +1,8 @@
+use core::net::SocketAddr;
+use core::num::NonZeroU32;
+use core::time::Duration;
+use std::sync::Arc;
+
 use bytes::{Bytes, BytesMut};
 use campfire_common::Secret;
 use campfire_net_core::Instant;
@@ -7,14 +12,10 @@ use campfire_net_packets::{
     Protection, ServerEstablish,
 };
 use campfire_net_payload::UnlinkReason;
-use core::net::SocketAddr;
-use core::num::NonZeroU32;
-use core::time::Duration;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{self, ring};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, SignatureScheme};
-use std::sync::Arc;
 
 use crate::admission_setup::AdmissionSetup;
 use crate::certificate_chain::CertificateChain;

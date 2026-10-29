@@ -4,6 +4,7 @@ use std::io::{self, IsTerminal};
 use std::mem;
 use std::path::Path;
 
+use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
 use campfire_log::{check_layer, json_lines};
 use campfire_store::StreamWriter;
@@ -18,7 +19,6 @@ use tracing_subscriber::{EnvFilter, Layer, fmt};
 use crate::error::FilterRefused;
 use crate::log_file::{LogFile, LogLines};
 use crate::log_tap::{LogTap, TapLines};
-use campfire_common::ErrorReport;
 
 /// Where a binary logs: to standard error, as text colored only on a terminal, by `RUST_LOG`;
 /// and, when `CAMPFIRE_LOG` names a file, also there as JSON lines with their spans, by

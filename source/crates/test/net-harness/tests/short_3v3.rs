@@ -26,10 +26,10 @@ pub(crate) const PICKS: [&str; 6] = [
 /// `tail` after its mode's data, a `[visibility]` table or nothing.
 pub(crate) fn short_3v3(edits: &[(&str, Edit<'_>)], tail: &str) -> ModePackages {
     let mut tree = PackageTree::of(TestMode::Moba3v3);
-    let data = "modes/3v3/data/mode.toml";
+    let data = "moba/modes/3v3/data/mode.toml";
     tree.edit(data, Edit::Set("params.pick_ms", "1000"))
         .edit(data, Edit::Set("params.first_wave_ms", "1000"));
-    let map = "modes/3v3/map/two_lanes/map.toml";
+    let map = "moba/modes/3v3/map/two_lanes/map.toml";
     for (team, from, to) in [("north", -60, -28), ("south", 60, -22)] {
         let marker = |z| format!("team = \"{team}\"\nposition = [0, {z}]");
         tree.edit(map, Edit::Replace(&marker(from), &marker(to)));

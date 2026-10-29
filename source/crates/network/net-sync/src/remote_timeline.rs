@@ -1,5 +1,6 @@
-use crate::link_estimate::LinkEstimate;
-use crate::link_estimator::LinkEstimator;
+use core::num::NonZeroU32;
+use core::time::Duration;
+
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
@@ -15,9 +16,10 @@ use campfire_net_timeline::Timeline;
 use campfire_net_timeline::TimelineRate;
 use campfire_net_timeline::TimelineSetup;
 use campfire_net_transport::PacketReceived;
-use core::num::NonZeroU32;
-use core::time::Duration;
 use tracing::trace;
+
+use crate::link_estimate::LinkEstimate;
+use crate::link_estimator::LinkEstimator;
 
 /// This peer's estimate of the remote peer's timeline, from the ticks its packets carry and the
 /// link's latency.

@@ -1,8 +1,9 @@
-use crate::interpolation_rule_component::InterpolationRuleComponent;
 use bevy_ecs::archetype::Archetype;
 use bevy_ecs::component::Components;
 use bevy_ecs::query::ArchetypeFilter;
 use campfire_net_replication::ComponentTypeId;
+
+use crate::interpolation_rule_component::InterpolationRuleComponent;
 
 /// Returns whether a rule's filter matches an archetype.
 pub(crate) type MatchesArchetypeFn = fn(&Components, &Archetype) -> bool;

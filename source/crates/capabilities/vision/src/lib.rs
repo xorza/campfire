@@ -12,9 +12,9 @@ use campfire_declarations::{ById, Declarations, InstallCx, Module, ModuleSystems
 use campfire_players::Player;
 use campfire_sim::Capability;
 use campfire_units::{SeenBy, UnitEntity, UnitsSystems};
+use campfire_values::UnitType;
 
 use crate::vision_column::RowReads;
-use campfire_values::UnitType;
 
 #[cfg(feature = "internals")]
 pub mod bench;

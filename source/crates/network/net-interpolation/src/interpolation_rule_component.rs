@@ -1,9 +1,10 @@
-use crate::confirmed_history_fns::ConfirmedHistoryFns;
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::world::World;
 use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::HistoryComponent;
+
+use crate::confirmed_history_fns::ConfirmedHistoryFns;
 
 /// One component an interpolation rule holds.
 ///

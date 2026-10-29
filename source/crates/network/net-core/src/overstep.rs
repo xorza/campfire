@@ -1,4 +1,6 @@
-use crate::tick_range_error::TickRangeError;
+use core::fmt::Debug;
+use core::time::Duration;
+
 #[cfg(feature = "reflect")]
 use bevy_reflect::Reflect;
 use campfire_math::Num;
@@ -6,8 +8,8 @@ use campfire_net_bytes::Reader;
 use campfire_net_bytes::SerializationError;
 use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::WriteInteger;
-use core::fmt::Debug;
-use core::time::Duration;
+
+use crate::tick_range_error::TickRangeError;
 
 /// The fraction of the next tick a timeline has run, in `[0, 1)`, a `Num` of 24 fractional bits
 /// (11-net-stack/time.md, One number type). It compares at its full precision and travels as

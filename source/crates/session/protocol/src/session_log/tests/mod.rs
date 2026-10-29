@@ -22,6 +22,8 @@ use crate::session_log::error::{JournalReplayError, PublishError, PublishWriteEr
 use crate::session_log::file::{LOG_TAG, PACKET_ENTRY};
 use crate::session_log::journal::journal_frames::JournalFrames;
 use crate::session_log::journal::tests::MemorySink;
+use crate::session_log::journal_replay::ReplayedJournal;
+use crate::session_log::journal_shape::JournalShape;
 use crate::session_result::{Outcome, SessionResult};
 use crate::session_terms::SessionTerms;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
@@ -167,7 +169,9 @@ fn published_from(file: &[u8]) -> Result<Vec<u8>, PublishError> {
         }
         Ok(())
     };
-    match SessionLog::publish(&mut walk, &SEED_CHAIN.seed(1), &mut out) {
+    let published = JournalShape::read(&mut walk)
+        .and_then(|shape| SessionLog::publish(&shape, &mut walk, &SEED_CHAIN.seed(1), &mut out));
+    match published {
         Ok(()) => Ok(out),
         Err(PublishWriteError::Journal(error)) => Err(error),
         Err(PublishWriteError::Walk(stopped)) => {

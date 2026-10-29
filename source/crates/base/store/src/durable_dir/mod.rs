@@ -3,10 +3,11 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::durable_dir::error::{DurableDirCreateError, DurableDirError};
-use crate::path_error::PathError;
 use campfire_platform::DurableName;
 use campfire_platform::UserOnly;
+
+use crate::durable_dir::error::{DurableDirCreateError, DurableDirError};
+use crate::path_error::PathError;
 
 pub(crate) mod error;
 

@@ -1,9 +1,3 @@
-use crate::link_messages::LinkMessages;
-use crate::message::Message;
-use crate::message_registry::MessageRegistry;
-use crate::message_type_id::MessageTypeId;
-use crate::replicon_map_param::RepliconMapParam;
-use crate::send_map_view::SendMapView;
 use bevy_ecs::query::{Has, QueryFilter, With};
 use bevy_ecs::{
     entity::EntitySet,
@@ -18,6 +12,13 @@ use campfire_net_connection::Connected;
 use campfire_net_core::LinkDirection;
 use campfire_net_transport::ChannelRegistry;
 use campfire_net_transport::Transport;
+
+use crate::link_messages::LinkMessages;
+use crate::message::Message;
+use crate::message_registry::MessageRegistry;
+use crate::message_type_id::MessageTypeId;
+use crate::replicon_map_param::RepliconMapParam;
+use crate::send_map_view::SendMapView;
 
 /// SystemParam that sends one message or event to several links at once, serializing it once
 /// when it maps no entities.

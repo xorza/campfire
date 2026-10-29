@@ -1,8 +1,9 @@
+use bevy_app::{App, Plugin, PostUpdate, PreUpdate};
+use bevy_ecs::prelude::*;
+
 use crate::link_state::Unlinked;
 use crate::link_systems::LinkSystems;
 use crate::unlink::Unlink;
-use bevy_app::{App, Plugin, PostUpdate, PreUpdate};
-use bevy_ecs::prelude::*;
 
 /// The link lifecycle and the sets the packet sessions run in: they hand
 /// each link what they opened in [`LinkSystems::Receive`], and take what the frame queued in

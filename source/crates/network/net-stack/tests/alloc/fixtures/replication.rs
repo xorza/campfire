@@ -1,6 +1,3 @@
-use crate::fixtures;
-use crate::fixtures::AUDIT;
-use crate::fixtures::CHANGED;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_interpolation::internals::CompFull;
 use campfire_net_replication::Replicate;
@@ -9,6 +6,10 @@ use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
+
+use crate::fixtures;
+use crate::fixtures::AUDIT;
+use crate::fixtures::CHANGED;
 
 /// Each frame changes one replicated component on the server, which reaches the client in the
 /// same frame. bevy_replicon grows its mutation message for the change (1).

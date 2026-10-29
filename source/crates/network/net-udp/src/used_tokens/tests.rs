@@ -1,5 +1,6 @@
-use super::*;
 use core::time::Duration;
+
+use super::*;
 
 fn at(secs: u64) -> Instant {
     Instant::from_elapsed(Duration::from_secs(secs))

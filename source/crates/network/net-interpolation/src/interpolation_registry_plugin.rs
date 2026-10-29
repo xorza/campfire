@@ -1,5 +1,6 @@
-use crate::interpolation_registry::{self, InterpolationRegistry};
 use bevy_app::{App, Plugin};
+
+use crate::interpolation_registry::{self, InterpolationRegistry};
 
 /// Holds the interpolation registry, which a shared protocol registers into on both sides, and
 /// finalizes it once the plugins are built.

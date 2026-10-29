@@ -8,6 +8,14 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
+use campfire_host::JoinError;
+use campfire_host::Joined;
+use campfire_host::PlayerSlots;
+use campfire_host::ServerBots;
+use campfire_host::ServerDir;
+use campfire_host::ServerPhase;
+use campfire_host::ServerSetup;
+use campfire_host::{SessionDir, SessionFiles};
 use campfire_mode::{HostPicks, OptionPicks, OptionValue, PlayerSlotPick, PlayerSlotPicks};
 use campfire_net_connection::Connected;
 use campfire_package::ModePackages;
@@ -26,14 +34,6 @@ use crate::sim_server::server_match::{MatchBegin, MatchSource, NewMatch, ServerM
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::spectators::spectators_world::SpectatorsWorld;
 use crate::sim_server::viewer::Viewer;
-use campfire_host::JoinError;
-use campfire_host::Joined;
-use campfire_host::PlayerSlots;
-use campfire_host::ServerBots;
-use campfire_host::ServerDir;
-use campfire_host::ServerPhase;
-use campfire_host::ServerSetup;
-use campfire_host::{SessionDir, SessionFiles};
 
 pub(crate) mod error;
 

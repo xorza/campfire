@@ -1,5 +1,6 @@
-use super::*;
 use core::cmp::Ordering;
+
+use super::*;
 
 fn num(text: &str) -> Num {
     text.parse().unwrap()

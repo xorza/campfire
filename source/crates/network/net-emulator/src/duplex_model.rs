@@ -1,5 +1,6 @@
-use campfire_math::Num;
 use core::time::Duration;
+
+use campfire_math::Num;
 
 use crate::link_model::{LinkModel, per_mille};
 use crate::rate_limit::RateLimit;

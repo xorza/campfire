@@ -2,23 +2,21 @@
 //! client's schedule reads, on a unit it holds as the server sent it, only what it derives itself
 //! or what reaches every client that holds the unit, and builds no system that computes the
 //! server's own state.
+use std::any::type_name;
 
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::query::{ComponentAccessKind, FilteredAccess, FilteredAccessSet};
+use bevy_ecs::schedule::Schedules;
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::system::{System, SystemAccess};
-use campfire_declarations::ServerOnlySystems;
-use campfire_stats::{Modifiers, UnitStats};
-
-use std::any::type_name;
-
-use bevy_ecs::schedule::Schedules;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::internals::ClientHolds;
 use campfire_capabilities::{Match, MatchKind, MatchSetup, Release};
 use campfire_common::SegmentSeed;
 use campfire_declarations::Role;
+use campfire_declarations::ServerOnlySystems;
 use campfire_sim::{SimUpdate, Unpredicted};
+use campfire_stats::{Modifiers, UnitStats};
 use campfire_test_packages::TestMode;
 
 /// What `access` reads, a component's data or its presence, `Has` and `With` among them, and

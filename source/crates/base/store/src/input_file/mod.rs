@@ -3,10 +3,11 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::input_file::error::ReadError;
-use crate::path_error::PathError;
 use campfire_platform::NoFollow;
 use campfire_platform::PositionalRead;
+
+use crate::input_file::error::ReadError;
+use crate::path_error::PathError;
 
 pub(crate) mod error;
 

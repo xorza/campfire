@@ -1,9 +1,8 @@
-use super::*;
-
 use bevy_ecs::component::Component;
 use bevy_ecs::error::Result;
-
 use serde::{Deserialize, Serialize};
+
+use super::*;
 
 #[derive(Component, Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct TestDiffValue(u32);

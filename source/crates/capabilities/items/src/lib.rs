@@ -14,10 +14,10 @@ use campfire_declarations::{
 };
 use campfire_sim::{Capability, SimSystems, StableId};
 use campfire_units::BodyUnit;
+use campfire_values::UnitType;
 
 use crate::inventory::CarrierSlots;
 use crate::shop_index::ShopIndex;
-use campfire_values::UnitType;
 
 mod error;
 mod inventory;

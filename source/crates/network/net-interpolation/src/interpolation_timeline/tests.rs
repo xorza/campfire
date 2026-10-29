@@ -1,20 +1,16 @@
-use super::*;
-
 use bevy_app::App;
 use bevy_app::PreUpdate;
-
 use bevy_time::Real;
 use bevy_time::Time;
 use bevy_time::Virtual;
+use campfire_math::TickRate;
+use campfire_net_core::NetTick;
 use campfire_net_sync::LinkEstimate;
 use campfire_net_sync::RemoteTimeline;
 use campfire_net_timeline::NetworkTimeline;
-
-use campfire_math::TickRate;
-
-use campfire_net_core::NetTick;
 use campfire_net_timeline::TimelineRate;
 
+use super::*;
 use crate::interpolation_timeline_plugin::InterpolationTimelinePlugin;
 
 /// A controller reset keeps the cursor at tick 7; a link reset also clears the cursor

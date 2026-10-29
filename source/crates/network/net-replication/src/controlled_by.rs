@@ -1,5 +1,3 @@
-use crate::controlled_lifetime::ControlledLifetime;
-use crate::controlled_send::ControlledSend;
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use bevy_replicon::prelude::ScopeLifetime;
@@ -8,6 +6,9 @@ use bevy_replicon::prelude::VisibilityFilter;
 use campfire_net_connection::RemoteId;
 use campfire_net_despawns::DespawnReplicated;
 use tracing::trace;
+
+use crate::controlled_lifetime::ControlledLifetime;
+use crate::controlled_send::ControlledSend;
 
 /// Sender-side component that associates the entity with a
 /// [`ReplicationSender`](crate::replication_sender::ReplicationSender) 'controlling' the entity

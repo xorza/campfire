@@ -1,6 +1,7 @@
+use bytes::{Buf, Bytes};
+
 use crate::serialization_error::SerializationError;
 use crate::var_int::{self, VarInt};
-use bytes::{Buf, Bytes};
 
 /// The unread bytes of a buffer: each read takes its bytes off the front, and a split shares the
 /// buffer's memory (11-net-stack/transport.md, Decoders take only what the bytes hold).

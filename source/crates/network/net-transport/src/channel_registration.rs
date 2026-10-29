@@ -1,12 +1,14 @@
-use crate::channel_registry::{ChannelGate, ChannelRegistry};
-use crate::transport_plugin::TransportPlugin;
+use core::any::TypeId;
+
 use bevy_app::App;
 use bevy_ecs::component::Component;
 use campfire_net_channels::Channel;
 use campfire_net_connection::Client;
 use campfire_net_connection::ClientOf;
 use campfire_net_core::LinkDirections;
-use core::any::TypeId;
+
+use crate::channel_registry::{ChannelGate, ChannelRegistry};
+use crate::transport_plugin::TransportPlugin;
 
 #[derive(Debug)]
 pub struct ChannelRegistration<'a, C> {

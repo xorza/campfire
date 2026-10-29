@@ -1,6 +1,3 @@
-use crate::fixtures::replication_stack::ReplicationStack;
-use crate::fixtures::steps::PROPAGATION_FRAMES;
-use crate::replication_target::Replicate;
 use bevy_app::{App, PreUpdate};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::event::EntityEvent;
@@ -15,6 +12,10 @@ use campfire_net_messages::internals::MappedEntityEvent;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_transport::internals::Channel1;
+
+use crate::fixtures::replication_stack::ReplicationStack;
+use crate::fixtures::steps::PROPAGATION_FRAMES;
+use crate::replication_target::Replicate;
 
 /// The message receive drains every channel of a transport, replicon's too, so each app
 /// reads replicon's channels before it, as the replicon plugins order it: in `PreUpdate`,

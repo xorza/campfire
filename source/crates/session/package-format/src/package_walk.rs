@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::io::{self, Read};
 
-use crate::content_hash::{ContentHash, ContentHashMeaning, ContentHasher};
 use campfire_values::PackagePath;
 
+use crate::content_hash::{ContentHash, ContentHashMeaning, ContentHasher};
 use crate::error::ContentError;
 use crate::file_index::{EncodedIndex, FileIndex, FileRow};
 

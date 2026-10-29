@@ -1,9 +1,11 @@
-use crate::interpolation_state::InterpolationState;
+use core::time::Duration;
+
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use campfire_net_sync::SyncSetup;
 use campfire_net_timeline::TimelineSetup;
-use core::time::Duration;
+
+use crate::interpolation_state::InterpolationState;
 
 /// Setup to specify how delayed interpolation should behave
 #[derive(Resource, Clone, Copy, Debug, Reflect)]

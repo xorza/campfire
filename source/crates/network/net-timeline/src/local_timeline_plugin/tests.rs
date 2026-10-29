@@ -1,9 +1,10 @@
-use super::*;
 use bevy_app::{FixedMain, FixedUpdate};
 use bevy_ecs::prelude::Resource;
 use bevy_ecs::system::Res;
 use bevy_time::{TimePlugin, TimeUpdateStrategy, Virtual};
 use campfire_net_core::NetTick;
+
+use super::*;
 
 fn rate(hz: u32) -> TickRate {
     TickRate::try_from(hz).unwrap()

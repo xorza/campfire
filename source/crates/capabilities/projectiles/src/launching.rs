@@ -4,13 +4,13 @@ use campfire_declarations::ById;
 use campfire_deliveries::{DeliverySpawner, NewDelivery};
 use campfire_sim::{EntityIndex, StableId};
 use campfire_units::Body;
+use campfire_values::UnitType;
 
 use crate::flight_state::FlightState;
 use crate::projectile::{Flight, LaunchAim, Payload, Projectile};
 use crate::projectile_flight::ProjectileFlight;
 use crate::projectile_launches::{Launch, LaunchPayload, ProjectileLaunches};
 use crate::projectile_spec::ProjectileSpec;
-use campfire_values::UnitType;
 
 /// The tick's shots and launches, which spawn as projectiles.
 #[derive(Debug)]

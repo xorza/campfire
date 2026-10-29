@@ -1,7 +1,9 @@
-use crate::correction_ease::CorrectionEase;
+use core::time::Duration;
+
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
-use core::time::Duration;
+
+use crate::correction_ease::CorrectionEase;
 
 /// Marks an entity while a switch is ongoing.
 ///

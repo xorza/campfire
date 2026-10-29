@@ -1,11 +1,11 @@
-use crate::fragment_count::FragmentCount;
-use crate::fragment_index::FragmentIndex;
-use crate::fragmented_message::FragmentedMessage;
-use crate::packet::FRAGMENT_LEN;
 use campfire_net_core::Ticked;
 
 use super::*;
 use crate::channel_setup::DEFAULT_MAX_MESSAGE_LEN;
+use crate::fragment_count::FragmentCount;
+use crate::fragment_index::FragmentIndex;
+use crate::fragmented_message::FragmentedMessage;
+use crate::packet::FRAGMENT_LEN;
 
 /// The fragments of `bytes` at `fragment_len`.
 fn split(id: MessageId, bytes: Bytes, fragment_len: usize) -> Vec<FragmentBody> {

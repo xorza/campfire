@@ -1,36 +1,33 @@
-use super::*;
-use crate::correction::CorrectionFn;
-use crate::fixtures::protocol::linear_correction;
-use crate::rollback_plugin::RollbackPlugin;
-use crate::timeline_switch::SwitchRejection;
-use campfire_log::internals::LogCheck;
-use campfire_net_replication::internals::shared_replicon_app;
+use core::time::Duration;
 
-use crate::correction_ease::CorrectionEase;
-use crate::correction_policy::CorrectionPolicy;
-use crate::prediction_history::PredictionHistory;
-use crate::prediction_marker_plugin::PredictionMarkerPlugin;
-use crate::prediction_registration_ext::PredictionRegistrationExt;
-
-use crate::previous_visual::PreviousVisual;
-
-use crate::visual_correction::VisualCorrection;
 use bevy_ecs::system::RunSystemOnce;
-
+use campfire_log::internals::LogCheck;
 use campfire_net_core::NetTick;
 use campfire_net_frame_interpolation::{
     AppFrameInterpolationExt, FrameHolders, FrameInterpolationHistory, FrameInterpolationPlugin,
     FrameRegistryPlugin, FrameRule, InterpolationSampleCx,
 };
 use campfire_net_interpolation::InterpolationMarkerPlugin;
-use campfire_net_timeline::LocalTimeline;
-use core::time::Duration;
-
+use campfire_net_replication::internals::shared_replicon_app;
 use campfire_net_replication::{
     AppComponentExt, ComponentRegistry, ConfirmedHistory, HistoryState,
 };
 use campfire_net_sync::LocalTimelineSync;
+use campfire_net_timeline::LocalTimeline;
 use serde::{Deserialize, Serialize};
+
+use super::*;
+use crate::correction::CorrectionFn;
+use crate::correction_ease::CorrectionEase;
+use crate::correction_policy::CorrectionPolicy;
+use crate::fixtures::protocol::linear_correction;
+use crate::prediction_history::PredictionHistory;
+use crate::prediction_marker_plugin::PredictionMarkerPlugin;
+use crate::prediction_registration_ext::PredictionRegistrationExt;
+use crate::previous_visual::PreviousVisual;
+use crate::rollback_plugin::RollbackPlugin;
+use crate::timeline_switch::SwitchRejection;
+use crate::visual_correction::VisualCorrection;
 
 #[derive(Component, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 struct TestPos(f32);

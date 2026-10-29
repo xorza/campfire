@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use campfire_common::ErrorReport;
-
 use campfire_net_core::Random;
+use campfire_platform::SharedPort;
 use tracing::{debug, info, warn};
 
 use crate::error::PortMapError;
@@ -14,7 +14,6 @@ use crate::mapping::{MapAsk, Mapping};
 use crate::pcp_map::MapNonce;
 use crate::ssdp_announcement::SsdpAnnouncement;
 use crate::upnp_gateway::{SSDP, UpnpGateway};
-use campfire_platform::SharedPort;
 
 /// The port PCP and NAT-PMP gateways answer on (RFC 6887 §19.1, RFC 6886 §3).
 const PCP_PORT: u16 = 5351;

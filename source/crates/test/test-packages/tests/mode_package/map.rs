@@ -1,6 +1,4 @@
 //! Each flaw a package can have fails the load of the MOBA packages with its own problem.
-
-use crate::flaws::{Flaw, fails_each};
 use campfire_actions::{ActionProblem, EffectRule, SlotKind};
 use campfire_common::DeclaredName;
 use campfire_declarations::NamesListError;
@@ -15,6 +13,7 @@ use campfire_test_packages::Edit;
 use campfire_units::Layer;
 use campfire_values::{ModifierId, Named, ResourceId, TimeTooLarge, UnitType};
 
+use crate::flaws::{Flaw, fails_each};
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule, rule_at, rule_of, unit_type};
 
@@ -31,7 +30,7 @@ pub(super) static MAP_FLAWS: &[Flaw] = &[
     // box within the bounds, of a marker with no point; a placed unit walks only a path it
     // names; marker names differ.
     Flaw::of(
-        "modes/3v3/scripts/mode.rhai",
+        "moba/modes/3v3/scripts/mode.rhai",
         Edit::Replace(r#"ctx.map.markers("camp")"#, r#"ctx.map.markers("camps")"#),
         MODE,
         |problem| matches!(problem, LoadProblem::Unknown { of: MarkerTag::NAMES, name: tag, .. } if tag == "camps"),
@@ -197,21 +196,6 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
         MODE,
         |problem| matches!(problem, LoadProblem::Unknown { of: Layer::NAMES, at: Place::UnitType(unit_type), name: layer } if unit_type == "melee_creep" && layer.as_str() == "air"),
     ),
-    Flaw {
-        file: MANIFEST,
-        edit: Edit::Replace(r#""orders", "navigation", "vision""#, r#""vision""#),
-        also: &[(MODE_DATA, Edit::Set("navigation.layers", r#"["ground"]"#))],
-        package: MODE,
-        refused: |problem| {
-            matches!(
-                problem,
-                LoadProblem::Undeclared {
-                    capability: Capability::Navigation,
-                    at: Place::Section("navigation")
-                }
-            )
-        },
-    },
     // Slot kinds have names of their own; a unit type fills only kinds the mode declares, with
     // each of its abilities once; a choice of loadout entries fills a kind, and only one; all
     // such kinds have one count of ranks; scripts name only the mode's choices and kinds.
@@ -349,7 +333,7 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
         |problem| rule(problem, &ModeDataError::LoadoutRanks),
     ),
     Flaw::of(
-        "modes/3v3/scripts/mode.rhai",
+        "moba/modes/3v3/scripts/mode.rhai",
         Edit::Replace(
             r#"ctx.chosen(player, "spells")"#,
             r#"ctx.chosen(player, "spell")"#,
@@ -358,7 +342,7 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
         |problem| matches!(problem, LoadProblem::Unknown { of: ChoiceId::NAMES, name, .. } if name == "spell"),
     ),
     Flaw::of(
-        "modes/3v3/scripts/mode.rhai",
+        "moba/modes/3v3/scripts/mode.rhai",
         Edit::Replace(r#"ctx.after("pick_end""#, r#"ctx.after("pick_ends""#),
         MODE,
         |problem| matches!(problem, LoadProblem::Unknown { of: TimerId::NAMES, name, .. } if name == "pick_ends"),
@@ -385,7 +369,7 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
         refused: |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, name, .. } if name == "melee_creeps"),
     },
     Flaw::of(
-        "modes/3v3/scripts/mode.rhai",
+        "moba/modes/3v3/scripts/mode.rhai",
         Edit::Replace(
             r#"ctx.grant(unit, "spell","#,
             r#"ctx.grant(unit, "spells","#,
@@ -1012,7 +996,7 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
     },
     // A script adds only to a player resource the mode declares.
     Flaw::of(
-        "modes/3v3/scripts/mode.rhai",
+        "moba/modes/3v3/scripts/mode.rhai",
         Edit::Replace(
             r#"add_resource(killer.owner, "gold", gold)"#,
             r#"add_resource(killer.owner, "silver", gold)"#,
@@ -1071,7 +1055,7 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
         },
     ),
     Flaw::of(
-        "heroes/kensho/data/avatar.toml",
+        "moba/heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"targeting = "enemies""#, r#"targeting = "enemies:totem""#),
         "hero-kensho",
         |problem| matches!(problem, LoadProblem::Unknown { of: Filter::NAMES, name: filter, .. } if filter == "enemies:totem"),
@@ -1085,13 +1069,13 @@ acquire = { scan_ms = 250, targets = ["enemies"] }"#,
         ),
         also: &[
             (
-                "more/manifest.toml",
+                "moba/more/manifest.toml",
                 Edit::Create(
                     "name = \"more-spells\"\nversion = \"0.1.0\"\napi = \"1.0\"\nlanguage = \"en\"\nkind = \"loadout\"\n",
                 ),
             ),
             (
-                "more/data/loadout.toml",
+                "moba/more/data/loadout.toml",
                 Edit::Create("[actions.haste]\ntargeting = \"none\"\n"),
             ),
         ],

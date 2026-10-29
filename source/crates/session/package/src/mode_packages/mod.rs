@@ -11,6 +11,8 @@ use campfire_package_format::{ContentError, FileIndex, PackageFiles, PackageFind
 use campfire_script::{ModeScripts, ScriptId};
 use campfire_sim::MatchRate;
 use campfire_units::HeightGrid;
+use campfire_values::PackageName;
+use campfire_values::ScriptSource;
 use campfire_values::{EngineTag, PackageIndex, PackagePath};
 
 use crate::data_override::DataOverride;
@@ -23,8 +25,6 @@ use crate::mode_packages::load_check::LoadCheck;
 use crate::mode_packages::mode_base::ModeBase;
 use crate::mode_packages::mode_read::ModeRead;
 use crate::package_view::{PackageView, ViewKind};
-use campfire_values::PackageName;
-use campfire_values::ScriptSource;
 
 mod load_check;
 pub(crate) mod mode_base;

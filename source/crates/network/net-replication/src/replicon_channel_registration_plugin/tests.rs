@@ -1,9 +1,10 @@
-use super::*;
 use bevy_ecs::message::Message;
 use bevy_replicon::prelude::{AuthMethod, RepliconSharedPlugin, ServerMessageAppExt};
 use bevy_state::app::StatesPlugin;
 use campfire_net_core::NetId;
 use serde::{Deserialize, Serialize};
+
+use super::*;
 
 fn app() -> App {
     let mut app = App::new();

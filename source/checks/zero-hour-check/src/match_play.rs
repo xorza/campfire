@@ -1,7 +1,7 @@
-use campfire_actions::{ActionProgress, SlotKinds, SlotTimes, TypeSlotsData};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
+use campfire_actions::{ActionProgress, SlotKinds, SlotTimes, TypeSlotsData};
 use campfire_bots::{
     BotNames, BotScript, BotSink, OrderScript, OrderUnsent, PacedBot, PlayerSlotPlay,
     ScriptedOrder, ScriptedUnits, ThinkError, ThinkingBot, TickBot, TickBots,

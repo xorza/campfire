@@ -1,6 +1,9 @@
+use core::time::Duration;
+
 use bevy_ecs::prelude::{Entity, On, ResMut, Resource};
 use bevy_ecs::relationship::RelationshipTarget;
 use bevy_replicon::shared::backend::connected_client::NetworkIdMap;
+use campfire_log::internals::LogCheck;
 use campfire_math::Num;
 use campfire_net_connection::Connected;
 use campfire_net_connection::Disconnected;
@@ -11,19 +14,16 @@ use campfire_net_emulator::internals::per_mille;
 use campfire_net_emulator::{Phase, RateLimit};
 use campfire_net_link::{Link, Server, Unlink};
 use campfire_net_payload::{AppCode, OpenedPayload, PacketNumber, PayloadKind, UnlinkReason};
-use core::time::Duration;
-
-use campfire_threads::Parallel;
-
-use crate::fixtures::full_stack::FullStack;
-use crate::scenario::Scenario;
-use crate::scenario::faults::{Faults, GilbertLoss, Latency, Outage};
-use campfire_log::internals::LogCheck;
 use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::internals::input_timeline_is_synced;
+use campfire_threads::Parallel;
+
+use crate::fixtures::full_stack::FullStack;
+use crate::scenario::Scenario;
+use crate::scenario::faults::{Faults, GilbertLoss, Latency, Outage};
 
 /// Runs the swarm scenario of each seed and fails with every broken seed, its faults, what it
 /// broke, and the command that replays it.

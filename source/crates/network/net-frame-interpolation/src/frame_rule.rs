@@ -1,5 +1,6 @@
-use crate::interpolation_sample_cx::InterpolationSampleCx;
 use core::fmt;
+
+use crate::interpolation_sample_cx::InterpolationSampleCx;
 
 /// Makes the visual value `V` of a fixed-tick component `C` from `C`'s values at the last two
 /// fixed ticks and the frame's place between them.

@@ -1,6 +1,7 @@
+use core::fmt::Debug;
+
 use bevy_ecs::prelude::*;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
-use core::fmt::Debug;
 
 /// The server's [`ChildOf`] of a replicated entity, as the server sends it: the server entity of
 /// its parent. While the parent is mapped on this client, [`ChildOf`] is its view; while it is

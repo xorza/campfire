@@ -1,6 +1,7 @@
+use campfire_math::Num;
+
 use super::*;
 use crate::link_model::LinkModel;
-use campfire_math::Num;
 
 /// One emulated link, its wire time moved by hand.
 struct Harness {

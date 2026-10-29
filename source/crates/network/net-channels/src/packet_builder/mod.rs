@@ -1,5 +1,10 @@
 //! The packing of a link's due messages into packets, to the packet session's budget
 //! (11-net-stack/transport.md, A flush stops at the packet session's budget).
+use campfire_net_bytes::ToBytes;
+use campfire_net_bytes::WriteInteger;
+use campfire_net_core::NetId;
+use campfire_net_payload::OutgoingPayload;
+
 use crate::bench_counter::BenchCounter;
 use crate::message_ref::MessageRef;
 use crate::packet::{DEFAULT_MAX_PAYLOAD, Packet};
@@ -11,10 +16,6 @@ use crate::send_candidate::{CandidateMessages, SendCandidate};
 use crate::send_message_key::SendMessageKey;
 use crate::single_body::SingleBody;
 use crate::tick_encoder::EncodedTick;
-use campfire_net_bytes::ToBytes;
-use campfire_net_bytes::WriteInteger;
-use campfire_net_core::NetId;
-use campfire_net_payload::OutgoingPayload;
 
 const MAX_MESSAGES_PER_CHANNEL_BATCH: u8 = u8::MAX;
 

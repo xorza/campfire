@@ -1,7 +1,7 @@
-use super::*;
-use crate::channel::Channel;
 use core::num::NonZeroU32;
 
+use super::*;
+use crate::channel::Channel;
 use crate::packet::FRAGMENT_LEN;
 
 #[derive(Debug)]

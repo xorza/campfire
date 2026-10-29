@@ -1,8 +1,9 @@
+use core::fmt::Debug;
+
 use bevy_ecs::entity::MapEntities;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::ReflectMapEntities;
 use bevy_reflect::Reflect;
-use core::fmt::Debug;
 
 /// A hierarchy member that replicates as its `root`, which each descendant of a `Replicate` gets
 /// but one under

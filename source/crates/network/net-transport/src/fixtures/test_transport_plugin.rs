@@ -1,11 +1,12 @@
-use crate::app_channel_ext::AppChannelExt;
-use crate::channel_registry::ChannelRegistry;
-use crate::transport_plugin::TransportPlugin;
 use bevy_app::prelude::*;
 use bevy_utils::default;
 use campfire_net_channels::Channel;
 use campfire_net_channels::ChannelMode;
 use campfire_net_channels::ChannelSetup;
+
+use crate::app_channel_ext::AppChannelExt;
+use crate::channel_registry::ChannelRegistry;
+use crate::transport_plugin::TransportPlugin;
 
 #[derive(Debug)]
 pub struct TestChannel;

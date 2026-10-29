@@ -1,9 +1,9 @@
-use super::*;
 use bevy_app::App;
 use bevy_time::TimePlugin;
-
-use crate::timeline_plugins::TimelinePlugins;
 use campfire_math::TickRate;
+
+use super::*;
+use crate::timeline_plugins::TimelinePlugins;
 
 fn app(source: ClockSource, strategy: TimeUpdateStrategy) -> App {
     let mut app = App::new();

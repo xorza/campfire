@@ -9,12 +9,12 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use campfire_common::ErrorReport;
+use campfire_platform::SharedPort;
 use polling::{Event, Events};
 use tracing::{error, info, warn};
 
 use crate::port_mapper::{PortMapper, Routes};
 use crate::thread_stop::ThreadStop;
-use campfire_platform::SharedPort;
 
 /// The poller's key of the announcements' socket.
 const ANNOUNCEMENTS: usize = 0;

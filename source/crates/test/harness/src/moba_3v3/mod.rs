@@ -354,17 +354,23 @@ impl Moba3v3 {
         let timers = "[\"income\", \"pick_end\", \"setup\", \"wave\"]";
         let mut tree = PackageTree::of(TestMode::Moba3v3);
         tree.edit_all([
-            ("modes/3v3/data/mode.toml", Edit::Set("timers", timers)),
+            ("moba/modes/3v3/data/mode.toml", Edit::Set("timers", timers)),
             (
-                "modes/3v3/data/mode.toml",
+                "moba/modes/3v3/data/mode.toml",
                 Edit::Set("params.pick_ms", "1000"),
             ),
             (
-                "modes/3v3/data/mode.toml",
+                "moba/modes/3v3/data/mode.toml",
                 Edit::Set("params.first_wave_ms", "600000"),
             ),
-            ("modes/3v3/scripts/mode.rhai", Edit::Replace(picked, &timed)),
-            ("modes/3v3/scripts/mode.rhai", Edit::Replace(income, &setup)),
+            (
+                "moba/modes/3v3/scripts/mode.rhai",
+                Edit::Replace(picked, &timed),
+            ),
+            (
+                "moba/modes/3v3/scripts/mode.rhai",
+                Edit::Replace(income, &setup),
+            ),
         ]);
         let packages = tree.packages();
         let items = packages.mode().content.items();

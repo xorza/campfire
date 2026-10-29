@@ -1,4 +1,5 @@
-use super::*;
+use core::time::Duration;
+
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_time::TimeUpdateStrategy;
@@ -14,7 +15,8 @@ use campfire_net_link::{Link, LinkOf, Linked, RemoteAddress, Server};
 use campfire_net_packets::{EndpointPieces, EndpointSetup};
 use campfire_net_payload::{AppCode, UnlinkReason};
 use campfire_net_timeline::{Clock, ClockSource};
-use core::time::Duration;
+
+use super::*;
 
 /// One app with a server's plain endpoint and its clients', stepped by hand on the
 /// network's wire time.

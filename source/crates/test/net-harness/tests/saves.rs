@@ -195,13 +195,18 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
 
     // The published log holds the segment before the save and the one after it, and verifies.
     local.server_mut().world_mut().end_session().unwrap();
-    local.server_mut().world_mut().session_mut().close_journal();
+    let shape = local
+        .server_mut()
+        .world_mut()
+        .session_mut()
+        .close_journal()
+        .unwrap();
     let held = log(&local);
     let revealed = held.revealed_seeds().unwrap();
     let last = revealed.seed(held.segment()).unwrap().clone();
     let id = held.session_id();
     let data = local.server().world().resource::<ServerDir>();
-    let file = SessionDir::publish(data, id, &last).unwrap();
+    let file = SessionDir::publish(data, id, &shape, &last).unwrap();
     let bytes = InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap();
     let published = SessionLog::decode(&bytes).unwrap();
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&save]);

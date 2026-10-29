@@ -1,7 +1,4 @@
 //! Registering and installing a component's prediction and local rollback.
-use crate::prediction_history::PredictionHistory;
-use crate::prediction_plugin;
-use crate::prediction_plugin::{add_non_networked_rollback_systems, add_prediction_systems};
 use bevy_app::App;
 use bevy_ecs::component::{ComponentId, Mutable};
 use bevy_ecs::prelude::*;
@@ -20,6 +17,9 @@ use tracing::trace;
 
 use crate::history_receive;
 use crate::mismatch_fn::MismatchFn;
+use crate::prediction_history::PredictionHistory;
+use crate::prediction_plugin;
+use crate::prediction_plugin::{add_non_networked_rollback_systems, add_prediction_systems};
 use crate::prediction_registry;
 
 pub(crate) fn register_rollback_fns<C: Component<Mutability = Mutable> + Clone>(

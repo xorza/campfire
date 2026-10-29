@@ -1,3 +1,10 @@
+use core::mem;
+use core::net::SocketAddr;
+use core::num::NonZeroU32;
+use core::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
 use bevy_app::{App, FixedMainScheduleOrder, FixedUpdate, PluginsState, Update};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
@@ -23,12 +30,6 @@ use campfire_net_udp::{
     AdmissionSetup, ServerIdentity, ServerTrust, UdpClient, UdpServer, UdpSetup,
 };
 use campfire_schedule::{ScheduleExt, SchedulesExt};
-use core::mem;
-use core::net::SocketAddr;
-use core::num::NonZeroU32;
-use core::time::Duration;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
 use tracing::error_span;
 
 use crate::app_id::AppId;

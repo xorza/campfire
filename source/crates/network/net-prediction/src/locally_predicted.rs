@@ -1,11 +1,13 @@
-use crate::prediction_setup::PredictionSetup;
-use crate::rollback_check_state::RollbackCheckState;
+use core::fmt::Debug;
+
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
 use campfire_net_replication::{PreSpawned, Predicted};
 use campfire_net_timeline::LocalTimeline;
-use core::fmt::Debug;
+
+use crate::prediction_setup::PredictionSetup;
+use crate::rollback_check_state::RollbackCheckState;
 
 /// A locally predicted entity that this end alone holds: no server replicates it and no pre-spawn
 /// waits for its match, so its own end decides when it goes (11-net-stack/replication.md, The

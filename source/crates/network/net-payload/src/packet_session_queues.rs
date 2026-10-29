@@ -2,11 +2,12 @@ use core::time::Duration;
 use std::collections::{VecDeque, vec_deque};
 use std::vec;
 
+use bytes::BytesMut;
+
 use crate::packet_number::PacketNumber;
 use crate::payload_fate::PayloadFate;
 use crate::payload_kind::PayloadKind;
 use crate::payload_token::PayloadToken;
-use bytes::BytesMut;
 
 /// What the frame and a link's packet session hand each other: the frame's payloads and the numbers
 /// of the packets it accepted, and the packet session's opened payloads, the fate of each sent

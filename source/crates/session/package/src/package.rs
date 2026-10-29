@@ -1,4 +1,6 @@
 use campfire_common::PackageFingerprint;
+use campfire_package_format::PackageFiles;
+use campfire_package_format::PackageReader;
 use campfire_script::{ScriptApi, ScriptFacts, ScriptHost};
 use campfire_values::PackagePath;
 
@@ -7,8 +9,6 @@ use crate::error::load_problem::LoadProblem;
 use crate::error::script_problem::ScriptProblem;
 use crate::files::package_header::PackageHeader;
 use crate::package_text::PackageText;
-use campfire_package_format::PackageFiles;
-use campfire_package_format::PackageReader;
 
 /// A package as the load read it: its header, each of its scripts, its human text, and its files,
 /// whose index gives its fingerprint.

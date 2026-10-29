@@ -5,6 +5,15 @@ use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_common::{ErrorReport, Tick};
+use campfire_host::JoinError;
+use campfire_host::Joined;
+use campfire_host::JournalCommand;
+use campfire_host::JournalRefusal;
+use campfire_host::JournalRefused;
+use campfire_host::MatchClock;
+use campfire_host::PlayerSlots;
+use campfire_host::Reports;
+use campfire_host::WatchStart;
 use campfire_log::LogEvent;
 use campfire_net_messages::{MessageReceiver, MessageSender};
 use campfire_protocol::Delegation;
@@ -15,15 +24,6 @@ use tracing::{error, info};
 use crate::sim_server::offering::{CheckedJoins, JoinLinks, Offering};
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::viewer::{Viewer, Watching};
-use campfire_host::JoinError;
-use campfire_host::Joined;
-use campfire_host::JournalCommand;
-use campfire_host::JournalRefusal;
-use campfire_host::JournalRefused;
-use campfire_host::MatchClock;
-use campfire_host::PlayerSlots;
-use campfire_host::Reports;
-use campfire_host::WatchStart;
 
 /// The door of a session that replays a published log (08-sessions.md, The client opens a
 /// report): it offers the log's terms to every new link and admits one spectator, who watches the

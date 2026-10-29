@@ -1,5 +1,6 @@
-use campfire_net_core::NetId;
 use core::ops::Index;
+
+use campfire_net_core::NetId;
 
 /// The channels of one side of a transport, by the dense net id that the channel registry gives
 /// each channel: a lookup is an index, not a hash.

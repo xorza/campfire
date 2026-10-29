@@ -1,6 +1,3 @@
-use super::*;
-use crate::fixtures::protocol::{Channel1, channel_id};
-use crate::fixtures::transport_stack::TransportStack;
 use bevy_ecs::world::World;
 use bytes::Bytes;
 use campfire_net_channels::ChannelTypeId;
@@ -8,6 +5,10 @@ use campfire_net_channels::internals::ChannelCounts;
 use campfire_net_channels::internals::fragment_len;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
+
+use super::*;
+use crate::fixtures::protocol::{Channel1, channel_id};
+use crate::fixtures::transport_stack::TransportStack;
 
 /// A 5-byte message counts 5 bytes sent on the client and 5 received on the server, and
 /// nothing the other way.

@@ -6,11 +6,11 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_app_threads::OneThreadPlugins;
 use campfire_declarations::CapabilitySet;
+use campfire_host::Hosting;
 use campfire_schedule::ScheduleExt;
 use campfire_sim::MatchRate;
 
 use crate::sim_server::SimServerPlugin;
-use campfire_host::Hosting;
 
 /// The plugins of every server's app, as Bevy's `MinimalPlugins` groups its own: an app of one
 /// thread, time and states, and `SimServerPlugin` at the session's rate `tick_hz`, whose

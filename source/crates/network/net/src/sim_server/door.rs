@@ -7,6 +7,16 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, SystemParam, SystemS
 use bevy_ecs::world::World;
 use campfire_common::{ErrorReport, PlayerSlot, Tick};
 use campfire_declarations::MatchFacts;
+use campfire_host::JoinError;
+use campfire_host::Joined;
+use campfire_host::LeaveMatch;
+use campfire_host::MatchClock;
+use campfire_host::MatchLoaded;
+use campfire_host::PlayerLink;
+use campfire_host::PlayerSlots;
+use campfire_host::WatchStart;
+use campfire_host::{ChainHead, MatchStart, PlayerSlotChain};
+use campfire_host::{PlayerSlotLink, PlayerSlotLinks};
 use campfire_mode::MatchMode;
 use campfire_net_connection::{Connected, Disconnect};
 use campfire_net_messages::{MessageReceiver, MessageSender};
@@ -23,16 +33,6 @@ use crate::net_protocol::MatchChannel;
 use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Offered, Offering};
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::viewer::Viewer;
-use campfire_host::JoinError;
-use campfire_host::Joined;
-use campfire_host::LeaveMatch;
-use campfire_host::MatchClock;
-use campfire_host::MatchLoaded;
-use campfire_host::PlayerLink;
-use campfire_host::PlayerSlots;
-use campfire_host::WatchStart;
-use campfire_host::{ChainHead, MatchStart, PlayerSlotChain};
-use campfire_host::{PlayerSlotLink, PlayerSlotLinks};
 
 /// The session's door after the start: it offers the terms to every new link, and places each
 /// player who answers. A main key that controls a player slot gets it back, its live link ended if

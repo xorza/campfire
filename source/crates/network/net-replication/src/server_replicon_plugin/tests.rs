@@ -1,4 +1,5 @@
-use super::*;
+use core::net::SocketAddr;
+
 use bevy_ecs::error;
 use bevy_replicon::shared::backend::connected_client::NetworkIdMap;
 use bevy_state::app::StatesPlugin;
@@ -10,7 +11,8 @@ use campfire_net_core::PeerId;
 use campfire_net_despawns::DespawnReplicated;
 use campfire_net_link::{Link, Linked, Server};
 use campfire_net_transport::TransportPlugin;
-use core::net::SocketAddr;
+
+use super::*;
 
 /// A link whose packet session carries payloads of at most `max_payload` bytes.
 fn link(max_payload: usize) -> Link {

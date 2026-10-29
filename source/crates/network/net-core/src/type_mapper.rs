@@ -1,7 +1,9 @@
-use crate::net_id::NetId;
-use bevy_platform::collections::HashMap;
 use core::any::TypeId;
 use core::hash::Hash;
+
+use bevy_platform::collections::HashMap;
+
+use crate::net_id::NetId;
 
 pub trait RegisteredType: From<TypeId> + Copy + PartialEq + Eq + Hash {}
 

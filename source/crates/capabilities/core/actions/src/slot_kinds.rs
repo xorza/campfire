@@ -1,9 +1,9 @@
-use campfire_declarations::{Section, SectionTable};
-use campfire_script::{ApiVersion, Status};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
+use campfire_declarations::{Section, SectionTable};
+use campfire_script::{ApiVersion, Status};
 use campfire_units::NeededLevel;
 use campfire_values::{NameId, Names, NamesError, Rank};
 use serde::Deserialize;

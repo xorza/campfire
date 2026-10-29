@@ -1,10 +1,11 @@
-use bevy_platform::collections::HashMap;
 use core::iter;
 use core::net::SocketAddr;
 use core::task::Waker;
 use core::time::Duration;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use bevy_platform::collections::HashMap;
+use campfire_net_bytes::ByteArena;
 use campfire_net_emulator::EmulatedIo;
 use campfire_net_payload::DEFAULT_MTU;
 
@@ -13,7 +14,6 @@ use crate::datagram_io::Outbound;
 use crate::datagram_io::{Datagram, DatagramIo};
 use crate::io_failed::IoFailed;
 use crate::signal::Signal;
-use campfire_net_bytes::ByteArena;
 
 /// The emulated network's wires an endpoint holds: a client's one, a server's one for each client
 /// (11-net-stack/layering.md, The emulated wires and `net-udp`'s emulated server and client are

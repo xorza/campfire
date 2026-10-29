@@ -1,5 +1,6 @@
-use bevy_reflect::Reflect;
 use core::fmt::Debug;
+
+use bevy_reflect::Reflect;
 
 /// Stores a past value in the history buffer
 #[derive(Debug, PartialEq, Eq, Clone, Default, Reflect)]

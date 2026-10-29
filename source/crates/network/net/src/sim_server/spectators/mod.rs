@@ -3,6 +3,10 @@ use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
 use bevy_ecs::system::{Commands, Query};
 use campfire_common::Tick;
+use campfire_host::JoinError;
+use campfire_host::MatchClock;
+use campfire_host::WatchStart;
+use campfire_host::WatchTeams;
 use campfire_net_connection::Connected;
 use campfire_net_messages::{MessageReceiver, MessageSender};
 use campfire_values::TeamSet;
@@ -11,10 +15,6 @@ use tracing::info;
 
 use crate::net_protocol::MatchChannel;
 use crate::sim_server::viewer::{Viewer, Watching};
-use campfire_host::JoinError;
-use campfire_host::MatchClock;
-use campfire_host::WatchStart;
-use campfire_host::WatchTeams;
 
 pub(crate) mod spectators_world;
 

@@ -1,7 +1,8 @@
-use super::*;
 use rustls::Side;
 use rustls::crypto::ring::cipher_suite::TLS13_CHACHA20_POLY1305_SHA256;
 use rustls::quic::{Keys, Version};
+
+use super::*;
 
 const ID: [u8; ID_LEN] = [1, 2, 3, 4, 5, 6, 7, 8];
 

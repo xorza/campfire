@@ -1,8 +1,9 @@
-use crate::connection_state::{Connected, Connecting, Disconnected, Disconnecting};
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::Reflect;
+
+use crate::connection_state::{Connected, Connecting, Disconnected, Disconnecting};
 
 /// A client, which starts disconnected unless it comes with a connection state.
 #[derive(Debug, Component, Default, Reflect)]

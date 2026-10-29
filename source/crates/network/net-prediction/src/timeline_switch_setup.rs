@@ -1,6 +1,8 @@
-use crate::correction_ease::CorrectionEase;
-use bevy_ecs::prelude::*;
 use core::time::Duration;
+
+use bevy_ecs::prelude::*;
+
+use crate::correction_ease::CorrectionEase;
 
 /// Default blend length for timeline switches.
 ///

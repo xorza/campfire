@@ -2,10 +2,12 @@ use std::collections::BTreeMap;
 
 use campfire_actions::TypeSlotsData;
 use campfire_airfields::AirfieldData;
+use campfire_areas::AreaData;
 use campfire_codec::{Toml, TomlTable, TomlValue};
 use campfire_combat::BarrelsData;
 use campfire_common::DeclaredName;
 use campfire_declarations::SectionWriter;
+use campfire_interaction::{EnterData, RidesData, UsesData};
 use campfire_math::Num;
 use campfire_orders::{AcquireData, RetaliateData};
 use campfire_package::UnitsFile;
@@ -20,8 +22,6 @@ use crate::zero_hour::mover_import::MoverImport;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::second_life_import::SecondLifeImport;
 use crate::zero_hour::type_name::TypeName;
-use campfire_areas::AreaData;
-use campfire_interaction::{EnterData, RidesData, UsesData};
 
 /// The closed set of the import's unit types, by their names: each the fields its object gives.
 /// The stages after it read it and add no type; what they give a type, its actions and its

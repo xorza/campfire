@@ -1,3 +1,7 @@
+use bevy_app::App;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
 use crate::message::Message;
 use crate::message_receiver::MessageReceiver;
 use crate::message_registration::MessageRegistration;
@@ -7,9 +11,6 @@ use crate::send_queue::SendQueue;
 use crate::serialize_fns::CxDeserializeFns;
 use crate::serialize_fns::CxSerializeFns;
 use crate::serialize_fns::{default_deserialize, default_serialize};
-use bevy_app::App;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
 
 /// Add messages or triggers to the list of types that can be sent.
 pub trait AppMessageExt {

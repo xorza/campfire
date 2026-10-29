@@ -1,10 +1,5 @@
 //! The send side of replication: the targets that choose which links receive, predict or
 //! interpolate an entity; a target brings Replicon's `Replicated`.
-
-use crate::interpolated::Interpolated;
-use crate::predicted::Predicted;
-use crate::replication_mode::ReplicationMode;
-use crate::sent_marker::SentMarker;
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use bevy_replicon::prelude::Replicated;
@@ -17,6 +12,11 @@ use campfire_net_connection::NetworkTarget;
 use campfire_net_connection::RemoteId;
 use serde::Deserialize;
 use serde::Serialize;
+
+use crate::interpolated::Interpolated;
+use crate::predicted::Predicted;
+use crate::replication_mode::ReplicationMode;
+use crate::sent_marker::SentMarker;
 
 /// Selects which peers an entity is replicated to.
 ///

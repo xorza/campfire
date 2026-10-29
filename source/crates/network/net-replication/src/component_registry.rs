@@ -1,12 +1,12 @@
-use crate::component_type_id::ComponentTypeId;
 use bevy_ecs::prelude::*;
 use bevy_reflect::TypePath;
-
-use crate::replication_kind::ReplicationKind;
 use campfire_common::HashDomain;
 use campfire_net_core::RegistrySeal;
 use campfire_net_core::{NetId, TypeMapper};
 use campfire_net_core::{RegistryHash, RegistryHasher};
+
+use crate::component_type_id::ComponentTypeId;
+use crate::replication_kind::ReplicationKind;
 
 /// The tag of the component registry's hash.
 const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/component-registry/v1");

@@ -1,12 +1,13 @@
-use crate::local_timeline::LocalTimeline;
-use crate::set_tick_rate::SetTickRate;
-use crate::timeline_rate::TimelineRate;
 use bevy_app::{App, FixedFirst, FixedLast, FixedMainScheduleOrder, Plugin};
 use bevy_ecs::prelude::On;
 use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::ResMut;
 use bevy_time::{Fixed, Time};
 use campfire_math::TickRate;
+
+use crate::local_timeline::LocalTimeline;
+use crate::set_tick_rate::SetTickRate;
+use crate::timeline_rate::TimelineRate;
 
 /// Runs after `FixedLast` in each `FixedMain`, a rollback replay's included, where the local tick
 /// ends: a schedule of its own, as no system of `FixedLast` is ordered after all the others.

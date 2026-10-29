@@ -2,10 +2,10 @@
 //!
 //! `atomic/var_int/…`: `INPUTS` varints written to a buffer, and read back, a quarter of
 //! them in each encoded length.
+use std::hint::black_box;
 
 use campfire_measure::{INPUTS, Kind, Scale};
 use criterion::{BatchSize, Criterion};
-use std::hint::black_box;
 
 use crate::reader::Reader;
 use crate::var_int::VarInt;

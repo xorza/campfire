@@ -1,9 +1,11 @@
-use crate::correction_ease::CorrectionEase;
-use crate::visual_correction::CONVERGED;
-use bevy_ecs::prelude::*;
-use bevy_reflect::Reflect;
 use core::fmt::Debug;
 use core::time::Duration;
+
+use bevy_ecs::prelude::*;
+use bevy_reflect::Reflect;
+
+use crate::correction_ease::CorrectionEase;
+use crate::visual_correction::CONVERGED;
 
 /// Decay schedule for [`VisualCorrection`](crate::visual_correction::VisualCorrection) errors.
 ///

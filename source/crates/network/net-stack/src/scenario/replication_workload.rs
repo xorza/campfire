@@ -1,9 +1,9 @@
+use std::collections::BTreeMap;
+
 use bevy::prelude::*;
 use bevy_replicon::prelude::Remote;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_replication::Replicate;
-use std::collections::BTreeMap;
-
 use campfire_net_replication::internals::{CompA, CompS};
 
 /// The server's side of a scenario's replication: eight entities at the first frame it runs,

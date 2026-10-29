@@ -336,6 +336,10 @@ pub enum JournalReplayError {
         #[source]
         error: LogError,
     },
+    /// A signature of the record of index `record`, from 0, after the latest checkpoint whose
+    /// record the journal holds, is not its signer's.
+    #[error("a signature of journal record {record} is not its signer's")]
+    BadSignature { record: u64 },
 }
 
 /// Why a journal does not publish its log. The server writes only records its log took, so each

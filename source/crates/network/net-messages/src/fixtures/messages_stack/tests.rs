@@ -1,13 +1,14 @@
-use super::*;
-use crate::fixtures::protocol::StringMessage;
-use crate::fixtures::received_messages::ReceivedMessages;
-use crate::message_sender::MessageSender;
 use campfire_net_channels::{Channel, ChannelSetup, ChannelTypeId};
 use campfire_net_core::LinkDirections;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_transport::internals::Channel1;
 use campfire_net_transport::{AppChannelExt, ChannelRegistry, Transport};
+
+use super::*;
+use crate::fixtures::protocol::StringMessage;
+use crate::fixtures::received_messages::ReceivedMessages;
+use crate::message_sender::MessageSender;
 
 /// A channel its own layer reads.
 #[derive(Debug)]

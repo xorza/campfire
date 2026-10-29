@@ -1,18 +1,17 @@
-use super::*;
-use campfire_math::TickRate;
-
-use crate::fixtures::protocol::CompA;
-use crate::pre_spawned_plugin::PreSpawnedPlugin;
-use crate::pre_spawned_receiver::PreSpawnedReceiver;
-use crate::replication_receiver::ReplicationReceiver;
-
 use bevy_app::{App, FixedMain, FixedUpdate};
 use bevy_replicon::prelude::Signature;
+use campfire_math::TickRate;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
 use campfire_net_connection::RemoteId;
 use campfire_net_core::PeerId;
 use campfire_net_timeline::internals::TestTimelinePlugins;
+
+use super::*;
+use crate::fixtures::protocol::CompA;
+use crate::pre_spawned_plugin::PreSpawnedPlugin;
+use crate::pre_spawned_receiver::PreSpawnedReceiver;
+use crate::replication_receiver::ReplicationReceiver;
 
 fn app() -> App {
     let mut app = App::new();

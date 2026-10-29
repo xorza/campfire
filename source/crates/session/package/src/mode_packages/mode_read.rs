@@ -2,6 +2,7 @@ use std::sync::{Arc, OnceLock};
 
 use campfire_common::{MapName, PackageFingerprint};
 use campfire_package_format::{ContentError, FileIndex, PackageFiles, PackageFinder, PackagePlace};
+use campfire_values::PackageName;
 use campfire_values::PackagePath;
 
 use crate::error::load_problem::LoadProblem;
@@ -10,7 +11,6 @@ use crate::files::manifest::Manifest;
 use crate::files::mode_manifest::ModeManifest;
 use crate::mode_packages::ModePackages;
 use crate::mode_packages::mode_base::ModeBase;
-use campfire_values::PackageName;
 
 /// A mode's files and its manifest, with the files of each package the manifest names, each
 /// read once: what loads the mode on any of its maps, as an import checks each map it wrote.

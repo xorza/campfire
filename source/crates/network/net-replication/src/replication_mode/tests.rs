@@ -1,5 +1,6 @@
-use super::*;
 use campfire_net_core::PeerId;
+
+use super::*;
 
 /// Each mode admits exactly its links, and none without a `RemoteId`.
 #[test]

@@ -1,34 +1,33 @@
-use crate::correction_ease::CorrectionEase;
+use core::fmt::Debug;
+use core::time::Duration;
+
+use bevy_ecs::system::RunSystemOnce;
+use bevy_ecs::world::FilteredEntityRef;
+use bevy_time::Fixed;
+use campfire_math::TickRate;
+use campfire_net_core::NetTick;
 use campfire_net_frame_interpolation::{
     AppFrameInterpolationExt, FrameInterpolate, FrameInterpolationHistory,
     FrameInterpolationPlugin, FrameRegistryPlugin, FrameRule, InterpolationSampleCx, linear_lerp,
 };
-use campfire_net_replication::internals::shared_replicon_app;
-
-use bevy_ecs::system::RunSystemOnce;
 use campfire_net_interpolation::InterpolationMarkerPlugin;
+use campfire_net_replication::internals::shared_replicon_app;
 use campfire_net_replication::{AppComponentExt, Predicted};
+use campfire_net_stepper::Stepper;
+use campfire_net_stepper::StepperSetup;
+use campfire_net_timeline::SetTickRate;
+use serde::{Deserialize, Serialize};
 
 use super::*;
+use crate::correction_ease::CorrectionEase;
+use crate::fixtures::prediction_stack::PredictionStack;
+use crate::fixtures::protocol::{CompCorr, CompPredictionOnly, ShownCorr, linear_correction};
+use crate::fixtures::steps::trigger_state_rollback;
 use crate::prediction_marker_plugin::PredictionMarkerPlugin;
 use crate::prediction_plugins::PredictionPlugins;
 use crate::prediction_registration::prediction_frame_samples;
 use crate::prediction_registration_ext::PredictionRegistrationExt;
 use crate::prediction_registry_plugin::PredictionRegistryPlugin;
-use bevy_ecs::world::FilteredEntityRef;
-use bevy_time::Fixed;
-use campfire_math::TickRate;
-use campfire_net_core::NetTick;
-use campfire_net_timeline::SetTickRate;
-use core::time::Duration;
-
-use crate::fixtures::prediction_stack::PredictionStack;
-use crate::fixtures::protocol::{CompCorr, CompPredictionOnly, ShownCorr, linear_correction};
-use crate::fixtures::steps::trigger_state_rollback;
-use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperSetup;
-use core::fmt::Debug;
-use serde::{Deserialize, Serialize};
 
 fn app_with_replication_markers() -> App {
     let mut app = shared_replicon_app();

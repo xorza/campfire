@@ -1,4 +1,6 @@
-use super::*;
+use core::net::SocketAddr;
+use core::time::Duration;
+
 use bevy_app::{App, Update};
 use bevy_ecs::prelude::{Resource, With};
 use bevy_ecs::system::ResMut;
@@ -19,9 +21,8 @@ use campfire_net_packets::{
 use campfire_net_payload::{OutgoingPayload, PayloadFate, PayloadKind, PayloadToken};
 use campfire_net_timeline::ClockPlugin;
 use campfire_net_timeline::ClockSource;
-use core::net::SocketAddr;
-use core::time::Duration;
 
+use super::*;
 use crate::endpoint_plugin::{EndpointPlugin, PacketSessionLinkPlugin};
 
 /// The time between two frames of each app.

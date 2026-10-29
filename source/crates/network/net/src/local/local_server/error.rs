@@ -1,12 +1,12 @@
 use campfire_common::Tick;
+use campfire_host::KeyFileError;
+use campfire_host::ServerBotsError;
+use campfire_host::{AbortError, WaitingError};
 use campfire_runner::TermsError;
 use campfire_store::DataDirError;
 use thiserror::Error;
 
 use crate::sim_server::lobby::error::LobbyOpenError;
-use campfire_host::KeyFileError;
-use campfire_host::ServerBotsError;
-use campfire_host::{AbortError, WaitingError};
 
 /// Why a local server does not start.
 #[derive(Debug, Error)]

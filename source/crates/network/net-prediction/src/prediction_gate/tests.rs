@@ -1,8 +1,9 @@
-use super::*;
-use crate::prediction_setup::PredictionSetup;
 use bevy_app::App;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_net_connection::NetworkTopology;
+
+use super::*;
+use crate::prediction_setup::PredictionSetup;
 
 #[test]
 fn an_authoritative_topology_runs_no_prediction() {

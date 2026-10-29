@@ -39,7 +39,7 @@ impl TestMode {
         let (tree, root, map) = match self {
             Self::Lane => ("test/engine", "modes/lane", "lane"),
             Self::Proving => ("test/engine", "modes/proving", "proving"),
-            Self::Moba3v3 => ("test/moba", "modes/3v3", "two_lanes"),
+            Self::Moba3v3 => ("test", "moba/modes/3v3", "two_lanes"),
             Self::Ruled => ("test/engine", "modes/ruled", "stand"),
             Self::Skirmish => ("", "test/engine/modes/skirmish", "field"),
             Self::Hooks => ("test/engine", "modes/hooks", "arena"),

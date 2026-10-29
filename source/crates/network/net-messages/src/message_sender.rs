@@ -1,12 +1,13 @@
+use bevy_ecs::component::Component;
+use campfire_net_channels::Channel;
+use campfire_net_channels::ChannelTypeId;
+
 use crate::link_messages::LinkMessages;
 use crate::link_messages::{EndpointList, ListedEndpoint};
 use crate::message::Message;
 use crate::message_type_id::MessageTypeId;
 use crate::send_queue::QueuedSender;
 use crate::send_queue::SendQueue;
-use bevy_ecs::component::Component;
-use campfire_net_channels::Channel;
-use campfire_net_channels::ChannelTypeId;
 
 /// The messages of type `M` a link sends, buffered by `send` until the flush.
 #[derive(Debug, Component)]

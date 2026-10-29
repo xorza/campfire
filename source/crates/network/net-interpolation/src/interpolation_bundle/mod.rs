@@ -1,5 +1,20 @@
 //! The rules of a tuple of components, `(C1, C2, ...)`, each of which installs its own typed
 //! systems.
+use std::borrow::Cow;
+
+use bevy_app::prelude::*;
+use bevy_ecs::archetype::Archetype;
+use bevy_ecs::entity::EntityLocation;
+use bevy_ecs::prelude::*;
+use bevy_ecs::query::ArchetypeFilter;
+use campfire_net_core::NetTick;
+use campfire_net_frame_interpolation::InterpolationSampleCx;
+use campfire_net_replication::ConfirmedHistory;
+use campfire_net_replication::HistoryComponent;
+use campfire_net_replication::HistoryState;
+use campfire_net_replication::Interpolated;
+use campfire_net_timeline::NetworkTimeline;
+use campfire_net_timeline::TimelineRate;
 
 use crate::interpolate::{history_bracket, set_if_neq};
 use crate::interpolation_fn::InterpolationFn;
@@ -14,20 +29,6 @@ use crate::interpolation_timeline::InterpolationTimeline;
 use crate::into_interpolation_fn::{IntoCxLerpFn, IntoLerpFn};
 use crate::rule_building::{self, insert_rule, resolve_member};
 use crate::sample_ticks;
-use bevy_app::prelude::*;
-use bevy_ecs::archetype::Archetype;
-use bevy_ecs::entity::EntityLocation;
-use bevy_ecs::prelude::*;
-use bevy_ecs::query::ArchetypeFilter;
-use campfire_net_core::NetTick;
-use campfire_net_frame_interpolation::InterpolationSampleCx;
-use campfire_net_replication::ConfirmedHistory;
-use campfire_net_replication::HistoryComponent;
-use campfire_net_replication::HistoryState;
-use campfire_net_replication::Interpolated;
-use campfire_net_timeline::NetworkTimeline;
-use campfire_net_timeline::TimelineRate;
-use std::borrow::Cow;
 
 /// Tuple of components that can be interpolated by one rule.
 ///
@@ -153,9 +154,9 @@ where
     QueryState::<&Archetype, F>::new(app.world_mut());
     let priority = rule.priority.unwrap_or(B::COMPONENT_COUNT);
     let fns = rule.fns;
-    interpolation_registry::open(app).defer(Box::new(move |app: &mut App| {
+    interpolation_registry::open(app).defer(move |app: &mut App| {
         install_bundle_rule::<B, F>(app, fns, priority);
-    }));
+    });
 }
 
 macro_rules! impl_interpolation_bundle {

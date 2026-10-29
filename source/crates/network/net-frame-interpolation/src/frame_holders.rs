@@ -1,11 +1,12 @@
-use crate::archetype_set::ArchetypeSet;
-use crate::frame_interpolate::FrameInterpolate;
-use crate::frame_registry::{FrameRegistry, FrameRuleId};
 use bevy_ecs::archetype::{ArchetypeGeneration, ArchetypeId, Archetypes};
 use bevy_ecs::component::{ComponentId, Components};
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
 use campfire_net_replication::ComponentTypeId;
+
+use crate::archetype_set::ArchetypeSet;
+use crate::frame_interpolate::FrameInterpolate;
+use crate::frame_registry::{FrameRegistry, FrameRuleId};
 
 /// What no rule claims anywhere.
 static NOWHERE: ArchetypeSet = ArchetypeSet::new();

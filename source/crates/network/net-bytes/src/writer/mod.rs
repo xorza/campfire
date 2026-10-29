@@ -3,10 +3,10 @@
 //! Each written message is split off as a [`Bytes`] that shares the writer's chunk, in an
 //! [`ByteArena`]. A chunk is reused once every message split from it is dropped, so a sender whose
 //! messages wait for an ack writes into a reclaimed chunk instead of a new allocation.
+use bytes::{Bytes, BytesMut};
 
 use crate::byte_arena::ByteArena;
 use crate::var_int::VarInt;
-use bytes::{Bytes, BytesMut};
 
 /// The size of a chunk. A message that outgrows one gets an allocation of its own.
 const CHUNK: usize = 4096;

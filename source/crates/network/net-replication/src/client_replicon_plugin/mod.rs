@@ -1,14 +1,16 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_state::prelude::*;
-
 use bevy_replicon::client::confirm_history::ConfirmHistory;
 use bevy_replicon::client::server_mutate_ticks::MutateTickReceived;
 use bevy_replicon::prelude::*;
+use bevy_state::prelude::*;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
+use campfire_net_despawns::DespawnReplicated;
+use campfire_net_messages::MessageSystems;
 use campfire_net_transport::Transport;
 use campfire_net_transport::TransportSystems;
+use tracing::debug;
 
 use crate::confirmed_tick_map::ConfirmedTickMap;
 use crate::persistent::Persistent;
@@ -16,9 +18,6 @@ use crate::remote_parent::RemoteParent;
 use crate::replication_receiver::ReplicationReceiver;
 use crate::replication_systems::ReplicationSystems;
 use crate::replicon_channel_map::RepliconChannelMap;
-use campfire_net_despawns::DespawnReplicated;
-use campfire_net_messages::MessageSystems;
-use tracing::debug;
 
 /// Runs Replicon's client on the stack: its state follows the connection, its messages go through
 /// the transport, and a message names server entities through Replicon's `ServerEntityMap`, with no

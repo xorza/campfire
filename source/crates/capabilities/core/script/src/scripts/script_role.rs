@@ -1,7 +1,7 @@
 use campfire_common::EnumAll;
+use campfire_values::{Named, Param};
 
 use crate::scripts::error::ApiError;
-use campfire_values::{Named, Param};
 
 /// What a script serves, as the data that names it says: each role has its own hooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]

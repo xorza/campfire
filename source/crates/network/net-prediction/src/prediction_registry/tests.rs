@@ -1,4 +1,3 @@
-use campfire_net_replication::internals::{replicon_app, shared_replicon_app};
 use core::fmt::Debug;
 
 use bevy_replicon::prelude::{EntityDiffExt, RuleFns};
@@ -8,6 +7,7 @@ use campfire_net_replication::internals::{
     ClientCopies, CompRepliconDiff, diff_message, diff_snapshot, newest_confirmed_value,
     record_confirmed_tick,
 };
+use campfire_net_replication::internals::{replicon_app, shared_replicon_app};
 use campfire_net_replication::{
     ComponentRegistry, ConfirmedHistory, ConfirmedTickMap, HistoryState, Predicted,
     PredictionTarget, Replicate,
@@ -24,13 +24,15 @@ use crate::prediction_registration_ext::PredictionRegistrationExt;
 impl PredictionRegistry {
     /// Returns true if the component is predicted
     pub(crate) fn is_predicted<C: Component>(&self) -> bool {
-        self.fns(ComponentTypeId::of::<C>())
+        self.components
+            .get(ComponentTypeId::of::<C>())
             .is_some_and(|fns| fns.prediction.is_some())
     }
 
     /// Whether the component rolls back locally, with no prediction fns.
     pub(crate) fn rolls_back_locally<C: Component>(&self) -> bool {
-        self.fns(ComponentTypeId::of::<C>())
+        self.components
+            .get(ComponentTypeId::of::<C>())
             .is_some_and(|fns| fns.prediction.is_none())
     }
 }

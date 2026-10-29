@@ -1,11 +1,13 @@
-use crate::history_seed::{insert_confirmed_history, insert_confirmed_history_diff};
+use core::cell::OnceCell;
+
 use bevy_ecs::prelude::*;
 use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use campfire_net_core::NetTick;
 use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::HistoryDiffReceiver;
-use core::cell::OnceCell;
+
+use crate::history_seed::{insert_confirmed_history, insert_confirmed_history_diff};
 
 /// How `C` replicates, as its confirmed history waits on it: the diffs a message brought before
 /// their base hold the ticks they land at, and the seed of a diff replicated history is the base

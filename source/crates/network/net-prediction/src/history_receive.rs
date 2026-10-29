@@ -4,7 +4,6 @@
 //! later by the full scan at a completed confirmed tick: an entity-level confirmation does not mean
 //! every predicted component on that entity was updated, so receive-time checks could miss an
 //! unchanged component's mismatch on the same entity.
-use crate::prediction_history::PredictionHistory;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::RuleFns;
 use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
@@ -20,6 +19,8 @@ use campfire_net_replication::HistoryState;
 use campfire_net_replication::ReceivedValue;
 use campfire_net_timeline::LocalTimeline;
 use tracing::trace;
+
+use crate::prediction_history::PredictionHistory;
 
 /// What a first authoritative value of a component does on an entity without it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

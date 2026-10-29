@@ -2,13 +2,13 @@ use std::collections::BTreeMap;
 use std::str;
 use std::sync::Arc;
 
-use crate::content_hash::ContentHash;
 use campfire_codec::{Binary, Toml};
 use campfire_common::PackageFingerprint;
 use campfire_values::PackagePath;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use crate::content_hash::ContentHash;
 use crate::error::ContentError;
 use crate::file_index::{FileIndex, FileRow};
 use crate::package_source::PackageSource;

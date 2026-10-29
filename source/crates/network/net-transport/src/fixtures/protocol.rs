@@ -1,14 +1,14 @@
 use bevy_app::{App, Plugin};
 use bevy_reflect::Reflect;
-use campfire_net_core::LinkDirections;
-
-use crate::app_channel_ext::AppChannelExt;
-use crate::channel_registry::ChannelRegistry;
 use campfire_net_channels::Channel;
 use campfire_net_channels::ChannelMode;
 use campfire_net_channels::ChannelSetup;
 use campfire_net_channels::ChannelTypeId;
+use campfire_net_core::LinkDirections;
 use campfire_net_core::NetId;
+
+use crate::app_channel_ext::AppChannelExt;
+use crate::channel_registry::ChannelRegistry;
 
 #[derive(Debug, Reflect)]
 pub struct Channel1;

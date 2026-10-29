@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::ptr;
 
+use campfire_values::NameKind;
 use campfire_values::{EngineEnum, ModifierId, Named};
 use derive_more::Display;
 use rhai::{AST, ASTNode, Expr, FnCallExpr, Position, ScriptFnMetadata, Stmt};
@@ -14,7 +15,6 @@ use crate::scripts::given_names::{GivenNames, NameShape};
 use crate::scripts::member_decl::MemberDecl;
 use crate::scripts::member_kind::MemberKind;
 use crate::scripts::script_api::ScriptApi;
-use campfire_values::NameKind;
 
 /// The variable every script API call goes through, by the script API's convention
 /// (06-script-api.md, `ctx` stays visible).

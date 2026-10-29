@@ -1,8 +1,9 @@
+use core::time::Duration;
+
 use campfire_math::{Num, Rounding, SplitMix64};
 use campfire_net_core::LinkDirection;
 use campfire_net_emulator::internals::per_mille;
 use campfire_net_emulator::{LinkModel, Phase, RateLimit};
-use core::time::Duration;
 
 /// The network faults of one scenario, each one on or off, as a swarm seed picks them.
 #[derive(Debug, Clone, Default)]

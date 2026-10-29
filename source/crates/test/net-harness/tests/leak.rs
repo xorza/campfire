@@ -41,9 +41,12 @@ use crate::short_3v3::{PICKS, short_3v3};
 const PLAYERS: usize = 4;
 /// Frames a spectator may take to link, answer the offer and watch, and the avatars to come.
 const JOIN_FRAMES: usize = 300;
-/// The ticks the match plays after the avatars spawned, each checked: the north's first two
-/// heroes fell the south's in the jungle, and the waves walk their lanes.
+/// The most ticks the match plays after the avatars spawned, each checked, for the north's first
+/// two heroes to fell the south's in the jungle, as the waves walk their lanes.
 const MATCH_TICKS: u64 = 700;
+/// The ticks the match plays on after the south's hero fell, each checked: its player out of play
+/// while it waits to come back.
+const AFTER_DEATH: u64 = 30;
 /// Frames for a spectator's choice of teams to reach the server, and what it changes to reach its
 /// client.
 const CHOICE_FRAMES: usize = 3;
@@ -193,17 +196,22 @@ struct LeakCheck {
     withheld: Vec<DataKind>,
 }
 
-/// Gale's player, of the north, out of play for 3 s from the pick's end, alive.
-const HELD_OUT: [(&str, Edit<'_>); 3] = [
+/// Gale's player, of the north, out of play for 3 s from the pick's end, alive; and the south's
+/// Kensho, the north's target, of 120 health, so it falls within a second of the strike.
+const LEAK_SCRIPT: [(&str, Edit<'_>); 4] = [
     (
-        "modes/3v3/data/mode.toml",
+        "moba/heroes/kensho/data/avatar.toml",
+        Edit::Replace("health = { base = 444,", "health = { base = 120,"),
+    ),
+    (
+        "moba/modes/3v3/data/mode.toml",
         Edit::Replace(
             "timers = [\"income\", \"pick_end\", \"wave\"]",
             "timers = [\"back_in\", \"income\", \"pick_end\", \"wave\"]",
         ),
     ),
     (
-        "modes/3v3/scripts/mode.rhai",
+        "moba/modes/3v3/scripts/mode.rhai",
         Edit::Replace(
             "        ctx.state.phase = \"play\";\n",
             "        ctx.state.phase = \"play\";\n        ctx.set_out(ctx.players[1], true);\n        \
@@ -211,7 +219,7 @@ const HELD_OUT: [(&str, Edit<'_>); 3] = [
         ),
     ),
     (
-        "modes/3v3/scripts/mode.rhai",
+        "moba/modes/3v3/scripts/mode.rhai",
         Edit::Replace(
             "    } else if name == \"wave\" {",
             "    } else if name == \"back_in\" {\n        ctx.set_out(ctx.players[1], false);\n    \
@@ -499,6 +507,25 @@ impl LeakCheck {
         }
     }
 
+    /// Strikes the south's hero, and plays until it fell and `AFTER_DEATH` ticks more, within
+    /// `MATCH_TICKS`; whether it fell.
+    fn fell_the_south(&mut self) -> bool {
+        self.strike();
+        let mut after = None;
+        for _ in 0..MATCH_TICKS {
+            self.play(1);
+            if after.is_none() && self.is_south_hero_dead() {
+                after = Some(AFTER_DEATH);
+            }
+            match &mut after {
+                Some(0) => return true,
+                Some(left) => *left -= 1,
+                None => {}
+            }
+        }
+        after.is_some()
+    }
+
     /// Whether the server holds the south hero dead.
     fn is_south_hero_dead(&self) -> bool {
         let world = self.local.server().world();
@@ -518,68 +545,51 @@ impl LeakCheck {
     }
 }
 
-mod scripted_match {
-    use super::*;
+#[test]
+fn each_client_holds_exactly_what_each_kinds_audience_admits_by_default() {
+    // The defaults: the spectators see every unit, through any fog.
+    let mut defaults = LeakCheck::start(short_3v3(&LEAK_SCRIPT, RANK), &[], &[None]);
+    assert!(defaults.fell_the_south(), "the south's hero fell");
+    defaults.assert_no_leak();
+    // A player's money, its rank and its team's cells are its own, and its unit's life every
+    // client's that holds it.
+    assert!(defaults.withheld.contains(&DataKind::Resources));
+    assert!(defaults.withheld.contains(&DataKind::Sight));
+    assert!(defaults.held_by_other.contains(&DataKind::Life));
+    assert!(
+        !defaults.holds_of::<PlayerResources>(1, 0) && !defaults.holds_of::<PlayerResources>(4, 0)
+    );
+    assert!(
+        defaults.holds_of::<PlayerExperience>(0, 0)
+            && !defaults.holds_of::<PlayerExperience>(1, 0)
+            && !defaults.holds_of::<PlayerExperience>(4, 0)
+    );
+    // The defaults keep a player out of play to its team's view, so no player held what its
+    // team did not see.
+    assert_eq!(defaults.beyond_team, [false; PLAYERS]);
+}
 
-    #[test]
-    fn each_client_holds_exactly_what_each_kinds_audience_admits_with_either_extreme() {
-        // The defaults: the spectators see every unit, through any fog.
-        let mut defaults = LeakCheck::start(short_3v3(&HELD_OUT, RANK), &[], &[None]);
-        defaults.strike();
-        let mut died = false;
-        for _ in 0..MATCH_TICKS {
-            defaults.play(1);
-            died |= defaults.is_south_hero_dead();
-        }
-        defaults.assert_no_leak();
-        assert!(died, "the south's hero fell in the defaults' run");
-        // A player's money, its rank and its team's cells are its own, and its unit's life every
-        // client's that holds it.
-        assert!(defaults.withheld.contains(&DataKind::Resources));
-        assert!(defaults.withheld.contains(&DataKind::Sight));
-        assert!(defaults.held_by_other.contains(&DataKind::Life));
-        assert!(
-            !defaults.holds_of::<PlayerResources>(1, 0)
-                && !defaults.holds_of::<PlayerResources>(4, 0)
-        );
-        assert!(
-            defaults.holds_of::<PlayerExperience>(0, 0)
-                && !defaults.holds_of::<PlayerExperience>(1, 0)
-                && !defaults.holds_of::<PlayerExperience>(4, 0)
-        );
-
-        // The other extreme: the spectators watch the teams' views, one every team's and one the
-        // south's alone, as the host's flags say; each kind's audience flips as the mode's
-        // `[visibility]` says.
-        let south = TeamSet::from([Team::new(1)]);
-        let mut extreme = LeakCheck::start(
-            short_3v3(&HELD_OUT, &format!("{RANK}{}", other_extreme())),
-            &["spectators=teams", "out=spectators"],
-            &[None, Some(south)],
-        );
-        extreme.strike();
-        let mut died = false;
-        for _ in 0..MATCH_TICKS {
-            extreme.play(1);
-            died |= extreme.is_south_hero_dead();
-        }
-        extreme.assert_no_leak();
-        assert!(died, "the south's hero fell in the extreme's run");
-        // A player's allies and the spectators hold its money and its rank; no one but the owner
-        // its unit's life.
-        assert!(extreme.held_by_other.contains(&DataKind::Resources));
-        assert!(extreme.withheld.contains(&DataKind::Life));
-        assert!(
-            extreme.holds_of::<PlayerResources>(1, 0) && extreme.holds_of::<PlayerResources>(4, 0)
-        );
-        assert!(
-            extreme.holds_of::<PlayerExperience>(1, 0)
-                && extreme.holds_of::<PlayerExperience>(4, 0)
-        );
-        // Out of play, the south's dead hero's player and Gale's, whom the script held out alive,
-        // held what their teams did not see; in the defaults, which keep a player out of play to
-        // its team's view, no player did.
-        assert_eq!(extreme.beyond_team, [false, true, false, true]);
-        assert_eq!(defaults.beyond_team, [false; PLAYERS]);
-    }
+#[test]
+fn each_client_holds_exactly_what_each_kinds_audience_admits_at_the_other_extreme() {
+    // The spectators watch the teams' views, one every team's and one the south's alone, as the
+    // host's flags say; each kind's audience flips as the mode's `[visibility]` says.
+    let south = TeamSet::from([Team::new(1)]);
+    let mut extreme = LeakCheck::start(
+        short_3v3(&LEAK_SCRIPT, &format!("{RANK}{}", other_extreme())),
+        &["spectators=teams", "out=spectators"],
+        &[None, Some(south)],
+    );
+    assert!(extreme.fell_the_south(), "the south's hero fell");
+    extreme.assert_no_leak();
+    // A player's allies and the spectators hold its money and its rank; no one but the owner its
+    // unit's life.
+    assert!(extreme.held_by_other.contains(&DataKind::Resources));
+    assert!(extreme.withheld.contains(&DataKind::Life));
+    assert!(extreme.holds_of::<PlayerResources>(1, 0) && extreme.holds_of::<PlayerResources>(4, 0));
+    assert!(
+        extreme.holds_of::<PlayerExperience>(1, 0) && extreme.holds_of::<PlayerExperience>(4, 0)
+    );
+    // Out of play, the south's dead hero's player and Gale's, whom the script held out alive,
+    // held what their teams did not see.
+    assert_eq!(extreme.beyond_team, [false, true, false, true]);
 }

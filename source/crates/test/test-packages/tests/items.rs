@@ -1,9 +1,7 @@
 //! The 3v3's item types, its fountains' shop and its heroes' inventories: each reads as its data
 //! holds it, and each flaw of them fails the load with its own problem.
-
 use std::num::{NonZeroU8, NonZeroU32};
 
-use crate::flaws::{Flaw, fails_each};
 use campfire_actions::{SlotError, SlotKind};
 use campfire_capabilities::Release;
 use campfire_codec::{Toml, TomlTable};
@@ -18,13 +16,14 @@ use campfire_sim::Capability;
 use campfire_test_packages::Edit;
 use campfire_values::{ActionId, ItemId, ModifierId, NameKind, Named, ResourceId, TextId};
 
+use crate::flaws::{Flaw, fails_each};
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule, rule_at, rule_of};
 
-const MANIFEST: &str = "modes/3v3/manifest.toml";
-const MODE_DATA: &str = "modes/3v3/data/mode.toml";
-const HUSK: &str = "heroes/husk/data/avatar.toml";
-const UNITS: &str = "modes/3v3/data/units.toml";
+const MANIFEST: &str = "moba/modes/3v3/manifest.toml";
+const MODE_DATA: &str = "moba/modes/3v3/data/mode.toml";
+const HUSK: &str = "moba/heroes/husk/data/avatar.toml";
+const UNITS: &str = "moba/modes/3v3/data/units.toml";
 
 /// The 3v3 with `more` edits.
 fn with_items(more: &[(&'static str, Edit<'static>)]) -> Result<ModePackages, LoadError> {
@@ -118,7 +117,7 @@ const FLAWS: [Flaw; 23] = [
         refused: |problem| is_unread(problem, "data/mode.toml", "missing field `name`"),
     },
     Flaw {
-        file: "modes/3v3/locale/en.ftl",
+        file: "moba/modes/3v3/locale/en.ftl",
         edit: Edit::Replace("item-health-potion = Health Potion\n", ""),
         also: &[],
         package: MODE,

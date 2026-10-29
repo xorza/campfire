@@ -1,50 +1,19 @@
-//! The published log, written from the log's journal in two walks of its records.
+//! The published log, written from the log's journal in one walk of its records.
 
 use std::io::{self, Write};
 use std::mem;
-use std::ops::Range;
 
 use campfire_codec::Binary;
 use serde::Serialize;
 
 use crate::server_seed::ServerSeed;
-use crate::session_log::error::{PublishError, PublishWriteError, WalkStopped};
+use crate::session_log::error::PublishWriteError;
 use crate::session_log::file::{LOG_TAG, PACKET_ENTRY, SERVER_ENTRY};
-use crate::session_log::journal_records::{
-    JOURNAL_CHECKPOINT_BEGUN, JOURNAL_CHECKPOINT_DONE, JOURNAL_HEADER, JOURNAL_LOADED,
-    JOURNAL_PACKET, JOURNAL_RESULT, JOURNAL_SEALED, JOURNAL_SERVER,
-};
-use crate::session_log::{SessionLog, offset, take};
+use crate::session_log::journal_kinds::{JOURNAL_PACKET, JOURNAL_SEALED, JOURNAL_SERVER};
+use crate::session_log::journal_shape::{JournalShape, JournalWalk};
+use crate::session_log::{SessionLog, offset};
 
-/// What gives a journal's records in order, each to the function it is given, at each call; an
-/// error once it stopped short of the journal's end.
-pub(crate) type JournalWalk<'w> = dyn FnMut(&mut dyn FnMut(&[u8])) -> Result<(), WalkStopped> + 'w;
-
-/// What a first walk of a journal finds of the log it holds, each load's cut applied: the header,
-/// each segment, the entries logged since the last tick was sealed, the result, and the records a
-/// load dropped. Its counts are a tick's each, so it grows with the session's ticks, not its
-/// entries.
-#[derive(Debug, Default)]
-struct Shape {
-    header: Vec<u8>,
-    segments: Vec<SegmentShape>,
-    tail: u32,
-    result: Option<Vec<u8>>,
-    /// The places among the records of the entries and seals each load dropped.
-    cuts: Vec<Range<u64>>,
-}
-
-/// A segment as a journal holds it: the place of the record of its checkpoint's begin, none for
-/// the first, its checkpoint's record and signature as the file holds them, and the count of the
-/// entries of each of its sealed ticks.
-#[derive(Debug)]
-struct SegmentShape {
-    begun: Option<u64>,
-    record: Option<Vec<u8>>,
-    ticks: Vec<u32>,
-}
-
-/// Where the second walk stands in the file it writes: the segment and its tick it writes, and
+/// Where the walk stands in the file it writes: the segment and its tick it writes, and
 /// the entries the tick still takes, while a tick is open.
 #[derive(Debug, Default)]
 struct Cursor {
@@ -88,28 +57,27 @@ impl PublishOut<'_> {
 }
 
 impl SessionLog {
-    /// Writes into `writer` the file of the log whose journal `walk` gives,
-    /// with the server seed `revealed` of its last segment: the bytes `encode` writes for the log
-    /// the journal rebuilds, each load's cut applied (08-sessions.md, A published log is written
-    /// from the journal). `walk` gives the journal's records in order to the function it is given,
-    /// twice: once to count what the file's counts need, once to write each record the file
-    /// keeps, so the memory a publication takes is a record's and the counts'. An error for a
-    /// journal that holds no header, a record that does not read, a checkpoint begun with no
-    /// record, a walk that stopped short, so no log goes out with records missing, and a write
-    /// that fails.
+    /// Writes into `writer` the file of the log whose journal `walk` gives and whose shape is
+    /// `shape`, the journal's as of the records `walk` gives, with the server seed `revealed` of
+    /// its last segment: the bytes `encode` writes for the log the journal rebuilds, each load's
+    /// cut applied (08-sessions.md, A published log is written from the journal). `walk` gives the
+    /// journal's records in order, once, so the memory a publication takes is a record's and the
+    /// shape's. An error for a journal that holds no header, a checkpoint begun with no record, a
+    /// walk that stopped short, so no log goes out with records missing, and a write that fails.
     pub fn publish(
+        shape: &JournalShape,
         walk: &mut JournalWalk<'_>,
         revealed: &ServerSeed,
         writer: &mut dyn Write,
     ) -> Result<(), PublishWriteError> {
-        let shape = Shape::of(walk)?;
+        let header = shape.whole_header()?;
         let out = &mut PublishOut {
             writer,
             scratch: Vec::new(),
             failed: None,
         };
         out.bytes(LOG_TAG);
-        out.bytes(&shape.header);
+        out.bytes(header);
         // A published log is the whole session's: its first segment is 0.
         out.put(&0_u32);
         out.put(&offset(shape.segments.len()));
@@ -125,7 +93,7 @@ impl SessionLog {
                 JOURNAL_PACKET => PACKET_ENTRY,
                 JOURNAL_SERVER => SERVER_ENTRY,
                 JOURNAL_SEALED if !shape.cut(at) => {
-                    cursor.enter(&shape, out);
+                    cursor.enter(shape, out);
                     debug_assert_eq!(cursor.open, Some(0), "a sealed tick took its entries");
                     cursor.open = None;
                     cursor.tick += 1;
@@ -136,13 +104,18 @@ impl SessionLog {
             if shape.cut(at) {
                 return;
             }
-            cursor.enter(&shape, out);
+            cursor.enter(shape, out);
             let open = cursor.open.as_mut().expect("an entry goes in a tick");
             *open -= 1;
             out.byte(entry);
             out.bytes(body);
         })?;
-        cursor.finish(&shape, out);
+        debug_assert_eq!(
+            index,
+            shape.records(),
+            "a shape is of the records the walk gives"
+        );
+        cursor.finish(shape, out);
         out.put(&Some(revealed));
         match &shape.result {
             Some(result) => {
@@ -157,101 +130,11 @@ impl SessionLog {
     }
 }
 
-impl Shape {
-    /// The shape of the log whose journal `walk` gives.
-    fn of(walk: &mut JournalWalk<'_>) -> Result<Self, PublishWriteError> {
-        let mut shape = Self {
-            segments: vec![SegmentShape {
-                begun: None,
-                record: None,
-                ticks: Vec::new(),
-            }],
-            ..Self::default()
-        };
-        let mut header = false;
-        let mut failed = None;
-        let mut index = 0;
-        walk(&mut |record| {
-            let at = index;
-            index += 1;
-            if failed.is_some() {
-                return;
-            }
-            if let Err(error) = shape.take(at, record, &mut header) {
-                failed = Some(error);
-            }
-        })?;
-        if let Some(error) = failed {
-            return Err(error.into());
-        }
-        if !header {
-            return Err(PublishError::NoHeader.into());
-        }
-        if shape
-            .segments
-            .iter()
-            .skip(1)
-            .any(|segment| segment.record.is_none())
-        {
-            return Err(PublishError::Begun.into());
-        }
-        Ok(shape)
-    }
-
-    /// Takes the record `record` at place `at` of the journal.
-    fn take(&mut self, at: u64, record: &[u8], header: &mut bool) -> Result<(), PublishError> {
-        let (&kind, mut body) = record.split_first().ok_or(PublishError::Record { at })?;
-        match kind {
-            JOURNAL_HEADER => {
-                self.header = body.to_vec();
-                *header = true;
-            }
-            JOURNAL_PACKET | JOURNAL_SERVER => self.tail += 1,
-            JOURNAL_SEALED => {
-                let last = self.segments.last_mut().expect("a log has a segment");
-                last.ticks.push(self.tail);
-                self.tail = 0;
-            }
-            JOURNAL_CHECKPOINT_BEGUN => self.segments.push(SegmentShape {
-                begun: Some(at),
-                record: None,
-                ticks: Vec::new(),
-            }),
-            JOURNAL_CHECKPOINT_DONE => {
-                let begun = self.segments.iter_mut().skip(1);
-                let mut begun = begun.filter(|segment| segment.record.is_none());
-                let segment = begun.next().ok_or(PublishError::Record { at })?;
-                segment.record = Some(body.to_vec());
-            }
-            JOURNAL_LOADED => {
-                let segment: u32 = take(&mut body).map_err(|_| PublishError::Record { at })?;
-                let segment = usize::try_from(segment).expect("a u32 fits usize");
-                let loaded = self.segments.get_mut(segment);
-                let loaded = loaded.filter(|loaded| loaded.record.is_some());
-                let loaded = loaded.ok_or(PublishError::Record { at })?;
-                let begun = loaded.begun.expect("a segment loaded is past the first");
-                loaded.ticks.clear();
-                self.segments.truncate(segment + 1);
-                self.tail = 0;
-                self.cuts.push(begun + 1..at);
-            }
-            JOURNAL_RESULT => self.result = Some(body.to_vec()),
-            _ => return Err(PublishError::Record { at }),
-        }
-        Ok(())
-    }
-
-    /// Whether a load dropped the entry or the seal at place `at`.
-    fn cut(&self, at: u64) -> bool {
-        self.cuts.iter().any(|cut| cut.contains(&at))
-    }
-}
-
 impl Cursor {
     /// Opens the next place an entry goes, when none is open: the next tick of the segment, past
     /// those it wrote, its segment's own counts first, or, past the last segment's last tick, the
     /// entries since the last tick.
-    fn enter(&mut self, shape: &Shape, out: &mut PublishOut<'_>) {
+    fn enter(&mut self, shape: &JournalShape, out: &mut PublishOut<'_>) {
         if self.open.is_some() || self.tail {
             return;
         }
@@ -282,7 +165,7 @@ impl Cursor {
 
     /// Writes the counts of what follows the last record: the segments of no tick after it, and
     /// the entries since the last tick.
-    fn finish(&mut self, shape: &Shape, out: &mut PublishOut<'_>) {
+    fn finish(&mut self, shape: &JournalShape, out: &mut PublishOut<'_>) {
         debug_assert!(
             self.tail || self.open.is_none(),
             "only the entries since the last tick stay open"

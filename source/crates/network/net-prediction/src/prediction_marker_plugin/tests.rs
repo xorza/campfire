@@ -1,4 +1,3 @@
-use crate::fixtures::prediction_stack::PredictionStack;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::hierarchy::ChildOf;
 use bevy_ecs::lifecycle::Add;
@@ -18,6 +17,8 @@ use campfire_net_replication::{
 };
 use campfire_net_stepper::{Init, StepperSetup};
 use campfire_net_stepper::{StepOrder, Stepper};
+
+use crate::fixtures::prediction_stack::PredictionStack;
 
 #[test]
 fn late_join_client_gets_predicted_marker_for_prediction_target_all() {

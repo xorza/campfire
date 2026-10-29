@@ -245,12 +245,17 @@ fn a_checkpoint_past_the_seed_chain_or_a_full_log_ends_the_session() {
             tick: Tick::new(11)
         }]
     );
-    local.server_mut().world_mut().session_mut().close_journal();
+    let shape = local
+        .server_mut()
+        .world_mut()
+        .session_mut()
+        .close_journal()
+        .unwrap();
     let held = log(&local);
     let revealed = held.revealed_seeds().unwrap();
     let last = revealed.seed(held.segment()).unwrap().clone();
     let data = local.server().world().resource::<ServerDir>();
-    let file = SessionDir::publish(data, held.session_id(), &last).unwrap();
+    let file = SessionDir::publish(data, held.session_id(), &shape, &last).unwrap();
     SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
 }
 

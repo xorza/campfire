@@ -1,9 +1,10 @@
-use crate::fixtures::replication_stack::ReplicationStack;
-use crate::fixtures::steps::PROPAGATION_FRAMES;
 use bevy_ecs::world::EntityRef;
 use campfire_net_messages::LinkMessages;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
+
+use crate::fixtures::replication_stack::ReplicationStack;
+use crate::fixtures::steps::PROPAGATION_FRAMES;
 
 /// The server's hello maps its link entity to the client's own, in the client's messages layer's
 /// map, as replicon's holds only replicated entities; the server, which maps nothing, keeps no

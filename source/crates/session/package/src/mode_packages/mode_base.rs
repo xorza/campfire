@@ -8,6 +8,8 @@ use campfire_script::{ScriptApi, ScriptHost, ScriptUses};
 use campfire_sim::Capability;
 use campfire_units::ScriptBook;
 use campfire_values::PackageIndex;
+use campfire_values::PackageName;
+use campfire_values::ScriptSource;
 
 use crate::data_override::DataOverride;
 use crate::dependent::{Dependent, DependentKind, OpenedDependent};
@@ -19,8 +21,6 @@ use crate::files::mode_manifest::ModeManifest;
 use crate::files::script_list::ScriptOrder;
 use crate::files::units_file::UnitsFile;
 use crate::package::Package;
-use campfire_values::PackageName;
-use campfire_values::ScriptSource;
 
 /// A mode and the packages it depends on, read and parsed, its scripts compiled: what it is on
 /// any of its maps, which `ModeRead` reads once and each map's load shares, as an import checks

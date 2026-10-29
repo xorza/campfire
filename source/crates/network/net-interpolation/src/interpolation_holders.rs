@@ -1,8 +1,5 @@
 //! Where each delayed interpolation rule works, as the registry resolves each interpolated
 //! archetype.
-
-use crate::interpolation_rule_id::InterpolationRuleId;
-use crate::rule_resolution::RuleResolutionScratch;
 use bevy_ecs::archetype::ArchetypeGeneration;
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::prelude::*;
@@ -10,6 +7,9 @@ use bevy_platform::collections::HashMap;
 use campfire_net_frame_interpolation::ArchetypeSet;
 use campfire_net_replication::ComponentTypeId;
 use campfire_net_replication::Interpolated;
+
+use crate::interpolation_rule_id::InterpolationRuleId;
+use crate::rule_resolution::RuleResolutionScratch;
 
 /// What no rule claims anywhere.
 static NOWHERE: ArchetypeSet = ArchetypeSet::new();

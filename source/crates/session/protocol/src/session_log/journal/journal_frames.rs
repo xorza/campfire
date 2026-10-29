@@ -1,7 +1,7 @@
-use campfire_common::{DomainHasher, HashDomain, Meaning, Value32};
+use std::io::{self, BufReader, Read};
 use std::ops::ControlFlow;
 
-use std::io::{self, BufReader, Read};
+use campfire_common::{DomainHasher, HashDomain, Meaning, Value32};
 
 use crate::session_log::journal::error::{JournalStreamError, NotJournal};
 

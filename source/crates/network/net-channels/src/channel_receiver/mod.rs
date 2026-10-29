@@ -1,13 +1,13 @@
 //! Channel receive state and delivery policies.
-
-use crate::channel_message::ChannelMessage;
-use bytes::Bytes;
-use campfire_net_core::Instant;
-use campfire_net_core::NetTick;
 use core::time::Duration;
 use std::collections::VecDeque;
 
+use bytes::Bytes;
+use campfire_net_core::Instant;
+use campfire_net_core::NetTick;
+
 use crate::bench_counter::BenchCounter;
+use crate::channel_message::ChannelMessage;
 use crate::channel_mode::ChannelMode;
 use crate::channel_reader::ChannelReader;
 use crate::channel_setup::ChannelSetup;

@@ -1,13 +1,15 @@
-use crate::timeline::Timeline;
-use crate::timeline_setup::TimelineSetup;
+use core::ops::DerefMut;
+use core::time::Duration;
+
 use bevy_ecs::component::{Component, Mutable};
 use campfire_math::TickRate;
 use campfire_net_core::NetTick;
 use campfire_net_core::Overstep;
 use campfire_net_core::TickInstant;
 use campfire_net_core::TickSpan;
-use core::ops::DerefMut;
-use core::time::Duration;
+
+use crate::timeline::Timeline;
+use crate::timeline_setup::TimelineSetup;
 
 /// A component that wraps a [`Timeline`], whose `now` moves by fractional [`TickSpan`]s.
 pub trait NetworkTimeline: Component<Mutability = Mutable> {

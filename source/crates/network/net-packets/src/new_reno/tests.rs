@@ -1,5 +1,6 @@
-use super::*;
 use core::time::Duration;
+
+use super::*;
 
 impl NewReno {
     pub(crate) const fn window(&self) -> usize {

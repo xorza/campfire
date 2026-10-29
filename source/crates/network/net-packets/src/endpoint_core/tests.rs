@@ -1,12 +1,13 @@
-use super::*;
-use crate::establish::{ClientEstablish, Establish, ServerEstablish};
-use bytes::BytesMut;
-use campfire_math::SplitMix64;
-use campfire_net_payload::{OutgoingPayload, PayloadKind, PayloadToken};
 use core::net::Ipv4Addr;
 use core::time::Duration;
 
+use bytes::BytesMut;
+use campfire_math::SplitMix64;
+use campfire_net_payload::{OutgoingPayload, PayloadKind, PayloadToken};
+
+use super::*;
 use crate::establish::PathCheck;
+use crate::establish::{ClientEstablish, Establish, ServerEstablish};
 use crate::header::{Header, PacketType};
 use crate::plain_establishment::PlainEstablishment;
 use crate::protection::Protection;

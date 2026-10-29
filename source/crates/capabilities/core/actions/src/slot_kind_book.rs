@@ -1,11 +1,11 @@
-use crate::slot_kind::SlotKind;
-use campfire_values::Names;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declarations::{Book, BookCx, BookError};
 use campfire_script::MatchNames;
+use campfire_values::Names;
 
+use crate::slot_kind::SlotKind;
 use crate::slot_kinds::SlotKinds;
 
 /// The mode's kinds of slot, which the `learn` order reads; none before a mode declares them.

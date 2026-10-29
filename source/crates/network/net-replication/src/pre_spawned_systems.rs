@@ -1,5 +1,6 @@
-use bevy_ecs::prelude::*;
 use core::hash::Hash;
+
+use bevy_ecs::prelude::*;
 
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum PreSpawnedSystems {

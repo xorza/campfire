@@ -1,17 +1,15 @@
-use crate::frame_source::FrameSource;
 use bevy_app::App;
 use bevy_ecs::archetype::Archetype;
 use bevy_ecs::component::{ComponentId, Components};
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ArchetypeFilter;
 use campfire_net_core::RegistrySeal;
-use campfire_net_replication::ComponentTypeId;
+use campfire_net_replication::{ComponentTable, ComponentTypeId, PendingInstalls};
+
+use crate::frame_source::FrameSource;
 
 /// Whether a rule's filter matches an archetype.
 pub(crate) type FrameFilterFn = fn(&Components, &Archetype) -> bool;
-
-/// A registered rule, built once the app finishes its plugins.
-pub(crate) type PendingFrameRule = Box<dyn FnOnce(&mut App) + Send + Sync>;
 
 /// The frame rules and what each fixed-tick component is shown through, which
 /// `AppFrameInterpolationExt` fills and `FrameRegistryPlugin` seals as the app finishes its
@@ -20,11 +18,11 @@ pub(crate) type PendingFrameRule = Box<dyn FnOnce(&mut App) + Send + Sync>;
 pub struct FrameRegistry {
     /// Every built rule in registration order, which breaks ties of priority.
     rules: Vec<RegisteredFrameRule>,
-    /// What the registry holds of each fixed-tick component, sorted by its type.
-    components: Vec<FrameComponent>,
+    /// What the registry holds of each fixed-tick component.
+    components: ComponentTable<FrameComponent>,
     /// The frame histories of every component a rule shows, each once, set as it seals.
     history_component_ids: Vec<ComponentId>,
-    pending: PendingRules,
+    pending: PendingInstalls,
     seal: RegistrySeal<()>,
 }
 
@@ -45,9 +43,8 @@ pub(crate) struct RegisteredFrameRule {
 pub(crate) struct FrameRuleId(pub(crate) usize);
 
 /// What the registry holds of one fixed-tick component.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct FrameComponent {
-    type_id: ComponentTypeId,
     /// The visual component every rule of it writes, once a rule names it.
     visual: Option<ComponentTypeId>,
     history_component_id: Option<ComponentId>,
@@ -56,17 +53,6 @@ struct FrameComponent {
     source: Option<FrameSource>,
     /// Whether its frame history system is installed.
     history_installed: bool,
-}
-
-#[derive(Default)]
-struct PendingRules(Vec<PendingFrameRule>);
-
-impl core::fmt::Debug for PendingRules {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("PendingRules")
-            .field("len", &self.0.len())
-            .finish()
-    }
 }
 
 /// The app's frame registry, made by its first registration, which comes before the app finishes
@@ -81,8 +67,8 @@ impl FrameRegistry {
     const NAME: &'static str = "frame registry";
 
     /// Queues `rule`, which the registry builds as it seals.
-    pub(crate) fn defer(&mut self, rule: PendingFrameRule) {
-        self.pending.0.push(rule);
+    pub(crate) fn defer(&mut self, rule: impl FnOnce(&mut App) + Send + Sync + 'static) {
+        self.pending.push(rule);
     }
 
     /// Records that a rule shows `C` through `V`, whose frame history is `history_component_id`.
@@ -99,7 +85,7 @@ impl FrameRegistry {
         assert!(
             self.components
                 .iter()
-                .all(|entry| entry.type_id == component || entry.visual != Some(visual)),
+                .all(|(type_id, entry)| type_id == component || entry.visual != Some(visual)),
             "{} shows two components",
             core::any::type_name::<V>()
         );
@@ -182,46 +168,27 @@ impl FrameRegistry {
     }
 
     /// The rules registered since the last take, to build as the registry seals.
-    pub(crate) fn take_pending(&mut self) -> Vec<PendingFrameRule> {
+    pub(crate) fn take_pending(&mut self) -> PendingInstalls {
         self.assert_open();
-        core::mem::take(&mut self.pending.0)
+        self.pending.take()
     }
 
     pub(crate) fn seal(&mut self) {
         self.history_component_ids = self
             .components
             .iter()
-            .filter_map(|entry| entry.history_component_id)
+            .filter_map(|(_, entry)| entry.history_component_id)
             .collect();
         self.seal.seal(Self::NAME, ());
     }
 
     fn component(&self, type_id: &ComponentTypeId) -> Option<&FrameComponent> {
-        self.components
-            .binary_search_by_key(type_id, |entry| entry.type_id)
-            .ok()
-            .map(|index| &self.components[index])
+        self.components.get(*type_id)
     }
 
     /// The entry of `type_id`, which goes in if it is not there.
     fn component_mut(&mut self, type_id: ComponentTypeId) -> &mut FrameComponent {
-        let index = self
-            .components
-            .binary_search_by_key(&type_id, |entry| entry.type_id)
-            .unwrap_or_else(|index| {
-                self.components.insert(
-                    index,
-                    FrameComponent {
-                        type_id,
-                        visual: None,
-                        history_component_id: None,
-                        source: None,
-                        history_installed: false,
-                    },
-                );
-                index
-            });
-        &mut self.components[index]
+        self.components.entry(type_id, FrameComponent::default)
     }
 
     fn assert_open(&self) {

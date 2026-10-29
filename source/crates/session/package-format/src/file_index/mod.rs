@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::fmt::Write as _;
 
-use crate::content_hash::ContentHash;
 use campfire_common::PackageFingerprint;
 use campfire_values::PackagePath;
 
+use crate::content_hash::ContentHash;
 use crate::error::ContentError;
 
 /// A package's index: each file's size and SHA-256 by its path, every file of the package but

@@ -185,8 +185,8 @@ impl Kit {
 /// `calc_damage` weighs a hit, so each one lands as its ability deals it.
 fn arena() -> Arena {
     let mut tree = PackageTree::of(TestMode::Moba3v3);
-    tree.edit("modes/3v3/data/mode.toml", Edit::Append(ACTIONS))
-        .edit("modes/3v3/data/units.toml", Edit::Append(UNITS));
+    tree.edit("moba/modes/3v3/data/mode.toml", Edit::Append(ACTIONS))
+        .edit("moba/modes/3v3/data/units.toml", Edit::Append(UNITS));
     Arena::of(tree.packages())
 }
 

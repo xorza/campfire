@@ -1,6 +1,7 @@
-use crate::peer_set::PeerSet;
 use bevy_reflect::Reflect;
 use campfire_net_core::PeerId;
+
+use crate::peer_set::PeerSet;
 
 /// The peers a message or an entity is sent to, each set in one form: a list is a sorted
 /// [`PeerSet`], and an empty one is [`Self::None`] or [`Self::All`].

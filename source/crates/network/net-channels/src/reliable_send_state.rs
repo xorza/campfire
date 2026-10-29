@@ -1,6 +1,7 @@
-use bytes::Bytes;
 use core::time::Duration;
 use std::collections::VecDeque;
+
+use bytes::Bytes;
 
 use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;

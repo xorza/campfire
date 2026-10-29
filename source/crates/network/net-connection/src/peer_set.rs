@@ -1,7 +1,8 @@
-use bevy_reflect::Reflect;
-use campfire_net_core::PeerId;
 use core::ops::Deref;
 use std::sync::Arc;
+
+use bevy_reflect::Reflect;
+use campfire_net_core::PeerId;
 
 /// A set of peers: sorted, each once, and shared, so a clone of a target that holds it is a count
 /// and not a copy of the list (11-net-stack/transport.md, A network target holds its peers in one

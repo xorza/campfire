@@ -1,3 +1,11 @@
+use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use core::sync::atomic::{AtomicUsize, Ordering};
+use core::time::Duration;
+
+use bytes::BytesMut;
+use campfire_net_core::Instant;
+use campfire_net_payload::{OutgoingPayload, PacketSessionQueues, PayloadKind, PayloadToken};
+
 use super::*;
 use crate::connection_id::ConnectionId;
 use crate::endpoint_core::{EndpointTime, News};
@@ -7,12 +15,6 @@ use crate::fixtures::hold_clock::HoldClock;
 use crate::header::IO_BIT;
 use crate::io_failed::IoFailed;
 use crate::plain_establishment::PlainEstablishment;
-use bytes::BytesMut;
-use campfire_net_core::Instant;
-use campfire_net_payload::{OutgoingPayload, PacketSessionQueues, PayloadKind, PayloadToken};
-use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use core::sync::atomic::{AtomicUsize, Ordering};
-use core::time::Duration;
 
 /// An IO with `waiting` datagrams, each of 4 bytes from `first`, and each from an address of its
 /// own, which records what each read appended and counts the datagrams sent.

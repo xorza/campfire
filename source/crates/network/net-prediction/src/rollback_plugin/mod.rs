@@ -9,8 +9,36 @@
 //! `register_component::<Time<C>>().local_rollback()` keeps its history, and its writer runs before
 //! [`PredictionSystems::UpdateHistory`](crate::prediction_systems::PredictionSystems), so the
 //! history holds the value of each tick.
+use core::fmt::Debug;
 
+use bevy_app::FixedMain;
+use bevy_app::prelude::*;
+use bevy_ecs::component::Mutable;
+use bevy_ecs::entity::EntityHashSet;
+use bevy_ecs::prelude::*;
+use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
+use bevy_replicon::prelude::{ClientMessages, ClientSystems, Remote};
+use bevy_replicon::shared::backend::channels::ServerChannel;
+use bevy_time::{Fixed, Time};
+use bevy_utils::prelude::DebugName;
+use campfire_net_connection::NetworkingState;
+use campfire_net_core::NetTick;
 use campfire_net_despawns::DespawnReplicated;
+use campfire_net_frame_interpolation::FrameInterpolationSystems;
+use campfire_net_replication::ConfirmedHistory;
+use campfire_net_replication::ConfirmedTickMap;
+use campfire_net_replication::DeferredEntityCommands;
+use campfire_net_replication::HistoryState;
+use campfire_net_replication::Interpolated;
+use campfire_net_replication::PreSpawned;
+use campfire_net_replication::PreSpawnedReceiver;
+use campfire_net_replication::Predicted;
+use campfire_net_replication::ReplicationSystems;
+use campfire_net_sync::{InputTimelineSetup, SyncedLocalTimeline};
+use campfire_net_timeline::LocalTimeline;
+use campfire_net_timeline::Rollback;
+use campfire_net_timeline::TimelineRate;
+use tracing::{debug, debug_span, trace};
 
 use crate::disable_rollback::DisableRollback;
 use crate::disabled_during_rollback::DisabledDuringRollback;
@@ -28,34 +56,6 @@ use crate::rollback_mode::RollbackMode;
 use crate::rollback_scan::RollbackScan;
 use crate::rollback_systems::RollbackSystems;
 use crate::tick_period_history::TickPeriodHistory;
-use bevy_app::FixedMain;
-use bevy_app::prelude::*;
-use bevy_ecs::component::Mutable;
-use bevy_ecs::entity::EntityHashSet;
-use bevy_ecs::prelude::*;
-use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
-use bevy_replicon::prelude::{ClientMessages, ClientSystems, Remote};
-use bevy_replicon::shared::backend::channels::ServerChannel;
-use bevy_time::{Fixed, Time};
-use bevy_utils::prelude::DebugName;
-use campfire_net_connection::NetworkingState;
-use campfire_net_core::NetTick;
-use campfire_net_frame_interpolation::FrameInterpolationSystems;
-use campfire_net_replication::ConfirmedHistory;
-use campfire_net_replication::ConfirmedTickMap;
-use campfire_net_replication::DeferredEntityCommands;
-use campfire_net_replication::HistoryState;
-use campfire_net_replication::Interpolated;
-use campfire_net_replication::PreSpawned;
-use campfire_net_replication::PreSpawnedReceiver;
-use campfire_net_replication::Predicted;
-use campfire_net_replication::ReplicationSystems;
-use campfire_net_sync::{InputTimelineSetup, SyncedLocalTimeline};
-use campfire_net_timeline::LocalTimeline;
-use campfire_net_timeline::Rollback;
-use campfire_net_timeline::TimelineRate;
-use core::fmt::Debug;
-use tracing::{debug, debug_span, trace};
 
 /// Installs prediction rollback detection, restoration, and replay.
 #[derive(Debug)]

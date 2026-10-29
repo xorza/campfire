@@ -1,8 +1,9 @@
+use core::fmt::{Display, Formatter};
+
 use bevy_derive::Deref;
 use bevy_ecs::component::Component;
 use bevy_reflect::Reflect;
 use campfire_net_core::PeerId;
-use core::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 /// Stores the PeerId of the local peer for the connection

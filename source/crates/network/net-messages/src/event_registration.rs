@@ -1,9 +1,10 @@
-use crate::event_sender::EventSender;
-use crate::message_registration;
-use crate::message_registry::{MessageRegistry, mapped_cx_deserialize, mapped_cx_serialize};
 use bevy_app::App;
 use bevy_ecs::{entity::MapEntities, event::Event};
 use campfire_net_core::LinkDirections;
+
+use crate::event_sender::EventSender;
+use crate::message_registration;
+use crate::message_registry::{MessageRegistry, mapped_cx_deserialize, mapped_cx_serialize};
 
 #[derive(Debug)]
 pub struct EventRegistration<'a, M> {

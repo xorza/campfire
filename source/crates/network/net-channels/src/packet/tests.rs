@@ -1,15 +1,13 @@
-use crate::fragment_body::FragmentBody;
-use crate::single_body::SingleBody;
-use crate::tick_decoder::TickDecoder;
 use bevy_platform::collections::HashMap;
 use bytes::Bytes;
+use campfire_net_bytes::ToBytes;
 use campfire_net_core::NetId;
 
 use super::*;
-
 use crate::error::ReceiveError;
-
-use campfire_net_bytes::ToBytes;
+use crate::fragment_body::FragmentBody;
+use crate::single_body::SingleBody;
+use crate::tick_decoder::TickDecoder;
 
 impl Packet {
     /// The messages of a packet by channel, each of a channel whose messages

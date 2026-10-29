@@ -2,6 +2,7 @@ use std::fmt;
 use std::io::{self, Read};
 use std::path::PathBuf;
 
+use campfire_platform::UserOnly;
 use zeroize::Zeroizing;
 
 use crate::durable_file::DurableFile;
@@ -9,7 +10,6 @@ use crate::durable_file::error::{DurableCreateError, DurableError};
 use crate::input_file::InputFile;
 use crate::input_file::error::ReadError;
 use crate::path_error::PathError;
-use campfire_platform::UserOnly;
 
 /// A secret's file, which only its user may open, as a key's: made from its path where the path
 /// enters, it reads and writes the file and gives no path back, so no other read of a secret

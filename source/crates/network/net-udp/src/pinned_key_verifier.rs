@@ -1,10 +1,10 @@
+use campfire_net_core::TlsKey;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{WebPkiSupportedAlgorithms, ring, verify_tls13_signature_with_raw_key};
 use rustls::pki_types::{CertificateDer, ServerName, SubjectPublicKeyInfoDer, UnixTime};
 use rustls::{CertificateError, DigitallySignedStruct, Error, SignatureScheme};
 
 use crate::spki::Spki;
-use campfire_net_core::TlsKey;
 
 /// A client's check of the server: the raw key the client pinned and no other, with no certificate,
 /// chain, name or date to read (11-net-stack/udp.md, A server's identity and a client's trust

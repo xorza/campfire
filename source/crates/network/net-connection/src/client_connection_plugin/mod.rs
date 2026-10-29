@@ -1,3 +1,12 @@
+use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::*;
+use campfire_net_core::PeerId;
+use campfire_net_link::LocalAddress;
+use campfire_net_link::{LinkStart, Linked, Linking, Unlink};
+use campfire_net_link::{Server, Unlinked};
+use campfire_net_payload::UnlinkReason;
+use tracing::trace;
+
 use crate::client::Client;
 use crate::connect::Connect;
 use crate::connection_state::Connected;
@@ -7,14 +16,6 @@ use crate::disconnect::Disconnect;
 use crate::local_id::LocalId;
 use crate::networking_state::NetworkingState;
 use crate::remote_id::RemoteId;
-use bevy_app::{App, Plugin};
-use bevy_ecs::prelude::*;
-use campfire_net_core::PeerId;
-use campfire_net_link::LocalAddress;
-use campfire_net_link::{LinkStart, Linked, Linking, Unlink};
-use campfire_net_link::{Server, Unlinked};
-use campfire_net_payload::UnlinkReason;
-use tracing::trace;
 
 /// The lifecycle of each client: a client's link is its connection, so each state of the link
 /// is the connection's.

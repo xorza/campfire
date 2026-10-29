@@ -1,17 +1,5 @@
-use crate::message::Message;
-use crate::message_error::MessageError;
-use crate::message_receive_cx::MessageReceiveCx;
-use crate::message_type_id::MessageTypeId;
-use crate::receive_map_view::ReceiveMapView;
-use crate::send_map_view::SendMapView;
-use crate::send_queue::{DiscardSendFn, SendFn};
-use crate::serialize_fns::CxDeserializeFn;
-use crate::serialize_fns::CxDeserializeFns;
-use crate::serialize_fns::CxSerializeFn;
-use crate::serialize_fns::CxSerializeFns;
-use crate::serialize_fns::DeserializeFn;
-use crate::serialize_fns::ErasedSerializeFns;
-use crate::serialize_fns::SerializeFn;
+use std::sync::Arc;
+
 use bevy_ecs::world::FilteredEntityMut;
 use bevy_ecs::{component::ComponentId, entity::MapEntities, error::Result, resource::Resource};
 use bevy_reflect::TypePath;
@@ -26,8 +14,22 @@ use campfire_net_core::NetId;
 use campfire_net_core::RegistrySeal;
 use campfire_net_core::TypeMapper;
 use campfire_net_core::{RegistryHash, RegistryHasher};
-use std::sync::Arc;
 use tracing::trace;
+
+use crate::message::Message;
+use crate::message_error::MessageError;
+use crate::message_receive_cx::MessageReceiveCx;
+use crate::message_type_id::MessageTypeId;
+use crate::receive_map_view::ReceiveMapView;
+use crate::send_map_view::SendMapView;
+use crate::send_queue::{DiscardSendFn, SendFn};
+use crate::serialize_fns::CxDeserializeFn;
+use crate::serialize_fns::CxDeserializeFns;
+use crate::serialize_fns::CxSerializeFn;
+use crate::serialize_fns::CxSerializeFns;
+use crate::serialize_fns::DeserializeFn;
+use crate::serialize_fns::ErasedSerializeFns;
+use crate::serialize_fns::SerializeFn;
 
 /// The tag of the message registry's hash.
 const HASH_DOMAIN: HashDomain<RegistryHash> = HashDomain::new("campfire/message-registry/v1");

@@ -1,18 +1,18 @@
-use crate::component_type_id::ComponentTypeId;
 use bevy_ecs::archetype::Archetype;
 use bevy_ecs::component::Components;
-use campfire_common::{DomainHasher, HashDomain, HashOutput};
-use campfire_net_core::NetId;
-use campfire_net_core::NetTick;
-
-use crate::component_registry::ComponentRegistry;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::{Reflect, prelude::ReflectDefault};
+use campfire_common::{DomainHasher, HashDomain, HashOutput};
+use campfire_net_core::NetId;
+use campfire_net_core::NetTick;
 use campfire_net_timeline::LocalTimeline;
 use smallvec::SmallVec;
 use tracing::debug;
+
+use crate::component_registry::ComponentRegistry;
+use crate::component_type_id::ComponentTypeId;
 
 #[derive(Default, Debug, Copy, Clone, Reflect)]
 /// Added to indicate the client has pre-spawned the predicted version of this entity.

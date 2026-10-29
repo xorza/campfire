@@ -1,8 +1,10 @@
-use crate::link_estimate::LinkEstimate;
-use crate::sync_setup::SyncSetup;
+use core::time::Duration;
+
 use bevy_reflect::Reflect;
 use campfire_math::TickRate;
-use core::time::Duration;
+
+use crate::link_estimate::LinkEstimate;
+use crate::sync_setup::SyncSetup;
 
 /// How far a client delays its inputs, and how far it predicts, each in ticks.
 #[derive(Debug, Clone, Copy, Reflect)]

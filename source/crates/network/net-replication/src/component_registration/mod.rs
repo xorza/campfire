@@ -1,9 +1,3 @@
-use crate::component_codec::ComponentCodec;
-use crate::component_registry::ComponentRegistry;
-use crate::component_type_id::ComponentTypeId;
-use crate::history_diff_receiver::HistoryDiffReceiver;
-use crate::replication_kind::{DiffReplicated, FullReplicated, NotReplicated, ReplicationKind};
-use crate::replication_systems::ReplicationSystems;
 use bevy_app::{App, PostUpdate};
 use bevy_ecs::component::Component;
 use bevy_ecs::schedule::IntoScheduleConfigs;
@@ -11,6 +5,13 @@ use bevy_replicon::prelude::{AppRuleExt, ReplicationMode};
 use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::registry::receive_fns::MutWrite;
 use serde::{Serialize, de::DeserializeOwned};
+
+use crate::component_codec::ComponentCodec;
+use crate::component_registry::ComponentRegistry;
+use crate::component_type_id::ComponentTypeId;
+use crate::history_diff_receiver::HistoryDiffReceiver;
+use crate::replication_kind::{DiffReplicated, FullReplicated, NotReplicated, ReplicationKind};
+use crate::replication_systems::ReplicationSystems;
 
 /// A component's registration, typed by how it replicates: [`NotReplicated`], [`FullReplicated`] or
 /// [`DiffReplicated`], which prediction and interpolation read their mode from

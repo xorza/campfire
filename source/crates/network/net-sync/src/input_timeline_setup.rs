@@ -1,8 +1,9 @@
-use crate::input_delay_setup::InputDelaySetup;
-use crate::sync_setup::SyncSetup;
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use campfire_net_core::PositiveTickSpan;
+
+use crate::input_delay_setup::InputDelaySetup;
+use crate::sync_setup::SyncSetup;
 
 /// The settings shared by local clock synchronization and input scheduling (11-net-stack/time.md,
 /// An input leads by one margin for each reason).

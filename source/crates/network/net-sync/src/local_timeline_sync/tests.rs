@@ -1,19 +1,18 @@
-use super::*;
-use crate::fixtures::sync_stack::SyncStack;
-use crate::input_delay_setup::InputDelaySetup;
-use crate::remote_timeline::RemoteTimeline;
+use core::time::Duration;
+
+use bevy_app::{App, Update};
+use bevy_utils::default;
 use campfire_net_core::{NetTick, PositiveTickSpan};
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_timeline::LocalTimeline;
-use core::time::Duration;
-
-use crate::synced_local_timeline::SyncedLocalTimeline;
-use bevy_app::{App, Update};
-
-use bevy_utils::default;
-
 use campfire_net_timeline::NetworkTimeline;
+
+use super::*;
+use crate::fixtures::sync_stack::SyncStack;
+use crate::input_delay_setup::InputDelaySetup;
+use crate::remote_timeline::RemoteTimeline;
+use crate::synced_local_timeline::SyncedLocalTimeline;
 
 fn num(text: &str) -> campfire_math::Num {
     text.parse().unwrap()

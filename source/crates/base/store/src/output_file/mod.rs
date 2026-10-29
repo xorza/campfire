@@ -2,10 +2,11 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Stdio;
 
+use campfire_platform::UserOnly;
+
 use crate::durable_dir::DurableDir;
 use crate::durable_dir::error::DurableDirError;
 use crate::path_error::PathError;
-use campfire_platform::UserOnly;
 
 /// A new file, written once, its user's only, as every file `store` makes: one a child process
 /// writes to, as a check keeps a process's standard error, given as the `Stdio` the child takes,

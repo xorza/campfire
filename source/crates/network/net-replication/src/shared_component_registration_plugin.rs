@@ -1,13 +1,14 @@
+use bevy_app::prelude::{App, Plugin};
+use bevy_ecs::prelude::ChildOf;
+use bevy_replicon::prelude::{AppMarkerExt, AppRuleExt, RuleFns};
+use campfire_net_transport::ProtocolHashes;
+
 use crate::component_registry::ComponentRegistry;
 use crate::controlled_send::ControlledSend;
 use crate::hierarchy;
 use crate::replication_target::InterpolatedSend;
 use crate::replication_target::PredictedSend;
 use crate::sent_marker::SentMarker;
-use bevy_app::prelude::{App, Plugin};
-use bevy_ecs::prelude::ChildOf;
-use bevy_replicon::prelude::{AppMarkerExt, AppRuleExt, RuleFns};
-use campfire_net_transport::ProtocolHashes;
 
 /// Registers the sender-side markers `PredictedSend`, `InterpolatedSend` and `ControlledSend` with
 /// Replicon, whose receive makes each receiver's own marker, so no authoritative entity holds a

@@ -1,7 +1,3 @@
-use crate::replicon_channel_map::RepliconChannelMap;
-use crate::replicon_mutation_acks_channel::RepliconMutationAcksChannel;
-use crate::replicon_mutations_channel::RepliconMutationsChannel;
-use crate::replicon_updates_channel::RepliconUpdatesChannel;
 use bevy_app::prelude::*;
 use bevy_replicon::shared::backend::channels::{Channel, RepliconChannels};
 use campfire_net_channels::ChannelMode;
@@ -9,6 +5,11 @@ use campfire_net_channels::ChannelSetup;
 use campfire_net_channels::ChannelTypeId;
 use campfire_net_core::LinkDirection;
 use campfire_net_transport::{AppChannelExt, ChannelRegistry};
+
+use crate::replicon_channel_map::RepliconChannelMap;
+use crate::replicon_mutation_acks_channel::RepliconMutationAcksChannel;
+use crate::replicon_mutations_channel::RepliconMutationsChannel;
+use crate::replicon_updates_channel::RepliconUpdatesChannel;
 
 /// Registers Replicon's channels as the transport's, with their map (11-net-stack/transport.md,
 /// Replicon's channels map from `RepliconChannels`).

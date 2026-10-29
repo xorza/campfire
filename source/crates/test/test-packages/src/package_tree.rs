@@ -1,4 +1,3 @@
-use campfire_mode::{ModeData, PlayersData, SavesData};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::str;
@@ -6,6 +5,7 @@ use std::sync::{Arc, OnceLock};
 
 use campfire_codec::Toml;
 use campfire_codec::internals::TomlDocument;
+use campfire_mode::{ModeData, PlayersData, SavesData};
 use campfire_package::{LoadError, ModePackages};
 use campfire_package_disk::PackageDir;
 use campfire_package_disk::internals::TreeDir;

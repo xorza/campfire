@@ -1,9 +1,9 @@
 use campfire_declarations::{BookCx, BookError, ById, Fact};
+use campfire_values::UnitType;
 
 use crate::accel_step::AccelStep;
 use crate::move_step::MoveStep;
 use crate::turn_step::TurnStep;
-use campfire_values::UnitType;
 
 /// How far each unit type's units walk, turn and speed up a tick at level 1, which the module of
 /// the stats they are of makes.

@@ -1,7 +1,9 @@
-use crate::fixtures::AUDIT;
+use std::collections::VecDeque;
+
 use campfire_net_bytes::WriteInteger;
 use campfire_net_bytes::Writer;
-use std::collections::VecDeque;
+
+use crate::fixtures::AUDIT;
 
 /// A sender whose messages wait for their acks keeps them alive: each frame writes one 64-byte
 /// message and drops the one written 10 frames before. The writer reuses its chunks once their

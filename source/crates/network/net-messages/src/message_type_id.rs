@@ -1,7 +1,8 @@
-use bevy_reflect::Reflect;
-use campfire_net_core::RegisteredType;
 use core::any::TypeId;
 use core::hash::Hash;
+
+use bevy_reflect::Reflect;
+use campfire_net_core::RegisteredType;
 
 /// [`MessageTypeId`] is an internal wrapper around the type of the message
 #[derive(Debug, Eq, Hash, Copy, Clone, PartialEq, Reflect)]

@@ -1,9 +1,10 @@
-use crate::network_topology::NetworkTopology;
-use crate::remote_id::RemoteId;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
 use bevy_platform::collections::HashMap;
 use campfire_net_core::PeerId;
+
+use crate::network_topology::NetworkTopology;
+use crate::remote_id::RemoteId;
 
 /// The networking topology of this Bevy application, and the link entity of each remote peer.
 ///

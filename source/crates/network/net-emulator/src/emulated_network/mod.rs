@@ -1,13 +1,3 @@
-use crate::direction_counts::DirectionCounts;
-use crate::duplex_model::DuplexModel;
-use crate::emulated_direction::EmulatedDirection;
-use crate::emulated_link_id::EmulatedLinkId;
-use crate::phase::Phase;
-use crate::side::Side;
-use bevy_platform::time::Instant as OsInstant;
-use bytes::Bytes;
-use campfire_net_core::LinkDirection;
-use campfire_net_core::TimeSource;
 use core::net::IpAddr;
 use core::net::Ipv4Addr;
 use core::net::SocketAddr;
@@ -16,6 +6,18 @@ use core::time::Duration;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+
+use bevy_platform::time::Instant as OsInstant;
+use bytes::Bytes;
+use campfire_net_core::LinkDirection;
+use campfire_net_core::TimeSource;
+
+use crate::direction_counts::DirectionCounts;
+use crate::duplex_model::DuplexModel;
+use crate::emulated_direction::EmulatedDirection;
+use crate::emulated_link_id::EmulatedLinkId;
+use crate::phase::Phase;
+use crate::side::Side;
 
 /// An emulated network shared by the apps of one process: it makes [`EmulatedIo`] links and
 /// schedules every delivery on its own wire clock (11-net-stack/testing.md, The emulated network is

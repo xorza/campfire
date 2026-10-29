@@ -1,7 +1,7 @@
-use crate::data_kind::DataKind;
-use crate::recipients::Recipients;
 use thiserror::Error;
 
+use crate::data_kind::DataKind;
+use crate::recipients::Recipients;
 use crate::setting::Setting;
 
 /// Why a mode's `[visibility]`, or a host's setting, does not set a session's visibility

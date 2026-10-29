@@ -21,7 +21,7 @@ fn language(text: &str) -> Language {
 fn german<'a>(
     edits: impl IntoIterator<Item = (&'a str, Edit<'a>)>,
 ) -> Result<LocalePackage, LoadError> {
-    LocalePackage::read(&edited_at("locales/de", edits).files().unwrap())
+    LocalePackage::read(&edited_at("moba/locales/de", edits).files().unwrap())
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn a_heros_name_reads_in_the_players_language_or_else_in_the_heros_own() {
 
     // The hero's own German file comes before the locale package's.
     let own = (
-        "heroes/husk/locale/de.ftl",
+        "moba/heroes/husk/locale/de.ftl",
         Edit::Create("hero-name = Hüllenwesen\n"),
     );
     let packages = load(&edited([own])).unwrap();
@@ -89,17 +89,17 @@ fn a_locale_package_translates_only_the_messages_of_the_packages_it_depends_on()
     };
     // A package it does not depend on, a file outside a package's directory, and a file name
     // that is no language.
-    let lancer = "locales/de/locale/hero-lancer/de.ftl";
+    let lancer = "moba/locales/de/locale/hero-lancer/de.ftl";
     file_name(
         german([(lancer, Edit::Create("hero-name = Lanzer\n"))]).unwrap_err(),
         "locale/hero-lancer/de.ftl",
     );
-    let loose = "locales/de/locale/de.ftl";
+    let loose = "moba/locales/de/locale/de.ftl";
     file_name(
         german([(loose, Edit::Create("hero-name = Hülse\n"))]).unwrap_err(),
         "locale/de.ftl",
     );
-    let english = "locales/de/locale/hero-husk/english.ftl.txt";
+    let english = "moba/locales/de/locale/hero-husk/english.ftl.txt";
     file_name(
         german([(english, Edit::Create("hero-name = Husk\n"))]).unwrap_err(),
         "locale/hero-husk/english.ftl.txt",
@@ -107,7 +107,7 @@ fn a_locale_package_translates_only_the_messages_of_the_packages_it_depends_on()
 
     // A translation of a message its package does not define.
     let stray = (
-        "locales/de/locale/hero-husk/de.ftl",
+        "moba/locales/de/locale/hero-husk/de.ftl",
         Edit::Replace("hero-name", "hero-nme"),
     );
     let packages = load(&edited([])).unwrap();

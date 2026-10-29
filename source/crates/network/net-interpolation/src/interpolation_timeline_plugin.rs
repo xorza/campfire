@@ -1,5 +1,3 @@
-use crate::interpolation_setup::InterpolationSetup;
-use crate::interpolation_timeline::InterpolationTimeline;
 use bevy_app::{App, Plugin, PostUpdate, PreUpdate};
 use bevy_ecs::prelude::*;
 use bevy_time::{Real, Time, Virtual};
@@ -19,6 +17,9 @@ use campfire_net_timeline::NetworkTimeline;
 use campfire_net_timeline::TimelineRate;
 use campfire_net_timeline::TimelineSystems;
 use tracing::{debug, trace};
+
+use crate::interpolation_setup::InterpolationSetup;
+use crate::interpolation_timeline::InterpolationTimeline;
 
 #[derive(Debug)]
 pub(crate) struct InterpolationTimelinePlugin;

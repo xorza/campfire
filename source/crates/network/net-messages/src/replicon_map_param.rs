@@ -4,16 +4,16 @@
 //! link's own pairs in the [`LinkMessages`](crate::link_messages::LinkMessages), which
 //! replicon never sees. A server keeps the entities it sends, and accepts from a client only one
 //! it replicates or one of the link's own.
-
-use crate::receive_entity_map::ReceiveEntityMap;
-use crate::receive_map_view::ReceiveMapView;
-use crate::send_entity_map::SendEntityMap;
-use crate::send_map_view::SendMapView;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Query, Res, SystemParam};
 use bevy_replicon::shared::replication::Replicated;
 use bevy_replicon::shared::server_entity_map::ServerEntityMap;
+
+use crate::receive_entity_map::ReceiveEntityMap;
+use crate::receive_map_view::ReceiveMapView;
+use crate::send_entity_map::SendEntityMap;
+use crate::send_map_view::SendMapView;
 
 impl RepliconMapParam<'_, '_> {
     /// The send view of a client's side whose own pairs are `local`.

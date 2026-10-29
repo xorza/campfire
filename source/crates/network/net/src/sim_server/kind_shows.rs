@@ -13,6 +13,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, If, Query, Res, ResMut, SystemParam};
 use campfire_capabilities::Release;
 use campfire_declarations::{EntityKind, KindAudience, KindVisitor, MatchFacts};
+use campfire_host::PlayerLink;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_replication::{PredictionTarget, Replicate, Rooms};
 use campfire_sim::StableId;
@@ -20,7 +21,6 @@ use campfire_units::{Owner, SeenBy};
 use tracing::debug;
 
 use crate::sim_server::team_rooms::TeamRooms;
-use campfire_host::PlayerLink;
 
 /// The entities of the kind `K` a show takes, with their owner and the teams that see them, a rider
 /// out of the world among them (04-capabilities/interaction.md, A rider's team holds it).

@@ -63,6 +63,22 @@
 //! Both [`PreviousVisual`] and [`VisualCorrection`] are slots that go on with the
 //! prediction history and hold `None` while idle: a rollback and a correction write
 //! them in place, and move no entity between tables.
+use core::fmt::Debug;
+
+use bevy_app::prelude::*;
+use bevy_ecs::entity::EntityLocation;
+use bevy_ecs::prelude::*;
+use bevy_time::{Time, Virtual};
+use bevy_utils::prelude::DebugName;
+use campfire_net_frame_interpolation::FrameHolders;
+use campfire_net_frame_interpolation::FrameInterpolationSystems;
+use campfire_net_frame_interpolation::FrameRegistry;
+use campfire_net_frame_interpolation::LerpFn;
+use campfire_net_replication::DeferredEntityCommands;
+use campfire_net_replication::HistoryComponent;
+use campfire_net_replication::Interpolated;
+use tracing::trace;
+
 use crate::correction_policy::CorrectionPolicy;
 use crate::pending_switch::PendingSwitch;
 use crate::prediction_history::PredictionHistory;
@@ -76,20 +92,6 @@ use crate::switch_direction::SwitchDirection;
 use crate::timeline_switch_plugin::TimelineSwitchPlugin;
 use crate::visual_correction::{CONVERGED, VisualCorrection, VisualOffset};
 use crate::visual_diff::VisualDiff;
-use bevy_app::prelude::*;
-use bevy_ecs::entity::EntityLocation;
-use bevy_ecs::prelude::*;
-use bevy_time::{Time, Virtual};
-use bevy_utils::prelude::DebugName;
-use campfire_net_frame_interpolation::FrameHolders;
-use campfire_net_frame_interpolation::FrameInterpolationSystems;
-use campfire_net_frame_interpolation::FrameRegistry;
-use campfire_net_frame_interpolation::LerpFn;
-use campfire_net_replication::DeferredEntityCommands;
-use campfire_net_replication::HistoryComponent;
-use campfire_net_replication::Interpolated;
-use core::fmt::Debug;
-use tracing::trace;
 
 /// The correction fn of component `C`'s visual `V` on errors of type `D`, which the prediction
 /// registry holds and its `(C, V, D)` correction systems read typed.

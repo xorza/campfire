@@ -1,12 +1,12 @@
-use crate::prediction_gate::predicts;
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use campfire_net_connection::NetworkingState;
-
-use crate::correction_policy::CorrectionPolicy;
-use crate::rollback_setup::RollbackSetup;
 use campfire_net_core::NetTick;
 use campfire_net_sync::InputTimelineSetup;
+
+use crate::correction_policy::CorrectionPolicy;
+use crate::prediction_gate::predicts;
+use crate::rollback_setup::RollbackSetup;
 
 /// The settings of prediction and rollback, whose presence turns them on: the prediction systems
 /// run only while this resource exists and the app's network topology is a client.

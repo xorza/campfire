@@ -1,7 +1,8 @@
-use bevy_curve::{Curve, EaseFunction};
-use bevy_reflect::Reflect;
 use core::fmt::Debug;
 use core::time::Duration;
+
+use bevy_curve::{Curve, EaseFunction};
+use bevy_reflect::Reflect;
 
 /// A curve that gives a correction error up over time.
 ///

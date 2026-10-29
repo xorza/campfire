@@ -1,6 +1,3 @@
-use crate::message::Message;
-use crate::message_registry::{MessageRegistry, mapped_cx_deserialize, mapped_cx_serialize};
-use crate::message_sender::MessageSender;
 use bevy_app::App;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::MapEntities;
@@ -8,6 +5,10 @@ use campfire_net_connection::Client;
 use campfire_net_connection::ClientOf;
 use campfire_net_connection::LinkSide;
 use campfire_net_core::LinkDirections;
+
+use crate::message::Message;
+use crate::message_registry::{MessageRegistry, mapped_cx_deserialize, mapped_cx_serialize};
+use crate::message_sender::MessageSender;
 
 #[derive(Debug)]
 pub struct MessageRegistration<'a, M> {

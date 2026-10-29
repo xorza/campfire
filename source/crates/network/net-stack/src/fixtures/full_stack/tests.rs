@@ -1,11 +1,13 @@
-use super::*;
+use core::time::Duration;
+
 use campfire_net_connection::Connected;
 use campfire_net_stepper::AppId;
 use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::internals::input_timeline_is_synced;
-use core::time::Duration;
+
+use super::*;
 
 fn is_synced_and_connected(stepper: &Stepper<FullStack>) -> bool {
     input_timeline_is_synced(stepper.client_world(0)) && stepper.client(0).contains::<Connected>()

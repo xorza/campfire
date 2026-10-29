@@ -1,5 +1,3 @@
-use crate::fixtures::interpolation_stack::InterpolationStack;
-use crate::fixtures::protocol::*;
 use bevy_ecs::hierarchy::ChildOf;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_replication::internals::ClientCopies;
@@ -7,6 +5,9 @@ use campfire_net_replication::internals::PROPAGATION_FRAMES;
 use campfire_net_replication::{ConfirmedHistory, Interpolated, InterpolationTarget, Replicate};
 use campfire_net_stepper::StepperSetup;
 use campfire_net_stepper::{StepOrder, Stepper};
+
+use crate::fixtures::interpolation_stack::InterpolationStack;
+use crate::fixtures::protocol::*;
 
 #[test]
 fn a_manual_interpolated_marker_backfills_an_existing_replicated_component() {

@@ -1,6 +1,3 @@
-use crate::message_registry::MessageRegistry;
-use crate::message_type_id::MessageTypeId;
-use crate::remote_entity_map::RemoteEntityMap;
 use bevy_ecs::component::Component;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::DeferredWorld;
@@ -8,6 +5,10 @@ use bevy_reflect::Reflect;
 use campfire_net_bytes::Writer;
 use campfire_net_core::NetId;
 use campfire_net_transport::Transport;
+
+use crate::message_registry::MessageRegistry;
+use crate::message_type_id::MessageTypeId;
+use crate::remote_entity_map::RemoteEntityMap;
 
 /// A link's message senders and receivers by type, and the link's [`RemoteEntityMap`]: its own
 /// pairs, such as the two link entities from `SenderHello`, which replicon never sees. Only a

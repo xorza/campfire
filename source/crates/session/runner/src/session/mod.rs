@@ -10,9 +10,10 @@ use campfire_package::ModePackages;
 use campfire_players::PlayerSlotHolder;
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointBegun, CheckpointError, Controller, Delegation, InputChain,
-    InputError, Journal, LogLoadError, LogReplay, PlayerInput, PlayerPacket, PlayerSlotChangeKind,
-    PlayerSlotStart, RecordSink, ResultError, SeedError, ServerInput, ServerInputError, ServerSeed,
-    ServerSeeds, SessionLog, SessionResult, Signer, SnapshotFingerprint, Taken,
+    InputError, Journal, JournalShape, LogLoadError, LogReplay, PlayerInput, PlayerPacket,
+    PlayerSlotChangeKind, PlayerSlotStart, RecordSink, ResultError, SeedError, ServerInput,
+    ServerInputError, ServerSeed, ServerSeeds, SessionLog, SessionResult, Signer,
+    SnapshotFingerprint, Taken,
 };
 use campfire_sim::{MatchRate, SimRng, SimWorld, TickInput, TickInputs};
 
@@ -405,10 +406,10 @@ impl Session {
         *self.role.new_journal() = Some(Journal::start(&self.log, sink));
     }
 
-    /// Keeps `sink` as the journal of the session's log, of `len` bytes, which holds every
-    /// record of it; see `Journal::resume`.
-    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>, len: u64) {
-        *self.role.new_journal() = Some(Journal::resume(&self.log, sink, len));
+    /// Keeps `sink` as the journal of the session's log, of `len` bytes and of the shape
+    /// `shape`, which holds every record of it; see `Journal::resume`.
+    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>, len: u64, shape: JournalShape) {
+        *self.role.new_journal() = Some(Journal::resume(&self.log, sink, len, shape));
     }
 
     /// Starts drawing the sim's random numbers from `segment`'s seed in `world`, the segment the
@@ -455,12 +456,14 @@ impl Session {
         self.role.journal_mut()
     }
 
-    /// Closes the journal of the session's log, its drop handing its sink what it holds before
-    /// the sink ends, as a session that ends does before its log is published: the session keeps
-    /// no journal after.
-    pub fn close_journal(&mut self) {
-        if let SessionRole::Server { journal, .. } = &mut self.role {
-            *journal = None;
+    /// Closes the journal of the session's log, handing its sink what it holds before the sink
+    /// ends, as a session that ends does before its log is published: the shape of what the
+    /// journal's file holds, which the publication reads; none for a session of no journal. The
+    /// session keeps no journal after.
+    pub fn close_journal(&mut self) -> Option<JournalShape> {
+        match &mut self.role {
+            SessionRole::Server { journal, .. } => journal.take().map(Journal::close),
+            SessionRole::Verifier => None,
         }
     }
 

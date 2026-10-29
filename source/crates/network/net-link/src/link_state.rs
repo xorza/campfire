@@ -1,8 +1,9 @@
-use crate::link::Link;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
 use campfire_net_payload::UnlinkReason;
+
+use crate::link::Link;
 
 /// An established link; its insert removes [`Linking`] and [`Unlinked`].
 #[derive(Component, Default, Debug)]

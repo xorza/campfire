@@ -2,18 +2,31 @@ use campfire_common::Version;
 
 use crate::session_log::applied::Applied;
 use crate::session_log::error::{JournalReplayError, LogError};
-use crate::session_log::journal_records::{JOURNAL_CHECKPOINT_BEGUN, JOURNAL_HEADER};
+use crate::session_log::journal_kinds::{
+    JOURNAL_CHECKPOINT_BEGUN, JOURNAL_CHECKPOINT_DONE, JOURNAL_HEADER, JOURNAL_LOADED,
+};
+use crate::session_log::journal_shape::JournalShape;
 use crate::session_log::{SessionLog, file};
 
-/// A log rebuilt from its journal one record at a time, in order, as the server took them: so a
-/// restore streams the journal's file through a buffer of one record, and holds the log alone
-/// (08-sessions.md, A published log is written from the journal).
+/// A log rebuilt from its journal one record at a time, in order, as the server took them, with
+/// the journal's shape: so a restore streams the journal's file through a buffer of one record,
+/// and holds the log and the shape alone (08-sessions.md, A published log is written from the
+/// journal).
 #[derive(Debug)]
 pub struct JournalReplay {
     log: SessionLog,
+    shape: JournalShape,
     applied: Vec<Applied>,
     /// The index of the next record, from 0, the header's.
     next: u64,
+}
+
+/// What a journal's records rebuild: the log the server had logged when it wrote the last, and
+/// the journal's shape, which its journal keeps on from.
+#[derive(Debug)]
+pub struct ReplayedJournal {
+    pub log: SessionLog,
+    pub shape: JournalShape,
 }
 
 impl JournalReplay {
@@ -32,9 +45,15 @@ impl JournalReplay {
         if header.terms.release != release {
             return Err(JournalReplayError::OtherRelease(header.terms.release));
         }
-        let log = SessionLog::new(header).map_err(|error| failed(LogError::Header(error)))?;
+        let mut log = SessionLog::new(header).map_err(|error| failed(LogError::Header(error)))?;
+        log.checks.defer();
+        let mut shape = JournalShape::default();
+        shape
+            .take(first)
+            .expect("a header the log reads is one a shape reads");
         Ok(Self {
             log,
+            shape,
             applied: Vec::new(),
             next: 1,
         })
@@ -52,25 +71,45 @@ impl JournalReplay {
         if record.first() == Some(&JOURNAL_CHECKPOINT_BEGUN) && !self.log.is_at_boundary() {
             return Err(JournalReplayError::CheckpointMidTick { record: index });
         }
+        self.log.checks.at_record(index);
         self.log
             .apply_journal(record, &mut self.applied)
             .map_err(|error| JournalReplayError::Record {
                 record: index,
                 error,
-            })
+            })?;
+        match record.first() {
+            Some(&JOURNAL_CHECKPOINT_BEGUN) => self.log.checks.begin_checkpoint(),
+            Some(&JOURNAL_CHECKPOINT_DONE) => self.log.checks.record_checkpoint(),
+            Some(&JOURNAL_LOADED) => self.log.checks.load(),
+            _ => {}
+        }
+        self.shape
+            .take(record)
+            .expect("a record the log takes is one a shape reads");
+        Ok(())
     }
 
-    /// The log the records taken rebuild: what the server had logged when it wrote the last.
-    pub fn finish(self) -> SessionLog {
+    /// What the records taken rebuild, once the signatures after the latest checkpoint whose
+    /// record they hold check, those before it trusted as the server's own; an error for a
+    /// signature that is not its signer's.
+    pub fn finish(mut self) -> Result<ReplayedJournal, JournalReplayError> {
         self.log
+            .checks
+            .finish()
+            .map_err(|record| JournalReplayError::BadSignature { record })?;
+        Ok(ReplayedJournal {
+            log: self.log,
+            shape: self.shape,
+        })
     }
 }
 
-impl SessionLog {
-    /// The log of the session whose journal holds `records`, in order, as the server took them,
-    /// as `JournalReplay` rebuilds it record by record; an error as `JournalReplay` gives one,
-    /// and for no record.
-    pub fn from_journal<'a>(
+impl ReplayedJournal {
+    /// What the journal of `records`, in order, as the server took them, rebuilds, as
+    /// `JournalReplay` rebuilds it record by record; an error as `JournalReplay` gives one, and
+    /// for no record.
+    pub fn of<'a>(
         records: impl IntoIterator<Item = &'a [u8]>,
         release: Version,
     ) -> Result<Self, JournalReplayError> {
@@ -80,6 +119,17 @@ impl SessionLog {
         for record in records {
             replay.apply(record)?;
         }
-        Ok(replay.finish())
+        replay.finish()
+    }
+}
+
+impl SessionLog {
+    /// The log of the session whose journal holds `records`, as `ReplayedJournal::of` rebuilds
+    /// it.
+    pub fn from_journal<'a>(
+        records: impl IntoIterator<Item = &'a [u8]>,
+        release: Version,
+    ) -> Result<Self, JournalReplayError> {
+        ReplayedJournal::of(records, release).map(|replayed| replayed.log)
     }
 }

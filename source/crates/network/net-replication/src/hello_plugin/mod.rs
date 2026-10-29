@@ -1,7 +1,5 @@
-use crate::hello_channel::HelloChannel;
-use crate::replication_sender::ReplicationSender;
-use crate::replication_timer::ReplicationTimer;
-use crate::sender_hello::SenderHello;
+use core::time::Duration;
+
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use campfire_net_channels::{ChannelMode, ChannelSetup};
@@ -12,8 +10,12 @@ use campfire_net_messages::LinkMessages;
 use campfire_net_messages::{AppEventExt, EventSender, RemoteEvent};
 use campfire_net_timeline::TimelineRate;
 use campfire_net_transport::AppChannelExt;
-use core::time::Duration;
 use tracing::debug;
+
+use crate::hello_channel::HelloChannel;
+use crate::replication_sender::ReplicationSender;
+use crate::replication_timer::ReplicationTimer;
+use crate::sender_hello::SenderHello;
 
 #[derive(Debug)]
 pub(crate) struct HelloPlugin;

@@ -1,15 +1,17 @@
-use crate::correction;
-use crate::mismatch_fn::MismatchFn;
-use crate::prediction_registration;
-use crate::prediction_registry;
-use crate::visual_diff::VisualDiff;
+use core::fmt::Debug;
+
 use bevy_curve::Ease;
 use campfire_net_frame_interpolation::LerpFn;
 use campfire_net_frame_interpolation::linear_lerp;
 use campfire_net_replication::ComponentRegistration;
 use campfire_net_replication::ComponentRegistrator;
 use campfire_net_replication::HistoryComponent;
-use core::fmt::Debug;
+
+use crate::correction;
+use crate::mismatch_fn::MismatchFn;
+use crate::prediction_registration;
+use crate::prediction_registry;
+use crate::visual_diff::VisualDiff;
 
 /// Registration state returned after prediction has been enabled for a component.
 ///

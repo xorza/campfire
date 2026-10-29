@@ -1,7 +1,8 @@
-use bevy_ecs::prelude::*;
 use core::any::type_name;
 use core::fmt;
 use core::marker::PhantomData;
+
+use bevy_ecs::prelude::*;
 
 /// Marks a hierarchy member that holds its `A`: the member no longer follows the `A` of its
 /// [`ReplicateLike`](crate::replicate_like::ReplicateLike) root.

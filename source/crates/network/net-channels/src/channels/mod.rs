@@ -1,10 +1,23 @@
+use core::time::Duration;
+
+use bytes::Bytes;
+use campfire_net_bytes::{Reader, ToBytes};
+use campfire_net_core::Instant;
+use campfire_net_core::{NetId, TickInstant};
+use campfire_net_payload::{
+    OpenedPayload, PacketSessionQueues, PayloadFate, PayloadKind, PayloadToken,
+};
+use tracing::{debug, trace};
+
 use crate::bench_counter::BenchCounter;
 use crate::candidate_order::CandidateOrder;
+use crate::channel::Channel;
 use crate::channel_reader::ChannelReader;
 use crate::channel_receiver::BufferOutcome;
 use crate::channel_receiver::ChannelReceiver;
 use crate::channel_sender::ChannelSender;
 use crate::channel_sender::SendFlushOutcome;
+use crate::channel_setup::ChannelSetup;
 use crate::channel_slots::ChannelSlots;
 use crate::channel_type_id::ChannelTypeId;
 use crate::error::{ReceiveError, SendRefusal};
@@ -22,19 +35,6 @@ use crate::send_gate::SendGate;
 use crate::single_body::SingleBody;
 use crate::tick_decoder::TickDecoder;
 use crate::tick_encoder::TickEncoder;
-use bytes::Bytes;
-use campfire_net_bytes::{Reader, ToBytes};
-use campfire_net_core::Instant;
-use campfire_net_core::{NetId, TickInstant};
-use campfire_net_payload::{
-    OpenedPayload, PacketSessionQueues, PayloadFate, PayloadKind, PayloadToken,
-};
-use core::time::Duration;
-use tracing::{debug, trace};
-
-use crate::channel::Channel;
-
-use crate::channel_setup::ChannelSetup;
 use crate::unsettled_packets::{SentMessage, UnsettledPackets};
 
 /// A message that [`Channels::send`] staged for the next send (11-net-stack/transport.md, A queued

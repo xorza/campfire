@@ -1,3 +1,13 @@
+use campfire_net_channels::internals::ChannelCounts;
+use campfire_net_channels::internals::TransportCounts;
+use campfire_net_connection::NetworkTarget;
+use campfire_net_connection::RemoteId;
+use campfire_net_despawns::DespawnReplicated;
+use campfire_net_stepper::StepOrder;
+use campfire_net_stepper::Stepper;
+use campfire_net_stepper::StepperSetup;
+use campfire_net_transport::internals::summed_transport_counts;
+
 use super::*;
 use crate::fixtures::protocol::*;
 use crate::fixtures::replication_counts::summed_replication_counts;
@@ -10,15 +20,6 @@ use crate::replication_mode::ReplicationMode;
 use crate::replication_sender::ReplicationSender;
 use crate::targets_overlap::TargetsOverlap;
 use crate::visibility_ext::VisibilityExt;
-use campfire_net_channels::internals::ChannelCounts;
-use campfire_net_channels::internals::TransportCounts;
-use campfire_net_connection::NetworkTarget;
-use campfire_net_connection::RemoteId;
-use campfire_net_despawns::DespawnReplicated;
-use campfire_net_stepper::StepOrder;
-use campfire_net_stepper::Stepper;
-use campfire_net_stepper::StepperSetup;
-use campfire_net_transport::internals::summed_transport_counts;
 
 #[test]
 fn a_replicated_spawn_reaches_the_client() {

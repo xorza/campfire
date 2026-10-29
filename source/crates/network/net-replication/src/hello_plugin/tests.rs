@@ -1,9 +1,10 @@
-use super::*;
-use crate::fixtures::replication_stack::ReplicationStack;
 use campfire_net_connection::RemoteId;
 use campfire_net_core::PeerId;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::{Init, StepperSetup};
+
+use super::*;
+use crate::fixtures::replication_stack::ReplicationStack;
 
 #[derive(Debug, Resource, Default)]
 struct Received(usize);

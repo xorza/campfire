@@ -1,8 +1,3 @@
-use crate::interpolation_holders::InterpolationHolders;
-use crate::interpolation_phase_systems::InterpolationPhaseSystems;
-use crate::interpolation_registry::InterpolationRegistry;
-use crate::interpolation_systems::InterpolationSystems;
-use crate::interpolation_timeline::InterpolationTimeline;
 use bevy_app::{App, Plugin, Update};
 use bevy_ecs::archetype::Archetypes;
 use bevy_ecs::component::Components;
@@ -10,6 +5,12 @@ use bevy_ecs::prelude::*;
 use campfire_net_despawns::DespawnReplicated;
 use campfire_net_replication::{DelayedDespawn, InterpolatedDespawn};
 use campfire_net_timeline::NetworkTimeline;
+
+use crate::interpolation_holders::InterpolationHolders;
+use crate::interpolation_phase_systems::InterpolationPhaseSystems;
+use crate::interpolation_registry::InterpolationRegistry;
+use crate::interpolation_systems::InterpolationSystems;
+use crate::interpolation_timeline::InterpolationTimeline;
 
 /// A client's interpolation between two consecutive replicated updates of each component: the
 /// stages of [`InterpolationSystems::Prepare`], where each rule and maintained component installs

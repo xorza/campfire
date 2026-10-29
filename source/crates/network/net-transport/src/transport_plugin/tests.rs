@@ -1,21 +1,22 @@
-use super::*;
+use core::time::Duration;
+
 use bevy_ecs::system::RunSystemOnce;
 use bytes::{Bytes, BytesMut};
 use campfire_app_threads::OneThreadPlugins;
+use campfire_math::TickRate;
 use campfire_net_channels::ChannelTypeId;
 use campfire_net_channels::Channels;
 use campfire_net_channels::internals::whole_messages;
+use campfire_net_channels::{Channel, ChannelReceiver, ChannelSetup};
 use campfire_net_core::Instant;
+use campfire_net_core::LinkDirection;
 use campfire_net_payload::{OpenedPayload, PacketNumber};
-use core::time::Duration;
+use campfire_net_stepper::{ClientKind, Init, Stack, Stepper, StepperSetup};
 
+use super::*;
 use crate::app_channel_ext::AppChannelExt;
 use crate::fixtures::protocol::{Channel1, channel_id};
 use crate::fixtures::transport_stack::TransportStack;
-use campfire_math::TickRate;
-use campfire_net_channels::{Channel, ChannelReceiver, ChannelSetup};
-use campfire_net_core::LinkDirection;
-use campfire_net_stepper::{ClientKind, Init, Stack, Stepper, StepperSetup};
 
 #[derive(Resource, Default)]
 struct Outcomes {

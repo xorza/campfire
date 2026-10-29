@@ -1,6 +1,7 @@
-use bytes::{Bytes, BytesMut};
 use core::net::{IpAddr, SocketAddr};
 use core::time::Duration;
+
+use bytes::{Bytes, BytesMut};
 
 use crate::io_failed::IoFailed;
 

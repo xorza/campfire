@@ -119,6 +119,15 @@ impl LogEntries {
         self.tick_ends.last().copied().unwrap_or(0)
     }
 
+    /// Where the entries of `tick`, a sealed tick the entries hold, lie.
+    pub(super) fn tick_range(&self, tick: Tick) -> Range<u32> {
+        let start = tick
+            .get()
+            .checked_sub(1)
+            .map_or(0, |before| self.tick_end(Tick::new(before)));
+        start..self.tick_end(tick)
+    }
+
     /// Where the entries of `tick`, a sealed tick, end.
     pub(super) fn tick_end(&self, tick: Tick) -> u32 {
         let since = tick.get() - self.first_tick;

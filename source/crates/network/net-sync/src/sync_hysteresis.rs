@@ -1,9 +1,10 @@
-use crate::deficit::Deficit;
-use crate::sync_adjustment::SyncAdjustment;
-use crate::sync_setup::SyncSetup;
 use bevy_reflect::Reflect;
 use campfire_math::Rounding;
 use campfire_net_core::TickSpan;
+
+use crate::deficit::Deficit;
+use crate::sync_adjustment::SyncAdjustment;
+use crate::sync_setup::SyncSetup;
 
 /// Mutable hysteresis shared by timeline synchronization controllers.
 ///

@@ -1,5 +1,6 @@
-use super::*;
 use campfire_net_core::Ticked;
+
+use super::*;
 
 const MS_10: Duration = Duration::from_millis(10);
 const MS_20: Duration = Duration::from_millis(20);

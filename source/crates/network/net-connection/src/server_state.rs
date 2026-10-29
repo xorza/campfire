@@ -1,4 +1,5 @@
-use crate::networking_state::NetworkingState;
+use core::fmt::Debug;
+
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
@@ -6,8 +7,9 @@ use bevy_reflect::Reflect;
 use campfire_net_core::PeerId;
 use campfire_net_payload::AppCode;
 use campfire_net_payload::UnlinkReason;
-use core::fmt::Debug;
 use tracing::trace;
+
+use crate::networking_state::NetworkingState;
 
 /// A started server, which `peer_map` names as [`PeerId::Server`] while it lasts.
 #[derive(Component, Debug, Reflect)]

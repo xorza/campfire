@@ -1,10 +1,10 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, SystemParam};
+use campfire_host::InputAck;
 use campfire_net_messages::MultiMessageSender;
 use campfire_protocol::Applied;
 
 use crate::net_protocol::MatchChannel;
-use campfire_host::InputAck;
 
 /// What a server acknowledges each player's inputs through: one ack, which each acknowledgment
 /// fills again, sent at once to its link, so an ack allocates nothing once its buffer has grown to

@@ -3,12 +3,12 @@ use campfire_math::Vec3;
 use campfire_script::{
     ApiBuilder, CapabilityRefusal, Checked, Ctx, MemberDecl, RoleSet, ScriptPosition, Status, Unit,
 };
+use campfire_sim::{Capability, StableId};
 
 use crate::error::ProjectilesRefusal;
 use crate::projectile_data::ProjectileData;
 use crate::projectile_delivery_data::ProjectileDeliveryData;
 use crate::projectiles_effect::{ProjectilesEffect, Toward};
-use campfire_sim::{Capability, StableId};
 
 /// What a script's `ctx.launch` aims at: a vector, or a unit.
 #[derive(Debug, Clone, Copy)]

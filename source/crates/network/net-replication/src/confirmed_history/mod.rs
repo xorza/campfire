@@ -1,6 +1,5 @@
-use crate::confirmed_tick_map::ConfirmedTickMap;
-use crate::history_component::HistoryComponent;
-use crate::history_state::HistoryState;
+use core::iter::FusedIterator;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::error::Result;
 use bevy_reflect::Reflect;
@@ -12,8 +11,11 @@ use campfire_net_core::Iter as EntryIter;
 use campfire_net_core::NetTick;
 use campfire_net_core::TickBuffer;
 use campfire_net_core::Ticked;
-use core::iter::FusedIterator;
 use tracing::debug;
+
+use crate::confirmed_tick_map::ConfirmedTickMap;
+use crate::history_component::HistoryComponent;
+use crate::history_state::HistoryState;
 
 /// Stores authoritative component states received from the remote.
 ///

@@ -1,6 +1,3 @@
-use crate::fixtures;
-use crate::fixtures::AUDIT;
-use crate::fixtures::CHANGED;
 use bevy::prelude::{App, Entity, FixedUpdate, Query, With};
 use campfire_net_connection::NetworkTarget;
 use campfire_net_interpolation::internals::CompFull;
@@ -13,6 +10,10 @@ use campfire_net_stepper::ClientKind;
 use campfire_net_stepper::StepOrder;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
+
+use crate::fixtures;
+use crate::fixtures::AUDIT;
+use crate::fixtures::CHANGED;
 
 fn increment(mut components: Query<'_, '_, &mut CompFull>) {
     for mut component in &mut components {

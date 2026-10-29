@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
+use campfire_package_format::PackageFiles;
+
 use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
 use crate::language::Language;
 use crate::locale_file::LocaleFile;
-use campfire_package_format::PackageFiles;
 
 /// A package's human text: its own language, and its `locale/<language>.ftl` files by language.
 #[derive(Debug)]

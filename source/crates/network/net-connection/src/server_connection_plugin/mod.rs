@@ -1,3 +1,13 @@
+use core::fmt::Debug;
+
+use bevy_app::{App, Last, Plugin};
+use bevy_ecs::prelude::*;
+use campfire_net_core::PeerId;
+use campfire_net_link::{LinkOf, Linked, Linking, RemoteAddress, Server};
+use campfire_net_link::{LinkStart, Unlink, Unlinked};
+use campfire_net_payload::UnlinkReason;
+use tracing::trace;
+
 use crate::client_of::ClientOf;
 use crate::connection_state::Connected;
 use crate::connection_state::Connecting;
@@ -13,14 +23,6 @@ use crate::server_state::Stopped;
 use crate::server_state::Stopping;
 use crate::start::Start;
 use crate::stop::Stop;
-use bevy_app::{App, Last, Plugin};
-use bevy_ecs::prelude::*;
-use campfire_net_core::PeerId;
-use campfire_net_link::{LinkOf, Linked, Linking, RemoteAddress, Server};
-use campfire_net_link::{LinkStart, Unlink, Unlinked};
-use campfire_net_payload::UnlinkReason;
-use core::fmt::Debug;
-use tracing::trace;
 
 /// Starts and stops servers with their links, and ends every server-side link: a server's link is
 /// its start, each of its links a connection, and a link is despawned once it is

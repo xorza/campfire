@@ -1,7 +1,8 @@
-use bevy_ecs::prelude::*;
-use bevy_reflect::Reflect;
 use core::fmt::Debug;
 use core::time::Duration;
+
+use bevy_ecs::prelude::*;
+use bevy_reflect::Reflect;
 
 /// The visual correction ends once it keeps less than this fraction of its recorded jump: a
 /// thousandth of a jump is below what a render shows, and an f32 decay that went on would only

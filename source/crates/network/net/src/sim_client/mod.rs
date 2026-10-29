@@ -1,5 +1,3 @@
-use campfire_values::TagSet;
-use campfire_values::UnitTags;
 use std::sync::Arc;
 
 use bevy_app::{App, AppExit, First, FixedUpdate, Last, Plugin, PreUpdate, Update};
@@ -20,37 +18,6 @@ use campfire_capabilities::{MatchKind, MatchSetup, Order, OrderPayloads, Release
 use campfire_common::ErrorReport;
 use campfire_common::{SegmentSeed, Tick};
 use campfire_declarations::Role;
-use campfire_log::LogEvent;
-use campfire_mode::MatchEnd;
-use campfire_net_connection::{Client, Connect, Disconnect};
-use campfire_net_endpoint::LinkBinding;
-use campfire_net_interpolation::InterpolationSystems;
-use campfire_net_link::{Link, Unlinked};
-use campfire_net_messages::{MessageReceiver, MessageSender};
-use campfire_net_payload::UnlinkReason;
-use campfire_net_prediction::{PredictionSetup, RollbackSystems};
-use campfire_net_replication::{
-    ConfirmedTickMap, Predicted, ReplicationReceiver, ReplicationSystems,
-};
-use campfire_net_stack::ClientPlugins;
-use campfire_net_sync::{InputTimelineSetup, RemoteTimeline, SyncedLocalTimeline};
-use campfire_net_timeline::{Clock, LocalTimeline, Rollback};
-use campfire_package::ModePackages;
-use campfire_protocol::{SignedReceipt, Signer, Verifier};
-use campfire_runner::{SessionRules, TermsError};
-use campfire_sim::{
-    MatchRate, PredictionStarted, SimTick, SimUpdate, StableId, StateRewritten, TickInput,
-    TickInputs, Unpredicted,
-};
-use campfire_units::{Avatar, Dead, Fallen, Owner, UnitsWorld};
-use campfire_values::Team;
-use tracing::info;
-
-use crate::close_code::CloseCode;
-use crate::events::link_lost::{LinkLossCause, LinkLost};
-use crate::net_protocol::{InputChannel, JoinChannel, NetProtocolPlugin};
-use crate::sim_client::bot_leave::BotLeave;
-use crate::sim_client::client_console::ClientConsole;
 use campfire_host::BotOrderUnsent;
 use campfire_host::ClientDir;
 use campfire_host::ClientFrame;
@@ -85,6 +52,39 @@ use campfire_host::WatchTeams;
 use campfire_host::WorkerFaults;
 use campfire_host::{Join, JoinRole};
 use campfire_host::{JoinState, Joining, LinkLoss, Retry, StartEffect};
+use campfire_log::LogEvent;
+use campfire_mode::MatchEnd;
+use campfire_net_connection::{Client, Connect, Disconnect};
+use campfire_net_endpoint::LinkBinding;
+use campfire_net_interpolation::InterpolationSystems;
+use campfire_net_link::{Link, Unlinked};
+use campfire_net_messages::{MessageReceiver, MessageSender};
+use campfire_net_payload::UnlinkReason;
+use campfire_net_prediction::{PredictionSetup, RollbackSystems};
+use campfire_net_replication::{
+    ConfirmedTickMap, Predicted, ReplicationReceiver, ReplicationSystems,
+};
+use campfire_net_stack::ClientPlugins;
+use campfire_net_sync::{InputTimelineSetup, RemoteTimeline, SyncedLocalTimeline};
+use campfire_net_timeline::{Clock, LocalTimeline, Rollback};
+use campfire_package::ModePackages;
+use campfire_protocol::{SignedReceipt, Signer, Verifier};
+use campfire_runner::{SessionRules, TermsError};
+use campfire_sim::{
+    MatchRate, PredictionStarted, SimTick, SimUpdate, StableId, StateRewritten, TickInput,
+    TickInputs, Unpredicted,
+};
+use campfire_units::{Avatar, Dead, Fallen, Owner, UnitsWorld};
+use campfire_values::TagSet;
+use campfire_values::Team;
+use campfire_values::UnitTags;
+use tracing::info;
+
+use crate::close_code::CloseCode;
+use crate::events::link_lost::{LinkLossCause, LinkLost};
+use crate::net_protocol::{InputChannel, JoinChannel, NetProtocolPlugin};
+use crate::sim_client::bot_leave::BotLeave;
+use crate::sim_client::client_console::ClientConsole;
 
 pub(crate) mod bot_leave;
 pub(crate) mod client_console;

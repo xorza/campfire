@@ -1,12 +1,12 @@
 use campfire_sim::Capability;
 use campfire_values::EngineEnum;
+use campfire_values::NameKind;
 use campfire_visibility::DataKind;
 use rhai::EvalAltResult;
 use thiserror::Error;
 
 use crate::script_host::error::{NumError, Raised, ScriptError};
 use crate::scripts::script_limits::ScriptLimits;
-use campfire_values::NameKind;
 
 /// What a registered script function returns: its value, or the error that fails the call.
 pub type Checked<T> = Result<T, Box<EvalAltResult>>;

@@ -1,4 +1,10 @@
+use core::time::Duration;
+
+use bevy::app::App;
+use bevy::state::app::StatesPlugin;
+use bevy::time::TimePlugin;
 use bevy_ecs::prelude::{Add, Entity, On, Query, ResMut, Resource};
+use campfire_app_threads::OneThreadPlugins;
 use campfire_log::internals::LogCheck;
 use campfire_net_connection::Connected;
 use campfire_net_connection::Disconnected;
@@ -7,6 +13,7 @@ use campfire_net_connection::Started;
 use campfire_net_connection::Stop;
 use campfire_net_connection::{LocalId, RemoteId};
 use campfire_net_endpoint::Endpoint;
+use campfire_net_interpolation::InterpolationRegistry;
 use campfire_net_interpolation::InterpolationTimeline;
 use campfire_net_link::{LocalAddress, RemoteAddress, Unlinked};
 use campfire_net_messages::LinkMessages;
@@ -23,12 +30,6 @@ use campfire_net_transport::Transport;
 use super::*;
 use crate::fixtures::full_stack::FullStack;
 use crate::server_plugins::ServerPlugins;
-use bevy::app::App;
-use bevy::state::app::StatesPlugin;
-use bevy::time::TimePlugin;
-use campfire_app_threads::OneThreadPlugins;
-use campfire_net_interpolation::InterpolationRegistry;
-use core::time::Duration;
 
 /// Check that the client/server setup is correct:
 /// - the various components we expect are present

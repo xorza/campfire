@@ -3,8 +3,8 @@
     reason = "Bevy's `SystemParam` is an unsafe trait (02-engine-core.md, Unsafe only where an outside API asks)"
 )]
 
-use crate::local_timeline_sync::LocalTimelineSync;
-use crate::timeline_sync::TimelineSync;
+use core::marker::PhantomData;
+
 use bevy_ecs::change_detection::Tick as ChangeTick;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{
@@ -12,7 +12,9 @@ use bevy_ecs::system::{
 };
 use bevy_ecs::world::unsafe_world_cell::UnsafeWorldCell;
 use campfire_net_timeline::LocalTimeline;
-use core::marker::PhantomData;
+
+use crate::local_timeline_sync::LocalTimelineSync;
+use crate::timeline_sync::TimelineSync;
 
 /// Read-only access to the application-global [`LocalTimeline`] after it has synchronized
 /// (11-net-stack/api.md, No `unsafe` but what an outside API requires).

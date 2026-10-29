@@ -1,9 +1,3 @@
-use crate::decay::Decay;
-use crate::in_second_life::InSecondLife;
-use crate::kept::Kept;
-use crate::on_death::OnDeath;
-use crate::recent_attackers::RecentAttackers;
-use crate::respawn::Respawn;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
@@ -17,6 +11,13 @@ use campfire_units::{Deaths, Fallen};
 use campfire_values::TagSet;
 use campfire_values::UnitTags;
 use campfire_values::{Team, UnitType};
+
+use crate::decay::Decay;
+use crate::in_second_life::InSecondLife;
+use crate::kept::Kept;
+use crate::on_death::OnDeath;
+use crate::recent_attackers::RecentAttackers;
+use crate::respawn::Respawn;
 
 /// Units that die at zero life, the dead that despawn, and the dead whose respawn is due.
 #[derive(Debug)]

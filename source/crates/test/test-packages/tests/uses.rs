@@ -1,7 +1,5 @@
 //! The uses in the 3v3: a fountain that the hero Husk uses with a prayer, which loads, and each
 //! flaw of a use, an object or a user, which fails the load with its own problem.
-
-use crate::flaws::{Flaw, fails_each};
 use campfire_actions::{
     ActionBook, ActionProblem, EffectListBook, ListHook, ListsOf, PipelineField, SlotError,
     SlotKind,
@@ -16,14 +14,15 @@ use campfire_test_packages::Edit;
 use campfire_values::PackageName;
 use campfire_values::{ActionId, Named, PackageIndex};
 
+use crate::flaws::{Flaw, fails_each};
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule_at};
 
-const MANIFEST: &str = "modes/3v3/manifest.toml";
-const MODE_DATA: &str = "modes/3v3/data/mode.toml";
-const UNITS: &str = "modes/3v3/data/units.toml";
-const HUSK: &str = "heroes/husk/data/avatar.toml";
-const SPELLS: &str = "spells/data/loadout.toml";
+const MANIFEST: &str = "moba/modes/3v3/manifest.toml";
+const MODE_DATA: &str = "moba/modes/3v3/data/mode.toml";
+const UNITS: &str = "moba/modes/3v3/data/units.toml";
+const HUSK: &str = "moba/heroes/husk/data/avatar.toml";
+const SPELLS: &str = "moba/spells/data/loadout.toml";
 const MODE: &str = "moba-3v3";
 
 /// The 3v3 with `interaction`, a slot kind `use` after the items' kind, a prayer of the mode, a

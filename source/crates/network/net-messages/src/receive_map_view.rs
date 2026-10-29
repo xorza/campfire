@@ -1,8 +1,9 @@
-use crate::entity_check::EntityCheck;
-use crate::receive_entity_map::ReceiveEntityMap;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::entity::{EntityMapper, hash_map::EntityHashMap};
 use tracing::trace;
+
+use crate::entity_check::EntityCheck;
+use crate::receive_entity_map::ReceiveEntityMap;
 
 /// How a receiver reads the entities a message names, as a read-only [`EntityMapper`].
 ///

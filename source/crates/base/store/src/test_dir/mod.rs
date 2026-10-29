@@ -2,14 +2,14 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 
+use campfire_platform::internals::FileLink;
+use campfire_platform::{Exposure, UserOnly};
 use tempfile::TempDir;
 
 use crate::dir_entries::{DirEntries, EntryKind};
 use crate::durable_dir::DurableDir;
 use crate::durable_file::DurableFile;
 use crate::input_file::InputFile;
-use campfire_platform::internals::FileLink;
-use campfire_platform::{Exposure, UserOnly};
 
 /// The most bytes a test reads of a file it wrote: far past any fixture, short of what a test
 /// should hold.

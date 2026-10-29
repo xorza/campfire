@@ -3,6 +3,16 @@ use std::sync::Arc;
 use bevy_app::AppExit;
 use bevy_ecs::world::World;
 use campfire_common::ErrorReport;
+use campfire_host::Checkpoints;
+use campfire_host::Fault;
+use campfire_host::JournalWatch;
+use campfire_host::ServerDir;
+use campfire_host::ServerPhase;
+use campfire_host::ServerSetup;
+use campfire_host::SessionDir;
+use campfire_host::SnapshotWriteError;
+use campfire_host::WorkerFaults;
+use campfire_host::{SessionEnd, SessionWritten};
 use campfire_log::LogEvent;
 use campfire_mode::ModeWorld;
 use campfire_package::ModePackages;
@@ -15,16 +25,6 @@ use crate::sim_server::door::Door;
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::pending_replay::PendingReplay;
 use crate::sim_server::pending_restore::PendingRestore;
-use campfire_host::Checkpoints;
-use campfire_host::Fault;
-use campfire_host::JournalWatch;
-use campfire_host::ServerDir;
-use campfire_host::ServerPhase;
-use campfire_host::ServerSetup;
-use campfire_host::SessionDir;
-use campfire_host::SnapshotWriteError;
-use campfire_host::WorkerFaults;
-use campfire_host::{SessionEnd, SessionWritten};
 
 /// What the sim server module gives a world, for every crate.
 pub trait SimServerWorld {
@@ -178,7 +178,7 @@ impl SimServerWorld for World {
                 .report(Fault::Snapshot(error));
             return WorkerFaults::apply(self);
         }
-        self.session_mut().close_journal();
+        let shape = self.session_mut().close_journal();
         JournalWatch::report_failure(self);
         if let Some(exit) = WorkerFaults::apply(self) {
             return Some(exit);
@@ -188,7 +188,11 @@ impl SimServerWorld for World {
         let last = session.last_seed();
         let hash = self.state_hash();
         let data = self.resource::<ServerDir>();
-        Some(match SessionDir::publish(data, id, last) {
+        let Some(shape) = shape else {
+            error!(session = %id, "the session kept no journal, so no log is written");
+            return Some(AppExit::error());
+        };
+        Some(match SessionDir::publish(data, id, &shape, last) {
             Ok(file) => {
                 SessionWritten {
                     session: id,

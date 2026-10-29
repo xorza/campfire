@@ -1,7 +1,8 @@
-use crate::client::Client;
-use crate::client_of::ClientOf;
 use bevy_ecs::component::Component;
 use campfire_net_core::LinkDirection;
+
+use crate::client::Client;
+use crate::client_of::ClientOf;
 
 /// A side of a connection, marked by its component: what it sends and what it receives travel
 /// one way each. A [`Client`] sends toward its server, and a [`ClientOf`] toward its client.

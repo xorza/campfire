@@ -4,6 +4,7 @@ use std::num::NonZeroU32;
 use bevy_ecs::component::Component;
 use bevy_ecs::resource::Resource;
 use blake3::Hasher;
+use campfire_common::SegmentSeed;
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use serde::de::Error;
@@ -15,7 +16,6 @@ use crate::match_rate::MatchRate;
 use crate::sim_tick::SimTick;
 use crate::sim_world::SimWorld;
 use crate::sim_world_builder::SimWorldBuilder;
-use campfire_common::SegmentSeed;
 
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
 struct Life(Num);

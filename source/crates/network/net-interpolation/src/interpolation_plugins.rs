@@ -1,6 +1,7 @@
+use bevy_app::{PluginGroup, PluginGroupBuilder};
+
 use crate::interpolation_plugin::InterpolationPlugin;
 use crate::interpolation_timeline_plugin::InterpolationTimelinePlugin;
-use bevy_app::{PluginGroup, PluginGroupBuilder};
 
 /// A client's delayed interpolation of what it receives, on the shared
 /// [`InterpolationRegistryPlugin`](crate::InterpolationRegistryPlugin): the interpolation

@@ -1,6 +1,7 @@
-use crate::component_registration::ComponentRegistration;
 use bevy_app::App;
 use bevy_ecs::component::Component;
+
+use crate::component_registration::ComponentRegistration;
 
 /// Starts a component's registration.
 pub trait AppComponentExt {

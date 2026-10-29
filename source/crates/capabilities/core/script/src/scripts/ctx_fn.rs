@@ -2,6 +2,7 @@ use std::any::TypeId;
 use std::rc::Rc;
 
 use campfire_values::EngineEnum;
+use campfire_values::NameKind;
 use rhai::{Dynamic, Engine, NativeCallContext};
 
 use crate::scripts::arg_ctx::ArgCtx;
@@ -13,7 +14,6 @@ use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_arg::ScriptArg;
 use crate::scripts::script_output::ScriptOutput;
 use crate::scripts::script_value::ScriptType;
-use campfire_values::NameKind;
 
 /// A form of a call or a value of `ctx`, which takes `ctx` first and then its arguments, each a
 /// `ScriptArg`. Rhai calls it with each argument as the script gives it, and a second time, its

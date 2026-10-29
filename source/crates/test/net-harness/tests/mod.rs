@@ -55,13 +55,18 @@ fn snapshots(test_dir: &TestDir, local: &InProcessMatch) -> PathBuf {
 /// state hash; the replay, at its start, to run as the test asks.
 fn published_replay<'p>(local: &'p mut InProcessMatch, snapshots: &Path) -> Replay<'p> {
     local.server_mut().world_mut().end_session().unwrap();
-    local.server_mut().world_mut().session_mut().close_journal();
+    let shape = local
+        .server_mut()
+        .world_mut()
+        .session_mut()
+        .close_journal()
+        .unwrap();
     let held = local.server().world().resource::<Session>().log();
     let revealed = held.revealed_seeds().unwrap();
     let last = revealed.seed(held.segment()).unwrap().clone();
     let id = held.session_id();
     let data = local.server().world().resource::<ServerDir>();
-    let file = SessionDir::publish(data, id, &last).unwrap();
+    let file = SessionDir::publish(data, id, &shape, &last).unwrap();
     let bytes = InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap();
     let published = SessionLog::decode(&bytes).unwrap();
     let mut replay = Replay::of(published, local.packages()).unwrap();

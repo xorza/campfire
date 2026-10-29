@@ -1,9 +1,10 @@
-use crate::link_messages::{EndpointList, LinkMessages, ListedEndpoint};
-use crate::message_type_id::MessageTypeId;
-use crate::send_queue::{QueuedSender, SendQueue};
 use bevy_ecs::prelude::*;
 use campfire_net_channels::Channel;
 use campfire_net_channels::ChannelTypeId;
+
+use crate::link_messages::{EndpointList, LinkMessages, ListedEndpoint};
+use crate::message_type_id::MessageTypeId;
+use crate::send_queue::{QueuedSender, SendQueue};
 
 /// The events of type `M` a link sends to its peer to trigger.
 #[derive(Debug, Component)]

@@ -1,7 +1,8 @@
+use core::net::SocketAddr;
+
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_net_emulator::EmulatedLinkId;
-use core::net::SocketAddr;
 
 use crate::app_schedule::AppSchedule;
 

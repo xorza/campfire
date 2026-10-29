@@ -1,6 +1,4 @@
 //! Each flaw a package can have fails the load of the MOBA packages with its own problem.
-
-use crate::flaws::{Flaw, fails_each};
 use campfire_actions::{ActionProblem, EffectRule, ListHook, PlannedEffect};
 use campfire_areas::AreaDeliveryError;
 use campfire_capabilities::CapabilityError;
@@ -13,10 +11,11 @@ use campfire_progression::TrackError;
 use campfire_projectiles::{ProjectileDeliveryError, ProjectileError};
 use campfire_script::Filter;
 use campfire_sim::Capability;
-use campfire_test_packages::Edit;
+use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{StatId, UnitTypeError};
 use campfire_values::{ActionId, ModifierId, Named, Tag, TrackId, UnitType};
 
+use crate::flaws::{Flaw, fails_each};
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule, rule_at, rule_of, unit_type};
 
@@ -44,7 +43,7 @@ pub(super) static DATA_FLAWS: &[Flaw] = &[
         |problem| manifest_fails(problem, r#""1.0.0" is not major.minor"#),
     ),
     Flaw::of(
-        "heroes/husk/manifest.toml",
+        "moba/heroes/husk/manifest.toml",
         Edit::Set("api", r#""1.1""#),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "1.1"),
@@ -59,9 +58,12 @@ pub(super) static DATA_FLAWS: &[Flaw] = &[
         refused: |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "1.1"),
     },
     Flaw {
-        file: "heroes/husk/manifest.toml",
+        file: "moba/heroes/husk/manifest.toml",
         edit: Edit::Set("api", r#""2.0""#),
-        also: &[("heroes/husk/manifest.toml", Edit::Set("future", "true"))],
+        also: &[(
+            "moba/heroes/husk/manifest.toml",
+            Edit::Set("future", "true"),
+        )],
         package: "hero-husk",
         refused: |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "2.0"),
     },
@@ -101,37 +103,9 @@ pub(super) static DATA_FLAWS: &[Flaw] = &[
             )
         },
     ),
-    // A section of the mode's data or of its map is its capability's, declared or refused: the
-    // map's vision grid without `vision`, the mode's `[navigation]` without `navigation`,
-    // `[supply]` without `production`.
-    Flaw::of(
-        MANIFEST,
-        Edit::Replace(r#", "vision", "progression""#, r#", "progression""#),
-        MODE,
-        |problem| {
-            matches!(
-                problem,
-                LoadProblem::Undeclared {
-                    capability: Capability::Vision,
-                    at: Place::MapSection("grid")
-                }
-            )
-        },
-    ),
-    Flaw::of(
-        MANIFEST,
-        Edit::Replace(r#", "orders", "navigation""#, ""),
-        MODE,
-        |problem| {
-            matches!(
-                problem,
-                LoadProblem::Undeclared {
-                    capability: Capability::Navigation,
-                    at: Place::Section("navigation")
-                }
-            )
-        },
-    ),
+    // A section of the mode's data is its capability's, declared or refused: `[supply]` without
+    // `production`. The 3v3's rules package needs `vision` and `orders`, so the map's vision grid
+    // and `[navigation]` are refused so in a mode of none, the hooks'.
     Flaw::of(
         MODE_DATA,
         Edit::Set("supply", "{ max = 10 }"),
@@ -666,7 +640,7 @@ pub(super) static DATA_FLAWS: &[Flaw] = &[
         |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, name, .. } if name == "nonsense"),
     ),
     Flaw::of(
-        "spells/data/loadout.toml",
+        "moba/spells/data/loadout.toml",
         Edit::Set("units.totem.slots.basic", r#"["blink"]"#),
         "player-spells",
         |problem| {
@@ -854,4 +828,38 @@ pub(super) static DATA_FLAWS: &[Flaw] = &[
 #[test]
 fn every_flaw_of_the_data_or_a_delivery_fails_its_load_with_its_own_problem() {
     fails_each(DATA_FLAWS, |edits| load(&edited(edits.iter().copied())));
+}
+
+#[test]
+fn a_section_of_a_capability_the_mode_lacks_is_refused() {
+    // The hooks' mode without `vision` refuses its map's vision grid; without `navigation`, its
+    // `[navigation]`.
+    let without = |capability: &str| {
+        let manifest = "modes/hooks/manifest.toml";
+        let mut tree = PackageTree::of(TestMode::Hooks);
+        tree.edit(manifest, Edit::Replace(&format!("\"{capability}\", "), ""));
+        *tree.load().unwrap_err().problem
+    };
+    assert!(
+        matches!(
+            without("vision"),
+            LoadProblem::Undeclared {
+                capability: Capability::Vision,
+                at: Place::MapSection("grid")
+            }
+        ),
+        "{:?}",
+        without("vision")
+    );
+    assert!(
+        matches!(
+            without("navigation"),
+            LoadProblem::Undeclared {
+                capability: Capability::Navigation,
+                at: Place::Section("navigation")
+            }
+        ),
+        "{:?}",
+        without("navigation")
+    );
 }

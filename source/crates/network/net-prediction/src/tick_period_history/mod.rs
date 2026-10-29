@@ -1,10 +1,12 @@
-use crate::prediction_setup::PredictionSetup;
+use core::time::Duration;
+
 use bevy_ecs::prelude::*;
 use bevy_time::{Fixed, Time};
 use campfire_net_core::{NetTick, TickBuffer};
 use campfire_net_sync::InputTimelineSetup;
 use campfire_net_timeline::{LocalTimeline, LocalTimelineShift};
-use core::time::Duration;
+
+use crate::prediction_setup::PredictionSetup;
 
 /// The period each local tick ran with, which a rollback replays it with: a rate change inside the
 /// rollback window leaves the ticks before it at their own period (11-net-stack/time.md, A rollback

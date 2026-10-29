@@ -1,6 +1,7 @@
+use bevy_ecs::prelude::*;
+
 use crate::network_visibility_plugin::{VisibilityChange, VisibilityWrite};
 use crate::visibility_bits::VisibilityBits;
-use bevy_ecs::prelude::*;
 
 /// Shows or hides a replicated entity for a link, at once on a [`World`] and deferred on
 /// [`Commands`]; each hierarchy member follows the change unless a write of its own overrides it

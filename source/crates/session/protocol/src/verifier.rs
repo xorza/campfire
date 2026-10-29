@@ -26,11 +26,22 @@ impl Verifier {
         key: &XOnlyPublicKey,
         record: &impl Signed,
     ) -> bool {
-        signed::write_message(record, &mut self.message);
+        let mut message = std::mem::take(&mut self.message);
+        signed::write_message(record, &mut message);
+        let verifies = self.verifies_message(signature, key, &message);
+        self.message = message;
+        verifies
+    }
+
+    /// Whether `signature` is `key`'s over `message`, a record's as `Signed` writes it.
+    pub(crate) fn verifies_message(
+        &self,
+        signature: &Signature,
+        key: &XOnlyPublicKey,
+        message: &[u8],
+    ) -> bool {
         let signature = schnorr::Signature::from_byte_array(signature.to_bytes());
-        self.secp
-            .verify_schnorr(&signature, &self.message, key)
-            .is_ok()
+        self.secp.verify_schnorr(&signature, message, key).is_ok()
     }
 }
 

@@ -1,12 +1,12 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_host::MatchClock;
+use campfire_host::WatchStart;
 use campfire_net_messages::MessageSender;
 use campfire_runner::SessionWorld;
 
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::viewer::Viewer;
-use campfire_host::MatchClock;
-use campfire_host::WatchStart;
 
 /// What the spectators module gives a world, for its own crate.
 pub(crate) trait SpectatorsWorld {
