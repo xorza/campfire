@@ -8,7 +8,6 @@ use bevy::asset::{Asset, AssetApp, LoadState};
 use bevy::ecs::system::In;
 use bevy::ecs::world::World;
 use bevy::gltf::{Gltf, GltfPlugin};
-use bevy::math::Vec3;
 use bevy::mesh::MeshPlugin;
 use bevy::mesh::MeshTag;
 use bevy::world_serialization::{WorldAssetRoot, WorldSerializationPlugin};
@@ -291,6 +290,7 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
         hide: hide.iter().map(|&node| node.to_owned()).collect(),
         top: None,
         upgrades: Vec::new(),
+        bone: None,
     };
     // An oak of two models, one at 1.5 and one hiding its stump; a bush of one.
     let objects = BTreeMap::from([
@@ -506,5 +506,44 @@ fn an_animations_extension_gives_its_clip_the_timing_of_its_frames_and_hidden_pi
             timing.walked(1.0, 7.5)
         ],
         [1.0, 2.0, 1.0]
+    );
+}
+
+#[test]
+fn a_model_at_a_bone_stands_where_its_hosts_node_stands_at_its_own_scale() {
+    // A host of scale 2 whose `turret`, a meter up and turned 90° about up, holds `firepoint01`
+    // a meter along its +x: the node stands at 2 × (0, 1, −1), as the turn takes +x to −z, turned
+    // 90°, and a model of scale 0.5 at it stands there of its own scale, 0.5, as the host's scale
+    // moves its nodes alone (riders-and-upgrades.md, A model may be drawn at another's bone). The
+    // tolerance is the `f32` rounding of the quarter turn's sine and cosine.
+    let mut world = World::new();
+    let quarter = Quat::from_rotation_y(FRAC_PI_2);
+    let host = world.spawn(Transform::from_scale(Vec3::splat(2.0))).id();
+    let turret = Transform::from_xyz(0.0, 1.0, 0.0).with_rotation(quarter);
+    let turret = world
+        .spawn((turret, Name::new("turret"), ChildOf(host)))
+        .id();
+    let point = Transform::from_xyz(1.0, 0.0, 0.0);
+    world.spawn((point, Name::new("firepoint01"), ChildOf(turret)));
+    let attached = AtBone::new(host, Arc::from("firepoint01"), 0.5);
+    let model = world.spawn((attached, Transform::IDENTITY)).id();
+    let follow = world.register_system(UnitModelsPlugin::follow_bones);
+    world.run_system(follow).unwrap();
+    let stands = *world.get::<Transform>(model).unwrap();
+    assert!(
+        stands
+            .translation
+            .abs_diff_eq(Vec3::new(0.0, 2.0, -2.0), 1e-6)
+    );
+    assert!(stands.rotation.abs_diff_eq(quarter, 1e-6));
+    assert_eq!(stands.scale, Vec3::splat(0.5));
+    // A host of no such node leaves the model as it stands.
+    let bare = world.spawn(Transform::IDENTITY).id();
+    let lost = AtBone::new(bare, Arc::from("firepoint01"), 0.5);
+    let lost = world.spawn((lost, Transform::from_xyz(5.0, 0.0, 0.0))).id();
+    world.run_system(follow).unwrap();
+    assert_eq!(
+        *world.get::<Transform>(lost).unwrap(),
+        Transform::from_xyz(5.0, 0.0, 0.0)
     );
 }

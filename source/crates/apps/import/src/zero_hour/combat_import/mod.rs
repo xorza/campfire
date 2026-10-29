@@ -781,12 +781,13 @@ impl ImportedWeapon {
             .expect("a small angle in degrees fits")
     }
 
-    /// The stats a weapon's rate of fire takes: the veterancy's, and the stages' of a weapon of
-    /// continuous fire, as `Weapon::computeBonus` sums each condition's bonus
-    /// (04-capabilities/combat.md, A weapon's bonus is a sum of stats).
+    /// The stats a weapon's rate of fire takes: the veterancy's, the propaganda towers', and the
+    /// stages' of a weapon of continuous fire, as `Weapon::computeBonus` sums each condition's
+    /// bonus (04-capabilities/combat.md, A weapon's bonus is a sum of stats).
     fn rate_bonus(names: &RulesNames, staged: bool) -> BonusData {
         let stage = staged.then(|| names.rate_of_fire.clone());
-        let stats = [names.veterancy_rate.clone()].into_iter().chain(stage);
+        let every = [names.veterancy_rate.clone(), names.propaganda_rate.clone()];
+        let stats = every.into_iter().chain(stage);
         BonusData::of(stats).expect("the veterancy's stat at least")
     }
 

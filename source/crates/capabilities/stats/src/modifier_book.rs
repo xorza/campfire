@@ -444,7 +444,7 @@ pub(crate) mod internals {
         ModifierBook, ModifierBookBuilder, ModifierEntry, ModifierError, ModifierLoad,
         PackageModifier,
     };
-    use crate::modifier_data::Reapply;
+    use crate::modifier_data::{HeldSources, Reapply};
     use crate::modifier_spec::{ModifierSpec, SpecChange, SpecNumber};
     use crate::stat_op::StatOp;
 
@@ -497,6 +497,7 @@ pub(crate) mod internals {
                     revival: IntervalRevival::Continue,
                     stacks_expire: None,
                     reapply: Reapply::Refresh,
+                    held_sources: HeldSources::Each,
                     max_stacks: None,
                     stats: stats.collect(),
                     shield: None,

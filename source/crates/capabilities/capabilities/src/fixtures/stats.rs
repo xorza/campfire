@@ -48,6 +48,7 @@ impl StatsFixtures for Stats {
             "health",
             "health_regen",
             "mana",
+            "mana_share",
             "attack_speed",
             "attack_damage",
         ];
@@ -62,16 +63,20 @@ impl StatsFixtures for Stats {
     }
 
     fn pools() -> BTreeMap<DeclaredName, PoolData> {
-        let pool = |max: &str, regen: Option<&str>| PoolData {
+        let pool = |max: &str, regen: Option<&str>, share: Option<&str>| PoolData {
             max: Stat::named(max).unwrap(),
             regen: regen.map(|regen| Stat::named(regen).unwrap()),
+            regen_share: share.map(|share| Stat::named(share).unwrap()),
         };
         BTreeMap::from([
             (
                 DeclaredName::new("health").unwrap(),
-                pool("health", Some("health_regen")),
+                pool("health", Some("health_regen"), None),
             ),
-            (DeclaredName::new("mana").unwrap(), pool("mana", None)),
+            (
+                DeclaredName::new("mana").unwrap(),
+                pool("mana", None, Some("mana_share")),
+            ),
         ])
     }
 

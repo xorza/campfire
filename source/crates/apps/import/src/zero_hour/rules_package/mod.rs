@@ -31,6 +31,7 @@ use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
 use crate::zero_hour::import_team::ImportTeam;
 use crate::zero_hour::mover_import::MoverImport;
 use crate::zero_hour::production_import::{BaseSources, FactionBase, ProductionImport};
+use crate::zero_hour::propaganda_import::PropagandaImport;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::science_import::ScienceImport;
 use crate::zero_hour::second_life_import::SecondLifeImport;
@@ -160,7 +161,7 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
             .expect("a range of one rate holds it"),
         teams,
         max_move_speed,
-        // A bot's think of the check's plays runs up to 22,897 operations, and each pool holds a
+        // A bot's think of the check's plays runs up to 22,839 operations, and each pool holds a
         // whole call (09-zero-hour.md, The bots' limits are measured).
         script_limits: ScriptLimits {
             per_call: NonZeroU64::new(BOT_LIMIT).expect("a limit is no zero"),
@@ -188,6 +189,7 @@ pub(crate) struct ModeImport<'a> {
     pub(crate) retaliation: Option<&'a ModeRetaliationPatch>,
     pub(crate) movers: &'a MoverImport,
     pub(crate) second_lives: &'a SecondLifeImport,
+    pub(crate) propaganda: &'a PropagandaImport,
 }
 
 /// The mode's `[retaliation]` of `ai`'s values, its aggressors `names`' enemies on the ground, as
@@ -237,6 +239,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         retaliation,
         movers,
         second_lives,
+        propaganda,
     } = mode;
     debug_assert!(
         combat.actions.keys().all(|name| {
@@ -460,6 +463,10 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .modifiers
         .iter()
         .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+    let towers = propaganda
+        .modifiers
+        .iter()
+        .map(|(id, modifier)| (id, TomlValue::of(modifier)));
     let modifiers: BTreeMap<&DeclaredName, TomlValue> = stages
         .chain(researched)
         .chain(effects)
@@ -468,6 +475,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .chain(garrisons)
         .chain(hurts)
         .chain(lives)
+        .chain(towers)
         .collect();
     debug_assert_eq!(
         modifiers.len(),
@@ -478,9 +486,10 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
             + sciences.perks.len()
             + contains.modifiers.len()
             + movers.modifiers.len()
-            + second_lives.modifiers.len(),
-        "a stage's, an upgrade's, an effect's, a level's, a perk's, a garrison's, a hurt's and a \
-         second life's modifiers share no name"
+            + second_lives.modifiers.len()
+            + propaganda.modifiers.len(),
+        "a stage's, an upgrade's, an effect's, a level's, a perk's, a garrison's, a hurt's, a \
+         second life's and a tower's modifiers share no name"
     );
     if !modifiers.is_empty() {
         writer.value::<ModifiersData>(TomlValue::of(&modifiers));

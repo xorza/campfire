@@ -16,6 +16,7 @@ use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::TypedObject;
 use crate::zero_hour::portable_structure;
 use crate::zero_hour::production_import::ProductionImport;
+use crate::zero_hour::propaganda_import::PropagandaImport;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
@@ -106,6 +107,18 @@ impl EffectModifier {
 }
 
 impl UpgradeImport {
+    /// Takes the propaganda towers' entries of `propaganda` into its types' `upgrades`, after each
+    /// type's own, and the upgrades they name (riders-and-upgrades.md, A propaganda tower is an
+    /// aura).
+    pub(crate) fn take_propaganda(&mut self, propaganda: &PropagandaImport) {
+        for (unit_type, entries) in &propaganda.upgrades {
+            let held = self.types.entry(unit_type.clone());
+            let held = held.or_insert_with(|| UpgradesData(Vec::new()));
+            held.0.extend(entries.iter().cloned());
+        }
+        self.upgrades.extend(propaganda.named.iter().cloned());
+    }
+
     /// The upgrades of `rules`: the modifier of each research of `production`, and each module of
     /// the objects of `types` that converts, of the damage bonuses of `combat`'s weapons. An error
     /// for two upgrades whose names give one modifier's, and for an effect's modifier of the name

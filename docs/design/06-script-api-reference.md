@@ -478,6 +478,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `interval_revival` | stats | since 1.0 |
 | `stacks_expire_ms` | stats | since 1.0 |
 | `reapply` | stats | since 1.0 |
+| `held_sources` | stats | since 1.0 |
 | `max_stacks` | stats | since 1.0 |
 | `stats` | stats | since 1.0 |
 | `tags` | stats | since 1.0 |

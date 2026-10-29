@@ -142,7 +142,7 @@ pub use crate::mode_pools_data::ModePoolsData;
 pub use crate::mode_stats_data::ModeStatsData;
 pub use crate::modifier_appliers::ModifierAppliers;
 pub use crate::modifier_book::{ModifierBook, ModifierEntry, ModifierLoad, PackageModifier};
-pub use crate::modifier_data::{AuraData, ModifierData, Reapply};
+pub use crate::modifier_data::{AuraData, HeldSources, ModifierData, Reapply};
 pub use crate::modifier_effect_data::ModifierEffectData;
 pub use crate::modifier_ends::ModifierEnds;
 pub use crate::modifier_events::ModifierEvents;

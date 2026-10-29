@@ -11,8 +11,10 @@ marker_params = ["name", "player_slot"]
 # moves by its movement model), the life they live by, the rate of fire a stage of continuous fire
 # adds to, which a weapon of one divides its period by, plus 1, the damage and the rate of fire a
 # level of veterancy adds to every weapon, as `Object::onVeterancyLevelChanged` sets its weapon
-# bonus condition, and the range and the damage a garrison adds to every weapon of its riders, as
-# `GarrisonContain::onContaining` sets `GARRISONED`.
+# bonus condition, the range and the damage a garrison adds to every weapon of its riders, as
+# `GarrisonContain::onContaining` sets `GARRISONED`, the rate of fire a propaganda tower adds to
+# every weapon, as `PropagandaTowerBehavior::effectLogic` sets `ENTHUSIASTIC` and `SUBLIMINAL`,
+# and the share of its most life a unit regains a second, which the tower's heal adds to.
 [stats]
 move_speed = {}
 turn_rate = {}
@@ -23,9 +25,12 @@ veterancy_damage = {}
 veterancy_rate = {}
 garrison_range = {}
 garrison_damage = {}
+propaganda_rate = {}
+life_regen_share = {}
 
 [pools.life]
 max = "life"
+regen_share = "life_regen_share"
 
 # The game's damage types, as its INI names them, in lower case, in the order of its
 # `DamageType`, and the pool a damage takes.

@@ -218,6 +218,8 @@ pub(crate) struct LookModel {
     pub(crate) scene: AssetPath<'static>,
     pub(crate) nodes: LookNodes,
     pub(crate) scale: f32,
+    /// The node of its state's first model it is drawn at, none for one drawn at its unit.
+    pub(crate) bone: Option<Arc<str>>,
     upgrades: Arc<[ModelUpgrade]>,
     rounds: Arc<[ClipRounds]>,
 }
@@ -853,7 +855,7 @@ impl LookModel {
 
     /// Whether `other` draws as it does but for its hidden nodes, its scene at its scale.
     pub(crate) fn same_scene(&self, other: &Self) -> bool {
-        self.scene == other.scene && self.scale == other.scale
+        self.scene == other.scene && self.scale == other.scale && self.bone == other.bone
     }
 
     /// The models `models` of `source`.
@@ -882,10 +884,11 @@ impl LookModel {
                     .from_asset(PackageAssets::asset_path(package, &model.model)),
                 nodes: LookNodes {
                     hide: model.hide.as_slice().into(),
-                    turret: turret.angle.map(Arc::from),
-                    turret_pitch: turret.pitch.map(Arc::from),
+                    turret: turret.angle.filter(|_| model.bone.is_none()).map(Arc::from),
+                    turret_pitch: turret.pitch.filter(|_| model.bone.is_none()).map(Arc::from),
                 },
                 scale: model.scale.get(),
+                bone: model.bone.as_deref().map(Arc::from),
                 rounds: model.rounds.as_slice().into(),
             })
             .collect()

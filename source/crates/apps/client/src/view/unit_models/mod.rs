@@ -12,7 +12,7 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::name::Name;
 use bevy::ecs::observer::On;
-use bevy::ecs::query::{Allow, Changed, With};
+use bevy::ecs::query::{Allow, Changed, With, Without};
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
 use bevy::ecs::world::EntityWorldMut;
@@ -21,7 +21,7 @@ use bevy::gltf::extensions::{
     ErasedGltfExtensionHandler, GltfExtensionHandler, GltfExtensionHandlers,
 };
 use bevy::gltf::gltf::{Animation, Material, Mesh, Primitive};
-use bevy::math::Quat;
+use bevy::math::{Quat, Vec3};
 use bevy::mesh::Mesh3d;
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::transform::TransformSystems;
@@ -59,6 +59,29 @@ use crate::view::unit_looks::{LookModel, LookNodes, LookTypes, ModelSource, Unit
 #[derive(Debug)]
 pub(crate) struct UnitModelsPlugin;
 
+/// A model drawn at a node of the first model of its draw's state, its host, which stands where
+/// that node does each frame: the host, the node's name, the node once its host's scene spawned,
+/// and the model's own scale (riders-and-upgrades.md, A model may be drawn at another's bone).
+#[derive(Component, Debug)]
+pub(crate) struct AtBone {
+    host: Entity,
+    bone: Arc<str>,
+    node: Option<Entity>,
+    scale: f32,
+}
+
+impl AtBone {
+    /// A model of `scale` drawn at the node `bone` of `host`.
+    pub(crate) const fn new(host: Entity, bone: Arc<str>, scale: f32) -> Self {
+        Self {
+            host,
+            bone,
+            node: None,
+            scale,
+        }
+    }
+}
+
 /// The root of a client object's drawing, which stands still where the map places it, of no unit.
 #[derive(Component, Debug)]
 pub(crate) struct StillObject;
@@ -85,7 +108,8 @@ impl Plugin for UnitModelsPlugin {
         app.add_observer(Self::dress);
         app.add_systems(
             PostUpdate,
-            Self::turn_turrets
+            (Self::turn_turrets, Self::follow_bones)
+                .chain()
                 .after(AnimationSystems)
                 .before(TransformSystems::Propagate),
         );
@@ -310,6 +334,50 @@ impl UnitModelsPlugin {
             && let Ok(root) = parents.get(ready.entity)
         {
             commands.entity(root.parent()).insert(nodes);
+        }
+    }
+
+    /// Stands each model drawn at a bone where its host's node stands this frame, its animation and
+    /// its turret's turn applied: the place and the turn of the node in its unit's drawing, through
+    /// each of its parents up to its host, at the model's own scale alone, as a bone's transform in
+    /// the original is rigid, its model's scale moving its pivots alone (riders-and-upgrades.md, A
+    /// model may be drawn at another's bone); one whose host's scene has not spawned,
+    /// or holds no such node, stays as it is, and one whose host went is left for its draw to
+    /// remove.
+    fn follow_bones(
+        mut attached: Query<'_, '_, (&mut AtBone, &mut Transform)>,
+        nodes: Query<'_, '_, (&Transform, Option<&ChildOf>), Without<AtBone>>,
+        (children, names): (Query<'_, '_, &Children>, Query<'_, '_, &Name>),
+    ) {
+        for (mut at_bone, mut transform) in &mut attached {
+            let host = at_bone.host;
+            if at_bone.node.is_none() {
+                let bone = &*at_bone.bone;
+                at_bone.node = children
+                    .iter_descendants(host)
+                    .find(|&node| names.get(node).is_ok_and(|name| name.as_str() == bone));
+            }
+            let Some(mut node) = at_bone.node else {
+                continue;
+            };
+            let mut placed = Transform::IDENTITY;
+            let followed = loop {
+                let Ok((local, parent)) = nodes.get(node) else {
+                    break false;
+                };
+                placed = local.mul_transform(placed);
+                if node == host {
+                    break true;
+                }
+                let Some(parent) = parent else {
+                    break false;
+                };
+                node = parent.parent();
+            };
+            if followed {
+                let scaled = placed.with_scale(Vec3::splat(at_bone.scale));
+                transform.set_if_neq(scaled);
+            }
         }
     }
 

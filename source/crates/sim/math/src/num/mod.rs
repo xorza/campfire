@@ -124,6 +124,12 @@ impl Num {
         }
     }
 
+    /// `self + rhs`, at the end of the range of numbers when past it.
+    #[must_use]
+    pub const fn saturating_add(self, rhs: Self) -> Self {
+        Self(self.0.saturating_add(rhs.0))
+    }
+
     pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
         match self.0.checked_sub(rhs.0) {
             Some(bits) => Some(Self(bits)),

@@ -17,6 +17,7 @@ use crate::carried_mut::CarriedMut;
 use crate::held_modifiers::{Held, HeldModifiers};
 use crate::lifetime::Hold;
 use crate::modifier_carriers::ModifierCarriers;
+use crate::modifier_data::HeldSources;
 use crate::modifier_dues::ModifierIndexes;
 use crate::modifier_params::ModifierParams;
 use crate::modifiers::Modifiers;
@@ -179,6 +180,12 @@ impl HeldPass {
             });
         }
         held.sort_unstable();
+        // A modifier of one source keeps its lowest source's hold of each unit, sorted first.
+        held.dedup_by(|later, kept| {
+            later.target == kept.target
+                && later.modifier == kept.modifier
+                && book.get(kept.modifier).spec.held_sources == HeldSources::One
+        });
         // The units held a modifier this tick, and those that carry a hold to let go of.
         visits.clear();
         visits.extend(carriers.held());

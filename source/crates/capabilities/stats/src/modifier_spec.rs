@@ -12,7 +12,7 @@ use campfire_values::{FilterData, ModifierId, Names, Number, Param, Stat};
 use crate::applier_param::ApplierParam;
 use crate::error::{ModifierProblem, SpecError};
 use crate::interval_revival::IntervalRevival;
-use crate::modifier_data::{ModifierData, Reapply};
+use crate::modifier_data::{HeldSources, ModifierData, Reapply};
 use crate::stat_op::StatOp;
 
 /// A modifier as a match runs it: its data with every name resolved at load, its stats to their
@@ -26,6 +26,7 @@ pub struct ModifierSpec {
     pub revival: IntervalRevival,
     pub stacks_expire: Option<SpecTime>,
     pub reapply: Reapply,
+    pub held_sources: HeldSources,
     /// Absent: no limit.
     pub max_stacks: Option<NonZeroU32>,
     /// Per stack, in the order of the stats.
@@ -149,6 +150,7 @@ impl ModifierSpec {
             revival: data.interval_revival,
             stacks_expire,
             reapply: data.reapply,
+            held_sources: data.held_sources,
             max_stacks: data.max_stacks,
             stats: stats.into_boxed_slice(),
             shield,

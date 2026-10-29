@@ -5,8 +5,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 /// A model, a `.glb` of the package, the scale it is drawn at, the names of its nodes its
 /// default look hides, as the glTF names them, the top of what it draws, the nodes each
-/// condition of an upgrade shows and hides over those, in order, and the nodes that show the
-/// rounds of a weapon slot's clip.
+/// condition of an upgrade shows and hides over those, in order, the nodes that show the rounds of
+/// a weapon slot's clip, and the node of its state's first model it is drawn at, none for one
+/// drawn at its unit, as a portable structure is drawn at its container's bone
+/// (riders-and-upgrades.md, A model may be drawn at another's bone).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientModel {
@@ -23,6 +25,8 @@ pub struct ClientModel {
     pub upgrades: Vec<NodeUpgrade>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rounds: Vec<ClipRounds>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bone: Option<String>,
 }
 
 /// The nodes of a model that show the rounds of the clip of the weapon slot `slot`, by the slot's

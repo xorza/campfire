@@ -354,7 +354,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let garrison_range = BonusData::from(names.garrison_range);
     let rifle = AttackData {
         rate: WeaponValue::Own(one(100)),
-        rate_bonus: Some(BonusData::from(RulesNames::default().veterancy_rate)),
+        rate_bonus: Some(every_rate()),
         damage: damage(5),
         damage_bonus: Some(fixed_damage.clone()),
         range_bonus: Some(garrison_range.clone()),
@@ -379,7 +379,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // ends, to all but its own unit, which scatters 10 m at infantry, within 15° of level.
     let cannon = AttackData {
         rate: WeaponValue::Own(one(2000)),
-        rate_bonus: Some(BonusData::from(RulesNames::default().veterancy_rate)),
+        rate_bonus: Some(every_rate()),
         damage: damage(60),
         damage_bonus: Some(fixed_damage),
         range_bonus: Some(garrison_range.clone()),
@@ -405,7 +405,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // 125 % names the stat of that percent.
     let bolt = AttackData {
         rate: WeaponValue::Own(one(1000)),
-        rate_bonus: Some(BonusData::from(RulesNames::default().veterancy_rate)),
+        rate_bonus: Some(every_rate()),
         damage: damage(30),
         damage_bonus: BonusData::of([
             RulesNames::default().veterancy_damage,
@@ -1289,6 +1289,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             _ => scale,
         }),
         upgrades: Vec::new(),
+        bone: None,
     };
     let model = |name: &str, hide: &[&str]| scaled(name, 1.0, hide);
     let unit = ClientUnit::still;
@@ -1657,7 +1658,7 @@ fn a_types_bones_stand_as_its_first_variations_first_animation_places_them() {
     let mut models = ModelWriter::new(ModelAssets::new(&install).unwrap(), &mut writer);
     let flags = LookFlags::of(&rules.game_data, &rules.names, &rules.objects).unwrap();
     let looks = models
-        .units(&rules.objects, &mut ImportNames::default(), &flags)
+        .units(&rules, &mut ImportNames::default(), &flags)
         .unwrap();
     let tank = ModelBones {
         pivot: UnitOffset::new([1, 3, -2].map(Num::int)),
@@ -1671,5 +1672,65 @@ fn a_types_bones_stand_as_its_first_variations_first_animation_places_them() {
     assert_eq!(
         bones,
         [("tank", &tank), ("tankcamo", &tank), ("tankpair", &tank)]
+    );
+}
+
+/// A weapon's rate bonus of every weapon's stats, the veterancy's and the propaganda towers'.
+fn every_rate() -> BonusData {
+    let names = RulesNames::default();
+    BonusData::of([names.veterancy_rate, names.propaganda_rate]).unwrap()
+}
+
+#[test]
+fn a_portable_structures_model_is_drawn_at_its_carriers_bone_while_its_upgrades_tag_holds() {
+    // A carrier of the tank's model whose upgrade makes a turret, of the tank's model too, drawn
+    // at its container's `Turret` bone: each of the carrier's states draws the turret's model at
+    // that bone, hidden from its root down, the tank's `RootTransform`, but while the carrier
+    // holds the upgrade's tag (riders-and-upgrades.md, A model may be drawn at another's bone).
+    let FixtureInstall { test_dir, install } = FixtureInstall::new();
+    let mut rules = ZeroHourRules::read(&install).unwrap();
+    let carried = "Object Carrier
+  Draw = W3DModelDraw ModuleTag_01
+    DefaultConditionState
+      Model = Tank
+    End
+  End
+  Behavior = ObjectCreationUpgrade ModuleTag_02
+    UpgradeObject = OCL_Turret
+    TriggeredBy = Upgrade_Turret
+  End
+End
+Object Turret
+  KindOf = PORTABLE_STRUCTURE
+  Draw = W3DDependencyModelDraw ModuleTag_01
+    AttachToBoneInContainer = Turret
+    DefaultConditionState
+      Model = Tank
+    End
+  End
+End
+";
+    rules.objects = ObjectIni::of(&[carried]);
+    let list = "ObjectCreationList OCL_Turret\n  CreateObject\n    ObjectNames = Turret\n    \
+                ContainInsideSourceObject = Yes\n  End\nEnd\n";
+    rules.creation_lists.read(list.as_bytes()).unwrap();
+    let mut writer = PackageWriter::create(&test_dir.path("carried")).unwrap();
+    let mut models = ModelWriter::new(ModelAssets::new(&install).unwrap(), &mut writer);
+    let flags = LookFlags::of(&rules.game_data, &rules.names, &rules.objects).unwrap();
+    let looks = models
+        .units(&rules, &mut ImportNames::default(), &flags)
+        .unwrap();
+    let carrier = Toml::write(&looks.units[&DeclaredName::new("carrier").unwrap()]);
+    let tag = "upgrade_turret_created";
+    let attached = format!(
+        "model = \"client/models/tank.glb\"\nhide = [\"{root}\"]\nbone = \"turret\"\n\n\
+         [[draws.states.models.upgrades]]\ncondition = \"{tag}\"\nshow = [\"{root}\"]",
+        root = "roottransform"
+    );
+    assert!(carrier.contains(&attached), "{carrier}");
+    assert!(
+        looks
+            .conditions
+            .contains_key(&DeclaredName::new(tag).unwrap())
     );
 }

@@ -5,7 +5,6 @@ use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_progression::{ExperienceTo, PerkData, ShareData, Thresholds, TrackData, TrackHolder};
 use campfire_stats::Level;
-use campfire_values::{FilterTag, TagFilterData};
 
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::ini::command_button_ini::ButtonCommand;
@@ -112,16 +111,12 @@ impl ScienceImport {
             points: Some(ranks.iter().map(|(_, rank)| rank.points).collect()),
             ..TrackData::new(thresholds, false)
         };
-        let victim = TagFilterData::new([FilterTag {
-            name: DeclaredName::new("constructing").expect("the engine's tag"),
-            negated: true,
-        }]);
         let share = ShareData {
             track: track.clone(),
             to: ExperienceTo::Player {
                 killer: rules.names.enemies.clone(),
             },
-            victim,
+            victim: rules.names.built.clone(),
         };
         let mut import = Self {
             track: Some((track.clone(), data)),

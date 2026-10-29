@@ -40,6 +40,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
             retaliation: None,
             movers: &MoverImport::default(),
             second_lives: &SecondLifeImport::default(),
+            propaganda: &PropagandaImport::default(),
         })
     };
     // An empty table would write `actions = {}` into `[params]`, and `armors = {}` under a
@@ -85,6 +86,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         retaliation: Some(&patch),
         movers: &MoverImport::default(),
         second_lives: &SecondLifeImport::default(),
+        propaganda: &PropagandaImport::default(),
     });
     assert!(
         written.contains("[retaliation]\naggressors = \"enemies:!air_target\"\nchase_ms = 10000\ndistance = \"200\"\nradius = \"120\""),

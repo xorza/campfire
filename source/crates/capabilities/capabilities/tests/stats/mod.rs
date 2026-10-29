@@ -101,6 +101,30 @@ fn amounts(world: &World, entity: Entity, pool: PoolId) -> (Num, Num) {
 }
 
 #[test]
+fn a_pool_regains_its_share_of_its_maximum_a_second() {
+    // Mana of 250 regains an eighth of it a second, as its share stat says, 31.25: spent to
+    // nothing, it gains 31.25 ÷ 30 a tick, its remainder carried, so 30 ticks gain exactly 31.25
+    // (riders-and-upgrades.md, A pool regains a share of its maximum).
+    let hero = stats(&[
+        (stat("health"), Num::int(380), Num::ZERO),
+        (stat("mana"), Num::int(250), Num::ZERO),
+        (stat("mana_share"), sixteenths(2), Num::ZERO),
+    ]);
+    let mut game = stat_match(slice::from_ref(&hero));
+    let unit = unit(&mut game, 0);
+    game.step();
+    game.get_mut::<Pools>(unit)
+        .unwrap()
+        .take(MANA, Num::int(250));
+    game.steps(30);
+    let quarter = Num::QUARTER;
+    assert_eq!(
+        amounts(&game, unit, MANA),
+        (Num::int(31) + quarter, Num::int(250))
+    );
+}
+
+#[test]
 fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     // A hero of health 380 + 76 a level, regen 1.5, mana 250 + 45, attack damage 51 + 3,
     // attack speed 0.625 + 0.0625, move speed 4 + 0.25 and turn rate 90° + 6°. Its health is a
@@ -1029,3 +1053,62 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
 mod modifier_book;
 mod modifier_spec;
 mod stats_call;
+
+#[test]
+fn a_held_modifier_of_one_source_holds_from_the_lowest_source_alone() {
+    // Two carriers, at 0 and 2, of an aura of 2 m on allies that holds `rallied`, which an ally at
+    // 1 takes from both, and `heartened` of one source, which it takes from the first alone, the
+    // lower id; the first gone, it takes `heartened` from the second
+    // (riders-and-upgrades.md, A held modifier may hold from one source).
+    let mut game = Match::builder(&[Capability::Stats]).build();
+    let book = StatBook::new(&Stats::rules(), Num::int(6));
+    book.load_into(&mut game);
+    let heartened = ModifierData {
+        held_sources: HeldSources::One,
+        ..Stats::modifier_data(None)
+    };
+    let aura = |modifier: &str| {
+        Stats::modifier_data(Some(AuraData {
+            radius: Number::Value(Scalar::Int(2)),
+            affects: FilterData::parse("allies").unwrap(),
+            modifier: DeclaredName::new(modifier).unwrap(),
+        }))
+    };
+    // Modifiers load in the order of their names.
+    for (name, data) in [
+        ("heartened", heartened),
+        ("rallied", Stats::modifier_data(None)),
+        ("rally", aura("rallied")),
+        ("uplift", aura("heartened")),
+    ] {
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, &data, None);
+    }
+    let named = |game: &Match, name| Stats::modifier(game, PackageIndex::MODE, name).unwrap();
+    let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
+    let spawn = |game: &mut Match, x: i64| {
+        let at = Vec3::new(Num::int(x), Num::ZERO, Num::ZERO);
+        Spawn::of(plain, at).team(Team::new(0)).place(game)
+    };
+    let [first, second, ally] = [0, 2, 1].map(|x| spawn(&mut game, x));
+    for carrier in [first, second] {
+        let entity = game.entity_of(carrier).unwrap();
+        for name in ["rally", "uplift"] {
+            let aura = Stats::aura(named(&game, name), carrier, Num::int(2));
+            CarriedMut::with(&mut game, entity, |carried| carried.apply(aura)).unwrap();
+        }
+    }
+    let sources = |game: &Match, name| {
+        let modifier = named(game, name);
+        let modifiers = game
+            .get::<Modifiers>(game.entity_of(ally).unwrap())
+            .unwrap();
+        [first, second].map(|source| modifiers.get(modifier, Some(source)).is_some())
+    };
+    game.step();
+    assert_eq!(sources(&game, "rallied"), [true, true]);
+    assert_eq!(sources(&game, "heartened"), [true, false]);
+    let entity = game.entity_of(first).unwrap();
+    game.entity_mut(entity).insert(Dead);
+    game.step();
+    assert_eq!(sources(&game, "heartened"), [false, true]);
+}

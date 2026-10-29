@@ -427,6 +427,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         hide: hide.iter().map(|&node| node.to_owned()).collect(),
         top: top.and_then(ModelTop::new),
         upgrades: Vec::new(),
+        bone: None,
     };
     let names = ["tank", "sound", "pit", "shed", "technical"];
     let models = [
@@ -589,6 +590,7 @@ fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as
         hide: Vec::new(),
         top: None,
         upgrades: Vec::new(),
+        bone: None,
     }]);
     let units = BTreeMap::from([(DeclaredName::new("shell").unwrap(), shell)]);
     let data =

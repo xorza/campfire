@@ -32,6 +32,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
         interval_revival: IntervalRevival::Reset,
         stacks_expire_ms: Some(param("stun_ms")),
         reapply: Reapply::Stack,
+        held_sources: HeldSources::One,
         max_stacks: NonZeroU32::new(3),
         stats: BTreeMap::from([
             (
@@ -90,6 +91,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
             appliers.named("stun_ms").unwrap(),
         ))),
         reapply: Reapply::Stack,
+        held_sources: HeldSources::One,
         max_stacks: NonZeroU32::new(3),
         stats: Box::new([
             SpecChange {

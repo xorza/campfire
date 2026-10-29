@@ -113,6 +113,10 @@ pub enum ZeroHourError {
     /// The garrison's bonus of `GameData.ini` is no number the engine holds.
     #[error("the game data's garrison bonus is no number the engine holds")]
     GarrisonBonus,
+    /// A propaganda tower's radius or heal, or the game data's bonus of its rate of fire, is no
+    /// number the engine holds.
+    #[error("a propaganda tower's numbers are no numbers the engine holds")]
+    Propaganda,
     /// The general's ranks of `Rank.ini` are not numbered from 1 on, rank 1 needs skill points,
     /// or a rank needs no more than the one before.
     #[error("the general's ranks do not rise from rank 1 at no skill points")]

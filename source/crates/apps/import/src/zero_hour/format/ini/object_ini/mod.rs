@@ -14,6 +14,7 @@ use crate::zero_hour::format::ini::object_ini::ini_death::IniDeath;
 use crate::zero_hour::format::ini::object_ini::ini_experience::{IniExperience, IniStart};
 use crate::zero_hour::format::ini::object_ini::ini_fall::IniFall;
 use crate::zero_hour::format::ini::object_ini::ini_power::{IniPowers, PowerModule};
+use crate::zero_hour::format::ini::object_ini::ini_propaganda::IniPropaganda;
 use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSupply, SupplyModule};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
@@ -32,6 +33,7 @@ pub(crate) mod ini_death;
 pub(crate) mod ini_experience;
 pub(crate) mod ini_fall;
 pub(crate) mod ini_power;
+pub(crate) mod ini_propaganda;
 pub(crate) mod ini_recoil;
 pub(crate) mod ini_supply;
 pub(crate) mod ini_upgrade_module;
@@ -99,6 +101,8 @@ pub(crate) struct IniObject {
     lateral_friction: Option<f32>,
     /// Its `LifetimeUpdate`'s `MinLifetime` and `MaxLifetime`, in milliseconds.
     lifetime_ms: Option<[f32; 2]>,
+    /// Its `PropagandaTowerBehavior`, none when it has none.
+    propaganda: Option<IniPropaganda>,
     voices: IniVoices,
     /// Its `VisionRange`, 0 when absent, and its `ShroudClearingRange`, -1 when absent, as
     /// `ThingTemplate` starts them.
@@ -176,6 +180,9 @@ pub(crate) struct DrawModule {
     animation: IniAnimation,
     pub(crate) turret: Option<String>,
     pub(crate) turret_pitch: Option<String>,
+    /// The bone of its object's container it draws at, `AttachToBoneInContainer` of a
+    /// `W3DDependencyModelDraw`, in lowercase.
+    pub(crate) container_bone: Option<String>,
     /// The weapon slots whose clips its models show the rounds of,
     /// `ProjectileBoneFeedbackEnabledSlots`.
     pub(crate) rounds_shown: [bool; 3],
@@ -367,6 +374,8 @@ enum Block {
     Physics,
     /// A `LifetimeUpdate`, whose lifetime a wreck reads.
     Lifetime,
+    /// A `PropagandaTowerBehavior`, whose aura heals.
+    Propaganda,
     /// A `GrantUpgradeCreate`, whose upgrade the object is made with.
     GrantUpgrade,
     /// A `VeterancyGainCreate`, whose level the object is made at.
@@ -487,6 +496,7 @@ impl ObjectFiles {
                 mass: 1.0,
                 lateral_friction: None,
                 lifetime_ms: None,
+                propaganda: None,
                 voices: IniVoices::default(),
                 vision_range: 0.0,
                 shroud_clearing_range: -1.0,
@@ -662,6 +672,7 @@ impl DrawModule {
             look: StateLook::default(),
             turret: None,
             turret_pitch: None,
+            container_bone: None,
             rounds_shown: [false; 3],
             recoil: IniRecoil::default(),
             tread_dust: None,
@@ -1100,6 +1111,11 @@ impl IniObject {
         &self.experience
     }
 
+    /// Its `PropagandaTowerBehavior`, none when it has none.
+    pub(crate) const fn propaganda(&self) -> Option<&IniPropaganda> {
+        self.propaganda.as_ref()
+    }
+
     /// The least and the most of its lifetime in milliseconds, its `LifetimeUpdate`'s; none for
     /// an object of none.
     pub(crate) const fn lifetime_ms(&self) -> Option<[f32; 2]> {
@@ -1177,6 +1193,7 @@ impl Reading {
             | Block::Upgrade
             | Block::Physics
             | Block::Lifetime
+            | Block::Propaganda
             | Block::GrantUpgrade
             | Block::VeterancyGain
             | Block::Power(_)
@@ -1291,6 +1308,9 @@ impl Reading {
                             shown[at_slot.ok_or(IniError::WeaponSlot { line })?] = true;
                         }
                         module.rounds_shown = shown;
+                    }
+                    "attachtoboneincontainer" if *kind == DrawKind::Family => {
+                        module.container_bone = Some(at.value()?.to_ascii_lowercase());
                     }
                     "trackmarks" if *kind == DrawKind::Family => {
                         let texture = at.value()?;
@@ -1424,6 +1444,14 @@ impl Reading {
                     self.stack.push(Block::Other);
                 }
             }
+            Block::Propaganda => {
+                let open = self.object.as_mut().expect("a module is an object's");
+                let propaganda = open.object.propaganda.as_mut();
+                let propaganda = propaganda.expect("a propaganda block opened its module");
+                if !propaganda.field(word, at)? && ObjectFiles::opens(word, tokens) {
+                    self.stack.push(Block::Other);
+                }
+            }
             Block::Physics | Block::Lifetime => {
                 let lifetime = matches!(self.stack.last(), Some(Block::Lifetime));
                 let open = self.object.as_mut().expect("a module is an object's");
@@ -1506,6 +1534,10 @@ impl Reading {
                     && let Some(block) = module.as_deref().and_then(|module| match module {
                         "physicsbehavior" => Some(Block::Physics),
                         "lifetimeupdate" => Some(Block::Lifetime),
+                        "propagandatowerbehavior" => {
+                            open.object.propaganda = Some(IniPropaganda::default());
+                            Some(Block::Propaganda)
+                        }
                         "grantupgradecreate" => Some(Block::GrantUpgrade),
                         "veterancygaincreate" => {
                             open.object.experience.starts.push(IniStart::default());

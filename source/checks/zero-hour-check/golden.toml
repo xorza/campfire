@@ -3,8 +3,8 @@
 drive_ticks = 1711
 
 [fingerprints]
-game = "1fc387af31b4a440c2ae07d134b0412c9f761e2ce9f87d440bc93f0783373356"
-rules = "c45513af404cb02f0fa70ebe61b5d17348d1424483a551f31f146ad2935f540f"
+game = "75740e5cc4b419729c1f1bc89bdba613da4b60f1c0ad6a501efac5dbc2bfeb00"
+rules = "c93a04334fb50b1dd157c12409bdcc08240a9f1dc0ac982556ace70ee967121b"
 
 [map]
 heights = [270, 340]
@@ -66,7 +66,7 @@ powers_dropped = [40, 25, 9, 0, 0, 0]
 
 [upgraded]
 researches = 70
-modules = 418
+modules = 450
 dropped = [274, 0, 0, 7, 0, 14, 0, 116]
 
 [supplied]
@@ -213,12 +213,12 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 517
 
 [base]
-ended = 11408
+ended = 13906
 standing = [0, 9]
 ranks = [3, 5]
 perks = [4, 8]
-think_ops = 22897
-stalls = 406
+think_ops = 22839
+stalls = 531
 
 [base.result]
 Won = 1
@@ -256,7 +256,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 5
+no_target = 7
 no_place = 0
 no_stack = 0
 
@@ -274,7 +274,7 @@ no_build = 0
 unusable = 0
 
 [base.sight]
-seen = [4637, 4905]
+seen = [7054, 5884]
 explored = [0, 0]
 words = 91
 

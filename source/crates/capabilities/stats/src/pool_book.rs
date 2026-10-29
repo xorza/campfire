@@ -26,11 +26,13 @@ pub struct PoolBook {
     life: Option<PoolId>,
 }
 
-/// The places among the stats of a pool's maximum and of its regen a second.
+/// The places among the stats of a pool's maximum, of its regen a second, and of the share of its
+/// maximum it regains a second besides.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PoolStats {
     pub(crate) max: StatId,
     pub(crate) regen: Option<StatId>,
+    pub(crate) regen_share: Option<StatId>,
 }
 
 impl PoolBook {
@@ -51,6 +53,11 @@ impl PoolBook {
                     .as_ref()
                     .map(|regen| stat(name, regen))
                     .transpose()?,
+                regen_share: pool
+                    .regen_share
+                    .as_ref()
+                    .map(|share| stat(name, share))
+                    .transpose()?,
             })
         });
         Ok(Self {
@@ -65,9 +72,10 @@ impl PoolBook {
         self.life
     }
 
-    /// Whether a pool regenerates, by a stat of its regen.
+    /// Whether a pool regenerates, by a stat of its regen or of its share.
     pub(crate) fn regenerates(&self) -> bool {
-        self.pools.iter().any(|stats| stats.regen.is_some())
+        let regenerates = |stats: &PoolStats| stats.regen.is_some() || stats.regen_share.is_some();
+        self.pools.iter().any(regenerates)
     }
 
     /// Each pool, with its stats.

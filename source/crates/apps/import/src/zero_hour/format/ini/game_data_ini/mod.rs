@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{BlockKinds, IniText};
 use crate::zero_hour::format::ini::weapon_bonus::{
-    DAMAGE, GARRISONED, RANGE, RATE_OF_FIRE, VETERAN, WeaponBonusLine,
+    DAMAGE, ENTHUSIASTIC, GARRISONED, RANGE, RATE_OF_FIRE, SUBLIMINAL, VETERAN, WeaponBonusLine,
 };
 
 /// What the import reads of Zero Hour's `GameData.ini` files, as `GlobalData` reads them: each
@@ -57,6 +57,10 @@ pub(crate) struct GameDataIni {
     pub(crate) veterancy: [VeterancyBonus; 3],
     /// The bonus of a garrisoned object, of the global `WeaponBonus` lines of `GARRISONED`.
     pub(crate) garrison: GarrisonBonus,
+    /// What a propaganda tower multiplies its units' rate of fire by, of the global `WeaponBonus`
+    /// lines of `ENTHUSIASTIC` and of `SUBLIMINAL`, each 1 by default.
+    pub(crate) enthusiastic_rate: f32,
+    pub(crate) subliminal_rate: f32,
 }
 
 /// What a garrison multiplies its riders' weapons' range and damage by, each 1 by default.
@@ -127,6 +131,8 @@ impl Default for GameDataIni {
                 range: 1.0,
                 damage: 1.0,
             },
+            enthusiastic_rate: 1.0,
+            subliminal_rate: 1.0,
         }
     }
 }
@@ -190,6 +196,11 @@ impl GameDataIni {
                                 RATE_OF_FIRE => veterancy.rate_of_fire = bonus.value,
                                 _ => {}
                             }
+                        }
+                        match (bonus.condition, bonus.field) {
+                            (ENTHUSIASTIC, RATE_OF_FIRE) => self.enthusiastic_rate = bonus.value,
+                            (SUBLIMINAL, RATE_OF_FIRE) => self.subliminal_rate = bonus.value,
+                            _ => {}
                         }
                         if bonus.condition == GARRISONED {
                             match bonus.field {

@@ -30,7 +30,7 @@ use crate::zero_hour::format::ini::object_ini::ini_contain::ContainClass;
 use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
 use crate::zero_hour::format::ini::object_ini::{
-    DrawKind, DrawModule, DrawnState, HideShow, IniObject, ObjectIni, PlacedAs, StateLook,
+    DrawKind, DrawModule, DrawnState, HideShow, IniObject, PlacedAs, StateLook,
 };
 use crate::zero_hour::format::look_conditions::LookConditions;
 use crate::zero_hour::game_path;
@@ -41,9 +41,11 @@ use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_nodes::{ModelNodes, NodeChanges};
+use crate::zero_hour::portable_structure;
 use crate::zero_hour::production_bones::ProductionBones;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::upgrade_import;
+use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// A model the objects name that the package lacks, and why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -256,10 +258,11 @@ impl ModelWriter<'_, '_> {
     /// the package lacks (02-engine-core.md, A look varies by its unit's variation).
     pub(crate) fn units<'r>(
         &mut self,
-        ini: &'r ObjectIni,
+        rules: &'r ZeroHourRules,
         names: &mut ImportNames<'r>,
         flags: &LookFlags,
     ) -> Result<ImportedLooks, ZeroHourError> {
+        let ini = &rules.objects;
         let mut units = BTreeMap::new();
         let mut objects = BTreeMap::new();
         let mut bones = BTreeMap::new();
@@ -270,9 +273,14 @@ impl ModelWriter<'_, '_> {
         for object in ini.objects() {
             let scale = object.scale();
             let draws = object.draws();
-            let Some(own) = self.unit_draws(object, flags)? else {
+            let Some(mut own) = self.unit_draws(object, flags)? else {
                 continue;
             };
+            if let Some(first) = own.first_mut() {
+                for carried in self.carried_models(rules, object)? {
+                    first.add_model(&carried);
+                }
+            }
             let mut unit_look = ClientUnit::new(own);
             // A preview of its build stands at the angle the original's cursor shows it at.
             unit_look.placement_angle = object.build().placement_angle;
@@ -359,6 +367,58 @@ impl ModelWriter<'_, '_> {
             points,
             fire_points,
         })
+    }
+
+    /// The models of the portable structures the upgrades of `object` make inside it, of `rules`,
+    /// each the default model of a structure's draw of a bone of its container
+    /// (`AttachToBoneInContainer`), drawn at that bone of its carrier's model, at the structure's
+    /// scale, hidden from its root down but while its carrier holds its upgrade's tag, as the
+    /// structure stands on its carrier while it lives (riders-and-upgrades.md, A model may be drawn
+    /// at another's bone); none of a model the package lacks.
+    fn carried_models(
+        &mut self,
+        rules: &ZeroHourRules,
+        object: &IniObject,
+    ) -> Result<Vec<ClientModel>, ZeroHourError> {
+        let mut models = Vec::new();
+        for module in object.upgrades() {
+            let Some(structure) = portable_structure::structure(rules, module) else {
+                continue;
+            };
+            let Some(tag) = portable_structure::tag(module)? else {
+                continue;
+            };
+            let draws = structure.draws();
+            let drawn = draws.iter().find_map(|draw| {
+                let bone = draw.container_bone.as_ref()?;
+                Some((bone.clone(), draw.model.clone()?))
+            });
+            let Some((bone, model)) = drawn else {
+                continue;
+            };
+            let WrittenModel::Nodes { nodes, .. } = self.model(&model)? else {
+                continue;
+            };
+            let Some(root) = nodes.pivots.first().map(|pivot| pivot.name.clone()) else {
+                continue;
+            };
+            let test = ConditionTest::Tag { tag: tag.clone() };
+            self.conditions.entry(tag.clone()).or_insert(test);
+            models.push(ClientModel {
+                model: game_path::model(&model)?,
+                scale: structure.scale(),
+                hide: vec![root.clone()],
+                top: None,
+                upgrades: vec![NodeUpgrade {
+                    condition: tag,
+                    show: vec![root],
+                    hide: Vec::new(),
+                }],
+                rounds: Vec::new(),
+                bone: Some(bone),
+            });
+        }
+        Ok(models)
     }
 
     /// The look of `variation`, a build variation of the object of `parent`: its draws and its
@@ -905,6 +965,7 @@ impl ModelWriter<'_, '_> {
                         hide,
                         top,
                         upgrades: node_upgrades,
+                        bone: None,
                     });
                 }
                 WrittenModel::Nothing => {}

@@ -39,6 +39,10 @@ pub(crate) const CONTINUOUS_FIRE_MEAN: usize = 2;
 /// The place of `GARRISONED` among `BONUS_CONDITIONS`.
 pub(crate) const GARRISONED: usize = 0;
 
+/// The places of `ENTHUSIASTIC` and `SUBLIMINAL` among `BONUS_CONDITIONS`, a propaganda tower's.
+pub(crate) const ENTHUSIASTIC: usize = 8;
+pub(crate) const SUBLIMINAL: usize = 15;
+
 /// The place of `PLAYER_UPGRADE` among `BONUS_CONDITIONS`.
 pub(crate) const PLAYER_UPGRADE: usize = 5;
 

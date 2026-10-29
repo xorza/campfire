@@ -1,4 +1,5 @@
 use std::fmt::{self, Debug, Formatter};
+use std::sync::Arc;
 
 use bevy::animation::graph::AnimationGraph;
 use bevy::asset::{AssetServer, Assets};
@@ -15,7 +16,7 @@ use crate::view::look_states::LookDice;
 use crate::view::match_colors::Paint;
 use crate::view::model_scenes::ModelScenes;
 use crate::view::unit_looks::{DrawStates, LookModel, Showing};
-use crate::view::unit_models::{Redress, Replaces};
+use crate::view::unit_models::{AtBone, Redress, Replaces};
 
 /// A draw as a drawing shows it, as `W3DModelDraw` holds its current state and its next: what it
 /// shows, a state or a transition, none before its first; the state it shows next, once what it
@@ -375,9 +376,12 @@ impl ShowCx<'_, '_, '_> {
                     .is_some_and(|before| before.same_scene(model))
             });
             if let Some(kept) = kept {
-                cx.commands
-                    .entity(kept)
-                    .insert((model.held_nodes(cx.held, cx.lacks), Redress));
+                let mut kept_model = cx.commands.entity(kept);
+                kept_model.insert((model.held_nodes(cx.held, cx.lacks), Redress));
+                // A model at a bone follows the state's first model, which may be a new one.
+                if let (Some(bone), Some(&host)) = (&model.bone, next.first()) {
+                    kept_model.insert(AtBone::new(host, Arc::clone(bone), model.scale));
+                }
                 next.push(kept);
                 continue;
             }
@@ -392,6 +396,9 @@ impl ShowCx<'_, '_, '_> {
             });
             let bundle = model.bundle(cx.scenes, cx.assets, cx.paint);
             let mut spawned = cx.commands.spawn((bundle, Drawn, ChildOf(cx.root)));
+            if let (Some(bone), Some(&host)) = (&model.bone, next.first()) {
+                spawned.insert(AtBone::new(host, Arc::clone(bone), model.scale));
+            }
             if model.upgraded() & cx.held != 0 || model.shows_rounds() {
                 spawned.insert(model.held_nodes(cx.held, cx.lacks));
             }

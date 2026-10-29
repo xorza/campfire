@@ -16,6 +16,7 @@ fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
         hide: hide.iter().map(|&name| name.to_owned()).collect(),
         top: None,
         upgrades: Vec::new(),
+        bone: None,
     };
     let tall = |path: &str, top: f32| ClientModel {
         top: ModelTop::new(top),
@@ -124,6 +125,7 @@ fn a_unit_of_a_type_of_variations_draws_its_variations_look_when_the_look_has_as
         hide: Vec::new(),
         top: ModelTop::new(top),
         upgrades: Vec::new(),
+        bone: None,
     };
     let variation = |name: &str, top: f32, turret: Option<&str>| LookVariation {
         draws: vec![LookDraw::still(vec![model(name, top)])],
@@ -522,6 +524,7 @@ fn a_models_upgrade_shows_and_hides_its_nodes_over_its_states_while_its_unit_hol
             upgrade("paint", &[], &["hull"]),
             upgrade("rubble", &["hatch"], &[]),
         ],
+        bone: None,
     };
     let name = |name: &str| DeclaredName::new(name).unwrap();
     let known = BTreeMap::from([
@@ -568,5 +571,6 @@ fn model_file() -> ClientModel {
             show: Vec::new(),
             hide: vec!["hatch".to_owned()],
         }],
+        bone: None,
     }
 }

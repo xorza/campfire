@@ -114,7 +114,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
         },
         attack: AttackData {
             rate: WeaponValue::Own(own(100)),
-            rate_bonus: Some(veterancy_rate()),
+            rate_bonus: Some(every_rate()),
             damage: WeaponValue::Own(decimal(5)),
             damage_bonus: Some(fixed_damage()),
             range_bonus: Some(garrison_range()),
@@ -151,7 +151,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
             },
             attack: AttackData {
                 rate: WeaponValue::Own(own(2000)),
-                rate_bonus: Some(veterancy_rate()),
+                rate_bonus: Some(every_rate()),
                 damage: WeaponValue::Own(decimal(60)),
                 damage_bonus: Some(fixed_damage()),
                 range_bonus: Some(garrison_range()),
@@ -249,6 +249,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
         minigun.weapon.attack.rate_bonus,
         BonusData::of([
             RulesNames::default().veterancy_rate,
+            RulesNames::default().propaganda_rate,
             RulesNames::default().rate_of_fire
         ])
     );
@@ -885,9 +886,10 @@ fn a_types_weapons_that_fire_a_projectile_take_their_slots_barrels() {
     );
 }
 
-/// A weapon's rate bonus of the veterancy's stat alone.
-fn veterancy_rate() -> BonusData {
-    BonusData::from(RulesNames::default().veterancy_rate)
+/// A weapon's rate bonus of every weapon's stats, the veterancy's and the propaganda towers'.
+fn every_rate() -> BonusData {
+    let names = RulesNames::default();
+    BonusData::of([names.veterancy_rate, names.propaganda_rate]).unwrap()
 }
 
 /// A weapon's damage bonus of the veterancy's stat and the garrison's.

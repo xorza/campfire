@@ -6,7 +6,7 @@ use campfire_math::Num;
 use campfire_script::{DataSection, DataTable, StateDecl};
 use campfire_sim::MatchRate;
 use campfire_values::{FilterData, Number, PackagePath, Param, Stat};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::ModifierProblem;
 use crate::interval_revival::IntervalRevival;
@@ -26,6 +26,9 @@ pub struct ModifierData {
     pub stacks_expire_ms: Option<Number>,
     #[serde(default)]
     pub reapply: Reapply,
+    /// How many sources' holds a carrier keeps at once.
+    #[serde(default)]
+    pub held_sources: HeldSources,
     /// Absent: no limit.
     pub max_stacks: Option<NonZeroU32>,
     /// Per stack.
@@ -107,6 +110,18 @@ impl ModifierData {
         .chain(self.stats.values().map(|change| &change.value))
         .filter_map(Number::param)
     }
+}
+
+/// How many sources a carrier holds a modifier from at once by holds, as auras and containers hold
+/// it: each one's instance, or the lowest source's alone, as Zero Hour's propaganda towers each
+/// heal a unit only from its one benefactor (`attemptHealingFromSoleBenefactor`) and a Dota aura of
+/// one name does not stack (riders-and-upgrades.md, A held modifier may hold from one source).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HeldSources {
+    #[default]
+    Each,
+    One,
 }
 
 /// What a second application of a modifier from the same source does.

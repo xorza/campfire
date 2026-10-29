@@ -26,6 +26,11 @@ pub(crate) struct RulesNames {
     pub(crate) garrison_range: Stat,
     pub(crate) garrison_damage: Stat,
     pub(crate) garrisoned: DeclaredName,
+    /// The stat a propaganda tower's heal adds to every weapon's rate of fire, and the share of its
+    /// most life a unit regains a second, which the heal adds to
+    /// (riders-and-upgrades.md, A propaganda tower is an aura).
+    pub(crate) propaganda_rate: Stat,
+    pub(crate) life_regen_share: Stat,
     /// The tag of a type that counts for a multiplayer victory (09-zero-hour.md, Defeat by the
     /// last building that counts).
     pub(crate) counts_for_victory: DeclaredName,
@@ -60,6 +65,8 @@ pub(crate) struct RulesNames {
     /// test (04-capabilities/combat.md, A type may live twice).
     pub(crate) second_life: DeclaredName,
     pub(crate) in_second_life: TagFilterData,
+    /// The test of a unit that is no site, of no engine tag `constructing`.
+    pub(crate) built: TagFilterData,
     /// The tags of the markers the players start at and their starting units rally at, which a
     /// map's `Player_<n>_Start` and `Player_<n>_Rally` waypoints carry, and their param, the
     /// player slot, from 0 (09-zero-hour.md, A skirmish starts with the faction's start objects).
@@ -91,6 +98,8 @@ pub(crate) struct RulesNames {
     pub(crate) enemies_on_ground: FilterData,
     /// Every unit of a team the unit's own regards as friendly.
     pub(crate) allies: FilterData,
+    /// Every unit but a structure of a team the unit's own regards as friendly.
+    pub(crate) allied_units: FilterData,
     /// Every unit that is no structure.
     pub(crate) no_structures: FilterData,
     /// Every structure its own team may attack, and every structure of a friendly team.
@@ -152,6 +161,8 @@ impl Default for RulesNames {
             garrison_range: stat(&name("garrison_range")),
             garrison_damage: stat(&name("garrison_damage")),
             garrisoned: name("garrisoned"),
+            propaganda_rate: stat(&name("propaganda_rate")),
+            life_regen_share: stat(&name("life_regen_share")),
             huge_vehicle: name("huge_vehicle"),
             no_garrison: name("no_garrison"),
             use_slot: name("use"),
@@ -176,6 +187,7 @@ impl Default for RulesNames {
             enemies_in_air: filter(RelationSet::Enemies, Some((&air_target, false))),
             enemies_on_ground: filter(RelationSet::Enemies, Some((&air_target, true))),
             allies: filter(RelationSet::Allies, None),
+            allied_units: filter(RelationSet::Allies, Some((&structure, true))),
             no_structures: filter(RelationSet::All, Some((&structure, true))),
             enemy_structures: filter(RelationSet::Enemies, Some((&structure, false))),
             allied_structures: filter(RelationSet::Allies, Some((&structure, false))),
@@ -184,6 +196,7 @@ impl Default for RulesNames {
             weapon_upgraded: tagged(&weapon_upgrade, false),
             weapon_unupgraded: tagged(&weapon_upgrade, true),
             in_second_life: tagged(&second_life, false),
+            built: tagged(&name("constructing"), true),
             second_life,
             armor_upgrade,
             weapon_upgrade,
@@ -210,6 +223,7 @@ mod tests {
             (&names.enemies_in_air, "enemies:air_target"),
             (&names.enemies_on_ground, "enemies:!air_target"),
             (&names.allies, "allies"),
+            (&names.allied_units, "allies:!structure"),
             (&names.no_structures, "all:!structure"),
             (&names.enemy_structures, "enemies:structure"),
             (&names.allied_structures, "allies:structure"),
@@ -222,6 +236,7 @@ mod tests {
             (&names.weapon_upgraded, "all:weapon_upgrade"),
             (&names.weapon_unupgraded, "all:!weapon_upgrade"),
             (&names.in_second_life, "all:second_life"),
+            (&names.built, "all:!constructing"),
         ] {
             assert_eq!(*filter.filter(), FilterData::parse(text).unwrap(), "{text}");
         }

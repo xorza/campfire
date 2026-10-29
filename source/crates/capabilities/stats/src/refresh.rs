@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_sim::{EntityIndex, MatchRate, Removals, StableId, Unpredicted};
 use campfire_units::{AccelStep, Dead, Life, MoveStep, PoolId, StatusTags, TagEffect, TurnStep};
 use campfire_values::{NameId, UnitTags, UnitType};
@@ -250,8 +250,10 @@ impl Refresh {
         }
     }
 
-    /// Adds each living unit's regen to its pools: each pool's `regen` stat a second, the tick
-    /// rate's share a tick, the remainder carried so a second gains exactly the regen.
+    /// Adds each living unit's regen to its pools: each pool's `regen` stat a second, and its
+    /// `regen_share` stat's share of its maximum a second, rounded down, the tick rate's share a
+    /// tick, the remainder carried so a second gains exactly the regen
+    /// (riders-and-upgrades.md, A pool regains a share of its maximum).
     pub(crate) fn regenerate(
         (pool_book, rate): (Res<'_, PoolBook>, Res<'_, MatchRate>),
         mut units: Query<
@@ -267,9 +269,15 @@ impl Refresh {
             let values = stats.values();
             let mut pools = pools.of(life);
             for (pool, stats) in pool_book.iter() {
-                if let Some(regen) = stats.regen {
-                    pools.regen(pool, values[regen.index()], hz);
+                if stats.regen.is_none() && stats.regen_share.is_none() {
+                    continue;
                 }
+                let regen = stats.regen.map_or(Num::ZERO, |regen| values[regen.index()]);
+                let share = stats.regen_share.map_or(Num::ZERO, |share| {
+                    let max = values[stats.max.index()];
+                    max.saturating_mul(values[share.index()], Rounding::Floor)
+                });
+                pools.regen(pool, regen.saturating_add(share), hz);
             }
         }
     }

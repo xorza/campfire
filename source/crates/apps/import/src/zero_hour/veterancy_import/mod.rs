@@ -7,7 +7,7 @@ use campfire_progression::{
     TypeTrackData, TypeTracksData,
 };
 use campfire_stats::Level;
-use campfire_values::{FilterTag, Number, Scalar, Stat, TagFilterData};
+use campfire_values::{Number, Scalar, Stat};
 use serde::{Serialize, Serializer};
 
 use crate::zero_hour::error::{NameError, ZeroHourError};
@@ -145,16 +145,12 @@ impl VeterancyImport {
             points: Some(vec![0; 4]),
             ..TrackData::new(common, true)
         };
-        let victim = TagFilterData::new([FilterTag {
-            name: DeclaredName::new("constructing").expect("the engine's tag"),
-            negated: true,
-        }]);
         import.share = Some(ShareData {
             track: track.clone(),
             to: ExperienceTo::Killer {
                 killer: names.hostiles.clone(),
             },
-            victim,
+            victim: names.built.clone(),
         });
         import.track = Some((track, data));
         Ok(import)

@@ -351,6 +351,14 @@ impl LookDraw {
         })
     }
 
+    /// Adds `model` to the models of each of its states, as a portable structure is drawn at its
+    /// container in every state (riders-and-upgrades.md, A model may be drawn at another's bone).
+    pub fn add_model(&mut self, model: &ClientModel) {
+        for state in &mut self.states {
+            state.models.push(model.clone());
+        }
+    }
+
     /// The draw of `models` alone, drawn for no condition.
     pub fn still(models: Vec<ClientModel>) -> Self {
         Self {

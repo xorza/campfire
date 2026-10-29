@@ -48,6 +48,7 @@ use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_writer::{ModelReport, ModelWriter, WrittenModel};
 use crate::zero_hour::panel_import::PanelImport;
 use crate::zero_hour::production_import::ProductionImport;
+use crate::zero_hour::propaganda_import::PropagandaImport;
 use crate::zero_hour::road_pieces::RoadPieces;
 use crate::zero_hour::rules_package::{FACTION, ModeImport, RULES_FILES};
 use crate::zero_hour::science_import::ScienceImport;
@@ -108,6 +109,7 @@ pub(crate) mod power_drop_cause;
 mod press_import;
 mod production_bones;
 pub(crate) mod production_import;
+mod propaganda_import;
 pub(crate) mod road_buffer;
 pub(crate) mod road_decals;
 pub(crate) mod road_mesh;
@@ -211,7 +213,7 @@ impl ZeroHour {
         let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut writer);
         let mut object_names = ImportNames::default();
         let flags = LookFlags::of(&game.game_data, &game.names, &game.objects)?;
-        let mut looks = models.units(&game.objects, &mut object_names, &flags)?;
+        let mut looks = models.units(&game, &mut object_names, &flags)?;
         let wrecks = WreckImport::new(
             &game.objects,
             &game.creation_lists,
@@ -579,7 +581,9 @@ impl ZeroHour {
         let fire_points = std::mem::take(&mut looks.fire_points);
         let looks =
             ClientUnits::new(looks.units, looks.conditions, looks.objects)?.with_actions(actions);
-        let upgrades = UpgradeImport::of(&game, object_names.types(), &production, &combat)?;
+        let mut upgrades = UpgradeImport::of(&game, object_names.types(), &production, &combat)?;
+        let propaganda = PropagandaImport::of(&game, object_names.types())?;
+        upgrades.take_propaganda(&propaganda);
         let veterancy = VeterancyImport::of(&game.game_data, object_names.types(), &game.names)?;
         let needed = production.sciences.iter().chain(&veterancy.sciences);
         let sciences = ScienceImport::of(&game, needed.map(String::as_str))?;
@@ -604,6 +608,7 @@ impl ZeroHour {
             retaliation: retaliation.as_ref(),
             movers: &movers,
             second_lives: &second_lives,
+            propaganda: &propaganda,
         };
         writer.write(ModeFile::path(), rules_package::mode_data(mode).as_bytes())?;
         let barrels = combat.barrels(&looks_bones);
@@ -691,7 +696,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 87;
+    pub const OUTPUT_VERSION: u32 = 90;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.
