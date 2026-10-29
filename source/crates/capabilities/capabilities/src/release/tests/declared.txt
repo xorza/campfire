@@ -32,6 +32,7 @@ part BodyUnit Progress
 part BodyUnit ArrivedAt
 part BodyUnit AsideDepth
 part BodyUnit Hemmed
+part BodyUnit BrakedStep
 part BodyUnit ZeroHourDrive
 part BodyUnit Altitude
 part BodyUnit FlightGoal

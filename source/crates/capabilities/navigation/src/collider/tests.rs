@@ -25,9 +25,9 @@ fn row(at: &[(Num, Num, bool)]) -> Vec<Collider> {
             weight: Num::ONE,
             way: None,
             team: None,
-            firm: false,
             leaving: false,
             into: None,
+            going: None,
             pinned: false,
         })
         .collect()
@@ -55,13 +55,6 @@ fn resolve(colliders: &mut [Collider]) -> usize {
     staged(colliders, |walkers, contacts, _| {
         Collider::resolve(walkers, contacts)
     })
-}
-
-/// Pushes apart the bodies of `colliders` within their personal space, by `moves`.
-fn push(colliders: &mut [Collider], moves: Moves) {
-    staged(colliders, |walkers, contacts, statics| {
-        Collider::push(walkers, contacts, Pushes { moves, statics });
-    });
 }
 
 fn places(colliders: &[Collider]) -> Vec<(Num, Num)> {
@@ -266,9 +259,9 @@ fn two_gatherers_or_a_walker_and_the_unit_it_walks_into_pass_through_each_other(
             (Num::int(3) + quarter, Num::ZERO),
         ]
     );
-    // A walker 1.5 m from a unit it walks into, either way round, neither parts from nor pushes
-    // the other (entries-and-blocking.md, A walker passes through the unit it walks into); one
-    // that walks into a third unit is near a unit 2.25 m off, in its personal space, as ever.
+    // A walker 1.5 m from a unit it walks into, either way round, does not part from the other
+    // (entries-and-blocking.md, A walker passes through the unit it walks into); one that walks
+    // into a third unit is near a unit 2.25 m off, within its reach of contacts, as ever.
     for walker in [0, 1] {
         let mut pair = row(&[
             (Num::ZERO, Num::ZERO, true),
@@ -277,7 +270,6 @@ fn two_gatherers_or_a_walker_and_the_unit_it_walks_into_pass_through_each_other(
         pair[walker].into = Some(pair[1 - walker].id);
         assert!(!pair[0].overlaps(&pair[1]) && !pair[0].near(&pair[1]));
         resolve(&mut pair);
-        push(&mut pair, Moves::Team);
         assert_eq!(
             places(&pair),
             [(Num::ZERO, Num::ZERO), (Num::ONE + half, Num::ZERO)],
@@ -322,6 +314,20 @@ fn a_heavier_body_moves_less_and_one_that_drives_moves_only_along_its_facing() {
     }
     assert_eq!(resolve(&mut side), 0);
     assert_eq!(places(&side), [(x(-2), x(0)), (x(14), x(0))]);
+    // Both walk. The first went along +x this tick, into the second, which lies along its way:
+    // it takes the whole half meter. Each went into the other, head on, or the first went across,
+    // along +z, which holds the second in no cone: they share it, a quarter meter each
+    // (entries-and-blocking.md, A unit outside the cone neither blocks nor pushes).
+    let went = |first: [i128; 2], second: Option<[i128; 2]>| {
+        let mut pair = pair();
+        pair[0].going = Direction::of(first);
+        pair[1].going = second.and_then(Direction::of);
+        assert_eq!(resolve(&mut pair), 0);
+        places(&pair)
+    };
+    assert_eq!(went([1, 0], None), [(x(-4), x(0)), (x(12), x(0))]);
+    assert_eq!(went([1, 0], Some([-1, 0])), [(x(-2), x(0)), (x(14), x(0))]);
+    assert_eq!(went([0, 1], None), [(x(-2), x(0)), (x(14), x(0))]);
 }
 
 #[test]
@@ -366,55 +372,4 @@ fn passes_part_a_chain_within_its_slack_and_a_static_body_pins_a_walker() {
         places(&walled)[..2],
         [(x(meters(1) / 4), x(0)), (x(meters(9) / 4), x(0))]
     );
-}
-
-#[test]
-fn a_push_parts_a_pair_within_its_space_by_weight_and_moves_no_unit_it_may_not() {
-    // Radii 1, so a space of 1.25 each, and a pair 2.25 m apart along x: 0.25 m into their 2.5 m,
-    // which a push undoes a quarter of, 1/16 m, in 64ths of a meter 4, split by weight. The
-    // first walks, the second stands, both of team 0.
-    let x = |sixty_fourths: i64| Num::from_bits(sixty_fourths << (Num::FRAC_BITS - 6));
-    let team = |team| Some(Team::new(team));
-    let pair = |second: fn(&mut Collider)| {
-        let mut pair = row(&[(x(0), x(0), true), (x(144), x(0), true)]);
-        pair[1].walking = false;
-        for collider in &mut pair {
-            collider.team = team(0);
-        }
-        second(&mut pair[1]);
-        pair
-    };
-    let pushed = |mut pair: Vec<Collider>, moves| {
-        push(&mut pair, moves);
-        places(&pair)
-            .into_iter()
-            .map(|(x, _)| x)
-            .collect::<Vec<_>>()
-    };
-    // Equal weights, 2 each; the second of weight 3 takes 1, the first 3.
-    assert_eq!(pushed(pair(|_| {}), Moves::Team), [x(-2), x(146)]);
-    let heavy = pair(|second| second.weight = Num::int(3));
-    assert_eq!(pushed(heavy, Moves::Team), [x(-3), x(145)]);
-    // The second firm, or one that drives: the first takes all 4.
-    let firm = pair(|second| second.firm = true);
-    assert_eq!(pushed(firm, Moves::Team), [x(-4), x(144)]);
-    let drives = pair(|second| second.way = Direction::of([0, 1]));
-    assert_eq!(pushed(drives, Moves::Team), [x(-4), x(144)]);
-    // Of another team, under a mode that moves no unit, or both standing: neither moves.
-    let enemy = pair(|second| second.team = Some(Team::new(1)));
-    assert_eq!(pushed(enemy, Moves::Team), [x(0), x(144)]);
-    assert_eq!(pushed(pair(|_| {}), Moves::None), [x(0), x(144)]);
-    let mut standing = pair(|_| {});
-    standing[0].walking = false;
-    assert_eq!(pushed(standing, Moves::Team), [x(0), x(144)]);
-    // A static body of radius 1 at x = −130, 2 m and a 64th off the first: 2 of the push leaves
-    // the first touching it, 4 would put it in, so with the second firm it takes none.
-    let walled = |second: fn(&mut Collider)| {
-        let mut bodies = pair(second);
-        bodies.extend(row(&[(x(-130), x(0), false)]));
-        bodies
-    };
-    let moved = |bodies: Vec<Collider>| pushed(bodies, Moves::Team)[..2].to_vec();
-    assert_eq!(moved(walled(|_| {})), [x(-2), x(146)]);
-    assert_eq!(moved(walled(|second| second.firm = true)), [x(0), x(144)]);
 }

@@ -5,23 +5,22 @@ use campfire_sim::StableId;
 use campfire_units::Layer;
 use campfire_values::Team;
 
+use crate::blocking::Bearing;
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::collider::contact::{Contact, ContactBodies};
-use crate::moves::Moves;
 
 pub(crate) mod contact;
 
 /// A living unit's body as collision sees it: where it stands, its shape, its layer, whether it may
 /// be pushed, whether it walks now, to a destination, and whether it gathers, as a worker in its
 /// gather loop, which passes through another; its weight against another body it parts from, and,
-/// for a unit that drives, the way it faces, the one way it may be pushed; its team; whether it is
-/// firm, as one that attacks, works, uses an ability or that its tags root, which no push moves
-/// (04-capabilities/navigation.md, Who may move whom is the game's); whether it leaves its
-/// producer, passing through its team's units (04-capabilities/navigation.md, A new unit leaves its
-/// exit); the unit its walk goes into, if any, which it passes through, either way
-/// (entries-and-blocking.md, A walker passes through the unit it walks into); and whether a static
-/// body parted it this tick, which pins it against the other walkers. A unit that cannot walk,
-/// such as a tower or a building, is never pushed; only such a unit has a box.
+/// for a unit that drives, the way it faces, the one way it may be pushed; its team; whether it
+/// leaves its producer, passing through its team's units (04-capabilities/navigation.md, A new
+/// unit leaves its exit); the unit its walk goes into, if any, which it passes through, either way
+/// (entries-and-blocking.md, A walker passes through the unit it walks into); the way it faces as
+/// it walks this tick, none for one that stands; and whether a static body parted it this tick,
+/// which pins it against the other walkers. A unit that cannot walk, such as a tower or a
+/// building, is never pushed; only such a unit has a box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Collider {
     pub id: StableId,
@@ -35,9 +34,9 @@ pub struct Collider {
     pub(crate) weight: Num,
     pub(crate) way: Option<Direction<2>>,
     pub(crate) team: Option<Team>,
-    pub(crate) firm: bool,
     pub(crate) leaving: bool,
     pub(crate) into: Option<StableId>,
+    pub(crate) going: Option<Direction<2>>,
     pub(crate) pinned: bool,
 }
 
@@ -47,14 +46,6 @@ pub struct Collider {
 enum Pass {
     Early,
     Last,
-}
-
-/// What bounds a tick's pushes: whom the mode lets a walker move, and the static bodies a push
-/// may not end in.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Pushes<'a> {
-    pub(crate) moves: Moves,
-    pub(crate) statics: &'a BodyIndex,
 }
 
 /// How one body lies from another that it overlaps: the offset to it along x and z, and the two
@@ -80,81 +71,10 @@ impl Collider {
     /// never reaches none.
     const SLACK: i128 = 64;
 
-    /// A body's personal space, as a share of its radius: 5/4, so two part before they touch,
-    /// as 0 A.D. pushes within 8/5 of two clearances, here closer, as a body is a unit's whole
-    /// footprint (04-capabilities/navigation.md, A unit that steps yields by a push).
+    /// The reach within which collision looks for a body's contacts, as a share of its radius:
+    /// 5/4, so a pass that moves a body into one it did not touch as the stage began parts the two
+    /// in the passes after it.
     const SPACE: [i64; 2] = [5, 4];
-
-    /// The share of its intrusion into the pair's personal space a push undoes in a tick: a
-    /// quarter, so a pair parts over a few ticks, not in one jump.
-    const PUSH: i128 = 4;
-
-    /// Pushes apart each pair of walkers of `contacts` within their personal space of which one
-    /// walks, in order, each pair seeing the pushes before it: each side the other may move,
-    /// by `PUSH` of the intrusion, split by weight as an overlap is. A side that drives, is
-    /// firm, or that the mode's `moves` lets the other not move takes none, and so does a side
-    /// whose push would end in a static body. Two that both stand take none, so a crowd at rest
-    /// settles.
-    pub(crate) fn push(colliders: &mut [Self], contacts: &[Contact], pushes: Pushes<'_>) {
-        let Pushes { moves, statics } = pushes;
-        for contact in contacts {
-            let ContactBodies::Walkers { first, second } = contact.bodies else {
-                continue;
-            };
-            let (head, tail) = colliders.split_at_mut(second);
-            let (one, two) = (&mut head[first], &mut tail[0]);
-            let pushed = (one.yields_to(two, moves), two.yields_to(one, moves));
-            if !(one.walking || two.walking) || pushed == (false, false) {
-                continue;
-            }
-            let dx = i128::from(two.point.x.to_bits() - one.point.x.to_bits());
-            let dz = i128::from(two.point.z.to_bits() - one.point.z.to_bits());
-            let space = i128::from(one.space().to_bits() + two.space().to_bits());
-            // Two on one spot have no way apart to push along; collision parts them.
-            let Some(direction) = Direction::of([dx, dz]) else {
-                continue;
-            };
-            if direction.length() >= space {
-                continue;
-            }
-            let shove = direction.scaled_away((space - direction.length()) / Self::PUSH);
-            let (own, others) = (one.weight.to_bits(), two.weight.to_bits());
-            let back = shove.map(|along| match pushed {
-                (true, true) => i128::from(others) * along / i128::from(own + others),
-                (true, false) => along,
-                _ => 0,
-            });
-            let ahead = [0, 1].map(|axis| shove[axis] - back[axis]);
-            if pushed.0 {
-                one.shift(back.map(|along| -along), statics);
-            }
-            if pushed.1 {
-                two.shift(ahead, statics);
-            }
-        }
-    }
-
-    /// Whether `other`'s push may move it: it may be pushed, takes a push any way, is not firm,
-    /// and `moves` lets `other` move it.
-    fn yields_to(&self, other: &Self, moves: Moves) -> bool {
-        self.movable
-            && self.way.is_none()
-            && !self.firm
-            && self.may_separate(other)
-            && !self.passes(other)
-            && moves.may_move(other.team, self.team)
-    }
-
-    /// Moves it `by` bits along x and z, unless that ends in a body of `statics`.
-    fn shift(&mut self, by: [i128; 2], statics: &BodyIndex) {
-        let moved = Self {
-            point: Self::moved(self.point, by),
-            ..*self
-        };
-        if !moved.in_static(statics) {
-            *self = moved;
-        }
-    }
 
     /// Whether it and `other` pass through each other: one leaves its producer, and the two are of
     /// its team.
@@ -169,8 +89,8 @@ impl Collider {
         })
     }
 
-    /// The radius of its personal space: its body's bound for one that may not be pushed, which
-    /// takes no push, so a walker comes near it only where the walker's own space meets it.
+    /// The reach within which collision looks for its contacts: its body's bound for one that
+    /// may not be pushed, so a walker comes near it only where the walker's own reach meets it.
     pub(crate) fn space(&self) -> Num {
         if !self.movable {
             return self.shape.bound();
@@ -178,14 +98,14 @@ impl Collider {
         Self::space_of(self.radius())
     }
 
-    /// The radius of the personal space of a body that may be pushed, of `radius`.
-    pub(crate) const fn space_of(radius: Num) -> Num {
+    /// The reach of the contacts of a body that may be pushed, of `radius`.
+    const fn space_of(radius: Num) -> Num {
         let [times, per] = Self::SPACE;
         Num::from_bits(radius.to_bits() * times / per)
     }
 
-    /// Whether it and `other` may part and lie within each other's personal space: for a box, the
-    /// other's space overlaps it.
+    /// Whether it and `other` may part and lie within each other's reach of contacts: for a box,
+    /// the other's reach overlaps it.
     pub(crate) fn near(&self, other: &Self) -> bool {
         if !self.may_separate(other) {
             return false;
@@ -208,12 +128,15 @@ impl Collider {
     /// and no later push leaves a walker in it; a walker a static body parted holds against a
     /// walker that would share the overlap for the rest of the tick, so a pair beside a wall parts
     /// at once, not by halves; the count of contacts that still overlap deeper than `SLACK` of their reach, as a
-    /// chain of walkers shrinks its overlaps with each pass and never ends them. A unit that
-    /// walks into one that stands takes the whole overlap, so no unit shoves another aside; two
-    /// that both walk, or both stand, share it, each by the other's weight over the two's, the
-    /// higher id taking the odd bits; one that may not be pushed leaves the whole overlap to the
-    /// other; a unit that drives moves only along its facing, and the other takes the rest. Two
-    /// on one spot part along x, the higher id towards +x.
+    /// chain of walkers shrinks its overlaps with each pass and never ends them. A walker that
+    /// went into the other this tick, within 45° of the way it faces, and not the other into it,
+    /// takes the whole overlap, so no walker slides another across its way
+    /// (entries-and-blocking.md, A unit outside the cone neither blocks nor pushes); else a unit
+    /// that walks into one that stands takes it, so no unit shoves another aside; two that both
+    /// walk, or both stand, share it, each by the other's weight over the two's, the higher id
+    /// taking the odd bits; one that may not be pushed leaves the whole overlap to the other; a
+    /// unit that drives moves only along its facing, and the other takes the rest. Two on one
+    /// spot part along x, the higher id towards +x.
     pub(crate) fn resolve(colliders: &mut [Self], contacts: &[Contact]) -> usize {
         debug_assert!(colliders.is_sorted_by_key(|collider| collider.id));
         for pass in 0..Self::PASSES {
@@ -344,9 +267,9 @@ impl Collider {
             weight: Num::ONE,
             way: None,
             team: None,
-            firm: false,
             leaving: false,
             into: None,
+            going: None,
             pinned: false,
         }
     }
@@ -427,7 +350,9 @@ impl Collider {
                 [0, 1].map(|axis| parted[axis] - [dx, dz][axis])
             }
         };
+        let went = (self.went_into(other), other.went_into(self));
         let moves = match (self.movable, other.movable) {
+            (true, true) if went.0 != went.1 => went,
             (true, true) if self.walking != other.walking => (self.walking, other.walking),
             (true, true) if self.pinned != other.pinned => (!self.pinned, !other.pinned),
             pair => pair,
@@ -455,6 +380,18 @@ impl Collider {
         }
         self.point = Self::moved(self.point, back.map(|along| -along));
         other.point = Self::moved(other.point, ahead);
+    }
+
+    /// Whether it went into `other` this tick: it walks, and `other` lies within 45° of the way it
+    /// faces, which a walker's step goes within 11.25° of.
+    fn went_into(&self, other: &Self) -> bool {
+        self.going.is_some_and(|way| {
+            let off = [
+                i128::from(other.point.x.to_bits() - self.point.x.to_bits()),
+                i128::from(other.point.z.to_bits() - self.point.z.to_bits()),
+            ];
+            Bearing::of(&way, off).in_cone()
+        })
     }
 
     /// `push`, in bits along x and z, along `way` alone: its part along the way, rounded to

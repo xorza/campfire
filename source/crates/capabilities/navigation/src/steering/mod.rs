@@ -9,7 +9,6 @@ use campfire_values::Team;
 
 use crate::aside_depth::AsideDepth;
 use crate::body_index::{BodyIndex, IndexedBody};
-use crate::collider::Collider;
 use crate::moves::Moves;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::{RoutePlanner, Short, Walkable, Window};
@@ -343,38 +342,34 @@ impl Steering {
         packed
     }
 
-    /// Whether `waypoint`, the last of `steered`'s route, lies within the personal space a unit
-    /// that stands shares with `steered`, which stands within it too: a goal the unit crowds, as
-    /// near as collision lets the walker come, so it has arrived, as the A* Pathfinding Project
-    /// stops a unit whose destination is crowded (04-capabilities/navigation.md, A walker stuck by
-    /// a crowded goal has arrived). Each space is collision's, `Collider::space_of`. The unit the
-    /// walk goes into crowds nothing, as the walker passes through it (entries-and-blocking.md, A
-    /// walker passes through the unit it walks into).
+    /// Whether `waypoint`, the last of `steered`'s route, lies within reach of a unit that stands,
+    /// where `steered` stands too: within the two radii and the walker's step of it, as near as the
+    /// walker's brake lets it come, so it has arrived, as the A* Pathfinding Project stops a unit
+    /// whose destination is crowded (04-capabilities/navigation.md, A walker stuck by a crowded goal
+    /// has arrived; entries-and-blocking.md, No personal space between walkers). The unit the walk
+    /// goes into crowds nothing, as the walker passes through it (entries-and-blocking.md, A walker
+    /// passes through the unit it walks into).
     pub(crate) fn crowded(&self, steered: Steered, waypoint: Vec3) -> bool {
         let Steered {
             position: at,
             walker,
+            step,
             into,
             ..
         } = steered;
         let standing = self.standing.as_ref().expect("steering read the bodies");
-        let own = Collider::space_of(walker.radius);
+        let own = walker.radius + step;
         let mut crowded = false;
-        standing.near(
-            walker.layer,
-            at,
-            own + Collider::space_of(self.widest),
-            |body| {
-                if into == Some(body.id) {
-                    return;
-                }
-                let space = own + Collider::space_of(body.shape.bound());
-                let inside = |point: Vec3| {
-                    point.ground().distance_order(body.position.ground(), space) == Ordering::Less
-                };
-                crowded |= inside(at) && inside(waypoint);
-            },
-        );
+        standing.near(walker.layer, at, own + self.widest, |body| {
+            if into == Some(body.id) {
+                return;
+            }
+            let reach = own + body.shape.bound();
+            let inside = |point: Vec3| {
+                point.ground().distance_order(body.position.ground(), reach) != Ordering::Greater
+            };
+            crowded |= inside(at) && inside(waypoint);
+        });
         crowded
     }
 
@@ -448,12 +443,10 @@ impl Steering {
                 self.blockers.push(*body);
             }
         });
-        let way = at.ground_offset(goal);
-        let left = Vec3::new(-way.z, Num::ZERO, way.x).normalized();
-        if let (true, Some(left)) = (stuck, left) {
-            // A walker that keeps this one back counts as standing half their reach to this one's
-            // left, so this one goes round it on its right; two that meet head on so pass on
-            // opposite sides, whatever the cells make of their sides.
+        if stuck {
+            // A walker that keeps this one back blocks its short route where it stands; one that
+            // meets it head on steps aside, which its brake sees (entries-and-blocking.md, A
+            // head-on block steps the lower priority aside).
             let gatherers = &self.gatherers;
             self.walking.visit_near(at, walker.radius + step, |other| {
                 let reach = walker.radius + other.body.shape.bound();
@@ -467,10 +460,9 @@ impl Steering {
                 {
                     return ControlFlow::Continue(());
                 }
-                let shift = left * (reach / 2);
                 self.blockers.push(IndexedBody {
                     id: other.id,
-                    position: other.body.position + shift,
+                    position: other.body.position,
                     shape: other.body.shape,
                     layer: other.key,
                 });

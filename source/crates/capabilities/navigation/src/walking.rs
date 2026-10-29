@@ -19,10 +19,12 @@ use campfire_values::{Block, Motion, Team, UnitTags, UnitType};
 use crate::altitude::Altitude;
 use crate::arrived_at::ArrivedAt;
 use crate::aside_depth::AsideDepth;
+use crate::blocking::{Blocker, Blocking, Brake, Going};
 use crate::body_index::{BodyIndex, IndexedBody};
+use crate::braked_step::BrakedStep;
 use crate::broadphase::Broadphase;
+use crate::collider::Collider;
 use crate::collider::contact::{Contact, ContactBodies};
-use crate::collider::{Collider, Pushes};
 use crate::crowd_book::CrowdBook;
 use crate::crowd_costs::{CrowdCosts, Stamp, Standing};
 use crate::gait::Gait;
@@ -32,6 +34,7 @@ use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 use crate::route::{Route, RouteAsk, RouteMut, RouteMutItem};
 use crate::route_planner::{Passage, RoutePlanner, Short, Walkable, Window};
+use crate::segment::Segment;
 use crate::stalled_walkers::StalledWalkers;
 use crate::steering::{Aside, Friends, Steered, Steering, TickBody};
 use crate::unit_navigation_data::UnitNavigationData;
@@ -92,7 +95,11 @@ type Steerers<'w, 's> = Query<
             (Option<&'static StatusTags>, Option<&'static FlightGoal>),
         ),
         &'static mut Destination,
-        (&'static MoveStep, Option<&'static ZeroHourDrive>),
+        (
+            &'static MoveStep,
+            Option<&'static ZeroHourDrive>,
+            &'static BrakedStep,
+        ),
         &'static Body,
         RouteMut,
         (
@@ -188,7 +195,7 @@ impl Walking {
                 _,
                 (&id, &at, team, flies, _),
                 mut destination,
-                (step, drive),
+                (step, drive, last),
                 body,
                 mut route,
                 progress,
@@ -200,8 +207,16 @@ impl Walking {
             let depth = *walk;
             let goal = route.goal().expect("a walker with a way ahead has a goal");
             // A mover comes nearer by its speed, which it gains and loses over ticks, not by its
-            // step (04-capabilities/navigation.md, A mover keeps a velocity).
-            let pace = drive.map_or_else(|| step.get(), ZeroHourDrive::speed);
+            // step (04-capabilities/navigation.md, A mover keeps a velocity); a walker braked
+            // behind a unit that moves by the step the brake let it take, and one braked to a stop
+            // by its whole step, so it is stuck (entries-and-blocking.md, A walker brakes behind a
+            // unit that blocks it).
+            let full = step.get();
+            let stepped = last
+                .get()
+                .filter(|&braked| braked > Num::ZERO)
+                .map_or(full, |braked| braked.min(full));
+            let pace = drive.map_or(stepped, ZeroHourDrive::speed);
             let stuck_for = progress.track(at.get(), route.read().ahead()[0], pace);
             // A flier steers in the plane of its route, as it walks (04-capabilities/navigation.md,
             // A flier walks in the plane).
@@ -449,16 +464,27 @@ impl Walking {
     /// A step walker first turns toward its leg's way, at its turn step, or at once with none, and
     /// stands this tick unless it then faces within `Facing::WITHIN` of the way
     /// (04-capabilities/navigation.md, A walker faces its leg and turns at its turn rate).
+    ///
+    /// Each walker brakes behind the unit that blocks it, as `Blocking::brake` says, reading the
+    /// units as they stood when the stage started, into `blocking`, a buffer it keeps: a step
+    /// walker's step and a mover's speed are cut to what the brake lets it take. One that yields
+    /// to a walker head on steps aside to the right of its way by the two radii, by a waypoint put
+    /// at the head of its route, or to the left where the walls or a static body leave no room
+    /// there (entries-and-blocking.md, A head-on block steps the lower priority aside). Each
+    /// walker's `BrakedStep` takes the step its brake let it take. A predicting client brakes its units behind its
+    /// own alone, as a unit it holds stands where the server last had it.
     pub(super) fn move_units(
-        (models, grid): (
+        (models, grid, statics, navigation): (
             Res<'_, ById<UnitType, MovementModel>>,
             Option<Res<'_, PathingGrid>>,
+            Res<'_, BodyIndex>,
+            Res<'_, ById<UnitType, UnitNavigationData>>,
         ),
         mut units: Query<
             '_,
             '_,
             (
-                (&mut Position, &mut Facing, Has<Altitude>),
+                (&StableId, &mut Position, &mut Facing, Has<Altitude>),
                 (Option<&StatusTags>, Option<&FlightGoal>),
                 &mut Destination,
                 RouteMut,
@@ -470,24 +496,72 @@ impl Walking {
                 ),
                 (&MoveStep, Option<&TurnStep>, Option<&AccelStep>),
                 (&UnitType, Option<&Body>, Option<&mut ZeroHourDrive>),
-                Option<&UnitTags>,
+                (Option<&UnitTags>, Option<&Team>, Option<&Leaving>),
+                &mut BrakedStep,
                 Has<ForcedMove>,
             ),
             Without<Dead>,
         >,
+        mut blocking: Local<'_, Blocking>,
     ) {
+        blocking.read(units.iter().filter_map(
+            |(
+                (&id, position, facing, _),
+                (status, goal),
+                destination,
+                route,
+                _,
+                (step, _, _),
+                (&unit_type, body, drive),
+                (tags, team, leaving),
+                last,
+                forced,
+            )| {
+                // A unit a forced move moves passes through the others.
+                if forced {
+                    return None;
+                }
+                let walks =
+                    !Self::held(status, goal) && Self::walks(Some(destination), tags, Motion::Own);
+                let model = MovementModel::of(&models, unit_type);
+                let way = walks
+                    .then(|| Self::going(&model, position.get(), *facing, route.read().ahead()))
+                    .flatten()
+                    .map(|going| going.way);
+                let full = step.get();
+                let pace = match drive {
+                    Some(drive) => drive.speed(),
+                    None => last.get().map_or(full, |braked| braked.min(full)),
+                };
+                Some(Blocker {
+                    id,
+                    position: position.get(),
+                    radius: body?.shape().bound(),
+                    layer: body?.layer(),
+                    team: team.copied(),
+                    way,
+                    pace,
+                    leaving: leaving.is_some_and(|leaving| leaving.get()),
+                    gathering: tags.is_some_and(|tags| tags.passes()),
+                    weight: UnitNavigationData::of(&navigation, unit_type).weight,
+                    into: destination.unit(),
+                })
+            },
+        ));
         for (
-            (mut position, mut facing, flies),
+            (&id, mut position, mut facing, flies),
             (status, goal),
             mut destination,
             mut route,
             (mut progress, arrived, depth, hemmed),
             (step, turn, accel),
             (unit_type, body, drive),
-            tags,
+            (tags, ..),
+            mut last,
             forced,
         ) in &mut units
         {
+            let at = position.get();
             if Self::held(status, goal)
                 || !Self::walks(Some(&destination), tags, Motion::of(forced))
             {
@@ -495,21 +569,51 @@ impl Walking {
                     let stopped = drive.stopped();
                     drive.set_if_neq(stopped);
                 }
+                BrakedStep::set(&mut last, None);
                 continue;
             }
             let mut arrived = arrived.expect("a walker carries the goal it arrived at");
             ArrivedAt::set(&mut arrived, None);
-            let at = position.get();
-            let at = match MovementModel::of(&models, *unit_type) {
+            let model = MovementModel::of(&models, *unit_type);
+            let brake = Self::going(&model, at, *facing, route.read().ahead())
+                .map(|way| (blocking.brake(id, &way, step.get()), way));
+            if let Some((
+                Brake {
+                    aside: Some(aside), ..
+                },
+                Going { way, .. },
+            )) = brake
+            {
+                let walker = Walker::walking(body);
+                let free = |to: Vec3| {
+                    grid.as_deref().is_none_or(|grid| {
+                        let walkable = Walkable::of(grid.clearance(walker), &statics);
+                        !walkable.blocks(Segment::new(at, to))
+                    })
+                };
+                let bits = |along: i128| Num::from_bits(i64::try_from(along).expect("a reach"));
+                let side =
+                    |turn: [i128; 2]| at + Vec3::new(bits(turn[0]), Num::ZERO, bits(turn[1]));
+                let right = way.turned().scaled_away(i128::from(aside.to_bits()));
+                let [right, left] = [right, right.map(|along| -along)].map(side);
+                if let Some(to) = [right, left].into_iter().find(|&to| free(to)) {
+                    route.splice(at, &[to], 0, route.is_reached());
+                }
+            }
+            let braked = brake.and_then(|(brake, _)| brake.step);
+            let full = step.get();
+            let allowed = braked.map_or(full, |braked| braked.min(full));
+            let at = match model {
                 MovementModel::Step => {
                     if let Some(way) = route.read().way() {
                         let turned = facing.toward(way, turn.copied());
                         facing.set_if_neq(turned.facing);
                         if !turned.faces {
+                            BrakedStep::set(&mut last, Some(Num::ZERO));
                             continue;
                         }
                     }
-                    Self::step(&mut route, &mut progress, at, step.get(), flies)
+                    Self::step(&mut route, &mut progress, at, allowed, flies)
                 }
                 MovementModel::ZeroHour(mover) => {
                     let mut drive =
@@ -519,7 +623,7 @@ impl Walking {
                         .map(|grid| grid.clearance(Walker::walking(body)));
                     let mut driver = ZeroHourDriver {
                         mover: &mover,
-                        speed: step.get(),
+                        speed: allowed,
                         turn: turn.copied(),
                         accel: accel.copied(),
                         stance: Stance {
@@ -537,6 +641,7 @@ impl Walking {
                     stance.at
                 }
             };
+            BrakedStep::set(&mut last, braked);
             position.set_if_neq(Position::from(at));
             if route.read().ahead().is_empty() && route.asked().is_none() {
                 Destination::route_to(&mut destination, None);
@@ -557,6 +662,29 @@ impl Walking {
                     progress.restart();
                 }
             }
+        }
+    }
+
+    /// The way a walker of `model` at `at`, facing `facing`, goes this tick along the waypoints
+    /// `ahead`: a step walker's toward its next waypoint, as far as it, as its step goes, and a
+    /// mover's along its facing, as its locomotor drives it; none for one with no waypoint ahead,
+    /// or on it.
+    fn going(model: &MovementModel, at: Vec3, facing: Facing, ahead: &[Vec3]) -> Option<Going> {
+        let next = ahead.first()?;
+        match model {
+            MovementModel::Step => {
+                let off = at.ground_offset(*next);
+                let way = Direction::of([off.x, off.z].map(|along| i128::from(along.to_bits())))?;
+                let leg = Num::from_bits(i64::try_from(way.length()).expect("a leg's length"));
+                Some(Going {
+                    way,
+                    leg: Some(leg),
+                })
+            }
+            MovementModel::ZeroHour(_) => Some(Going {
+                way: Self::way(facing)?,
+                leg: None,
+            }),
         }
     }
 
@@ -588,12 +716,12 @@ impl Walking {
         at
     }
 
-    /// Pushes apart the living bodies of one layer within each other's personal space as the stage
-    /// starts, as `Collider::push` says, by the mode's `CrowdBook`, then parts those that overlap,
-    /// as `Collider::resolve` says; a pair that comes near only after this tick's pushes parts in
-    /// the next. A body a forced move moves passes through the others, and parts from them once
-    /// the move ends. Only a unit that can walk is pushed, and one walking to a destination yields
-    /// to one that stands. The static bodies' contacts come from `statics`, which holds them as the
+    /// Parts the living bodies of one layer that overlap, as `Collider::resolve` says: no body
+    /// pushes another that it does not overlap, as walkers brake behind the units in their way
+    /// (entries-and-blocking.md, A unit outside the cone neither blocks nor pushes). A body a
+    /// forced move moves passes through the others, and parts from them once the move ends. Only
+    /// a unit that can walk is moved, and one walking to a destination yields to one that stands,
+    /// the one that went into the other first of all. The static bodies' contacts come from `statics`, which holds them as the
     /// stage starts. A predicting client also parts its own units from the units it holds as the
     /// server sent them that cannot walk, such as towers, which never move. Every other held unit
     /// is where the server last had it, behind the client's ticks, and may have started or stopped
@@ -619,16 +747,14 @@ impl Walking {
                 ),
                 Option<&Destination>,
                 Option<&UnitTags>,
-                (Option<&ActionProgress>, Option<&AtWork>, Option<&Hemmed>),
                 Has<Unpredicted>,
                 Has<ForcedMove>,
             ),
             (With<MoveStep>, Without<Dead>, Allow<Unpredicted>),
         >,
-        (statics, navigation, crowd, mut unparted): (
+        (statics, navigation, mut unparted): (
             Res<'_, BodyIndex>,
             Res<'_, ById<UnitType, UnitNavigationData>>,
-            Res<'_, CrowdBook>,
             ResMut<'_, UnpartedPairs>,
         ),
         standing: Query<'_, '_, Has<ForcedMove>, StaticUnits>,
@@ -654,7 +780,6 @@ impl Walking {
                         (&unit_type, facing, team, leaving),
                         destination,
                         tags,
-                        (progress, at_work, hemmed),
                         ..,
                     )| {
                         let UnitNavigationData { gait, weight } =
@@ -673,9 +798,11 @@ impl Walking {
                                 .filter(|_| gait == Gait::Drive)
                                 .and_then(|&facing| Self::way(facing)),
                             team: team.copied(),
-                            firm: Self::firm(progress, at_work, tags, hemmed),
                             leaving: leaving.expect("a walker carries whether it leaves").get(),
                             into: destination.and_then(|destination| destination.unit()),
+                            going: facing
+                                .filter(|_| Self::walks(destination, tags, Motion::Own))
+                                .and_then(|&facing| Self::way(facing)),
                             pinned: false,
                         }
                     },
@@ -688,11 +815,6 @@ impl Walking {
             "the static index holds the static bodies as the stage starts"
         );
         let contacts = broadphase.contacts(&colliders, &statics);
-        let pushes = Pushes {
-            moves: crowd.moves,
-            statics: &statics,
-        };
-        Collider::push(&mut colliders, contacts, pushes);
         unparted.set(Collider::resolve(&mut colliders, contacts));
         if let (Some(grid), Some(planner)) = routes {
             Self::stand_clear(&mut colliders, contacts, &statics, (&grid, &planner));

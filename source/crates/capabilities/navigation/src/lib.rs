@@ -38,7 +38,9 @@ mod arrived_at;
 mod aside_depth;
 #[cfg(feature = "internals")]
 pub mod bench;
+mod blocking;
 mod body_index;
+mod braked_step;
 mod broadphase;
 mod collider;
 mod crowd_book;
@@ -99,6 +101,7 @@ pub use crate::altitude::Altitude;
 pub use crate::arrived_at::ArrivedAt;
 pub use crate::aside_depth::AsideDepth;
 pub use crate::body_index::{BodyIndex, IndexedBody};
+pub use crate::braked_step::BrakedStep;
 pub use crate::collider::Collider;
 pub use crate::crowd_book::CrowdBook;
 pub use crate::error::{MapProblem, NavigationDataError, NavigationRefusal};
@@ -221,6 +224,8 @@ impl Module for Navigation {
         d.require::<MoveStep, AsideDepth>();
         d.component::<Hemmed>();
         d.require::<MoveStep, Hemmed>();
+        d.component::<BrakedStep>();
+        d.require::<MoveStep, BrakedStep>();
         d.report::<UnpartedPairs>();
         d.report::<StalledWalkers>();
         d.cache::<UnitTracker<StaticBodies>>();
@@ -265,6 +270,9 @@ impl Module for Navigation {
             at.of_type::<MoveStep>().map(|_| AsideDepth::default())
         });
         d.part::<BodyUnit, Hemmed>(|at| at.of_type::<MoveStep>().map(|_| Hemmed::default()));
+        d.part::<BodyUnit, BrakedStep>(|at| {
+            at.of_type::<MoveStep>().map(|_| BrakedStep::default())
+        });
         // A walker of a model that keeps a velocity drives from a stop
         // (04-capabilities/navigation.md, A mover keeps a velocity).
         d.part::<BodyUnit, ZeroHourDrive>(|at| {
@@ -442,6 +450,7 @@ pub mod internals {
     use crate::Navigation;
     use crate::arrived_at::ArrivedAt;
     use crate::aside_depth::AsideDepth;
+    use crate::braked_step::BrakedStep;
     pub use crate::broadphase::internals::scene;
     use crate::crowd_book::CrowdBook;
     use crate::flight_data::FlightData;
@@ -471,6 +480,7 @@ pub mod internals {
                 ArrivedAt::default(),
                 AsideDepth::default(),
                 Hemmed::default(),
+                BrakedStep::default(),
             )
         }
 

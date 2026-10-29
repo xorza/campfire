@@ -244,9 +244,9 @@ pub(crate) mod internals {
                 weight: Num::ONE,
                 way: None,
                 team: None,
-                firm: false,
                 leaving: false,
                 into: None,
+                going: None,
                 pinned: false,
             })
             .collect()

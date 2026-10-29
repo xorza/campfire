@@ -282,3 +282,54 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
     steering.asides(into, stretch, &(3..5), &mut moved);
     assert_eq!(moved, [aside(0, eighths(7, 8), own)]);
 }
+
+#[test]
+fn a_goal_a_standing_unit_crowds_lies_within_the_two_radii_and_the_step_as_the_walker_does() {
+    // A unit of 0.5 m stands at the origin; a walker of 0.5 m, a quarter meter a step, stands at
+    // (−1.25, 0), the two radii and its step off it, both bounds in. A last waypoint as near is
+    // crowded, and one an eighth farther is not; a walker an eighth farther is not crowded either,
+    // and none is by the unit its walk goes into (entries-and-blocking.md, No personal space
+    // between walkers).
+    let half = Num::HALF;
+    let statics = BodyIndex::new(half);
+    let mut ids = IdAllocator::default();
+    let (unit, walker) = (ids.allocate(), ids.allocate());
+    let still = TickBody {
+        body: IndexedBody {
+            id: unit,
+            position: Vec3::ZERO,
+            shape: Shape::Circle(Radius::new(half).unwrap()),
+            layer: Layer::FIRST,
+        },
+        team: None,
+        walks: false,
+        gathers: false,
+        idle: true,
+        arrived: None,
+    };
+    let mut steering = Steering::default();
+    steering.read(&statics, Moves::Team, [still]);
+    let steered = |x: i64| Steered {
+        id: walker,
+        position: eighths(x, 0),
+        team: None,
+        step: Num::QUARTER,
+        walker: Walker {
+            layer: Layer::FIRST,
+            radius: half,
+        },
+        stuck: true,
+        gathering: false,
+        goal: eighths(10, 0),
+        into: None,
+        depth: AsideDepth::default(),
+    };
+    assert!(steering.crowded(steered(-10), eighths(0, 10)));
+    assert!(!steering.crowded(steered(-10), eighths(0, 11)));
+    assert!(!steering.crowded(steered(-11), eighths(0, 10)));
+    let into = Steered {
+        into: Some(unit),
+        ..steered(-10)
+    };
+    assert!(!steering.crowded(into, eighths(0, 10)));
+}

@@ -295,10 +295,12 @@ fn a_trained_unit_leaves_through_its_team_at_once_and_reaches_its_crowded_rally_
     // point. Each grunt leaves through its team's units, no push between them, until it overlaps
     // none or stands (04-capabilities/navigation.md, A new unit leaves its exit): the third and the
     // fourth, which spawn into the grunts before them, leave a tick longer. The friends at the exit
-    // stay where they stood, and the grunts, which never stall, arrive in ticks 5, 6, 7 and 7, the
-    // crowd at the rally point making room by its steps aside and the later grunts stopping against
-    // the earlier ones (04-capabilities/navigation.md, A crowded goal ends the walk), and the steps
-    // aside 2 deep at most (04-capabilities/navigation.md, An idle friend steps aside).
+    // stay where they stood, and the grunts, which never stall, arrive in ticks 10, 9, 9 and 8, the
+    // crowd at the rally point making room by its steps aside, each grunt braking behind a friend
+    // until it clears its way (entries-and-blocking.md, A walker brakes behind a unit that blocks
+    // it), and the later grunts stopping against the earlier ones (04-capabilities/navigation.md,
+    // A crowded goal ends the walk), and the steps aside 2 deep at most
+    // (04-capabilities/navigation.md, An idle friend steps aside).
     let run = |gait: Gait, weight: i64| {
         let mut game = ordering_match();
         let shop = Shop::place(&mut game);
@@ -390,26 +392,24 @@ fn a_trained_unit_leaves_through_its_team_at_once_and_reaches_its_crowded_rally_
         let exit = [crowd[0], crowd[1]].map(|id| game.part::<Position>(id).get());
         (leaving, arrived, leaves, exit, unparted)
     };
-    // Units that drive, of weight 4, as a war factory's, leave the same way and arrive in ticks
-    // 5, 6, 6 and 8, the fourth leaving a tick longer. A friend of the crowd that steps aside may
-    // walk into another, which steps on in turn: a unit that steps takes the walker's push and
-    // leaves no overlap, but one that drives takes none, and for that tick the two overlap past
-    // the slack, two pairs in tick 8 and one each in ticks 9 and 11, which the next tick parts
-    // (04-capabilities/navigation.md, A walker walks through the friends it moves aside).
+    // Units that drive, of weight 4, as a war factory's, leave the same way and arrive in the same
+    // ticks; no tick leaves a pair overlapping past the slack, as a walker brakes behind each
+    // friend it moves aside (04-capabilities/navigation.md, A walker walks through the friends it
+    // moves aside).
     let cases = [
         (
             Gait::Step,
             1,
-            [vec![false, false, true], vec![false, false, true, true]],
-            [5, 6, 7, 7],
+            [vec![false, false, true], vec![false, false, false, true]],
+            [10, 9, 9, 8],
             vec![],
         ),
         (
             Gait::Drive,
             4,
             [vec![false, false, true], vec![false, false, false, true]],
-            [5, 6, 6, 8],
-            vec![(8, 2), (9, 1), (11, 1)],
+            [10, 9, 9, 8],
+            vec![],
         ),
     ];
     for (gait, weight, later, ticks, deep) in cases {

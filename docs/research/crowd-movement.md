@@ -240,3 +240,17 @@ line from its start to its goal, read each tick.
   along the line between their centers, a quarter of the intrusion a tick, whatever way each
   walks, and `Collider::resolve` shares an overlap of two walkers between them; a walker's step
   then goes on along its leg, so a walker beside another slides across its way.
+
+## The Zero Hour check with entries and blocking, measured, 2026-10-29
+
+The check's plays on the import of 29 October 2026, run three times: as the golden holds them,
+before the walk into a unit; with the walk into a unit alone; and with the brake in place of the
+push.
+
+| Play | Golden | Walk into a unit | And the brake |
+| --- | --- | --- | --- |
+| Bases: ended, stalls | tick 13,906, 531 | tick 11,407, 512 | tick 9,607, 208 |
+| Attack: ended, stalls | tick 14,101, 101 | tick 14,101, 101 | tick 13,947, 79 |
+| Transports: boarded, fired, fell | 884, 10, 128 | 866, 24, 89 | 866, 24, 89 |
+| Garrison: garrisoned, outranged | 824, 1,351 | 824, 1,351 | 975, 1,320 |
+| Fight: shot, hit, fight | 905, 915, 2,621 | 905, 915, 2,621 | 913, 923, 2,637 |

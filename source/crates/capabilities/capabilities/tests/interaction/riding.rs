@@ -23,7 +23,7 @@ use campfire_interaction::{
     EnterActionData, EnterSpec, FireSpec, Interaction, RiderCount, RiderPayload, RiderSize, Riders,
     Riding, UseSlot, Using,
 };
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_names::{Filter, Filters};
 use campfire_navigation::{
     FlightData, Gait, Navigation, Progress, RoutePlanner, UnitNavigationData, Walker,
@@ -589,18 +589,22 @@ fn riders_walk_into_an_idle_container_that_drives_which_stands_where_it_stood() 
                 }
             }
         }
-        // Ringed, the friend at (0.5, 0) on the riders' way steps aside, and the first rider
-        // enters two ticks later; the third, which goes round the second, enters before it.
+        // Ringed, the first rider goes round the friend at (0.5, 0) on its way, and enters two
+        // ticks later; the friend at (2, 1.5), on a later rider's way, steps aside, to (3.5, 1.5),
+        // and the third, which goes round the second, enters before it.
         let expected = if ringed {
-            [Some(7), Some(13), Some(12)]
+            [Some(7), Some(15), Some(12)]
         } else {
             [Some(5), Some(10), Some(12)]
         };
         assert_eq!((ringed, entered), (ringed, expected));
         assert_eq!(riders(&game, humvee).len(), 3);
-        if ringed {
-            assert_ne!(game.part::<Position>(friends[0]).get(), ring[0]);
-        }
+        let stood: Vec<Vec3> = friends
+            .iter()
+            .map(|&friend| game.part::<Position>(friend).get())
+            .collect();
+        let moved = [ring[0], ring[1], halves(7, 3), ring[3]];
+        assert_eq!(stood, moved[..friends.len()]);
         assert_eq!(failed(&mut game), []);
     }
 }

@@ -15,9 +15,9 @@ tick 300
 #1 tower team 1 at 8, 0, -3 pool0=1500
 #2 hero-walker team 0 slot 0 at 0, 0, -2 pool0=300 pool1=100
 #3 hero-runner team 1 slot 1 at 0, 0, 2 pool0=225 pool1=100
-#4 creep team 0 at -0.75, 0, 0.39232004 pool0=300
-#5 creep team 0 at -1.54358447, 0, 1.11977357 pool0=300
-#7 creep team 1 at 1.311627, 0, -3.2294577 pool0=120
+#4 creep team 0 at -0.75, 0, 0.39371544 pool0=300
+#5 creep team 0 at -1.547775, 0, 1.1190859 pool0=300
+#7 creep team 1 at 1.3117344, 0, -3.22942185 pool0=120
 slot 0:
 slot 1:
 

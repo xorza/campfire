@@ -6,14 +6,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Entries and blocking](../docs/design/entries-and-blocking.md): a player of a Zero Hour skirmish puts a group of soldiers into a standing or a driving container and sees each walk straight in, the container keeping its own course, and sends columns across each other and through gaps and sees each unit keep its line and wait behind the unit ahead. It stands before the end of Riders and upgrades, whose player's check needs riders that enter. Its facts are [Crowd movement](../docs/research/crowd-movement.md) and [Zero Hour's portable structures and entries](../docs/research/zero-hour-portable-structures.md); its checks are the design's.
 
-### Batch 2: blocking
-
-`navigation`'s walking, steering and collision, and the movement models of `navigation::zero_hour`: the crowd model the user chose on 29 October 2026, Zero Hour's brake in place of the push.
-
-- [ ] **EB4. A walker brakes behind a unit that blocks it.** `Walking::move_units` (`navigation/src/walking.rs:451`) steps each walker its whole step and leaves it to collision; a walker's step and a mover's speed are cut at the unit in its cone, by that unit's advance of the tick before, a part of each walker, saved and predicted. Builds: what can be forgotten is a type, as the advance is state. Check: the navigation tests of the cone's bounds, of a slower walker ahead, of three abreast and of two columns crossing.
-- [ ] **EB5. A unit outside the cone neither blocks nor pushes.** `Collider::push` (`navigation/src/collider/mod.rs:96`) and personal space (`:84`) go, and `Collider::separate` (`:404`) moves the walker whose cone holds the other; `Steering::crowded` measures by the bodies touching, and the broadphase reaches the bodies alone (`navigation/src/broadphase.rs:75, 130`). Check: the navigation tests of a gap, of a corridor and of a walker past a unit outside its cone; the goldens of the crowd cases move, each move stated.
-- [ ] **EB6. A head-on block steps the lower priority aside.** Only an idle friend steps aside (`Steering::asides`), and a stuck walker steers round the walkers it touches, shifted to its left (`navigation/src/steering/mod.rs:434-444`); of two walkers that block each other head on, the lower priority, by weight, then the one behind, then the higher stable id, steps aside to its right by a detour at the head of its route and walks on, and the shift goes. Builds: a module's rule lives once, as the step aside serves an idle friend and a walker alike. Check: the navigation tests of two walkers head on in the open, of a soldier and a vehicle, of a lane with an alcove and with none, and of a walker blocked by an enemy that stands.
-
 ### Batch 3: the Zero Hour check
 
 The import's plays, measured, with the slice's whole change.
@@ -36,6 +28,12 @@ It stands last, as the player's check is of the whole slice.
 - [ ] A player of Tournament Desert as China against the America builder bot does what the design's last check says, in the client; then the slice's decisions fold into `04-capabilities/actions.md`, `04-capabilities/interaction.md`, `04-capabilities/production.md`, `04-capabilities/navigation.md` and `09-zero-hour.md`, its losses into `09-zero-hour.md`'s, and `riders-and-upgrades.md` goes.
 
 ## Changed
+
+- **EB4. A walker brakes behind a unit that blocks it.** `Blocking` reads the units as the Move stage starts, and `Walking::move_units` cuts each walker's step, or a mover's speed, to touch the unit its cone holds before its next turn, on by that unit's step; `BrakedStep`, a new predicted part, holds the step a brake let each walker take, which the walker behind it reads and the walker's own stuck count takes.
+
+- **EB5. A unit outside the cone neither blocks nor pushes.** `Collider::push` went; collision moves the walker whose facing holds the other, and the crowded goal measures by the two radii and the step. Three walkers abreast keep their lines to the bit, where the push moved them 0.27 m, and two columns that cross keep theirs, where a walker slid 2.9 m; the crowd cases' goldens moved, each stated in its test: walkers that move idle friends aside arrive up to 8 ticks later, braked behind each until it clears, and those packed at a goal a tick later.
+
+- **EB6. A head-on block steps the lower priority aside.** A walker braked to a stop head on by one of more weight, or of a lower stable id, takes a waypoint the two radii to its right, or its left; the stuck walker's shift of the walkers it touches went. The proving match's projectiles in flight now sum 236, a 3v3 hero fells a melee creep more in the skirmish, and the lane's wave lands three strikes on the tower, not two; the snapshot's data version went to 100.
 
 - **EB1. A walk may go into a unit.** `Destination` holds a `WalkGoal`, a point or a unit with its place, `WalkItem::to_unit` sets one, a route asks for one, and an approach of the `enter` kind walks into its target.
 

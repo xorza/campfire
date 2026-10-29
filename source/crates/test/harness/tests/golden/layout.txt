@@ -1,4 +1,4 @@
-data_version 99
+data_version 100
 actions.player_cooldowns e392c93f37f118db
 actions.progress cf0f07e0b1cf07cf
 actions.slot_times e81a763b4f0f5285
@@ -40,6 +40,7 @@ mode.victory_holders 0a042fbbe0f1bd88
 navigation.altitude 56d74ab1b4bb0bc5
 navigation.arrived_at bfab885d353d14c5
 navigation.aside_depth cf0ec24e2894148c
+navigation.braked_step 7c4e14ac4dd68012
 navigation.held_place 79c5cb1de4352fb0
 navigation.hemmed bf9a630f236a8e4f
 navigation.on_path daf5e41f0755038d

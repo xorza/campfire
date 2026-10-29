@@ -17,21 +17,20 @@ slot 1: 100
 tick 300
 #0 tower team 0 at -9, 0, -3 pool0=1200
 #1 tower team 1 at 9, 0, 3 pool0=1200
-#3 hero-lancer team 0 slot 0 at -3.2229756, 0, 1.1491678 pool0=153.9999962 pool1=70
+#3 hero-lancer team 0 slot 0 at -2.8787703, 0, 1.2648001 pool0=175.99999666 pool1=70
 #4 barracks team 0 slot 0 at -15, 0, -7 pool0=800
 #5 barracks team 0 slot 0 at -12, 0, -7 pool0=800
 #6 hero-sage team 1 slot 1 at 4, 0, 4 pool0=650 pool1=200
 #7 barracks team 1 slot 1 at 14, 0, 7 pool0=800
-#8 creep team 0 at -1.8211793, 0, 0.1154963 pool0=110
-#9 creep team 0 at -2.47455764, 0, 0.48969793 pool0=200
-#10 creep team 1 at -1.45884836, 0, 1.6415421 pool0=0 dead
+#9 creep team 0 at -2.97788304, 0, 0.36857766 pool0=200
+#11 creep team 1 at -2.1277032, 0, 2.75 pool0=180
 #12 guard team 0 slot 0 at -15.65, 0, -8.25 pool0=300
 #13 guard team 1 slot 1 at 13.75, 0, 5.75 pool0=300
-#25 guard team 0 slot 0 at -14.85, 0, -8.25 pool0=300
-#27 creep team 0 at -2.8443017, 0, 2.6034516 pool0=200
-#28 creep team 0 at -3.6909338, 0, 2.4271985 pool0=200
-#29 creep team 1 at 0.92017764, 0, -0.4732496 pool0=200
-#30 creep team 1 at 0.91967785, 0, -1.17324954 pool0=200
+#26 guard team 0 slot 0 at -14.85, 0, -8.25 pool0=300
+#28 creep team 0 at -1.9622889, 0, 1.03308505 pool0=200
+#29 creep team 0 at -3.26415896, 0, 2.2349748 pool0=200
+#30 creep team 1 at 0.9393814, 0, -0.577973 pool0=200
+#31 creep team 1 at 0.8357985, 0, -1.27026683 pool0=200
 #44 ward team 0 slot 0 at 12, 0, 9
 slot 0: 225
 slot 1: 300

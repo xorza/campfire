@@ -166,8 +166,8 @@ fn a_wave_with_no_wave_to_meet_strikes_the_tower_and_falls_to_it() {
     let full = Num::from_int(1500).unwrap();
     let lost = full - fixed.game().get::<Life>(west).unwrap().current();
     let strike = Num::from_int(25).unwrap();
-    // The wave lands two strikes before the tower fells it.
-    assert_eq!(lost, strike * 2, "{lost:?} of {full:?}");
+    // The wave lands three strikes before the tower fells it.
+    assert_eq!(lost, strike * 3, "{lost:?} of {full:?}");
 }
 
 /// The mode's scripted match, which `source/.config/nextest.toml` exempts from the bound of 1 s.

@@ -509,7 +509,8 @@ fn assert_camp(run: &Run<'_>) {
 /// caster's.
 fn assert_gold(run: &Run<'_>, melee: UnitType) {
     // A creep a hero fells pays its player 20 for a melee creep, the first three of a group, and
-    // 15 for a caster: Cinder fells a caster of the south's west group, 15, and Veil a caster, 15.
+    // 15 for a caster: Cinder fells a melee creep and a caster of the south's west group, 35, and
+    // Veil a caster, 15.
     let [cinder, veil] = [0, 5].map(|slot| hero_of(run, slot));
     let bounty = |killer| -> i64 {
         let felled = run
@@ -526,14 +527,14 @@ fn assert_gold(run: &Run<'_>, melee: UnitType) {
             })
             .sum()
     };
-    assert_eq!([bounty(cinder), bounty(veil)], [15, 15]);
+    assert_eq!([bounty(cinder), bounty(veil)], [35, 15]);
 
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 3199: 20 times,
-    // 160. Cinder's player takes first blood, 300 + 100, and the creep's 15; Gale's the assist's
+    // 160. Cinder's player takes first blood, 300 + 100, and the creeps' 35; Gale's the assist's
     // 150, split among one assister; Kensho's the wolf's 30; Veil's the creep's 15.
     assert_eq!(
         run.seen.gold,
-        [160 + 415, 160 + 150, 160, 160 + 30, 160, 160 + 15]
+        [160 + 435, 160 + 150, 160, 160 + 30, 160, 160 + 15]
     );
 }
 
